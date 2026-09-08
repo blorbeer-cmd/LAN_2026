@@ -3334,18 +3334,24 @@ function createPlayerEventContext(): void {
               WHERE e.id NOT IN (?, ?) AND e.group_id = ?
                 AND e.tracking_enabled = 1 AND e.status = 'published' AND e.ended_at IS NULL
                 AND e.starts_at <= ? AND (e.ends_at IS NULL OR e.ends_at > ?)
+              -- Correlate the ORDER BY signal subqueries to ep.player_id, not the
+              -- outer p.id. ep.player_id equals p.id via the join above, so the
+              -- selected event and its ordering are identical, but the reference
+              -- now points one level up (into this subquery's own FROM) instead
+              -- of two. Older SQLite versions reject the two-level reference with
+              -- "no such column: p.id" and abort the whole migration on startup.
               ORDER BY
                 EXISTS (
                   SELECT 1 FROM tracking_live_contexts tlc
-                  WHERE tlc.player_id = p.id AND tlc.group_id = e.group_id AND tlc.event_id = e.id
+                  WHERE tlc.player_id = ep.player_id AND tlc.group_id = e.group_id AND tlc.event_id = e.id
                 ) DESC,
                 COALESCE((
                   SELECT MAX(tlc.last_seen) FROM tracking_live_contexts tlc
-                  WHERE tlc.player_id = p.id AND tlc.group_id = e.group_id AND tlc.event_id = e.id
+                  WHERE tlc.player_id = ep.player_id AND tlc.group_id = e.group_id AND tlc.event_id = e.id
                 ), 0) DESC,
                 EXISTS (
                   SELECT 1 FROM play_sessions ps
-                  WHERE ps.player_id = p.id AND ps.group_id = e.group_id
+                  WHERE ps.player_id = ep.player_id AND ps.group_id = e.group_id
                     AND ps.event_id = e.id AND ps.ended_at IS NULL
                 ) DESC,
                 e.starts_at DESC,
