@@ -1502,6 +1502,7 @@ textarea {
 /* ---------- Buttons & inputs ---------- */
 
 .btn {
+  display: inline-block;
   border: none;
   border-radius: var(--radius-sm);
   padding: var(--space-3) var(--space-5);
@@ -1510,6 +1511,7 @@ textarea {
   cursor: pointer;
   background: var(--bg-elevated-2);
   color: var(--text);
+  text-decoration: none;
   transition: transform 0.05s ease, opacity 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
 }
 /* Hover feedback only where hover exists — on touch screens :hover sticks
@@ -2599,7 +2601,6 @@ button.draft-pool-player {
 }
 .kiosk-open-link {
   text-align: center;
-  text-decoration: none;
 }
 .tournament-lobby-copy {
   width: var(--tap-target-size);
