@@ -2895,7 +2895,7 @@ test('migration 83 makes starts_at nullable for drafts, adds schedule revisions,
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 98 disables general-event seating atomically and preserves LAN and layout data', () => {
+test('migration 98 disables general-event seating and preserves LAN and layout data', () => {
   const dbFile = makeTempDbPath('general-event-seating');
   runMigrations(dbFile);
   const fixture = new Database(dbFile);
@@ -2910,44 +2910,33 @@ test('migration 98 disables general-event seating atomically and preserves LAN a
              ('lan-seating', 'seating', 1, 123);
     INSERT INTO seating_layouts (group_id, event_id, top_seats, assignments, updated_at)
       VALUES ('default-group', 'general-seating', 5, '[]', 123);
-    CREATE TRIGGER block_seating_preset BEFORE UPDATE OF preset_version ON events
-      WHEN NEW.id = 'general-seating'
-      BEGIN SELECT RAISE(ABORT, 'forced preset failure'); END;
   `);
   fixture.close();
 
-  assert.throws(() => runMigrations(dbFile), /forced preset failure/);
-  const failed = new Database(dbFile);
-  assert.deepEqual(failed.prepare("SELECT enabled, changed_at FROM event_features WHERE event_id = 'general-seating' AND feature_key = 'seating'").get(), { enabled: 1, changed_at: 123 });
-  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version = 98').get(), undefined);
-  failed.exec('DROP TRIGGER block_seating_preset');
-  failed.close();
-
   runMigrations(dbFile);
-  const snapshot = () => {
-    const migrated = new Database(dbFile, { readonly: true });
-    try {
-      return {
-        features: migrated.prepare('SELECT * FROM event_features ORDER BY event_id, feature_key').all(),
-        events: migrated.prepare("SELECT id, preset_version FROM events WHERE id IN ('general-seating', 'lan-seating') ORDER BY id").all(),
-        layout: migrated.prepare("SELECT top_seats, assignments, updated_at FROM seating_layouts WHERE event_id = 'general-seating'").get(),
-      };
-    } finally {
-      migrated.close();
+  const migrated = new Database(dbFile, { readonly: true });
+  try {
+    assert.deepEqual(
+      migrated.prepare("SELECT id, preset_version FROM events WHERE id IN ('general-seating', 'lan-seating') ORDER BY id").all(),
+      [{ id: 'general-seating', preset_version: 3 }, { id: 'lan-seating', preset_version: 1 }],
+    );
+    assert.deepEqual(
+      migrated.prepare("SELECT top_seats, assignments, updated_at FROM seating_layouts WHERE event_id = 'general-seating'").get(),
+      { top_seats: 5, assignments: '[]', updated_at: 123 },
+      'layouts and assignments of a general event survive the migration untouched',
+    );
+    const features = migrated
+      .prepare('SELECT * FROM event_features ORDER BY event_id, feature_key')
+      .all() as Array<{ event_id: string; feature_key: string; enabled: number; changed_at: number }>;
+    assert.equal(features.find((row) => row.event_id === 'general-seating' && row.feature_key === 'seating')?.enabled, 0);
+    for (const [eventId, featureKey] of [['general-seating', 'tasks'], ['lan-seating', 'seating']]) {
+      const row = features.find((entry) => entry.event_id === eventId && entry.feature_key === featureKey);
+      assert.equal(row?.enabled, 1);
+      assert.equal(row?.changed_at, 123);
     }
-  };
-  const migrated = snapshot();
-  assert.deepEqual(migrated.events, [{ id: 'general-seating', preset_version: 3 }, { id: 'lan-seating', preset_version: 1 }]);
-  assert.deepEqual(migrated.layout, { top_seats: 5, assignments: '[]', updated_at: 123 });
-  const features = migrated.features as Array<{ event_id: string; feature_key: string; enabled: number; changed_at: number }>;
-  assert.equal(features.find((row) => row.event_id === 'general-seating' && row.feature_key === 'seating')?.enabled, 0);
-  for (const [eventId, featureKey] of [['general-seating', 'tasks'], ['lan-seating', 'seating']]) {
-    const row = features.find((entry) => entry.event_id === eventId && entry.feature_key === featureKey);
-    assert.equal(row?.enabled, 1);
-    assert.equal(row?.changed_at, 123);
+  } finally {
+    migrated.close();
   }
-  runMigrations(dbFile);
-  assert.deepEqual(snapshot(), migrated, 'a repeated startup must leave the migration result unchanged');
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 

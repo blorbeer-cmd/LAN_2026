@@ -581,6 +581,13 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   await page.waitForSelector('#home-seating-title');
   await openView('admin');
   assert.equal(await page.locator('[data-navigate="seating"]').isVisible(), true);
+  // The seating editor exists for a LAN only, so its participant vocabulary is
+  // asserted here — the general-event part above no longer reaches that view.
+  await page.click('[data-navigate="seating"]');
+  await page.waitForSelector('#seating-players-title');
+  const seating = await viewText();
+  assert.match(seating, /Teilnehmende/);
+  assert.doesNotMatch(seating, /Spieler/);
   await openView('eventPolls');
   await page.waitForSelector('#view-container[data-view="eventPolls"]');
   assert.match(await viewText(), /Umfragen/);
