@@ -19,20 +19,11 @@ import { emptyStateHtml } from '../emptyState.js';
 import { isAdmin } from '../admin.js';
 import { eventHasFeature, viewIsEnabledForEvent } from '../eventFeatures.js';
 import { eventTypeTitle } from '../eventTypes.js';
-import { domainIcon } from '../domainIcons.js';
 import { formatEuroCents } from '../paypal.js';
 import { dueBadgeInfo } from '../checklistDue.js';
-import { assignedTasks, ensureTasksLoaded, openTaskCount } from './checklist.js';
+import { assignedTasks, ensureTasksLoaded } from './checklist.js';
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
-
-const GENERAL_EVENT_LINKS = Object.freeze([
-  Object.freeze({ view: 'events', title: 'Eventdetails & Kosten', description: 'Zeitraum, Ort, Teilnehmende und Beiträge' }),
-  Object.freeze({ view: 'checklist', title: 'To-Dos', description: 'Aufgaben und Mitbring-Anfragen' }),
-  Object.freeze({ view: 'arrivals', title: 'An- & Abreise', description: 'Zeiten und Fahrgemeinschaften' }),
-  Object.freeze({ view: 'foodOrders', title: 'Essen', description: 'Gemeinsame Bestellungen' }),
-  Object.freeze({ view: 'music', title: 'Jam', description: 'Musik und gemeinsame Warteschlange' }),
-]);
 
 let seatingCache = null;
 let seatingLoading = false;
@@ -141,22 +132,6 @@ function eventPeriod(event) {
   return event.endsAt == null ? `Ab ${start}` : `${start} – ${formatDateTime(event.endsAt)}`;
 }
 
-function generalEventLinkHtml(item) {
-  const taskCount = item.view === 'checklist' ? openTaskCount() : 0;
-  const description = taskCount > 0
-    ? `${taskCount} ${taskCount === 1 ? 'To-Do ist' : 'To-Dos sind'} dir zugewiesen`
-    : item.description;
-  return `
-    <button type="button" class="card row list-row" data-navigate="${item.view}">
-      <span class="list-row-icon">${icon(domainIcon(item.view))}</span>
-      <span class="home-current-copy">
-        <span class="player-name">${escapeHtml(item.title)}</span>
-        <span class="muted list-row-desc">${escapeHtml(description)}</span>
-      </span>
-      <span class="muted">${icon('chevronRight')}</span>
-    </button>`;
-}
-
 function renderGeneralEventOverview() {
   const event = state.activeEvent;
   if (!event || event.eventType !== 'general') return '';
@@ -205,20 +180,6 @@ function renderGeneralEventOverview() {
           </span>
         </div>` : ''}
       </div>
-    </section>`;
-}
-
-function renderGeneralEventOrganisation() {
-  const event = state.activeEvent;
-  if (!event || event.eventType !== 'general') return '';
-  const links = GENERAL_EVENT_LINKS
-    .filter((item) => viewIsEnabledForEvent(item.view, event))
-    .map(generalEventLinkHtml)
-    .join('');
-  return `
-    <section class="card grouped-page-section stack" aria-labelledby="home-organisation-title">
-      <div class="grouped-page-section-title"><h2 id="home-organisation-title">Organisation</h2></div>
-      <div class="card-grid">${links}</div>
     </section>`;
 }
 
@@ -426,7 +387,6 @@ export function renderHome(container, ctx) {
         ${renderAssignedTodos()}
         ${renderStatus()}
       </div>
-      ${renderGeneralEventOrganisation()}
       ${
         trackingEnabled
           ? `<section class="card grouped-page-section stack" aria-labelledby="home-live-title">

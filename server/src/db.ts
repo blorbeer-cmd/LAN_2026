@@ -4827,6 +4827,24 @@ registerMigration({
   disableForeignKeysForRebuild: true,
 });
 
+// General events use planning areas without a seating plan. Preserve existing
+// layouts and assignments; only disable the feature in their saved snapshots.
+registerMigration({
+  version: 98,
+  name: 'disable seating for general events',
+  up: () => {
+    db.prepare(
+      `UPDATE event_features
+       SET enabled = 0, changed_at = ?, changed_by = NULL
+       WHERE feature_key = 'seating'
+         AND event_id IN (SELECT id FROM events WHERE event_type_key = 'general' AND id != ?)`,
+    ).run(Date.now(), OUTSIDE_EVENTS_ID);
+    db.prepare(
+      "UPDATE events SET preset_version = 3 WHERE event_type_key = 'general' AND preset_version < 3 AND id != ?",
+    ).run(OUTSIDE_EVENTS_ID);
+  },
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

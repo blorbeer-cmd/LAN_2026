@@ -467,7 +467,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await openView('home');
   const home = await viewText();
-  assert.doesNotMatch(home, /Live-Status|Rangliste/);
+  assert.doesNotMatch(home, /Live-Status|Rangliste|Organisation|Eventdetails & Kosten|Sitzplan/);
   for (const text of [
     'Eventübersicht',
     'Allgemeines Event',
@@ -475,18 +475,8 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
     'wetterfeste Kleidung',
     '15,00',
     '1 teilnehmende Person',
-    'Organisation',
-    'Eventdetails & Kosten',
-    'To-Dos',
-    'An- & Abreise',
-    'Essen',
-    'Jam',
-    'Sitzplan',
   ]) {
     assert.ok(home.includes(text), `Home must show ${text}`);
-  }
-  for (const view of ['events', 'checklist', 'arrivals', 'foodOrders', 'music']) {
-    assert.equal(await page.locator(`[data-navigate="${view}"]`).first().isVisible(), true, `${view} summary link must be visible`);
   }
 
   await openView('profile');
@@ -531,16 +521,15 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await openView('admin');
   const admin = await viewText();
-  assert.doesNotMatch(admin, /LAN-Bereitschaft|Agent-Diagnose|Kioskverwaltung/);
+  assert.doesNotMatch(admin, /LAN-Bereitschaft|Agent-Diagnose|Kioskverwaltung|Sitzplan/);
   assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 0);
   assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 0);
-  assert.match(admin, /Sitzplan|Eventverwaltung/);
+  assert.match(admin, /Eventverwaltung/);
+  assert.equal(await page.locator('[data-navigate="seating"]').count(), 0);
 
-  await page.click('[data-navigate="seating"]');
-  await page.waitForSelector('#seating-players-title');
-  const seating = await viewText();
-  assert.match(seating, /Teilnehmende/);
-  assert.doesNotMatch(seating, /Spieler/);
+  await page.evaluate(() => { location.hash = '#seating'; });
+  await page.waitForSelector('[data-home-event-overview]');
+  assert.equal(await page.locator('#seating-players-title').count(), 0);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await openView('home');
@@ -553,6 +542,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
     'the general-event overview must not introduce horizontal page scrolling on a phone',
   );
   assert.equal(await page.locator('[data-home-event-overview] .badge').isVisible(), true);
+  assert.doesNotMatch(await viewText(), /Organisation|Sitzplan/);
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
 
@@ -587,6 +577,10 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
       buttons.map((button) => (button as HTMLElement).dataset.view)),
     expectedLanDesktopViews,
   );
+  await openView('home');
+  await page.waitForSelector('#home-seating-title');
+  await openView('admin');
+  assert.equal(await page.locator('[data-navigate="seating"]').isVisible(), true);
   await openView('eventPolls');
   await page.waitForSelector('#view-container[data-view="eventPolls"]');
   assert.match(await viewText(), /Umfragen/);
