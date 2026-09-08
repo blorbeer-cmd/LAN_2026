@@ -560,8 +560,11 @@ function renderItems(order, myId, { locked = false } = {}) {
       .map(([playerId, items]) => {
         const rows = items.map((i) => renderItemRow(order, i, myId, { locked })).join('');
         const allPaid = groupPaymentState(items) === 'paid';
+        // Its one position already prints the same tip-inclusive total, so the
+        // phone layout drops the group's own sum (domains.css, --bp-md block).
+        const singlePosition = items.length === 1;
         return `
-          <div class="stack food-order-group ${allPaid ? 'is-all-paid' : ''}">
+          <div class="stack food-order-group ${allPaid ? 'is-all-paid' : ''}${singlePosition ? ' is-single-position' : ''}">
             ${renderGroupHeader(order, playerId, items, myId, { collapsible: false, locked })}
             <div class="food-order-group-items">${rows}</div>
           </div>`;
@@ -577,8 +580,11 @@ function renderItems(order, myId, { locked = false } = {}) {
       const expanded = expandedSet.has(playerId);
       const rows = items.map((i) => renderItemRow(order, i, myId, { locked })).join('');
       const allPaid = groupPaymentState(items) === 'paid';
+      // Only while the position is actually on screen: a collapsed group hides
+      // its rows, so there the sum is the only amount left to show.
+      const singlePosition = expanded && items.length === 1;
       return `
-        <div class="stack food-order-group ${allPaid ? 'is-all-paid' : ''}">
+        <div class="stack food-order-group ${allPaid ? 'is-all-paid' : ''}${singlePosition ? ' is-single-position' : ''}">
           ${renderGroupHeader(order, playerId, items, myId, { collapsible: true, expanded, locked })}
           <div class="food-order-group-items" ${expanded ? '' : 'hidden'}>${rows}</div>
         </div>`;
