@@ -35,6 +35,12 @@ etwas für die gepackte Variante.
 Nach dem Ausblenden landet die Log-Ausgabe zusätzlich in `agent.log` im Installationsordner
 (`%LOCALAPPDATA%\Respawn-Agent`), damit sich Verbindungsprobleme trotzdem nachvollziehen lassen.
 
+Der Hinweis am Tracking-Schalter erläutert den Event-Bezug: Live-Status, Spielzeit und
+Auswertungen entstehen nur für das aktuell im Konto ausgewählte, laufende Event mit Zusage,
+aktiviertem Tracking und gültiger Event-Tracking-Einwilligung. Andere gleichzeitig laufende Events
+erhalten daraus keine Live-Daten oder Spielzeit. Ohne diese Voraussetzungen meldet ein laufender,
+nicht pausierter Agent erkannte Spielnamen weiterhin für die Agent-Diagnose der Administration.
+
 In der Weboberfläche gibt es vier Aktionen:
 
 - **Pausieren / Fortsetzen** – stoppt sofort das Melden an den Server (der Spieler erscheint nach

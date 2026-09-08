@@ -17,6 +17,7 @@ import {
   openAuswertungTab,
   ensureAdminMode,
 } from './flowsShared.fixture';
+import { openMoreViewEntry } from './navHelpers';
 
 registerFlowFixture('competition');
 
@@ -246,8 +247,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // page/session (test players, Arcade AI). Auswertung itself no longer
   // depends on it - it lives behind Admin's own "Auswertung" tool card,
   // gated by the real admin role instead.
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await ensureAdminMode();
 
   // Leaderboard: record a match and see it reflected.
