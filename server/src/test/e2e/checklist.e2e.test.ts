@@ -290,22 +290,45 @@ test('an already-open Home re-renders when a free To-Do appears and disappears e
 
   // Earlier tests in this shared owner process leave To-Dos behind (e.g.
   // Alice's self-assigned "Beamer mitbringen" from the realtime-re-render
-  // test above); clear anything still assigned to Alice so the tile starts
-  // from a genuinely empty state instead of assuming a fixed prior history.
+  // test above); clear anything still assigned to Alice, and anything still
+  // sitting open in the shared pool, so the tile's visibility gate (mine AND
+  // free) starts from a genuinely empty state instead of assuming a fixed
+  // prior history for either half of it.
   const existing = await fetch(`${BASE_URL}/api/checklist/tasks`, { headers: { cookie: alice.cookie } });
   const existingBody = (await existing.json()) as {
-    tasks: Array<{ id: string; status: string; assignee: { id: string } | null }>;
+    tasks: Array<{ id: string; status: string; assignee: { id: string } | null; createdBy: { id: string } | null }>;
   };
   assert.equal(existing.status, 200, JSON.stringify(existingBody));
   const { tasks: existingTasks } = existingBody;
   for (const task of existingTasks) {
-    if (task.status !== 'taken' || task.assignee?.id !== alice.id) continue;
-    const done = await fetch(`${BASE_URL}/api/checklist/tasks/${task.id}/done`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json', cookie: alice.cookie },
-      body: JSON.stringify({ playerId: alice.id }),
-    });
-    assert.equal(done.status, 200, await done.text());
+    if (task.status === 'taken' && task.assignee?.id === alice.id) {
+      const done = await fetch(`${BASE_URL}/api/checklist/tasks/${task.id}/done`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: alice.cookie },
+        body: JSON.stringify({ playerId: alice.id }),
+      });
+      assert.equal(done.status, 200, await done.text());
+    } else if (task.status === 'open' && task.createdBy?.id === alice.id) {
+      const cancelled = await fetch(`${BASE_URL}/api/checklist/tasks/${task.id}`, {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json', cookie: alice.cookie },
+        body: JSON.stringify({ playerId: alice.id }),
+      });
+      assert.equal(cancelled.status, 204, await cancelled.text());
+    } else if (task.status === 'open') {
+      const claimed = await fetch(`${BASE_URL}/api/checklist/tasks/${task.id}/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: alice.cookie },
+        body: JSON.stringify({ playerId: alice.id }),
+      });
+      assert.equal(claimed.status, 200, await claimed.text());
+      const done = await fetch(`${BASE_URL}/api/checklist/tasks/${task.id}/done`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: alice.cookie },
+        body: JSON.stringify({ playerId: alice.id }),
+      });
+      assert.equal(done.status, 200, await done.text());
+    }
   }
 
   await switchAccount(alice);

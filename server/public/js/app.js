@@ -1122,7 +1122,10 @@ function wireSocket() {
     // Home's "Meine To-Dos" tile visibility itself now depends on this data
     // (see renderAssignedTodos() in home.js), not just its content, so a
     // stale cache on an already-open Home view has to trigger a re-render too.
-    else if (currentView === 'home') renderCurrent();
+    // scope: 'items' is someone's private Packliste, which invalidateChecklist
+    // deliberately leaves the tasks cache untouched for, so it can't change
+    // what the tile shows and doesn't need a Home rebuild either.
+    else if (currentView === 'home' && payload?.scope !== 'items') renderCurrent();
   });
 
   socket.on('music:changed', () => {

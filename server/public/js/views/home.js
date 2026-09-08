@@ -253,17 +253,23 @@ function homeFreeTodosHtml(count) {
 // Only worth a tile when there is something to act on: To-Dos assigned to
 // this identity, or free ones still waiting in the shared pool for anyone to
 // claim. An empty pool with nothing assigned needs no dedicated link — every
-// row here already navigates to the full list on click.
+// row here already navigates to the full list on click. Nothing is known yet
+// while tasksCache is still loading, so the tile stays out entirely rather
+// than flashing a "Lädt…" placeholder that may immediately disappear again.
 function renderAssignedTodos() {
   if (!eventHasFeature(state.activeEvent, 'tasks')) return '';
   const tasks = assignedTasks();
+  if (tasks === null) return '';
   const freeCount = freeTaskCount();
-  if (tasks !== null && tasks.length === 0 && freeCount === 0) return '';
+  if (tasks.length === 0 && freeCount === 0) return '';
   const myId = getMyId();
   let content;
-  if (tasks === null) content = emptyStateHtml('Lädt…');
-  else if (!myId) content = '<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p>';
-  else if (tasks.length === 0) content = `<div class="card-grid">${homeFreeTodosHtml(freeCount)}</div>`;
+  // assignedTasks() is always [] without an identity, so this only renders
+  // once freeCount > 0 (the gate above already hid the tile otherwise) — the
+  // pool row keeps a navigable way in even before an identity is chosen.
+  if (!myId) {
+    content = `<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p><div class="card-grid">${homeFreeTodosHtml(freeCount)}</div>`;
+  } else if (tasks.length === 0) content = `<div class="card-grid">${homeFreeTodosHtml(freeCount)}</div>`;
   else {
     const visibleTasks = tasks.slice(0, 3);
     const remaining = tasks.length - visibleTasks.length;
