@@ -430,6 +430,16 @@ test('an open, actively-searched switcher survives an unrelated background refre
 test('a general event removes LAN-only whole areas across navigation, Home, Profile and Admin', async () => {
   await switchWorkspaceInBrowser(generalEvent);
 
+  // "Meine To-Dos" only renders once it has something to show (see
+  // renderAssignedTodos() in home.js); an open pool To-Do for this event
+  // keeps the Home assertion below meaningful instead of racing an empty tile.
+  const me = await api('/api/me');
+  const createdTodo = await api('/api/checklist/tasks/todo', {
+    method: 'POST',
+    body: JSON.stringify({ playerId: me.body.id, title: 'Deko besorgen' }),
+  });
+  assert.equal(createdTodo.status, 201, JSON.stringify(createdTodo.body));
+
   const expectedNavViews = [
     'home',
     'events',
@@ -546,7 +556,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   await openView('home');
   await page.waitForSelector('[data-home-event-overview]');
   await page.waitForSelector('[data-home-assigned-todos]');
-  assert.match(await page.locator('[data-home-assigned-todos]').innerText(), /Meine To-Dos|Alle To-Dos/);
+  assert.match(await page.locator('[data-home-assigned-todos]').innerText(), /Meine To-Dos/);
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
     true,
