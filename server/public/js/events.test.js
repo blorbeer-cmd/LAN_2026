@@ -56,7 +56,10 @@ test('scheduled event cards offer Google, Outlook and an ICS calendar file', () 
     myParticipation: { status: 'accepted', calendarConfirmed: false },
   });
   assert.match(unconfirmed, /data-confirm-event-calendar="calendar-event"/);
-  assert.match(unconfirmed, /Beendet die Kalender-Erinnerungen/);
+  assert.match(unconfirmed, /class="info-tooltip"/);
+  assert.match(unconfirmed, /aria-label="Mehr Informationen zu Kalenderübernahme"/);
+  assert.match(unconfirmed, /id="event-calendar-confirmation-help-calendar-event"[^>]*role="tooltip"[^>]*>Beendet die Kalender-Erinnerungen\.<\/span>/);
+  assert.doesNotMatch(unconfirmed, /class="muted">Beendet die Kalender-Erinnerungen/);
 
   const confirmed = renderEventCalendarActions({
     ...event,
