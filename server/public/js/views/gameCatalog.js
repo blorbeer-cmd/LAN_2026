@@ -380,8 +380,9 @@ function openSuggestForm(ctx) {
           <input type="text" id="suggest-platform" maxlength="80" placeholder="Steam, Epic, Battle.net…" />
         </div>
         <div>
-          <label class="field-label" for="suggest-trailer">Gameplay-Trailer</label>
-          <input type="url" id="suggest-trailer" maxlength="500" placeholder="https://…" />
+          <label class="field-label" for="suggest-trailer">YouTube-Gameplay-Link</label>
+          <input type="url" id="suggest-trailer" maxlength="500" placeholder="Leer lassen für automatische Suche" />
+          <span class="muted" style="font-size:var(--font-size-xs);">Leer lassen: Es wird automatisch ein YouTube-Suchlink für den Spielnamen mit „gameplay“ hinterlegt.</span>
         </div>
         <button type="submit" class="btn btn-primary btn-block">Vorschlagen</button>
       </form>
@@ -392,7 +393,7 @@ function openSuggestForm(ctx) {
         const values = ['#suggest-title', '#suggest-platform', '#suggest-trailer'].map(
           (sel) => modalEl.querySelector(sel).value.trim(),
         );
-        return values.some(Boolean) ? 'Der Spielvorschlag mit Titel, Plattform und Trailer-Link geht verloren.' : null;
+        return values.some(Boolean) ? 'Der Spielvorschlag mit Titel, Plattform und YouTube-Link geht verloren.' : null;
       },
       onMount: (el) => {
         modalEl = el;
@@ -463,8 +464,8 @@ function openGameDetail(gameId, ctx) {
           <input type="url" id="edit-platform-url" maxlength="500" value="${escapeHtml(game.platform_url ?? '')}" placeholder="https://…" />
         </div>
         <div>
-          <label class="field-label" for="edit-trailer">Gameplay-Trailer</label>
-          <input type="url" id="edit-trailer" maxlength="500" value="${escapeHtml(game.trailer_url ?? '')}" placeholder="https://…" />
+          <label class="field-label" for="edit-trailer">${game.isSuggestion ? 'YouTube-Gameplay-Link' : 'Gameplay-Trailer'}</label>
+          <input type="url" id="edit-trailer" maxlength="500" value="${escapeHtml(game.trailer_url ?? '')}" placeholder="${game.isSuggestion ? 'Leer lassen für automatische Suche' : 'https://…'}" />
         </div>
         <div>
           <span class="field-label" id="edit-genre-label">Genre</span>
@@ -540,7 +541,9 @@ function openGameDetail(gameId, ctx) {
           Number(maxTeamSize) !== game.max_team_size ||
           considerSeatNeighborsDefault !== Boolean(game.considerSeatNeighborsDefault) ||
           Boolean(newProcess);
-        return dirty ? 'Deine Änderungen am Spiel (Name, Plattform, Team-Größen, Prozessname) werden nicht gespeichert.' : null;
+        return dirty
+          ? `Deine Änderungen am Spiel (Name, Plattform, Team-Größen, Prozessname und ${game.isSuggestion ? 'YouTube-Link' : 'Trailer-Link'}) werden nicht gespeichert.`
+          : null;
       },
       onMount: (el) => {
         modalEl = el;

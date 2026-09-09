@@ -223,7 +223,7 @@ test('POST /api/games with status "suggestion" creates a player-submitted propos
     status: 'suggestion',
     platform: 'Steam',
     platformUrl: 'https://store.steampowered.com/search/?term=LAN%20Test%20Racer',
-    trailerUrl: 'https://example.test/trailer',
+    trailerUrl: 'https://www.youtube.com/watch?v=LANTestGameplay',
     playerId: suggesterId,
   });
   assert.equal(res.status, 201);
@@ -232,6 +232,27 @@ test('POST /api/games with status "suggestion" creates a player-submitted propos
   assert.equal(res.body.platform, 'Steam');
   assert.equal(res.body.created_by, suggesterId);
   suggestionId = res.body.id;
+});
+
+test('POST /api/games fills a missing suggestion trailer with a YouTube gameplay search link', async () => {
+  const res = await request(app).post('/api/games').send({
+    name: 'Auto-Link-Spiel',
+    status: 'suggestion',
+    playerId: suggesterId,
+  });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.trailer_url, 'https://www.youtube.com/results?search_query=Auto-Link-Spiel%20gameplay');
+});
+
+test('POST /api/games rejects a non-YouTube trailer for a suggestion', async () => {
+  const res = await request(app).post('/api/games').send({
+    name: 'Nicht-YouTube-Spiel',
+    status: 'suggestion',
+    trailerUrl: 'https://example.test/trailer',
+    playerId: suggesterId,
+  });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /YouTube/);
 });
 
 test('POST /api/games rejects a malformed trailer link', async () => {
@@ -335,6 +356,7 @@ test('POST /api/games/:id/demote moves a catalog game back into suggestions', as
   assert.equal(res.status, 200);
   assert.equal(res.body.isSuggestion, true);
   assert.equal(res.body.status, 'suggestion');
+  assert.equal(res.body.trailer_url, 'https://www.youtube.com/results?search_query=Demote-Testspiel%20gameplay');
 
   const again = await request(app).post(`/api/games/${id}/demote`).send();
   assert.equal(again.status, 409);
