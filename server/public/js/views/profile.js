@@ -397,13 +397,19 @@ export function renderProfile(container, ctx) {
                <div class="collapsible-section-content">
                <form class="stack" id="profile-password-form">
                  <div class="profile-password-fields">
-                   <div class="row">
-                     <input type="password" id="profile-current-password" autocomplete="current-password" required style="flex:1;" placeholder="Aktuelles Passwort" />
-                     <button type="button" class="icon-btn" data-password-toggle="profile-current-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+                   <div>
+                     <label for="profile-current-password" class="field-label">Aktuelles Passwort</label>
+                     <div class="row">
+                       <input type="password" id="profile-current-password" autocomplete="current-password" required style="flex:1;" />
+                       <button type="button" class="icon-btn" data-password-toggle="profile-current-password" data-password-toggle-label="Aktuelles Passwort" aria-label="Aktuelles Passwort anzeigen" title="Aktuelles Passwort anzeigen">${icon('eye')}</button>
+                     </div>
                    </div>
-                   <div class="row">
-                     <input type="password" id="profile-new-password" autocomplete="new-password" minlength="1" maxlength="1024" required style="flex:1;" placeholder="Neues Passwort" />
-                     <button type="button" class="icon-btn" data-password-toggle="profile-new-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+                   <div>
+                     <label for="profile-new-password" class="field-label">Neues Passwort</label>
+                     <div class="row">
+                       <input type="password" id="profile-new-password" autocomplete="new-password" minlength="1" maxlength="1024" required style="flex:1;" />
+                       <button type="button" class="icon-btn" data-password-toggle="profile-new-password" data-password-toggle-label="Neues Passwort" aria-label="Neues Passwort anzeigen" title="Neues Passwort anzeigen">${icon('eye')}</button>
+                     </div>
                    </div>
                  </div>
                  <button type="submit" class="btn btn-primary btn-block">Passwort speichern</button>
@@ -548,9 +554,10 @@ export function renderProfile(container, ctx) {
     button.addEventListener('click', () => {
       const input = container.querySelector(`#${button.dataset.passwordToggle}`);
       const visible = input.type === 'password';
+      const label = button.dataset.passwordToggleLabel || 'Passwort';
       input.type = visible ? 'text' : 'password';
       button.innerHTML = icon(visible ? 'eyeOff' : 'eye');
-      button.setAttribute('aria-label', visible ? 'Passwort verbergen' : 'Passwort anzeigen');
+      button.setAttribute('aria-label', `${label} ${visible ? 'verbergen' : 'anzeigen'}`);
       button.title = button.getAttribute('aria-label');
     });
   });

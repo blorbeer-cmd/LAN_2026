@@ -104,7 +104,10 @@ function renderMyForm(myId, draft) {
             ${dateTimeFieldHtml('departure-at', departureAt, { clearable: true, disabled: !myId, label: 'Abreise' })}
           </div>
         </div>
-        <textarea class="arrival-note-input" id="arrival-note" maxlength="240" rows="1" placeholder="Notiz" ${myId ? '' : 'disabled'}>${escapeHtml(note)}</textarea>
+        <div>
+          <label for="arrival-note" class="field-label">Notiz</label>
+          <textarea class="arrival-note-input" id="arrival-note" maxlength="240" rows="1" ${myId ? '' : 'disabled'}>${escapeHtml(note)}</textarea>
+        </div>
         <button type="submit" class="btn btn-primary btn-block" ${myId ? '' : 'disabled'}>Speichern</button>
       </form>
     </section>
