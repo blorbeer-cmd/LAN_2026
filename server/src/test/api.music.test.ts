@@ -247,6 +247,7 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   live = await request(app).get('/api/music/status').set('x-test-player-id', alice.id);
   assert.deepEqual(live.body.session.playbackContext, {
     ...playlist,
+    addedByName: 'Music Bob',
     remainingTrackCount: 41,
     nextTrack: tracks.BBBBBBBBBBBBBBBBBBBBBB,
   });

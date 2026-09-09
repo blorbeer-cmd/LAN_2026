@@ -24,6 +24,7 @@ export function kioskMusicQueueKey(session) {
     next: playlist?.nextTrack?.uri || null,
     remaining: playlist?.remainingTrackCount ?? null,
     playlist: playlist?.uri || null,
+    addedByName: playlist?.addedByName || null,
     requests: queued.map((entry) => `${entry.id}:${entry.status}`),
   });
 }
@@ -40,7 +41,7 @@ export function kioskMusicQueueHtml(session) {
       <span class="kiosk-music-copy">
         <span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span>
         <strong>${escapeHtml(nextTrack.name)}</strong>
-        <span class="muted">${escapeHtml(nextTrack.artist)} · ${nextRequest ? `gewünscht von ${escapeHtml(nextRequest.requestedByName)}` : `aus „${escapeHtml(playlist.name)}“`}</span>
+        <span class="muted">${escapeHtml(nextTrack.artist)} · ${nextRequest ? `gewünscht von ${escapeHtml(nextRequest.requestedByName)}` : `aus „${escapeHtml(playlist.name)}“${playlist.addedByName ? ` · hinzugefügt von ${escapeHtml(playlist.addedByName)}` : ''}`}</span>
       </span>`;
   }
 
@@ -50,7 +51,7 @@ export function kioskMusicQueueHtml(session) {
       <span class="kiosk-music-copy">
         <span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span>
         <strong>Playlist im Zufallsmodus</strong>
-        <span class="muted">„${escapeHtml(playlist.name)}“ · Spotify wählt den nächsten Titel</span>
+        <span class="muted">„${escapeHtml(playlist.name)}“${playlist.addedByName ? ` · hinzugefügt von ${escapeHtml(playlist.addedByName)}` : ''} · Spotify wählt den nächsten Titel</span>
         <span class="muted">${remainingPlaylistLabel(playlist)}${requestLabel ? ` · ${requestLabel}` : ''}</span>
       </span>`;
   }

@@ -120,6 +120,7 @@ test('music queue shows the remaining playlist tracks separately from requests',
       playbackContext: {
         name: 'LAN <Playlist>',
         remainingTrackCount: 4,
+        addedByName: 'DJ Bob',
         nextTrack: {
           uri: 'spotify:track:NEXT',
           name: 'Der nächste Song',
@@ -137,6 +138,7 @@ test('music queue shows the remaining playlist tracks separately from requests',
   });
   assert.match(html, /Der nächste Song/);
   assert.match(html, /Die Band · aus „LAN &lt;Playlist&gt;“/);
+  assert.match(html, /hinzugefügt von DJ Bob/);
   assert.match(html, /3 weitere Titel/);
   assert.match(html, /aus „LAN &lt;Playlist&gt;“/);
   assert.match(html, /Noch keine weiteren Songwünsche\./);

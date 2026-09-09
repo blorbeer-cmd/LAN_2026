@@ -79,6 +79,7 @@ interface PublicPlaylist {
 interface PublicPlaybackContext extends PublicPlaylist {
   remainingTrackCount: number;
   nextTrack: PublicTrack | null;
+  addedByName: string | null;
 }
 
 interface CachedPlaylist {
@@ -239,7 +240,8 @@ function playbackContext(session: MusicSessionRow): PublicPlaybackContext | null
     const remainingTrackCount = Number.isSafeInteger(stored?.remainingTrackCount)
       ? Math.max(0, Math.min(playlist.trackCount, Number(stored?.remainingTrackCount)))
       : fallback;
-    return { ...playlist, remainingTrackCount, nextTrack: validTrack(stored?.nextTrack) };
+    const addedByName = typeof stored?.addedByName === 'string' ? stored.addedByName.slice(0, 300) : null;
+    return { ...playlist, remainingTrackCount, nextTrack: validTrack(stored?.nextTrack), addedByName };
   } catch {
     return null;
   }
@@ -554,6 +556,7 @@ musicRouter.post('/playlists/:playlistId/play', ...withBodyPlayerIdentity, async
        playback_updated_at = ? WHERE id = ?`,
     ).run(JSON.stringify({
       ...playlist,
+      addedByName: player.name,
       remainingTrackCount: playlist.trackCount,
       observedTrackUri: null,
     }), now, session.id);

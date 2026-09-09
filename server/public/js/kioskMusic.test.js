@@ -4,9 +4,10 @@ import { kioskMusicQueueHtml, kioskMusicQueueKey } from './kioskMusic.js';
 
 test('kiosk names the live next track when Spotify exposes one', () => {
   const html = kioskMusicQueueHtml({
-    playbackContext: {
-      name: 'LAN Playlist',
-      nextTrack: {
+      playbackContext: {
+        name: 'LAN Playlist',
+        addedByName: 'DJ Bob',
+        nextTrack: {
         uri: 'spotify:track:NEXT',
         name: 'Der nächste Song',
         artist: 'Die Band',
@@ -18,6 +19,7 @@ test('kiosk names the live next track when Spotify exposes one', () => {
 
   assert.match(html, /Der nächste Song/);
   assert.match(html, /aus „LAN Playlist“/);
+  assert.match(html, /hinzugefügt von DJ Bob/);
   assert.doesNotMatch(html, /Zufallsmodus/);
 });
 
@@ -28,6 +30,7 @@ test('kiosk explains playlist shuffle when no next track is available', () => {
       name: 'LAN Playlist',
       remainingTrackCount: 7,
       nextTrack: null,
+      addedByName: 'DJ Bob',
     },
     requests: [{ id: 'request-1', status: 'queued' }],
   };
@@ -35,6 +38,7 @@ test('kiosk explains playlist shuffle when no next track is available', () => {
 
   assert.match(html, /Playlist im Zufallsmodus/);
   assert.match(html, /Spotify wählt den nächsten Titel/);
+  assert.match(html, /hinzugefügt von DJ Bob/);
   assert.match(html, /7 Titel verbleiben/);
   assert.match(html, /1 Songwunsch wartet/);
   assert.doesNotMatch(html, /Noch keine Songwünsche/);

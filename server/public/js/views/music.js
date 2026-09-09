@@ -281,7 +281,7 @@ function nowPlayingHtml(session, canManageController = false) {
           <div class="music-track-main">
             <strong class="music-track-title">${escapeHtml(track.name)}</strong>
             <span class="muted">${escapeHtml(track.artist)}</span>
-            ${playlist ? `<span class="muted">Playlist · ${escapeHtml(playlist.name)}</span>` : ''}
+            ${playlist ? `<span class="muted">Playlist · ${escapeHtml(playlist.name)}${playlist.addedByName ? ` · hinzugefügt von ${escapeHtml(playlist.addedByName)}` : ''}</span>` : ''}
             ${request ? `<span class="muted">gewünscht von ${escapeHtml(request.requestedByName)}</span>` : ''}
             <div class="music-progress" aria-label="Wiedergabefortschritt">
               <span style="transform:scaleX(${progressPercent(session) / 100});"></span>
@@ -332,7 +332,7 @@ function requestQueueHtml(session) {
         ${nextTrack.imageUrl ? `<img class="music-queue-cover" src="${escapeHtml(nextTrack.imageUrl)}" alt="" />` : ''}
         <span class="music-track-main">
           <strong class="music-track-title">${escapeHtml(nextTrack.name)}</strong>
-          <span class="muted">${escapeHtml(nextTrack.artist)} · ${nextRequest ? `Songwunsch von ${escapeHtml(nextRequest.requestedByName)}` : `aus „${escapeHtml(playlist.name)}“`}</span>
+          <span class="muted">${escapeHtml(nextTrack.artist)} · ${nextRequest ? `Songwunsch von ${escapeHtml(nextRequest.requestedByName)}` : `aus „${escapeHtml(playlist.name)}“${playlist.addedByName ? ` · hinzugefügt von ${escapeHtml(playlist.addedByName)}` : ''}`}</span>
         </span>
         <span class="badge">${nextRequest ? 'Songwunsch' : 'Playlist'}</span>
       </div>` : ''}
@@ -340,7 +340,7 @@ function requestQueueHtml(session) {
         <div class="card row-between">
           <span class="music-track-main">
             <strong>${playlistTracksAfterNext} ${playlistTracksAfterNext === 1 ? 'weiterer Titel' : 'weitere Titel'}</strong>
-            <span class="muted">aus „${escapeHtml(playlist.name)}“</span>
+            <span class="muted">aus „${escapeHtml(playlist.name)}“${playlist.addedByName ? ` · hinzugefügt von ${escapeHtml(playlist.addedByName)}` : ''}</span>
           </span>
           <span class="badge">Playlist</span>
         </div>` : ''}
