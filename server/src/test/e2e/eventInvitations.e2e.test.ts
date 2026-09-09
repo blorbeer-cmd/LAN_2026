@@ -163,8 +163,15 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.match((await ownerEventCard.locator('.event-settlement').textContent()) ?? '', /100,00/);
   assert.equal(await ownerEventCard.locator('.event-card-header [data-edit-event]').count(), 1);
   assert.equal(await ownerEventCard.locator('.event-card-actions [data-edit-event]').count(), 0);
-  assert.match((await ownerEventCard.locator('.event-card-heading').first().textContent()) ?? '', new RegExp(OWNER_NAME));
-  assert.match((await ownerEventCard.locator('.event-card-heading').first().textContent()) ?? '', /\d+\.\d+\.\d{4}/);
+  assert.equal(await ownerEventCard.locator('[data-event-card-toggle]').count(), 0, 'a lone event card carries no collapse chrome');
+  const ownerHeading = (await ownerEventCard.locator('.event-card-heading').first().textContent()) ?? '';
+  assert.match(ownerHeading, new RegExp(OWNER_NAME));
+  assert.doesNotMatch(
+    ownerHeading,
+    /\d+\.\d+\.\d{4}/,
+    'an expanded card leaves the period to its information box instead of repeating it in the header',
+  );
+  assert.match((await ownerEventCard.locator('.event-card-info .food-order-send-at').textContent()) ?? '', /\d+\.\d+\.\d{4}/);
   await ownerEventCard.locator('.action-menu > summary').click();
   await ownerEventCard.locator('[data-edit-event]').click();
   const editEventModal = ownerPage.locator('.modal-backdrop', { hasText: 'Event bearbeiten' });
@@ -194,7 +201,7 @@ test('manager invites a member who accepts and both open clients update', async 
     { display: 'flex', flexDirection: 'column' },
   );
   assert.equal(
-    await memberPage.locator(`[data-participants-event="${eventId}"]`).count(),
+    await memberPage.locator(`[data-event-card="${eventId}"]`).count(),
     0,
     'a private event must stay hidden before the member is invited',
   );

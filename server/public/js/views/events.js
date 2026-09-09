@@ -643,18 +643,33 @@ function ownDeclinedBadge(event) {
     : '';
 }
 
-function renderEventHeaderText(event) {
+// The creator is recorded nowhere else on the card. The period joins it only
+// while the body is collapsed and its information box is therefore hidden; an
+// expanded card leaves the period to that box (see renderEventInfo) instead of
+// printing the identical range twice.
+function eventHeaderMeta(event, { withDateRange }) {
   const creator = state.players.find((player) => player.id === event.createdBy);
+  const parts = [`Erstellt von ${creator?.name ?? 'Unbekannt'}`];
+  if (withDateRange) parts.push(eventDateRange(event));
+  return parts;
+}
+
+function renderEventHeaderText(event, metaParts) {
   return `<span class="event-card-heading">
     <span class="food-order-card-title">${escapeHtml(event.name)}</span>
-    <span class="event-card-heading" id="event-header-meta-${escapeHtml(event.id)}"><span class="muted event-card-meta">Erstellt von ${escapeHtml(creator?.name ?? 'Unbekannt')}</span>
-    <span class="muted event-card-meta">${escapeHtml(eventDateRange(event))}</span></span>
+    <span class="event-card-meta-group">${metaParts
+      .map((part) => `<span class="muted event-card-meta">${escapeHtml(part)}</span>`)
+      .join('')}</span>
   </span>`;
 }
 
 // Same header-toggle button foodOrders.js uses for its own collapsible cards.
-function renderEventCardToggle(event, expanded, titleHtml) {
-  return `<button type="button" class="food-order-card-header-toggle" data-event-card-toggle="${escapeHtml(event.id)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="event-card-body-${escapeHtml(event.id)}" aria-describedby="event-header-meta-${escapeHtml(event.id)}" aria-label="Event ${escapeHtml(event.name)} ${expanded ? 'einklappen' : 'ausklappen'}">
+// The meta lines join the accessible name instead of an aria-describedby: that
+// would have to point at a node inside this very button, and a description is
+// the first thing a screen reader drops at lower verbosity.
+function renderEventCardToggle(event, expanded, titleHtml, metaParts) {
+  const label = `Event ${event.name}, ${metaParts.join(', ')}, ${expanded ? 'einklappen' : 'ausklappen'}`;
+  return `<button type="button" class="food-order-card-header-toggle" data-event-card-toggle="${escapeHtml(event.id)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="event-card-body-${escapeHtml(event.id)}" aria-label="${escapeHtml(label)}">
     ${icon('chevronRight', { className: 'food-order-card-chevron' })}
     ${titleHtml}
   </button>`;
@@ -665,11 +680,12 @@ function renderEventCardToggle(event, expanded, titleHtml) {
 // blocks while only the management card receives lifecycle actions.
 function renderMemberEventCard(event, { collapsible = false } = {}) {
   const expanded = !collapsible || expandedEventCards.has(event.id);
-  const titleHtml = renderEventHeaderText(event);
+  const metaParts = eventHeaderMeta(event, { withDateRange: !expanded });
+  const titleHtml = renderEventHeaderText(event, metaParts);
   return `
     <article class="card stack event-card event-card-member" data-event-card="${escapeHtml(event.id)}">
       <div class="row-between food-order-card-header event-card-header">
-        ${collapsible ? renderEventCardToggle(event, expanded, titleHtml) : titleHtml}
+        ${collapsible ? renderEventCardToggle(event, expanded, titleHtml, metaParts) : titleHtml}
         <span class="event-card-header-badges">
           <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
           ${eventStatusBadgeHtml(event)}
@@ -739,12 +755,13 @@ export function renderEventCard(event, { collapsible = false } = {}) {
     ? ''
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
   const expanded = !collapsible || expandedEventCards.has(event.id);
-  const titleHtml = renderEventHeaderText(event);
+  const metaParts = eventHeaderMeta(event, { withDateRange: !expanded });
+  const titleHtml = renderEventHeaderText(event, metaParts);
 
   return `
     <article class="card stack event-card event-card-managed" data-event-card="${escapeHtml(event.id)}">
       <div class="row-between food-order-card-header event-card-header">
-        ${collapsible ? renderEventCardToggle(event, expanded, titleHtml) : titleHtml}
+        ${collapsible ? renderEventCardToggle(event, expanded, titleHtml, metaParts) : titleHtml}
         <div class="event-card-header-side"><span class="event-card-header-badges">
           <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
           ${ownDeclinedBadge(event)}

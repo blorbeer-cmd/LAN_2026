@@ -531,6 +531,12 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   const eventToggle = generalEventCard.locator('[data-event-card-toggle]');
   assert.equal(await eventToggle.getAttribute('aria-expanded'), 'false');
   assert.match(await generalEventCard.innerText(), /Erstellt von E2E Bootstrap Admin/);
+  // Collapsed hides the information box, so the header carries the period and
+  // the toggle repeats both in its accessible name.
+  assert.match(await generalEventCard.locator('.event-card-meta-group').innerText(), /\d+\.\d+\.\d{4}|Termin wird noch abgestimmt|Dauerhaft geöffnet/);
+  const toggleLabel = (await eventToggle.getAttribute('aria-label')) ?? '';
+  assert.match(toggleLabel, /Erstellt von E2E Bootstrap Admin/);
+  assert.equal(await eventToggle.getAttribute('aria-describedby'), null);
   const actionTrigger = generalEventCard.locator('.action-menu > summary');
   await actionTrigger.focus();
   await page.keyboard.press('Enter');

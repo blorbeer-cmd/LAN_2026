@@ -11,7 +11,8 @@
   align-items: center;
   flex-wrap: wrap;
 }
-.event-card-heading {
+.event-card-heading,
+.event-card-meta-group {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);

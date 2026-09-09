@@ -951,8 +951,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   deliberately mirrors Food orders: alternating accent rails and a concise title/status header lead
   into one shared `.food-order-details` information box, followed by the separately collapsible
   participant list. Date, location, note and payment information therefore never form competing
-  sibling boxes; each header also shows the recorded creator and date range while collapsed. Missing creators
-  use „Unbekannt“, undated events keep „Termin wird noch abgestimmt“. Owner/admin cards expose
+  sibling boxes; each header also shows the recorded creator, and adds the date range while the card is
+  collapsed — an expanded card leaves the period to the information box below rather than printing the
+  identical range twice, and a lone uncollapsible card therefore shows the creator only. The collapse
+  toggle repeats that header text in its accessible name instead of pointing an `aria-describedby` back
+  into itself. Missing creators use „Unbekannt“, undated events keep „Termin wird noch abgestimmt“. Owner/admin cards expose
   „Bearbeiten“, state-dependent Tracking/Beenden/Wieder-starten and the LAN PDF export in the shared
   „Aktion“ menu beside the header badges; member Event cards have no such menu. Cards in lists with
   multiple events start collapsed, keep their disclosure state through refreshes and preserve keyboard
