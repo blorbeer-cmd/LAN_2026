@@ -1,9 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import {
   assertOwned,
   carryAuthorization,
@@ -11,11 +18,125 @@ import {
   parseReview,
   readRequiredChecks,
   reviewMarker,
+  readGrant,
+  revokeGrant,
+  acquireMutationLock,
+  assertReviewsUnchanged,
+  queueBlocker,
 } from "./pr-completion.mjs";
 
 const head = "a".repeat(40);
 const base = "b".repeat(40);
 const other = "c".repeat(40);
+
+test("revoke works through the CLI despite a stale lock and survives an in-flight grant write", () => {
+  const directory = mkdtempSync(join(tmpdir(), "pr-revoke-test-"));
+  const git = (...args) => {
+    const result = spawnSync("git", args, {
+      cwd: directory,
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    assert.equal(result.status, 0, result.stderr);
+  };
+  try {
+    git("init", "--initial-branch=main");
+    git("remote", "add", "origin", "https://github.com/owner/repo.git");
+    const stateDirectory = join(
+      directory,
+      ".git",
+      "pr-completion",
+      "owner--repo",
+    );
+    mkdirSync(stateDirectory, { recursive: true });
+    const statePath = join(stateDirectory, "123.json");
+    const lockPath = join(stateDirectory, "mutation.lock");
+    const grant = { pr: 123, head, revocationId: null };
+    writeFileSync(statePath, JSON.stringify(grant));
+    writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: 123456, time: "2026-09-09T00:00:00Z" }),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        fileURLToPath(new URL("./pr-completion.mjs", import.meta.url)),
+        "revoke",
+        "--repo",
+        "owner/repo",
+        "--pr",
+        "123",
+      ],
+      { cwd: directory, encoding: "utf8", windowsHide: true },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).action, "revoked");
+    assert.equal(readGrant(statePath), null);
+    // Model an update that saved its pre-revocation in-memory copy after revoke.
+    writeFileSync(statePath, JSON.stringify({ ...grant, head: other }));
+    assert.equal(readGrant(statePath), null);
+    const revocationId = JSON.parse(
+      readFileSync(`${statePath}.revoked`, "utf8"),
+    ).id;
+    writeFileSync(statePath, JSON.stringify({ ...grant, revocationId }));
+    assert.ok(readGrant(statePath)); // a genuinely later authorization can use the new generation
+    revokeGrant(statePath);
+    assert.equal(readGrant(statePath), null);
+    assert.throws(
+      () => acquireMutationLock(lockPath),
+      /PID 123456, since 2026-09-09T00:00:00Z.*Revoke remains available/,
+    );
+    assert.equal(JSON.parse(readFileSync(lockPath, "utf8")).pid, 123456);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("evidence freshness detects new, edited and dismissed reviews", () => {
+  const {
+    snapshot: { reviews },
+  } = fixture();
+  assert.doesNotThrow(() =>
+    assertReviewsUnchanged(reviews, structuredClone(reviews)),
+  );
+  assert.throws(
+    () =>
+      assertReviewsUnchanged(reviews, [
+        ...reviews,
+        { ...reviews[0], id: 2, state: "CHANGES_REQUESTED" },
+      ]),
+    /Reviews changed/,
+  );
+  for (const change of [
+    { body: "New finding" },
+    { state: "DISMISSED" },
+    { commit_id: other },
+    { user: { login: "other" } },
+  ]) {
+    assert.throws(
+      () => assertReviewsUnchanged(reviews, [{ ...reviews[0], ...change }]),
+      /Reviews changed/,
+    );
+  }
+  assert.throws(() => assertReviewsUnchanged(reviews, []), /Reviews changed/);
+});
+
+test("queue reports lost own authorization instead of an undefined or unrelated predecessor", () => {
+  const own = { pr: 123, authorizedAt: "2026-09-09T12:00:00Z" };
+  const first = { pr: 100, authorizedAt: "2026-09-09T11:00:00Z" };
+  assert.equal(queueBlocker([own], 123), null);
+  assert.deepEqual(queueBlocker([own, first], 123), {
+    action: "waiting",
+    reason: "PR #100 is ahead in the local merge queue",
+  });
+  for (const queue of [[], [first]]) {
+    assert.equal(queueBlocker(queue, 123).action, "blocked");
+    assert.match(
+      queueBlocker(queue, 123).blockers[0],
+      /authorization was revoked or invalidated/,
+    );
+  }
+});
 function fixture() {
   const pr = {
     number: 123,

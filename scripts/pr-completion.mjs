@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Local PR companion. Credentials stay with gh; no daemon, token storage or main push.
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   mkdirSync,
   readFileSync,
@@ -293,7 +294,32 @@ export function readSnapshot(repo, number) {
     after.state !== pr.state
   )
     throw new Error("PR changed while collecting evidence; retry the read");
+  assertReviewsUnchanged(
+    reviews,
+    pages(`repos/${repo}/pulls/${number}/reviews?per_page=100`),
+  );
   return { pr: after, reviews, threads, checks, requiredChecks };
+}
+
+export function assertReviewsUnchanged(before, after) {
+  const fingerprint = (reviews) =>
+    JSON.stringify(
+      reviews
+        .map((review) => ({
+          id: review.id,
+          state: review.state,
+          body: review.body,
+          commit: review.commit_id,
+          submitted: review.submitted_at,
+          updated: review.updated_at,
+          author: review.user?.login,
+        }))
+        .sort((a, b) => a.id - b.id),
+    );
+  if (fingerprint(before) !== fingerprint(after))
+    throw new Error(
+      "Reviews changed while collecting evidence; retry the read",
+    );
 }
 
 function readState(path) {
@@ -305,9 +331,66 @@ function readState(path) {
   }
 }
 function saveState(path, state) {
-  const temp = `${path}.${process.pid}.tmp`;
+  const temp = `${path}.${randomUUID()}.tmp`;
   writeFileSync(temp, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
   renameSync(temp, path);
+}
+
+export function readGrant(path) {
+  const grant = readState(path);
+  return grant &&
+    (grant.revocationId ?? null) === (readState(`${path}.revoked`)?.id ?? null)
+    ? grant
+    : null;
+}
+
+export function revokeGrant(path) {
+  // Separate, permanent generation marker: an in-flight update cannot resurrect a
+  // revoked grant by writing its old in-memory copy after this atomic replacement.
+  saveState(`${path}.revoked`, {
+    id: randomUUID(),
+    time: new Date().toISOString(),
+  });
+}
+
+export function acquireMutationLock(path) {
+  try {
+    writeFileSync(
+      path,
+      JSON.stringify({ pid: process.pid, time: new Date().toISOString() }),
+      { flag: "wx" },
+    );
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    let owner;
+    try {
+      owner = readState(path);
+    } catch {
+      owner = null;
+    }
+    throw new Error(
+      `PR mutation lock exists: ${path} (PID ${owner?.pid ?? "unknown"}, since ${owner?.time ?? "unknown"}). Revoke remains available. Remove the lock only after verifying that its owning process has stopped; see docs/pr-completion.md.`,
+    );
+  }
+}
+
+export function queueBlocker(queue, number) {
+  if (!queue.some((entry) => entry.pr === number))
+    return {
+      action: "blocked",
+      blockers: [
+        "This PR's merge authorization was revoked or invalidated by a changed head/state during the queue scan",
+      ],
+    };
+  const first = [...queue].sort(
+    (a, b) => a.authorizedAt.localeCompare(b.authorizedAt) || a.pr - b.pr,
+  )[0];
+  return first.pr === number
+    ? null
+    : {
+        action: "waiting",
+        reason: `PR #${first.pr} is ahead in the local merge queue`,
+      };
 }
 function localState() {
   return {
@@ -359,19 +442,19 @@ export function main(argv = process.argv.slice(2)) {
   mkdirSync(directory, { recursive: true });
   const statePath = join(directory, `${number}.json`);
   const lockPath = join(directory, "mutation.lock");
+  if (action === "revoke") {
+    revokeGrant(statePath);
+    return {
+      action: "revoked",
+      pr: number,
+      note: "An already submitted GitHub merge request cannot be recalled; verify the PR state.",
+    };
+  }
   const mutating = action !== "status";
-  if (mutating)
-    writeFileSync(
-      lockPath,
-      JSON.stringify({ pid: process.pid, time: new Date().toISOString() }),
-      { flag: "wx" },
-    );
+  if (mutating) acquireMutationLock(lockPath);
   try {
-    let grant = readState(statePath);
-    if (action === "revoke") {
-      saveState(statePath, null);
-      return { action: "revoked", pr: number };
-    }
+    const revocationId = readState(`${statePath}.revoked`)?.id ?? null;
+    let grant = readGrant(statePath);
     const pr = readPr(repo, number);
     if (pr.state !== "OPEN") {
       if (mutating) saveState(statePath, null);
@@ -379,6 +462,7 @@ export function main(argv = process.argv.slice(2)) {
     }
     if (action === "status") {
       const snapshot = readSnapshot(repo, number);
+      grant = readGrant(statePath);
       return {
         pr: snapshot.pr,
         grant,
@@ -421,6 +505,7 @@ export function main(argv = process.argv.slice(2)) {
         request,
         authorizedAt: new Date().toISOString(),
         updates: [],
+        revocationId,
       };
       // Save only after the audit comment succeeds. An uncertain write never enables a merge.
       const audit = api(`repos/${repo}/issues/${number}/comments`, "POST", {
@@ -433,6 +518,7 @@ export function main(argv = process.argv.slice(2)) {
       });
       grant.auditUrl = audit.html_url;
       saveState(statePath, grant);
+      if (!readGrant(statePath)) return { action: "revoked", pr: number };
       return { action: "authorized", grant };
     }
     if (grant && grant.head !== pr.headRefOid) {
@@ -446,23 +532,17 @@ export function main(argv = process.argv.slice(2)) {
         /^[0-9]+\.json$/.test(name),
       )) {
         const path = join(directory, file);
-        const candidate = readState(path);
+        const candidate = readGrant(path);
         if (!candidate) continue;
         const current = readPr(repo, candidate.pr);
         if (current.state !== "OPEN" || candidate.head !== current.headRefOid) {
           saveState(path, null);
           continue;
         }
-        queue.push(candidate);
+        if (readGrant(path)) queue.push(candidate);
       }
-      queue.sort(
-        (a, b) => a.authorizedAt.localeCompare(b.authorizedAt) || a.pr - b.pr,
-      );
-      if (queue[0]?.pr !== number)
-        return {
-          action: "waiting",
-          reason: `PR #${queue[0]?.pr} is ahead in the local merge queue`,
-        };
+      const blocker = queueBlocker(queue, number);
+      if (blocker) return blocker;
     }
     if (action === "update") {
       git("fetch", "origin", `refs/heads/main:refs/remotes/origin/main`);
@@ -507,18 +587,24 @@ export function main(argv = process.argv.slice(2)) {
         );
       git("push", "origin", `HEAD:refs/heads/${pr.headRefName}`);
       const after = readPr(repo, number);
-      const carried = carryAuthorization(grant, pr, after, commit, tree);
+      const carried = carryAuthorization(
+        readGrant(statePath),
+        pr,
+        after,
+        commit,
+        tree,
+      );
       saveState(statePath, carried);
       return {
         action: "updated",
         head: sha,
-        authorizationPreserved: Boolean(carried),
+        authorizationPreserved: Boolean(readGrant(statePath)),
         next: "Run CI and a fresh full review for this head/base",
       };
     }
     const snapshot = readSnapshot(repo, number);
     assertOwned(snapshot.pr, localState());
-    const blockers = mergeBlockers(snapshot, grant);
+    const blockers = mergeBlockers(snapshot, readGrant(statePath));
     if (blockers.length) return { action: "blocked", blockers };
     // gh's normal merge path plus expected head. Never --admin, --auto, or a push to main.
     run("gh", [

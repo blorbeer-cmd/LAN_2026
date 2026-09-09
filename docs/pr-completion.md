@@ -27,7 +27,9 @@ authentifizierte `gh`-CLI sind erforderlich. Bestehende GitHub-Schutzregeln blei
    Reviewwahl liefert sie den neuen Startbefehl und wartet auf das Ergebnis. Ein Draft wird erst
    nach vollständigem Review auf „Ready“ gesetzt. Danach prüft der Merge-Helfer alles erneut.
 6. Nach bestätigtem Merge die Beobachtung beenden und einmal den Abschluss melden. Folgearbeit
-   beginnt auf einem neuen Branch. „Merge-Freigabe für PR #123 zurückziehen“ widerruft sie sofort.
+   beginnt auf einem neuen Branch. „Merge-Freigabe für PR #123 zurückziehen“ sperrt die lokale
+   Freigabe sofort, auch bei belegtem Mutationslock. Ein bereits an GitHub abgesendeter
+   Merge-Auftrag lässt sich dadurch nicht zurückrufen; den PR-Zustand anschließend prüfen.
 
 Eine Freigabe kann schon vor fertiger CI erteilt werden; sie löst keinen vorzeitigen Merge aus.
 Sie umfasst konfliktfreie `main`-Updates, die der Helfer selbst berechnet, ausführt und anhand
@@ -93,6 +95,11 @@ Nutzerantwort ausführen. Freigaben liegen außerhalb des Arbeitsbaums unter
 `<git-common-dir>/pr-completion/<owner>--<repo>/<PR>.json`. Die lokale Datei und der Reviewmarker
 sind keine Sicherheitsgrenze gegen einen böswilligen Prozess mit denselben Schreibrechten.
 Sie machen den normalen Agentenablauf prüfbar und verhindern versehentliche Übertragungen.
+Ein Widerruf schreibt atomar eine neue Generation nach `<PR>.json.revoked`, ohne das gemeinsame
+Mutationslock zu benötigen. Freigaben müssen dieser Generation entsprechen; ein schon laufendes
+Update kann durch spätes Speichern einer alten Freigabe den Widerruf nicht rückgängig machen.
+Eine spätere ausdrückliche Freigabe übernimmt die dann aktuelle Generation. Den Widerrufsmarker
+nicht entfernen. Unmittelbar vor dem Merge wird die Freigabe erneut von der Platte gelesen.
 
 Der Merge erfordert: offener PR ins eigene `main`, kein Draft, aktueller konfliktfreier Branch,
 alle von GitHub gemeldeten Pflichtchecks erfolgreich (einschließlich legitim übersprungener
@@ -103,6 +110,11 @@ dem automatischen Helfer nicht. Der Agent liest zusätzlich die normalen PR-Komm
 gesamten Bericht auf neue Findings. Ein unvollständiger Bericht darf keinen Pass-Marker erhalten.
 Der Helfer verwendet `gh pr merge --squash --match-head-commit`, niemals `--admin`, `--auto` oder
 einen Push auf `main`. GitHub prüft seine Schutzregeln zusätzlich beim Merge.
+Die Statusaufnahme liest am Ende alle Reviews erneut und verwirft die Aufnahme bei neuen,
+geänderten oder zurückgezogenen Ergebnissen. GitHub bietet keinen atomaren Merge mit Bindung an
+diesen vollständigen Review-Snapshot; zwischen der letzten Prüfung und der Annahme des
+Merge-Auftrags bleibt ein kurzes Restfenster. Die Head-Bindung und GitHub-Schutzregeln gelten
+weiterhin, ersetzen aber keine serverseitige Pflicht-Approval-Regel.
 
 ## Queue, Beobachtung und Wiederaufnahme
 
@@ -141,6 +153,9 @@ Nach einem abgebrochenen Update zuerst lokalen/Remote-Head und GitHub prüfen. K
 Wiederholungspushes. Ist die konfliktfreie Übertragung nicht vollständig belegt, die Freigabe
 verwerfen. Ein nach Prozessabbruch verbliebenes `mutation.lock` nur entfernen, wenn der darin
 genannte Prozess nachweislich nicht mehr arbeitet. Nie fremde Worktrees resetten oder stashen.
+Ein blockiertes Lock meldet Pfad, PID, Zeit und diesen Wiederaufnahmeschritt. `revoke` bleibt
+auch dann verfügbar. Fällt beim Queue-Scan die eigene Freigabe durch einen geänderten Head,
+PR-Zustand oder Widerruf weg, wird dies als eigener Blocker statt als Queue-Wartezustand gemeldet.
 
 ## Review-Ergebnisformat
 
