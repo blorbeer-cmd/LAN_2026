@@ -658,6 +658,11 @@ test('an organizer can withdraw and restore their own participation on the manag
   });
   assert.equal(roster.status, 200, JSON.stringify(roster.body));
 
+  // The fixture is created outside this browser. Load its initial snapshot
+  // explicitly instead of racing the realtime refresh from the setup requests.
+  await page.reload();
+  await waitForPlayerData(page);
+
   // Events is an Orga tab rather than a "Mehr" destination of its own, so this
   // routes straight to it the same way the other event fixtures do.
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
