@@ -291,6 +291,42 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
   }
 });
 
+arcadeTest('navigation', 'a direct or expired-match link to Tetris, Gaming-Quiz, Scribble or Blobby Volley shows the named lobby instead of a dead end', async () => {
+  // Regression for issue #577: these four routes only render while a match
+  // is live (app.js maps them straight to their game module, unlike the
+  // in-place `#arcade/<game>` launcher route). Without a match they used to
+  // show only a back button and free-floating text; they now match Pong,
+  // Snake and Battleship's own standalone-route fallback of a titled,
+  // stable lobby card.
+  const player = await createPlayer('Arcade Direct Match Link');
+  const actor = await openHomeAs(player.id);
+  try {
+    const routes: Array<[string, string]> = [
+      ['tetris', 'Tetris'],
+      ['quizRoom', 'Gaming-Quiz'],
+      ['scribbleRoom', 'Scribble'],
+      ['blobby', 'Blobby Volley'],
+    ];
+    for (const [route, title] of routes) {
+      await actor.page.goto(`${BASE_URL}/#${route}`);
+      await actor.page.waitForSelector(`.view-title:has-text("${title}")`);
+      assert.equal(await activeView(actor.page), route);
+      assert.equal(
+        await actor.page.locator('[data-navigate="arcade"]').count(),
+        1,
+        `${route} keeps a way back to Arcade`,
+      );
+      assert.equal(
+        await actor.page.locator('.arcade-lobby-card').count(),
+        1,
+        `${route} shows the same named lobby area as Pong/Snake/Battleship`,
+      );
+    }
+  } finally {
+    await actor.context.close();
+  }
+});
+
 arcadeTest('navigation', 'a background stats update does not detach an active Arcade tile click', async () => {
   const player = await createPlayer('Arcade Pointer Host');
   const host = await openArcadeAs(player.id);

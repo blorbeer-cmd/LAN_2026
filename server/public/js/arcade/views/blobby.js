@@ -402,7 +402,14 @@ function matchControlsHtml(host) {
 }
 export function renderBlobby(container) {
   ensureBlobbySocket();
-  if (!match) { container.innerHTML = `${backButtonHtml({ view: 'arcade' })}${emptyStateHtml('Noch kein Blobby-Volley-Match.')}`; return; }
+  if (!match) {
+    // A direct or expired-match link lands here without a running match;
+    // show the same named lobby area as opening Blobby Volley from Arcade
+    // instead of a dead end (see Pong/Snake/Battleship's identical fallback).
+    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Blobby Volley</h1>${renderBlobbyLobbyCard()}`;
+    wireBlobbyLobbyCard(container);
+    return;
+  }
   const host = match.host?.id === myId();
   const roster = matchRosterHtml(match.players, {
     winnerIds: match.winners?.map((winner) => winner.id) ?? [],

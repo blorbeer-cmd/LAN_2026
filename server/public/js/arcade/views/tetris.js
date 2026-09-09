@@ -647,10 +647,11 @@ function matchControls() {
 export function renderTetris(container, _ctx) {
   ensureTetrisSocket();
   if (!match) {
-    // The play view is only for live matches; anything else belongs in Arcade.
-    container.innerHTML = `
-      ${backButtonHtml({ view: 'arcade' })}
-      ${emptyStateHtml('Noch kein Tetris-Match.', { style: 'margin-top:var(--space-4);' })}`;
+    // A direct or expired-match link lands here without a running match;
+    // show the same named lobby area as opening Tetris from Arcade instead
+    // of a dead end (see Pong/Snake/Battleship's identical fallback).
+    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Tetris</h1>${renderTetrisLobbyCard()}`;
+    wireTetrisLobbyCard(container);
     return;
   }
 
