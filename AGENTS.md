@@ -62,13 +62,19 @@ Zusätzliche Regeln werden nur im betroffenen Unterbaum geladen:
 - Bei Widersprüchen gilt `DEVELOPMENT_GUIDELINES.md`; den Konflikt melden oder in einem passenden
   Dokumentationsauftrag beheben.
 
-## Pull Requests und manuelle Reviews
+## Pull Requests, Reviews und freigegebener Abschluss
 
 Jeder Änderungsauftrag umfasst nach Umsetzung und einschlägigen Prüfungen standardmäßig Commit,
 Push des eigenen Feature-Branches und Draft-PR. Der Nutzer kann diesen Abschluss ausschließen.
 
 - PRs beschreiben Ziel, Änderungen, Prüfungen und verbleibende Risiken; kein maschinenlesbarer
   Task-Vertrag und keine Review-Wahl-Labels sind erforderlich.
+- Sobald die PR-Nummer bekannt ist, beginnt der sichtbare Sessiontitel mit `PR #<N> · Umsetzung ·`;
+  Review-Sessions verwenden `PR #<N> · Review ·`. Vorher `Task <Branch-Kurzname> · Umsetzung ·`.
+  In Codex das vorhandene Titelwerkzeug benutzen. Auch Bereitschaftsmeldungen, Reviewberichte
+  und Scheduler-Namen beginnen mit der PR-Nummer. Zuordnung und Grenzen anderer Oberflächen:
+  `docs/pr-completion.md`. Keine fremden oder historischen Sessions allein anhand ähnlicher Titel
+  umbenennen.
 - Der Nutzer startet das Review selbst in einer frischen Claude- oder Codex-Unterhaltung mit
   dem Skill `pr-review` und PR-Link oder beauftragt einen Menschen. Eine frische Unterhaltung
   ohne Implementierungsverlauf genügt auch beim selben Anbieter. Eine technisch erzwungene
@@ -76,7 +82,7 @@ Push des eigenen Feature-Branches und Draft-PR. Der Nutzer kann diesen Abschluss
   keinen Produktcode, approvt und merged nicht; er veröffentlicht das Ergebnis am PR.
 - Vor dem menschlichen Merge sind grüne einschlägige CI-Checks, Konfliktfreiheit und ein
   vollständiges Review des aktuellen Head-SHA nötig. Nach einem Fix gelten ältere Reviews
-  nicht für den neuen Commit; der Nutzer startet das Review erneut. Ein COMMENT-Review ohne
+  nicht für den neuen Commit; ein neues Review ist erforderlich. Ein COMMENT-Review ohne
   Findings genügt fachlich, ist aber kein GitHub-Approval und kein automatischer Statuscheck.
 - Der Implementierungs-Agent liest bei „Review ist durch“ die Reviews, Kommentare und offenen
   Threads direkt von GitHub, prüft deren Commit-Bezug und bewertet Findings selbst. Berechtigte
@@ -100,17 +106,29 @@ Push des eigenen Feature-Branches und Draft-PR. Der Nutzer kann diesen Abschluss
 - Bei jedem Check Zustand, Head, Reviews, normale PR-Kommentare und Inline-Threads von GitHub
   lesen. Ohne neue relevante Ergebnisse still bleiben. Neue Findings im bestehenden Auftrag
   selbst bewerten und berechtigte Fixes bearbeiten; unvollständige Reviews als solche melden.
-  Historische Ergebnisse nicht als Review des aktuellen Heads werten. Geänderte Kommentare
+  Historische Ergebnisse nicht als Review des aktuellen Heads werten. Vor Reviewbereitschaft
+  und vor dem Abschluss den eigenen sauberen Branch automatisch mit `main` aktualisieren
+  (`scripts/pr-completion.mjs update`, Details und Queue in `docs/pr-completion.md`). Keine
+  fremden Worktrees ändern und keinen laufenden Review durch vorsorgliche Updates abbrechen.
+  Geänderte Kommentare
   erneut bewerten; unveränderte Ergebnisse nicht mehrfach bearbeiten oder melden.
 - Nach Head-Wechsel alte Review-Zuordnung verwerfen, CI/Konflikte erneut prüfen und bei erneuter
   Bereitschaft die Startbefehle für den neuen Head melden. Dieselbe Beobachtung aktualisieren.
-  Bei vollständig bearbeitetem Review ohne offene Findings für den aktuellen Head Beobachtung
-  beenden und den Nutzer informieren; ebenso bei Merge, Schließen oder Nutzerstopp. Falls nach
+  Bei vollständig bearbeitetem Review ohne offene Findings für den aktuellen Head den Nutzer
+  informieren. Liegt eine Merge-Freigabe vor, bis zum bestätigten Merge weiterarbeiten; ansonsten
+  Beobachtung beenden und bei späterer Freigabe dieselbe wieder aktivieren. Bei Merge, Schließen
+  oder Nutzerstopp die Beobachtung beenden. Falls nach
   Fixes ein neuer Head entstanden ist, bleibt die Beobachtung für dessen nächste Review-Runde.
   Bei nicht behebbaren Zugriffs-/Schedulerfehlern pausieren und das Hindernis einmal melden.
-  Es gibt keinen automatischen Reviewstart oder Anbieterwechsel. Details:
+  Automatische Folgereviews nur, wenn der Nutzer neue Review-Sessions und den Anbieter für diesen
+  PR ausdrücklich beauftragt hat. Diese Auswahl darf bei neuen Heads bestehen bleiben; jedes
+  Ergebnis muss neu zum aktuellen Head und zur aktuellen Base gehören. Bei fehlender Oberfläche
+  oder Anbieter-Ausfall einmal konkret informieren; kein stiller Anbieterwechsel. Details:
   [Manuelle PR-Reviews](docs/manual-pr-review.md).
-- Kein Agent approvt, merged, aktiviert Auto-Merge oder pusht auf `main`. Änderungen an
+- Kein Agent approvt, aktiviert natives Auto-Merge oder pusht auf `main`. Der Implementierer darf
+  nach ausdrücklicher Nutzerfreigabe mit `scripts/pr-completion.mjs` mergen; der Reviewer nie.
+  Auftrag zum Implementieren, grünes Review und „Review ist durch“ sind keine Merge-Freigabe.
+  Vor Nutzung dieses Opt-ins `docs/pr-completion.md` lesen. Änderungen an
   Schutzregeln, Workflows, Infrastruktur, Secrets und Deploy-Berechtigungen brauchen einen
   ausdrücklichen Auftrag und gehören nicht zu beiläufigen Review-Fixes.
 - Nach einem Merge beginnt Folgearbeit auf einem neuen Branch und PR.
