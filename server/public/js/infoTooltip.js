@@ -2,7 +2,6 @@ import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
 
 let activeTrigger = null;
-let pinnedTrigger = null;
 // Viewport position of the active trigger at open time. Scroll events only
 // close the popover once the trigger has actually moved: scroll listeners
 // fire asynchronously, so a programmatic scroll-into-view (or settling touch
@@ -43,10 +42,9 @@ function close(trigger = activeTrigger) {
     activeTrigger = null;
     activeTriggerViewportPosition = null;
   }
-  if (pinnedTrigger === trigger) pinnedTrigger = null;
 }
 
-function open(trigger, { pinned = false } = {}) {
+function open(trigger) {
   if (activeTrigger && activeTrigger !== trigger) close(activeTrigger);
   const panel = panelFor(trigger);
   if (!panel) return;
@@ -56,7 +54,6 @@ function open(trigger, { pinned = false } = {}) {
   activeTrigger = trigger;
   const rect = trigger.getBoundingClientRect();
   activeTriggerViewportPosition = { top: rect.top, left: rect.left };
-  if (pinned) pinnedTrigger = trigger;
 }
 
 function installGlobalListeners() {
@@ -109,18 +106,16 @@ export function wireInfoTooltips(root) {
   installGlobalListeners();
   if (activeTrigger && !document.contains(activeTrigger)) {
     activeTrigger = null;
-    pinnedTrigger = null;
   }
   root.querySelectorAll('[data-info-tooltip-trigger]').forEach((trigger) => {
-    trigger.addEventListener('click', () => {
-      if (pinnedTrigger === trigger) close(trigger);
-      else open(trigger, { pinned: true });
-    });
-    trigger.addEventListener('mouseenter', () => {
-      if (!pinnedTrigger) open(trigger);
-    });
+    // Info tooltips reveal on hover (pointer) and on focus. Focus is what a
+    // keyboard Tab and a touch tap produce, so the text stays reachable where
+    // there is no hover (phones); the trigger is deliberately not a
+    // click-to-pin control.
+    trigger.addEventListener('mouseenter', () => open(trigger));
+    trigger.addEventListener('focus', () => open(trigger));
     trigger.closest('[data-info-tooltip]')?.addEventListener('mouseleave', () => {
-      if (pinnedTrigger !== trigger && !trigger.matches(':focus-visible')) close(trigger);
+      if (!trigger.matches(':focus-visible')) close(trigger);
     });
     trigger.addEventListener('focusout', (event) => {
       if (!trigger.closest('[data-info-tooltip]')?.contains(event.relatedTarget)) close(trigger);

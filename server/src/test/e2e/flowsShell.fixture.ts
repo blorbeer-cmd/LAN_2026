@@ -384,6 +384,10 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
 flowTest('icon-only controls keep the shared minimum touch target on phones', async () => {
   await page.setViewportSize({ width: 390, height: 844 });
 
+  // Icon-only controls keep the 44px --tap-target-size as their minimum WIDTH
+  // (the horizontal touch target), while their height follows --control-height
+  // (32px) so every button is exactly as tall as a standard field like
+  // "Titel"/"Info". The logo link keeps the full 44px square.
   const assertTouchTargets = async (selector: string, label: string) => {
     const sizes = await page.locator(selector).evaluateAll((elements) =>
       elements
@@ -393,9 +397,9 @@ flowTest('icon-only controls keep the shared minimum touch target on phones', as
     );
     assert.ok(sizes.length > 0, `${label} should expose at least one visible touch target`);
     assert.deepEqual(
-      sizes.filter(({ width, height }) => width < 44 || height < 44),
+      sizes.filter(({ width, height }) => width < 44 || height < 32),
       [],
-      `${label} should keep every visible target at least 44 × 44 px: ${JSON.stringify(sizes)}`,
+      `${label} should keep every visible target at least 44 (width) × 32 (control height) px: ${JSON.stringify(sizes)}`,
     );
   };
 

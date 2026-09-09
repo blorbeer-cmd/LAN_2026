@@ -862,7 +862,7 @@ input[type='number'].tournament-score-input {
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--state-playing);
   border-radius: var(--radius-sm);
@@ -880,8 +880,8 @@ input[type='number'].tournament-score-input {
   min-height: calc(var(--row-min-h) * 2);
 }
 .vote-info-input {
-  height: var(--tap-target-size);
-  min-height: var(--tap-target-size);
+  height: var(--control-height);
+  min-height: var(--control-height);
 }
 .vote-game-select-wrap {
   gap: var(--space-2);
@@ -1035,7 +1035,7 @@ input[type='number'].tournament-score-input {
 }
 .admin-test-controls input,
 .admin-test-controls .btn {
-  height: calc(var(--tap-target-size) - var(--space-2));
+  height: var(--control-height);
 }
 .admin-player-row {
   gap: var(--space-2);
@@ -1199,7 +1199,7 @@ input[type='number'].tournament-score-input {
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-2);
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
   padding: 0;
   cursor: pointer;
   border: 0;
@@ -1316,7 +1316,7 @@ input[type='number'].tournament-score-input {
   margin-left: auto;
 }
 .food-order-group-actions .payment-paid-marker {
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
 }
 .food-order-group-items {
   padding-left: calc(var(--space-5) + var(--space-2));
@@ -1386,7 +1386,7 @@ input[type='number'].tournament-score-input {
 .food-order-item-action,
 .food-order-item-action-spacer {
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
   flex-shrink: 0;
 }
 .food-order-item-action {

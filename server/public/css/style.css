@@ -73,6 +73,12 @@
   --row-min-h: 68px;
   --row-icon-size: 36px;
   --tap-target-size: 44px;
+  /* Shared height for interactive controls: buttons, icon buttons, inputs and
+     the searchable-select. One compact rhythm so every button is exactly as
+     tall as a standard field like "Titel"/"Info" throughout the app. Icon-only
+     controls keep their 44px min WIDTH (--tap-target-size) as the touch target,
+     so only the height changes. */
+  --control-height: 32px; /* design-token-ok: shared compact control height, matched by the field padding below */
   --info-popover-max-width: 320px;
   --date-picker-width: 360px;
   --selection-card-min-width: 160px;
@@ -694,7 +700,7 @@ textarea {
   gap: var(--space-3);
   flex: 1 1 auto;
   min-width: 0;
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
   padding: var(--space-2);
   border: 0;
   border-radius: var(--radius-sm);
@@ -776,7 +782,7 @@ textarea {
 }
 /* Menu entries compose the standard button variants with a full touch target. */
 .action-menu-panel .btn {
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -793,7 +799,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
   border: 1px solid var(--border);
 }
 .event-poll-card-content {
@@ -1156,7 +1162,8 @@ textarea {
 .icon-btn {
   display: inline-flex;
   min-width: var(--tap-target-size);
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
+  height: var(--control-height);
   align-items: center;
   justify-content: center;
   background: none;
@@ -1164,14 +1171,14 @@ textarea {
   color: var(--text);
   font-size: var(--font-size-lg);
   cursor: pointer;
-  padding: var(--space-2);
+  padding: var(--space-1);
   line-height: var(--line-height-tight);
   border-radius: var(--radius-sm);
   text-decoration: none;
 }
 .topbar .icon-btn {
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
   padding: var(--space-3);
 }
 .nav-btn.needs-setup .nav-icon {
@@ -1507,7 +1514,7 @@ textarea {
   display: inline-block;
   border: none;
   border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-5);
+  padding: 7px var(--space-5); /* design-token-ok: compact control height (32px), matches --control-height */
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
@@ -1577,7 +1584,7 @@ textarea {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 11px var(--space-3); /* design-token-ok: shared 11px control rhythm documented in DESIGN_SYSTEM.md */
+  padding: 6px var(--space-3); /* design-token-ok: compact control rhythm (32px), matches --control-height */
   font-size: var(--font-size-md);
   color: var(--text);
   width: 100%;
@@ -1631,7 +1638,7 @@ select {
   position: relative;
 }
 .search-select-control > input {
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
   padding-right: calc(var(--tap-target-size) + var(--space-2));
 }
 .search-select-toggle {
@@ -1642,7 +1649,7 @@ select {
   display: grid;
   place-items: center;
   width: var(--tap-target-size);
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
   padding: 0;
   border: 0;
   border-left: 1px solid var(--border);
@@ -1912,11 +1919,12 @@ input[type='number']::-webkit-inner-spin-button {
   flex: 0 0 auto;
 }
 .selection-toolbar .btn {
-  height: var(--tap-target-size);
+  height: var(--control-height);
 }
 .selection-toolbar-icon {
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
+  min-height: var(--control-height);
   padding: var(--space-2);
   border: 1px solid var(--border);
   background: var(--bg-elevated-2);
@@ -1938,7 +1946,8 @@ input[type='number']::-webkit-inner-spin-button {
 .selection-search-trigger,
 .selection-search-close {
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
+  min-height: var(--control-height);
   padding: var(--space-2);
   border: 1px solid var(--border);
   background: var(--bg-elevated-2);
@@ -2076,7 +2085,7 @@ input[type='number']::-webkit-inner-spin-button {
 }
 .profile-color-trigger {
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -2134,7 +2143,7 @@ input[type='number']::-webkit-inner-spin-button {
 }
 .profile-color-picker-preview {
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
 }
 .profile-color-picker-value {
   width: 100%;
@@ -2152,7 +2161,7 @@ input[type='number']::-webkit-inner-spin-button {
 }
 .profile-color-picker-copy {
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
   border: 1px solid var(--border);
   background: var(--bg-elevated-2);
 }
@@ -2528,7 +2537,7 @@ button.draft-pool-player {
   cursor: pointer;
 }
 .tournament-field-label {
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
   display: flex;
   align-items: center;
 }
@@ -2606,7 +2615,7 @@ button.draft-pool-player {
 }
 .tournament-lobby-copy {
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
   flex: 0 0 var(--tap-target-size);
   color: var(--text-muted);
 }
@@ -2664,20 +2673,23 @@ button.draft-pool-player {
 .dt-date-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--tap-target-size);
+  gap: var(--space-2);
   flex: 1 1 180px;
   min-width: 0;
 }
 .dt-date-input {
   width: 100%;
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  border-radius: var(--radius-sm);
 }
 .dt-calendar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: var(--tap-target-size);
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
   padding: 0;
   border: 1px solid var(--border);
-  border-left: 0;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-radius: var(--radius-sm);
   background: var(--bg-elevated-2);
   color: var(--text-muted);
 }
@@ -3016,7 +3028,7 @@ button.draft-pool-player {
 }
 .food-order-paypal-label .info-tooltip {
   position: absolute;
-  top: calc((1em - var(--tap-target-size)) / 2);
+  top: calc((1em - var(--control-height)) / 2);
   right: 0;
 }
 .info-tooltip {
@@ -3026,7 +3038,7 @@ button.draft-pool-player {
 }
 .info-tooltip-trigger {
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3035,7 +3047,7 @@ button.draft-pool-player {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
-  cursor: pointer;
+  cursor: default;
 }
 .info-tooltip-trigger[aria-expanded='true'] {
   color: var(--accent);
@@ -3183,7 +3195,7 @@ button.card {
 }
 .home-current-dismiss {
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
   align-self: center;
   flex: 0 0 var(--tap-target-size);
   margin-right: var(--space-2);
@@ -3359,7 +3371,7 @@ button.card {
   align-items: center;
   justify-content: center;
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
   border-radius: var(--radius-sm);
   background: none;
   border: none;
@@ -3471,8 +3483,8 @@ button.card {
   margin-top: 0;
 }
 .arrival-note-input {
-  min-height: var(--tap-target-size);
-  height: var(--tap-target-size);
+  min-height: var(--control-height);
+  height: var(--control-height);
 }
 .arrivals-member-list {
   display: grid;
@@ -3680,7 +3692,7 @@ button.card {
     gap: var(--space-2);
   }
   .arrivals-mobile-sort .arrivals-sort-button {
-    min-height: var(--tap-target-size);
+    min-height: var(--control-height);
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -3727,7 +3739,7 @@ button.card {
 }
 .invite-link-row > input,
 .invite-link-row .btn {
-  height: var(--tap-target-size);
+  height: var(--control-height);
   white-space: nowrap;
 }
 .admin-invite-event {
