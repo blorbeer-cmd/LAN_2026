@@ -8,8 +8,30 @@
   min-width: 0;
 }
 .event-card-header {
-  align-items: flex-start;
+  align-items: center;
   flex-wrap: wrap;
+}
+.event-card-heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-card-heading .food-order-card-title {
+  font-weight: var(--font-weight-bold);
+  white-space: normal;
+}
+.event-card-meta {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+}
+.event-card-header-side {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
 }
 .event-card-header-badges {
   display: inline-flex;
@@ -326,39 +348,17 @@
   flex: 1 1 calc(50% - var(--space-2));
   min-width: 0;
 }
-.event-participant-manager-list {
-  display: grid;
-  gap: var(--space-2);
-}
-.event-participant-manager-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-width: 0;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
-}
-.event-participant-manager-row > .player-name {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.event-participant-manager-actions {
+.event-roster-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
-  flex-shrink: 0;
+  min-width: 0;
 }
-.event-participants-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+.event-roster-actions small {
+  flex-basis: 100%;
+  text-align: right;
 }
 
 @media (max-width: 639px) { /* --bp-md */
@@ -371,13 +371,14 @@
   .event-payment-member-actions .event-paypal-button {
     margin-left: auto;
   }
-  .event-participant-manager-row {
-    align-items: flex-start;
-    flex-direction: column;
+  .event-card-header > .food-order-card-header-toggle {
+    flex-basis: 100%;
   }
-  .event-participant-manager-actions {
+  .event-card-header-side {
     width: 100%;
-    justify-content: flex-start;
+  }
+  .event-roster-actions {
+    flex-basis: 100%;
   }
 }
 
@@ -1104,7 +1105,8 @@ input[type='number'].tournament-score-input {
    had less room below the input than the open list needed, hiding or
    truncating later suggestions instead of letting them float over the next
    card the way the shared .search-select component does everywhere else. */
-.food-order-card:has(.search-select.is-open) {
+.food-order-card:has(.search-select.is-open),
+.event-card:has(.action-menu[open]) {
   overflow: visible;
 }
 .food-order-card::before,

@@ -1,3 +1,4 @@
+import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { avatarHtml, escapeHtml } from '../format.js';
@@ -39,7 +40,6 @@ const dirtyResponseDrafts = new Set();
 const expandedPolls = new Set();
 const expandedHistories = new Set();
 const initializedEvents = new Set();
-let actionMenuController;
 let pendingAnchorFrame;
 
 export function invalidateEventPolls() {
@@ -325,27 +325,22 @@ function renderPollActions(poll) {
   const actions = [];
   if (poll.status === 'open') {
     if (poll.canManage) {
-      actions.push(`<button type="button" data-edit-poll="${escapeHtml(poll.id)}">Bearbeiten</button>`);
-      actions.push(`<button type="button" data-remind-poll="${escapeHtml(poll.id)}" ${unanswered === 0 ? 'disabled' : ''}>Erinnerung versenden (${unanswered})</button>`);
-      actions.push(`<button type="button" data-close-poll="${escapeHtml(poll.id)}">Beenden</button>`);
-      actions.push(`<button type="button" class="is-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
+      actions.push(`<button type="button" class="btn btn-sm" data-edit-poll="${escapeHtml(poll.id)}">Bearbeiten</button>`);
+      actions.push(`<button type="button" class="btn btn-sm" data-remind-poll="${escapeHtml(poll.id)}" ${unanswered === 0 ? 'disabled' : ''}>Erinnerung versenden (${unanswered})</button>`);
+      actions.push(`<button type="button" class="btn btn-sm" data-close-poll="${escapeHtml(poll.id)}">Beenden</button>`);
+      actions.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
     }
   } else {
     if (poll.responseDetailsVisible && !poll.anonymous) {
-      actions.push(`<button type="button" data-view-poll-votes="${escapeHtml(poll.id)}">Stimmen ansehen</button>`);
+      actions.push(`<button type="button" class="btn btn-sm" data-view-poll-votes="${escapeHtml(poll.id)}">Stimmen ansehen</button>`);
     }
     if (poll.canManage) {
-      actions.push(`<button type="button" data-reopen-poll="${escapeHtml(poll.id)}">Wieder öffnen</button>`);
-      actions.push(`<button type="button" data-new-poll-round="${escapeHtml(poll.id)}">Neue Runde</button>`);
-      actions.push(`<button type="button" class="is-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
+      actions.push(`<button type="button" class="btn btn-sm" data-reopen-poll="${escapeHtml(poll.id)}">Wieder öffnen</button>`);
+      actions.push(`<button type="button" class="btn btn-sm" data-new-poll-round="${escapeHtml(poll.id)}">Neue Runde</button>`);
+      actions.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
     }
   }
-  if (!actions.length) return '';
-  return `
-    <details class="event-poll-action-menu">
-      <summary class="btn btn-sm">Aktion</summary>
-      <div class="event-poll-action-menu-panel">${actions.join('')}</div>
-    </details>`;
+  return actionMenuHtml(actions.join(''), `Aktionen für Umfrage ${poll.title}`);
 }
 
 function renderRound(poll) {
@@ -737,49 +732,8 @@ function removeCachedPollSeries(eventId, decisionKey, ctx) {
   return refreshPolls(eventId, ctx);
 }
 
-function wirePollActionMenus(container) {
-  actionMenuController?.abort();
-  actionMenuController = new AbortController();
-  const { signal } = actionMenuController;
-  const menus = [...container.querySelectorAll('.event-poll-action-menu')];
-  const markCard = (menu, open) => menu.closest('.event-poll-card')?.classList.toggle('has-open-action-menu', open);
-  const closeMenu = (menu) => {
-    if (!menu.open) return;
-    menu.open = false;
-    markCard(menu, false);
-  };
-
-  menus.forEach((menu) => menu.addEventListener('toggle', () => {
-    if (!menu.open) {
-      markCard(menu, false);
-      return;
-    }
-    menus.forEach((other) => {
-      if (other !== menu) closeMenu(other);
-    });
-    markCard(menu, true);
-  }, { signal }));
-
-  document.addEventListener('pointerdown', (event) => {
-    if (event.target instanceof Element && event.target.closest('.event-poll-action-menu')) return;
-    menus.forEach(closeMenu);
-  }, { signal });
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    const openMenu = menus.find((menu) => menu.open);
-    if (!openMenu) return;
-    event.preventDefault();
-    closeMenu(openMenu);
-    openMenu.querySelector('summary')?.focus();
-  }, { signal });
-}
-
 function wirePollActions(container, event, polls, ctx) {
-  wirePollActionMenus(container);
-  container.querySelectorAll('.event-poll-action-menu-panel button').forEach((button) => button.addEventListener('click', () => {
-    button.closest('.event-poll-action-menu').open = false;
-  }));
+  wireActionMenus(container);
   container.querySelectorAll('[data-toggle-poll]').forEach((button) => button.addEventListener('click', () => {
     const key = button.dataset.togglePoll;
     if (expandedPolls.has(key)) expandedPolls.delete(key);

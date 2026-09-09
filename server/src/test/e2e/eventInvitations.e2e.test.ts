@@ -154,16 +154,19 @@ test('manager invites a member who accepts and both open clients update', async 
 
   await ownerPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
   await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
-  await ownerPage.waitForSelector(`[data-participants-event="${eventId}"]`);
+  await ownerPage.waitForSelector(`[data-event-card="${eventId}"]`);
   const ownerEventCard = ownerPage.locator(`[data-event-card="${eventId}"]`);
   assert.equal(await ownerEventCard.locator(`[data-event-participants="${eventId}"]`).getAttribute('open'), null);
   assert.equal(await ownerEventCard.locator('.event-card-info.food-order-details').count(), 1);
   assert.equal(await ownerEventCard.locator('.event-card-info .event-card-payment-creator').count(), 1);
   assert.match((await ownerEventCard.locator('.event-settlement').textContent()) ?? '', /Unterkunft gesamt/);
   assert.match((await ownerEventCard.locator('.event-settlement').textContent()) ?? '', /100,00/);
-  assert.equal(await ownerEventCard.locator('.event-card-info [data-edit-event]').count(), 1);
+  assert.equal(await ownerEventCard.locator('.event-card-header [data-edit-event]').count(), 1);
   assert.equal(await ownerEventCard.locator('.event-card-actions [data-edit-event]').count(), 0);
-  await ownerEventCard.locator('.event-card-info [data-edit-event]').click();
+  assert.match((await ownerEventCard.locator('.event-card-heading').first().textContent()) ?? '', new RegExp(OWNER_NAME));
+  assert.match((await ownerEventCard.locator('.event-card-heading').first().textContent()) ?? '', /\d+\.\d+\.\d{4}/);
+  await ownerEventCard.locator('.action-menu > summary').click();
+  await ownerEventCard.locator('[data-edit-event]').click();
   const editEventModal = ownerPage.locator('.modal-backdrop', { hasText: 'Event bearbeiten' });
   await editEventModal.waitFor();
   assert.equal(await editEventModal.locator('[data-dt-field="event-ends"] [data-dt-clear]').count(), 0);
@@ -197,7 +200,7 @@ test('manager invites a member who accepts and both open clients update', async 
   );
   assert.equal(await memberPage.locator(`[data-pending-invitation="${eventId}"]`).count(), 0);
 
-  await ownerPage.click(`[data-participants-event="${eventId}"]`);
+  await ownerEventCard.locator(`[data-event-participants="${eventId}"] > summary`).click();
   const inviteButton = ownerPage.locator(`[data-invite-participant="${memberId}"]`);
   await inviteButton.waitFor();
   const memberRefresh = memberPage.waitForResponse(
@@ -205,7 +208,7 @@ test('manager invites a member who accepts and both open clients update', async 
   );
   await inviteButton.click();
   await memberRefresh;
-  assert.equal(await ownerPage.locator('.modal-backdrop').count(), 1, 'participant dialog stays open after inviting');
+  assert.equal(await ownerPage.locator('.modal-backdrop').count(), 0, 'inviting works directly in the roster without a management dialog');
   const ownerParticipantList = ownerEventCard.locator(`[data-event-participants="${eventId}"]`);
   const invitedRosterRow = ownerParticipantList.locator('[data-event-participation-status="invited"]', { hasText: MEMBER_NAME });
   await invitedRosterRow.waitFor({ state: 'attached' });
@@ -370,6 +373,7 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.match((await paypalButton.textContent()) ?? '', /Bezahlen/);
   assert.match((await paypalButton.getAttribute('aria-label')) ?? '', /25,50.*PayPal bezahlen/);
   const participantList = memberEventCard.locator(`[data-event-participants="${eventId}"]`);
+  assert.equal(await memberEventCard.locator('.action-menu').count(), 0, 'members have personal controls without an organizer menu');
   assert.equal(await participantList.getAttribute('open'), null, 'participant lists start collapsed');
   assert.match((await participantList.locator('.food-order-group-meta').textContent()) ?? '', /1 Person/);
   assert.equal(
@@ -530,21 +534,19 @@ test('manager invites a member who accepts and both open clients update', async 
   await memberPage.waitForSelector('#view-container[data-view="events"]');
   await memberPage.locator(`[data-event-card="${eventId}"]`).waitFor();
 
-  await ownerPage.locator('.modal-backdrop [data-close]').click();
-  await ownerPage.click(`[data-participants-event="${eventId}"]`);
-  const memberRow = ownerPage.locator('.modal-backdrop .event-participant-manager-row', { hasText: MEMBER_NAME });
+  const memberRow = ownerEventCard.locator('.event-participant-row', { hasText: MEMBER_NAME });
   await memberRow.waitFor();
   assert.match((await memberRow.textContent()) ?? '', /Zugesagt/);
-  const creatorPaymentButton = memberRow.locator(`[data-modal-toggle-event-paid="${memberId}"]`);
+  const creatorPaymentButton = memberRow.locator(`[data-toggle-event-paid][data-payment-player="${memberId}"]`);
   assert.equal(await creatorPaymentButton.getAttribute('aria-pressed'), 'true');
   assert.equal(await creatorPaymentButton.textContent(), 'Bezahlt');
   assert.ok(((await memberRow.textContent()) ?? '').includes(`Bezahlt von ${MEMBER_NAME}`));
-  assert.doesNotMatch((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
+  assert.match((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
   const lockedRemoveButton = memberRow.locator('[data-remove-participant]');
   assert.equal(await lockedRemoveButton.getAttribute('disabled'), null);
   assert.equal(await lockedRemoveButton.isDisabled(), true);
   assert.equal(await lockedRemoveButton.getAttribute('aria-disabled'), 'true');
-  assert.equal(await lockedRemoveButton.getAttribute('aria-describedby'), null);
+  assert.ok(await lockedRemoveButton.getAttribute('aria-describedby'));
   await lockedRemoveButton.evaluate((button) => (button as HTMLButtonElement).click());
   assert.equal(
     await ownerPage.locator('.modal-backdrop', { hasText: 'Teilnehmer entfernen' }).count(),
@@ -561,7 +563,6 @@ test('manager invites a member who accepts and both open clients update', async 
 
   await creatorPaymentButton.click();
   await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]`).waitFor();
-  await ownerPage.locator('.modal-backdrop [data-close]').click();
 
   if ((await ownerParticipantList.getAttribute('open')) === null) await ownerParticipantList.locator('summary').click();
   let cardPaymentButton = ownerParticipantList.locator(`[data-toggle-event-paid="${eventId}"][data-payment-player="${memberId}"]`);
@@ -710,13 +711,14 @@ test('manager invites a member who accepts and both open clients update', async 
   const memberEndedRefresh = memberPage.waitForResponse(
     (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
   );
+  await ownerEventCard.locator('.action-menu > summary').click();
   await ownerPage.click(`[data-end-event="${eventId}"]`);
   await ownerPage.click('[data-confirm]');
   // A finished event moves into the collapsed "Historie" section (see
   // events.js's renderEventSection): open it before interacting with its
   // now-hidden card actions.
   await ownerPage.locator('[data-event-history] > summary').click();
-  await ownerPage.waitForSelector(`[data-restart-event="${eventId}"]`);
+  await ownerPage.locator(`[data-restart-event="${eventId}"]`).waitFor({ state: 'attached' });
 
   // The same Historie collapse applies to a plain member's own event list —
   // sourced from its own `endedEvents` field (see routes/events.ts) since
@@ -725,14 +727,13 @@ test('manager invites a member who accepts and both open clients update', async 
   await memberPage.locator('[data-event-history] > summary').click();
   await memberEventCard.waitFor();
 
-  await ownerPage.click(`[data-participants-event="${eventId}"]`);
-  assert.equal(await ownerPage.locator('.modal-backdrop [data-invite-participant]').count(), 0);
-  const endedEventNote = ownerPage.locator('.modal-backdrop .event-participants-note');
+  assert.equal(await ownerEventCard.locator('[data-invite-participant]').count(), 0);
+  const endedEventNote = ownerEventCard.locator('.event-participants-note');
   assert.equal(await endedEventNote.count(), 1);
   assert.match((await endedEventNote.textContent()) ?? '', /keine neuen Einladungen mehr möglich/);
-  await ownerPage.locator('.modal-backdrop [data-close]').click();
+  await ownerEventCard.locator('.action-menu > summary').click();
 
   await ownerPage.click(`[data-restart-event="${eventId}"]`);
   await ownerPage.click('[data-confirm]');
-  await ownerPage.waitForSelector(`[data-stop-tracking="${eventId}"]`);
+  await ownerPage.locator(`[data-stop-tracking="${eventId}"]`).waitFor({ state: 'attached' });
 });

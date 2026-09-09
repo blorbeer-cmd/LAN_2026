@@ -13,6 +13,7 @@
 // reached only from Admin's "Kioskverwaltung" tool card, the same pattern
 // Sitzplan uses (see seating.js).
 
+import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 import { api } from '../api.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { state } from '../state.js';
@@ -343,6 +344,10 @@ function renderAcceptedParticipants(event, { includeInvitationStatuses = false }
     && (event.costCents !== null || participants.some((participant) => participant.paid));
   const isExpanded = expandedEventParticipants.has(event.id);
   const participantCountLabel = participantSummary(participants, includeInvitationStatuses);
+  const rows = includeInvitationStatuses
+    ? [...participants, ...state.players.filter((player) => !event.isEnded && !participants.some((entry) => entry.playerId === player.id))
+      .map((player) => ({ playerId: player.id, name: player.name }))]
+    : participants;
   return `
     <details class="collapsible-section food-order-group event-card-participants" data-event-participants="${escapeHtml(event.id)}" ${isExpanded ? 'open' : ''}>
       <summary class="collapsible-section-header">
@@ -355,11 +360,12 @@ function renderAcceptedParticipants(event, { includeInvitationStatuses = false }
         </span>
       </summary>
       <div class="collapsible-section-content">
-        ${participants.length
-          ? `<ul class="event-participant-list">${participants
+        ${includeInvitationStatuses && event.isEnded ? '<p class="muted event-participants-note">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}
+        ${rows.length
+          ? `<ul class="event-participant-list">${rows
               .map((participant) => {
                 const player = state.players.find((candidate) => candidate.id === participant.playerId) ?? participant;
-                const participation = includeInvitationStatuses ? participationStatus(participant.status) : null;
+                const participation = includeInvitationStatuses && participant.status ? participationStatus(participant.status) : null;
                 const paidTitle = participant.paid
                   ? `${participant.name}: Bezahlt – Markierung aufheben`
                   : `${participant.name} als bezahlt markieren`;
@@ -373,6 +379,7 @@ function renderAcceptedParticipants(event, { includeInvitationStatuses = false }
                   ${canManagePayments && participant.status === 'accepted'
                     ? `<button type="button" class="payment-paid-marker ${participant.paid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(participant.playerId)}" aria-pressed="${Boolean(participant.paid)}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">${icon(participant.paid ? 'check' : 'circleDashed')}<span>${participant.paid ? 'Bezahlt' : 'Bezahlt?'}</span></button>`
                     : ''}
+                  ${includeInvitationStatuses ? renderParticipantActions(event, participant) : ''}
                 </li>`;
               })
               .join('')}</ul>`
@@ -554,7 +561,7 @@ async function handleEventPay(eventId, ctx) {
   }
 }
 
-function renderEventInfo(event, { editable = false, invitation = false } = {}) {
+function renderEventInfo(event, { invitation = false } = {}) {
   const additionalDetails = `${renderEventLocation(event.location)}${
     event.description
       ? `<div class="event-card-detail event-card-description">
@@ -574,7 +581,6 @@ function renderEventInfo(event, { editable = false, invitation = false } = {}) {
     <div class="food-order-details event-card-info">
       <div class="food-order-details-head">
         ${dateLine}
-        ${editable ? `<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>` : ''}
       </div>
       ${additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : ''}
       ${renderEventCalendarActions(event, { invitation })}
@@ -621,8 +627,8 @@ export function ownParticipationAction(event, { primary = true } = {}) {
 // Own footer for the card variants that have none of their own. The management
 // card instead places the same action inside its existing footer, so a card
 // never grows a second action row.
-export function renderOwnParticipationActions(event) {
-  const action = ownParticipationAction(event);
+export function renderOwnParticipationActions(event, { primary = true } = {}) {
+  const action = ownParticipationAction(event, { primary });
   return action ? `<div class="event-card-actions">${action}</div>` : '';
 }
 
@@ -637,9 +643,18 @@ function ownDeclinedBadge(event) {
     : '';
 }
 
+function renderEventHeaderText(event) {
+  const creator = state.players.find((player) => player.id === event.createdBy);
+  return `<span class="event-card-heading">
+    <span class="food-order-card-title">${escapeHtml(event.name)}</span>
+    <span class="event-card-heading" id="event-header-meta-${escapeHtml(event.id)}"><span class="muted event-card-meta">Erstellt von ${escapeHtml(creator?.name ?? 'Unbekannt')}</span>
+    <span class="muted event-card-meta">${escapeHtml(eventDateRange(event))}</span></span>
+  </span>`;
+}
+
 // Same header-toggle button foodOrders.js uses for its own collapsible cards.
 function renderEventCardToggle(event, expanded, titleHtml) {
-  return `<button type="button" class="food-order-card-header-toggle" data-event-card-toggle="${escapeHtml(event.id)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="event-card-body-${escapeHtml(event.id)}" aria-label="Event ${escapeHtml(event.name)} ${expanded ? 'einklappen' : 'ausklappen'}">
+  return `<button type="button" class="food-order-card-header-toggle" data-event-card-toggle="${escapeHtml(event.id)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="event-card-body-${escapeHtml(event.id)}" aria-describedby="event-header-meta-${escapeHtml(event.id)}" aria-label="Event ${escapeHtml(event.name)} ${expanded ? 'einklappen' : 'ausklappen'}">
     ${icon('chevronRight', { className: 'food-order-card-chevron' })}
     ${titleHtml}
   </button>`;
@@ -650,7 +665,7 @@ function renderEventCardToggle(event, expanded, titleHtml) {
 // blocks while only the management card receives lifecycle actions.
 function renderMemberEventCard(event, { collapsible = false } = {}) {
   const expanded = !collapsible || expandedEventCards.has(event.id);
-  const titleHtml = `<h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>`;
+  const titleHtml = renderEventHeaderText(event);
   return `
     <article class="card stack event-card event-card-member" data-event-card="${escapeHtml(event.id)}">
       <div class="row-between food-order-card-header event-card-header">
@@ -707,10 +722,7 @@ function renderInvitationPayment(event) {
 }
 
 export function renderEventCard(event, { collapsible = false } = {}) {
-  // Nothing about tracking, ending, the regular roster or the PDF keepsake is
-  // meaningful before this event has an actual date — the date poll section
-  // above already covers what to do instead ("Termin abstimmen"/"Termin
-  // festlegen").
+  // Tracking and exports require a scheduled event; roster editing does not.
   const hasDate = event.startsAt != null;
   // The tooltip sits with the running/stopping pair only: "Event wieder
   // starten" is an event-lifecycle action whose confirmation already spells the
@@ -719,36 +731,34 @@ export function renderEventCard(event, { collapsible = false } = {}) {
   const trackingBtn = !hasDate || !eventHasFeature(event, 'tracking')
     ? ''
     : event.isEnded
-      ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${event.id}">Event wieder starten</button>`
+      ? `<button type="button" class="btn btn-sm" data-restart-event="${event.id}">Event wieder starten</button>`
       : event.trackingEnabled
-        ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">${icon('pause')} Tracking stoppen</button>${trackingHelp}`
-        : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${event.id}">Tracking starten</button>${trackingHelp}`;
+        ? `<div class="action-menu-row"><button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">Tracking stoppen</button>${trackingHelp}</div>`
+        : `<div class="action-menu-row"><button type="button" class="btn btn-sm" data-start-tracking="${event.id}">Tracking starten</button>${trackingHelp}</div>`;
   const endBtn = !hasDate || event.isEnded
     ? ''
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
   const expanded = !collapsible || expandedEventCards.has(event.id);
-  const titleHtml = `<h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>`;
+  const titleHtml = renderEventHeaderText(event);
 
   return `
     <article class="card stack event-card event-card-managed" data-event-card="${escapeHtml(event.id)}">
       <div class="row-between food-order-card-header event-card-header">
         ${collapsible ? renderEventCardToggle(event, expanded, titleHtml) : titleHtml}
-        <span class="event-card-header-badges">
+        <div class="event-card-header-side"><span class="event-card-header-badges">
           <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
           ${ownDeclinedBadge(event)}
           ${eventStatusBadgeHtml(event)}
         </span>
+        ${actionMenuHtml(`<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>
+          ${trackingBtn}${endBtn}
+          ${hasDate && eventPdfExportAvailable(event) ? `<button type="button" class="btn btn-sm" data-export-event="${escapeHtml(event.id)}">PDF exportieren</button>` : ''}`, `Aktionen für Event ${event.name}`)}
+        </div>
       </div>
       <div class="food-order-card-body stack" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
-        ${renderEventInfo(event, { editable: true })}
+        ${renderEventInfo(event)}
         ${renderAcceptedParticipants(event, { includeInvitationStatuses: true })}
-        <div class="event-card-actions">
-          ${trackingBtn}
-          ${endBtn}
-          ${hasDate || event.status === 'draft' || event.isEnded ? `<button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmende verwalten</button>` : ''}
-          ${hasDate && eventPdfExportAvailable(event) ? `<button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>` : ''}
-          ${ownParticipationAction(event, { primary: false })}
-        </div>
+        ${renderOwnParticipationActions(event, { primary: false })}
       </div>
     </article>
   `;
@@ -1197,10 +1207,11 @@ function openEventForm(ctx, existing) {
             } else {
               const created = await api.events.create(payload);
               close();
+              expandedEventCards.add(created.id);
+              expandedEventParticipants.add(created.id);
               await ctx.refresh();
-              const managedEvent = (state.managedEvents || []).find((event) => event.id === created.id) ?? created;
+              document.querySelector(`[data-event-participants="${CSS.escape(created.id)}"] > summary`)?.focus();
               showToast('Event angelegt. Jetzt Teilnehmende einladen.');
-              openParticipantsForm(ctx, managedEvent);
             }
           } catch (err) {
             showToast(err.message, { error: true });
@@ -1217,84 +1228,46 @@ function participationStatus(status) {
   return { label: 'Einladung offen', badge: 'badge-paused' };
 }
 
-function renderParticipantManagerRows(event) {
-  const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry]));
-  const inviteAllowed = !event.isEnded;
-  const canSetAnyPaid = canManageEventPayments(event)
-    && (event.costCents !== null || [...participants.values()].some((participant) => participant.paid));
-  return state.players
-    .map((p) => {
-      const participant = participants.get(p.id);
-      const status = participant?.status;
-      const presentation = status ? participationStatus(status) : null;
-      const paymentLocked = Boolean(participant?.paymentLocked ?? participant?.paid);
-      const paidTitle = participant?.paid
-        ? `${p.name}: Bezahlt – Markierung aufheben`
-        : `${p.name} als bezahlt markieren`;
-      return `
-        <div class="event-participant-manager-row">
-          <span class="player-name"><span>${escapeHtml(p.name)}</span>${participant?.paid ? `<small class="event-payment-proof">${escapeHtml(paymentProof({ ...participant, playerId: p.id }))}</small>` : ''}</span>
-          <span class="event-participant-manager-actions">
-            ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
-            ${status === 'accepted' && canSetAnyPaid ? `<button type="button" class="payment-paid-marker ${participant.paid ? 'is-paid' : ''}" data-modal-toggle-event-paid="${p.id}" aria-pressed="${Boolean(participant.paid)}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">${icon(participant.paid ? 'check' : 'circleDashed')}<span>${participant.paid ? 'Bezahlt' : 'Bezahlt?'}</span></button>` : ''}
-            ${inviteAllowed && (!status || status === 'declined') ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
-            ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}" ${paymentLocked ? 'aria-disabled="true"' : ''}>Entfernen</button>` : ''}
-          </span>
-        </div>`;
-    })
-    .join('');
+function renderParticipantActions(event, participant) {
+  const playerId = escapeHtml(participant.playerId);
+  const eventId = escapeHtml(event.id);
+  const paymentLocked = Boolean(participant.paymentLocked ?? participant.paid);
+  const reasonId = `event-remove-reason-${eventId}-${playerId}`;
+  return `<span class="event-roster-actions">
+    ${!event.isEnded && (!participant.status || participant.status === 'declined')
+      ? `<button type="button" class="btn btn-sm" data-invite-participant="${playerId}" data-roster-event="${eventId}">${participant.status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
+    ${participant.status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${playerId}" data-roster-event="${eventId}" ${paymentLocked ? `aria-disabled="true" aria-describedby="${reasonId}"` : ''}>Entfernen</button>` : ''}
+    ${participant.status && paymentLocked ? `<small class="muted" id="${reasonId}">Zahlung zuerst zurücksetzen.</small>` : ''}
+  </span>`;
 }
 
-function renderParticipantsBody(event) {
-  return `
-    <div class="event-participants-body">
-      ${event.isEnded ? '<div class="muted event-participants-note" role="status">Für beendete Events sind keine neuen Einladungen mehr möglich.</div>' : ''}
-      ${state.players.length === 0 ? emptyStateHtml('Noch keine Teilnehmenden.') : `<div class="event-participant-manager-list">${renderParticipantManagerRows(event)}</div>`}
-    </div>`;
-}
-
-// Event managers invite active group members here. Acceptance remains a
-// personal action; administrative removal stays available for every status.
-function openParticipantsForm(ctx, event) {
-  const { close } = openModal(
-    `Teilnehmende – ${escapeHtml(event.name)}`,
-    renderParticipantsBody(event),
-    {
-      onMount: (modalEl) => {
-        modalEl.addEventListener('click', async (clickEvent) => {
-          const button = clickEvent.target.closest('[data-invite-participant], [data-remove-participant], [data-modal-toggle-event-paid]');
-          if (!button) return;
-          const playerId = button.dataset.inviteParticipant || button.dataset.removeParticipant || button.dataset.modalToggleEventPaid;
-          const isInvite = Boolean(button.dataset.inviteParticipant);
-          const isPayment = Boolean(button.dataset.modalToggleEventPaid);
-          if (!isInvite && !isPayment && button.getAttribute('aria-disabled') === 'true') return;
-          if (!isInvite && !isPayment) {
-            const participant = (event.participants ?? []).find((candidate) => candidate.playerId === playerId);
-            const confirmed = await confirmDialog(
-              `${participant?.name ?? 'Diese Person'} wirklich aus dem Event entfernen?`,
-              { title: 'Teilnahme entfernen?', confirmText: 'Entfernen', danger: true },
-            );
-            if (!confirmed) return;
-          }
-          button.disabled = true;
-          try {
-            if (isPayment) await api.events.setParticipantPaid(event.id, playerId, button.getAttribute('aria-pressed') !== 'true');
-            else if (isInvite) await api.events.inviteParticipant(event.id, playerId);
-            else await api.events.removeParticipant(event.id, playerId);
-            await ctx.refresh();
-            const updatedEvent = (state.managedEvents || []).find((candidate) => candidate.id === event.id);
-            if (!updatedEvent) return close();
-            modalEl.querySelector('.modal-body').innerHTML = renderParticipantsBody(updatedEvent);
-            if (playerId) modalEl.querySelector(`[data-modal-toggle-event-paid="${CSS.escape(playerId)}"], [data-invite-participant="${CSS.escape(playerId)}"], [data-remove-participant="${CSS.escape(playerId)}"]`)?.focus();
-            showToast(isPayment ? 'Bezahlstatus aktualisiert.' : isInvite ? 'Einladung gesendet.' : 'Event-Teilnahme entfernt.');
-          } catch (err) {
-            button.disabled = false;
-            showToast(err.message, { error: true });
-          }
-        });
-      },
-    }
-  );
+function wireParticipantActions(container, ctx) {
+  container.querySelectorAll('[data-roster-event]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (button.getAttribute('aria-disabled') === 'true') return;
+      const eventId = button.dataset.rosterEvent;
+      const event = (state.managedEvents || []).find((candidate) => candidate.id === eventId);
+      if (!event) return;
+      const playerId = button.dataset.inviteParticipant || button.dataset.removeParticipant;
+      const isInvite = Boolean(button.dataset.inviteParticipant);
+      const player = state.players.find((candidate) => candidate.id === playerId);
+      if (!isInvite && !(await confirmDialog(`${player?.name ?? 'Diese Person'} wirklich aus dem Event entfernen?`, {
+        title: 'Teilnahme entfernen?', confirmText: 'Entfernen', danger: true,
+      }))) return;
+      button.disabled = true;
+      try {
+        if (isInvite) await api.events.inviteParticipant(eventId, playerId);
+        else await api.events.removeParticipant(eventId, playerId);
+        await ctx.refresh();
+        const roster = container.querySelector(`[data-event-participants="${CSS.escape(eventId)}"]`);
+        (roster?.querySelector(`[data-invite-participant="${CSS.escape(playerId)}"], [data-remove-participant="${CSS.escape(playerId)}"]`) ?? roster?.querySelector('summary'))?.focus();
+        showToast(isInvite ? 'Einladung gesendet.' : 'Event-Teilnahme entfernt.');
+      } catch (err) {
+        button.disabled = false;
+        showToast(err.message, { error: true });
+      }
+    });
+  });
 }
 
 export function renderOrgaKiosk(container, ctx) {
@@ -1370,9 +1343,12 @@ export function renderOrgaEvents(container, ctx) {
       if (expandedEventCards.has(eventId)) expandedEventCards.delete(eventId);
       else expandedEventCards.add(eventId);
       ctx.rerender();
+      container.querySelector(`[data-event-card-toggle="${CSS.escape(eventId)}"]`)?.focus();
     });
   });
 
+  wireActionMenus(container);
+  wireParticipantActions(container, ctx);
   wireParticipationAnswerActions(container, ctx);
 
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
@@ -1452,12 +1428,6 @@ export function renderOrgaEvents(container, ctx) {
       if (event) openEventForm(ctx, event);
     });
   });
-  container.querySelectorAll('[data-participants-event]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.participantsEvent);
-      if (event) openParticipantsForm(ctx, event);
-    });
-  });
   container.querySelectorAll('[data-start-tracking]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.startTracking);
@@ -1488,7 +1458,7 @@ export function renderOrgaEvents(container, ctx) {
   });
   container.querySelectorAll('[data-restart-event]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const event = (state.events || []).find((e) => e.id === btn.dataset.restartEvent);
+      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.restartEvent);
       if (!event) return;
       if (!(await confirmDialog(`Event „${event.name}“ wieder starten? Das Event wird geöffnet. ${TRACKING_SCOPE_SENTENCE}`, { title: 'Event wieder starten', confirmText: 'Event wieder starten' }))) return;
       try {
@@ -1504,7 +1474,7 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.endEvent);
       if (!event) return;
-      if (!(await confirmDialog(`Event „${event.name}" endgültig beenden? Das lässt sich nicht rückgängig machen.`, { confirmText: 'Beenden', danger: true }))) return;
+      if (!(await confirmDialog(`Event „${event.name}“ beenden? Laufendes Tracking wird gestoppt und das Event in die Historie verschoben.`, { confirmText: 'Beenden', danger: true }))) return;
       try {
         await api.events.end(event.id);
         await ctx.refresh();

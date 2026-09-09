@@ -284,6 +284,9 @@ test('the personal statistics event filter only offers accepted workspaces', asy
 });
 
 test('the workspace switcher keeps event names concise and shows state through its icon', async () => {
+  // This scenario requires a real A-to-B switch; the previous test leaves B active.
+  // Selecting B again is a no-op and cannot provide the awaited dataset refresh.
+  await switchWorkspaceInBrowser(eventA);
   // Hold the socket-driven event snapshot long enough for the switcher to
   // open first. This deterministically exercises the ordering seen on CI.
   await page.route(`${BASE_URL}/api/events`, async (route) => {
@@ -526,11 +529,25 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
     await generalEventCard.locator('.event-card-header-badges .badge').first().innerText(),
     'Allgemeines Event',
   );
-  // #603 made Orga event cards collapsible and collapsed by default once the
-  // list holds more than one entry, so the body must be opened before its
-  // content can be asserted.
-  await expandEventCard(generalEventCard, generalEvent);
-  assert.match(await generalEventCard.innerText(), /Teilnehmende verwalten/);
+  const eventToggle = generalEventCard.locator('[data-event-card-toggle]');
+  assert.equal(await eventToggle.getAttribute('aria-expanded'), 'false');
+  assert.match(await generalEventCard.innerText(), /Erstellt von E2E Bootstrap Admin/);
+  const actionTrigger = generalEventCard.locator('.action-menu > summary');
+  await actionTrigger.focus();
+  await page.keyboard.press('Enter');
+  const editAction = generalEventCard.locator('[data-edit-event]');
+  await editAction.waitFor({ state: 'visible' });
+  assert.equal(await editAction.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.height >= 44 && element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  }), true, 'collapsed-card actions keep a full touch target above sibling cards');
+  assert.equal(await generalEventCard.locator('[data-start-tracking], [data-stop-tracking]').count(), 0);
+  await page.keyboard.press('Escape');
+  assert.equal(await actionTrigger.evaluate((element) => element === document.activeElement), true);
+  await eventToggle.click();
+  assert.equal(await eventToggle.evaluate((element) => element === document.activeElement), true);
+  await generalEventCard.locator('[data-event-participants] > summary').click();
+  assert.match(await generalEventCard.innerText(), /Teilnehmende & Einladungen/);
   assert.equal(
     await generalEventCard.locator('[data-export-event]').count(),
     0,

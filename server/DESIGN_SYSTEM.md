@@ -322,6 +322,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Button** — `.btn` (default), `.btn-primary`, `.btn-danger`, `.btn-block`
   (full width), `.btn-sm` (compact). Combine variant + size, e.g.
   `class="btn btn-primary btn-sm"`.
+- **Action menu** — `actionMenuHtml`/`wireActionMenus` in `actionMenu.js` is the shared
+  disclosure for Event and poll management. Its `.btn.btn-sm` trigger has a visible border and
+  Lucide chevron; the panel composes standard secondary/danger buttons with `--tap-target-size`
+  minimum height. Only one menu opens at a time. Outside pointer input and Escape close it;
+  Escape and selecting an action return focus to its trigger before a dialog takes focus.
+  The open card rises above siblings, and the panel stays bounded by the phone viewport.
+  Personal participation, payment and calendar controls stay beside their respective content.
 - **Back navigation** — `backButtonHtml({ view, id, label })` in `backButton.js` renders every
   compact view-level back action with Lucide's `chevronLeft` and the visible default label
   „Zurück“. `view` creates normal route navigation; `id` supports a local sub-view handler. Do not
@@ -926,10 +933,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   own answer through `ownParticipationAction`: „Teilnahme absagen“ while the server reports
   `myParticipation.canDecline`, „Doch zusagen“ while it reports `canAccept`, and otherwise the
   reason in plain words (`lockReason`: recorded payment, running, ended or cancelled event) rather
-  than a control that silently disappears. A member card gets its own footer for it; the management
-  card places the same action at the end of its existing footer so no card grows a second action
-  row, and marks the state with a „Du: Abgesagt“ badge in its header — organizing an event is not
-  the same as attending it, and „Teilnehmende verwalten“ only removes a roster row, which is a
+  than a control that silently disappears. Member and management cards both keep a dedicated
+  personal-participation footer. A management card marks its own decline with „Du: Abgesagt“ in
+  its header — organizing an event is not the same as attending it, and administrative removal
+  in the participant list only removes a roster row, which is a
   different act from answering for oneself. A still-open invitation stays out of all of this; it is
   answered on its invitation card in „Mein Profil“.
   Declining is not leaving: for a member the event moves into this tab's own „Abgesagt“
@@ -944,8 +951,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   deliberately mirrors Food orders: alternating accent rails and a concise title/status header lead
   into one shared `.food-order-details` information box, followed by the separately collapsible
   participant list. Date, location, note and payment information therefore never form competing
-  sibling boxes; an editable management card places „Bearbeiten“ in the information-box header like
-  an order does. The remaining management actions stay in a stable flex footer, and location links
+  sibling boxes; each header also shows the recorded creator and date range while collapsed. Missing creators
+  use „Unbekannt“, undated events keep „Termin wird noch abgestimmt“. Owner/admin cards expose
+  „Bearbeiten“, state-dependent Tracking/Beenden/Wieder-starten and the LAN PDF export in the shared
+  „Aktion“ menu beside the header badges; member Event cards have no such menu. Cards in lists with
+  multiple events start collapsed, keep their disclosure state through refreshes and preserve keyboard
+  focus when toggled. A single event stays expanded without collapse controls, and location links
   are clickable without a separate copy action when an event stores a web URL; plain locations remain
   text. A current event with a complete start/end period offers „Google Kalender“, „Outlook“ and
   „Kalenderdatei“ directly inside that same information box; the first two open a prefilled web event,
@@ -1013,8 +1024,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the shared collapsible-section behavior plus Food orders' leading chevron/name/meta header pattern,
   start closed and preserve their open state across live re-renders. Their people remain one full-width
   row per line at every breakpoint so payment proof and the creator's toggle have predictable room;
-  the separate management dialog proceeds directly to its rows without repeated counts or general
-  explanatory paragraphs. State-specific blockers remain explicit: an ended event shows once that
+  owner/admin cards integrate Einladen, Erneut einladen and Entfernen directly in this list.
+  Eligible people without an invitation follow existing roster entries with an Einladen action.
+  Ended events omit those uninvited rows. Creating an event opens its card and roster directly;
+  there is no separate participant-management dialog. State-specific blockers remain explicit: an ended event shows once that
   new invitations are unavailable, and a paid row associates its removal action with the instruction
   to reset the payment first.
   An optional date-only payment deadline starts reminders on that day; without one, contributions
