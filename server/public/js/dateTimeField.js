@@ -473,11 +473,25 @@ export function wireDateTimeField(container, id) {
     popover.querySelector('[data-dt-day][tabindex="0"]')?.focus();
   }
 
+  // Sync the value and clear a stale error the moment the manual entry parses,
+  // rather than only when the field blurs. A field that already holds a valid
+  // date/time is then valid immediately — including a programmatic fill, which
+  // never blurs — so submitting right after typing is not silently blocked by a
+  // left-over customValidity. A new error is never raised mid-typing; that still
+  // waits for blur, so typing does not nag.
+  function syncManualInputIfValid() {
+    const emptyClearable = !dateInput.value.trim() && clearable;
+    const parsedDate = parseDateInput(dateInput.value);
+    const parsedTime = dateOnly ? { hour: 0, minute: 0 } : parseTimeInput(timeInput?.value ?? '');
+    if (emptyClearable || (parsedDate && parsedTime)) commitManualInput();
+  }
   dateInput.addEventListener('input', (event) => {
     dateInput.value = formatDateTyping(dateInput.value, event.inputType);
+    syncManualInputIfValid();
   });
   timeInput?.addEventListener('input', (event) => {
     timeInput.value = formatTimeTyping(timeInput.value, event.inputType);
+    syncManualInputIfValid();
   });
   dateInput.addEventListener('blur', commitManualInput);
   dateInput.addEventListener('change', commitManualInput);
