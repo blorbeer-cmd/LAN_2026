@@ -118,31 +118,31 @@ export function ensureTetrisSocket() {
 
   socket.on('tetris:state', (payload) => {
     latestState = payload;
-    const previousHostId = match?.host?.id ?? null;
     if (match) {
       match.running = payload.running;
       match.paused = payload.paused;
       match.mode = payload.mode ?? match.mode;
       match.host = payload.host ?? match.host;
     }
-    // Fast path: repaint the mounted canvases directly, no DOM rebuild.
+    // Fast path: repaint the mounted canvases directly, no DOM rebuild. A
+    // host handover (the previous host left/disconnected) only changes who
+    // may pause/finish the match — never the board layout, which is keyed to
+    // the local player's own perspective, not to the host — so it is folded
+    // into the same non-destructive control-footer update as pause/resume.
     // The socket remains connected while the user visits other views. Never
     // trigger a render there: a frequent state tick must not compete with
     // bottom-navigation clicks or repaint the current view unnecessarily.
-    if (tetrisViewMounted()) {
-      if ((match?.host?.id ?? null) !== previousHostId) rerender();
-      else paint();
-    }
+    if (tetrisViewMounted()) updateMatchControls();
   });
 
   socket.on('tetris:match:paused', () => {
     if (match) match.paused = true;
-    if (tetrisViewMounted()) updatePauseUi();
+    if (tetrisViewMounted()) updateMatchControls();
   });
 
   socket.on('tetris:match:resumed', () => {
     if (match) match.paused = false;
-    if (tetrisViewMounted()) updatePauseUi();
+    if (tetrisViewMounted()) updateMatchControls();
   });
 
   socket.on('tetris:match:end', (payload) => {
@@ -657,10 +657,15 @@ export function renderTetris(container, _ctx) {
 
   // Shared background refreshes can render the active view at any time.
   // Keep a live match's canvases and measured layout mounted; only a new
-  // match, perspective, mode or host needs a different board/control shell.
-  const renderKey = JSON.stringify([match.matchId, myId(), match.mode, match.host?.id]);
+  // match, perspective or mode needs a different board/control shell. A host
+  // handover (the previous host left/disconnected) does not: the board
+  // layout is keyed to the local player's own perspective, never to who
+  // currently holds the host controls, so it is folded into the same
+  // non-destructive control-footer update as pause/resume instead of forcing
+  // a full rebuild that would tear down and reinitialize every live canvas.
+  const renderKey = JSON.stringify([match.matchId, myId(), match.mode]);
   if (!match.ended && container.querySelector('#tetris-boards')?.dataset.renderKey === renderKey) {
-    updatePauseUi();
+    updateMatchControls();
     return;
   }
 
@@ -716,14 +721,35 @@ export function renderTetris(container, _ctx) {
 
 function wireMatch(container) {
   bindTouchGestures(container.querySelector('#tetris-mine'));
+  wireMatchControls(container);
 
-  wirePauseControl(container);
-  container.querySelector('#tetris-finish')?.addEventListener('click', async () => {
+  container.querySelector('#tetris-back')?.addEventListener('click', () => {
+    match = null;
+    latestState = null;
+    cancelCountdown();
+    navigate('arcade');
+  });
+}
+
+function wirePauseControl(root) {
+  root.querySelector('#tetris-pause')?.addEventListener('click', async () => {
+    const res = await emitWithAck('tetris:match:pause', { matchId: match?.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
+  });
+  root.querySelector('#tetris-resume')?.addEventListener('click', async () => {
+    const res = await emitWithAck('tetris:match:resume', { matchId: match?.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
+  });
+}
+
+function wireMatchControls(root) {
+  wirePauseControl(root);
+  root.querySelector('#tetris-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     const res = await emitWithAck('tetris:match:finish', { matchId: match?.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
   });
-  container.querySelector('#tetris-leave')?.addEventListener('click', async () => {
+  root.querySelector('#tetris-leave')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
     const res = await emitWithAck('tetris:match:leave', { matchId: match?.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
@@ -734,36 +760,48 @@ function wireMatch(container) {
       navigate('arcade');
     }
   });
-
-  container.querySelector('#tetris-back')?.addEventListener('click', () => {
-    match = null;
-    latestState = null;
-    cancelCountdown();
-    navigate('arcade');
-  });
 }
 
-function wirePauseControl(container) {
-
-  container.querySelector('#tetris-pause')?.addEventListener('click', async () => {
-    const res = await emitWithAck('tetris:match:pause', { matchId: match?.matchId, playerId: myId() });
-    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
-  });
-  container.querySelector('#tetris-resume')?.addEventListener('click', async () => {
-    const res = await emitWithAck('tetris:match:resume', { matchId: match?.matchId, playerId: myId() });
-    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
-  });
+// Which shape the control footer currently has to be in: the host sees
+// pause/resume plus "Beenden", any other participant only "Verlassen", and a
+// non-participant (spectator) or an ended match shows no footer at all.
+function matchControlsKind() {
+  if (!match || match.ended) return 'none';
+  if (match.host?.id === myId()) return 'host';
+  return amPlayer() ? 'guest' : 'none';
 }
 
-function updatePauseUi() {
+function currentControlsKind(controlsEl) {
+  if (!controlsEl) return 'none';
+  return controlsEl.querySelector('#tetris-pause, #tetris-resume') ? 'host' : 'guest';
+}
+
+// Applies a pause/resume toggle or a host handover to the mounted match
+// without ever touching the board canvases: both only change who may act and
+// what the footer shows, never the board layout (which is keyed to the local
+// player's own perspective, not to the host).
+function updateMatchControls() {
   paint();
-  const button = document.querySelector('#tetris-pause, #tetris-resume');
-  if (!button) return;
-  if (button.id === (match.paused ? 'tetris-resume' : 'tetris-pause')) return;
-  button.outerHTML = match.paused
-    ? '<button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-resume">Fortsetzen</button>'
-    : '<button type="button" class="btn btn-sm btn-equal" id="tetris-pause">Pausieren</button>';
-  wirePauseControl(document);
+  const controlsEl = document.querySelector('.arcade-match-controls');
+  const desiredKind = matchControlsKind();
+  if (desiredKind === currentControlsKind(controlsEl)) {
+    if (desiredKind !== 'host') return;
+    const button = controlsEl.querySelector('#tetris-pause, #tetris-resume');
+    if (button.id === (match.paused ? 'tetris-resume' : 'tetris-pause')) return;
+    button.outerHTML = match.paused
+      ? '<button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-resume">Fortsetzen</button>'
+      : '<button type="button" class="btn btn-sm btn-equal" id="tetris-pause">Pausieren</button>';
+    wirePauseControl(document);
+    return;
+  }
+  // The controlling role changed (a host handover, or gaining/losing the
+  // ability to act on this match at all) — replace only the controls
+  // footer, never the mounted board canvases.
+  controlsEl?.remove();
+  const html = matchControls();
+  if (!html) return;
+  document.querySelector('#tetris-boards')?.insertAdjacentHTML('afterend', html);
+  wireMatchControls(document);
 }
 
 // Touch controls without on-screen buttons: drag left/right across your board
