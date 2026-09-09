@@ -124,7 +124,7 @@ export function musicSetupHtml(status, activePairing = pairing) {
                 </li>
                 <li class="${hasKnownController || activePairing ? 'is-current' : ''}">
                   <span class="music-setup-step-number">2</span>
-                  <span class="music-track-main"><strong>Mit Respawn koppeln</strong><span class="muted">Öffne diese Adresse direkt auf dem Musik-PC: ${LOCAL_CONTROLLER_URL}</span></span>
+                  <span class="music-track-main"><strong>Mit Respawn koppeln</strong><span class="muted">Öffne diese Adresse direkt auf dem Musik-PC: <a href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">${LOCAL_CONTROLLER_URL}</a></span></span>
                 </li>
                 <li>
                   <span class="music-setup-step-number">3</span>
@@ -152,9 +152,7 @@ export function musicSetupHtml(status, activePairing = pairing) {
                   : `<button type="button" class="btn btn-primary" id="music-download-controller" ${getMyId() ? '' : 'disabled'}>Controller-Paket herunterladen</button>
                     <button type="button" class="btn" id="music-reconnect-controller" ${getMyId() ? '' : 'disabled'}>${activePairing ? 'Neuen Code erzeugen' : 'Vorhandene Installation koppeln'}</button>`}
               </div>
-              ${hasKnownController ? '<p class="muted">Ohne laufenden Jam wird die alte Verbindung nach 30 Tagen ohne Kontakt automatisch entfernt.</p>' : ''}
-              <p class="muted music-pairing-hint">„Controller öffnen“ funktioniert nur in einem Browser auf dem Musik-PC.</p>
-              <a class="btn" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Auf diesem Musik-PC: Controller öffnen</a>`
+              ${hasKnownController ? '<p class="muted">Ohne laufenden Jam wird die alte Verbindung nach 24 Stunden ohne Kontakt automatisch entfernt.</p>' : ''}`
             : emptyStateHtml('Ein Gruppen-Admin richtet den Jam-Controller ein.')}
       </section>`;
   }
@@ -202,7 +200,7 @@ export function musicControllerManagementHtml(status) {
       <span>Verbindung verwalten</span><span class="collapsible-section-chevron">${icon('chevronRight')}</span>
     </summary>
     <div class="collapsible-section-content stack">
-      <p class="muted">Wenn kein Jam läuft, wird dieser Controller nach 30 Tagen ohne Verbindung automatisch entkoppelt.</p>
+      <p class="muted">Wenn kein Jam läuft, wird dieser Controller nach 24 Stunden ohne Verbindung automatisch entkoppelt.</p>
       ${sessionActive
         ? '<p>Beende zuerst die laufende Session. Danach kann jeder Gruppen-Admin den Controller entkoppeln.</p>'
         : '<button type="button" class="btn btn-danger" id="music-disconnect">Controller entkoppeln</button>'}

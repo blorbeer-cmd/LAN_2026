@@ -56,7 +56,9 @@ test('music setup offers a pairing code independently from the controller downlo
   assert.match(initial, /Musik-PC vorbereiten/);
   assert.match(initial, /id="music-download-controller"[^>]*>Controller-Paket herunterladen/);
   assert.match(initial, /id="music-reconnect-controller"[^>]*>Vorhandene Installation koppeln/);
-  assert.match(initial, /Controller öffnen.+nur in einem Browser auf dem Musik-PC/);
+  assert.match(initial, /href="http:\/\/127\.0\.0\.1:43821"[^>]*>http:\/\/127\.0\.0\.1:43821/);
+  assert.doesNotMatch(initial, /Controller öffnen/);
+  assert.doesNotMatch(initial, /30 Tagen/);
 
   const repaired = musicSetupHtml(
     { controller: null, canManageController: true },
