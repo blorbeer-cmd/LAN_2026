@@ -110,30 +110,51 @@ function scheduleProgress(container) {
 export function musicSetupHtml(status, activePairing = pairing) {
   if (!status.controller?.online) {
     const hasKnownController = Boolean(status.controller);
-    const reconnecting = hasKnownController;
     return `
       <section class="card stack grouped-page-section music-setup-card" aria-labelledby="music-setup-title">
-          <div class="grouped-page-section-title"><h2 id="music-setup-title">${reconnecting ? 'Jam-Controller wieder verbinden' : 'Jam einrichten'}</h2></div>
+          <div class="grouped-page-section-title"><h2 id="music-setup-title">${hasKnownController ? 'Musik-Verbindung wiederherstellen' : 'Gemeinsam Musik hören'}</h2></div>
           ${hasKnownController
-            ? `<p><strong>${escapeHtml(status.controller.label)}</strong><span class="muted"> ist nicht erreichbar.</span></p>`
-            : ''}
-          ${activePairing ? `<div class="music-pairing-panel">
-            <div class="music-pairing-header">
-              <span class="music-pairing-title"><strong>Kopplungscode</strong><small>Im lokalen Controller eingeben</small></span>
-              <span class="badge music-pairing-validity">10 Minuten gültig</span>
-            </div>
-            <div class="music-pairing-code">
-              <strong id="music-pairing-value">${escapeHtml(activePairing.code)}</strong>
-              <button type="button" class="icon-btn music-pairing-copy" id="music-copy-pairing" title="Kopplungscode kopieren" aria-label="Kopplungscode kopieren">${icon('copy')}</button>
-            </div>
-          </div>
-          <p class="muted music-pairing-hint">Code im lokalen Controller unter „Wieder verbinden“ eingeben.</p>` : ''}
+            ? `<p><strong>${escapeHtml(status.controller.label)}</strong> ist nicht erreichbar. Starte die Musik-Verbindung auf diesem Rechner. Respawn prüft den Status automatisch.</p>`
+            : '<p>Ein Musik-PC verbindet eure Gruppe mit Spotify. Danach bedienen alle die Musik direkt in Respawn.</p>'}
           ${status.canManageController
-            ? `<div class="music-setup-actions">
-                  <button type="button" class="btn btn-primary" id="music-reconnect-controller" ${getMyId() ? '' : 'disabled'}>${activePairing ? 'Neuen Code erzeugen' : reconnecting ? 'Wiederverbindung vorbereiten' : 'Vorhandenen Controller koppeln'}</button>
-                  <a class="btn" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Lokalen Controller öffnen</a>
+            ? `<ol class="music-setup-steps">
+                <li class="${hasKnownController || activePairing ? 'is-complete' : 'is-current'}">
+                  <span class="music-setup-step-number">1</span>
+                  <span class="music-track-main"><strong>${hasKnownController ? 'Musik-PC starten' : 'Musik-PC vorbereiten'}</strong><span class="muted">${hasKnownController ? `Starte die vorhandene Installation auf ${escapeHtml(status.controller.label)}.` : 'Lade das Paket auf dem Musik-PC herunter, entpacke es und starte die Datei für dein Betriebssystem.'}</span></span>
+                </li>
+                <li class="${hasKnownController || activePairing ? 'is-current' : ''}">
+                  <span class="music-setup-step-number">2</span>
+                  <span class="music-track-main"><strong>Mit Respawn koppeln</strong><span class="muted">Öffne diese Adresse direkt auf dem Musik-PC: ${LOCAL_CONTROLLER_URL}</span></span>
+                </li>
+                <li>
+                  <span class="music-setup-step-number">3</span>
+                  <span class="music-track-main"><strong>Spotify verbinden</strong><span class="muted">Die lokale Seite führt durch Spotify-App, Client-ID und Anmeldung.</span></span>
+                </li>
+                <li>
+                  <span class="music-setup-step-number">4</span>
+                  <span class="music-track-main"><strong>Musikausgabe wählen</strong><span class="muted">Dieser Schritt erscheint hier, sobald die Verbindung bereit ist.</span></span>
+                </li>
+              </ol>
+              ${activePairing ? `<div class="music-pairing-panel">
+                <div class="music-pairing-header">
+                  <span class="music-pairing-title"><strong>Kopplungscode</strong><small>Auf dem Musik-PC eingeben</small></span>
+                  <span class="badge music-pairing-validity">10 Minuten gültig</span>
                 </div>
-                <button type="button" class="btn btn-sm" id="music-download-controller" ${getMyId() ? '' : 'disabled'}>${hasKnownController ? 'Nur bei fehlender Installation: Controller neu herunterladen' : 'Controller erstmals herunterladen'}</button>`
+                <div class="music-pairing-code">
+                  <strong id="music-pairing-value">${escapeHtml(activePairing.code)}</strong>
+                  <button type="button" class="icon-btn music-pairing-copy" id="music-copy-pairing" title="Kopplungscode kopieren" aria-label="Kopplungscode kopieren">${icon('copy')}</button>
+                </div>
+              </div>` : ''}
+              <div class="music-setup-actions">
+                ${hasKnownController
+                  ? `<button type="button" class="btn btn-primary" id="music-reconnect-controller" ${getMyId() ? '' : 'disabled'}>${activePairing ? 'Neuen Code erzeugen' : 'Kopplungscode erzeugen'}</button>
+                    <button type="button" class="btn" id="music-download-controller" ${getMyId() ? '' : 'disabled'}>Nur falls Installation fehlt: neu herunterladen</button>`
+                  : `<button type="button" class="btn btn-primary" id="music-download-controller" ${getMyId() ? '' : 'disabled'}>Controller-Paket herunterladen</button>
+                    <button type="button" class="btn" id="music-reconnect-controller" ${getMyId() ? '' : 'disabled'}>${activePairing ? 'Neuen Code erzeugen' : 'Vorhandene Installation koppeln'}</button>`}
+              </div>
+              ${hasKnownController ? '<p class="muted">Ohne laufenden Jam wird die alte Verbindung nach 30 Tagen ohne Kontakt automatisch entfernt.</p>' : ''}
+              <p class="muted music-pairing-hint">„Controller öffnen“ funktioniert nur in einem Browser auf dem Musik-PC.</p>
+              <a class="btn" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Auf diesem Musik-PC: Controller öffnen</a>`
             : emptyStateHtml('Ein Gruppen-Admin richtet den Jam-Controller ein.')}
       </section>`;
   }
@@ -162,17 +183,31 @@ function connectionHtml(status) {
   if (recovery) return recovery;
   if (status.session) return '';
   return `
-    <section class="card stack grouped-page-section">
-      <div class="card stack">
-        <div class="row-between music-account-row">
-          <span><strong>${escapeHtml(controller.label)}</strong><span class="muted"> · ${escapeHtml(controller.spotifyDisplayName || 'Spotify verbunden')}</span></span>
-          ${status.canManageController ? '<button type="button" class="btn btn-sm" id="music-disconnect">Entkoppeln</button>' : ''}
-        </div>
-        <div id="music-device-area" class="music-device-area">
-          <button type="button" class="btn btn-primary btn-block" id="music-load-devices">Gerät auswählen</button>
-        </div>
+    <section class="card stack grouped-page-section" aria-labelledby="music-output-title">
+      <div class="grouped-page-section-title"><h2 id="music-output-title">Musikausgabe wählen</h2><span class="badge badge-online">Verbindung bereit</span></div>
+      <div class="row-between music-account-row">
+        <span><strong>${escapeHtml(controller.label)}</strong><span class="muted"> · ${escapeHtml(controller.spotifyDisplayName || 'Spotify verbunden')}</span></span>
+      </div>
+      <div id="music-device-area" class="music-device-area">
+        <button type="button" class="btn btn-primary btn-block" id="music-load-devices">Musikausgabe wählen</button>
       </div>
     </section>`;
+}
+
+export function musicControllerManagementHtml(status) {
+  if (!status.controller || !status.canManageController) return '';
+  const sessionActive = Boolean(status.session);
+  return `<details class="card grouped-page-section collapsible-section music-controller-management">
+    <summary class="collapsible-section-header">
+      <span>Verbindung verwalten</span><span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+    </summary>
+    <div class="collapsible-section-content stack">
+      <p class="muted">Wenn kein Jam läuft, wird dieser Controller nach 30 Tagen ohne Verbindung automatisch entkoppelt.</p>
+      ${sessionActive
+        ? '<p>Beende zuerst die laufende Session. Danach kann jeder Gruppen-Admin den Controller entkoppeln.</p>'
+        : '<button type="button" class="btn btn-danger" id="music-disconnect">Controller entkoppeln</button>'}
+    </div>
+  </details>`;
 }
 
 export function musicDevicePickerHtml(devices, localPlayback = null) {
@@ -230,11 +265,11 @@ async function startLocalMusicSession(ctx, button, localPlayback) {
   }
 }
 
-function nowPlayingHtml(session) {
+function nowPlayingHtml(session, canManageController = false) {
   const track = session.currentTrack;
   const playlist = session.playbackContext;
   const request = session.requests.find((entry) => entry.status === 'playing' && entry.trackUri === track?.uri);
-  const hostControls = session.hostPlayerId === getMyId();
+  const hostControls = session.hostPlayerId === getMyId() || canManageController;
   const canControlPlayback = Boolean(getMyId());
   return `
     <section class="card stack grouped-page-section" aria-labelledby="music-now-title">
@@ -274,9 +309,17 @@ function requestQueueHtml(session) {
   const queued = session.requests.filter((entry) => entry.status === 'queued' || entry.status === 'sending');
   const playlist = session.playbackContext;
   const playlistMode = Boolean(playlist);
+  const nextTrack = playlist?.nextTrack || null;
+  const nextRequest = nextTrack
+    ? queued.find((entry) => entry.trackUri === nextTrack.uri) || null
+    : null;
+  const remainingRequests = nextRequest ? queued.filter((entry) => entry.id !== nextRequest.id) : queued;
   const remainingPlaylistTracks = Number.isSafeInteger(playlist?.remainingTrackCount)
     ? Math.max(0, playlist.remainingTrackCount)
     : null;
+  const playlistTracksAfterNext = remainingPlaylistTracks !== null && nextTrack && !nextRequest
+    ? Math.max(0, remainingPlaylistTracks - 1)
+    : remainingPlaylistTracks;
   const followingCount = queued.length + (remainingPlaylistTracks ?? 0);
   const editable = Boolean(getMyId()) && !playlistMode;
   const sortable = editable && queued.length > 1;
@@ -286,18 +329,27 @@ function requestQueueHtml(session) {
         <h2 id="music-queue-title">Als Nächstes</h2>
         <span class="badge">${followingCount}</span>
       </div>
-      ${remainingPlaylistTracks !== null ? `
+      ${nextTrack ? `<div class="card music-queue-row music-queue-next">
+        <span class="music-queue-position">1</span>
+        ${nextTrack.imageUrl ? `<img class="music-queue-cover" src="${escapeHtml(nextTrack.imageUrl)}" alt="" />` : ''}
+        <span class="music-track-main">
+          <strong class="music-track-title">${escapeHtml(nextTrack.name)}</strong>
+          <span class="muted">${escapeHtml(nextTrack.artist)} · ${nextRequest ? `Songwunsch von ${escapeHtml(nextRequest.requestedByName)}` : `aus „${escapeHtml(playlist.name)}“`}</span>
+        </span>
+        <span class="badge">${nextRequest ? 'Songwunsch' : 'Playlist'}</span>
+      </div>` : ''}
+      ${playlistTracksAfterNext !== null ? `
         <div class="card row-between">
           <span class="music-track-main">
-            <strong>${remainingPlaylistTracks} ${remainingPlaylistTracks === 1 ? 'Titel folgt' : 'Titel folgen'}</strong>
+            <strong>${playlistTracksAfterNext} ${playlistTracksAfterNext === 1 ? 'weiterer Titel' : 'weitere Titel'}</strong>
             <span class="muted">aus „${escapeHtml(playlist.name)}“</span>
           </span>
           <span class="badge">Playlist</span>
         </div>` : ''}
-      ${queued.length ? `<div class="music-queue-list${sortable ? ' is-sortable' : ''}">${queued.map((entry, index) => `
+      ${remainingRequests.length ? `<div class="music-queue-list${sortable ? ' is-sortable' : ''}">${remainingRequests.map((entry, index) => `
         <div class="card music-queue-row" data-music-request="${escapeHtml(entry.id)}" ${sortable ? 'draggable="true"' : ''}>
           ${sortable ? `<span class="music-queue-drag" aria-hidden="true">${icon('gripVertical')}</span>` : ''}
-          <span class="music-queue-position">${index + 1}</span>
+          <span class="music-queue-position">${index + (nextTrack ? 2 : 1)}</span>
           ${entry.imageUrl ? `<img class="music-queue-cover" src="${escapeHtml(entry.imageUrl)}" alt="" />` : ''}
           <span class="music-track-main">
             <strong class="music-track-title">${escapeHtml(entry.name)}</strong>
@@ -306,10 +358,10 @@ function requestQueueHtml(session) {
           <span class="muted music-queue-duration">${durationLabel(entry.durationMs)}</span>
           ${editable ? `<span class="music-queue-order-actions">
             ${sortable ? `<button type="button" class="icon-btn" data-music-move="up" aria-label="${escapeHtml(entry.name)} nach oben" ${index === 0 ? 'disabled' : ''}>${icon('arrowUp')}</button>
-            <button type="button" class="icon-btn" data-music-move="down" aria-label="${escapeHtml(entry.name)} nach unten" ${index === queued.length - 1 ? 'disabled' : ''}>${icon('arrowDown')}</button>` : ''}
+            <button type="button" class="icon-btn" data-music-move="down" aria-label="${escapeHtml(entry.name)} nach unten" ${index === remainingRequests.length - 1 ? 'disabled' : ''}>${icon('arrowDown')}</button>` : ''}
             <button type="button" class="icon-btn" data-music-remove aria-label="${escapeHtml(entry.name)} entfernen">${icon('trash')}</button>
           </span>` : ''}
-        </div>`).join('')}</div>` : emptyStateHtml('Noch keine Songwünsche.')}
+        </div>`).join('')}</div>` : emptyStateHtml('Noch keine weiteren Songwünsche.')}
     </section>`;
 }
 
@@ -327,7 +379,7 @@ export function musicActiveSessionHtml(status, browserPlayback = localPlayback) 
       <p>Dieser Jam lief über den Browser. Nach dem Neuladen muss Spotify einmal wieder mit der laufenden Session verbunden werden.</p>
       <button type="button" class="btn btn-primary" id="music-recover-local-player">Browser-Ton wiederherstellen</button>
     </section>` : ''}
-    ${nowPlayingHtml(status.session)}
+    ${nowPlayingHtml(status.session, status.canManageController)}
     ${requestQueueHtml(status.session)}
     <section class="card stack grouped-page-section" aria-labelledby="music-search-title">
       <div class="grouped-page-section-title"><h2 id="music-search-title">Musik suchen</h2></div>
@@ -596,6 +648,11 @@ function renderDevicePicker(area, ctx, devices, browserPlayback) {
 
 function wireConnection(container, ctx) {
   container.querySelector('#music-disconnect')?.addEventListener('click', async () => {
+    const confirmed = await confirmDialog(
+      'Die Spotify-Anmeldung bleibt auf dem Musik-PC erhalten. Für Respawn wird beim nächsten Start ein neuer Kopplungscode benötigt.',
+      { title: 'Controller entkoppeln?', confirmText: 'Entkoppeln', danger: true },
+    );
+    if (!confirmed) return;
     try {
       await api.music.disconnectController(getMyId());
       pairing = null;
@@ -718,7 +775,7 @@ export function renderMusic(container, ctx) {
       </div>
     </div>
     <div class="grouped-page-sections">
-      ${cache ? `${musicSetupHtml(cache)}${connectionHtml(cache)}${musicActiveSessionHtml(cache)}` : `<section class="card grouped-page-section">${emptyStateHtml('Lädt…')}</section>`}
+      ${cache ? `${musicSetupHtml(cache)}${connectionHtml(cache)}${musicActiveSessionHtml(cache)}${musicControllerManagementHtml(cache)}` : `<section class="card grouped-page-section">${emptyStateHtml('Lädt…')}</section>`}
     </div>`;
   container.scrollTop = scrollTop;
   if (!cache) {
