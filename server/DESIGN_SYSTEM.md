@@ -198,9 +198,10 @@ around the physical seating plan the same size; the compact size preserves that 
 of player-name length.
 `--payment-marker-width` (96px, 88px only below 360px) keeps the food-order payment toggle stable
 beside its PayPal action while the label, position count and amount change. It is the toggle's
-width wherever the group box has room for it; on phones, where the cluster owns a full-width row of
-its own, the marker may only give up the few pixels a 360px box is short and never grows past the
-token, so its width still follows the layout rather than the label.
+width wherever the group box has room for it; on phones the action cluster fills whatever its row
+leaves rather than shrinking to its own contents, so the marker may only give up the few pixels a
+narrow box is short and never grows past the token. Its width therefore follows the layout and not
+the `Bezahlt?`/`Bezahlt` label.
 `--notification-panel-width` (360px) caps the header notification center while it remains
 viewport-responsive on phones.
 `--search-panel-width` (640px) gives the global search palette enough room for titles and short
@@ -771,14 +772,20 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   affirmative answer marks all group items paid. The local `paypal` icon is the filled brand path in
   `icons.js`; other icons remain line icons.
 
-  Below `--bp-md` an orderer group becomes three deliberate rows instead of one: the person, then
-  their sum with its tip note beside it at the same left edge as the name, then the action cluster
-  on a full-width row of its own. The four fixed-width controls need 240px on one line, which no
-  supported phone width leaves next to a name, and flex wrapping would otherwise drop a single
-  control onto a ragged extra line. Position rows follow the same split: the description takes the
-  first row, amount and actions share the second, so every position's trailing action ends on the
-  group action row's right edge. The order's detail links stack full-width there for the same
-  reason — wrapped, `Bestellübersicht`'s `margin-left:auto` left it alone against the right edge.
+  Below `--bp-md` an orderer group becomes two rows instead of one: the person, then their sum with
+  its tip note beside it at the same left edge as the name, sharing that row with the action
+  cluster. The four fixed-width controls need 240px on one line, which no supported phone width
+  leaves next to a name, so the name keeps a row of its own; where the remaining row cannot hold
+  the sum and all four controls either, wrapping moves the cluster down whole rather than dropping
+  a single control onto a ragged extra line. The cluster fills the width its row leaves it, which
+  is what keeps the marker's slot independent of its label. A group holding a single position drops
+  its sum entirely there: that position already prints the identical tip-inclusive total one row
+  below, so the sum only cost a row. A collapsed group keeps its sum, because its position rows are
+  hidden and the sum is then the only amount on screen. Position rows follow the same split: the
+  description takes the first row, amount and actions share the second, so every position's
+  trailing action ends on the group action row's right edge. The order's detail links stack
+  full-width there for the same reason — wrapped, `Bestellübersicht`'s `margin-left:auto` left it
+  alone against the right edge.
 
   Position rows contain only quantity × description, amount, copy and delete. The displayed amount
   includes quantity and tip; copy uses exactly that display string. There is no position-level paid

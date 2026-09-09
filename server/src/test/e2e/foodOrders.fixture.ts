@@ -61,7 +61,13 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   await page.waitForSelector('.food-order-item-amount:has-text("20,90 €")');
   await page.waitForSelector('.food-order-item-amount:has-text("2 × 9,50 €")');
   await page.waitForSelector('.food-order-item-amount:has-text("inkl. 10% Trinkgeld")');
-  await page.waitForSelector('.food-order-group-tip:has-text("inkl. 10 % Trinkgeld")');
+  // Alice's group holds this one position, so the phone layout drops the
+  // group's own sum block. Its tip note stays in the DOM and the position row
+  // asserted above still shows the tip-inclusive total and the tip itself.
+  const groupTip = page.locator('.food-order-group-tip').first();
+  await groupTip.waitFor({ state: 'attached' });
+  assert.equal((await groupTip.textContent())?.trim(), 'inkl. 10 % Trinkgeld');
+  assert.equal(await groupTip.isVisible(), false);
   await page.waitForSelector('.food-order-total:has-text("Gesamtsumme inkl. 10% Trinkgeld")');
   await page.waitForSelector('.food-order-overview:has-text("2 Positionen von 1 Person")');
   await page.waitForSelector('.food-order-overview:has-text("0 von 1 bezahlt")');
@@ -92,7 +98,9 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
   assert.equal(await group.locator('.food-order-paid-marker').getAttribute('aria-pressed'), 'false');
   const openMarkerGeometry = await readPaidMarkerRect(alice.id);
-  assert.equal(await group.locator('.food-order-group-amount').innerText(), '20,90 €');
+  const groupSum = group.locator('.food-order-group-amount');
+  assert.equal((await groupSum.textContent())?.trim(), '20,90 €');
+  assert.equal(await groupSum.isVisible(), false);
   assert.equal(await group.locator('[data-group-pay]').count(), 1);
   assert.equal(await page.locator('.food-order-item [data-group-pay]').count(), 0);
   const groupActionOrder = await group.locator('.food-order-group-actions').evaluate((actions) =>
@@ -170,7 +178,9 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   await page.waitForSelector('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")');
   const paidMarkerGeometry = await readPaidMarkerRect(alice.id);
   assertMarkerStaysPut(paidMarkerGeometry, openMarkerGeometry, 'marking the group paid');
-  await waitForTextDecoration(group.locator('.food-order-group-amount'), 'line-through');
+  // The group sum is hidden for this single-position group, so the paid
+  // strike-through is asserted on the position row here and on the group sum
+  // of the two-position zeroGroup further down.
   await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'line-through');
   await waitForTextDecoration(marghieRow.locator('.food-order-item-amount'), 'line-through');
   assert.equal(await marghieRow.locator('[data-remove-item]').isDisabled(), true);
@@ -353,7 +363,14 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   assert.equal(await aliceGroup.locator('.food-order-group-items').isHidden(), true);
   assert.match(await bobGroup.locator('.food-order-group-toggle').innerText(), /E2E Bob \(du\)/);
   assert.equal(await bobGroup.locator('.food-order-group-toggle[aria-expanded="true"] .food-order-group-meta').textContent(), '1 Position');
-  assert.equal(await bobGroup.locator('.food-order-group-amount').innerText(), '1,00 €');
+  // Bob's expanded group holds a single position, so the phone layout drops
+  // its sum. Alice's group holds one too but is collapsed, so its sum is the
+  // only amount left on screen and has to stay: without the expanded guard in
+  // renderItems() a collapsed group would show no amount at all.
+  const bobGroupSum = bobGroup.locator('.food-order-group-amount');
+  assert.equal((await bobGroupSum.textContent())?.trim(), '1,00 €');
+  assert.equal(await bobGroupSum.isVisible(), false);
+  assert.equal(await aliceGroup.locator('.food-order-group-amount').isVisible(), true);
   assert.equal(await bobGroup.locator('.food-order-item-copy').getAttribute('title'), 'Betrag dieser Position kopieren');
 
   await orderCard.locator('[data-toggle-all-groups]').click();
@@ -405,7 +422,11 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
     const box = header.getBoundingClientRect();
     const marker = header.querySelector('.food-order-paid-marker');
     const markerLabel = marker?.querySelector('span');
-    const controls = Array.from(header.querySelectorAll('.food-order-paid-marker, .food-order-group-amount, .food-order-group-actions button'));
+    // A single-position group deliberately drops its own sum on phones, so
+    // only the actually rendered controls are measured for clipping.
+    const controls = Array.from(
+      header.querySelectorAll('.food-order-paid-marker, .food-order-group-amount, .food-order-group-actions button')
+    ).filter((control) => control.getClientRects().length > 0);
     return {
       markerWidth: marker?.getBoundingClientRect().width ?? 0,
       markerHeight: marker?.getBoundingClientRect().height ?? 0,
@@ -433,6 +454,48 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   assert.equal(narrowGroupLayout.markerLabelClipped, false, JSON.stringify(narrowGroupLayout));
   assert.equal(narrowGroupLayout.controlsVisible, true, JSON.stringify(narrowGroupLayout));
   assert.equal(narrowGroupLayout.pageFits, true);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  // Phone layout contract for the group header (domains.css, --bp-md block):
+  // a group holding a single position drops its own sum, because that position
+  // already prints the identical tip-inclusive total one row below; a group
+  // with more positions keeps the sum and shares one row with the action
+  // cluster instead of leaving that cluster alone on a row of its own. Laptop
+  // width always shows the sum. Without the rule the sum renders on every
+  // width and the shared row never happens.
+  const readGroupSumLayout = async (): Promise<{
+    positionRows: number;
+    amountRendered: boolean;
+    sharesRowWithActions: boolean;
+  }> => bobGroupAfterLink.evaluate((groupElement) => {
+    const centreY = (rect: DOMRect) => rect.top + rect.height / 2;
+    const amount = groupElement.querySelector('.food-order-group-amount-wrap');
+    const actions = groupElement.querySelector('.food-order-group-actions')!;
+    const amountRendered = amount !== null && amount.getClientRects().length > 0;
+    return {
+      positionRows: groupElement.querySelectorAll('.food-order-group-items > .food-order-item').length,
+      amountRendered,
+      // align-items: center gives the short amount and the 44px control
+      // cluster different tops on the very same row, so compare centres.
+      sharesRowWithActions:
+        amountRendered && amount !== null
+          ? Math.abs(centreY(amount.getBoundingClientRect()) - centreY(actions.getBoundingClientRect())) <= 1
+          : false,
+    };
+  });
+  const phoneSumLayout = await readGroupSumLayout();
+  assert.equal(phoneSumLayout.amountRendered, phoneSumLayout.positionRows > 1, JSON.stringify(phoneSumLayout));
+  // Just below --bp-md the phone rules still apply but the row has room for
+  // the sum next to all four controls, so both must share it. At 390px with a
+  // PayPal action they legitimately do not fit and the cluster drops onto its
+  // own row whole - that fallback is covered by the single-row assertion above.
+  await page.setViewportSize({ width: 639, height: 844 });
+  const roomySumLayout = await readGroupSumLayout();
+  assert.equal(roomySumLayout.amountRendered, true, JSON.stringify(roomySumLayout));
+  assert.equal(roomySumLayout.sharesRowWithActions, true, JSON.stringify(roomySumLayout));
+  await page.setViewportSize({ width: 900, height: 844 });
+  const laptopSumLayout = await readGroupSumLayout();
+  assert.equal(laptopSumLayout.amountRendered, true, JSON.stringify(laptopSumLayout));
   await page.setViewportSize({ width: 390, height: 844 });
 
   // Bob can undo the paid marker directly; reopening the group is an explicit

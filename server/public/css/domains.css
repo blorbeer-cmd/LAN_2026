@@ -1472,41 +1472,61 @@ input[type='number'].tournament-score-input {
   text-decoration: line-through;
 }
 @media (max-width: 639px) { /* --bp-md */
-  /* Three deliberate, left-anchored rows per orderer group: who, how much,
-     what you can do about it. The header's four fixed-width controls need
-     240px on one line, which no supported phone width leaves beside the name,
-     so identity, amount and actions each own a full-width row instead of
-     letting flex wrapping drop a single control onto a ragged extra line. */
+  /* Two rows per orderer group instead of three: who, then how much together
+     with what you can do about it. Giving the amount a full-width row of its
+     own left the action cluster alone on a third row with nothing beside it,
+     which reads as a layout fault rather than as a footer. Wrapping decides
+     the fallback: amount and cluster share the second row wherever they fit
+     and the cluster drops onto a right-aligned row of its own only where they
+     genuinely cannot, so no supported width strands a single control. */
   .food-order-group-header {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
   }
+  /* The name keeps a row to itself: player names, the `(du)` marker and the
+     position count need the full width far more often than they leave the
+     240px the four controls occupy. */
   .food-order-group-toggle,
   .food-order-group-static {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    width: 100%;
+    flex: 1 1 100%;
   }
   /* The sum belongs to the person named directly above it, so it starts at
      the same edge instead of floating alone against the opposite one, and
      keeps its tip note on the same line. */
   .food-order-group-amount-wrap {
-    grid-column: 1 / -1;
-    grid-row: 2;
+    flex: 0 1 auto;
     flex-direction: row;
     flex-wrap: wrap;
     align-items: baseline;
-    justify-self: start;
     gap: var(--space-2);
   }
+  /* A group holding a single position repeats itself: lineTotalCents() already
+     folds the tip into that position's own amount, so the group sum prints the
+     identical number one row further down. Drop it on phones, where that
+     duplicate costs a whole row. A collapsed group keeps its sum, because its
+     position rows are hidden and the sum is then the only amount on screen —
+     renderItems() decides that and re-renders on every toggle.
+     Deliberately a render-time class rather than `:has()` on an ancestor: the
+     `.food-order-group:has(… :only-child) .food-order-group-amount-wrap` form
+     made every DOM mutation in the app pay for :has() invalidation and stalled
+     unrelated views, which showed up as a 30s timeout in the Home checklist
+     E2E. The existing :has() rules in this repository all qualify their own
+     subject and stay cheap. */
+  .food-order-group.is-single-position .food-order-group-amount-wrap {
+    display: none;
+  }
+  /* The cluster fills whatever the row leaves it rather than shrinking to its
+     own contents. That keeps its width a property of the layout instead of the
+     marker's label, so the `Bezahlt?`/`Bezahlt` flip cannot resize the cluster
+     and drag the marker sideways. Wrapping is still decided before shrinking,
+     so a row too narrow for amount plus cluster moves the cluster down whole
+     instead of squeezing both. */
   .food-order-group-actions {
-    grid-column: 1 / -1;
-    grid-row: 3;
+    flex: 1 1 auto;
     min-width: 0;
-    width: 100%;
     flex-wrap: nowrap;
     justify-content: flex-end;
-    column-gap: 0;
     margin-left: 0;
   }
   /* The marker keeps its token width wherever it fits and only gives up the

@@ -11,7 +11,7 @@
 import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
-import { chromium, Browser, Page } from 'playwright';
+import { chromium, Browser, Locator, Page } from 'playwright';
 import { E2E_ADMIN_NAME, E2E_ADMIN_PASSWORD, authenticatedServerEnv, finishE2EOnboarding, loginE2EAdmin, waitForPlayerData } from './authHelpers';
 import { createStatefulE2EDiagnosticTest } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
@@ -30,6 +30,19 @@ const test = createStatefulE2EDiagnosticTest(
   () => ({ browser, server: e2eServer }),
   { sharedState: 'server, browser context, and page' },
 );
+
+// Orga event cards became collapsible and start collapsed once the list holds
+// more than one entry (#603). Everything below the header - participation
+// actions, calendar group, roster - lives in that collapsed body, so a test
+// reading or clicking it has to open the card first. A lone card renders its
+// content directly and carries no toggle, hence the count check.
+async function expandEventCard(card: Locator, eventId: string): Promise<void> {
+  const toggle = card.locator(`[data-event-card-toggle="${eventId}"]`);
+  if ((await toggle.count()) === 0) return;
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') return;
+  await toggle.click();
+  await card.locator(`[data-event-card-toggle="${eventId}"][aria-expanded="true"]`).waitFor();
+}
 
 async function api(path: string, init: RequestInit = {}): Promise<{ status: number; body: any }> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -513,6 +526,10 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
     await generalEventCard.locator('.event-card-header-badges .badge').first().innerText(),
     'Allgemeines Event',
   );
+  // #603 made Orga event cards collapsible and collapsed by default once the
+  // list holds more than one entry, so the body must be opened before its
+  // content can be asserted.
+  await expandEventCard(generalEventCard, generalEvent);
   assert.match(await generalEventCard.innerText(), /Teilnehmende verwalten/);
   assert.equal(
     await generalEventCard.locator('[data-export-event]').count(),
@@ -630,6 +647,7 @@ test('an organizer can withdraw and restore their own participation on the manag
   await page.waitForSelector('#view-container[data-view="events"]');
   await page.waitForSelector(`[data-event-card="${eventId}"]`);
   const card = page.locator(`[data-event-card="${eventId}"]`);
+  await expandEventCard(card, eventId);
   await card.locator(`[data-decline-participation="${eventId}"]`).click();
   await page.click('[data-confirm]');
   await card.locator(`[data-accept-participation="${eventId}"]`).waitFor();
