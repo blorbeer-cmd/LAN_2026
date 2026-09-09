@@ -267,6 +267,16 @@ test('the Packliste draft and its focus survive a realtime re-render of the area
   // Submitting still works afterwards, so the surviving node is the live one.
   await page.click('[data-add-item-form] button[type="submit"]');
   await page.waitForSelector('.checklist-item-list:has-text("Ersatzmaus")');
+
+  // After a successful add the field clears itself (and keeps focus) so the
+  // next entry can be typed straight away - the draft-preservation snapshot
+  // must not restore the just-added label.
+  assert.equal(await draft.inputValue(), '');
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.matches('[data-add-item-form] [data-item-label]')),
+    true,
+    'focus must stay in the add-item field after adding',
+  );
 });
 
 test('the To-Dos tab count is present on every Orga tab, not only on the To-Dos list', async () => {

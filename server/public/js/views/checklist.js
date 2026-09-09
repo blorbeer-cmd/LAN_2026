@@ -607,6 +607,18 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
     if (!label) return;
     try {
       await api.checklist.addItem(myId, label);
+      // Clear the field for the next entry. Re-query it live instead of reusing
+      // `input`: the checklist:changed echo can re-render the form while the add
+      // request is in flight, leaving `input` detached. Clearing the live field
+      // now - before the next render - is what makes both the checklist's own
+      // draft snapshot and the generic viewRenderState capture (see app.js's
+      // renderCurrent) record an empty draft instead of restoring the just-added
+      // label. Keep focus so the next item can be typed straight away.
+      const liveField = document.querySelector('[data-add-item-form] [data-item-label]');
+      if (liveField) {
+        liveField.value = '';
+        liveField.focus();
+      }
       // Refetch to pick up the server-assigned id, but keep showing the
       // current list meanwhile instead of flashing "Lädt…" (see loadItems).
       loadItems(ctx, myId, { silent: true });
