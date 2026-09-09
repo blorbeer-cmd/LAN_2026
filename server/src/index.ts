@@ -15,6 +15,7 @@ import { startFoodOrderPaymentReminder } from './foodOrderReminders';
 import { startEventPaymentReminder } from './eventPaymentReminders';
 import { startEventDatePollReminderSweep } from './eventDatePollReminders';
 import { startEventReminderSweep } from './eventReminders';
+import { startMusicControllerExpiry } from './musicController';
 import { recoverInterruptedArcadeSessions, startArcadeHeartbeat } from './arcade/arcadeTracking';
 import { registerArcadeSockets } from './arcade/arcade';
 import { registerTetrisSockets } from './arcade/tetris';
@@ -40,6 +41,7 @@ const socketFeatureRegistrars = [
   registerBattleshipSockets,
   registerChallengeRushSockets,
   startOfflineSweeper,
+  startMusicControllerExpiry,
 ] as const;
 
 export function registerSocketFeatures(io: Server): () => void {

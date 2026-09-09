@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   musicActiveSessionHtml,
+  musicControllerManagementHtml,
   musicControllerRecoveryHtml,
   musicDevicePickerHtml,
   musicSearchResultsHtml,
@@ -51,8 +52,11 @@ test('music search distinguishes loading and empty results', () => {
 
 test('music setup offers a pairing code independently from the controller download', () => {
   const initial = musicSetupHtml({ controller: null, canManageController: true }, null);
-  assert.match(initial, /id="music-reconnect-controller"[^>]*>Vorhandenen Controller koppeln/);
-  assert.match(initial, /id="music-download-controller"[^>]*>Controller erstmals herunterladen/);
+  assert.match(initial, /Gemeinsam Musik hören/);
+  assert.match(initial, /Musik-PC vorbereiten/);
+  assert.match(initial, /id="music-download-controller"[^>]*>Controller-Paket herunterladen/);
+  assert.match(initial, /id="music-reconnect-controller"[^>]*>Vorhandene Installation koppeln/);
+  assert.match(initial, /Controller öffnen.+nur in einem Browser auf dem Musik-PC/);
 
   const repaired = musicSetupHtml(
     { controller: null, canManageController: true },
@@ -60,7 +64,7 @@ test('music setup offers a pairing code independently from the controller downlo
   );
   assert.match(repaired, /id="music-pairing-value">ABCDEFGH/);
   assert.match(repaired, /id="music-reconnect-controller"[^>]*>Neuen Code erzeugen/);
-  assert.match(repaired, /Wieder verbinden/);
+  assert.match(repaired, /Auf dem Musik-PC eingeben/);
 });
 
 test('music session places the queue directly below the current playback', () => {
@@ -79,6 +83,12 @@ test('music session places the queue directly below the current playback', () =>
   });
   assert.ok(html.indexOf('Jetzt läuft') < html.indexOf('Als Nächstes'));
   assert.ok(html.indexOf('Als Nächstes') < html.indexOf('Musik suchen'));
+
+  assert.match(musicControllerManagementHtml({
+    controller: { online: false },
+    canManageController: true,
+    session: null,
+  }), /id="music-disconnect">Controller entkoppeln/);
 });
 
 test('music session offers browser recovery after a reload changed the Spotify device id', () => {
@@ -105,7 +115,16 @@ test('music queue shows the remaining playlist tracks separately from requests',
     warning: null,
     session: {
       currentTrack: null,
-      playbackContext: { name: 'LAN <Playlist>', remainingTrackCount: 4 },
+      playbackContext: {
+        name: 'LAN <Playlist>',
+        remainingTrackCount: 4,
+        nextTrack: {
+          uri: 'spotify:track:NEXT',
+          name: 'Der nächste Song',
+          artist: 'Die Band',
+          imageUrl: null,
+        },
+      },
       requests: [],
       hostPlayerId: '',
       isPlaying: true,
@@ -114,9 +133,11 @@ test('music queue shows the remaining playlist tracks separately from requests',
       playbackUpdatedAt: null,
     },
   });
-  assert.match(html, /4 Titel folgen/);
+  assert.match(html, /Der nächste Song/);
+  assert.match(html, /Die Band · aus „LAN &lt;Playlist&gt;“/);
+  assert.match(html, /3 weitere Titel/);
   assert.match(html, /aus „LAN &lt;Playlist&gt;“/);
-  assert.match(html, /Noch keine Songwünsche\./);
+  assert.match(html, /Noch keine weiteren Songwünsche\./);
 });
 
 test('music controller recovery distinguishes Spotify login from a transient outage', () => {

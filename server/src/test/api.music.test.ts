@@ -4,6 +4,7 @@ import type { Response as SuperAgentResponse } from 'superagent';
 import request from 'supertest';
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
 import { createTestApp, TEST_ADMIN_ID } from './testApp';
+import { expireInactiveMusicControllers, MUSIC_CONTROLLER_RETENTION_MS } from '../musicController';
 
 const app = createTestApp();
 let controllerToken = '';
@@ -123,6 +124,7 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   assert.deepEqual(status.body.controller.label, 'LAN Pi');
   assert.equal(status.body.controller.spotifyDisplayName, 'LAN DJ');
   assert.equal(status.body.controller.online, true);
+  assert.ok(status.body.controller.autoDisconnectAt > Date.now());
   assert.deepEqual(status.body.controller.connectionStatus, { spotify: 'connected', message: null });
   assert.equal(status.body.canManageController, true);
   assert.equal(JSON.stringify(status.body).includes(controllerToken), false);
@@ -158,6 +160,7 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
 
   const oldControllerToken = controllerToken;
   db.prepare('UPDATE music_controllers SET last_seen = 0 WHERE group_id = ?').run('default-group');
+  assert.deepEqual(expireInactiveMusicControllers(), [], 'automatic cleanup preserves a controller with an active Jam');
   const reconnectPairing = await request(app).post('/api/music/pairing').send({});
   assert.equal(reconnectPairing.status, 200, 'an offline controller can be repaired while its Jam session remains active');
   const reconnected = await request(app).post('/api/music/controller/register').send({
@@ -235,12 +238,17 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
         track: tracks.AAAAAAAAAAAAAAAAAAAAAA,
         deviceId: 'speaker-1',
         context: { type: 'playlist', uri: playlist.uri },
+        nextTrack: tracks.BBBBBBBBBBBBBBBBBBBBBB,
         isPlaying: true,
         progressMs: 1_500,
       },
     });
   live = await request(app).get('/api/music/status').set('x-test-player-id', alice.id);
-  assert.deepEqual(live.body.session.playbackContext, { ...playlist, remainingTrackCount: 41 });
+  assert.deepEqual(live.body.session.playbackContext, {
+    ...playlist,
+    remainingTrackCount: 41,
+    nextTrack: tracks.BBBBBBBBBBBBBBBBBBBBBB,
+  });
   assert.equal(live.body.session.currentTrack.name, 'LAN Anthem');
   assert.equal(live.body.session.requests.length, 0, 'starting a playlist replaces the prior shared queue');
 
@@ -252,6 +260,7 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
         track: tracks.BBBBBBBBBBBBBBBBBBBBBB,
         deviceId: 'speaker-1',
         context: { type: 'playlist', uri: playlist.uri },
+        nextTrack: tracks.CCCCCCCCCCCCCCCCCCCCCC,
         isPlaying: true,
         progressMs: 2_000,
       },
@@ -324,12 +333,14 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   );
 
   failNextControllerCommand = { type: 'pause', message: 'Player command failed: Restriction violated' };
-  const ended = await request(app).post('/api/music/end').send({});
+  db.prepare("UPDATE group_memberships SET role = 'admin' WHERE group_id = ? AND player_id = ?")
+    .run(DEFAULT_GROUP_ID, alice.id);
+  const ended = await request(app).post('/api/music/end').send({ playerId: alice.id });
   assert.equal(ended.status, 200);
   assert.match(ended.body.warning, /Spotify konnte/);
   const forbiddenDisconnect = await request(app).delete('/api/music/controller').send({ playerId: bob.id });
   assert.equal(forbiddenDisconnect.status, 403);
-  const disconnected = await request(app).delete('/api/music/controller').send({});
+  const disconnected = await request(app).delete('/api/music/controller').send({ playerId: alice.id });
   assert.equal(disconnected.status, 204);
 
   const pairingAfterDisconnect = await request(app).post('/api/music/pairing').send({});
@@ -340,6 +351,11 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
     spotifyDisplayName: 'LAN DJ',
   });
   assert.equal(repairedWithoutDownload.status, 201);
+  db.prepare('UPDATE music_controllers SET last_seen = ? WHERE group_id = ?')
+    .run(Date.now() - MUSIC_CONTROLLER_RETENTION_MS - 1, DEFAULT_GROUP_ID);
+  assert.deepEqual(expireInactiveMusicControllers(), [DEFAULT_GROUP_ID]);
+  const expiredStatus = await request(app).get('/api/music/status');
+  assert.equal(expiredStatus.body.controller, null, 'an unused controller is removed after 30 days without a heartbeat');
 });
 
 test('ending an event releases a Jam session still marked active for it', async () => {

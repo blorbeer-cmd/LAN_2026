@@ -857,10 +857,39 @@
 .music-connect-card {
   align-items: stretch;
 }
-/* The unconnected Jam setup stacks its two controller actions ("koppeln" /
-   "Lokalen Controller öffnen") on phones so they never overlap, and places
-   them side by side from --bp-md where both labels stay on one line. The
-   download button stays a separate action below this row. */
+.music-setup-steps {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.music-setup-steps li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated-2);
+}
+.music-setup-steps li.is-current {
+  border-color: var(--accent);
+}
+.music-setup-steps li.is-complete {
+  color: var(--text-muted);
+}
+.music-setup-step-number {
+  display: grid;
+  place-items: center;
+  width: var(--space-7);
+  height: var(--space-7);
+  border-radius: var(--radius-full);
+  background: var(--bg);
+  color: var(--text);
+  font-weight: var(--font-weight-bold);
+}
 .music-setup-actions {
   display: flex;
   flex-direction: column;
@@ -962,6 +991,9 @@
 }
 .music-account-row {
   gap: var(--space-3);
+}
+.music-controller-management .collapsible-section-content {
+  padding-top: 0;
 }
 .music-device-area {
   display: grid;

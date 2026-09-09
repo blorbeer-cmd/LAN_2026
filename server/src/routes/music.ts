@@ -78,6 +78,7 @@ interface PublicPlaylist {
 
 interface PublicPlaybackContext extends PublicPlaylist {
   remainingTrackCount: number;
+  nextTrack: PublicTrack | null;
 }
 
 interface CachedPlaylist {
@@ -238,7 +239,7 @@ function playbackContext(session: MusicSessionRow): PublicPlaybackContext | null
     const remainingTrackCount = Number.isSafeInteger(stored?.remainingTrackCount)
       ? Math.max(0, Math.min(playlist.trackCount, Number(stored?.remainingTrackCount)))
       : fallback;
-    return { ...playlist, remainingTrackCount };
+    return { ...playlist, remainingTrackCount, nextTrack: validTrack(stored?.nextTrack) };
   } catch {
     return null;
   }

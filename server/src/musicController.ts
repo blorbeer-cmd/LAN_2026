@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'crypto';
 import { NextFunction, Request, Response, Router } from 'express';
+import { Server } from 'socket.io';
 import { db } from './db';
 import { broadcast, Events } from './realtime';
 
@@ -10,6 +11,8 @@ export const musicControllerRouter = Router();
 // LAN. Avoid presenting that recoverable delay as a dead controller.
 const ONLINE_MS = 30_000;
 const COMMAND_TIMEOUT_MS = 15_000;
+export const MUSIC_CONTROLLER_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const MUSIC_CONTROLLER_EXPIRY_SWEEP_MS = 6 * 60 * 60 * 1000;
 
 interface ControllerRow {
   group_id: string;
@@ -81,7 +84,43 @@ export function controllerSummary(groupId: string) {
   let connectionStatus: ControllerConnectionStatus | null = null;
   try { connectionStatus = validConnectionStatus(JSON.parse(row.connectionStatusJson || 'null')); } catch { /* old/stale status */ }
   const { connectionStatusJson: _connectionStatusJson, ...summary } = row;
-  return { ...summary, connectionStatus, online: Date.now() - row.lastSeen <= ONLINE_MS };
+  return {
+    ...summary,
+    connectionStatus,
+    online: Date.now() - row.lastSeen <= ONLINE_MS,
+    autoDisconnectAt: row.lastSeen + MUSIC_CONTROLLER_RETENTION_MS,
+  };
+}
+
+export function expireInactiveMusicControllers(now = Date.now()): string[] {
+  const rows = db.prepare(
+    `SELECT mc.group_id AS groupId
+     FROM music_controllers mc
+     WHERE mc.last_seen <= ?
+       AND NOT EXISTS (
+         SELECT 1 FROM music_sessions ms
+         WHERE ms.group_id = mc.group_id AND ms.status = 'active'
+       )`,
+  ).all(now - MUSIC_CONTROLLER_RETENTION_MS) as Array<{ groupId: string }>;
+  if (!rows.length) return [];
+
+  db.transaction(() => {
+    for (const { groupId } of rows) {
+      db.prepare('DELETE FROM music_controller_pairings WHERE group_id = ?').run(groupId);
+      db.prepare('DELETE FROM music_controllers WHERE group_id = ?').run(groupId);
+    }
+  })();
+  for (const { groupId } of rows) {
+    broadcast(Events.musicChanged, { groupId }, { groupId });
+  }
+  return rows.map(({ groupId }) => groupId);
+}
+
+export function startMusicControllerExpiry(_io: Server): () => void {
+  expireInactiveMusicControllers();
+  const timer = setInterval(() => expireInactiveMusicControllers(), MUSIC_CONTROLLER_EXPIRY_SWEEP_MS);
+  timer.unref();
+  return () => clearInterval(timer);
 }
 
 function validConnectionStatus(value: unknown): ControllerConnectionStatus | null {
@@ -249,6 +288,9 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
         if (uri && !matchingRequest && uri !== observedTrackUri) remainingTrackCount = Math.max(0, remainingTrackCount - 1);
         stored.remainingTrackCount = remainingTrackCount;
         stored.observedTrackUri = uri && !matchingRequest ? uri : observedTrackUri;
+        stored.nextTrack = value?.nextTrack && typeof value.nextTrack === 'object'
+          ? value.nextTrack
+          : null;
         playbackContextJson = JSON.stringify(stored);
       }
     } catch {
