@@ -287,8 +287,8 @@ test('the workspace switcher keeps event names concise and shows state through i
   // This scenario requires a real A-to-B switch; the previous test leaves B active.
   // Selecting B again is a no-op and cannot provide the awaited dataset refresh.
   await switchWorkspaceInBrowser(eventA);
-  // Hold the socket-driven event snapshot long enough for the switcher to
-  // open first. This deterministically exercises the ordering seen on CI.
+  // Delay the setup snapshot so the readiness check below is exercised even
+  // on a fast runner, before interacting with the rebuilt switcher.
   await page.route(`${BASE_URL}/api/events`, async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 250));
     await route.continue();
@@ -296,12 +296,10 @@ test('the workspace switcher keeps event names concise and shows state through i
   const started = await api(`/api/events/${eventA}/tracking/start`, { method: 'POST' });
   assert.equal(started.status, 200, JSON.stringify(started.body));
 
-  await switchWorkspaceInBrowser(eventB);
-  // Wait for the socket refresh while the list is still closed. The control
-  // deliberately skips rebuilding an open, focused search so it does not
-  // discard a reader's query; opening before this signal therefore made the
-  // stale row permanent until the test timed out. The delayed route above
-  // turns that CI ordering into a deterministic regression case.
+  // Finish the raw-API fixture update before opening the switcher so its
+  // pending snapshot does not overlap the workspace activation. This test
+  // checks labels and status icons after setup; keeping the list closed also
+  // lets its rows refresh instead of preserving a focused search's old rows.
   await page.waitForFunction(
     (id) =>
       document
@@ -309,6 +307,7 @@ test('the workspace switcher keeps event names concise and shows state through i
         ?.getAttribute('data-event-status') === 'tracking',
     eventA,
   );
+  await switchWorkspaceInBrowser(eventB);
   await page.click('#event-context .search-select-toggle');
   const rows = await page.$$eval('#event-context-switcher-list .search-select-option', (nodes) =>
     nodes.map((node) => ({
