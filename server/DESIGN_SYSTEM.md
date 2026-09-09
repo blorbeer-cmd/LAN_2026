@@ -1197,8 +1197,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   controller device needs Spotify. The setup card is shown whenever no controller is paired yet or
   the paired one is offline, so the unconfigured state is not silently empty. It presents the complete
   setup as four ordered steps: prepare the music PC, pair it with Respawn, connect Spotify, then choose
-  the audio output. Actions that open the loopback controller explicitly state that they work only in
-  a browser on the music PC. A dedicated local controller on the
+  the audio output. The pairing step shows the loopback address as a clickable link for the music PC.
+  A dedicated local controller on the
   playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant
   starts a session on an explicitly selected playback device; this player is the host. All active
@@ -1219,7 +1219,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   arrow controls. Respawn persists that order and replaces the active Spotify URI context at the
   current playback position so the visible order also becomes the actual playback order.
   The kiosk reuses a single compact full-width music bar below the fixed dashboard and shows current
-  track, progress and next request without exposing controls or Spotify credentials. The fixed
+  track, progress and the actual next track without exposing controls or Spotify credentials. If
+  Spotify has not exposed a next track yet, it shows the playlist's shuffle state, remaining count
+  and waiting song requests instead of an empty request message. The fixed
   music bar offers one local setup action before a session when the Jam controller runs on that
   kiosk device. It registers the kiosk browser as a Spotify Connect player, so its audio follows the
   computer's HDMI/TV output; after activation the kiosk returns to its read-only display role. A
@@ -1245,7 +1247,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Respawn's offline state therefore offers reconnection first and a new download only as a fallback.
   Controller requests have bounded timeouts and retry automatically after transient network errors.
   Every group owner and admin can end the active Jam and then explicitly disconnect the controller.
-  A controller without an active Jam is removed automatically after 30 days without a heartbeat;
+  A controller without an active Jam is removed automatically after 24 hours without a heartbeat;
   reconnecting it only needs a fresh pairing code and retains its local Spotify authorization.
   The controller heartbeat remains online when Spotify is temporarily unavailable and omits the
   unavailable playback snapshot so the server retains the last confirmed track. An invalid Respawn

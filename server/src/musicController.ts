@@ -11,7 +11,7 @@ export const musicControllerRouter = Router();
 // LAN. Avoid presenting that recoverable delay as a dead controller.
 const ONLINE_MS = 30_000;
 const COMMAND_TIMEOUT_MS = 15_000;
-export const MUSIC_CONTROLLER_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const MUSIC_CONTROLLER_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MUSIC_CONTROLLER_EXPIRY_SWEEP_MS = 6 * 60 * 60 * 1000;
 
 interface ControllerRow {

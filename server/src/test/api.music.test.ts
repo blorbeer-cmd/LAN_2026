@@ -77,6 +77,7 @@ after(() => {
 });
 
 test('local controller pairs without sending Spotify credentials to Respawn', async () => {
+  assert.equal(MUSIC_CONTROLLER_RETENTION_MS, 24 * 60 * 60 * 1000);
   const alice = (await request(app).post('/api/players').send({ name: 'Music Alice' })).body;
   const bob = (await request(app).post('/api/players').send({ name: 'Music Bob' })).body;
 
@@ -246,6 +247,7 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   live = await request(app).get('/api/music/status').set('x-test-player-id', alice.id);
   assert.deepEqual(live.body.session.playbackContext, {
     ...playlist,
+    addedByName: 'Music Bob',
     remainingTrackCount: 41,
     nextTrack: tracks.BBBBBBBBBBBBBBBBBBBBBB,
   });

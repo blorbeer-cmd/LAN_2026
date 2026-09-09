@@ -13,6 +13,7 @@ import { drawArcadeStreamCanvas } from './arcade/shared/arcadeStreamRenderer.js'
 import { domainIcon, installDomainIcons } from './domainIcons.js';
 import { snakeArenaLegendHtml } from './arcade/shared/snakeArenaLegend.js';
 import { emptyStateHtml } from './emptyState.js';
+import { kioskMusicQueueHtml, kioskMusicQueueKey } from './kioskMusic.js';
 import {
   connectLocalSpotifyPlayer,
   localSpotifyPlaybackStatus,
@@ -644,7 +645,6 @@ function renderMusicBar(payload) {
     return;
   }
   const track = session.currentTrack;
-  const queued = (session.requests || []).filter((entry) => entry.status === 'queued').slice(0, 1);
   const duration = Number(track?.durationMs || 0);
   const progress = estimatedMusicProgress(session);
   const request = (session.requests || []).find(
@@ -660,7 +660,7 @@ function renderMusicBar(payload) {
     playing: session.isPlaying,
     device: session.deviceName,
     requester: request?.requestedByName ?? null,
-    next: queued[0]?.id ?? queued[0]?.trackUri ?? null,
+    nextQueue: kioskMusicQueueKey(session),
     browserRecovery: needsBrowserRecovery,
   });
   const playbackHtml = track ? `
@@ -676,15 +676,7 @@ function renderMusicBar(payload) {
         <span class="muted kiosk-music-duration">${musicDurationLabel(progress)} / ${musicDurationLabel(duration)}</span>
       </span>
     </span>
-    <span class="kiosk-music-next">
-      ${queued.length ? `
-        ${queued[0].imageUrl ? `<img class="kiosk-music-cover" src="${escapeHtml(queued[0].imageUrl)}" alt="" />` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span>`}
-        <span class="kiosk-music-copy">
-          <span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span>
-          <strong>${escapeHtml(queued[0].name)}</strong>
-          <span class="muted">${escapeHtml(queued[0].artist)} · gewünscht von ${escapeHtml(queued[0].requestedByName)}</span>
-        </span>` : `<span class="kiosk-music-copy"><span class="muted kiosk-music-next-label">Als Nächstes</span><span class="muted">Noch keine Songwünsche.</span></span>`}
-    </span>` : `
+    <span class="kiosk-music-next">${kioskMusicQueueHtml(session)}</span>` : `
       <span class="kiosk-music-current kiosk-music-empty"><span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span><span class="kiosk-music-copy"><strong>Jam aktiv</strong><span class="muted">Auf ${escapeHtml(session.deviceName)} läuft gerade kein Titel.</span></span></span>`;
   const recoveryHtml = needsBrowserRecovery ? `
     <span class="kiosk-music-local">
