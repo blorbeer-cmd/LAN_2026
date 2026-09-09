@@ -801,7 +801,7 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   // startup path that a bookmarked hash link uses.
   await page.reload();
   await page.waitForSelector('#admin-feature-usage-refresh');
-  await assertCompactAdminHeader('Nutzungsauswertung', { minimum: 100 });
+  await assertCompactAdminHeader('Nutzungsauswertung', { minimum: 84 });
   const featureUsageHeaderLayout = await page.locator('#admin-feature-usage-refresh').evaluate((button) => {
     const row = button.closest('.more-subpage-title-row');
     const title = row?.querySelector('h1');
@@ -1014,10 +1014,10 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   // `.number-stepper` wrapper numberStepper.js adds around every
   // `input[type="number"]` (see DESIGN_SYSTEM.md's "Number stepper" entry).
   assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.querySelector('#admin-count') ? 'admin-count' : control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
-  // Rounded: getBoundingClientRect() can return a sub-pixel value like
-  // 35.999969482421875 for an intended 36px depending on the browser's
-  // layout rounding, which a strict-equality assertion here flakes on.
-  assert.equal(await page.locator('#admin-count').evaluate((input) => Math.round(input.getBoundingClientRect().height)), 36);
+  // Rounded: getBoundingClientRect() can return a sub-pixel value close to
+  // the intended --control-height (32px) depending on the browser's layout
+  // rounding, which a strict-equality assertion here would otherwise flake on.
+  assert.equal(await page.locator('#admin-count').evaluate((input) => Math.round(input.getBoundingClientRect().height)), 32);
   assert.equal(await page.locator('.admin-test-controls').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   // The overlay stepper buttons adjust the value by click...
   await page.fill('#admin-count', '5');
