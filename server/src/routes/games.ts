@@ -157,6 +157,20 @@ function optionalUrl(value: unknown): string | null | undefined {
   }
 }
 
+function isYoutubeUrl(value: string | null): boolean {
+  if (!value) return false;
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === 'youtube.com' || hostname.endsWith('.youtube.com') || hostname === 'youtu.be';
+  } catch {
+    return false;
+  }
+}
+
+function suggestionTrailerUrl(name: string, trailerUrl: string | null): string {
+  return trailerUrl ?? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${name} gameplay`)}`;
+}
+
 function assertPlayer(playerId: unknown): string | null | undefined {
   if (playerId === undefined || playerId === null || playerId === '') return null;
   if (typeof playerId !== 'string') return undefined;
@@ -218,7 +232,8 @@ function validateTeamSizes(
 // POST /api/games - create a game. Two shapes in practice: an admin adding a
 // tracked game (name, team size, no status = defaults to 'catalog'), or a
 // player suggestion from the Spiele view (name + optional platform/trailer,
-// status: 'suggestion', playerId so it's attributed as createdBy).
+// status: 'suggestion', playerId so it's attributed as createdBy). A missing
+// suggestion trailer is filled with a YouTube gameplay search link below.
 gamesRouter.post(
   '/',
   ...withBodyPlayerIdentity,
@@ -271,6 +286,11 @@ gamesRouter.post(
       return res.status(400).json({ error: 'considerSeatNeighborsDefault muss ein Boolean sein.' });
     }
     const resolvedStatus: GameStatus = status === 'suggestion' ? 'suggestion' : 'catalog';
+    if (resolvedStatus === 'suggestion' && parsedTrailer !== null && !isYoutubeUrl(parsedTrailer)) {
+      return res.status(400).json({ error: 'Bitte einen YouTube-Link eintragen oder das Feld leer lassen.' });
+    }
+    const resolvedTrailer =
+      resolvedStatus === 'suggestion' ? suggestionTrailerUrl(name.trim(), parsedTrailer) : parsedTrailer;
     const createdBy = assertPlayer(playerId);
     if (createdBy === undefined) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
@@ -288,7 +308,7 @@ gamesRouter.post(
       max_team_size: sizes.max,
       platform: parsedPlatform ?? null,
       platform_url: parsedPlatformUrl ?? null,
-      trailer_url: parsedTrailer ?? null,
+      trailer_url: resolvedTrailer,
       genre: parsedGenres.length ? JSON.stringify(parsedGenres) : null,
       info: parsedInfo ?? null,
       status: resolvedStatus,
@@ -384,16 +404,25 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
     return res.status(409).json({ error: `Das Spiel "${name.trim()}" gibt es schon.` });
   }
 
+  const nextName = name !== undefined ? name.trim() : existing.name;
+  let nextTrailer = trailerUrl !== undefined ? (parsedTrailer ?? null) : existing.trailer_url;
+  if (existing.status === 'suggestion') {
+    if (trailerUrl !== undefined && parsedTrailer !== undefined && parsedTrailer !== null && !isYoutubeUrl(parsedTrailer)) {
+      return res.status(400).json({ error: 'Bitte einen YouTube-Link eintragen oder das Feld leer lassen.' });
+    }
+    if (!isYoutubeUrl(nextTrailer)) nextTrailer = suggestionTrailerUrl(nextName, null);
+  }
+
   const next: GameRow = {
     ...existing,
-    name: name !== undefined ? name.trim() : existing.name,
+    name: nextName,
     icon: icon !== undefined ? icon : existing.icon,
     icon_image: iconImage !== undefined ? iconImage : existing.icon_image,
     min_team_size: sizes.min,
     max_team_size: sizes.max,
     platform: platform !== undefined ? (parsedPlatform ?? null) : existing.platform,
     platform_url: platformUrl !== undefined ? (parsedPlatformUrl ?? null) : existing.platform_url,
-    trailer_url: trailerUrl !== undefined ? (parsedTrailer ?? null) : existing.trailer_url,
+    trailer_url: nextTrailer,
     genre: genres !== undefined ? (parsedGenres!.length ? JSON.stringify(parsedGenres) : null) : existing.genre,
     info: info !== undefined ? (parsedInfo ?? null) : existing.info,
     consider_seat_neighbors_default:
@@ -449,9 +478,12 @@ gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('admin'), (req, re
   const existing = req.groupResource as GameRow;
   if (existing.status !== 'catalog') return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
 
+  const trailerUrl = isYoutubeUrl(existing.trailer_url)
+    ? existing.trailer_url
+    : suggestionTrailerUrl(existing.name, null);
   const result = db
-    .prepare(`UPDATE games SET status = 'suggestion' WHERE id = ? AND status = 'catalog'`)
-    .run(existing.id);
+    .prepare(`UPDATE games SET status = 'suggestion', trailer_url = ? WHERE id = ? AND status = 'catalog'`)
+    .run(trailerUrl, existing.id);
   if (result.changes === 0) return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
 
   broadcast(Events.gamesChanged, null, { groupId: req.group!.id });

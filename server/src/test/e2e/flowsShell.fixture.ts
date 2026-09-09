@@ -1242,10 +1242,18 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   await page.waitForSelector('#suggest-new');
 
   await page.click('#suggest-new');
+  await page.waitForSelector('#suggest-trailer + .muted');
   await page.fill('#suggest-title', 'E2E Partyspiel');
   await page.click('#suggest-form button[type="submit"]');
   await page.waitForSelector('text=E2E Partyspiel');
   await page.waitForSelector('button[data-tab="suggestions"].btn-primary');
+  const gamesResponse = await page.request.get(`${BASE_URL}/api/games`);
+  assert.equal(gamesResponse.status(), 200);
+  const games = (await gamesResponse.json()) as Array<{ name: string; trailer_url: string | null }>;
+  const createdSuggestion = games.find((game) => game.name === 'E2E Partyspiel');
+  assert.ok(createdSuggestion);
+  assert.ok(createdSuggestion.trailer_url);
+  assert.match(createdSuggestion.trailer_url, /^https:\/\/www\.youtube\.com\/results\?search_query=.*gameplay$/);
 
   // Same name again (different case): server must refuse — otherwise votes,
   // skills and results would silently split across two identical entries.
