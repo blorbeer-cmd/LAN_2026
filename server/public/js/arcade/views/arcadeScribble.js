@@ -1036,10 +1036,11 @@ export function wireScribbleLobbyCard(container, { beforeCreate, beforeJoin } = 
 export function renderScribbleRoom(container) {
   ensureScribbleSocket();
   if (!match) {
-    // The play view is only for live matches; anything else belongs in Arcade.
-    container.innerHTML = `
-      ${backButtonHtml({ view: 'arcade' })}
-      ${emptyStateHtml('Noch kein Scribble-Match.', { style: 'margin-top:var(--space-4);' })}`;
+    // A direct or expired-match link lands here without a running match;
+    // show the same named lobby area as opening Scribble from Arcade instead
+    // of a dead end (see Pong/Snake/Battleship's identical fallback).
+    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Scribble</h1>${renderScribbleLobbyCard()}`;
+    wireScribbleLobbyCard(container);
     return;
   }
 

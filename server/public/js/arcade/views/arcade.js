@@ -357,6 +357,79 @@ function arcadeStatsHtml() {
     ${game.gameType === 'scribble' ? scribbleArtStatsHtml(game) : ''}`;
 }
 
+// The Arcade launcher embeds this card in place of a separate sub-view; the
+// standalone `quizRoom` route reuses it verbatim for a direct or expired-match link.
+function renderQuizLobbyCard() {
+  const createReason = match ? 'Beende zuerst dein aktuelles Spiel.' : '';
+  const mayUseAi = currentPlayerMayUseArcadeAi();
+  return `
+    <div class="card stack arcade-lobby-card">
+      <div class="arcade-lobby-create-actions">
+        <div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}">
+          <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button>
+          ${createReason ? infoTooltipHtml('quiz-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+          ${mayUseAi ? arcadeLobbyOpponentToggleHtml('quiz-opponent', quizOpponent, Boolean(match)) : ''}
+        </div>
+      </div>
+      ${renderLobbyList()}
+    </div>`;
+}
+
+function wireQuizLobbyCard(container, ctx) {
+  wireArcadeOpponentToggle(container, 'quiz-opponent', (value) => {
+    quizOpponent = value;
+    ctx.rerender();
+  });
+
+  container.querySelector('#quiz-create-lobby')?.addEventListener('click', async () => {
+    const playerId = getMyId();
+    if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+    if (!(await leaveCurrentLobbyBeforeAction('quiz', 'create'))) return;
+    if (quizOpponent === 'bot') {
+      const botRes = await emitWithAck('arcade:lobby:bot', { playerId });
+      if (!botRes?.ok) showToast(botRes?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+      return;
+    }
+    const res = await emitWithAck('arcade:lobby:create', { gameType: 'quiz', playerId });
+    if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+    showToast('Quiz-Lobby geöffnet.');
+  });
+
+  container.querySelectorAll('[data-close-lobby]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const playerId = getMyId();
+      const res = await emitWithAck('arcade:lobby:close', { lobbyId: btn.dataset.closeLobby, playerId });
+      if (!res?.ok) showToast(res?.error || 'Schließen fehlgeschlagen.', { error: true });
+    });
+  });
+
+  container.querySelectorAll('[data-join-lobby]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const playerId = getMyId();
+      if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+      if (!(await leaveCurrentLobbyBeforeAction('quiz', 'join'))) return;
+      const res = await emitWithAck('arcade:lobby:join', { lobbyId: btn.dataset.joinLobby, playerId });
+      if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
+    });
+  });
+
+  wireReadyToggle(container, 'quiz-ready', async (lobbyId, ready) => {
+    const res = await emitWithAck('arcade:lobby:ready', { lobbyId, playerId: getMyId(), ready });
+    if (!res?.ok) showToast(res?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true });
+  });
+
+  container.querySelector('#target-score')?.addEventListener('input', (e) => {
+    customTarget = e.target.value;
+  });
+
+  container.querySelector('#quiz-start-lobby')?.addEventListener('click', async () => {
+    const playerId = getMyId();
+    const targetScore = Number(container.querySelector('#target-score')?.value ?? 5);
+    const res = await emitWithAck('arcade:lobby:start', { lobbyId: myLobby()?.id, playerId, targetScore });
+    if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
+  });
+}
+
 function renderLobbyList() {
   if (lobbies.length === 0) return emptyStateHtml('Noch keine Quiz-Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies
@@ -576,19 +649,7 @@ function runningMatchesOverviewHtml() {
 function activeGameHtml() {
   const game = currentGame();
   if (game === 'quiz') {
-    const createReason = match ? 'Beende zuerst dein aktuelles Spiel.' : '';
-    const mayUseAi = currentPlayerMayUseArcadeAi();
-    return `
-      <div class="card stack arcade-lobby-card">
-        <div class="arcade-lobby-create-actions">
-          <div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}">
-            <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button>
-            ${createReason ? infoTooltipHtml('quiz-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
-            ${mayUseAi ? arcadeLobbyOpponentToggleHtml('quiz-opponent', quizOpponent, Boolean(match)) : ''}
-          </div>
-        </div>
-        ${renderLobbyList()}
-      </div>`;
+    return renderQuizLobbyCard();
   }
   if (game === 'tetris') {
     return `<div>${renderTetrisLobbyCard()}</div>`;
@@ -628,7 +689,6 @@ export function renderArcade(container, ctx) {
   ensureBattleshipSocket();
   ensureChallengeRushSocket();
   if (!stats && !statsLoading) loadStats(ctx);
-  const lobby = myLobby();
 
   const cg = currentGame();
   const activeGameDefinition = GAMES.find((game) => game.id === cg);
@@ -701,58 +761,7 @@ export function renderArcade(container, ctx) {
     if (drawing) renderScribbleDrawing(canvas, drawing.strokes ?? []);
   });
 
-  wireArcadeOpponentToggle(container, 'quiz-opponent', (value) => {
-    quizOpponent = value;
-    ctx.rerender();
-  });
-
-  container.querySelector('#quiz-create-lobby')?.addEventListener('click', async () => {
-    const playerId = getMyId();
-    if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-    if (!(await leaveCurrentLobbyBeforeAction('quiz', 'create'))) return;
-    if (quizOpponent === 'bot') {
-      const botRes = await emitWithAck('arcade:lobby:bot', { playerId });
-      if (!botRes?.ok) showToast(botRes?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
-      return;
-    }
-    const res = await emitWithAck('arcade:lobby:create', { gameType: 'quiz', playerId });
-    if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
-    showToast('Quiz-Lobby geöffnet.');
-  });
-
-  container.querySelectorAll('[data-close-lobby]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const playerId = getMyId();
-      const res = await emitWithAck('arcade:lobby:close', { lobbyId: btn.dataset.closeLobby, playerId });
-      if (!res?.ok) showToast(res?.error || 'Schließen fehlgeschlagen.', { error: true });
-    });
-  });
-
-  container.querySelectorAll('[data-join-lobby]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const playerId = getMyId();
-      if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-      if (!(await leaveCurrentLobbyBeforeAction('quiz', 'join'))) return;
-      const res = await emitWithAck('arcade:lobby:join', { lobbyId: btn.dataset.joinLobby, playerId });
-      if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
-    });
-  });
-
-  wireReadyToggle(container, 'quiz-ready', async (lobbyId, ready) => {
-    const res = await emitWithAck('arcade:lobby:ready', { lobbyId, playerId: getMyId(), ready });
-    if (!res?.ok) showToast(res?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true });
-  });
-
-  container.querySelector('#target-score')?.addEventListener('input', (e) => {
-    customTarget = e.target.value;
-  });
-
-  container.querySelector('#quiz-start-lobby')?.addEventListener('click', async () => {
-    const playerId = getMyId();
-    const targetScore = Number(container.querySelector('#target-score')?.value ?? 5);
-    const res = await emitWithAck('arcade:lobby:start', { lobbyId: lobby.id, playerId, targetScore });
-    if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
-  });
+  wireQuizLobbyCard(container, ctx);
 }
 
 // The live quiz match runs in its own view (like Tetris), so the Arcade page
@@ -760,9 +769,11 @@ export function renderArcade(container, ctx) {
 export function renderQuizRoom(container, ctx) {
   ensureSocket(ctx);
   if (!match) {
-    container.innerHTML = `
-      ${backButtonHtml({ view: 'arcade' })}
-      ${emptyStateHtml('Noch kein Quiz-Match.', { style: 'margin-top:var(--space-4);' })}`;
+    // A direct or expired-match link lands here without a running match;
+    // show the same named lobby area as opening Gaming-Quiz from Arcade
+    // instead of a dead end (see Pong/Snake/Battleship's identical fallback).
+    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Gaming-Quiz</h1>${renderQuizLobbyCard()}`;
+    wireQuizLobbyCard(container, ctx);
     return;
   }
   container.innerHTML = `
