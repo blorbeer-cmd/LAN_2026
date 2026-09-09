@@ -80,7 +80,7 @@ Push des eigenen Feature-Branches und Draft-PR. Der Nutzer kann diesen Abschluss
   ohne Implementierungsverlauf genügt auch beim selben Anbieter. Eine technisch erzwungene
   Read-only-Sandbox oder ein Isolationsnachweis ist nicht vorgeschrieben. Der Reviewer ändert
   keinen Produktcode, approvt und merged nicht; er veröffentlicht das Ergebnis am PR.
-- Vor dem menschlichen Merge sind grüne einschlägige CI-Checks, Konfliktfreiheit und ein
+- Vor jedem Merge sind grüne einschlägige CI-Checks, Konfliktfreiheit und ein
   vollständiges Review des aktuellen Head-SHA nötig. Nach einem Fix gelten ältere Reviews
   nicht für den neuen Commit; ein neues Review ist erforderlich. Ein COMMENT-Review ohne
   Findings genügt fachlich, ist aber kein GitHub-Approval und kein automatischer Statuscheck.

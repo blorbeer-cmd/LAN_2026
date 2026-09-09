@@ -86,10 +86,11 @@ export function mergeBlockers(snapshot, grant) {
   );
   if (current.some((review) => review.state === "CHANGES_REQUESTED"))
     reasons.push("Changes requested on this head");
-  const evidence = current.map((review) => ({
-    review,
-    parsed: parseReview(review, pr),
-  }));
+  // GitHub creates empty COMMENTED reviews for individual inline comments/replies.
+  // Their findings are covered by thread resolution, not by replacing a full report.
+  const evidence = current
+    .filter((review) => review.state !== "COMMENTED" || review.body?.trim())
+    .map((review) => ({ review, parsed: parseReview(review, pr) }));
   const latest = evidence
     .filter((entry) => entry.review.user?.login === grant?.reviewerLogin)
     .sort((a, b) => b.review.id - a.review.id)[0];
@@ -214,6 +215,48 @@ function readPr(repo, pr) {
   ]);
 }
 
+export function readRequiredChecks(repo, number, execute = spawnSync) {
+  const result = execute(
+    "gh",
+    [
+      "pr",
+      "checks",
+      `${number}`,
+      "--repo",
+      `https://github.com/${repo}`,
+      "--required",
+      "--json",
+      "name,bucket,link",
+    ],
+    {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 120000,
+      maxBuffer: 32 * 1024 * 1024,
+    },
+  );
+  const output = result.stdout?.trim() ?? "";
+  const diagnostic = result.stderr?.trim() ?? "";
+  if (result.error) throw new Error(result.error.message);
+  // Before Actions registers checks, gh exits 1 without JSON. Do not mistake auth,
+  // network or unexpected CLI failures with the same exit code for ordinary waiting.
+  if (
+    result.status === 1 &&
+    !output &&
+    /^no (?:required )?checks reported\b/.test(diagnostic)
+  )
+    return [];
+  if (![0, 1, 8].includes(result.status) || !output)
+    throw new Error(
+      diagnostic ||
+        `Unable to read required checks (gh exited ${result.status})`,
+    );
+  const checks = JSON.parse(output);
+  if (!Array.isArray(checks))
+    throw new Error("Expected a list of required checks from gh");
+  return checks;
+}
+
 export function readSnapshot(repo, number) {
   const pr = readPr(repo, number);
   const reviews = pages(`repos/${repo}/pulls/${number}/reviews?per_page=100`);
@@ -242,19 +285,7 @@ export function readSnapshot(repo, number) {
       ...(protection.checks ?? []).map((check) => check.context),
     ]),
   ];
-  const checks = ghJson(
-    [
-      "pr",
-      "checks",
-      `${number}`,
-      "--repo",
-      `https://github.com/${repo}`,
-      "--required",
-      "--json",
-      "name,bucket,link",
-    ],
-    { acceptCodes: [1, 8] },
-  );
+  const checks = readRequiredChecks(repo, number);
   const after = readPr(repo, number);
   if (
     after.headRefOid !== pr.headRefOid ||

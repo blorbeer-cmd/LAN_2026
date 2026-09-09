@@ -150,7 +150,10 @@ Für diesen Ablauf beginnt der **native GitHub-Reviewbody** mit genau einer Zeil
 <!-- pr-review:v1 head=FULL_HEAD_SHA base=FULL_BASE_SHA verdict=pass -->
 ```
 
-Beide SHAs sind echte vollständige 40-stellige Werte. Erlaubte Ergebnisse: `pass`,
+Beide SHAs sind echte vollständige 40-stellige Werte.
+`base` ist dabei `baseRefOid`, die beim Review verifizierte aktuelle Spitze des Base-Branches
+(`main`), nicht der Git-Merge-Base. Der Merge-Base begrenzt weiterhin den zu prüfenden Diff.
+Erlaubte Ergebnisse: `pass`,
 `changes-required`, `incomplete`. Danach folgen PR-Nummer, Reviewer, echte Session-ID soweit
 bekannt, Prüfungsumfang, Findings, Prüfungen und Grenzen. `commit_id` muss dem Head entsprechen.
 Der Marker allein ist kein Review und kein GitHub-Approval. Ein Reviewer veröffentlicht nur

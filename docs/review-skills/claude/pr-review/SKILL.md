@@ -67,6 +67,8 @@ eigene echte Review-Session-ID als Zuordnung aufnehmen; fehlende IDs nicht erfin
    temporären UTF-8-Datei außerhalb des Repositorys per --body-file bzw. API-Eingabedatei.
    Für `blorbeer-cmd/LAN_2026` beginnt der native Reviewbody zusätzlich mit
    `<!-- pr-review:v1 head=<vollständiger SHA> base=<vollständiger SHA> verdict=pass|changes-required|incomplete -->`.
+   `base` ist `baseRefOid`, die verifizierte aktuelle Spitze des Base-Branches, nicht der
+   Git-Merge-Base. Der Merge-Base begrenzt weiterhin den zu prüfenden Diff.
    Genau ein tatsächliches Verdict einsetzen: `pass` nur bei vollständiger Prüfung ohne
    offene Findings, sonst `changes-required` oder `incomplete`. Anschließend den vollständigen
    Bericht veröffentlichen. Ein grüner Header ohne Prüfung ist verboten. Dieser Header erteilt

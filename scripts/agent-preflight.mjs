@@ -305,7 +305,10 @@ for (const file of [
 }
 
 const standardChecks = {
-  root: ["Pruefungen aus dem tatsaechlich betroffenen Bereich waehlen."],
+  root: [
+    "Pruefungen aus dem tatsaechlich betroffenen Bereich waehlen.",
+    "Bei Tooling-Aenderungen: node --test scripts/agent-preflight.test.mjs scripts/pr-completion.test.mjs",
+  ],
   server: [
     "npm --prefix server run lint",
     "npm --prefix server run build",
@@ -330,7 +333,7 @@ const standardChecks = {
   ],
   infra: [
     "Keine pauschale Testsuite; betroffene Konfiguration statisch validieren und Betriebsrisiko nennen.",
-    "Preflight: node --test scripts/agent-preflight.test.mjs",
+    "Tooling: node --test scripts/agent-preflight.test.mjs scripts/pr-completion.test.mjs",
   ],
 };
 

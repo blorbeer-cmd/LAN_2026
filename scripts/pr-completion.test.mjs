@@ -9,6 +9,7 @@ import {
   carryAuthorization,
   mergeBlockers,
   parseReview,
+  readRequiredChecks,
   reviewMarker,
 } from "./pr-completion.mjs";
 
@@ -181,6 +182,78 @@ test("newer unstructured reviews and empty pass markers fail closed", () => {
   assert.ok(mergeBlockers(snapshot, grant).length);
   snapshot.reviews[1].body = `${reviewMarker(head, base, "pass")}\n`;
   assert.ok(mergeBlockers(snapshot, grant).length);
+});
+
+test("inline-only comment reviews preserve a pass while unresolved threads still block", () => {
+  const { grant, snapshot } = fixture();
+  for (const login of ["reviewer", "another-user"]) {
+    snapshot.reviews.push({
+      ...snapshot.reviews[0],
+      id: snapshot.reviews.length + 1,
+      user: { login },
+      body: "",
+    });
+  }
+  assert.deepEqual(mergeBlockers(snapshot, grant), []);
+  snapshot.threads.push({ isResolved: false });
+  assert.deepEqual(mergeBlockers(snapshot, grant), [
+    "Unresolved review threads",
+  ]);
+  snapshot.threads[0].isResolved = true;
+  snapshot.reviews.shift();
+  assert.ok(
+    mergeBlockers(snapshot, grant).includes(
+      "Complete current-head/base review by the chosen reviewer is missing",
+    ),
+  );
+});
+
+test("the checks command distinguishes unregistered checks from failures", () => {
+  const noChecks = {
+    status: 1,
+    stdout: "",
+    stderr: "no checks reported on the 'feature' branch\n",
+  };
+  const checks = readRequiredChecks("owner/repo", 123, () => noChecks);
+  assert.deepEqual(checks, []);
+  const { grant, snapshot } = fixture();
+  snapshot.checks = checks;
+  assert.deepEqual(mergeBlockers(snapshot, grant), [
+    "Required check not successful: Unit",
+    "Required check not successful: E2E",
+  ]);
+  for (const [status, bucket] of [
+    [0, "pass"],
+    [1, "fail"],
+    [8, "pending"],
+  ]) {
+    const expected = [{ name: "Unit", bucket }];
+    assert.deepEqual(
+      readRequiredChecks("owner/repo", 123, () => ({
+        status,
+        stdout: JSON.stringify(expected),
+        stderr: "",
+      })),
+      expected,
+    );
+  }
+  for (const stderr of [
+    "HTTP 401: Bad credentials",
+    "network connection failed",
+    "",
+  ]) {
+    assert.throws(() =>
+      readRequiredChecks("owner/repo", 123, () => ({ ...noChecks, stderr })),
+    );
+  }
+  assert.throws(
+    () =>
+      readRequiredChecks("owner/repo", 123, () => ({
+        ...noChecks,
+        error: new Error("spawn failed"),
+      })),
+    /spawn failed/,
+  );
 });
 
 test("ownership checks protect foreign worktrees and uncommitted changes", () => {
