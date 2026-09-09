@@ -284,8 +284,11 @@ test('the personal statistics event filter only offers accepted workspaces', asy
 });
 
 test('the workspace switcher keeps event names concise and shows state through its icon', async () => {
-  // Hold the socket-driven event snapshot long enough for the switcher to
-  // open first. This deterministically exercises the ordering seen on CI.
+  // This scenario requires a real A-to-B switch; the previous test leaves B active.
+  // Selecting B again is a no-op and cannot provide the awaited dataset refresh.
+  await switchWorkspaceInBrowser(eventA);
+  // Delay the setup snapshot so the readiness check below is exercised even
+  // on a fast runner, before interacting with the rebuilt switcher.
   await page.route(`${BASE_URL}/api/events`, async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 250));
     await route.continue();
@@ -293,12 +296,10 @@ test('the workspace switcher keeps event names concise and shows state through i
   const started = await api(`/api/events/${eventA}/tracking/start`, { method: 'POST' });
   assert.equal(started.status, 200, JSON.stringify(started.body));
 
-  await switchWorkspaceInBrowser(eventB);
-  // Wait for the socket refresh while the list is still closed. The control
-  // deliberately skips rebuilding an open, focused search so it does not
-  // discard a reader's query; opening before this signal therefore made the
-  // stale row permanent until the test timed out. The delayed route above
-  // turns that CI ordering into a deterministic regression case.
+  // Finish the raw-API fixture update before opening the switcher so its
+  // pending snapshot does not overlap the workspace activation. This test
+  // checks labels and status icons after setup; keeping the list closed also
+  // lets its rows refresh instead of preserving a focused search's old rows.
   await page.waitForFunction(
     (id) =>
       document
@@ -306,6 +307,7 @@ test('the workspace switcher keeps event names concise and shows state through i
         ?.getAttribute('data-event-status') === 'tracking',
     eventA,
   );
+  await switchWorkspaceInBrowser(eventB);
   await page.click('#event-context .search-select-toggle');
   const rows = await page.$$eval('#event-context-switcher-list .search-select-option', (nodes) =>
     nodes.map((node) => ({
@@ -526,11 +528,31 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
     await generalEventCard.locator('.event-card-header-badges .badge').first().innerText(),
     'Allgemeines Event',
   );
-  // #603 made Orga event cards collapsible and collapsed by default once the
-  // list holds more than one entry, so the body must be opened before its
-  // content can be asserted.
-  await expandEventCard(generalEventCard, generalEvent);
-  assert.match(await generalEventCard.innerText(), /Teilnehmende verwalten/);
+  const eventToggle = generalEventCard.locator('[data-event-card-toggle]');
+  assert.equal(await eventToggle.getAttribute('aria-expanded'), 'false');
+  assert.match(await generalEventCard.innerText(), /Erstellt von E2E Bootstrap Admin/);
+  // Collapsed hides the information box, so the header carries the period and
+  // the toggle repeats both in its accessible name.
+  assert.match(await generalEventCard.locator('.event-card-meta-group').innerText(), /\d+\.\d+\.\d{4}|Termin wird noch abgestimmt|Dauerhaft geöffnet/);
+  const toggleLabel = (await eventToggle.getAttribute('aria-label')) ?? '';
+  assert.match(toggleLabel, /Erstellt von E2E Bootstrap Admin/);
+  assert.equal(await eventToggle.getAttribute('aria-describedby'), null);
+  const actionTrigger = generalEventCard.locator('.action-menu > summary');
+  await actionTrigger.focus();
+  await page.keyboard.press('Enter');
+  const editAction = generalEventCard.locator('[data-edit-event]');
+  await editAction.waitFor({ state: 'visible' });
+  assert.equal(await editAction.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.height >= 44 && element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  }), true, 'collapsed-card actions keep a full touch target above sibling cards');
+  assert.equal(await generalEventCard.locator('[data-start-tracking], [data-stop-tracking]').count(), 0);
+  await page.keyboard.press('Escape');
+  assert.equal(await actionTrigger.evaluate((element) => element === document.activeElement), true);
+  await eventToggle.click();
+  assert.equal(await eventToggle.evaluate((element) => element === document.activeElement), true);
+  await generalEventCard.locator('[data-event-participants] > summary').click();
+  assert.match(await generalEventCard.innerText(), /Teilnehmende & Einladungen/);
   assert.equal(
     await generalEventCard.locator('[data-export-event]').count(),
     0,
@@ -640,6 +662,11 @@ test('an organizer can withdraw and restore their own participation on the manag
     body: JSON.stringify({ playerIds: [me.body.id] }),
   });
   assert.equal(roster.status, 200, JSON.stringify(roster.body));
+
+  // The fixture is created outside this browser. Load its initial snapshot
+  // explicitly instead of racing the realtime refresh from the setup requests.
+  await page.reload();
+  await waitForPlayerData(page);
 
   // Events is an Orga tab rather than a "Mehr" destination of its own, so this
   // routes straight to it the same way the other event fixtures do.
