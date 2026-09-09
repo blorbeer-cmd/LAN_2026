@@ -1195,7 +1195,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Jam sessions** — Jam is a grouped page below „Mehr“. Its page heading always exposes an info
   tooltip explaining the shared title/playlist workflow, controller lifecycle and that only the
   controller device needs Spotify. The setup card is shown whenever no controller is paired yet or
-  the paired one is offline, so the unconfigured state is not silently empty. A dedicated local controller on the
+  the paired one is offline, so the unconfigured state is not silently empty. It presents the complete
+  setup as four ordered steps: prepare the music PC, pair it with Respawn, connect Spotify, then choose
+  the audio output. Actions that open the loopback controller explicitly state that they work only in
+  a browser on the music PC. A dedicated local controller on the
   playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant
   starts a session on an explicitly selected playback device; this player is the host. All active
@@ -1206,7 +1209,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   equal space, and only the active result type receives primary emphasis. A playlist
   result starts its complete Spotify playback context and replaces the
   current playback plus pending requests after explicit confirmation. While that context is active,
-  „Als Nächstes“ shows the remaining playlist-track count separately from additional song requests.
+  „Als Nächstes“ reads Spotify's live queue and names the actual next track. It then shows the
+  remaining playlist-track count separately from additional song requests.
   Those requests follow Spotify's append-only queue in request order; reorder and remove
   controls stay hidden because Spotify exposes neither operation for its live queue. Requests use stable full-width rows with artwork,
   title, artist and requester instead of pills; their order is the shared queue order. The current
@@ -1240,6 +1244,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Spotify authorization independently and re-pair an existing installation with a fresh code.
   Respawn's offline state therefore offers reconnection first and a new download only as a fallback.
   Controller requests have bounded timeouts and retry automatically after transient network errors.
+  Every group owner and admin can end the active Jam and then explicitly disconnect the controller.
+  A controller without an active Jam is removed automatically after 30 days without a heartbeat;
+  reconnecting it only needs a fresh pairing code and retains its local Spotify authorization.
   The controller heartbeat remains online when Spotify is temporarily unavailable and omits the
   unavailable playback snapshot so the server retains the last confirmed track. An invalid Respawn
   credential explicitly requests re-pairing; an expired or revoked Spotify refresh token explicitly

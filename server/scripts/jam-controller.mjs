@@ -184,8 +184,17 @@ X-GNOME-Autostart-enabled=true
 function setupFields({ includePairing }) {
   const help = (text) => `<span class="field-help" tabindex="0" aria-label="Info"><span aria-hidden="true">i</span><span class="field-tooltip" role="tooltip">${htmlEscape(text)}</span></span>`;
   return `
+    <div class="guide">
+      <strong>Spotify vorbereiten</strong>
+      <ol>
+        <li><a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Spotify Developer Dashboard öffnen</a> und die vorhandene App öffnen oder einmalig eine App anlegen.</li>
+        <li>In den App-Einstellungen <strong>Web API</strong> und <strong>Web Playback SDK</strong> aktivieren.</li>
+        <li>Unter „Redirect URIs“ exakt <code>${REDIRECT_URI}</code> eintragen und speichern.</li>
+        <li>Die Client-ID aus „Basic Information“ unten eintragen.</li>
+      </ol>
+    </div>
     <label><span class="field-label">Respawn-Adresse ${help('Ist vorausgefüllt. Nur ändern, wenn der Controller einen anderen Respawn-Server verwenden soll.')}</span><input name="respawnBaseUrl" type="url" required value="${htmlEscape(state.respawnBaseUrl || DEFAULT_RESPAWN_URL)}"></label>
-    ${includePairing ? `<div class="row"><label><span class="field-label">Kopplungscode ${help('Beim ersten Download ist der Code vorausgefüllt. Für eine vorhandene Installation auf der Jam-Seite „Vorhandenen Controller koppeln“ oder „Wiederverbindung vorbereiten“ wählen und den neuen Code hier eintragen.')}</span><input name="pairingCode" required autocomplete="off" maxlength="12" value="${htmlEscape(state.pairingCode || '')}"></label><label><span class="field-label">Gerätename</span><input name="label" required value="${htmlEscape(state.label || 'LAN-Musik-PC')}"></label></div>` : ''}
+    ${includePairing ? `<div class="row"><label><span class="field-label">Kopplungscode ${help('Beim ersten Download ist der Code vorausgefüllt. Für eine vorhandene Installation auf der Jam-Seite „Vorhandene Installation koppeln“ oder „Kopplungscode erzeugen“ wählen und den neuen Code hier eintragen.')}</span><input name="pairingCode" required autocomplete="off" maxlength="12" value="${htmlEscape(state.pairingCode || '')}"></label><label><span class="field-label">Gerätename</span><input name="label" required value="${htmlEscape(state.label || 'LAN-Musik-PC')}"></label></div>` : ''}
     <label><span class="field-label">Spotify Client-ID ${help('Im Spotify Developer Dashboard unter deiner App in „Basic Information“. Für Ton im Browser muss dort Web Playback SDK aktiviert sein. Dank PKCE wird kein Client-Secret benötigt oder gespeichert.')}</span><input name="clientId" required autocomplete="off" value="${htmlEscape(state.clientId || '')}"></label>
     <label><span class="field-label">Redirect URI ${help('Diesen Wert im Spotify Developer Dashboard unter „Redirect URIs“ exakt hinzufügen. Er bleibt unabhängig von der Respawn-Adresse gleich.')}</span><code>${REDIRECT_URI}</code></label>
     <details><summary>Erweitert</summary><label><span class="field-label">Respawn-Zugangstoken ${help('Nur für einen Respawn-Server mit altem gemeinsamen Zugangsschutz erforderlich.')}</span><input name="accessToken" type="password" value="${htmlEscape(state.accessToken || '')}"></label></details>`;
@@ -201,7 +210,7 @@ function page(message = '', isError = false) {
   const statusLabel = (value) => value === 'connected' ? 'Verbunden' : value === 'connecting' ? 'Verbindet…' : value === 'authorization_required' ? 'Anmeldung nötig' : value === 'setup' ? 'Einrichtung nötig' : 'Automatischer Neuversuch';
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Respawn Jam-Controller</title><style>
-  :root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#0f1420;color:#eef1f8}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;box-sizing:border-box}.card{width:min(680px,100%);background:#171e30;border:1px solid #303b59;border-radius:18px;padding:24px;box-sizing:border-box}.stack{display:grid;gap:16px}h1,h2,p{margin:0}.muted{color:#9aa4bb}.ok{color:#2bd681}.error{color:#ff6b75}.warning{color:#f7c66a}.status{display:flex;justify-content:space-between;gap:12px;padding:12px;border:1px solid #303b59;border-radius:10px}.status strong:last-child{text-align:right}label{display:grid;gap:7px;color:#9aa4bb;font-size:14px}.field-label{display:flex;align-items:center;gap:7px}.field-help{position:relative;display:inline-grid;place-items:center;width:17px;height:17px;border:1px solid #596783;border-radius:50%;color:#aab4c8;font-size:11px;font-weight:700;cursor:help}.field-tooltip{position:absolute;z-index:10;left:calc(100% + 8px);top:50%;width:min(280px,65vw);padding:9px 11px;border:1px solid #3b496b;border-radius:9px;background:#101625;color:#dce2ef;font-size:12px;font-weight:400;line-height:1.4;box-shadow:0 10px 30px rgba(0,0,0,.35);transform:translateY(-50%);visibility:hidden;opacity:0;pointer-events:none}.field-help:hover .field-tooltip,.field-help:focus .field-tooltip{visibility:visible;opacity:1}input{height:44px;border:1px solid #364363;border-radius:10px;background:#202a44;color:#eef1f8;padding:0 13px;font:inherit}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}button{min-height:44px;border:0;border-radius:10px;padding:0 14px;color:white;font-weight:700;background:linear-gradient(100deg,#5b8cff,#8467ef,#ea4da6);cursor:pointer}.secondary{background:#202a44}.danger{background:#71313b}code{background:#101625;border-radius:8px;padding:8px 10px;word-break:break-all}details{border:1px solid #303b59;border-radius:10px;padding:12px}summary{cursor:pointer;color:#9aa4bb}@media(max-width:600px){.row{grid-template-columns:1fr}.field-tooltip{left:auto;right:0;top:calc(100% + 8px);transform:none}}
+  :root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#0f1420;color:#eef1f8}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;box-sizing:border-box}.card{width:min(680px,100%);background:#171e30;border:1px solid #303b59;border-radius:18px;padding:24px;box-sizing:border-box}.stack{display:grid;gap:16px}h1,h2,p{margin:0}.muted{color:#9aa4bb}.ok{color:#2bd681}.error{color:#ff6b75}.warning{color:#f7c66a}.status{display:flex;justify-content:space-between;gap:12px;padding:12px;border:1px solid #303b59;border-radius:10px}.status strong:last-child{text-align:right}.guide{display:grid;gap:8px;padding:14px;border:1px solid #303b59;border-radius:10px;background:#101625}.guide ol{display:grid;gap:8px;margin:0;padding-left:22px}.guide a{color:#8fb2ff}label{display:grid;gap:7px;color:#9aa4bb;font-size:14px}.field-label{display:flex;align-items:center;gap:7px}.field-help{position:relative;display:inline-grid;place-items:center;width:17px;height:17px;border:1px solid #596783;border-radius:50%;color:#aab4c8;font-size:11px;font-weight:700;cursor:help}.field-tooltip{position:absolute;z-index:10;left:calc(100% + 8px);top:50%;width:min(280px,65vw);padding:9px 11px;border:1px solid #3b496b;border-radius:9px;background:#101625;color:#dce2ef;font-size:12px;font-weight:400;line-height:1.4;box-shadow:0 10px 30px rgba(0,0,0,.35);transform:translateY(-50%);visibility:hidden;opacity:0;pointer-events:none}.field-help:hover .field-tooltip,.field-help:focus .field-tooltip{visibility:visible;opacity:1}input{height:44px;border:1px solid #364363;border-radius:10px;background:#202a44;color:#eef1f8;padding:0 13px;font:inherit}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}button{min-height:44px;border:0;border-radius:10px;padding:0 14px;color:white;font-weight:700;background:linear-gradient(100deg,#5b8cff,#8467ef,#ea4da6);cursor:pointer}.secondary{background:#202a44}.danger{background:#71313b}code{background:#101625;border-radius:8px;padding:8px 10px;word-break:break-all}details{border:1px solid #303b59;border-radius:10px;padding:12px}summary{cursor:pointer;color:#9aa4bb}@media(max-width:600px){.row{grid-template-columns:1fr}.field-tooltip{left:auto;right:0;top:calc(100% + 8px);transform:none}}
   </style></head><body><main class="card stack"><h1>Respawn Jam-Controller</h1>
   <p class="muted">Dieser eine Controller verbindet Respawn mit Spotify. Alle Teilnehmenden bedienen Titel, Playlists, Songwünsche und Wiedergabe im Respawn-Browser; Spotify Client-ID und Tokens bleiben ausschließlich auf diesem Gerät.</p>
   ${message ? `<p class="${isError ? 'error' : 'ok'}">${htmlEscape(message)}</p>` : ''}
@@ -599,9 +608,19 @@ async function sendHeartbeat() {
   try {
     const playback = await spotify('/me/player');
     playbackAvailable = true;
+    let nextTrack = null;
+    if (playback?.context?.type === 'playlist') {
+      try {
+        const queue = await spotify('/me/player/queue');
+        nextTrack = publicTrack(queue?.queue?.[0]);
+      } catch (error) {
+        console.error('[Jam] Spotify-Warteschlange:', error.message);
+      }
+    }
     publicPlayback = playback ? {
       track: publicTrack(playback.item), deviceId: playback.device?.id || null,
       context: playback.context ? { type: playback.context.type || null, uri: playback.context.uri || null } : null,
+      nextTrack,
       isPlaying: Boolean(playback.is_playing), progressMs: Number(playback.progress_ms || 0),
     } : null;
     runtime.spotify = 'connected';
