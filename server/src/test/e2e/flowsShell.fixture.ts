@@ -748,7 +748,10 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     // test ends (same viewport-leak safety net as the Orga Events test).
     await page.setViewportSize({ width: 390, height: 844 });
   });
-  const assertCompactAdminHeader = async (title: string) => {
+  const assertCompactAdminHeader = async (
+    title: string,
+    expectedCardInset: number | { minimum: number } = 68,
+  ) => {
     const header = page.locator('.more-subpage-header');
     assert.equal(await header.count(), 1);
     assert.equal(await header.locator('.more-subpage-title-row h1.view-title').innerText(), title);
@@ -776,7 +779,11 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
         card.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop,
       );
     });
-    assert.equal(cardInset, 68, `${title} should share the compact first-card inset`);
+    if (typeof expectedCardInset === 'number') {
+      assert.equal(cardInset, expectedCardInset, `${title} should use the expected first-card inset`);
+    } else {
+      assert.ok(cardInset >= expectedCardInset.minimum, `${title} should reserve the stacked action row`);
+    }
   };
   // The bootstrap admin is intentionally created before onboarding is
   // completed. Finish it here so the deep-link assertions exercise the
@@ -790,7 +797,26 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   // startup path that a bookmarked hash link uses.
   await page.reload();
   await page.waitForSelector('#admin-feature-usage-refresh');
-  await assertCompactAdminHeader('Nutzungsauswertung');
+  await assertCompactAdminHeader('Nutzungsauswertung', { minimum: 100 });
+  const featureUsageHeaderLayout = await page.locator('#admin-feature-usage-refresh').evaluate((button) => {
+    const row = button.closest('.more-subpage-title-row');
+    const title = row?.querySelector('h1');
+    if (!row || !title) throw new Error('Usage header controls are missing');
+    const buttonRect = button.getBoundingClientRect();
+    const titleRect = title.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    return {
+      buttonRight: Math.round(buttonRect.right),
+      buttonTop: Math.round(buttonRect.top),
+      rowRight: Math.round(rowRect.right),
+      titleBottom: Math.round(titleRect.bottom),
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    };
+  });
+  assert.ok(featureUsageHeaderLayout.buttonRight <= featureUsageHeaderLayout.rowRight, 'the usage refresh button must stay inside the header');
+  assert.ok(featureUsageHeaderLayout.buttonTop >= featureUsageHeaderLayout.titleBottom, 'the usage refresh action must use a separate phone row');
+  assert.ok(featureUsageHeaderLayout.documentWidth <= featureUsageHeaderLayout.viewportWidth, 'the usage page must not overflow horizontally');
   await page.goto(`${BASE_URL}/#adminFeedback`);
   await page.reload();
   await page.waitForSelector('#admin-feedback-title');

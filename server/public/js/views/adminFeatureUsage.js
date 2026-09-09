@@ -108,7 +108,7 @@ export function renderAdminFeatureUsage(container, ctx) {
 
   container.innerHTML = `
     <div class="more-subpage-header">
-      <div class="more-subpage-title-row">
+      <div class="more-subpage-title-row more-subpage-title-row--stack-action">
         ${backButtonHtml({ view: 'admin' })}
         <h1 class="view-title title-with-info">
           <span>Nutzungsauswertung</span>
