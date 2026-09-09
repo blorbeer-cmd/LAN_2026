@@ -135,7 +135,7 @@ async function createPoll(
 }
 
 async function choosePollAction(poll: Locator, selector: string): Promise<void> {
-  const menu = poll.locator('.event-poll-action-menu');
+  const menu = poll.locator('.action-menu');
   if (!(await menu.evaluate((details) => (details as HTMLDetailsElement).open))) await menu.locator('summary').click();
   await menu.locator(selector).click();
 }
@@ -185,14 +185,15 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ownerPage.fill('#event-name', EVENT_NAME);
   await ownerPage.fill('#event-location', 'Bestehender Ort');
   await ownerPage.click('#event-form button[type="submit"]');
-  const participantHandoff = ownerPage.locator('.modal-backdrop', { hasText: `Teilnehmende – ${EVENT_NAME}` });
+  const participantHandoff = ownerPage.locator('.event-card', { hasText: EVENT_NAME }).locator('[data-event-participants][open]');
   await participantHandoff.waitFor();
   assert.match((await ownerPage.locator('.toast').last().textContent()) ?? '', /Jetzt Teilnehmende einladen/);
-  await participantHandoff.locator('[data-close]').click();
+  assert.equal(await ownerPage.locator('.modal-backdrop').count(), 0, 'creation opens the inline roster');
   const eventCard = ownerPage.locator('.event-card', { hasText: EVENT_NAME });
   await eventCard.waitFor();
   const eventId = (await eventCard.getAttribute('data-event-card')) as string;
 
+  await eventCard.locator('.action-menu > summary').click();
   await eventCard.locator('[data-edit-event]').click();
   const editEventModal = ownerPage.locator('.modal-backdrop', { hasText: 'Event bearbeiten' });
   await editEventModal.waitFor();
@@ -240,12 +241,12 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.doesNotMatch(await ownerPoll.innerText(), /01\.01\.1970/);
   await ownerPoll.locator('[data-toggle-poll]').click();
   assert.equal(await ownerPoll.locator('[data-poll-round]:visible').count(), 0, 'the poll can be collapsed');
-  assert.equal(await ownerPoll.locator('.event-poll-action-menu > summary:visible').count(), 1, 'management actions stay available in one collapsed-header menu');
-  await ownerPoll.locator('.event-poll-action-menu > summary').click();
+  assert.equal(await ownerPoll.locator('.action-menu > summary:visible').count(), 1, 'management actions stay available in one collapsed-header menu');
+  await ownerPoll.locator('.action-menu > summary').click();
   assert.equal(await ownerPoll.locator('[data-remind-poll]:visible').count(), 1);
   assert.equal(await ownerPoll.locator('[data-close-poll]:visible').count(), 1);
   assert.equal(await ownerPoll.locator('[data-delete-poll]:visible').count(), 1);
-  await ownerPoll.locator('.event-poll-action-menu > summary').click();
+  await ownerPoll.locator('.action-menu > summary').click();
   await ownerPoll.locator('[data-toggle-poll]').click();
   assert.equal(await ownerPoll.locator('[data-poll-response="can"]').count(), 2);
   assert.equal(await ownerPoll.locator('[data-poll-response="if_needed"]').count(), 2);
@@ -447,13 +448,13 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   });
   const anonymousPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Anonyme Unterkunftswahl' });
   await anonymousPoll.waitFor();
-  const ratingActionMenu = ratingPoll.locator('.event-poll-action-menu');
-  const anonymousActionMenu = anonymousPoll.locator('.event-poll-action-menu');
+  const ratingActionMenu = ratingPoll.locator('.action-menu');
+  const anonymousActionMenu = anonymousPoll.locator('.action-menu');
   await ratingActionMenu.locator('summary').click();
-  await ownerPage.waitForFunction(() => document.querySelector('.event-poll-action-menu[open]')?.closest('.event-poll-card')?.classList.contains('has-open-action-menu'));
+  await ownerPage.waitForFunction(() => document.querySelector('.action-menu[open]')?.closest('.event-poll-card')?.classList.contains('has-open-action-menu'));
   assert.equal(await ratingPoll.evaluate((element) => element.classList.contains('has-open-action-menu')), true);
   await anonymousActionMenu.evaluate((details) => { (details as HTMLDetailsElement).open = true; });
-  await ownerPage.waitForFunction(() => document.querySelectorAll('.event-poll-action-menu[open]').length === 1);
+  await ownerPage.waitForFunction(() => document.querySelectorAll('.action-menu[open]').length === 1);
   assert.equal(await ratingActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false, 'opening another action menu closes the previous one');
   assert.equal(await anonymousActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), true);
   assert.equal(await anonymousPoll.evaluate((element) => element.classList.contains('has-open-action-menu')), true, 'the open menu raises only its own card');
