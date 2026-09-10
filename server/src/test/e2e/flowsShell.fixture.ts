@@ -384,6 +384,10 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
 flowTest('icon-only controls keep the shared minimum touch target on phones', async () => {
   await page.setViewportSize({ width: 390, height: 844 });
 
+  // Icon-only controls keep the 44px --tap-target-size as their minimum WIDTH
+  // (the horizontal touch target), while their height follows --control-height
+  // (32px) so every button is exactly as tall as a standard field like
+  // "Titel"/"Info". The logo link keeps the full 44px square.
   const assertTouchTargets = async (selector: string, label: string) => {
     const sizes = await page.locator(selector).evaluateAll((elements) =>
       elements
@@ -393,9 +397,9 @@ flowTest('icon-only controls keep the shared minimum touch target on phones', as
     );
     assert.ok(sizes.length > 0, `${label} should expose at least one visible touch target`);
     assert.deepEqual(
-      sizes.filter(({ width, height }) => width < 44 || height < 44),
+      sizes.filter(({ width, height }) => width < 44 || height < 32),
       [],
-      `${label} should keep every visible target at least 44 × 44 px: ${JSON.stringify(sizes)}`,
+      `${label} should keep every visible target at least 44 (width) × 32 (control height) px: ${JSON.stringify(sizes)}`,
     );
   };
 
@@ -601,6 +605,14 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   assert.equal(await page.locator('#event-ends-time[placeholder="HH:MM"]').count(), 1);
   assert.equal(await page.locator('#event-starts-time').evaluate((element) => element.tagName), 'INPUT');
   assert.equal(await page.locator('[data-dt-field="event-starts"] select').count(), 0);
+  const eventControlHeights = await page.locator([
+    '#event-name',
+    '#event-type',
+    '#event-starts-date',
+    '[data-dt-field="event-starts"] [data-dt-trigger]',
+    '#event-form > .btn',
+  ].join(', ')).evaluateAll((controls) => controls.map((control) => Math.round(control.getBoundingClientRect().height)));
+  assert.deepEqual(eventControlHeights, [32, 32, 32, 32, 32], 'standard fields, buttons and icon controls share the exact control height');
 
   // Pin the start instead of leaning on the form's default of "now". The end
   // field's calendar opens on the month of its minimum (the start plus the
@@ -633,6 +645,23 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   await page.fill('#event-starts-time', '1435');
   assert.equal(await page.inputValue('#event-starts-date'), '08.07.2027');
   assert.equal(await page.inputValue('#event-starts-time'), '14:35');
+  // Replacing part of an already-valid value produces a one-digit intermediate.
+  // It must not be normalized back into the control before the second character
+  // arrives, and an in-progress minute must not snap before blur.
+  await page.locator('#event-starts-date').focus();
+  await page.locator('#event-starts-date').evaluate((input: HTMLInputElement) => input.setSelectionRange(0, 2));
+  await page.keyboard.type('20');
+  await page.locator('#event-starts-time').focus();
+  await page.locator('#event-starts-time').evaluate((input: HTMLInputElement) => input.setSelectionRange(0, 2));
+  await page.keyboard.type('12');
+  await page.locator('#event-starts-time').evaluate((input: HTMLInputElement) => input.setSelectionRange(3, 5));
+  await page.keyboard.type('34');
+  assert.equal(await page.inputValue('#event-starts-date'), '20.07.2027');
+  assert.equal(await page.inputValue('#event-starts-time'), '12:34');
+  assert.equal(await page.inputValue('#event-starts'), '2027-07-20T12:34');
+  await page.locator('#event-starts-time').blur();
+  assert.equal(await page.inputValue('#event-starts-time'), '12:35');
+  assert.equal(await page.inputValue('#event-starts'), '2027-07-20T12:35');
   assert.equal(await page.locator('.event-payment-label').count(), 0);
   assert.match(await page.locator('#event-paypal').getAttribute('placeholder') ?? '', /E-Mail-Adresse/);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
@@ -797,7 +826,7 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   // startup path that a bookmarked hash link uses.
   await page.reload();
   await page.waitForSelector('#admin-feature-usage-refresh');
-  await assertCompactAdminHeader('Nutzungsauswertung', { minimum: 100 });
+  await assertCompactAdminHeader('Nutzungsauswertung', { minimum: 84 });
   const featureUsageHeaderLayout = await page.locator('#admin-feature-usage-refresh').evaluate((button) => {
     const row = button.closest('.more-subpage-title-row');
     const title = row?.querySelector('h1');
@@ -1010,10 +1039,10 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   // `.number-stepper` wrapper numberStepper.js adds around every
   // `input[type="number"]` (see DESIGN_SYSTEM.md's "Number stepper" entry).
   assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.querySelector('#admin-count') ? 'admin-count' : control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
-  // Rounded: getBoundingClientRect() can return a sub-pixel value like
-  // 35.999969482421875 for an intended 36px depending on the browser's
-  // layout rounding, which a strict-equality assertion here flakes on.
-  assert.equal(await page.locator('#admin-count').evaluate((input) => Math.round(input.getBoundingClientRect().height)), 36);
+  // Rounded: getBoundingClientRect() can return a sub-pixel value close to
+  // the intended --control-height (32px) depending on the browser's layout
+  // rounding, which a strict-equality assertion here would otherwise flake on.
+  assert.equal(await page.locator('#admin-count').evaluate((input) => Math.round(input.getBoundingClientRect().height)), 32);
   assert.equal(await page.locator('.admin-test-controls').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   // The overlay stepper buttons adjust the value by click...
   await page.fill('#admin-count', '5');

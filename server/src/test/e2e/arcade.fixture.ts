@@ -327,29 +327,11 @@ arcadeTest('navigation', 'a direct or expired-match link to Tetris, Gaming-Quiz,
   }
 });
 
-arcadeTest('navigation', 'a background stats update does not detach an active Arcade tile click', async () => {
+arcadeTest('navigation', 'a deferred background render does not detach an active Arcade tile click', async () => {
   const player = await createPlayer('Arcade Pointer Host');
   const host = await openArcadeAs(player.id);
   await host.page.waitForSelector('text=Noch keine Arcade-Runden.');
-  let releaseStats!: () => void;
-  const statsReleased = new Promise<void>((resolve) => { releaseStats = resolve; });
-  let statsStarted!: () => void;
-  const statsRequestStarted = new Promise<void>((resolve) => { statsStarted = resolve; });
-  await host.page.route('**/api/arcade/stats', async (route) => {
-    statsStarted();
-    await statsReleased;
-    await route.continue();
-  });
   try {
-    const navigation = host.page.evaluate(() => {
-      window.dispatchEvent(new Event('respawn:arcade-stats-dirty'));
-      window.dispatchEvent(new Event('respawn:rerender'));
-    });
-    await statsRequestStarted;
-    await navigation;
-    await host.page.waitForSelector('.arcade-tiles');
-    await host.page.waitForSelector('#arcade-stylesheet[data-loaded="true"]', { state: 'attached' });
-
     const tile = host.page.locator('[data-game="quiz"]');
     await tile.dispatchEvent('pointerdown', {
       button: 0,
@@ -361,21 +343,30 @@ arcadeTest('navigation', 'a background stats update does not detach an active Ar
     const tileHandle = await tile.elementHandle();
     assert.ok(tileHandle, 'Quiz tile must remain present after pointerdown');
 
-    const statsResponse = host.page.waitForResponse((response) => response.url().endsWith('/api/arcade/stats') && response.status() === 200);
-    releaseStats();
-    await statsResponse;
+    // Trigger the background refresh only after pointerdown so the test
+    // deterministically exercises the deferred-render path. Waiting merely
+    // for a network response raced the page's fetch continuation and could
+    // instead exercise a normal post-click refresh under runner load.
+    await host.page.evaluate(() => {
+      window.dispatchEvent(new Event('respawn:rerender'));
+    });
     assert.equal(await tileHandle.evaluate((element) => element.isConnected), true);
+
+    // Observe before click so the page context keeps the title created by the
+    // direct route render. The observer's timer is queued after the deferred
+    // flush timer scheduled by click capture. If that stale render was not
+    // cleared, it replaces this exact element before the assertion runs.
     await host.page.evaluate(() => {
       document.documentElement.removeAttribute('data-arcade-direct-render-connected');
       const container = document.getElementById('view-container');
       if (!container) throw new Error('Arcade view container is missing');
       const observer = new MutationObserver(() => {
-        const directRenderTitle = document.getElementById('arcade-active-game-title');
-        if (!directRenderTitle) return;
+        const firstDirectRenderTitle = document.getElementById('arcade-active-game-title');
+        if (!firstDirectRenderTitle) return;
         observer.disconnect();
         setTimeout(() => {
-          document.documentElement.dataset.arcadeDirectRenderConnected = String(directRenderTitle.isConnected);
-        }, 50);
+          document.documentElement.dataset.arcadeDirectRenderConnected = String(firstDirectRenderTitle.isConnected);
+        }, 0);
       });
       observer.observe(container, { childList: true, subtree: true });
     });

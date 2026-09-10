@@ -958,7 +958,7 @@
 }
 .music-pairing-copy {
   width: var(--tap-target-size);
-  height: var(--tap-target-size);
+  height: var(--control-height);
   border: 1px solid var(--border);
   background: var(--bg-elevated-2);
 }
@@ -987,7 +987,7 @@
 }
 .music-copy-row .icon-btn {
   min-width: var(--tap-target-size);
-  min-height: var(--tap-target-size);
+  min-height: var(--control-height);
 }
 .music-account-row {
   gap: var(--space-3);

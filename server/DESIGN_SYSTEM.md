@@ -185,7 +185,19 @@ scale step worth adding here instead).
 `--row-icon-size` (36px) is a separate, unrelated token for the icon tile in
 `.list-row` (players/games/tournaments/"Mehr" hub) — not an avatar.
 
-`--tap-target-size` (44px) is the shared minimum square for icon-only touch controls.
+`--tap-target-size` (44px) is the shared minimum touch *width* of every icon button (so the
+horizontal tap target is preserved) and the min-height of structural rows that are not form
+controls — the topbar/section/page-title header rows, the navigation rail button, the
+collapsible-section header, the food-order and seating rows, the searchable-select option rows, the
+calendar day grid, the game-board/memory cells and the kiosk TV canvas (its own device class).
+`--control-height` (32px) is the shared *height* of every interactive control that lines up in a
+form or toolbar: text inputs, `select`, `textarea`, the searchable-select field, `.btn`,
+`.btn-primary`, icon buttons, segmented toggles, the calendar field/button and the paid/collapse
+toggles. One compact rhythm, so a button, an icon button and a field are all exactly the same
+height and sit flush next to each other everywhere. An icon button is therefore 44px wide (tap
+target) and 32px tall. The field padding (`6px`) and the `.btn` padding (`7px`) are tuned to land on
+this same height; `.btn-sm` reaches it through its own compact padding. This 32px height is a
+deliberate visual choice below the 44px AAA touch target (still above the 24px AA minimum).
 `--info-popover-max-width` (320px) caps contextual-help popovers while their actual width remains
 responsive on smaller screens.
 `--date-picker-width` (360px) gives the shared calendar's month and year selectors enough room on
@@ -417,7 +429,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Spieler/Spiele/Turniere lists and the "Mehr" hub.
 - **Contextual help** — `.info-tooltip` with `.info-tooltip-trigger` and
   `.info-tooltip-panel`, rendered/wired through `infoTooltip.js`; works with pointer, keyboard and
-  touch instead of relying on the native `title` attribute. A tooltip trigger always follows
+  touch instead of relying on the native `title` attribute. It reveals on hover and on focus and is
+  deliberately not a click-to-pin control and keeps the normal cursor (`cursor: default`, no pointer
+  or help cursor on hover): hovering is enough on a pointer device,
+  while focus is what a keyboard Tab and a touch tap produce, so the text stays reachable where there
+  is no hover (phones). It closes on mouse-leave, blur, Escape or an outside pointer press. A tooltip
+  trigger always follows
   directly to the right of the visible text it explains; it does not precede a checkbox or float
   independently at the far edge of a row. The optional `.info-tooltip-trigger--warning` variant
   (red instead of muted) marks the reason beside a currently disabled action, e.g. „Teams
@@ -1509,11 +1526,12 @@ check this line is intentional).
 
 The current, complete list of such exceptions in `server/public`:
 
-- **The 11px vertical control rhythm** — base inputs and the native `select`
-  chevron padding (`style.css`) all
-  share `11px var(--space-3)`; the wider chevron side clears each element's
-  own icon. 11px is deliberate (12px makes the controls taller than the
-  compact buttons they sit next to), it's just not itself a token value.
+- **The compact control rhythm** — base inputs pad `6px var(--space-3)` and
+  `.btn` pads `7px var(--space-5)` (`style.css`); both are tuned so the element
+  lands on `--control-height` (32px) rather than being a spacing-scale value of
+  their own. The native `select` still clears its custom chevron with a wider
+  right padding. Changing `--control-height` means re-tuning these two paddings
+  in the same pass so buttons and fields keep matching.
 - **Avatar sizes at `avatarHtml()` call sites** — real, intentional variety
   (18px inline chips up to 64px on the profile hero); see "Avatar sizes"
   above.

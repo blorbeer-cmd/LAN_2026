@@ -487,12 +487,15 @@ flowTest('Aktuell: an open vote can be dismissed without hiding the next round',
   await currentVote.waitFor();
   const dismissButton = currentVote.locator('[data-dismiss-current]');
   assert.equal(await dismissButton.getAttribute('aria-label'), 'Freitagabend-Runde ausblenden');
+  // Icon-only controls keep the 44px --tap-target-size as their minimum WIDTH
+  // (the horizontal touch target); height follows --control-height (32px), see
+  // the "icon-only controls" assertion in flowsShell.fixture.ts.
   await page.waitForFunction(() => {
     const box = document.querySelector('[data-current-item] [data-dismiss-current]')?.getBoundingClientRect();
-    return Boolean(box && box.width >= 44 && box.height >= 44);
+    return Boolean(box && box.width >= 44 && box.height >= 32);
   });
   const mobileDismissBox = await dismissButton.boundingBox();
-  assert.ok(mobileDismissBox && mobileDismissBox.width >= 44 && mobileDismissBox.height >= 44);
+  assert.ok(mobileDismissBox && mobileDismissBox.width >= 44 && mobileDismissBox.height >= 32);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
   await page.setViewportSize({ width: 900, height: 844 });
   await currentVote.waitFor();

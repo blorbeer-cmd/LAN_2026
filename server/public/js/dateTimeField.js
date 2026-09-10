@@ -473,11 +473,36 @@ export function wireDateTimeField(container, id) {
     popover.querySelector('[data-dt-day][tabindex="0"]')?.focus();
   }
 
+  // Sync a complete manual value and clear a stale error without rewriting the
+  // visible controls. applyMs() deliberately stays on blur/change: calling it
+  // for a valid one-digit intermediate (for example "2.08.2026" while replacing
+  // "15" with "20") would pad the value, move the caret and swallow the next
+  // character. It would also round an in-progress time too early. Requiring the
+  // canonical visible shape still supports programmatic fill(), while short
+  // forms such as "8.7.2026" remain supported when they are committed.
+  function syncManualInputIfValid() {
+    const emptyClearable = !dateInput.value.trim() && clearable;
+    const completeDate = /^\d{2}\.\d{2}\.\d{4}$/.test(dateInput.value);
+    const completeTime = dateOnly || /^\d{2}:\d{2}$/.test(timeInput?.value ?? '');
+    const parsedDate = parseDateInput(dateInput.value);
+    const parsedTime = dateOnly ? { hour: 0, minute: 0 } : parseTimeInput(timeInput?.value ?? '');
+    if (!emptyClearable && (!completeDate || !completeTime || !parsedDate || !parsedTime)) return;
+
+    const ms = emptyClearable
+      ? null
+      : new Date(parsedDate.year, parsedDate.month, parsedDate.day, parsedTime.hour, parsedTime.minute, 0, 0).getTime();
+    hidden.value = ms === null ? '' : toDatetimeLocal(ms);
+    if (clearButton) clearButton.hidden = ms === null;
+    setError();
+    hidden.dispatchEvent(new Event('input', { bubbles: true }));
+  }
   dateInput.addEventListener('input', (event) => {
     dateInput.value = formatDateTyping(dateInput.value, event.inputType);
+    syncManualInputIfValid();
   });
   timeInput?.addEventListener('input', (event) => {
     timeInput.value = formatTimeTyping(timeInput.value, event.inputType);
+    syncManualInputIfValid();
   });
   dateInput.addEventListener('blur', commitManualInput);
   dateInput.addEventListener('change', commitManualInput);
