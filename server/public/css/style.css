@@ -1514,6 +1514,8 @@ textarea {
   display: inline-block;
   border: none;
   border-radius: var(--radius-sm);
+  min-height: var(--control-height);
+  height: var(--control-height);
   padding: 7px var(--space-5); /* design-token-ok: compact control height (32px), matches --control-height */
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
@@ -1584,6 +1586,8 @@ textarea {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  min-height: var(--control-height);
+  height: var(--control-height);
   padding: 6px var(--space-3); /* design-token-ok: compact control rhythm (32px), matches --control-height */
   font-size: var(--font-size-md);
   color: var(--text);
@@ -1595,6 +1599,7 @@ textarea {
   min-width: 0;
 }
 textarea {
+  height: auto;
   font-family: inherit;
   resize: vertical;
 }

@@ -351,6 +351,25 @@ arcadeTest('navigation', 'a deferred background render does not detach an active
       window.dispatchEvent(new Event('respawn:rerender'));
     });
     assert.equal(await tileHandle.evaluate((element) => element.isConnected), true);
+
+    // Observe before click so the page context keeps the title created by the
+    // direct route render. The observer's timer is queued after the deferred
+    // flush timer scheduled by click capture. If that stale render was not
+    // cleared, it replaces this exact element before the assertion runs.
+    await host.page.evaluate(() => {
+      document.documentElement.removeAttribute('data-arcade-direct-render-connected');
+      const container = document.getElementById('view-container');
+      if (!container) throw new Error('Arcade view container is missing');
+      const observer = new MutationObserver(() => {
+        const firstDirectRenderTitle = document.getElementById('arcade-active-game-title');
+        if (!firstDirectRenderTitle) return;
+        observer.disconnect();
+        setTimeout(() => {
+          document.documentElement.dataset.arcadeDirectRenderConnected = String(firstDirectRenderTitle.isConnected);
+        }, 0);
+      });
+      observer.observe(container, { childList: true, subtree: true });
+    });
     await tileHandle.dispatchEvent('pointerup', {
       button: 0,
       buttons: 0,
@@ -360,16 +379,11 @@ arcadeTest('navigation', 'a deferred background render does not detach an active
     });
     await tileHandle.dispatchEvent('click', { button: 0 });
 
-    const directRenderTitle = host.page.locator('#arcade-active-game-title:has-text("Gaming-Quiz")');
-    await directRenderTitle.waitFor();
-    const directRenderTitleHandle = await directRenderTitle.elementHandle();
-    assert.ok(directRenderTitleHandle, 'the click must render the selected Arcade game');
-    await host.page.evaluate(() => new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-    }));
+    await host.page.waitForSelector('#arcade-active-game-title:has-text("Gaming-Quiz")');
+    await host.page.waitForFunction(() => document.documentElement.dataset.arcadeDirectRenderConnected);
     assert.equal(
-      await directRenderTitleHandle.evaluate((element) => element.isConnected),
-      true,
+      await host.page.evaluate(() => document.documentElement.dataset.arcadeDirectRenderConnected),
+      'true',
       'the click render must supersede the deferred background render',
     );
     assert.equal(new URL(host.page.url()).hash, '#arcade/quiz');

@@ -605,6 +605,14 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   assert.equal(await page.locator('#event-ends-time[placeholder="HH:MM"]').count(), 1);
   assert.equal(await page.locator('#event-starts-time').evaluate((element) => element.tagName), 'INPUT');
   assert.equal(await page.locator('[data-dt-field="event-starts"] select').count(), 0);
+  const eventControlHeights = await page.locator([
+    '#event-name',
+    '#event-type',
+    '#event-starts-date',
+    '[data-dt-field="event-starts"] [data-dt-trigger]',
+    '#event-form > .btn',
+  ].join(', ')).evaluateAll((controls) => controls.map((control) => Math.round(control.getBoundingClientRect().height)));
+  assert.deepEqual(eventControlHeights, [32, 32, 32, 32, 32], 'standard fields, buttons and icon controls share the exact control height');
 
   // Pin the start instead of leaning on the form's default of "now". The end
   // field's calendar opens on the month of its minimum (the start plus the
@@ -637,6 +645,23 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   await page.fill('#event-starts-time', '1435');
   assert.equal(await page.inputValue('#event-starts-date'), '08.07.2027');
   assert.equal(await page.inputValue('#event-starts-time'), '14:35');
+  // Replacing part of an already-valid value produces a one-digit intermediate.
+  // It must not be normalized back into the control before the second character
+  // arrives, and an in-progress minute must not snap before blur.
+  await page.locator('#event-starts-date').focus();
+  await page.locator('#event-starts-date').evaluate((input: HTMLInputElement) => input.setSelectionRange(0, 2));
+  await page.keyboard.type('20');
+  await page.locator('#event-starts-time').focus();
+  await page.locator('#event-starts-time').evaluate((input: HTMLInputElement) => input.setSelectionRange(0, 2));
+  await page.keyboard.type('12');
+  await page.locator('#event-starts-time').evaluate((input: HTMLInputElement) => input.setSelectionRange(3, 5));
+  await page.keyboard.type('34');
+  assert.equal(await page.inputValue('#event-starts-date'), '20.07.2027');
+  assert.equal(await page.inputValue('#event-starts-time'), '12:34');
+  assert.equal(await page.inputValue('#event-starts'), '2027-07-20T12:34');
+  await page.locator('#event-starts-time').blur();
+  assert.equal(await page.inputValue('#event-starts-time'), '12:35');
+  assert.equal(await page.inputValue('#event-starts'), '2027-07-20T12:35');
   assert.equal(await page.locator('.event-payment-label').count(), 0);
   assert.match(await page.locator('#event-paypal').getAttribute('placeholder') ?? '', /E-Mail-Adresse/);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
