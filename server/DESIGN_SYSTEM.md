@@ -119,6 +119,7 @@ what had drifted into ~17 near-duplicate raw values).
 | `--font-weight-bold` | 700 | Section titles, card headers |
 | `--font-weight-black` | 800 | View titles, wordmark |
 | `--line-height-tight` | 1 | Icons, badges, single-line chips |
+| `--control-line-height` | 1.25 | Einzeilige Controls; Details: [Controls](frontend-contracts/components/controls.md) |
 
 Font family is `--font` (system font stack) — set once on `body`, no need to
 reference it elsewhere. All native form controls inherit that same stack. Use `.player-name` for a
@@ -185,19 +186,10 @@ scale step worth adding here instead).
 `--row-icon-size` (36px) is a separate, unrelated token for the icon tile in
 `.list-row` (players/games/tournaments/"Mehr" hub) — not an avatar.
 
-`--tap-target-size` (44px) is the shared minimum touch *width* of every icon button (so the
-horizontal tap target is preserved) and the min-height of structural rows that are not form
-controls — the topbar/section/page-title header rows, the navigation rail button, the
-collapsible-section header, the food-order and seating rows, the searchable-select option rows, the
-calendar day grid, the game-board/memory cells and the kiosk TV canvas (its own device class).
-`--control-height` (32px) is the shared *height* of every interactive control that lines up in a
-form or toolbar: text inputs, `select`, `textarea`, the searchable-select field, `.btn`,
-`.btn-primary`, icon buttons, segmented toggles, the calendar field/button and the paid/collapse
-toggles. One compact rhythm, so a button, an icon button and a field are all exactly the same
-height and sit flush next to each other everywhere. An icon button is therefore 44px wide (tap
-target) and 32px tall. The field padding (`6px`) and the `.btn` padding (`7px`) are tuned to land on
-this same height; `.btn-sm` reaches it through its own compact padding. This 32px height is a
-deliberate visual choice below the 44px AAA touch target (still above the 24px AA minimum).
+`--tap-target-size` (44px) defines registered structural heights and the shared minimum width of
+icon controls. `--control-height` (32px) defines the shared height of standard interactive controls
+on desktop and mobile. Variants, ownership, interim geometry and structure targets are specified in
+the [Controls contract](frontend-contracts/components/controls.md).
 `--info-popover-max-width` (320px) caps contextual-help popovers while their actual width remains
 responsive on smaller screens.
 `--date-picker-width` (360px) gives the shared calendar's month and year selectors enough room on
@@ -279,7 +271,8 @@ view and to new views unless a documented domain constraint requires a different
    Compact actions must not increase the height of data rows. A primary action uses the Respawn
    gradient, destructive actions use the danger treatment, and parallel secondary actions share
    the available width. Actions for a repeated card belong in a separated, consistently positioned
-   footer when variable content would otherwise make cards drift.
+   footer when variable content would otherwise make cards drift. See the
+   [Controls contract](frontend-contracts/components/controls.md) for normative geometry and reflow.
 6. **Prefer rectangular rows over pills for people and data.** Player selections, assigned players,
    lobby members and similar records use the shared avatar/name/metadata row. Avatar, name, status,
    role and trailing action remain vertically centered, and long user content may wrap or truncate
@@ -331,9 +324,9 @@ view and to new views unless a documented domain constraint requires a different
 
 Components are plain CSS classes (no JS component library) in `style.css`:
 
-- **Button** — `.btn` (default), `.btn-primary`, `.btn-danger`, `.btn-block`
-  (full width), `.btn-sm` (compact). Combine variant + size, e.g.
-  `class="btn btn-primary btn-sm"`.
+- **Button** — `.btn` composes meaning (`.btn-primary`, `.btn-danger`, `.btn-ready`), width
+  (`.btn-block`, `.btn-equal`) and compact text (`.btn-sm`) without caller-owned inner geometry.
+  Variants and status: [Controls](frontend-contracts/components/controls.md).
 - **Action menu** — `actionMenuHtml`/`wireActionMenus` in `actionMenu.js` is the shared
   disclosure for Event and poll management. Its `.btn.btn-sm` trigger has a visible border and
   Lucide chevron; the panel composes standard secondary/danger buttons with `--tap-target-size`
@@ -1162,7 +1155,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `--no-opponent`), so from `--bp-md` „Lobby öffnen“ keeps one width and equal left and right
   insets across every game. On phones the primary action forms the full-width first row. The mode
   and opponent switches form the second row in that order and split its available width evenly;
-  every label stays inside its segment.
+  every label stays inside its segment. Below the minimum width documented in the
+  [Controls contract](frontend-contracts/components/controls.md), each switch receives its own row.
   Tetris, Pong, Snake and
   Blobby Volley all select Duell by default. A disabled „Lobby
   öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
@@ -1531,7 +1525,8 @@ The current, complete list of such exceptions in `server/public`:
   lands on `--control-height` (32px) rather than being a spacing-scale value of
   their own. The native `select` still clears its custom chevron with a wider
   right padding. Changing `--control-height` means re-tuning these two paddings
-  in the same pass so buttons and fields keep matching.
+  in the same pass so buttons and fields keep matching. Normative status and details:
+  [Controls](frontend-contracts/components/controls.md).
 - **Avatar sizes at `avatarHtml()` call sites** — real, intentional variety
   (18px inline chips up to 64px on the profile hero); see "Avatar sizes"
   above.

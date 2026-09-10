@@ -159,6 +159,7 @@
 .arcade-lobby-create-actions {
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
   gap: var(--space-2);
   margin-right: var(--space-3);
   margin-left: var(--space-3);
@@ -208,6 +209,7 @@
 .arcade-lobby-create-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(var(--control-height), auto);
   align-items: center;
   gap: var(--space-2);
   min-height: var(--control-height);
@@ -236,25 +238,29 @@
    that one primary action for attention. */
 .arcade-mode-toggle {
   display: inline-flex;
-  align-items: center;
+  align-items: stretch;
   flex: 0 0 var(--arcade-lobby-mode-toggle-width);
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   min-height: var(--control-height);
-  padding: var(--space-1);
-  border: 1px solid var(--border);
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-full);
   background: var(--bg-elevated-2);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
 .arcade-mode-toggle-btn {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: var(--control-height);
   border: none;
   border-radius: var(--radius-full);
-  padding: var(--space-2);
+  padding-block: 0;
+  padding-inline: var(--space-2);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
+  line-height: var(--control-line-height);
   color: var(--text-muted);
   background: transparent;
   text-align: center;
@@ -294,14 +300,39 @@
   grid-column: 2;
   grid-row: 2;
 }
+@container (max-width: 187.99px) { /* design-token-ok: 184px measured Arcade segment minimum plus one 4px step for the 320px three-row contract */
+  .arcade-lobby-create-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .arcade-lobby-create-row > .btn,
+  .arcade-lobby-create-row > .arcade-mode-toggle {
+    grid-column: 1;
+    width: 100%;
+  }
+  .arcade-lobby-create-row > .btn,
+  .arcade-lobby-create-row > .info-tooltip {
+    grid-row: 1;
+  }
+  .arcade-lobby-create-row > .info-tooltip {
+    grid-column: 1;
+    justify-self: end;
+  }
+  .arcade-lobby-create-row > .arcade-mode-toggle:first-child {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .arcade-lobby-create-row > .arcade-mode-toggle:last-child {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
 @media (min-width: 640px) { /* --bp-md */
   .arcade-mode-toggle {
     width: var(--arcade-lobby-mode-toggle-width);
   }
   .arcade-mode-toggle-btn {
     flex-basis: 0;
-    padding-right: var(--space-3);
-    padding-left: var(--space-3);
+    padding-inline: var(--space-3);
   }
   .arcade-lobby-create-row > .btn {
     width: auto;
