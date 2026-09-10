@@ -108,12 +108,13 @@ export function wireInfoTooltips(root) {
     activeTrigger = null;
   }
   root.querySelectorAll('[data-info-tooltip-trigger]').forEach((trigger) => {
-    // Info tooltips reveal on hover (pointer) and on focus. Focus is what a
-    // keyboard Tab and a touch tap produce, so the text stays reachable where
-    // there is no hover (phones); the trigger is deliberately not a
-    // click-to-pin control.
+    // Info tooltips reveal on hover (pointer), focus and activation. Activation
+    // matters after Escape: the trigger keeps focus, so pressing Enter again
+    // emits click without another focus event. Opening on click restores that
+    // keyboard/touch path without bringing back the former click-to-pin state.
     trigger.addEventListener('mouseenter', () => open(trigger));
     trigger.addEventListener('focus', () => open(trigger));
+    trigger.addEventListener('click', () => open(trigger));
     trigger.closest('[data-info-tooltip]')?.addEventListener('mouseleave', () => {
       if (!trigger.matches(':focus-visible')) close(trigger);
     });
