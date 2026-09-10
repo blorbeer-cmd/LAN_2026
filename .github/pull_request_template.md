@@ -24,5 +24,7 @@ Screenshots/Preview nennen. Andernfalls "Keine sichtbare UI/UX-Änderung".
 ## Review
 
 <!-- Reviewer und Ergebnis-Link für den aktuellen Head ergänzen, sobald vorhanden.
-Review manuell in frischer Unterhaltung starten. Details: docs/manual-pr-review.md.
-Keine Agenten-Approvals oder automatischer Merge. -->
+Review in frischer Unterhaltung starten. Beide Sessions mit PR #<Nummer> und Rolle benennen.
+Details: docs/manual-pr-review.md und docs/pr-completion.md.
+Keine Agenten-Approvals. Merge durch den Implementierer nur nach ausdrücklicher
+Nutzerfreigabe und erneuter Prüfung des aktuellen Heads. -->

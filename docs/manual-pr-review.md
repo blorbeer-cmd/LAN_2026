@@ -1,9 +1,15 @@
-# Manuelle PR-Reviews mit Claude und Codex
+# PR-Reviews mit Claude und Codex
 
 Der Nutzer startet das Review im gewünschten Werkzeug. Das Ergebnis steht am GitHub-PR;
 der implementierende Agent liest und bewertet es dort. Ein Anbieterwechsel benötigt keinen
 Launcher. Derselbe Anbieter in einer frischen Unterhaltung ist ein Self-Review, der andere
 Anbieter ein Cross-Review. Ein menschliches Review ist ebenfalls möglich.
+
+Branch-Pflege, Sessionnamen, ausdrücklich autorisierte Folgereviews und Merge nach
+Nutzerfreigabe stehen in [PR-Abschluss](pr-completion.md). Dieser ergänzende Ablauf hat bei den
+folgenden Beschreibungen von manuellem Reviewstart und menschlichem Merge Vorrang: manuell
+bleibt der Standard, bis der Nutzer für den konkreten PR Folgereviews beziehungsweise den
+Merge delegiert. Es gibt keine allgemeine Merge-Freigabe durch den Implementierungsauftrag.
 
 ## Ablauf
 
@@ -19,7 +25,8 @@ Anbieter ein Cross-Review. Ein menschliches Review ist ebenfalls möglich.
    sofortige Prüfung auslösen. Der Implementierer liest GitHub neu, bewertet Findings
    und bearbeitet berechtigte Korrekturen im Rahmen seines bestehenden Auftrags.
 6. Nach einem neuen Commit CI und Review erneut prüfen lassen. Erst bei konfliktfreiem PR,
-   grünen erforderlichen Checks und vollständigem Review des aktuellen Heads merged der Nutzer.
+   grünen erforderlichen Checks und vollständigem Review des aktuellen Heads merged der Nutzer
+   oder der ausdrücklich nach `pr-completion.md` autorisierte Implementierer.
 
 Eine frische Unterhaltung genügt als Kontexttrennung. Es gibt keinen Pflichtnachweis für eine
 technisch erzwungene Read-only-Sandbox. Der Reviewer hält sich an den Prüfauftrag: keine
@@ -32,8 +39,11 @@ bleiben historisch sichtbar, gelten aber nicht für einen neuen Head. Findings w
 bewertet; erledigte oder belegbar obsolete Inline-Threads löst der Implementierer auf.
 
 GitHub erzwingt die inhaltliche Review-Vollständigkeit nicht durch einen eigenen Pipeline-Check.
-Der Nutzer prüft vor dem Merge Ergebnis, SHA und offene Threads. Die sechs vorhandenen
-CI-Pflichtchecks, Conversation Resolution und die Regel „Human merge only“ bleiben bestehen.
+Der Nutzer beziehungsweise der autorisierte Implementierer prüft vor dem Merge Ergebnis, SHA
+und offene Threads. Der lokale Abschlusshelfer prüft diese Voraussetzungen zusätzlich. Die
+bestehenden CI-Pflichtchecks und Conversation Resolution bleiben bestehen; der Helfer ändert
+keine GitHub-Schutzregeln. Die historische Regel „Human merge only“ enthält seit dem
+7. September keine Update-Sperre mehr, sondern Lösch- und Force-Push-Schutz.
 
 ## Persönliche Skills installieren oder aktualisieren
 
@@ -113,12 +123,15 @@ Der gespeicherte Auftrag nennt PR-Link, Worktree, erwarteten Head und die eigene
 Er setzt die Regeln aus `AGENTS.md` um: GitHub frisch lesen, neue/geänderte Ergebnisse einmal
 bewerten, ohne Neues still bleiben und bei Head-Wechsel CI und Reviewzuordnung erneuern.
 Bereitschaftsmeldungen und bearbeitete Review-IDs/Änderungsstände im Task-Kontext erhalten.
-Bei abgeschlossenem Review ohne offene Findings am aktuellen Head, Merge, Schließen oder
-Nutzerstopp beenden. Nach Fix-Commits die nächste Runde beobachten; bei nicht behebbaren
+Bei abgeschlossenem Review ohne offene Findings am aktuellen Head ohne Merge-Freigabe beenden;
+mit Freigabe nach `pr-completion.md` bis zum bestätigten Merge begleiten. Bei Merge, Schließen
+oder Nutzerstopp immer beenden. Nach Fix-Commits die nächste Runde beobachten; bei nicht behebbaren
 Zugriffs- oder Schedulerfehlern einmal informieren und pausieren.
 
 Die 15-Minuten-Beobachtung ist ausdrücklich vom Nutzer gewünscht und bleibt der Standard.
-Sie startet keine Reviewer und ersetzt weder das Review noch den direkten Nutzerhinweis.
+Sie ersetzt weder das Review noch den direkten Nutzerhinweis. Neue Review-Sessions startet sie
+nur nach einem ausdrücklichen PR-bezogenen Auftrag mit festgelegtem Anbieter; ohne diesen
+Auftrag bleibt der Reviewstart manuell.
 Bei der Einrichtung Laufzeitgrenzen nennen: **Die Claude-Implementierungs-Session geöffnet
 halten.** Je nach installiertem Build gehen Session-Jobs beim Beenden verloren; neuere Builds
 können noch nicht abgelaufene Jobs beim Fortsetzen wiederherstellen. Nicht auf diese Möglichkeit

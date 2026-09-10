@@ -137,8 +137,12 @@ Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
   pushen“ oder „kein PR“ ganz oder teilweise ausschließen. Bei unklarem Änderungsscope,
   sachfremden Änderungen im Arbeitsbaum, fehlenden Berechtigungen, einer wesentlichen Erweiterung
   des Auftrags oder einer kritischen Entscheidung zu Datenverlust, Berechtigungen oder Produktion
-  vor der betroffenen Aktion anhalten. Niemals direkt auf `main` pushen, approven, mergen oder Auto-Merge
-  aktivieren. Commits klein, in sich geschlossen und imperativ auf Englisch benennen.
+  vor der betroffenen Aktion anhalten. Niemals direkt auf `main` pushen oder approven. Ein Merge
+  ist ausschließlich nach ausdrücklicher, PR-bezogener Nutzerfreigabe und nach dem geprüften
+  Ablauf in `docs/pr-completion.md` erlaubt. Native Auto-Merge-Aktivierung und Schutzregel-Bypass
+  bleiben ausgeschlossen. Die Freigabe darf nur nachweislich konfliktfreie `main`-Aktualisierungen
+  überleben; eigene Änderungen benötigen eine neue Freigabe. Commits klein, in sich geschlossen
+  und imperativ auf Englisch benennen.
 - Abhängigkeiten und Lockfiles nur ändern, wenn sie notwendig sind; neue Pakete auf Wartung,
   Sicherheit und Offline-Auswirkungen prüfen.
 
