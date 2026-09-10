@@ -94,7 +94,7 @@ function openInviteModal(invite) {
       : '';
   const validityHint = `${inviteValidityLabel(invite.expiresAt)}. ${reusable ? 'Mehrfach nutzbar.' : 'Der Link funktioniert nur einmal.'}`;
   const { el } = openModal(
-    `${invitePurposeLabel(invite.purpose)}${escapeHtml(target)}`,
+    `${invitePurposeLabel(invite.purpose)}${target}`,
     `<div class="stack">
       <label for="admin-invite-link">Link</label>
       ${eventHint}

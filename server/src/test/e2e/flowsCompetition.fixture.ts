@@ -12,6 +12,7 @@ import {
   page,
   adminCookie,
   alice,
+  bob,
   openMatchmakingHistory,
   openTeams,
   openAuswertungTab,
@@ -33,16 +34,24 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     const current = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
     if (current.open) await page.request.post(`${BASE_URL}/api/votes/cancel`);
   });
+  const profileTitle = 'Tom & Jerry';
+  const renameBob = await fetch(`${BASE_URL}/api/players/${bob.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: bob.cookie },
+    body: JSON.stringify({ name: profileTitle }),
+  });
+  assert.equal(renameBob.status, 200, await renameBob.text());
+
   // The separate "Spieler" area is gone: Home's Live-Status is the roster and
   // every card opens that participant's profile. Identities are still created
   // through the API that future user management will own.
   await page.click('.nav-btn[data-view="home"]');
-  await page.waitForSelector('button[data-player]:has-text("E2E Bob")');
+  await page.waitForSelector(`button[data-player]:has-text("${profileTitle}")`);
 
   // The live state (badge text) is part of the button's accessible name, not
   // hidden inside presentational children — role=button treats descendants as
   // presentational, so an aria-label alone would have silently dropped it.
-  const bobCard = page.locator('button[data-player]', { hasText: 'E2E Bob' });
+  const bobCard = page.locator('button[data-player]', { hasText: profileTitle });
   const bobBadgeText = (await bobCard.locator('.badge').innerText()).trim();
   assert.ok(
     (await bobCard.getAttribute('aria-label'))?.includes(bobBadgeText),
@@ -50,9 +59,13 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   );
 
   // Other profiles are read-only; the current identity opens its own editor.
-  await page.click('button[data-player] >> text=E2E Bob');
-  await page.waitForSelector('.modal:has-text("E2E Bob")');
-  assert.equal(await page.getByText('Dieses Profil kann nur von E2E Bob selbst bearbeitet werden.', { exact: true }).count(), 0);
+  await bobCard.click();
+  const playerDialog = page.locator('.modal');
+  await playerDialog.waitFor();
+  assert.equal(await playerDialog.locator('.modal-header h2').count(), 1);
+  assert.equal(await playerDialog.locator('.modal-header h2').textContent(), profileTitle);
+  assert.equal(await playerDialog.getAttribute('aria-label'), profileTitle);
+  assert.equal(await page.getByText(`Dieses Profil kann nur von ${profileTitle} selbst bearbeitet werden.`, { exact: true }).count(), 0);
   assert.equal(await page.locator('#detail-save, #detail-delete, #detail-apikey').count(), 0);
   await page.click('[data-close]');
   await page.click('button[data-player] >> text=E2E Alice');
@@ -63,9 +76,9 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await openTeams();
   assert.equal(await page.inputValue('#mm-teamcount'), '2');
   await page.click('[data-selection-search-trigger][aria-controls="mm-player-search"]');
-  await page.fill('#mm-player-search', 'E2E Bob');
+  await page.fill('#mm-player-search', profileTitle);
   await page.waitForFunction(() => document.querySelectorAll('[data-mm-draw-search-item]:not([hidden])').length === 1);
-  assert.equal(await page.locator('[data-mm-draw-search-item]:not([hidden])').getByText('E2E Bob', { exact: true }).count(), 1);
+  assert.equal(await page.locator('[data-mm-draw-search-item]:not([hidden])').getByText(profileTitle, { exact: true }).count(), 1);
   await page.click('#mm-select-none');
   assert.equal(await page.locator('[data-mm-draw-search-item]:not([hidden]) [data-player]:checked').count(), 0);
   assert.equal(

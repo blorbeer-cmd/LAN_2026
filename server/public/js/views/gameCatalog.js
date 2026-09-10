@@ -445,7 +445,7 @@ function openGameDetail(gameId, ctx) {
 
   let modalEl;
   const { close } = openModal(
-    escapeHtml(game.name),
+    game.name,
     `
       <div class="stack">
         <div class="row" style="align-items:center;">

@@ -52,6 +52,41 @@ flowTest('fresh device uses the personal login and reaches the app with its veri
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
+flowTest('openModal treats its title as plain text', async () => {
+  const rawTitle = `Titel </h2><img data-modal-title-foreign src="x" onerror="window.__modalTitleInjected = true"><script>window.__modalTitleInjected = true</script> "Tom & Jerry's"`;
+  const result = await page.evaluate(async (title) => {
+    const { openModal } = await globalThis.eval("import('/js/modal.js')");
+    const testWindow = window as Window & { __modalTitleInjected?: boolean };
+    testWindow.__modalTitleInjected = false;
+    const { el, close } = openModal(title, '<p data-modal-contract-body>Vertrauenswürdiger Inhalt</p>');
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const dialog = el.querySelector('.modal')!;
+    const heading = dialog.querySelector('h2')!;
+    const observed = {
+      headingText: heading.textContent,
+      ariaLabel: dialog.getAttribute('aria-label'),
+      headingCount: dialog.querySelectorAll('.modal-header h2').length,
+      foreignElementCount: el.querySelectorAll('[data-modal-title-foreign], script').length,
+      dialogAttributes: dialog.getAttributeNames().sort(),
+      handlerExecuted: testWindow.__modalTitleInjected,
+      trustedBodyCount: dialog.querySelectorAll('[data-modal-contract-body]').length,
+    };
+    close();
+    delete testWindow.__modalTitleInjected;
+    return observed;
+  }, rawTitle);
+
+  assert.deepEqual(result, {
+    headingText: rawTitle,
+    ariaLabel: rawTitle,
+    headingCount: 1,
+    foreignElementCount: 0,
+    dialogAttributes: ['aria-label', 'aria-modal', 'class', 'role'],
+    handlerExecuted: false,
+    trustedBodyCount: 1,
+  });
+});
+
 flowTest('wide desktop adapts the shared shell and pilot views without changing mobile navigation', async (t) => {
   t.after(async () => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -1267,19 +1302,22 @@ flowTest('Sitzplan: the real name set in Mein Profil shows in small everywhere t
 });
 
 flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
+  const gameTitle = 'Tom & Jerry';
   await page.click('.nav-btn[data-view="gameCatalog"]');
   await page.waitForSelector('#suggest-new');
 
   await page.click('#suggest-new');
   await page.waitForSelector('#suggest-trailer + .muted');
-  await page.fill('#suggest-title', 'E2E Partyspiel');
+  assert.equal(await page.locator('.modal-header h2').textContent(), 'Spiel vorschlagen');
+  assert.equal(await page.locator('.modal').getAttribute('aria-label'), 'Spiel vorschlagen');
+  await page.fill('#suggest-title', gameTitle);
   await page.click('#suggest-form button[type="submit"]');
-  await page.waitForSelector('text=E2E Partyspiel');
+  await page.waitForSelector(`text=${gameTitle}`);
   await page.waitForSelector('button[data-tab="suggestions"].btn-primary');
   const gamesResponse = await page.request.get(`${BASE_URL}/api/games`);
   assert.equal(gamesResponse.status(), 200);
   const games = (await gamesResponse.json()) as Array<{ name: string; trailer_url: string | null }>;
-  const createdSuggestion = games.find((game) => game.name === 'E2E Partyspiel');
+  const createdSuggestion = games.find((game) => game.name === gameTitle);
   assert.ok(createdSuggestion);
   assert.ok(createdSuggestion.trailer_url);
   assert.match(createdSuggestion.trailer_url, /^https:\/\/www\.youtube\.com\/results\?search_query=.*gameplay$/);
@@ -1287,7 +1325,7 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   // Same name again (different case): server must refuse — otherwise votes,
   // skills and results would silently split across two identical entries.
   await page.click('#suggest-new');
-  await page.fill('#suggest-title', 'e2e partyspiel');
+  await page.fill('#suggest-title', gameTitle.toLowerCase());
   await page.click('#suggest-form button[type="submit"]');
   await page.waitForSelector('.toast-error');
   await page.waitForSelector('text=gibt es schon');
@@ -1298,7 +1336,7 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
 
   // A suggestion carries both meters, Bock *and* Skill — how good the group
   // already is at a game is part of deciding whether to accept it at all.
-  const suggestionRow = page.locator('.game-table-row', { hasText: 'E2E Partyspiel' });
+  const suggestionRow = page.locator('.game-table-row', { hasText: gameTitle });
   await suggestionRow.locator('.skill-row[data-kind="skill"] input[type="range"]').waitFor();
 
   // "Katalog" holds the accepted games only, so the still-open suggestion is
@@ -1306,7 +1344,7 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   // through its icon-only "Vorschlag" badge (plus a matching row border),
   // which an accepted game never carries.
   await page.click('button[data-tab="catalog"]');
-  await page.waitForSelector('.game-table-row:has-text("E2E Partyspiel")', { state: 'detached' });
+  await page.locator('.game-table-row', { hasText: gameTitle }).waitFor({ state: 'detached' });
   await page.click('button[data-tab="all"]');
   await suggestionRow.locator('.game-row-status-badge[title="Vorschlag"]').waitFor();
   assert.ok(await suggestionRow.evaluate((el) => el.classList.contains('is-suggestion')));
@@ -1329,7 +1367,7 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
   await page.locator('#votes-game-select label.check-row', { hasText: 'Counter-Strike 2' }).waitFor();
   assert.equal(
-    await page.locator('#votes-game-select label.check-row', { hasText: 'E2E Partyspiel' }).count(),
+    await page.locator('#votes-game-select label.check-row', { hasText: gameTitle }).count(),
     0,
     'a suggestion must not be offered as a votable game',
   );
@@ -1341,9 +1379,14 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   // icon), then rate it right in the row — no detour through a separate
   // profile page needed.
   await suggestionRow.locator('[data-detail]').click();
+  const gameDialog = page.locator('.modal');
+  await gameDialog.waitFor();
+  assert.equal(await gameDialog.locator('.modal-header h2').count(), 1);
+  assert.equal(await gameDialog.locator('.modal-header h2').textContent(), gameTitle);
+  assert.equal(await gameDialog.getAttribute('aria-label'), gameTitle);
   await page.click('#edit-promote');
   await page.waitForSelector('button[data-tab="catalog"].btn-primary');
-  const partyspielRow = page.locator('.game-table-row', { hasText: 'E2E Partyspiel' });
+  const partyspielRow = page.locator('.game-table-row', { hasText: gameTitle });
   await partyspielRow.waitFor();
   const bockSlider = partyspielRow.locator('.skill-row[data-kind="bock"] input[type="range"]');
   const skillSlider = partyspielRow.locator('.skill-row[data-kind="skill"] input[type="range"]');
@@ -1362,25 +1405,25 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   await partyspielRow.waitFor();
 
   await bockSlider.fill('8');
-  await page.waitForFunction(() => {
+  await page.waitForFunction((title) => {
     const cards = Array.from(document.querySelectorAll('.game-table-row'));
-    const card = cards.find((c) => c.textContent?.includes('E2E Partyspiel'));
+    const card = cards.find((c) => c.textContent?.includes(title));
     return card?.querySelector('[data-kind="bock"] .skill-value')?.textContent === '8';
-  });
+  }, gameTitle);
   assert.equal(await bockSlider.evaluate((el) => el.classList.contains('skill-row-slider-unset')), false);
   // Bock is rated now but Skill isn't - "Bock offen" alone already excludes
   // the row even though "Skill offen" is still active too (AND, not OR).
-  await page.waitForSelector('.game-table-row:has-text("E2E Partyspiel")', { state: 'detached' });
+  await partyspielRow.waitFor({ state: 'detached' });
 
   await page.click('[data-rating-filter="bock"]');
   await partyspielRow.waitFor();
   await skillSlider.fill('7');
-  await page.waitForFunction(() => {
+  await page.waitForFunction((title) => {
     const cards = Array.from(document.querySelectorAll('.game-table-row'));
-    const card = cards.find((c) => c.textContent?.includes('E2E Partyspiel'));
+    const card = cards.find((c) => c.textContent?.includes(title));
     return card?.querySelector('[data-kind="skill"] .skill-value')?.textContent === '7';
-  });
-  await page.waitForSelector('.game-table-row:has-text("E2E Partyspiel")', { state: 'detached' });
+  }, gameTitle);
+  await partyspielRow.waitFor({ state: 'detached' });
 
   // Restore filter state for whatever runs next in this shared-page suite.
   await page.click('[data-rating-filter="skill"]');

@@ -25,14 +25,17 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose } = 
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
+    <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-header">
-        <h2>${title}</h2>
+        <h2></h2>
         <button type="button" class="icon-btn" data-close aria-label="Schließen">${icon('x')}</button>
       </div>
       <div class="modal-body">${bodyHtml}</div>
     </div>
   `;
+  const dialog = backdrop.querySelector('.modal');
+  dialog.querySelector('h2').textContent = title;
+  dialog.setAttribute('aria-label', title);
   document.body.appendChild(backdrop);
 
   let closed = false;

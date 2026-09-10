@@ -30,7 +30,7 @@ export function openPlayerDetail(playerId) {
     .join('');
 
   openModal(
-    escapeHtml(player.name),
+    player.name,
     `
       <div class="stack">
         <div class="row">
