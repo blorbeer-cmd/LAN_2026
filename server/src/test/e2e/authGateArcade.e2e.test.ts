@@ -19,6 +19,102 @@ let adminCookie: string;
 
 const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
 
+type LayoutBox = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+
+type CreateLayout = {
+  actionsClientWidth: number;
+  rowColumns: string;
+  row: LayoutBox;
+  mode: LayoutBox | null;
+  create: LayoutBox;
+  opponent: LayoutBox | null;
+  tooltip: LayoutBox | null;
+  segments: Array<LayoutBox & { label: string; clientWidth: number; scrollWidth: number }>;
+  buttonOrder: string[];
+  documentClientWidth: number;
+  documentScrollWidth: number;
+  modeStyle: { borderTopWidth: string; boxShadow: string; overflow: string; paddingTop: string } | null;
+};
+
+async function readCreateLayout(
+  targetPage: Page,
+  { createId, modeId, opponentId }: { createId: string; modeId?: string; opponentId?: string },
+): Promise<CreateLayout> {
+  return targetPage.evaluate(({ createId: createSelector, modeId: modeSelector, opponentId: opponentSelector }) => {
+    const rect = (element: Element | null) => {
+      if (!element) return null;
+      const box = element.getBoundingClientRect();
+      return {
+        left: box.left,
+        right: box.right,
+        top: box.top,
+        bottom: box.bottom,
+        width: box.width,
+        height: box.height,
+      };
+    };
+    const row = document.querySelector('.arcade-lobby-create-row')!;
+    const actions = document.querySelector('.arcade-lobby-create-actions')!;
+    const mode = modeSelector ? document.querySelector(`#${modeSelector}`) : null;
+    const create = document.querySelector(`#${createSelector}`)!;
+    const opponent = opponentSelector ? document.querySelector(`#${opponentSelector}`) : null;
+    const tooltip = row.querySelector('.info-tooltip-trigger');
+    const modeComputed = mode ? getComputedStyle(mode) : null;
+    return {
+      actionsClientWidth: actions.clientWidth,
+      rowColumns: getComputedStyle(row).gridTemplateColumns,
+      row: rect(row)!,
+      mode: rect(mode),
+      create: rect(create)!,
+      opponent: rect(opponent),
+      tooltip: rect(tooltip),
+      segments: Array.from(row.querySelectorAll('.arcade-mode-toggle-btn')).map((element) => ({
+        ...rect(element)!,
+        label: element.textContent?.trim() || '',
+        clientWidth: (element as HTMLElement).clientWidth,
+        scrollWidth: (element as HTMLElement).scrollWidth,
+      })),
+      buttonOrder: Array.from(row.querySelectorAll('button')).map((element) => element.textContent?.trim() || ''),
+      documentClientWidth: document.documentElement.clientWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      modeStyle: modeComputed
+        ? {
+            borderTopWidth: modeComputed.borderTopWidth,
+            boxShadow: modeComputed.boxShadow,
+            overflow: modeComputed.overflow,
+            paddingTop: modeComputed.paddingTop,
+          }
+        : null,
+    };
+  }, { createId, modeId, opponentId });
+}
+
+function assertControlHeight(box: LayoutBox, message: string): void {
+  assert.ok(box.height >= 31 && box.height <= 33, `${message}: expected 31–33px, got ${box.height}px`);
+}
+
+function assertAligned(boxes: LayoutBox[], message: string): void {
+  for (let leftIndex = 0; leftIndex < boxes.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < boxes.length; rightIndex += 1) {
+      const leftCenter = boxes[leftIndex].top + boxes[leftIndex].height / 2;
+      const rightCenter = boxes[rightIndex].top + boxes[rightIndex].height / 2;
+      assert.ok(Math.abs(leftCenter - rightCenter) <= 1, message);
+    }
+  }
+}
+
+function assertFullRow(box: LayoutBox, row: LayoutBox, message: string): void {
+  assert.ok(Math.abs(box.left - row.left) <= 1, `${message}: left edge differs`);
+  assert.ok(Math.abs(box.right - row.right) <= 1, `${message}: right edge differs`);
+}
+
 before(async () => {
   const server = await startE2EServer(authenticatedServerEnv());
   e2eServer = server;
@@ -94,55 +190,210 @@ test('an admin sees test settings only after activation while Challenge Rush rem
     await selectArcadeGame(adminPage, 'tetris');
     await adminPage.waitForSelector('#tetris-opponent');
 
-    const readCreateLayout = () => adminPage.evaluate(() => {
-      const row = document.querySelector('.arcade-lobby-create-row')!.getBoundingClientRect();
-      const mode = document.querySelector('#tetris-mode')!.getBoundingClientRect();
-      const create = document.querySelector('#tetris-create')!.getBoundingClientRect();
-      const opponent = document.querySelector('#tetris-opponent')!.getBoundingClientRect();
-      return {
-        row: { left: Math.round(row.left), right: Math.round(row.right) },
-        mode: { left: Math.round(mode.left), top: Math.round(mode.top), bottom: Math.round(mode.bottom) },
-        create: {
-          left: Math.round(create.left),
-          right: Math.round(create.right),
-          top: Math.round(create.top),
-          bottom: Math.round(create.bottom),
-        },
-        opponent: {
-          left: Math.round(opponent.left),
-          top: Math.round(opponent.top),
-          bottom: Math.round(opponent.bottom),
-        },
-      };
-    });
-    for (const width of [390, 1024, 1440]) {
+    const modeGames = [
+      { game: 'tetris', labels: ['Duell', 'Arena'] },
+      { game: 'pong', labels: ['Duell', 'Doppel'] },
+      { game: 'snake', labels: ['Duell', 'Arena'] },
+      { game: 'blobby', labels: ['Duell', 'Doppel'] },
+    ];
+    for (const width of [640, 1024, 1440]) {
       await adminPage.setViewportSize({ width, height: 900 });
-      const layout = await readCreateLayout();
-      if (width < 640) {
-        assert.equal(layout.create.left, layout.row.left, 'the phone create action starts at the row edge');
-        assert.equal(layout.create.right, layout.row.right, 'the phone create action ends at the row edge');
-        assert.ok(layout.create.bottom < layout.mode.top, 'the phone create action sits above the settings row');
-        assert.equal(layout.mode.top, layout.opponent.top, 'phone mode and opponent settings share one row');
-        assert.ok(layout.mode.left < layout.opponent.left, 'phone settings keep mode before opponent');
-        const overflowingLabels = await adminPage.locator('.arcade-mode-toggle-btn').evaluateAll((buttons) =>
-          buttons
-            .filter((button) => button.scrollWidth > button.clientWidth)
-            .map((button) => button.textContent?.trim()),
+      for (const { game, labels } of modeGames) {
+        await selectArcadeGame(adminPage, game);
+        await adminPage.waitForSelector(`#${game}-opponent`);
+        const layout = await readCreateLayout(adminPage, {
+          createId: `${game}-create`,
+          modeId: `${game}-mode`,
+          opponentId: `${game}-opponent`,
+        });
+        assert.ok(layout.mode);
+        assert.ok(layout.opponent);
+        for (const [box, name] of [
+          [layout.mode, `${game} mode pill`],
+          [layout.create, `${game} create action`],
+          [layout.opponent, `${game} opponent pill`],
+        ] as Array<[LayoutBox, string]>) {
+          assertControlHeight(box, `${name} at ${width}px`);
+        }
+        for (const segment of layout.segments) {
+          assertControlHeight(segment, `${game} ${segment.label} segment at ${width}px`);
+          assert.ok(segment.scrollWidth <= segment.clientWidth, `${game} ${segment.label} stays uncut at ${width}px`);
+        }
+        assertAligned([layout.mode, layout.create, layout.opponent], `${game} controls share a center line at ${width}px`);
+        assert.deepEqual(
+          layout.buttonOrder,
+          [...labels, 'Lobby öffnen', 'Mensch', 'KI'],
+          `${game} keeps mode, action and opponent DOM order`,
         );
-        assert.deepEqual(overflowingLabels, [], 'phone setting labels stay inside their segments');
-      } else {
-        assert.ok(
-          Math.abs(layout.mode.top + layout.mode.bottom - layout.create.top - layout.create.bottom) <= 1,
-          'laptop and desktop controls share one center line',
-        );
-        assert.ok(
-          Math.abs(layout.create.top + layout.create.bottom - layout.opponent.top - layout.opponent.bottom) <= 1,
-          'laptop and desktop controls share one center line',
-        );
-        assert.ok(layout.mode.left < layout.create.left, 'laptop and desktop keep mode before create');
-        assert.ok(layout.create.right < layout.opponent.left, 'laptop and desktop keep create before opponent');
+        assert.equal(await adminPage.locator(`#${game}-mode [aria-pressed="true"]`).count(), 1);
+        assert.equal(await adminPage.locator(`#${game}-opponent [aria-pressed="true"]`).count(), 1);
+        assert.equal(layout.modeStyle?.borderTopWidth, '0px', 'the pill outline is not a layout border');
+        assert.notEqual(layout.modeStyle?.boxShadow, 'none', 'the pill keeps its inset outline');
+        assert.equal(layout.modeStyle?.overflow, 'visible', 'the pill does not clip focus');
+        assert.equal(layout.modeStyle?.paddingTop, '0px', 'the pill has no inner padding');
       }
     }
+
+    await adminPage.setViewportSize({ width: 1440, height: 900 });
+    await selectArcadeGame(adminPage, 'tetris');
+    const tetrisDesktop = await readCreateLayout(adminPage, {
+      createId: 'tetris-create',
+      modeId: 'tetris-mode',
+      opponentId: 'tetris-opponent',
+    });
+    const tetrisCreateInset = tetrisDesktop.create.left - tetrisDesktop.row.left;
+    const noModeGames = [
+      { game: 'quiz', createId: 'quiz-create-lobby' },
+      { game: 'scribble', createId: 'scribble-create' },
+      { game: 'battleship', createId: 'battleship-create' },
+    ];
+    for (const { game, createId } of noModeGames) {
+      await adminPage.setViewportSize({ width: 1024, height: 768 });
+      await selectArcadeGame(adminPage, game);
+      await adminPage.waitForSelector(`#${game}-opponent`);
+      const laptopLayout = await readCreateLayout(adminPage, {
+        createId,
+        opponentId: `${game}-opponent`,
+      });
+      assert.ok(laptopLayout.opponent);
+      assertControlHeight(laptopLayout.create, `${game} create action at 1024px`);
+      assertControlHeight(laptopLayout.opponent, `${game} opponent pill at 1024px`);
+      for (const segment of laptopLayout.segments) {
+        assertControlHeight(segment, `${game} ${segment.label} segment at 1024px`);
+      }
+      assertAligned([laptopLayout.create, laptopLayout.opponent], `${game} controls share a center line at 1024px`);
+
+      await adminPage.setViewportSize({ width: 1440, height: 900 });
+      const desktopLayout = await readCreateLayout(adminPage, {
+        createId,
+        opponentId: `${game}-opponent`,
+      });
+      assert.ok(
+        Math.abs(desktopLayout.create.left - desktopLayout.row.left - tetrisCreateInset) <= 1,
+        `${game} keeps the Tetris create-action inset at 1440px`,
+      );
+    }
+
+    await adminPage.setViewportSize({ width: 390, height: 844 });
+    await selectArcadeGame(adminPage, 'tetris');
+    const phoneLayout = await readCreateLayout(adminPage, {
+      createId: 'tetris-create',
+      modeId: 'tetris-mode',
+      opponentId: 'tetris-opponent',
+    });
+    assert.ok(phoneLayout.mode);
+    assert.ok(phoneLayout.opponent);
+    assertFullRow(phoneLayout.create, phoneLayout.row, 'the 390px create action fills row one');
+    assert.ok(phoneLayout.create.bottom < phoneLayout.mode.top, 'the 390px create action sits above the settings');
+    assertAligned([phoneLayout.mode, phoneLayout.opponent], 'both 390px pills share row two');
+    assert.ok(phoneLayout.mode.width < phoneLayout.row.width, 'the 188px container query stays inactive at 390px');
+    for (const box of [phoneLayout.mode, phoneLayout.create, phoneLayout.opponent, ...phoneLayout.segments]) {
+      assertControlHeight(box, 'every 390px Tetris control');
+    }
+    assert.ok(phoneLayout.actionsClientWidth >= 188, '390px retains enough interior width for two pills');
+    assert.equal(phoneLayout.documentScrollWidth, phoneLayout.documentClientWidth, '390px has no page overflow');
+    assert.deepEqual(
+      phoneLayout.segments.filter((segment) => segment.scrollWidth > segment.clientWidth),
+      [],
+      '390px labels stay inside their segments',
+    );
+
+    await adminPage.setViewportSize({ width: 320, height: 568 });
+    const narrowLayout = await readCreateLayout(adminPage, {
+      createId: 'tetris-create',
+      modeId: 'tetris-mode',
+      opponentId: 'tetris-opponent',
+    });
+    assert.ok(narrowLayout.mode);
+    assert.ok(narrowLayout.opponent);
+    assert.ok(narrowLayout.actionsClientWidth < 188, '320px activates the measured container edge case');
+    assertFullRow(narrowLayout.create, narrowLayout.row, 'the 320px create action fills row one');
+    assertFullRow(narrowLayout.mode, narrowLayout.row, 'the 320px mode pill fills row two');
+    assertFullRow(narrowLayout.opponent, narrowLayout.row, 'the 320px opponent pill fills row three');
+    assert.ok(narrowLayout.create.bottom < narrowLayout.mode.top, 'the 320px mode pill follows the create row');
+    assert.ok(narrowLayout.mode.bottom < narrowLayout.opponent.top, 'the 320px opponent pill follows the mode row');
+    for (const box of [narrowLayout.mode, narrowLayout.create, narrowLayout.opponent, ...narrowLayout.segments]) {
+      assertControlHeight(box, 'every 320px Tetris control');
+    }
+    assert.deepEqual(
+      narrowLayout.segments.filter((segment) => segment.scrollWidth > segment.clientWidth),
+      [],
+      '320px labels stay inside their full-width segments',
+    );
+    assert.equal(narrowLayout.documentScrollWidth, narrowLayout.documentClientWidth, '320px has no page overflow');
+    assert.deepEqual(
+      narrowLayout.buttonOrder,
+      ['Duell', 'Arena', 'Lobby öffnen', 'Mensch', 'KI'],
+      'the narrow visual reflow does not change DOM order',
+    );
+
+    const firstModeSegment = adminPage.locator('#tetris-mode .arcade-mode-toggle-btn').first();
+    await adminPage.keyboard.press('Tab');
+    await firstModeSegment.focus();
+    const focusOrder: string[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      focusOrder.push(await adminPage.evaluate(() => document.activeElement?.textContent?.trim() || ''));
+      if (index < 4) await adminPage.keyboard.press('Tab');
+    }
+    assert.deepEqual(focusOrder, ['Duell', 'Arena', 'Lobby öffnen', 'Mensch', 'KI']);
+    await firstModeSegment.focus();
+    assert.notEqual(await firstModeSegment.evaluate((element) => getComputedStyle(element).outlineStyle), 'none');
+    const clippingAncestors = await firstModeSegment.evaluate((element) => {
+      const clipped: string[] = [];
+      for (let current = element.parentElement; current; current = current.parentElement) {
+        const style = getComputedStyle(current);
+        if ([style.overflow, style.overflowX, style.overflowY].some((value) => value !== 'visible')) {
+          clipped.push(current.className);
+        }
+        if (current.classList.contains('arcade-lobby-card')) break;
+      }
+      return clipped;
+    });
+    assert.deepEqual(clippingAncestors, [], 'no ancestor clips the segment focus ring');
+
+    for (const pillId of ['tetris-mode', 'tetris-opponent']) {
+      const activeCoverage = await adminPage.locator(`#${pillId}`).evaluate((pill) => {
+        const pillBox = pill.getBoundingClientRect();
+        const active = pill.querySelector('.is-active')!;
+        const activeBox = active.getBoundingClientRect();
+        return {
+          pillTop: pillBox.top,
+          pillBottom: pillBox.bottom,
+          activeTop: activeBox.top,
+          activeBottom: activeBox.bottom,
+          backgroundColor: getComputedStyle(active).backgroundColor,
+        };
+      });
+      assert.ok(Math.abs(activeCoverage.pillTop - activeCoverage.activeTop) <= 1);
+      assert.ok(Math.abs(activeCoverage.pillBottom - activeCoverage.activeBottom) <= 1);
+      assert.notEqual(activeCoverage.backgroundColor, 'rgba(0, 0, 0, 0)');
+    }
+
+    await adminPage.setViewportSize({ width: 390, height: 844 });
+    await adminPage.click('#tetris-create');
+    await adminPage.waitForSelector('#tetris-create[disabled]');
+    await adminPage.waitForSelector('#tetris-create-info', { state: 'attached' });
+    for (const width of [390, 1024]) {
+      await adminPage.setViewportSize({ width, height: width === 390 ? 844 : 768 });
+      const disabledLayout = await readCreateLayout(adminPage, {
+        createId: 'tetris-create',
+        opponentId: 'tetris-opponent',
+      });
+      assert.ok(disabledLayout.opponent);
+      assert.ok(disabledLayout.tooltip);
+      assert.equal(await adminPage.locator('#tetris-create').isDisabled(), true);
+      assert.equal(await adminPage.locator('#tetris-opponent .arcade-mode-toggle-btn').first().isDisabled(), true);
+      for (const box of [disabledLayout.create, disabledLayout.opponent, disabledLayout.tooltip, ...disabledLayout.segments]) {
+        assertControlHeight(box, `disabled Tetris controls at ${width}px`);
+      }
+      assertAligned([disabledLayout.create, disabledLayout.tooltip], `tooltip and disabled CTA align at ${width}px`);
+    }
+    const warningTrigger = adminPage.locator('.arcade-lobby-create-row .info-tooltip-trigger');
+    await adminPage.keyboard.press('Tab');
+    await warningTrigger.focus();
+    assert.notEqual(await warningTrigger.evaluate((element) => getComputedStyle(element).outlineStyle), 'none');
+    await adminPage.click('[data-tetris-close]');
+    await adminPage.waitForSelector('#tetris-create:not([disabled])');
 
     await selectArcadeGame(adminPage, 'challenge-rush');
     await adminPage.waitForSelector('#cr-create:not([disabled])');
@@ -162,6 +413,7 @@ test('an admin sees test settings only after activation while Challenge Rush rem
     assert.equal(await adminPage.locator('#cr-opponent').count(), 0);
     const withoutMode = (await adminPage.locator('#cr-create').boundingBox())!;
     const plainRow = (await adminPage.locator('#cr-create').locator('xpath=..').boundingBox())!;
+    assert.ok(withoutMode.height >= 31 && withoutMode.height <= 33, 'Challenge Rush keeps the control height');
     assert.equal(withoutMode.width, withMode.width);
     assert.equal(
       Math.round(withoutMode.x - plainRow.x),

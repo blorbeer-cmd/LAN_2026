@@ -79,6 +79,7 @@
      controls keep their 44px min WIDTH (--tap-target-size) as the touch target,
      so only the height changes. */
   --control-height: 32px; /* design-token-ok: shared compact control height, matched by the field padding below */
+  --control-line-height: 1.25;
   --info-popover-max-width: 320px;
   --date-picker-width: 360px;
   --selection-card-min-width: 160px;
