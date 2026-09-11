@@ -1512,7 +1512,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 0;
+  gap: var(--space-1);
   border: none;
   border-radius: var(--radius-sm);
   min-height: var(--control-height);
@@ -1520,7 +1520,7 @@ textarea {
   font-size: var(--font-size-md);
   line-height: var(--control-line-height);
   text-align: center;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   font-weight: var(--font-weight-medium);
   cursor: pointer;
   background: var(--bg-elevated-2);

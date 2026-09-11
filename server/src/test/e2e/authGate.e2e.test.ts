@@ -617,6 +617,34 @@ test('admin creates, displays and revokes a registration link in the UI', async 
 
     const activeLink = adminPage.locator(`[data-show-login-link="${inviteCode}"]`);
     await activeLink.waitFor();
+    for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
+      await adminPage.setViewportSize(viewport);
+      const actions = await activeLink.evaluate((button) => Array.from(button.parentElement!.querySelectorAll('button')).map((action) => {
+        const range = document.createRange();
+        range.selectNodeContents(action);
+        return { label: action.textContent, height: action.getBoundingClientRect().height,
+          lines: range.getClientRects().length, clipped: action.scrollWidth > action.clientWidth };
+      }));
+      assert.equal(actions.length, 2);
+      for (const action of actions) {
+        assert.ok(action.height >= 31 && action.height <= 33, JSON.stringify({ viewport, action }));
+        assert.equal(action.lines, 1, `${action.label} must retain its word width beside invitation metadata`);
+        assert.equal(action.clipped, false);
+      }
+      const backButton = adminPage.getByRole('button', { name: 'Zurück', exact: true });
+      const iconGap = await backButton.evaluate((button) => {
+        const icon = button.querySelector('.ui-icon')!;
+        const text = Array.from(button.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())!;
+        const content = text.textContent!;
+        const range = document.createRange();
+        range.setStart(text, content.search(/\S/));
+        range.setEnd(text, content.trimEnd().length);
+        return range.getBoundingClientRect().left - icon.getBoundingClientRect().right;
+      });
+      assert.equal(iconGap, 4, 'the canonical back button must separate its icon and label');
+      assert.equal(await adminPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true,
+        `invitation actions must not overflow the page at ${viewport.width}`);
+    }
     await adminPage.locator(`[data-revoke-login-link="${inviteCode}"]`).click();
     await adminPage.click('[data-confirm]');
     await activeLink.waitFor({ state: 'detached' });

@@ -89,6 +89,8 @@ die Normalisierung definiert ihre bestehenden Spielmaße nicht neu.
 - Umbruchfähige Controls MÜSSEN `min-height` statt starrer Höhe verwenden. Wachstum über 33 px ist
   nur bei tatsächlichem Umbruch oder dokumentiert mehrzeiligem Inhalt zulässig.
 - Inhalt MUSS vertikal zentriert bleiben. Vertikales Padding DARF auf ganze Pixel gerundet werden.
+- Icon und Text eines Basisbuttons haben `--space-1` Abstand; dokumentierte zusammengesetzte
+  Varianten dürfen ihren eigenen Abstand behalten.
 
 Basisbuttons verwenden vertikal 6 px, native Felder 5 px Padding mit der Control-Zeilenhöhe.
 Die Mindesthöhe hält auch kleinere Schrift einzeilig bei 32 px; echter Umbruch wächst ohne
@@ -125,6 +127,9 @@ seiner tatsächlichen Klassenvariante.
 ### Text, Enge und Reflow
 
 - Standardbuttons und Menüeinträge DÜRFEN umbrechen und dadurch wachsen.
+- Basisbuttons behalten ihre automatische Mindestbreite als Flex-Item und verwenden
+  `overflow-wrap: break-word`: echter Überlauf darf umbrechen, die min-content-Wortbreite wird
+  nicht auf einzelne Zeichen reduziert. Menüeinträge behalten ihr eigenes `anywhere`.
 - `.btn-sm` DARF nur bei kurzem anwendungseigenem Text `nowrap` verwenden, wenn führender Inhalt
   ellipsiert oder die gesamte Aktion gestapelt werden kann.
 - Gruppen MÜSSEN ganze Controls statt einzelner Labels stapeln; ein Textlabel DARF nicht durch ein
@@ -246,6 +251,8 @@ Die bestehenden Core-Owner prüfen zusätzlich bei 320×568, 390×844, 512×384,
 - Pollwerte 1–5 gewählt/ungewählt exakt 32×32 px, 8 px Abstand, verfügbare Elternbreite,
   192/191-px-Grenze und unveränderte Tastaturreihenfolge in beiden Richtungen.
 - ActionMenu-Trigger 31–33 px und Einträge mindestens 44×44 px.
+- Echte Admin-Einladungszeilen bei 320/390 px: Anzeigen/Widerrufen einzeilig bei 31–33 px
+  neben den Metadaten; die kanonische Zurück-Navigation behält 4 px Icon-/Textabstand.
 - DataRowAction bei 320/319/319,75 px Innenbreite: volle zweite Aktionszeile, unverkleinertes
   Badge, vollständiger Name im DOM und Accessibility Tree, sichtbarer Tastaturfokus.
 - Kein horizontaler Seitenoverflow. Die Tests verwenden isolierte In-Memory-Daten.
