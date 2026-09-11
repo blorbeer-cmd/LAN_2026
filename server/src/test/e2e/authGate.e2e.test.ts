@@ -498,12 +498,17 @@ test('admin creates, displays and revokes a registration link in the UI', async 
         const style = getComputedStyle(row);
         const identity = row.children[0].getBoundingClientRect();
         const action = row.children[1].getBoundingClientRect();
+        const view = document.getElementById('view-container')!;
         return { innerWidth: row.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
           stacked: action.top >= identity.bottom, height: action.height,
+          actionOverflow: action.right - row.getBoundingClientRect().right,
+          viewOverflow: view.scrollWidth - view.clientWidth,
           overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
       });
       assert.equal(rowState.stacked, rowState.innerWidth < 320, JSON.stringify({ viewport, rowState }));
       assert.ok(rowState.height >= 31 && rowState.height <= 33);
+      assert.ok(rowState.actionOverflow <= 0.5, JSON.stringify({ viewport, rowState }));
+      assert.equal(rowState.viewOverflow, 0, `admin view overflow at ${viewport.width}`);
       assert.equal(rowState.overflow, false, `admin overflow at ${viewport.width}`);
     }
     for (const innerWidth of [320, 319, 319.75]) {
@@ -593,7 +598,7 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     assert.ok(laptopGeometry);
     assert.ok(laptopGeometry.listTop >= laptopGeometry.modalTop);
     assert.ok(laptopGeometry.listBottom <= laptopGeometry.modalBottom);
-    await adminPage.keyboard.press('Escape');
+    await adminPage.locator(`[data-search-select-value="${eventIds[0]}"]`).click();
     await adminPage.click('#admin-register-invite-form button[type="submit"]');
     await adminPage.waitForSelector('#reauth-form');
     await adminPage.fill('#reauth-password', 'e2e bootstrap password');
@@ -619,18 +624,27 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await activeLink.waitFor();
     for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
       await adminPage.setViewportSize(viewport);
-      const actions = await activeLink.evaluate((button) => Array.from(button.parentElement!.querySelectorAll('button')).map((action) => {
-        const range = document.createRange();
-        range.selectNodeContents(action);
-        return { label: action.textContent, height: action.getBoundingClientRect().height,
-          lines: range.getClientRects().length, clipped: action.scrollWidth > action.clientWidth };
-      }));
-      assert.equal(actions.length, 2);
-      for (const action of actions) {
+      const geometry = await activeLink.evaluate((button) => {
+        const row = button.closest('.row-between')!.getBoundingClientRect();
+        const view = document.getElementById('view-container')!;
+        return { viewOverflow: view.scrollWidth - view.clientWidth,
+          actions: Array.from(button.parentElement!.querySelectorAll('button')).map((action) => {
+            const range = document.createRange();
+            range.selectNodeContents(action);
+            const box = action.getBoundingClientRect();
+            return { label: action.textContent, height: box.height, leftOverflow: row.left - box.left,
+              rightOverflow: box.right - row.right,
+              lines: range.getClientRects().length, clipped: action.scrollWidth > action.clientWidth };
+          }) };
+      });
+      assert.equal(geometry.actions.length, 2);
+      for (const action of geometry.actions) {
         assert.ok(action.height >= 31 && action.height <= 33, JSON.stringify({ viewport, action }));
         assert.equal(action.lines, 1, `${action.label} must retain its word width beside invitation metadata`);
         assert.equal(action.clipped, false);
+        assert.ok(action.leftOverflow <= 0.5 && action.rightOverflow <= 0.5, JSON.stringify({ viewport, action }));
       }
+      assert.equal(geometry.viewOverflow, 0, `invitation actions must not overflow the view at ${viewport.width}`);
       const backButton = adminPage.getByRole('button', { name: 'Zurück', exact: true });
       const iconGap = await backButton.evaluate((button) => {
         const icon = button.querySelector('.ui-icon')!;

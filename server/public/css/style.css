@@ -1895,13 +1895,11 @@ input[type='number']::-webkit-inner-spin-button {
 
 .row {
   display: flex;
-  min-width: 0;
   align-items: center;
   gap: var(--space-3);
 }
 .row-between {
   display: flex;
-  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);

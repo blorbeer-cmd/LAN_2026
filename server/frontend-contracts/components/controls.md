@@ -135,7 +135,13 @@ seiner tatsächlichen Klassenvariante.
 - Gruppen MÜSSEN ganze Controls statt einzelner Labels stapeln; ein Textlabel DARF nicht durch ein
   Icon ersetzt werden. DOM- und Tab-Reihenfolge bleiben unverändert. Die Arcade-Zeile bewahrt dabei
   ihre bereits bestehende mobile visuelle Reihenfolge CTA → Modus → Gegner.
-- Inputs, Selects und Flex-/Grid-Eltern verwenden `min-width: 0`.
+- Inputs, Selects und gezielt schrumpfende Text-/Layoutbereiche verwenden `min-width: 0`.
+  Allgemeine Zeilen und verschachtelte Aktionsgruppen behalten ihre automatische Mindestbreite;
+  sie dürfen nicht unter die benötigte Breite ihrer Controls schrumpfen.
+- Einladungszeilen lassen die vollständige Aktionsgruppe bei Platzmangel in die nächste Zeile
+  umbrechen. Nur die Textseite darf innerhalb ihrer verfügbaren Breite schrumpfen und umbrechen;
+  Namen und Metadaten bleiben vollständig erhalten.
+  Dasselbe Reflow-Prinzip gilt für Namen und Statusgruppe in den Agent-Diagnosezeilen.
 - Desktop-Reflow wird als 1024×768 → 512×384 und 1440×900 → 720×450 geprüft. Phone-Reflow wird
   separat mindestens bei 320×568 geprüft; 390×844 wird nicht künstlich halbiert.
 - Es darf weder horizontalen Seitenoverflow noch abgeschnittene Labels geben; alle Controls bleiben
@@ -252,7 +258,9 @@ Die bestehenden Core-Owner prüfen zusätzlich bei 320×568, 390×844, 512×384,
   192/191-px-Grenze und unveränderte Tastaturreihenfolge in beiden Richtungen.
 - ActionMenu-Trigger 31–33 px und Einträge mindestens 44×44 px.
 - Echte Admin-Einladungszeilen bei 320/390 px: Anzeigen/Widerrufen einzeilig bei 31–33 px
-  neben den Metadaten; die kanonische Zurück-Navigation behält 4 px Icon-/Textabstand.
+  vollständig innerhalb der Zeile; der tatsächliche View-Container darf nicht horizontal
+  überlaufen. Die kanonische Zurück-Navigation behält 4 px Icon-/Textabstand.
+- Infoboard-Aktionsgruppen bleiben bei 390 px neben einem langen Titel innerhalb ihrer Zeile.
 - DataRowAction bei 320/319/319,75 px Innenbreite: volle zweite Aktionszeile, unverkleinertes
   Badge, vollständiger Name im DOM und Accessibility Tree, sichtbarer Tastaturfokus.
 - Kein horizontaler Seitenoverflow. Die Tests verwenden isolierte In-Memory-Daten.

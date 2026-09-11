@@ -530,8 +530,8 @@ function renderPanel(container, ctx) {
           : invite.eventName
             ? escapeHtml(invite.eventName)
             : '';
-        return `<div class="row-between" style="gap:var(--space-2);">
-        <span>
+        return `<div class="row-between" style="gap:var(--space-2);flex-wrap:wrap;">
+        <span style="min-width:0;overflow-wrap:anywhere;">
           <strong>${escapeHtml(invite.playerName || invitePurposeLabel(invite.purpose))}</strong>
           <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${eventLabel ? ` · ${eventLabel}` : ''} · ${invite.usageCount ?? 0}× genutzt · ${escapeHtml(inviteValidityLabel(invite.expiresAt))}</span>
         </span>

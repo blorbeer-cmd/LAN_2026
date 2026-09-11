@@ -1032,6 +1032,13 @@ input[type='number'].tournament-score-input {
   padding-bottom: 0;
   border-bottom: 0;
 }
+.agent-diagnostic-row > .row-between {
+  flex-wrap: wrap;
+}
+.agent-diagnostic-row > .row-between > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .admin-test-controls input,
 .admin-test-controls .btn {
   min-height: var(--control-height);
