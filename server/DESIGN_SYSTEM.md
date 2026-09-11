@@ -188,7 +188,7 @@ scale step worth adding here instead).
 
 `--tap-target-size` (44px) defines registered structural heights and the shared minimum width of
 icon controls. `--control-height` (32px) defines the shared height of standard interactive controls
-on desktop and mobile. Variants, ownership, interim geometry and structure targets are specified in
+on desktop and mobile. Variants, ownership, normalized geometry and structure targets are specified in
 the [Controls contract](frontend-contracts/components/controls.md).
 `--info-popover-max-width` (320px) caps contextual-help popovers while their actual width remains
 responsive on smaller screens.
@@ -1520,12 +1520,12 @@ check this line is intentional).
 
 The current, complete list of such exceptions in `server/public`:
 
-- **The compact control rhythm** — base inputs pad `6px var(--space-3)` and
-  `.btn` pads `7px var(--space-5)` (`style.css`); both are tuned so the element
-  lands on `--control-height` (32px) rather than being a spacing-scale value of
-  their own. The native `select` still clears its custom chevron with a wider
-  right padding. Changing `--control-height` means re-tuning these two paddings
-  in the same pass so buttons and fields keep matching. Normative status and details:
+- **The compact control rhythm** — base inputs pad `5px var(--space-3)` and
+  `.btn` pads `6px var(--space-5)` (`style.css`). Together with
+  `--control-line-height: 1.25` and the 32px minimum, single-line fields and buttons
+  measure 31–33px; real wrapping grows without clipping. Textareas use rows/content
+  and a minimum height. Native selects reserve the custom chevron separately.
+  Package 2 implements this rhythm; normative geometry and variants remain in
   [Controls](frontend-contracts/components/controls.md).
 - **Avatar sizes at `avatarHtml()` call sites** — real, intentional variety
   (18px inline chips up to 64px on the profile hero); see "Avatar sizes"

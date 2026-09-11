@@ -510,7 +510,7 @@ function renderPanel(container, ctx) {
   const accountRows = players
     .filter((player) => !player.is_test && !player.deactivated_at)
     .map(
-      (player) => `<div class="row-between" style="gap:var(--space-2);">
+      (player) => `<div class="row-between data-row-action" style="gap:var(--space-2);">
         <span>
           <strong>${escapeHtml(player.name)}</strong>
           <span class="badge ${player.is_claimed ? 'badge-playing' : 'badge-paused'}">${player.is_claimed ? 'Aktiv' : 'Noch nicht übernommen'}</span>

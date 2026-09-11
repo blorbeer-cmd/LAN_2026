@@ -428,8 +428,74 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.ok((await optionLink.evaluate((element) => element.previousElementSibling?.classList.contains('info-tooltip'))) === true);
   assert.equal(await linkedOption.locator('[aria-label="Mehr Informationen zu Notiz zu Haus am See"]').count(), 1);
   assert.equal(await linkedOption.locator('.event-poll-option-title-row > .muted').count(), 0, 'the note is no longer an extra visible line');
-  const ratingButtonHeight = (await ratingPoll.locator('[data-poll-response="1"]').first().boundingBox())!.height;
-  assert.ok(ratingButtonHeight <= 32, `rating buttons stay compact (${ratingButtonHeight}px)`);
+  const ratingButtons = linkedOption.locator('[data-poll-response]');
+  const assertRatingGeometry = async () => {
+    const geometry = await linkedOption.evaluate((option) => {
+      const toolbar = option.querySelector('.event-poll-rating-toolbar')!;
+      const parent = toolbar.parentElement!;
+      const parentStyle = getComputedStyle(parent);
+      return {
+        availableWidth: parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight),
+        gap: parseFloat(getComputedStyle(toolbar).columnGap),
+        buttons: Array.from(toolbar.querySelectorAll('button')).map((button) => {
+          const box = button.getBoundingClientRect();
+          return { width: box.width, height: box.height, left: box.left, top: box.top,
+            text: button.textContent?.trim(), pressed: button.getAttribute('aria-pressed'),
+            clipped: button.scrollWidth > button.clientWidth };
+        }),
+        overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    });
+    assert.deepEqual(geometry.buttons.map((button) => button.text), ['1', '2', '3', '4', '5']);
+    assert.equal(geometry.gap, 8);
+    assert.equal(geometry.overflow, false);
+    for (const button of geometry.buttons) {
+      assert.equal(button.width, 32, JSON.stringify(geometry));
+      assert.equal(button.height, 32, JSON.stringify(geometry));
+      assert.equal(button.clipped, false);
+    }
+    assert.equal(new Set(geometry.buttons.map((button) => button.top)).size === 1, geometry.availableWidth >= 192, JSON.stringify(geometry));
+    if (geometry.availableWidth >= 192) assert.equal(geometry.buttons[4].left + 32 - geometry.buttons[0].left, 192);
+    else for (let index = 1; index < 5; index += 1) {
+      const previous = geometry.buttons[index - 1];
+      const current = geometry.buttons[index];
+      assert.ok(current.top > previous.top || (current.top === previous.top && current.left > previous.left));
+    }
+  };
+  for (const viewport of [
+    { width: 320, height: 568 }, { width: 390, height: 844 },
+    { width: 512, height: 384 }, { width: 720, height: 450 },
+    { width: 1024, height: 768 }, { width: 1440, height: 900 },
+  ]) {
+    await ownerPage.setViewportSize(viewport);
+    await assertRatingGeometry();
+  }
+  // Every value is measured both unselected and selected through the real draft handler.
+  for (let value = 1; value <= 5; value += 1) {
+    await ratingButtons.nth(value - 1).click();
+    await ownerPage.waitForFunction(() => Array.from(document.querySelectorAll('.event-poll-rating-toolbar button'))
+      .every((button) => getComputedStyle(button).transform === 'none'));
+    assert.equal(await ratingButtons.nth(value - 1).getAttribute('aria-pressed'), 'true');
+    await assertRatingGeometry();
+  }
+  const responseParent = linkedOption.locator('.event-poll-option-response-row');
+  for (const width of [192, 191]) {
+    await responseParent.evaluate((parent, available) => { (parent as HTMLElement).style.width = `${available}px`; }, width);
+    await assertRatingGeometry();
+    await ratingButtons.first().focus();
+    await ownerPage.keyboard.press('Tab');
+    await ownerPage.keyboard.press('Shift+Tab');
+    for (let index = 0; index < 5; index += 1) {
+      assert.equal(await ratingButtons.nth(index).evaluate((button) => document.activeElement === button && getComputedStyle(button).outlineStyle !== 'none'), true);
+      if (index < 4) await ownerPage.keyboard.press('Tab');
+    }
+    for (let index = 3; index >= 0; index -= 1) {
+      await ownerPage.keyboard.press('Shift+Tab');
+      assert.equal(await ratingButtons.nth(index).evaluate((button) => document.activeElement === button), true);
+    }
+  }
+  await responseParent.evaluate((parent) => { (parent as HTMLElement).style.removeProperty('width'); });
+  await ownerPage.setViewportSize({ width: 1024, height: 768 });
   const ratingPollId = await ratingPoll.getAttribute('data-poll-card');
   await navigate(ownerPage, 'home');
   await ownerPage.click('#global-search-btn');
@@ -453,6 +519,15 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ratingActionMenu.locator('summary').click();
   await ownerPage.waitForFunction(() => document.querySelector('.action-menu[open]')?.closest('.event-poll-card')?.classList.contains('has-open-action-menu'));
   assert.equal(await ratingPoll.evaluate((element) => element.classList.contains('has-open-action-menu')), true);
+  const menuGeometry = await ratingActionMenu.evaluate((menu) => ({
+    triggerHeight: menu.querySelector('summary')!.getBoundingClientRect().height,
+    entries: Array.from(menu.querySelectorAll('.action-menu-panel .btn')).map((button) => ({
+      height: button.getBoundingClientRect().height, width: button.getBoundingClientRect().width,
+    })),
+  }));
+  assert.ok(menuGeometry.triggerHeight >= 31 && menuGeometry.triggerHeight <= 33);
+  assert.ok(menuGeometry.entries.length > 0);
+  assert.ok(menuGeometry.entries.every((entry) => entry.height >= 44 && entry.width >= 44));
   await anonymousActionMenu.evaluate((details) => { (details as HTMLDetailsElement).open = true; });
   await ownerPage.waitForFunction(() => document.querySelectorAll('.action-menu[open]').length === 1);
   assert.equal(await ratingActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false, 'opening another action menu closes the previous one');

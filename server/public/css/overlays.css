@@ -958,7 +958,7 @@
 }
 .music-pairing-copy {
   width: var(--tap-target-size);
-  height: var(--control-height);
+  min-height: var(--control-height);
   border: 1px solid var(--border);
   background: var(--bg-elevated-2);
 }

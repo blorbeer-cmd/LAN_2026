@@ -416,14 +416,87 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   assert.equal(await page.locator('.nav-btn:not([hidden])').count(), 6);
 });
 
-flowTest('icon-only controls keep the shared minimum touch target on phones', async () => {
+flowTest('standard control variants center single lines and grow for wrapped content', async (t) => {
+  t.after(async () => {
+    await page.evaluate(() => document.getElementById('control-contract-probe')?.remove());
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
+  await page.evaluate(() => {
+    const probe = document.createElement('section');
+    probe.id = 'control-contract-probe';
+    probe.className = 'card stack';
+    probe.innerHTML = `
+      <div class="selection-toolbar" data-standard-row>
+        <button class="btn"><span>Speichern</span></button>
+        <button class="btn btn-sm"><span>Abbrechen</span></button>
+        <button class="btn btn-primary"><span>Anlegen</span></button>
+        <button class="btn btn-sm btn-danger"><span>Löschen</span></button>
+        <button class="btn btn-ready" disabled><span>Bereit</span></button>
+        <button class="icon-btn selection-toolbar-icon" aria-label="Alle markieren"><svg class="ui-icon" aria-hidden="true"></svg></button>
+        <button class="icon-btn selection-search-close" aria-label="Suche schließen"><svg class="ui-icon" aria-hidden="true"></svg></button>
+      </div>
+      <input type="text" aria-label="Text" value="Einzeilig">
+      <input type="password" aria-label="Passwort" value="Passwort">
+      <input type="number" aria-label="Anzahl" value="4">
+      <input type="url" aria-label="Adresse" value="https://example.com">
+      <input type="search" aria-label="Suche" value="Name">
+      <input type="datetime-local" aria-label="Zeitpunkt" value="2027-06-15T12:00">
+      <select aria-label="Auswahl"><option>Auswahl</option></select>
+      <textarea rows="1" class="vote-info-input" aria-label="Info">Info</textarea>
+      <textarea rows="3" class="arrival-note-input" aria-label="Notiz">Erste Zeile\nZweite Zeile\nDritte Zeile</textarea>
+      <div class="row" data-wrapping-row>
+        <button class="btn" style="width:100px"><span>Eine längere Aktion vollständig ausführen</span></button>
+        <button class="btn btn-sm" style="width:100px"><span>Eine längere Aktion vollständig ausführen</span></button>
+      </div>`;
+    document.body.append(probe);
+  });
+  for (const viewport of [
+    { width: 320, height: 568 }, { width: 390, height: 844 },
+    { width: 512, height: 384 }, { width: 720, height: 450 },
+    { width: 1024, height: 768 }, { width: 1440, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const geometry = await page.locator('#control-contract-probe').evaluate((probe) => {
+      const standard = Array.from(probe.querySelectorAll('[data-standard-row] button, input, select, textarea[rows="1"]'));
+      return {
+        controls: standard.map((control) => {
+          const box = control.getBoundingClientRect();
+          const label = control.querySelector('span, svg')?.getBoundingClientRect();
+          return { height: box.height, width: box.width, icon: control.classList.contains('icon-btn'),
+            centerDifference: label ? Math.abs(box.top + box.height / 2 - label.top - label.height / 2) : 0 };
+        }),
+        wrapped: Array.from(probe.querySelectorAll('[data-wrapping-row] button')).map((button) => {
+          const range = document.createRange();
+          range.selectNodeContents(button.querySelector('span')!);
+          return { height: button.getBoundingClientRect().height, lines: range.getClientRects().length,
+            clipped: button.scrollHeight > button.clientHeight || button.scrollWidth > button.clientWidth };
+        }),
+        multiline: probe.querySelector('textarea[rows="3"]')!.getBoundingClientRect().height,
+        overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    });
+    assert.equal(geometry.overflow, false, `control overflow at ${viewport.width}`);
+    for (const control of geometry.controls) {
+      assert.ok(control.height >= 31 && control.height <= 33, JSON.stringify({ viewport, control }));
+      assert.ok(control.centerDifference <= 1);
+      if (control.icon) assert.ok(control.width >= 44);
+    }
+    for (const wrapped of geometry.wrapped) {
+      assert.ok(wrapped.height > 33 && wrapped.lines > 1, JSON.stringify(wrapped));
+      assert.equal(wrapped.clipped, false);
+    }
+    assert.ok(geometry.multiline > 33, 'rows, not a fixed height, preserve multiline fields');
+  }
+});
+
+flowTest('icon-only controls keep the shared height and minimum width on phones', async () => {
   await page.setViewportSize({ width: 390, height: 844 });
 
   // Icon-only controls keep the 44px --tap-target-size as their minimum WIDTH
   // (the horizontal touch target), while their height follows --control-height
   // (32px) so every button is exactly as tall as a standard field like
   // "Titel"/"Info". The logo link keeps the full 44px square.
-  const assertTouchTargets = async (selector: string, label: string) => {
+  const assertTouchTargets = async (selector: string, label: string, structural = false) => {
     const sizes = await page.locator(selector).evaluateAll((elements) =>
       elements
         .map((element) => element.getBoundingClientRect())
@@ -432,15 +505,15 @@ flowTest('icon-only controls keep the shared minimum touch target on phones', as
     );
     assert.ok(sizes.length > 0, `${label} should expose at least one visible touch target`);
     assert.deepEqual(
-      sizes.filter(({ width, height }) => width < 44 || height < 32),
+      sizes.filter(({ width, height }) => width < 44 || (structural ? height < 44 : height < 31 || height > 33)),
       [],
-      `${label} should keep every visible target at least 44 (width) × 32 (control height) px: ${JSON.stringify(sizes)}`,
+      `${label} must preserve its registered control geometry: ${JSON.stringify(sizes)}`,
     );
   };
 
   await page.click('.nav-btn[data-view="gameCatalog"]');
   await page.waitForSelector('.game-icon-btn');
-  await assertTouchTargets('.topbar-title', 'logo link');
+  await assertTouchTargets('.topbar-title', 'logo link', true);
   await assertTouchTargets('#event-context .search-select-toggle', 'event selector');
   await assertTouchTargets('.game-icon-btn', 'game actions');
   const gameActionGaps = await page.locator('[data-game-catalog-search-item]').first().locator('.game-icon-btn')
