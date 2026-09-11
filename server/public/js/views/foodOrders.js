@@ -1040,7 +1040,7 @@ function confirmWithList(
       paypalValue ? { value: paypalValue, label: 'PayPal-Adresse kopieren', kind: 'paypal' } : null,
     ].filter(Boolean);
     const { close } = openModal(
-      escapeHtml(title),
+      title,
       `
         <p style="margin:0 0 var(--space-3);">${escapeHtml(message)}</p>
         ${listHtml}
@@ -1369,7 +1369,7 @@ function wireConsolidatedListActions(el, order) {
 function openConsolidatedListDialog(order, myId, ctx) {
   const orderWithFlag = { ...order, createdByCurrentUser: order.createdBy === myId };
   const { el, close } = openModal(
-    escapeHtml(`Bestellübersicht – ${order.title}`),
+    `Bestellübersicht – ${order.title}`,
     `<div data-consolidated-body>${renderConsolidatedListBody(orderWithFlag)}</div>`,
     {
       onMount: (mountEl) => {
