@@ -327,27 +327,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Button** — `.btn` composes meaning (`.btn-primary`, `.btn-danger`, `.btn-ready`), width
   (`.btn-block`, `.btn-equal`) and compact text (`.btn-sm`) without caller-owned inner geometry.
   Variants and status: [Controls](frontend-contracts/components/controls.md).
-- **Action menu** — `actionMenuHtml`/`wireActionMenus` in `actionMenu.js` is the shared
-  disclosure for Event and poll management. Its `.btn.btn-sm` trigger has a visible border and
-  Lucide chevron; the panel composes standard secondary/danger buttons with `--tap-target-size`
-  minimum height. Only one menu opens at a time. Outside pointer input and Escape close it;
-  Escape and selecting an action return focus to its trigger before a dialog takes focus.
-  The open card rises above siblings, and the panel stays bounded by the phone viewport.
-  Personal participation, payment and calendar controls stay beside their respective content.
+- **Action menu** — Shared disclosure, geometry, focus, dismissal and caller boundaries follow the
+  [ActionMenu contract](frontend-contracts/components/action-menu.md).
 - **Back navigation** — `backButtonHtml({ view, id, label })` in `backButton.js` renders every
   compact view-level back action with Lucide's `chevronLeft` and the visible default label
   „Zurück“. `view` creates normal route navigation; `id` supports a local sub-view handler. Do not
   hand-roll the arrow, use Unicode chevrons or repeat the destination in the visible label when the
   surrounding header already names it.
-- **Empty state** — `emptyStateHtml()` in `emptyState.js` accepts a safe plain-text shorthand for
-  loading and one-line states. States that also need an established illustration or direct recovery
-  action use `{ text, illustration, action, className, style }`; text and action labels are escaped
-  and the action is rendered as a standard button. The text remains one regular-weight line in
-  either form. Empty states do not accept decorative icons. `illustration` is reserved for an
-  established, explicitly documented brand illustration. This replaces raw HTML fragments and
-  keeps the visible vocabulary concise: „Noch keine …“ for an unused collection and „Keine …
-  gefunden“ for a filtered result. Nearby headings supply qualifiers such as „offen“, „abgeschlossen“
-  or the current event, so the empty-state line does not repeat them.
+- **Empty state** — Safe text, structured content, illustration, recovery and Legacy boundaries
+  follow the [EmptyState contract](frontend-contracts/components/empty-state.md).
 - **Primary collection** — `.primary-collection-section` gives the current collection of Events,
   polls, food orders and tournaments one shared main-card treatment. The title and primary action
   stay together in the card header. Border, empty-state height and spacing therefore remain stable
@@ -1066,10 +1054,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   material — WLAN, Discord, server IPs, house rules — that people look up mid-conversation and must
   not cost them their current workflow. Entries remain alphabetically sorted responsive two-column
   nested cards; „Eintrag anlegen“ is the dialog's leading full-width primary action, and an open
-  dialog refreshes itself on `info:changed` instead of stacking a second copy. Being itself an
-  `openModal()` instance, its entry form and delete confirmation can open on top of it — `modal.js`
-  delivers Escape only to the topmost open `.modal-backdrop`, so cancelling a nested confirmation
-  never takes the dialog underneath it down too.
+  dialog refreshes itself on `info:changed` instead of stacking a second copy. Its nested forms and
+  confirmations follow the [Modal contract](frontend-contracts/components/modal.md).
 - **Feedback** — the compact topbar's `#feedback-btn` and the wide desktop rail utility (both using
   the canonical `feedback` icon from `domainIcons.js`) open the same feedback dialog over whatever
   view is open. It automatically captures the view that was open when the action was used, so a
@@ -1447,12 +1433,10 @@ space pattern rather than content-dependent card heights.
 - Use semantic elements: `<button>` for actions, `<a>` for navigation and associated
   `<label>` elements for form controls. Do not simulate controls with clickable `<div>`
   elements.
-- Every interactive element must be usable by keyboard and show a visible focus state.
-  Focus order follows the visual and logical order; opening a modal moves focus inside,
-  closing it returns focus to the trigger.
-- The shared calendar reserves six equally high week rows, including empty filler rows. Changing
-  its month or year select keeps focus on that select; day-grid keyboard navigation keeps focus
-  on the target day.
+- Every interactive element must be usable by keyboard and show a visible focus state. Shared
+  dialog focus and calendar keyboard/reflow behavior follow the
+  [Modal](frontend-contracts/components/modal.md) and
+  [DateTimeField](frontend-contracts/components/date-time-field.md) contracts.
 - Status, validation and selection cannot be communicated by color alone. Pair color
   with German text and, where helpful, an icon or shape.
 - Form errors identify the affected field and explain how to recover. Disabled actions

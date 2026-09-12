@@ -86,7 +86,11 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     1,
     'filtering must not clear a hidden player selection',
   );
+  await page.fill('#mm-player-search', 'Kein passender Spieler XYZ');
+  await page.waitForSelector('[data-roster-picker="mm-draw-roster"] [data-roster-picker-empty]:not([hidden])');
   await page.click('[data-selection-search]:has(#mm-player-search) [data-selection-search-close]');
+  const matchmakingSearchTrigger = page.locator('[data-selection-search-trigger][aria-controls="mm-player-search"]');
+  assert.equal(await matchmakingSearchTrigger.evaluate((element) => document.activeElement === element), true, 'closing SelectionSearch returns focus to its trigger');
   await page.click('#mm-select-none');
   assert.equal(await page.locator('[data-player]:checked').count(), 0);
   await page.click('#mm-select-all');
@@ -96,16 +100,55 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // Player cards (checkbox, avatar, name, skill value) stack in a single
   // column on phones; two columns would leave no readable room for names.
   const drawPlayerGrid = page.locator('section[aria-labelledby="matchmaking-draw-title"] .player-selection-grid');
+  const toolbarGap = await drawPlayerGrid.evaluate((grid) => {
+    const toolbar = grid.previousElementSibling;
+    if (!toolbar?.classList.contains('selection-toolbar')) return null;
+    return Math.round(grid.getBoundingClientRect().top - toolbar.getBoundingClientRect().bottom);
+  });
+  assert.equal(toolbarGap, 12, 'RosterPicker keeps var(--space-3) between toolbar and grid');
+  const longNameGeometry = await drawPlayerGrid.locator('.check-row').first().evaluate((row) => {
+    const name = row.querySelector('.player-name')!;
+    name.textContent = 'AußergewöhnlichLangerUngekürzterSpielernameFürDenRosterPicker';
+    const range = document.createRange();
+    range.selectNodeContents(name);
+    return {
+      lines: range.getClientRects().length,
+      rowOverflow: row.scrollWidth > row.clientWidth,
+      viewOverflow: document.querySelector('#view-container')!.scrollWidth > document.querySelector('#view-container')!.clientWidth,
+    };
+  });
+  assert.ok(longNameGeometry.lines > 1, 'a long roster name wraps inside its card');
+  assert.equal(longNameGeometry.rowOverflow, false);
+  assert.equal(longNameGeometry.viewOverflow, false);
   const mobileSelectionColumns = await drawPlayerGrid.evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length
   );
   assert.equal(mobileSelectionColumns, 1);
+  await page.setViewportSize({ width: 320, height: 568 });
+  assert.equal(await drawPlayerGrid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 1);
+  assert.equal(await page.locator('#view-container').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await drawPlayerGrid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 1);
+  await page.setViewportSize({ width: 512, height: 384 });
+  assert.equal(await drawPlayerGrid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 1);
+  assert.equal(await page.locator('#view-container').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  await page.setViewportSize({ width: 720, height: 450 });
+  assert.equal(await drawPlayerGrid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 2);
+  assert.equal(await page.locator('#view-container').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   await page.setViewportSize({ width: 900, height: 844 });
   const desktopSelectionColumns = await drawPlayerGrid.evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length
   );
-  assert.ok(desktopSelectionColumns >= 2);
+  assert.equal(desktopSelectionColumns, 2);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
+  assert.equal(
+    await drawPlayerGrid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+    3,
+    'only Matchmaking gains a third roster column in desktop layout mode',
+  );
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
 
   // Only the selected mode's section renders — switch to Captain Draft to
   // reach its tooltip, then back to Auslosung to reach "Teams auslosen".
@@ -531,6 +574,11 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
   await page.waitForSelector('[data-vote-game-search-empty]:not([hidden])');
   await page.fill('#votes-game-search', '');
   await page.click('[data-selection-search]:has(#votes-game-search) [data-selection-search-close]');
+  assert.equal(
+    await page.locator('[data-selection-search-trigger][aria-controls="votes-game-search"]').evaluate((element) => document.activeElement === element),
+    true,
+    'the Vote SelectionSearch returns focus to its trigger',
+  );
   await page.click('#votes-select-all');
   await voteGameCheckboxes.nth(0).uncheck();
   await voteGameCheckboxes.nth(1).uncheck();

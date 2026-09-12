@@ -32,6 +32,7 @@ test('structured content renders escaped one-line text and a canonical action', 
   });
   assert.match(html, /empty-state-structured/);
   assert.match(html, /Noch keine Events &amp; Umfragen\./);
+  assert.match(html, /class="btn btn-primary btn-sm"/);
   assert.match(html, /id="choose-event"/);
   assert.match(html, />Event wählen<\/button>/);
 });

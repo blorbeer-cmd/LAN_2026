@@ -516,18 +516,41 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await anonymousPoll.waitFor();
   const ratingActionMenu = ratingPoll.locator('.action-menu');
   const anonymousActionMenu = anonymousPoll.locator('.action-menu');
+  assert.match((await ratingActionMenu.locator('summary').innerText()).trim(), /^Aktion/);
+  assert.match((await ratingActionMenu.locator('summary').getAttribute('aria-label')) ?? '', /^Aktion/);
+  for (const viewport of [
+    { width: 320, height: 568 }, { width: 390, height: 844 },
+    { width: 512, height: 384 }, { width: 720, height: 450 },
+    { width: 1024, height: 768 },
+  ]) {
+    await ownerPage.setViewportSize(viewport);
+    await ratingActionMenu.locator('summary').click();
+    await ownerPage.waitForFunction(() => document.querySelector('.action-menu[open]')?.closest('.event-poll-card')?.classList.contains('has-open-action-menu'));
+    const menuGeometry = await ratingActionMenu.evaluate((menu) => {
+      const panel = menu.querySelector('.action-menu-panel')!.getBoundingClientRect();
+      return {
+        triggerHeight: menu.querySelector('summary')!.getBoundingClientRect().height,
+        entries: Array.from(menu.querySelectorAll('.action-menu-panel .btn')).map((button) => ({
+          height: button.getBoundingClientRect().height, width: button.getBoundingClientRect().width,
+        })),
+        panelLeft: panel.left,
+        panelRight: panel.right,
+        viewportWidth: window.innerWidth,
+        viewOverflow: document.querySelector('#view-container')!.scrollWidth > document.querySelector('#view-container')!.clientWidth,
+      };
+    });
+    assert.ok(menuGeometry.triggerHeight >= 31 && menuGeometry.triggerHeight <= 33);
+    assert.ok(menuGeometry.entries.length > 0);
+    assert.ok(menuGeometry.entries.every((entry) => entry.height >= 44 && entry.width >= 44));
+    assert.ok(menuGeometry.panelLeft >= 0 && menuGeometry.panelRight <= menuGeometry.viewportWidth);
+    assert.equal(menuGeometry.viewOverflow, false);
+    await ownerPage.keyboard.press('Escape');
+    assert.equal(await ratingActionMenu.locator('summary').evaluate((element) => document.activeElement === element), true);
+  }
+  await ownerPage.setViewportSize({ width: 1024, height: 768 });
   await ratingActionMenu.locator('summary').click();
   await ownerPage.waitForFunction(() => document.querySelector('.action-menu[open]')?.closest('.event-poll-card')?.classList.contains('has-open-action-menu'));
   assert.equal(await ratingPoll.evaluate((element) => element.classList.contains('has-open-action-menu')), true);
-  const menuGeometry = await ratingActionMenu.evaluate((menu) => ({
-    triggerHeight: menu.querySelector('summary')!.getBoundingClientRect().height,
-    entries: Array.from(menu.querySelectorAll('.action-menu-panel .btn')).map((button) => ({
-      height: button.getBoundingClientRect().height, width: button.getBoundingClientRect().width,
-    })),
-  }));
-  assert.ok(menuGeometry.triggerHeight >= 31 && menuGeometry.triggerHeight <= 33);
-  assert.ok(menuGeometry.entries.length > 0);
-  assert.ok(menuGeometry.entries.every((entry) => entry.height >= 44 && entry.width >= 44));
   await anonymousActionMenu.evaluate((details) => { (details as HTMLDetailsElement).open = true; });
   await ownerPage.waitForFunction(() => document.querySelectorAll('.action-menu[open]').length === 1);
   assert.equal(await ratingActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false, 'opening another action menu closes the previous one');
@@ -535,9 +558,31 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await anonymousPoll.evaluate((element) => element.classList.contains('has-open-action-menu')), true, 'the open menu raises only its own card');
   await ownerPage.keyboard.press('Escape');
   assert.equal(await anonymousActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false, 'Escape closes the action menu');
+  assert.equal(await anonymousActionMenu.locator('summary').evaluate((element) => document.activeElement === element), true, 'Escape returns focus to the action trigger');
   await anonymousActionMenu.locator('summary').click();
-  await ownerPage.locator('#event-poll-current-title').click();
+  const outsideAction = ownerPage.locator('#new-event-poll');
+  await outsideAction.focus();
+  await outsideAction.dispatchEvent('pointerdown');
   assert.equal(await anonymousActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false, 'clicking outside closes the action menu');
+  assert.equal(await outsideAction.evaluate((element) => document.activeElement === element), true, 'outside pointer dismissal does not move focus back to the trigger');
+
+  await ratingActionMenu.locator('summary').click();
+  await ratingActionMenu.locator('summary').evaluate((summary) => {
+    const testWindow = window as Window & { __actionMenuRestoredFocus?: boolean };
+    testWindow.__actionMenuRestoredFocus = false;
+    summary.addEventListener('focus', () => { testWindow.__actionMenuRestoredFocus = true; }, { once: true });
+  });
+  await ratingActionMenu.locator('[data-edit-poll]').click();
+  const editPollDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Umfrage bearbeiten' });
+  await editPollDialog.waitFor();
+  assert.equal(
+    await ownerPage.evaluate(() => (window as Window & { __actionMenuRestoredFocus?: boolean }).__actionMenuRestoredFocus),
+    true,
+    'an action selection restores the trigger before its dialog takes focus',
+  );
+  assert.equal(await ratingActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false);
+  await editPollDialog.locator('[data-close]').click();
+  await editPollDialog.waitFor({ state: 'detached' });
   assert.match((await anonymousPoll.locator('[data-poll-round]').textContent()) ?? '', /Anonym/);
   await anonymousPoll.locator('[data-poll-choice]').first().click();
   await anonymousPoll.locator('[data-save-poll]').click();

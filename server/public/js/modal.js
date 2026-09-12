@@ -14,6 +14,31 @@ function isTopmostModal(backdrop) {
   return open.length === 0 || open[open.length - 1] === backdrop;
 }
 
+function trapTabFocus(event, backdrop) {
+  if (event.key !== 'Tab') return;
+  const focusableSelector = [
+    'button:not([disabled])',
+    'a[href]',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(',');
+  const focusable = [...backdrop.querySelectorAll(focusableSelector)].filter(
+    (element) => !element.hidden && element.getClientRects().length > 0
+  );
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 // `confirmClose`, if given, is called whenever the user tries to dismiss the
 // modal via the X button, Escape, or a backdrop tap (never for the returned
 // `close()` — that's for callers closing programmatically, e.g. after a
@@ -63,28 +88,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose } = 
   const onKeydown = (e) => {
     if (!isTopmostModal(backdrop)) return;
     if (e.key === 'Escape') requestClose();
-    if (e.key !== 'Tab') return;
-    const focusableSelector = [
-      'button:not([disabled])',
-      'a[href]',
-      'input:not([disabled])',
-      'select:not([disabled])',
-      'textarea:not([disabled])',
-      '[tabindex]:not([tabindex="-1"])',
-    ].join(',');
-    const focusable = [...backdrop.querySelectorAll(focusableSelector)].filter(
-      (element) => !element.hidden && element.getClientRects().length > 0
-    );
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
+    trapTabFocus(e, backdrop);
   };
   // A click's target is the nearest common ancestor of its mousedown and
   // mouseup targets, not necessarily where either one landed. Selecting text
@@ -116,6 +120,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose } = 
 // (cancel button, close icon, backdrop tap, or Escape).
 export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'OK', cancelText = 'Abbrechen', danger = false } = {}) {
   return new Promise((resolve) => {
+    const previousFocus = document.activeElement;
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.innerHTML = `
@@ -140,15 +145,18 @@ export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'O
       settled = true;
       document.removeEventListener('keydown', onKey);
       backdrop.remove();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
       resolve(result);
     };
     // No global Enter handler: hijacking Enter regardless of what's focused
     // would let it re-confirm a destructive action from anywhere in the
     // dialog. Initial focus sits on Cancel (below), so Enter's native
-    // button-activation behavior already does the safe thing by default;
-    // only Escape needs an explicit document-level shortcut.
+    // button-activation behavior already does the safe thing by default.
+    // The document listener only owns Escape and the cyclic Tab boundary.
     const onKey = (e) => {
-      if (e.key === 'Escape' && isTopmostModal(backdrop)) finish(false);
+      if (!isTopmostModal(backdrop)) return;
+      if (e.key === 'Escape') finish(false);
+      trapTabFocus(e, backdrop);
     };
     let pointerDownOnBackdrop = false;
     backdrop.addEventListener('pointerdown', (e) => {

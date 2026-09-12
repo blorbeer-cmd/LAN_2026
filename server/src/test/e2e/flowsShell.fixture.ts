@@ -87,6 +87,136 @@ flowTest('openModal treats its title as plain text', async () => {
   });
 });
 
+flowTest('shared dialogs preserve layout, trap focus and restore it after every confirm path', async (t) => {
+  t.after(async () => {
+    if (page.isClosed()) return;
+    for (let index = 0; index < 4 && await page.locator('.modal-backdrop').count(); index += 1) {
+      await page.keyboard.press('Escape');
+    }
+    await page.locator('#modal-contract-trigger').evaluateAll((elements) => elements.forEach((element) => element.remove()));
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
+
+  await page.evaluate(() => {
+    const trigger = document.createElement('button');
+    trigger.id = 'modal-contract-trigger';
+    trigger.textContent = 'Dialogtest öffnen';
+    document.body.appendChild(trigger);
+    trigger.focus();
+  });
+
+  const openConfirm = async () => {
+    await page.evaluate(async () => {
+      const { confirmDialog } = await globalThis.eval("import('/js/modal.js')");
+      const testWindow = window as Window & { __confirmContractResult?: boolean | 'pending' };
+      document.querySelector<HTMLElement>('#modal-contract-trigger')?.focus();
+      testWindow.__confirmContractResult = 'pending';
+      void confirmDialog('Diese Entscheidung bleibt vollständig lesbar.', {
+        title: 'Vertrag bestätigen',
+        confirmText: 'Übernehmen',
+      }).then((result: boolean) => { testWindow.__confirmContractResult = result; });
+    });
+    await page.locator('.modal-backdrop').last().waitFor();
+  };
+
+  await openConfirm();
+  let confirmBackdrop = page.locator('.modal-backdrop').last();
+  const firstControl = confirmBackdrop.locator('.modal-header [data-cancel]');
+  const lastControl = confirmBackdrop.locator('[data-confirm]');
+  await firstControl.focus();
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await lastControl.evaluate((element) => document.activeElement === element), true, 'Shift+Tab wraps from the first to the last confirm control');
+  await lastControl.focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await firstControl.evaluate((element) => document.activeElement === element), true, 'Tab wraps from the last to the first confirm control');
+  await page.keyboard.press('Escape');
+  await confirmBackdrop.waitFor({ state: 'detached' });
+  assert.equal(await page.locator('#modal-contract-trigger').evaluate((element) => document.activeElement === element), true);
+  assert.equal(await page.evaluate(() => (window as Window & { __confirmContractResult?: boolean }).__confirmContractResult), false);
+
+  await openConfirm();
+  confirmBackdrop = page.locator('.modal-backdrop').last();
+  await confirmBackdrop.locator('[data-confirm]').click();
+  await confirmBackdrop.waitFor({ state: 'detached' });
+  assert.equal(await page.locator('#modal-contract-trigger').evaluate((element) => document.activeElement === element), true);
+  assert.equal(await page.evaluate(() => (window as Window & { __confirmContractResult?: boolean }).__confirmContractResult), true);
+
+  await openConfirm();
+  confirmBackdrop = page.locator('.modal-backdrop').last();
+  await confirmBackdrop.dispatchEvent('pointerdown');
+  await confirmBackdrop.dispatchEvent('click');
+  await confirmBackdrop.waitFor({ state: 'detached' });
+  assert.equal(await page.locator('#modal-contract-trigger').evaluate((element) => document.activeElement === element), true);
+  assert.equal(await page.evaluate(() => (window as Window & { __confirmContractResult?: boolean }).__confirmContractResult), false);
+
+  await page.evaluate(async () => {
+    const { openModal } = await globalThis.eval("import('/js/modal.js')");
+    document.querySelector<HTMLElement>('#modal-contract-trigger')?.focus();
+    openModal('Elterndialog', '<button type="button" id="modal-contract-parent-action">Bestätigung öffnen</button>');
+  });
+  const parentBackdrop = page.locator('.modal-backdrop').last();
+  const parentAction = page.locator('#modal-contract-parent-action');
+  await parentAction.focus();
+  await page.evaluate(async () => {
+    const { confirmDialog } = await globalThis.eval("import('/js/modal.js')");
+    void confirmDialog('Nur der oberste Dialog darf Escape verarbeiten.');
+  });
+  assert.equal(await page.locator('.modal-backdrop').count(), 2);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelectorAll('.modal-backdrop').length === 1);
+  assert.equal(await parentAction.evaluate((element) => document.activeElement === element), true, 'a nested confirm returns focus into its parent dialog');
+  assert.equal(await parentBackdrop.count(), 1, 'nested Escape leaves the parent dialog open');
+  await parentBackdrop.locator('[data-close]').click();
+  await parentBackdrop.waitFor({ state: 'detached' });
+
+  await page.evaluate(async () => {
+    const { openModal } = await globalThis.eval("import('/js/modal.js')");
+    document.querySelector<HTMLElement>('#modal-contract-trigger')?.focus();
+    openModal('Layoutvertrag', '<button type="button">Erreichbare Aktion</button>');
+  });
+  const layoutBackdrop = page.locator('.modal-backdrop').last();
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 390, height: 844 },
+    { width: 512, height: 384 },
+    { width: 640, height: 568 },
+    { width: 720, height: 450 },
+    { width: 1024, height: 768 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.waitForFunction(({ desktop }) => {
+      const backdrops = document.querySelectorAll('.modal-backdrop');
+      const modal = backdrops.item(backdrops.length - 1)?.querySelector('.modal');
+      if (!modal) return false;
+      const rect = modal.getBoundingClientRect();
+      return desktop
+        ? Math.abs((rect.top + rect.bottom) / 2 - window.innerHeight / 2) <= 1
+        : Math.abs(rect.bottom - window.innerHeight) <= 1;
+    }, { desktop: viewport.width >= 640 });
+    const geometry = await layoutBackdrop.evaluate((backdrop) => {
+      const modal = backdrop.querySelector('.modal')!;
+      const rect = modal.getBoundingClientRect();
+      return {
+        alignItems: getComputedStyle(backdrop).alignItems,
+        modal: { top: rect.top, bottom: rect.bottom, width: rect.width },
+        viewportHeight: window.innerHeight,
+        pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    });
+    assert.ok(geometry.modal.width <= Math.min(480, viewport.width));
+    assert.equal(geometry.pageOverflow, false, `modal causes page overflow at ${viewport.width}px`);
+    if (viewport.width < 640) {
+      assert.equal(geometry.alignItems, 'flex-end');
+      assert.ok(Math.abs(geometry.modal.bottom - geometry.viewportHeight) <= 1);
+    } else {
+      assert.equal(geometry.alignItems, 'center');
+      assert.ok(Math.abs((geometry.modal.top + geometry.modal.bottom) / 2 - geometry.viewportHeight / 2) <= 1);
+    }
+  }
+  await layoutBackdrop.locator('[data-close]').click();
+  await layoutBackdrop.waitFor({ state: 'detached' });
+});
+
 flowTest('wide desktop adapts the shared shell and pilot views without changing mobile navigation', async (t) => {
   t.after(async () => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -421,7 +551,8 @@ flowTest('standard control variants center single lines and grow for wrapped con
     await page.evaluate(() => document.getElementById('control-contract-probe')?.remove());
     await page.setViewportSize({ width: 390, height: 844 });
   });
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
+    const { emptyStateHtml } = await globalThis.eval("import('/js/emptyState.js')");
     const probe = document.createElement('section');
     probe.id = 'control-contract-probe';
     probe.className = 'card stack';
@@ -447,12 +578,15 @@ flowTest('standard control variants center single lines and grow for wrapped con
       <div class="row" data-wrapping-row>
         <button class="btn" style="width:100px"><span>Eine längere Aktion vollständig ausführen</span></button>
         <button class="btn btn-sm" style="width:100px"><span>Eine längere Aktion vollständig ausführen</span></button>
-      </div>`;
+      </div>
+      ${emptyStateHtml({ text: 'Laden fehlgeschlagen.', action: { id: 'empty-recovery', label: 'Erneut laden' } })}
+      ${emptyStateHtml({ text: 'Laden fehlgeschlagen.', action: { id: 'empty-recovery-long', label: 'Eine lange Aktion erneut vollständig ausführen' } })}`;
+    probe.querySelector<HTMLElement>('#empty-recovery-long')!.style.width = '120px';
     document.body.append(probe);
   });
   for (const viewport of [
     { width: 320, height: 568 }, { width: 390, height: 844 },
-    { width: 512, height: 384 }, { width: 720, height: 450 },
+    { width: 512, height: 384 }, { width: 640, height: 568 }, { width: 720, height: 450 },
     { width: 1024, height: 768 }, { width: 1440, height: 900 },
   ]) {
     await page.setViewportSize(viewport);
@@ -472,6 +606,17 @@ flowTest('standard control variants center single lines and grow for wrapped con
             clipped: button.scrollHeight > button.clientHeight || button.scrollWidth > button.clientWidth };
         }),
         multiline: probe.querySelector('textarea[rows="3"]')!.getBoundingClientRect().height,
+        emptyDefaultHeight: probe.querySelector('#empty-recovery')!.getBoundingClientRect().height,
+        emptyLong: (() => {
+          const button = probe.querySelector('#empty-recovery-long')!;
+          const range = document.createRange();
+          range.selectNodeContents(button);
+          return {
+            height: button.getBoundingClientRect().height,
+            lines: range.getClientRects().length,
+            clipped: button.scrollHeight > button.clientHeight || button.scrollWidth > button.clientWidth,
+          };
+        })(),
         overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       };
     });
@@ -486,7 +631,15 @@ flowTest('standard control variants center single lines and grow for wrapped con
       assert.equal(wrapped.clipped, false);
     }
     assert.ok(geometry.multiline > 33, 'rows, not a fixed height, preserve multiline fields');
+    assert.ok(geometry.emptyDefaultHeight >= 31 && geometry.emptyDefaultHeight <= 33, 'the default EmptyState recovery action uses the shared control height');
+    assert.ok(geometry.emptyLong.height > 33 && geometry.emptyLong.lines > 1, 'a wrapping EmptyState recovery action grows');
+    assert.equal(geometry.emptyLong.clipped, false, 'a wrapping EmptyState recovery action stays fully visible');
   }
+  await page.locator('#empty-recovery-long').focus();
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.locator('#empty-recovery').evaluate((button) => document.activeElement === button), true);
+  assert.equal(await page.locator('#empty-recovery').evaluate((button) => button.matches(':focus-visible')), true);
+  assert.notEqual(await page.locator('#empty-recovery').evaluate((button) => getComputedStyle(button).outlineStyle), 'none');
 });
 
 flowTest('icon-only controls keep the shared height and minimum width on phones', async () => {
@@ -743,12 +896,59 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   await page.click('[data-dt-field="event-ends"] [data-dt-trigger]');
   await page.waitForSelector('.dt-popover');
   assert.ok(await page.locator('.dt-popover [data-dt-day]:disabled').count() > 0, 'days before the event start are disabled');
+  assert.equal(await page.locator('.dt-popover tbody tr').count(), 6, 'the calendar reserves six stable week rows');
   const visibleMonth = await page.locator('.dt-popover [data-dt-month]').textContent();
   const focusedDay = await page.locator('.dt-popover [data-dt-day]:focus').getAttribute('data-dt-day');
   await page.keyboard.press('PageUp');
   assert.equal(await page.locator('.dt-popover [data-dt-month]').textContent(), visibleMonth, 'PageUp cannot enter a fully disabled month');
   assert.equal(await page.locator('.dt-popover [data-dt-day]:focus').getAttribute('data-dt-day'), focusedDay, 'calendar focus remains on the enabled day');
   await page.keyboard.press('Escape');
+  const endCalendarTrigger = page.locator('[data-dt-field="event-ends"] [data-dt-trigger]');
+  for (const viewport of [
+    { width: 320, height: 568, mobile: true },
+    { width: 390, height: 844, mobile: true },
+    { width: 512, height: 384, mobile: true },
+    { width: 640, height: 568, mobile: true },
+    { width: 641, height: 568, mobile: false },
+    { width: 720, height: 450, mobile: false },
+    { width: 1024, height: 768, mobile: false },
+  ]) {
+    await page.setViewportSize(viewport);
+    await endCalendarTrigger.click();
+    const calendarGeometry = await page.locator('.dt-popover').evaluate((popover) => {
+      const rect = popover.getBoundingClientRect();
+      const style = getComputedStyle(popover);
+      return {
+        left: rect.left,
+        right: window.innerWidth - rect.right,
+        bottom: window.innerHeight - rect.bottom,
+        width: rect.width,
+        computedBottom: style.bottom,
+        inlineTop: (popover as HTMLElement).style.top,
+        inlineLeft: (popover as HTMLElement).style.left,
+        mobileQuery: window.matchMedia('(max-width: 640px)').matches,
+        hostIsModalBackdrop: popover.parentElement?.classList.contains('modal-backdrop') === true,
+        overflow: popover.scrollWidth > popover.clientWidth,
+      };
+    });
+    assert.equal(calendarGeometry.hostIsModalBackdrop, true, 'a calendar in a modal stays inside that modal backdrop');
+    assert.equal(calendarGeometry.overflow, false);
+    assert.equal(calendarGeometry.mobileQuery, viewport.mobile, 'CSS and controller share the inclusive 640px boundary');
+    if (viewport.mobile) {
+      assert.ok(Math.abs(calendarGeometry.left - 8) <= 1 && Math.abs(calendarGeometry.right - 8) <= 1);
+      assert.ok(Math.abs(calendarGeometry.bottom - 8) <= 1);
+      assert.equal(calendarGeometry.computedBottom, '8px', '640px remains the inclusive Bottom-Sheet boundary');
+      assert.equal(calendarGeometry.inlineTop, '');
+      assert.equal(calendarGeometry.inlineLeft, '');
+    } else {
+      assert.ok(calendarGeometry.width <= 360);
+      assert.match(calendarGeometry.inlineTop, /^\d+(?:\.\d+)?px$/, 'above 640px the controller positions a desktop popover');
+      assert.match(calendarGeometry.inlineLeft, /^\d+(?:\.\d+)?px$/, 'above 640px the controller positions a desktop popover');
+    }
+    await page.keyboard.press('Escape');
+    assert.equal(await endCalendarTrigger.evaluate((element) => document.activeElement === element), true);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.fill('#event-starts-date', '08072027');
   await page.fill('#event-starts-time', '1435');
   assert.equal(await page.inputValue('#event-starts-date'), '08.07.2027');
@@ -1378,6 +1578,14 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   const gameTitle = 'Tom & Jerry';
   await page.click('.nav-btn[data-view="gameCatalog"]');
   await page.waitForSelector('#suggest-new');
+  await page.fill('#game-catalog-search', 'Counter-Strike 2');
+  await page.waitForFunction(() => document.querySelectorAll('[data-game-catalog-search-item]:not([hidden])').length === 1);
+  assert.equal(await page.locator('[data-game-catalog-search-item]:not([hidden])').getByText('Counter-Strike 2', { exact: true }).count(), 1);
+  await page.fill('#game-catalog-search', 'Kein Spieltreffer XYZ');
+  await page.waitForSelector('[data-game-catalog-search-empty]:not([hidden])');
+  await page.fill('#game-catalog-search', '');
+  await page.waitForSelector('[data-game-catalog-search-empty]', { state: 'hidden' });
+  assert.ok(await page.locator('[data-game-catalog-search-item]:not([hidden])').count() > 1, 'the always-visible SelectionSearch integration restores the catalog');
 
   await page.click('#suggest-new');
   await page.waitForSelector('#suggest-trailer + .muted');
@@ -1690,6 +1898,15 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
     await page.locator('.tournament-player-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
     1,
   );
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
+  assert.equal(
+    await page.locator('.tournament-player-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+    2,
+    'Tournament keeps two roster columns even when Matchmaking uses three in desktop mode',
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
   await neighborHelp.click();
   assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'true');
   await page.keyboard.press('Escape');
