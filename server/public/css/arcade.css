@@ -832,18 +832,16 @@
 .arcade-toolbar .arcade-expand-control {
   margin-bottom: 0;
 }
-/* The icon-only mute toggle needs the full tap-target square; match the
-   text "Spielfläche vergrößern/verkleinern" button's height to it so the two
-   controls sharing this row read as one toolbar instead of an uneven pair. */
+/* Toolbar controls share the standard height; mute keeps the icon minimum width. */
 .arcade-toolbar .btn {
-  height: var(--control-height);
+  min-height: var(--control-height);
 }
 .arcade-mute-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   width: var(--tap-target-size);
-  height: var(--control-height);
+  min-height: var(--control-height);
   padding: 0;
 }
 .arcade-game-shell.is-expanded {

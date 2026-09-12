@@ -121,7 +121,7 @@ flowTest('Info: a long entry scrolls within a bounded box instead of collapsing'
   // short neighbor) to match its full height.
   const longContent = Array.from({ length: 6 }, (_, i) => `Regel ${i + 1}: Sei nett zueinander.`).join('\n');
   await page.click('#info-new-btn');
-  await page.fill('#info-title', 'Hausregeln');
+  await page.fill('#info-title', 'Hausregeln für unsere gemeinsame LAN im September');
   await page.fill('#info-content', longContent);
   await page.click('#info-form button[type="submit"]');
   const rulesEntry = page.locator('[data-info-entry]', { hasText: 'Hausregeln' });
@@ -132,6 +132,18 @@ flowTest('Info: a long entry scrolls within a bounded box instead of collapsing'
   // everything - otherwise the scroll container would be pointless.
   const isBounded = await scrollBox.evaluate((el) => el.scrollHeight > el.clientHeight);
   assert.equal(isBounded, true);
+
+  const originalViewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 390, height: 844 });
+  const actionsFit = await rulesEntry.locator('.row-between').evaluate((row) => {
+    const bounds = row.getBoundingClientRect();
+    return Array.from(row.querySelectorAll('button')).every((button) => {
+      const action = button.getBoundingClientRect();
+      return action.left >= bounds.left - 0.5 && action.right <= bounds.right + 0.5;
+    });
+  });
+  assert.equal(actionsFit, true, 'info actions must stay inside the row beside a long title');
+  await page.setViewportSize(originalViewport);
 
   await page.click('.info-board-modal [data-close]');
   await page.waitForSelector('.info-board-modal', { state: 'detached' });

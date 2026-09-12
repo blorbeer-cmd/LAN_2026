@@ -880,7 +880,6 @@ input[type='number'].tournament-score-input {
   min-height: calc(var(--row-min-h) * 2);
 }
 .vote-info-input {
-  height: var(--control-height);
   min-height: var(--control-height);
 }
 .vote-game-select-wrap {
@@ -1033,9 +1032,47 @@ input[type='number'].tournament-score-input {
   padding-bottom: 0;
   border-bottom: 0;
 }
+.agent-diagnostic-row > .row-between {
+  flex-wrap: wrap;
+}
+.agent-diagnostic-row > .row-between > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .admin-test-controls input,
 .admin-test-controls .btn {
-  height: var(--control-height);
+  min-height: var(--control-height);
+}
+.data-row-action {
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.data-row-action > span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.data-row-action > span > strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.data-row-action .badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.data-row-action > .btn {
+  justify-self: end;
+  white-space: nowrap;
+}
+@container (width < 320px) { /* design-token-ok: DataRowAction-Schwelle */
+  .data-row-action > span,
+  .data-row-action > .btn {
+    grid-column: 1 / -1;
+  }
 }
 .admin-player-row {
   gap: var(--space-2);
@@ -1386,7 +1423,7 @@ input[type='number'].tournament-score-input {
 .food-order-item-action,
 .food-order-item-action-spacer {
   width: var(--tap-target-size);
-  height: var(--control-height);
+  min-height: var(--control-height);
   flex-shrink: 0;
 }
 .food-order-item-action {

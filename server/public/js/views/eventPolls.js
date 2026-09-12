@@ -257,7 +257,7 @@ function renderResponseControl(poll, option) {
     return `
       <div class="selection-toolbar event-poll-response-toolbar event-poll-rating-toolbar" role="group" aria-label="Bewertung für ${escapeHtml(optionLabel(option))}">
         ${RATING_VALUES.map((value) => `
-          <button type="button" class="btn btn-sm${draft[option.id] === value ? ' btn-primary' : ''}"
+          <button type="button" class="btn btn-square${draft[option.id] === value ? ' btn-primary' : ''}"
             data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"
             aria-label="${value} von 5" aria-pressed="${draft[option.id] === value}">${value}</button>`).join('')}
       </div>`;

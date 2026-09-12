@@ -510,7 +510,7 @@ function renderPanel(container, ctx) {
   const accountRows = players
     .filter((player) => !player.is_test && !player.deactivated_at)
     .map(
-      (player) => `<div class="row-between" style="gap:var(--space-2);">
+      (player) => `<div class="row-between data-row-action" style="gap:var(--space-2);">
         <span>
           <strong>${escapeHtml(player.name)}</strong>
           <span class="badge ${player.is_claimed ? 'badge-playing' : 'badge-paused'}">${player.is_claimed ? 'Aktiv' : 'Noch nicht übernommen'}</span>
@@ -530,8 +530,8 @@ function renderPanel(container, ctx) {
           : invite.eventName
             ? escapeHtml(invite.eventName)
             : '';
-        return `<div class="row-between" style="gap:var(--space-2);">
-        <span>
+        return `<div class="row-between" style="gap:var(--space-2);flex-wrap:wrap;">
+        <span style="min-width:0;overflow-wrap:anywhere;">
           <strong>${escapeHtml(invite.playerName || invitePurposeLabel(invite.purpose))}</strong>
           <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${eventLabel ? ` · ${eventLabel}` : ''} · ${invite.usageCount ?? 0}× genutzt · ${escapeHtml(inviteValidityLabel(invite.expiresAt))}</span>
         </span>

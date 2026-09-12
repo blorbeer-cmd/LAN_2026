@@ -7,17 +7,21 @@ Detailquelle für ihre Größen-, Umbruch-, Fokus- und Eigentumsregeln. Standard
 Desktop und Mobile `--control-height`; eine automatische Größenumschaltung nach Viewport oder
 Eingabemodalität existiert nicht.
 
-Der Arcade-Segmentpilot und seine Erstellungszeile sind umgesetzt. Die globale Normalisierung der
-Basiscontrols, Pollbewertung und `DataRowAction` folgt ausschließlich in Paket 2.
+Paket 1 (Arcade-Segmentpilot und Erstellungszeile) sowie Paket 2 (globale Basiscontrols,
+Pollbewertung und DataRowAction) sind umgesetzt. Folgepakete bleiben eigenständige Aufträge.
 
 ## 2. Quelle
 
 - Tokens und globale Controls: `public/css/style.css`
 - Arcade-Segment und Erstellungszeile: `public/css/arcade.css`
 - Segment-Markup: `public/js/arcade/lobbyReady.js`
-- Repräsentative Browserabdeckung: `src/test/e2e/authGateArcade.e2e.test.ts`
+- DataRowAction: `public/css/domains.css`, Kontozugangszeilen in `public/js/views/admin.js`
+- Pollbewertung: `public/js/views/eventPolls.js`
+- Reine Registry-Daten: [component-registry.mjs](../component-registry.mjs)
+- Browserabdeckung: bestehende Owner `authGate.e2e.test.ts`, `flowsShell.fixture.ts`,
+  `eventDatePoll.e2e.test.ts` und `authGateArcade.e2e.test.ts` unter `src/test/e2e/`
 
-`lobbyReady.js` und die Arcade-Viewdateien bleiben im Pilot unverändert.
+`lobbyReady.js` und die Arcade-Viewdateien bleiben in Paket 2 unverändert.
 
 ## 3. CSS-Eigentümerschaft
 
@@ -31,19 +35,19 @@ Breitenklasse DARF keine eigene Höhe, Typografie oder Innengeometrie definieren
 
 ## 4. Varianten
 
-| Variante | Klasse/Element | Einzeilige Höhe | Breite | Vertragsstatus |
-|---|---|---:|---:|---|
-| Standardbutton | `.btn` | `--control-height` (31–33 px) | Inhalt | interim auf Main, Normalisierung in Paket 2 |
-| Kompakte Textdarstellung | `.btn.btn-sm` | `--control-height` (31–33 px) | Inhalt | interim auf Main, Normalisierung in Paket 2 |
-| Standardfeld | relevante `input`-Typen, `select` | `--control-height` (31–33 px) | Container | interim auf Main, Normalisierung in Paket 2 |
-| Textarea | `textarea` | mindestens `--control-height`, mehrzeilig über `rows`/Inhalt | Container | interim auf Main, Normalisierung in Paket 2 |
-| Icon-Control | `.icon-btn` | `--control-height` (31–33 px) | mindestens `--tap-target-size` | interim auf Main, Normalisierung in Paket 2 |
-| Quadratische Skala | `.btn.btn-square` | `--control-height` | `--control-height` | Zielvertrag, Umsetzung Paket 2 |
-| Selection-Toolbar | registrierte Toolbarbuttons | `--control-height` (31–33 px) | je Variante | interim auf Main, Normalisierung in Paket 2 |
-| Arcade-Segment | `.arcade-mode-toggle`, `.arcade-mode-toggle-btn` | `--control-height` (31–33 px) | Segment/Pille | umgesetzt |
-| ActionMenu-Trigger | `.action-menu > summary.btn` | `--control-height` (31–33 px) | Inhalt | Zielvertrag, Umsetzung Paket 2 |
-| ActionMenu-Eintrag | `.action-menu-panel .btn` | mindestens `--tap-target-size` | mindestens `--tap-target-size` | umgesetzt |
-| NumberStepper-Hälfte | `.number-stepper-btn` in `.number-stepper` | je Hälfte des 32-px-Felds | interne Spalte | umgesetzt |
+Die Selektoren und Eigentümer stehen in der Registry; diese IDs beschreiben ihre Geometrie.
+Bedeutung und Breite werden mit der Basisvariante kombiniert.
+
+| Registry-ID | Einzeilige Höhe | Breite |
+|---|---:|---|
+| `button`, `button-small`, `button-meaning`, `button-width` | 31–33 px | Inhalt bzw. gewählte Breitenregel |
+| `native-fields` | 31–33 px; Textarea wächst über rows/Inhalt | Container |
+| `icon-button`, `selection-icons`, `info-trigger` | 31–33 px | mindestens 44 px |
+| `button-square` | exakt 32 px | exakt 32 px |
+| `arcade-segment` | 31–33 px | Segment/Pille |
+| `action-menu-trigger` | 31–33 px | Inhalt |
+| `action-menu-entry` | mindestens 44 px | mindestens 44 px |
+| `number-stepper` | zwei interne Hälften des 32-px-Felds | interne Spalte |
 
 Es gibt keine `.btn-touch`-Klasse und keine Variante `kompakt-touch`. Eine segmentierte Einstellung
 besitzt genau zwei Optionen; ab drei benannten exklusiven Optionen MUSS ein natives `select`
@@ -56,7 +60,12 @@ segmentierte Einstellung im Sinne dieser Regel.
 header rows, navigation rail button, collapsible-section header, food-order and seating rows,
 searchable-select option rows, calendar day grid, game-board/memory cells and the kiosk TV canvas
 (its own device class). Icon-Controls verwenden den Token regelmäßig als Mindestbreite, nicht als
-Standardhöhe.
+Standardhöhe. Die Registry-IDs `calendar-days`, `search-options`, `structural-cards`, `player-card`,
+`player-selection-actions`, `structural-disclosure`, `arcade-tile`, `battleship-grid`,
+`battleship-ship-display`, `global-search-result`, `challenge-targets` und `scribble-word-choice`
+erhalten ihre vorhandene Strukturgeometrie.
+Ganze Karten, Spielreaktionsflächen und die große Wortauswahl können größer als 44 px sein;
+die Normalisierung definiert ihre bestehenden Spielmaße nicht neu.
 
 ## 5. Erlaubte Anpassungen
 
@@ -80,27 +89,37 @@ Standardhöhe.
 - Umbruchfähige Controls MÜSSEN `min-height` statt starrer Höhe verwenden. Wachstum über 33 px ist
   nur bei tatsächlichem Umbruch oder dokumentiert mehrzeiligem Inhalt zulässig.
 - Inhalt MUSS vertikal zentriert bleiben. Vertikales Padding DARF auf ganze Pixel gerundet werden.
+- Icon und Text eines Basisbuttons haben `--space-1` Abstand; dokumentierte zusammengesetzte
+  Varianten dürfen ihren eigenen Abstand behalten.
 
-Die auf Main vorhandenen starren Höhen sowie das Feldpadding `6px`, Buttonpadding `7px`,
-`.btn-sm`-Padding und die behauptete Flush-Geometrie sind interim; Paket 2 normalisiert und misst
-sie gemeinsam. Der Pilot ändert diese Regeln nicht.
+Basisbuttons verwenden vertikal 6 px, native Felder 5 px Padding mit der Control-Zeilenhöhe.
+Die Mindesthöhe hält auch kleinere Schrift einzeilig bei 32 px; echter Umbruch wächst ohne
+Clipping. Quadratische Skalen haben die ausdrücklich feste 32×32-px-Geometrie. Textareas
+besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden getrennt gemessen.
 
 ### Zusatzklassen und zusammengesetzte Controls
 
-Paket 2 klassifiziert jede Höhendeklaration mit `--control-height`/`--tap-target-size` sowie jede
-Klasse, die im JS-Markup an `button`, `input`, `select`, `textarea` oder `summary` vorkommt, genau
-als Standard-/Icon-Control, permanentes Strukturziel, internen Teil eines zusammengesetzten
-Controls oder befristete Ausnahme. Dazu gehören insbesondere:
+Das mechanische Inventar am PR-Head ordnet jede tokenbasierte Höhendeklaration in den fünf
+CSS-Dateien und jede Klasse an interaktiven JS-Markup-Elementen genau einer Registry-Rolle zu:
+1 Standard-/Icon-Control, 2 permanentes Strukturziel, 3 interner Teil eines zusammengesetzten
+Controls oder 4 befristete Ausnahme. Jede Fundstelle mit Datei, Zeile und Selektor steht am PR.
+Modifier und Zustandsmarker erben die Geometrie des Trägers; ihre Registrierung erlaubt keine
+eigenen Innenmaße. Die Registry ist reine Daten, ohne Komponentencheck oder Hook-Integration.
 
-`.info-tooltip-trigger`, `.selection-toolbar-icon`, `.selection-search-trigger`,
-`.selection-search-close`, `.dt-calendar-btn`, `.dt-clear-btn`, `.arcade-mute-btn`,
-`.number-stepper-btn`, `.search-select-toggle`, `.event-poll-card-toggle`,
-`.event-participant-toggle`, `.food-order-card-header-toggle`, `.food-order-group-toggle`,
-`.vote-info-input`, `.topbar .icon-btn`, `.profile-color-trigger`,
-`.profile-color-picker-copy`, `.tournament-lobby-copy`, `.home-current-dismiss`, `.game-icon-btn`,
-`.arrival-note-input`, `.invite-link-row > input`, `.invite-link-row .btn`, `.arcade-toolbar .btn`,
-`.admin-test-controls input`, `.admin-test-controls .btn`, `.food-order-item-action`,
-`.food-order-item-action-spacer` und `.music-pairing-copy`.
+Die Standardfamilien `date-fields`, `search-select`, `profile-controls`, `row-icons`,
+`arrival-controls`, `filter-chip`, `section-tab`, `poll-choice`, `admin-controls`, `vote-fields`,
+`food-fields`, `payment-controls`, `result-fields`, `arcade-mute` und `music-controls`
+verwenden die passende Basisvariante.
+
+Die internen Familien `selection-toolbar`, `number-stepper`, `data-row-action`, `food-action-slots`,
+`result-actions`, `bracket-row`, `rating-slider`, `rating-suggestion`, `row-layout`, `selection-state`,
+`payment-state`, `scribble-tools` und `arcade-segment` behalten ihre dokumentierte Einbettung.
+NumberStepper-Hälften ergänzen das native Zahlenfeld; Slider, Zeichenpalette und Bracketzeilen
+sind keine unabhängigen Standardbuttons. Zustands-/Layoutmarker besitzen keine eigene Controlhöhe.
+
+`poll-disclosure` und `food-disclosure` enthalten Überschrift plus Runden-/Frist- bzw.
+Personen-/Bestellmetadaten und dürfen in diesem mehrzeiligen Zustand höher als 33 px sein.
+Die bloße Zustandsänderung eines normalen Buttons erzeugt keinen mehrzeiligen Sonderfall.
 
 Die Bezeichnung „Toggle“ registriert keine eigene Geometrie. Ein Button mit `aria-pressed` folgt
 seiner tatsächlichen Klassenvariante.
@@ -108,12 +127,21 @@ seiner tatsächlichen Klassenvariante.
 ### Text, Enge und Reflow
 
 - Standardbuttons und Menüeinträge DÜRFEN umbrechen und dadurch wachsen.
+- Basisbuttons behalten ihre automatische Mindestbreite als Flex-Item und verwenden
+  `overflow-wrap: break-word`: echter Überlauf darf umbrechen, die min-content-Wortbreite wird
+  nicht auf einzelne Zeichen reduziert. Menüeinträge behalten ihr eigenes `anywhere`.
 - `.btn-sm` DARF nur bei kurzem anwendungseigenem Text `nowrap` verwenden, wenn führender Inhalt
   ellipsiert oder die gesamte Aktion gestapelt werden kann.
 - Gruppen MÜSSEN ganze Controls statt einzelner Labels stapeln; ein Textlabel DARF nicht durch ein
   Icon ersetzt werden. DOM- und Tab-Reihenfolge bleiben unverändert. Die Arcade-Zeile bewahrt dabei
   ihre bereits bestehende mobile visuelle Reihenfolge CTA → Modus → Gegner.
-- Inputs, Selects und Flex-/Grid-Eltern verwenden `min-width: 0`.
+- Inputs, Selects und gezielt schrumpfende Text-/Layoutbereiche verwenden `min-width: 0`.
+  Allgemeine Zeilen und verschachtelte Aktionsgruppen behalten ihre automatische Mindestbreite;
+  sie dürfen nicht unter die benötigte Breite ihrer Controls schrumpfen.
+- Einladungszeilen lassen die vollständige Aktionsgruppe bei Platzmangel in die nächste Zeile
+  umbrechen. Nur die Textseite darf innerhalb ihrer verfügbaren Breite schrumpfen und umbrechen;
+  Namen und Metadaten bleiben vollständig erhalten.
+  Dasselbe Reflow-Prinzip gilt für Namen und Statusgruppe in den Agent-Diagnosezeilen.
 - Desktop-Reflow wird als 1024×768 → 512×384 und 1440×900 → 720×450 geprüft. Phone-Reflow wird
   separat mindestens bei 320×568 geprüft; 390×844 wird nicht künstlich halbiert.
 - Es darf weder horizontalen Seitenoverflow noch abgeschnittene Labels geben; alle Controls bleiben
@@ -148,20 +176,32 @@ seiner tatsächlichen Klassenvariante.
 - Der Warn-Tooltiptrigger bleibt 44 px breit und 31–33 px hoch. Disabled- und Aktivzustand besitzen
   dieselben Controlhöhen.
 
-### Selection-Toolbar und Pollbewertung (Paket 2)
+### Selection-Toolbar und Pollbewertung
 
 Selection-Toolbar-Textbuttons folgen 31–33 px; Iconbuttons messen mindestens 44×32 px. Pollwerte
 1–5 verwenden `.btn.btn-square`, messen gewählt wie ungewählt 32×32 px und behalten
 `gap: var(--space-2)`. Eine Reihe benötigt `5 × 32 + 4 × 8 = 192px`; unterhalb dieser verfügbaren
-Elternbreite bricht sie geordnet 1–5 um. Paket 2 entfernt die beiden kollidierenden Kontextregeln
-und den heutigen 30×30-Override.
+Elternbreite bricht sie geordnet 1–5 um. Beide kollidierenden Kontextregeln berücksichtigen die
+Quadratvariante; die konkurrierenden Höhen-/Mindestbreitenvorgaben und der frühere
+30×30-Override sind ersetzt. Gemessen wird die verfügbare Elternbreite, nicht die fit-content-Breite
+der Toolbar; die Browserprüfung erzwingt zusätzlich 192 und 191 px Elternbreite.
 
-### DataRowAction (Paket 2)
+### DataRowAction
 
-Eine eigene `DataRowAction`-Klasse wird Inline-Size-Container. Ab 320 px Innenbreite stehen
-Name/Badge/Aktion in einer Zeile; darunter wandert die Aktion vollständig in Zeile 2. Nur der Name
-erhält `min-width: 0` und Ellipse, Badge und kurzes Aktionslabel bleiben `nowrap`. Der Button folgt
-31–33 px. Die Containerregel MUSS auch fraktionale Breiten unter 320 px erfassen.
+Registry-ID `data-row-action` bezeichnet ausschließlich die Kontozugangszeile in `accountRows`
+(Name, Aktiv/Noch nicht übernommen, Reset-Link/Claim-Link). Nur ihr eigener Container besitzt die
+Inline-Size-Abfrage; allgemeine Zeilen und die separate Spieler-Verwaltung erhalten keine Regel.
+
+Ab 320 px Innenbreite stehen Name/Badge/Aktion in einer Zeile; darunter belegen Name/Badge
+Zeile 1 und die vollständige Aktion Zeile 2. Der Button folgt 31–33 px. Nur der Name erhält
+`min-width: 0` und sichtbare Ellipse, vollständiger DOM- und Accessible Name bleiben erhalten.
+Badge schrumpft nicht; Badge und kurzes anwendungseigenes Aktionslabel bleiben `nowrap`.
+
+Die Innenbreite wird als clientWidth abzüglich horizontalem Padding erfasst. Da clientWidth
+ganzzahlig rundet, wird der fraktionale Grenzfall zusätzlich über die Border-Box abzüglich
+Rahmen/Padding überprüft. Die CSS-Range-Abfrage auf die tatsächliche Containerbreite erfasst
+auch 319,75 px; 320 px bleibt einzeilig. Die rohe 320-px-Schwelle besitzt den Kommentar
+`design-token-ok: DataRowAction-Schwelle` auf derselben Zeile.
 
 ## 7. Erreichbare Zustände
 
@@ -208,12 +248,50 @@ erhält `min-width: 0` und Ellipse, Badge und kurzes Aktionslabel bleiben `nowra
   unveränderte Mittellinie.
 - Tastaturreihenfolge, sichtbarer unbeschnittener Fokus sowie aktive und deaktivierte Zustände.
 
+Die bestehenden Core-Owner prüfen zusätzlich bei 320×568, 390×844, 512×384, 720×450,
+1024×768 und 1440×900:
+
+- Standardbutton, kompakte/Bedeutungs-/Breitenvarianten, native Felder und Iconcontrols:
+  31–33 px, zentrierte Inhalte (höchstens 1 px Abweichung), Iconbreite mindestens 44 px.
+- Echten Textumbruch mit wachsender Border-Box ohne Clipping sowie Textarea mit rows 1 und 3.
+- Pollwerte 1–5 gewählt/ungewählt exakt 32×32 px, 8 px Abstand, verfügbare Elternbreite,
+  192/191-px-Grenze und unveränderte Tastaturreihenfolge in beiden Richtungen.
+- ActionMenu-Trigger 31–33 px und Einträge mindestens 44×44 px.
+- Echte Admin-Einladungszeilen bei 320/390 px: Anzeigen/Widerrufen einzeilig bei 31–33 px
+  vollständig innerhalb der Zeile; der tatsächliche View-Container darf nicht horizontal
+  überlaufen. Die kanonische Zurück-Navigation behält 4 px Icon-/Textabstand.
+- Infoboard-Aktionsgruppen bleiben bei 390 px neben einem langen Titel innerhalb ihrer Zeile.
+- DataRowAction bei 320/319/319,75 px Innenbreite: volle zweite Aktionszeile, unverkleinertes
+  Badge, vollständiger Name im DOM und Accessibility Tree, sichtbarer Tastaturfokus.
+- Kein horizontaler Seitenoverflow. Die Tests verwenden isolierte In-Memory-Daten.
+
 Die vollständige Verifikation umfasst außerdem `lint`, `build`, Unit-/Integrationstests,
 `check:tokens`, Arcade-Smoke und die vollständige E2E-Suite.
 
 ## 11. Permanente Varianten und befristete Ausnahmen
 
-Die maschinenlesbare Registry entsteht in Paket 2; bis dahin existieren keine Registry-IDs.
-Dauerhaft gewollt sind die 44-px-ActionMenu-Einträge, die internen NumberStepper-Hälften und die
-Arcade-lokale Segmentgeometrie. Die interim Basiscontrol-Geometrie ist keine neue Ausnahme dieses
-Pilots und wird in Paket 2 normalisiert. Es wird keine zusätzliche Größenvariante eingeführt.
+Die IDs aus `permanentVariants` dokumentieren bestehende Kontextregeln und Strukturziele.
+Eine permanente Kontextregel darf weiterhin nur ihre angegebene Eigenschaft besitzen;
+ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
+
+| Registry-ID | Dauerhafte Begründung |
+|---|---|
+| `action-menu-trigger`, `action-menu-entry` | Trigger 32 px; strukturelle Menüzeilen mindestens 44×44 px mit Textumbruch. |
+| `topbar-icons`, `selection-search-actions` | Iconaktionen mit reservierter 44-px-Breite und globaler Innengeometrie. |
+| `selection-buttons`, `poll-secondary`, `poll-text-width`, `poll-choice-text` | Toolbarlayout und Bedeutung respektieren die gewählte Basis-/Quadratvariante. |
+| `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
+| `profile-preview`, `tournament-label` | Nichtinteraktive Vorschau bzw. Feldbeschriftung folgt der benachbarten Controlzeile. |
+| `arrival-sort-mobile`, `interactive-chip`, `invite-link-controls`, `admin-test-fields` | Bestehende Formular-/Sortierkontexte behalten Platzierung und kurze eigene Labels bei 32 px. |
+| `data-row-name`, `data-row-action-label` | Nur der Name ellipsiert; die vollständige kurze Aktion stapelt unter 320 px. |
+| `food-position-slots`, `food-payment-marker`, `food-header` | Passende Aktions-/Leerplätze, 32-px-Zahlungsaktion und permanenter 44-px-Kartenkopf. |
+| `vote-submitted-state` | Nichtinteraktive Bestätigung mit Statusinhalt. |
+| `arcade-toolbar-buttons`, `challenge-test-disclosure` | Standardhöhe mit echtem Textumbruch; Segment-/Erstellungsgeometrie bleibt beim Pilotvertrag. |
+| `topbar-title`, `desktop-navigation`, `page-heading`, `subpage-heading`, `tabbed-subpage-heading`, `section-heading`, `section-title` | Bestehende 44-px-Kopf-/Navigationszeilen und mehrzeilige Headerreservierungen. |
+| `seating-pool`, `seating-player` | Strukturelle Sitzplatz-Ablagefläche und 44-px-Spielerzeile. |
+| `music-copy-actions`, `music-cover` | Globale Kopieraktionen; unverändertes nichtinteraktives 76-px-Cover. |
+| `kiosk-header-action`, `kiosk-match-row` | Permanente 44-px-Ziele der eigenständigen TV-Geräteklasse. |
+
+Die einzige befristete Ausnahme ist `legacy-secondary-modifier`: Der bestehende Kiosk-Passwort-
+Retry trägt einen CSS-losen Altmodifier. Seine Geometrie folgt bereits der Basis; Paket 5
+entfernt genau diesen ungenutzten Klassentoken. Befund, Aufruf, Eigenschaft und Löschkriterium
+stehen in `temporaryExceptions`. Es wird keine zusätzliche Größenvariante eingeführt.

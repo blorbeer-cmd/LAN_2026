@@ -352,38 +352,43 @@ arcadeTest('navigation', 'a deferred background render does not detach an active
     });
     assert.equal(await tileHandle.evaluate((element) => element.isConnected), true);
 
-    // Observe before click so the page context keeps the title created by the
-    // direct route render. The observer's timer is queued after the deferred
-    // flush timer scheduled by click capture. If that stale render was not
-    // cleared, it replaces this exact element before the assertion runs.
-    await host.page.evaluate(() => {
-      document.documentElement.removeAttribute('data-arcade-direct-render-connected');
-      const container = document.getElementById('view-container');
-      if (!container) throw new Error('Arcade view container is missing');
-      const observer = new MutationObserver(() => {
-        const firstDirectRenderTitle = document.getElementById('arcade-active-game-title');
-        if (!firstDirectRenderTitle) return;
-        observer.disconnect();
-        setTimeout(() => {
-          document.documentElement.dataset.arcadeDirectRenderConnected = String(firstDirectRenderTitle.isConnected);
-        }, 0);
-      });
-      observer.observe(container, { childList: true, subtree: true });
+    // Drain only the zero-delay work caused by this click, in order, before
+    // unrelated socket deliveries can render the page. Observing every later
+    // DOM replacement also blamed legitimate background updates on the stale flush.
+    const directRenderConnected = await tileHandle.evaluate((element) => {
+      const schedule = window.setTimeout.bind(window);
+      const cancel = window.clearTimeout.bind(window);
+      const pending = new Map<number, () => void>();
+      window.setTimeout = ((handler: TimerHandler, delay?: number, ...args: unknown[]) => {
+        const id = schedule(handler, delay, ...args);
+        if (delay === 0 && typeof handler === 'function') {
+          cancel(id);
+          pending.set(id, () => handler(...args));
+        }
+        return id;
+      }) as typeof window.setTimeout;
+      window.clearTimeout = (id) => {
+        if (typeof id === 'number') pending.delete(id);
+        cancel(id);
+      };
+      try {
+        element.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, button: 0, buttons: 0, isPrimary: true, pointerId: 1, pointerType: 'mouse',
+        }));
+        element.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+      } finally {
+        window.setTimeout = schedule;
+        window.clearTimeout = cancel;
+      }
+      const title = document.getElementById('arcade-active-game-title');
+      for (const callback of pending.values()) callback();
+      return title?.isConnected ?? false;
     });
-    await tileHandle.dispatchEvent('pointerup', {
-      button: 0,
-      buttons: 0,
-      isPrimary: true,
-      pointerId: 1,
-      pointerType: 'mouse',
-    });
-    await tileHandle.dispatchEvent('click', { button: 0 });
 
     await host.page.waitForSelector('#arcade-active-game-title:has-text("Gaming-Quiz")');
-    await host.page.waitForFunction(() => document.documentElement.dataset.arcadeDirectRenderConnected);
     assert.equal(
-      await host.page.evaluate(() => document.documentElement.dataset.arcadeDirectRenderConnected),
-      'true',
+      directRenderConnected,
+      true,
       'the click render must supersede the deferred background render',
     );
     assert.equal(new URL(host.page.url()).hash, '#arcade/quiz');
