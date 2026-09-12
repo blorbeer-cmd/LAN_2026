@@ -126,7 +126,8 @@ Registry-Bezüge für Dialogcontrols: `button`, `button-small`, `button-meaning`
 
 - `src/test/e2e/flowsShell.fixture.ts` lädt `modal.js` im echten Browser und prüft den
   Klartexttitelvertrag, vertrauenswürdiges Body-Markup, Defaultbreite, Bottom-Sheet/Zentrierung,
-  Tab/Shift+Tab, Escape, alle Fokusrückgaben und einen gestapelten Dialog.
+  Tab/Shift+Tab, Escape, die Fokusrückgaben von `confirmDialog`, die Schließen-Aktion von
+  `openModal` und einen gestapelten Dialog.
 - Reale Flows prüfen zusätzlich Profil-, Spielkatalog-, globale Such-, Event- und
   Verwerfen-Dialoge.
 - Bei 320×568 und 390×844 sitzt der Standarddialog als Bottom-Sheet ohne Seitenoverflow. Bei

@@ -168,6 +168,11 @@ flowTest('shared dialogs preserve layout, trap focus and restore it after every 
   assert.equal(await parentBackdrop.count(), 1, 'nested Escape leaves the parent dialog open');
   await parentBackdrop.locator('[data-close]').click();
   await parentBackdrop.waitFor({ state: 'detached' });
+  assert.equal(
+    await page.locator('#modal-contract-trigger').evaluate((element) => document.activeElement === element),
+    true,
+    'closing openModal returns focus to its trigger',
+  );
 
   await page.evaluate(async () => {
     const { openModal } = await globalThis.eval("import('/js/modal.js')");
@@ -215,6 +220,10 @@ flowTest('shared dialogs preserve layout, trap focus and restore it after every 
   }
   await layoutBackdrop.locator('[data-close]').click();
   await layoutBackdrop.waitFor({ state: 'detached' });
+  assert.equal(
+    await page.locator('#modal-contract-trigger').evaluate((element) => document.activeElement === element),
+    true,
+  );
 });
 
 flowTest('wide desktop adapts the shared shell and pilot views without changing mobile navigation', async (t) => {

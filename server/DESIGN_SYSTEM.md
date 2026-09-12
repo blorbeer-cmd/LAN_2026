@@ -1433,8 +1433,9 @@ space pattern rather than content-dependent card heights.
 - Use semantic elements: `<button>` for actions, `<a>` for navigation and associated
   `<label>` elements for form controls. Do not simulate controls with clickable `<div>`
   elements.
-- Every interactive element must be usable by keyboard and show a visible focus state. Shared
-  dialog focus and calendar keyboard/reflow behavior follow the
+- Every interactive element must be usable by keyboard and show a visible focus state. Focus order
+  follows the visual and logical order. Shared dialog focus and calendar keyboard/reflow behavior
+  follow the
   [Modal](frontend-contracts/components/modal.md) and
   [DateTimeField](frontend-contracts/components/date-time-field.md) contracts.
 - Status, validation and selection cannot be communicated by color alone. Pair color

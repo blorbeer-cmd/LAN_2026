@@ -100,22 +100,31 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // Player cards (checkbox, avatar, name, skill value) stack in a single
   // column on phones; two columns would leave no readable room for names.
   const drawPlayerGrid = page.locator('section[aria-labelledby="matchmaking-draw-title"] .player-selection-grid');
-  const toolbarGap = await drawPlayerGrid.evaluate((grid) => {
+  const toolbarSpacing = await drawPlayerGrid.evaluate((grid) => {
     const toolbar = grid.previousElementSibling;
     if (!toolbar?.classList.contains('selection-toolbar')) return null;
-    return Math.round(grid.getBoundingClientRect().top - toolbar.getBoundingClientRect().bottom);
+    return {
+      actual: Math.round(grid.getBoundingClientRect().top - toolbar.getBoundingClientRect().bottom),
+      expected: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-3')),
+    };
   });
-  assert.equal(toolbarGap, 12, 'RosterPicker keeps var(--space-3) between toolbar and grid');
+  assert.ok(toolbarSpacing, 'RosterPicker renders its selection toolbar before the grid');
+  assert.equal(toolbarSpacing.actual, toolbarSpacing.expected, 'RosterPicker keeps var(--space-3) between toolbar and grid');
   const longNameGeometry = await drawPlayerGrid.locator('.check-row').first().evaluate((row) => {
     const name = row.querySelector('.player-name')!;
-    name.textContent = 'AußergewöhnlichLangerUngekürzterSpielernameFürDenRosterPicker';
-    const range = document.createRange();
-    range.selectNodeContents(name);
-    return {
-      lines: range.getClientRects().length,
-      rowOverflow: row.scrollWidth > row.clientWidth,
-      viewOverflow: document.querySelector('#view-container')!.scrollWidth > document.querySelector('#view-container')!.clientWidth,
-    };
+    const originalName = name.textContent;
+    try {
+      name.textContent = 'AußergewöhnlichLangerUngekürzterSpielernameFürDenRosterPicker';
+      const range = document.createRange();
+      range.selectNodeContents(name);
+      return {
+        lines: range.getClientRects().length,
+        rowOverflow: row.scrollWidth > row.clientWidth,
+        viewOverflow: document.querySelector('#view-container')!.scrollWidth > document.querySelector('#view-container')!.clientWidth,
+      };
+    } finally {
+      name.textContent = originalName;
+    }
   });
   assert.ok(longNameGeometry.lines > 1, 'a long roster name wraps inside its card');
   assert.equal(longNameGeometry.rowOverflow, false);
