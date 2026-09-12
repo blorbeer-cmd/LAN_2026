@@ -538,6 +538,8 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   assert.match(toggleLabel, /Erstellt von E2E Bootstrap Admin/);
   assert.equal(await eventToggle.getAttribute('aria-describedby'), null);
   const actionTrigger = generalEventCard.locator('.action-menu > summary');
+  assert.match((await actionTrigger.innerText()).trim(), /^Aktion/);
+  assert.match((await actionTrigger.getAttribute('aria-label')) ?? '', /^Aktion/);
   await actionTrigger.focus();
   await page.keyboard.press('Enter');
   const editAction = generalEventCard.locator('[data-edit-event]');

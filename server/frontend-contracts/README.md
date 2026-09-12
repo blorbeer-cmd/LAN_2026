@@ -17,12 +17,12 @@ Control-Selektoren und ihre Zuordnung stehen in der reinen
 | `action-menu-trigger`, `action-menu-entry` | [Controls](components/controls.md) | `public/css/style.css` |
 | `number-stepper` | [Controls](components/controls.md) | `public/css/style.css` |
 | `data-row-action` | [Controls](components/controls.md) | `public/css/domains.css` |
-| `rosterPicker.js` | Vertrag folgt (Paket 3) | `public/css/style.css`, `public/css/domains.css` |
-| `selectionSearch.js` | Vertrag folgt (Paket 3) | `public/css/style.css` |
-| `modal.js` | Vertrag folgt (Paket 3) | `public/css/overlays.css` |
-| `dateTimeField.js` | Vertrag folgt (Paket 3) | `public/css/style.css`, `public/css/overlays.css` |
-| `emptyState.js` | Vertrag folgt (Paket 3) | `public/css/style.css` |
-| `actionMenu.js` | Vertrag folgt (Paket 3) | `public/css/style.css` |
+| `rosterPicker.js` | [RosterPicker](components/roster-picker.md) | `public/css/style.css`, `public/css/domains.css` |
+| `selectionSearch.js` | [SelectionSearch](components/selection-search.md) | `public/css/style.css` |
+| `modal.js` | [Modal](components/modal.md) | `public/css/overlays.css`; etablierte Präsentationsmodifier in `public/css/style.css` |
+| `dateTimeField.js` | [DateTimeField](components/date-time-field.md) | `public/css/style.css`; Modalgrenze in `public/css/overlays.css` |
+| `emptyState.js` | [EmptyState](components/empty-state.md) | `public/css/style.css` |
+| `actionMenu.js` | [ActionMenu](components/action-menu.md) | `public/css/style.css`; bestehende Kartenlage in `public/css/domains.css` |
 
 Neue Komponenten oder Varianten verwenden
 [`_contract-template.md`](_contract-template.md). Vertrag, repräsentatives Beispiel und
