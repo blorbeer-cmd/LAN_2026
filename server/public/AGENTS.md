@@ -11,6 +11,10 @@ diese vollständig lesen. Bei einer neuen Komponente oder Variante zusätzlich
 [`../frontend-contracts/_contract-template.md`](../frontend-contracts/_contract-template.md) lesen
 und Vertrag, Beispiel und Prüfungen im selben PR ergänzen.
 
+Für den betroffenen fachlichen Ablauf anschließend im Einstieg
+[`../../docs/product/README.md`](../../docs/product/README.md) nur die einschlägigen Produktregeln
+bestimmen und lesen; nicht pauschal alle Produktregeldateien laden.
+
 Für Frontendänderungen aus `server/` mindestens ausführen:
 
 - `npm run lint`
