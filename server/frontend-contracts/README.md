@@ -1,9 +1,16 @@
 # Frontend-Komponentenverträge
 
-Dieser Index ordnet Frontend-Helper und CSS-Komponenten ihrer normativen Vertragsdatei und ihrem
-CSS-Eigentümer zu. Vor Änderungen an einem Helper, einer Klasse oder einem Control zuerst den
-zugehörigen Vertrag vollständig lesen. Der Designkern bleibt in
-[`DESIGN_SYSTEM.md`](../DESIGN_SYSTEM.md); fachliche Seitenabläufe gehören nicht in diese Dateien.
+Dieser Index trennt drei normative Zuständigkeiten:
+
+- [Designkern](../DESIGN_SYSTEM.md): globale Prinzipien, Tokenquellen, kurze Komponenten-
+  Kernregeln und Accessibility.
+- Komponentenverträge in [`components/`](components/): API, Innengeometrie, Interaktion,
+  Komponenten-Accessibility und Varianten.
+- [Produktregeln](../../docs/product/README.md): Routen, Rollen, Geschäftsabläufe, Fachtexte
+  und Fachzustände.
+
+Vor Änderungen an einem Helper, einer Klasse oder einem Control zuerst den Designkern lesen und
+anschließend nur die betroffenen Komponentenverträge und Produktregeldateien vollständig lesen.
 
 Control-Selektoren und ihre Zuordnung stehen in der reinen
 [Registry](component-registry.mjs); der Index referenziert deren IDs.
