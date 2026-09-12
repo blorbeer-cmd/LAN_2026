@@ -329,7 +329,3 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   their full configuration remains available from the adjacent info popover. Tournament overview
   cards use the same compact format names without explanatory parentheses. Standalone league rounds
   reuse `.tournament-section-panel` so their accent rail matches the grouped tournament stages.
-
-Prefer composition of these primitives over view-specific copies. A new component
-class needs a distinct reusable purpose; a one-page selector that merely restates a
-base component is not a new component. Keep repeated row heights stable even when

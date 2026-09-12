@@ -288,8 +288,10 @@ view and to new views unless a documented domain constraint requires a different
    recognizable through its semantic
    control; winner, unread, running and error states use border/background plus text or accessible
    labeling rather than a redundant „Neu“ or result badge. Loading, disabled and long-content
+   states must retain the same geometry as the populated state.
 9. **Keep product rules separate.** Routes, roles, business flows, product copy and
    domain-state details live in [Product rules](../docs/product/README.md).
+
 ## Components
 
 Components are plain CSS classes (no JS component library) in `style.css`:
@@ -401,20 +403,25 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   standard presentation for collapsed histories, completed tournament lists and closed order
   cards: a full bordered card whose chevron rotates when opened. Section-specific content lives in
   `.collapsible-section-content`; decorative heading icons are omitted.
-
-
-
-
-- **Grouped page sections** — grouped-page-sections creates a visible main-group hierarchy
-  with full-width card surfaces, nested secondary surfaces and responsive repeated-card grids.
+- **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
+  shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible
+  heading lives inside the surface through `.grouped-page-section-title`, while filters and
+  subordinate rows remain part of that same group. This is the default hierarchy for overview
+  pages with several related datasets instead of headings that float between unrelated cards.
+  Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
+  `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
+  `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
+  `.adaptive-dashboard-columns` contains two semantic `.adaptive-dashboard-column` reading groups
+  for views such as Profile. They stack in DOM/focus order on compact layouts and flow independently
+  when Desktop is selected at `--bp-xl`; never recreate the former single grid where a tall card in
+  one column delayed the next card in the other. Home and Admin instead use explicit priority rows
+  whose repeated participant/user collections become three columns only in Desktop mode.
   Product-specific navigation, routes and layouts live in
   [Product rules](../docs/product/README.md).
 
-
-
-
-
-
+Prefer composition of these primitives over view-specific copies. A new component
+class needs a distinct reusable purpose; a one-page selector that merely restates a
+base component is not a new component. Keep repeated row heights stable even when
 optional descriptions differ in length, using the established line-clamp or reserved-
 space pattern rather than content-dependent card heights.
 
@@ -463,7 +470,6 @@ space pattern rather than content-dependent card heights.
   a state change.
 - Dynamic announcements such as errors or completed background actions use the
   established toast/live-region mechanism without repeatedly interrupting screen readers.
-
 - Layouts must tolerate longer German text, user-provided names and browser zoom without
   clipping essential controls or creating horizontal page scrolling. Intentional
   horizontal content such as the tournament bracket remains locally scrollable.

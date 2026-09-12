@@ -4,7 +4,6 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 
 ## Navigation, Rollen und Fachtexte
 
-   states must retain the same geometry as the populated state.
 9. **Reuse canonical semantics.** Navigation and „Mehr“ define domain icons through
    `domainIcons.js`; all other appearances reuse those mappings. Visible German page labels stay
    concise (`Teams`, `Vote`, `Orga`, `Info`, `Trivia`, `Historie`), while longer explanations and
@@ -166,21 +165,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   gamertag remains vertically centered with the avatar. The automatic monitor-neighbor and save
   behavior use adjacent info tooltips; the monitor explanation sits directly beside „Sitzplan“
   instead of occupying a separate row below the plan.
+
 ## Bereichsseiten und Mehr-Navigation
 
-- **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
-  shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible
-  heading lives inside the surface through `.grouped-page-section-title`, while filters and
-  subordinate rows remain part of that same group. This is the default hierarchy for overview
-  pages with several related datasets instead of headings that float between unrelated cards.
-  Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
-  `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
-  `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
-  `.adaptive-dashboard-columns` contains two semantic `.adaptive-dashboard-column` reading groups
-  for views such as Profile. They stack in DOM/focus order on compact layouts and flow independently
-  when Desktop is selected at `--bp-xl`; never recreate the former single grid where a tall card in
-  one column delayed the next card in the other. Home and Admin instead use explicit priority rows
-  whose repeated participant/user collections become three columns only in Desktop mode.
   The LAN „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga. For a general event,
     it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
     To-Do and Umfragen already occupy the bottom nav. Mein Profil remains here as the compact/mobile
