@@ -13,6 +13,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   gradient CTA it must not visually compete with; a plain checkbox only for an independent on/off
   flag (Hin-/Rückspiel, Punktestand tracken, Sitznachbarn), never for a named exclusive
   choice among alternatives.
+
 ## Kartenfooter-Aktionen
 
 - **In-card footer actions** — `.card-footer-actions` sets a card's primary action(s) off from a
@@ -24,6 +25,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   viewport while its card scrolled through: the pinned bar briefly covered whatever list row
   scrolled past behind it, which read as more disruptive than just scrolling a little further to
   reach the button.
+
 ## Teams, Skill und Spielkatalog
 
 - **Team formation** — the „Teams“ tab of the „Match“ area. The view first asks for game and mode: one shared `<select>` picks the
@@ -138,6 +140,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   Test-player ratings are excluded from this ranking because those players are hidden in normal
   member views. `Später` persists a deferred round, restores the normal catalog for the current
   session and resumes the rating panel on the next login.
+
 ## Arcade
 
 - **Arcade** — The launcher follows the grouped-page hierarchy with separate full-width cards for
@@ -248,6 +251,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   interactions (reaction circle and ten-second stop), eighteen choice-based logic trials and one
   memory-matrix trial. These three interaction shapes share the same lobby, round, pause,
   reconnect and result lifecycle.
+
 ## Vote und Turniere
 
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the

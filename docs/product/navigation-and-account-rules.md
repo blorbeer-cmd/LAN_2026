@@ -58,6 +58,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   shell, so a sub-view that reads its own previous DOM before redrawing (the Packliste's add-item
   draft and focus, the same survives-its-own-rerender pattern the Checkliste's To-Do form uses)
   keeps working across a background refresh triggered from outside that tab.
+
 ## Benachrichtigungszentrum
 
 - **Notification center** — `.notification-highlight` exposes the newest active unread entry as a
@@ -69,6 +70,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   `Obsolet`/`Abgelaufen` badge and never count as unread. The sticky footer holds two bulk actions
   in equal columns, growing to three equal columns only while at least one obsolete entry is
   present, which adds a targeted „Obsolete aufräumen“ action ahead of the other two.
+
 ## Eventauswahl
 
 - **Event dropdown** — every place that picks an event uses the searchable select above with one
@@ -84,6 +86,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   and therefore carries no state icon. Hall of Fame's payload holds results rather than lifecycle
   flags, so it joins its events against `accessibleEvents()` for the state and falls back to a
   plain title for an event that list no longer holds.
+
 ## Profile und Admin
 
 - **Player profiles** — There is no separate roster area: Home's Live-Status already lists everyone,
@@ -168,29 +171,30 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 
 ## Bereichsseiten und Mehr-Navigation
 
-  The LAN „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga. For a general event,
-    it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
-    To-Do and Umfragen already occupy the bottom nav. Mein Profil remains here as the compact/mobile
-    path. From `--bp-xl`, selecting Desktop replaces the bottom bar and „Mehr“ detour visually with
-    a grouped direct rail: Home; LAN; Orga; Sonstiges; plus the bottom utilities Feedback,
-    role-gated Admin and Mein Profil. The active event feature snapshot removes unavailable entries
-    and empty groups. Profile and Feedback are not duplicated in the desktop top ribbon; the ribbon
-    contains only global tools. The account-scoped Automatic/Desktop/Laptop choice lives in Mein
-    Profil so it remains reachable in every shell. Essen is listed in „Mehr“ only for
-    general events; LAN events retain its
-  unconditional bottom-nav slot (`more.js`). Auswertung is never listed here —
-  it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
-  (see „Admin tools“). It keeps each destination's canonical icon
-  directly beside its centered title so both read as one label; those icons are one spacing step smaller than standard list-row icons and
-  use the wider section gap to keep icon and text visually distinct. Only the navigation chevron
-  remains independently aligned at the right.
-  The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
-  their major workflows and datasets are main groups, while entries, players, orders and results
-  remain subordinate cards or rows inside those groups. Phone and laptop destinations return to
-  „Mehr“ from the shared compact subpage header; the corresponding control is hidden on wide desktop
-  because the destination is already direct in the rail. Profile keeps „Abmelden“ as that header's
-  trailing action, while Orga alone uses the reserved second row for its tabs and may therefore start
-  lower.
+The LAN „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga. For a general event,
+it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
+To-Do and Umfragen already occupy the bottom nav. Mein Profil remains here as the compact/mobile
+path. From `--bp-xl`, selecting Desktop replaces the bottom bar and „Mehr“ detour visually with
+a grouped direct rail: Home; LAN; Orga; Sonstiges; plus the bottom utilities Feedback,
+role-gated Admin and Mein Profil. The active event feature snapshot removes unavailable entries
+and empty groups. Profile and Feedback are not duplicated in the desktop top ribbon; the ribbon
+contains only global tools. The account-scoped Automatic/Desktop/Laptop choice lives in Mein
+Profil so it remains reachable in every shell. Essen is listed in „Mehr“ only for
+general events; LAN events retain its
+unconditional bottom-nav slot (`more.js`). Auswertung is never listed here —
+it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
+(see „Admin tools“). It keeps each destination's canonical icon
+directly beside its centered title so both read as one label; those icons are one spacing step smaller than standard list-row icons and
+use the wider section gap to keep icon and text visually distinct. Only the navigation chevron
+remains independently aligned at the right.
+The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
+their major workflows and datasets are main groups, while entries, players, orders and results
+remain subordinate cards or rows inside those groups. Phone and laptop destinations return to
+„Mehr“ from the shared compact subpage header; the corresponding control is hidden on wide desktop
+because the destination is already direct in the rail. Profile keeps „Abmelden“ as that header's
+trailing action, while Orga alone uses the reserved second row for its tabs and may therefore start
+lower.
+
 ## Hall of Fame, Info und Feedback
 
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
@@ -220,6 +224,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   „Erledigt“ section whose open state survives live re-renders; their secondary `.btn.btn-sm`
   action „Wieder öffnen“ moves them back without deleting the original message or its captured
   context.
+
 ## Mein Profil, Auswertung und Home
 
 - **Profile** — The profile row uses the original compact square color preview. Activating it opens
@@ -278,6 +283,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   The personal live-state action says only „Pause“ while active and „Bin wieder da“ while paused;
   it stores the equally concise manual note „Pause“ instead of combining several possible reasons
   into one ambiguous label.
+
 ## Erstlogin
 
 - The first-login core tour is a true modal: `#app` is inert, focus cycles inside the dialog,

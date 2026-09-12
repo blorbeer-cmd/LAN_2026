@@ -11,6 +11,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   Every `.seating-seat` uses the same width and height on all four table sides, so vertical sides
   no longer stretch into wide rows. Phones switch all four sides to one shared compact size and
   keep exceptionally narrow layouts locally scrollable instead of widening the page.
+
 ## Durchsagen, Bestellungen und Orga
 
 - **Broadcasts** — „Neue Durchsage“ and the recent history are separate grouped sections. Delivery
@@ -99,7 +100,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   rename — „Events“ is the former standalone „Einstellungen“ view, moved here because it is setup
   work like the rest of Orga rather than a personal preference screen; there is no longer a topbar
   settings icon). TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
-  „Kioskverwaltung“ tool card (see „Admin tools“) since opening the shared-screen dashboard is an
+  „Kioskverwaltung“ tool card (see [„Admin tools“](navigation-and-account-rules.md#profile-und-admin)) since opening the shared-screen dashboard is an
   admin task, not something every member needs from Orga. „Mehr“ opens Orga on its first tab,
   „Umfragen“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
   top-left tab is the one actually selected on arrival; the already persisted push url `/#checklist`
@@ -193,7 +194,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   preserves its open state across live re-renders. Pending invitations for the current identity are
   deliberately absent from this tab — a teaser sitting directly above the Events cards made it too
   easy to miss and cluttered the tab with the cards immediately following it. Instead, an
-  invitation surfaces as a personal Home „Aktuell“ nudge (see „Home overview“) that links into „Mein
+  invitation surfaces as a personal Home „Aktuell“ nudge (see [„Home overview“](navigation-and-account-rules.md#mein-profil-auswertung-und-home)) that links into „Mein
   Profil“, and Profile's own leading „Einladungen“ section is where it is actually answered
   (`renderInvitationCard`/`pendingEventInvitations`/`wirePendingInvitationActions` in `events.js`,
   reused by `profile.js` so the card markup and accept/decline wiring exist exactly once).
@@ -314,6 +315,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   action with its account already selected. The standalone page shows a centered
   account/password card until its event-scoped credential is established; this identity never
   becomes a player or a regular app session.
+
 ## An- und Abreise
 
 - **Arrival carpools** — the „An- & Abreise“ tab of Orga. Anreise and Abreise remain separate

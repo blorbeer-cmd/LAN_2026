@@ -34,6 +34,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   only states that no vote is running. The regular personal Vote
   view keeps its open-round distribution hidden. Without a tournament, the tournament card uses
   the concise empty state „Kein offenes Turnier.“.
+
 ## Jam-Sessions und Analytics
 
 - **Jam sessions** — Jam is a grouped page below „Mehr“. Its page heading always exposes an info
