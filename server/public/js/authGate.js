@@ -78,7 +78,7 @@ function passwordField({ autofocus = false, autocomplete = 'current-password', l
     <div>
       <label for="auth-password" class="field-label is-required">${escapeHtml(label)}</label>
       <div class="row">
-        <input id="auth-password" style="flex:1;min-width:0;" type="password" autocomplete="${autocomplete}" required minlength="1" ${autofocus ? 'autofocus' : ''} />
+        <input id="auth-password" style="flex:1;" type="password" autocomplete="${autocomplete}" required minlength="1" ${autofocus ? 'autofocus' : ''} />
         <button type="button" class="icon-btn" data-password-toggle aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
       </div>
     </div>

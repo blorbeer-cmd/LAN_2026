@@ -46,7 +46,7 @@ async function load(ctx) {
 
 function rankedRows(entries, suffix) {
   if (entries.length === 0) {
-    return emptyStateHtml('Noch keine Platzierungen.', { style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Noch keine Platzierungen.', { className: 'empty-state-compact' });
   }
   return entries
     .map(

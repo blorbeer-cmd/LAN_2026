@@ -252,10 +252,10 @@ async function loadNeighbors(playerId, ctx) {
 function renderNeighbors(myId) {
   const others = state.players.filter((p) => p.id !== myId);
   if (others.length === 0) {
-    return emptyStateHtml('Noch keine weiteren Teilnehmenden.', { style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Noch keine weiteren Teilnehmenden.', { className: 'empty-state-compact' });
   }
   if (neighborsLoading || neighborsCache === null) {
-    return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Lädt…', { className: 'empty-state-compact' });
   }
   const checked = new Set(neighborsCache.neighborIds);
   const rows = others

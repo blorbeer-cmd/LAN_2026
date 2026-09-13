@@ -1883,3 +1883,8 @@ input.food-order-price-input {
     margin-left: 0;
   }
 }
+
+.empty-state-food-items {
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) 0;
+}

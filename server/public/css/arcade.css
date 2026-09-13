@@ -397,8 +397,6 @@
 .arcade-lobby-free-row .btn {
   width: 100%;
   align-self: center;
-  padding-top: var(--space-1);
-  padding-bottom: var(--space-1);
 }
 .arcade-lobby-control-bar {
   display: grid;
@@ -422,9 +420,6 @@
 }
 .arcade-lobby-target-score select,
 .arcade-lobby-target-score input {
-  height: var(--space-7);
-  padding-top: var(--space-1);
-  padding-bottom: var(--space-1);
   text-align: center;
 }
 .arcade-lobby-setting-options {

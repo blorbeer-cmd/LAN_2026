@@ -21,8 +21,8 @@ selbst aus.
 - `action`: `{ id, navigate, label, className }`
 
 Text, Bildattribute, Klassen, Inline-Style und Aktionsattribute werden escaped. `style` und
-`className` sind reale Legacy-Schnittstellen; ihre allgemeine Inventarisierung, Migration und
-statische Sperre gehören zu Paket 5.
+`className` bleiben reale Schnittstellen. Paket 5 inventarisiert ihre Aufrufer statisch:
+geschützte Innenwerte gehören in registrierte Besitzerklassen; reine Außenabstände bleiben beim Aufrufer.
 
 ## 3. CSS-Eigentümerschaft
 
@@ -40,7 +40,7 @@ als zweite EmptyState-Implementierung nachbauen.
 | Strukturierter Text | `emptyStateHtml({ text })` | umgesetzt | explizites strukturiertes Layout ohne Roh-HTML |
 | Etablierte Illustration | `illustration` | umgesetzt | vorhandene, ausdrücklich dokumentierte Markenillustration |
 | Direkte Recovery-Aktion | `action` | umgesetzt | ein echter Button direkt im Leerzustand |
-| Legacy-Präsentation | `className`, `style` | umgesetzt | bestehende Aufruferintegration bis Paket 5 |
+| Registrierte Präsentation | `className`, `style` | umgesetzt | Registry-Klasse oder reine äußere Platzierung; keine aufrufereigenen Innenwerte |
 
 Dekorative Icons und beliebiges Body-HTML sind keine Varianten.
 
@@ -50,8 +50,8 @@ Dekorative Icons und beliebiges Body-HTML sind keine Varianten.
 - Eine Illustration DARF nur eine bereits etablierte und dokumentierte Markenillustration sein.
 - Eine direkte Aktion DARF ID, Navigationsziel, Label und eine vorhandene Buttonkombination
   erhalten. Ohne `className` gilt `btn btn-primary btn-sm`.
-- `className` und `style` DÜRFEN bestehende Legacy-Aufrufer bis Paket 5 unverändert weiterreichen.
-  Neue allgemeine Varianten oder eine statische Sperre sind in Paket 3 nicht erlaubt.
+- `className` DARF registrierte Präsentationsklassen kombinieren. `style` DARF ausschließlich
+  aufrufereigene Außenplatzierung enthalten; geschützte Innenwerte werden vom Paket-5-Check abgewiesen.
 - Aufrufer besitzen Aktionseffekt und Eventverdrahtung.
 
 ## 6. Komponenteneigene Invarianten
@@ -117,5 +117,29 @@ Registry-Bezüge für die Recovery-Aktion: `button`, `button-small`, `button-mea
 Die etablierte Home-Illustration und die direkte Recovery-Aktion sind permanente Varianten.
 Recovery verwendet die Registry-IDs `button`, `button-small`, `button-meaning` und gegebenenfalls
 `button-width`; sie besitzt keine eigene Controlgeometrie. `style` und `className` bleiben reale
-Legacy-Schnittstellen, sind in Paket 3 aber weder pauschal als Ausnahme registriert noch zur
-Migration freigegeben. Es gibt keine neue befristete EmptyState-Ausnahme.
+Schnittstellen. Paket 5 hat jeden tatsächlichen Präsentationsaufrufer klassifiziert und nur
+geschützte Inline-Innenwerte in die unten referenzierten Besitzerklassen übertragen. Bestehende
+Kontextklassen und die drei reinen Außenabstände bleiben erhalten. Die vollständige Einzelspur
+steht im [Paket-5-Inventar](../evidence/package-5-baseline.tsv). Es gibt keine befristete EmptyState-Ausnahme.
+
+- `registry:empty-state`: Shared empty-state text, structure and recovery layout.
+
+- `registry:empty-state-compact`: Preserves the individually inventoried 16px padding of shallow loading/result slots.
+
+- `registry:empty-state-food-items`: Preserves small copy and vertical spacing in the empty food-position list.
+
+- `registry:empty-state-kiosk-loading`: Preserves the TV loading canvas inset.
+
+- `registry:empty-state-vote`: Centered result/history slot in Vote.
+
+- `registry:empty-state-tournament`: Stable tournament collection empty slot.
+
+- `registry:empty-state-hall-of-fame`: Hall-of-Fame result slot spans the result layout.
+
+- `registry:empty-state-arrivals`: Empty arrival collection occupies the carpool grid.
+
+- `registry:empty-state-notifications`: Shared empty/loading/error slot inside the notification panel.
+
+- `registry:empty-state-music`: Centered current-playback placeholder.
+
+- `registry:empty-state-kiosk`: TV vote placeholders fill their existing dashboard region.

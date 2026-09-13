@@ -945,6 +945,6 @@ main().catch((err) => {
   // eslint-disable-next-line no-console
   console.error(err);
   document.getElementById('kiosk-root').innerHTML = emptyStateHtml(`Fehler beim Start: ${err.message}`, {
-    style: 'padding:var(--space-8);',
+    className: 'empty-state-kiosk-loading',
   });
 });
