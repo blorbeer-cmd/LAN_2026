@@ -9869,6 +9869,14 @@
     },
     {
       "file": "server/public/js/format.js",
+      "line": 72,
+      "kind": "dynamic-inline-style",
+      "source": "<span role=\"img\" aria-label=\"§§§§§§§§\" title=\"§§§§§§§§\" style=\"color:var(--state-paused);§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§\">",
+      "callSource": "<span role=\"img\" aria-label=\"${title}\" title=\"${title}\" style=\"color:var(--state-paused);${hasConflict ? '' : 'visibility:hidden;'}\">",
+      "control": false
+    },
+    {
+      "file": "server/public/js/format.js",
       "line": 91,
       "kind": "dynamic-class",
       "source": "<span class=\"§§§§§§\">",
@@ -10625,6 +10633,14 @@
       "kind": "dynamic-class",
       "source": "<div class=\"lb-row §§§§§§§§§§§§§§§§§§§§§§§§§§\">",
       "callSource": "<div class=\"lb-row ${i === 0 ? 'rank-1' : ''}\">",
+      "control": false
+    },
+    {
+      "file": "server/public/js/views/leaderboard.js",
+      "line": 59,
+      "kind": "dynamic-inline-style",
+      "source": "<div class=\"muted\" style=\"font-size:var(--font-size-xs);§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§§\">",
+      "callSource": "<div class=\"muted\" style=\"font-size:var(--font-size-xs);${show ? '' : 'visibility:hidden;'}\">",
       "control": false
     },
     {

@@ -106,6 +106,14 @@ Controls oder 4 befristete Ausnahme. Jede Fundstelle mit Datei, Zeile und Selekt
 Modifier und Zustandsmarker erben die Geometrie des Trägers; ihre Registrierung erlaubt keine
 eigenen Innenmaße. Die Registry bleibt reine Daten; Paket 5 validiert sie mit dem Snapshot-Komponentencheck.
 
+Die ausdrücklichen Eigenschaftsgrenzen in der Registry setzen diese Trennung mechanisch um:
+Bedeutung erlaubt nur den bestehenden Schatten, Breite nur ihre Breitenwerte, Auswahl nur
+Outline und dessen Abstand. Reine Farb-, Verfügbarkeits- und Layoutmarker erlauben keine
+geschützten Innenwerte. Zustände sind von den geometriebesitzenden Basiseinträgen getrennt.
+Die vorhandene Battleship-Schusstypografie und die Maße der dekorativen Schiff-Verbindungen
+gehören exakten permanenten Varianten; daraus entsteht keine allgemeine Geometriefreigabe für
+einen Zustandsmarker. Diese Grenzen gelten auch neben einer Basisklasse und in anderen Dateien.
+
 Die Standardfamilien `date-fields`, `search-select`, `profile-controls`, `row-icons`,
 `arrival-controls`, `filter-chip`, `section-tab`, `poll-choice`, `admin-controls`, `vote-fields`,
 `food-fields`, `payment-controls`, `result-fields`, `arcade-mute` und `music-controls`
@@ -548,3 +556,39 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:arrival-sort-glyph`: Sort control owns its font-relative glyph.
 
 - `registry:invite-link-field`: Kompakte Einladungs-URL mit unveränderter Standardhöhe; der auf Textfelder begrenzte Eigentümerselektor setzt ausschließlich die kleine Schrift und gewinnt gegen die native Feldbasis. Der Browserflow prüft den berechneten Wert.
+
+- `registry:info-warning-state`: Warning colors inherit the help trigger interior.
+
+- `registry:calendar-day-state`: Calendar selection/today colors and inset emphasis preserve the day target.
+
+- `registry:bracket-state`: Bracket availability and winner emphasis preserve the host geometry; only winner elevation may differ.
+
+- `registry:rating-unset-state`: Unset rating only changes the slider color.
+
+- `registry:rating-divergence-state`: Divergent suggestion only changes emphasis colors.
+
+- `registry:arcade-soon-state`: Unavailable game tile changes opacity only.
+
+- `registry:battleship-shot-state`: Ship/shot colors and sunk outline preserve cell geometry; exact glyph variants own the existing shot typography.
+
+- `registry:battleship-orientation-state`: Orientation marks ship decoration; exact pseudo-element variants own connector dimensions.
+
+- `registry:scribble-swatch-state`: Selected swatch changes its border color without resizing the palette control.
+
+- `registry:battleship-miss-glyph`: Existing miss glyph uses the large font token inside the unchanged 44px board cell.
+
+- `registry:battleship-horizontal-connector`: Existing decorative horizontal connector spans one spacing token; it does not resize the cell.
+
+- `registry:battleship-vertical-connector`: Existing decorative vertical connector spans one spacing token; it does not resize the cell.
+
+- `registry:battleship-ship-glyph`: Existing ship letter is an internal pseudo-element, independent of the board target geometry.
+
+- `registry:battleship-hit-glyph`: Existing hit/sunk ship letter shrinks within its decorative pseudo-element; the cell stays unchanged.
+
+- `registry:game-chip-focus-state`: Existing gameChipsHtml in format.js marks focused/background games by color and opacity; these are passive labels, with no protected interior override.
+
+- `registry:card-open-menu-state`: actionMenu.js raises the card stacking order while its menu is open; it does not alter control interior.
+
+- `registry:desktop-navigation-state`: app.js toggles the active desktop navigation entry; only colors, font weight and decorative indicator visibility change.
+
+- `registry:player-dragging-state`: The tournament and matchmaking drag callers lower the moving roster row opacity without resizing it.

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { analyze, cssFiles, inventoryJs, parseCss, splitSelectors, subject } from './check-component-contracts.mjs';
+import { analyze, cssFiles, inventoryJs, parseCss, readSnapshot, splitSelectors, subject } from './check-component-contracts.mjs';
 
 const checker = fileURLToPath(new URL('./check-component-contracts.mjs', import.meta.url));
 const contract = 'components/test.md#contract';
@@ -103,6 +103,37 @@ test('component property limits reject attachment geometry even alongside an unr
   assert.equal(explicit.findings.find(item => item.property === 'height').classification, 'permanent-variant');
 });
 
+test('CSS control subjects reject unknown extra classes even without a literal JS markup caller', async () => {
+  const field = { ...button, id: 'field', selector: "input[type='text']" };
+  const result = await analyze(snapshot({ components: [button, field], css: '.btn { padding: 0; } .btn.big { height:48px; padding:0 var(--space-8); font-size:2rem; } input[type=\'text\'].extra { height:60px; } .btn.tint { color:red; }', js: "button.classList.add('big');" }));
+  assert.deepEqual(result.violations.filter(item => item.code === 'subject-class').map(item => item.value), ['big', 'extra', 'tint']);
+  assert.equal(result.violations.filter(item => item.code === 'css-ownership').length, 4);
+  const exclusion = await analyze(snapshot({ css: '.btn:not(.unrelated) { padding:0; } .btn:has(.child) { color:red; } .wrapper:has(.btn) .caption { height:12px; }' }));
+  assert.equal(exclusion.violations.length, 0, 'excluded/descendant classes are not the control subject');
+  const explicit = await analyze(snapshot({ css: '.btn { padding:0; } .btn.big { height:44px; }', variants: [{ ...variant, owner: button.owner, selector: '.btn.big' }] }));
+  assert.equal(explicit.exitCode, 0);
+});
+
+test('state limits apply across owner files and only exact variants can own an interior difference', async () => {
+  const state = { ...button, id: 'state', selector: '.is-selected', control: false, properties: ['outline', 'outline-offset'] };
+  const tile = { ...button, id: 'tile', selector: '.tile', owner: variant.owner };
+  const options = { components: [button, state, tile], css: '.btn { padding:0; } .btn.is-selected { height:60px; outline:2px solid red; }', domain: '.tile { height:44px; } .tile.is-selected { width:20px; }' };
+  const result = await analyze(snapshot(options));
+  assert.deepEqual(result.violations.map(item => item.property).sort(), ['height', 'width']);
+  const explicit = await analyze(snapshot({ ...options, variants: [{ ...variant, selector: '.tile.is-selected', properties: ['width'] }] }));
+  assert.deepEqual(explicit.violations.map(item => item.property), ['height']);
+});
+
+test('the real registry rejects review geometry probes for meaning, width, selection and game states', async () => {
+  const { files } = readSnapshot(fileURLToPath(new URL('../../', import.meta.url)), 'staged');
+  files.set(cssFiles[0], files.get(cssFiles[0]) + '\n.btn-primary { min-height:60px; padding:var(--space-6); font-size:var(--font-size-xl); } .btn.is-selected { height:60px; } .btn-block { padding:var(--space-8); } .icon-btn.is-active { width:20px; height:20px; } .btn.is-paid { padding:1rem; } .battleship-cell.is-hit { height:60px; }');
+  files.set(cssFiles[1], files.get(cssFiles[1]) + '\n.bracket-team-row.is-tbd { height:60px; }');
+  const result = await analyze(files);
+  assert.equal(result.registryDiagnostics.length, 0);
+  assert.equal(result.violations.length, 10);
+  assert.ok(result.violations.every(item => item.code === 'css-ownership'));
+});
+
 test('checks literal inline styles, style properties, bracket properties and internal icon size', async () => {
   const result = await analyze(snapshot({ css: '.btn { padding: 0; } .btn > svg { width: 14px; }', js: [
     'const html = `<button class="btn" style="padding:var(--space);width:${size}px">Go</button>`;',
@@ -126,6 +157,22 @@ test('documents dynamic classes and properties without inventing names or guessi
   const checked = await analyze(snapshot({ js: source }));
   assert.equal(checked.violations.length, 0);
   assert.ok(checked.registryDiagnostics.some(item => item.code === 'unregistered-dynamic-control'));
+});
+
+test('dynamic inline property names and whole styles are boundaries, while literal properties keep their checks', async () => {
+  const js = 'const html = `<button class="btn ${extra}" style="${styles}"></button><input style="${property}:20px; padding:${spacing}"><button class="btn" style="background:${color};left:${x}%;--profile-color:${color}"></button>`;';
+  const inventory = inventoryJs(js, 'server/public/js/view.js');
+  assert.equal(inventory.boundaries.filter(item => item.kind === 'dynamic-inline-style').length, 2);
+  const result = await analyze(snapshot({ js }));
+  assert.deepEqual(result.violations.map(item => item.property), ['padding']);
+  assert.equal(result.registryDiagnostics.filter(item => item.code === 'unregistered-dynamic-control').length, 3);
+  const use = { file: 'public/js/view.js', source: 'style="${styles}"', reason: 'Concrete fixture intentionally composes a style object.' };
+  const classified = { ...button, dynamicUses: [use] };
+  const onlyStyle = 'const html = `<button class="btn" style="${styles}"></button>`;';
+  assert.ok((await analyze(snapshot({ js: onlyStyle, components: [classified] }))).registryDiagnostics.some(item => item.code === 'unregistered-dynamic-control'), 'class evidence cannot authorize dynamic styles');
+  classified.dynamicUses[0] = { ...use, kind: 'dynamic-inline-style' };
+  assert.equal((await analyze(snapshot({ js: onlyStyle, components: [classified] }))).exitCode, 0);
+  assert.ok((await analyze(snapshot({ components: [classified] }))).registryDiagnostics.some(item => item.code === 'stale-dynamic-use'));
 });
 
 test('validates unique contract ownership, anchors and literal registry data', async () => {

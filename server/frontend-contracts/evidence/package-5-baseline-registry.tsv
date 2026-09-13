@@ -1,5 +1,4 @@
 file	line	id	code	value	classification	resolution
-		poll-choice	stale-entry		violation	Add concrete dynamic caller evidence for poll-choice.
 server/frontend-contracts/components/controls.md		action-menu-entry	contract-reference-count	0	violation	Add the unique explicit ownership reference in the declared contract anchor.
 server/frontend-contracts/components/controls.md		action-menu-trigger	contract-reference-count	0	violation	Add the unique explicit ownership reference in the declared contract anchor.
 server/frontend-contracts/components/controls.md		admin-controls	contract-reference-count	0	violation	Add the unique explicit ownership reference in the declared contract anchor.

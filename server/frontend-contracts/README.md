@@ -57,8 +57,14 @@ einen fremden Nachfahren nicht zum Control. Interne SVG-/`ui-icon`-Maße werden 
 Control zugeordnet. Kontextregeln benötigen einen exakten permanenten Selektor oder eine exakte
 befristete Ausnahme. Optionale `properties` begrenzen Komponenten und Varianten auf ihre
 dokumentierten geschützten Eigenschaften; eine leere Liste erlaubt keine geschützten Innenwerte.
-Bei mehreren Komponenten im selben Compound gelten alle ausdrücklich gesetzten Grenzen, damit
-eine zusätzliche Basisklasse die Begrenzung eines Anhangs nicht umgeht. Eine exakte permanente
+Bei mehreren Komponenten im selben Compound gelten alle ausdrücklich gesetzten Grenzen auch
+über Eigentümerdateien hinweg, damit eine zusätzliche Basisklasse die Begrenzung eines Anhangs
+nicht umgeht. Jede literale CSS-Subjektklasse eines Controls wird abgeglichen, auch wenn ihr
+JS-Aufrufer die Klasse erst über `classList` oder dynamisch zusammensetzt. Eine unbekannte
+Zusatzklasse wird nicht durch eine danebenstehende Basis- oder native Feldklasse legitimiert.
+Klassen ausschließlich in Attributstrings, `:not` oder einem `:has`-Nachfahren sind keine
+zusätzlichen Subjektklassen; die gesonderte Buttonmodifier-Abfrage bleibt davon unberührt.
+Eine exakte permanente
 Variante kann eine abweichende Eigenschaft ausdrücklich übernehmen. Der Check simuliert weder
 DOM noch Kaskade, Spezifität, Layout oder Tokenwerte.
 
@@ -68,7 +74,11 @@ nativen Controls sowie Zusatzklassen neben `btn`/`icon-btn`, statische Inline-St
 direkte `.style.property`-/`.style['property']`-Zuweisungen und `style.setProperty('property', ...)`.
 Literal erkennbare Buttonmodifier werden auch in einzelnen Klassenstrings geprüft. Werte dürfen
 dynamisch sein, solange der Eigenschaftsname literal ist. Nicht auflösbare Klassenteile, Tags und
-Eigenschaftsnamen werden als Erkennungsgrenzen ausgegeben, nicht geraten. Komplexe Datenflüsse,
+Eigenschaftsnamen werden als Erkennungsgrenzen ausgegeben, nicht geraten. Dazu gehören vollständig
+dynamische Inline-Styles und dynamische Inline-Eigenschaftsnamen (`dynamic-inline-style`);
+literale Eigenschaftsnamen mit dynamischem Wert bleiben normal prüfbar. Ein konkreter Beleg für
+eine solche Style-Grenze benötigt `dynamicUses.kind: 'dynamic-inline-style'`; reine
+Klassenbelege (Standard `dynamic-class`) können ihn nicht ersetzen. Komplexe Datenflüsse,
 beliebige DOM-APIs und zur Laufzeit erzeugtes HTML sind keine Browseremulation. Ein real benötigter
 dynamischer Klassenaufruf wird über `dynamicUses` mit exakter Quelldatei, Templatefragment und
 Begründung belegt; fehlende Control-Zuordnungen und entfernte Belege schlagen fehl. Die Registry

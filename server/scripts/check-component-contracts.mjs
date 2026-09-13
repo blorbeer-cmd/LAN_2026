@@ -209,8 +209,19 @@ export function inventoryJs(source, file) {
       for (const attr of match[2].matchAll(/\b([\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)) attrs[attr[1].toLowerCase()] = attr[2] ?? attr[3] ?? attr[4] ?? '';
       const names = (attrs.class ?? '').split(/\s+/).filter(name => /^[a-zA-Z_][\w-]*$/.test(name));
       const line = lineAt(source, fragment.offset + match.index);
-      if ((attrs.class ?? '').includes('§')) boundaries.push({ file, line, kind: 'dynamic-class', source: match[0], callSource: source.slice(fragment.offset + match.index, fragment.offset + match.index + match[0].length), control: controlTags.has(tag) || names.some(name => name === 'btn' || name === 'icon-btn') });
-      if (controlTags.has(tag) || names.some(name => name === 'btn' || name === 'icon-btn')) markup.push({ file, line, tag, classes: names, id: attrs.id, style: attrs.style, selector: `${tag}${names.map(name => `.${name}`).join('')}`, attributes: attrs });
+      const control = controlTags.has(tag) || names.some(name => name === 'btn' || name === 'icon-btn');
+      const boundary = kind => boundaries.push({ file, line, kind, source: match[0], callSource: source.slice(fragment.offset + match.index, fragment.offset + match.index + match[0].length), control });
+      if ((attrs.class ?? '').includes('§')) boundary('dynamic-class');
+      if (attrs.style?.includes('§')) {
+        const points = [-1, ...delimiters(attrs.style, ';'), attrs.style.length];
+        const dynamicName = points.slice(1).some((end, i) => {
+          const declaration = attrs.style.slice(points[i] + 1, end);
+          const colon = delimiters(declaration, ':')[0];
+          return declaration.slice(0, colon).includes('§');
+        });
+        if (dynamicName) boundary('dynamic-inline-style');
+      }
+      if (control) markup.push({ file, line, tag, classes: names, id: attrs.id, style: attrs.style, selector: `${tag}${names.map(name => `.${name}`).join('')}`, attributes: attrs });
     }
   }
   return { markup, assignments, boundaries, emptyStates, literals, templates };
@@ -332,6 +343,11 @@ export async function analyze(files) {
   function exceptionFor(item, element) {
     return exceptions.find(entry => `server/${entry.file}` === item.file && entry.property === item.property && (entry.selector ? normalize(entry.selector) === normalize(item.selector ?? '') || elementMatches(entry.selector, element) : entry.callKey === item.callKey) && (entry.value === undefined || entry.value === item.value));
   }
+  function matchesOwner(base, normalized) {
+    const baseClasses = classes(base), ownClasses = classes(subject(normalized));
+    const classMatch = baseClasses.length && baseClasses.every(name => ownClasses.includes(name)) && !base.includes(':') && !base.includes('[');
+    return !hasContext(normalized) && !hasContext(base) && (base === normalized || classMatch || (normalized.startsWith(base) && /^[:.[]/.test(normalized.slice(base.length))));
+  }
   function record(item, owner, element) {
     if (/\.test\.js$/.test(item.file)) {
       findings.push({ ...item, classification: 'static-false-candidate', reason: 'Test fixture source is inventoried but is not an application caller.' });
@@ -353,21 +369,20 @@ export async function analyze(files) {
     const normalized = normalize(sel), sub = subject(normalized);
     const exactVariants = variants.filter(entry => `server/${entry.owner}` === rule.file && selectors(entry).some(value => normalize(value) === normalized));
     for (const entry of exactVariants) used.add(entry.id);
-    const owners = components.filter(entry => `server/${entry.owner}` === rule.file && selectors(entry).some(value => {
-      const base = normalize(value);
-      const baseClasses = classes(base), ownClasses = classes(sub);
-      const classMatch = baseClasses.length && baseClasses.every(name => ownClasses.includes(name)) && !base.includes(':') && !base.includes('[');
-      return !hasContext(normalized) && !hasContext(base) && (base === normalized || classMatch || (normalized.startsWith(base) && /^[:.[]/.test(normalized.slice(base.length))));
-    }));
+    const matched = components.filter(entry => selectors(entry).some(value => matchesOwner(normalize(value), sub)));
+    const owners = hasContext(normalized) ? [] : matched.filter(entry => `server/${entry.owner}` === rule.file);
     for (const owner of owners) used.add(owner.id);
     for (const name of selectorClassNames(sel).filter(name => /^(?:btn|icon-btn)-/.test(name))) {
       record({ file: rule.file, line: rule.line, selector: sel, property: 'class', value: name, code: 'modifier' }, classEntries.get(name)?.[0]);
     }
     const internalIcon = /(?:\.ui-icon|\bsvg)(?=[:.#[]|$)/.test(sub) && applicable(normalized.slice(0, normalized.length - sub.length).replace(/[ >+~]+$/, ''));
     if (!applicable(sel) && !internalIcon) continue;
+    // Literal CSS subject classes remain visible even when JS builds their caller dynamically.
+    const unknownClasses = applicable(sel) ? classes(sub).filter(name => !classEntries.has(name)) : [];
+    if (applicable(sel)) for (const name of classes(sub).filter(name => !/^(?:btn|icon-btn)-/.test(name))) record({ file: rule.file, line: rule.line, selector: sel, property: 'class', value: name, code: 'subject-class' }, classEntries.get(name)?.[0]);
     for (const declaration of rule.declarations) if (isProtected(declaration.property)) {
-      // A base class in the same compound must not bypass an attachment's explicit limit.
-      const owner = owners.every(entry => !entry.properties || entry.properties.includes(declaration.property))
+      // Attachment limits apply across files as well; only an exact variant can widen them.
+      const owner = !unknownClasses.length && matched.every(entry => !entry.properties || entry.properties.includes(declaration.property))
         ? owners.find(entry => entry.properties) ?? owners[0] : undefined;
       record({ file: rule.file, line: declaration.line, selector: sel, property: declaration.property, value: declaration.value, code: internalIcon ? 'internal-icon' : 'css-ownership' }, exactVariants.find(entry => !entry.properties || entry.properties.includes(declaration.property)) ?? owner);
     }
@@ -393,14 +408,14 @@ export async function analyze(files) {
   }
   for (const item of js.literals) for (const match of item.value.matchAll(/(?:^|[\s.])(btn-[\w-]+|icon-btn-[\w-]+)(?=$|[\s.:#[\]])/g)) record({ ...item, value: match[1], property: 'class', code: 'literal-modifier' }, classEntries.get(match[1])?.[0]);
   for (const item of js.boundaries) if (item.control && !/\.test\.js$/.test(item.file)) {
-    const binding = [...components, ...variants].find(entry => entry.dynamicUses?.some(use => `server/${use.file}` === item.file && item.callSource.includes(use.source) && use.reason));
+    const binding = [...components, ...variants].find(entry => entry.dynamicUses?.some(use => (use.kind ?? 'dynamic-class') === item.kind && `server/${use.file}` === item.file && item.callSource.includes(use.source) && use.reason));
     if (binding) used.add(binding.id);
     else diagnostics.push({ file: item.file, line: item.line, code: 'unregistered-dynamic-control', value: item.callSource });
   }
   // A marker can be used in a literal conditional without creating its own declaration.
   for (const entry of [...components, ...variants]) {
     for (const use of entry.dynamicUses ?? []) {
-      if (js.templates.some(item => item.file === `server/${use.file}` && item.value.includes(use.source)) && use.reason) used.add(entry.id);
+      if (js.boundaries.some(item => item.file === `server/${use.file}` && item.kind === (use.kind ?? 'dynamic-class') && item.callSource?.includes(use.source)) && use.reason) used.add(entry.id);
       else diagnostics.push({ id: entry.id, file: use.file, code: 'stale-dynamic-use' });
     }
     for (const call of entry.calls ?? []) if (!usedCalls.has(call)) diagnostics.push({ id: entry.id, file: call.file, code: 'stale-call-binding', value: call.callKey });

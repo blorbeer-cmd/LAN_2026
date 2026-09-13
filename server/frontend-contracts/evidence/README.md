@@ -8,23 +8,24 @@ des eigenen Branches `codex/frontend-package-5`. Historische Zahlen wie 83/36 si
 | --- | ---: | ---: |
 | Geometriekandidaten, pro Deklaration | 81 | 77 |
 | Farbkandidaten, pro Deklaration | 35 | 35 |
-| Unzugeordnete Komponentenbefunde im Check | 158 | 0 |
-| Registrydiagnosen im Check | 152 | 0 |
+| Unzugeordnete Komponentenbefunde im Check | 178 | 0 |
+| Registrydiagnosen im Check | 151 | 0 |
 
-Die 158 initial unzugeordneten Komponentenbefunde sind keine pauschale Migrationsliste.
+Die 178 initial unzugeordneten Komponentenbefunde sind keine pauschale Migrationsliste.
 Die Einzelprüfung unterscheidet vorhandene zulässige Besitzer, dauerhaft begründete Varianten,
 eine bereits befristet erfasste Migration, tatsächliche Verstöße und statische Fehlkandidaten.
-Die 152 Registrydiagnosen erfassen fehlende explizite Vertragsreferenzen, den bislang ohne
-statischen Aufruferbeleg geführten Poll-Choice-Eintrag sowie 63 dynamische Control-Aufrufer.
+Die 151 Registrydiagnosen erfassen 88 fehlende explizite Vertragsreferenzen sowie
+63 dynamische Control-Aufrufer. Das vollständige CSS-Subjektklasseninventar belegt jetzt auch
+die statische Verwendung von Poll-Choice.
 Sie werden durch konkrete Zuordnung behoben, ohne dafür Produktcode zu migrieren.
 
 | Fachliche Klassifikation aller Ausgangsbefunde | Anzahl |
 | --- | ---: |
-| Zulässiger Komponentenbesitzer | 1534 |
-| Permanente Variante | 116 |
+| Zulässiger Komponentenbesitzer | 1835 |
+| Permanente Variante | 129 |
 | Befristete Ausnahme | 1 |
 | Tatsächlicher Verstoß | 65 |
-| Statischer Fehlkandidat | 4 |
+| Statischer Fehlkandidat | 15 |
 
 Diese Zahlen zählen Befundzeilen, nicht Dateien oder unabhängige UI-Fehler: eine CSS-Deklaration
 kann mehrere Selektoren betreffen, ein Aufrufer mehrere Klassen. Die Kandidatenzählung bleibt
@@ -80,12 +81,38 @@ genau dieses Tokens erfüllt; der Eintrag und sein Eigentumsverweis wurden entfe
 Am Abschlussbaum existieren **keine befristeten Ausnahmen**. Es wurden keine Ausnahmen
 angelegt, um offene Verstöße zu verdecken.
 
-Die Registry enthält 71 Komponenten und 71 permanente Varianten mit jeweils genau einem
+Die Registry enthält 80 Komponenten und 80 permanente Varianten mit jeweils genau einem
 Vertragsbezug. 63 konkrete dynamische Control-Klassenaufrufe sind den vorhandenen Komponenten
 zugeordnet. Dynamische Tags und Eigenschaftsnamen werden nicht geraten; im Anwendungsinventar
 dieses Heads wurden keine solchen Formen gefunden. Die Fixtures belegen diese Grenze.
 Die beiden `ring.style`-Maße in Onboarding gehören ausdrücklich zum nichtinteraktiven
 Markierungsring. Test-Markup bleibt als Fixture im Inventar erkennbar.
+
+Das zweite Claude-Review am Head `0f286e1fe91204612b72357b7d9d9db9939130e5`
+belegte unbeschränkte Bedeutungs-/Zustandseinträge und unbekannte CSS-Zusatzklassen neben
+registrierten Basisklassen. Die Registry trennt deshalb neun Zustandsgruppen von ihren
+geometriebesitzenden Trägern. Bedeutungs-, Breiten-, Auswahl-, Zahlungs- und reine Layoutmarker
+besitzen ausdrückliche Eigenschaftsgrenzen. Diese gelten auch über Eigentümerdateien hinweg.
+Fünf exakte Battleship-Varianten belegen die vorhandene Miss-Typografie, Schiffsbuchstaben und
+dekorativen Verbindungen; sie ändern keine Zelle oder Spielregel. Der vorhandene Sunk-Marker
+ist ebenfalls registriert. Vier weitere exakte Einträge erfassen Spielchip-Fokus, offene
+Kartenmenüs, aktive Desktopnavigation und gezogene Spielerzeilen. Alle zugehörigen
+CSS-/JS-Deklarationen bleiben unverändert.
+
+Der Check inventarisiert nun jede literale CSS-Subjektklasse im Controlbereich. Deshalb
+steigen die Befundzahlen, während die Kandidatenzahlen und die 65 tatsächlichen Legacyverstöße
+gleich bleiben. Jede Ausgangszeile wird mit der finalen Registryzuordnung abgeglichen.
+Die 15 statischen Fehlkandidaten sind einzeln belegt, darunter gemeinsame Zustandsmarker an
+Artikel-, Betrag- oder Sitzplatzflächen außerhalb der festgelegten Controlerkennung.
+Final ergeben sich 1858 Besitzerbefunde, 127 Variantenbefunde und vier statische Fehlkandidaten.
+
+Die vier ergänzten Scanner-Fixtures prüfen unbekannte CSS-Zusatzklassen ohne literalen
+Markup-Aufrufer, dateiübergreifende Zustandsgrenzen, zehn Geometrieproben gegen die echte Registry
+und dynamische Inline-Styles. Vollständig dynamische Styles und Eigenschaftsnamen werden als
+`dynamic-inline-style` ausgewiesen und benötigen einen Beleg genau dieser Art; ein Klassenbeleg
+ersetzt ihn nicht. Die vorhandenen dynamischen Farb-/Positionswerte in Scribble, ChallengeRush
+und Profil besitzen literale, ungeschützte Eigenschaftsnamen und bleiben normal inventarisiert.
+Diese Reviewkorrektur verändert ausschließlich Scanner, Registry, Verträge, Fixtures und Nachweise.
 
 ## Reproduktion und Abnahme
 

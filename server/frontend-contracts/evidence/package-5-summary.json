@@ -4,13 +4,13 @@
     "counts": {
       "geometryCandidates": 81,
       "colorCandidates": 35,
-      "violations": 158,
-      "registryDiagnostics": 152
+      "violations": 178,
+      "registryDiagnostics": 151
     },
     "classifications": {
-      "component-owner": 1534,
-      "permanent-variant": 116,
-      "static-false-candidate": 4,
+      "component-owner": 1835,
+      "permanent-variant": 129,
+      "static-false-candidate": 15,
       "temporary-exception": 1,
       "violation": 65
     }
@@ -23,14 +23,14 @@
       "registryDiagnostics": 0
     },
     "classifications": {
-      "component-owner": 1576,
-      "permanent-variant": 116,
+      "component-owner": 1858,
+      "permanent-variant": 127,
       "static-false-candidate": 4
     },
-    "snapshotDigest": "d1576c167c7b8b3826e375960691e442c0fd06340c6d0b6330f278abc35edcfb"
+    "snapshotDigest": "374ff9a1f54015e8631db0266e34839c73e29574687fac7f816fae3690bf1bc3"
   },
-  "components": 71,
-  "permanentVariants": 71,
+  "components": 80,
+  "permanentVariants": 80,
   "temporaryExceptions": 0,
   "dynamicUses": 63
 }

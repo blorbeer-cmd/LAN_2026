@@ -30,7 +30,10 @@ export const components = [
     "selector": ".btn-primary, .btn-danger, .btn-ready",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Color and state only; inherit the selected geometry."
+    "purpose": "Color and state only; inherit the selected geometry.",
+    "properties": [
+      "box-shadow"
+    ]
   },
   {
     "id": "button-width",
@@ -50,6 +53,10 @@ export const components = [
         "source": "class=\"btn btn-sm btn-equal ${danger ? 'btn-danger' : 'btn-primary'}\"",
         "reason": "Concrete button-width caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
+    ],
+    "properties": [
+      "width",
+      "min-width"
     ]
   },
   {
@@ -228,7 +235,7 @@ export const components = [
   {
     "id": "info-trigger",
     "role": "standard-control",
-    "selector": ".info-tooltip-trigger, .info-tooltip-trigger--warning",
+    "selector": ".info-tooltip-trigger",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "Help and warning use the same 44 by 32px hit box.",
@@ -251,7 +258,7 @@ export const components = [
   {
     "id": "calendar-days",
     "role": "structural-target",
-    "selector": ".dt-day, .dt-day-today, .dt-day-in-range, .dt-day-selected",
+    "selector": ".dt-day",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#strukturziele-mit-44-px",
     "purpose": "Permanent six-row calendar grid and its 44px day cells.",
@@ -521,7 +528,7 @@ export const components = [
   {
     "id": "bracket-row",
     "role": "composite-part",
-    "selector": ".bracket-team-row, .is-tbd, .is-winner",
+    "selector": ".bracket-team-row",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "purpose": "Each team is one half of the fixed composite bracket match; states own no separate height.",
@@ -536,7 +543,7 @@ export const components = [
   {
     "id": "rating-slider",
     "role": "composite-part",
-    "selector": ".skill-row-slider, .skill-row-slider-unset, .preference-row-slider",
+    "selector": ".skill-row-slider, .preference-row-slider",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "purpose": "Existing slider track/thumb geometry is internal to the rating control.",
@@ -551,7 +558,7 @@ export const components = [
   {
     "id": "rating-suggestion",
     "role": "composite-part",
-    "selector": ".skill-suggestion-chip, .skill-suggestion-chip-diverges",
+    "selector": ".skill-suggestion-chip",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "purpose": "Inline application shortcut belongs to the rating label, with its existing icon/value geometry.",
@@ -623,7 +630,8 @@ export const components = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "purpose": "Layout attachment; the semantic control variant still owns its interior.",
-    "control": false
+    "control": false,
+    "properties": []
   },
   {
     "id": "selection-state",
@@ -632,7 +640,11 @@ export const components = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "purpose": "Context-owned selection markers; no standalone control geometry.",
-    "control": false
+    "control": false,
+    "properties": [
+      "outline",
+      "outline-offset"
+    ]
   },
   {
     "id": "payment-state",
@@ -641,7 +653,8 @@ export const components = [
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "purpose": "Payment state marker inherits its host control geometry.",
-    "control": false
+    "control": false,
+    "properties": []
   },
   {
     "id": "arcade-segment",
@@ -669,7 +682,7 @@ export const components = [
   {
     "id": "arcade-tile",
     "role": "structural-target",
-    "selector": ".arcade-tile, .is-soon",
+    "selector": ".arcade-tile",
     "owner": "public/css/arcade.css",
     "contract": "components/controls.md#strukturziele-mit-44-px",
     "purpose": "Whole game-selection tile retains its name, status and card geometry.",
@@ -684,7 +697,7 @@ export const components = [
   {
     "id": "battleship-grid",
     "role": "structural-target",
-    "selector": ".battleship-cell, .is-ship, .is-hit, .is-miss",
+    "selector": ".battleship-cell",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#strukturziele-mit-44-px",
     "purpose": "Permanent 44px game-board cells; ship and hit states do not change geometry.",
@@ -704,10 +717,11 @@ export const components = [
   {
     "id": "battleship-ship-display",
     "role": "structural-target",
-    "selector": ".battleship-ship-segment, .is-ship-horizontal, .is-ship-vertical, .is-ship-start, .is-ship-end, .has-next-segment",
+    "selector": ".battleship-ship-segment",
     "owner": "public/css/arcade.css",
     "contract": "components/controls.md#strukturziele-mit-44-px",
-    "purpose": "Ship decoration and orientation markers retain the structural board cell's hit box."
+    "purpose": "Ship decoration and orientation markers retain the structural board cell's hit box.",
+    "properties": []
   },
   {
     "id": "challenge-targets",
@@ -727,7 +741,7 @@ export const components = [
   {
     "id": "scribble-tools",
     "role": "composite-part",
-    "selector": ".scribble-size-btn, .scribble-swatch, .scribble-swatch-active",
+    "selector": ".scribble-size-btn, .scribble-swatch",
     "owner": "public/css/arcade.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "purpose": "Internal brush-width and color samples in the drawing palette retain existing dimensions.",
@@ -812,7 +826,8 @@ export const components = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "purpose": "Literal event-card action hook inherits the base button; no independent interior geometry.",
-    "control": false
+    "control": false,
+    "properties": []
   },
   {
     "id": "arcade-player-surface",
@@ -961,7 +976,106 @@ export const components = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "purpose": "Small invitation URL text moves from the Admin caller to its field owner; the control height is unchanged.",
-    "properties": ["font-size"]
+    "properties": [
+      "font-size"
+    ]
+  },
+  {
+    "id": "info-warning-state",
+    "role": "composite-part",
+    "selector": ".info-tooltip-trigger--warning",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Warning colors inherit the help trigger interior.",
+    "control": false,
+    "properties": []
+  },
+  {
+    "id": "calendar-day-state",
+    "role": "composite-part",
+    "selector": ".dt-day-today, .dt-day-in-range, .dt-day-selected",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Calendar selection/today colors and inset emphasis preserve the day target.",
+    "control": false,
+    "properties": [
+      "box-shadow"
+    ]
+  },
+  {
+    "id": "bracket-state",
+    "role": "composite-part",
+    "selector": ".is-tbd, .is-winner",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Bracket availability and winner emphasis preserve the host geometry; only winner elevation may differ.",
+    "control": false,
+    "properties": [
+      "box-shadow"
+    ]
+  },
+  {
+    "id": "rating-unset-state",
+    "role": "composite-part",
+    "selector": ".skill-row-slider-unset",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Unset rating only changes the slider color.",
+    "control": false,
+    "properties": []
+  },
+  {
+    "id": "rating-divergence-state",
+    "role": "composite-part",
+    "selector": ".skill-suggestion-chip-diverges",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Divergent suggestion only changes emphasis colors.",
+    "control": false,
+    "properties": []
+  },
+  {
+    "id": "arcade-soon-state",
+    "role": "composite-part",
+    "selector": ".is-soon",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Unavailable game tile changes opacity only.",
+    "control": false,
+    "properties": []
+  },
+  {
+    "id": "battleship-shot-state",
+    "role": "composite-part",
+    "selector": ".is-ship, .is-hit, .is-miss, .is-sunk",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Ship/shot colors and sunk outline preserve cell geometry; exact glyph variants own the existing shot typography.",
+    "control": false,
+    "properties": [
+      "outline",
+      "outline-offset"
+    ]
+  },
+  {
+    "id": "battleship-orientation-state",
+    "role": "composite-part",
+    "selector": ".is-ship-horizontal, .is-ship-vertical, .is-ship-start, .is-ship-end, .has-next-segment",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Orientation marks ship decoration; exact pseudo-element variants own connector dimensions.",
+    "control": false,
+    "properties": []
+  },
+  {
+    "id": "scribble-swatch-state",
+    "role": "composite-part",
+    "selector": ".scribble-swatch-active",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Selected swatch changes its border color without resizing the palette control.",
+    "control": false,
+    "properties": []
   }
 ];
 
@@ -1662,6 +1776,98 @@ export const permanentVariants = [
       "height"
     ],
     "reason": "Sort control owns its font-relative glyph."
+  },
+  {
+    "id": "battleship-miss-glyph",
+    "role": "composite-part",
+    "selector": ".battleship-cell.is-miss",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "properties": [
+      "font-size"
+    ],
+    "reason": "Existing miss glyph uses the large font token inside the unchanged 44px board cell."
+  },
+  {
+    "id": "battleship-horizontal-connector",
+    "role": "composite-part",
+    "selector": ".battleship-cell.battleship-ship-segment.is-ship-horizontal.has-next-segment::before",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "properties": [
+      "width"
+    ],
+    "reason": "Existing decorative horizontal connector spans one spacing token; it does not resize the cell."
+  },
+  {
+    "id": "battleship-vertical-connector",
+    "role": "composite-part",
+    "selector": ".battleship-cell.battleship-ship-segment.is-ship-vertical.has-next-segment::before",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "properties": [
+      "height"
+    ],
+    "reason": "Existing decorative vertical connector spans one spacing token; it does not resize the cell."
+  },
+  {
+    "id": "battleship-ship-glyph",
+    "role": "composite-part",
+    "selector": ".battleship-cell.battleship-ship-segment::after",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "properties": [
+      "font-size",
+      "line-height"
+    ],
+    "reason": "Existing ship letter is an internal pseudo-element, independent of the board target geometry."
+  },
+  {
+    "id": "battleship-hit-glyph",
+    "role": "composite-part",
+    "selector": ".battleship-cell.battleship-ship-segment:is(.is-hit, .is-sunk)::after",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "properties": [
+      "font-size"
+    ],
+    "reason": "Existing hit/sunk ship letter shrinks within its decorative pseudo-element; the cell stays unchanged."
+  },
+  {
+    "id": "game-chip-focus-state",
+    "role": "composite-part",
+    "selector": ".player-card-games .chip.chip-foreground, .player-card-games .chip.chip-background",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "properties": [],
+    "reason": "Existing gameChipsHtml in format.js marks focused/background games by color and opacity; these are passive labels, with no protected interior override."
+  },
+  {
+    "id": "card-open-menu-state",
+    "role": "composite-part",
+    "selector": ".card.has-open-action-menu",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "properties": [],
+    "reason": "actionMenu.js raises the card stacking order while its menu is open; it does not alter control interior."
+  },
+  {
+    "id": "desktop-navigation-state",
+    "role": "composite-part",
+    "selector": ":root[data-layout-mode='desktop'] .desktop-nav-btn.active, :root[data-layout-mode='desktop'] .desktop-nav-btn.active::before",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "properties": [],
+    "reason": "app.js toggles the active desktop navigation entry; only colors, font weight and decorative indicator visibility change."
+  },
+  {
+    "id": "player-dragging-state",
+    "role": "composite-part",
+    "selector": ".tournament-drag-player.is-dragging",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "properties": [],
+    "reason": "The tournament and matchmaking drag callers lower the moving roster row opacity without resizing it."
   }
 ];
 
