@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Runs on `npm install` (via the "prepare" lifecycle script) so every
-// contributor gets the design-token pre-commit check automatically, without
+// contributor gets the repository pre-commit checks automatically, without
 // a manual setup step anyone could forget. Points git at the repo's tracked
 // .githooks/ directory instead of the untracked (and per-clone) .git/hooks/.
 //

@@ -5,3 +5,8 @@
 # using the tokens in server/DESIGN_SYSTEM.md.
 
 node server/scripts/check-design-tokens.js
+if [ $? -ne 0 ]; then
+  exit 1
+fi
+
+node server/scripts/check-component-contracts.mjs --staged
