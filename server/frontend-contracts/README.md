@@ -113,4 +113,6 @@ Der über `npm install` beziehungsweise das `prepare`-Script eingerichtete
 `.githooks/pre-commit` führt zuerst den Design-Token-Check und danach den Komponentencheck
 ausdrücklich mit `--staged` aus. Jeder Fehler verhindert den Commit. Voraussetzung sind die
 bereits installierten Server-Abhängigkeiten; der Hook installiert nichts, verändert weder Index
-noch Arbeitsbaum und repariert oder staged keine Dateien automatisch.
+noch Arbeitsbaum und repariert oder staged keine Dateien automatisch. Fehlt insbesondere die
+`typescript`-Entwicklungsabhängigkeit, bricht er mit dem Hinweis auf `npm --prefix server install`
+ab, statt den Komponentencheck mit einem Modulfehler zu starten.

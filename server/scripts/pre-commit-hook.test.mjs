@@ -21,6 +21,7 @@ const designCheckerSource = join(repositoryRoot, 'server', 'scripts', 'check-des
 const componentCheckerSource = join(repositoryRoot, 'server', 'scripts', 'check-component-contracts.mjs');
 const cssFiles = ['style', 'domains', 'arcade', 'overlays', 'kiosk'].map((name) => `server/public/css/${name}.css`);
 const createdDirectories = [];
+const readOnlyGitEnvironment = { ...process.env, GIT_OPTIONAL_LOCKS: '0' };
 
 function write(directory, file, source) {
   const target = join(directory, file);
@@ -98,6 +99,7 @@ function fixture() {
         'process.exit(result.status ?? 2);',
       ].join('\n'),
     );
+    mkdirSync(join(directory, 'server', 'node_modules', 'typescript'), { recursive: true });
 
     git(directory, ['add', '.']);
     git(directory, ['commit', '-qm', 'Fixture base']);
@@ -120,12 +122,15 @@ function withFixture(run) {
 
 test('the pre-commit hook gates commits with both staged checks without touching the real repository', () => {
   const realState = {
-    status: git(repositoryRoot, ['status', '--porcelain=v1']),
-    tree: git(repositoryRoot, ['write-tree']),
+    status: git(repositoryRoot, ['status', '--porcelain=v1', '--untracked-files=all'], {
+      env: readOnlyGitEnvironment,
+    }),
+    index: git(repositoryRoot, ['ls-files', '--stage'], { env: readOnlyGitEnvironment }),
     hook: readFileSync(hookSource, 'utf8'),
     hooksPath: spawnSync('git', ['config', '--local', '--get', 'core.hooksPath'], {
       cwd: repositoryRoot,
       encoding: 'utf8',
+      env: readOnlyGitEnvironment,
     }),
   };
 
@@ -136,6 +141,16 @@ test('the pre-commit hook gates commits with both staged checks without touching
       const result = commit(directory, 'Allow valid snapshots');
       assert.equal(result.status, 0, result.stderr);
       assert.equal(readFileSync(result.marker, 'utf8'), '["--staged"]\n');
+    });
+
+    withFixture((directory) => {
+      rmSync(join(directory, 'server', 'node_modules'), { recursive: true, force: true });
+      write(directory, 'notes.txt', 'dependencies missing\n');
+      git(directory, ['add', 'notes.txt']);
+      const result = commit(directory, 'Explain missing server dependencies');
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /requires server dependencies.*npm --prefix server install/);
+      assert.equal(existsSync(result.marker), false, 'the checker must not start without its dependency');
     });
 
     withFixture((directory) => {
@@ -174,12 +189,18 @@ test('the pre-commit hook gates commits with both staged checks without touching
       assert.match(git(directory, ['status', '--porcelain=v1']), /^ M server\/public\/css\/domains\.css$/m);
     });
   } finally {
-    assert.equal(git(repositoryRoot, ['status', '--porcelain=v1']), realState.status);
-    assert.equal(git(repositoryRoot, ['write-tree']), realState.tree);
+    assert.equal(
+      git(repositoryRoot, ['status', '--porcelain=v1', '--untracked-files=all'], {
+        env: readOnlyGitEnvironment,
+      }),
+      realState.status,
+    );
+    assert.equal(git(repositoryRoot, ['ls-files', '--stage'], { env: readOnlyGitEnvironment }), realState.index);
     assert.equal(readFileSync(hookSource, 'utf8'), realState.hook);
     const hooksPath = spawnSync('git', ['config', '--local', '--get', 'core.hooksPath'], {
       cwd: repositoryRoot,
       encoding: 'utf8',
+      env: readOnlyGitEnvironment,
     });
     assert.equal(hooksPath.status, realState.hooksPath.status);
     assert.equal(hooksPath.stdout, realState.hooksPath.stdout);

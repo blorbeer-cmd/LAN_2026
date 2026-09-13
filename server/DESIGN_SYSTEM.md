@@ -553,9 +553,11 @@ between two spacing steps) has been rounded onto the scale.
 
 ## Automated check (pre-commit)
 
-`server/scripts/check-design-tokens.js` runs automatically on every commit
-(installed via `npm install` → the `prepare` script wires git to
-`.githooks/pre-commit`). Color, typography and radius rules look at the
+`.githooks/pre-commit` runs the design-token check described here and the staged
+[component-contract check](frontend-contracts/README.md#snapshot-komponentencheck-paket-5)
+automatically on every commit (installed via `npm install` → the `prepare` script wires git to
+the tracked hook). The component check requires the server dependencies to be installed. Color,
+typography and radius rules in `server/scripts/check-design-tokens.js` look at the
 **added lines** of the staged diff under `server/public/**/*.{css,js}`. The
 cleaned spacing and responsive-breakpoint contracts additionally cover the
 complete frontend snapshot, so a later edit cannot quietly reintroduce legacy
