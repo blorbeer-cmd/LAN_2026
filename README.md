@@ -132,9 +132,11 @@ npm start
 ```
 
 Für einen einzelnen Bereich sind außerdem `--scope server`, `--scope frontend` und
-`--scope agent` verfügbar. Coding-Agenten müssen keinen separaten Installationsschritt ausführen:
-Der vorgeschriebene bereichsspezifische Preflight startet denselben idempotenten Bootstrap erst
-nach bestandener Branch-Sicherheitsprüfung automatisch. Nur bei einer vermuteten beschädigten
+`--scope agent` verfügbar. Der vorgeschriebene bereichsspezifische Preflight startet den
+idempotenten Bootstrap erst nach bestandener Branch-Sicherheitsprüfung automatisch. Da der
+zentrale Pre-Commit-Hook den Komponentencheck ausführt, müssen die Server-Abhängigkeiten auch in
+frischen `root`-, `docs`- und `infra`-Worktrees vor dem ersten Commit einmal mit
+`npm --prefix server install` bereitgestellt werden. Nur bei einer vermuteten beschädigten
 Installation erzwingt `--force` einen erneuten sauberen Lauf.
 
 Beim Server-Bootstrap läuft der vorhandene npm-`prepare`-Lifecycle mit. Dadurch setzt

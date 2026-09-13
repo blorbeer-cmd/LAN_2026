@@ -13,4 +13,10 @@ if [ ! -d server/node_modules/typescript ]; then
   exit 1
 fi
 
-node server/scripts/check-component-contracts.mjs --staged
+if component_output=$(node server/scripts/check-component-contracts.mjs --staged); then
+  component_status=0
+else
+  component_status=$?
+fi
+printf '%s\n' "$component_output" | awk '/^(VIOLATION |REGISTRY |\{"geometryCandidates")/'
+exit "$component_status"

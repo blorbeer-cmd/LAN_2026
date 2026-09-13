@@ -115,4 +115,6 @@ ausdrücklich mit `--staged` aus. Jeder Fehler verhindert den Commit. Voraussetz
 bereits installierten Server-Abhängigkeiten; der Hook installiert nichts, verändert weder Index
 noch Arbeitsbaum und repariert oder staged keine Dateien automatisch. Fehlt insbesondere die
 `typescript`-Entwicklungsabhängigkeit, bricht er mit dem Hinweis auf `npm --prefix server install`
-ab, statt den Komponentencheck mit einem Modulfehler zu starten.
+ab, statt den Komponentencheck mit einem Modulfehler zu starten. Die ausführliche
+Komponenteninventarliste bleibt im Hook verborgen; sichtbar sind nur Verstöße,
+Registrydiagnosen, Fehlermeldungen und die abschließenden Zähler.

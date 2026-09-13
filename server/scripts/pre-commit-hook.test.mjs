@@ -141,6 +141,9 @@ test('the pre-commit hook gates commits with both staged checks without touching
       const result = commit(directory, 'Allow valid snapshots');
       assert.equal(result.status, 0, result.stderr);
       assert.equal(readFileSync(result.marker, 'utf8'), '["--staged"]\n');
+      const output = result.stdout + result.stderr;
+      assert.doesNotMatch(output, /COMPONENT-OWNER|PERMANENT-VARIANT|CANDIDATE/);
+      assert.match(output, /\{"geometryCandidates":\d+,"colorCandidates":\d+,"violations":0,"registryDiagnostics":0\}/);
     });
 
     withFixture((directory) => {
@@ -174,7 +177,10 @@ test('the pre-commit hook gates commits with both staged checks without touching
       const result = commit(directory, 'Reject staged component violation');
       assert.notEqual(result.status, 0);
       assert.equal(readFileSync(result.marker, 'utf8'), '["--staged"]\n');
-      assert.match(result.stdout + result.stderr, /VIOLATION/);
+      const output = result.stdout + result.stderr;
+      assert.match(output, /VIOLATION/);
+      assert.doesNotMatch(output, /COMPONENT-OWNER|PERMANENT-VARIANT|CANDIDATE/);
+      assert.match(output, /\{"geometryCandidates":\d+,"colorCandidates":\d+,"violations":1,"registryDiagnostics":0\}/);
       assert.equal(git(directory, ['show', `:${cssFiles[1]}`]), violation);
       assert.equal(readFileSync(join(directory, cssFiles[1]), 'utf8'), '');
     });
