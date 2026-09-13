@@ -75,6 +75,24 @@ function hasContext(selector) {
   return /:(?:is|where)\([^)]*(?:[>+~]|[\w.)\]]\s+[.#\w*])/.test(selector);
 }
 
+function selectorClassNames(selector) {
+  const names = [];
+  let quote = '', brackets = 0;
+  for (let i = 0; i < selector.length; i++) {
+    const c = selector[i];
+    if (quote) { if (c === '\\') i++; else if (c === quote) quote = ''; continue; }
+    if (c === '"' || c === "'") { quote = c; continue; }
+    if (c === '\\') { i++; continue; }
+    if (c === '[') brackets++;
+    else if (c === ']') brackets--;
+    else if (!brackets && c === '.') {
+      const name = selector.slice(i + 1).match(/^[a-zA-Z_][\w-]*/)?.[0];
+      if (name) { names.push(name); i += name.length; }
+    }
+  }
+  return names;
+}
+
 function classes(selector) {
   // :not/:has arguments describe exclusions/relatives, not classes of the selected subject.
   let clean = selector;
@@ -86,8 +104,7 @@ function classes(selector) {
       clean = clean.slice(0, start) + clean.slice(end);
     }
   }
-  clean = clean.replace(/\[[^\]]*\]/g, '');
-  return [...clean.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map(match => match[1]);
+  return selectorClassNames(clean);
 }
 
 export function parseCss(source, file) {
@@ -343,7 +360,7 @@ export async function analyze(files) {
       return !hasContext(normalized) && !hasContext(base) && (base === normalized || classMatch || (normalized.startsWith(base) && /^[:.[]/.test(normalized.slice(base.length))));
     }));
     if (owner) used.add(owner.id);
-    for (const name of [...sel.matchAll(/\.(btn-[\w-]+|icon-btn-[\w-]+)/g)].map(match => match[1])) {
+    for (const name of selectorClassNames(sel).filter(name => /^(?:btn|icon-btn)-/.test(name))) {
       record({ file: rule.file, line: rule.line, selector: sel, property: 'class', value: name, code: 'modifier' }, classEntries.get(name)?.[0]);
     }
     const internalIcon = /(?:\.ui-icon|\bsvg)(?=[:.#[]|$)/.test(sub) && applicable(normalized.slice(0, normalized.length - sub.length).replace(/[ >+~]+$/, ''));

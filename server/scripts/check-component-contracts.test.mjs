@@ -84,6 +84,10 @@ test('unknown modifiers and JS extra classes fail independently of raw-value can
   assert.ok(result.violations.some(item => item.code === 'css-ownership' && item.selector === '.narrow'));
   const ancestor = await analyze(snapshot({ css: '.btn { padding: 0; } .wrapper:has(.btn) .caption { height: 12px; }' }));
   assert.equal(ancestor.violations.length, 0);
+  const attributes = await analyze(snapshot({ css: '.btn[data-copy="].btn-fake"] { padding: 0; } .caption[data-copy=".btn"] { height: 12px; }' }));
+  assert.equal(attributes.violations.length, 0, 'quoted attribute data is not a class selector or a control subject');
+  const excluded = await analyze(snapshot({ css: '.btn:not(.btn-unknown) { padding: 0; }' }));
+  assert.ok(excluded.violations.some(item => item.code === 'modifier' && item.value === 'btn-unknown'), 'actual modifier selectors remain inventoried inside exclusions');
 });
 
 test('checks literal inline styles, style properties, bracket properties and internal icon size', async () => {
