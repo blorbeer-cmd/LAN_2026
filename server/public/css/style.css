@@ -855,7 +855,6 @@ textarea {
 }
 .event-poll-option-link {
   flex: none;
-  padding: 0;
 }
 .event-poll-option-response-row {
   display: flex;
@@ -3788,7 +3787,7 @@ button.card {
 .empty-state-compact {
   padding: var(--space-4);
 }
-.invite-link-field {
+input[type='text'].invite-link-field {
   font-size: var(--font-size-xs);
 }
 .empty-state-structured {

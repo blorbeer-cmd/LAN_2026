@@ -55,8 +55,12 @@ Funktions-/Attributklammern und verschachtelte At-Rules werden getrennt gelesen.
 entscheidet das Subjekt-Compound; ein Control nur in einem Vorfahren oder `:has`-Argument macht
 einen fremden Nachfahren nicht zum Control. Interne SVG-/`ui-icon`-Maße werden zusätzlich dem
 Control zugeordnet. Kontextregeln benötigen einen exakten permanenten Selektor oder eine exakte
-befristete Ausnahme. Optionale `properties` begrenzen eine Variante auf ihre dokumentierten
-Eigenschaften. Der Check simuliert weder DOM noch Kaskade, Spezifität, Layout oder Tokenwerte.
+befristete Ausnahme. Optionale `properties` begrenzen Komponenten und Varianten auf ihre
+dokumentierten geschützten Eigenschaften; eine leere Liste erlaubt keine geschützten Innenwerte.
+Bei mehreren Komponenten im selben Compound gelten alle ausdrücklich gesetzten Grenzen, damit
+eine zusätzliche Basisklasse die Begrenzung eines Anhangs nicht umgeht. Eine exakte permanente
+Variante kann eine abweichende Eigenschaft ausdrücklich übernehmen. Der Check simuliert weder
+DOM noch Kaskade, Spezifität, Layout oder Tokenwerte.
 
 Das JavaScript-Inventar nutzt den bereits vorhandenen TypeScript-Parser ohne Codeausführung. Es
 liest literales HTML-/Template-Markup in `public/js/**/*.js` einschließlich `views/`, Klassen an

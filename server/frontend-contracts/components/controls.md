@@ -401,7 +401,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:native-range`: Native range track fills its rating row; thumb geometry remains with the slider.
 
-- `registry:poll-option-link`: Link action composes icon-button; only nonshrinking placement belongs to this attachment.
+- `registry:poll-option-link`: Link action composes icon-button; only nonshrinking placement belongs to this attachment. Its empty property allowance prevents independent protected interior values, including padding and target dimensions.
 
 - `registry:kiosk-open-link`: Literal event-card action hook inherits the base button; no independent interior geometry.
 
@@ -547,4 +547,4 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:arrival-sort-glyph`: Sort control owns its font-relative glyph.
 
-- `registry:invite-link-field`: Kompakte Einladungs-URL mit unveränderter Standardhöhe; CSS-Eigentümer statt Inline-Typografie.
+- `registry:invite-link-field`: Kompakte Einladungs-URL mit unveränderter Standardhöhe; der auf Textfelder begrenzte Eigentümerselektor setzt ausschließlich die kleine Schrift und gewinnt gegen die native Feldbasis. Der Browserflow prüft den berechneten Wert.

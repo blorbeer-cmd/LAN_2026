@@ -802,7 +802,8 @@ export const components = [
     "selector": ".event-poll-option-link",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Link action composes icon-button; only nonshrinking placement belongs to this attachment."
+    "purpose": "Link action composes icon-button; only nonshrinking placement belongs to this attachment.",
+    "properties": []
   },
   {
     "id": "kiosk-open-link",
@@ -956,10 +957,11 @@ export const components = [
   {
     "id": "invite-link-field",
     "role": "standard-control",
-    "selector": ".invite-link-field",
+    "selector": "input[type='text'].invite-link-field",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Small invitation URL text moves from the Admin caller to its field owner; the control height is unchanged."
+    "purpose": "Small invitation URL text moves from the Admin caller to its field owner; the control height is unchanged.",
+    "properties": ["font-size"]
   }
 ];
 

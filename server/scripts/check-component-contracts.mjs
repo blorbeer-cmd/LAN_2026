@@ -353,19 +353,22 @@ export async function analyze(files) {
     const normalized = normalize(sel), sub = subject(normalized);
     const exactVariants = variants.filter(entry => `server/${entry.owner}` === rule.file && selectors(entry).some(value => normalize(value) === normalized));
     for (const entry of exactVariants) used.add(entry.id);
-    const owner = components.find(entry => `server/${entry.owner}` === rule.file && selectors(entry).some(value => {
+    const owners = components.filter(entry => `server/${entry.owner}` === rule.file && selectors(entry).some(value => {
       const base = normalize(value);
       const baseClasses = classes(base), ownClasses = classes(sub);
       const classMatch = baseClasses.length && baseClasses.every(name => ownClasses.includes(name)) && !base.includes(':') && !base.includes('[');
       return !hasContext(normalized) && !hasContext(base) && (base === normalized || classMatch || (normalized.startsWith(base) && /^[:.[]/.test(normalized.slice(base.length))));
     }));
-    if (owner) used.add(owner.id);
+    for (const owner of owners) used.add(owner.id);
     for (const name of selectorClassNames(sel).filter(name => /^(?:btn|icon-btn)-/.test(name))) {
       record({ file: rule.file, line: rule.line, selector: sel, property: 'class', value: name, code: 'modifier' }, classEntries.get(name)?.[0]);
     }
     const internalIcon = /(?:\.ui-icon|\bsvg)(?=[:.#[]|$)/.test(sub) && applicable(normalized.slice(0, normalized.length - sub.length).replace(/[ >+~]+$/, ''));
     if (!applicable(sel) && !internalIcon) continue;
     for (const declaration of rule.declarations) if (isProtected(declaration.property)) {
+      // A base class in the same compound must not bypass an attachment's explicit limit.
+      const owner = owners.every(entry => !entry.properties || entry.properties.includes(declaration.property))
+        ? owners.find(entry => entry.properties) ?? owners[0] : undefined;
       record({ file: rule.file, line: declaration.line, selector: sel, property: declaration.property, value: declaration.value, code: internalIcon ? 'internal-icon' : 'css-ownership' }, exactVariants.find(entry => !entry.properties || entry.properties.includes(declaration.property)) ?? owner);
     }
   }

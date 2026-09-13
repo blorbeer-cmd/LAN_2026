@@ -90,6 +90,19 @@ test('unknown modifiers and JS extra classes fail independently of raw-value can
   assert.ok(excluded.violations.some(item => item.code === 'modifier' && item.value === 'btn-unknown'), 'actual modifier selectors remain inventoried inside exclusions');
 });
 
+test('component property limits reject attachment geometry even alongside an unrestricted base owner', async () => {
+  const attachment = { ...button, id: 'attachment', selector: '.attachment', properties: ['font-size'] };
+  const result = await analyze(snapshot({ components: [button, attachment], css: '.btn { padding: 0; } .attachment { font-size: 12px; height: var(--height); } .btn.attachment { width: 24px; }' }));
+  assert.equal(result.findings.find(item => item.property === 'font-size').classification, 'component-owner');
+  assert.deepEqual(result.violations.map(item => item.property), ['height', 'width']);
+  const layoutOnly = await analyze(snapshot({ components: [button, { ...attachment, properties: [] }], css: '.btn { padding: 0; } .attachment { flex: none; padding: 0; }' }));
+  assert.deepEqual(layoutOnly.violations.map(item => item.property), ['padding']);
+  const allowedVariant = { ...variant, owner: button.owner, selector: '.btn.attachment', properties: ['height'] };
+  const explicit = await analyze(snapshot({ components: [button, { ...attachment, properties: [] }], variants: [allowedVariant], css: '.btn { padding: 0; } .btn.attachment { height: 44px; }' }));
+  assert.equal(explicit.violations.length, 0);
+  assert.equal(explicit.findings.find(item => item.property === 'height').classification, 'permanent-variant');
+});
+
 test('checks literal inline styles, style properties, bracket properties and internal icon size', async () => {
   const result = await analyze(snapshot({ css: '.btn { padding: 0; } .btn > svg { width: 14px; }', js: [
     'const html = `<button class="btn" style="padding:var(--space);width:${size}px">Go</button>`;',
@@ -164,6 +177,7 @@ test('staged and head use isolated Git snapshots, ignore unstaged sources and re
     git(['init', '-q']);
     git(['config', 'user.email', 'fixture@example.invalid']);
     git(['config', 'user.name', 'Contract fixture']);
+    git(['config', 'commit.gpgsign', 'false']);
     git(['config', 'core.hooksPath', join(directory, 'no-hooks')]);
     for (const [file, source] of snapshot()) write(file, source);
     git(['add', '.']); git(['commit', '-qm', 'Fixture base']);

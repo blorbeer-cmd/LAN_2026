@@ -20,10 +20,10 @@ Sie werden durch konkrete Zuordnung behoben, ohne dafür Produktcode zu migriere
 
 | Fachliche Klassifikation aller Ausgangsbefunde | Anzahl |
 | --- | ---: |
-| Zulässiger Komponentenbesitzer | 1535 |
+| Zulässiger Komponentenbesitzer | 1534 |
 | Permanente Variante | 116 |
 | Befristete Ausnahme | 1 |
-| Tatsächlicher Verstoß | 64 |
+| Tatsächlicher Verstoß | 65 |
 | Statischer Fehlkandidat | 4 |
 
 Diese Zahlen zählen Befundzeilen, nicht Dateien oder unabhängige UI-Fehler: eine CSS-Deklaration
@@ -65,6 +65,15 @@ Inline-Typografie und Padding am Prozess-Entfernen-Button. Jeder Fix hat in der 
 einen Vertrag, eine Registry-ID und einen CSS-Owner. Breiten der bestehenden Layoutspalten
 bleiben über konkrete permanente Varianten dokumentiert.
 
+Das Claude-Review am früheren Head `52f1b5d8900b4b527e4288dc12647d3a1378a48a`
+belegte zwei weitere Korrekturen: Der Einladungs-URL-Selektor benötigt die Spezifität eines
+Textfelds plus seiner Ownerklasse, damit die kompakte Schrift gegen die native Feldbasis greift.
+Außerdem gilt `properties` jetzt auch für Komponenten. Die leere Freigabeliste von
+`poll-option-link` verhindert eigene geschützte Innenwerte; sein zuvor als Besitzerwert
+klassifiziertes `padding: 0` wurde als tatsächlicher Verstoß neu eingeordnet und entfernt.
+Auch eine zusätzlich im selben Compound angegebene Basisklasse umgeht diese Grenze nicht.
+Die Einzelklassifikation enthält deshalb 65 statt zuvor 64 tatsächliche Ausgangsverstöße.
+
 `legacy-secondary-modifier` war ausschließlich die ungenutzte Klasse am
 `data-retry-kiosk-password`-Aufrufer in `views/events.js`. Ihr Löschkriterium ist durch Entfernen
 genau dieses Tokens erfüllt; der Eintrag und sein Eigentumsverweis wurden entfernt.
@@ -104,6 +113,22 @@ Die kompakte EmptyState-Klasse wurde im bestehenden Vote-/Grouped-Kontext gegen 
 Inlinewerte vermessen. Der erste Poll-Fokustest setzte nach Mausinteraktion nur `focus()` und
 erwartete fälschlich `:focus-visible`; der gezielte Trace-Retry prüft nun echten Tastaturfokus.
 Keine Timeouts oder Produktanforderungen wurden gelockert.
+
+Nach dem Review prüft zusätzlich der vorhandene Registrierungslink-Flow in
+`authGate.e2e.test.ts` bei 320, 390, 512, 720, 1024 und 1440 px die tatsächlich berechnete
+Schriftgröße der Einladungs-URL gegen `--font-size-xs`, die Standardhöhe und Seitenoverflow.
+Der Eigenschaftsgrenzen-Test des Scanners reproduzierte den Reviewbefund zunächst rot und
+belegt jetzt erlaubte Typografie, verbotene Maße, eine leere Freigabeliste und die ausdrückliche
+Übernahme durch eine permanente Variante. Das temporäre Git-Fixture deaktiviert ausschließlich
+in seinem eigenen Repository Commit-Signierung und hängt dadurch nicht von einer globalen
+Signierkonfiguration ab.
+
+Der gezielte Auth-Trace-Retry bestand alle zwölf Tests. Zuvor scheiterte einmal der
+Serverstart vor dem ersten UI-Schritt; beim folgenden Lauf traf die neue Höhenmessung die
+neu gestartete Dialoganimation am Viewportwechsel. Der Test wartet jetzt ereignisbezogen
+auf das Ende dieser Animation und behält seine unveränderte Höhenanforderung bei. Der
+Event-Poll-Ownerflow bestand nach Entfernung des Link-Paddings ebenfalls. Vollständige
+Unit-/E2E-Ergebnisse für den Reviewfix und dessen finaler SHA stehen im PR.
 
 Ein weiterer vollständiger Lauf traf in der unveränderten Arcade-Auth-Fixture auf ein
 zwischen zwei `boundingBox()`-Aufrufen verschwundenes Lobbyelement. Der aus den Metadaten
