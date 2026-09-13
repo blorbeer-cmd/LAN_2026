@@ -178,8 +178,8 @@ Wiederholungsfall ab.
   Battleship- und Challenge-Rush-Suiten sowie den eigenständig authentifizierten Arcade-Auth-Pfad
   und die Arcade-Partition der Cross-View-Flows. Der vollständige Challenge-Rush-Lifecycle, die
   Snake-Arena-Legenden sowie Navigation, Multiplayer-Layouts und Scribble laufen in getrennten
-  Fixtures. `arcade-smoke` führt ausschließlich den dedizierten Lobby/Home-Grundfluss und den
-  isolierten Auth-Pfad aus; beide Dateien bleiben regulärer Bestandteil der vollständigen
+  Fixtures. `arcade-smoke` führt den dedizierten Lobby/Home-Grundfluss, den isolierten
+  Auth-Pfad und `visualArcade.e2e.test.ts` aus; alle drei bleiben Bestandteil der vollständigen
   Arcade-Partition.
 - Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server. Der
   Runner begrenzt die Dateiparallelität auf sechs, damit zusätzliche Shards nicht unbegrenzt viele
@@ -251,6 +251,46 @@ Wiederholungsfall ab.
 - Der Produktions-Build (`npm run build`) schließt alle Testdateien aus – sie landen nie in `dist/`.
 - `index.ts` startet den Server nur, wenn es direkt ausgeführt wird (`require.main === module`),
   damit Tests die App importieren können, ohne einen Port zu belegen.
+
+## Visuelle Referenzen
+
+`visualCore.e2e.test.ts` gehört zu Core/`flows` und zeigt Formular, Roster, Tabs/Filter,
+Kartenfooter, Modal und Admin-Datenzeile bei 390 und 1024 px. `visualArcade.e2e.test.ts`
+zeigt die Erstellungszeile bei 320, 390 und 1024 px und gehört auch zu Arcade-Smoke.
+Die Szenen benutzen echte UI-Pfade, feste Browserzeit, `de-DE`, `Europe/Berlin`,
+Gerätefaktor 1, reduzierte Bewegung und Screenshots ohne Animationen/Caret. Vor jeder Aufnahme
+werden Requests, Fonts und Icons sowie passende Inhalts- und Geometrieassertions geprüft.
+
+Referenzprofil: **CI `ubuntu-latest`, Playwright 1.56.1**. Referenzen liegen unter
+`src/test/e2e/visual-baselines/`. Normale Läufe lesen sie ausschließlich; es gibt keinen
+Update-Schalter. Fehlende Referenzen, Größenänderungen und Bildabweichungen schlagen fehl.
+Der direkte `pngjs`-Vergleich toleriert pro RGBA-Kanal einschließlich 16; mehr als 0,1 Prozent
+Pixel mit einer größeren Kanalabweichung sind ein Fehler. Genau 0,1 Prozent bestehen noch.
+1-px-Geometrie bleibt durch semantische Assertions abgesichert, nicht durch weichere Bildschwellen.
+
+Bei Fehlern übernimmt die bestehende Failure-Diagnostics je Szene `*-actual.png` und
+`*-diff.png` (abweichende Pixel magenta), zusätzlich Browser-/Serverprotokolle, DOM und
+gegebenenfalls Trace. PNGs bleiben bis zur Fehlerausgabe im Speicher; erfolgreiche Läufe
+entfernen ihre Diagnosestagingdaten. `metadata.json` dokumentiert zusätzlich CI-Run,
+Checkout-SHA, Runner-Image und Playwright-Version. Kein zusätzlicher Workflow ist nötig.
+
+Baseline-Refresh, auch bei jedem Runner-Imagewechsel:
+
+1. Den unveränderten Vergleich in CI laufen lassen und dessen `*-failure-diagnostics`-Artefakt
+   herunterladen. Kandidaten dürfen ausschließlich die dortigen Actual-Dateien sein.
+2. Für jede Szene zuerst die grünen semantischen Assertions und Fehlerprotokolle prüfen,
+   anschließend Actual und gegebenenfalls Diff visuell prüfen. Produkt-/Runtimefehler separat
+   melden und nicht durch eine Referenzänderung verdecken.
+3. Nur geprüfte Actual-Dateien als gleichnamige Referenz ohne `-actual` kopieren. CI-Run,
+   Head-SHA, Runner-Image, Artefaktpfad und visuelle Prüfung jeder Datei im PR dokumentieren.
+   Lokale Linux-/Windows-Aufnahmen sind höchstens Kandidaten, keine übernehmbaren Referenzen.
+4. Referenzen committen und auf dem neuen Head CI erneut ausführen. Ein normaler Wiederholungslauf
+   muss ohne Änderung der Referenzdateien bestehen. Lokale Vergleiche können wegen anderer
+   Systemfonts vom CI-Profil abweichen; solche Abweichungen niemals automatisch übernehmen.
+
+Direkte Regressionstests: nach `npm run test:compile`
+`node --test dist-test/test/visualComparison.test.js dist-test/test/e2eDiagnostics.test.js`
+und `node --test scripts/run-e2e-partition.test.mjs`.
 
 ## Laufzeitregressionen
 

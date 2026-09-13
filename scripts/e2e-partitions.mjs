@@ -9,6 +9,7 @@ export const CORE_E2E_DOMAINS = Object.freeze({
     "eventDatePoll.e2e.test.ts",
   ]),
   flows: Object.freeze([
+    "visualCore.e2e.test.ts",
     "foodOrders.e2e.test.ts",
     "flowsCompetition.e2e.test.ts",
     "flowsCommunity.e2e.test.ts",
@@ -44,6 +45,7 @@ export const E2E_MANIFEST = Object.freeze({
   partitions: Object.freeze({
     core: Object.freeze(Object.values(CORE_E2E_DOMAINS).flat()),
     arcade: Object.freeze([
+      "visualArcade.e2e.test.ts",
       "challengeRushLifecycle.e2e.test.ts",
       "snakeArenaViews.e2e.test.ts",
       "challengeRush.e2e.test.ts",
@@ -57,7 +59,7 @@ export const E2E_MANIFEST = Object.freeze({
       "authGateArcade.e2e.test.ts",
     ]),
   }),
-  smoke: Object.freeze(["arcadeSmoke.e2e.test.ts", "authGateArcade.e2e.test.ts"]),
+  smoke: Object.freeze(["arcadeSmoke.e2e.test.ts", "authGateArcade.e2e.test.ts", "visualArcade.e2e.test.ts"]),
 });
 
 export const E2E_PARTITIONS = E2E_MANIFEST.partitions;

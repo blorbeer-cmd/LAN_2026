@@ -66,11 +66,15 @@ test('all preserves both explicit partitions', () => {
 
 test('Arcade smoke is an explicit fast subset of the Arcade partition', () => {
   assert.deepEqual(selectedSourceFiles('arcade-smoke'), [...E2E_SMOKE_FILES]);
-  assert.deepEqual(E2E_SMOKE_FILES, ['arcadeSmoke.e2e.test.ts', 'authGateArcade.e2e.test.ts']);
+  assert.deepEqual(E2E_SMOKE_FILES, ['arcadeSmoke.e2e.test.ts', 'authGateArcade.e2e.test.ts', 'visualArcade.e2e.test.ts']);
   for (const file of E2E_SMOKE_FILES) assert.ok(E2E_PARTITIONS.arcade.includes(file), file);
 });
 
 test('Core domains select stable, deduplicated fixture sets', () => {
+  assert.equal(CORE_E2E_DOMAINS.flows.filter((file) => file === 'visualCore.e2e.test.ts').length, 1);
+  for (const file of ['visualCore.e2e.test.ts', 'visualArcade.e2e.test.ts']) {
+    assert.equal(selectedSourceFiles('all').filter((entry) => entry === file).length, 1);
+  }
   assert.deepEqual(selectedCoreDomains('all'), ['auth', 'checklist', 'invitations', 'flows']);
   assert.deepEqual(selectedCoreDomains('flows,auth,auth'), ['auth', 'flows']);
   assert.deepEqual(selectedSourceFiles('core', 'auth,checklist'), [

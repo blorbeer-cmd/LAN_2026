@@ -67,6 +67,14 @@ class E2EDiagnosticRun {
   private readonly browserLog: string[] = [];
   private readonly directory: string;
   private captured = false;
+  private readonly visualArtifacts = new Map<string, Buffer>();
+
+  addVisualArtifacts(name: string, actual: Buffer, diff: Buffer): void {
+    if (!/^[a-z0-9-]+$/.test(name)) throw new Error('Invalid visual artifact name');
+    if (this.visualArtifacts.has(`${name}-actual.png`)) throw new Error(`Duplicate visual scene: ${name}`);
+    this.visualArtifacts.set(`${name}-actual.png`, actual);
+    this.visualArtifacts.set(`${name}-diff.png`, diff);
+  }
 
   constructor(private readonly resources: DiagnosticResources) {
     const root = e2eArtifactDirectory();
@@ -165,6 +173,10 @@ class E2EDiagnosticRun {
     this.captured = true;
     await mkdir(this.directory, { recursive: true });
 
+    // Images remain in memory until a failure, so passing runs create no temporary PNGs.
+    for (const [name, contents] of this.visualArtifacts) {
+      await writeFile(path.join(this.directory, name), contents);
+    }
     const contexts = this.captureContexts();
     for (const [contextIndex, context] of contexts.entries()) {
       await this.trackContext(context, `failure-context-${contextIndex + 1}`, false);
@@ -200,6 +212,14 @@ class E2EDiagnosticRun {
             ownerFile: this.resources.ownerFile ?? e2eOwnerFileFromArgv(),
             error: errorText(error),
             serverExit: serverDiagnostics.exit,
+            ...(this.visualArtifacts.size ? { visualReference: {
+              platform: process.platform,
+              playwright: require('playwright/package.json').version,
+              runId: process.env.GITHUB_RUN_ID ?? null,
+              checkoutSha: process.env.GITHUB_SHA ?? null,
+              imageOS: process.env.ImageOS ?? null,
+              imageVersion: process.env.ImageVersion ?? null,
+            } } : {}),
             pages: contexts.flatMap((context) =>
               context.pages().filter((page) => !page.isClosed()).map((page) => page.url()),
             ),
@@ -214,6 +234,7 @@ class E2EDiagnosticRun {
   }
 
   async finish(): Promise<void> {
+    this.visualArtifacts.clear();
     if (this.captured) return;
     await this.stopTraces();
     // A trace that was saved because a context closed during a successful
@@ -243,6 +264,11 @@ class E2EDiagnosticRun {
 // was. This is a diagnosis budget, not a stability knob — raising it is never
 // the answer to a flake (see TESTING.md rule 5).
 export const E2E_DEFAULT_TIMEOUT_MS = 15_000;
+
+export function addE2EVisualArtifacts(name: string, actual: Buffer, diff: Buffer): void {
+  if (!activeRun) throw new Error('Visual comparisons require an active E2E diagnostic run');
+  activeRun.addVisualArtifacts(name, actual, diff);
+}
 
 export async function trackE2EContext(context: BrowserContext, label: string): Promise<void> {
   context.setDefaultTimeout(E2E_DEFAULT_TIMEOUT_MS);
