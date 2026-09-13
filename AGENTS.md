@@ -29,6 +29,9 @@ Vor Analyse, Planung oder Änderung
   `server` und `frontend` führt der Bootstrap den bestehenden npm-`prepare`-Lifecycle aus; dessen
   `server/scripts/setup-git-hooks.js` setzt `core.hooksPath` auf `.githooks` in der gemeinsamen
   Git-Konfiguration und wirkt damit für alle verlinkten Worktrees dieses Repositorys.
+  In frischen `root`-, `docs`- und `infra`-Worktrees vor dem ersten Commit zusätzlich einmal
+  `npm --prefix server install` ausführen, falls `server/node_modules/typescript` fehlt; der
+  zentrale Komponentencheck benötigt diese Server-Entwicklungsabhängigkeit.
 - Mit genannten Pfaden beginnen. Ohne Pfadangabe anhand der untenstehenden Landkarte gezielt
   suchen; keine vorsorgliche repositoryweite Volltextsuche und keine Lektüre von Dokumentation,
   die weder vorgeschrieben noch für den Auftrag relevant ist.

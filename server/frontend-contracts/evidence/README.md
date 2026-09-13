@@ -166,4 +166,6 @@ vollständige E2E-Lauf nochmals ausgeführt und bestand alle 103 Tests.
 Die ausgeführten und nach Änderungen wiederholten Befehle samt finalem Head stehen im PR.
 Die statische Prüfung ersetzt keine DOM-/Kaskaden-/Layoutsimulation; ihre Registrybelege müssen
 bei geänderten dynamischen Aufrufern mitgepflegt werden. Keine visuellen Baselines wurden erzeugt.
-**Paket 5b ist nicht umgesetzt; `.githooks/pre-commit` bleibt unverändert.**
+Paket 5b bindet den Komponentencheck mit dem ausdrücklichen Modus `--staged` in
+`.githooks/pre-commit` ein. Hinweise zu Aufruf, Voraussetzungen und Fehlerverhalten stehen im
+übergeordneten [README](../README.md#snapshot-komponentencheck-paket-5).

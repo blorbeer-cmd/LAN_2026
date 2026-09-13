@@ -109,4 +109,12 @@ Verstöße/Registrydiagnosen, Exit 1 bezeichnet solche Befunde, Exit 2 einen ung
 lesbaren Snapshot beziehungsweise Aufruf. Die historischen 83/36 sind kein Sollwert.
 
 Ausgangs- und Abschlussinventar sowie Fixzuordnung stehen unter [evidence/](evidence/README.md).
-Paket 5b ist nicht umgesetzt; `.githooks/pre-commit` bleibt unverändert.
+Der über `npm install` beziehungsweise das `prepare`-Script eingerichtete
+`.githooks/pre-commit` führt zuerst den Design-Token-Check und danach den Komponentencheck
+ausdrücklich mit `--staged` aus. Jeder Fehler verhindert den Commit. Voraussetzung sind die
+bereits installierten Server-Abhängigkeiten; der Hook installiert nichts, verändert weder Index
+noch Arbeitsbaum und repariert oder staged keine Dateien automatisch. Fehlt insbesondere die
+`typescript`-Entwicklungsabhängigkeit, bricht er mit dem Hinweis auf `npm --prefix server install`
+ab, statt den Komponentencheck mit einem Modulfehler zu starten. Die ausführliche
+Komponenteninventarliste bleibt im Hook verborgen; sichtbar sind nur Verstöße,
+Registrydiagnosen, Fehlermeldungen und die abschließenden Zähler.

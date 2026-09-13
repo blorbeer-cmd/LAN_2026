@@ -1,7 +1,22 @@
 #!/bin/sh
 # Installed automatically via `npm install` in server/ (see
-# server/scripts/setup-git-hooks.js). Blocks commits that introduce
-# hardcoded colors/spacing/font-sizes/radii in server/public instead of
-# using the tokens in server/DESIGN_SYSTEM.md.
+# server/scripts/setup-git-hooks.js). Runs the staged design-token and
+# component-contract checks before each commit.
 
 node server/scripts/check-design-tokens.js
+if [ $? -ne 0 ]; then
+  exit 1
+fi
+
+if [ ! -d server/node_modules/typescript ]; then
+  echo "Component-contract check requires server dependencies. Run 'npm --prefix server install'." >&2
+  exit 1
+fi
+
+if component_output=$(node server/scripts/check-component-contracts.mjs --staged); then
+  component_status=0
+else
+  component_status=$?
+fi
+printf '%s\n' "$component_output" | awk '/^(VIOLATION |REGISTRY |\{"geometryCandidates")/'
+exit "$component_status"
