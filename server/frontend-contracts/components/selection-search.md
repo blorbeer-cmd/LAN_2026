@@ -111,3 +111,5 @@ Die Registry-IDs `selection-search-actions`, `selection-icons`, `selection-toolb
 `native-fields` beschreiben die permanenten Control- und Containerrollen. Die ständig sichtbare
 Suche im Spielekatalog ist eine dauerhafte Integrationsform der bestehenden Wiring-API, keine
 zusätzliche CSS-Geometrie. Es gibt keine befristete SelectionSearch-Ausnahme.
+
+- `registry:selection-search-field`: Shared search field fills its wrapping search container.

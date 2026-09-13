@@ -152,3 +152,5 @@ Die Registry-ID `date-fields` beschreibt die Standardcontrols, `calendar-days` d
 `button-small` liefern die gemeinsame Controlgeometrie. Die inklusive 640-px-Grenze ist eine
 bewusst bewahrte Istvariante; sie ist keine befristete Ausnahme. Es gibt keine befristete
 DateTimeField-Ausnahme.
+
+- `registry:calendar-month-fields`: Month/year selectors are internal calendar parts at the shared control height.

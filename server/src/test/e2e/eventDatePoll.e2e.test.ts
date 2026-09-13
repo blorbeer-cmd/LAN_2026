@@ -469,7 +469,22 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   ]) {
     await ownerPage.setViewportSize(viewport);
     await assertRatingGeometry();
+    const optionControls = await linkedOption.locator('.info-tooltip-trigger, .event-poll-option-link').evaluateAll((controls) => controls.map((control) => {
+      const box = control.getBoundingClientRect();
+      const icon = control.querySelector('.ui-icon')!.getBoundingClientRect();
+      return { width: box.width, height: box.height, iconWidth: icon.width, iconHeight: icon.height };
+    }));
+    assert.equal(optionControls.length, 2);
+    for (const control of optionControls) {
+      assert.ok(control.width >= 44 && control.height >= 31 && control.height <= 33, JSON.stringify({ viewport, control }));
+    }
+    assert.equal(optionControls[1].iconWidth, 20, 'the option link uses its icon-button owner glyph');
+    assert.equal(optionControls[1].iconHeight, 20);
   }
+  await optionLink.focus();
+  await ownerPage.keyboard.press('Shift+Tab');
+  assert.equal(await linkedOption.locator('.info-tooltip-trigger').evaluate((element) => document.activeElement === element), true);
+  assert.notEqual(await linkedOption.locator('.info-tooltip-trigger').evaluate((element) => getComputedStyle(element).outlineStyle), 'none');
   // Every value is measured both unselected and selected through the real draft handler.
   for (let value = 1; value <= 5; value += 1) {
     await ratingButtons.nth(value - 1).click();

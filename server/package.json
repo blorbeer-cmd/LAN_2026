@@ -28,6 +28,7 @@
     "test:e2e:run:core": "cross-env NODE_ENV=test E2E_FAST_TIMERS=1 node scripts/run-e2e-partition.mjs core",
     "test:e2e:run:arcade": "cross-env NODE_ENV=test E2E_FAST_TIMERS=1 node scripts/run-e2e-partition.mjs arcade",
     "test:e2e:run:arcade-smoke": "cross-env NODE_ENV=test E2E_FAST_TIMERS=1 node scripts/run-e2e-partition.mjs arcade-smoke",
+    "check:components": "node scripts/check-component-contracts.mjs",
     "check:tokens": "node scripts/check-design-tokens.js",
     "lint": "eslint src public/js",
     "format:check": "prettier --check eslint.config.mjs .prettierrc.json ../agent/eslint.config.mjs ../agent/.prettierrc.json"

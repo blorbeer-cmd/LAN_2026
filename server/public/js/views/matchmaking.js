@@ -442,14 +442,14 @@ function renderHistory(selectedGameId) {
     return renderHistoryDetails(
       'Historie',
       0,
-      emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' })
+      emptyStateHtml('Lädt…', { className: 'empty-state-compact' })
     );
   }
   if (historyCache.length === 0) {
     return renderHistoryDetails(
       'Historie',
       0,
-      emptyStateHtml('Noch keine Auslosungen.', { style: 'padding:var(--space-4);' })
+      emptyStateHtml('Noch keine Auslosungen.', { className: 'empty-state-compact' })
     );
   }
 

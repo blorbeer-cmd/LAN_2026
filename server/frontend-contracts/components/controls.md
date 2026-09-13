@@ -104,7 +104,7 @@ CSS-Dateien und jede Klasse an interaktiven JS-Markup-Elementen genau einer Regi
 1 Standard-/Icon-Control, 2 permanentes Strukturziel, 3 interner Teil eines zusammengesetzten
 Controls oder 4 befristete Ausnahme. Jede Fundstelle mit Datei, Zeile und Selektor steht am PR.
 Modifier und Zustandsmarker erben die Geometrie des Trägers; ihre Registrierung erlaubt keine
-eigenen Innenmaße. Die Registry ist reine Daten, ohne Komponentencheck oder Hook-Integration.
+eigenen Innenmaße. Die Registry bleibt reine Daten; Paket 5 validiert sie mit dem Snapshot-Komponentencheck.
 
 Die Standardfamilien `date-fields`, `search-select`, `profile-controls`, `row-icons`,
 `arrival-controls`, `filter-chip`, `section-tab`, `poll-choice`, `admin-controls`, `vote-fields`,
@@ -291,7 +291,260 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `music-copy-actions`, `music-cover` | Globale Kopieraktionen; unverändertes nichtinteraktives 76-px-Cover. |
 | `kiosk-header-action`, `kiosk-match-row` | Permanente 44-px-Ziele der eigenständigen TV-Geräteklasse. |
 
-Die einzige befristete Ausnahme ist `legacy-secondary-modifier`: Der bestehende Kiosk-Passwort-
-Retry trägt einen CSS-losen Altmodifier. Seine Geometrie folgt bereits der Basis; Paket 5
-entfernt genau diesen ungenutzten Klassentoken. Befund, Aufruf, Eigenschaft und Löschkriterium
-stehen in `temporaryExceptions`. Es wird keine zusätzliche Größenvariante eingeführt.
+Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: Der ungenutzte Modifier am Kiosk-Passwort-Retry wurde entfernt. Es bestehen keine offenen befristeten Ausnahmen.
+
+- `registry:button`: Standard text button; meaning and width compose without changing its interior.
+
+- `registry:button-meaning`: Color and state only; inherit the selected geometry.
+
+- `registry:button-width`: Width only; inherit the selected geometry.
+
+- `registry:button-small`: Compact text at the same 32px minimum height.
+
+- `registry:button-square`: Numeric poll scale: exactly 32 by 32px, including selected values.
+
+- `registry:icon-button`: 32px height and at least 44px width.
+
+- `registry:native-fields`: 32px single-line fields; textarea rows/content may grow.
+
+- `registry:selection-icons`: Selection and search icons inherit icon-button geometry.
+
+- `registry:selection-toolbar`: Wrapping container preserves gap, whole controls and DOM order.
+
+- `registry:info-trigger`: Help and warning use the same 44 by 32px hit box.
+
+- `registry:date-fields`: DateTime manual fields, native selects and adjacent calendar/clear actions.
+
+- `registry:calendar-days`: Permanent six-row calendar grid and its 44px day cells.
+
+- `registry:number-stepper`: Two supplementary half-buttons inside a 32px number field.
+
+- `registry:search-select`: Field-integrated 44 by 32px dropdown trigger.
+
+- `registry:search-options`: Permanent listbox option rows, at least 44px.
+
+- `registry:profile-controls`: Profile controls use the standard field/button/icon variants.
+
+- `registry:row-icons`: Copy, dismiss and detail actions retain their 44px icon slot.
+
+- `registry:arrival-controls`: Native textarea rows and 32px sorting buttons.
+
+- `registry:filter-chip`: Interactive filter chips use 32px; passive chip labels are outside this control variant.
+
+- `registry:section-tab`: Navigation button composed with the base button and optional meaning modifier.
+
+- `registry:poll-choice`: Compact choice text retains the standard minimum height.
+
+- `registry:poll-disclosure`: Composite card header: title plus round/deadline metadata are a documented multiline state.
+
+- `registry:data-row-action`: Only the account-access row contains the 320px name/badge/action reflow query.
+
+- `registry:admin-controls`: Role field; its container handles reflow without changing standard field height.
+
+- `registry:vote-fields`: Textarea minimum; rows/content determine the multiline state.
+
+- `registry:food-fields`: Standard fields and add button retain their form-column placement.
+
+- `registry:payment-controls`: 32px payment/copy actions; icon actions inherit the shared minimum width.
+
+- `registry:food-action-slots`: Composite position row reserves matching 44 by 32px action and empty slots.
+
+- `registry:food-disclosure`: Card/roster heading and person plus metadata form a composite, optionally multiline disclosure.
+
+- `registry:result-fields`: 32px score fields reserve the existing internal stepper column.
+
+- `registry:result-actions`: Actions embedded in the score/bracket grid retain its reserved gutter and slot geometry.
+
+- `registry:bracket-row`: Each team is one half of the fixed composite bracket match; states own no separate height.
+
+- `registry:rating-slider`: Existing slider track/thumb geometry is internal to the rating control.
+
+- `registry:rating-suggestion`: Inline application shortcut belongs to the rating label, with its existing icon/value geometry.
+
+- `registry:structural-cards`: Whole navigation/result cards preserve their existing row or multiline card geometry.
+
+- `registry:global-search-result`: Whole search-result row retains its icon, title and description geometry.
+
+- `registry:player-card`: Whole player/selection rows preserve avatar, metadata and existing row geometry.
+
+- `registry:player-selection-actions`: Whole roster cards for picking/reordering, not standalone text buttons.
+
+- `registry:structural-disclosure`: Permanent disclosure headers and desktop rail rows retain their 44px minimum.
+
+- `registry:row-layout`: Layout attachment; the semantic control variant still owns its interior.
+
+- `registry:selection-state`: Context-owned selection markers; no standalone control geometry.
+
+- `registry:payment-state`: Payment state marker inherits its host control geometry.
+
+- `registry:arcade-segment`: Package-1 segment/pill and creation-row contract remains 32px; S stays 188px.
+
+- `registry:arcade-mute`: 44 by 32px mute action beside standard toolbar text buttons.
+
+- `registry:arcade-tile`: Whole game-selection tile retains its name, status and card geometry.
+
+- `registry:battleship-grid`: Permanent 44px game-board cells; ship and hit states do not change geometry.
+
+- `registry:battleship-ship-display`: Ship decoration and orientation markers retain the structural board cell's hit box.
+
+- `registry:challenge-targets`: Existing game reaction targets, choice tiles and memory cells keep their dedicated geometry.
+
+- `registry:scribble-tools`: Internal brush-width and color samples in the drawing palette retain existing dimensions.
+
+- `registry:scribble-word-choice`: Dedicated word-selection game target retains its large type and padded choice surface.
+
+- `registry:music-controls`: Pairing icon and result-type buttons inherit shared control geometry.
+
+- `registry:native-control-line`: The shared native control line-height rule owns the element baseline.
+
+- `registry:native-color`: Existing native color swatch is a structural picker surface, not a text field.
+
+- `registry:native-range`: Native range track fills its rating row; thumb geometry remains with the slider.
+
+- `registry:poll-option-link`: Link action composes icon-button; only nonshrinking placement belongs to this attachment.
+
+- `registry:kiosk-open-link`: Literal event-card action hook inherits the base button; no independent interior geometry.
+
+- `registry:arcade-player-surface`: Winner emphasis belongs to the existing player surface, not to an independent control.
+
+- `registry:draw-team-surface`: Winner emphasis belongs to the existing drawn-team surface.
+
+- `registry:onboarding-target-ring`: Noninteractive tour decoration follows the highlighted element rectangle; it never resizes that control.
+
+- `registry:action-menu-trigger`: Bordered 32px trigger with chevron; short application-owned label.
+
+- `registry:action-menu-entry`: Permanent menu rows remain at least 44px high/wide and allow wrapping.
+
+- `registry:topbar-icons`: Topbar placement reserves 44px width; interior belongs to icon-button.
+
+- `registry:selection-buttons`: Selection actions keep the base minimum, including the numeric square variant.
+
+- `registry:poll-secondary`: Only the secondary background is contextual.
+
+- `registry:poll-text-width`: 44px text minimum excludes numeric squares in both selected and unselected states.
+
+- `registry:poll-choice-text`: Compact text presentation keeps the standard 32px minimum.
+
+- `registry:search-field`: Native field reserves the integrated dropdown action width.
+
+- `registry:selection-search-actions`: Matching search/open/close icon boxes.
+
+- `registry:profile-preview`: Noninteractive preview exactly mirrors the adjacent 32px field height.
+
+- `registry:tournament-label`: Noninteractive field label occupies its sibling control line.
+
+- `registry:arrival-sort-mobile`: Bordered phone sorting controls retain the same single-line height.
+
+- `registry:interactive-chip`: 32px filter control; passive chips keep their existing label geometry.
+
+- `registry:invite-link-controls`: Short application-owned link actions remain nowrap; native field yields width.
+
+- `registry:admin-test-fields`: Dense test-data form keeps its existing font/columns while every one-line control is 32px.
+
+- `registry:data-row-name`: Only this name may visibly ellipsize; its full DOM/accessible text remains intact.
+
+- `registry:data-row-action-label`: Short application action stays nowrap; below 320px the whole action moves to row two.
+
+- `registry:food-position-slots`: Matching action/spacer slots in a composite position row.
+
+- `registry:food-payment-marker`: Group paid marker keeps the same 32px action line.
+
+- `registry:food-header`: Permanent 44px card header row, including its disclosure and other actions.
+
+- `registry:vote-submitted-state`: Noninteractive confirmation is a status surface and may contain icon plus status copy.
+
+- `registry:arcade-toolbar-buttons`: Wrapped toolbar labels grow; no creation-row or segment geometry changes.
+
+- `registry:challenge-test-disclosure`: 32px application-owned test-selector disclosure.
+
+- `registry:topbar-title`: Permanent 44px brand/navigation row.
+
+- `registry:desktop-navigation`: Permanent 44px desktop navigation rail rows.
+
+- `registry:page-heading`: Permanent page-header alignment row.
+
+- `registry:subpage-heading`: Permanent compact page-header alignment row.
+
+- `registry:tabbed-subpage-heading`: Permanent two/three-row header reservation follows existing responsive tab wrapping.
+
+- `registry:section-heading`: Permanent tabbed section-header reservation.
+
+- `registry:section-title`: Permanent 44px heading line inside a section header.
+
+- `registry:seating-pool`: Permanent seating drop area includes the row and its surrounding padding.
+
+- `registry:seating-player`: Permanent 44px seating player row.
+
+- `registry:music-copy-actions`: Shared 44 by 32px copy actions in music rows.
+
+- `registry:music-cover`: Noninteractive 76px artwork belongs to the music-card structure.
+
+- `registry:kiosk-header-action`: Permanent 44px fullscreen action on the dedicated TV canvas.
+
+- `registry:kiosk-match-row`: Permanent 44px team row on the dedicated TV canvas.
+
+- `registry:arcade-create-width`: Creation-row container controls available width and stacking; no CTA interior dimensions.
+
+- `registry:arcade-free-slot-width`: Join action fills its reserved free-player slot.
+
+- `registry:arcade-entry-width`: Whole entry actions yield to their wrapping footer.
+
+- `registry:arcade-setting-row`: Existing composite checkbox setting row, not a standalone text button.
+
+- `registry:bracket-action-gutter`: Composite bracket row reserves the embedded result-action gutter.
+
+- `registry:checkbox-in-row`: Native checkbox glyph is an internal 20px part of the labeled selection row.
+
+- `registry:event-calendar-actions`: Calendar handoff labels may wrap within their equal-width action group.
+
+- `registry:event-excuse-actions`: Parallel excuse actions wrap labels within the available footer.
+
+- `registry:event-card-action-width`: Event card actions yield width to whole-group reflow.
+
+- `registry:grouped-card-surface`: Nested card surface removes redundant elevation.
+
+- `registry:tournament-skill-field`: Team skill field fits the header alongside the team label.
+
+- `registry:vote-selection-row`: Existing game-selection card frame and inset; native checkbox owns its glyph.
+
+- `registry:kiosk-player-card`: Read-only TV player surface retains the separate device-class text scale and inset.
+
+- `registry:kiosk-title`: TV header keeps its documented title scale.
+
+- `registry:kiosk-login-field`: Native login field fills the centered TV login card.
+
+- `registry:kiosk-winner`: TV winner rail supplements its textual winner state.
+
+- `registry:onboarding-rating-actions`: Existing rating-panel composite action row keeps its short application labels and horizontal density at the shared minimum height.
+
+- `registry:seating-field-width`: Seating editor fields yield within their configuration grid.
+
+- `registry:desktop-nav-indicator`: Internal active navigation indicator preserves the whole navigation target.
+
+- `registry:arrival-action-width`: Carpool actions occupy the existing footer or free-seat action column.
+
+- `registry:event-context-search-field`: Compact event switcher reserves its integrated selector action.
+
+- `registry:search-status-reserve`: Searchable select reserves the established status icon inside the field.
+
+- `registry:number-stepper-reserve`: Native number field reserves the internal half-stepper column.
+
+- `registry:selection-number-width`: Existing numeric selection field has a stable toolbar column.
+
+- `registry:tournament-count-width`: Team count fills its labeled field column.
+
+- `registry:profile-agent-field`: Agent key field yields to its neighboring copy action.
+
+- `registry:player-assignment-field`: Player assignment select fills its row column.
+
+- `registry:icon-button-glyph`: Base icon-button owns its 20px glyph independently of hit-box geometry.
+
+- `registry:chip-glyph`: Chip component owns its 15px glyph.
+
+- `registry:number-stepper-glyph`: Supplementary half-stepper owns its 11px arrow glyph.
+
+- `registry:rating-suggestion-glyph`: Inline rating shortcut owns its 14px glyph.
+
+- `registry:arrival-sort-glyph`: Sort control owns its font-relative glyph.
+
+- `registry:invite-link-field`: Kompakte Einladungs-URL mit unveränderter Standardhöhe; CSS-Eigentümer statt Inline-Typografie.
