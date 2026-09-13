@@ -312,7 +312,7 @@ function renderCreateForm(el, ctx) {
         <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">${icon('x')}</button>
       </div>
       ${emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', {
-        style: 'padding:var(--space-4);',
+        className: 'empty-state-compact',
       })}
     </div>`;
     el.querySelector('#tourn-create-close').addEventListener('click', () => {

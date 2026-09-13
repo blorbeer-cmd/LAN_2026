@@ -895,7 +895,7 @@ export function ensureScribbleSocket() {
 // ---------- Lobby card (rendered inline inside the Arcade view) ----------
 
 function renderLobbyList() {
-  if (lobbies.length === 0) return emptyStateHtml('Noch keine Scribble-Lobby.', { style: 'padding:var(--space-4);' });
+  if (lobbies.length === 0) return emptyStateHtml('Noch keine Scribble-Lobby.', { className: 'empty-state-compact' });
   return lobbies
     .map((l) => {
       const isHost = l.host.id === myId();

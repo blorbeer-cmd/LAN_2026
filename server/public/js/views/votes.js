@@ -274,7 +274,7 @@ function submissionCountLabel(count, mode) {
 function renderTop10(results) {
   const top10 = topByPreference(results, 10);
   if (top10.length === 0) {
-    return emptyStateHtml('Noch keine Spiele.', { style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Noch keine Spiele.', { className: 'empty-state-compact' });
   }
   const rowHtml = (r, i) => `
     <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
@@ -382,17 +382,16 @@ function renderVoteRanking(results, mode, winnerGameIds) {
 
 function renderCurrentVote({ allowRunoff = false } = {}) {
   if (historyCache === null) {
-    return emptyStateHtml('Lädt…', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Lädt…', { className: 'vote-empty-state empty-state-compact' });
   }
   if (historyCache.length === 0) {
     return emptyStateHtml('Noch keine Abstimmung.', {
-      className: 'vote-empty-state',
-      style: 'padding:var(--space-4);',
+      className: 'vote-empty-state empty-state-compact',
     });
   }
   const h = historyCache[0];
   if (!h.totalVoters) {
-    return emptyStateHtml('Niemand hat abgestimmt.', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Niemand hat abgestimmt.', { className: 'vote-empty-state empty-state-compact' });
   }
   const meta = [h.title, formatDateTime(h.closedAt), h.mode === 'single' ? 'Stichwahl' : null]
     .filter(Boolean)
@@ -415,12 +414,11 @@ function renderCurrentVote({ allowRunoff = false } = {}) {
 
 function renderHistory() {
   if (historyCache === null) {
-    return emptyStateHtml('Lädt…', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Lädt…', { className: 'vote-empty-state empty-state-compact' });
   }
   if (historyCache.length === 0) {
     return emptyStateHtml('Noch keine Abstimmungen.', {
-      className: 'vote-empty-state',
-      style: 'padding:var(--space-4);',
+      className: 'vote-empty-state empty-state-compact',
     });
   }
   // Each round stays visually separate and repeats the same compact ranking

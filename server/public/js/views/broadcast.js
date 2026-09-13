@@ -50,7 +50,7 @@ export function invalidateBroadcasts({ hard = false } = {}) {
 
 function renderHistory(myId) {
   if (historyCache === null) {
-    return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Lädt…', { className: 'empty-state-compact' });
   }
   if (historyCache.length === 0) {
     return emptyStateHtml('Noch keine Durchsagen.');

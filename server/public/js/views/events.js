@@ -111,7 +111,7 @@ function renderKioskPasswordRow() {
   if (kioskPasswordState.status === 'error') {
     return `<div class="row-between">
       <span class="muted" style="font-size:var(--font-size-xs);">Passwort konnte nicht geladen werden: ${escapeHtml(kioskPasswordState.error)}</span>
-      <button type="button" class="btn btn-secondary" data-retry-kiosk-password>Erneut versuchen</button>
+      <button type="button" class="btn" data-retry-kiosk-password>Erneut versuchen</button>
     </div>`;
   }
   return `<p class="muted" style="font-size:var(--font-size-xs);">Lädt…</p>`;

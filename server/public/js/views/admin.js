@@ -99,7 +99,7 @@ function openInviteModal(invite) {
       <label for="admin-invite-link">Link</label>
       ${eventHint}
       <div class="invite-link-row">
-        <input type="text" id="admin-invite-link" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;font-size:var(--font-size-xs);" />
+        <input type="text" id="admin-invite-link" class="invite-link-field" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;" />
         <button type="button" class="btn btn-sm" id="admin-invite-copy">Kopieren</button>
       </div>
       <button type="button" class="btn btn-sm" id="admin-invite-qr-toggle">${icon('scanQrCode')} QR-Code anzeigen</button>

@@ -161,7 +161,7 @@ function startReason(lobby) {
   return waiting > 0 ? `${waiting} nicht bereit` : '';
 }
 function lobbyList() {
-  if (!lobbies.length) return emptyStateHtml('Noch keine Blobby-Volley-Lobby.', { style: 'padding:var(--space-4);' });
+  if (!lobbies.length) return emptyStateHtml('Noch keine Blobby-Volley-Lobby.', { className: 'empty-state-compact' });
   return lobbies.map((l) => {
     const isHost = l.host.id === myId();
     const joined = l.players.some((p) => p.id === myId());

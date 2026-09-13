@@ -584,11 +584,19 @@ flowTest('standard control variants center single lines and grow for wrapped con
       <select aria-label="Auswahl"><option>Auswahl</option></select>
       <textarea rows="1" class="vote-info-input" aria-label="Info">Info</textarea>
       <textarea rows="3" class="arrival-note-input" aria-label="Notiz">Erste Zeile\nZweite Zeile\nDritte Zeile</textarea>
+      <div class="arcade-lobby-target-score"><select aria-label="Zielpunktzahl"><option>10</option></select><input type="number" value="10" aria-label="Freie Zielpunktzahl"></div>
+      <div class="arcade-lobby-free-row"><button class="btn" data-legacy-control>Beitreten</button></div>
+      <div class="arrivals-free-seat-row"><button class="btn" data-legacy-control>Mitfahren</button></div>
+      <button class="icon-btn" data-legacy-control aria-label="Prozess entfernen">×</button>
       <div class="row" data-wrapping-row>
         <button class="btn" style="width:100px"><span>Eine längere Aktion vollständig ausführen</span></button>
         <button class="btn btn-sm" style="width:100px"><span>Eine längere Aktion vollständig ausführen</span></button>
       </div>
       ${emptyStateHtml({ text: 'Laden fehlgeschlagen.', action: { id: 'empty-recovery', label: 'Erneut laden' } })}
+      <div class="grouped-page-section" data-empty-migration>
+        ${emptyStateHtml('Noch keine Spiele.', { className: 'vote-empty-state', style: 'padding:var(--space-4);' })}
+        ${emptyStateHtml('Noch keine Spiele.', { className: 'vote-empty-state empty-state-compact' })}
+      </div>
       ${emptyStateHtml({ text: 'Laden fehlgeschlagen.', action: { id: 'empty-recovery-long', label: 'Eine lange Aktion erneut vollständig ausführen' } })}`;
     probe.querySelector<HTMLElement>('#empty-recovery-long')!.style.width = '120px';
     document.body.append(probe);
@@ -600,7 +608,7 @@ flowTest('standard control variants center single lines and grow for wrapped con
   ]) {
     await page.setViewportSize(viewport);
     const geometry = await page.locator('#control-contract-probe').evaluate((probe) => {
-      const standard = Array.from(probe.querySelectorAll('[data-standard-row] button, input, select, textarea[rows="1"]'));
+      const standard = Array.from(probe.querySelectorAll('[data-standard-row] button, [data-legacy-control], input, select, textarea[rows="1"]'));
       return {
         controls: standard.map((control) => {
           const box = control.getBoundingClientRect();
@@ -616,6 +624,10 @@ flowTest('standard control variants center single lines and grow for wrapped con
         }),
         multiline: probe.querySelector('textarea[rows="3"]')!.getBoundingClientRect().height,
         emptyDefaultHeight: probe.querySelector('#empty-recovery')!.getBoundingClientRect().height,
+        emptyMigration: Array.from(probe.querySelectorAll('[data-empty-migration] .empty-state')).map((element) => {
+          const style = getComputedStyle(element);
+          return { padding: style.padding, height: element.getBoundingClientRect().height, fontSize: style.fontSize };
+        }),
         emptyLong: (() => {
           const button = probe.querySelector('#empty-recovery-long')!;
           const range = document.createRange();
@@ -641,6 +653,7 @@ flowTest('standard control variants center single lines and grow for wrapped con
     }
     assert.ok(geometry.multiline > 33, 'rows, not a fixed height, preserve multiline fields');
     assert.ok(geometry.emptyDefaultHeight >= 31 && geometry.emptyDefaultHeight <= 33, 'the default EmptyState recovery action uses the shared control height');
+    assert.deepEqual(geometry.emptyMigration[1], geometry.emptyMigration[0], 'the registered compact EmptyState preserves the former inline presentation inside the real grouped/Vote context');
     assert.ok(geometry.emptyLong.height > 33 && geometry.emptyLong.lines > 1, 'a wrapping EmptyState recovery action grows');
     assert.equal(geometry.emptyLong.clipped, false, 'a wrapping EmptyState recovery action stays fully visible');
   }

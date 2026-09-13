@@ -1,0 +1,36 @@
+{
+  "base": "00fb17224c003d5771ed4d7b308a98b137e67a1b",
+  "initial": {
+    "counts": {
+      "geometryCandidates": 81,
+      "colorCandidates": 35,
+      "violations": 178,
+      "registryDiagnostics": 151
+    },
+    "classifications": {
+      "component-owner": 1835,
+      "permanent-variant": 129,
+      "static-false-candidate": 15,
+      "temporary-exception": 1,
+      "violation": 65
+    }
+  },
+  "final": {
+    "counts": {
+      "geometryCandidates": 77,
+      "colorCandidates": 35,
+      "violations": 0,
+      "registryDiagnostics": 0
+    },
+    "classifications": {
+      "component-owner": 1858,
+      "permanent-variant": 127,
+      "static-false-candidate": 4
+    },
+    "snapshotDigest": "374ff9a1f54015e8631db0266e34839c73e29574687fac7f816fae3690bf1bc3"
+  },
+  "components": 80,
+  "permanentVariants": 80,
+  "temporaryExceptions": 0,
+  "dynamicUses": 63
+}

@@ -268,7 +268,7 @@ function scribbleArtStatsHtml(game) {
             <span class="muted leaderboard-row-stat">Cool ${player.reactionBreakdown.cool} · Kreativ ${player.reactionBreakdown.creative} · Witzig ${player.reactionBreakdown.funny}</span>
           </span>
         </div>`).join('')
-    : emptyStateHtml('Noch keine Scribble-Bilder.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Scribble-Bilder.', { className: 'empty-state-compact' });
   const galleryHtml = scribbleGallery.length
     ? `<div class="scribble-gallery-grid">${scribbleGallery.map((drawing) => `
         <article class="card stack scribble-drawing-card is-winner">
@@ -276,7 +276,7 @@ function scribbleArtStatsHtml(game) {
           <div class="scribble-stored-canvas-wrap"><canvas data-arcade-gallery-drawing="${drawing.id}" aria-label="Rundenbild von ${escapeHtml(drawing.artistName)}"></canvas></div>
           <div class="muted">${escapeHtml(drawing.word)} · ${drawing.favoriteVotes} Favoriten · ${drawing.reactionCount} Reaktionen</div>
         </article>`).join('')}</div>`
-    : emptyStateHtml('Noch keine Rundenbilder.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Rundenbilder.', { className: 'empty-state-compact' });
   return `
     <div class="section-title">Beste Bilder pro Spieler</div>
     <div class="leaderboard-list-grid">${artRows}</div>
@@ -294,9 +294,9 @@ function arcadeResultLabel(wins, losses) {
 
 function arcadeStatsHtml() {
   if (!stats && !statsLoading) return '';
-  if (statsLoading && !stats) return emptyStateHtml('Statistiken laden…', { style: 'padding:var(--space-4);' });
+  if (statsLoading && !stats) return emptyStateHtml('Statistiken laden…', { className: 'empty-state-compact' });
   const games = stats?.games ?? [];
-  if (!games.length) return emptyStateHtml('Noch keine Arcade-Runden.', { style: 'padding:var(--space-4);' });
+  if (!games.length) return emptyStateHtml('Noch keine Arcade-Runden.', { className: 'empty-state-compact' });
 
   // Picking a game up top should show its stats without a second, redundant
   // selection here — but only re-sync when the top-level pick actually
@@ -431,7 +431,7 @@ function wireQuizLobbyCard(container, ctx) {
 }
 
 function renderLobbyList() {
-  if (lobbies.length === 0) return emptyStateHtml('Noch keine Quiz-Lobby.', { style: 'padding:var(--space-4);' });
+  if (lobbies.length === 0) return emptyStateHtml('Noch keine Quiz-Lobby.', { className: 'empty-state-compact' });
   return lobbies
     .map((l) => {
       const isHost = l.host.id === getMyId();

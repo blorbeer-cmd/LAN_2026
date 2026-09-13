@@ -73,7 +73,7 @@ function dataBasisHtml(stats) {
 
 function renderStats() {
   if (statsLoading || !statsCache) {
-    return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Lädt…', { className: 'empty-state-compact' });
   }
   const s = statsCache;
 
@@ -120,7 +120,7 @@ function renderStats() {
           )
           .join('')}
       </div>`
-    : emptyStateHtml('Noch keine Awards.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Awards.', { className: 'empty-state-compact' });
 
   const gamesHtml = s.games.length
     ? s.games
@@ -136,7 +136,7 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Noch keine Spielzeit.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Spielzeit.', { className: 'empty-state-compact' });
 
   const eventsHtml = s.events.length
     ? s.events
@@ -148,7 +148,7 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Noch keine Events.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Events.', { className: 'empty-state-compact' });
 
   const longestHtml = s.longestSessions.length
     ? s.longestSessions
@@ -163,7 +163,7 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Noch keine Sessions.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Sessions.', { className: 'empty-state-compact' });
 
   return `
     <div class="card stack">

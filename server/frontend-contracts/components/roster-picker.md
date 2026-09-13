@@ -134,3 +134,5 @@ Die Registry-IDs `selection-toolbar`, `selection-icons`, `selection-buttons`,
 `selection-search-actions` und `player-card` sind permanente, bereits begründete Varianten des
 Controls-Vertrags. Die Matchmaking-Dreispalte ist eine permanente Domänenplatzierung, keine neue
 Controlgeometrie. Es gibt keine befristete RosterPicker-Ausnahme.
+
+- `registry:roster-selection-frame`: Shared roster owns the checkbox-card inset, border radius and safe name reflow.

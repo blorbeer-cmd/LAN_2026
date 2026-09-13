@@ -627,3 +627,7 @@
     animation: none;
   }
 }
+
+.empty-state-kiosk-loading {
+  padding: var(--space-8);
+}

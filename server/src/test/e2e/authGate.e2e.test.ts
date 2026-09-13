@@ -605,6 +605,32 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.click('#reauth-form button[type="submit"]');
     await adminPage.waitForSelector('#admin-invite-link');
     const link = await adminPage.inputValue('#admin-invite-link');
+    for (const viewport of [
+      { width: 320, height: 568 }, { width: 390, height: 844 },
+      { width: 512, height: 384 }, { width: 720, height: 450 },
+      { width: 1024, height: 768 }, { width: 1440, height: 900 },
+    ]) {
+      await adminPage.setViewportSize(viewport);
+      // Crossing the sheet/dialog breakpoint restarts its entrance animation.
+      await adminPage.locator('#admin-invite-link').evaluate(async (field) => {
+        await Promise.all(field.closest('.modal')!.getAnimations().map((animation) => animation.finished));
+      });
+      const fieldStyle = await adminPage.locator('#admin-invite-link').evaluate((field) => {
+        const reference = document.createElement('span');
+        reference.style.fontSize = 'var(--font-size-xs)';
+        reference.style.position = 'absolute';
+        field.parentElement!.append(reference);
+        try {
+          return { actual: getComputedStyle(field).fontSize, expected: getComputedStyle(reference).fontSize,
+            height: field.getBoundingClientRect().height,
+            overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+        } finally { reference.remove(); }
+      });
+      assert.equal(fieldStyle.actual, fieldStyle.expected, `invite URL retains its compact owner typography at ${viewport.width}px`);
+      assert.ok(fieldStyle.height >= 31 && fieldStyle.height <= 33, JSON.stringify({ viewport, fieldStyle }));
+      assert.equal(fieldStyle.overflow, false);
+    }
+    await adminPage.setViewportSize({ width: 1024, height: 800 });
     const inviteCode = new URL(link).searchParams.get('invite');
     assert.ok(inviteCode);
     assert.match((await adminPage.locator('.modal-backdrop p.muted').last().textContent()) ?? '', /noch .* gültig/);

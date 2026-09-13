@@ -549,7 +549,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
 function renderItems(order, myId, { locked = false } = {}) {
   if (order.items.length === 0) {
     return emptyStateHtml('Noch keine Positionen.', {
-      style: 'font-size:var(--font-size-sm);padding:var(--space-2) 0;',
+      className: 'empty-state-food-items',
     });
   }
   const grouped = itemsGroupedByPlayer(order);
