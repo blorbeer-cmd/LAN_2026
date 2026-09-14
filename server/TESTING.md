@@ -264,6 +264,10 @@ werden Requests, Fonts und Icons sowie passende Inhalts- und Geometrieassertions
 Referenzprofil: **CI `ubuntu-latest`, Playwright 1.56.1**. Referenzen liegen unter
 `src/test/e2e/visual-baselines/`. Normale Läufe lesen sie ausschließlich; es gibt keinen
 Update-Schalter. Fehlende Referenzen, Größenänderungen und Bildabweichungen schlagen fehl.
+Erstübernahme: [CI-Run 34803888861](https://github.com/blorbeer-cmd/LAN_2026/actions/runs/34803888861),
+Head `5ba63a98c7aee0c9573ebf2f8d8e968569188388`, Ubuntu-Image `20260907.300.1`.
+Alle 17 Actual-Dateien wurden einzeln visuell geprüft und waren in der CI-Diagnosewiederholung
+pixelgleich. Dateipfade und SHA-256-Prüfsummen stehen in [PR #626](https://github.com/blorbeer-cmd/LAN_2026/pull/626).
 Der direkte `pngjs`-Vergleich toleriert pro RGBA-Kanal einschließlich 16; mehr als 0,1 Prozent
 Pixel mit einer größeren Kanalabweichung sind ein Fehler. Genau 0,1 Prozent bestehen noch.
 1-px-Geometrie bleibt durch semantische Assertions abgesichert, nicht durch weichere Bildschwellen.
