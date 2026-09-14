@@ -27,6 +27,7 @@ import {
   validateE2EPartitions,
 } from './run-e2e-partition.mjs';
 import { E2E_MANIFEST, validateE2EManifest } from '../../scripts/e2e-partitions.mjs';
+import { classifyChangedPaths } from '../../scripts/ci-path-classifier.mjs';
 
 test('every declared E2E file belongs to exactly one partition', () => {
   const files = [...E2E_PARTITIONS.core, ...E2E_PARTITIONS.arcade].sort();
@@ -83,6 +84,12 @@ test('Core domains select stable, deduplicated fixture sets', () => {
   ]);
   assert.deepEqual(selectedSourceFiles('core'), E2E_PARTITIONS.core);
   assert.throws(() => selectedSourceFiles('core', 'unknown'), /Ungültige Core-E2E-Auswahl/);
+});
+
+test('the visual form owner selects the flows suite without broadening auth routing', () => {
+  const selection = classifyChangedPaths(['server/public/js/views/gameCatalog.js']);
+  assert.ok(selectedSourceFiles('core', selection.e2eCoreScope).includes('visualCore.e2e.test.ts'));
+  assert.equal(classifyChangedPaths(['server/public/js/authGate.js']).e2eCoreScope, 'auth');
 });
 
 test('targeted retries read, deduplicate, and preserve the selected partition order', (context) => {

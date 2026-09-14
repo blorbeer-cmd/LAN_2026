@@ -60,7 +60,16 @@ export class VisualScenes {
     }
   }
 
-  finish(): void { assert.deepEqual(this.failures, [], 'Visual reference comparison failed'); }
+  finish(): void {
+    const version = (require('playwright/package.json') as { version: string }).version;
+    const profile = `platform=${process.platform}, CI=${process.env.CI ?? 'unset'}, ImageOS=${process.env.ImageOS ?? 'unset'}, ImageVersion=${process.env.ImageVersion ?? 'unset'}, Playwright=${version}`;
+    assert.deepEqual(this.failures, [],
+      'Visual reference comparison failed. Reference: CI ubuntu-latest, Playwright 1.56.1; '
+      + 'baseline image provenance: see TESTING.md and the baseline PR. '
+      + `Actual profile: ${profile}. `
+      + 'A different profile can affect fonts/rasterization; it does not prove that a mismatch is harmless. '
+      + 'Confirm on the same PR head in reference CI; do not accept local screenshots as baselines.');
+  }
 }
 
 export async function assertControlHeights(controls: Locator): Promise<void> {

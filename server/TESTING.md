@@ -254,7 +254,8 @@ Wiederholungsfall ab.
 
 ## Visuelle Referenzen
 
-`visualCore.e2e.test.ts` gehört zu Core/`flows` und zeigt Formular, Roster, Tabs/Filter,
+`visualCore.e2e.test.ts` gehört zu Core/`flows` und zeigt das ausgefüllte Spielvorschlagsformular
+aus `views/gameCatalog.js`, Roster, Tabs/Filter,
 Kartenfooter, Modal und Admin-Datenzeile bei 390 und 1024 px. `visualArcade.e2e.test.ts`
 zeigt die Erstellungszeile bei 320, 390 und 1024 px und gehört auch zu Arcade-Smoke.
 Die Szenen benutzen echte UI-Pfade, feste Browserzeit, `de-DE`, `Europe/Berlin`,
@@ -272,6 +273,16 @@ Der direkte `pngjs`-Vergleich toleriert pro RGBA-Kanal einschließlich 16; mehr 
 Pixel mit einer größeren Kanalabweichung sind ein Fehler. Genau 0,1 Prozent bestehen noch.
 1-px-Geometrie bleibt durch semantische Assertions abgesichert, nicht durch weichere Bildschwellen.
 
+Lokale Prüfung außerhalb des Referenzprofils (insbesondere Windows): Alle semantischen Assertions
+und Bildvergleiche laufen unverändert; Bildabweichungen bleiben Fehler. Die Fehlermeldung nennt
+Referenz- und tatsächliches Profil einschließlich Betriebssystem, Runner-Image und Playwright.
+Ein anderes Profil belegt **nicht**, dass eine Abweichung harmlos ist. Für den Abschluss lokale
+Fehler pro Szene anhand Actual/Diff und Assertions untersuchen und dokumentieren; zusätzlich
+muss derselbe gepushte Head die visuellen Vergleiche in der Referenz-CI bestehen. Ein roter
+lokaler Bildvergleich ist kein grüner Test und wird auch bei grüner CI als lokale Einschränkung
+berichtet. Semantische oder Runtimefehler dürfen nicht als Profilunterschied eingeordnet werden.
+Keine lokale Referenzübernahme, gelockerte Schwelle oder automatische Erfolgsmeldung.
+
 Bei Fehlern übernimmt die bestehende Failure-Diagnostics je Szene `*-actual.png` und
 `*-diff.png` (abweichende Pixel magenta), zusätzlich Browser-/Serverprotokolle, DOM und
 gegebenenfalls Trace. PNGs bleiben bis zur Fehlerausgabe im Speicher; erfolgreiche Läufe
@@ -280,7 +291,13 @@ Checkout-SHA, Runner-Image und Playwright-Version. Kein zusätzlicher Workflow i
 
 Baseline-Refresh, auch bei jedem Runner-Imagewechsel:
 
-1. Den unveränderten Vergleich in CI laufen lassen und dessen `*-failure-diagnostics`-Artefakt
+1. Den unveränderten Vergleich in CI laufen lassen. Bei einem Imagewechsel auf einem eigenen
+   Refresh-Branch alle Referenz-PNGs ausdrücklich in einem vorbereitenden Commit entfernen,
+   damit auch für bislang grüne Szenen Actual-Dateien entstehen.
+   Der folgende CI-Lauf schlägt wegen fehlender Referenzen fehl und erzeugt damit für jede Szene
+   neue Actual-Dateien. Der Zwischenstand bleibt Draft und darf nicht gemergt werden. Den Grund
+   und beide Imageversionen im PR dokumentieren; keinen Testcode, Schwellwert oder Workflow ändern.
+   Anschließend dessen `*-failure-diagnostics`-Artefakt
    herunterladen. Kandidaten dürfen ausschließlich die dortigen Actual-Dateien sein.
 2. Für jede Szene zuerst die grünen semantischen Assertions und Fehlerprotokolle prüfen,
    anschließend Actual und gegebenenfalls Diff visuell prüfen. Produkt-/Runtimefehler separat
@@ -291,6 +308,12 @@ Baseline-Refresh, auch bei jedem Runner-Imagewechsel:
 4. Referenzen committen und auf dem neuen Head CI erneut ausführen. Ein normaler Wiederholungslauf
    muss ohne Änderung der Referenzdateien bestehen. Lokale Vergleiche können wegen anderer
    Systemfonts vom CI-Profil abweichen; solche Abweichungen niemals automatisch übernehmen.
+
+Auch ein Wechsel des von `ubuntu-latest` bezeichneten Ubuntu-Releases fällt unter diesen Prozess.
+Er kann mehrere PRs gleichzeitig betreffen; der Refresh-PR ist bis zur geprüften Übernahme
+absichtlich rot. Für andere PRs erst den separat freigegebenen Refresh übernehmen und auf deren
+neuem Head erneut prüfen. Ein Imagewechsel ohne sichtbare Abweichung hebt die Refresh-Pflicht
+nicht auf.
 
 Direkte Regressionstests: nach `npm run test:compile`
 `node --test dist-test/test/visualComparison.test.js dist-test/test/e2eDiagnostics.test.js`

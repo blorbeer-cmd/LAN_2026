@@ -29,16 +29,6 @@ for (const width of [390, 1024]) {
     try {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(server.baseUrl);
-      const form = page.locator('#auth-form');
-      await form.waitFor();
-      await page.fill('#auth-name', 'Alex Referenz');
-      await scenes.capture(`core-form-${width}`, form, async () => {
-        assert.equal(await page.locator('#auth-name').inputValue(), 'Alex Referenz');
-        assert.equal(await page.locator('#auth-name').getAttribute('required'), '');
-        await assertControlHeights(form.locator('input, button'));
-        await assertNoOverflow(form);
-      });
-
       await addSessionCookie(context, server.baseUrl, cookie);
       await page.reload();
       await waitForPlayerData(page);
@@ -99,6 +89,18 @@ for (const width of [390, 1024]) {
         assert.ok(box && box.width <= Math.min(width, 480) + 1);
         await assertNoOverflow(modal);
       });
+      // Keep the form in the flows domain: gameCatalog.js selects this Core suite.
+      const form = modal.locator('#suggest-form');
+      await page.fill('#suggest-title', 'Referenzspiel');
+      await scenes.capture(`core-form-${width}`, form, async () => {
+        assert.equal(await form.locator('#suggest-title').inputValue(), 'Referenzspiel');
+        assert.equal(await form.locator('#suggest-title').getAttribute('required'), '');
+        assert.equal(await form.locator('#suggest-trailer').getAttribute('type'), 'url');
+        assert.equal(await form.locator('button[type="submit"]').innerText(), 'Vorschlagen');
+        await assertControlHeights(form.locator('input, button'));
+        await assertNoOverflow(form);
+      });
+      await page.fill('#suggest-title', '');
       await page.keyboard.press('Escape');
       await modal.waitFor({ state: 'hidden' });
       await openMoreViewEntry(page, '[data-navigate="admin"]');
