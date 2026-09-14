@@ -1610,7 +1610,7 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   assert.ok(await page.locator('[data-game-catalog-search-item]:not([hidden])').count() > 1, 'the always-visible SelectionSearch integration restores the catalog');
 
   await page.click('#suggest-new');
-  await page.waitForSelector('#suggest-trailer + .muted');
+  await page.waitForSelector('.info-tooltip-trigger[aria-controls="suggest-trailer-help"]');
   assert.equal(await page.locator('.modal-header h2').textContent(), 'Spiel vorschlagen');
   assert.equal(await page.locator('.modal').getAttribute('aria-label'), 'Spiel vorschlagen');
   await page.fill('#suggest-title', gameTitle);
