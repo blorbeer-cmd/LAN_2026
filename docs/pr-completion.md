@@ -188,7 +188,8 @@ node --test scripts/pr-completion.test.mjs scripts/agent-preflight.test.mjs
 ```
 
 Tests decken veraltete Freigaben und Reviews, falsche Identitäten, fehlende/rote Checks,
-unaufgelöste Threads, konkurrierende Heads, fremde/verschmutzte Worktrees und die Beweisgrenzen
-konfliktfreier Base-Merges ab. Der Git-Test erzeugt dafür ein temporäres Repository. Ein echter
+unaufgelöste Threads, konkurrierende Heads, fremde/verschmutzte Worktrees, veraltete
+PR-Basisangaben, während `update` bewegtes `main` und die Beweisgrenzen konfliktfreier
+Base-Merges ab. Der Git-Test erzeugt dafür ein temporäres Repository. Ein echter
 Merge-/Scheduler-Pilot benötigt einen separat freigegebenen PR; Tests erteilen keine Freigabe
 für diesen Einrichtungs-PR oder andere offene PRs.
