@@ -4,6 +4,8 @@
 // Sibling tests here intentionally share that state and run in order.
 
 import assert from 'node:assert/strict';
+import type { Locator } from 'playwright';
+import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 import {
   flowTest,
   registerFlowFixture,
@@ -18,6 +20,27 @@ import {
 } from './flowsShared.fixture';
 
 registerFlowFixture('food-orders');
+
+async function assertOrderFooter(card: Locator): Promise<void> {
+  const footer = card.locator('.food-order-close-action');
+  await assertControlHeights(footer.locator('button'));
+  await assertNoOverflow(card);
+  await assertNoOverflow(page.locator('#view-container'));
+  const geometry = await footer.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const preceding = element.previousElementSibling!.getBoundingClientRect();
+    const buttons = Array.from(element.querySelectorAll('button')).map((button) => {
+      const rect = button.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+    });
+    return { left: box.left, right: box.right, top: box.top, precedingBottom: preceding.bottom, buttons };
+  });
+  assert.ok(geometry.top >= geometry.precedingBottom, JSON.stringify(geometry));
+  for (const [index, button] of geometry.buttons.entries()) {
+    assert.ok(Math.abs(button.left - geometry.left) <= 1 && Math.abs(button.right - geometry.right) <= 1, 'footer buttons use the available container width');
+    if (index) assert.ok(Math.abs(button.top - geometry.buttons[index - 1].bottom - 8) <= 1, 'footer actions retain their 8px gap');
+  }
+}
 
 flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus', async () => {
   await page.click('#nav-food-orders');
@@ -37,6 +60,11 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   await page.waitForSelector('a[href="https://luigis-pizza.example/karte"]');
   assert.equal(await page.locator('a[href="https://paypal.me/luigi"] .ui-icon').count(), 1);
   await page.getByRole('button', { name: 'Bestellübersicht', exact: true }).waitFor();
+  for (const viewport of [{ width: 320, height: 568 }, { width: 640, height: 768 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await assertOrderFooter(page.locator('[data-order-card]', { hasText: 'Pizza bei Luigi' }));
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
 
   await page.click('[data-edit-details]');
   await page.getByLabel('Speisekarte', { exact: true }).waitFor();
@@ -212,7 +240,20 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   await wasserRow.locator('[data-remove-item]').click();
   await page.waitForSelector('[data-confirm]');
   assert.equal(await page.locator('.modal h2').innerText(), '1 × Wasser löschen?');
-  await page.click('[data-cancel]');
+  const deleteDialog = page.getByRole('alertdialog');
+  await page.waitForFunction(() => {
+    const dialog = document.querySelector('[role="alertdialog"]');
+    return dialog && dialog.getAnimations({ subtree: true }).every((animation) => animation.playState === 'finished');
+  });
+  assert.equal(await deleteDialog.locator('[data-confirm]').evaluate((element) => element.classList.contains('btn-danger')), true);
+  assert.equal(await deleteDialog.locator('.modal-body [data-cancel]').evaluate((element) => document.activeElement === element), true);
+  await assertControlHeights(deleteDialog.locator('button'));
+  await page.keyboard.press('Tab');
+  assert.equal(await deleteDialog.locator('[data-confirm]').evaluate((element) => document.activeElement === element && element.matches(':focus-visible') && getComputedStyle(element).outlineStyle !== 'none'), true);
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Enter');
+  await deleteDialog.waitFor({ state: 'detached' });
+  assert.equal(await wasserRow.locator('[data-remove-item]').evaluate((element) => document.activeElement === element), true, 'safe Enter cancels deletion and returns focus to its trigger');
   await wasserRow.waitFor();
   await wasserRow.locator('[data-remove-item]').click();
   await page.click('[data-confirm]');
@@ -317,6 +358,12 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   assert.equal(await closedOrder.locator('[data-edit-details]').count(), 0);
   assert.equal(await closedOrder.locator('[data-toggle-group-paid]').first().isDisabled(), true);
   assert.equal(await closedOrder.locator('[data-group-pay]').first().isDisabled(), true);
+  for (const viewport of [{ width: 512, height: 384 }, { width: 720, height: 450 }]) {
+    await page.setViewportSize(viewport);
+    await assertOrderFooter(closedOrder);
+    await assertControlHeights(closedOrder.locator('[data-toggle-group-paid], [data-group-pay]'));
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
 
   // Finalizing is reversible one lock step at a time: reopening a finalized
   // order drops it back to "Abgeschickt", unlocking payment marking and
@@ -400,6 +447,7 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   const bobMarker = bobGroupAfterLink.locator('[data-toggle-group-paid]');
   await bobMarker.click();
   await bobGroupAfterLink.locator('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")').waitFor();
+  await assertControlHeights(bobGroupAfterLink.locator('[data-toggle-group-paid], [data-group-pay]'));
   assert.equal(await bobGroupAfterLink.locator('[data-group-pay]').isDisabled(), true);
   assert.equal(await bobGroupAfterLink.locator('[data-toggle-group-paid]').getAttribute('aria-pressed'), 'true');
   assert.equal(await bobGroupAfterLink.locator('.food-order-item .food-order-paid-marker').count(), 0);
@@ -450,7 +498,7 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   await page.setViewportSize({ width: 320, height: 720 });
   const narrowGroupLayout = await readNarrowGroupLayout();
   assert.ok(narrowGroupLayout.markerWidth <= 100);
-  assert.ok(narrowGroupLayout.markerHeight >= 32);
+  assert.ok(narrowGroupLayout.markerHeight >= 31 && narrowGroupLayout.markerHeight <= 33);
   assert.equal(narrowGroupLayout.markerLabelClipped, false, JSON.stringify(narrowGroupLayout));
   assert.equal(narrowGroupLayout.controlsVisible, true, JSON.stringify(narrowGroupLayout));
   assert.equal(narrowGroupLayout.pageFits, true);

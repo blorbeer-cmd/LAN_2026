@@ -22,6 +22,7 @@ import {
   openProfile,
 } from './flowsShared.fixture';
 import { openMoreViewEntry } from './navHelpers';
+import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 registerFlowFixture('shell');
 
@@ -1632,10 +1633,41 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   await page.click('#suggest-form button[type="submit"]');
   await page.waitForSelector('.toast-error');
   await page.waitForSelector('text=gibt es schon');
-  await page.click('[data-close]');
+  const rejectedDialog = page.getByRole('dialog', { name: 'Spiel vorschlagen', exact: true });
+  assert.equal(await rejectedDialog.locator('#suggest-title').inputValue(), gameTitle.toLowerCase());
+  assert.equal(await rejectedDialog.locator('button[type="submit"]').isEnabled(), true);
+  for (const viewport of [{ width: 512, height: 384 }, { width: 720, height: 450 }]) {
+    await page.setViewportSize(viewport);
+    await page.waitForFunction(() => {
+      const dialog = document.querySelector('.modal[aria-label="Spiel vorschlagen"]');
+      return dialog && dialog.getAnimations({ subtree: true }).every((animation) => animation.playState === 'finished');
+    });
+    await assertControlHeights(rejectedDialog.locator('input, button'));
+    await assertNoOverflow(rejectedDialog);
+    await assertNoOverflow(rejectedDialog.locator('.modal-body'));
+    await rejectedDialog.locator('button[type="submit"]').focus();
+    await page.keyboard.press('Tab');
+    const closeButton = rejectedDialog.locator('[data-close]');
+    assert.equal(await closeButton.evaluate((element) => document.activeElement === element), true);
+    assert.equal(await closeButton.evaluate((element) => element.matches(':focus-visible') && getComputedStyle(element).outlineStyle !== 'none'), true);
+    const closeBox = await closeButton.boundingBox();
+    assert.ok(closeBox && closeBox.y >= 0 && closeBox.y + closeBox.height <= viewport.height);
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await rejectedDialog.locator('button[type="submit"]').evaluate((element) => document.activeElement === element), true);
+  }
+  await page.keyboard.press('Escape');
   // Closing still discards the typed (rejected) title, so the new
   // confirm-before-discard guard steps in — confirm it away.
-  await page.click('[data-confirm]');
+  const discardDialog = page.getByRole('alertdialog');
+  await discardDialog.waitFor();
+  await page.keyboard.press('Enter');
+  await discardDialog.waitFor({ state: 'detached' });
+  assert.equal(await rejectedDialog.locator('#suggest-title').inputValue(), gameTitle.toLowerCase(), 'safe Enter cancels discard and preserves the rejected draft');
+  assert.equal(await rejectedDialog.locator('button[type="submit"]').evaluate((element) => document.activeElement === element), true);
+  await page.keyboard.press('Escape');
+  await page.getByRole('alertdialog').locator('[data-confirm]').click();
+  await rejectedDialog.waitFor({ state: 'detached' });
+  await page.setViewportSize({ width: 390, height: 844 });
 
   // A suggestion carries both meters, Bock *and* Skill — how good the group
   // already is at a game is part of deciding whether to accept it at all.

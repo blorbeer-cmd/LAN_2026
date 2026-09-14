@@ -18,10 +18,11 @@ import {
   loginE2EAdmin,
   type E2EAccount,
 } from './authHelpers';
-import { StatefulE2EDiagnosticGuard, trackE2EContext } from './e2eDiagnostics';
+import { StatefulE2EDiagnosticGuard, trackE2EContext, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { selectArcadeGame } from './arcadeHelpers';
 import { openMoreViewEntry } from './navHelpers';
+import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 let BASE_URL: string;
 
@@ -415,20 +416,40 @@ arcadeFlowTest('full', 'Arcade: a lobby guest flags themselves ready and the hos
     // rows (no summary sentence anymore, see DESIGN_SYSTEM.md arcade rules).
     await page.waitForSelector('.arcade-lobby-member-row:has-text("E2E Bob"):has-text("Mitspieler")');
 
+    await assertControlHeights(page.locator('#quiz-start-lobby'));
+    await assertControlHeights(guestPage.locator('[data-quiz-ready]'));
+    await guestPage.locator('[data-quiz-ready]').focus();
+    await guestPage.keyboard.press('Tab');
+    await guestPage.keyboard.press('Shift+Tab');
+    assert.equal(await guestPage.locator('[data-quiz-ready]').evaluate((element) => document.activeElement === element && element.matches(':focus-visible') && getComputedStyle(element).outlineStyle !== 'none'), true);
+
     // Guest flags ready -> host sees the member row flip to "Bereit".
     await guestPage.waitForSelector('[data-quiz-ready][data-ready="1"]');
-    await guestPage.click('[data-quiz-ready][data-ready="1"]');
+    await guestPage.locator('[data-quiz-ready][data-ready="1"]').press('Enter');
     await page.waitForSelector('.arcade-lobby-member-row:has-text("E2E Bob") .arcade-lobby-member-role:has-text("Bereit")');
+    for (const [client, viewport] of [
+      [page, { width: 1024, height: 768 }],
+      [guestPage, { width: 320, height: 568 }],
+    ] as const) {
+      await client.setViewportSize(viewport);
+      await assertControlHeights(client.locator(client === page ? '#quiz-start-lobby' : '[data-quiz-ready]'));
+      await assertNoOverflow(client.locator('#view-container'));
+      const rows = client.locator('.arcade-lobby-member-row');
+      assert.equal(await rows.count(), 2);
+      for (const row of await rows.all()) await assertNoOverflow(row);
+    }
 
     // The toggle works both ways: un-ready shows up at the host again.
     await guestPage.waitForSelector('[data-quiz-ready][data-ready="0"]');
     await guestPage.click('[data-quiz-ready][data-ready="0"]');
     await page.waitForSelector('.arcade-lobby-member-row:has-text("E2E Bob"):has-text("Mitspieler")');
-  } finally {
+    await assertControlHeights(guestPage.locator('[data-quiz-ready][data-ready="1"]'));
+    await page.setViewportSize({ width: 390, height: 844 });
     // Leave no lobby behind for the tests that follow.
     await page.click('[data-close-lobby]');
     await page.waitForSelector('text=Noch keine Quiz-Lobby.');
-    await guestContext.close();
+  } finally {
+    await deferE2EContextClose(guestContext);
   }
 });
 

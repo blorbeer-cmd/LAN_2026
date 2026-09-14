@@ -10,8 +10,9 @@ import {
   loginE2EAdmin,
   promoteE2EAdmin,
 } from './authHelpers';
-import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
+import { createE2EDiagnosticTest, trackE2EContext, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
+import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 let BASE_URL: string;
 
@@ -362,13 +363,20 @@ test('Battleship: an admin starts a playable match against the AI', async () => 
     await admin.page.click('#battleship-create');
     await admin.page.waitForSelector('[data-battleship-start]:not([disabled])');
     assert.match(await admin.page.locator('.arcade-lobby-card').innerText(), /Flotten-Bot/);
+    await assertControlHeights(admin.page.locator('[data-battleship-start]'));
+    await assertNoOverflow(admin.page.locator('.arcade-lobby-card'));
     await admin.page.click('[data-battleship-start]');
     await admin.page.waitForSelector('#battleship-random');
+    assert.equal(await admin.page.locator('#battleship-submit-setup').isDisabled(), true);
+    await assertControlHeights(admin.page.locator('#battleship-random, #battleship-submit-setup'));
     await randomFleet(admin.page);
+    assert.equal(await admin.page.locator('#battleship-submit-setup').isEnabled(), true);
+    await assertControlHeights(admin.page.locator('#battleship-random, #battleship-submit-setup'));
+    await assertNoOverflow(admin.page.locator('#view-container'));
     await admin.page.click('#battleship-submit-setup');
     await admin.page.waitForSelector('[data-fire-cell]:not([disabled])');
     assert.match(await admin.page.locator('#battleship-target-title').innerText(), /Flotten-Bot/);
   } finally {
-    await admin.context.close();
+    await deferE2EContextClose(admin.context);
   }
 });

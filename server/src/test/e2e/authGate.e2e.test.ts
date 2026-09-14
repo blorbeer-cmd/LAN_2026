@@ -11,10 +11,11 @@ import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
-import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
+import { createE2EDiagnosticTest, trackE2EContext, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { waitForPlayerData } from './authHelpers';
 import { openMoreViewEntry } from './navHelpers';
+import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 let BASE_URL: string;
 const RECOVERY_CODE = 'e2e-admin-recovery-code';
@@ -785,6 +786,28 @@ test('admin roster retries role loading, serializes changes and follows group ro
     }
 
     await adminPage.waitForSelector('#admin-members-retry');
+    // This real error row makes the two-word retry label wrap on phones.
+    // Require actual text lines for growth; desktop must return to 32px.
+    for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 1024, height: 768 }]) {
+      await adminPage.setViewportSize(viewport);
+      const retry = await adminPage.locator('#admin-members-retry').evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const textRects = Array.from(range.getClientRects());
+        const box = element.getBoundingClientRect();
+        return {
+          height: box.height,
+          lines: new Set(textRects.map((rect) => Math.round(rect.top))).size,
+          fits: textRects.every((rect) => rect.left >= box.left && rect.right <= box.right && rect.top >= box.top && rect.bottom <= box.bottom),
+        };
+      });
+      assert.equal(retry.fits, true, JSON.stringify(retry));
+      assert.ok(retry.lines > 1 ? retry.height > 33 : retry.height >= 31 && retry.height <= 33, JSON.stringify(retry));
+      if (viewport.width === 1024) assert.equal(retry.lines, 1);
+      await assertNoOverflow(adminPage.locator('#view-container'));
+    }
+    await adminPage.setViewportSize({ width: 390, height: 844 });
+    await assertNoOverflow(adminPage.locator('#view-container'));
     await adminPage.waitForSelector(`.admin-player-row:has-text("${NAME}")`);
     await adminPage.waitForFunction(() => /^Benutzer \([1-9]\d*\)$/.test(document.querySelector('#admin-players-title')?.textContent ?? ''));
     assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \([1-9]\d*\)$/);
@@ -792,8 +815,10 @@ test('admin roster retries role loading, serializes changes and follows group ro
 
     let roleSelect = adminPage.locator(`[data-player-role="${target.id}"]`);
     await roleSelect.waitFor();
+    await assertControlHeights(roleSelect);
     await roleSelect.selectOption('admin');
     assert.equal(await roleSelect.isDisabled(), true, 'the role control locks before reauthentication and mutation');
+    await assertControlHeights(roleSelect);
     await roleSelect.evaluate((select) => {
       (select as HTMLSelectElement).value = 'member';
       select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -835,8 +860,18 @@ test('admin roster retries role loading, serializes changes and follows group ro
       body: JSON.stringify({ role: 'member' }),
     });
     assert.equal(restoreMember.status, 200, JSON.stringify(await restoreMember.clone().json()));
+    await adminPage.waitForFunction((playerId) => {
+      const select = document.querySelector<HTMLSelectElement>(`[data-player-role="${playerId}"]`);
+      return select?.value === 'member' && !select.disabled;
+    }, target.id);
+    for (const viewport of [{ width: 320, height: 568 }, { width: 1024, height: 768 }]) {
+      await adminPage.setViewportSize(viewport);
+      await assertControlHeights(adminPage.locator(`[data-player-role="${target.id}"]`));
+      await assertNoOverflow(adminPage.locator('#view-container'));
+      await assertNoOverflow(adminPage.locator(`.admin-player-row:has([data-player-role="${target.id}"])`));
+    }
   } finally {
-    await adminPage.close();
+    await deferE2EContextClose(adminPage.context());
   }
 });
 
