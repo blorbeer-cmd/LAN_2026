@@ -18,8 +18,9 @@ import {
   loginE2EAdmin,
   waitForPlayerData,
 } from './authHelpers';
-import { runWithE2EDiagnostics, trackE2EContext } from './e2eDiagnostics';
+import { runWithE2EDiagnostics, trackE2EContext, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
+import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 let BASE_URL: string;
 
@@ -514,12 +515,23 @@ arcadeTest('navigation', 'the kiosk removes stale quiz markup before rendering a
   const guestPlayer = await createPlayer('Kiosk Transition Guest');
   const host = await openArcadeAs(hostPlayer.id);
   const guest = await openArcadeAs(guestPlayer.id);
-  const kiosk = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  const kiosk = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await trackE2EContext(kiosk.context(), 'kiosk-transition');
   try {
     await kiosk.goto(`${BASE_URL}/kiosk.html?token=${E2E_KIOSK_TOKEN}`);
     await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
     await startQuizMatch(host.page, guest.page);
     await kiosk.waitForSelector('#kiosk-game-content .kiosk-game-question');
+    await assertNoOverflow(kiosk.locator('#kiosk-dashboard'));
+    await assertNoOverflow(kiosk.locator('html'));
+    const fullscreen = kiosk.locator('#kiosk-fullscreen');
+    await fullscreen.waitFor();
+    const fullscreenBox = await fullscreen.boundingBox();
+    assert.ok(fullscreenBox && fullscreenBox.width >= 44 && fullscreenBox.height >= 44, 'TV fullscreen is a registered 44px structure target');
+    await fullscreen.focus();
+    await kiosk.keyboard.press('Tab');
+    await kiosk.keyboard.press('Shift+Tab');
+    assert.equal(await fullscreen.evaluate((element) => document.activeElement === element && element.matches(':focus-visible') && getComputedStyle(element).outlineStyle !== 'none'), true);
 
     await finishQuizMatch(host.page);
     await guest.page.waitForSelector('#quiz-back');
@@ -541,14 +553,16 @@ arcadeTest('navigation', 'the kiosk removes stale quiz markup before rendering a
 
     await kiosk.waitForSelector('#kiosk-game-content canvas');
     assert.equal(await kiosk.locator('#kiosk-game-content .kiosk-game-question').count(), 0);
+    await assertNoOverflow(kiosk.locator('#kiosk-game-content'));
+    await assertNoOverflow(kiosk.locator('html'));
 
     await host.page.click('#snake-finish');
     await host.page.waitForSelector('#snake-back');
     await host.page.click('#snake-back');
   } finally {
-    await kiosk.close();
-    await host.context.close();
-    await guest.context.close();
+    await deferE2EContextClose(kiosk.context());
+    await deferE2EContextClose(host.context);
+    await deferE2EContextClose(guest.context);
   }
 });
 
@@ -639,9 +653,18 @@ arcadeTest('navigation', 'watch list: a finished match disappears and active wat
     // with a join-to-watch action; the readonly watch view opens with the
     // quiz safe note (no question, no answer controls).
     await spectator.page.waitForSelector('.arcade-watch-list-row');
+    await spectator.page.setViewportSize({ width: 320, height: 568 });
+    await assertControlHeights(spectator.page.locator('[data-watch-match]'));
+    await assertNoOverflow(spectator.page.locator('#view-container'));
     await spectator.page.click('[data-watch-match]');
     await spectator.page.waitForSelector('.arcade-watch-safe-note');
     assert.equal(await activeView(spectator.page), 'arcadeWatch');
+    for (const viewport of [{ width: 320, height: 568 }, { width: 512, height: 384 }, { width: 720, height: 450 }]) {
+      await spectator.page.setViewportSize(viewport);
+      await assertNoOverflow(spectator.page.locator('#view-container'));
+      await assertControlHeights(spectator.page.locator('#view-container button'));
+      assert.equal(await spectator.page.locator('#quiz-answer-form').count(), 0);
+    }
 
     // Ending the match must push the watcher back to the Arcade on its own —
     // previously the watch view could hang around dead until a reload.
@@ -652,9 +675,9 @@ arcadeTest('navigation', 'watch list: a finished match disappears and active wat
     // ...and the finished match must vanish from the overview list.
     await spectator.page.waitForFunction(() => document.querySelectorAll('.arcade-watch-list-row').length === 0);
   } finally {
-    await host.context.close();
-    await guest.context.close();
-    await spectator.context.close();
+    await deferE2EContextClose(host.context);
+    await deferE2EContextClose(guest.context);
+    await deferE2EContextClose(spectator.context);
   }
 });
 
@@ -903,6 +926,17 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
     );
     await host.page.click('#tetris-pause');
     await host.page.waitForSelector('#tetris-resume');
+    await guests[0].page.waitForSelector('.tetris-overlay:has-text("Pause")');
+    await assertControlHeights(host.page.locator('#tetris-resume, #tetris-finish'));
+    await assertControlHeights(guests[0].page.locator('#tetris-leave'));
+    await guests[0].page.locator('.tetris-boards').scrollIntoViewIfNeeded();
+    const guestViewport = await guests[0].page.locator('#view-container').evaluate((element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      overflowing: Array.from(element.querySelectorAll<HTMLElement>('*')).filter((child) => child.getBoundingClientRect().right > element.getBoundingClientRect().right + 1)
+        .map((child) => ({ className: child.className, right: child.getBoundingClientRect().right })),
+    }));
+    assert.ok(guestViewport.scrollWidth <= guestViewport.clientWidth, `paused guest view overflows: ${JSON.stringify(guestViewport)}`);
     assert.equal(
       await host.page.locator('.tetris-primary-board .tetris-canvas').getAttribute('data-render-identity'),
       'before-pause',
@@ -937,8 +971,8 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
     assert.equal(rosterNames.length, players.length);
     for (const player of players) assert.ok(rosterNames.includes(player.name), `missing full name for ${player.name}`);
   } finally {
-    if (!hostClosed) await host.context.close();
-    for (const actor of guests) await actor.context.close();
+    if (!hostClosed) await deferE2EContextClose(host.context);
+    for (const actor of guests) await deferE2EContextClose(actor.context);
   }
 });
 
