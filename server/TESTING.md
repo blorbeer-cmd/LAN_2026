@@ -269,11 +269,12 @@ Erstübernahme: [CI-Run 34803888861](https://github.com/blorbeer-cmd/LAN_2026/ac
 Head `5ba63a98c7aee0c9573ebf2f8d8e968569188388`, Ubuntu-Image `20260907.300.1`.
 Alle 17 Actual-Dateien wurden einzeln visuell geprüft und waren in der CI-Diagnosewiederholung
 pixelgleich. Dateipfade und SHA-256-Prüfsummen stehen in [PR #626](https://github.com/blorbeer-cmd/LAN_2026/pull/626).
-Die zwei Formularbilder wurden für die korrigierte flows-Szene aus
-[CI-Run 34825147141](https://github.com/blorbeer-cmd/LAN_2026/actions/runs/34825147141),
-Head `e875cb2458691b32ec947d0ab4f4f4ead50888b7`, Artefakt `e2e-core-failure-diagnostics`
-(`10339488260`) ersetzt: gleiches Runner-Image, beide Actuals einzeln visuell geprüft und
-pixelgleich zur CI-Diagnosewiederholung. Die übrigen 15 Referenzen blieben unverändert.
+Nach der flows-Korrektur und Übernahme von Main-PR #627 (Info-Tooltip am YouTube-Feld) stammen
+die vier aktuellen Formular-/Modalbilder aus
+[CI-Run 34829176381](https://github.com/blorbeer-cmd/LAN_2026/actions/runs/34829176381),
+Head `01c58fc25e526e05b64fc0ba6bfd0de6d79b0827`, Artefakt `e2e-core-failure-diagnostics`
+(`10341940241`): gleiches Runner-Image, alle vier Actuals einzeln visuell geprüft und
+pixelgleich zur CI-Diagnosewiederholung. Die übrigen 13 Referenzen blieben unverändert.
 Der direkte `pngjs`-Vergleich toleriert pro RGBA-Kanal einschließlich 16; mehr als 0,1 Prozent
 Pixel mit einer größeren Kanalabweichung sind ein Fehler. Genau 0,1 Prozent bestehen noch.
 1-px-Geometrie bleibt durch semantische Assertions abgesichert, nicht durch weichere Bildschwellen.
