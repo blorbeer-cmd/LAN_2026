@@ -6,8 +6,10 @@ GitHub: gemergt am 14.09.2026, 10:12:54 UTC). Offene PRs #546, #497, #492, #486,
 #440 und #249 ändern keine betroffenen E2E-Dateien oder Fixtures.
 
 Normative Grundlage: externe Revision 4 `frontend-component-contract-plan-f53e69d8-v4.md`,
-Paket 7, Abschnitt 8.1 und dessen Komponentenverweise. Ausschließlich Browsernachweise;
-Produktcode, Verträge, Registry, Referenzbilder, Schwellen und CI-Konfiguration bleiben unverändert.
+Paket 7, Abschnitt 8.1 und dessen Komponentenverweise. Der ursprüngliche Auftrag ergänzte
+ausschließlich Browsernachweise. Ein ausdrücklicher Folgeauftrag behebt zusätzlich P7-01 mit
+einer eng begrenzten Regel in `public/css/arcade.css`; Verträge, Registry, Referenzbilder,
+Schwellen und CI-Konfiguration bleiben unverändert.
 
 ## Abdeckungsmatrix vor der Ergänzung
 
@@ -47,8 +49,8 @@ es entsteht kein neuer Test-Owner und keine neue Partitionszuordnung.
 - Zuschauer: eigener Kontext, Watch-Aktion bei 320×568, sichere Quizansicht bei 320×568,
   512×384 und 720×450, keine Antwortcontrols, automatischer Rücksprung nach Host-Ende.
 - KI: bestehender Battleship-Botpfad bei 390×844; Lobby und deaktivierte/aktive Setupcontrols.
-- Live: sechs getrennte Kontexte; Hostpause erscheint beim Gast bei 390×844; Controlhöhen
-  bestehen, Overflowprüfung ist blockiert (Befund unten).
+- Live: sechs getrennte Kontexte; Hostpause erscheint beim Gast bei 390×844; Controlhöhen,
+  Overflowprüfung, Hostwechsel und Ergebnisprüfung bestehen nach der Behebung von P7-01.
 - Kiosk: eigener tokengebundener Read-only-Kontext bei 1440×900; Quiz → Snake-Canvas,
   kein Container-/Dokumentoverflow, Fullscreen-Strukturziel mindestens 44×44 px,
   Tab/Shift-Tab und sichtbarer Fokus. Keine Verschiebung nach Core.
@@ -62,7 +64,7 @@ danach schließt der Diagnose-Wrapper die Kontexte auch bei Fehlern. Der absicht
 Host-Disconnect bleibt ein sofortiges Schließen. Jeder Owner beendet seinen eigenen Server
 und Browser über den bestehenden Teardown; Ports und Datenbanken bleiben isoliert.
 
-## Gesonderter Produktbefund P7-01: Tetris-Gastansicht läuft horizontal über
+## Behobener Produktbefund P7-01: Tetris-Gastansicht lief horizontal über
 
 Reproduktion im unveränderten Produktstand von Paket 6:
 
@@ -83,9 +85,11 @@ Lokale Diagnose: `server/test-results/package-7/diagnosis-3/`
 `tetris-arena-supports-six-ready-players-across-multiple-opponent-rows-51848/`:
 `metadata.json`, `browser.log`, `server.log`, sechs Screenshots/DOMs und sechs Playwright-Traces.
 `page-2-1.png` zeigt die pausierte Gast-Spielfläche. Der gleiche Wert wurde bereits in
-`diagnosis-2` gemessen. Die Assertion bleibt unverändert rot; kein Produktfix, Skip oder
-Referenzwechsel. Die nachfolgende Hostübergabe/Ergebnisprüfung desselben Szenarios wird durch
-diesen Fehler nicht erreicht; andere Owner laufen weiter. Dieser Abnahmepunkt bleibt offen.
+`diagnosis-2` gemessen. Die Assertion wurde weder gelockert noch übersprungen; Referenzen blieben
+unverändert. Der Folgeauftrag verschiebt die bereits für den Expanded-Modus vorhandene Kapselung
+des dekorativen Pseudoelements auf `.tetris-boards` selbst. Dadurch gilt sie auch in der normalen
+Gastansicht, ohne Board-, Raster- oder Controlgeometrie zu ändern. Der erneute vollständige Owner
+läuft 3/3 grün und erreicht Hostübergabe und Ergebnisprüfung.
 
 ## Lokale Bildvergleiche
 
@@ -115,11 +119,13 @@ mit `npm run test:compile` vorbereitet und für die Partitionsläufe wiederverwe
 
 | Prüfung | Ergebnis |
 |---|---|
-| Gezielte sieben bestehende Owner mit `node --test --test-concurrency=1` und `E2E_TRACE=1` | Alle ergänzten Szenen ausgeführt. Nach Korrektur der Textzeilen-/Animationsmessung bleibt nur P7-01 rot; abschließende Wiederholung von `flowsShell` und `arcadeMultiplayer`: 19/20 bestanden, 0 übersprungen. |
+| Tetris-Fix: `node --test --test-concurrency=1 dist-test/test/e2e/arcadeMultiplayer.e2e.test.js` mit `E2E_TRACE=1` | 3/3 bestanden, 0 übersprungen; normale Arena, Expanded-Modus und Pong-Doppel vollständig. |
+| Gezielte sieben bestehende Owner mit `node --test --test-concurrency=1` und `E2E_TRACE=1` vor dem Folgefix | Alle ergänzten Szenen ausgeführt. Nach Korrektur der Textzeilen-/Animationsmessung bleibt nur P7-01 rot; abschließende Wiederholung von `flowsShell` und `arcadeMultiplayer`: 19/20 bestanden, 0 übersprungen. |
 | `node --test scripts/run-e2e-partition.test.mjs dist-test/test/e2eDiagnostics.test.js dist-test/test/visualComparison.test.js` | 25/25 bestanden; Partitionszuordnung und vorhandene Diagnose-/Vergleichshilfen. |
 | `npm run test:e2e:run:core` | 40/71 bestanden, 31 fehlgeschlagen, 0 übersprungen: 29 Tests durch Serverstart-Hooks blockiert, zwei Bildvergleichstests mit 14 Szenen fehlgeschlagen. |
 | Sechs durch Serverstart blockierte Core-Owner einzeln mit `node --test --test-concurrency=1` | 29/29 bestanden: `access`, `authGate`, `checklist`, `eventInvitations`, `eventWorkspaceSwitch`, `eventDatePoll`. Ersetzt keinen grünen parallelen Vollauf. |
-| `npm run test:e2e:run:arcade` | 33/35 bestanden, 0 übersprungen: P7-01 und ein Bildvergleichstest mit drei Szenen fehlgeschlagen. |
+| `npm run test:e2e:run:arcade` vor dem Folgefix | 33/35 bestanden, 0 übersprungen: P7-01 und ein Bildvergleichstest mit drei Szenen fehlgeschlagen. |
+| `npm run test:e2e:run:arcade` nach dem Folgefix | 34/35 bestanden, 0 übersprungen: sämtliche Runtime-Szenen einschließlich Tetris bestehen; nur der erwartete lokale Windows-Bildvergleich mit drei Szenen schlägt fehl. |
 | `npm run test:e2e:run:arcade-smoke` | 3/4 bestanden, 0 übersprungen: nur Bildvergleich fehlgeschlagen. |
 | `npm test` | 1114/1114 plus 413/413 bestanden; keine Arbeitsbaumänderung während des Laufs. |
 | `npm run lint`, `npm run format:check`, `npm run build` | Bestanden. |

@@ -600,6 +600,9 @@
   align-items: flex-start;
   max-width: 540px;
   margin: var(--space-2) auto 0;
+  /* Keep the decorative glow inside the board group. Its negative inset must
+     not make normal Arena views wider than the available view container. */
+  overflow: hidden;
 }
 .tetris-boards::before {
   content: '';
@@ -913,10 +916,6 @@
   height: auto;
   max-width: none;
   box-sizing: border-box;
-  /* Contains the decorative ::before glow (inset -24px): at near-viewport
-     width it would otherwise protrude past .view-container and create
-     horizontal page scrolling. */
-  overflow: hidden;
 }
 .arcade-game-shell.is-expanded .tetris-board-col {
   height: auto;
