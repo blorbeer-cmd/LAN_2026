@@ -75,7 +75,12 @@ node scripts/pr-completion.mjs update --repo blorbeer-cmd/LAN_2026 --pr 123
 
 `update` prüft Repository, Branch, sauberen Arbeitsbaum und Gleichheit mit dem Remote-Head.
 Es holt `main`, berechnet einen konfliktfreien Merge ohne Arbeitsbaumänderung, merged ohne
-Rebase/Force-Push und pusht nur den eigenen Feature-Branch. Konflikte lösen keine automatische
+Rebase/Force-Push und pusht nur den eigenen Feature-Branch. Maßgeblich ist dabei die aktuelle
+Spitze des Base-Branches: Der geholte Stand muss mit GitHubs Branch-Referenz
+(`repos/<owner>/<repo>/git/ref/heads/main`) übereinstimmen, vor dem Merge erneut. Das PR-Feld
+`baseRefOid` (REST `base.sha`) kann nach neuen `main`-Commits bis zum nächsten Push älter sein und
+dient hier nicht als Bezug. Weichen beide Lesungen ab, ändert sich `main` während des Ablaufs
+oder wechselt der PR-Head, stoppt `update` vor Merge und Push. Konflikte lösen keine automatische
 Seitenwahl aus. Eindeutige Konflikte darf die Implementierung separat beheben; kritische oder
 mehrdeutige Konflikte werden vorgelegt. Diese Lösung braucht eine neue Merge-Freigabe.
 

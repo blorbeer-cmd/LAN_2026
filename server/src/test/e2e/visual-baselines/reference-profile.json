@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "environment": null,
+  "baselines": {
+    "arcade-create-1024.png": "sha256:28c1214274a3e8921bc9db3bace7e0fbbf88a30b3d8f937b1c44c020620fbbb9",
+    "arcade-create-320.png": "sha256:835cc130603e143df54e95ba3b78d4dd6e8df568625b68bac784976cb54845aa",
+    "arcade-create-390.png": "sha256:8dd21c37600a9c69a7d3d3b8f1a926e89db492097b7a1e608847ead53997904c",
+    "core-admin-row-1024.png": "sha256:a1fb2142764a1f9de156e2a408df46d15135ca0a185500de734981c2c03d5e7e",
+    "core-admin-row-390.png": "sha256:bfac19f996a01611ec6fffe5000c0fe81b82044789ae62f93bdb0e2598509c85",
+    "core-filters-1024.png": "sha256:fd00220f450ecac3264eac93e6117c9df9f16110073a1364259a4f96a4ccbac3",
+    "core-filters-390.png": "sha256:8dae909f26da18f0a209ebd513cf567cf26afc3bf10435c0167ba8eef2dd080c",
+    "core-footer-1024.png": "sha256:2f9297edeece5c91e3fdf786abe46904b81cff1c1d129900de98cf76066fc026",
+    "core-footer-390.png": "sha256:c71530b3dd16b03ddd1ac881401c71c7d2b73b2b7fe49b1ae26e03a18f678e78",
+    "core-form-1024.png": "sha256:5d55e25a62ce01a0295167e6a5b9bacd869bcd9e6d5ee7ef9c0ddd517dae85ca",
+    "core-form-390.png": "sha256:fecabd10a1841f7e3c56dcdea893982dd3a3d18ef92f3a1ed28b4af878f3df25",
+    "core-modal-1024.png": "sha256:98285c1893b08c648b9ec365a21f8a579c9ca878901d180b290846ee78735f79",
+    "core-modal-390.png": "sha256:8a8e111159a4b9ce4e8d09817938e33565b8c6c89ccb6b97c80ee389e69566aa",
+    "core-roster-1024.png": "sha256:5dac86a766dd72e709fbd6dba1503472bc744295ef3460b754d91a6a0dd2981d",
+    "core-roster-390.png": "sha256:3fc9eeeedcdbccb1fd3247ef441043fe9e0c54abac91c0891aed1262c2a5948e",
+    "core-tabs-1024.png": "sha256:dde2668b1f76b531e9eab3fe480f5eb4aaa8cb7773c2ac3b9f7092b9ab47cb8d",
+    "core-tabs-390.png": "sha256:031457241e4841df4140b75c9b0e9f4d9d6ffb8f6120fb8e243a8b81bf260a79"
+  },
+  "provenance": {
+    "environment": "Not recorded yet: the first run in server/visual-reference must be reviewed.",
+    "baselines": "Package 6 references from ubuntu-latest CI runs 34803888861 and 34829176381 (server/TESTING.md); not yet reviewed in the reference container."
+  }
+}

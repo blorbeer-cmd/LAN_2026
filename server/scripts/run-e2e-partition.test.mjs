@@ -26,7 +26,7 @@ import {
   selectedSourceFiles,
   validateE2EPartitions,
 } from './run-e2e-partition.mjs';
-import { E2E_MANIFEST, validateE2EManifest } from '../../scripts/e2e-partitions.mjs';
+import { E2E_MANIFEST, E2E_VISUAL_FILES, validateE2EManifest } from '../../scripts/e2e-partitions.mjs';
 import { classifyChangedPaths } from '../../scripts/ci-path-classifier.mjs';
 
 test('every declared E2E file belongs to exactly one partition', () => {
@@ -140,6 +140,48 @@ test('targeted retries fail closed without trustworthy in-scope owner metadata',
   );
 });
 
+function visualStub({ docker = { ok: true, server: 'linux/amd64' }, status = 0 } = {}) {
+  const calls = [];
+  return {
+    calls,
+    VISUAL_REFERENCE_SETUP_HINT: 'Einrichtung: siehe TESTING.md',
+    dockerStatus: () => docker,
+    runVisualOwnersInContainer: (options) => {
+      calls.push(options);
+      if (status instanceof Error) throw status;
+      return status;
+    },
+  };
+}
+
+function runnerFixture(context, name) {
+  const artifactRoot = mkdtempSync(path.join(tmpdir(), name));
+  context.after(() => rmSync(artifactRoot, { recursive: true, force: true }));
+  const compiledDirectory = path.join(artifactRoot, 'compiled');
+  const spawnCalls = [];
+  return {
+    artifactRoot,
+    compiledDirectory,
+    spawnCalls,
+    compiled: (files) => files.map((file) => path.join(compiledDirectory, file.replace(/\.ts$/, '.js'))),
+    hostFiles: (call) => call.args.slice(call.args.indexOf('--test-concurrency=6') + 1),
+    options: (partition, overrides = {}) => ({
+      argv: ['node', 'run-e2e-partition.mjs', ...partition],
+      env: { E2E_ARTIFACT_DIR: artifactRoot },
+      sourceFiles: [...E2E_PARTITIONS.core, ...E2E_PARTITIONS.arcade].sort(),
+      compiledDirectory,
+      fileExists: () => true,
+      spawn: (command, args, options) => {
+        spawnCalls.push({ command, args, options });
+        return { status: overrides.hostStatus ?? 0 };
+      },
+      log: () => undefined,
+      logError: () => undefined,
+      ...overrides,
+    }),
+  };
+}
+
 test('the retry environment variable controls the final files passed to the test runner', (context) => {
   const artifactRoot = mkdtempSync(path.join(tmpdir(), 'e2e-retry-contract-'));
   context.after(() => rmSync(artifactRoot, { recursive: true, force: true }));
@@ -150,6 +192,7 @@ test('the retry environment variable controls the final files passed to the test
     spawnCalls.push({ command, args, options });
     return { status: 0 };
   };
+  const visual = visualStub();
   const common = {
     argv: ['node', 'run-e2e-partition.mjs', 'arcade-smoke'],
     sourceFiles: allSourceFiles,
@@ -157,6 +200,7 @@ test('the retry environment variable controls the final files passed to the test
     fileExists: () => true,
     spawn,
     log: () => undefined,
+    visual,
   };
 
   assert.equal(runE2EPartition({ ...common, env: { E2E_ARTIFACT_DIR: artifactRoot } }), 0);
@@ -167,8 +211,12 @@ test('the retry environment variable controls the final files passed to the test
   assert.equal(path.dirname(currentRunDirectory), path.join(artifactRoot, 'runs'));
   assert.deepEqual(
     spawnCalls[0].args.slice(spawnCalls[0].args.indexOf('--test-concurrency=6') + 1),
-    E2E_SMOKE_FILES.map((file) => path.join(compiledDirectory, file.replace(/\.ts$/, '.js'))),
+    E2E_SMOKE_FILES.filter((file) => !E2E_VISUAL_FILES.includes(file))
+      .map((file) => path.join(compiledDirectory, file.replace(/\.ts$/, '.js'))),
   );
+  assert.deepEqual(visual.calls.map(({ files, artifactDirectory }) => ({ files, artifactDirectory })), [
+    { files: ['visualArcade.e2e.test.ts'], artifactDirectory: currentRunDirectory },
+  ]);
 
   const failureDirectory = path.join(currentRunDirectory, 'failure');
   mkdirSync(failureDirectory);
@@ -195,6 +243,57 @@ test('the retry environment variable controls the final files passed to the test
     spawnCalls[1].args.slice(spawnCalls[1].args.indexOf('--test-concurrency=6') + 1),
     [path.join(compiledDirectory, E2E_SMOKE_FILES[1].replace(/\.ts$/, '.js'))],
   );
+  assert.equal(visual.calls.length, 1, 'a retry without a visual owner starts no container');
+});
+
+test('a missing reference container never looks like a passed visual run', (context) => {
+  const runner = runnerFixture(context, 'e2e-visual-missing-');
+  const errors = [];
+  const visual = visualStub({ docker: { ok: false, reason: 'Docker-Engine nicht erreichbar' } });
+  const status = runE2EPartition(runner.options(['core', 'flows'], {
+    visual,
+    logError: (message) => errors.push(message),
+  }));
+  assert.equal(status, 1);
+  // Windows functional checks still run on the host.
+  assert.deepEqual(
+    runner.hostFiles(runner.spawnCalls[0]),
+    runner.compiled(CORE_E2E_DOMAINS.flows.filter((file) => file !== 'visualCore.e2e.test.ts')),
+  );
+  assert.equal(visual.calls.length, 0);
+  assert.equal(errors.length, 2, 'announced before the host run and repeated as the final result');
+  for (const message of errors) {
+    assert.match(
+      message,
+      /NICHT AUSGEFÜHRT: visualCore\.e2e\.test\.ts – Docker-Engine nicht erreichbar\. .*nicht als bestanden\. Einrichtung/,
+    );
+  }
+});
+
+test('host and container results both decide the run; the container itself runs every owner', (context) => {
+  const runner = runnerFixture(context, 'e2e-visual-status-');
+  assert.equal(runE2EPartition(runner.options(['arcade-smoke'], { visual: visualStub({ status: 1 }) })), 1);
+  assert.equal(runE2EPartition(runner.options(['arcade-smoke'], { visual: visualStub(), hostStatus: 3 })), 3);
+  const errors = [];
+  assert.equal(runE2EPartition(runner.options(['arcade-smoke'], {
+    visual: visualStub({ status: new Error('docker build: Exit 1') }),
+    logError: (message) => errors.push(message),
+  })), 1);
+  assert.match(errors[0], /NICHT AUSGEFÜHRT: visualArcade\.e2e\.test\.ts – docker build: Exit 1/);
+
+  const onlyVisual = visualStub();
+  const before = runner.spawnCalls.length;
+  assert.equal(runE2EPartition(runner.options(['visual'], { visual: onlyVisual })), 0);
+  assert.equal(runner.spawnCalls.length, before, 'the visual selection needs no host browser run');
+  assert.deepEqual(onlyVisual.calls[0].files, [...E2E_VISUAL_FILES]);
+
+  const inside = visualStub();
+  assert.equal(runE2EPartition(runner.options(['arcade-smoke'], {
+    visual: inside,
+    env: { E2E_ARTIFACT_DIR: runner.artifactRoot, RESPAWN_VISUAL_BASE_IMAGE: 'pinned' },
+  })), 0);
+  assert.deepEqual(runner.hostFiles(runner.spawnCalls.at(-1)), runner.compiled(E2E_SMOKE_FILES));
+  assert.equal(inside.calls.length, 0);
 });
 
 test('runner and diagnostic producers share one cwd-independent local artifact default', () => {

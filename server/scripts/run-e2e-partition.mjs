@@ -11,10 +11,12 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import artifactDirectoryModule from './e2e-artifact-directory.cjs';
+import * as visualReference from './visual-reference.mjs';
 import {
   CORE_E2E_DOMAINS,
   E2E_PARTITIONS,
   E2E_SMOKE_FILES,
+  E2E_VISUAL_FILES,
   selectedCoreDomains,
   selectedE2EFiles,
   validateE2EManifest,
@@ -163,6 +165,8 @@ export function runE2EPartition({
   fileExists = existsSync,
   spawn = spawnSync,
   log = console.log,
+  logError = console.error,
+  visual = visualReference,
 } = {}) {
   const partition = argv[2] ?? 'all';
   const coreSelection = argv[3] ?? 'all';
@@ -183,29 +187,56 @@ export function runE2EPartition({
   if (retryFailedOnly) {
     log(`[e2e retry] selected owner files: ${filesToRun.join(', ')}`);
   }
-  const compiledFiles = filesToRun.map((file) =>
-    path.join(compiledDirectory, file.replace(/\.ts$/, '.js')),
-  );
-  const missingCompiled = compiledFiles.filter((file) => !fileExists(file));
+  const compiledFile = (file) => path.join(compiledDirectory, file.replace(/\.ts$/, '.js'));
+  const missingCompiled = filesToRun.map(compiledFile).filter((file) => !fileExists(file));
   if (missingCompiled.length) throw new Error(`E2E-Build fehlt: ${missingCompiled.join(', ')}`);
 
-  // Every file owns a server and usually a Chromium process. Keep the former
-  // six-file concurrency bounded after splitting the suites into more fixtures.
-  const result = spawn(process.execPath, [
-    '--import',
-    ownerDiagnosticsImport,
-    '--test',
-    '--test-concurrency=6',
-    ...compiledFiles,
-  ], {
-    cwd: serverDir,
-    // All producers receive the runner's one absolute per-run directory, so
-    // their standalone cwd-based fallback cannot diverge from retry lookup.
-    env: { ...env, E2E_ARTIFACT_DIR: artifactDirectory },
-    stdio: 'inherit',
-  });
-  if (result.error) throw result.error;
-  return result.status ?? 1;
+  // Visual reference owners compare pixels, so they run in the pinned reference container.
+  // Functional owners keep using the host browser; inside that container everything runs here.
+  const visualFiles = env.RESPAWN_VISUAL_BASE_IMAGE
+    ? []
+    : filesToRun.filter((file) => E2E_VISUAL_FILES.includes(file));
+  const hostFiles = filesToRun.filter((file) => !visualFiles.includes(file));
+  const docker = visualFiles.length ? visual.dockerStatus() : { ok: true };
+  const visualNotRun = (reason) =>
+    `[e2e visual] NICHT AUSGEFÜHRT: ${visualFiles.join(', ')} – ${reason}. `
+    + `Dieser Lauf gilt daher nicht als bestanden. ${visual.VISUAL_REFERENCE_SETUP_HINT}`;
+  if (!docker.ok) logError(visualNotRun(docker.reason));
+
+  let status = 0;
+  if (hostFiles.length) {
+    // Every file owns a server and usually a Chromium process. Keep the former
+    // six-file concurrency bounded after splitting the suites into more fixtures.
+    const result = spawn(process.execPath, [
+      '--import',
+      ownerDiagnosticsImport,
+      '--test',
+      '--test-concurrency=6',
+      ...hostFiles.map(compiledFile),
+    ], {
+      cwd: serverDir,
+      // All producers receive the runner's one absolute per-run directory, so
+      // their standalone cwd-based fallback cannot diverge from retry lookup.
+      env: { ...env, E2E_ARTIFACT_DIR: artifactDirectory },
+      stdio: 'inherit',
+    });
+    if (result.error) throw result.error;
+    status = result.status ?? 1;
+  }
+  if (visualFiles.length) {
+    let visualStatus = 1;
+    if (!docker.ok) {
+      logError(visualNotRun(docker.reason));
+    } else {
+      try {
+        visualStatus = visual.runVisualOwnersInContainer({ files: visualFiles, artifactDirectory, env, log });
+      } catch (error) {
+        logError(visualNotRun(error.message));
+      }
+    }
+    if (status === 0) status = visualStatus;
+  }
+  return status;
 }
 
 function main() {

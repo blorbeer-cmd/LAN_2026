@@ -60,10 +60,14 @@ export const E2E_MANIFEST = Object.freeze({
     ]),
   }),
   smoke: Object.freeze(["arcadeSmoke.e2e.test.ts", "authGateArcade.e2e.test.ts", "visualArcade.e2e.test.ts"]),
+  // Visual reference owners keep their partitions; the runner executes them in the pinned
+  // reference container (server/visual-reference) instead of the host browser.
+  visual: Object.freeze(["visualCore.e2e.test.ts", "visualArcade.e2e.test.ts"]),
 });
 
 export const E2E_PARTITIONS = E2E_MANIFEST.partitions;
 export const E2E_SMOKE_FILES = E2E_MANIFEST.smoke;
+export const E2E_VISUAL_FILES = E2E_MANIFEST.visual;
 
 export function validateE2EManifest(sourceFiles, manifest = E2E_MANIFEST) {
   const assignments = new Map();
@@ -83,14 +87,24 @@ export function validateE2EManifest(sourceFiles, manifest = E2E_MANIFEST) {
   const invalidSmoke = (manifest.smoke ?? []).filter(
     (file) => !manifest.partitions?.arcade?.includes(file),
   );
+  const unassignedVisual = (manifest.visual ?? []).filter((file) => !assignments.has(file));
 
-  if (duplicates.length || missing.length || absent.length || invalidSmoke.length) {
+  if (
+    duplicates.length ||
+    missing.length ||
+    absent.length ||
+    invalidSmoke.length ||
+    unassignedVisual.length
+  ) {
     const details = [
       duplicates.length ? `mehrfach zugeordnet: ${duplicates.join(", ")}` : "",
       missing.length ? `nicht zugeordnet: ${missing.join(", ")}` : "",
       absent.length ? `nicht vorhanden: ${absent.join(", ")}` : "",
       invalidSmoke.length
         ? `Smoke-Dateien außerhalb von Arcade: ${invalidSmoke.join(", ")}`
+        : "",
+      unassignedVisual.length
+        ? `visuelle Referenzdateien ohne Partition: ${unassignedVisual.join(", ")}`
         : "",
     ].filter(Boolean);
     throw new Error(`Ungültiges E2E-Manifest – ${details.join("; ")}`);
@@ -128,6 +142,7 @@ export function selectedCoreDomains(selection = "all") {
 export function selectedE2EFiles(partition, coreSelection = "all") {
   if (partition === "all") return [...E2E_PARTITIONS.core, ...E2E_PARTITIONS.arcade];
   if (partition === "arcade-smoke") return [...E2E_SMOKE_FILES];
+  if (partition === "visual") return [...E2E_VISUAL_FILES];
   if (partition === "core") {
     return selectedCoreDomains(coreSelection).flatMap((domain) => CORE_E2E_DOMAINS[domain]);
   }

@@ -60,7 +60,7 @@ async function loadSeating(ctx) {
   } finally {
     if (version === seatingRequestVersion) {
       seatingLoading = false;
-      ctx.rerender();
+      if (homeIsOpen()) ctx.rerender();
     }
   }
 }
@@ -81,7 +81,14 @@ function renderHomeSeating(ctx) {
 // their own. This view just re-renders whenever that shared data changes.
 let lastCtx = null;
 
-window.addEventListener('respawn:aktuell-changed', () => lastCtx?.rerender());
+// ctx.rerender() redraws whichever view is open. Live-status broadcasts reload this shared data
+// on every connect, disconnect and offline sweep, so only an open Home may be redrawn here;
+// rebuilding another view would reset its transient state, such as a running Scribble room.
+const homeIsOpen = () => document.getElementById('view-container')?.dataset.view === 'home';
+
+window.addEventListener('respawn:aktuell-changed', () => {
+  if (homeIsOpen()) lastCtx?.rerender();
+});
 
 // Compact single-line row (the "Mehr" hub's list-row component, see
 // more.js). Navigation and dismissal are sibling buttons so both remain

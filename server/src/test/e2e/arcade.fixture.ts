@@ -1130,14 +1130,16 @@ arcadeTest('scribble', 'Scribble: live thumbs-up stays synchronized and the next
       () => document.querySelector('[data-scribble-thumb-count]')?.textContent === '2'
     );
 
+    // Submit like a player, through the live input: a background room re-render can replace
+    // the form at any time, and a separately resolved form handle may already be detached.
     await guest.page.fill('#scribble-guess-input', 'zzzz-kein-scribble-wort-zzzz');
-    await guest.page.locator('#scribble-guess-form').evaluate((form) => (form as HTMLFormElement).requestSubmit());
+    await guest.page.locator('#scribble-guess-input').press('Enter');
     await guest.page.waitForFunction(
       () => document.getElementById('scribble-guess-feedback')?.textContent === 'Noch nicht richtig.',
     );
 
     await guest.page.fill('#scribble-guess-input', firstWord);
-    await guest.page.locator('#scribble-guess-form').evaluate((form) => (form as HTMLFormElement).requestSubmit());
+    await guest.page.locator('#scribble-guess-input').press('Enter');
     await guest.page.waitForFunction(
       () => ['correct', 'wrong', 'rejected'].includes(document.getElementById('view-container')?.dataset.scribbleGuessResult ?? ''),
     );
@@ -1160,7 +1162,7 @@ arcadeTest('scribble', 'Scribble: live thumbs-up stays synchronized and the next
     await secondWordBtn.click();
     await host.page.waitForSelector('#scribble-guess-input');
     await host.page.fill('#scribble-guess-input', secondWord);
-    await host.page.locator('#scribble-guess-form').evaluate((form) => (form as HTMLFormElement).requestSubmit());
+    await host.page.locator('#scribble-guess-input').press('Enter');
     await host.page.waitForFunction(
       () => ['correct', 'wrong', 'rejected'].includes(document.getElementById('view-container')?.dataset.scribbleGuessResult ?? ''),
     );

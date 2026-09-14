@@ -5,6 +5,11 @@
 
 const DRAFT_SELECTOR = 'input:not([type]), input[type="text"], input[type="search"], input[type="email"], input[type="url"], input[type="tel"], textarea';
 
+// Dispatched on the rebuilt element before its focus is restored. A component that reacts to
+// focus itself (a searchable select opens on focus) cancels the event and restores its previous
+// expanded state instead, so a background re-render never looks like a new user focus.
+export const RESTORE_FOCUS_EVENT = 'respawn:restore-focus';
+
 function cssEscape(value) {
   if (globalThis.CSS?.escape) return CSS.escape(String(value));
   return String(value).replace(/(["\\])/g, '\\$1');
@@ -71,6 +76,7 @@ function captureFocusedElement(root) {
   const snapshot = { selector };
   if (element.matches('input, textarea, select')) snapshot.value = element.value;
   if (element.matches('input[type="checkbox"], input[type="radio"]')) snapshot.checked = element.checked;
+  if (element.hasAttribute('aria-expanded')) snapshot.expanded = element.getAttribute('aria-expanded') === 'true';
   if ('selectionStart' in element && typeof element.selectionStart === 'number') {
     snapshot.selectionStart = element.selectionStart;
     snapshot.selectionEnd = element.selectionEnd;
@@ -127,7 +133,11 @@ export function restoreViewRenderState(root, snapshot) {
   if (focused instanceof HTMLElement) {
     if ('value' in snapshot.focus && focused.matches('input, textarea, select')) focused.value = snapshot.focus.value;
     if ('checked' in snapshot.focus && focused.matches('input[type="checkbox"], input[type="radio"]')) focused.checked = snapshot.focus.checked;
-    focused.focus({ preventScroll: true });
+    const restoredByComponent = !focused.dispatchEvent(new CustomEvent(RESTORE_FOCUS_EVENT, {
+      cancelable: true,
+      detail: { expanded: snapshot.focus.expanded === true },
+    }));
+    if (!restoredByComponent) focused.focus({ preventScroll: true });
     if (
       typeof snapshot.focus.selectionStart === 'number' &&
       'setSelectionRange' in focused

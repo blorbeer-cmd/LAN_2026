@@ -174,6 +174,9 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
 
   const mobileViewport = page.viewportSize();
   await page.setViewportSize({ width: 1280, height: 800 });
+  // The shell switches to the desktop rail in a matchMedia change handler after the resize.
+  // Measuring before that frame compares a laptop-mode card (8 px wider) with desktop ones.
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   const createButtonLayout = async (selector: string) => {
     await page.waitForFunction((candidate) => {
       const button = document.querySelector(candidate);
@@ -214,6 +217,7 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   }
 
   if (mobileViewport) await page.setViewportSize(mobileViewport);
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
   await selectArcadeGame(page, 'quiz');
   await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');
