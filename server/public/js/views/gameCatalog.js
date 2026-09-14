@@ -380,9 +380,15 @@ function openSuggestForm(ctx) {
           <input type="text" id="suggest-platform" maxlength="80" placeholder="Steam, Epic, Battle.net…" />
         </div>
         <div>
-          <label class="field-label" for="suggest-trailer">YouTube-Gameplay-Link</label>
+          <span class="title-with-info">
+            <label class="field-label" for="suggest-trailer">YouTube-Gameplay-Link</label>
+            ${infoTooltipHtml(
+              'suggest-trailer-help',
+              'YouTube-Gameplay-Link',
+              'Leer lassen: Es wird automatisch ein YouTube-Suchlink für den Spielnamen mit „gameplay“ hinterlegt.',
+            )}
+          </span>
           <input type="url" id="suggest-trailer" maxlength="500" placeholder="Leer lassen für automatische Suche" />
-          <span class="muted" style="font-size:var(--font-size-xs);">Leer lassen: Es wird automatisch ein YouTube-Suchlink für den Spielnamen mit „gameplay“ hinterlegt.</span>
         </div>
         <button type="submit" class="btn btn-primary btn-block">Vorschlagen</button>
       </form>
@@ -397,6 +403,7 @@ function openSuggestForm(ctx) {
       },
       onMount: (el) => {
         modalEl = el;
+        wireInfoTooltips(el);
         el.querySelector('#suggest-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = el.querySelector('#suggest-title').value.trim();
