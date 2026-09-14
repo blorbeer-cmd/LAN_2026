@@ -27,6 +27,7 @@ import {
   validateE2EPartitions,
 } from './run-e2e-partition.mjs';
 import { E2E_MANIFEST, validateE2EManifest } from '../../scripts/e2e-partitions.mjs';
+import { classifyChangedPaths } from '../../scripts/ci-path-classifier.mjs';
 
 test('every declared E2E file belongs to exactly one partition', () => {
   const files = [...E2E_PARTITIONS.core, ...E2E_PARTITIONS.arcade].sort();
@@ -66,11 +67,15 @@ test('all preserves both explicit partitions', () => {
 
 test('Arcade smoke is an explicit fast subset of the Arcade partition', () => {
   assert.deepEqual(selectedSourceFiles('arcade-smoke'), [...E2E_SMOKE_FILES]);
-  assert.deepEqual(E2E_SMOKE_FILES, ['arcadeSmoke.e2e.test.ts', 'authGateArcade.e2e.test.ts']);
+  assert.deepEqual(E2E_SMOKE_FILES, ['arcadeSmoke.e2e.test.ts', 'authGateArcade.e2e.test.ts', 'visualArcade.e2e.test.ts']);
   for (const file of E2E_SMOKE_FILES) assert.ok(E2E_PARTITIONS.arcade.includes(file), file);
 });
 
 test('Core domains select stable, deduplicated fixture sets', () => {
+  assert.equal(CORE_E2E_DOMAINS.flows.filter((file) => file === 'visualCore.e2e.test.ts').length, 1);
+  for (const file of ['visualCore.e2e.test.ts', 'visualArcade.e2e.test.ts']) {
+    assert.equal(selectedSourceFiles('all').filter((entry) => entry === file).length, 1);
+  }
   assert.deepEqual(selectedCoreDomains('all'), ['auth', 'checklist', 'invitations', 'flows']);
   assert.deepEqual(selectedCoreDomains('flows,auth,auth'), ['auth', 'flows']);
   assert.deepEqual(selectedSourceFiles('core', 'auth,checklist'), [
@@ -79,6 +84,12 @@ test('Core domains select stable, deduplicated fixture sets', () => {
   ]);
   assert.deepEqual(selectedSourceFiles('core'), E2E_PARTITIONS.core);
   assert.throws(() => selectedSourceFiles('core', 'unknown'), /Ungültige Core-E2E-Auswahl/);
+});
+
+test('the visual form owner selects the flows suite without broadening auth routing', () => {
+  const selection = classifyChangedPaths(['server/public/js/views/gameCatalog.js']);
+  assert.ok(selectedSourceFiles('core', selection.e2eCoreScope).includes('visualCore.e2e.test.ts'));
+  assert.equal(classifyChangedPaths(['server/public/js/authGate.js']).e2eCoreScope, 'auth');
 });
 
 test('targeted retries read, deduplicate, and preserve the selected partition order', (context) => {

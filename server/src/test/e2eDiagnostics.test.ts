@@ -7,6 +7,7 @@ import { test, type TestContext } from 'node:test';
 import type { Browser, BrowserContext, Page } from 'playwright';
 import {
   deferE2EContextClose,
+  addE2EVisualArtifacts,
   e2eOwnerFileFromArgv,
   runWithE2EDiagnostics,
   StatefulE2EDiagnosticGuard,
@@ -23,6 +24,26 @@ interface StatefulSummary {
     reason: string;
   }>;
 }
+
+test('visual failures preserve Actual and Diff; passing diagnostics leave no temporary images or traces', async (context) => {
+  const root = await useDiagnosticArtifacts(context);
+  const actual = Buffer.from('actual PNG bytes');
+  const diff = Buffer.from('diff PNG bytes');
+  const { browser } = createFakeBrowser([]);
+  await assert.rejects(runWithE2EDiagnostics({ testName: 'visual mismatch', browser }, () => {
+    addE2EVisualArtifacts('scene', actual, diff);
+    throw new Error('intentional image mismatch');
+  }), /intentional image mismatch/);
+  const failure = path.join(root, `visual-mismatch-${process.pid}`);
+  assert.deepEqual(await readFile(path.join(failure, 'scene-actual.png')), actual);
+  assert.deepEqual(await readFile(path.join(failure, 'scene-diff.png')), diff);
+  await runWithE2EDiagnostics({ testName: 'visual pass', browser }, () => {
+    addE2EVisualArtifacts('scene', actual, diff);
+  });
+  assert.deepEqual(await readdir(root), [`visual-mismatch-${process.pid}`]);
+  assert.equal((await readdir(root, { recursive: true })).some((file) => file.endsWith('.tmp')), false);
+  assert.throws(() => addE2EVisualArtifacts('scene', actual, diff), /active E2E diagnostic run/);
+});
 
 test('compiled E2E entry points map back to their source owner file', () => {
   assert.equal(
