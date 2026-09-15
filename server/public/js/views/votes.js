@@ -467,6 +467,14 @@ async function openHistoryRoundDetail(round) {
   }
 }
 
+function ratedDraftCount(votes) {
+  return votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) > 0).length;
+}
+
+function ratedProgressText(ratedCount, votes) {
+  return `${ratedCount} von ${votes.results.length} bewertet`;
+}
+
 export function renderVotes(container, ctx) {
   lastCtx = ctx;
   ensureDragGuardInstalled();
@@ -520,14 +528,11 @@ export function renderVotes(container, ctx) {
     // Own rating progress through this round's game list - only meaningful in
     // points mode (single mode's one pick is already reflected by the
     // Auswählen/Ausgewählt button state) and only while still filling it in.
-    const ratedCount =
-      votes.mode === 'points' && mineReady
-        ? votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) > 0).length
-        : 0;
+    const ratedCount = votes.mode === 'points' && mineReady ? ratedDraftCount(votes) : 0;
     const showProgress = votes.mode === 'points' && mineReady && !hasSubmitted;
     const progressHtml = showProgress
       ? `<div class="row-between" style="flex-wrap:wrap;gap:var(--space-2);">
-           <span class="muted" style="font-size:var(--font-size-xs);">${ratedCount} von ${votes.results.length} bewertet</span>
+           <span class="muted" style="font-size:var(--font-size-xs);" data-vote-rated-progress>${ratedProgressText(ratedCount, votes)}</span>
            <button type="button" class="chip${voteUnratedOnly ? ' is-active' : ''}" id="votes-unrated-toggle" aria-pressed="${voteUnratedOnly}">Unbewertet</button>
          </div>`
       : '';
@@ -684,6 +689,9 @@ export function renderVotes(container, ctx) {
       if (value > 0) draftPoints.set(gameId, value);
       else draftPoints.delete(gameId);
       updateSliderTone();
+      // Keyboard input ends no pointer drag, so no re-render follows; keep the own progress current.
+      const progress = container.querySelector('[data-vote-rated-progress]');
+      if (progress) progress.textContent = ratedProgressText(ratedDraftCount(state.votes), state.votes);
     });
   });
 

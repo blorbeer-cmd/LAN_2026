@@ -1,0 +1,4 @@
+# Build context is server/; the image only needs the dependency manifests.
+*
+!package.json
+!package-lock.json

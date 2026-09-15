@@ -125,7 +125,16 @@ export function assertOwned(pr, local) {
     );
 }
 
-export function carryAuthorization(grant, before, after, commit, expectedTree) {
+// `base` holds the verified base branch tip read before and after the update. PR metadata
+// (baseRefOid) may still name an older main commit and is deliberately not used here.
+export function carryAuthorization(
+  grant,
+  before,
+  after,
+  commit,
+  expectedTree,
+  base,
+) {
   if (!grant || grant.head !== before.headRefOid) return null;
   if (
     before.number !== after.number ||
@@ -133,13 +142,14 @@ export function carryAuthorization(grant, before, after, commit, expectedTree) {
     after.state !== "OPEN" ||
     after.isCrossRepository ||
     after.baseRefName !== "main" ||
-    after.baseRefOid !== before.baseRefOid
+    !SHA.test(base?.before ?? "") ||
+    base.after !== base.before
   )
     return null;
   if (
     commit.parents.length !== 2 ||
     commit.parents[0] !== before.headRefOid ||
-    commit.parents[1] !== before.baseRefOid ||
+    commit.parents[1] !== base.before ||
     commit.tree !== expectedTree ||
     commit.sha !== after.headRefOid
   )
@@ -151,10 +161,71 @@ export function carryAuthorization(grant, before, after, commit, expectedTree) {
       ...(grant.updates ?? []),
       {
         from: before.headRefOid,
-        base: before.baseRefOid,
+        base: base.before,
         to: after.headRefOid,
       },
     ],
+  };
+}
+
+// Brings the own PR branch up to date with its base branch. GitHub's PR fields baseRefOid /
+// REST base.sha can lag behind new commits on main, so the update binds to the branch tip
+// itself: the fetched ref and GitHub's current ref must agree before the merge is computed
+// and again right before it is created. Any disagreement is a real concurrent change.
+export function updateBranch({ pr, readPr, readBaseTip, cwd }) {
+  const git = (...args) => run("git", args, { cwd });
+  const baseRef = `refs/remotes/origin/${pr.baseRefName}`;
+  git("fetch", "origin", `refs/heads/${pr.baseRefName}:${baseRef}`);
+  const base = git("rev-parse", baseRef);
+  if (!SHA.test(base) || readBaseTip() !== base)
+    throw new Error("main changed; retry with a fresh snapshot");
+  const ancestor = spawnSync(
+    "git",
+    ["merge-base", "--is-ancestor", base, pr.headRefOid],
+    { cwd, windowsHide: true },
+  );
+  if (ancestor.status === 0)
+    return { action: "current", head: pr.headRefOid, base };
+  if (ancestor.status !== 1)
+    throw new Error("Unable to determine branch ancestry");
+  // merge-tree computes without modifying the worktree. Conflicts stop before a merge.
+  const tree = git("merge-tree", "--write-tree", pr.headRefOid, base).split(
+    /\r?\n/,
+  )[0];
+  if (!SHA.test(tree))
+    throw new Error("Cannot prove a conflict-free base update");
+  const fresh = readPr();
+  if (
+    fresh.headRefOid !== pr.headRefOid ||
+    fresh.headRefName !== pr.headRefName ||
+    fresh.baseRefName !== pr.baseRefName ||
+    fresh.state !== "OPEN"
+  )
+    throw new Error("PR changed before update");
+  if (readBaseTip() !== base)
+    throw new Error("main changed; retry with a fresh snapshot");
+  git("merge", "--no-ff", "--no-edit", base);
+  const commit = {
+    sha: git("rev-parse", "HEAD"),
+    tree: git("rev-parse", "HEAD^{tree}"),
+    parents: git("show", "-s", "--format=%P", "HEAD").split(" "),
+  };
+  if (
+    commit.tree !== tree ||
+    commit.parents.join(" ") !== `${pr.headRefOid} ${base}`
+  )
+    throw new Error(
+      "Merge differs from the computed update; do not push or carry authorization",
+    );
+  git("push", "origin", `HEAD:refs/heads/${pr.headRefName}`);
+  return {
+    action: "updated",
+    head: commit.sha,
+    base,
+    commit,
+    tree,
+    after: readPr(),
+    baseAfter: readBaseTip(),
   };
 }
 
@@ -203,6 +274,13 @@ function pages(endpoint) {
     "--paginate",
     "--slurp",
   ]).flat();
+}
+export function readBaseTip(repo, branch, readRef = api) {
+  const ref = readRef(`repos/${repo}/git/ref/heads/${branch}`);
+  const sha = ref?.object?.type === "commit" ? ref.object.sha : "";
+  if (!SHA.test(sha ?? ""))
+    throw new Error(`Unable to read the current ${branch} tip from GitHub`);
+  return sha;
 }
 function readPr(repo, pr) {
   return ghJson([
@@ -545,59 +623,25 @@ export function main(argv = process.argv.slice(2)) {
       if (blocker) return blocker;
     }
     if (action === "update") {
-      git("fetch", "origin", `refs/heads/main:refs/remotes/origin/main`);
-      const base = git("rev-parse", "refs/remotes/origin/main");
-      if (base !== pr.baseRefOid)
-        throw new Error("main changed; retry with a fresh snapshot");
-      const ancestor = spawnSync(
-        "git",
-        ["merge-base", "--is-ancestor", base, pr.headRefOid],
-        { windowsHide: true },
-      );
-      if (ancestor.status === 0)
-        return { action: "current", head: pr.headRefOid };
-      if (ancestor.status !== 1)
-        throw new Error("Unable to determine branch ancestry");
-      // merge-tree computes without modifying the worktree. Conflicts stop before a merge.
-      const tree = git("merge-tree", "--write-tree", pr.headRefOid, base).split(
-        /\r?\n/,
-      )[0];
-      if (!SHA.test(tree))
-        throw new Error("Cannot prove a conflict-free base update");
-      const fresh = readPr(repo, number);
-      if (
-        fresh.headRefOid !== pr.headRefOid ||
-        fresh.baseRefOid !== base ||
-        fresh.state !== "OPEN"
-      )
-        throw new Error("PR changed before update");
-      git("merge", "--no-ff", "--no-edit", base);
-      const sha = git("rev-parse", "HEAD");
-      const commit = {
-        sha,
-        tree: git("rev-parse", "HEAD^{tree}"),
-        parents: git("show", "-s", "--format=%P", "HEAD").split(" "),
-      };
-      if (
-        commit.tree !== tree ||
-        commit.parents.join(" ") !== `${pr.headRefOid} ${base}`
-      )
-        throw new Error(
-          "Merge differs from the computed update; do not push or carry authorization",
-        );
-      git("push", "origin", `HEAD:refs/heads/${pr.headRefName}`);
-      const after = readPr(repo, number);
+      const result = updateBranch({
+        pr,
+        readPr: () => readPr(repo, number),
+        readBaseTip: () => readBaseTip(repo, pr.baseRefName),
+      });
+      if (result.action === "current")
+        return { action: "current", head: result.head };
       const carried = carryAuthorization(
         readGrant(statePath),
         pr,
-        after,
-        commit,
-        tree,
+        result.after,
+        result.commit,
+        result.tree,
+        { before: result.base, after: result.baseAfter },
       );
       saveState(statePath, carried);
       return {
         action: "updated",
-        head: sha,
+        head: result.head,
         authorizationPreserved: Boolean(readGrant(statePath)),
         next: "Run CI and a fresh full review for this head/base",
       };

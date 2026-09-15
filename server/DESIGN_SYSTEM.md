@@ -384,7 +384,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.search-select-list`/`.search-select-option` listbox. It replaces the browser's native
   unthemeable `datalist` popup for long game catalogs, keeps the selected value in the existing
   hidden input contract, filters while typing, caps long result lists locally and supports
-  pointer, touch, arrow keys, Enter, Escape and visible focus. Inside a modal, the listbox stays
+  pointer, touch, arrow keys, Enter, Escape and visible focus. A background re-render keeps its
+  state: focus restored by `viewRenderState.js` does not count as a new focus, so a closed list
+  stays closed with its selection and an open list keeps the typed query. Inside a modal, the listbox stays
   within the modal's visible scroll boundary, opens above the field when that side has more room
   and keeps longer results locally scrollable. An option may carry a leading
   status icon (`icon`, `iconLabel`, `iconState`); the component then renders it both inside the

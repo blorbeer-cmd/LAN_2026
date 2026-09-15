@@ -262,68 +262,75 @@ Die Szenen benutzen echte UI-Pfade, feste Browserzeit, `de-DE`, `Europe/Berlin`,
 Gerätefaktor 1, reduzierte Bewegung und Screenshots ohne Animationen/Caret. Vor jeder Aufnahme
 werden Requests, Fonts und Icons sowie passende Inhalts- und Geometrieassertions geprüft.
 
-Referenzprofil: **CI `ubuntu-latest`, Playwright 1.56.1**. Referenzen liegen unter
-`src/test/e2e/visual-baselines/`. Normale Läufe lesen sie ausschließlich; es gibt keinen
-Update-Schalter. Fehlende Referenzen, Größenänderungen und Bildabweichungen schlagen fehl.
-Erstübernahme: [CI-Run 34803888861](https://github.com/blorbeer-cmd/LAN_2026/actions/runs/34803888861),
-Head `5ba63a98c7aee0c9573ebf2f8d8e968569188388`, Ubuntu-Image `20260907.300.1`.
-Alle 17 Actual-Dateien wurden einzeln visuell geprüft und waren in der CI-Diagnosewiederholung
-pixelgleich. Dateipfade und SHA-256-Prüfsummen stehen in [PR #626](https://github.com/blorbeer-cmd/LAN_2026/pull/626).
-Nach der flows-Korrektur und Übernahme von Main-PR #627 (Info-Tooltip am YouTube-Feld) stammen
-die vier aktuellen Formular-/Modalbilder aus
-[CI-Run 34829176381](https://github.com/blorbeer-cmd/LAN_2026/actions/runs/34829176381),
-Head `01c58fc25e526e05b64fc0ba6bfd0de6d79b0827`, Artefakt `e2e-core-failure-diagnostics`
-(`10341940241`): gleiches Runner-Image, alle vier Actuals einzeln visuell geprüft und
-pixelgleich zur CI-Diagnosewiederholung. Die übrigen 13 Referenzen blieben unverändert.
+**Referenzumgebung.** Beide visuellen Owner laufen immer im fest versionierten Linux-Container aus
+[`visual-reference/Dockerfile`](visual-reference/Dockerfile): Playwright-Image `v1.56.1-noble`,
+gepinnt auf das `linux/amd64`-Manifest (Ubuntu 24.04 mit Chromium, Systembibliotheken und
+Schriftarten von Playwright 1.56.1), Node.js 24.18.0 per Prüfsumme, `TZ=Etc/UTC`. Lokale Läufe
+und CI bauen genau dieses Dockerfile; die Bindung an `ubuntu-latest` entfällt für Bildvergleiche.
+Der E2E-Runner startet die übrigen Owner wie bisher im Host-Browser und danach die visuellen Owner
+im Container. Der Checkout ist dort schreibgeschützt eingebunden, die Linux-Abhängigkeiten stammen
+aus dem Image. Außerhalb des Containers brechen visuelle Szenen sofort mit Hinweis ab, statt
+Bilder unter einem anderen Profil zu vergleichen.
+
+**Einrichtung unter Windows (einmalig).** Docker Desktop mit WSL-2-Backend und Linux-Containern
+installieren und starten; `docker version` muss beim Server `linux` melden. Der erste visuelle Lauf
+baut das Image (rund 1 GB Download, einige Minuten). Weitere Läufe verwenden es wieder, bis sich
+Dockerfile oder Lockfile ändern. Vorab bauen: `node scripts/visual-reference.mjs prepare all`.
+Unter Apple Silicon läuft dasselbe `amd64`-Image emuliert und entsprechend langsamer.
+
+**Täglicher Aufruf (aus `server/`).** `npm run test:e2e`, `npm run test:e2e:core`,
+`npm run test:e2e:arcade` und `npm run test:e2e:arcade-smoke` bleiben unverändert; Docker muss
+laufen. Nur die visuellen Szenen: `npm run test:e2e:visual`. Fehlt Docker oder läuft es nicht,
+laufen die Funktions-Owner trotzdem, der Lauf endet aber mit Exit 1 und
+`[e2e visual] NICHT AUSGEFÜHRT: …` samt Ursache und Einrichtungshinweis. Ein fehlender visueller
+Lauf ist nie ein bestandener Lauf. Auswahlen ohne visuelle Owner, etwa
+`npm run test:e2e:run:core -- auth`, brauchen kein Docker.
+
+**Referenzprofil.** [`visual-baselines/reference-profile.json`](src/test/e2e/visual-baselines/reference-profile.json)
+hält die geprüfte Umgebung und je Referenzbild die SHA-256-Prüfsumme samt Herkunft fest. Die
+Umgebung umfasst Basisimage, Betriebssystem, glibc, Architektur, Node.js, Playwright, Browserversion,
+Font-Dateien, Fontconfig, Zeitzone und die Darstellungsoptionen der Szenen. Jeder visuelle Lauf
+prüft sie zuerst, unabhängig vom Bildvergleich: Eine Abweichung lässt den Test mit der Liste der
+Unterschiede scheitern und liefert für **alle** Szenen Actual- und Diff-Bilder. Eine Referenzdatei,
+deren Prüfsumme nicht im Profil steht, schlägt ebenfalls fehl. Kernel- und Host-Details gehören
+bewusst nicht dazu, weil Docker Desktop und CI-Runner sich dort unterscheiden, ohne Chromiums
+Rasterung zu ändern. Restgrenze: CPU-abhängige SIMD-Pfade in Skia können einzelne Kantenpixel
+minimal verändern. Die unveränderte Toleranz fängt das ab; ein Überschreiten bleibt ein Fehler.
+
+Referenzen liegen unter `src/test/e2e/visual-baselines/`. Normale Läufe lesen sie ausschließlich;
+es gibt keinen Update-Schalter. Fehlende Referenzen, Größenänderungen, Bildabweichungen und
+ungeprüfte Umgebungswechsel schlagen fehl.
 Der direkte `pngjs`-Vergleich toleriert pro RGBA-Kanal einschließlich 16; mehr als 0,1 Prozent
 Pixel mit einer größeren Kanalabweichung sind ein Fehler. Genau 0,1 Prozent bestehen noch.
 1-px-Geometrie bleibt durch semantische Assertions abgesichert, nicht durch weichere Bildschwellen.
-
-Lokale Prüfung außerhalb des Referenzprofils (insbesondere Windows): Alle semantischen Assertions
-und Bildvergleiche laufen unverändert; Bildabweichungen bleiben Fehler. Die Fehlermeldung nennt
-Referenz- und tatsächliches Profil einschließlich Betriebssystem, Runner-Image und Playwright.
-Ein anderes Profil belegt **nicht**, dass eine Abweichung harmlos ist. Für den Abschluss lokale
-Fehler pro Szene anhand Actual/Diff und Assertions untersuchen und dokumentieren; zusätzlich
-muss derselbe gepushte Head die visuellen Vergleiche in der Referenz-CI bestehen. Ein roter
-lokaler Bildvergleich ist kein grüner Test und wird auch bei grüner CI als lokale Einschränkung
-berichtet. Semantische oder Runtimefehler dürfen nicht als Profilunterschied eingeordnet werden.
-Keine lokale Referenzübernahme, gelockerte Schwelle oder automatische Erfolgsmeldung.
+Semantische oder Runtimefehler sind nie ein Umgebungsunterschied. Keine lokale Referenzübernahme,
+gelockerte Schwelle oder automatische Erfolgsmeldung.
 
 Bei Fehlern übernimmt die bestehende Failure-Diagnostics je Szene `*-actual.png` und
 `*-diff.png` (abweichende Pixel magenta), zusätzlich Browser-/Serverprotokolle, DOM und
 gegebenenfalls Trace. PNGs bleiben bis zur Fehlerausgabe im Speicher; erfolgreiche Läufe
 entfernen ihre Diagnosestagingdaten. `metadata.json` dokumentiert zusätzlich CI-Run,
-Checkout-SHA, Runner-Image und Playwright-Version. Kein zusätzlicher Workflow ist nötig.
+Checkout-SHA, Referenzimage und die tatsächlich gemessene Umgebung.
 
-Baseline-Refresh, auch bei jedem Runner-Imagewechsel:
+Referenz-Refresh bei jedem Wechsel der Referenzumgebung (Dockerfile, Basisimage, Playwright- oder
+Browserversion, Schriftarten) oder bei gewollter Oberflächenänderung:
 
-1. Den unveränderten Vergleich in CI laufen lassen. Bei einem Imagewechsel auf einem eigenen
-   Refresh-Branch alle Referenz-PNGs ausdrücklich in einem vorbereitenden Commit entfernen,
-   damit auch für bislang grüne Szenen Actual-Dateien entstehen.
-   Der folgende CI-Lauf schlägt wegen fehlender Referenzen fehl und erzeugt damit für jede Szene
-   neue Actual-Dateien. Der Zwischenstand bleibt Draft und darf nicht gemergt werden. Den Grund
-   und beide Imageversionen im PR dokumentieren; keinen Testcode, Schwellwert oder Workflow ändern.
-   Anschließend dessen `*-failure-diagnostics`-Artefakt
-   herunterladen. Kandidaten dürfen ausschließlich die dortigen Actual-Dateien sein.
+1. Die Änderung auf dem eigenen Branch pushen, ohne Referenzen zu löschen. Der CI-Lauf scheitert
+   mit „Reference environment differs …“ beziehungsweise dem Bildvergleich und lädt das
+   `*-failure-diagnostics`-Artefakt hoch. Nur dessen Actual-Dateien sind Kandidaten.
 2. Für jede Szene zuerst die grünen semantischen Assertions und Fehlerprotokolle prüfen,
-   anschließend Actual und gegebenenfalls Diff visuell prüfen. Produkt-/Runtimefehler separat
-   melden und nicht durch eine Referenzänderung verdecken.
-3. Nur geprüfte Actual-Dateien als gleichnamige Referenz ohne `-actual` kopieren. CI-Run,
-   Head-SHA, Runner-Image, Artefaktpfad und visuelle Prüfung jeder Datei im PR dokumentieren.
-   Lokale Linux-/Windows-Aufnahmen sind höchstens Kandidaten, keine übernehmbaren Referenzen.
-4. Referenzen committen und auf dem neuen Head CI erneut ausführen. Ein normaler Wiederholungslauf
-   muss ohne Änderung der Referenzdateien bestehen. Lokale Vergleiche können wegen anderer
-   Systemfonts vom CI-Profil abweichen; solche Abweichungen niemals automatisch übernehmen.
-
-Auch ein Wechsel des von `ubuntu-latest` bezeichneten Ubuntu-Releases fällt unter diesen Prozess.
-Er kann mehrere PRs gleichzeitig betreffen; der Refresh-PR ist bis zur geprüften Übernahme
-absichtlich rot. Für andere PRs erst den separat freigegebenen Refresh übernehmen und auf deren
-neuem Head erneut prüfen. Ein Imagewechsel ohne sichtbare Abweichung hebt die Refresh-Pflicht
-nicht auf.
+   anschließend Umgebungsdiff, Actual und Diff einzeln. Produkt-/Runtimefehler separat melden und
+   nicht durch eine Referenzänderung verdecken.
+3. Nur geprüfte Actual-Dateien als gleichnamige Referenz ohne `-actual` kopieren. Im Profil
+   `environment` aus `metadata.json`, die Prüfsummen und `provenance` aktualisieren; CI-Run,
+   Head-SHA, Artefakt und Sichtprüfung jeder Datei im PR dokumentieren. Lokale Aufnahmen sind
+   höchstens Vergleichskandidaten.
+4. Auf dem neuen Head müssen CI und ein lokaler Lauf in der Referenzumgebung ohne weitere
+   Änderung bestehen.
 
 Direkte Regressionstests: nach `npm run test:compile`
 `node --test dist-test/test/visualComparison.test.js dist-test/test/e2eDiagnostics.test.js`
-und `node --test scripts/run-e2e-partition.test.mjs`.
+und `node --test scripts/run-e2e-partition.test.mjs scripts/visual-reference.test.mjs`.
 
 ## Laufzeitregressionen
 

@@ -14,6 +14,7 @@
 
 import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
+import { RESTORE_FOCUS_EVENT } from './viewRenderState.js';
 
 // Icon markup shared by the collapsed control and the list rows, so both
 // always describe a state the same way.
@@ -190,6 +191,18 @@ export function wireSearchSelect(container, id, options, { onChange, emptyText =
     if (option) selectOption(option);
   };
 
+  // A view re-render rebuilds this control and moves focus back to it. That is not a new user
+  // focus: a closed list stays closed with its selected label, and an open list reopens with the
+  // query the reader had typed instead of being cleared.
+  search.addEventListener(RESTORE_FOCUS_EVENT, (event) => {
+    event.preventDefault();
+    if (event.detail?.expanded) {
+      open();
+      search.focus({ preventScroll: true });
+    } else {
+      focusSearchWithoutOpening();
+    }
+  });
   search.addEventListener('focus', () => {
     if (suppressNextFocusOpen) {
       suppressNextFocusOpen = false;

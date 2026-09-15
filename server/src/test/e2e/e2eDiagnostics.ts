@@ -68,6 +68,11 @@ class E2EDiagnosticRun {
   private readonly directory: string;
   private captured = false;
   private readonly visualArtifacts = new Map<string, Buffer>();
+  private visualEnvironment: unknown = null;
+
+  setVisualEnvironment(environment: unknown): void {
+    this.visualEnvironment = environment;
+  }
 
   addVisualArtifacts(name: string, actual: Buffer, diff: Buffer): void {
     if (!/^[a-z0-9-]+$/.test(name)) throw new Error('Invalid visual artifact name');
@@ -212,13 +217,15 @@ class E2EDiagnosticRun {
             ownerFile: this.resources.ownerFile ?? e2eOwnerFileFromArgv(),
             error: errorText(error),
             serverExit: serverDiagnostics.exit,
-            ...(this.visualArtifacts.size ? { visualReference: {
+            ...(this.visualArtifacts.size || this.visualEnvironment ? { visualReference: {
               platform: process.platform,
               playwright: require('playwright/package.json').version,
+              referenceImage: process.env.RESPAWN_VISUAL_BASE_IMAGE ?? null,
               runId: process.env.GITHUB_RUN_ID ?? null,
               checkoutSha: process.env.GITHUB_SHA ?? null,
               imageOS: process.env.ImageOS ?? null,
               imageVersion: process.env.ImageVersion ?? null,
+              environment: this.visualEnvironment,
             } } : {}),
             pages: contexts.flatMap((context) =>
               context.pages().filter((page) => !page.isClosed()).map((page) => page.url()),
@@ -235,6 +242,7 @@ class E2EDiagnosticRun {
 
   async finish(): Promise<void> {
     this.visualArtifacts.clear();
+    this.visualEnvironment = null;
     if (this.captured) return;
     await this.stopTraces();
     // A trace that was saved because a context closed during a successful
@@ -268,6 +276,11 @@ export const E2E_DEFAULT_TIMEOUT_MS = 15_000;
 export function addE2EVisualArtifacts(name: string, actual: Buffer, diff: Buffer): void {
   if (!activeRun) throw new Error('Visual comparisons require an active E2E diagnostic run');
   activeRun.addVisualArtifacts(name, actual, diff);
+}
+
+export function setE2EVisualEnvironment(environment: unknown): void {
+  if (!activeRun) throw new Error('Visual comparisons require an active E2E diagnostic run');
+  activeRun.setVisualEnvironment(environment);
 }
 
 export async function trackE2EContext(context: BrowserContext, label: string): Promise<void> {
