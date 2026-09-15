@@ -514,15 +514,24 @@ test('admin creates, displays and revokes a registration link in the UI', async 
       true,
       'mobile onboarding must not introduce horizontal page scrolling',
     );
-    const dataRow = adminPage.locator('.data-row-action', { has: adminPage.locator(`[data-player-id="${controlPlayerId}"]`) });
+    const dataRowSelector = `.data-row-action:has([data-player-id="${controlPlayerId}"])`;
+    const dataRow = adminPage.locator(dataRowSelector);
     await dataRow.waitFor();
+    // The panel re-renders its whole container whenever an async load or a
+    // realtime signal lands. A locator evaluate resolves the element and runs
+    // its callback in two protocol steps, so a re-render in between hands a
+    // replaced, detached 0px node to the measurement. Every geometry check of
+    // the panel therefore looks its target up and measures it in one page task,
+    // once the preceding resize has applied and the target is visible.
     for (const viewport of [
       { width: 320, height: 568 }, { width: 390, height: 844 },
       { width: 512, height: 384 }, { width: 720, height: 450 },
       { width: 1024, height: 768 }, { width: 1440, height: 900 },
     ]) {
       await adminPage.setViewportSize(viewport);
-      const rowState = await dataRow.evaluate((row) => {
+      const rowHandle = await adminPage.waitForFunction(({ selector, width }) => {
+        const row = document.querySelector(selector);
+        if (window.innerWidth !== width || !row?.checkVisibility()) return null;
         const style = getComputedStyle(row);
         const identity = row.children[0].getBoundingClientRect();
         const action = row.children[1].getBoundingClientRect();
@@ -532,7 +541,9 @@ test('admin creates, displays and revokes a registration link in the UI', async 
           actionOverflow: action.right - row.getBoundingClientRect().right,
           viewOverflow: view.scrollWidth - view.clientWidth,
           overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
-      });
+      }, { selector: dataRowSelector, width: viewport.width });
+      const rowState = await rowHandle.jsonValue();
+      assert.ok(rowState);
       assert.equal(rowState.stacked, rowState.innerWidth < 320, JSON.stringify({ viewport, rowState }));
       assert.ok(rowState.height >= 31 && rowState.height <= 33);
       assert.ok(rowState.actionOverflow <= 0.5, JSON.stringify({ viewport, rowState }));
@@ -540,8 +551,10 @@ test('admin creates, displays and revokes a registration link in the UI', async 
       assert.equal(rowState.overflow, false, `admin overflow at ${viewport.width}`);
     }
     for (const innerWidth of [320, 319, 319.75]) {
-      const geometry = await dataRow.evaluate((row, width) => {
-        const element = row as HTMLElement;
+      const geometryHandle = await adminPage.waitForFunction(({ selector, width }) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element?.checkVisibility()) return null;
+        const row = element;
         // Padding participates in the measurement; the query uses the unrounded content box.
         element.style.width = `${width + 24}px`;
         element.style.paddingInline = '12px';
@@ -556,7 +569,9 @@ test('admin creates, displays and revokes a registration link in the UI', async 
           fullName: name.textContent, ellipsis: getComputedStyle(name).textOverflow, nameClipped: name.scrollWidth > name.clientWidth,
           badgeNowrap: getComputedStyle(badge).whiteSpace, badgeShrink: getComputedStyle(badge).flexShrink,
           actionNowrap: getComputedStyle(button).whiteSpace };
-      }, innerWidth);
+      }, { selector: dataRowSelector, width: innerWidth });
+      const geometry = await geometryHandle.jsonValue();
+      assert.ok(geometry);
       assert.equal(geometry.preciseInnerWidth, innerWidth);
       assert.equal(geometry.clientInnerWidth, Math.round(innerWidth));
       assert.equal(geometry.fullName, controlName);
@@ -575,7 +590,14 @@ test('admin creates, displays and revokes a registration link in the UI', async 
       await dataRow.locator('button').focus();
       await adminPage.keyboard.press('Tab');
       await adminPage.keyboard.press('Shift+Tab');
-      assert.equal(await dataRow.locator('button').evaluate((button) => document.activeElement === button && getComputedStyle(button).outlineStyle !== 'none'), true);
+      // A re-render restores focus onto the new button, so the check reads
+      // the currently rendered one; a truthy wrapper ends the wait at once.
+      const focusHandle = await adminPage.waitForFunction((selector) => {
+        const button = document.querySelector(`${selector} button`);
+        if (!button?.checkVisibility()) return null;
+        return { focusVisible: document.activeElement === button && getComputedStyle(button).outlineStyle !== 'none' };
+      }, dataRowSelector);
+      assert.equal((await focusHandle.jsonValue())?.focusVisible, true);
     }
     await dataRow.evaluate((row) => { (row as HTMLElement).style.removeProperty('width'); (row as HTMLElement).style.removeProperty('padding-inline'); });
     await adminPage.setViewportSize({ width: 390, height: 844 });
@@ -674,14 +696,30 @@ test('admin creates, displays and revokes a registration link in the UI', async 
       'desktop onboarding must not introduce horizontal page scrolling',
     );
 
-    const activeLink = adminPage.locator(`[data-show-login-link="${inviteCode}"]`);
+    const activeLinkSelector = `[data-show-login-link="${inviteCode}"]`;
+    const activeLink = adminPage.locator(activeLinkSelector);
     await activeLink.waitFor();
     for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
       await adminPage.setViewportSize(viewport);
-      const geometry = await activeLink.evaluate((button) => {
+      const geometryHandle = await adminPage.waitForFunction(({ selector, width }) => {
+        const button = document.querySelector(selector);
+        if (window.innerWidth !== width || !button?.checkVisibility()) return null;
         const row = button.closest('.row-between')!.getBoundingClientRect();
         const view = document.getElementById('view-container')!;
+        const backButtons = Array.from(document.querySelectorAll('button'))
+          .filter((candidate) => candidate.textContent?.trim() === 'Zurück' && candidate.checkVisibility());
+        const iconGap = (backButton: Element) => {
+          const icon = backButton.querySelector('.ui-icon')!;
+          const text = Array.from(backButton.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())!;
+          const content = text.textContent!;
+          const range = document.createRange();
+          range.setStart(text, content.search(/\S/));
+          range.setEnd(text, content.trimEnd().length);
+          return range.getBoundingClientRect().left - icon.getBoundingClientRect().right;
+        };
         return { viewOverflow: view.scrollWidth - view.clientWidth,
+          pageFits: document.documentElement.scrollWidth <= window.innerWidth,
+          backButtons: backButtons.length, iconGap: backButtons.length === 1 ? iconGap(backButtons[0]) : null,
           actions: Array.from(button.parentElement!.querySelectorAll('button')).map((action) => {
             const range = document.createRange();
             range.selectNodeContents(action);
@@ -690,7 +728,9 @@ test('admin creates, displays and revokes a registration link in the UI', async 
               rightOverflow: box.right - row.right,
               lines: range.getClientRects().length, clipped: action.scrollWidth > action.clientWidth };
           }) };
-      });
+      }, { selector: activeLinkSelector, width: viewport.width });
+      const geometry = await geometryHandle.jsonValue();
+      assert.ok(geometry);
       assert.equal(geometry.actions.length, 2);
       for (const action of geometry.actions) {
         assert.ok(action.height >= 31 && action.height <= 33, JSON.stringify({ viewport, action }));
@@ -699,19 +739,9 @@ test('admin creates, displays and revokes a registration link in the UI', async 
         assert.ok(action.leftOverflow <= 0.5 && action.rightOverflow <= 0.5, JSON.stringify({ viewport, action }));
       }
       assert.equal(geometry.viewOverflow, 0, `invitation actions must not overflow the view at ${viewport.width}`);
-      const backButton = adminPage.getByRole('button', { name: 'Zurück', exact: true });
-      const iconGap = await backButton.evaluate((button) => {
-        const icon = button.querySelector('.ui-icon')!;
-        const text = Array.from(button.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())!;
-        const content = text.textContent!;
-        const range = document.createRange();
-        range.setStart(text, content.search(/\S/));
-        range.setEnd(text, content.trimEnd().length);
-        return range.getBoundingClientRect().left - icon.getBoundingClientRect().right;
-      });
-      assert.equal(iconGap, 4, 'the canonical back button must separate its icon and label');
-      assert.equal(await adminPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true,
-        `invitation actions must not overflow the page at ${viewport.width}`);
+      assert.equal(geometry.backButtons, 1, 'exactly one visible canonical back button');
+      assert.equal(geometry.iconGap, 4, 'the canonical back button must separate its icon and label');
+      assert.equal(geometry.pageFits, true, `invitation actions must not overflow the page at ${viewport.width}`);
     }
     await adminPage.locator(`[data-revoke-login-link="${inviteCode}"]`).click();
     await adminPage.click('[data-confirm]');
