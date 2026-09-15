@@ -820,7 +820,12 @@ test('admin roster retries role loading, serializes changes and follows group ro
     // Require actual text lines for growth; desktop must return to 32px.
     for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 1024, height: 768 }]) {
       await adminPage.setViewportSize(viewport);
-      const retry = await adminPage.locator('#admin-members-retry').evaluate((element) => {
+      // Look up and measure in one page task once the resize has applied: the
+      // panel's remaining roster loads re-render it, and a separate lookup
+      // could otherwise hand a replaced, detached 0px button to the measurement.
+      const retryHandle = await adminPage.waitForFunction((width) => {
+        const element = document.querySelector('#admin-members-retry');
+        if (window.innerWidth !== width || !element?.checkVisibility()) return null;
         const range = document.createRange();
         range.selectNodeContents(element);
         const textRects = Array.from(range.getClientRects());
@@ -830,7 +835,9 @@ test('admin roster retries role loading, serializes changes and follows group ro
           lines: new Set(textRects.map((rect) => Math.round(rect.top))).size,
           fits: textRects.every((rect) => rect.left >= box.left && rect.right <= box.right && rect.top >= box.top && rect.bottom <= box.bottom),
         };
-      });
+      }, viewport.width);
+      const retry = await retryHandle.jsonValue();
+      assert.ok(retry);
       assert.equal(retry.fits, true, JSON.stringify(retry));
       assert.ok(retry.lines > 1 ? retry.height > 33 : retry.height >= 31 && retry.height <= 33, JSON.stringify(retry));
       if (viewport.width === 1024) assert.equal(retry.lines, 1);
@@ -843,8 +850,18 @@ test('admin roster retries role loading, serializes changes and follows group ro
     assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \([1-9]\d*\)$/);
     await adminPage.click('#admin-members-retry');
 
+    // Geometry is only meaningful once a preceding resize has applied and the
+    // select shows the expected role in its settled, unlocked state.
+    const waitForRoleSelect = (role: string, width: number) =>
+      adminPage.waitForFunction(
+        ({ playerId, role, width }) => {
+          const select = document.querySelector<HTMLSelectElement>(`[data-player-role="${playerId}"]`);
+          return window.innerWidth === width && select?.value === role && !select.disabled && select.checkVisibility();
+        },
+        { playerId: target.id, role, width },
+      );
     let roleSelect = adminPage.locator(`[data-player-role="${target.id}"]`);
-    await roleSelect.waitFor();
+    await waitForRoleSelect('member', 390);
     await assertControlHeights(roleSelect);
     await roleSelect.selectOption('admin');
     assert.equal(await roleSelect.isDisabled(), true, 'the role control locks before reauthentication and mutation');
@@ -855,11 +872,13 @@ test('admin roster retries role loading, serializes changes and follows group ro
     });
     await adminPage.fill('#reauth-password', 'e2e bootstrap password');
     await adminPage.click('#reauth-form button[type="submit"]');
-    await adminPage.waitForFunction(
-      (playerId) =>
-        (document.querySelector(`[data-player-role="${playerId}"]`) as HTMLSelectElement | null)?.value === 'admin',
-      target.id,
-    );
+    // The UI change has only settled once the select unlocks again: the admin
+    // value already shows while the change still runs its trailing roster
+    // reload. If that reload overlapped the external role changes below, it
+    // could render the restored member role before the newer groups:changed
+    // signal had cleared and refetched the roster, which then removed the
+    // select in the middle of the geometry checks.
+    await waitForRoleSelect('admin', 390);
     assert.equal(
       rolePatchRequests,
       2,
@@ -890,12 +909,10 @@ test('admin roster retries role loading, serializes changes and follows group ro
       body: JSON.stringify({ role: 'member' }),
     });
     assert.equal(restoreMember.status, 200, JSON.stringify(await restoreMember.clone().json()));
-    await adminPage.waitForFunction((playerId) => {
-      const select = document.querySelector<HTMLSelectElement>(`[data-player-role="${playerId}"]`);
-      return select?.value === 'member' && !select.disabled;
-    }, target.id);
+    await waitForRoleSelect('member', 390);
     for (const viewport of [{ width: 320, height: 568 }, { width: 1024, height: 768 }]) {
       await adminPage.setViewportSize(viewport);
+      await waitForRoleSelect('member', viewport.width);
       await assertControlHeights(adminPage.locator(`[data-player-role="${target.id}"]`));
       await assertNoOverflow(adminPage.locator('#view-container'));
       await assertNoOverflow(adminPage.locator(`.admin-player-row:has([data-player-role="${target.id}"])`));
