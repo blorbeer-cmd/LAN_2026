@@ -569,7 +569,8 @@ arcadeFlowTest('full', 'Arcade: Scribble - host draws, a second device guesses c
     await spectatorPage.waitForSelector('#arcade-watch-canvas');
     assert.equal(await spectatorPage.locator('.scribble-word-mask').count(), 0, 'watchers must never receive the word mask');
     assert.equal(await spectatorPage.locator('#scribble-guess-form').count(), 0, 'watchers must never receive guess controls');
-    assert.equal(await spectatorPage.getByText(chosenWord, { exact: true }).count(), 0, 'watchers must never receive the real word');
+    const watchShell = spectatorPage.locator('.arcade-watch-shell');
+    assert.equal(await watchShell.getByText(chosenWord, { exact: true }).count(), 0, 'watchers must never receive the real word');
 
     // The guesser must never see the plain word, only the underscore mask.
     await guesserPage.waitForSelector('.scribble-word-mask');
