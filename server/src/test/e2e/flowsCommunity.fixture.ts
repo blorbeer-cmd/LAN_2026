@@ -492,10 +492,14 @@ flowTest('Aktuell: an open vote can be dismissed without hiding the next round',
   assert.equal(openedVote.title, 'Freitagabend-Runde');
   await page.reload();
   // The shell unhides before app.js attaches the bottom-navigation handlers,
-  // so a click right after #app appears can be dropped and leave the reload
-  // on the restored Vote view. Player data is only published after that
-  // wiring, which makes it the observable "navigation is live" state.
+  // so a click right after #app appears can be dropped. Player data is only
+  // published after that wiring, but startup may still be waiting for the
+  // onboarding state and only then restores the Vote route; until then the
+  // app shows its default Home, so a Home click changes nothing and is undone
+  // by that restore. switchView() is the only writer of data-view, which makes
+  // the restored Vote route the observable "startup navigation done" state.
   await waitForPlayerData(page);
+  await page.waitForSelector('#view-container[data-view="votes"]');
 
   await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('section.grouped-page-section:has(h2:text-is("Aktuell"))');
@@ -532,9 +536,10 @@ flowTest('Aktuell: an open vote can be dismissed without hiding the next round',
   // from Mitteilungen, without closing the shared vote itself.
   await page.reload();
   await waitForPlayerData(page);
+  // This reload restores Home; wait until startup has applied that route, as
+  // above, so the absence below is checked on the Home it rendered.
+  await page.waitForSelector('#view-container[data-view="home"]');
   await page.click('.nav-btn[data-view="home"]');
-  // Only a rendered Home can prove the absence; the restored Vote view never
-  // shows current items at all.
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Home');
   assert.equal(await page.locator(`[data-current-item="vote:${openedVote.round}"]`).count(), 0);
   assert.equal((await (await page.request.get(`${BASE_URL}/api/votes`)).json()).open, true);
