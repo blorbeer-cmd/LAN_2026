@@ -5,6 +5,7 @@ import {
   VISUAL_REFERENCE_PLATFORM,
   dockerStatus,
   ensureVisualReferenceImage,
+  prepareVisualReference,
   runVisualOwnersInContainer,
   visualContainerArguments,
   visualFilesForSelection,
@@ -102,6 +103,44 @@ test('the image is built only when missing, and build or dependency failures sto
     }),
     /server\/node_modules fehlt/,
   );
+});
+
+test('a missing Docker engine only fails where the comparison is demanded', () => {
+  const missing = () => ({ ok: false, reason: 'Docker-CLI nicht gefunden' });
+  const ensureImage = () => assert.fail('no image build without a Docker engine');
+  const prepare = (env) => {
+    const messages = [];
+    prepareVisualReference({
+      argv: ['prepare', 'arcade-smoke'],
+      env,
+      docker: missing,
+      ensureImage,
+      log: (message) => messages.push(message),
+    });
+    return messages;
+  };
+
+  for (const env of [{}, { CI: '' }, { CI: 'false' }, { CI: 'true', RESPAWN_VISUAL_REQUIRED: '0' }]) {
+    assert.match(
+      prepare(env).join('\n'),
+      /ÜBERSPRUNGEN: visualArcade\.e2e\.test\.ts – Docker-CLI nicht gefunden\. .*optional.*Einrichtung/,
+      JSON.stringify(env),
+    );
+  }
+  for (const env of [{ CI: 'true' }, { CI: '1' }, { RESPAWN_VISUAL_REQUIRED: '1' }]) {
+    assert.throws(() => prepare(env), /Docker-CLI nicht gefunden\. Einrichtung/, JSON.stringify(env));
+  }
+
+  // A selection without visual owners never asks for Docker at all.
+  const withoutVisualOwners = [];
+  prepareVisualReference({
+    argv: ['prepare', 'core', 'auth'],
+    env: { CI: 'true' },
+    docker: () => assert.fail('no Docker check without a visual owner'),
+    ensureImage,
+    log: (message) => withoutVisualOwners.push(message),
+  });
+  assert.match(withoutVisualOwners.join('\n'), /enthält keine visuellen Referenztests/);
 });
 
 test('only selections with a visual owner need the reference container', () => {

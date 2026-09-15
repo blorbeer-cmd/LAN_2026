@@ -35,6 +35,20 @@ export function visualReferenceImageTag(readFile = (file) => readFileSync(file, 
   return `respawn-visual-reference:${hash.digest('hex').slice(0, 16)}`;
 }
 
+// Docker is an optional prerequisite: wherever an engine is available the visual owners run,
+// and a checkout without one skips them instead of failing. CI provides the engine, so there a
+// missing one stays an error; RESPAWN_VISUAL_REQUIRED=1/0 decides it explicitly.
+export function visualRunRequired(env = process.env) {
+  const enabled = (value) => value !== '' && !/^(0|false)$/i.test(value);
+  const explicit = `${env.RESPAWN_VISUAL_REQUIRED ?? ''}`.trim();
+  return explicit ? enabled(explicit) : enabled(`${env.CI ?? ''}`.trim());
+}
+
+export function visualSkipNotice(files, reason) {
+  return `[e2e visual] ÜBERSPRUNGEN: ${files.join(', ')} – ${reason}. Der Bildvergleich ist ohne Docker `
+    + `optional und gilt weder als bestanden noch als fehlgeschlagen. ${VISUAL_REFERENCE_SETUP_HINT}`;
+}
+
 export function dockerStatus(run = spawnSync) {
   const result = run('docker', ['version', '--format', '{{.Server.Os}}/{{.Server.Arch}}'], {
     encoding: 'utf8',
@@ -130,24 +144,35 @@ export function visualFilesForSelection(partition, coreSelection = 'all') {
 }
 
 // CI prepares the image in an unmeasured step, so the measured test step only starts containers.
-function main(argv = process.argv.slice(2)) {
+export function prepareVisualReference({
+  argv = process.argv.slice(2),
+  env = process.env,
+  docker = dockerStatus,
+  ensureImage = ensureVisualReferenceImage,
+  log = console.log,
+} = {}) {
   const [command, partition = 'all', coreSelection = 'all'] = argv;
   if (command !== 'prepare') {
     throw new Error('Aufruf: node scripts/visual-reference.mjs prepare [partition] [core-auswahl]');
   }
   const files = visualFilesForSelection(partition, coreSelection);
   if (files.length === 0) {
-    console.log(`[e2e visual] Auswahl ${partition}/${coreSelection} enthält keine visuellen Referenztests.`);
+    log(`[e2e visual] Auswahl ${partition}/${coreSelection} enthält keine visuellen Referenztests.`);
     return;
   }
-  const docker = dockerStatus();
-  if (!docker.ok) throw new Error(`${docker.reason}. ${VISUAL_REFERENCE_SETUP_HINT}`);
-  console.log(`[e2e visual] Referenzumgebung bereit: ${ensureVisualReferenceImage()}`);
+  const status = docker();
+  if (!status.ok) {
+    // Only an environment that demands the comparison fails here; elsewhere Docker stays optional.
+    if (visualRunRequired(env)) throw new Error(`${status.reason}. ${VISUAL_REFERENCE_SETUP_HINT}`);
+    log(visualSkipNotice(files, status.reason));
+    return;
+  }
+  log(`[e2e visual] Referenzumgebung bereit: ${ensureImage()}`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    main();
+    prepareVisualReference();
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

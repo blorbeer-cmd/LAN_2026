@@ -198,10 +198,15 @@ export function runE2EPartition({
     : filesToRun.filter((file) => E2E_VISUAL_FILES.includes(file));
   const hostFiles = filesToRun.filter((file) => !visualFiles.includes(file));
   const docker = visualFiles.length ? visual.dockerStatus() : { ok: true };
+  // A reachable engine keeps the comparison mandatory; without one the visual owners are optional
+  // and only skipped, unless the environment demands them (CI, RESPAWN_VISUAL_REQUIRED=1).
+  const visualRequired = visual.visualRunRequired(env);
   const visualNotRun = (reason) =>
     `[e2e visual] NICHT AUSGEFÜHRT: ${visualFiles.join(', ')} – ${reason}. `
     + `Dieser Lauf gilt daher nicht als bestanden. ${visual.VISUAL_REFERENCE_SETUP_HINT}`;
-  if (!docker.ok) logError(visualNotRun(docker.reason));
+  const visualUnavailable = (reason) =>
+    (visualRequired ? visualNotRun(reason) : visual.visualSkipNotice(visualFiles, reason));
+  if (!docker.ok) logError(visualUnavailable(docker.reason));
 
   let status = 0;
   if (hostFiles.length) {
@@ -226,7 +231,9 @@ export function runE2EPartition({
   if (visualFiles.length) {
     let visualStatus = 1;
     if (!docker.ok) {
-      logError(visualNotRun(docker.reason));
+      logError(visualUnavailable(docker.reason));
+      // Only an unavailable engine is optional; a reachable one that fails stays a red run below.
+      if (!visualRequired) visualStatus = 0;
     } else {
       try {
         visualStatus = visual.runVisualOwnersInContainer({ files: visualFiles, artifactDirectory, env, log });

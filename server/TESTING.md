@@ -279,11 +279,18 @@ Dockerfile oder Lockfile ändern. Vorab bauen: `node scripts/visual-reference.mj
 Unter Apple Silicon läuft dasselbe `amd64`-Image emuliert und entsprechend langsamer.
 
 **Täglicher Aufruf (aus `server/`).** `npm run test:e2e`, `npm run test:e2e:core`,
-`npm run test:e2e:arcade` und `npm run test:e2e:arcade-smoke` bleiben unverändert; Docker muss
-laufen. Nur die visuellen Szenen: `npm run test:e2e:visual`. Fehlt Docker oder läuft es nicht,
-laufen die Funktions-Owner trotzdem, der Lauf endet aber mit Exit 1 und
-`[e2e visual] NICHT AUSGEFÜHRT: …` samt Ursache und Einrichtungshinweis. Ein fehlender visueller
-Lauf ist nie ein bestandener Lauf. Auswahlen ohne visuelle Owner, etwa
+`npm run test:e2e:arcade` und `npm run test:e2e:arcade-smoke` bleiben unverändert. Nur die
+visuellen Szenen: `npm run test:e2e:visual`. Der Docker-Teil ist ein optionaler Zusatz: Läuft eine
+Docker-Engine mit Linux-Containern, werden die visuellen Owner ausgeführt und entscheiden wie
+bisher über das Ergebnis. Fehlt Docker oder ist es nicht erreichbar, laufen die Funktions-Owner
+trotzdem, die visuellen Owner entfallen mit `[e2e visual] ÜBERSPRUNGEN: …` samt Ursache und
+Einrichtungshinweis, und allein deswegen schlägt der Lauf nicht fehl. Verbindlich bleibt der
+Bildvergleich dort, wo die Umgebung ihn verlangt: in CI (gesetztes `CI`) oder mit
+`RESPAWN_VISUAL_REQUIRED=1`. Dann gilt weiter `[e2e visual] NICHT AUSGEFÜHRT: …` mit Exit 1, und
+ein fehlender visueller Lauf ist dort nie ein bestandener Lauf; `RESPAWN_VISUAL_REQUIRED=0` schaltet
+ihn auch in CI auf optional. Eine erreichbare Engine, deren Imagebau oder Containerlauf scheitert,
+ist immer ein Fehler und wird nie übersprungen. Dieselbe Regel gilt für den Vorabbau
+`node scripts/visual-reference.mjs prepare …`. Auswahlen ohne visuelle Owner, etwa
 `npm run test:e2e:run:core -- auth`, brauchen kein Docker.
 
 **Referenzprofil.** [`visual-baselines/reference-profile.json`](src/test/e2e/visual-baselines/reference-profile.json)
