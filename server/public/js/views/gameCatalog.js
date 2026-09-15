@@ -933,6 +933,11 @@ export function renderGameCatalog(container, ctx) {
   });
 
   if (ratingMode) {
+    // The dialog's counter and finish button must follow the state this render
+    // just drew: a realtime reload can bring in ratings after the last save's
+    // own refresh ran, and would otherwise leave "x von 10" and a disabled
+    // "Abschließen" behind although every required game shows as rated.
+    refreshOnboardingRatingProgress();
     const restored = focusedGameId
       ? [...container.querySelectorAll('.skill-row')]
           .find((row) => row.dataset.game === focusedGameId && row.dataset.kind === focusedKind)

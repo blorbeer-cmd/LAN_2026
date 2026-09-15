@@ -4,7 +4,7 @@
 // Sibling tests here intentionally share that state and run in order.
 
 import assert from 'node:assert/strict';
-import { E2E_KIOSK_TOKEN } from './authHelpers';
+import { E2E_KIOSK_TOKEN, waitForPlayerData } from './authHelpers';
 import {
   flowTest,
   registerFlowFixture,
@@ -491,7 +491,11 @@ flowTest('Aktuell: an open vote can be dismissed without hiding the next round',
   const openedVote = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
   assert.equal(openedVote.title, 'Freitagabend-Runde');
   await page.reload();
-  await page.waitForSelector('#app:not([hidden])');
+  // The shell unhides before app.js attaches the bottom-navigation handlers,
+  // so a click right after #app appears can be dropped and leave the reload
+  // on the restored Vote view. Player data is only published after that
+  // wiring, which makes it the observable "navigation is live" state.
+  await waitForPlayerData(page);
 
   await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('section.grouped-page-section:has(h2:text-is("Aktuell"))');
@@ -502,12 +506,19 @@ flowTest('Aktuell: an open vote can be dismissed without hiding the next round',
   // Icon-only controls keep the 44px --tap-target-size as their minimum WIDTH
   // (the horizontal touch target); height follows --control-height (32px), see
   // the "icon-only controls" assertion in flowsShell.fixture.ts.
-  await page.waitForFunction(() => {
-    const box = document.querySelector('[data-current-item] [data-dismiss-current]')?.getBoundingClientRect();
-    return Boolean(box && box.width >= 44 && box.height >= 32);
-  });
-  const mobileDismissBox = await dismissButton.boundingBox();
-  assert.ok(mobileDismissBox && mobileDismissBox.width >= 44 && mobileDismissBox.height >= 32);
+  // Home re-renders its whole container whenever a realtime signal lands (the
+  // new round also raises the push banner). Locator boundingBox() resolves the
+  // button and measures its handle in two protocol steps, so a re-render in
+  // between returned null for a replaced button. Look it up and measure it in
+  // one page task once it is visible.
+  const dismissBoxHandle = await page.waitForFunction((round) => {
+    const button = document.querySelector(`[data-current-item="vote:${round}"] [data-dismiss-current]`);
+    if (!button?.checkVisibility()) return null;
+    const box = button.getBoundingClientRect();
+    return { width: box.width, height: box.height };
+  }, openedVote.round);
+  const mobileDismissBox = await dismissBoxHandle.jsonValue();
+  assert.ok(mobileDismissBox && mobileDismissBox.width >= 44 && mobileDismissBox.height >= 32, JSON.stringify(mobileDismissBox));
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
   await page.setViewportSize({ width: 900, height: 844 });
   await currentVote.waitFor();
@@ -520,8 +531,11 @@ flowTest('Aktuell: an open vote can be dismissed without hiding the next round',
   // The personal dismissal survives a reload, just like removing an entry
   // from Mitteilungen, without closing the shared vote itself.
   await page.reload();
-  await page.waitForSelector('#app:not([hidden])');
+  await waitForPlayerData(page);
   await page.click('.nav-btn[data-view="home"]');
+  // Only a rendered Home can prove the absence; the restored Vote view never
+  // shows current items at all.
+  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Home');
   assert.equal(await page.locator(`[data-current-item="vote:${openedVote.round}"]`).count(), 0);
   assert.equal((await (await page.request.get(`${BASE_URL}/api/votes`)).json()).open, true);
 

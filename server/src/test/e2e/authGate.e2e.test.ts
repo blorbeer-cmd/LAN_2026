@@ -214,25 +214,28 @@ test('an invite link registers a new account and logs it straight in', async () 
   // to the very first required row - it only used to happen for a row other
   // than the first, so rate a later one via real keyboard input. The save
   // chain is a 250ms debounce plus a real network round-trip and rerender
-  // (see the 'input' listener in gameCatalog.js), so this polls for the
-  // actual completion signal instead of guessing a fixed delay - a single
-  // point-in-time check after a hardcoded wait was flaky under CI load,
-  // where that chain can easily take longer than the guessed margin.
-  const midSlider = requiredRows.nth(5).locator('input[type="range"]').first();
-  await midSlider.focus();
+  // (see the 'input' listener in gameCatalog.js). The keypress alone leaves
+  // focus in place and only changes the slider's value property; the
+  // rerender after the save renders the saved rating as the value attribute
+  // and drops the unset class. Wait for exactly that rendered state and read
+  // the focus in the same page task: a separate locator evaluate could still
+  // resolve the replaced, detached slider.
+  await requiredRows.nth(5).locator('input[type="range"]').first().focus();
   await page.keyboard.press('ArrowRight');
-  await page.waitForFunction(() => {
-    const row = document.querySelectorAll('.game-table-row.onboarding-required')[5];
-    const input = row?.querySelector('input[type="range"]');
-    return input != null && input === document.activeElement;
+  const focusAfterSave = await page.waitForFunction(() => {
+    const input = document.querySelectorAll('.game-table-row.onboarding-required')[5]
+      ?.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!input || input.classList.contains('skill-row-slider-unset') || input.getAttribute('value') !== input.value) return null;
+    return { focused: input === document.activeElement };
   });
   assert.equal(
-    await midSlider.evaluate((element) => element === document.activeElement),
+    (await focusAfterSave.jsonValue())?.focused,
     true,
     'saving a later required row must keep focus on that row instead of jumping back to the first one',
   );
 
-  for (let rowIndex = 0; rowIndex < await requiredRows.count(); rowIndex += 1) {
+  const requiredCount = await requiredRows.count();
+  for (let rowIndex = 0; rowIndex < requiredCount - 1; rowIndex += 1) {
     const sliders = requiredRows.nth(rowIndex).locator('input[type="range"]');
     for (let sliderIndex = 0; sliderIndex < await sliders.count(); sliderIndex += 1) {
       await sliders.nth(sliderIndex).evaluate((element) => {
@@ -253,6 +256,20 @@ test('an invite link registers a new account and logs it straight in', async () 
       rowIndex + 1,
     );
   }
+  // Regression: the last required game is rated outside the sliders, so no
+  // slider save refreshes the dialog. The realtime reload that brings the
+  // ratings in must still move the counter to its end and unlock finishing.
+  const lastGameId = await requiredRows.nth(requiredCount - 1).locator('.skill-row').first().getAttribute('data-game');
+  assert.ok(lastGameId);
+  const me = (await (await page.request.get(`${BASE_URL}/api/me`)).json()) as { id: string };
+  for (const kind of ['preferences', 'skills']) {
+    const saved = await page.request.put(`${BASE_URL}/api/${kind}`, { data: { playerId: me.id, gameId: lastGameId, rating: 5 } });
+    assert.equal(saved.status(), 200, await saved.text());
+  }
+  await page.waitForFunction(
+    (required) => document.querySelector('.onboarding-rating-progress')?.textContent?.startsWith(`${required} von `) ?? false,
+    requiredCount,
+  );
   await page.waitForSelector('[data-onboarding-finish]:not([disabled])');
   await page.click('[data-onboarding-finish]');
   await page.waitForSelector('#onboarding-root [role="dialog"]', { state: 'detached' });
@@ -347,6 +364,16 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
     await adminPage.waitForFunction(() => !document.querySelector('#onboarding-root [role="dialog"]'));
   } finally {
     await adminPage.close();
+    // "Später" leaves the shared admin with a deferred rating, which every
+    // later admin session resumes asynchronously after startup - navigating
+    // to the game catalog and away from whatever view a test opened in the
+    // meantime (seen as a vanished "Mehr" entry). Restore the completed
+    // onboarding the file's other admin flows start from.
+    const restored = await fetch(`${BASE_URL}/api/me/onboarding/test-complete`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+    });
+    assert.equal(restored.status, 200, await restored.text());
   }
 });
 
