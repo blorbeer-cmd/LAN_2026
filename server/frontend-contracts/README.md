@@ -51,8 +51,10 @@ stagen, `--staged` ausführen und nach dem Commit `--head` mit demselben Bericht
 
 Der klammerbewusste CSS-Leser verarbeitet ausschließlich `style.css`, `domains.css`, `arcade.css`,
 `overlays.css` und `kiosk.css` unter `public/css/`. Kommentare, Strings, Selektorlisten,
-Funktions-/Attributklammern und verschachtelte At-Rules werden getrennt gelesen. Pro Selektor
-entscheidet das Subjekt-Compound; ein Control nur in einem Vorfahren oder `:has`-Argument macht
+Funktions-/Attributklammern und verschachtelte At-Rules werden getrennt gelesen. Verschachtelte
+Regeln werden mit ihrem Elternselektor zusammengesetzt; `&` steht für den Elternselektor, ein
+fehlendes `&` für einen Nachfahren. Eine verschachtelte Regel kann deshalb nicht als globale
+Eigentümerregel gelesen werden. Pro Selektor entscheidet das Subjekt-Compound; ein Control nur in einem Vorfahren oder `:has`-Argument macht
 einen fremden Nachfahren nicht zum Control. Interne SVG-/`ui-icon`-Maße werden zusätzlich dem
 Control zugeordnet. Kontextregeln benötigen einen exakten permanenten Selektor oder eine exakte
 befristete Ausnahme. Optionale `properties` begrenzen Komponenten und Varianten auf ihre

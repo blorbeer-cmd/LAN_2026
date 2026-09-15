@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { analyze, cssFiles, inventoryJs, parseCss, readSnapshot, splitSelectors, subject } from './check-component-contracts.mjs';
+import { analyze, cssFiles, inventoryJs, nestSelector, parseCss, readSnapshot, splitSelectors, subject } from './check-component-contracts.mjs';
 
 const checker = fileURLToPath(new URL('./check-component-contracts.mjs', import.meta.url));
 const contract = 'components/test.md#contract';
@@ -42,6 +42,33 @@ test('parses lists, functions, strings, comments and nested at-rules by declarat
   assert.equal(subject('.ancestor:has(.btn) > input[data-x="a b"]'), 'input[data-x="a b"]');
   assert.throws(() => parseCss('.btn { width: calc(1px; }', 'broken.css'), /Unbalanced/);
   assert.throws(() => parseCss('.btn { width: 1px;', 'broken.css'), /unclosed/);
+});
+
+test('nested rules compose their parent context instead of reporting the inner selector as a global owner', async () => {
+  const nested = parseCss('.review-context, .other { .btn { min-height: 64px; } &.btn-primary, .caption & { height: 12px; } }', 'fixture.css');
+  assert.deepEqual(nested.rules.map(rule => rule.selectors), [
+    ['.review-context', '.other'],
+    ['.review-context .btn', '.other .btn'],
+    ['.review-context.btn-primary', '.other.btn-primary', '.caption .review-context', '.caption .other'],
+  ]);
+  assert.deepEqual(parseCss('.a .b { & .c { color: red; } }', 'fixture.css').rules.at(-1).selectors, ['.a .b .c']);
+  assert.deepEqual(parseCss('.a .b { .c & { color: red; } }', 'fixture.css').rules.at(-1).selectors, ['.c :is(.a .b)']);
+  assert.deepEqual(parseCss('.panel { @media (width > 400px) { .btn { color: red; } } }', 'fixture.css').rules.at(-1).selectors, ['.panel .btn']);
+  assert.equal(nestSelector('.panel', 'input[data-x="&"]'), '.panel input[data-x="&"]');
+
+  const ownership = async css => (await analyze(snapshot({ css: `.btn { padding: 0; } ${css}` }))).violations
+    .filter(item => item.code === 'css-ownership')
+    .map(item => `${item.selector} ${item.property}`);
+  // The review counter-checks: all three forms describe the same forbidden button geometry.
+  assert.deepEqual(await ownership('.review-context .btn { min-height: 64px; }'), ['.review-context .btn min-height']);
+  assert.deepEqual(await ownership('.review-context { .btn { min-height: 64px; } }'), ['.review-context .btn min-height']);
+
+  const restricted = { ...button, id: 'primary', selector: '.btn-primary', properties: ['color'] };
+  const meaning = async css => (await analyze(snapshot({ components: [button, restricted], css: `.btn { padding: 0; } ${css}` }))).violations
+    .filter(item => item.code === 'css-ownership')
+    .map(item => `${item.selector} ${item.property}`);
+  assert.deepEqual(await meaning('.btn-primary { min-height: 64px; }'), ['.btn-primary min-height']);
+  assert.deepEqual(await meaning('.btn-primary { & { min-height: 64px; } }'), ['.btn-primary min-height']);
 });
 
 test('candidate query counts declarations, ignores preambles and custom definitions, and honors only reasoned same-line comments', async () => {

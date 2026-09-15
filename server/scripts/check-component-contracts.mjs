@@ -107,6 +107,24 @@ function classes(selector) {
   return selectorClassNames(clean);
 }
 
+// CSS nesting resolves & to the parent selector; an omitted & is an implicit descendant.
+export function nestSelector(parent, child) {
+  const grouped = subject(parent) === parent ? parent : `:is(${parent})`;
+  let result = '', quote = '', brackets = 0, explicit = false;
+  for (let i = 0; i < child.length; i++) {
+    const c = child[i];
+    if (quote) { result += c; if (c === '\\') result += child[++i] ?? ''; else if (c === quote) quote = ''; continue; }
+    if (c === '"' || c === "'") { quote = c; result += c; continue; }
+    if (c === '\\') { result += c + (child[++i] ?? ''); continue; }
+    if (c === '[') brackets++;
+    else if (c === ']') brackets--;
+    // A leading & is the whole compound subject, so it never needs the :is() grouping.
+    else if (!brackets && c === '&') { result += i === 0 ? parent : grouped; explicit = true; continue; }
+    result += c;
+  }
+  return explicit ? result : `${parent} ${child}`;
+}
+
 export function parseCss(source, file) {
   const rules = [], declarations = [];
   const masked = withoutComments(source), suppressionLines = new Set();
@@ -136,7 +154,10 @@ export function parseCss(source, file) {
       const preamble = withoutComments(source.slice(start, end)).trim();
       const parent = stack.at(-1);
       const atRule = preamble.startsWith('@');
-      const selectors = atRule ? (parent?.selectors ?? []) : splitSelectors(preamble);
+      const own = atRule ? (parent?.selectors ?? []) : splitSelectors(preamble);
+      // Nested rules inherit their parent context; without composition they would read as global owners.
+      const selectors = atRule || !parent?.selectors.length ? own
+        : own.flatMap(child => parent.selectors.map(value => nestSelector(value, child)));
       const rule = { file, line: lineAt(source, start + withoutComments(source.slice(start, end)).search(/\S/)), selectors, declarations: [], atRules: [...(parent?.atRules ?? []), ...(atRule ? [preamble] : [])] };
       stack.push(rule);
       if (!atRule || selectors.length) rules.push(rule);

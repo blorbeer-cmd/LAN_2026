@@ -366,16 +366,20 @@ Test-Design-Regeln ist davon ausgenommen und im Pull Request zu begründen.
 
 Die Pfadklassifikation liegt testbar in `scripts/ci-path-classifier.mjs`. Reine Arcade-Änderungen
 starten nur Arcade-E2E. Gekapselte Auth-, Checklisten- und allgemeine Flow-Pfade wählen nur ihre
-Core-Domäne; direkte Änderungen am Einladungs-Browsertest wählen `invitations`. Mehrdeutige
-Event-/Einladungspfade, gemischte Domänen und Shared-Dateien bleiben fail-closed bei `all`.
-Allgemeines Socket-Scope,
+Core-Domäne; direkte Änderungen am Einladungs-Browsertest wählen `invitations`. Ein Ansichtsmodul
+unter `public/js/views/` wird nur verengt, wenn es in `VIEW_DOMAIN_OWNERS` einen Browser-Owner
+hat; die Event- und die Umfrageansicht wählen deshalb `invitations` plus `flows`, weil beide
+Domänen sie tatsächlich rendern. Gemischte Domänen, Shared-Dateien und jedes nicht eingetragene
+Frontendmodul bleiben fail-closed bei `all`. Allgemeines Socket-Scope,
 Authentifizierung und Broadcasts liegen in `src/realtime.ts`; Arcade-Watcher, Kiosk-Replay und
 Game-Streaming sind in `src/arcade/realtime.ts` gekapselt. Deshalb startet eine Änderung am
 allgemeinen Realtime-Transport nur Core-E2E, eine Änderung am Arcade-Modul nur Arcade-E2E. Die
 vollständigen Unit-/Integrationstests prüfen beide Module in jedem Server-Lauf. Tatsächlich
-gemeinsame Dateien wie `src/db.ts`, `public/js/app.js`, CSS und unbekannte neue
+gemeinsame Dateien wie `src/db.ts`, `public/js/app.js`, geteilte Helfer und Designsystem-Module
+direkt unter `public/js/`, CSS und unbekannte neue
 Produktionsmodule starten Core-E2E plus den kurzen Arcade-Smoke-Test, nicht den vollständigen
-Arcade-Lauf. Der stabile Präfix `public/js/arcade/` klassifiziert neue Arcade-Browsermodule ohne
+Arcade-Lauf. Ein neben seinem Modul abgelegter Frontend-Unittest erbt dessen Auswahl.
+Der stabile Präfix `public/js/arcade/` klassifiziert neue Arcade-Browsermodule ohne
 Dateinamenliste. Direkte Arcade-Änderungen starten die vollständige Arcade-Partition; ein täglicher
 geplanter Volltest hält alle Partitionen und ihre Laufzeitbaselines aktuell.
 
