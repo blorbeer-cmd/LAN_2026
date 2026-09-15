@@ -147,12 +147,22 @@ export class VisualScenes {
 }
 
 export async function assertControlHeights(controls: Locator): Promise<void> {
-  const boxes = await controls.evaluateAll((elements) => elements.map((element) => ({
+  const measure = () => controls.evaluateAll((elements) => elements.map((element) => ({
     label: element.textContent || element.getAttribute('aria-label'),
     height: element.getBoundingClientRect().height,
+    connected: element.isConnected,
   })));
+  // evaluateAll resolves the locator and runs the callback in two protocol
+  // steps. A re-render in between hands over replaced, detached nodes whose
+  // 0px box is no geometry at all, so only such a sample is taken again. An
+  // empty match is never re-sampled and still fails below.
+  let boxes = await measure();
+  for (let attempt = 1; attempt < 3 && boxes.some((box) => !box.connected); attempt += 1) boxes = await measure();
   assert.ok(boxes.length > 0);
-  for (const box of boxes) assert.ok(box.height >= 31 && box.height <= 33, `${box.label}: ${box.height}px, expected 32±1px`);
+  for (const box of boxes) {
+    assert.ok(box.connected, `${box.label}: replaced during every measurement`);
+    assert.ok(box.height >= 31 && box.height <= 33, `${box.label}: ${box.height}px, expected 32±1px`);
+  }
 }
 
 export async function assertNoOverflow(target: Locator): Promise<void> {
