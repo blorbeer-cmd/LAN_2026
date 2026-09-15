@@ -268,7 +268,7 @@
   white-space: nowrap;
 }
 .arcade-mode-toggle-btn.is-active {
-  background: var(--accent);
+  background: var(--accent-3);
   color: var(--accent-text);
 }
 .arcade-mode-toggle-btn:disabled {
