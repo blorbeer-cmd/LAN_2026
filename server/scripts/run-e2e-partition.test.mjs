@@ -26,6 +26,7 @@ import {
   selectedSourceFiles,
   validateE2EPartitions,
 } from './run-e2e-partition.mjs';
+import { visualRunRequired, visualSkipNotice } from './visual-reference.mjs';
 import { E2E_MANIFEST, E2E_VISUAL_FILES, validateE2EManifest } from '../../scripts/e2e-partitions.mjs';
 import { classifyChangedPaths } from '../../scripts/ci-path-classifier.mjs';
 
@@ -146,6 +147,9 @@ function visualStub({ docker = { ok: true, server: 'linux/amd64' }, status = 0 }
     calls,
     VISUAL_REFERENCE_SETUP_HINT: 'Einrichtung: siehe TESTING.md',
     dockerStatus: () => docker,
+    // The availability contract itself stays real; only the engine call is stubbed.
+    visualRunRequired,
+    visualSkipNotice,
     runVisualOwnersInContainer: (options) => {
       calls.push(options);
       if (status instanceof Error) throw status;
@@ -246,21 +250,23 @@ test('the retry environment variable controls the final files passed to the test
   assert.equal(visual.calls.length, 1, 'a retry without a visual owner starts no container');
 });
 
-test('a missing reference container never looks like a passed visual run', (context) => {
+test('a missing reference container skips without Docker and stays red where it is demanded', (context) => {
   const runner = runnerFixture(context, 'e2e-visual-missing-');
-  const errors = [];
-  const visual = visualStub({ docker: { ok: false, reason: 'Docker-Engine nicht erreichbar' } });
-  const status = runE2EPartition(runner.options(['core', 'flows'], {
-    visual,
-    logError: (message) => errors.push(message),
-  }));
-  assert.equal(status, 1);
-  // Windows functional checks still run on the host.
-  assert.deepEqual(
-    runner.hostFiles(runner.spawnCalls[0]),
-    runner.compiled(CORE_E2E_DOMAINS.flows.filter((file) => file !== 'visualCore.e2e.test.ts')),
+  const docker = { ok: false, reason: 'Docker-Engine nicht erreichbar' };
+  const functionalFiles = runner.compiled(
+    CORE_E2E_DOMAINS.flows.filter((file) => file !== 'visualCore.e2e.test.ts'),
   );
-  assert.equal(visual.calls.length, 0);
+
+  const errors = [];
+  const demanded = visualStub({ docker });
+  assert.equal(runE2EPartition(runner.options(['core', 'flows'], {
+    visual: demanded,
+    env: { E2E_ARTIFACT_DIR: runner.artifactRoot, CI: 'true' },
+    logError: (message) => errors.push(message),
+  })), 1);
+  // Windows functional checks still run on the host.
+  assert.deepEqual(runner.hostFiles(runner.spawnCalls[0]), functionalFiles);
+  assert.equal(demanded.calls.length, 0);
   assert.equal(errors.length, 2, 'announced before the host run and repeated as the final result');
   for (const message of errors) {
     assert.match(
@@ -268,6 +274,38 @@ test('a missing reference container never looks like a passed visual run', (cont
       /NICHT AUSGEFÜHRT: visualCore\.e2e\.test\.ts – Docker-Engine nicht erreichbar\. .*nicht als bestanden\. Einrichtung/,
     );
   }
+
+  // Outside such an environment the container part is optional: skipped with its cause, not failed.
+  const skips = [];
+  const optional = visualStub({ docker });
+  assert.equal(runE2EPartition(runner.options(['core', 'flows'], {
+    visual: optional,
+    logError: (message) => skips.push(message),
+  })), 0);
+  assert.deepEqual(runner.hostFiles(runner.spawnCalls[1]), functionalFiles);
+  assert.equal(optional.calls.length, 0);
+  assert.equal(skips.length, 2);
+  for (const message of skips) {
+    assert.match(
+      message,
+      /ÜBERSPRUNGEN: visualCore\.e2e\.test\.ts – Docker-Engine nicht erreichbar\. .*optional.*Einrichtung/,
+    );
+  }
+
+  // A skipped comparison never rescues the functional owners of the same run.
+  assert.equal(runE2EPartition(runner.options(['core', 'flows'], {
+    visual: visualStub({ docker }),
+    hostStatus: 2,
+  })), 2);
+
+  // Without Docker the visual-only selection has nothing left to fail on.
+  assert.equal(runE2EPartition(runner.options(['visual'], { visual: visualStub({ docker }) })), 0);
+
+  // An explicit demand keeps the missing engine red outside CI as well.
+  assert.equal(runE2EPartition(runner.options(['visual'], {
+    visual: visualStub({ docker }),
+    env: { E2E_ARTIFACT_DIR: runner.artifactRoot, RESPAWN_VISUAL_REQUIRED: '1' },
+  })), 1);
 });
 
 test('host and container results both decide the run; the container itself runs every owner', (context) => {
