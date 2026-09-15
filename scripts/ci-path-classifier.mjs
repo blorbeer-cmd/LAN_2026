@@ -8,25 +8,41 @@ import {
   mainPartitionForE2EPath,
 } from "./e2e-partitions.mjs";
 
-const SHARED_FRONTEND_FILES = new Set([
-  "admin.js",
-  "api.js",
-  "app.js",
-  "authGate.js",
-  "data.js",
-  "emptyState.js",
-  "format.js",
-  "groupContext.js",
-  "icons.js",
-  "infoTooltip.js",
-  "modal.js",
-  "socket.js",
-  "state.js",
-  "toast.js",
-  "viewManifest.js",
-  "viewRegistry.js",
-  "whoami.js",
+// Browser owners of the per-view frontend modules. Only a listed view is narrowed; every other
+// module under public/js is shared or unknown and therefore falls back to the safety rule below.
+export const VIEW_DOMAIN_OWNERS = new Map([
+  ["admin.js", "auth,flows"],
+  ["adminFeatureUsage.js", "flows"],
+  ["adminFeedback.js", "flows"],
+  ["analytics.js", "flows"],
+  ["arrivals.js", "flows"],
+  ["broadcast.js", "flows"],
+  ["checklist.js", "checklist"],
+  // The event workspace and its date poll are owned by the invitations browser tests and are
+  // rendered again by the shell flows, so both domains have to run.
+  ["eventPolls.js", "invitations,flows"],
+  ["events.js", "invitations,flows"],
+  ["foodOrders.js", "flows"],
+  ["gameCatalog.js", "flows"],
+  ["hallOfFame.js", "flows"],
+  ["home.js", "flows"],
+  ["infoBoard.js", "flows"],
+  ["leaderboard.js", "flows"],
+  ["matchmaking.js", "flows"],
+  ["more.js", "flows"],
+  ["music.js", "flows"],
+  ["myStats.js", "flows"],
+  ["playerDetail.js", "flows"],
+  ["profile.js", "auth,flows"],
+  ["seating.js", "flows"],
+  ["tournament.js", "flows"],
+  ["votes.js", "flows"],
 ]);
+
+// A co-located unit test cannot change runtime behaviour beyond its module, so it inherits its
+// owner instead of counting as an unknown module.
+const frontendModuleName = (file) =>
+  path.posix.basename(file).replace(/\.test\.js$/, ".js");
 
 const SHARED_SERVER_FILES = new Set([
   "app.ts",
@@ -130,7 +146,6 @@ function e2eImpactForServerPath(file) {
 
   if (
     file === "server/src/routes/checklist.ts" ||
-    file === "server/public/js/views/checklist.js" ||
     file === "server/public/js/checklistDue.js" ||
     file === "server/src/checklistDefaults.ts"
   )
@@ -140,22 +155,16 @@ function e2eImpactForServerPath(file) {
     return { coreScope: "none", arcade: true, arcadeSmoke: false };
 
   if (file.startsWith("server/public/js/views/")) {
-    if (
-      file === "server/public/js/views/admin.js" ||
-      file === "server/public/js/views/profile.js"
-    )
-      return { coreScope: "auth,flows", arcade: false, arcadeSmoke: false };
-    if (file === "server/public/js/views/games.js")
-      return { coreScope: "all", arcade: false, arcadeSmoke: false };
-    return { coreScope: "flows", arcade: false, arcadeSmoke: false };
+    const owner = VIEW_DOMAIN_OWNERS.get(frontendModuleName(file));
+    if (owner) return { coreScope: owner, arcade: false, arcadeSmoke: false };
+    // A view without a recorded owner is a new production module and fails closed.
+    return { coreScope: "all", arcade: false, arcadeSmoke: true };
   }
 
-  if (file.startsWith("server/public/js/")) {
-    const name = path.posix.basename(file);
-    if (SHARED_FRONTEND_FILES.has(name))
-      return { coreScope: "all", arcade: false, arcadeSmoke: true };
-    return { coreScope: "flows", arcade: false, arcadeSmoke: false };
-  }
+  // Shared helpers, design-system modules and new files below public/js can reach every view
+  // including the Arcade shell, so they select Core plus the bounded Arcade smoke suite.
+  if (file.startsWith("server/public/js/"))
+    return { coreScope: "all", arcade: false, arcadeSmoke: true };
 
   // Arcade presentation rules are loaded on demand by app.js. The kiosk loads
   // the same stylesheet statically, but its Arcade scenarios stay in the

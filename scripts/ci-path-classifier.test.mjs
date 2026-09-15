@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
-import { classifyChangedPaths } from "./ci-path-classifier.mjs";
+import { VIEW_DOMAIN_OWNERS, classifyChangedPaths } from "./ci-path-classifier.mjs";
+import { CORE_E2E_DOMAINS } from "./e2e-partitions.mjs";
 import { VIEW_MANIFEST } from "../server/public/js/viewManifest.js";
 
 const selected = (files, eventName) =>
@@ -172,11 +173,59 @@ test("shared and unknown production paths use Core plus the bounded Arcade smoke
     "server/public/js/viewManifest.js",
     "server/public/css/style.css",
     "server/src/newSharedThing.ts",
+    "server/public/js/newSharedHelper.js",
+    "server/public/js/rosterPicker.js",
+    "server/public/js/views/newWorkspace.js",
   ]) {
     const result = selected([file]);
     assert.equal(result.e2eCore, true, file);
     assert.equal(result.e2eArcade, false, file);
     assert.equal(result.e2eArcadeSmoke, true, file);
+  }
+});
+
+test("event and poll frontend modules select their invitations owners", () => {
+  for (const file of [
+    "server/public/js/views/events.js",
+    "server/public/js/views/eventPolls.js",
+  ]) {
+    const result = selected([file]);
+    assert.equal(result.e2eCoreScope, "invitations,flows", file);
+    assert.equal(result.e2eArcade, false, file);
+    assert.equal(result.e2eArcadeSmoke, false, file);
+  }
+
+  // The browser owners of those views live in the invitations domain.
+  for (const owner of CORE_E2E_DOMAINS.invitations) {
+    assert.equal(
+      selected([`server/src/test/e2e/${owner}`]).e2eCoreScope,
+      "invitations",
+      owner,
+    );
+  }
+
+  // Shared event helpers stay ambiguous and therefore keep the fail-closed selection.
+  const helper = selected(["server/public/js/eventModel.js"]);
+  assert.equal(helper.e2eCoreScope, "all");
+  assert.equal(helper.e2eArcadeSmoke, true);
+});
+
+test("every narrowed view module still exists and its unit test inherits the same owner", () => {
+  const directory = new URL("../server/public/js/views/", import.meta.url);
+  const modules = readdirSync(directory).filter(
+    (file) => file.endsWith(".js") && !file.endsWith(".test.js"),
+  );
+  for (const [module] of VIEW_DOMAIN_OWNERS) {
+    assert.ok(modules.includes(module), `${module} is no longer a view module`);
+  }
+  for (const unitTest of readdirSync(directory).filter((file) => file.endsWith(".test.js"))) {
+    const module = unitTest.replace(/\.test\.js$/, ".js");
+    if (!VIEW_DOMAIN_OWNERS.has(module)) continue;
+    assert.equal(
+      selected([`server/public/js/views/${unitTest}`]).e2eCoreScope,
+      selected([`server/public/js/views/${module}`]).e2eCoreScope,
+      unitTest,
+    );
   }
 });
 
