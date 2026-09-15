@@ -1,14 +1,81 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { Browser, BrowserContext, Locator, Page, Request } from 'playwright';
-import { addE2EVisualArtifacts, trackE2EContext } from './e2eDiagnostics';
-import { compareVisualBaseline } from './visualComparison';
+import { addE2EVisualArtifacts, setE2EVisualEnvironment, trackE2EContext } from './e2eDiagnostics';
+import { compareVisualBaseline, visualEnvironmentDifferences } from './visualComparison';
+
+const BASELINE_DIRECTORY = path.resolve(__dirname, '../../../src/test/e2e/visual-baselines');
+// Rendering settings of every visual scene; they are part of the recorded reference environment.
+const VISUAL_CONTEXT_OPTIONS = {
+  locale: 'de-DE', timezoneId: 'Europe/Berlin', reducedMotion: 'reduce', colorScheme: 'dark', deviceScaleFactor: 1,
+} as const;
+
+interface ReferenceProfile {
+  environment?: unknown;
+  baselines?: Record<string, string>;
+}
+
+function readReferenceProfile(): ReferenceProfile {
+  return JSON.parse(readFileSync(path.join(BASELINE_DIRECTORY, 'reference-profile.json'), 'utf8')) as ReferenceProfile;
+}
+
+function treeDigest(roots: string[], describe: (file: string) => string): string {
+  const entries: string[] = [];
+  const walk = (entry: string): void => {
+    let isDirectory: boolean;
+    try {
+      isDirectory = statSync(entry).isDirectory();
+    } catch {
+      entries.push(`${entry}|unreadable`);
+      return;
+    }
+    if (isDirectory) readdirSync(entry).forEach((child) => walk(path.join(entry, child)));
+    else entries.push(`${entry}|${describe(entry)}`);
+  };
+  roots.filter((root) => existsSync(root)).forEach(walk);
+  return `sha256:${createHash('sha256').update(entries.sort().join('\n')).digest('hex')}`;
+}
+
+function operatingSystem(): string {
+  try {
+    const fields = new Map(readFileSync('/etc/os-release', 'utf8').split('\n')
+      .map((line) => /^([A-Z_]+)=(.*)$/.exec(line))
+      .filter((match): match is RegExpExecArray => match !== null)
+      .map(([, key, value]) => [key, value.replace(/^"|"$/g, '')]));
+    return `${fields.get('ID')} ${fields.get('VERSION_ID')}`;
+  } catch {
+    return `${process.platform} without /etc/os-release`;
+  }
+}
+
+// Everything that decides how a scene rasterizes. Kernel and host details are deliberately
+// absent: Docker Desktop and CI runners differ there without changing Chromium's output.
+function collectVisualEnvironment(browser: Browser): Record<string, unknown> {
+  const report = process.report?.getReport() as { header?: { glibcVersionRuntime?: string } } | undefined;
+  return {
+    baseImage: process.env.RESPAWN_VISUAL_BASE_IMAGE ?? 'none',
+    os: operatingSystem(),
+    glibc: report?.header?.glibcVersionRuntime ?? 'none',
+    arch: process.arch,
+    node: process.version,
+    playwright: (require('playwright/package.json') as { version: string }).version,
+    browser: `${browser.browserType().name()} ${browser.version()}`,
+    fonts: treeDigest(['/usr/share/fonts', '/usr/local/share/fonts'], (file) => String(statSync(file).size)),
+    fontconfig: treeDigest(['/etc/fonts'], (file) => createHash('sha256').update(readFileSync(file)).digest('hex')),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    rendering: VISUAL_CONTEXT_OPTIONS,
+  };
+}
 
 export async function visualContext(browser: Browser): Promise<BrowserContext> {
-  const context = await browser.newContext({
-    locale: 'de-DE', timezoneId: 'Europe/Berlin', reducedMotion: 'reduce',
-    colorScheme: 'dark', deviceScaleFactor: 1, viewport: { width: 1024, height: 900 },
-  });
+  assert.ok(
+    process.env.RESPAWN_VISUAL_BASE_IMAGE,
+    'Visual reference scenes run only in the pinned reference container (server/visual-reference). '
+      + 'Use the regular E2E commands with a running Docker engine or `npm run test:e2e:visual`; see server/TESTING.md.',
+  );
+  const context = await browser.newContext({ ...VISUAL_CONTEXT_OPTIONS, viewport: { width: 1024, height: 900 } });
   await trackE2EContext(context, 'visual-reference');
   return context;
 }
@@ -17,8 +84,17 @@ export class VisualScenes {
   private readonly pending = new Set<Request>();
   private readonly failures: string[] = [];
   private readonly runtimeErrors: string[] = [];
+  private readonly profile = readReferenceProfile();
+  private readonly environment: Record<string, unknown>;
+  private readonly environmentDifferences: string[];
 
   constructor(private readonly page: Page) {
+    const browser = page.context().browser();
+    assert.ok(browser, 'Visual scenes require a launched browser');
+    // Checked on every run, independent of any pixel comparison.
+    this.environment = collectVisualEnvironment(browser);
+    this.environmentDifferences = visualEnvironmentDifferences(this.profile.environment, this.environment);
+    setE2EVisualEnvironment({ actual: this.environment, differences: this.environmentDifferences });
     page.on('request', (request) => this.pending.add(request));
     page.on('requestfinished', (request) => this.pending.delete(request));
     page.on('requestfailed', (request) => {
@@ -52,23 +128,21 @@ export class VisualScenes {
     await this.ready();
     await semanticAssertions();
     const actual = await target.screenshot({ animations: 'disabled', caret: 'hide', scale: 'css' });
-    const baseline = path.resolve(__dirname, '../../../src/test/e2e/visual-baselines', `${name}.png`);
-    const result = await compareVisualBaseline(actual, baseline);
-    if (!result.matches) {
-      addE2EVisualArtifacts(name, actual, result.diff);
-      this.failures.push(`${name}: ${result.reason}`);
-    }
+    const file = `${name}.png`;
+    const result = await compareVisualBaseline(actual, path.join(BASELINE_DIRECTORY, file), this.profile.baselines?.[file] ?? null);
+    // After an environment change every scene is a review candidate, not only the failing ones.
+    if (!result.matches || this.environmentDifferences.length) addE2EVisualArtifacts(name, actual, result.diff);
+    if (!result.matches) this.failures.push(`${name}: ${result.reason}`);
   }
 
   finish(): void {
-    const version = (require('playwright/package.json') as { version: string }).version;
-    const profile = `platform=${process.platform}, CI=${process.env.CI ?? 'unset'}, ImageOS=${process.env.ImageOS ?? 'unset'}, ImageVersion=${process.env.ImageVersion ?? 'unset'}, Playwright=${version}`;
-    assert.deepEqual(this.failures, [],
-      'Visual reference comparison failed. Reference: CI ubuntu-latest, Playwright 1.56.1; '
-      + 'baseline image provenance: see TESTING.md and the baseline PR. '
-      + `Actual profile: ${profile}. `
-      + 'A different profile can affect fonts/rasterization; it does not prove that a mismatch is harmless. '
-      + 'Confirm on the same PR head in reference CI; do not accept local screenshots as baselines.');
+    const environmentChange = this.environmentDifferences.length
+      ? [`Reference environment differs from reference-profile.json (${this.environmentDifferences.join('; ')}); `
+        + 'review every scene and refresh profile and references explicitly (server/TESTING.md)']
+      : [];
+    assert.deepEqual([...environmentChange, ...this.failures], [],
+      `Visual reference check failed. Actual environment: ${JSON.stringify(this.environment)}. `
+      + 'Refresh candidates come only from reference CI artifacts; never adopt screenshots automatically.');
   }
 }
 
