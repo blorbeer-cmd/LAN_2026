@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 interface Raster { width: number; height: number; data: Buffer }
@@ -41,19 +42,57 @@ export function compareVisualPng(actualBuffer: Buffer, expectedBuffer?: Buffer):
     matches: sameSize && changedPixels * 1000 <= totalPixels,
     changedPixels,
     totalPixels,
-    reason: !expected ? 'Missing CI baseline' : !sameSize ? 'Image dimensions differ'
+    reason: !expected ? 'Missing reference baseline' : !sameSize ? 'Image dimensions differ'
       : `${changedPixels}/${totalPixels} pixels exceed channel delta 16 (maximum 0.1%)`,
     diff: PNG.sync.write({ width, height, data }),
   };
 }
 
-// Deliberately read-only. There is no update flag or automatic baseline creation.
-export async function compareVisualBaseline(actual: Buffer, baseline: string): Promise<VisualComparison> {
+export function visualBaselineDigest(buffer: Buffer): string {
+  return `sha256:${createHash('sha256').update(buffer).digest('hex')}`;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
+    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'missing';
+}
+
+// Every recorded fact of the reference environment must match; a missing profile never passes.
+export function visualEnvironmentDifferences(reference: unknown, actual: Record<string, unknown>): string[] {
+  if (!reference || typeof reference !== 'object' || Array.isArray(reference)) {
+    return ['no reference environment recorded'];
+  }
+  const expected = reference as Record<string, unknown>;
+  return [...new Set([...Object.keys(expected), ...Object.keys(actual)])]
+    .sort()
+    .filter((key) => stableJson(expected[key]) !== stableJson(actual[key]))
+    .map((key) => `${key}: reference ${stableJson(expected[key])}, actual ${stableJson(actual[key])}`);
+}
+
+// Deliberately read-only. There is no update flag or automatic baseline creation. A reviewed
+// digest binds the file to reference-profile.json; `null` marks a file that was never reviewed.
+export async function compareVisualBaseline(
+  actual: Buffer,
+  baseline: string,
+  reviewedDigest?: string | null,
+): Promise<VisualComparison> {
   let expected: Buffer | undefined;
   try {
     expected = await readFile(baseline);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  return compareVisualPng(actual, expected);
+  const comparison = compareVisualPng(actual, expected);
+  if (!expected || reviewedDigest === undefined || visualBaselineDigest(expected) === reviewedDigest) return comparison;
+  return {
+    ...comparison,
+    matches: false,
+    reason: reviewedDigest === null
+      ? 'Baseline is not listed in reference-profile.json'
+      : 'Baseline file differs from its reviewed digest in reference-profile.json',
+  };
 }

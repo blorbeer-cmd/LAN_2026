@@ -179,6 +179,11 @@ jobs:
         run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" deps
       - name: Prepare Core E2E build
         run: npm run test:e2e:prepare
+      # Visual reference owners run in the pinned container from server/visual-reference, the same
+      # environment as local runs. Building it here keeps the image pull and dependency install out
+      # of the measured test step; selections without a visual owner skip it.
+      - name: Prepare visual reference container
+        run: node scripts/visual-reference.mjs prepare core "${{ needs.changes.outputs.e2e_core_scope }}"
       - name: Run measured Core E2E (${{ needs.changes.outputs.e2e_core_scope }})
         env:
           E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
@@ -239,6 +244,8 @@ jobs:
         run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" deps
       - name: Prepare Arcade smoke E2E build
         run: npm run test:e2e:prepare
+      - name: Prepare visual reference container
+        run: node scripts/visual-reference.mjs prepare arcade-smoke
       - name: Run measured Arcade smoke E2E
         env:
           E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
@@ -299,6 +306,8 @@ jobs:
         run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" deps
       - name: Prepare Arcade E2E build
         run: npm run test:e2e:prepare
+      - name: Prepare visual reference container
+        run: node scripts/visual-reference.mjs prepare arcade
       - name: Run measured Arcade E2E
         env:
           E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
@@ -442,6 +451,13 @@ jobs:
             npm run test:compile
           else
             npm run test:e2e:prepare
+            case "$SUITE" in
+              e2e-core) partition="core" ;;
+              e2e-arcade) partition="arcade" ;;
+              e2e-arcade-smoke) partition="arcade-smoke" ;;
+              *) echo "Unknown E2E suite: $SUITE" >&2; exit 1 ;;
+            esac
+            node scripts/visual-reference.mjs prepare "$partition"
           fi
       - name: Repeat and confirm suspected regression
         env:

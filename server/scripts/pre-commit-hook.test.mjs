@@ -60,6 +60,10 @@ function fixture() {
     git(directory, ['config', 'user.email', 'fixture@example.invalid']);
     git(directory, ['config', 'user.name', 'Hook fixture']);
     git(directory, ['config', 'commit.gpgsign', 'false']);
+    // `git commit` otherwise starts a detached `git maintenance run --auto` that can still write
+    // into this repository while the fixture is removed, leaving the directory behind.
+    git(directory, ['config', 'maintenance.auto', 'false']);
+    git(directory, ['config', 'gc.auto', '0']);
     git(directory, ['config', 'core.hooksPath', join(directory, 'no-hooks')]);
 
     write(

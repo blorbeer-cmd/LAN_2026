@@ -1889,6 +1889,69 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
     initialTournamentGame.name,
     'Escape should close the listbox without changing the game',
   );
+
+  // Background re-renders arrive at any time while the picker keeps focus. The marker on the
+  // current field shows whether the form was rebuilt; restored focus must never act like a new
+  // user focus that opens the list or clears its text.
+  const markTournamentForm = () => page.locator('#tourn-game-search').evaluate((element) => {
+    element.setAttribute('data-e2e-render-probe', '');
+  });
+  const tournamentPickerState = () => page.evaluate(() => ({
+    value: (document.querySelector('#tourn-game-search') as HTMLInputElement).value,
+    expanded: document.querySelector('#tourn-game-search')?.getAttribute('aria-expanded'),
+    listHidden: (document.querySelector('#tourn-game-list') as HTMLElement).hidden,
+    focused: document.activeElement?.id,
+  }));
+  await markTournamentForm();
+  // A live-status broadcast (here: Alice connecting a second client) reloads Home's shared
+  // status. That reload must not rebuild this form, which is not Home.
+  await page.evaluate(() => window.addEventListener('respawn:aktuell-changed', () => {
+    document.documentElement.dataset.e2eHomeStatusReloaded = 'true';
+  }, { once: true }));
+  const presenceContext = await browser.newContext();
+  await trackE2EContext(presenceContext, 'tournament-presence');
+  await addSessionCookie(presenceContext, BASE_URL, alice.cookie);
+  await (await presenceContext.newPage()).goto(BASE_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.e2eHomeStatusReloaded === 'true');
+  await page.evaluate(() => delete document.documentElement.dataset.e2eHomeStatusReloaded);
+  await presenceContext.close();
+  assert.equal(
+    await page.locator('#tourn-game-search[data-e2e-render-probe]').count(),
+    1,
+    'a Home status reload must not rebuild the open tournament form',
+  );
+  // Saving an unchanged profile emits players:changed, which legitimately redraws this view.
+  const redrawTournamentForm = async () => {
+    const me = await (await page.request.get(`${BASE_URL}/api/me`)).json() as { id: string; name: string };
+    const saved = await page.request.patch(`${BASE_URL}/api/players/${me.id}`, { data: { name: me.name } });
+    assert.equal(saved.status(), 200, await saved.text());
+    await page.waitForFunction(() => !document.querySelector('#tourn-game-search')?.hasAttribute('data-e2e-render-probe'));
+  };
+  await redrawTournamentForm();
+  assert.deepEqual(
+    await tournamentPickerState(),
+    { value: initialTournamentGame.name, expanded: 'false', listHidden: true, focused: 'tourn-game-search' },
+    'a redraw keeps a closed picker closed with its selected game',
+  );
+  await page.locator('#tourn-game-search').fill('Age');
+  await tournamentGameList.waitFor({ state: 'visible' });
+  await markTournamentForm();
+  await redrawTournamentForm();
+  assert.deepEqual(
+    await tournamentPickerState(),
+    { value: 'Age', expanded: 'true', listHidden: false, focused: 'tourn-game-search' },
+    'a redraw keeps an open picker open with the typed query',
+  );
+  const filteredTournamentGames = await tournamentGameList.locator('.search-select-option-label').allTextContents();
+  assert.ok(
+    filteredTournamentGames.length > 0
+      && filteredTournamentGames.every((label) => label.toLocaleLowerCase('de-DE').includes('age')),
+    `the reopened list keeps filtering by the typed query: ${filteredTournamentGames.join(', ')}`,
+  );
+  await page.keyboard.press('Escape');
+  await tournamentGameList.waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('#tourn-game-search').inputValue(), initialTournamentGame.name);
+
   const tournamentGameToggle = page.locator('#tourn-game-search + .search-select-toggle');
   assert.equal(await tournamentGameToggle.getAttribute('aria-label'), 'Auswahl öffnen');
   await tournamentGameToggle.dispatchEvent('click');
