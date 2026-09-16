@@ -6,7 +6,7 @@ Dieser Branch ist mit 1 PR in der GitHub-Historie vertreten.
 
 | PR | Status | Titel |
 |---:|---|---|
-| [#636](https://github.com/blorbeer-cmd/LAN_2026/pull/636) | offen (Draft) | Move the info tooltip glyph closer to the text it explains |
+| [#636](https://github.com/blorbeer-cmd/LAN_2026/pull/636) | gemergt am 2026-09-16 | Move the info tooltip glyph closer to the text it explains |
 
 ## Inhalt
 

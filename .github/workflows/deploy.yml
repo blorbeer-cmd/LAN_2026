@@ -374,7 +374,6 @@ jobs:
       actions: read
       contents: read
     outputs:
-      has_suspicions: ${{ steps.evaluate.outputs.has_suspicions }}
       suspicions: ${{ steps.evaluate.outputs.suspicions }}
     steps:
       - uses: actions/checkout@v7
@@ -401,14 +400,36 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+  # On run 35091900593 the detector reported e2e-core as "Wiederholung
+  # erforderlich" and set its outputs, yet this job was dropped before its
+  # matrix expanded — its check kept the raw name
+  # `Confirm test performance (${{ matrix.suite }})`. The fail-closed
+  # aggregator then failed the build over a confirmation that was never
+  # allowed to run, which silently disables the "a repeat run must confirm a
+  # suspicion" rule from server/TESTING.md.
+  #
+  # The cause is the implicit `success()` that every `needs` carries: the
+  # detector depends on the E2E partitions, the path classifier switches at
+  # least one of them off, and a skipped dependency propagates down the chain.
+  # The detector survives that on its own `always()`, but that does not reach
+  # this job. An explicit status function is therefore required — a plain
+  # boolean condition cannot override it, which is why removing one did not
+  # help. `always()` takes the decision back from the implicit rule, the
+  # detector's own result keeps a failed detector from starting repeat runs,
+  # and the suspicion list decides whether there is anything to confirm.
+  # `|| '[]'` keeps a missing output a skip instead of a fromJSON parse error.
   test-performance-confirm:
     name: Confirm test performance (${{ matrix.suite }})
-    if: needs['test-performance-detect'].outputs.has_suspicions == 'true'
+    if: >-
+      always() &&
+      needs['test-performance-detect'].result == 'success' &&
+      needs['test-performance-detect'].outputs.suspicions != '' &&
+      needs['test-performance-detect'].outputs.suspicions != '[]'
     needs: test-performance-detect
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs['test-performance-detect'].outputs.suspicions) }}
+        include: ${{ fromJSON(needs['test-performance-detect'].outputs.suspicions || '[]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
