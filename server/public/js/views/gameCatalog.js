@@ -340,13 +340,11 @@ function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false
   return `
     <div class="card game-table-row${isMarkedSuggestion ? ' is-suggestion' : ''}${onboardingRequired ? ' onboarding-required' : ''}" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
       <div class="game-row-name">
-        <div class="game-row-title-copy">
-          <button type="button" class="btn btn-sm game-row-detail-trigger" data-detail="${game.id}">${escapeHtml(game.name)}</button>
-          ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
-        </div>
+        <button type="button" class="btn btn-sm game-row-detail-trigger" data-detail="${game.id}">${escapeHtml(game.name)}</button>
         ${onboardingRequired ? '<span class="badge badge-playing onboarding-required-badge">Pflicht</span>' : ''}
         ${suggestionBadge}
         ${gameRowIconsHtml(game)}
+        ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
       </div>
       <div class="game-row-sliders">
         <div class="game-row-bock">${bockRow}</div>
