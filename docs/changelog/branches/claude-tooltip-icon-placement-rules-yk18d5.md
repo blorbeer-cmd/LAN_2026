@@ -2,11 +2,12 @@
 
 ## Themenstrang
 
-Dieser Branch ist mit 1 PR in der GitHub-Historie vertreten.
+Dieser Branch ist mit 2 PRs in der GitHub-Historie vertreten.
 
 | PR | Status | Titel |
 |---:|---|---|
 | [#636](https://github.com/blorbeer-cmd/LAN_2026/pull/636) | gemergt am 2026-09-16 | Move the info tooltip glyph closer to the text it explains |
+| [#639](https://github.com/blorbeer-cmd/LAN_2026/pull/639) | gemergt am 2026-09-16 | Keep the help trigger beside what it explains in every layout |
 
 ## Inhalt
 
@@ -21,6 +22,15 @@ Kinder einer Layoutzeile statt in einem eigenen `.title-with-info` standen: der 
 Aufbautitel rutschte durch `justify-content: space-between` ans rechte Zeilenende, der Titel des
 aktiven Arcade-Spiels erbte die 8-px-Zeile. Beide stehen jetzt bei 12 px.
 
+#639 schließt die drei Platzierungsfälle, die das Audit offen ließ. Der Trigger neben einem
+**Control** ist ein benannter Fall des Vertrags, und Kurzregeln wie Designkern nennen seither Text
+oder Control mit der Elementkante als Bezug; die Kalenderbestätigung bleibt dadurch auch auf dem
+Handy eine Zeile. Die Umfrageoptionszeile behält den Trigger am Titel, ohne ihn zu quetschen: Das
+Ergebnisbadge bricht unterhalb `--bp-md` in eine eigene Zeile, sobald der Titel den Platz braucht.
+Für mehrzeiligen Text ist die Elementkante maßgeblich, und `assertInfoTooltipPlacement` misst sie
+seither für Text wie Control. Außerdem startet der Bestätigungslauf der CI-Laufzeitprüfung wieder,
+weil eine ausdrückliche Statusfunktion das implizite `success()` der `needs`-Kette überschreibt.
+
 ## Referenz-Refresh
 
 Erledigt. Die vier Referenzen `core-modal-390`, `core-form-390`, `core-modal-1024` und
@@ -32,4 +42,6 @@ Core-Bildvergleich ist in CI-Lauf 35091900593 grün.
 
 ## Offene Punkte
 
-Keine.
+Der Workflow-Fix aus #639 ist nicht am Verdachtsfall erprobt. Dass der Bestätigungslauf startet,
+zeigt erst ein Lauf mit nichtleerer Verdachtsliste und übersprungenem Vorgänger; ein grüner Lauf
+mit leerer Liste prüft den Fall nicht.

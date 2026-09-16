@@ -11,11 +11,12 @@ eigenen Eintrag. Beim früheren Vollabgleich fielen außerdem neun ältere, nich
 Lücken auf: #90, #93, #94, #96, #97, #99, #197, #204 und #205. Die Zusammenfassungen der am
 2026-08-05 nachgetragenen PRs #261–#351 stammen aus dem PR-Titel, nicht aus einer vollständigen
 Diff-Analyse. Zusätzlich lückenlos dokumentiert sind die am 2026-09-01 und 2026-09-02 gemergten
-PRs #529–#535; der Bereich #353–#528 ist noch nicht erfasst.
+PRs #529–#535 sowie die am 2026-09-16 gemergten PRs #636 und #639; die Bereiche #353–#528 und
+#536–#635 sind noch nicht erfasst.
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 237 (Dateien unter `pr/`)
+- Gemergte PRs dokumentiert: 238 (Dateien unter `pr/`)
 - Branch-Seiten dokumentiert: 197 (Dateien unter `branches/`)
 - Gemergte PRs #214–#352: 83 von 83 dokumentiert
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
@@ -24,6 +25,8 @@ PRs #529–#535; der Bereich #353–#528 ist noch nicht erfasst.
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-09-16 | [#639](https://github.com/blorbeer-cmd/LAN_2026/pull/639) | [Keep the help trigger beside what it explains in every layout](pr/pr-639-keep-the-help-trigger-beside-what-it-explains-in-every-layout.md) | `claude/tooltip-icon-placement-rules-yk18d5` |
+| 2026-09-16 | [#636](https://github.com/blorbeer-cmd/LAN_2026/pull/636) | [Move the info tooltip glyph closer to the text it explains](pr/pr-636-move-the-info-tooltip-glyph-closer-to-the-text-it-explains.md) | `claude/tooltip-icon-placement-rules-yk18d5` |
 | 2026-09-02 | [#535](https://github.com/blorbeer-cmd/LAN_2026/pull/535) | [Order review results by publication, tie the review lock to its timeout](pr/pr-535-order-review-results-by-publication-tie-the-review-lock-to-its-timeout.md) | `claude/session-f1se9g` |
 | 2026-09-02 | [#532](https://github.com/blorbeer-cmd/LAN_2026/pull/532) | [Audit the test suite and fix its findings](pr/pr-532-audit-the-test-suite-and-fix-its-findings.md) | `claude/test-suite-audit-9rqxl7` |
 | 2026-09-02 | [#534](https://github.com/blorbeer-cmd/LAN_2026/pull/534) | [Automate Codex self-review pipeline](pr/pr-534-automate-codex-self-review-pipeline.md) | `codex/automate-codex-self-review` |
