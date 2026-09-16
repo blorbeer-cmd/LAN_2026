@@ -301,7 +301,7 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
     await adminPage.waitForSelector('#onboarding-root [role="dialog"]');
 
     await adminPage.waitForFunction(() =>
-      document.querySelector('.onboarding-progress')?.textContent?.includes('von 13') ?? false,
+      document.querySelector('.onboarding-progress')?.textContent?.includes('von 14') ?? false,
       undefined,
       { timeout: 10_000 },
     );
@@ -310,7 +310,7 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
       if (!match) throw new Error('onboarding progress text is missing the step count');
       return Number(match[1]);
     });
-    assert.equal(totalCoreSteps, 13, 'admins must get the event-selection step before ratings');
+    assert.equal(totalCoreSteps, 14, 'admins must get both event steps before ratings');
 
     assert.equal(await adminPage.locator('html').getAttribute('data-layout-mode'), 'desktop');
     await adminPage.waitForSelector('.desktop-nav-btn[data-view="home"]:visible');
@@ -326,8 +326,26 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
     }, undefined, { timeout: 5_000 });
 
     let sawEventSelection = false;
+    let sawHeaderEvent = false;
     for (let step = 0; step < totalCoreSteps; step += 1) {
       const title = await adminPage.locator('#onboarding-title').textContent();
+      if (title === 'Aktives Event') {
+        sawHeaderEvent = true;
+        await adminPage.waitForSelector('#event-context:not([hidden]) .search-select-control');
+        for (const width of [1920, 1024]) {
+          await adminPage.setViewportSize({ width, height: 768 });
+          await adminPage.waitForFunction(() => {
+            const target = document.querySelector('#event-context .search-select-control')?.getBoundingClientRect();
+            const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
+            return Boolean(target && ring)
+              && Math.abs(target!.left - ring!.left) < 1
+              && Math.abs(target!.top - ring!.top) < 1
+              && Math.abs(target!.width - ring!.width) < 1
+              && Math.abs(target!.height - ring!.height) < 1;
+          }, undefined, { timeout: 5_000 });
+        }
+        await adminPage.setViewportSize({ width: 1920, height: 1080 });
+      }
       if (title === 'Event-Auswahl') {
         sawEventSelection = true;
         await adminPage.waitForSelector('#view-container[data-view="analytics"]');
@@ -358,6 +376,7 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
         );
       }
     }
+    assert.equal(sawHeaderEvent, true);
     assert.equal(sawEventSelection, true);
     await adminPage.waitForSelector('.game-table-row.onboarding-required input[type="range"]');
     await adminPage.click('[data-onboarding-later]');

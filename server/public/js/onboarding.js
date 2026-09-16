@@ -11,7 +11,7 @@ import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { sectionEntryView } from './sectionNav.js';
 import { eventHasFeature, viewIsEnabledForEvent } from './eventFeatures.js';
 
-// Ordered to match the bottom nav (Home, Match, Vote, Essen), then the
+// Start with Home and its event context, follow the bottom nav (Match, Vote, Essen), then the
 // individual areas under "Mehr" (which itself sits after Essen in the nav),
 // and finally the game catalog last since its own step is what hands off
 // into the mandatory rating mode below (see nextCoreStep()). Admin-only
@@ -37,6 +37,12 @@ export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
       target: navigationTarget('home'),
     },
     {
+      title: 'Aktives Event',
+      text: 'Wähle oben im Header über den Eventnamen aus, in welchem Event du gerade arbeitest. Die Auswahl steuert, welche Bereiche verfügbar sind und zu welchem Event Home, Vote, Essen, Orga und Live-Status Daten zeigen und speichern. Unter Orga → Events findest du die Eventübersicht; Admins legen dort neue Events an und verwalten Einladungen.',
+      view: 'home',
+      target: '#event-context .search-select-control',
+    },
+    {
       title: 'Match',
       text: 'Hier lost ihr Teams aus, startet Captain-Drafts und legt Turniere an. Die Suchfelder in der Spieler- und Captain-Auswahl helfen euch, bei vielen Teilnehmenden schnell die richtigen Leute zu finden.',
       view: 'matchmaking',
@@ -50,19 +56,19 @@ export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
     },
     {
       title: 'Essen',
-      text: 'Hier organisiert ihr Sammelbestellungen mit Artikeln, Preisen und Bezahlstatus. Jede Person bezahlt ihren vollständigen Block über PayPal und bestätigt ihn anschließend mit „Bezahlt?“',
+      text: 'Hier organisiert ihr Sammelbestellungen und seht pro Person Positionen, Gesamtbetrag und Bezahlstatus. Ist ein PayPal-Link hinterlegt, kannst du damit zahlen; mit „Bezahlt?“ markierst du deinen Block als bezahlt.',
       view: 'foodOrders',
       target: navigationTarget('foodOrders'),
     },
     {
       title: 'Weitere Bereiche',
-      text: 'Am Laptop findet ihr weitere Bereiche unter Mehr. In der Desktop-Ansicht sind sie links direkt nach LAN, Orga und Sonstiges sortiert. Über die Suche oben erreicht ihr jeden Bereich ebenfalls direkt.',
+      text: 'Am Laptop findest du weitere Bereiche unter Mehr. Auf dem Desktop stehen sie links in LAN, Orga und Sonstiges. Info ist oben im Header, Feedback oben oder links in der Desktop-Ansicht. Die Suche oben führt direkt zu Bereichen und Inhalten.',
       view: 'more',
       target: MEHR_TARGET,
     },
     {
       title: 'Mein Profil',
-      text: 'Im Profil verwaltest du Avatar-Farbe, Gamertag und den Tracking-Agent für deinen PC. Aktiviere Push, um Durchsagen und wichtige Updates auch außerhalb der App zu bekommen.',
+      text: 'Im Profil verwaltest du Gamertag, Avatar-Farbe und deine Ansicht: Automatisch, Desktop oder Laptop. Hier richtest du bei Bedarf den Tracking-Agent für deinen PC und Push-Mitteilungen ein.',
       view: 'profile',
       target: navigationTarget('profile', { compactFallback: 'more' }),
     },
@@ -74,19 +80,19 @@ export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
     },
     {
       title: 'Durchsage',
-      text: 'Hier verschickt ihr Durchsagen an alle im Netzwerk, zum Beispiel wenn das Essen da ist. Die letzten Durchsagen bleiben in der Historie nachlesbar, falls jemand eine verpasst hat.',
+      text: 'Hier verschickst du Durchsagen an die bestätigten Teilnehmenden des aktiven Events, zum Beispiel wenn das Essen da ist. Sie erscheinen auf verbundenen Geräten und bleiben in der Historie nachlesbar.',
       view: 'broadcast',
       target: navigationTarget('broadcast', { compactFallback: 'more' }),
     },
     {
       title: 'Jam',
-      text: 'Hier steuert ihr gemeinsam die Musik: Titel suchen, zur Warteschlange hinzufügen und die Reihenfolge per Drag & Drop anpassen. Nur das Gerät, das die Session startet, braucht einen Spotify-Zugang.',
+      text: 'Hier sucht ihr Spotify-Titel und Playlists und fügt Songwünsche hinzu. Mehrere Wünsche könnt ihr außerhalb einer laufenden Playlist sortieren. Ein Musik-PC oder Kiosk steuert Spotify; nur dort ist ein Spotify-Premium-Konto nötig.',
       view: 'music',
       target: navigationTarget('music', { compactFallback: 'more' }),
     },
     {
       title: 'Orga',
-      text: 'Hier organisiert ihr die LAN mit An- und Abreise, Events, Packliste und To-Do-Liste als eigene Reiter. Im To-Do-Reiter siehst du unter „Mir zugewiesen“ sofort deine eigenen offenen Aufgaben inklusive Fälligkeit.',
+      text: 'Hier plant ihr die LAN: Über Umfragen klärt ihr Termine und andere Fragen. Weitere Reiter zeigen An- und Abreise, Events, Packliste und To-Dos. Unter „Mir zugewiesen“ findest du deine offenen Aufgaben mit Fälligkeit.',
       view: sectionEntryView('orga'),
       target: navigationTarget(sectionEntryView('orga'), { compactFallback: 'more' }),
     },
