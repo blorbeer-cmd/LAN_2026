@@ -267,12 +267,9 @@ function gameLinksHtml(game) {
 
 // Icon-only quick actions right in the row: a static "trackbar" marker (only
 // once a process name is mapped — the whole reason Live-Status works for
-// this game at all), open details, jump to the store page, watch the
-// trailer. All part of the same tight-knit cluster (see .game-row-links) so
-// the trackbar marker doesn't end up floating in a gap of its own between
-// the title and the rest of the icons. The details button carries the same
-// data-detail attribute the old standalone button used, so the existing
-// [data-detail] wiring in renderGameCatalog picks it up unchanged.
+// this game at all), jump to the store page and watch the trailer. The game
+// name itself opens the details. The external links come first and the
+// trackbar marker closes the compact group directly beside the game details.
 function gameRowIconsHtml(game) {
   const links = [
     game.platform_url
@@ -286,19 +283,13 @@ function gameRowIconsHtml(game) {
     game.processNames.length > 0
       ? `<span class="game-track-indicator" title="Trackbar – Prozessname hinterlegt" aria-label="Trackbar">${icon('radioTower')}</span>`
       : '';
-  // The info glyph is a circle, which reads visually smaller/thinner than
-  // the other two icons' rectilinear glyphs at an identical nominal size —
-  // a well-known optical effect with round shapes (same issue type design
-  // solves with "overshoot"). game-icon-info compensates with a small size
-  // bump so all three end up looking equally weighted.
-  const detailBtn = `<button type="button" class="game-icon-btn" data-detail="${game.id}" title="Details" aria-label="Details">${icon('info', { className: 'game-icon-info' })}</button>`;
   const linkIcons = links
     .map(
       (l) =>
         `<a class="game-icon-btn" href="${escapeHtml(l.href)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(l.label)}" aria-label="${escapeHtml(l.label)}">${icon(l.name)}</a>`
     )
     .join('');
-  return `<span class="game-row-links">${trackIndicator}${detailBtn}${linkIcons}</span>`;
+  return `<span class="game-row-links">${linkIcons}${trackIndicator}</span>`;
 }
 
 function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false) {
@@ -349,7 +340,7 @@ function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false
   return `
     <div class="card game-table-row${isMarkedSuggestion ? ' is-suggestion' : ''}${onboardingRequired ? ' onboarding-required' : ''}" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
       <div class="game-row-name">
-                <strong class="game-row-title">${escapeHtml(game.name)}</strong>
+        <button type="button" class="btn btn-sm game-row-detail-trigger" data-detail="${game.id}">${escapeHtml(game.name)}</button>
         ${onboardingRequired ? '<span class="badge badge-playing onboarding-required-badge">Pflicht</span>' : ''}
         ${suggestionBadge}
         ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
