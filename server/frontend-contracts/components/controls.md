@@ -107,9 +107,9 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
   `public/js/views/gameCatalog.js` bestimmt.
 - Jede Linkaktion besitzt eine feste Border-Box von 32×32 px. Sie ist damit eine dokumentierte
   dichte Ausnahme von der 44-px-Mindestbreite allgemeiner Icon-Controls.
-- Die Gruppe folgt ohne zusätzlichen Außenabstand auf Spielname und optionale Badges. Das Genre
-  folgt rechts neben der Symbolgruppe. Ihre DOM- und sichtbare Reihenfolge ist Plattform-Link,
-  Trailer-Link, Trackbar-Markierung, Genre.
+- Die Gruppe hat vor und nach sich denselben Abstand `--space-2`: vor ihr Spielname und optionale
+  Badges, nach ihr das Genre. Ihre DOM- und sichtbare Reihenfolge ist Plattform-Link, Trailer-Link,
+  Trackbar-Markierung, Genre.
 - Die Linkaktionen besitzen keinen Zwischenraum. Die nicht interaktive Trackbar-Markierung bleibt
   ein zentriertes 18×18-px-Symbol in einem transparenten 32×32-px-Slot.
 - Der Link bleibt ein semantisches `<a>`-Element mit deutschem Accessible Name. Auf Hover verwendet

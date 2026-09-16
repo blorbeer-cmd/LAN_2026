@@ -3410,7 +3410,6 @@ button.card {
   display: inline-flex;
   align-items: center;
   gap: 0;
-  margin-left: calc(var(--space-2) * -1);
 }
 .game-icon-btn {
   display: inline-flex;
