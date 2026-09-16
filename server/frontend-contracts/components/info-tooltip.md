@@ -157,9 +157,9 @@ existiert nicht: der Trigger bleibt bedienbar, gerade wenn das erklärte Control
 - Die Abnahme misst dabei **auch den erklärten Text**, nicht nur die Glyphposition. Eine Zeile, die
   den Trigger festhält und dafür den Text auf Buchstabenbreite quetscht, erfüllt diesen Vertrag
   nicht. Prüffall ist die Umfrageoption mit Notiz, Link und Ergebnisbadge: bei 320 px behält ein
-  Titel aus 87 Zeichen mindestens 130 px Breite und höchstens 7 Zeilen. Dieselbe Prüfung besteht
-  die reine Geometriemessung auch im fehlerhaften Zustand — sie ersetzt sie deshalb nicht,
-  sondern ergänzt sie.
+  Titel aus rund 90 Zeichen mindestens 130 px Breite und höchstens 7 Zeilen; gemessen wurde er mit
+  91 Zeichen. Die reine Geometriemessung besteht den fehlerhaften Zustand dagegen anstandslos — sie
+  ersetzt diese Prüfung deshalb nicht, sondern ergänzt sie.
 - Eine Überschrift mit Trigger ist nicht höher als dieselbe Überschrift ohne Trigger.
 - Das geöffnete Panel bleibt vollständig im Viewport und schließt mit `Escape` unter Rückgabe des
   Fokus.
