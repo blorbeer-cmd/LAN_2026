@@ -16,6 +16,11 @@ Schriftgröße gleich. Platzierung, Geometrie, Panelverhalten und Accessibility 
 Komponentenvertrag `server/frontend-contracts/components/info-tooltip.md`, auf den die
 Registry-Einträge `info-trigger`, `info-warning-state` und der neue `info-trigger-glyph` zeigen.
 
+Ein Audit aller 67 Aufrufstellen gegen den neuen Vertrag fand zwei Hilfe-Trigger, die als direkte
+Kinder einer Layoutzeile statt in einem eigenen `.title-with-info` standen: der Battleship-
+Aufbautitel rutschte durch `justify-content: space-between` ans rechte Zeilenende, der Titel des
+aktiven Arcade-Spiels erbte die 8-px-Zeile. Beide stehen jetzt bei 12 px.
+
 ## Offene Punkte
 
 Die visuellen Referenzen `core-modal-*` und `core-form-*` enthalten einen Info-Trigger und brauchen
