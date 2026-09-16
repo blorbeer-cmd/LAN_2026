@@ -3368,6 +3368,16 @@ button.card {
   white-space: nowrap;
   font-size: var(--font-size-xs);
 }
+@media (max-width: 639px) { /* --bp-md */
+  .game-row-name {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .game-row-genre {
+    flex-basis: 100%;
+    padding-inline-start: var(--space-3);
+  }
+}
 /* "Vorschlag" marker, only rendered in the mixed "Alle" list where catalog
    games and suggestions sit side by side. Unlike the genre tag it must not
    give way on narrow rows — it is the row's status, not a detail. Icon-only

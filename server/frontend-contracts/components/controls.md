@@ -110,6 +110,8 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
 - Die Gruppe hat vor und nach sich denselben Abstand `--space-2`: vor ihr Spielname und optionale
   Badges, nach ihr das Genre. Ihre DOM- und sichtbare Reihenfolge ist Plattform-Link, Trailer-Link,
   Trackbar-Markierung, Genre.
+- Unter 640 px belegt das Genre eine eigene zweite Zeile. Es beginnt mit der sichtbaren Textkante
+  des Spielnamens, sodass Titel und Symbolgruppe nicht wegen des Genres schrumpfen.
 - Die Linkaktionen besitzen keinen Zwischenraum. Die nicht interaktive Trackbar-Markierung bleibt
   ein zentriertes 18×18-px-Symbol in einem transparenten 32×32-px-Slot.
 - Der Link bleibt ein semantisches `<a>`-Element mit deutschem Accessible Name. Auf Hover verwendet
