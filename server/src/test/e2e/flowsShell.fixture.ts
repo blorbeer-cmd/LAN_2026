@@ -691,14 +691,48 @@ flowTest('icon-only controls keep the shared height and minimum width on phones'
   await page.waitForSelector('.game-icon-btn');
   await assertTouchTargets('.topbar-title', 'logo link', true);
   await assertTouchTargets('#event-context .search-select-toggle', 'event selector');
-  await assertTouchTargets('.game-icon-btn', 'game actions');
+  const gameActionSizes = await page.locator('.game-icon-btn').evaluateAll((elements) =>
+    elements
+      .map((element) => element.getBoundingClientRect())
+      .filter((box) => box.width > 0 && box.height > 0)
+      .map((box) => ({ width: Math.round(box.width), height: Math.round(box.height) })),
+  );
+  assert.ok(gameActionSizes.length > 0, 'game actions should expose visible link targets');
+  assert.deepEqual(
+    gameActionSizes.filter(({ width, height }) => width !== 32 || height !== 32),
+    [],
+    `game actions must preserve their compact 32px geometry: ${JSON.stringify(gameActionSizes)}`,
+  );
+  const gameDetailTriggerHeights = await page.locator('.game-row-detail-trigger').evaluateAll((elements) =>
+    elements
+      .map((element) => Math.round(element.getBoundingClientRect().height))
+      .filter((height) => height > 0),
+  );
+  assert.ok(gameDetailTriggerHeights.length > 0, 'game names should expose detail triggers');
+  assert.deepEqual(
+    gameDetailTriggerHeights.filter((height) => height < 31 || height > 33),
+    [],
+    `game detail triggers must preserve the compact control height: ${JSON.stringify(gameDetailTriggerHeights)}`,
+  );
+  const gameTrackIndicatorSizes = await page.locator('.game-track-indicator').evaluateAll((elements) =>
+    elements
+      .map((element) => element.getBoundingClientRect())
+      .filter((box) => box.width > 0 && box.height > 0)
+      .map((box) => ({ width: Math.round(box.width), height: Math.round(box.height) })),
+  );
+  assert.ok(gameTrackIndicatorSizes.length > 0, 'game tracking indicators should expose a visible slot');
+  assert.deepEqual(
+    gameTrackIndicatorSizes.filter(({ width, height }) => width !== 32 || height !== 32),
+    [],
+    `game tracking indicators must preserve the compact link-slot geometry: ${JSON.stringify(gameTrackIndicatorSizes)}`,
+  );
   const gameActionGaps = await page.locator('[data-game-catalog-search-item]').first().locator('.game-icon-btn')
     .evaluateAll((elements) => elements.slice(1).map((element, index) => {
       const previous = elements[index].getBoundingClientRect();
       const current = element.getBoundingClientRect();
       return Math.round(current.left - previous.right);
     }));
-  assert.deepEqual(gameActionGaps, [0, 0], 'full-size game touch targets should not add visual gaps');
+  assert.deepEqual(gameActionGaps, [0], 'compact game link targets should not add visual gaps');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 
   await openProfile();
@@ -1709,11 +1743,10 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   await page.click('.nav-btn[data-view="gameCatalog"]');
   await suggestionRow.waitFor();
 
-  // Promote the suggestion into the catalog via its detail modal (row-level
-  // actions live only in there now — the row itself just carries the info
-  // icon), then rate it right in the row — no detour through a separate
-  // profile page needed.
-  await suggestionRow.locator('[data-detail]').click();
+  // Promote the suggestion into the catalog via the detail modal opened by
+  // its game-name action, then rate it right in the row — no detour through
+  // a separate profile page needed.
+  await suggestionRow.locator('button[data-detail]').click();
   const gameDialog = page.locator('.modal');
   await gameDialog.waitFor();
   assert.equal(await gameDialog.locator('.modal-header h2').count(), 1);
