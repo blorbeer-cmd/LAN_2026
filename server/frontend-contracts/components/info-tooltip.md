@@ -165,7 +165,9 @@ existiert nicht: der Trigger bleibt bedienbar, gerade wenn das erklärte Control
   Geometriemessung besteht den fehlerhaften Zustand dagegen anstandslos — sie ersetzt diese Prüfung
   deshalb nicht, sondern ergänzt sie. Automatisiert abgedeckt ist der Platzanspruch in
   `server/src/test/e2e/eventDatePoll.e2e.test.ts`: eine Option mit langem Titel, Notiz und Link
-  behält von 320 bis 1440 px mindestens die halbe Zeilenbreite.
+  behält unterhalb 640 px die ganze Headerzeile für ihre Titelzeile, und mit gespeicherter Antwort
+  — also sichtbarem Ergebnisbadge — gilt dasselbe zusätzlich mit der Zusicherung, dass das Badge
+  unterhalb des Titels steht.
 - Eine Überschrift mit Trigger ist nicht höher als dieselbe Überschrift ohne Trigger.
 - Das geöffnete Panel bleibt vollständig im Viewport und schließt mit `Escape` unter Rückgabe des
   Fokus.
