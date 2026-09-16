@@ -538,6 +538,38 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     }
   }
   await responseParent.evaluate((parent) => { (parent as HTMLElement).style.removeProperty('width'); });
+  // The result badge only exists once a response is stored — without one
+  // `recommendedOptionId` returns nothing and the loop above measures an empty
+  // badge container. Rating the long option highest makes it the recommended
+  // one, so the worst case of the contract (long title, note, link and a real
+  // badge) is what gets measured on a phone.
+  const longOption = ratingPoll.locator('.event-poll-option', { hasText: 'Ein langer frei eingegebener' });
+  await longOption.locator('[data-poll-response="5"]').click();
+  await linkedOption.locator('[data-poll-response="1"]').click();
+  await ratingPoll.locator('[data-save-poll]').click();
+  const ratingSavedToast = ownerPage.locator('.toast', { hasText: 'Antwort gespeichert' });
+  await ratingSavedToast.waitFor();
+  await longOption.locator('.event-poll-option-badges .badge').waitFor();
+  for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
+    await ownerPage.setViewportSize(viewport);
+    const withBadge = await longOption.evaluate((option) => {
+      const row = option.querySelector('.event-poll-option-header')!.getBoundingClientRect();
+      const titleRow = option.querySelector('.event-poll-option-title-row')!.getBoundingClientRect();
+      const badge = option.querySelector('.event-poll-option-badges .badge')!.getBoundingClientRect();
+      return {
+        row: row.width, titleRow: titleRow.width, title: option.querySelector('.event-poll-option-title-row strong')!.getBoundingClientRect().width,
+        badgeTop: badge.top, titleBottom: titleRow.bottom,
+      };
+    });
+    assert.ok(withBadge.titleRow >= withBadge.row - 1,
+      `a visible badge does not take the long title's row: ${JSON.stringify({ viewport, withBadge })}`);
+    assert.ok(withBadge.badgeTop >= withBadge.titleBottom - 2,
+      `the badge wraps below the long title instead of beside it: ${JSON.stringify({ viewport, withBadge })}`);
+  }
+  // This response's toast has to be gone before the anonymous poll waits for
+  // its own one below, otherwise that wait matches this stale toast and the
+  // vote count is read before the save has landed.
+  await ratingSavedToast.waitFor({ state: 'detached' });
   await ownerPage.setViewportSize({ width: 1024, height: 768 });
   const ratingPollId = await ratingPoll.getAttribute('data-poll-card');
   await navigate(ownerPage, 'home');

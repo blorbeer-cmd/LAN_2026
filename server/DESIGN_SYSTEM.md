@@ -188,7 +188,7 @@ scale step worth adding here instead).
 
 `--tap-target-size` (44px) defines registered structural heights and the shared minimum width of
 icon controls. The one registered exception is the contextual-help trigger, a
-`--control-height` square so its glyph stays close to the text it explains
+`--control-height` square so its glyph stays close to the text or control it explains
 ([InfoTooltip](frontend-contracts/components/info-tooltip.md#geometrie)).
 `--control-height` (32px) defines the shared height of standard interactive controls
 on desktop and mobile. Variants, ownership, normalized geometry and structure targets are specified in
@@ -368,9 +368,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   while focus is what a keyboard Tab and a touch tap produce, so the text stays reachable where there
   is no hover (phones). It closes on mouse-leave, blur, Escape or an outside pointer press. A tooltip
   trigger always follows
-  directly to the right of the visible text it explains, as its sibling and never inside it; it does
-  not precede a checkbox or float independently at the far edge of a row. Its square 32px target
-  keeps the glyph 12px from that text in every type size — placement, geometry and panel behavior
+  directly to the right of the visible text — or of the control — it explains, as its sibling and
+  never inside it; it does not precede a checkbox or float independently at the far edge of a row.
+  Its square 32px target keeps the glyph 12px from that element's edge in every type size — placement, geometry and panel behavior
   are binding in [InfoTooltip](frontend-contracts/components/info-tooltip.md). The optional
   `.info-tooltip-trigger--warning` variant
   (red instead of muted) marks the reason beside a currently disabled action, e.g. „Teams

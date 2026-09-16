@@ -32,7 +32,8 @@ Ausrichtung im Trigger oder Glyphmaße setzen. Die einzige Ausnahme ist der bena
 ## 4. Varianten
 
 - `.info-tooltip-trigger` (Hilfe, `registry:info-trigger`): `--text-muted`, im geöffneten Zustand
-  `--accent` auf `--bg-elevated-2`. Sie steht neben dem erklärten **Text**.
+  `--accent` auf `--bg-elevated-2`. Sie steht neben dem erklärten **Text** oder dem erklärten
+  **Control**; der Abstand gilt in beiden Fällen ab dessen Elementkante.
 - `.info-tooltip-trigger--warning` (`variant: 'warning'`, `registry:info-warning-state`):
   `--danger`, geöffnet auf `--danger-bg`. Sie nennt den Grund für ein aktuell **deaktiviertes
   Control** und steht neben diesem Control, nicht neben dessen Beschriftung. Sie erbt die
