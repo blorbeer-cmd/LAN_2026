@@ -1010,11 +1010,18 @@ textarea {
   .event-poll-option-extra-fields {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* The badge takes its own row below --bp-md instead of reserving 6.5rem
+     beside the title. Sharing that row left the title about 68px on a 320px
+     phone, and `overflow-wrap: anywhere` then broke a long option name almost
+     letter by letter — 14 lines where the same name needs 7. With the badge
+     wrapped the title keeps roughly the width it had before this row stopped
+     wrapping, and the help trigger still stays beside it. */
   .event-poll-option-header {
-    grid-template-columns: minmax(0, 1fr) minmax(6.5rem, auto);
+    grid-template-columns: minmax(0, 1fr);
   }
   .event-poll-option-badges {
-    min-width: 6.5rem;
+    min-width: 0;
+    justify-content: flex-start;
   }
   .event-poll-vote-person {
     align-items: flex-start;
