@@ -438,11 +438,11 @@ async function evaluateGithubCommand(args) {
 
   if (args.summary) appendFileSync(args.summary, summaryFor(results, config));
   if (args.report) writeFileSync(args.report, `${JSON.stringify({ results }, null, 2)}\n`, "utf8");
+  // The suspicion list is the whole contract with the workflow: an empty list
+  // skips the confirmation job, a non-empty one becomes its matrix. A second,
+  // boolean output used to gate the same job and disagreed with this list on
+  // run 35091900593, so it is gone rather than left as a tempting gate.
   if (args["github-output"]) {
-    appendFileSync(
-      args["github-output"],
-      `has_suspicions=${suspicions.length > 0}\n`,
-    );
     appendFileSync(
       args["github-output"],
       `suspicions=${JSON.stringify(suspicions)}\n`,

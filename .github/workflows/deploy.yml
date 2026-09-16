@@ -374,7 +374,6 @@ jobs:
       actions: read
       contents: read
     outputs:
-      has_suspicions: ${{ steps.evaluate.outputs.has_suspicions }}
       suspicions: ${{ steps.evaluate.outputs.suspicions }}
     steps:
       - uses: actions/checkout@v7
@@ -401,14 +400,23 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+  # The suspicion list is the only gate. A separate boolean `if` guarded this
+  # job as well, and on run 35091900593 the two disagreed: the detector
+  # reported e2e-core as "Wiederholung erforderlich" and set both outputs, yet
+  # the job was dropped before its matrix expanded — its check kept the raw
+  # name `Confirm test performance (${{ matrix.suite }})`. The fail-closed
+  # aggregator then failed the build over a confirmation that was never
+  # allowed to run, which silently disables the "a repeat run must confirm a
+  # suspicion" rule from server/TESTING.md. An empty include list skips the
+  # job by itself, so one condition replaces two that had to agree. The
+  # `|| '[]'` keeps a missing output a skip instead of a fromJSON parse error.
   test-performance-confirm:
     name: Confirm test performance (${{ matrix.suite }})
-    if: needs['test-performance-detect'].outputs.has_suspicions == 'true'
     needs: test-performance-detect
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs['test-performance-detect'].outputs.suspicions) }}
+        include: ${{ fromJSON(needs['test-performance-detect'].outputs.suspicions || '[]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
