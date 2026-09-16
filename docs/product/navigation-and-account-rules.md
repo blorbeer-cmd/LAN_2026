@@ -44,18 +44,17 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   LAN Orga uses `.more-subpage-header--tabs` on phone and laptop layouts. Those headers place tabs
   on a dedicated second row and share the intentional lower first-card edge. Desktop LAN Orga
   hides the duplicate tabs and shows the opened page's title in the compact header. Every tab row
-  remains outside any card, which keeps it distinguishable from the in-card control
-  rows further down. Because each tab is a real route, the row is `<nav>` navigation rather than a
-  toggle: the active tab carries `aria-current="page"` plus `.btn-primary`, never `aria-pressed`.
-  A tab may carry a live count in parentheses (Orga's „To-Do“ shows the current identity's own
-  open items); in Desktop mode its rail entry carries the same count. A zero count renders no
-  parentheses at all. The count loads on entering any compact Orga tab or any desktop page and
-  updates the tab buttons or desktop rail in place. Tabs share the full width on phones for a
-  comfortable tap target and size to their own label from `--bp-md`, because two tabs stretched
-  across the wide content column would read as banners rather than navigation. A primary action
-  belongs in the first relevant card header when that card exists (for example „Ergebnis eintragen“
-  beside „Rangliste & Spielzeit“),
-  so it does not insert a detached row between the area tabs and the content surface.
+  remains outside any card, distinct from the in-card controls further down. Each tab is a real
+  route, so the row is `<nav>` navigation rather than a toggle: the active tab carries
+  `aria-current="page"` plus `.btn-primary`, never `aria-pressed`. A tab may carry a live count
+  in parentheses (Orga's „To-Do“ shows the current identity's own open items); on wide desktop
+  screens its rail entry carries the same count. A zero count renders no parentheses. The count
+  loads on entering any compact Orga tab or any page with a visible desktop rail, then updates
+  the tab buttons or rail in place. Tabs share the full width on phones for a comfortable tap
+  target and size to their own label from `--bp-md`, because two tabs stretched across the wide
+  content column would read as banners rather than navigation. A primary action belongs in the
+  first relevant card header when that card exists (for example „Ergebnis eintragen“ beside
+  „Rangliste & Spielzeit“), so it does not insert a detached row between tabs and content.
   Re-rendering the same tab reuses its existing `.section-view` element instead of rebuilding the
   shell, so a sub-view that reads its own previous DOM before redrawing (the Packliste's add-item
   draft and focus, the same survives-its-own-rerender pattern the Checkliste's To-Do form uses)

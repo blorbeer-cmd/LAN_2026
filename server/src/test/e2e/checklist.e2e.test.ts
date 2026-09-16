@@ -294,8 +294,8 @@ test('the To-Do count stays visible on compact Orga tabs and the desktop rail', 
   try {
     await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
     await page.waitForSelector('.desktop-nav-btn[data-view="checklist"] .desktop-nav-label:text-is("To-Do (1)")');
-    await page.click('.desktop-nav-btn[data-view="events"]');
-    await page.waitForSelector('#view-container[data-view="events"]');
+    await page.click('.desktop-nav-btn[data-view="gameCatalog"]');
+    await page.waitForSelector('#view-container[data-view="gameCatalog"]');
 
     const created = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
       method: 'POST',

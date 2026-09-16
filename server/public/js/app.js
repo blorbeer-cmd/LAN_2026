@@ -218,7 +218,7 @@ function syncDesktopTaskCount() {
   const button = document.querySelector('.desktop-nav-btn[data-view="checklist"]');
   if (!button) return;
   const count = openTaskCount();
-  const label = `${viewDefinition('checklist').label}${count ? ` (${count})` : ''}`;
+  const label = `${button.dataset.baseLabel}${count ? ` (${count})` : ''}`;
   const labelElement = button.querySelector('.desktop-nav-label');
   if (labelElement.textContent !== label) labelElement.textContent = label;
   button.setAttribute('aria-label', label);
@@ -226,6 +226,7 @@ function syncDesktopTaskCount() {
 
 function refreshDesktopTaskCount() {
   if (document.documentElement.dataset.layoutMode !== 'desktop'
+    || !window.matchMedia('(min-width: 1280px)').matches
     || !startupData.ready
     || !state.activeEvent
     || !viewIsEnabledForEvent('checklist', state.activeEvent)) return;
@@ -269,6 +270,7 @@ function syncDesktopNavButton(button, entry) {
     delete button.dataset.desktopAction;
   }
   button.setAttribute('aria-label', entry.label);
+  button.dataset.baseLabel = entry.label;
   if (button.dataset.iconKey !== entry.iconKey) {
     button.querySelector('.desktop-nav-icon').innerHTML = icon(domainIcon(entry.iconKey));
     button.dataset.iconKey = entry.iconKey;
