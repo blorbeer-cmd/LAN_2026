@@ -711,8 +711,10 @@ export function renderArcade(container, ctx) {
           ? `<section class="card stack grouped-page-section" aria-labelledby="arcade-active-game-title">
                <div class="grouped-page-section-title">
                  <div class="row arcade-active-game-title">
-                   <h2 id="arcade-active-game-title">${escapeHtml(activeGameDefinition.name)}</h2>
-                   ${infoTooltipHtml(`arcade-${activeGameDefinition.id}-game-info`, activeGameDefinition.name, activeGameDefinition.help)}
+                   <h2 id="arcade-active-game-title" class="title-with-info">
+                     <span>${escapeHtml(activeGameDefinition.name)}</span>
+                     ${infoTooltipHtml(`arcade-${activeGameDefinition.id}-game-info`, activeGameDefinition.name, activeGameDefinition.help)}
+                   </h2>
                  </div>
                </div>
                ${activeGameHtml()}

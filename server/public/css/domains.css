@@ -969,7 +969,7 @@ input[type='number'].tournament-score-input {
   margin: 0;
   font-size: var(--font-size-lg);
 }
-/* A 44px info target must remain easy to hit without making only the titles
+/* The 32px info target must remain easy to hit without making only the titles
    carrying help sit lower than every other card heading. Its negative outer
    margin keeps the hit area while removing that extra height from flex
    layout. */

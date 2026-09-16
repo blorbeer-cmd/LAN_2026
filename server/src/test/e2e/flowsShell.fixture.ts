@@ -22,7 +22,7 @@ import {
   openProfile,
 } from './flowsShared.fixture';
 import { openMoreViewEntry } from './navHelpers';
-import { assertControlHeights, assertNoOverflow } from './visualHelpers';
+import { assertControlHeights, assertInfoTooltipPlacement, assertNoOverflow } from './visualHelpers';
 
 registerFlowFixture('shell');
 
@@ -1462,6 +1462,9 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.locator('#seating-monitors-help').count(), 1);
   assert.equal(await page.locator('#seating-save-help').count(), 0);
   assert.equal(await page.locator('.more-subpage-title-row .view-title [data-info-tooltip-trigger]').count(), 1);
+  // Largest type on the page: the view title. The help glyph keeps the same
+  // distance to it as to a small field label elsewhere.
+  await assertInfoTooltipPlacement(page, 1);
   await page.click('[aria-label="Mehr Informationen zu Sitzplan"]');
   await page.waitForSelector('#seating-monitors-help:not([hidden])');
 });

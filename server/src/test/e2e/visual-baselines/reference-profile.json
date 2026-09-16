@@ -29,10 +29,10 @@
     "core-filters-390.png": "sha256:8dae909f26da18f0a209ebd513cf567cf26afc3bf10435c0167ba8eef2dd080c",
     "core-footer-1024.png": "sha256:2f9297edeece5c91e3fdf786abe46904b81cff1c1d129900de98cf76066fc026",
     "core-footer-390.png": "sha256:c71530b3dd16b03ddd1ac881401c71c7d2b73b2b7fe49b1ae26e03a18f678e78",
-    "core-form-1024.png": "sha256:5d55e25a62ce01a0295167e6a5b9bacd869bcd9e6d5ee7ef9c0ddd517dae85ca",
-    "core-form-390.png": "sha256:fecabd10a1841f7e3c56dcdea893982dd3a3d18ef92f3a1ed28b4af878f3df25",
-    "core-modal-1024.png": "sha256:98285c1893b08c648b9ec365a21f8a579c9ca878901d180b290846ee78735f79",
-    "core-modal-390.png": "sha256:8a8e111159a4b9ce4e8d09817938e33565b8c6c89ccb6b97c80ee389e69566aa",
+    "core-form-1024.png": "sha256:ab85e08a3d885a41a7ee43407e073d0a57346ab15705bbb81c441a3aded96dcc",
+    "core-form-390.png": "sha256:0499ffd10b0a39ac71e2cbd42ca0645ecbc043d049d4b4a9c422212879e06518",
+    "core-modal-1024.png": "sha256:3ba10ee9924795886f1310724ab45ba63678ed34b62e728c0b184ba1b44b6bd0",
+    "core-modal-390.png": "sha256:559ef761e781d4469936dff91621ac60ffb912d153e5649a0336739cc62b0ad3",
     "core-roster-1024.png": "sha256:5dac86a766dd72e709fbd6dba1503472bc744295ef3460b754d91a6a0dd2981d",
     "core-roster-390.png": "sha256:3fc9eeeedcdbccb1fd3247ef441043fe9e0c54abac91c0891aed1262c2a5948e",
     "core-tabs-1024.png": "sha256:dde2668b1f76b531e9eab3fe480f5eb4aaa8cb7773c2ac3b9f7092b9ab47cb8d",
@@ -40,6 +40,6 @@
   },
   "provenance": {
     "environment": "Recorded from CI run 34905586877 (head d51a751be48c58d0c70cd2bdd6ccf2fb674c6e99), identical in Browser E2E Core and Arcade; artifacts e2e-core-failure-diagnostics 10372790933 and e2e-arcade-failure-diagnostics 10371554046; reviewed.",
-    "baselines": "Package 6 references from ubuntu-latest CI runs 34803888861 and 34829176381. All 17 actuals of CI run 34905586877 in server/visual-reference are byte-identical to them and were reviewed individually, so no reference file changed with the move to the container."
+    "baselines": "Package 6 references from ubuntu-latest CI runs 34803888861 and 34829176381. All 17 actuals of CI run 34905586877 in server/visual-reference are byte-identical to them and were reviewed individually, so no reference file changed with the move to the container. core-modal-390, core-form-390, core-modal-1024 and core-form-1024 were replaced from artifact e2e-core-failure-diagnostics 10441959292 of CI run 35087200565 (PR #636, head cc605ceaa5e94187bbe6238a503746aa19e64038, checkout 766da70e371d637c3141dbadb10c515ace3cdf29) after the help trigger became a 32px square: each file was reviewed against its diff, and in all four the only deviation is one 22x16px block at the info trigger of the trailer field, 156 pixels per scene. The environment of that run matched the recorded one with no differences."
   }
 }
