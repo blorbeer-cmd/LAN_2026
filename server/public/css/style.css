@@ -3348,6 +3348,13 @@ button.card {
   gap: var(--space-2);
   min-width: 0;
 }
+.game-row-title-copy {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
 .game-row-detail-trigger {
   padding-inline-end: 0;
   background: transparent;
@@ -3358,10 +3365,10 @@ button.card {
     color: var(--accent);
   }
 }
-/* Optional genre tag next to the title; never allowed to shrink the title
-   below readability, so it's the one that gives way first on narrow rows. */
+/* Optional genre tag beneath the title. It gives way before the action slots
+   on narrow rows, so the game name and every control remain usable. */
 .game-row-genre {
-  flex: 0 1 auto;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
