@@ -156,10 +156,15 @@ existiert nicht: der Trigger bleibt bedienbar, gerade wenn das erklärte Control
   bleibt Button plus Trigger in einer Zeile.
 - Die Abnahme misst dabei **auch den erklärten Text**, nicht nur die Glyphposition. Eine Zeile, die
   den Trigger festhält und dafür den Text auf Buchstabenbreite quetscht, erfüllt diesen Vertrag
-  nicht. Prüffall ist die Umfrageoption mit Notiz, Link und Ergebnisbadge: bei 320 px behält ein
-  Titel aus rund 90 Zeichen mindestens 130 px Breite und höchstens 7 Zeilen; gemessen wurde er mit
-  91 Zeichen. Die reine Geometriemessung besteht den fehlerhaften Zustand dagegen anstandslos — sie
-  ersetzt diese Prüfung deshalb nicht, sondern ergänzt sie.
+  nicht. Prüffall ist die Umfrageoption mit Notiz, Link und Ergebnisbadge: bei 320 px rückt das
+  Ergebnisbadge in eine eigene Zeile, und der Titel behält die ganze Zeile abzüglich Trigger, Link
+  und Abständen. Gemessen mit 89 Zeichen in Chromium: 118 px von 202 px Zeilenbreite und 7 Zeilen;
+  ohne den Umbruch des Badges waren es 80 px und 12 Zeilen. Ausschlaggebend ist der freigegebene
+  Platz, nicht die Zeilenzahl selbst — sie hängt von den Schriftmaßen der Plattform ab. Die reine
+  Geometriemessung besteht den fehlerhaften Zustand dagegen anstandslos — sie ersetzt diese Prüfung
+  deshalb nicht, sondern ergänzt sie. Automatisiert abgedeckt ist der Platzanspruch in
+  `server/src/test/e2e/eventDatePoll.e2e.test.ts`: eine Option mit langem Titel, Notiz und Link
+  behält von 320 bis 1440 px mindestens die halbe Zeilenbreite.
 - Eine Überschrift mit Trigger ist nicht höher als dieselbe Überschrift ohne Trigger.
 - Das geöffnete Panel bleibt vollständig im Viewport und schließt mit `Escape` unter Rückgabe des
   Fokus.

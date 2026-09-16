@@ -414,7 +414,11 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     mode: 'rating_1_5',
     options: [
       { label: 'Haus am See', description: 'Mit Sauna', url: 'https://example.com/haus' },
-      'Hütte im Wald',
+      {
+        label: 'Ein langer frei eingegebener Optionstitel mit mehreren Wörtern für den gemeinsamen Termin',
+        description: 'Notiz zur langen Option',
+        url: 'https://example.com/lang',
+      },
     ],
   });
   const ratingPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Unterkünfte bewerten' });
@@ -490,6 +494,20 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
       JSON.stringify({ viewport, optionLinkControl }));
     assert.equal(optionLinkControl.iconWidth, 20, 'the option link uses its icon-button owner glyph');
     assert.equal(optionLinkControl.iconHeight, 20);
+    // The geometry above still passes when the row keeps its trigger by
+    // squeezing the text to letter width. On a phone the badge column must
+    // therefore stop competing for that width: title, help trigger and link
+    // get the whole row, and the badge wraps underneath.
+    const longTitle = await ratingPoll.locator('.event-poll-option', { hasText: 'Ein langer frei eingegebener' })
+      .evaluate((option) => ({
+        row: option.querySelector('.event-poll-option-header')!.getBoundingClientRect().width,
+        titleRow: option.querySelector('.event-poll-option-title-row')!.getBoundingClientRect().width,
+        title: option.querySelector('.event-poll-option-title-row strong')!.getBoundingClientRect().width,
+      }));
+    if (viewport.width < 640) {
+      assert.ok(longTitle.titleRow >= longTitle.row - 1,
+        `a long option title keeps the whole row on a phone: ${JSON.stringify({ viewport, longTitle })}`);
+    }
   }
   await optionLink.focus();
   await ownerPage.keyboard.press('Shift+Tab');
