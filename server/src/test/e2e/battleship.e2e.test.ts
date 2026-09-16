@@ -12,7 +12,7 @@ import {
 } from './authHelpers';
 import { createE2EDiagnosticTest, trackE2EContext, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
-import { assertControlHeights, assertNoOverflow } from './visualHelpers';
+import { assertControlHeights, assertInfoTooltipPlacement, assertNoOverflow } from './visualHelpers';
 
 let BASE_URL: string;
 
@@ -369,6 +369,9 @@ test('Battleship: an admin starts a playable match against the AI', async () => 
     await admin.page.waitForSelector('#battleship-random');
     assert.equal(await admin.page.locator('#battleship-submit-setup').isDisabled(), true);
     await assertControlHeights(admin.page.locator('#battleship-random, #battleship-submit-setup'));
+    // The setup title sits in a section header with space-between: without its
+    // own .title-with-info the help trigger drifts to the far end of that row.
+    await assertInfoTooltipPlacement(admin.page, 1);
     await randomFleet(admin.page);
     assert.equal(await admin.page.locator('#battleship-submit-setup').isEnabled(), true);
     await assertControlHeights(admin.page.locator('#battleship-random, #battleship-submit-setup'));
