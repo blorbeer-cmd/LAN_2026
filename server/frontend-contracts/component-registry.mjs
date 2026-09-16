@@ -1323,7 +1323,7 @@ export const permanentVariants = [
     "selector": ".more-subpage-header--tabs",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Permanent two/three-row header reservation follows existing responsive tab wrapping."
+    "reason": "Phone and laptop reserve two or three rows for tabs; desktop uses a compact single row."
   },
   {
     "id": "section-heading",

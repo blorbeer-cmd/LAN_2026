@@ -31,7 +31,7 @@ import { state } from './state.js';
 function inSection(view, render) {
   const inOrga = sectionKeyForView(view) === 'orga';
   return (container, ctx) => {
-    // Orga's To-Dos tab carries a live count, so every tab of that area needs
+    // Compact Orga tabs carry a live count, so every route in that area needs
     // the underlying data — not just the one that renders the list.
     if (inOrga) ensureTasksLoaded(ctx);
     const content = renderSectionShell(container, view, {

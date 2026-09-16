@@ -6,7 +6,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 
 9. **Reuse canonical semantics.** Navigation and „Mehr“ define domain icons through
    `domainIcons.js`; all other appearances reuse those mappings. Visible German page labels stay
-   concise (`Teams`, `Vote`, `To-Do`, `Info`, `Trivia`, `Historie`), while longer explanations and
+   concise (`Teams`, `Vote`, `Orga`, `To-Do`, `Info`, `Trivia`, `Historie`), while longer explanations and
    former labels may appear only in help text or technical documentation where needed.
 10. **Keep account management behind the authenticated boundary.** The current roster is readable
     by every signed-in member, while only the session account can edit its own profile. Player
@@ -38,22 +38,23 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 ## Bereich-Tabs
 
 - **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
-  (Match, Auswertung and compact LAN Orga; defined in `sectionNav.js`). General events present every Orga
-  route as a standalone page with its own title because those routes are their primary navigation,
-  not a secondary Orga collection. Match and Auswertung use `.section-page-header`; LAN Orga uses
-  `.more-subpage-header--tabs` on phone and laptop layouts. Those tabbed headers place their tabs
+  (Match, Auswertung and compact LAN Orga; defined in `sectionNav.js`). General events present
+  every Orga route as a standalone page with its own title because those routes are their primary
+  navigation, not a secondary Orga collection. Match and Auswertung use `.section-page-header`;
+  LAN Orga uses `.more-subpage-header--tabs` on phone and laptop layouts. Those headers place tabs
   on a dedicated second row and share the intentional lower first-card edge. Desktop LAN Orga
-  hides the duplicate tabs and shows the opened page's title in the compact header. Every tab row remains outside any card, which keeps
-  it distinguishable from the in-card control
+  hides the duplicate tabs and shows the opened page's title in the compact header. Every tab row
+  remains outside any card, which keeps it distinguishable from the in-card control
   rows further down. Because each tab is a real route, the row is `<nav>` navigation rather than a
   toggle: the active tab carries `aria-current="page"` plus `.btn-primary`, never `aria-pressed`.
   A tab may carry a live count in parentheses (Orga's „To-Do“ shows the current identity's own
-  open items) so the number stays visible from every tab of the area; a zero count renders no
-  parentheses at all. That count is loaded once the area is entered on any of its tabs, not only the
-  one that renders the underlying list, and is patched into all of the area's tab buttons in place. Tabs share the full width on phones for a comfortable tap target and size to
-  their own label from `--bp-md`, because two tabs stretched across the wide content column would
-  read as banners rather than navigation. A primary action belongs in the first relevant card
-  header when that card exists (for example „Ergebnis eintragen“ beside „Rangliste & Spielzeit“),
+  open items); in Desktop mode its rail entry carries the same count. A zero count renders no
+  parentheses at all. The count loads on entering any compact Orga tab or any desktop page and
+  updates the tab buttons or desktop rail in place. Tabs share the full width on phones for a
+  comfortable tap target and size to their own label from `--bp-md`, because two tabs stretched
+  across the wide content column would read as banners rather than navigation. A primary action
+  belongs in the first relevant card header when that card exists (for example „Ergebnis eintragen“
+  beside „Rangliste & Spielzeit“),
   so it does not insert a detached row between the area tabs and the content surface.
   Re-rendering the same tab reuses its existing `.section-view` element instead of rebuilding the
   shell, so a sub-view that reads its own previous DOM before redrawing (the Packliste's add-item

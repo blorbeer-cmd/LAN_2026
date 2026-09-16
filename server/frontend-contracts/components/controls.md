@@ -515,7 +515,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:subpage-heading`: Permanent compact page-header alignment row.
 
-- `registry:tabbed-subpage-heading`: Permanent two/three-row header reservation follows existing responsive tab wrapping.
+- `registry:tabbed-subpage-heading`: Phone and laptop reserve two or three rows for tabs; desktop uses a compact single row.
 
 - `registry:section-heading`: Permanent tabbed section-header reservation.
 
