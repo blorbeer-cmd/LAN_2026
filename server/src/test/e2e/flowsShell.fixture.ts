@@ -291,6 +291,24 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   assert.equal(await page.locator('#profile-btn').count(), 0);
   assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), 'home');
   assert.equal(await page.title(), 'Home · Respawn');
+  assert.equal(await page.locator('.desktop-nav-btn[data-view="checklist"] .desktop-nav-label').innerText(), 'To-Do');
+
+  for (const [view, title] of [
+    ['eventPolls', 'Umfragen'],
+    ['arrivals', 'An- & Abreise'],
+    ['events', 'Events'],
+    ['checklistPacking', 'Packliste'],
+    ['checklist', 'To-Do'],
+    ['foodOrders', 'Essen'],
+  ] as const) {
+    await page.click(`.desktop-nav-btn[data-view="${view}"]`);
+    await page.waitForSelector(`#view-container[data-view="${view}"] h1.view-title`);
+    assert.equal(await page.locator('#view-container h1.view-title').innerText(), title);
+    assert.equal(await page.locator('#view-container .section-tabs:visible').count(), 0);
+    assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), view);
+  }
+  await page.click('.desktop-nav-btn[data-view="home"]');
+  await page.waitForSelector('#view-container h1:text-is("Home")');
 
   const homeColumns = await page.locator('.home-priority-grid').evaluate((layout) => ({
     display: getComputedStyle(layout).display,

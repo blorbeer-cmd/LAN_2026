@@ -216,7 +216,7 @@ export const VIEW_MANIFEST = Object.freeze({
     search: search('Orga', 'Aufgaben und Mitbring-Anfragen der Gruppe', 'orga checkliste todo aufgabe anfrage mitbringen', 66),
     navigation: Object.freeze({
       bottom: Object.freeze({ general: Object.freeze({ order: 3, ariaLabel: 'To-Do' }) }),
-      desktop: desktopNavigation('orga', 4, { label: 'To-Dos' }),
+      desktop: desktopNavigation('orga', 4),
     }),
     lifecycle: lifecycle('checklist', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.players, 'checklist:changed'] }),
   }),

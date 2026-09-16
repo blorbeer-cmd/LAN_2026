@@ -279,7 +279,7 @@ test('the Packliste draft and its focus survive a realtime re-render of the area
   );
 });
 
-test('the To-Dos tab count is present on every Orga tab, not only on the To-Dos list', async () => {
+test('the To-Do count stays visible on compact Orga tabs and the desktop rail', async () => {
   // Regression: openTaskCount() reads a cache that only the To-Dos list filled,
   // so entering Orga through another tab left the badge permanently blank.
   await switchAccount(bob);
@@ -289,6 +289,25 @@ test('the To-Dos tab count is present on every Orga tab, not only on the To-Dos 
   await page.waitForSelector('#view-container[data-view="arrivals"]');
   await page.waitForSelector('[data-section-tab="checklist"] [data-section-tab-count]:text("(1)")');
   assert.equal(await page.locator('[data-section-tab="checklist"][aria-current="page"]').count(), 0);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  try {
+    await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
+    await page.waitForSelector('.desktop-nav-btn[data-view="checklist"] .desktop-nav-label:text-is("To-Do (1)")');
+    await page.click('.desktop-nav-btn[data-view="gameCatalog"]');
+    await page.waitForSelector('#view-container[data-view="gameCatalog"]');
+
+    const created = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: alice.cookie },
+      body: JSON.stringify({ playerId: alice.id, title: 'Namensschilder sortieren', assigneePlayerIds: [bob.id] }),
+    });
+    assert.equal(created.status, 201, await created.text());
+    await page.waitForSelector('.desktop-nav-btn[data-view="checklist"] .desktop-nav-label:text-is("To-Do (2)")');
+    assert.equal(await page.locator('.desktop-nav-btn[data-view="checklist"]').getAttribute('aria-label'), 'To-Do (2)');
+  } finally {
+    await page.setViewportSize({ width: 390, height: 844 });
+  }
 });
 
 test('an already-open Home re-renders when a free To-Do appears and disappears elsewhere', async () => {

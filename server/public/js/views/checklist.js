@@ -133,9 +133,9 @@ function removeTaskFromCache(taskId) {
 }
 
 // How many To-Dos currently sit with the signed-in identity. The Orga area
-// shows this on its To-Dos tab, so the count stays visible from every tab of
-// the area instead of only from inside the list. Returns 0 while nothing is
-// loaded yet — a badge must never guess a number.
+// shows this on its compact To-Do tab and desktop rail entry, so the count
+// stays visible across the app. Returns 0 while nothing is loaded yet — a
+// badge must never guess a number.
 export function openTaskCount() {
   return assignedTasks()?.length ?? 0;
 }
@@ -166,10 +166,9 @@ export function assignedTasks() {
     });
 }
 
-// The tab count has to be right on every Orga tab, not only on the one that
-// happens to render the list — entering the area through Events or a direct
-// "/#arrivals" link otherwise leaves the badge permanently blank. Loading
-// re-renders once it resolves, and a filled cache makes this a no-op.
+// The count has to be right on every Orga tab and the desktop rail, not only
+// on the route that renders the list. Loading re-renders once it resolves,
+// and a filled cache makes this a no-op.
 export function ensureTasksLoaded(ctx) {
   if ((tasksCache === null || tasksStale) && !loadingTasks) loadTasks(ctx);
 }
