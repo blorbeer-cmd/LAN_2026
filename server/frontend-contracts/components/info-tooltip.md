@@ -32,11 +32,18 @@ Ausrichtung im Trigger oder Glyphmaße setzen. Die einzige Ausnahme ist der bena
 ## 4. Varianten
 
 - `.info-tooltip-trigger` (Hilfe, `registry:info-trigger`): `--text-muted`, im geöffneten Zustand
-  `--accent` auf `--bg-elevated-2`. Sie steht neben dem erklärten **Text**.
+  `--accent` auf `--bg-elevated-2`. Sie steht neben dem erklärten **Text** oder dem erklärten
+  **Control**; der Abstand gilt in beiden Fällen ab dessen Elementkante.
 - `.info-tooltip-trigger--warning` (`variant: 'warning'`, `registry:info-warning-state`):
   `--danger`, geöffnet auf `--danger-bg`. Sie nennt den Grund für ein aktuell **deaktiviertes
   Control** und steht neben diesem Control, nicht neben dessen Beschriftung. Sie erbt die
   Innengeometrie der Hilfevariante vollständig.
+
+Die Hilfevariante erklärt in zwei Fällen etwas: einen sichtbaren **Text** oder ein **Control**.
+Beide Fälle verwenden dieselbe Variante und dieselbe Geometrie und unterscheiden sich nur darin,
+woran der Trigger andockt; die Platzierungsregeln unten nennen beide getrennt. Ein Control erklärt
+sie, wenn die Aussage die Aktion betrifft und nicht deren Beschriftung, etwa
+„Übernahme bestätigen“ in der Kalenderbestätigung oder „Tracking starten“ in der Eventzeile.
 
 ## 5. Erlaubte Anpassungen
 
@@ -55,13 +62,18 @@ space-between` an den Zeilenrand schieben oder ihn in einen eigenen Umbruch zwin
   sichtbaren Text enthält (`<label>`, `<strong>`, Titel-`<span>`). Er steht nie **in** diesem
   Element und nie davor. Ein Button in einem `<label for=…>` erzeugt zwei konkurrierende
   Aktivierungsflächen und ist deshalb ausgeschlossen.
+- Erklärt der Trigger ein **Control** statt eines Textes, steht er als Geschwisterelement
+  unmittelbar nach diesem Control. Er MUSS in dessen Zeile bleiben — auch auf schmalen Viewports.
+  Ein Trägerlayout, das ihn auf eine eigene Zeile unter das Control schiebt, ist ausgeschlossen:
+  gelöst vom Control gelesen erklärt er nichts mehr.
 - Die Trägerzeile MUSS `display: flex`, `align-items: center` und `gap: var(--space-1)` besitzen.
   `.title-with-info` ist die Standardform; ein neuer lokaler Wrapper ist nur zulässig, wenn
   `.title-with-info` die Zeile nachweislich nicht tragen kann.
 - In Checkboxzeilen gilt die Reihenfolge Checkbox → Label → Trigger. Der Trigger tritt nie
   zwischen Checkbox und Label.
-- Bricht der erklärte Text um, bleibt der Trigger am Textende und DARF nicht allein in eine neue
-  Zeile rutschen.
+- Der Trigger DARF nie allein in eine eigene Zeile rutschen. Die Trägerzeile verwendet deshalb
+  keinen Umbruch; ein zu langer Text bricht innerhalb seines eigenen Elements um, während der
+  Trigger daneben stehen bleibt.
 - Absolute Positionierung ist ausschließlich zulässig, wenn der Träger die Trefferfläche über
   reservierten Innenabstand freihält; die einzige solche Stelle ist `.food-order-paypal-label`
   mit `padding-right: calc(var(--control-height) + var(--space-1))`.
@@ -79,10 +91,16 @@ space-between` an den Zeilenrand schieben oder ihn in einen eigenen Umbruch zwin
 - Das Glyph MUSS fest `16 × 16 px` messen. Der Trigger ist ein `<button>` und erbt keine
   Schriftgröße; ein `1.2em`-Glyph würde gegen die Browservorgabe aufgelöst und wäre nur zufällig
   einheitlich.
-- Daraus folgt der normative optische Abstand: zwischen der rechten Textkante und der linken
-  Glyphkante liegen `var(--space-1) + (var(--control-height) - 16px) / 2`. Das Abnahmebeispiel ist
-  **12 px (±1)** und gilt unverändert in jeder Textgröße.
-- Die Glyphmitte MUSS auf der Mitte des Textlinienkastens liegen; Toleranz 1 px.
+- Daraus folgt der normative optische Abstand: zwischen der rechten Kante des erklärten Elements
+  und der linken Glyphkante liegen `var(--space-1) + (var(--control-height) - 16px) / 2`. Das
+  Abnahmebeispiel ist **12 px (±1)** und gilt unverändert in jeder Textgröße.
+- Maßgeblich ist die Kante des erklärten **Elements**, nicht die der letzten Textzeile. Bei
+  einzeiligem Text fallen beide zusammen. Bricht der Text um, füllt sein Element die Zeile und der
+  Trigger steht rechts daneben, vertikal auf dessen Mitte — der Abstand zum Ende der letzten Zeile
+  ist dann größer und gerade nicht zu beanstanden.
+- Neben einem Control gilt dieselbe Rechnung ab dessen Rahmenkante. Der sichtbare Abstand zur
+  Beschriftung des Controls ist entsprechend um dessen Innenabstand größer.
+- Die Glyphmitte MUSS auf der Mitte des Elements liegen, das sie erklärt; Toleranz 1 px.
 - Die Trefferfläche DARF die Zeilenhöhe einer Überschrift nicht vergrößern. Zulässig ist
   ausschließlich der benannte negative `margin-block`-Ausgleich in `domains.css`; eine zweite
   Ausgleichsmechanik wird nicht eingeführt.
@@ -122,16 +140,34 @@ existiert nicht: der Trigger bleibt bedienbar, gerade wenn das erklärte Control
 - Schmal: `server/public/js/views/eventPolls.js` (Checkboxzeile „Anonyme Umfrage“ und die
   Optionsnotiz in `.event-poll-option-title-row`).
 - Breit: `server/public/js/views/votes.js` (`h2.title-with-info` der laufenden Abstimmung).
+- Neben einem Control: `server/public/js/eventPresentation.js` („Übernahme bestätigen“) und
+  `server/public/js/views/events.js` (Tracking starten/stoppen in `.action-menu-row`).
 - Warnvariante: `server/public/js/arcade/views/tetris.js` (eigene offene Lobby) und
   `server/public/js/views/arrivals.js` (deaktiviertes „Mitfahren“).
 
 ## 10. Prüfungen und Abnahmebeispiele
 
 - `npm --prefix server run check:components` ordnet Trigger und Warnzustand diesem Vertrag zu.
-- Browserprüfung bei 390 und 1024 px: Abstand rechte Textkante → linke Glyphkante 12 px (±1) im
-  Feldlabel (`--font-size-xs`), im Fließtext (`--font-size-md`) und in der Kartenüberschrift
-  (`--font-size-lg`); Trefferfläche 32 × 32 px; Glyph 16 × 16 px; Glyphmitte auf der Textmitte
-  (±1 px).
+- Browserprüfung bei 390 und 1024 px: Abstand rechte Kante des erklärten Elements → linke
+  Glyphkante 12 px (±1) im Feldlabel (`--font-size-xs`), im Fließtext (`--font-size-md`), in der
+  Kartenüberschrift (`--font-size-lg`) und neben einem Control; Trefferfläche 32 × 32 px; Glyph
+  16 × 16 px; Glyphmitte auf der Mitte des erklärten Elements (±1 px).
+- Bei 320 px bleibt der Trigger in der Zeile seines erklärten Elements: ein langer, frei
+  eingegebener Optionstitel bricht innerhalb seines `<strong>` um, und die Kalenderbestätigung
+  bleibt Button plus Trigger in einer Zeile.
+- Die Abnahme misst dabei **auch den erklärten Text**, nicht nur die Glyphposition. Eine Zeile, die
+  den Trigger festhält und dafür den Text auf Buchstabenbreite quetscht, erfüllt diesen Vertrag
+  nicht. Prüffall ist die Umfrageoption mit Notiz, Link und Ergebnisbadge: bei 320 px rückt das
+  Ergebnisbadge in eine eigene Zeile, und der Titel behält die ganze Zeile abzüglich Trigger, Link
+  und Abständen. Gemessen mit 89 Zeichen in Chromium: 118 px von 202 px Zeilenbreite und 7 Zeilen;
+  ohne den Umbruch des Badges waren es 80 px und 12 Zeilen. Ausschlaggebend ist der freigegebene
+  Platz, nicht die Zeilenzahl selbst — sie hängt von den Schriftmaßen der Plattform ab. Die reine
+  Geometriemessung besteht den fehlerhaften Zustand dagegen anstandslos — sie ersetzt diese Prüfung
+  deshalb nicht, sondern ergänzt sie. Automatisiert abgedeckt ist der Platzanspruch in
+  `server/src/test/e2e/eventDatePoll.e2e.test.ts`: eine Option mit langem Titel, Notiz und Link
+  behält unterhalb 640 px die ganze Headerzeile für ihre Titelzeile, und mit gespeicherter Antwort
+  — also sichtbarem Ergebnisbadge — gilt dasselbe zusätzlich mit der Zusicherung, dass das Badge
+  unterhalb des Titels steht.
 - Eine Überschrift mit Trigger ist nicht höher als dieselbe Überschrift ohne Trigger.
 - Das geöffnete Panel bleibt vollständig im Viewport und schließt mit `Escape` unter Rückgabe des
   Fokus.

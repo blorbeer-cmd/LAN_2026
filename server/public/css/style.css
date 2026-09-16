@@ -837,16 +837,17 @@ textarea {
   min-width: 7.5rem;
   min-height: 24px;
 }
-.event-poll-option-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
-}
+/* No rule of its own: the renderer gives this row both `row-between` and
+   `event-poll-option-header`, and `.row-between` is declared later in this file
+   at the same specificity. Display, columns and gap set here would be dead
+   declarations, so the row is a flex row and everything it needs beyond
+   `.row-between` lives in the narrow-viewport block further down. */
+/* No flex-wrap: a long, user-entered option title used to push the help
+   trigger onto its own line below the text. The title wraps inside its own
+   box instead, so the trigger keeps its place beside it. */
 .event-poll-option-title-row {
   display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space-1);
   min-width: 0;
 }
@@ -1008,11 +1009,21 @@ textarea {
   .event-poll-option-extra-fields {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* The badge moves to its own row below --bp-md as soon as the title needs
+     that width. Sharing the row unconditionally left the title about 80px on a
+     320px phone, and `overflow-wrap: anywhere` then broke a long option name
+     almost letter by letter — 12 lines where the same name needs 7. The row is
+     a flex row — the later `.row-between` wins over `.event-poll-option-header`
+     — so the badge wraps through flex-wrap instead of a grid column, and only
+     when the untruncated title no longer fits beside it: a short option name
+     keeps badge and title on one line and stays as compact as before. The help
+     trigger stays beside the title either way. */
   .event-poll-option-header {
-    grid-template-columns: minmax(0, 1fr) minmax(6.5rem, auto);
+    flex-wrap: wrap;
   }
   .event-poll-option-badges {
-    min-width: 6.5rem;
+    min-width: 0;
+    justify-content: flex-start;
   }
   .event-poll-vote-person {
     align-items: flex-start;

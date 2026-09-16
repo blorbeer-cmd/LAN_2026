@@ -167,8 +167,9 @@ export async function assertControlHeights(controls: Locator): Promise<void> {
 
 /* The help trigger belongs to the text it explains: its square target and its
    pinned glyph are what keep that distance identical in a 12px field label and
-   an 18px card heading. Measured from the rendered text edge to the glyph edge,
-   because the button box carries padding that the eye does not see.
+   an 18px card heading. Measured from the border box of the explained element
+   to the glyph edge, because the button box carries padding that the eye does
+   not see.
    Contract: server/frontend-contracts/components/info-tooltip.md#geometrie */
 export async function assertInfoTooltipPlacement(page: Page, expectedMinimum: number): Promise<void> {
   const measured = await page.evaluate(() => {
@@ -181,9 +182,13 @@ export async function assertInfoTooltipPlacement(page: Page, expectedMinimum: nu
       const glyph = trigger.querySelector('.ui-icon');
       const previous = wrapper.previousElementSibling;
       if (!glyph || !previous || !previous.textContent?.trim()) continue;
-      const range = document.createRange();
-      range.selectNodeContents(previous);
-      const text = range.getBoundingClientRect();
+      // Always the border box of the explained element, control or text: that
+      // is the edge the contract names, and it is the edge the --space-1 carrier
+      // gap actually measures from. Measuring the rendered text fragments
+      // instead would report a larger gap as soon as the text wraps — the
+      // element is a flex item of the carrier row and therefore as wide as its
+      // column, while the fragments end wherever the last line breaks.
+      const text = previous.getBoundingClientRect();
       const triggerBox = trigger.getBoundingClientRect();
       const glyphBox = glyph.getBoundingClientRect();
       if (!text.width) continue;
@@ -205,9 +210,9 @@ export async function assertInfoTooltipPlacement(page: Page, expectedMinimum: nu
     assert.ok(Math.abs(item.glyph[0] - 16) <= 0.5 && Math.abs(item.glyph[1] - 16) <= 0.5,
       `${item.label}: glyph ${item.glyph.join('x')}px, expected 16x16px`);
     assert.ok(Math.abs(item.gap - 12) <= 1,
-      `${item.label}: ${item.gap.toFixed(1)}px from the explained text, expected 12±1px`);
+      `${item.label}: ${item.gap.toFixed(1)}px from the explained element, expected 12±1px`);
     assert.ok(Math.abs(item.centerOffset) <= 1,
-      `${item.label}: glyph center off the text center by ${item.centerOffset.toFixed(1)}px`);
+      `${item.label}: glyph center off the element center by ${item.centerOffset.toFixed(1)}px`);
   }
 }
 
