@@ -843,10 +843,12 @@ textarea {
   align-items: center;
   gap: var(--space-2);
 }
+/* No flex-wrap: a long, user-entered option title used to push the help
+   trigger onto its own line below the text. The title wraps inside its own
+   box instead, so the trigger keeps its place beside it. */
 .event-poll-option-title-row {
   display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space-1);
   min-width: 0;
 }

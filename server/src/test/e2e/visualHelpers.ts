@@ -181,9 +181,20 @@ export async function assertInfoTooltipPlacement(page: Page, expectedMinimum: nu
       const glyph = trigger.querySelector('.ui-icon');
       const previous = wrapper.previousElementSibling;
       if (!glyph || !previous || !previous.textContent?.trim()) continue;
-      const range = document.createRange();
-      range.selectNodeContents(previous);
-      const text = range.getBoundingClientRect();
+      // A trigger that explains a control measures from that control's border
+      // box; one that explains text measures from the rendered text. Both land
+      // on the same 12px because the carrier gap is --space-1 either way, and
+      // for wrapped text the element box — not the last line — is the edge the
+      // contract names.
+      const explainsControl = previous.matches('button, a.btn, a.icon-btn, .btn, .icon-btn');
+      let text: DOMRect;
+      if (explainsControl) {
+        text = previous.getBoundingClientRect();
+      } else {
+        const range = document.createRange();
+        range.selectNodeContents(previous);
+        text = range.getBoundingClientRect();
+      }
       const triggerBox = trigger.getBoundingClientRect();
       const glyphBox = glyph.getBoundingClientRect();
       if (!text.width) continue;

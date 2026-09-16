@@ -15,8 +15,8 @@ PRs #529–#535; der Bereich #353–#528 ist noch nicht erfasst.
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 236 (Dateien unter `pr/`)
-- Branch-Seiten dokumentiert: 195 (Dateien unter `branches/`)
+- Gemergte PRs dokumentiert: 237 (Dateien unter `pr/`)
+- Branch-Seiten dokumentiert: 197 (Dateien unter `branches/`)
 - Gemergte PRs #214–#352: 83 von 83 dokumentiert
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
