@@ -319,12 +319,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the established responsive tab layout. Product-specific areas, routes and labels live in
   [Product rules](../docs/product/README.md).
 - **Secondary page header** — `.more-subpage-header` with `.more-subpage-title-row` is the shared
-  header for the untabbed destinations reached through „Mehr“ or Admin. It keeps the „Zurück“
-  action, page title and an optional trailing action on one stable, compact row. These destinations
-  share the same first-card top edge as the untabbed main areas. Only
+  header for destinations reached through „Mehr“ or Admin. It keeps the „Zurück“ action, page
+  title and an optional trailing action on one stable, compact row. Untabbed destinations share
+  the same first-card top edge as the untabbed main areas. On phone and laptop layouts,
   `.more-subpage-header--tabs` reserves a lower row for LAN Orga's tabs; at phone widths that
-  reservation covers the wrapped two-row tab layout. Long content or browser zoom may still grow
-  either header rather than clipping controls.
+  reservation covers the wrapped two-row tab layout. Desktop Orga uses the opened page's title
+  and the compact single-row header. Long content or browser zoom may still grow either header
+  rather than clipping controls.
 - **Untabbed page header** — a direct `.view-title` or `.page-title-row` reserves one compact touch-
   target-height row plus the standard section gap. This keeps the first content surface on the
   same top edge at phone and laptop widths; a trailing page action may share `.page-title-row`.

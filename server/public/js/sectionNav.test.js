@@ -182,6 +182,7 @@ test('Orga exposes the shared back navigation to the More hub', () => {
   const container = stubContainer();
   renderSectionShell(container, 'events');
   assert.match(container.innerHTML, /class="more-subpage-header more-subpage-header--tabs"/);
+  assert.match(container.innerHTML, /<span class="orga-area-title">Orga<\/span><span class="orga-page-title">Events<\/span>/);
   assert.match(container.innerHTML, /data-navigate="more"[^>]*>.*Zurück<\/button>/s);
 });
 
@@ -215,7 +216,7 @@ test('the shell rebuilds after a view outside every area replaced the container'
   container.innerHTML = '<h1 class="view-title">Home</h1>';
   const slot = renderSectionShell(container, 'checklist', {});
   assert.equal(slot, container.sectionView);
-  assert.match(container.innerHTML, /<h1 class="view-title">Orga<\/h1>/);
+  assert.match(container.innerHTML, /<span class="orga-area-title">Orga<\/span><span class="orga-page-title">To-Do<\/span>/);
 });
 
 test('the shell refuses a route that belongs to no section', () => {

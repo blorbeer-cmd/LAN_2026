@@ -2917,8 +2917,8 @@ button.draft-pool-player {
 }
 
 /* Untabbed secondary destinations reached from "Mehr" or Admin use the same
-   compact title row as the main navigation. Only Orga reserves a second row
-   because its five area tabs are navigation in their own right. */
+   compact title row as the main navigation. Orga reserves a second row for its
+   five area tabs on phone and laptop layouts. */
 .more-subpage-header {
   display: flex;
   flex-direction: column;
@@ -2951,15 +2951,30 @@ button.draft-pool-player {
   gap: var(--space-2);
   margin-bottom: 0;
 }
+.orga-page-title {
+  display: none;
+}
 @media (max-width: 639px) { /* --bp-md */
   .more-subpage-header--tabs {
     min-height: calc(var(--tap-target-size) + var(--tap-target-size) + var(--tap-target-size) + var(--space-1));
   }
 }
+@media (min-width: 1280px) { /* --bp-xl */
+  :root[data-layout-mode='desktop'] .more-subpage-header--tabs {
+    min-height: 0;
+    margin-bottom: var(--space-2);
+  }
+  :root[data-layout-mode='desktop'] .more-subpage-header--tabs .section-tabs,
+  :root[data-layout-mode='desktop'] .orga-area-title {
+    display: none;
+  }
+  :root[data-layout-mode='desktop'] .orga-page-title {
+    display: inline;
+  }
+}
 
-/* Every merged area keeps its tabs on a dedicated second header row. Match,
-   Auswertung and Orga therefore share the same intentional lower content
-   edge, while untabbed pages keep the compact single-row header above. */
+/* Tabbed areas keep their tabs on a dedicated second header row. Match and
+   Auswertung always use it; Orga uses it on phone and laptop layouts. */
 .section-page-header {
   display: flex;
   min-height: calc(var(--tap-target-size) + var(--tap-target-size) + var(--space-2));
@@ -2987,7 +3002,7 @@ button.draft-pool-player {
   margin: var(--space-5) 0 var(--space-2);
 }
 
-/* Tab row of a merged top-level area (Wettkampf, Auswertung, Orga — see
+/* Tab row of a merged top-level area (Match, Auswertung, compact Orga — see
    sectionNav.js). Each tab is a real route, so this is navigation, not a
    filter: the active tab carries aria-current="page" plus the primary button
    treatment. It sits directly under the area title, outside any card, which is

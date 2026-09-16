@@ -110,7 +110,8 @@ export function renderSectionShell(container, view, { badges = {}, event } = {})
     .join('');
 
   const activeTab = visibleTabs.find((tab) => tab.view === view);
-  const title = standalone ? activeTab?.label ?? section.title : section.title;
+  const pageTitle = activeTab?.label ?? section.title;
+  const title = standalone ? pageTitle : section.title;
   const tabNavigation = standalone
     ? ''
     : `<nav class="section-tabs" aria-label="Bereiche in ${section.title}">${tabs}</nav>`;
@@ -118,7 +119,7 @@ export function renderSectionShell(container, view, { badges = {}, event } = {})
     ? `<div class="more-subpage-header more-subpage-header--tabs">
          <div class="more-subpage-title-row">
            ${backButtonHtml({ view: 'more' })}
-           <h1 class="view-title">${title}</h1>
+           <h1 class="view-title"><span class="orga-area-title">${title}</span><span class="orga-page-title">${pageTitle}</span></h1>
          </div>
          ${tabNavigation}
        </div>`
