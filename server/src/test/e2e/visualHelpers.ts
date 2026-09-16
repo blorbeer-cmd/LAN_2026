@@ -165,6 +165,52 @@ export async function assertControlHeights(controls: Locator): Promise<void> {
   }
 }
 
+/* The help trigger belongs to the text it explains: its square target and its
+   pinned glyph are what keep that distance identical in a 12px field label and
+   an 18px card heading. Measured from the rendered text edge to the glyph edge,
+   because the button box carries padding that the eye does not see.
+   Contract: server/frontend-contracts/components/info-tooltip.md#geometrie */
+export async function assertInfoTooltipPlacement(page: Page, expectedMinimum: number): Promise<void> {
+  const measured = await page.evaluate(() => {
+    const results: { label: string; box: number[]; glyph: number[]; gap: number; centerOffset: number }[] = [];
+    for (const wrapper of Array.from(document.querySelectorAll('.info-tooltip'))) {
+      const trigger = wrapper.querySelector('.info-tooltip-trigger');
+      // The warning variant explains a disabled control, not a text, so it
+      // follows the gap of the control row instead of the 4px text row.
+      if (!trigger || trigger.classList.contains('info-tooltip-trigger--warning')) continue;
+      const glyph = trigger.querySelector('.ui-icon');
+      const previous = wrapper.previousElementSibling;
+      if (!glyph || !previous || !previous.textContent?.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(previous);
+      const text = range.getBoundingClientRect();
+      const triggerBox = trigger.getBoundingClientRect();
+      const glyphBox = glyph.getBoundingClientRect();
+      if (!text.width) continue;
+      results.push({
+        label: trigger.getAttribute('aria-label') ?? '',
+        box: [triggerBox.width, triggerBox.height],
+        glyph: [glyphBox.width, glyphBox.height],
+        gap: glyphBox.left - text.right,
+        centerOffset: (glyphBox.top + glyphBox.height / 2) - (text.top + text.height / 2),
+      });
+    }
+    return results;
+  });
+  assert.ok(measured.length >= expectedMinimum,
+    `measured ${measured.length} help tooltips, expected at least ${expectedMinimum}`);
+  for (const item of measured) {
+    assert.ok(Math.abs(item.box[0] - 32) <= 1 && Math.abs(item.box[1] - 32) <= 1,
+      `${item.label}: target ${item.box.join('x')}px, expected 32x32px`);
+    assert.ok(Math.abs(item.glyph[0] - 16) <= 0.5 && Math.abs(item.glyph[1] - 16) <= 0.5,
+      `${item.label}: glyph ${item.glyph.join('x')}px, expected 16x16px`);
+    assert.ok(Math.abs(item.gap - 12) <= 1,
+      `${item.label}: ${item.gap.toFixed(1)}px from the explained text, expected 12±1px`);
+    assert.ok(Math.abs(item.centerOffset) <= 1,
+      `${item.label}: glyph center off the text center by ${item.centerOffset.toFixed(1)}px`);
+  }
+}
+
 export async function assertNoOverflow(target: Locator): Promise<void> {
   assert.equal(await target.evaluate((element) => element.scrollWidth <= element.clientWidth), true);
 }

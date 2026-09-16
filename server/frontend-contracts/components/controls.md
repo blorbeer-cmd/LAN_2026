@@ -181,8 +181,9 @@ seiner tatsächlichen Klassenvariante.
   notwendige Anpassung: genau ein weiterer 4-px-Rasterschritt. Bei 390 px stehen 256 px zur
   Verfügung, sodass die Stopbedingung sicher nicht greift.
 - Containerlayout DARF keine Höhe, Schrift, Innenabstände oder Zeilenhöhe des CTA ändern.
-- Der Warn-Tooltiptrigger bleibt 44 px breit und 31–33 px hoch. Disabled- und Aktivzustand besitzen
-  dieselben Controlhöhen.
+- Der Warn-Tooltiptrigger ist quadratisch und 31–33 px breit wie hoch; seine Geometrie besitzt
+  [InfoTooltip](info-tooltip.md#geometrie). Disabled- und Aktivzustand besitzen dieselben
+  Controlhöhen.
 
 ### Selection-Toolbar und Pollbewertung
 
@@ -318,8 +319,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:selection-icons`: Selection and search icons inherit icon-button geometry.
 
 - `registry:selection-toolbar`: Wrapping container preserves gap, whole controls and DOM order.
-
-- `registry:info-trigger`: Help and warning use the same 44 by 32px hit box.
 
 - `registry:date-fields`: DateTime manual fields, native selects and adjacent calendar/clear actions.
 
@@ -556,8 +555,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:arrival-sort-glyph`: Sort control owns its font-relative glyph.
 
 - `registry:invite-link-field`: Kompakte Einladungs-URL mit unveränderter Standardhöhe; der auf Textfelder begrenzte Eigentümerselektor setzt ausschließlich die kleine Schrift und gewinnt gegen die native Feldbasis. Der Browserflow prüft den berechneten Wert.
-
-- `registry:info-warning-state`: Warning colors inherit the help trigger interior.
 
 - `registry:calendar-day-state`: Calendar selection/today colors and inset emphasis preserve the day target.
 

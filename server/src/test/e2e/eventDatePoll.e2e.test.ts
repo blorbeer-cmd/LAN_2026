@@ -5,6 +5,7 @@ import { chromium, Browser, Locator, Page } from 'playwright';
 import { finishE2EOnboarding } from './authHelpers';
 import { createE2EDiagnosticTest } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
+import { assertInfoTooltipPlacement } from './visualHelpers';
 
 let BASE_URL: string;
 const RECOVERY_CODE = 'event-polls-e2e-recovery';
@@ -428,6 +429,9 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.ok((await optionLink.evaluate((element) => element.previousElementSibling?.classList.contains('info-tooltip'))) === true);
   assert.equal(await linkedOption.locator('[aria-label="Mehr Informationen zu Notiz zu Haus am See"]').count(), 1);
   assert.equal(await linkedOption.locator('.event-poll-option-title-row > .muted').count(), 0, 'the note is no longer an extra visible line');
+  // Option notes and the create-form labels sit in different type sizes; the
+  // help glyph keeps one distance to both.
+  await assertInfoTooltipPlacement(ownerPage, 1);
   const ratingButtons = linkedOption.locator('[data-poll-response]');
   const assertRatingGeometry = async () => {
     const geometry = await linkedOption.evaluate((option) => {
@@ -475,11 +479,17 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
       return { width: box.width, height: box.height, iconWidth: icon.width, iconHeight: icon.height };
     }));
     assert.equal(optionControls.length, 2);
-    for (const control of optionControls) {
-      assert.ok(control.width >= 44 && control.height >= 31 && control.height <= 33, JSON.stringify({ viewport, control }));
-    }
-    assert.equal(optionControls[1].iconWidth, 20, 'the option link uses its icon-button owner glyph');
-    assert.equal(optionControls[1].iconHeight, 20);
+    // Two neighbours, two targets: the help trigger is the 32px square of the
+    // InfoTooltip contract, the option link keeps the 44px icon-button width.
+    const [helpTrigger, optionLinkControl] = optionControls;
+    assert.ok(helpTrigger.width >= 31 && helpTrigger.width <= 33 && helpTrigger.height >= 31 && helpTrigger.height <= 33,
+      JSON.stringify({ viewport, helpTrigger }));
+    assert.equal(helpTrigger.iconWidth, 16, 'the help trigger pins its own glyph');
+    assert.equal(helpTrigger.iconHeight, 16);
+    assert.ok(optionLinkControl.width >= 44 && optionLinkControl.height >= 31 && optionLinkControl.height <= 33,
+      JSON.stringify({ viewport, optionLinkControl }));
+    assert.equal(optionLinkControl.iconWidth, 20, 'the option link uses its icon-button owner glyph');
+    assert.equal(optionLinkControl.iconHeight, 20);
   }
   await optionLink.focus();
   await ownerPage.keyboard.press('Shift+Tab');

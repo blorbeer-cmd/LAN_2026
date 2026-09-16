@@ -237,8 +237,8 @@ export const components = [
     "role": "standard-control",
     "selector": ".info-tooltip-trigger",
     "owner": "public/css/style.css",
-    "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Help and warning use the same 44 by 32px hit box.",
+    "contract": "components/info-tooltip.md#6-komponenteneigene-invarianten",
+    "purpose": "Help and warning use the same square 32 by 32px hit box with a pinned 16px glyph.",
     "dynamicUses": [
       {
         "file": "public/js/infoTooltip.js",
@@ -985,7 +985,7 @@ export const components = [
     "role": "composite-part",
     "selector": ".info-tooltip-trigger--warning",
     "owner": "public/css/style.css",
-    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "contract": "components/info-tooltip.md#4-varianten",
     "purpose": "Warning colors inherit the help trigger interior.",
     "control": false,
     "properties": []
@@ -1716,6 +1716,18 @@ export const permanentVariants = [
       "width"
     ],
     "reason": "Player assignment select fills its row column."
+  },
+  {
+    "id": "info-trigger-glyph",
+    "role": "composite-part",
+    "selector": ".info-tooltip-trigger .ui-icon",
+    "owner": "public/css/style.css",
+    "contract": "components/info-tooltip.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width",
+      "height"
+    ],
+    "reason": "The trigger is a button and inherits no font size, so its 16px glyph is pinned instead of resolved from 1.2em."
   },
   {
     "id": "icon-button-glyph",

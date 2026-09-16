@@ -3024,7 +3024,7 @@ button.draft-pool-player {
   width: fit-content;
   max-width: 100%;
   margin-bottom: var(--space-1);
-  padding-right: calc(var(--tap-target-size) + var(--space-1));
+  padding-right: calc(var(--control-height) + var(--space-1));
 }
 .food-order-paypal-label .field-label {
   margin: 0;
@@ -3039,10 +3039,15 @@ button.draft-pool-player {
   display: inline-flex;
   align-items: center;
 }
+/* Square target instead of the 44px icon-button width: the trigger belongs to
+   the label it explains, and a 44px box parks the glyph 18px away from the
+   text it points at — far enough that it reads as a separate control in a row
+   rather than as part of the title. The square keeps the glyph 12px from the
+   text in every context and stays well above the 24px minimum target size. */
 .info-tooltip-trigger {
-  width: var(--tap-target-size);
+  width: var(--control-height);
   min-height: var(--control-height);
-  min-width: var(--tap-target-size);
+  min-width: var(--control-height);
   line-height: var(--control-line-height);
   display: inline-flex;
   align-items: center;
@@ -3053,6 +3058,14 @@ button.draft-pool-player {
   background: transparent;
   color: var(--text-muted);
   cursor: default;
+}
+/* A <button> does not inherit the app font size, so the 1.2em glyph resolves
+   against the UA button default and is uniform only by accident. Pin it, or a
+   later font-size on the trigger would silently move the glyph in every
+   context at once. */
+.info-tooltip-trigger .ui-icon {
+  width: 16px; /* design-token-ok: pinned info glyph, keeps the established 16px that the UA button font produced */
+  height: 16px; /* design-token-ok: pinned info glyph, keeps the established 16px that the UA button font produced */
 }
 .info-tooltip-trigger[aria-expanded='true'] {
   color: var(--accent);

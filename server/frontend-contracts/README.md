@@ -28,6 +28,7 @@ Control-Selektoren und ihre Zuordnung stehen in der reinen
 | `selectionSearch.js` | [SelectionSearch](components/selection-search.md) | `public/css/style.css` |
 | `modal.js` | [Modal](components/modal.md) | `public/css/overlays.css`; etablierte Präsentationsmodifier in `public/css/style.css` |
 | `dateTimeField.js` | [DateTimeField](components/date-time-field.md) | `public/css/style.css`; Modalgrenze in `public/css/overlays.css` |
+| `infoTooltip.js` | [InfoTooltip](components/info-tooltip.md) | `public/css/style.css`; benannter Überschriftenausgleich in `public/css/domains.css` |
 | `emptyState.js` | [EmptyState](components/empty-state.md) | `public/css/style.css` |
 | `actionMenu.js` | [ActionMenu](components/action-menu.md) | `public/css/style.css`; bestehende Kartenlage in `public/css/domains.css` |
 
