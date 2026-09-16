@@ -21,7 +21,15 @@ Kinder einer Layoutzeile statt in einem eigenen `.title-with-info` standen: der 
 Aufbautitel rutschte durch `justify-content: space-between` ans rechte Zeilenende, der Titel des
 aktiven Arcade-Spiels erbte die 8-px-Zeile. Beide stehen jetzt bei 12 px.
 
+## Referenz-Refresh
+
+Erledigt. Die vier Referenzen `core-modal-390`, `core-form-390`, `core-modal-1024` und
+`core-form-1024` enthalten den Info-Trigger am Trailer-Feld und wurden aus dem Artefakt
+`e2e-core-failure-diagnostics` 10441959292 des CI-Laufs 35087200565 übernommen, jede einzeln gegen
+ihr Diff geprüft: einzige Abweichung ist ein 22-×-16-px-Block am Trigger, 156 Pixel je Szene, ohne
+Umgebungsunterschied. Prüfsummen und `provenance` im Referenzprofil sind nachgezogen; der
+Core-Bildvergleich ist in CI-Lauf 35091900593 grün.
+
 ## Offene Punkte
 
-Die visuellen Referenzen `core-modal-*` und `core-form-*` enthalten einen Info-Trigger und brauchen
-den in `server/TESTING.md` beschriebenen Refresh aus dem CI-Artefakt dieses Branches.
+Keine.

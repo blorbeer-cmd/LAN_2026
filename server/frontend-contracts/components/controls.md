@@ -43,7 +43,8 @@ Bedeutung und Breite werden mit der Basisvariante kombiniert.
 |---|---:|---|
 | `button`, `button-small`, `button-meaning`, `button-width` | 31–33 px | Inhalt bzw. gewählte Breitenregel |
 | `native-fields` | 31–33 px; Textarea wächst über rows/Inhalt | Container |
-| `icon-button`, `selection-icons`, `info-trigger` | 31–33 px | mindestens 44 px |
+| `icon-button`, `selection-icons` | 31–33 px | mindestens 44 px |
+| `info-trigger` | 31–33 px | exakt 32 px, siehe [InfoTooltip](info-tooltip.md#geometrie) |
 | `button-square` | exakt 32 px | exakt 32 px |
 | `game-catalog-link-action` | exakt 32 px | exakt 32 px |
 | `game-catalog-detail-trigger` | 31–33 px | Spielname |
