@@ -312,10 +312,31 @@ export const components = [
   {
     "id": "row-icons",
     "role": "standard-control",
-    "selector": ".tournament-lobby-copy, .home-current-dismiss, .game-icon-btn, .notification-center-seen, .notification-center-remove, .notification-highlight-dismiss",
+    "selector": ".tournament-lobby-copy, .home-current-dismiss, .notification-center-seen, .notification-center-remove, .notification-highlight-dismiss",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "Copy, dismiss and detail actions retain their 44px icon slot."
+  },
+  {
+    "id": "game-catalog-link-action",
+    "role": "standard-control",
+    "selector": ".game-icon-btn",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-linkaktionen",
+    "purpose": "Platform and trailer links use compact 32 by 32px slots next to the game details and use blue hover feedback."
+  },
+  {
+    "id": "game-catalog-detail-trigger",
+    "role": "composite-part",
+    "selector": ".game-row-detail-trigger",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-detailauslöser",
+    "purpose": "Game-name detail trigger has plain text and switches to blue on hover without a filled button surface.",
+    "properties": [
+      "padding-inline-end",
+      "background",
+      "color"
+    ]
   },
   {
     "id": "arrival-controls",

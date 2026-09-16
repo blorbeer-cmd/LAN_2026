@@ -26,7 +26,8 @@ Pollbewertung und DataRowAction) sind umgesetzt. Folgepakete bleiben eigenständ
 ## 3. CSS-Eigentümerschaft
 
 `style.css` besitzt `.btn`, `.btn-sm`, `.btn-square`, `.btn-block`, `.btn-equal`, `.icon-btn`,
-globale Inputs/Selects/Textareas, Selection-Toolbar, ActionMenu und die Controltokens.
+`.game-icon-btn`, globale Inputs/Selects/Textareas, Selection-Toolbar, ActionMenu und die
+Controltokens.
 
 `arcade.css` besitzt `.arcade-mode-toggle*` sowie ausschließlich das Containerlayout der
 `.arcade-lobby-create-row`. Domänen-CSS DARF Platzierung, Reihenfolge, Außenabstand und dokumentierte
@@ -44,6 +45,8 @@ Bedeutung und Breite werden mit der Basisvariante kombiniert.
 | `native-fields` | 31–33 px; Textarea wächst über rows/Inhalt | Container |
 | `icon-button`, `selection-icons`, `info-trigger` | 31–33 px | mindestens 44 px |
 | `button-square` | exakt 32 px | exakt 32 px |
+| `game-catalog-link-action` | exakt 32 px | exakt 32 px |
+| `game-catalog-detail-trigger` | 31–33 px | Spielname |
 | `arcade-segment` | 31–33 px | Segment/Pille |
 | `action-menu-trigger` | 31–33 px | Inhalt |
 | `action-menu-entry` | mindestens 44 px | mindestens 44 px |
@@ -97,6 +100,32 @@ Die Mindesthöhe hält auch kleinere Schrift einzeilig bei 32 px; echter Umbruch
 Clipping. Quadratische Skalen haben die ausdrücklich feste 32×32-px-Geometrie. Textareas
 besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden getrennt gemessen.
 
+### Spielkatalog-Linkaktionen
+
+- `.game-icon-btn` ist ausschließlich für Plattform- und Trailer-Links in
+  `public/js/views/gameCatalog.js` bestimmt.
+- Jede Linkaktion besitzt eine feste Border-Box von 32×32 px. Sie ist damit eine dokumentierte
+  dichte Ausnahme von der 44-px-Mindestbreite allgemeiner Icon-Controls.
+- Die Gruppe folgt ohne zusätzlichen Außenabstand direkt auf Spielname, Genre und optionale Badges.
+  Ihre DOM- und sichtbare Reihenfolge ist Plattform-Link, Trailer-Link, Trackbar-Markierung.
+- Die Linkaktionen besitzen keinen Zwischenraum. Die nicht interaktive Trackbar-Markierung bleibt
+  ein zentriertes 18×18-px-Symbol in einem transparenten 32×32-px-Slot.
+- Der Link bleibt ein semantisches `<a>`-Element mit deutschem Accessible Name. Auf Hover verwendet
+  er Blau `--accent`; Tastaturfokus verwendet den globalen sichtbaren Fokus-Ring.
+
+### Spielkatalog-Detailauslöser
+
+- `.game-row-detail-trigger` erweitert ausschließlich den Basisbutton `.btn.btn-sm` für den
+  klickbaren Spielnamen in `public/js/views/gameCatalog.js`.
+- Der Auslöser behält die 32-px-Mindesthöhe und seine führende Innenkante. Nur das abschließende
+  Inline-Padding ist null. Der anschließende Link-Slot kann dadurch ohne überlappende Trefferfläche
+  direkt am sichtbaren Spielnamen beginnen.
+- Der Auslöser verwendet im Normalzustand die Standardtextfarbe und keinen gefüllten
+  Button-Hintergrund. Auf Hover wechselt nur der Text in Blau `--accent`. Die Farbe ergänzt die
+  vorhandene Tastatur- und Fokus-Rückmeldung.
+- Der Button öffnet die bestehenden Spieldetails. Er bleibt per Tastatur erreichbar und verwendet
+  den globalen sichtbaren Fokus-Ring.
+
 ### Zusatzklassen und zusammengesetzte Controls
 
 Das mechanische Inventar am PR-Head ordnet jede tokenbasierte Höhendeklaration in den fünf
@@ -115,9 +144,9 @@ gehören exakten permanenten Varianten; daraus entsteht keine allgemeine Geometr
 einen Zustandsmarker. Diese Grenzen gelten auch neben einer Basisklasse und in anderen Dateien.
 
 Die Standardfamilien `date-fields`, `search-select`, `profile-controls`, `row-icons`,
-`arrival-controls`, `filter-chip`, `section-tab`, `poll-choice`, `admin-controls`, `vote-fields`,
-`food-fields`, `payment-controls`, `result-fields`, `arcade-mute` und `music-controls`
-verwenden die passende Basisvariante.
+`game-catalog-link-action`, `arrival-controls`, `filter-chip`, `section-tab`, `poll-choice`,
+`admin-controls`, `vote-fields`, `food-fields`, `payment-controls`, `result-fields`, `arcade-mute`
+und `music-controls` verwenden die passende Basisvariante.
 
 Die internen Familien `selection-toolbar`, `number-stepper`, `data-row-action`, `food-action-slots`,
 `result-actions`, `bracket-row`, `rating-slider`, `rating-suggestion`, `row-layout`, `selection-state`,
@@ -218,6 +247,8 @@ auch 319,75 px; 320 px bleibt einzeilig. Die rohe 320-px-Schwelle besitzt den Ko
 - Segment: erste oder zweite Option aktiv; beide Optionen können fachlich deaktiviert sein.
 - Arcade-Erstellungszeile: beide Pillen, nur Modus, nur Gegner, keine Pille; aktiver CTA oder eigene
   offene Lobby/aktives Spiel mit deaktiviertem CTA und Warn-Tooltip.
+- Spielkatalog-Linkaktion: Plattform-Link und Trailer-Link können gemeinsam, einzeln oder gar
+  nicht vorhanden sein; die Trackbar-Markierung ist unabhängig optional.
 - Segmentierte Optionen bleiben fachlich erhalten: Tetris/Snake `Duell`/`Arena`, Pong/Blobby
   `Duell`/`Doppel`, Gegner `Mensch`/`KI`.
 
@@ -230,6 +261,8 @@ auch 319,75 px; 320 px bleibt einzeilig. Die rohe 320-px-Schwelle besitzt den Ko
   vorhandener Warn-Tooltip und die Gegneroptionen MÜSSEN per Tastatur erreichbar sein.
 - Der globale `:focus-visible`-Ring MUSS sichtbar bleiben; kein Vorfahr zwischen Segment und
   Lobbykarte DARF ihn durch nicht sichtbaren Overflow beschneiden.
+- Spielkatalog-Linkaktionen bleiben als Links per Tastatur erreichbar. Die Trackbar-Markierung ist
+  kein interaktives Element und vermittelt ihren Status mit Namen und Tooltip.
 - Bei 320×568 MUSS jedes Segment `scrollWidth <= clientWidth` erfüllen; dasselbe gilt für das
   Dokument. Lange Beschriftungen führen zum Stapeln ganzer Controls, nicht zu Textersatz.
 
@@ -239,6 +272,7 @@ auch 319,75 px; 320 px bleibt einzeilig. Die rohe 320-px-Schwelle besitzt den Ko
 - Nur Gegnerpille: `public/js/arcade/views/arcade.js` (Quiz), `arcadeScribble.js`, `battleship.js`
 - Keine Pille: `public/js/arcade/views/challengeRush.js`
 - Disabled mit Warn-Tooltip: eigene offene Tetris-Lobby in `tetris.js`
+- Spielkatalog: `public/js/views/gameCatalog.js` bei 390×844 und 1024×768
 
 ## 10. Prüfungen und Abnahmebeispiele
 
@@ -262,6 +296,9 @@ Die bestehenden Core-Owner prüfen zusätzlich bei 320×568, 390×844, 512×384,
 
 - Standardbutton, kompakte/Bedeutungs-/Breitenvarianten, native Felder und Iconcontrols:
   31–33 px, zentrierte Inhalte (höchstens 1 px Abweichung), Iconbreite mindestens 44 px.
+- Spielkatalog-Linkaktionen bei 390×844 und 1024×768: Links und Trackbar-Slot exakt 32×32 px,
+  Reihenfolge Plattform, Trailer, Trackbar, kein Zwischenraum zwischen den Linkaktionen und kein
+  Seitenoverflow.
 - Echten Textumbruch mit wachsender Border-Box ohne Clipping sowie Textarea mit rows 1 und 3.
 - Pollwerte 1–5 gewählt/ungewählt exakt 32×32 px, 8 px Abstand, verfügbare Elternbreite,
   192/191-px-Grenze und unveränderte Tastaturreihenfolge in beiden Richtungen.
@@ -287,6 +324,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 |---|---|
 | `action-menu-trigger`, `action-menu-entry` | Trigger 32 px; strukturelle Menüzeilen mindestens 44×44 px mit Textumbruch. |
 | `topbar-icons`, `selection-search-actions` | Iconaktionen mit reservierter 44-px-Breite und globaler Innengeometrie. |
+| `game-catalog-link-action` | Plattform- und Trailer-Links stehen als dichte 32×32-px-Gruppe direkt an den Spielinformationen. |
 | `selection-buttons`, `poll-secondary`, `poll-text-width`, `poll-choice-text` | Toolbarlayout und Bedeutung respektieren die gewählte Basis-/Quadratvariante. |
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
 | `profile-preview`, `tournament-label` | Nichtinteraktive Vorschau bzw. Feldbeschriftung folgt der benachbarten Controlzeile. |
@@ -333,6 +371,10 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:profile-controls`: Profile controls use the standard field/button/icon variants.
 
 - `registry:row-icons`: Copy, dismiss and detail actions retain their 44px icon slot.
+
+- `registry:game-catalog-link-action`: Platform and trailer links use compact 32 by 32px slots next to the game details and use blue hover feedback.
+
+- `registry:game-catalog-detail-trigger`: Game-name detail trigger has plain text and switches to blue on hover without a filled button surface.
 
 - `registry:arrival-controls`: Native textarea rows and 32px sorting buttons.
 

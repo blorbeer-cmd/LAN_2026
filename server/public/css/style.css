@@ -3322,10 +3322,15 @@ button.card {
   gap: var(--space-2);
   min-width: 0;
 }
-.game-row-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.game-row-detail-trigger {
+  padding-inline-end: 0;
+  background: transparent;
+  color: var(--text);
+}
+@media (hover: hover) {
+  .game-row-detail-trigger:hover:not(:disabled) {
+    color: var(--accent);
+  }
 }
 /* Optional genre tag next to the title; never allowed to shrink the title
    below readability, so it's the one that gives way first on narrow rows. */
@@ -3361,34 +3366,31 @@ button.card {
 .game-track-indicator {
   display: inline-flex;
   flex: 0 0 auto;
+  width: var(--control-height);
+  min-height: var(--control-height);
   align-items: center;
+  justify-content: center;
   color: var(--state-playing);
 }
 .game-track-indicator .ui-icon {
   width: 18px;
   height: 18px;
 }
-/* Details/Plattform/Trailer as one group of plain icon buttons with the full
-   shared touch target. Their glyphs stay visually compact and the controls
-   keep no background/border, so they still read as row chrome rather than as
-   another pill button competing with the sliders. Both trailer and Details
-   use icons whose own glyph fills a roughly square area (monitorPlay's
-   monitor frame, info's circle), so the controls stay visually even despite
-   the varying glyphs. Held in its own .game-row-links wrapper so the full
-   touch targets can sit directly beside each other without extra visual
-   distance or overlapping hit areas. */
+/* Plattform, Trailer and the tracking hint follow the game details directly.
+   Catalog links use the documented compact 32px slots, so the visible glyphs
+   and the non-interactive tracking marker read as one compact group. */
 .game-row-links {
   display: inline-flex;
   align-items: center;
   gap: 0;
-  margin-left: 0;
+  margin-left: calc(var(--space-2) * -1);
 }
 .game-icon-btn {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: var(--tap-target-size);
+  width: var(--control-height);
   min-height: var(--control-height);
   border-radius: var(--radius-sm);
   background: none;
@@ -3396,15 +3398,9 @@ button.card {
   color: var(--text-muted);
   cursor: pointer;
 }
-/* Compensates the info glyph's circular outline reading smaller/thinner
-   than the other two icons' rectilinear glyphs at the same nominal size. */
-.game-icon-info {
-  width: 1.35em;
-  height: 1.35em;
-}
 @media (hover: hover) {
   .game-icon-btn:hover {
-    color: var(--text);
+    color: var(--accent);
   }
 }
 .game-row-sliders {
