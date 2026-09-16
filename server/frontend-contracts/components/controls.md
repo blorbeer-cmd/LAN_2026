@@ -110,8 +110,8 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
 - Die Gruppe hat vor und nach sich denselben Abstand `--space-2`: vor ihr Spielname und optionale
   Badges, nach ihr das Genre. Ihre DOM- und sichtbare Reihenfolge ist Plattform-Link, Trailer-Link,
   Trackbar-Markierung, Genre.
-- Unter 640 px belegt das Genre eine eigene zweite Zeile. Es beginnt mit der sichtbaren Textkante
-  des Spielnamens, sodass Titel und Symbolgruppe nicht wegen des Genres schrumpfen.
+- Unter 640 px belegt das Genre eine eigene zweite Zeile. Spielname und Genre beginnen bündig mit
+  der Bock-Zeile. Titel und Symbolgruppe schrumpfen dadurch nicht wegen des Genres.
 - Die Linkaktionen besitzen keinen Zwischenraum. Die nicht interaktive Trackbar-Markierung bleibt
   ein zentriertes 18×18-px-Symbol in einem transparenten 32×32-px-Slot.
 - Der Link bleibt ein semantisches `<a>`-Element mit deutschem Accessible Name. Auf Hover verwendet
@@ -121,9 +121,10 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
 
 - `.game-row-detail-trigger` erweitert ausschließlich den Basisbutton `.btn.btn-sm` für den
   klickbaren Spielnamen in `public/js/views/gameCatalog.js`.
-- Der Auslöser behält die 32-px-Mindesthöhe und seine führende Innenkante. Nur das abschließende
-  Inline-Padding ist null. Der anschließende Link-Slot kann dadurch ohne überlappende Trefferfläche
-  direkt am sichtbaren Spielnamen beginnen.
+- Der Auslöser behält die 32-px-Mindesthöhe. Auf breiteren Ansichten behält er seine führende
+  Innenkante; nur das abschließende Inline-Padding ist null. Unter 640 px sind beide
+  Inline-Innenkanten null, damit der Spielname bündig mit der Bock-Zeile beginnt. Der anschließende
+  Link-Slot kann dadurch ohne überlappende Trefferfläche direkt am sichtbaren Spielnamen beginnen.
 - Der Auslöser verwendet im Normalzustand die Standardtextfarbe und keinen gefüllten
   Button-Hintergrund. Auf Hover wechselt nur der Text in Blau `--accent`. Die Farbe ergänzt die
   vorhandene Tastatur- und Fokus-Rückmeldung.

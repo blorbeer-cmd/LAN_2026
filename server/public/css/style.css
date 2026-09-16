@@ -3373,9 +3373,12 @@ button.card {
     flex-wrap: wrap;
     row-gap: 0;
   }
+  .game-row-detail-trigger {
+    padding-inline-start: 0;
+  }
   .game-row-genre {
     flex-basis: 100%;
-    padding-inline-start: var(--space-3);
+    padding-inline-start: 0;
   }
 }
 /* "Vorschlag" marker, only rendered in the mixed "Alle" list where catalog

@@ -333,6 +333,7 @@ export const components = [
     "contract": "components/controls.md#spielkatalog-detailauslöser",
     "purpose": "Game-name detail trigger has plain text and switches to blue on hover without a filled button surface.",
     "properties": [
+      "padding-inline-start",
       "padding-inline-end",
       "background",
       "color"
