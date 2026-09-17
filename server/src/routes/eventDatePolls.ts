@@ -489,8 +489,12 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     label: string;
     description?: string | null;
     payload?: Record<string, unknown>;
+    active?: boolean;
   }> = [];
   for (const raw of options) {
+    if (raw?.active !== undefined && typeof raw.active !== 'boolean') {
+      return res.status(400).json({ error: 'active muss wahr oder falsch sein.' });
+    }
     if (topic === 'date_range') {
       const startsOn = raw?.startsOn;
       const endsOn = raw?.endsOn;
@@ -498,7 +502,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
         return res.status(400).json({ error: 'Jeder Zeitraum benötigt gültige Kalenderdaten (Beginn/Ende).' });
       }
       if (endsOn < startsOn) return res.status(400).json({ error: 'Ein Zeitraum darf nicht rückwärts laufen.' });
-      parsedOptions.push({ startsOn, endsOn, label: raw?.label?.trim() || `${startsOn} – ${endsOn}`, payload: raw?.payload });
+      parsedOptions.push({ startsOn, endsOn, label: raw?.label?.trim() || `${startsOn} – ${endsOn}`, payload: raw?.payload, active: raw.active ?? true });
       continue;
     }
     if (typeof raw?.label !== 'string' || !raw.label.trim() || raw.label.trim().length > 120) {
@@ -517,7 +521,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     ) {
       return res.status(400).json({ error: 'Ein Optionslink muss eine vollständige HTTP- oder HTTPS-Adresse sein.' });
     }
-    parsedOptions.push({ label: raw.label.trim(), description: raw.description?.trim() || null, payload: raw.payload });
+    parsedOptions.push({ label: raw.label.trim(), description: raw.description?.trim() || null, payload: raw.payload, active: raw.active ?? true });
   }
   const duplicateKey = new Set<string>();
   for (const option of parsedOptions) {
@@ -624,7 +628,7 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
   if (!canManageDatePoll(poll, event, playerId, req.groupMembership?.role)) {
     return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann die Runde bearbeiten.' });
   }
-  const { title, note, responseDueOn, options } = req.body ?? {};
+  const { title, note, responseDueOn, options, knownOptionIds } = req.body ?? {};
   const fields: Parameters<typeof updateDatePoll>[1] = {};
   if (title !== undefined) {
     if (typeof title !== 'string' || !title.trim() || title.trim().length > 100) {
@@ -648,6 +652,10 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     if (!Array.isArray(options) || options.length === 0) {
       return res.status(400).json({ error: 'Mindestens eine Option ist erforderlich.' });
     }
+    if (!Array.isArray(knownOptionIds) || knownOptionIds.some((id) => typeof id !== 'string' || !id)) {
+      return res.status(400).json({ error: 'knownOptionIds muss die bekannten Options-IDs enthalten.' });
+    }
+    fields.knownOptionIds = knownOptionIds;
     const parsedOptions: NonNullable<Parameters<typeof updateDatePoll>[1]['options']> = [];
     for (const raw of options) {
       if (raw?.id !== undefined && (typeof raw.id !== 'string' || !raw.id)) {

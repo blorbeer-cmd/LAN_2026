@@ -451,6 +451,25 @@ function optionRowHtml(index, value = {}) {
     </div>`;
 }
 
+function renumberOptionRows(modal) {
+  modal.querySelectorAll('[data-poll-option-row]').forEach((row, index) => {
+    row.dataset.pollOptionRow = String(index);
+    const label = row.querySelector('.event-poll-form-option-label .field-label');
+    label.textContent = `Option ${index + 1}`;
+    label.htmlFor = `poll-option-${index}`;
+    row.querySelector('[data-poll-option-active]').setAttribute('aria-label', `Option ${index + 1} aktiv (wählbar)`);
+    for (const [selector, name] of [
+      ['[data-poll-option-input]', 'poll-option'],
+      ['[data-poll-option-note]', 'poll-option-note'],
+      ['[data-poll-option-url]', 'poll-option-url'],
+    ]) {
+      row.querySelector(selector).id = `${name}-${index}`;
+    }
+    row.querySelector('label[for^="poll-option-note-"]').htmlFor = `poll-option-note-${index}`;
+    row.querySelector('label[for^="poll-option-url-"]').htmlFor = `poll-option-url-${index}`;
+  });
+}
+
 function optionValuesFromForm(modal) {
   return [...modal.querySelectorAll('[data-poll-option-row]')].map((row) => ({
     ...(row.dataset.pollOptionId ? { id: row.dataset.pollOptionId } : {}),
@@ -481,7 +500,6 @@ function openPollForm(event, ctx, previousRound = null) {
     description: option.description ?? '',
     url: optionUrl(option) ?? '',
   })) ?? [{}, {}];
-  let nextOptionIndex = initialOptions.length;
   let dirty = false;
   let capturedModal;
   const { close } = openModal(previousRound ? `Neue Runde · ${previousRound.title}` : 'Umfrage starten', `
@@ -536,9 +554,9 @@ function openPollForm(event, ctx, previousRound = null) {
       });
       modal.querySelector('#poll-add-option').addEventListener('click', () => {
         dirty = true;
-        modal.querySelector('#poll-option-rows').insertAdjacentHTML('beforeend', optionRowHtml(nextOptionIndex));
-        modal.querySelector(`#poll-option-${nextOptionIndex}`)?.focus();
-        nextOptionIndex += 1;
+        const index = modal.querySelectorAll('[data-poll-option-row]').length;
+        modal.querySelector('#poll-option-rows').insertAdjacentHTML('beforeend', optionRowHtml(index));
+        modal.querySelector(`#poll-option-${index}`)?.focus();
       });
       modal.querySelector('#poll-option-rows').addEventListener('click', (eventClick) => {
         const button = eventClick.target.closest('[data-remove-poll-option]');
@@ -546,6 +564,7 @@ function openPollForm(event, ctx, previousRound = null) {
         if (modal.querySelectorAll('[data-poll-option-row]').length <= 1) return showToast('Mindestens eine Option ist erforderlich.', { error: true });
         dirty = true;
         button.closest('[data-poll-option-row]').remove();
+        renumberOptionRows(modal);
       });
       modal.querySelector('#event-poll-form').addEventListener('submit', async (submitEvent) => {
         submitEvent.preventDefault();
@@ -571,6 +590,7 @@ function openPollForm(event, ctx, previousRound = null) {
               label: option.label,
               description: option.description,
               payload: option.url ? { url: option.url } : {},
+              active: option.active,
             })), responseDueOn,
           });
           expandedPolls.add(createdPoll.decisionKey);
@@ -595,7 +615,6 @@ function openEditPollForm(event, poll, ctx) {
     url: optionUrl(option) ?? '',
     active: option.active,
   }));
-  let nextOptionIndex = initialOptions.length;
   let dirty = false;
   let capturedModal;
   const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
@@ -631,9 +650,9 @@ function openEditPollForm(event, poll, ctx) {
       modal.querySelector('#event-poll-edit-form').addEventListener('change', markDirty);
       modal.querySelector('#poll-add-option').addEventListener('click', () => {
         dirty = true;
-        modal.querySelector('#poll-option-rows').insertAdjacentHTML('beforeend', optionRowHtml(nextOptionIndex));
-        modal.querySelector(`#poll-option-${nextOptionIndex}`)?.focus();
-        nextOptionIndex += 1;
+        const index = modal.querySelectorAll('[data-poll-option-row]').length;
+        modal.querySelector('#poll-option-rows').insertAdjacentHTML('beforeend', optionRowHtml(index));
+        modal.querySelector(`#poll-option-${index}`)?.focus();
       });
       modal.querySelector('#poll-option-rows').addEventListener('click', (eventClick) => {
         const button = eventClick.target.closest('[data-remove-poll-option]');
@@ -641,6 +660,7 @@ function openEditPollForm(event, poll, ctx) {
         if (modal.querySelectorAll('[data-poll-option-row]').length <= 1) return showToast('Mindestens eine Option ist erforderlich.', { error: true });
         dirty = true;
         button.closest('[data-poll-option-row]').remove();
+        renumberOptionRows(modal);
       });
       modal.querySelector('#event-poll-edit-form').addEventListener('submit', async (submitEvent) => {
         submitEvent.preventDefault();
@@ -661,6 +681,7 @@ function openEditPollForm(event, poll, ctx) {
             title,
             note: modal.querySelector('#poll-edit-note').value.trim() || null,
             responseDueOn,
+            knownOptionIds: poll.options.map((option) => option.id),
             options: options.map((option) => ({
               ...(option.id ? { id: option.id } : {}),
               label: option.label,

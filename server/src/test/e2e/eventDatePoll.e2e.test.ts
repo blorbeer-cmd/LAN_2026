@@ -99,7 +99,7 @@ async function createPoll(
   page: Page,
   { title, options, mode = 'feasibility', maxSelections, anonymous = false, withoutDeadline = false }: {
     title: string;
-    options: Array<string | { label: string; description?: string; url?: string }>;
+    options: Array<string | { label: string; description?: string; url?: string; active?: boolean }>;
     mode?: 'feasibility' | 'single_choice' | 'multiple_choice' | 'rating_1_5';
     maxSelections?: number;
     anonymous?: boolean;
@@ -127,6 +127,7 @@ async function createPoll(
     const rawOption = options[index];
     const option = typeof rawOption === 'string' ? { label: rawOption } : rawOption;
     await page.locator('[data-poll-option-input]').nth(index).fill(option.label);
+    if (option.active === false) await page.locator('[data-poll-option-active]').nth(index).uncheck();
     if (option.description || option.url) {
       await page.locator('[data-poll-option-row]').nth(index).locator('.event-poll-form-option-details').evaluate((details) => {
         (details as HTMLDetailsElement).open = true;
@@ -423,6 +424,10 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     .locator('.event-poll-form-option-label > label.field-label + label.event-poll-option-active [role="switch"]').count(), 1);
   await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first().locator('[data-poll-option-active]').uncheck();
   await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1).locator('[data-remove-poll-option]').click();
+  assert.deepEqual(await memberPage.locator('#event-poll-edit-form .event-poll-form-option-label .field-label').allTextContents(),
+    ['Option 1', 'Option 2', 'Option 3']);
+  assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1)
+    .locator('[data-poll-option-active]').getAttribute('aria-label'), 'Option 2 aktiv (wählbar)');
   await memberPage.click('#event-poll-edit-form button[type="submit"]');
   await memberPage.locator('.modal-backdrop [data-confirm]').click();
   await memberPage.waitForFunction(() => {
@@ -746,4 +751,13 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const manyOptionPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Viele Möglichkeiten' });
   await manyOptionPoll.waitFor();
   assert.equal(await manyOptionPoll.locator('.event-poll-option').count(), 9);
+
+  await createPoll(ownerPage, {
+    title: 'Schalter beim Starten',
+    options: [{ label: 'Wählbar' }, { label: 'Gesperrt', active: false }],
+  });
+  const createSwitchPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Schalter beim Starten' });
+  await createSwitchPoll.waitFor();
+  assert.equal(await createSwitchPoll.locator('.event-poll-option').nth(1).locator('.badge', { hasText: 'Deaktiviert' }).count(), 1);
+  assert.equal(await createSwitchPoll.locator('.event-poll-option').nth(1).locator('[data-poll-response]').count(), 0);
 });

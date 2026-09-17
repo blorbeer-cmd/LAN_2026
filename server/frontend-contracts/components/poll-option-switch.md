@@ -26,7 +26,7 @@ Die Spur ist 44 × 24 px aus `--space-*`-Tokens; der Knauf ist 16 px groß. Der 
 
 ## 7. Erreichbare Zustände
 
-Aktiv und deaktiviert; beide Zustände lassen sich im offenen Poll bearbeiten. Beim Erstellen sind neue Zeilen zunächst aktiv.
+Aktiv und deaktiviert; beide Zustände lassen sich beim Erstellen und im offenen Poll bearbeiten. Beim Erstellen sind neue Zeilen zunächst aktiv; der gewählte Zustand wird gespeichert.
 
 ## 8. Accessibility
 
@@ -38,7 +38,7 @@ Der native Checkbox-Input erhält `role='switch'` und einen eindeutigen deutsche
 
 ## 10. Prüfungen und Abnahmebeispiele
 
-`eventDatePoll.e2e.test.ts` prüft neue standardmäßig aktive Optionen, das Deaktivieren und Wiederaktivieren einer bestehenden Option sowie die sichtbare Statusmarkierung und Durchstreichung im Bearbeitungsdialog. `check:components` und `check:tokens` prüfen CSS-Eigentümerschaft und Tokenverwendung.
+`eventDatePoll.e2e.test.ts` prüft neue standardmäßig aktive Optionen, das Speichern eines beim Erstellen deaktivierten Schalters, das Deaktivieren und Wiederaktivieren einer bestehenden Option sowie die sichtbare Statusmarkierung und Durchstreichung im Bearbeitungsdialog. `api.eventDatePolls.test.ts` prüft den gespeicherten Zustand zusätzlich serverseitig. `check:components` und `check:tokens` prüfen CSS-Eigentümerschaft und Tokenverwendung.
 
 ## 11. Permanente Varianten und befristete Ausnahmen
 

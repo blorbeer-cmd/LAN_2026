@@ -221,6 +221,7 @@ export interface DatePollOptionInput {
   label?: string;
   description?: string | null;
   payload?: Record<string, unknown>;
+  active?: boolean;
 }
 
 function nextSyntheticOptionDate(usedSingleDates: Set<string>): string {
@@ -252,6 +253,9 @@ export type CreateDatePollResult =
 
 export function createDatePoll(event: EventRow, input: CreateDatePollInput, createdBy: string): CreateDatePollResult {
   const now = Date.now();
+  if (!input.options.some((option) => option.active !== false)) {
+    return { ok: false, code: 'invalid', error: 'Mindestens eine aktive Option ist erforderlich.' };
+  }
   const responseDueAt = input.responseDueOn !== undefined ? endOfIsoDateUtcMs(input.responseDueOn) : null;
   if (responseDueAt !== null && responseDueAt <= now) {
     return { ok: false, code: 'invalid', error: 'responseDueOn muss in der Zukunft liegen.' };
@@ -302,8 +306,8 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
 
     const insertOption = db.prepare(
       `INSERT INTO event_date_poll_options
-         (id, poll_id, starts_on, ends_on, position, label, description, payload_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, poll_id, starts_on, ends_on, position, label, description, payload_json, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const usedSingleDates = new Set(input.options
       .filter((option) => option.startsOn && (option.endsOn ?? option.startsOn) === option.startsOn)
@@ -313,7 +317,7 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
       const endsOn = option.endsOn ?? startsOn;
       const label = option.label?.trim() || (startsOn === endsOn ? startsOn : `${startsOn} – ${endsOn}`);
       const payload = topic === 'date_range' ? { startsOn, endsOn, ...option.payload } : (option.payload ?? {});
-      insertOption.run(nanoid(), pollId, startsOn, endsOn, index, label, option.description ?? null, JSON.stringify(payload));
+      insertOption.run(nanoid(), pollId, startsOn, endsOn, index, label, option.description ?? null, JSON.stringify(payload), option.active === false ? 0 : 1);
     });
 
     insertInvitees(pollId, input.inviteePlayerIds, now, responseDueAt);
@@ -423,6 +427,7 @@ export interface UpdateDatePollFields {
   note?: string | null;
   // undefined = no change, null = clear the deadline (open-ended), string = set it.
   responseDueOn?: string | null;
+  knownOptionIds?: string[];
   options?: Array<{
     id?: string;
     label: string;
@@ -460,10 +465,15 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
     let activeSetChanged = false;
     let previouslyAnsweredPlayerIds: string[] = [];
     if (nextOptions !== undefined) {
+      const existingIds = new Set(existingOptions.map((option) => option.id));
+      const knownOptionIds = fields.knownOptionIds;
+      if (!knownOptionIds || new Set(knownOptionIds).size !== knownOptionIds.length ||
+          knownOptionIds.length !== existingIds.size || knownOptionIds.some((id) => !existingIds.has(id))) {
+        return { ok: false, code: 'conflict', error: 'Die Umfrage wurde inzwischen geändert. Bitte neu laden.' };
+      }
       if (!nextOptions.some((option) => option.active !== false)) {
         return { ok: false, code: 'invalid', error: 'Mindestens eine aktive Option ist erforderlich.' };
       }
-      const existingIds = new Set(existingOptions.map((option) => option.id));
       const suppliedExistingIds = nextOptions.flatMap((option) => option.id ? [option.id] : []);
       if (new Set(suppliedExistingIds).size !== suppliedExistingIds.length) {
         return { ok: false, code: 'invalid', error: 'Eine Option ist mehrfach vorhanden.' };
