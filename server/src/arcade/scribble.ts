@@ -742,7 +742,7 @@ export function registerScribbleSockets(io: Server): () => void {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
       const scope = socketArcadeScope(socket, player.id);
-      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      if (!scope) return ack?.({ ok: false, error: 'Community- oder Eventzugriff verweigert.' });
 
       const lobby: ScribbleLobby = {
         id: nanoid(),
@@ -770,7 +770,7 @@ export function registerScribbleSockets(io: Server): () => void {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
       const scope = socketArcadeScope(socket, player.id);
-      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      if (!scope) return ack?.({ ok: false, error: 'Community- oder Eventzugriff verweigert.' });
       const lobby: ScribbleLobby = { id: nanoid(), ...scope, host: player, players: [player, BOT], socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now() };
       if (!claimLobbyMembership(player.id, 'scribble', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromOpenLobbies(io, socket.id);
@@ -781,7 +781,7 @@ export function registerScribbleSockets(io: Server): () => void {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
-      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Gruppe.' });
+      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Community.' });
 
       if (!claimLobbyMembership(player.id, 'scribble', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromOpenLobbies(io, socket.id);

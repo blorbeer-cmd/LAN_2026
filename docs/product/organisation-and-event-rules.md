@@ -93,13 +93,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   existing order row instead of adding a duplicate. The
   reminder uses the same order deep link and a durable per-player/event send timestamp independent of
   the bounded push history.
-- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its five area tabs
-  are sorted alphabetically by their German label: „Umfragen“, „An- & Abreise“, „Events“, „Packliste“ and
+- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
+  are „Umfragen“, „An- & Abreise“, „Packliste“ and
   „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;
   docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9 records the earlier „Packliste“→„Checkliste“
-  rename — „Events“ is the former standalone „Einstellungen“ view, moved here because it is setup
-  work like the rest of Orga rather than a personal preference screen; there is no longer a topbar
-  settings icon). TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
+  rename). „Events & Gruppen“ is deliberately not an Orga tab either: Orga organises work *inside*
+  the selected workspace, while that view picks and creates the workspaces themselves, which is one
+  level up (see [„Bereichsseiten und Mehr-Navigation“](navigation-and-account-rules.md#bereichsseiten-und-mehr-navigation)).
+  Packliste is its own switchable area rather than part of „Aufgaben & Mitbringen“, so a workspace
+  can keep the shared To-Do board without a packing list. TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
   „Kioskverwaltung“ tool card (see [„Admin tools“](navigation-and-account-rules.md#profile-und-admin)) since opening the shared-screen dashboard is an
   admin task, not something every member needs from Orga. „Mehr“ opens Orga on its first tab,
   „Umfragen“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
@@ -108,9 +110,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   the live count of the current identity's own open+taken items. The checklist's former in-view
   toggle is gone — its two halves are area tabs now, so no tab row nests inside another.
   In a general event the same routes keep their data and deep links but lose the Orga wrapper:
-  An- & Abreise, Packliste and To-Do are direct bottom-nav pages, while Events is a direct entry
-  under „Mehr“. Each page owns its concise title and shows no Orga tab row. Umfragen occupies
-  the fifth bottom-nav slot and opens the shared event poll view directly.
+  An- & Abreise, Packliste and To-Do are direct bottom-nav pages. Each page owns its concise title
+  and shows no Orga tab row. Umfragen occupies
+  the fifth bottom-nav slot and opens the shared event poll view directly. A group works the same
+  way with the routes it actually has: Umfragen, To-Do and Essen are direct bottom-nav pages beside
+  Home and Spiele, and there is no Orga wrapper at all, because An- & Abreise and Packliste do not
+  exist for a workspace nobody travels to.
   The personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
   custom entries) with a checked item shown via muted, struck-through text instead of a separate
   badge, followed by the plain add-item field/button row.
@@ -180,16 +185,24 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   cards do not embed or link to poll controls. A poll result changes no event field, schedule revision
   or participation state.
   A future explicit „apply to event“ interaction is outside the current UI.
-  The „Events“ tab is reachable by every member, not only by owner/admin, because answering an
-  invitation is a personal action. What it shows depends on the role: owner/admin receive the full
+  „Events & Gruppen“ is reachable by every member, not only by owner/admin, because answering an
+  invitation is a personal action. It lists the two workspace kinds in two separate sections —
+  „Events“ first, then „Gruppen“ — each with its own create action („Event anlegen“ /
+  „Gruppe anlegen“, which preselects that type in the shared dialog), its own empty text and its own
+  „Abgesagt“ section. Only the Events section carries a „Historie“, because a group never ends.
+  What it shows depends on the role: owner/admin receive the full
   management surface — anlegen/bearbeiten, Tracking starten/stoppen (the running/stopping button
   carries a tooltip naming the collected data and its purpose; its confirmation repeats the same
   scope sentence), Teilnehmende einladen/entfernen
   and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
-  part in, without the „Event anlegen“ action or administrative invitation/decline controls; the card
-  includes the event-type badge, event-status badge plus the count and names of accepted
+  part in, without the create action or administrative invitation/decline controls; the card
+  includes the type badge, event-status badge plus the count and names of accepted
   participants. Cards sort from the earliest start date to the latest; events without a fixed date
-  follow the scheduled events. A finished event moves out of the active list into the tab's own
+  follow the scheduled events.
+  A group card drops what a group does not have rather than disabling it: no period line, no
+  calendar export, no cost or payment block, no „Tracking starten“, no „Beenden“ and no PDF export.
+  Its roster reads „Mitglieder“ instead of „Teilnehmende“ and its empty state says „Noch keine
+  Mitglieder.“ A finished event moves out of the active list into the Events section's own
   „Historie“ (the same collapsible-section pattern as Food orders): it starts collapsed and
   preserves its open state across live re-renders. Pending invitations for the current identity are
   deliberately absent from this tab — a teaser sitting directly above the Events cards made it too

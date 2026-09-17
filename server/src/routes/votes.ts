@@ -478,7 +478,7 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
     return res.status(400).json({ error: 'mode muss "single" oder "points" sein.' });
   }
   if (mode === 'single' && req.groupMembership?.role === 'member') {
-    return res.status(403).json({ error: 'Stichwahlen können nur von Gruppenadmins gestartet werden.' });
+    return res.status(403).json({ error: 'Stichwahlen können nur von Community-Admins gestartet werden.' });
   }
   const nextMode: VoteMode = mode === 'single' ? 'single' : 'points';
 

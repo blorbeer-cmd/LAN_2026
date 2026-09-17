@@ -258,7 +258,7 @@ export function registerSnakeSockets(io: Server): () => void {
       if (!player) return ack?.({ ok: false, error: 'Spieler nicht gefunden.' });
       if (payload?.mode !== undefined && payload.mode !== 'classic' && payload.mode !== 'arena') return ack?.({ ok: false, error: 'Unbekannter Snake-Modus.' });
       const scope = socketArcadeScope(socket, player.id);
-      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      if (!scope) return ack?.({ ok: false, error: 'Community- oder Eventzugriff verweigert.' });
       const lobby: Lobby = { id: nanoid(), ...scope, host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), mode: payload.mode ?? 'classic', createdAt: Date.now() };
       if (!claimLobbyMembership(player.id, 'snake', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromLobbies(io, socket.id);
@@ -273,7 +273,7 @@ export function registerSnakeSockets(io: Server): () => void {
       if (!player) return ack?.({ ok: false, error: 'Spieler nicht gefunden.' });
       if (payload?.mode !== undefined && payload.mode !== 'classic' && payload.mode !== 'arena') return ack?.({ ok: false, error: 'Unbekannter Snake-Modus.' });
       const scope = socketArcadeScope(socket, player.id);
-      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      if (!scope) return ack?.({ ok: false, error: 'Community- oder Eventzugriff verweigert.' });
       const mode = payload.mode ?? 'classic';
       const bots = mode === 'arena' ? arenaBots(snakeArenaBotCount(mode)) : [BOT];
       const lobby: Lobby = { id: nanoid(), ...scope, host: player, players: [player, ...bots], socketIds: new Map([[player.id, socket.id]]), ready: new Set(bots.map((bot) => bot.id)), mode, createdAt: Date.now() };
@@ -288,7 +288,7 @@ export function registerSnakeSockets(io: Server): () => void {
       if (!lobby || !canUseLobby(socket, lobby)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
-      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Gruppe.' });
+      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Community.' });
       const present = lobby.players.some((entry) => entry.id === player.id);
       const playerLimit = lobby.mode === 'arena' ? SNAKE_ARENA_MAX_PLAYERS : 2;
       if (!present && lobby.players.length >= playerLimit) return ack?.({ ok: false, error: lobby.mode === 'arena' ? 'Arena-Lobby ist voll (max. 8 Spieler).' : 'Lobby ist voll (1 gegen 1).' });

@@ -216,7 +216,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const eventId = res.locals.storageEventId as string | null;
-  if (!eventId) return res.status(409).json({ error: 'Für diese Gruppe läuft derzeit kein Event.' });
+  if (!eventId) return res.status(409).json({ error: 'Für diese Community läuft derzeit kein Event.' });
   const row: OrderRow = {
     id: nanoid(),
     event_id: eventId,

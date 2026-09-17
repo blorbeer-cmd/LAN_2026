@@ -2,7 +2,12 @@
 // route, label, icon and event profile cannot drift apart.
 
 import { viewIsEnabledForEvent } from './eventFeatures.js';
-import { bottomNavigationEntries, desktopNavigationEntries, viewDefinition } from './viewManifest.js';
+import {
+  bottomNavigationEntries,
+  desktopNavigationEntries,
+  navigationEventType,
+  viewDefinition,
+} from './viewManifest.js';
 
 const DESKTOP_GROUPS = Object.freeze([
   Object.freeze({ key: 'start', label: '' }),
@@ -10,6 +15,9 @@ const DESKTOP_GROUPS = Object.freeze([
   Object.freeze({ key: 'orga', label: 'Orga' }),
   Object.freeze({ key: 'other', label: 'Sonstiges' }),
 ]);
+
+// The "LAN" rail group carries whatever the current workspace actually is.
+const DESKTOP_LAN_GROUP_LABEL = Object.freeze({ general: 'Event', group: 'Gruppe' });
 
 const FEEDBACK_UTILITY = Object.freeze({ action: 'feedback', label: 'Feedback', iconKey: 'feedback' });
 
@@ -40,16 +48,16 @@ function desktopEntry(entry, event, { isAdmin }) {
 }
 
 export function bottomNavItemsForEvent(event) {
-  return bottomNavigationEntries(event?.eventType === 'general' ? 'general' : 'lan');
+  return bottomNavigationEntries(navigationEventType(event));
 }
 
 export function desktopNavItemsForEvent(event, { isAdmin = false } = {}) {
-  const eventType = event?.eventType === 'general' ? 'general' : 'lan';
+  const eventType = navigationEventType(event);
   const context = { isAdmin };
   const declaredEntries = desktopNavigationEntries(eventType);
   const groups = DESKTOP_GROUPS.map((group) => Object.freeze({
     key: group.key,
-    label: group.key === 'lan' && event?.eventType === 'general' ? 'Event' : group.label,
+    label: group.key === 'lan' ? DESKTOP_LAN_GROUP_LABEL[eventType] ?? group.label : group.label,
     entries: Object.freeze(declaredEntries
       .filter((entry) => entry.group === group.key)
       .map((entry) => desktopEntry(entry, event, context))

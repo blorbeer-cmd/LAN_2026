@@ -80,7 +80,7 @@ test('event-bound registration atomically joins base and target and selects the 
   assert.equal(active.body.id, target.id);
   assert.equal(active.body.isBase, false);
   assert.equal(active.body.eventType, 'general');
-  assert.equal(active.body.presetVersion, 1);
+  assert.equal(active.body.presetVersion, 2);
   assert.deepEqual(active.body.enabledFeatures, EVENT_FEATURE_KEYS.filter((featureKey) => featureKey !== 'arcade'));
 
   const switched = await request(app)
@@ -91,7 +91,7 @@ test('event-bound registration atomically joins base and target and selects the 
   assert.equal(switched.body.id, BASE_EVENT_ID);
   assert.equal(switched.body.isBase, true);
   assert.equal(switched.body.eventType, 'lan');
-  assert.equal(switched.body.presetVersion, 1);
+  assert.equal(switched.body.presetVersion, 2);
   assert.deepEqual(switched.body.enabledFeatures, [...EVENT_FEATURE_KEYS]);
 
   const unavailable = createEvent('Nicht freigegebenes Event', {

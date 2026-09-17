@@ -18,6 +18,7 @@ import {
   accountsByName,
   openAuswertungTab,
   ensureAdminMode,
+  openEventsView,
   openOrgaTab,
   openProfile,
 } from './flowsShared.fixture';
@@ -296,7 +297,7 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   for (const [view, title] of [
     ['eventPolls', 'Umfragen'],
     ['arrivals', 'An- & Abreise'],
-    ['events', 'Events'],
+    ['events', 'Events & Gruppen'],
     ['checklistPacking', 'Packliste'],
     ['checklist', 'To-Do'],
     ['foodOrders', 'Essen'],
@@ -830,6 +831,7 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
     }
 
     for (const [view, title, readySelector] of [
+      ['events', 'Events & Gruppen', '#orga-events-title'],
       ['profile', 'Mein Profil', '#profile-name'],
       ['admin', 'Admin', '#admin-mode-title'],
       ['arcade', 'Arcade', '#arcade-games-title'],
@@ -868,8 +870,8 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
     await page.waitForSelector('#view-container h1:text-is("Auswertung")');
     tabbedMetrics.push(['Auswertung', await firstCardMetrics('Auswertung')]);
 
-    await openOrgaTab('events');
-    await page.waitForSelector('#orga-events-title');
+    await openOrgaTab('checklistPacking');
+    await page.waitForSelector('.checklist-item-list [data-remove-item]');
     assert.deepEqual(
       await page.locator('.more-subpage-header--tabs .section-tabs').evaluate((tabs) => {
         const style = getComputedStyle(tabs);
@@ -910,11 +912,32 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   t.after(async () => {
     await page.setViewportSize({ width: 390, height: 844 });
   });
-  await openOrgaTab('events');
+  await openEventsView();
   await page.waitForSelector('#orga-events-title');
-  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
+  // Events and groups are two workspace kinds and therefore two lists, each
+  // with its own create action.
+  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 2);
+  assert.equal(await page.locator('#orga-groups-title').innerText(), 'Gruppen');
+  assert.equal((await page.locator('#new-group-btn').textContent())?.trim(), 'Gruppe anlegen');
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 0);
   assert.equal(await page.locator('#download-backup').count(), 0);
+
+  // "Gruppe anlegen" preselects the type and hides everything a group has no
+  // concept of, instead of offering disabled controls.
+  await page.click('#new-group-btn');
+  await page.waitForSelector('#event-form');
+  assert.equal(await page.locator('#event-type').inputValue(), 'group');
+  assert.equal(await page.locator('.modal-header h2').innerText(), 'Neue Gruppe');
+  assert.equal(await page.locator('#event-starts-date').isVisible(), false);
+  assert.equal(await page.locator('#event-cost').isVisible(), false);
+  assert.equal(await page.locator('#event-paypal').isVisible(), false);
+  assert.equal((await page.locator('#event-form-submit').textContent())?.trim(), 'Gruppe anlegen');
+  // Switching back inside the dialog brings the period and money blocks back.
+  await page.selectOption('#event-type', 'lan');
+  assert.equal(await page.locator('#event-starts-date').isVisible(), true);
+  assert.equal(await page.locator('#event-cost').isVisible(), true);
+  assert.equal(await page.locator('.modal-header h2').innerText(), 'Neues Event');
+  await page.click('.modal-header [data-close]');
 
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.waitForSelector('#orga-events-help:not([hidden])');
@@ -1051,11 +1074,14 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   await page.click('[data-confirm]');
   // TV-Kiosk is not an Orga tab (only "Kioskverwaltung" in Admin reaches it,
   // see "the authenticated admin role owns the seating editor and backup
-  // tools" below) — Orga itself only ever exposes these five tabs, sorted
-  // alphabetically by their German label.
+  // tools" below), and neither is "Events & Gruppen" any more: it picks and
+  // creates the workspaces the Orga routes work inside. Orga itself only ever
+  // exposes these four tabs.
+  await openOrgaTab('eventPolls');
+  await page.waitForSelector('#new-event-poll');
   assert.deepEqual(
     await page.locator('.section-tabs [data-section-tab]').evaluateAll((tabs) => tabs.map((tab) => tab.dataset.sectionTab)),
-    ['eventPolls', 'arrivals', 'events', 'checklistPacking', 'checklist']
+    ['eventPolls', 'arrivals', 'checklistPacking', 'checklist']
   );
 
   await page.setViewportSize({ width: 1280, height: 900 });

@@ -252,3 +252,61 @@ test('a declined event stays a teaser with the way back', () => {
   assert.doesNotMatch(locked, /data-accept-participation/);
   assert.match(locked, /Das Event ist beendet/);
 });
+
+// A group card must not offer what a group cannot do. Everything that needs a
+// period or money is dropped from the card entirely, not rendered disabled:
+// a control you cannot use is noise, and a disabled one still reads as a
+// promise the workspace never keeps.
+test('a group card drops every dated and paid control instead of disabling it', () => {
+  const group = {
+    id: 'skatrunde',
+    name: 'Skatrunde',
+    eventType: 'group',
+    startsAt: null,
+    endsAt: null,
+    costCents: null,
+    enabledFeatures: ['tasks', 'food', 'music', 'games', 'arcade'],
+    acceptedParticipants: [],
+  };
+  const html = renderEventCard(group);
+
+  assert.match(html, /<span class="badge">Gruppe<\/span>/);
+  for (const absent of [
+    /data-start-tracking/,
+    /data-stop-tracking/,
+    /data-end-event/,
+    /data-export-event/,
+    /data-event-calendar=/,
+    /Termin wird noch abgestimmt/,
+    // An excuse answers a clashing appointment; a group has none.
+    /data-event-excuse/,
+  ]) {
+    assert.doesNotMatch(html, absent, String(absent));
+  }
+  // Editing name, location and note stays available.
+  assert.match(html, /data-edit-event="skatrunde"/);
+  // A circle has members, not attendees.
+  assert.match(html, /<strong>Mitglieder & Einladungen<\/strong>/);
+  assert.doesNotMatch(html, /Teilnehmende/);
+
+  // The same event as a LAN keeps all of it, so the difference is the type and
+  // not a missing field in this fixture.
+  const lan = renderEventCard({
+    ...group,
+    eventType: 'lan',
+    startsAt: Date.UTC(2026, 8, 8, 16, 0),
+    endsAt: Date.UTC(2026, 8, 10, 10, 0),
+    enabledFeatures: ['tracking'],
+  });
+  assert.match(lan, /data-start-tracking/);
+  assert.match(lan, /data-end-event/);
+  assert.match(lan, /Teilnehmende/);
+});
+
+test('a group has no keepsake PDF and no period text', () => {
+  assert.equal(eventPdfExportAvailable({ eventType: 'group' }), false);
+  assert.equal(eventDateRange({ eventType: 'group', startsAt: null }), 'Dauerhaft geöffnet');
+  // The permanent base workspace is not a group and keeps its own wording.
+  assert.equal(eventDateRange({ eventType: 'group', isBase: true, startsAt: 1, endsAt: null }), 'Dauerhaft geöffnet');
+  assert.equal(eventDateRange({ eventType: 'general', startsAt: null }), 'Termin wird noch abgestimmt');
+});

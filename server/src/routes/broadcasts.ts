@@ -179,7 +179,7 @@ broadcastsRouter.post('/:id/end', ...withBodyPlayerIdentity, (req, res) => {
   if (!requireGroupEventAccess(req, res, row.event_id)) return;
   const mayModerate = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
   if (row.player_id !== playerId && !mayModerate) {
-    return res.status(403).json({ error: 'Nur der Ersteller oder ein Gruppen-Admin kann diese Durchsage beenden.' });
+    return res.status(403).json({ error: 'Nur der Ersteller oder ein Community-Admin kann diese Durchsage beenden.' });
   }
 
   const endedAt = Date.now();

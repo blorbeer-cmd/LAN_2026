@@ -214,7 +214,7 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
   assert.equal(events[0].name, 'Respawn Test-LAN 2015');
   assert.equal(events.at(-1)?.name, 'Respawn Test-LAN 2026');
   assert.ok(events.every((event) => event.is_test === 1));
-  assert.ok(events.every((event) => event.eventType === 'lan' && event.presetVersion === 1));
+  assert.ok(events.every((event) => event.eventType === 'lan' && event.presetVersion === 2));
 
   const featureSnapshots = db
     .prepare(
@@ -258,7 +258,7 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
     managedTestEvents.every(
       (event: { eventType: string; presetVersion: number; enabledFeatures: string[] }) =>
         event.eventType === 'lan' &&
-        event.presetVersion === 1 &&
+        event.presetVersion === 2 &&
         JSON.stringify(event.enabledFeatures) === JSON.stringify(EVENT_FEATURE_KEYS),
     ),
   );

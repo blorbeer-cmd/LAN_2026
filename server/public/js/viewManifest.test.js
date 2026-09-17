@@ -9,8 +9,10 @@ import {
   createViewRegistry,
   desktopNavigationEntries,
   moreNavigationEntries,
+  navigationEventType,
   searchableViewEntries,
   sectionViews,
+  usesStandaloneOrgaPages,
   VIEW_MANIFEST,
 } from './viewManifest.js';
 
@@ -78,13 +80,26 @@ test('every route carries the shared navigation and lifecycle contract', () => {
   );
 
   assert.deepEqual(sectionViews('competition').map((entry) => entry.view), ['matchmaking', 'tournaments']);
+  // Orga lost its Events tab: picking and creating workspaces sits one level
+  // above organising work inside the selected one.
+  assert.deepEqual(sectionViews('orga').map((entry) => entry.view), ['eventPolls', 'arrivals', 'checklistPacking', 'checklist']);
   assert.deepEqual(bottomNavigationEntries('lan').map((entry) => entry.view), ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more']);
   assert.deepEqual(bottomNavigationEntries('general').map((entry) => entry.view), ['home', 'arrivals', 'checklistPacking', 'checklist', 'eventPolls', 'more']);
-  assert.deepEqual(moreNavigationEntries('lan').map((entry) => entry.view ?? entry.section), ['profile', 'admin', 'arcade', 'broadcast', 'music', 'orga']);
+  // A group has no travel and no packing list, so its six slots carry what it
+  // actually uses instead.
+  assert.deepEqual(bottomNavigationEntries('group').map((entry) => entry.view), ['home', 'eventPolls', 'checklist', 'foodOrders', 'gameCatalog', 'more']);
+  assert.deepEqual(moreNavigationEntries('lan').map((entry) => entry.view ?? entry.section), ['events', 'profile', 'admin', 'arcade', 'broadcast', 'music', 'orga']);
+  assert.deepEqual(moreNavigationEntries('group').map((entry) => entry.view ?? entry.section), ['events', 'profile', 'admin', 'arcade', 'broadcast', 'music']);
   assert.deepEqual(
     desktopNavigationEntries('lan').map((entry) => entry.view),
-    ['home', 'matchmaking', 'votes', 'gameCatalog', 'events', 'eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'foodOrders', 'broadcast', 'arcade', 'music', 'admin', 'profile'],
+    ['home', 'events', 'matchmaking', 'votes', 'gameCatalog', 'eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'foodOrders', 'broadcast', 'arcade', 'music', 'admin', 'profile'],
   );
+  assert.equal(navigationEventType({ eventType: 'group' }), 'group');
+  assert.equal(navigationEventType({ eventType: 'unknown' }), 'lan');
+  assert.equal(navigationEventType(null), 'lan');
+  assert.equal(usesStandaloneOrgaPages('group'), true);
+  assert.equal(usesStandaloneOrgaPages('general'), true);
+  assert.equal(usesStandaloneOrgaPages('lan'), false);
   assert.ok(searchableViewEntries().every((entry) => entry.view && entry.title && entry.description));
 });
 

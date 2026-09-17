@@ -93,7 +93,7 @@ export function registerScopedSockets(server: Server): () => void {
             ? getOrRepairActiveEvent(playerId).id
             : requestedEventId;
       if (!validScope(socket, groupId, eventId)) {
-        ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+        ack?.({ ok: false, error: 'Community- oder Eventzugriff verweigert.' });
         return;
       }
       clearSocketScope(socket);

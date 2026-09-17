@@ -12,6 +12,7 @@ import {
   DEFAULT_EVENT_PRESET_VERSION,
   DEFAULT_EVENT_TYPE_KEY,
   EVENT_TYPE_PRESETS,
+  eventTypeIsUndated,
   type EventTypeKey,
 } from './eventFeatureCatalog';
 import { createEventFeatureSnapshot } from './eventFeatures';
@@ -116,10 +117,15 @@ export interface CreateEventOptions {
 // status or conflicts with an already-tracking event. Call startTracking
 // separately once you actually want this event to go live. An event without a
 // period starts with internal draft status and can receive a period later.
+//
+// A group is the exception: it has no period by design, so it is published
+// right away instead of waiting as a draft for a date that will never come.
 export function createEvent(name: string, options: CreateEventOptions): EventRow {
   const id = nanoid();
   const eventTypeKey = options.eventTypeKey ?? DEFAULT_EVENT_TYPE_KEY;
-  const hasSchedule = options.startsAt !== null;
+  const undated = eventTypeIsUndated(eventTypeKey);
+  const startsAt = undated ? null : options.startsAt;
+  const hasSchedule = startsAt !== null;
   return db.transaction(() => {
     db.prepare(
       `INSERT INTO events
@@ -130,12 +136,12 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
     ).run(
       id,
       name,
-      options.startsAt,
-      options.endsAt,
+      startsAt,
+      undated ? null : options.endsAt,
       options.location ?? null,
       options.description ?? null,
       options.groupId ?? DEFAULT_GROUP_ID,
-      hasSchedule ? 'published' : 'draft',
+      hasSchedule || undated ? 'published' : 'draft',
       options.costCents ?? null,
       options.accommodationCostCents ?? null,
       options.paypalLink ?? null,

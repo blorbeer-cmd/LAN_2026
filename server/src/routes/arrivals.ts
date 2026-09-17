@@ -239,7 +239,7 @@ arrivalsRouter.put('/mine', ...withBodyPlayerIdentity, (req, res) => {
   if (typeof parsedNote === 'object' && parsedNote !== null) return res.status(400).json({ error: parsedNote.error });
 
   const eventId = res.locals.storageEventId as string | null;
-  if (!eventId) return res.status(409).json({ error: 'Für diese Gruppe läuft derzeit kein Event.' });
+  if (!eventId) return res.status(409).json({ error: 'Für diese Community läuft derzeit kein Event.' });
   db.prepare(
     `INSERT INTO arrivals (event_id, player_id, arrival_at, departure_at, note, updated_at)
      VALUES (?, ?, ?, ?, ?, ?)
@@ -285,7 +285,7 @@ arrivalsRouter.post('/carpools', ...withBodyPlayerIdentity, (req, res) => {
   const id = nanoid();
   const now = Date.now();
   const eventId = res.locals.storageEventId as string | null;
-  if (!eventId) return res.status(409).json({ error: 'Für diese Gruppe läuft derzeit kein Event.' });
+  if (!eventId) return res.status(409).json({ error: 'Für diese Community läuft derzeit kein Event.' });
   if (memberOfOtherDirectionCarpool(eventId, req.group!.id, direction as 'arrival' | 'departure', playerId)) {
     return res.status(409).json({ error: `Du bist bereits Teil einer ${directionLabel(direction as 'arrival' | 'departure')}-Fahrgemeinschaft.` });
   }

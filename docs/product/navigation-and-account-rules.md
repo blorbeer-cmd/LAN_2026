@@ -86,7 +86,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   that also offers „Gesamt (alle Events)“ passes it as `allEntryLabel`; that entry is not an event
   and therefore carries no state icon. Hall of Fame's payload holds results rather than lifecycle
   flags, so it joins its events against `accessibleEvents()` for the state and falls back to a
-  plain title for an event that list no longer holds.
+  plain title for an event that list no longer holds. Its last entry is not a workspace at all:
+  „Events & Gruppen verwalten…“ leaves the list and opens that view, because picking a workspace
+  and creating one belong to the same level. The switcher is rebuilt on the active event
+  immediately afterwards, so the entry never becomes the visible selection. A group carries its own
+  state icon there, like the permanently open base workspace: it never ends and never tracks.
 
 ## Profile und Admin
 
@@ -172,11 +176,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 
 ## Bereichsseiten und Mehr-Navigation
 
-The LAN „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga. For a general event,
-it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
-To-Do and Umfragen already occupy the bottom nav. Mein Profil remains here as the compact/mobile
+The LAN „Mehr“ hub holds Events & Gruppen, Mein Profil, Admin, Arcade, Durchsage, Jam and Orga.
+Events & Gruppen leads the hub for every event type: it picks and creates the workspaces the other
+entries then work inside, so it sits one level above them rather than inside Orga. For a general
+event, the hub replaces the Orga wrapper with a direct entry for Essen; An & Abreise, Packliste,
+To-Do and Umfragen already occupy the bottom nav. A group has no Orga wrapper either and no Essen
+entry, because Essen occupies one of its own bottom-nav slots. Mein Profil remains here as the compact/mobile
 path. From `--bp-xl`, selecting Desktop replaces the bottom bar and „Mehr“ detour visually with
-a grouped direct rail: Home; LAN; Orga; Sonstiges; plus the bottom utilities Feedback,
+a grouped direct rail: Home and Events & Gruppen; LAN (labelled „Event“ for a general event and
+„Gruppe“ for a group); Orga; Sonstiges; plus the bottom utilities Feedback,
 role-gated Admin and Mein Profil. The active event feature snapshot removes unavailable entries
 and empty groups. Profile and Feedback are not duplicated in the desktop top ribbon; the ribbon
 contains only global tools. The account-scoped Automatic/Desktop/Laptop choice lives in Mein

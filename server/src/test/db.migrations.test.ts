@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 99);
+  assert.equal(migrations.length, 101);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 99 }, (_, index) => index + 1),
+    Array.from({ length: 101 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,8 +1342,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 99 }, (_, index) => index + 1),
-    'every version 1..99 runs exactly once',
+    Array.from({ length: 101 }, (_, index) => index + 1),
+    'every version 1..101 runs exactly once',
   );
 });
 
@@ -3039,7 +3039,7 @@ test('migrations 89 through 91 add event types, collapse legacy presets and enab
     migrated
       .prepare('SELECT event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE id = ?')
       .get('legacy-feature-event'),
-    { eventType: 'lan', presetVersion: 1 },
+    { eventType: 'lan', presetVersion: 2 },
   );
   assert.deepEqual(
     migrated
@@ -3074,13 +3074,13 @@ test('migrations 89 through 91 add event types, collapse legacy presets and enab
     collapsed
       .prepare('SELECT event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE id = ?')
       .get('legacy-trip-event'),
-    { eventType: 'general', presetVersion: 3 },
+    { eventType: 'general', presetVersion: 4 },
   );
   assert.deepEqual(
     (collapsed
       .prepare('SELECT feature_key AS featureKey FROM event_features WHERE event_id = ? AND enabled = 1 ORDER BY rowid')
       .all('legacy-trip-event') as Array<{ featureKey: string }>).map((row) => row.featureKey),
-    ['tasks', 'travel', 'food', 'costs', 'music', 'arcade'],
+    ['tasks', 'packing', 'travel', 'food', 'costs', 'music', 'arcade'],
   );
 
   collapsed
@@ -3097,7 +3097,7 @@ test('migrations 89 through 91 add event types, collapse legacy presets and enab
     arcadeEnabled
       .prepare('SELECT preset_version AS presetVersion FROM events WHERE id = ?')
       .get('legacy-trip-event'),
-    { presetVersion: 3 },
+    { presetVersion: 4 },
   );
   assert.deepEqual(
     arcadeEnabled
@@ -3494,6 +3494,100 @@ test('migration 97 makes the event poll deadline optional without losing existin
                'custom', 'migration-97-open-ended', 'Open-ended poll', 'feasibility', 0)`,
     ).run(now, now),
     'a new poll can now omit a deadline entirely',
+  );
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+// Migration 100 splits the packing list out of `tasks`, and 101 rebuilds
+// `events` so a published workspace may have no period at all. Both touch data
+// that already exists in every installation, so they are verified together on
+// one legacy fixture: nobody's packing list may vanish because their snapshot
+// predates the split, and no event row may be lost in the rebuild.
+test('migrations 100 and 101 inherit the packing state and rebuild events without losing rows', () => {
+  const dbFile = makeTempDbPath('packing-and-undated-events');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture
+    .prepare(
+      `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope, event_type_key, preset_version)
+       VALUES (?, ?, ?, ?, 'default-group', 'published', 'participants', ?, 1)`,
+    )
+    .run('packing-lan', 'Legacy LAN', now, now + 60_000, 'lan');
+  fixture
+    .prepare(
+      `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope, event_type_key, preset_version)
+       VALUES (?, ?, ?, ?, 'default-group', 'published', 'participants', ?, 3)`,
+    )
+    .run('packing-general', 'Legacy Treffen', now, now + 60_000, 'general');
+  // The pre-split state: a tasks row, no packing row. One event had its tasks
+  // area switched off, so the inherited packing row must be off as well.
+  const insertFeature = fixture.prepare(
+    `INSERT INTO event_features (event_id, feature_key, enabled, changed_at, changed_by)
+     VALUES (?, 'tasks', ?, ?, NULL)`,
+  );
+  insertFeature.run('packing-lan', 1, now);
+  insertFeature.run('packing-general', 0, now);
+  fixture.prepare("DELETE FROM event_features WHERE feature_key = 'packing'").run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version IN (100, 101)').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile);
+  assert.deepEqual(
+    migrated
+      .prepare(
+        `SELECT event_id AS eventId, enabled FROM event_features
+         WHERE feature_key = 'packing' AND event_id IN ('packing-lan', 'packing-general')
+         ORDER BY event_id`,
+      )
+      .all(),
+    [
+      { eventId: 'packing-general', enabled: 0 },
+      { eventId: 'packing-lan', enabled: 1 },
+    ],
+    'the packing row inherits the enabled state of its tasks row',
+  );
+  assert.deepEqual(
+    migrated
+      .prepare(
+        "SELECT id, name, starts_at AS startsAt, preset_version AS presetVersion FROM events WHERE id LIKE 'packing-%' ORDER BY id",
+      )
+      .all(),
+    [
+      { id: 'packing-general', name: 'Legacy Treffen', startsAt: now, presetVersion: 4 },
+      { id: 'packing-lan', name: 'Legacy LAN', startsAt: now, presetVersion: 2 },
+    ],
+    'the rebuild preserves every event row and bumps the preset versions once',
+  );
+
+  // The point of the rebuild: a published group without any period.
+  assert.doesNotThrow(
+    () =>
+      migrated
+        .prepare(
+          `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope, event_type_key, preset_version)
+           VALUES ('packing-group', 'Skatrunde', NULL, NULL, 'default-group', 'published', 'participants', 'group', 1)`,
+        )
+        .run(),
+    'a group may be published without a period',
+  );
+  // The kiosk trigger lives ON events and must have survived the rebuild.
+  assert.equal(migrated.prepare('SELECT 1 FROM kiosk_accounts WHERE event_id = ?').get('packing-group'), undefined);
+  migrated
+    .prepare(
+      `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope, event_type_key, preset_version)
+       VALUES ('packing-lan-2', 'Neue LAN', ?, ?, 'default-group', 'published', 'participants', 'lan', 2)`,
+    )
+    .run(now, now + 60_000);
+  assert.ok(
+    migrated.prepare('SELECT 1 FROM kiosk_accounts WHERE event_id = ?').get('packing-lan-2'),
+    'the kiosk trigger was recreated with the rebuilt table',
   );
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();

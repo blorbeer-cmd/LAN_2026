@@ -38,7 +38,7 @@ test('every account starts in the permanent base event', async () => {
   assert.equal(active.body.id, BASE_EVENT_ID);
   assert.equal(active.body.isBase, true);
   assert.equal(active.body.eventType, 'lan');
-  assert.equal(active.body.presetVersion, 1);
+  assert.equal(active.body.presetVersion, 2);
   assert.deepEqual(active.body.enabledFeatures, [...EVENT_FEATURE_KEYS]);
 
   const list = await request(app).get('/api/events');
@@ -52,6 +52,7 @@ test('every account starts in the permanent base event', async () => {
     [
       { key: 'lan', title: 'LAN-Party' },
       { key: 'general', title: 'Allgemeines Event' },
+      { key: 'group', title: 'Gruppe' },
     ],
   );
   assert.equal(
@@ -233,13 +234,13 @@ test('new events persist and expose the complete backwards-compatible LAN featur
   const created = await createEvent('LAN-Default mit Bereichen');
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.eventType, 'lan');
-  assert.equal(created.body.presetVersion, 1);
+  assert.equal(created.body.presetVersion, 2);
   assert.deepEqual(created.body.enabledFeatures, [...EVENT_FEATURE_KEYS]);
 
   const persistedEvent = db
     .prepare('SELECT event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE id = ?')
     .get(created.body.id);
-  assert.deepEqual(persistedEvent, { eventType: 'lan', presetVersion: 1 });
+  assert.deepEqual(persistedEvent, { eventType: 'lan', presetVersion: 2 });
   const persistedFeatures = db
     .prepare(
       `SELECT feature_key AS featureKey, enabled, changed_by AS changedBy
@@ -256,8 +257,8 @@ test('general events persist the shared planning and arcade feature snapshot', a
   const created = await createEvent('Allgemeines Treffen', EVENT_MINIMUM_DURATION_MS, { eventType: 'general' });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.eventType, 'general');
-  assert.equal(created.body.presetVersion, 3);
-  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'travel', 'food', 'costs', 'music', 'arcade']);
+  assert.equal(created.body.presetVersion, 4);
+  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'packing', 'travel', 'food', 'costs', 'music', 'arcade']);
 
   const featureRows = db
     .prepare(
@@ -269,7 +270,7 @@ test('general events persist the shared planning and arcade feature snapshot', a
     featureRows,
     EVENT_FEATURE_KEYS.map((featureKey) => ({
       featureKey,
-      enabled: ['tasks', 'travel', 'food', 'costs', 'music', 'arcade'].includes(featureKey) ? 1 : 0,
+      enabled: ['tasks', 'packing', 'travel', 'food', 'costs', 'music', 'arcade'].includes(featureKey) ? 1 : 0,
       changedBy: TEST_ADMIN_ID,
     })),
   );
@@ -358,7 +359,7 @@ test('event creation validates name, optional periods and ordering', async () =>
     .post('/api/events')
     .send({ name: 'Unbekannter Typ', startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS, eventType: 'trip' });
   assert.equal(invalidType.status, 400);
-  assert.match(invalidType.body.error, /lan oder general/);
+  assert.match(invalidType.body.error, /lan, general, group/);
 });
 
 test('derived feature snapshot fields and post-creation type changes stay explicitly read-only', async () => {
@@ -1284,4 +1285,62 @@ test('the participation history never offers an event this account only manages'
 test('unknown events stay non-enumerable', async () => {
   assert.equal((await request(app).get('/api/events/does-not-exist')).status, 404);
   assert.equal((await request(app).put('/api/me/active-event').send({ eventId: 'does-not-exist' })).status, 404);
+});
+
+// A group is the one workspace kind that is published without ever having a
+// period, so the whole undated lifecycle is verified in one place: what is
+// persisted, what the API refuses, and that it cannot be ended.
+test('groups are published without a period and refuse every dated or paid field', async () => {
+  const created = await request(app).post('/api/events').send({ name: 'Zockerrunde', eventType: 'group' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.eventType, 'group');
+  assert.equal(created.body.startsAt, null);
+  assert.equal(created.body.endsAt, null);
+  assert.equal(created.body.costCents, null);
+  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'food', 'music', 'games', 'arcade']);
+
+  // Published, not a draft: a draft waits for a date, a group never gets one.
+  assert.deepEqual(
+    db.prepare('SELECT status, starts_at AS startsAt FROM events WHERE id = ?').get(created.body.id),
+    { status: 'published', startsAt: null },
+  );
+
+  const now = Date.now();
+  for (const [field, value] of [
+    ['startsAt', now],
+    ['endsAt', now + EVENT_MINIMUM_DURATION_MS],
+    ['costCents', 500],
+    ['accommodationCostCents', 12_000],
+    ['paypalLink', 'https://paypal.me/test'],
+    ['paymentDueAt', now],
+  ] as Array<[string, unknown]>) {
+    const rejected = await request(app).post('/api/events').send({ name: `Gruppe ${field}`, eventType: 'group', [field]: value });
+    assert.equal(rejected.status, 400, field);
+    assert.match(rejected.body.error, /für eine Gruppe nicht zulässig/, field);
+
+    const patched = await request(app).patch(`/api/events/${created.body.id}`).send({ [field]: value });
+    assert.equal(patched.status, 400, field);
+    assert.match(patched.body.error, /für eine Gruppe nicht zulässig/, field);
+  }
+
+  // Name, location and note stay editable — only period and money are gone.
+  const patched = await request(app)
+    .patch(`/api/events/${created.body.id}`)
+    .send({ name: 'Skatrunde', location: 'Bei Bob', description: 'Jeden Dienstag' });
+  assert.equal(patched.status, 200, JSON.stringify(patched.body));
+  assert.equal(patched.body.name, 'Skatrunde');
+
+  const ended = await request(app).post(`/api/events/${created.body.id}/end`);
+  assert.equal(ended.status, 409);
+  assert.match(ended.body.error, /dauerhaft/);
+
+  // Tracking has no meaning without a period; the feature is simply absent.
+  const tracking = await request(app).post(`/api/events/${created.body.id}/tracking/start`);
+  assert.equal(tracking.status, 404);
+
+  // A group creates no kiosk account; only a LAN event does.
+  assert.equal(
+    db.prepare('SELECT 1 FROM kiosk_accounts WHERE event_id = ?').get(created.body.id),
+    undefined,
+  );
 });

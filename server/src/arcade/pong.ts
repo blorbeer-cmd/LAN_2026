@@ -279,7 +279,7 @@ export function registerPongSockets(io: Server): () => void {
       const mode = payload?.mode ?? 'duel';
       if (mode !== 'duel' && mode !== 'doubles') return ack?.({ ok: false, error: 'Modus ist ungültig.' });
       const scope = socketArcadeScope(socket, player.id);
-      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      if (!scope) return ack?.({ ok: false, error: 'Community- oder Eventzugriff verweigert.' });
       const host = lobbyPlayer(player, 'left');
       const lobby: Lobby = {
         id: nanoid(), ...scope, mode, host, players: [host], socketIds: new Map([[host.id, socket.id]]), ready: new Set(), createdAt: Date.now(),
@@ -299,7 +299,7 @@ export function registerPongSockets(io: Server): () => void {
       const mode = payload.mode ?? 'duel';
       if (mode !== 'duel' && mode !== 'doubles') return ack?.({ ok: false, error: 'Modus ist ungültig.' });
       const scope = socketArcadeScope(socket, player.id);
-      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      if (!scope) return ack?.({ ok: false, error: 'Community- oder Eventzugriff verweigert.' });
       const host = lobbyPlayer(player, 'left');
       const bots = mode === 'doubles' ? doublesBots() : [lobbyPlayer(BOT, 'right')];
       const lobby: Lobby = {
@@ -316,7 +316,7 @@ export function registerPongSockets(io: Server): () => void {
       const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
       const player = playerById(payload?.playerId);
       if (!lobby || !player) return ack?.({ ok: false, error: 'Lobby nicht gefunden.' });
-      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Gruppe.' });
+      if (!canJoinLobby(socket, lobby, player.id)) return ack?.({ ok: false, error: 'Lobby gehört zu einer anderen Community.' });
       const present = lobby.players.some((entry) => entry.id === player.id);
       const team = present ? lobby.players.find((entry) => entry.id === player.id)!.team : availableTeam(lobby, payload?.team);
       if (!present && (!team || lobby.players.length >= playerLimit(lobby.mode))) return ack?.({ ok: false, error: 'Team ist voll.' });

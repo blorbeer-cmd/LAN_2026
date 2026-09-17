@@ -275,7 +275,7 @@ export function registerBattleshipSockets(io: Server): () => void {
       if (!player) return ack?.({ ok: false, error: 'Spieler nicht gefunden.' });
       if (mode === 'team') return ack?.({ ok: false, error: 'Der Teammodus ist noch nicht freigeschaltet.' });
       const scope = socketArcadeScope(socket, player.id);
-      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      if (!scope) return ack?.({ ok: false, error: 'Community- oder Eventzugriff verweigert.' });
       const lobby: Lobby = { id: nanoid(), ...scope, mode, host: player, players: [player], socketIds: new Map([[player.id, socket.id]]), ready: new Set(), createdAt: Date.now() };
       if (!claimLobbyMembership(player.id, 'battleship', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromLobbies(io, socket.id);
@@ -290,7 +290,7 @@ export function registerBattleshipSockets(io: Server): () => void {
       const player = playerById(payload?.playerId);
       if (!player) return ack?.({ ok: false, error: 'Lobby konnte nicht erstellt werden.' });
       const scope = socketArcadeScope(socket, player.id);
-      if (!scope) return ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
+      if (!scope) return ack?.({ ok: false, error: 'Community- oder Eventzugriff verweigert.' });
       const lobby: Lobby = {
         id: nanoid(), ...scope, mode: 'duel', host: player, players: [player, BOT],
         socketIds: new Map([[player.id, socket.id]]), ready: new Set([BOT_ID]), createdAt: Date.now(),

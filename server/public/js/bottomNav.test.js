@@ -64,9 +64,9 @@ test('wide desktop exposes grouped direct destinations without a More duplicate'
   assert.deepEqual(
     navigation.groups.map((group) => group.entries.map((entry) => entry.view)),
     [
-      ['home'],
+      ['home', 'events'],
       ['matchmaking', 'votes', 'gameCatalog'],
-      ['events', 'eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'foodOrders'],
+      ['eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'foodOrders'],
       ['broadcast', 'arcade', 'music'],
     ],
   );
@@ -78,10 +78,10 @@ test('wide desktop exposes grouped direct destinations without a More duplicate'
     navigation.groups.flatMap((group) => group.entries.map((entry) => entry.iconKey)),
     [
       'home',
+      'events',
       'competition',
       'votes',
       'gameCatalog',
-      'events',
       'eventPolls',
       'arrivals',
       'checklistPacking',
@@ -96,7 +96,7 @@ test('wide desktop exposes grouped direct destinations without a More duplicate'
 });
 
 test('desktop navigation remains feature- and role-aware', () => {
-  const event = { eventType: 'general', enabledFeatures: ['tasks', 'travel'] };
+  const event = { eventType: 'general', enabledFeatures: ['tasks', 'packing', 'travel'] };
   const navigation = desktopNavItemsForEvent(event);
   assert.deepEqual(navigation.groups.map((group) => group.label), ['', 'Orga', 'Sonstiges']);
   assert.deepEqual(
@@ -115,7 +115,7 @@ test('desktop child routes highlight their stable parent destination', () => {
 });
 
 test('the manifest keeps every compact destination reachable in the desktop rail', () => {
-  for (const eventType of ['lan', 'general']) {
+  for (const eventType of ['lan', 'general', 'group']) {
     assert.deepEqual(
       desktopNavigationEntries(eventType).map((entry) => entry.view).sort(),
       compactDestinationSet(eventType),
