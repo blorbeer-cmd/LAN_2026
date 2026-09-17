@@ -541,6 +541,14 @@ export const components = [
     ]
   },
   {
+    "id": "poll-option-switch",
+    "role": "standard-control",
+    "selector": ".poll-option-switch",
+    "owner": "public/css/style.css",
+    "contract": "components/poll-option-switch.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "purpose": "Poll options use an accessible switch for active voting state."
+  },
+  {
     "id": "event-poll-voter-stack",
     "role": "composite-part",
     "selector": ".event-poll-voter-stack",

@@ -19,6 +19,7 @@ Control-Selektoren und ihre Zuordnung stehen in der reinen
 |---|---|---|
 | `button`, `button-small`, `button-meaning`, `button-width` | [Controls](components/controls.md) | `public/css/style.css` |
 | `native-fields` | [Controls](components/controls.md) | `public/css/style.css` |
+| `poll-option-switch` | [PollOptionSwitch](components/poll-option-switch.md) | `public/css/style.css` |
 | `icon-button`, `button-square`, `selection-toolbar` | [Controls](components/controls.md) | `public/css/style.css` |
 | `arcade-segment` | [Controls](components/controls.md) | `public/css/arcade.css` |
 | `action-menu-trigger`, `action-menu-entry` | [Controls](components/controls.md) | `public/css/style.css` |

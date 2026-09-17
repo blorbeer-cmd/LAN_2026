@@ -4899,6 +4899,19 @@ registerMigration({
   name: 'add hidden live event poll results',
   up: addHiddenLiveEventPollResults,
 });
+registerMigration({
+  version: 101,
+  name: 'track editable event poll options',
+  up: () => {
+    const columns = db.prepare('PRAGMA table_info(event_date_poll_options)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'is_active')) {
+      db.exec('ALTER TABLE event_date_poll_options ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))');
+    }
+    if (!columns.some((column) => column.name === 'description_edited_at')) {
+      db.exec('ALTER TABLE event_date_poll_options ADD COLUMN description_edited_at INTEGER');
+    }
+  },
+});
 
 runRegisteredMigrations();
 
