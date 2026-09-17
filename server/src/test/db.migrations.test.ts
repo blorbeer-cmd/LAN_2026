@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 100);
+  assert.equal(migrations.length, 101);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 100 }, (_, index) => index + 1),
+    Array.from({ length: 101 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,7 +1342,7 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 100 }, (_, index) => index + 1),
+    Array.from({ length: 101 }, (_, index) => index + 1),
     'every version 1..100 runs exactly once',
   );
 });
@@ -3309,7 +3309,7 @@ test('migration 85 restores accepted-only participation and enables independent 
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migrations 86 through 88 preserve poll history and allow a new round after close', () => {
+test('migrations 86 through 88 and 100 preserve poll history, allow a new round after close and hide live results', () => {
   const dbFile = makeTempDbPath('event-poll-ratings');
   runMigrations(dbFile);
 
@@ -3382,7 +3382,7 @@ test('migrations 86 through 88 preserve poll history and allow a new round after
       VALUES ('migration-86-poll', 'migration-86-player', 1);
     INSERT INTO event_date_poll_responses (poll_id, option_id, player_id, response, updated_at)
       VALUES ('migration-86-poll', 'migration-86-option', 'migration-86-player', 'can', 1);
-    DELETE FROM schema_migrations WHERE version IN (86, 87, 88);
+    DELETE FROM schema_migrations WHERE version IN (86, 87, 88, 100);
   `);
   fixture.close();
 
@@ -3410,6 +3410,18 @@ test('migrations 86 through 88 preserve poll history and allow a new round after
   migrated.prepare('UPDATE event_date_polls SET is_anonymous = 1 WHERE id = ?').run('migration-86-poll');
   assert.throws(
     () => migrated.prepare('UPDATE event_date_polls SET is_anonymous = 2 WHERE id = ?').run('migration-86-poll'),
+    /CHECK constraint failed/,
+  );
+  assert.equal(
+    (migrated
+      .prepare('SELECT live_results_hidden AS hidden FROM event_date_polls WHERE id = ?')
+      .get('migration-86-poll') as { hidden: number }).hidden,
+    1,
+    'existing rounds adopt the hidden interim result instead of revealing counts they never showed',
+  );
+  migrated.prepare('UPDATE event_date_polls SET live_results_hidden = 0 WHERE id = ?').run('migration-86-poll');
+  assert.throws(
+    () => migrated.prepare('UPDATE event_date_polls SET live_results_hidden = 2 WHERE id = ?').run('migration-86-poll'),
     /CHECK constraint failed/,
   );
   const openIndexSql = (migrated
@@ -3500,7 +3512,7 @@ test('migration 97 makes the event poll deadline optional without losing existin
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 100 keeps existing poll options votable and adds edit metadata', () => {
+test('migration 101 keeps existing poll options votable and adds edit metadata', () => {
   const dbFile = makeTempDbPath('event-poll-option-lifecycle');
   runMigrations(dbFile);
   const fixture = new Database(dbFile);
@@ -3509,14 +3521,14 @@ test('migration 100 keeps existing poll options votable and adds edit metadata',
     INSERT INTO event_date_polls
       (id, event_id, round_number, status, created_at, updated_at,
        topic, decision_key, title, response_mode, is_anonymous)
-      VALUES ('migration-100-poll', 'instance-base-event', 1, 'open', ${now}, ${now},
-              'custom', 'migration-100', 'Migration 100 Poll', 'feasibility', 0);
+      VALUES ('migration-101-poll', 'instance-base-event', 1, 'open', ${now}, ${now},
+              'custom', 'migration-101', 'Migration 101 Poll', 'feasibility', 0);
     INSERT INTO event_date_poll_options
       (id, poll_id, starts_on, ends_on, position, label, description, payload_json)
-      VALUES ('migration-100-option', 'migration-100-poll', '0001-01-01', '0001-01-01', 0, 'Option', 'Note', '{}');
+      VALUES ('migration-101-option', 'migration-101-poll', '0001-01-01', '0001-01-01', 0, 'Option', 'Note', '{}');
     ALTER TABLE event_date_poll_options DROP COLUMN description_edited_at;
     ALTER TABLE event_date_poll_options DROP COLUMN is_active;
-    DELETE FROM schema_migrations WHERE version = 100;
+    DELETE FROM schema_migrations WHERE version = 101;
   `);
   fixture.close();
 
@@ -3525,7 +3537,7 @@ test('migration 100 keeps existing poll options votable and adds edit metadata',
   const migrated = new Database(dbFile);
   assert.deepEqual(
     migrated.prepare('SELECT is_active AS active, description_edited_at AS editedAt, description FROM event_date_poll_options WHERE id = ?')
-      .get('migration-100-option'),
+      .get('migration-101-option'),
     { active: 1, editedAt: null, description: 'Note' },
   );
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);

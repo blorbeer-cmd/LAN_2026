@@ -136,6 +136,7 @@ function serializeOption(
   names: Map<string, string>,
   isRecommended: boolean,
   includeResponsePeople: boolean,
+  includeCounts: boolean,
 ) {
   const forOption = responses.filter((r) => r.option_id === option.id);
   const byResponse = (value: DatePollResponseValue) =>
@@ -154,14 +155,18 @@ function serializeOption(
     startsOn: option.starts_on,
     endsOn: option.ends_on,
     position: option.position,
-    counts: {
-      can: counts.can,
-      ifNeeded: counts.ifNeeded,
-      cannot: counts.cannot,
-      open: counts.open,
-      ratings: counts.ratings,
-      average: counts.average,
-    },
+    // A hidden interim result is withheld, not zeroed: the client never
+    // receives numbers it is not allowed to show yet.
+    counts: includeCounts
+      ? {
+        can: counts.can,
+        ifNeeded: counts.ifNeeded,
+        cannot: counts.cannot,
+        open: counts.open,
+        ratings: counts.ratings,
+        average: counts.average,
+      }
+      : null,
     people: {
       can: byResponse('can'),
       ifNeeded: byResponse('if_needed'),
@@ -174,7 +179,7 @@ function serializeOption(
         '5': byResponse('5'),
       },
     },
-    isRecommended,
+    isRecommended: includeCounts && isRecommended,
     _answeredIds: answeredIds,
   };
 }
@@ -204,10 +209,24 @@ function serializeDatePoll(
   const activeOptionIds = new Set(activeOptions.map((option) => option.id));
   const recommendedId = recommendedOptionId(activeOptions, responses.filter((response) => activeOptionIds.has(response.option_id)), invitees.length, poll.response_mode);
   const anonymous = Boolean(poll.is_anonymous);
-  const responseDetailsVisible = poll.status !== 'open' && !anonymous;
+  const canManage = canManageDatePoll(poll, event, viewerId, viewerRole);
+  // While a round with a hidden interim result is open, only the people who
+  // manage it see counts and voter identities; everyone else sees their own
+  // answer until the round ends.
+  const liveResultsHidden = Boolean(poll.live_results_hidden);
+  const resultsVisible = poll.status !== 'open' || !liveResultsHidden || canManage;
+  const responseDetailsVisible = resultsVisible && !anonymous;
 
   const serializedOptions = options.map((option) =>
-    serializeOption(option, responses, invitees.length, names, option.id === recommendedId, responseDetailsVisible),
+    serializeOption(
+      option,
+      responses,
+      invitees.length,
+      names,
+      option.id === recommendedId,
+      responseDetailsVisible,
+      resultsVisible,
+    ),
   );
   const answeredPlayerIds = new Set(responses.map((r) => r.player_id));
   const myResponses: Record<string, DatePollResponseValue> = {};
@@ -225,6 +244,8 @@ function serializeDatePoll(
     responseMode: poll.response_mode,
     maxSelections: poll.max_selections,
     anonymous,
+    liveResultsHidden,
+    resultsVisible,
     responseDetailsVisible,
     note: poll.note,
     createdBy: poll.created_by,
@@ -245,7 +266,7 @@ function serializeDatePoll(
     myResponses: invitees.some((invitee) => invitee.player_id === viewerId) && (!anonymous || poll.status === 'open')
       ? myResponses
       : null,
-    canManage: canManageDatePoll(poll, event, viewerId, viewerRole),
+    canManage,
   };
 }
 
@@ -449,12 +470,16 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     responseMode = 'feasibility',
     maxSelections,
     anonymous = false,
+    hideLiveResults = true,
   } = req.body ?? {};
   const topics: EventPollTopic[] = ['date_range', 'location', 'duration', 'budget', 'custom'];
   const responseModes: EventPollResponseMode[] = ['feasibility', 'single_choice', 'multiple_choice', 'rating_1_5'];
   if (!topics.includes(topic)) return res.status(400).json({ error: 'Ungültiges Abstimmungsthema.' });
   if (!responseModes.includes(responseMode)) return res.status(400).json({ error: 'Ungültiger Antwortmodus.' });
   if (typeof anonymous !== 'boolean') return res.status(400).json({ error: 'anonymous muss ein boolescher Wert sein.' });
+  if (typeof hideLiveResults !== 'boolean') {
+    return res.status(400).json({ error: 'hideLiveResults muss ein boolescher Wert sein.' });
+  }
   if (
     maxSelections !== undefined &&
     maxSelections !== null &&
@@ -576,6 +601,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
       responseMode,
       maxSelections: responseMode === 'multiple_choice' ? (maxSelections ?? null) : null,
       anonymous,
+      hideLiveResults,
     },
     playerId,
   );

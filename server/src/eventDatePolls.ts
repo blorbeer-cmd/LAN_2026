@@ -40,6 +40,7 @@ export interface DatePollRow {
   response_mode: EventPollResponseMode;
   max_selections: number | null;
   is_anonymous: number;
+  live_results_hidden: number;
   decision_note: string | null;
   created_at: number;
   updated_at: number;
@@ -245,6 +246,8 @@ export interface CreateDatePollInput {
   responseMode?: EventPollResponseMode;
   maxSelections?: number | null;
   anonymous?: boolean;
+  // Defaults to true: a fresh round keeps its interim result to its managers.
+  hideLiveResults?: boolean;
 }
 
 export type CreateDatePollResult =
@@ -285,8 +288,8 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
     db.prepare(
       `INSERT INTO event_date_polls
          (id, event_id, round_number, note, created_by, response_due_at, status, created_at, updated_at,
-          topic, decision_key, title, response_mode, max_selections, is_anonymous)
-       VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)`,
+          topic, decision_key, title, response_mode, max_selections, is_anonymous, live_results_hidden)
+       VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       pollId,
       event.id,
@@ -302,6 +305,7 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
       responseMode,
       maxSelections,
       input.anonymous ? 1 : 0,
+      input.hideLiveResults === false ? 0 : 1,
     );
 
     const insertOption = db.prepare(

@@ -199,6 +199,50 @@ function responsePeopleGroups(poll, option) {
   return [{ label: 'Gewählt', people: option.people.can }];
 }
 
+// How many voter avatars an option row shows before the rest becomes a count.
+const VOTER_STACK_LIMIT = 4;
+
+// Which answer an option's avatar row stands for. Choice and feasibility
+// rounds show the people the option actually won over, because every other
+// answer is stored for every option and would make all rows look identical.
+// A rating round has no single positive value, so it shows everyone who rated
+// the option together with their score.
+function optionVoters(poll, option) {
+  if (!poll.responseDetailsVisible) return { label: '', people: [] };
+  if (poll.responseMode === 'rating_1_5') {
+    return {
+      label: 'Bewertet von',
+      people: [...RATING_VALUES].reverse().flatMap((value) => option.people.ratings?.[value] ?? []),
+    };
+  }
+  return {
+    label: poll.responseMode === 'feasibility' ? 'Passt' : 'Gewählt von',
+    people: option.people.can ?? [],
+  };
+}
+
+function voterStackLabel(option, voters) {
+  const names = voters.people.slice(0, VOTER_STACK_LIMIT).map((person) => person.name);
+  const rest = voters.people.length - names.length;
+  return `Stimmen zu ${optionLabel(option)} ansehen · ${voters.label}: ${names.join(', ')}${rest > 0 ? ` und ${rest} weitere` : ''}`;
+}
+
+function renderVoterStack(poll, option) {
+  const voters = optionVoters(poll, option);
+  if (!voters.people.length) return '';
+  const shown = voters.people.slice(0, VOTER_STACK_LIMIT);
+  const rest = voters.people.length - shown.length;
+  const label = voterStackLabel(option, voters);
+  return `
+    <button type="button" class="btn btn-sm event-poll-voter-stack" data-view-poll-votes="${escapeHtml(poll.id)}"
+      aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+      <span class="event-poll-voter-stack-avatars" aria-hidden="true">${shown
+        .map((person) => avatarHtml(state.players?.find((entry) => entry.id === person.playerId) ?? person, 20))
+        .join('')}</span>
+      ${rest > 0 ? `<span class="event-poll-voter-stack-more" aria-hidden="true">+${rest}</span>` : ''}
+    </button>`;
+}
+
 function resultSortValues(poll, option) {
   if (poll.responseMode === 'rating_1_5') return [option.counts.average ?? -1, -option.counts.open];
   if (poll.responseMode === 'feasibility') return [option.counts.can, option.counts.ifNeeded, -option.counts.cannot];
@@ -223,7 +267,7 @@ function bestResultLabel(poll) {
 }
 
 function openVoteDetails(poll) {
-  if (!poll.responseDetailsVisible || poll.anonymous || poll.status === 'open') return;
+  if (!poll.responseDetailsVisible) return;
   const options = optionsByResult(poll);
   const hasResponses = options.some((option) => responsePeopleGroups(poll, option).some((group) => group.people?.length));
   openModal(`Stimmen · ${poll.title}`, hasResponses ? `
@@ -284,6 +328,7 @@ function renderResponseControl(poll, option) {
 }
 
 function renderCounts(poll, option) {
+  if (!option.counts) return '';
   if (poll.responseMode === 'rating_1_5') {
     const ratingCount = RATING_VALUES.reduce((sum, value) => sum + (option.counts.ratings?.[value] ?? 0), 0);
     const average = option.counts.average === null ? '–' : option.counts.average.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -313,6 +358,7 @@ function renderOption(poll, option) {
         <span class="row event-poll-option-badges">
           ${recommendation}
           ${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}
+          ${renderVoterStack(poll, option)}
         </span>
       </div>
       <div class="event-poll-option-response-row">
@@ -325,6 +371,9 @@ function renderOption(poll, option) {
 function renderPollActions(poll) {
   const unanswered = poll.invitees.filter((invitee) => !invitee.hasAnswered).length;
   const actions = [];
+  if (poll.responseDetailsVisible) {
+    actions.push(`<button type="button" class="btn btn-sm" data-view-poll-votes="${escapeHtml(poll.id)}">Stimmen ansehen</button>`);
+  }
   if (poll.status === 'open') {
     if (poll.canManage) {
       actions.push(`<button type="button" class="btn btn-sm" data-edit-poll="${escapeHtml(poll.id)}">Bearbeiten</button>`);
@@ -333,9 +382,6 @@ function renderPollActions(poll) {
       actions.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
     }
   } else {
-    if (poll.responseDetailsVisible && !poll.anonymous) {
-      actions.push(`<button type="button" class="btn btn-sm" data-view-poll-votes="${escapeHtml(poll.id)}">Stimmen ansehen</button>`);
-    }
     if (poll.canManage) {
       actions.push(`<button type="button" class="btn btn-sm" data-reopen-poll="${escapeHtml(poll.id)}">Wieder öffnen</button>`);
       actions.push(`<button type="button" class="btn btn-sm" data-new-poll-round="${escapeHtml(poll.id)}">Neue Runde</button>`);
@@ -348,8 +394,13 @@ function renderPollActions(poll) {
 function renderRound(poll) {
   const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
   const maxCopy = poll.responseMode === 'multiple_choice' && poll.maxSelections ? ` · höchstens ${poll.maxSelections}` : '';
-  const anonymousCopy = poll.anonymous ? ' · Anonym' : '';
-  const modeCopy = poll.responseMode === 'rating_1_5' ? (poll.anonymous ? 'Anonym' : '') : `${mode.label}${maxCopy}${anonymousCopy}`;
+  const modeParts = poll.responseMode === 'rating_1_5' ? [] : [`${mode.label}${maxCopy}`];
+  if (poll.anonymous) modeParts.push('Anonym');
+  // Said once for the whole round instead of repeating it in every option row.
+  if (poll.status === 'open' && poll.liveResultsHidden) {
+    modeParts.push(poll.resultsVisible ? 'Zwischenstand nur für dich' : 'Zwischenstand verborgen');
+  }
+  const modeCopy = modeParts.join(' · ');
   return `
     <section class="stack event-poll-round" data-poll-round="${escapeHtml(poll.id)}">
       ${modeCopy ? `<span class="muted">${escapeHtml(modeCopy)}</span>` : ''}
@@ -526,6 +577,13 @@ function openPollForm(event, ctx, previousRound = null) {
           ${infoTooltipHtml('poll-anonymous-help', 'Anonyme Umfrage', 'Antworten bleiben dauerhaft anonym. Auch nach Ende der Umfrage ist nicht sichtbar, wer wie geantwortet hat.')}
         </span>
       </div>
+      <div class="check-row">
+        <input type="checkbox" id="poll-hide-live-results" ${(previousRound?.liveResultsHidden ?? true) ? 'checked' : ''} />
+        <span class="title-with-info tournament-option-label">
+          <label for="poll-hide-live-results">Zwischenstand verbergen</label>
+          ${infoTooltipHtml('poll-live-results-help', 'Zwischenstand verbergen', 'Solange die Umfrage läuft, sehen nur die Verwaltenden der Umfrage die Stimmen und die Namen. Alle anderen sehen nur ihre eigene Antwort. Nach dem Ende sind Stimmen und Namen für alle sichtbar.')}
+        </span>
+      </div>
       <div class="stack">
         <span class="field-label">Optionen</span>
         <div class="stack" id="poll-option-rows">${initialOptions.map((value, index) => optionRowHtml(index, value)).join('')}</div>
@@ -586,6 +644,7 @@ function openPollForm(event, ctx, previousRound = null) {
             topic: 'custom', ...(previousRound ? { previousPollId: previousRound.id } : {}), title,
             note: modal.querySelector('#poll-note').value.trim() || null, responseMode, maxSelections,
             anonymous: modal.querySelector('#poll-anonymous').checked,
+            hideLiveResults: modal.querySelector('#poll-hide-live-results').checked,
             options: options.map((option) => ({
               label: option.label,
               description: option.description,
@@ -624,7 +683,7 @@ function openEditPollForm(event, poll, ctx) {
       <div><label for="poll-edit-note" class="field-label">Beschreibung</label><textarea id="poll-edit-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(poll.note ?? '')}</textarea></div>
       <div class="stack event-poll-edit-mode">
         <span class="field-label">Antwortart</span>
-        <span class="muted">${escapeHtml(mode.label)}${poll.anonymous ? ' · Anonym' : ''}</span>
+        <span class="muted">${escapeHtml(mode.label)}${poll.anonymous ? ' · Anonym' : ''}${poll.liveResultsHidden ? ' · Zwischenstand verborgen' : ''}</span>
       </div>
       <div class="stack">
         <span class="field-label">Optionen</span>

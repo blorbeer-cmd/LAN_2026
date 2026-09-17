@@ -872,6 +872,33 @@ textarea {
 .event-poll-counts {
   font-size: var(--font-size-sm);
 }
+/* Voter avatars beside their option. They carry the same identities the vote
+   dialog lists, compressed into the option's existing title row so a visible
+   interim result never costs the round an extra line. */
+.event-poll-voter-stack {
+  padding-inline: 0;
+  background: transparent;
+  /* The control keeps its full 32px target; only its outer box gives way, so
+     the avatars ride inside the badge line's 24px instead of making every
+     option row with voters taller than the ones without. */
+  margin-block: calc(var(--space-1) * -1);
+}
+.event-poll-voter-stack-avatars {
+  display: inline-flex;
+  align-items: center;
+}
+/* The overlap is what keeps four faces narrower than the badge beside them.
+   The ring separates neighbours on the option's own surface. */
+.event-poll-voter-stack-avatars > * + * {
+  margin-left: calc(var(--space-2) * -1);
+}
+.event-poll-voter-stack-avatars > * {
+  box-shadow: 0 0 0 2px var(--bg-elevated-2);
+}
+.event-poll-voter-stack-more {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
 .event-poll-response-toolbar {
   min-width: 0;
   width: fit-content;
