@@ -115,7 +115,7 @@ export function musicSetupHtml(status, activePairing = pairing) {
           <div class="grouped-page-section-title"><h2 id="music-setup-title">${hasKnownController ? 'Musik-Verbindung wiederherstellen' : 'Gemeinsam Musik hören'}</h2></div>
           ${hasKnownController
             ? `<p><strong>${escapeHtml(status.controller.label)}</strong> ist nicht erreichbar. Starte die Musik-Verbindung auf diesem Rechner. Respawn prüft den Status automatisch.</p>`
-            : '<p>Ein Musik-PC verbindet eure Gruppe mit Spotify. Danach bedienen alle die Musik direkt in Respawn.</p>'}
+            : '<p>Ein Musik-PC verbindet eure Community mit Spotify. Danach bedienen alle die Musik direkt in Respawn.</p>'}
           ${status.canManageController
             ? `<ol class="music-setup-steps">
                 <li class="${hasKnownController || activePairing ? 'is-complete' : 'is-current'}">
@@ -153,7 +153,7 @@ export function musicSetupHtml(status, activePairing = pairing) {
                     <button type="button" class="btn" id="music-reconnect-controller" ${getMyId() ? '' : 'disabled'}>${activePairing ? 'Neuen Code erzeugen' : 'Vorhandene Installation koppeln'}</button>`}
               </div>
               ${hasKnownController ? '<p class="muted">Ohne laufenden Jam wird die alte Verbindung nach 24 Stunden ohne Kontakt automatisch entfernt.</p>' : ''}`
-            : emptyStateHtml('Ein Gruppen-Admin richtet den Jam-Controller ein.')}
+            : emptyStateHtml('Ein Community-Admin richtet den Jam-Controller ein.')}
       </section>`;
   }
   return '';
@@ -202,7 +202,7 @@ export function musicControllerManagementHtml(status) {
     <div class="collapsible-section-content stack">
       <p class="muted">Wenn kein Jam läuft, wird dieser Controller nach 24 Stunden ohne Verbindung automatisch entkoppelt.</p>
       ${sessionActive
-        ? '<p>Beende zuerst die laufende Session. Danach kann jeder Gruppen-Admin den Controller entkoppeln.</p>'
+        ? '<p>Beende zuerst die laufende Session. Danach kann jeder Community-Admin den Controller entkoppeln.</p>'
         : '<button type="button" class="btn btn-danger" id="music-disconnect">Controller entkoppeln</button>'}
     </div>
   </details>`;

@@ -36,8 +36,18 @@ export function isEventFeatureEnabled(eventId: string, featureKey: EventFeatureK
 // but disabled areas may not create or change domain state. The UI also
 // removes their routes and redirects stale deep links to Home.
 export function requireActiveEventFeatureMutation(featureKey: EventFeatureKey): RequestHandler {
+  const guard = requireActiveEventFeature(featureKey);
   return (req, res, next) => {
     if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+    return guard(req, res, next);
+  };
+}
+
+// The stricter variant, for a route whose GET also writes. The packing list's
+// Grundstock is materialized on read (see routes/checklist.ts), so letting a
+// read through would create rows for an area this event switched off.
+export function requireActiveEventFeature(featureKey: EventFeatureKey): RequestHandler {
+  return (req, res, next) => {
     const eventId = req.kioskScope?.eventId ?? (req.player ? getOrRepairActiveEvent(req.player.id).id : null);
     if (!eventId || !isEventFeatureEnabled(eventId, featureKey)) {
       return res.status(404).json({ error: 'Dieser Bereich ist für das aktive Event nicht aktiviert.' });

@@ -114,7 +114,7 @@ apiRouter.use((req, res, next) => {
     const groupId = tokenScope?.groupId ?? DEFAULT_GROUP_ID;
     const requestedGroup = req.headers['x-group-id'];
     if (tokenScope && typeof requestedGroup === 'string' && requestedGroup !== groupId) {
-      return res.status(404).json({ error: 'Kiosk-Token ist für diese Gruppe nicht freigegeben.' });
+      return res.status(404).json({ error: 'Kiosk-Token ist für diese Community nicht freigegeben.' });
     }
     // resolveKioskToken already rejects a DB token whose group is archived;
     // the installation-wide env token has no such row, so re-check the
@@ -122,7 +122,7 @@ apiRouter.use((req, res, next) => {
     // archived group's data long after the socket path stopped delivering it.
     const group = getGroup(groupId);
     if (!group || group.archived_at !== null) {
-      return res.status(404).json({ error: 'Kiosk-Gruppe ist nicht verfügbar.' });
+      return res.status(404).json({ error: 'Kiosk-Community ist nicht verfügbar.' });
     }
     const kioskEventId = tokenScope?.eventId ?? BASE_EVENT_ID;
     req.query.eventId = kioskEventId;
@@ -242,7 +242,10 @@ apiRouter.use('/draft', requireActiveEventFeatureMutation('competition'), draftR
 apiRouter.use('/broadcasts', broadcastsRouter);
 apiRouter.use('/info', infoBoardRouter);
 apiRouter.use('/food-orders', requireActiveEventFeatureMutation('food'), foodOrdersRouter);
-apiRouter.use('/checklist', requireActiveEventFeatureMutation('tasks'), checklistRouter);
+// Packliste and To-Dos are two switchable areas now, so the router guards
+// them separately (see checklist.ts) instead of putting one feature in front
+// of both.
+apiRouter.use('/checklist', checklistRouter);
 apiRouter.use('/quiz', requireActiveEventFeatureMutation('arcade'), quizRouter);
 apiRouter.use('/arcade', requireActiveEventFeatureMutation('arcade'), arcadeRouter);
 apiRouter.use('/arrivals', requireActiveEventFeatureMutation('travel'), arrivalsRouter);

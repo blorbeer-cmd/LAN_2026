@@ -355,7 +355,7 @@ musicRouter.get('/status', (req, res) => {
 musicRouter.post('/pairing', ...withBodyPlayerIdentity, (req, res) => {
   const player = activePlayer(req);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  if (!mayManageController(req, player)) return res.status(403).json({ error: 'Nur Gruppen-Admins können den Jam-Controller koppeln.' });
+  if (!mayManageController(req, player)) return res.status(403).json({ error: 'Nur Community-Admins können den Jam-Controller koppeln.' });
   if (activeGroupSession(req.group!.id) && controllerSummary(req.group!.id)?.online) {
     return res.status(409).json({ error: 'Der verbundene Jam-Controller ist bereits erreichbar.' });
   }
@@ -374,7 +374,7 @@ musicRouter.post('/pairing', ...withBodyPlayerIdentity, (req, res) => {
 musicRouter.post('/controller-package', ...withBodyPlayerIdentity, (req, res) => {
   const player = activePlayer(req);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  if (!mayManageController(req, player)) return res.status(403).json({ error: 'Nur Gruppen-Admins können den Jam-Controller koppeln.' });
+  if (!mayManageController(req, player)) return res.status(403).json({ error: 'Nur Community-Admins können den Jam-Controller koppeln.' });
   const pairingCode = typeof req.body?.pairingCode === 'string' ? req.body.pairingCode.trim().toUpperCase() : '';
   const pairing = pairingCode
     ? db.prepare(
@@ -418,7 +418,7 @@ musicRouter.post('/controller-package', ...withBodyPlayerIdentity, (req, res) =>
 musicRouter.delete('/controller', ...withBodyPlayerIdentity, (req, res) => {
   const player = activePlayer(req);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  if (!mayManageController(req, player)) return res.status(403).json({ error: 'Nur Gruppen-Admins können den Jam-Controller entkoppeln.' });
+  if (!mayManageController(req, player)) return res.status(403).json({ error: 'Nur Community-Admins können den Jam-Controller entkoppeln.' });
   if (activeGroupSession(req.group!.id)) return res.status(409).json({ error: 'Laufenden Jam zuerst beenden.' });
   db.prepare('DELETE FROM music_controllers WHERE group_id = ?').run(req.group!.id);
   musicChanged(req.group!.id, requestEventId(res));
@@ -710,7 +710,7 @@ musicRouter.post('/end', ...withBodyPlayerIdentity, asyncRoute(async (req, res) 
   const player = activePlayer(req);
   const session = requestActiveSession(req, res);
   if (!player || !session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
-  if (!mayControl(req, session, player.id)) return res.status(403).json({ error: 'Nur Host oder Gruppen-Admin.' });
+  if (!mayControl(req, session, player.id)) return res.status(403).json({ error: 'Nur Host oder Community-Admin.' });
   let warning: string | null = null;
   try {
     await issueMusicControllerCommand(req.group!.id, 'pause', { deviceId: session.device_id });

@@ -404,6 +404,8 @@ const ctx = {
 // as an icon, visible collapsed and on every row of the open list. It is
 // rebuilt rather than patched because the option set itself changes when an
 // event starts, ends or is left.
+const MANAGE_WORKSPACES_OPTION = '__manage-workspaces__';
+
 function renderEventContextSwitcher() {
   const container = document.getElementById('event-context');
   if (!container) return;
@@ -435,7 +437,14 @@ function renderEventContextSwitcher() {
   }
 
   const active = events.find((event) => event.id === state.activeEvent?.id) ?? state.activeEvent;
-  const options = eventSelectOptions(events);
+  // Managing events and groups is the same level as picking one, so the list
+  // that switches workspaces is also the shortest way to the page that
+  // creates them. The entry is not a workspace: picking it navigates and the
+  // switcher is rebuilt on the active event immediately afterwards.
+  const options = [
+    ...eventSelectOptions(events),
+    { value: MANAGE_WORKSPACES_OPTION, label: 'Events & Gruppen verwalten…', icon: 'calendar', iconLabel: 'Verwalten' },
+  ];
   const activeId = active?.id ?? '';
   // The state stays in words too: the icon carries the German label, and the
   // wrapper describes the whole control, so colour is never the only cue. The
@@ -456,6 +465,11 @@ function renderEventContextSwitcher() {
   wireSearchSelect(container, 'event-context-switcher', options, {
     emptyText: 'Kein passendes Event gefunden.',
     onChange: async (eventId) => {
+      if (eventId === MANAGE_WORKSPACES_OPTION) {
+        renderEventContextSwitcher();
+        switchView('events');
+        return;
+      }
       // Mirrors the disabled state the previous native <select> got for free
       // while its change handler awaited the switch: without it, a second
       // pick before the first request resolves fired a second overlapping

@@ -563,7 +563,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   await page.click('#new-event-btn');
   assert.deepEqual(
     await page.locator('#event-type option').allTextContents(),
-    ['LAN-Party', 'Allgemeines Event'],
+    ['LAN-Party', 'Allgemeines Event', 'Gruppe'],
   );
   assert.equal(await page.locator('#event-type-description').count(), 0);
   await page.selectOption('#event-type', 'general');
@@ -601,10 +601,10 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   await page.waitForFunction(() => document.querySelector('.desktop-nav-btn[data-view="matchmaking"]')?.getClientRects().length);
   const expectedLanDesktopViews = [
     'home',
+    'events',
     'matchmaking',
     'votes',
     'gameCatalog',
-    'events',
     'eventPolls',
     'arrivals',
     'checklistPacking',

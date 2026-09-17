@@ -148,7 +148,7 @@ test('a required-mode member can open an Arcade lobby with a scoped game socket'
   assert.equal(await page.locator('#tetris-opponent').count(), 0);
   await page.click('#tetris-create');
   await page.waitForSelector('[data-tetris-close]');
-  assert.equal(await page.locator('.toast-error:has-text("Gruppen- oder Eventzugriff verweigert")').count(), 0);
+  assert.equal(await page.locator('.toast-error:has-text("Community- oder Eventzugriff verweigert")').count(), 0);
   await page.click('[data-tetris-close]');
   await page.waitForSelector('#tetris-create:not([disabled])');
   await selectArcadeGame(page, 'challenge-rush');

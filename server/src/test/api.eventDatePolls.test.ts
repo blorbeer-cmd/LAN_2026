@@ -24,6 +24,10 @@ function isoDate(daysFromNow: number): string {
   return new Date(Date.now() + daysFromNow * 86_400_000).toISOString().slice(0, 10);
 }
 
+// These tests are about poll semantics, so the roster has to be exactly the
+// listed participants and nothing else. Creating an event now also accepts its
+// creator (see createEvent in events.ts), which is covered on its own in
+// api.events.test.ts — drop that row again here unless the test asked for it.
 async function createEvent(name: string, participants: string[]): Promise<string> {
   const startsAt = Date.now() + 20 * 86_400_000;
   const created = await request(app)
@@ -32,7 +36,12 @@ async function createEvent(name: string, participants: string[]): Promise<string
     .send({ name, startsAt, endsAt: startsAt + 2 * 86_400_000, location: 'Bonn' });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const eventId = created.body.id as string;
-  for (const playerId of participants) {
+  if (!participants.includes(TEST_ADMIN_ID)) {
+    db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(eventId, TEST_ADMIN_ID);
+  }
+  // The creator already holds an accepted row, so inviting them again would
+  // be a no-op the assertions below would misread as a failed invitation.
+  for (const playerId of participants.filter((id) => id !== TEST_ADMIN_ID)) {
     const invited = await request(app)
       .post(`/api/events/${eventId}/invitations`)
       .set('x-test-player-id', TEST_ADMIN_ID)

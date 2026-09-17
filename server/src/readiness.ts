@@ -94,7 +94,7 @@ function agentsCheck(groupId: string, now: number): ReadinessCheck {
         .join(', ')}`,
     );
   }
-  if (rows.length === 0) details.push('Noch keine aktiven echten Personen in der Gruppe.');
+  if (rows.length === 0) details.push('Noch keine aktiven echten Personen in der Community.');
   return {
     id: 'agents',
     label: 'Agenten',

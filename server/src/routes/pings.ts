@@ -235,7 +235,7 @@ pingsRouter.delete('/:id', resolvePing, (req, res) => {
       targetId: ping.id,
       details: { status: 403, requiredRole: 'admin', actualRole: role },
     });
-    return res.status(403).json({ error: 'Nur Ersteller oder Gruppen-Admins können diesen Ping beenden.' });
+    return res.status(403).json({ error: 'Nur Ersteller oder Community-Admins können diesen Ping beenden.' });
   }
   db.prepare('UPDATE game_pings SET cancelled_at = COALESCE(cancelled_at, ?) WHERE id = ? AND group_id = ?').run(
     Date.now(),

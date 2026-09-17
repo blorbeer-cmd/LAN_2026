@@ -53,6 +53,13 @@ test('general-event planning routes each represent their own bottom-nav entry', 
   assert.equal(navGroupForView('arrivals', { eventType: 'lan' }), 'more');
 });
 
+test('a group reaches its planning routes directly, like a general event', () => {
+  const group = { eventType: 'group' };
+  assert.equal(navGroupForView('checklist', group), 'checklist');
+  assert.equal(navGroupForView('eventPolls', group), 'eventPolls');
+  assert.equal(navGroupForView('events', group), 'more');
+});
+
 test('routes presented through Mehr keep the persistent parent navigation active', () => {
   for (const eventType of ['lan', 'general']) {
     const event = { eventType };
@@ -66,7 +73,7 @@ test('routes presented through Mehr keep the persistent parent navigation active
 
 test('section tabs follow the active event feature snapshot', () => {
   const generalEvent = {
-    enabledFeatures: ['tasks', 'travel', 'food', 'costs', 'music', 'arcade'],
+    enabledFeatures: ['tasks', 'packing', 'travel', 'food', 'costs', 'music', 'arcade'],
   };
   assert.equal(sectionEntryView('competition', generalEvent), null);
   assert.equal(sectionEntryView('insights', generalEvent), null);
@@ -74,10 +81,15 @@ test('section tabs follow the active event feature snapshot', () => {
   assert.deepEqual(sectionTabsForEvent('orga', generalEvent).map((tab) => tab.view), [
     'eventPolls',
     'arrivals',
-    'events',
     'checklistPacking',
     'checklist',
   ]);
+  // Packliste is its own switchable area now, so dropping it leaves the
+  // shared To-Do board untouched.
+  assert.deepEqual(
+    sectionTabsForEvent('orga', { enabledFeatures: ['tasks', 'travel'] }).map((tab) => tab.view),
+    ['eventPolls', 'arrivals', 'checklist'],
+  );
 });
 
 // Minimal stand-in for the container element: it models exactly what the shell
@@ -180,9 +192,9 @@ test('general-event planning routes render as standalone pages without an Orga t
 
 test('Orga exposes the shared back navigation to the More hub', () => {
   const container = stubContainer();
-  renderSectionShell(container, 'events');
+  renderSectionShell(container, 'arrivals');
   assert.match(container.innerHTML, /class="more-subpage-header more-subpage-header--tabs"/);
-  assert.match(container.innerHTML, /<span class="orga-area-title">Orga<\/span><span class="orga-page-title">Events<\/span>/);
+  assert.match(container.innerHTML, /<span class="orga-area-title">Orga<\/span><span class="orga-page-title">An- & Abreise<\/span>/);
   assert.match(container.innerHTML, /data-navigate="more"[^>]*>.*Zurück<\/button>/s);
 });
 
@@ -198,7 +210,7 @@ test('the shell rebuilds a same-route tab row when the event feature set changes
   renderSectionShell(container, 'arrivals', { event: { enabledFeatures: ['travel'] } });
   assert.equal(container.writes, writesWithAllTabs + 1);
   assert.match(container.innerHTML, /data-section-tab="arrivals"/);
-  assert.match(container.innerHTML, /data-section-tab="events"/);
+  assert.match(container.innerHTML, /data-section-tab="eventPolls"/);
   assert.doesNotMatch(container.innerHTML, /data-section-tab="checklistPacking"/);
   assert.doesNotMatch(container.innerHTML, /data-section-tab="checklist"/);
 

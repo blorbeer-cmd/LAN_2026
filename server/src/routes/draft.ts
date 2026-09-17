@@ -300,7 +300,7 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(409).json({ error: 'Dieser Spieler ist nicht (mehr) im Pool.' });
   }
   if (activeGroupPlayers(groupId, [playerId, pickPlayerId]).size !== 2) {
-    return res.status(409).json({ error: 'Draft-Spieler sind keine aktiven Gruppenmitglieder mehr.' });
+    return res.status(409).json({ error: 'Draft-Spieler sind keine aktiven Community-Mitglieder mehr.' });
   }
 
   const now = Date.now();
@@ -311,7 +311,7 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   // next so the room isn't waiting for a captain to "pick" the only option.
   if (remaining.length === 1) {
     if (!activeGroupPlayers(groupId, [remaining[0]]).has(remaining[0])) {
-      return res.status(409).json({ error: 'Der letzte Pool-Spieler ist kein aktives Gruppenmitglied mehr.' });
+      return res.status(409).json({ error: 'Der letzte Pool-Spieler ist kein aktives Community-Mitglied mehr.' });
     }
     const lastIndex = snakeCaptainIndex(picks.length, captainIds.length);
     picks.push({ captainIndex: lastIndex, playerId: remaining[0], pickedAt: now });
@@ -328,7 +328,7 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   if (completed && state.draft) {
     const playerIds = state.draft.teams.flatMap((team) => team.players.map((player) => player.id));
     if (activeGroupPlayers(groupId, playerIds).size !== new Set(playerIds).size) {
-      return res.status(409).json({ error: 'Draft-Spieler sind keine aktiven Gruppenmitglieder mehr.' });
+      return res.status(409).json({ error: 'Draft-Spieler sind keine aktiven Community-Mitglieder mehr.' });
     }
   }
 

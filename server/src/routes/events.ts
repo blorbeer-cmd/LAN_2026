@@ -49,6 +49,7 @@ import {
   DEFAULT_EVENT_TYPE_KEY,
   EVENT_TYPE_KEYS,
   EVENT_TYPE_PRESETS,
+  eventTypeIsUndated,
   isEventTypeKey,
 } from '../eventFeatureCatalog';
 import { isAdminTestMode } from '../testDataVisibility';
@@ -71,6 +72,29 @@ function rejectReadOnlyEventConfiguration(res: Response) {
   return res.status(400).json({
     error: 'Preset-Version und Bereichsauswahl sind in diesem Ausbau noch schreibgeschützt.',
   });
+}
+
+// A group has neither a period nor money attached. Rejecting those fields
+// outright (instead of quietly dropping them) keeps payment reminders, the
+// paid flag and the calendar export from ever seeing a value they would then
+// act on for a workspace that has no such concept.
+const GROUP_REJECTED_FIELDS = [
+  'startsAt',
+  'endsAt',
+  'costCents',
+  'accommodationCostCents',
+  'paypalLink',
+  'paymentDueAt',
+] as const;
+
+function rejectedGroupField(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  return (
+    GROUP_REJECTED_FIELDS.find((field) => {
+      const value = (body as Record<string, unknown>)[field];
+      return value !== undefined && value !== null && value !== '';
+    }) ?? null
+  );
 }
 
 function eventTypeOptions() {
@@ -1047,7 +1071,13 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   }
   const eventTypeKey = eventType ?? DEFAULT_EVENT_TYPE_KEY;
   if (!isEventTypeKey(eventTypeKey)) {
-    return res.status(400).json({ error: 'eventType muss lan oder general sein.' });
+    return res.status(400).json({ error: `eventType muss einer von ${EVENT_TYPE_KEYS.join(', ')} sein.` });
+  }
+  if (eventTypeIsUndated(eventTypeKey)) {
+    const rejected = rejectedGroupField(req.body);
+    if (rejected) {
+      return res.status(400).json({ error: `${rejected} ist für eine Gruppe nicht zulässig.` });
+    }
   }
 
   const parsedStartsAt = parseOptionalTimestamp(startsAt, 'startsAt');
@@ -1124,9 +1154,15 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht bearbeitet werden.' });
   }
   if (req.body && typeof req.body === 'object' && Object.prototype.hasOwnProperty.call(req.body, 'eventType')) {
-    return res.status(400).json({ error: 'Der Eventtyp ist in diesem MVP nach dem Anlegen schreibgeschützt.' });
+    return res.status(400).json({ error: 'Der Typ ist in diesem MVP nach dem Anlegen schreibgeschützt.' });
   }
   if (requestsReadOnlyEventConfiguration(req.body)) return rejectReadOnlyEventConfiguration(res);
+  if (eventTypeIsUndated(existing.event_type_key)) {
+    const rejected = rejectedGroupField(req.body);
+    if (rejected) {
+      return res.status(400).json({ error: `${rejected} ist für eine Gruppe nicht zulässig.` });
+    }
+  }
 
   const {
     name,

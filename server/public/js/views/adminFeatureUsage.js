@@ -17,7 +17,7 @@ let featureUsageLoading = false;
 let featureUsageError = null;
 
 const FEATURE_USAGE_HELP =
-  'Zeigt, wie viele Personen jede Funktion bereits genutzt haben — direkt aus den vorhandenen Daten, ohne separate Erhebung. „Gesamter Verlauf“ zählt über alle Events der Gruppe; einzelne Zeilen sind nicht auf ein Event eingrenzbar und weisen das dann direkt aus.';
+  'Zeigt, wie viele Personen jede Funktion bereits genutzt haben — direkt aus den vorhandenen Daten, ohne separate Erhebung. „Gesamter Verlauf“ zählt über alle Events der Community; einzelne Zeilen sind nicht auf ein Event eingrenzbar und weisen das dann direkt aus.';
 
 export function invalidateAdminFeatureUsage() {
   featureUsage = null;

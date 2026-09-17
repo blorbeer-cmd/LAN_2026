@@ -4913,6 +4913,100 @@ registerMigration({
   },
 });
 
+// The packing list becomes its own switchable area, split out of `tasks`.
+// Every existing event keeps exactly what it had: the new row inherits the
+// enabled state of its `tasks` row, so nobody's packing list disappears
+// because a snapshot predates the split.
+function addPackingFeature(): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO event_features (event_id, feature_key, enabled, changed_at, changed_by)
+     SELECT event_id, 'packing', enabled, ?, NULL
+     FROM event_features
+     WHERE feature_key = 'tasks'`,
+  ).run(Date.now());
+  db.prepare(
+    "UPDATE events SET preset_version = 2 WHERE event_type_key = 'lan' AND preset_version < 2 AND id != ?",
+  ).run(OUTSIDE_EVENTS_ID);
+  db.prepare(
+    "UPDATE events SET preset_version = 4 WHERE event_type_key = 'general' AND preset_version < 4 AND id != ?",
+  ).run(OUTSIDE_EVENTS_ID);
+}
+registerMigration({
+  version: 102,
+  name: 'add packing feature',
+  up: addPackingFeature,
+});
+
+// Groups are permanently open workspaces without any period, so a published
+// event may now legitimately have no start date. Migration 83's
+// `CHECK (status = 'draft' OR starts_at IS NOT NULL)` only tolerated that for
+// drafts, and SQLite cannot drop a table constraint, so the table is rebuilt
+// exactly the way migration 83 does it — staging table, DROP, fresh CREATE,
+// copy back — with foreign keys disabled for the same reason documented
+// there. The kiosk trigger from migration 95 lives ON events and therefore
+// disappears with the DROP; it is recreated unchanged.
+//
+// The replacement is deliberately no constraint at all rather than
+// `... OR event_type_key = 'group'`. A CHECK naming that column pins it into
+// the table definition, so SQLite refuses to ever drop or rename it again —
+// which is exactly what the legacy-database migration tests do when they
+// rebuild a pre-89 fixture. The invariant it guarded is owned by createEvent
+// (see events.ts), the only writer of status and starts_at.
+function allowUndatedGroupEvents(): void {
+  db.exec(`
+    CREATE TABLE events_staging_103 AS SELECT * FROM events;
+    DROP TABLE events;
+    CREATE TABLE events (
+      id                       TEXT PRIMARY KEY,
+      name                     TEXT NOT NULL,
+      starts_at                INTEGER,
+      ends_at                  INTEGER,
+      location                 TEXT,
+      description              TEXT,
+      cost_cents               INTEGER CHECK (cost_cents IS NULL OR cost_cents > 0),
+      accommodation_cost_cents INTEGER CHECK (accommodation_cost_cents IS NULL OR accommodation_cost_cents > 0),
+      paypal_link              TEXT,
+      payment_due_at           INTEGER,
+      created_by               TEXT REFERENCES players(id) ON DELETE SET NULL,
+      tracking_enabled         INTEGER NOT NULL DEFAULT 0,
+      ended_at                 INTEGER,
+      is_test                  INTEGER NOT NULL DEFAULT 0,
+      group_id                 TEXT REFERENCES groups(id) ON DELETE RESTRICT,
+      status                   TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft', 'published', 'cancelled', 'ended')),
+      visibility_scope         TEXT NOT NULL DEFAULT 'participants' CHECK (visibility_scope IN ('group', 'participants', 'public')),
+      schedule_revision        INTEGER NOT NULL DEFAULT 0,
+      event_type_key           TEXT NOT NULL DEFAULT '${DEFAULT_EVENT_TYPE_KEY}',
+      preset_version           INTEGER NOT NULL DEFAULT ${DEFAULT_EVENT_PRESET_VERSION} CHECK (preset_version > 0)
+    );
+    INSERT INTO events
+      (id, name, starts_at, ends_at, location, description, cost_cents, accommodation_cost_cents,
+       paypal_link, payment_due_at, created_by, tracking_enabled, ended_at, is_test, group_id, status,
+       visibility_scope, schedule_revision, event_type_key, preset_version)
+    SELECT id, name, starts_at, ends_at, location, description, cost_cents, accommodation_cost_cents,
+           paypal_link, payment_due_at, created_by, tracking_enabled, ended_at, is_test, group_id, status,
+           visibility_scope, schedule_revision, event_type_key, preset_version
+    FROM events_staging_103;
+    DROP TABLE events_staging_103;
+    CREATE INDEX IF NOT EXISTS idx_events_group_start ON events(group_id, starts_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_events_group_pk ON events(group_id, id);
+    CREATE TRIGGER create_kiosk_account_for_lan_event
+      AFTER INSERT ON events
+      WHEN NEW.event_type_key = 'lan'
+        AND NEW.group_id IS NOT NULL
+        AND NEW.id NOT IN ('${BASE_EVENT_ID}', '${OUTSIDE_EVENTS_ID}')
+      BEGIN
+        INSERT OR IGNORE INTO kiosk_accounts (event_id, group_id, username, created_at, last_login_at)
+        VALUES (NEW.id, NEW.group_id, 'kiosk-' || NEW.id, COALESCE(NEW.starts_at, 0), NULL);
+      END;
+  `);
+}
+registerMigration({
+  version: 103,
+  name: 'allow undated group events',
+  up: allowUndatedGroupEvents,
+  disableForeignKeysForRebuild: true,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

@@ -545,7 +545,7 @@ export function registerChallengeRushSockets(io: Server): () => void {
     socket.on('challenge-rush:lobby:create', (payload: { playerId?: string; challengeKeys?: unknown }, ack?: (r: unknown) => void) => {
       const player = playerById(payload?.playerId);
       const scope = player ? socketArcadeScope(socket, player.id) : null;
-      if (!player || !scope) return ack?.({ ok: false, error: 'Spieler- oder Gruppenzugriff verweigert.' });
+      if (!player || !scope) return ack?.({ ok: false, error: 'Spieler- oder Community-Zugriff verweigert.' });
       if (hasActiveMatch(player.id)) return ack?.({ ok: false, error: 'Beende zuerst dein laufendes Challenge-Rush-Match.' });
       const selectionRequested = Object.prototype.hasOwnProperty.call(payload ?? {}, 'challengeKeys');
       if (selectionRequested && !playerMayUseArcadeAi(player.id)) return ack?.({ ok: false, error: 'Die Aufgabenauswahl ist nur für Admins.' });

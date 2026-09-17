@@ -125,7 +125,11 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal('participants' in invitedEvent, false);
       assert.equal('acceptedParticipants' in invitedEvent, false);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, bob)).status, 404);
-      assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, owner)).status, 404);
+      // Accepted participation is the boundary, not the role: carol is an
+      // active member with no roster row and stays out, while the owner is in
+      // because creating an event now accepts its creator.
+      assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, carol)).status, 404);
+      assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, owner)).status, 200);
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob)).status, 409);
 
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', carol)).status, 409);
@@ -149,7 +153,8 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(runningParticipation.lockReason, 'started');
 
       const acceptedEvent = (await call(app, 'get', '/api/events/' + event.body.id, bob)).body;
-      assert.deepEqual(acceptedEvent.participantIds, [bob.account.id]);
+      // The owner is on the roster as its creator, bob through his invitation.
+      assert.deepEqual([...acceptedEvent.participantIds].sort(), [owner.account.id, bob.account.id].sort());
       assert.equal('participants' in acceptedEvent, false);
 
       const removed = await call(app, 'delete', '/api/events/' + event.body.id + '/participants/' + bob.account.id, owner);
@@ -355,7 +360,9 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(linkedEventForMember.status, 200, JSON.stringify(linkedEventForMember.body));
       assert.deepEqual(
         linkedEventForMember.body.acceptedParticipants.map((participant) => participant.name),
-        ['Direct Link Alice', 'Direct Link Bob'],
+        // Both link registrations plus the owner, who is on the roster as the
+        // event's creator.
+        ['Direct Link Alice', 'Direct Link Bob', 'Invitation Owner'],
       );
 
       const scopeEvent = await call(app, 'post', '/api/events', owner).send({
@@ -423,6 +430,12 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       for (const [path, method] of explicitScopedRoutes(bob)) {
         assert.equal((await call(app, method, path, bob)).status, 200, method.toUpperCase() + ' ' + path + ' must admit accepted participants');
       }
+      // The owner created this event and therefore holds an accepted roster
+      // row plus the acceptance history that personal analytics keys on. Drop
+      // both to restore the case this loop is about: an owner/admin who never
+      // participated must not reach an event's scoped data either.
+      db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(scopeEvent.body.id, owner.account.id);
+      db.prepare('DELETE FROM event_participation_history WHERE event_id = ? AND player_id = ?').run(scopeEvent.body.id, owner.account.id);
       for (const [path, method] of explicitScopedRoutes(owner)) {
         assert.equal((await call(app, method, path, owner)).status, 404, method.toUpperCase() + ' ' + path + ' must not bypass event participation');
       }

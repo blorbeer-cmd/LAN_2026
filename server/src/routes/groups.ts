@@ -47,7 +47,7 @@ function sendMembershipMutationError(
 ) {
   if (result.code === 'not_found') return res.status(404).json({ error: 'Mitgliedschaft nicht gefunden.' });
   if (result.code === 'last_owner')
-    return res.status(409).json({ error: 'Die Gruppe muss mindestens einen Owner behalten.' });
+    return res.status(409).json({ error: 'Die Community muss mindestens einen Owner behalten.' });
   if (result.code === 'test_role')
     return res.status(409).json({ error: 'Test-Spieler dürfen keine Admin- oder Ownerrolle erhalten.' });
   if (result.code === 'self_removal')
@@ -196,7 +196,7 @@ groupsRouter.delete(
     if (req.group!.id === DEFAULT_GROUP_ID) {
       return res
         .status(409)
-        .json({ error: 'Aus der Startgruppe können keine Mitglieder entfernt werden.' });
+        .json({ error: 'Aus der Start-Community können keine Mitglieder entfernt werden.' });
     }
     const result = removeGroupMember(req.group!.id, req.player!.id, req.params.playerId);
     if (!result.ok) return sendMembershipMutationError(res, result);

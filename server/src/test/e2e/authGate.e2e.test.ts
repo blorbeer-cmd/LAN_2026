@@ -667,7 +667,9 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     assert.ok(laptopGeometry);
     assert.ok(laptopGeometry.listTop >= laptopGeometry.modalTop);
     assert.ok(laptopGeometry.listBottom <= laptopGeometry.modalBottom);
-    await adminPage.locator(`[data-search-select-value="${eventIds[0]}"]`).click();
+    // The topbar switcher lists the same event now that creating one accepts
+    // its creator, so this has to name the picker it means.
+    await adminPage.locator(`#admin-register-event-list [data-search-select-value="${eventIds[0]}"]`).click();
     await adminPage.click('#admin-register-invite-form button[type="submit"]');
     await adminPage.waitForSelector('#reauth-form');
     await adminPage.fill('#reauth-password', 'e2e bootstrap password');

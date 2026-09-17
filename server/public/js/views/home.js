@@ -139,25 +139,30 @@ function eventPeriod(event) {
   return event.endsAt == null ? `Ab ${start}` : `${start} – ${formatDateTime(event.endsAt)}`;
 }
 
+// A general event and a group both need the same orientation on Home — what
+// this workspace is, where and who is in it. A group simply has no period and
+// no contribution to show, so those two blocks fall away instead of printing
+// an empty row.
 function renderGeneralEventOverview() {
   const event = state.activeEvent;
-  if (!event || event.eventType !== 'general') return '';
+  if (!event || (event.eventType !== 'general' && event.eventType !== 'group')) return '';
+  const isGroup = event.eventType === 'group';
   const participantCount = Array.isArray(event.participantIds) ? event.participantIds.length : null;
   return `
     <section class="card grouped-page-section stack" aria-labelledby="home-event-overview-title" data-home-event-overview>
       <div class="grouped-page-section-title">
-        <h2 id="home-event-overview-title">Eventübersicht</h2>
+        <h2 id="home-event-overview-title">${isGroup ? 'Gruppenübersicht' : 'Eventübersicht'}</h2>
         <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
       </div>
       <div class="card stack">
         <strong>${escapeHtml(event.name)}</strong>
-        <div class="event-card-detail">
+        ${isGroup ? '' : `<div class="event-card-detail">
           <span class="event-card-detail-icon" aria-hidden="true">${icon('calendar')}</span>
           <span class="event-card-detail-content">
             <span class="event-card-detail-label">Zeitraum</span>
             <span>${escapeHtml(eventPeriod(event))}</span>
           </span>
-        </div>
+        </div>`}
         ${event.location ? `<div class="event-card-detail">
           <span class="event-card-detail-icon" aria-hidden="true">${icon('mapPin')}</span>
           <span class="event-card-detail-content">
@@ -175,11 +180,13 @@ function renderGeneralEventOverview() {
         ${participantCount === null ? '' : `<div class="event-card-detail">
           <span class="event-card-detail-icon" aria-hidden="true">${icon('users')}</span>
           <span class="event-card-detail-content">
-            <span class="event-card-detail-label">Teilnehmende</span>
-            <span>${participantCount === 1 ? '1 teilnehmende Person' : `${participantCount} Teilnehmende`}</span>
+            <span class="event-card-detail-label">${isGroup ? 'Mitglieder' : 'Teilnehmende'}</span>
+            <span>${isGroup
+              ? (participantCount === 1 ? '1 Mitglied' : `${participantCount} Mitglieder`)
+              : (participantCount === 1 ? '1 teilnehmende Person' : `${participantCount} Teilnehmende`)}</span>
           </span>
         </div>`}
-        ${event.costCents ? `<div class="event-card-detail">
+        ${!isGroup && event.costCents ? `<div class="event-card-detail">
           <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
           <span class="event-card-detail-content">
             <span class="event-card-detail-label">Beitrag pro Person</span>

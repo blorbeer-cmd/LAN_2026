@@ -192,7 +192,7 @@ playersRouter.patch('/:id', requireUser, (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   if (Object.prototype.hasOwnProperty.call(req.body ?? {}, 'isAdmin') || Object.prototype.hasOwnProperty.call(req.body ?? {}, 'is_admin')) {
-    return res.status(400).json({ error: 'Adminrechte werden ausschließlich über die Gruppenrolle verwaltet.' });
+    return res.status(400).json({ error: 'Adminrechte werden ausschließlich über die Community-Rolle verwaltet.' });
   }
 
   if (req.player && req.player.id !== existing.id && !req.player.is_admin) {
@@ -340,7 +340,7 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
     return res.status(409).json({ error: 'Der letzte Admin kann nicht deaktiviert werden.' });
   }
   if (deactivated === 'last_group_owner') {
-    return res.status(409).json({ error: 'Der letzte aktive Owner einer Gruppe kann nicht deaktiviert werden.' });
+    return res.status(409).json({ error: 'Der letzte aktive Owner einer Community kann nicht deaktiviert werden.' });
   }
   disconnectPlayerSockets(target.id);
   // Memberships survive deactivation (only current access ends), so they
@@ -464,7 +464,7 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
   })();
   if (deleted === 'missing') return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (deleted === 'last_admin') return res.status(409).json({ error: 'Der letzte Admin kann nicht gelöscht werden.' });
-  if (deleted === 'last_group_owner') return res.status(409).json({ error: 'Der letzte aktive Owner einer Gruppe kann nicht gelöscht werden.' });
+  if (deleted === 'last_group_owner') return res.status(409).json({ error: 'Der letzte aktive Owner einer Community kann nicht gelöscht werden.' });
   if (deleted === 'confirmed_event_payment') {
     return res.status(409).json({ error: 'Eine bestätigte Event-Zahlung muss vor dem Löschen zurückgesetzt werden.' });
   }

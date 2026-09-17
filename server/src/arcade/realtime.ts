@@ -239,12 +239,12 @@ export function registerArcadeSockets(server: Server): () => void {
         const match = latestArcadeGames.get(matchId)!;
         const scope = arcadePayloadScope(match);
         if (!scope || !normalSocketCanUseArcadeScope(socket, scope)) {
-          return ack?.({ ok: false, error: 'Match gehört zu einem anderen Gruppen- oder Event-Scope.' });
+          return ack?.({ ok: false, error: 'Match gehört zu einem anderen Community- oder Event-Scope.' });
         }
         if (socket.data.groupId && match.groupId !== socket.data.groupId)
-          return ack?.({ ok: false, error: 'Match gehört zu einer anderen Gruppe.' });
+          return ack?.({ ok: false, error: 'Match gehört zu einer anderen Community.' });
         if (socket.data.groupId && !activeGroupMember(socket.data.groupId, socket.data.authPlayerId))
-          return ack?.({ ok: false, error: 'Gruppenzugriff verweigert.' });
+          return ack?.({ ok: false, error: 'Community-Zugriff verweigert.' });
         const previousRoom = socket.data.arcadeWatchRoom;
         const previousMatchId = socket.data.arcadeWatchMatchId;
         if (typeof previousRoom === 'string') socket.leave(previousRoom);

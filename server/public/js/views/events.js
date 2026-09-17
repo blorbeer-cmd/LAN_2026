@@ -28,7 +28,7 @@ import { compareEventsByStartAscending, eventStatusBadgeHtml } from '../eventSta
 import { isGroupAdmin } from '../groupContext.js';
 import { formatEuroCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 import { eventHasFeature } from '../eventFeatures.js';
-import { availableEventTypeOptions, eventTypeTitle } from '../eventTypes.js';
+import { availableEventTypeOptions, eventIsGroup, eventTypeTitle, isGroupEventType } from '../eventTypes.js';
 import {
   eventCalendarFilename,
   eventCalendarIcs,
@@ -54,7 +54,9 @@ export {
   parseEventCostCents,
 } from '../eventModel.js';
 
-const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
+const EVENT_HELP = 'Typ, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
+const GROUP_HELP =
+  'Eine Gruppe ist ein dauerhafter Kreis ohne Zeitraum und ohne Kosten. Sie läuft weiter, bis sie beendet wird.';
 // Starting tracking enables event processing, not the agent's diagnostic reports.
 // Both the tooltip and confirmation explain the selected-event and consent
 // prerequisites from activeTrackingContexts. Share the sentence to avoid drift.
@@ -73,12 +75,14 @@ const expandedEventParticipants = new Set();
 // as one flat set across active and ended events so an event's expand state
 // survives its move into Historie.
 const expandedEventCards = new Set();
-// Mirrors foodOrders.js's Historie collapse: ended events start collapsed and
-// this survives the section's own live re-renders.
-let eventHistoryOpen = false;
-// Same pattern for the declined events: present enough to come back from,
-// quiet enough not to compete with the events actually being planned.
-let declinedEventsOpen = false;
+// Mirrors foodOrders.js's Historie collapse: ended workspaces start collapsed
+// and this survives the section's own live re-renders. Events and groups are
+// two lists with two disclosures, so each keeps its own state — a shared flag
+// made one section follow the other's on every refresh.
+const historyOpen = { event: false, group: false };
+// Same pattern for the declined workspaces: present enough to come back from,
+// quiet enough not to compete with the ones actually being planned.
+const declinedOpen = { event: false, group: false };
 let acceptedInvitationHandoff = null;
 // Fetched once per session (the shared kiosk password is stable once
 // generated — see server/src/kioskAccounts.ts) and cached across successful
@@ -148,7 +152,7 @@ function renderKioskSection() {
 // with something else, and this writes the excuse for that other appointment
 // (see eventExcuses.js). An ended event has nothing left to collide with.
 export function renderEventExcuseActions(event) {
-  if (!event || event.isEnded) return '';
+  if (!event || event.isEnded || eventIsGroup(event)) return '';
   return `
     <div class="event-excuse-actions">
       <span class="event-card-detail-label">Paralleltermin?</span>
@@ -340,6 +344,12 @@ function participantSummary(participants, includeInvitationStatuses) {
 
 function renderAcceptedParticipants(event, { includeInvitationStatuses = false } = {}) {
   const participants = eventRoster(event, includeInvitationStatuses);
+  // A group has members, not attendees — nobody "attends" a circle that never
+  // takes place on a given day.
+  const isGroup = eventIsGroup(event);
+  const rosterTitle = isGroup
+    ? (includeInvitationStatuses ? 'Mitglieder & Einladungen' : 'Mitglieder')
+    : (includeInvitationStatuses ? 'Teilnehmende & Einladungen' : 'Teilnehmende');
   const canManagePayments = canManageEventPayments(event)
     && (event.costCents !== null || participants.some((participant) => participant.paid));
   const isExpanded = expandedEventParticipants.has(event.id);
@@ -354,7 +364,7 @@ function renderAcceptedParticipants(event, { includeInvitationStatuses = false }
         <span class="event-participant-toggle">
           <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
           <span class="food-order-group-headtext">
-            <strong>${includeInvitationStatuses ? 'Teilnehmende & Einladungen' : 'Teilnehmende'}</strong>
+            <strong>${rosterTitle}</strong>
             <span class="muted food-order-group-meta">${participantCountLabel}</span>
           </span>
         </span>
@@ -383,7 +393,7 @@ function renderAcceptedParticipants(event, { includeInvitationStatuses = false }
                 </li>`;
               })
               .join('')}</ul>`
-          : '<p class="muted event-card-empty-copy">Noch niemand zugesagt.</p>'}
+          : `<p class="muted event-card-empty-copy">${isGroup ? 'Noch keine Mitglieder.' : 'Noch niemand zugesagt.'}</p>`}
       </div>
     </details>`;
 }
@@ -573,15 +583,15 @@ function renderEventInfo(event, { invitation = false } = {}) {
          </div>`
       : ''
   }`;
-  const dateLine = `<span class="food-order-send-at">
+  const dateLine = eventIsGroup(event)
+    ? ''
+    : `<span class="food-order-send-at">
       <span class="food-order-detail-icon" aria-hidden="true">${icon('calendar')}</span>
       ${escapeHtml(eventDateRange(event))}
     </span>`;
   return `
     <div class="food-order-details event-card-info">
-      <div class="food-order-details-head">
-        ${dateLine}
-      </div>
+      ${dateLine ? `<div class="food-order-details-head">${dateLine}</div>` : ''}
       ${additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : ''}
       ${renderEventCalendarActions(event, { invitation })}
       ${renderEventExcuseActions(event)}
@@ -650,7 +660,7 @@ function ownDeclinedBadge(event) {
 function eventHeaderMeta(event, { withDateRange }) {
   const creator = state.players.find((player) => player.id === event.createdBy);
   const parts = [`Erstellt von ${creator?.name ?? 'Unbekannt'}`];
-  if (withDateRange) parts.push(eventDateRange(event));
+  if (withDateRange && !eventIsGroup(event)) parts.push(eventDateRange(event));
   return parts;
 }
 
@@ -668,7 +678,8 @@ function renderEventHeaderText(event, metaParts) {
 // would have to point at a node inside this very button, and a description is
 // the first thing a screen reader drops at lower verbosity.
 function renderEventCardToggle(event, expanded, titleHtml, metaParts) {
-  const label = `Event ${event.name}, ${metaParts.join(', ')}, ${expanded ? 'einklappen' : 'ausklappen'}`;
+  const kind = eventIsGroup(event) ? 'Gruppe' : 'Event';
+  const label = `${kind} ${event.name}, ${metaParts.join(', ')}, ${expanded ? 'einklappen' : 'ausklappen'}`;
   return `<button type="button" class="food-order-card-header-toggle" data-event-card-toggle="${escapeHtml(event.id)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="event-card-body-${escapeHtml(event.id)}" aria-label="${escapeHtml(label)}">
     ${icon('chevronRight', { className: 'food-order-card-chevron' })}
     ${titleHtml}
@@ -688,7 +699,7 @@ function renderMemberEventCard(event, { collapsible = false } = {}) {
         ${collapsible ? renderEventCardToggle(event, expanded, titleHtml, metaParts) : titleHtml}
         <span class="event-card-header-badges">
           <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
-          ${eventStatusBadgeHtml(event)}
+          ${eventIsGroup(event) && !event.isEnded ? '' : eventStatusBadgeHtml(event)}
         </span>
       </div>
       <div class="food-order-card-body stack" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
@@ -740,6 +751,7 @@ function renderInvitationPayment(event) {
 export function renderEventCard(event, { collapsible = false } = {}) {
   // Tracking and exports require a scheduled event; roster editing does not.
   const hasDate = event.startsAt != null;
+  const isGroup = eventIsGroup(event);
   // The tooltip sits with the running/stopping pair only: "Event wieder
   // starten" is an event-lifecycle action whose confirmation already spells the
   // tracking part out.
@@ -751,7 +763,9 @@ export function renderEventCard(event, { collapsible = false } = {}) {
       : event.trackingEnabled
         ? `<div class="action-menu-row"><button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">Tracking stoppen</button>${trackingHelp}</div>`
         : `<div class="action-menu-row"><button type="button" class="btn btn-sm" data-start-tracking="${event.id}">Tracking starten</button>${trackingHelp}</div>`;
-  const endBtn = !hasDate || event.isEnded
+  // A group has no period and is still closable, so "Beenden" follows the
+  // workspace kind rather than the presence of a date.
+  const endBtn = (!hasDate && !isGroup) || event.isEnded
     ? ''
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
   const expanded = !collapsible || expandedEventCards.has(event.id);
@@ -765,11 +779,11 @@ export function renderEventCard(event, { collapsible = false } = {}) {
         <div class="event-card-header-side"><span class="event-card-header-badges">
           <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
           ${ownDeclinedBadge(event)}
-          ${eventStatusBadgeHtml(event)}
+          ${eventIsGroup(event) && !event.isEnded ? '' : eventStatusBadgeHtml(event)}
         </span>
         ${actionMenuHtml(`<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>
           ${trackingBtn}${endBtn}
-          ${hasDate && eventPdfExportAvailable(event) ? `<button type="button" class="btn btn-sm" data-export-event="${escapeHtml(event.id)}">PDF exportieren</button>` : ''}`, `Aktionen für Event ${event.name}`)}
+          ${hasDate && eventPdfExportAvailable(event) ? `<button type="button" class="btn btn-sm" data-export-event="${escapeHtml(event.id)}">PDF exportieren</button>` : ''}`, `Aktionen für ${eventIsGroup(event) ? 'Gruppe' : 'Event'} ${event.name}`)}
         </div>
       </div>
       <div class="food-order-card-body stack" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
@@ -778,6 +792,97 @@ export function renderEventCard(event, { collapsible = false } = {}) {
         ${renderOwnParticipationActions(event, { primary: false })}
       </div>
     </article>
+  `;
+}
+
+// Events and groups are two different kinds of workspace, so they get two
+// lists rather than one mixed feed: an event is a dated occasion that ends,
+// a group is a permanent circle. Each list owns its own create action, empty
+// text and — for events — the collapsed Abgesagt/Historie sections a group
+// cannot have, since a group never ends.
+function renderWorkspaceSection({
+  groups: isGroupList,
+  events,
+  declinedEvents,
+  canManage,
+  renderCard,
+}) {
+  const listKind = isGroupList ? 'group' : 'event';
+  const titleId = isGroupList ? 'orga-groups-title' : 'orga-events-title';
+  const title = isGroupList ? 'Gruppen' : 'Events';
+  const helpId = isGroupList ? 'orga-groups-help' : 'orga-events-help';
+  const help = isGroupList ? GROUP_HELP : EVENT_HELP;
+  const createLabel = isGroupList ? 'Gruppe anlegen' : 'Event anlegen';
+  const createId = isGroupList ? 'new-group-btn' : 'new-event-btn';
+  const activeEvents = events.filter((e) => !e.isEnded);
+  const endedEvents = events.filter((e) => e.isEnded);
+  // Mirrors foodOrders.js's open/closed cards: a lone card gets no collapse
+  // chrome, since there is nothing to declutter yet.
+  const activeCollapsible = activeEvents.length > 1;
+  const endedCollapsible = endedEvents.length > 1;
+  const emptyText = isGroupList
+    ? 'Noch keine Gruppen.'
+    : events.length === 0
+      ? 'Noch keine Events.'
+      : (canManage ? 'Keine laufenden Events.' : 'Aktuell kein laufendes Event.');
+
+  return `
+    <section class="card stack grouped-page-section primary-collection-section" aria-labelledby="${titleId}">
+      <div class="grouped-page-section-title">
+        <span class="title-with-info">
+          <h2 id="${titleId}" tabindex="-1">${title}</h2>
+          ${infoTooltipHtml(helpId, title, help)}
+        </span>
+        ${
+          canManage
+            ? `<span class="row" style="gap:var(--space-2);">
+                 <button type="button" class="btn btn-primary btn-sm" id="${createId}">${createLabel}</button>
+               </span>`
+            : ''
+        }
+      </div>
+      ${
+        activeEvents.length === 0
+          ? emptyStateHtml(emptyText)
+          : `<div class="stack orga-event-grid">${activeEvents
+              .map((event) => renderCard(event, { collapsible: activeCollapsible }))
+              .join('')}</div>`
+      }
+      ${
+        declinedEvents.length > 0
+          ? `<details class="card grouped-page-section collapsible-section" data-declined-events="${listKind}" ${declinedOpen[listKind] ? 'open' : ''}>
+               <summary class="collapsible-section-header">
+                 <h2>Abgesagt</h2>
+                 <span class="collapsible-section-summary-end">
+                   <span class="badge badge-offline">${declinedEvents.length}</span>
+                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+                 </span>
+               </summary>
+               <div class="collapsible-section-content">
+                 <div class="stack orga-event-grid">${declinedEvents.map(renderDeclinedEventCard).join('')}</div>
+               </div>
+             </details>`
+          : ''
+      }
+      ${
+        endedEvents.length > 0
+          ? `<details class="card grouped-page-section collapsible-section" data-event-history="${listKind}" ${historyOpen[listKind] ? 'open' : ''}>
+               <summary class="collapsible-section-header">
+                 <h2>Historie</h2>
+                 <span class="collapsible-section-summary-end">
+                   <span class="badge badge-offline">${endedEvents.length}</span>
+                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+                 </span>
+               </summary>
+               <div class="collapsible-section-content">
+                 <div class="stack orga-event-grid">${endedEvents
+                   .map((event) => renderCard(event, { collapsible: endedCollapsible }))
+                   .join('')}</div>
+               </div>
+             </details>`
+          : ''
+      }
+    </section>
   `;
 }
 
@@ -803,12 +908,6 @@ function renderEventSection() {
       );
   const events = (canManage ? realEvents : memberEvents).slice().sort(compareEventsByStartAscending);
   const renderCard = (event, opts) => (canManage ? renderEventCard(event, opts) : renderMemberEventCard(event, opts));
-  const activeEvents = events.filter((e) => !e.isEnded);
-  const endedEvents = events.filter((e) => e.isEnded);
-  // Mirrors foodOrders.js's open/closed cards: a lone card gets no collapse
-  // chrome, since there is nothing to declutter yet.
-  const activeCollapsible = activeEvents.length > 1;
-  const endedCollapsible = endedEvents.length > 1;
   // An owner/admin already sees every event of the group as a management card,
   // so their own declined ones must not appear a second time down here.
   const renderedIds = new Set(events.map((e) => e.id));
@@ -816,68 +915,17 @@ function renderEventSection() {
     .filter((e) => !renderedIds.has(e.id))
     .slice()
     .sort(compareEventsByStartAscending);
-  const activeEmptyText = events.length === 0
-    ? 'Noch keine Events.'
-    : (canManage ? 'Keine laufenden Events.' : 'Aktuell kein laufendes Event.');
 
-  return `
-    <section class="card stack grouped-page-section primary-collection-section" aria-labelledby="orga-events-title">
-      <div class="grouped-page-section-title">
-        <span class="title-with-info">
-          <h2 id="orga-events-title" tabindex="-1">Events</h2>
-          ${infoTooltipHtml('orga-events-help', 'Events', EVENT_HELP)}
-        </span>
-        ${
-          canManage
-            ? `<span class="row" style="gap:var(--space-2);">
-                 <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">Event anlegen</button>
-               </span>`
-            : ''
-        }
-      </div>
-      ${
-        activeEvents.length === 0
-          ? emptyStateHtml(activeEmptyText)
-          : `<div class="stack orga-event-grid">${activeEvents
-              .map((event) => renderCard(event, { collapsible: activeCollapsible }))
-              .join('')}</div>`
-      }
-      ${
-        declinedEvents.length > 0
-          ? `<details class="card grouped-page-section collapsible-section" data-declined-events ${declinedEventsOpen ? 'open' : ''}>
-               <summary class="collapsible-section-header">
-                 <h2>Abgesagt</h2>
-                 <span class="collapsible-section-summary-end">
-                   <span class="badge badge-offline">${declinedEvents.length}</span>
-                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
-                 </span>
-               </summary>
-               <div class="collapsible-section-content">
-                 <div class="stack orga-event-grid">${declinedEvents.map(renderDeclinedEventCard).join('')}</div>
-               </div>
-             </details>`
-          : ''
-      }
-      ${
-        endedEvents.length > 0
-          ? `<details class="card grouped-page-section collapsible-section" data-event-history ${eventHistoryOpen ? 'open' : ''}>
-               <summary class="collapsible-section-header">
-                 <h2>Historie</h2>
-                 <span class="collapsible-section-summary-end">
-                   <span class="badge badge-offline">${endedEvents.length}</span>
-                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
-                 </span>
-               </summary>
-               <div class="collapsible-section-content">
-                 <div class="stack orga-event-grid">${endedEvents
-                   .map((event) => renderCard(event, { collapsible: endedCollapsible }))
-                   .join('')}</div>
-               </div>
-             </details>`
-          : ''
-      }
-    </section>
-  `;
+  const section = (isGroupList) =>
+    renderWorkspaceSection({
+      groups: isGroupList,
+      events: events.filter((event) => eventIsGroup(event) === isGroupList),
+      declinedEvents: declinedEvents.filter((event) => eventIsGroup(event) === isGroupList),
+      canManage,
+      renderCard,
+    });
+
+  return `${section(false)}${section(true)}`;
 }
 
 // Single invitation card: cost/deadline disclosure plus accept/decline.
@@ -1038,12 +1086,26 @@ async function downloadExport(eventId) {
 // existing === null: create a new (not-yet-tracking) event. existing !==
 // null: metadata-only edit of that event (any event, ended or not) — never
 // touches tracking state.
-function openEventForm(ctx, existing) {
+function eventFormTitle(isEdit, isGroup) {
+  if (isEdit) return isGroup ? 'Gruppe bearbeiten' : 'Event bearbeiten';
+  return isGroup ? 'Neue Gruppe' : 'Neues Event';
+}
+
+function eventFormSubmitLabel(isGroup) {
+  return isGroup ? 'Gruppe anlegen' : 'Event anlegen';
+}
+
+function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) {
   const isEdit = Boolean(existing);
   const periodOptional = isEdit && existing.startsAt == null;
-  const dateRequired = isEdit && !periodOptional;
   const eventTypes = availableEventTypeOptions(state.eventTypeOptions);
-  const selectedEventType = existing?.eventType ?? 'lan';
+  const selectedEventType = existing?.eventType ?? preselectedEventType ?? 'lan';
+  // A group has no period and no money, so those blocks are hidden rather
+  // than disabled — a control you cannot use is noise, not information. The
+  // flag tracks the live selection because the type can still be switched
+  // inside the dialog.
+  let isGroup = isGroupEventType(selectedEventType);
+  const dateRequired = isEdit && !periodOptional && !isGroup;
   const eventTypeSelectOptions = eventTypes
     .map(
       (eventType) =>
@@ -1052,7 +1114,7 @@ function openEventForm(ctx, existing) {
     .join('');
   let capturedEl;
   const { close } = openModal(
-    isEdit ? 'Event bearbeiten' : 'Neues Event',
+    eventFormTitle(isEdit, isGroup),
     `
       <form id="event-form" class="stack">
         <div>
@@ -1060,10 +1122,10 @@ function openEventForm(ctx, existing) {
           <input type="text" id="event-name" maxlength="80" required autofocus value="${escapeHtml(existing?.name ?? '')}" placeholder="z.B. LAN Winter 2027" />
         </div>
         <div>
-          <label for="event-type" class="field-label is-required">Eventtyp</label>
+          <label for="event-type" class="field-label is-required">Typ</label>
           <select id="event-type" ${isEdit ? 'disabled' : ''}>${eventTypeSelectOptions}</select>
         </div>
-        <div class="field-row">
+        <div class="field-row" data-event-schedule-fields ${isGroup ? 'hidden' : ''}>
           <div>
             <label for="event-starts-date" class="field-label${dateRequired ? ' is-required' : ''}">Beginnt am</label>
             ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? null, { clearable: !isEdit, label: 'Beginnt am' })}
@@ -1081,7 +1143,7 @@ function openEventForm(ctx, existing) {
           <label for="event-description" class="field-label">Notiz</label>
           <textarea id="event-description" maxlength="500" rows="2" placeholder="z.B. Hinweise, Ablauf oder Treffpunkt">${escapeHtml(existing?.description ?? '')}</textarea>
         </div>
-        <div class="field-row event-payment-fields">
+        <div class="field-row event-payment-fields" data-event-payment-fields ${isGroup ? 'hidden' : ''}>
           <div>
             <label for="event-cost" class="field-label">Beitrag pro Person</label>
             <label class="food-order-price-field">
@@ -1100,7 +1162,7 @@ function openEventForm(ctx, existing) {
             </label>
           </div>
         </div>
-        <div class="field-row event-payment-fields">
+        <div class="field-row event-payment-fields" data-event-payment-fields ${isGroup ? 'hidden' : ''}>
           <div>
             <div class="food-order-paypal-label">
               <label for="event-paypal" class="field-label">PayPal</label>
@@ -1120,7 +1182,7 @@ function openEventForm(ctx, existing) {
             ${dateTimeFieldHtml('event-payment-due', existing?.paymentDueAt ?? null, { clearable: true, dateOnly: true, label: 'Zahlungsziel' })}
           </div>
         </div>
-        <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Event anlegen'}</button>
+        <button type="submit" class="btn btn-primary btn-block" id="event-form-submit">${isEdit ? 'Speichern' : eventFormSubmitLabel(isGroup)}</button>
       </form>
     `,
     {
@@ -1149,8 +1211,13 @@ function openEventForm(ctx, existing) {
             accommodationCost !== (existing.accommodationCostCents ? (existing.accommodationCostCents / 100).toFixed(2).replace('.', ',') : '') ||
             paypal !== (paypalEmailFromLink(existing.paypalLink) ?? existing.paypalLink ?? '') ||
             paymentDueChanged
-          : Boolean(name || startsAt || endsAt || location || description || cost || accommodationCost || paypal || paymentDueAt);
-        return dirty ? 'Die Event-Daten (Name, Zeitraum, Ort, Notiz, Beiträge, Unterkunftskosten, PayPal und Zahlungsziel) gehen verloren.' : null;
+          : isGroup
+            ? Boolean(name || location || description)
+            : Boolean(name || startsAt || endsAt || location || description || cost || accommodationCost || paypal || paymentDueAt);
+        if (!dirty) return null;
+        return isGroup
+          ? 'Die Gruppendaten (Name, Ort und Notiz) gehen verloren.'
+          : 'Die Event-Daten (Name, Zeitraum, Ort, Notiz, Beiträge, Unterkunftskosten, PayPal und Zahlungsziel) gehen verloren.';
       },
       onMount: (modalEl) => {
         capturedEl = modalEl;
@@ -1159,6 +1226,24 @@ function openEventForm(ctx, existing) {
         wireDateTimeRange(modalEl, 'event-starts', 'event-ends', { minimumGapMs: 5 * 60 * 1000 });
         wireDateTimeField(modalEl, 'event-payment-due');
         wireInfoTooltips(modalEl);
+        // Switching the type live retitles the dialog and shows or hides the
+        // period and money blocks. Their values stay put so switching back and
+        // forth does not silently discard what was already typed; the submit
+        // below simply never sends them for a group.
+        modalEl.querySelector('#event-type')?.addEventListener('change', (event) => {
+          isGroup = isGroupEventType(event.currentTarget.value);
+          modalEl
+            .querySelectorAll('[data-event-schedule-fields], [data-event-payment-fields]')
+            .forEach((block) => {
+              block.hidden = isGroup;
+            });
+          const title = eventFormTitle(isEdit, isGroup);
+          const heading = modalEl.querySelector('.modal-header h2');
+          if (heading) heading.textContent = title;
+          modalEl.querySelector('.modal')?.setAttribute('aria-label', title);
+          const submit = modalEl.querySelector('#event-form-submit');
+          if (submit && !isEdit) submit.textContent = eventFormSubmitLabel(isGroup);
+        });
         modalEl.querySelector('#event-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = modalEl.querySelector('#event-name').value.trim();
@@ -1170,29 +1255,31 @@ function openEventForm(ctx, existing) {
           const paymentDueVal = modalEl.querySelector('#event-payment-due').value;
           const paymentDueAt = paymentDueVal ? new Date(paymentDueVal).getTime() : null;
           const costCents = parseEventCostCents(modalEl.querySelector('#event-cost').value);
-          if (Number.isNaN(costCents)) {
+          if (!isGroup && Number.isNaN(costCents)) {
             showToast('Der Beitrag muss zwischen 0,01 € und 10.000,00 € liegen.', { error: true });
             return;
           }
           const accommodationCostCents = parseEventAccommodationCostCents(
             modalEl.querySelector('#event-accommodation-cost').value,
           );
-          if (Number.isNaN(accommodationCostCents)) {
+          if (!isGroup && Number.isNaN(accommodationCostCents)) {
             showToast('Der Gesamtpreis der Unterkunft muss zwischen 0,01 € und 100.000,00 € liegen.', { error: true });
             return;
           }
-          let paypalLink;
+          let paypalLink = null;
           try {
             paypalLink = normalizePaypalInput(modalEl.querySelector('#event-paypal').value);
           } catch (err) {
-            showToast(err.message, { error: true });
-            return;
+            if (!isGroup) {
+              showToast(err.message, { error: true });
+              return;
+            }
           }
-          if (paypalLink && !costCents) {
+          if (!isGroup && paypalLink && !costCents) {
             showToast('Für PayPal müssen Kosten pro Person angegeben werden.', { error: true });
             return;
           }
-          if (paymentDueAt && !costCents) {
+          if (!isGroup && paymentDueAt && !costCents) {
             showToast('Für ein Zahlungsziel müssen Kosten pro Person angegeben werden.', { error: true });
             return;
           }
@@ -1203,16 +1290,22 @@ function openEventForm(ctx, existing) {
                 endsAt: endsVal ? new Date(endsVal).getTime() : null,
               }
             : {};
+          // The server rejects a period or any cost on a group outright, so
+          // the hidden blocks contribute nothing to the request.
           const payload = {
             name,
             ...(!isEdit ? { eventType: modalEl.querySelector('#event-type').value } : {}),
-            ...schedulePayload,
+            ...(isGroup
+              ? {}
+              : {
+                  ...schedulePayload,
+                  costCents,
+                  accommodationCostCents,
+                  paypalLink,
+                  paymentDueAt,
+                }),
             location: location || null,
             description: description || null,
-            costCents,
-            accommodationCostCents,
-            paypalLink,
-            paymentDueAt,
           };
 
           try {
@@ -1220,7 +1313,7 @@ function openEventForm(ctx, existing) {
               await api.events.update(existing.id, payload);
               close();
               await ctx.refresh();
-              showToast('Event aktualisiert.');
+              showToast(isGroup ? 'Gruppe aktualisiert.' : 'Event aktualisiert.');
             } else {
               const created = await api.events.create(payload);
               close();
@@ -1228,7 +1321,7 @@ function openEventForm(ctx, existing) {
               expandedEventParticipants.add(created.id);
               await ctx.refresh();
               document.querySelector(`[data-event-participants="${CSS.escape(created.id)}"] > summary`)?.focus();
-              showToast('Event angelegt. Jetzt Teilnehmende einladen.');
+              showToast(isGroup ? 'Gruppe angelegt. Jetzt Mitglieder einladen.' : 'Event angelegt. Jetzt Teilnehmende einladen.');
             }
           } catch (err) {
             showToast(err.message, { error: true });
@@ -1332,8 +1425,16 @@ export function renderOrgaKiosk(container, ctx) {
   });
 }
 
+// No longer an Orga tab, so this view owns its own page title and the way back
+// to "Mehr", like every other destination reached directly from the hub.
 export function renderOrgaEvents(container, ctx) {
   container.innerHTML = `
+    <div class="more-subpage-header">
+      <div class="more-subpage-title-row">
+        ${backButtonHtml({ view: 'more' })}
+        <h1 class="view-title">Events &amp; Gruppen</h1>
+      </div>
+    </div>
     <div class="grouped-page-sections">
       ${renderEventSection()}
     </div>
@@ -1346,13 +1447,19 @@ export function renderOrgaEvents(container, ctx) {
     });
   });
 
-  container.querySelector('[data-event-history]')?.addEventListener('toggle', (e) => {
-    eventHistoryOpen = e.currentTarget.open;
-  });
-
-  container.querySelector('[data-declined-events]')?.addEventListener('toggle', (e) => {
-    declinedEventsOpen = e.currentTarget.open;
-  });
+  // Both lists can carry a "Historie" and an "Abgesagt" section, so every one
+  // of them is bound and remembers itself under its own list kind.
+  for (const [selector, state] of [
+    ['[data-event-history]', historyOpen],
+    ['[data-declined-events]', declinedOpen],
+  ]) {
+    container.querySelectorAll(selector).forEach((details) => {
+      details.addEventListener('toggle', (e) => {
+        const kind = e.currentTarget.dataset.eventHistory ?? e.currentTarget.dataset.declinedEvents;
+        state[kind] = e.currentTarget.open;
+      });
+    });
+  }
 
   container.querySelectorAll('[data-event-card-toggle]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -1437,8 +1544,12 @@ export function renderOrgaEvents(container, ctx) {
     });
   });
 
-  // Absent for a member: only owner/admin get the create action.
+  // Absent for a member: only owner/admin get the create action. Each list
+  // preselects its own type; the dialog still lets you switch.
   container.querySelector('#new-event-btn')?.addEventListener('click', () => openEventForm(ctx, null));
+  container
+    .querySelector('#new-group-btn')
+    ?.addEventListener('click', () => openEventForm(ctx, null, { eventType: 'group' }));
   container.querySelectorAll('[data-edit-event]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.editEvent);
@@ -1491,11 +1602,15 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.endEvent);
       if (!event) return;
-      if (!(await confirmDialog(`Event „${event.name}“ beenden? Laufendes Tracking wird gestoppt und das Event in die Historie verschoben.`, { confirmText: 'Beenden', danger: true }))) return;
+      const isGroup = eventIsGroup(event);
+      const question = isGroup
+        ? `Gruppe „${event.name}“ beenden? Sie wird in die Historie verschoben und ist danach nicht mehr auswählbar.`
+        : `Event „${event.name}“ beenden? Laufendes Tracking wird gestoppt und das Event in die Historie verschoben.`;
+      if (!(await confirmDialog(question, { confirmText: 'Beenden', danger: true }))) return;
       try {
         await api.events.end(event.id);
         await ctx.refresh();
-        showToast('Event beendet.');
+        showToast(isGroup ? 'Gruppe beendet.' : 'Event beendet.');
       } catch (err) {
         showToast(err.message, { error: true });
       }

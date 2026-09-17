@@ -60,7 +60,9 @@ export const VIEW_REGISTRY = createViewRegistry({
   checklistPacking: inSection('checklistPacking', (container, ctx) => renderChecklist(container, ctx, 'packliste')),
   gameCatalog: renderGameCatalog,
   arrivals: inSection('arrivals', renderArrivals),
-  events: inSection('events', renderOrgaEvents),
+  // Not an Orga tab: it picks and creates the workspaces the Orga routes then
+  // organise work inside, so it owns its own header (see renderOrgaEvents).
+  events: renderOrgaEvents,
   eventPolls: inSection('eventPolls', renderEventPolls),
   // Not an Orga tab — reached only from Admin's "Kioskverwaltung" tool card,
   // like Sitzplan (see renderOrgaKiosk).

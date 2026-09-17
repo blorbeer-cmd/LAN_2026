@@ -4,8 +4,10 @@ import { icon } from './icons.js';
 import { infoTooltipHtml } from './infoTooltip.js';
 
 // Legacy planning events may have neither startsAt nor endsAt. The base
-// workspace is permanently open (startsAt set, endsAt null).
+// workspace is permanently open (startsAt set, endsAt null). A group has no
+// period at all — and unlike an undated event, it is not waiting for one.
 export function eventDateRange(event) {
+  if (event.eventType === 'group' && !event.isBase) return 'Dauerhaft geöffnet';
   if (event.startsAt == null) return 'Termin wird noch abgestimmt';
   if (event.endsAt == null) return 'Dauerhaft geöffnet';
   return `${new Date(event.startsAt).toLocaleDateString('de-DE')} – ${new Date(event.endsAt).toLocaleDateString('de-DE')}`;

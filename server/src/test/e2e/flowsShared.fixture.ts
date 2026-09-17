@@ -166,6 +166,18 @@ export async function ensureAdminMode(): Promise<void> {
 
 // Desktop exposes every Orga destination directly. Compact layouts retain
 // the established Mehr entry and the shared tab shell.
+// "Events & Gruppen" is no longer an Orga tab: it picks and creates the
+// workspaces the Orga routes work inside, so it has its own direct entry in
+// the rail and at the top of the "Mehr" hub.
+export async function openEventsView(): Promise<void> {
+  const desktopEntry = page.locator('.desktop-nav-btn[data-view="events"]');
+  if (await desktopEntry.isVisible()) {
+    await desktopEntry.click();
+    return;
+  }
+  await openMoreViewEntry(page, '[data-navigate="events"]');
+}
+
 export async function openOrgaTab(tab: string): Promise<void> {
   const desktopEntry = page.locator(`.desktop-nav-btn[data-view="${tab}"]`);
   if (await desktopEntry.isVisible()) {

@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createTestApp } from './testApp';
+import { db } from '../db';
 import { DEFAULT_CHECKLIST_ITEMS } from '../checklistDefaults';
 
 const app = createTestApp();
@@ -481,4 +482,52 @@ test('push notifications: self-assignment ("Ich") does not push a notification t
   const bobCurrentAfterBatch = await request(app).get(`/api/push/current?playerId=${bob.id}`);
   assert.equal(bobCurrentAfterBatch.body.entry.title, 'Dir wurde eine Aufgabe zugewiesen');
   assert.match(bobCurrentAfterBatch.body.entry.body, /Müll rausbringen/);
+});
+
+// Packliste and To-Dos became two switchable areas (see eventFeatureCatalog),
+// so each one has to be reachable exactly when its own switch is on. Both
+// combinations matter: a group has tasks without packing, and an event may
+// have packing without tasks.
+test('the packing list and the to-do board follow their own feature switch', async () => {
+  const activeEventId = (await request(app).get('/api/events/active')).body.id as string;
+  const setFeature = (featureKey: string, enabled: 0 | 1) =>
+    db
+      .prepare('UPDATE event_features SET enabled = ?, changed_at = ? WHERE event_id = ? AND feature_key = ?')
+      .run(enabled, Date.now(), activeEventId, featureKey);
+  const previous = db
+    .prepare("SELECT feature_key AS featureKey, enabled FROM event_features WHERE event_id = ? AND feature_key IN ('tasks', 'packing')")
+    .all(activeEventId) as Array<{ featureKey: string; enabled: number }>;
+
+  try {
+    // A group's combination: shared to-dos on, personal packing list off.
+    setFeature('tasks', 1);
+    setFeature('packing', 0);
+    // GET is guarded too, because reading materializes the Grundstock and
+    // would otherwise create rows for a switched-off area.
+    assert.equal((await request(app).get(`/api/checklist/items?playerId=${alice.id}`)).status, 404);
+    assert.equal(
+      (await request(app).post('/api/checklist/items').send({ playerId: alice.id, label: 'Schlafsack' })).status,
+      404,
+    );
+    assert.equal((await request(app).get('/api/checklist/tasks')).status, 200);
+    const taskCreated = await request(app)
+      .post('/api/checklist/tasks')
+      .send({ playerId: alice.id, title: 'Getränke besorgen' });
+    assert.equal(taskCreated.status, 201, JSON.stringify(taskCreated.body));
+
+    // And the other way round: packing list on, to-do board off.
+    setFeature('tasks', 0);
+    setFeature('packing', 1);
+    assert.equal((await request(app).get(`/api/checklist/items?playerId=${alice.id}`)).status, 200);
+    const itemCreated = await request(app)
+      .post('/api/checklist/items')
+      .send({ playerId: alice.id, label: 'Schlafsack' });
+    assert.equal(itemCreated.status, 201, JSON.stringify(itemCreated.body));
+    assert.equal(
+      (await request(app).post('/api/checklist/tasks').send({ playerId: alice.id, title: 'Grill anwerfen' })).status,
+      404,
+    );
+  } finally {
+    for (const row of previous) setFeature(row.featureKey, row.enabled === 1 ? 1 : 0);
+  }
 });

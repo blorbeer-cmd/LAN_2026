@@ -10,7 +10,7 @@
 
 import { viewIsEnabledForEvent } from './eventFeatures.js';
 import { backButtonHtml } from './backButton.js';
-import { SECTION_MANIFEST, sectionViews, viewDefinition } from './viewManifest.js';
+import { SECTION_MANIFEST, sectionViews, usesStandaloneOrgaPages, viewDefinition } from './viewManifest.js';
 
 // Tabs and labels come from the route registry. The section manifest only
 // supplies the shared area label/icon and optional navigation metadata.
@@ -56,11 +56,11 @@ export function navGroupForView(view, event) {
   const definition = viewDefinition(view);
   const sectionKey = sectionKeyForView(view);
   if (eventType && definition?.navigation?.bottom?.[eventType]) {
-    return eventType === 'general' && sectionKey === 'orga' ? view : sectionKey ?? view;
+    return usesStandaloneOrgaPages(eventType) && sectionKey === 'orga' ? view : sectionKey ?? view;
   }
   if (eventType && definition?.navigation?.more?.eventTypes?.includes(eventType)) return 'more';
   if (eventType && SECTION_MANIFEST[sectionKey]?.navigation?.more?.eventTypes?.includes(eventType)) return 'more';
-  if (eventType === 'general' && sectionKey === 'orga') return view;
+  if (usesStandaloneOrgaPages(eventType) && sectionKey === 'orga') return view;
   return sectionKey ?? view;
 }
 
@@ -83,7 +83,7 @@ export function renderSectionShell(container, view, { badges = {}, event } = {})
   if (!section) throw new Error(`Kein Bereich für Ansicht ${view}`);
   const sectionKey = sectionKeyForView(view);
   const visibleTabs = sectionTabsForEvent(sectionKey, event);
-  const standalone = event?.eventType === 'general' && sectionKey === 'orga';
+  const standalone = usesStandaloneOrgaPages(event?.eventType) && sectionKey === 'orga';
   const visibleTabSignature = standalone
     ? `standalone:${view}`
     : visibleTabs.map((tab) => tab.view).join(',');

@@ -42,7 +42,7 @@ function resolveMembership(req: Request, res: Response, groupId: string): boolea
   const membership = req.player ? getGroupMembership(groupId, req.player.id) : undefined;
   if (!group || group.archived_at !== null || membership?.status !== 'active') {
     auditDeniedGroupAccess(req, groupId);
-    res.status(404).json({ error: 'Gruppe nicht gefunden.' });
+    res.status(404).json({ error: 'Community nicht gefunden.' });
     return false;
   }
   req.group = group;
@@ -71,7 +71,7 @@ function allowedRoles(minimum: GroupRole): GroupRole[] {
 export function requireGroupRole(minimum: GroupRole): RequestHandler {
   return (req, res, next): void => {
     if (!req.group || !req.groupMembership) {
-      res.status(500).json({ error: 'Gruppenkontext wurde nicht aufgelöst.' });
+      res.status(500).json({ error: 'Community-Kontext wurde nicht aufgelöst.' });
       return;
     }
     if (!allowedRoles(minimum).includes(req.groupMembership.role)) {
@@ -86,7 +86,7 @@ export function requireGroupRole(minimum: GroupRole): RequestHandler {
       res
         .status(403)
         .json({
-          error: minimum === 'owner' ? 'Nur für Gruppen-Owner.' : 'Dafür ist eine Gruppen-Adminrolle erforderlich.',
+          error: minimum === 'owner' ? 'Nur für Community-Owner.' : 'Dafür ist eine Community-Adminrolle erforderlich.',
         });
       return;
     }

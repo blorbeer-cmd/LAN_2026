@@ -12,10 +12,10 @@ import { currentPlayerHasAdminRole } from '../adminAccess.js';
 import { sectionEntryView } from '../sectionNav.js';
 import { state } from '../state.js';
 import { viewIsEnabledForEvent } from '../eventFeatures.js';
-import { moreNavigationEntries } from '../viewManifest.js';
+import { moreNavigationEntries, navigationEventType } from '../viewManifest.js';
 
 export function moreItemsForEvent(event) {
-  return moreNavigationEntries(event?.eventType === 'general' ? 'general' : 'lan');
+  return moreNavigationEntries(navigationEventType(event));
 }
 
 export function renderMore(container) {

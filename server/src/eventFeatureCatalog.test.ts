@@ -6,6 +6,7 @@ import {
   EVENT_FEATURE_KEYS,
   EVENT_TYPE_KEYS,
   EVENT_TYPE_PRESETS,
+  eventTypeIsUndated,
   isEventFeatureKey,
   isEventTypeKey,
 } from './eventFeatureCatalog';
@@ -46,13 +47,28 @@ test('event type presets only reference known features and satisfy hard dependen
   assert.deepEqual(EVENT_TYPE_PRESETS.lan.recommendedFeatureKeys, EVENT_FEATURE_KEYS);
   assert.deepEqual(EVENT_TYPE_PRESETS.general.recommendedFeatureKeys, [
     'tasks',
+    'packing',
     'travel',
     'food',
     'costs',
     'music',
     'arcade',
   ]);
+  // A group is permanently open and free: no period planning, no money, no
+  // packing for a trip that never happens, and nothing that needs a running
+  // LAN (tracking, kiosk, seating).
+  assert.deepEqual(EVENT_TYPE_PRESETS.group.recommendedFeatureKeys, [
+    'tasks',
+    'food',
+    'music',
+    'games',
+    'arcade',
+  ]);
+  assert.equal(eventTypeIsUndated('group'), true);
+  assert.equal(eventTypeIsUndated('lan'), false);
+  assert.equal(eventTypeIsUndated('general'), false);
   assert.equal(isEventTypeKey('general'), true);
+  assert.equal(isEventTypeKey('group'), true);
   assert.equal(isEventTypeKey('trip'), false);
   assert.equal(isEventTypeKey('unknown'), false);
 });
