@@ -90,7 +90,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   „Events & Gruppen verwalten…“ leaves the list and opens that view, because picking a workspace
   and creating one belong to the same level. The switcher is rebuilt on the active event
   immediately afterwards, so the entry never becomes the visible selection. A group carries its own
-  state icon there, like the permanently open base workspace: it never ends and never tracks.
+  state icon there while it runs, because it has no other state to report: it never tracks and has
+  no period. It can still be ended like any other workspace, and an ended one reports „Beendet"
+  instead of its own kind.
 
 ## Profile und Admin
 

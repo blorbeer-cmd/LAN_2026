@@ -75,12 +75,14 @@ const expandedEventParticipants = new Set();
 // as one flat set across active and ended events so an event's expand state
 // survives its move into Historie.
 const expandedEventCards = new Set();
-// Mirrors foodOrders.js's Historie collapse: ended events start collapsed and
-// this survives the section's own live re-renders.
-let eventHistoryOpen = false;
-// Same pattern for the declined events: present enough to come back from,
-// quiet enough not to compete with the events actually being planned.
-let declinedEventsOpen = false;
+// Mirrors foodOrders.js's Historie collapse: ended workspaces start collapsed
+// and this survives the section's own live re-renders. Events and groups are
+// two lists with two disclosures, so each keeps its own state — a shared flag
+// made one section follow the other's on every refresh.
+const historyOpen = { event: false, group: false };
+// Same pattern for the declined workspaces: present enough to come back from,
+// quiet enough not to compete with the ones actually being planned.
+const declinedOpen = { event: false, group: false };
 let acceptedInvitationHandoff = null;
 // Fetched once per session (the shared kiosk password is stable once
 // generated — see server/src/kioskAccounts.ts) and cached across successful
@@ -805,6 +807,7 @@ function renderWorkspaceSection({
   canManage,
   renderCard,
 }) {
+  const listKind = isGroupList ? 'group' : 'event';
   const titleId = isGroupList ? 'orga-groups-title' : 'orga-events-title';
   const title = isGroupList ? 'Gruppen' : 'Events';
   const helpId = isGroupList ? 'orga-groups-help' : 'orga-events-help';
@@ -847,7 +850,7 @@ function renderWorkspaceSection({
       }
       ${
         declinedEvents.length > 0
-          ? `<details class="card grouped-page-section collapsible-section" data-declined-events="${isGroupList ? 'group' : 'event'}" ${declinedEventsOpen ? 'open' : ''}>
+          ? `<details class="card grouped-page-section collapsible-section" data-declined-events="${listKind}" ${declinedOpen[listKind] ? 'open' : ''}>
                <summary class="collapsible-section-header">
                  <h2>Abgesagt</h2>
                  <span class="collapsible-section-summary-end">
@@ -863,7 +866,7 @@ function renderWorkspaceSection({
       }
       ${
         endedEvents.length > 0
-          ? `<details class="card grouped-page-section collapsible-section" data-event-history ${eventHistoryOpen ? 'open' : ''}>
+          ? `<details class="card grouped-page-section collapsible-section" data-event-history="${listKind}" ${historyOpen[listKind] ? 'open' : ''}>
                <summary class="collapsible-section-header">
                  <h2>Historie</h2>
                  <span class="collapsible-section-summary-end">
@@ -1444,17 +1447,19 @@ export function renderOrgaEvents(container, ctx) {
     });
   });
 
-  container.querySelector('[data-event-history]')?.addEventListener('toggle', (e) => {
-    eventHistoryOpen = e.currentTarget.open;
-  });
-
-  // Both lists can carry an "Abgesagt" section; they share one open state so
-  // the page does not remember two half-expanded variants of the same idea.
-  container.querySelectorAll('[data-declined-events]').forEach((details) => {
-    details.addEventListener('toggle', (e) => {
-      declinedEventsOpen = e.currentTarget.open;
+  // Both lists can carry a "Historie" and an "Abgesagt" section, so every one
+  // of them is bound and remembers itself under its own list kind.
+  for (const [selector, state] of [
+    ['[data-event-history]', historyOpen],
+    ['[data-declined-events]', declinedOpen],
+  ]) {
+    container.querySelectorAll(selector).forEach((details) => {
+      details.addEventListener('toggle', (e) => {
+        const kind = e.currentTarget.dataset.eventHistory ?? e.currentTarget.dataset.declinedEvents;
+        state[kind] = e.currentTarget.open;
+      });
     });
-  });
+  }
 
   container.querySelectorAll('[data-event-card-toggle]').forEach((button) => {
     button.addEventListener('click', () => {
