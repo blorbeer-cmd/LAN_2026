@@ -589,13 +589,21 @@ function renderEventInfo(event, { invitation = false } = {}) {
       <span class="food-order-detail-icon" aria-hidden="true">${icon('calendar')}</span>
       ${escapeHtml(eventDateRange(event))}
     </span>`;
+  const blocks = [
+    dateLine ? `<div class="food-order-details-head">${dateLine}</div>` : '',
+    additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : '',
+    renderEventCalendarActions(event, { invitation }),
+    renderEventExcuseActions(event),
+    invitation ? renderInvitationPayment(event) : renderEventPayment(event),
+  ].filter(Boolean);
+  // Period, calendar handoff, excuse and money are all things a group has no
+  // concept of, so a group without a location and without a note fills none of
+  // this box. Drop the box itself in that case instead of leaving an empty
+  // framed surface on the card.
+  if (blocks.length === 0) return '';
   return `
     <div class="food-order-details event-card-info">
-      ${dateLine ? `<div class="food-order-details-head">${dateLine}</div>` : ''}
-      ${additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : ''}
-      ${renderEventCalendarActions(event, { invitation })}
-      ${renderEventExcuseActions(event)}
-      ${invitation ? renderInvitationPayment(event) : renderEventPayment(event)}
+      ${blocks.join('')}
     </div>`;
 }
 
@@ -1125,6 +1133,11 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
         </div>
         <div class="field-row" data-event-schedule-fields ${isGroup ? 'hidden' : ''}>
           <div>
+            <!-- Never required, so never marked: the period may be entered late
+                 and removed again, and clearable is what carries the removal.
+                 That also keeps a hidden input out of form validation, which is
+                 what used to block "Speichern" on a group and on an event still
+                 waiting for its date. -->
             <label for="event-starts-date" class="field-label">Beginnt am</label>
             ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? null, { clearable: true, label: 'Beginnt am' })}
           </div>

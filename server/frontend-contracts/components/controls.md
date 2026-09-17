@@ -62,7 +62,8 @@ segmentierte Einstellung im Sinne dieser Regel.
 
 `--tap-target-size` bleibt unverändert für die folgenden Strukturziele: topbar/section/page-title
 header rows, navigation rail button, collapsible-section header, food-order and seating rows,
-searchable-select option rows, calendar day grid, game-board/memory cells and the kiosk TV canvas
+searchable-select option rows samt angehefteter Popup-Aktion, calendar day grid, game-board/memory
+cells and the kiosk TV canvas
 (its own device class). Icon-Controls verwenden den Token regelmäßig als Mindestbreite, nicht als
 Standardhöhe. Die Registry-IDs `calendar-days`, `search-options`, `structural-cards`, `player-card`,
 `player-selection-actions`, `structural-disclosure`, `arcade-tile`, `battleship-grid`,
@@ -421,7 +422,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:search-select`: Field-integrated 44 by 32px dropdown trigger.
 
-- `registry:search-options`: Permanent listbox option rows, at least 44px.
+- `registry:search-options`: Permanent listbox option rows and the pinned popup action, at least 44px.
 
 - `registry:profile-controls`: Profile controls use the standard field/button/icon variants.
 

@@ -27,6 +27,9 @@ import { assertControlHeights, assertInfoTooltipPlacement, assertNoOverflow } fr
 
 registerFlowFixture('shell');
 
+const GROUP_NAME = 'E2E Skatrunde';
+const GROUP_NOTE = 'Jeden Donnerstag';
+
 flowTest('fresh device uses the personal login and reaches the app with its verified account', async (t) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await trackE2EContext(context, 'fresh-device');
@@ -938,6 +941,30 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   assert.equal(await page.locator('#event-cost').isVisible(), true);
   assert.equal(await page.locator('.modal-header h2').innerText(), 'Neues Event');
   await page.click('.modal-header [data-close]');
+
+  // A group is created and then edited for real: its hidden period block must
+  // not carry required inputs, because native form validation covers a hidden
+  // control too and would block "Speichern" with nothing visible to correct.
+  await page.click('#new-group-btn');
+  await page.waitForSelector('#event-form');
+  await page.fill('#event-name', GROUP_NAME);
+  await page.click('#event-form-submit');
+  const groupCard = page.locator('.event-card', { hasText: GROUP_NAME });
+  await groupCard.waitFor();
+  assert.equal(
+    await groupCard.locator('.event-card-info').count(),
+    0,
+    'a group without location and note has nothing to show in the information box and renders none',
+  );
+  await groupCard.locator('.action-menu > summary').click();
+  await groupCard.locator('[data-edit-event]').click();
+  const editGroupModal = page.locator('.modal-backdrop', { hasText: 'Gruppe bearbeiten' });
+  await editGroupModal.waitFor();
+  assert.equal(await editGroupModal.locator('#event-starts-date[required]').count(), 0);
+  await editGroupModal.locator('#event-description').fill(GROUP_NOTE);
+  await editGroupModal.locator('#event-form-submit').click();
+  await editGroupModal.waitFor({ state: 'detached' });
+  await groupCard.locator('.event-card-info', { hasText: GROUP_NOTE }).waitFor();
 
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.waitForSelector('#orga-events-help:not([hidden])');

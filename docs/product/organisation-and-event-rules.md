@@ -231,6 +231,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   stays, because it is the one lifecycle step a group shares with an event and the only way to
   retire one created by mistake; an ended group moves into the Gruppen section's „Historie“ and
   reports „Beendet“ instead of its own kind.
+  With none of those, a group that carries neither a location nor a note has nothing left for the
+  shared information box, so the box is dropped with them instead of framing an empty surface; it
+  returns as soon as a location or note is saved. Its edit dialog hides the period for the same
+  reason and therefore leaves it optional — a hidden required field would block „Speichern“ with
+  nothing visible to correct — exactly as for an event that is still waiting for its date.
   Its roster reads „Mitglieder“ instead of „Teilnehmende“ and its empty state says „Noch keine
   Mitglieder.“ A finished event moves out of the active list into the Events section's own
   „Historie“ (the same collapsible-section pattern as Food orders): it starts collapsed and
