@@ -143,6 +143,8 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
 - Sortierung und Filterauslöser sind gleich breit, kompakt und linksbündig. Kurze Sortiertexte vermeiden
   abgeschnittene Werte. Die Suche nutzt den verbleibenden Platz.
 - Auf schmalen Ansichten steht die Suche über Sortierung und Filter. Das Filtermenü erscheint oberhalb der Hauptnavigation.
+- Sortierung und Filterauslöser behalten die feste 32px-Control-Höhe unabhängig vom Label-Inhalt;
+  überlaufender Inhalt wird abgeschnitten, statt die Höhe wachsen zu lassen.
 
 Registry-Zuordnung: `registry:game-catalog-toolbar`, `registry:game-catalog-sort-trigger`,
 `registry:game-catalog-sort-option`, `registry:game-catalog-filter-trigger`,

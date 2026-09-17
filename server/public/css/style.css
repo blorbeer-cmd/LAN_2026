@@ -2479,6 +2479,12 @@ button.draft-pool-player {
   width: 100%;
   min-width: 0;
   text-align: left;
+  /* A fallback glyph in the label (e.g. the en dash) can carry taller font
+     metrics than the primary font and inflate the line box past the 32px
+     control height in some environments; clamp it instead of letting the
+     label grow. */
+  height: var(--control-height);
+  overflow: hidden;
 }
 .game-catalog-sort-trigger {
   font-size: var(--font-size-sm);
