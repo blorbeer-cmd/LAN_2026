@@ -1723,16 +1723,35 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   assert.equal(await page.locator('.modal-header h2').textContent(), 'Spiel vorschlagen');
   assert.equal(await page.locator('.modal').getAttribute('aria-label'), 'Spiel vorschlagen');
   await page.fill('#suggest-title', gameTitle);
+  await page.fill('#suggest-platform', 'Steam');
+  await page.fill('#suggest-platform-url', 'https://store.steampowered.com/');
+  await page.fill('#suggest-trailer', 'https://www.youtube.com/watch?v=TomAndJerry');
+  await page.click('[data-genre-toggle="Party"]');
+  await page.click('[data-genre-toggle="Racing"]');
+  await page.fill('#suggest-info', 'Testhinweis für den Spieleabend.');
+  await page.check('#suggest-consider-seat-neighbors');
   await page.click('#suggest-form button[type="submit"]');
   await page.waitForSelector(`text=${gameTitle}`);
   await page.waitForSelector('button[data-tab="suggestions"].btn-primary');
   const gamesResponse = await page.request.get(`${BASE_URL}/api/games`);
   assert.equal(gamesResponse.status(), 200);
-  const games = (await gamesResponse.json()) as Array<{ name: string; trailer_url: string | null }>;
+  const games = (await gamesResponse.json()) as Array<{
+    name: string;
+    platform: string | null;
+    platform_url: string | null;
+    trailer_url: string | null;
+    genres: string[];
+    info: string | null;
+    considerSeatNeighborsDefault: boolean;
+  }>;
   const createdSuggestion = games.find((game) => game.name === gameTitle);
   assert.ok(createdSuggestion);
-  assert.ok(createdSuggestion.trailer_url);
-  assert.match(createdSuggestion.trailer_url, /^https:\/\/www\.youtube\.com\/results\?search_query=.*gameplay$/);
+  assert.equal(createdSuggestion.platform, 'Steam');
+  assert.equal(createdSuggestion.platform_url, 'https://store.steampowered.com/');
+  assert.equal(createdSuggestion.trailer_url, 'https://www.youtube.com/watch?v=TomAndJerry');
+  assert.deepEqual(createdSuggestion.genres, ['Party', 'Racing']);
+  assert.equal(createdSuggestion.info, 'Testhinweis für den Spieleabend.');
+  assert.equal(createdSuggestion.considerSeatNeighborsDefault, true);
 
   // Same name again (different case): server must refuse — otherwise votes,
   // skills and results would silently split across two identical entries.
@@ -1750,7 +1769,7 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
       const dialog = document.querySelector('.modal[aria-label="Spiel vorschlagen"]');
       return dialog && dialog.getAnimations({ subtree: true }).every((animation) => animation.playState === 'finished');
     });
-    await assertControlHeights(rejectedDialog.locator('input, button'));
+    await assertControlHeights(rejectedDialog.locator('input:not([type="checkbox"]), textarea, button'));
     await assertNoOverflow(rejectedDialog);
     await assertNoOverflow(rejectedDialog.locator('.modal-body'));
     await rejectedDialog.locator('button[type="submit"]').focus();

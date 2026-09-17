@@ -371,6 +371,7 @@ function openSuggestForm(ctx) {
   const myId = getMyId();
   if (!myId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
 
+  const selectedGenres = new Set();
   let modalEl;
   const { close } = openModal(
     'Spiel vorschlagen',
@@ -385,8 +386,31 @@ function openSuggestForm(ctx) {
           <input type="text" id="suggest-platform" maxlength="80" placeholder="Zum Beispiel Steam, Epic oder Battle.net." />
         </div>
         <div>
+          <label class="field-label" for="suggest-platform-url">Plattform-Link</label>
+          <input type="url" id="suggest-platform-url" maxlength="500" placeholder="https://…" />
+        </div>
+        <div>
           <label class="field-label" for="suggest-trailer">YouTube-Gameplay-Link</label>
           <input type="url" id="suggest-trailer" maxlength="500" placeholder="Leer lassen für eine automatische Suche." />
+        </div>
+        <div>
+          <span class="field-label" id="suggest-genre-label">Genre</span>
+          <div class="chip-list" role="group" aria-labelledby="suggest-genre-label" id="suggest-genre-chips">${genreChipsHtml(selectedGenres)}</div>
+        </div>
+        <div class="game-detail-info-field">
+          <label class="field-label" for="suggest-info">Info</label>
+          <textarea id="suggest-info" rows="1" maxlength="300" placeholder="Zusätzliche Hinweise."></textarea>
+        </div>
+        <div class="check-row game-detail-seat-option">
+          <input type="checkbox" id="suggest-consider-seat-neighbors" />
+          <span class="title-with-info tournament-option-label">
+            <label for="suggest-consider-seat-neighbors">Sitznachbarn bei Auslosung</label>
+            ${infoTooltipHtml(
+              'suggest-consider-seat-neighbors-help',
+              'Sitznachbarn bei Auslosung',
+              'Voreinstellung für die Teams-Auslosung: Ist dieses Spiel ausgewählt, startet „Sitznachbarn“ dort mit diesem Wert. Lässt sich bei jeder Auslosung weiterhin einzeln umschalten.',
+            )}
+          </span>
         </div>
         <button type="submit" class="btn btn-primary btn-block">Vorschlagen</button>
       </form>
@@ -394,13 +418,33 @@ function openSuggestForm(ctx) {
     {
       confirmClose: () => {
         if (!modalEl) return null;
-        const values = ['#suggest-title', '#suggest-platform', '#suggest-trailer'].map(
+        const values = ['#suggest-title', '#suggest-platform', '#suggest-platform-url', '#suggest-trailer', '#suggest-info'].map(
           (sel) => modalEl.querySelector(sel).value.trim(),
         );
-        return values.some(Boolean) ? 'Der Spielvorschlag mit Titel, Plattform und YouTube-Link geht verloren.' : null;
+        return values.some(Boolean) || selectedGenres.size || modalEl.querySelector('#suggest-consider-seat-neighbors').checked
+          ? 'Deine Angaben zum Spielvorschlag gehen verloren.'
+          : null;
       },
       onMount: (el) => {
         modalEl = el;
+        wireInfoTooltips(el);
+        el.querySelectorAll('[data-genre-toggle]').forEach((chip) => {
+          chip.addEventListener('click', () => {
+            const genre = chip.dataset.genreToggle;
+            if (selectedGenres.has(genre)) {
+              selectedGenres.delete(genre);
+            } else {
+              if (selectedGenres.size >= MAX_GENRES_PER_GAME) {
+                showToast(`Maximal ${MAX_GENRES_PER_GAME} Genres auswählen.`, { error: true });
+                return;
+              }
+              selectedGenres.add(genre);
+            }
+            const active = selectedGenres.has(genre);
+            chip.classList.toggle('is-active', active);
+            chip.setAttribute('aria-pressed', String(active));
+          });
+        });
         el.querySelector('#suggest-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = el.querySelector('#suggest-title').value.trim();
@@ -410,7 +454,11 @@ function openSuggestForm(ctx) {
               name,
               status: 'suggestion',
               platform: el.querySelector('#suggest-platform').value.trim() || null,
+              platformUrl: el.querySelector('#suggest-platform-url').value.trim() || null,
               trailerUrl: el.querySelector('#suggest-trailer').value.trim() || null,
+              genres: [...selectedGenres],
+              info: el.querySelector('#suggest-info').value.trim() || null,
+              considerSeatNeighborsDefault: el.querySelector('#suggest-consider-seat-neighbors').checked,
               playerId: myId,
             });
             close();
