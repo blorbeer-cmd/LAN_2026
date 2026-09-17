@@ -132,6 +132,24 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
 - Der Button öffnet die bestehenden Spieldetails. Er bleibt per Tastatur erreichbar und verwendet
   den globalen sichtbaren Fokus-Ring.
 
+### Umfrage-Stimmenstapel
+
+- `.event-poll-voter-stack` erweitert ausschließlich den Basisbutton `.btn.btn-sm` für die
+  Wählenden einer Umfrageoption in `public/js/views/eventPolls.js`.
+- Der Stapel behält die 32-px-Mindesthöhe und damit seine vollständige Trefferfläche. Beide
+  Inline-Innenkanten sind null und der Buttonhintergrund bleibt transparent, damit die Avatare
+  direkt neben Optionstitel und Badge stehen und der Optionszeile keine zusätzliche Zeile entsteht.
+- Ausschließlich sein Außenabstand gibt nach: ein negativer Blockabstand von `--space-1` je Seite
+  lässt ihn in der 24-px-Badgezeile mitlaufen. Optionen mit und ohne Stimmen behalten dadurch
+  dieselbe Zeilenhöhe.
+- Er zeigt höchstens vier Avatare; weitere Personen erscheinen als zusammengefasste Anzahl. Die
+  Avatare überlappen einander und heben sich mit einem Ring von der Optionsfläche ab.
+- Bild und Anzahl sind rein visuell. Der Accessible Name nennt die Option, die dargestellte
+  Antwort und die Namen; die vollständige Aufstellung bleibt der Stimmen-Dialog, den der Button
+  öffnet.
+- Der Stapel erscheint nur, wenn der Server die Antwortdetails für diese Person freigibt. Er
+  bleibt per Tastatur erreichbar und verwendet den globalen sichtbaren Fokus-Ring.
+
 ### Spielkatalog-Werkzeugleiste
 
 - Suche, Sortierung und Filterauslöser bilden eine stabile Werkzeugleiste.
@@ -418,6 +436,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:filter-chip`: Interactive filter chips use 32px; passive chip labels are outside this control variant.
 
 - `registry:section-tab`: Navigation button composed with the base button and optional meaning modifier.
+
+- `registry:event-poll-voter-stack`: Voter avatars beside a poll option open the vote dialog without a filled button surface.
 
 - `registry:poll-choice`: Compact choice text retains the standard minimum height.
 

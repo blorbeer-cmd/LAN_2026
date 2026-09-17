@@ -66,6 +66,9 @@ interface PollOverrides {
   // the field entirely so tests can exercise an open-ended poll.
   responseDueOn?: string | null;
   anonymous?: boolean;
+  // Defaults to false so every test that is not about interim visibility can
+  // keep reading counts from a non-creator's response.
+  hideLiveResults?: boolean;
 }
 
 async function createPoll(eventId: string, creatorId: string, overrides: PollOverrides = {}) {
@@ -81,6 +84,7 @@ async function createPoll(eventId: string, creatorId: string, overrides: PollOve
       previousPollId: overrides.previousPollId,
       responseDueOn: overrides.responseDueOn === undefined ? isoDate(5) : overrides.responseDueOn,
       anonymous: overrides.anonymous,
+      hideLiveResults: overrides.hideLiveResults ?? false,
       options: overrides.options ?? [{ label: 'Köln' }, { label: 'Hamburg' }],
     });
 }
@@ -309,7 +313,7 @@ test('feasibility, choice and 1-5 rating modes enforce their distinct response s
   assert.equal(unsafeLink.status, 400);
 });
 
-test('voter identities appear only after a non-anonymous poll has ended', async () => {
+test('anonymity and the interim-result setting decide who sees counts and voter identities', async () => {
   const alice = 'poll-privacy-alice';
   const bob = 'poll-privacy-bob';
   createMember(alice, 'Poll Privacy Alice');
@@ -321,13 +325,17 @@ test('voter identities appear only after a non-anonymous poll has ended', async 
     responseMode: 'single_choice',
   });
   assert.equal(publicPoll.status, 201, JSON.stringify(publicPoll.body));
+  assert.equal(publicPoll.body.liveResultsHidden, false);
   const publicAnswer = await request(app)
     .put(`/api/events/${eventId}/polls/${publicPoll.body.id}/my-responses`)
     .set('x-test-player-id', bob)
     .send({ responses: responsesFor(publicPoll.body, ['can', 'cannot']) });
   assert.equal(publicAnswer.status, 200, JSON.stringify(publicAnswer.body));
-  assert.equal(publicAnswer.body.responseDetailsVisible, false);
-  assert.deepEqual(publicAnswer.body.options[0].people.can, [], 'an open poll never reveals voter identities');
+  assert.equal(publicAnswer.body.responseDetailsVisible, true, 'a visible interim result names its voters right away');
+  assert.deepEqual(
+    publicAnswer.body.options[0].people.can.map((person: { playerId: string }) => person.playerId),
+    [bob],
+  );
   assert.deepEqual(publicAnswer.body.myResponses, { [publicPoll.body.options[0].id]: 'can', [publicPoll.body.options[1].id]: 'cannot' });
 
   const closedPublicPoll = await request(app)
@@ -365,6 +373,98 @@ test('voter identities appear only after a non-anonymous poll has ended', async 
   assert.equal(closedAnonymousPoll.body.responseDetailsVisible, false);
   assert.equal(closedAnonymousPoll.body.myResponses, null);
   assert.deepEqual(closedAnonymousPoll.body.options[1].people.can, []);
+
+  // A round that hides its interim result answers everyone else with their own
+  // vote only, and turns into the same public result once it has ended.
+  const hiddenPoll = await request(app)
+    .post(`/api/events/${eventId}/polls`)
+    .set('x-test-player-id', alice)
+    .send({
+      topic: 'custom',
+      title: 'Verborgener Zwischenstand',
+      responseMode: 'single_choice',
+      responseDueOn: isoDate(5),
+      options: [{ label: 'A' }, { label: 'B' }],
+    });
+  assert.equal(hiddenPoll.status, 201, JSON.stringify(hiddenPoll.body));
+  assert.equal(hiddenPoll.body.liveResultsHidden, true, 'hiding the interim result is the default');
+  const hiddenAnswer = await request(app)
+    .put(`/api/events/${eventId}/polls/${hiddenPoll.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: responsesFor(hiddenPoll.body, ['can', 'cannot']) });
+  assert.equal(hiddenAnswer.status, 200, JSON.stringify(hiddenAnswer.body));
+  assert.equal(hiddenAnswer.body.resultsVisible, false);
+  assert.equal(hiddenAnswer.body.responseDetailsVisible, false);
+  assert.equal(hiddenAnswer.body.options[0].counts, null, 'the interim count is withheld, not zeroed');
+  assert.equal(hiddenAnswer.body.options[0].isRecommended, false, 'a withheld count cannot leak through the leading option');
+  assert.deepEqual(hiddenAnswer.body.myResponses, {
+    [hiddenPoll.body.options[0].id]: 'can',
+    [hiddenPoll.body.options[1].id]: 'cannot',
+  }, 'everyone still sees their own vote');
+
+  const creatorView = await request(app)
+    .get(`/api/events/${eventId}/polls/${hiddenPoll.body.id}`)
+    .set('x-test-player-id', alice);
+  assert.equal(creatorView.status, 200, JSON.stringify(creatorView.body));
+  assert.equal(creatorView.body.resultsVisible, true);
+  assert.equal(creatorView.body.responseDetailsVisible, true);
+  assert.equal(creatorView.body.options[0].counts.can, 1);
+  assert.deepEqual(
+    creatorView.body.options[0].people.can.map((person: { playerId: string }) => person.playerId),
+    [bob],
+    'the person managing the round sees who voted while it runs',
+  );
+
+  const closedHiddenPoll = await request(app)
+    .post(`/api/events/${eventId}/polls/${hiddenPoll.body.id}/close`)
+    .set('x-test-player-id', alice);
+  assert.equal(closedHiddenPoll.status, 200, JSON.stringify(closedHiddenPoll.body));
+  const memberResult = await request(app)
+    .get(`/api/events/${eventId}/polls/${hiddenPoll.body.id}`)
+    .set('x-test-player-id', bob);
+  assert.equal(memberResult.body.responseDetailsVisible, true);
+  assert.equal(memberResult.body.options[0].counts.can, 1);
+  assert.deepEqual(
+    memberResult.body.options[0].people.can.map((person: { playerId: string }) => person.playerId),
+    [bob],
+    'ending the round publishes counts and names to everyone',
+  );
+
+  // Anonymity outranks the interim-result setting: even the creator only ever
+  // sees numbers.
+  const hiddenAnonymousPoll = await createPoll(eventId, alice, {
+    title: 'Anonym mit verborgenem Zwischenstand',
+    responseMode: 'single_choice',
+    anonymous: true,
+    hideLiveResults: true,
+  });
+  assert.equal(hiddenAnonymousPoll.status, 201, JSON.stringify(hiddenAnonymousPoll.body));
+  assert.equal(
+    (await request(app)
+      .put(`/api/events/${eventId}/polls/${hiddenAnonymousPoll.body.id}/my-responses`)
+      .set('x-test-player-id', bob)
+      .send({ responses: responsesFor(hiddenAnonymousPoll.body, ['can', 'cannot']) })).status,
+    200,
+  );
+  const anonymousCreatorView = await request(app)
+    .get(`/api/events/${eventId}/polls/${hiddenAnonymousPoll.body.id}`)
+    .set('x-test-player-id', alice);
+  assert.equal(anonymousCreatorView.body.responseDetailsVisible, false);
+  assert.equal(anonymousCreatorView.body.options[0].counts.can, 1);
+  assert.deepEqual(anonymousCreatorView.body.options[0].people.can, []);
+
+  const invalidLiveResults = await request(app)
+    .post(`/api/events/${eventId}/polls`)
+    .set('x-test-player-id', alice)
+    .send({
+      topic: 'custom',
+      title: 'Ungültiger Zwischenstand',
+      responseMode: 'single_choice',
+      hideLiveResults: 'ja',
+      responseDueOn: isoDate(5),
+      options: [{ label: 'A' }, { label: 'B' }],
+    });
+  assert.equal(invalidLiveResults.status, 400);
 
   const invalidAnonymous = await request(app)
     .post(`/api/events/${eventId}/polls`)

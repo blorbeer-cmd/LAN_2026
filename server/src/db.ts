@@ -4880,6 +4880,26 @@ registerMigration({
   up: addOnboardingEventContextStep,
 });
 
+// A running round may now keep its interim result to itself: while the poll is
+// open only its managers see counts and voter identities, everyone else only
+// sees their own answer. Existing rounds adopt the new default (hidden). That
+// is the conservative direction: no identity becomes visible earlier than
+// before, only the live counts move behind the end of the round.
+function addHiddenLiveEventPollResults(): void {
+  const columns = db.prepare('PRAGMA table_info(event_date_polls)').all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === 'live_results_hidden')) return;
+  db.exec(`
+    ALTER TABLE event_date_polls
+      ADD COLUMN live_results_hidden INTEGER NOT NULL DEFAULT 1
+      CHECK (live_results_hidden IN (0, 1));
+  `);
+}
+registerMigration({
+  version: 100,
+  name: 'add hidden live event poll results',
+  up: addHiddenLiveEventPollResults,
+});
+
 // The packing list becomes its own switchable area, split out of `tasks`.
 // Every existing event keeps exactly what it had: the new row inherits the
 // enabled state of its `tasks` row, so nobody's packing list disappears
@@ -4899,7 +4919,7 @@ function addPackingFeature(): void {
   ).run(OUTSIDE_EVENTS_ID);
 }
 registerMigration({
-  version: 100,
+  version: 101,
   name: 'add packing feature',
   up: addPackingFeature,
 });
@@ -4921,7 +4941,7 @@ registerMigration({
 // (see events.ts), the only writer of status and starts_at.
 function allowUndatedGroupEvents(): void {
   db.exec(`
-    CREATE TABLE events_staging_101 AS SELECT * FROM events;
+    CREATE TABLE events_staging_102 AS SELECT * FROM events;
     DROP TABLE events;
     CREATE TABLE events (
       id                       TEXT PRIMARY KEY,
@@ -4952,8 +4972,8 @@ function allowUndatedGroupEvents(): void {
     SELECT id, name, starts_at, ends_at, location, description, cost_cents, accommodation_cost_cents,
            paypal_link, payment_due_at, created_by, tracking_enabled, ended_at, is_test, group_id, status,
            visibility_scope, schedule_revision, event_type_key, preset_version
-    FROM events_staging_101;
-    DROP TABLE events_staging_101;
+    FROM events_staging_102;
+    DROP TABLE events_staging_102;
     CREATE INDEX IF NOT EXISTS idx_events_group_start ON events(group_id, starts_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_events_group_pk ON events(group_id, id);
     CREATE TRIGGER create_kiosk_account_for_lan_event
@@ -4968,7 +4988,7 @@ function allowUndatedGroupEvents(): void {
   `);
 }
 registerMigration({
-  version: 101,
+  version: 102,
   name: 'allow undated group events',
   up: allowUndatedGroupEvents,
   disableForeignKeysForRebuild: true,

@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 101);
+  assert.equal(migrations.length, 102);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 101 }, (_, index) => index + 1),
+    Array.from({ length: 102 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,8 +1342,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 101 }, (_, index) => index + 1),
-    'every version 1..101 runs exactly once',
+    Array.from({ length: 102 }, (_, index) => index + 1),
+    'every version 1..102 runs exactly once',
   );
 });
 
@@ -3309,7 +3309,7 @@ test('migration 85 restores accepted-only participation and enables independent 
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migrations 86 through 88 preserve poll history and allow a new round after close', () => {
+test('migrations 86 through 88 and 100 preserve poll history, allow a new round after close and hide live results', () => {
   const dbFile = makeTempDbPath('event-poll-ratings');
   runMigrations(dbFile);
 
@@ -3382,7 +3382,7 @@ test('migrations 86 through 88 preserve poll history and allow a new round after
       VALUES ('migration-86-poll', 'migration-86-player', 1);
     INSERT INTO event_date_poll_responses (poll_id, option_id, player_id, response, updated_at)
       VALUES ('migration-86-poll', 'migration-86-option', 'migration-86-player', 'can', 1);
-    DELETE FROM schema_migrations WHERE version IN (86, 87, 88);
+    DELETE FROM schema_migrations WHERE version IN (86, 87, 88, 100);
   `);
   fixture.close();
 
@@ -3410,6 +3410,18 @@ test('migrations 86 through 88 preserve poll history and allow a new round after
   migrated.prepare('UPDATE event_date_polls SET is_anonymous = 1 WHERE id = ?').run('migration-86-poll');
   assert.throws(
     () => migrated.prepare('UPDATE event_date_polls SET is_anonymous = 2 WHERE id = ?').run('migration-86-poll'),
+    /CHECK constraint failed/,
+  );
+  assert.equal(
+    (migrated
+      .prepare('SELECT live_results_hidden AS hidden FROM event_date_polls WHERE id = ?')
+      .get('migration-86-poll') as { hidden: number }).hidden,
+    1,
+    'existing rounds adopt the hidden interim result instead of revealing counts they never showed',
+  );
+  migrated.prepare('UPDATE event_date_polls SET live_results_hidden = 0 WHERE id = ?').run('migration-86-poll');
+  assert.throws(
+    () => migrated.prepare('UPDATE event_date_polls SET live_results_hidden = 2 WHERE id = ?').run('migration-86-poll'),
     /CHECK constraint failed/,
   );
   const openIndexSql = (migrated
@@ -3500,12 +3512,12 @@ test('migration 97 makes the event poll deadline optional without losing existin
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-// Migration 100 splits the packing list out of `tasks`, and 101 rebuilds
+// Migration 101 splits the packing list out of `tasks`, and 102 rebuilds
 // `events` so a published workspace may have no period at all. Both touch data
 // that already exists in every installation, so they are verified together on
 // one legacy fixture: nobody's packing list may vanish because their snapshot
 // predates the split, and no event row may be lost in the rebuild.
-test('migrations 100 and 101 inherit the packing state and rebuild events without losing rows', () => {
+test('migrations 101 and 102 inherit the packing state and rebuild events without losing rows', () => {
   const dbFile = makeTempDbPath('packing-and-undated-events');
   runMigrations(dbFile);
 
@@ -3532,7 +3544,7 @@ test('migrations 100 and 101 inherit the packing state and rebuild events withou
   insertFeature.run('packing-lan', 1, now);
   insertFeature.run('packing-general', 0, now);
   fixture.prepare("DELETE FROM event_features WHERE feature_key = 'packing'").run();
-  fixture.prepare('DELETE FROM schema_migrations WHERE version IN (100, 101)').run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version IN (101, 102)').run();
   fixture.close();
 
   runMigrations(dbFile);
