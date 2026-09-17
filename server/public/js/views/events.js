@@ -589,13 +589,21 @@ function renderEventInfo(event, { invitation = false } = {}) {
       <span class="food-order-detail-icon" aria-hidden="true">${icon('calendar')}</span>
       ${escapeHtml(eventDateRange(event))}
     </span>`;
+  const blocks = [
+    dateLine ? `<div class="food-order-details-head">${dateLine}</div>` : '',
+    additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : '',
+    renderEventCalendarActions(event, { invitation }),
+    renderEventExcuseActions(event),
+    invitation ? renderInvitationPayment(event) : renderEventPayment(event),
+  ].filter(Boolean);
+  // Period, calendar handoff, excuse and money are all things a group has no
+  // concept of, so a group without a location and without a note fills none of
+  // this box. Drop the box itself in that case instead of leaving an empty
+  // framed surface on the card.
+  if (blocks.length === 0) return '';
   return `
     <div class="food-order-details event-card-info">
-      ${dateLine ? `<div class="food-order-details-head">${dateLine}</div>` : ''}
-      ${additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : ''}
-      ${renderEventCalendarActions(event, { invitation })}
-      ${renderEventExcuseActions(event)}
-      ${invitation ? renderInvitationPayment(event) : renderEventPayment(event)}
+      ${blocks.join('')}
     </div>`;
 }
 
@@ -1105,6 +1113,10 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
   // flag tracks the live selection because the type can still be switched
   // inside the dialog.
   let isGroup = isGroupEventType(selectedEventType);
+  // Required exactly where the label says so. A required input still takes part
+  // in form validation while its block is hidden, so a required period would
+  // have blocked "Speichern" on a group — and on an event that is still
+  // waiting for its date — without anything visible to fix.
   const dateRequired = isEdit && !periodOptional && !isGroup;
   const eventTypeSelectOptions = eventTypes
     .map(
@@ -1128,11 +1140,11 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
         <div class="field-row" data-event-schedule-fields ${isGroup ? 'hidden' : ''}>
           <div>
             <label for="event-starts-date" class="field-label${dateRequired ? ' is-required' : ''}">Beginnt am</label>
-            ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? null, { clearable: !isEdit, label: 'Beginnt am' })}
+            ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? null, { clearable: !dateRequired, label: 'Beginnt am' })}
           </div>
           <div>
             <label for="event-ends-date" class="field-label${dateRequired ? ' is-required' : ''}">Endet am</label>
-            ${dateTimeFieldHtml('event-ends', existing?.endsAt ?? null, { clearable: !isEdit, label: 'Endet am' })}
+            ${dateTimeFieldHtml('event-ends', existing?.endsAt ?? null, { clearable: !dateRequired, label: 'Endet am' })}
           </div>
         </div>
         <div>
