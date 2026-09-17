@@ -30,7 +30,7 @@ test('an unknown/empty selected value leaves the visible input blank', () => {
 
 test('renders a themed listbox instead of a native datalist', () => {
   const html = searchSelectHtml('my-field', OPTIONS, null);
-  assert.match(html, /class="search-select-list" role="listbox"/);
+  assert.match(html, /class="search-select-results" role="listbox"/);
   assert.match(html, /class="search-select-option" role="option"/);
   assert.doesNotMatch(html, /<datalist/);
   assert.match(html, /<span class="search-select-option-label">🎮 Counter-Strike 2<\/span>/);
@@ -39,7 +39,7 @@ test('renders a themed listbox instead of a native datalist', () => {
 
 test('connects the combobox to its listbox with accessible state', () => {
   const html = searchSelectHtml('my-field', OPTIONS, 'g2');
-  assert.match(html, /id="my-field-search"[^>]*role="combobox"[^>]*aria-autocomplete="list"[^>]*aria-expanded="false"[^>]*aria-controls="my-field-list"/);
+  assert.match(html, /id="my-field-search"[^>]*role="combobox"[^>]*aria-autocomplete="list"[^>]*aria-expanded="false"[^>]*aria-controls="my-field-results"/);
   assert.match(html, /id="my-field-option-1"[^>]*aria-selected="true"[^>]*tabindex="-1"/);
   assert.match(html, /class="search-select-toggle" aria-label="Auswahl öffnen"/);
 });
@@ -128,4 +128,42 @@ test('the placeholder defaults to a generic search hint and can be overridden', 
 
   const withCustom = searchSelectHtml('my-field', OPTIONS, null, { placeholder: 'Spiel suchen…' });
   assert.match(withCustom, /placeholder="Spiel suchen…"/);
+});
+
+// --- Pinned action (the topbar workspace switcher's "manage") ---------------
+
+const MANAGE_ACTION = { label: 'Events & Gruppen verwalten', icon: 'calendar' };
+
+test('a picker without an action renders none, so the game pickers are untouched', () => {
+  const html = searchSelectHtml('my-field', OPTIONS, null);
+  assert.doesNotMatch(html, /search-select-action/);
+});
+
+test('the action is a command outside the listbox, not another option in it', () => {
+  const html = searchSelectHtml('ev', EVENT_OPTIONS, 'e1', { action: MANAGE_ACTION });
+  const listbox = html.slice(html.indexOf('search-select-results'), html.indexOf('search-select-action'));
+  // It must not sit inside role="listbox", carry an option index or carry a
+  // value — those are exactly what would make it selectable and filterable.
+  assert.doesNotMatch(listbox, /search-select-action/);
+  const action = html.slice(html.indexOf('<button type="button" id="ev-action"'));
+  assert.doesNotMatch(action, /role="option"|data-search-select-index|data-search-select-value/);
+  assert.match(action, /class="search-select-action" data-search-select-action/);
+  assert.match(action, /<span class="search-select-action-label">Events &amp; Gruppen verwalten<\/span>/);
+});
+
+test('the action carries a leading icon and a trailing chevron, and its label is escaped', () => {
+  const withIcon = searchSelectHtml('ev', EVENT_OPTIONS, null, { action: MANAGE_ACTION });
+  assert.match(withIcon, /<span class="search-select-action-icon">/);
+  assert.match(withIcon, /<span class="search-select-action-chevron">/);
+
+  const withoutIcon = searchSelectHtml('ev', EVENT_OPTIONS, null, { action: { label: '<b>X</b>' } });
+  assert.doesNotMatch(withoutIcon, /search-select-action-icon/);
+  assert.match(withoutIcon, /&lt;b&gt;X&lt;\/b&gt;/);
+});
+
+test('the action never becomes the selected value shown in the collapsed control', () => {
+  const html = searchSelectHtml('ev', EVENT_OPTIONS, null, { action: MANAGE_ACTION });
+  assert.match(html, /<input type="hidden" id="ev" value="" \/>/);
+  const control = html.slice(0, html.indexOf('search-select-list'));
+  assert.doesNotMatch(control, /Gruppen verwalten/);
 });
