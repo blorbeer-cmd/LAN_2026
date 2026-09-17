@@ -242,7 +242,10 @@ apiRouter.use('/draft', requireActiveEventFeatureMutation('competition'), draftR
 apiRouter.use('/broadcasts', broadcastsRouter);
 apiRouter.use('/info', infoBoardRouter);
 apiRouter.use('/food-orders', requireActiveEventFeatureMutation('food'), foodOrdersRouter);
-apiRouter.use('/checklist', requireActiveEventFeatureMutation('tasks'), checklistRouter);
+// Packliste and To-Dos are two switchable areas now, so the router guards
+// them separately (see checklist.ts) instead of putting one feature in front
+// of both.
+apiRouter.use('/checklist', checklistRouter);
 apiRouter.use('/quiz', requireActiveEventFeatureMutation('arcade'), quizRouter);
 apiRouter.use('/arcade', requireActiveEventFeatureMutation('arcade'), arcadeRouter);
 apiRouter.use('/arrivals', requireActiveEventFeatureMutation('travel'), arrivalsRouter);

@@ -76,14 +76,6 @@ async function invitePlayer(page: Page, eventId: string, playerId: string): Prom
   assert.equal(status, 201);
 }
 
-async function acceptEvent(page: Page, eventId: string): Promise<void> {
-  const status = await page.evaluate(
-    async (selectedEventId) => (await fetch(`/api/events/${selectedEventId}/invitation/accept`, { method: 'POST' })).status,
-    eventId,
-  );
-  assert.equal(status, 200);
-}
-
 async function selectActiveEvent(page: Page, eventId: string): Promise<void> {
   await page.reload();
   await page.waitForSelector('#app:not([hidden])');
@@ -210,11 +202,10 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     return card?.textContent?.includes('8.7.2027') && card?.textContent?.includes('10.7.2027');
   }, EVENT_NAME);
 
-  const ownerId = await currentPlayerId(ownerPage);
   const memberId = await currentPlayerId(memberPage);
-  await invitePlayer(ownerPage, eventId, ownerId);
+  // The owner created this event and is therefore already an accepted
+  // participant; only the member still needs an invitation.
   await invitePlayer(ownerPage, eventId, memberId);
-  await acceptEvent(ownerPage, eventId);
   await navigate(memberPage, 'profile');
   const invitation = memberPage.locator('[data-pending-invitation]', { hasText: EVENT_NAME });
   await invitation.waitFor();

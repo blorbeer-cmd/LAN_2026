@@ -56,7 +56,7 @@ export {
 
 const EVENT_HELP = 'Typ, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
 const GROUP_HELP =
-  'Eine Gruppe ist ein dauerhafter Kreis ohne Zeitraum und ohne Kosten. Sie läuft weiter, bis sie gelöscht wird.';
+  'Eine Gruppe ist ein dauerhafter Kreis ohne Zeitraum und ohne Kosten. Sie läuft weiter, bis sie beendet wird.';
 // Starting tracking enables event processing, not the agent's diagnostic reports.
 // Both the tooltip and confirmation explain the selected-event and consent
 // prerequisites from activeTrackingContexts. Share the sentence to avoid drift.
@@ -697,7 +697,7 @@ function renderMemberEventCard(event, { collapsible = false } = {}) {
         ${collapsible ? renderEventCardToggle(event, expanded, titleHtml, metaParts) : titleHtml}
         <span class="event-card-header-badges">
           <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
-          ${eventIsGroup(event) ? '' : eventStatusBadgeHtml(event)}
+          ${eventIsGroup(event) && !event.isEnded ? '' : eventStatusBadgeHtml(event)}
         </span>
       </div>
       <div class="food-order-card-body stack" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
@@ -749,6 +749,7 @@ function renderInvitationPayment(event) {
 export function renderEventCard(event, { collapsible = false } = {}) {
   // Tracking and exports require a scheduled event; roster editing does not.
   const hasDate = event.startsAt != null;
+  const isGroup = eventIsGroup(event);
   // The tooltip sits with the running/stopping pair only: "Event wieder
   // starten" is an event-lifecycle action whose confirmation already spells the
   // tracking part out.
@@ -760,7 +761,9 @@ export function renderEventCard(event, { collapsible = false } = {}) {
       : event.trackingEnabled
         ? `<div class="action-menu-row"><button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">Tracking stoppen</button>${trackingHelp}</div>`
         : `<div class="action-menu-row"><button type="button" class="btn btn-sm" data-start-tracking="${event.id}">Tracking starten</button>${trackingHelp}</div>`;
-  const endBtn = !hasDate || event.isEnded
+  // A group has no period and is still closable, so "Beenden" follows the
+  // workspace kind rather than the presence of a date.
+  const endBtn = (!hasDate && !isGroup) || event.isEnded
     ? ''
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
   const expanded = !collapsible || expandedEventCards.has(event.id);
@@ -774,7 +777,7 @@ export function renderEventCard(event, { collapsible = false } = {}) {
         <div class="event-card-header-side"><span class="event-card-header-badges">
           <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
           ${ownDeclinedBadge(event)}
-          ${eventIsGroup(event) ? '' : eventStatusBadgeHtml(event)}
+          ${eventIsGroup(event) && !event.isEnded ? '' : eventStatusBadgeHtml(event)}
         </span>
         ${actionMenuHtml(`<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>
           ${trackingBtn}${endBtn}
@@ -1594,11 +1597,15 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.endEvent);
       if (!event) return;
-      if (!(await confirmDialog(`Event „${event.name}“ beenden? Laufendes Tracking wird gestoppt und das Event in die Historie verschoben.`, { confirmText: 'Beenden', danger: true }))) return;
+      const isGroup = eventIsGroup(event);
+      const question = isGroup
+        ? `Gruppe „${event.name}“ beenden? Sie wird in die Historie verschoben und ist danach nicht mehr auswählbar.`
+        : `Event „${event.name}“ beenden? Laufendes Tracking wird gestoppt und das Event in die Historie verschoben.`;
+      if (!(await confirmDialog(question, { confirmText: 'Beenden', danger: true }))) return;
       try {
         await api.events.end(event.id);
         await ctx.refresh();
-        showToast('Event beendet.');
+        showToast(isGroup ? 'Gruppe beendet.' : 'Event beendet.');
       } catch (err) {
         showToast(err.message, { error: true });
       }

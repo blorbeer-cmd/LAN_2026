@@ -154,6 +154,19 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
       hasSchedule ? 1 : 0,
     );
     createEventFeatureSnapshot(id, eventTypeKey, options.createdBy ?? null);
+    // Whoever creates a workspace is part of it. Without this they would have
+    // to invite and answer themselves before their own event shows up in the
+    // switcher at all. The roster row is written inside the same transaction,
+    // so an event never exists with its creator missing from it.
+    // confirmed_schedule_revision stays NULL on purpose: the trigger from
+    // migration 83 fills in the event's current revision for a plain accept.
+    if (options.createdBy) {
+      db.prepare(
+        `INSERT INTO event_participants (event_id, player_id, status)
+         VALUES (?, ?, 'accepted')
+         ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
+      ).run(id, options.createdBy);
+    }
     return getEvent(id)!;
   })();
 }

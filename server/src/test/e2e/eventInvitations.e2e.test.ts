@@ -293,7 +293,9 @@ test('manager invites a member who accepts and both open clients update', async 
   await ownerRefresh;
   const acceptedRosterRow = ownerParticipantList.locator('[data-event-participation-status="accepted"]', { hasText: MEMBER_NAME });
   await acceptedRosterRow.waitFor({ state: 'attached' });
-  assert.match((await ownerParticipantList.locator('.food-order-group-meta').textContent()) ?? '', /1 Zusage/);
+  // The manager plus the member who just accepted: creating an event now puts
+  // its creator on the roster as well.
+  assert.match((await ownerParticipantList.locator('.food-order-group-meta').textContent()) ?? '', /2 Zusagen/);
 
   await openAcceptedEvent.click();
   await memberPage.waitForSelector('#view-container[data-view="home"]');
@@ -382,7 +384,9 @@ test('manager invites a member who accepts and both open clients update', async 
   const participantList = memberEventCard.locator(`[data-event-participants="${eventId}"]`);
   assert.equal(await memberEventCard.locator('.action-menu').count(), 0, 'members have personal controls without an organizer menu');
   assert.equal(await participantList.getAttribute('open'), null, 'participant lists start collapsed');
-  assert.match((await participantList.locator('.food-order-group-meta').textContent()) ?? '', /1 Person/);
+  // The member reads the accepted roster: themselves and the manager, who is
+  // on it as the event's creator.
+  assert.match((await participantList.locator('.food-order-group-meta').textContent()) ?? '', /2 Personen/);
   assert.equal(
     await participantList.locator('.event-participant-toggle').evaluate((toggle) => {
       return toggle.firstElementChild?.classList.contains('collapsible-section-chevron') ?? false;
@@ -448,7 +452,9 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.doesNotMatch((await memberEventCard.textContent()) ?? '', /\d+ von \d+ bezahlt/);
   const ownerSettlement = ownerEventCard.locator('.event-settlement', { hasText: 'Fehlbetrag 74,50' });
   await ownerSettlement.waitFor();
-  assert.match((await ownerSettlement.textContent()) ?? '', /Rechnerisch pro Zusage\s*100,00/);
+  // 100,00 € accommodation split across the two accepted participants: the
+  // member and the manager, who is on the roster as the event's creator.
+  assert.match((await ownerSettlement.textContent()) ?? '', /Rechnerisch pro Zusage\s*50,00/);
   assert.match((await ownerSettlement.textContent()) ?? '', /Bereits eingegangen\s*25,50/);
 
   const optionSelector = `#event-context-switcher-list [data-search-select-value="${eventId}"]`;
@@ -525,17 +531,18 @@ test('manager invites a member who accepts and both open clients update', async 
     0,
     'the times table skips accounts that never accepted this event',
   );
-  // The manager runs this event without attending it (the roster above reads
-  // "1 Zusage"), so they are no more part of the times table than a stranger.
+  // The manager created this event and therefore accepted it, so they belong
+  // in the times table too. The boundary the outsider above proves is
+  // unchanged: never having accepted is what keeps an account out.
   assert.equal(
     await memberPage.locator('.arrivals-times-row', { hasText: OWNER_NAME }).count(),
-    0,
-    'managing an event is not the same as having accepted it',
+    1,
+    'the creator accepted their own event and is part of it',
   );
   assert.equal(
     await memberPage.locator('.arrivals-times-row').count(),
-    1,
-    'the sole accepted participant is the only row in the times table',
+    2,
+    'the two accepted participants are the only rows in the times table',
   );
   await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
   await memberPage.waitForSelector('#view-container[data-view="events"]');

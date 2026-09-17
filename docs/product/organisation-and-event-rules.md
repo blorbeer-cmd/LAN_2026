@@ -189,7 +189,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   invitation is a personal action. It lists the two workspace kinds in two separate sections —
   „Events“ first, then „Gruppen“ — each with its own create action („Event anlegen“ /
   „Gruppe anlegen“, which preselects that type in the shared dialog), its own empty text and its own
-  „Abgesagt“ section. Only the Events section carries a „Historie“, because a group never ends.
+  „Abgesagt“ section and its own „Historie“.
+  Creating either kind accepts its creator immediately: the roster row is written in the same
+  transaction as the event, so a workspace never exists without its author on it and appears in
+  their own switcher at once. They can still withdraw that acceptance like anyone else, under
+  the same lock rules.
   What it shows depends on the role: owner/admin receive the full
   management surface — anlegen/bearbeiten, Tracking starten/stoppen (the running/stopping button
   carries a tooltip naming the collected data and its purpose; its confirmation repeats the same
@@ -200,7 +204,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   participants. Cards sort from the earliest start date to the latest; events without a fixed date
   follow the scheduled events.
   A group card drops what a group does not have rather than disabling it: no period line, no
-  calendar export, no cost or payment block, no „Tracking starten“, no „Beenden“ and no PDF export.
+  calendar export, no cost or payment block, no „Tracking starten“ and no PDF export. „Beenden“
+  stays, because it is the one lifecycle step a group shares with an event and the only way to
+  retire one created by mistake; an ended group moves into the Gruppen section's „Historie“ and
+  reports „Beendet“ instead of its own kind.
   Its roster reads „Mitglieder“ instead of „Teilnehmende“ and its empty state says „Noch keine
   Mitglieder.“ A finished event moves out of the active list into the Events section's own
   „Historie“ (the same collapsible-section pattern as Food orders): it starts collapsed and

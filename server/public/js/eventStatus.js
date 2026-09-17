@@ -21,14 +21,14 @@ export const EVENT_STATUS = Object.freeze({
 // Order matters: an ended event never counts as tracking, the permanent base
 // workspace has no lifecycle of its own to report. Whether an event already
 // has a period is not itself a lifecycle state: planning continues after a
-// period is entered, and an undated event simply remains inactive. A group is
-// checked right after the base workspace because it shares that permanence:
-// it never ends, never tracks and therefore has no other state to report.
+// period is entered, and an undated event simply remains inactive. A group has
+// no lifecycle of its own while it runs — it never tracks — but it can be
+// ended like any other workspace, so "Beendet" is checked first.
 export function eventStatus(event) {
   if (!event) return EVENT_STATUS.idle;
   if (event.isBase) return EVENT_STATUS.base;
-  if (event.eventType === 'group') return EVENT_STATUS.group;
   if (event.isEnded) return EVENT_STATUS.ended;
+  if (event.eventType === 'group') return EVENT_STATUS.group;
   if (event.trackingEnabled) return EVENT_STATUS.tracking;
   return EVENT_STATUS.idle;
 }

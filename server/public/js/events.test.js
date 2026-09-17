@@ -271,10 +271,11 @@ test('a group card drops every dated and paid control instead of disabling it', 
   const html = renderEventCard(group);
 
   assert.match(html, /<span class="badge">Gruppe<\/span>/);
+  // "Beenden" stays: it is how a group that was created by mistake is retired.
+  assert.match(html, /data-end-event="skatrunde"/);
   for (const absent of [
     /data-start-tracking/,
     /data-stop-tracking/,
-    /data-end-event/,
     /data-export-event/,
     /data-event-calendar=/,
     /Termin wird noch abgestimmt/,
@@ -301,6 +302,12 @@ test('a group card drops every dated and paid control instead of disabling it', 
   assert.match(lan, /data-start-tracking/);
   assert.match(lan, /data-end-event/);
   assert.match(lan, /Teilnehmende/);
+
+  // An ended group reports that state instead of repeating its own kind, and
+  // offers nothing further to close.
+  const endedGroup = renderEventCard({ ...group, isEnded: true });
+  assert.match(endedGroup, /aria-label="Beendet"/);
+  assert.doesNotMatch(endedGroup, /data-end-event/);
 });
 
 test('a group has no keepsake PDF and no period text', () => {

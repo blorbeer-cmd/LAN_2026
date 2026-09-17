@@ -1401,9 +1401,6 @@ eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), async (re
   if (req.params.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht beendet werden.' });
   }
-  if (eventTypeIsUndated((req.groupResource as EventRow).event_type_key)) {
-    return res.status(409).json({ error: 'Eine Gruppe läuft dauerhaft und kann nicht beendet werden.' });
-  }
   const { affectedPlayers, updated } = await enqueueEventLifecycle(() => ({
     affectedPlayers: activeContextPlayerIds(req.params.id),
     updated: endEvent(req.params.id),

@@ -45,8 +45,17 @@ import { communicationRecipientIds } from '../communicationRecipients';
 import { activeGroupPlayers } from '../groupPlayers';
 import { DEFAULT_CHECKLIST_ITEMS } from '../checklistDefaults';
 import { isParticipant } from '../events';
+import { requireActiveEventFeature, requireActiveEventFeatureMutation } from '../eventFeatures';
 
 export const checklistRouter = Router();
+
+// Two switchable areas share this router. The personal packing list belongs to
+// `packing`, the shared to-do board to `tasks`, and an event may have either
+// one without the other. `/items` is guarded on reads too because GET
+// materializes the Grundstock (see below) and would otherwise create rows for
+// a disabled area.
+checklistRouter.use('/items', requireActiveEventFeature('packing'));
+checklistRouter.use('/tasks', requireActiveEventFeatureMutation('tasks'));
 
 const MAX_ITEM_LABEL = 80;
 const MAX_TASK_TITLE = 80;

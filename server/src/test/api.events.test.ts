@@ -1330,10 +1330,6 @@ test('groups are published without a period and refuse every dated or paid field
   assert.equal(patched.status, 200, JSON.stringify(patched.body));
   assert.equal(patched.body.name, 'Skatrunde');
 
-  const ended = await request(app).post(`/api/events/${created.body.id}/end`);
-  assert.equal(ended.status, 409);
-  assert.match(ended.body.error, /dauerhaft/);
-
   // Tracking has no meaning without a period; the feature is simply absent.
   const tracking = await request(app).post(`/api/events/${created.body.id}/tracking/start`);
   assert.equal(tracking.status, 404);
@@ -1343,4 +1339,66 @@ test('groups are published without a period and refuse every dated or paid field
     db.prepare('SELECT 1 FROM kiosk_accounts WHERE event_id = ?').get(created.body.id),
     undefined,
   );
+
+  // A group runs until it is ended — the one lifecycle step it shares with an
+  // event, and the only way to retire one that was created by mistake.
+  const ended = await request(app).post(`/api/events/${created.body.id}/end`);
+  assert.equal(ended.status, 200, JSON.stringify(ended.body));
+  assert.equal(ended.body.isEnded, true);
+  assert.equal(
+    (db.prepare('SELECT status FROM events WHERE id = ?').get(created.body.id) as { status: string }).status,
+    'ended',
+  );
+  // It leaves the selectable workspaces and moves into the history.
+  const afterEnd = await request(app).get('/api/events');
+  assert.equal(
+    afterEnd.body.availableEvents.some((event: { id: string }) => event.id === created.body.id),
+    false,
+  );
+});
+
+// Whoever creates a workspace is part of it. Without this the creator would
+// have to invite and answer themselves before their own event even appears in
+// the switcher — and a group, which nobody else can invite them to yet, would
+// start out with an empty roster including its author.
+test('creating an event or a group accepts its creator right away', async () => {
+  for (const [label, payload] of [
+    ['event', { name: 'Eigene LAN', startsAt: Date.now(), endsAt: Date.now() + EVENT_MINIMUM_DURATION_MS }],
+    ['group', { name: 'Eigene Runde', eventType: 'group' }],
+  ] as Array<[string, Record<string, unknown>]>) {
+    const created = await request(app).post('/api/events').send(payload);
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+
+    assert.deepEqual(
+      db
+        .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
+        .get(created.body.id, TEST_ADMIN_ID),
+      { status: 'accepted' },
+      `${label}: the creator holds an accepted roster row`,
+    );
+    // The trigger from migration 83 stamps the event's own revision, which is
+    // what makes the row a *current* participation rather than a stale accept.
+    assert.deepEqual(
+      db
+        .prepare(
+          `SELECT ep.confirmed_schedule_revision AS confirmed, e.schedule_revision AS current
+           FROM event_participants ep JOIN events e ON e.id = ep.event_id
+           WHERE ep.event_id = ? AND ep.player_id = ?`,
+        )
+        .get(created.body.id, TEST_ADMIN_ID),
+      { confirmed: payload.eventType === 'group' ? 0 : 1, current: payload.eventType === 'group' ? 0 : 1 },
+      `${label}: the roster row confirms the event's current schedule revision`,
+    );
+
+    // It is a real participation, not just a database row: the creator can
+    // select the workspace and reads it as their own accepted event.
+    const list = await request(app).get('/api/events');
+    assert.ok(
+      list.body.availableEvents.some((event: { id: string }) => event.id === created.body.id),
+      `${label}: the creator can switch to their own workspace immediately`,
+    );
+    const detail = await request(app).get(`/api/events/${created.body.id}`);
+    assert.equal(detail.body.myParticipation.status, 'accepted', label);
+    assert.deepEqual(detail.body.participantIds, [TEST_ADMIN_ID], label);
+  }
 });
