@@ -364,9 +364,7 @@ export const components = [
       "font-size",
       "font-weight",
       "width",
-      "min-width",
-      "height",
-      "overflow"
+      "min-width"
     ]
   },
   {
@@ -394,9 +392,7 @@ export const components = [
       "justify-content",
       "width",
       "min-width",
-      "text-align",
-      "height",
-      "overflow"
+      "text-align"
     ]
   },
   {
