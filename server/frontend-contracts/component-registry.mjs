@@ -284,10 +284,10 @@ export const components = [
   {
     "id": "search-options",
     "role": "structural-target",
-    "selector": ".search-select-option",
+    "selector": ".search-select-option, .search-select-action",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#strukturziele-mit-44-px",
-    "purpose": "Permanent listbox option rows, at least 44px."
+    "purpose": "Permanent listbox option rows and the pinned popup action, at least 44px."
   },
   {
     "id": "profile-controls",

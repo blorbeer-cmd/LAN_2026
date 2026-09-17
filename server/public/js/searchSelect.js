@@ -11,6 +11,12 @@
 // native <select> this replaces could not show an icon inside its options at
 // all. The state is never colour alone: `iconLabel` becomes the row's own
 // accessible name and the control's description.
+//
+// A picker may additionally carry one `action`: a row that leaves the picker
+// instead of selecting something in it. It is deliberately not an option — it
+// lives outside the listbox, below a divider in the popup's pinned footer, so
+// it keeps its place while a query filters the results away, never becomes the
+// field's value, and reads as a command rather than as one more entry.
 
 import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
@@ -24,6 +30,18 @@ function statusIconHtml(option, className) {
   return `<span class="${className}"${state} role="img" aria-label="${escapeHtml(option.iconLabel ?? '')}" title="${escapeHtml(option.iconLabel ?? '')}">${icon(option.icon)}</span>`;
 }
 
+// The pinned action row. `role="listbox"` may only own options, so this
+// button sits next to the listbox inside the popup rather than in it, and it
+// carries neither an option index nor a value — nothing here can be picked
+// up by the option handlers or by the filter.
+function actionHtml(id, action) {
+  if (!action) return '';
+  const leadingIcon = action.icon
+    ? `<span class="search-select-action-icon">${icon(action.icon)}</span>`
+    : '';
+  return `<button type="button" id="${id}-action" class="search-select-action" data-search-select-action>${leadingIcon}<span class="search-select-action-label">${escapeHtml(action.label)}</span><span class="search-select-action-chevron">${icon('chevronRight')}</span></button>`;
+}
+
 function optionHtml(id, option, index, selectedValue) {
   const selected = option.value === (selectedValue ?? '');
   return `<button type="button" id="${id}-option-${index}" class="search-select-option" role="option" aria-selected="${selected}" tabindex="-1" data-search-select-index="${index}" data-search-select-value="${escapeHtml(option.value)}">${statusIconHtml(option, 'search-select-option-icon')}<span class="search-select-option-label">${escapeHtml(option.label)}</span></button>`;
@@ -32,11 +50,13 @@ function optionHtml(id, option, index, selectedValue) {
 // options: Array<{ value, label, icon?, iconLabel?, iconState? }>
 // `ariaLabel` names the control itself where no visible <label for="{id}-search">
 // precedes it; `label` names the listbox.
+// `action`: optional { label, icon? } rendered as the popup's pinned footer
+// command; pass the same object to wireSearchSelect() together with onAction.
 export function searchSelectHtml(
   id,
   options,
   selectedValue,
-  { placeholder = 'Suchen…', label = 'Verfügbare Optionen', ariaLabel = '' } = {},
+  { placeholder = 'Suchen…', label = 'Verfügbare Optionen', ariaLabel = '', action = null } = {},
 ) {
   const selected = options.find((option) => option.value === (selectedValue ?? ''));
   const initialLabel = selected ? selected.label : '';
@@ -50,22 +70,35 @@ export function searchSelectHtml(
       <input type="hidden" id="${id}" value="${escapeHtml(selectedValue ?? '')}" />
       <div class="search-select-control">
         ${withIcons ? `<span class="search-select-value-icon" data-search-select-value-icon>${statusIconHtml(selected, 'search-select-status')}</span>` : ''}
-        <input type="text" id="${id}-search" value="${escapeHtml(initialLabel)}" placeholder="${escapeHtml(placeholder)}"${ariaLabel ? ` aria-label="${escapeHtml(ariaLabel)}"` : ''} autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}-list" />
-        <button type="button" class="search-select-toggle" aria-label="Auswahl öffnen" aria-controls="${id}-list" aria-expanded="false" tabindex="-1">${icon('chevronDown')}</button>
+        <input type="text" id="${id}-search" value="${escapeHtml(initialLabel)}" placeholder="${escapeHtml(placeholder)}"${ariaLabel ? ` aria-label="${escapeHtml(ariaLabel)}"` : ''} autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}-results" />
+        <button type="button" class="search-select-toggle" aria-label="Auswahl öffnen" aria-controls="${id}-results" aria-expanded="false" tabindex="-1">${icon('chevronDown')}</button>
       </div>
-      <div id="${id}-list" class="search-select-list" role="listbox" aria-label="${escapeHtml(label)}" hidden>${renderedOptions}</div>
+      <div id="${id}-list" class="search-select-list" hidden>
+        <div id="${id}-results" class="search-select-results" role="listbox" aria-label="${escapeHtml(label)}">${renderedOptions}</div>
+        ${actionHtml(id, action)}
+      </div>
     </div>
   `;
 }
 
-export function wireSearchSelect(container, id, options, { onChange, emptyText = 'Kein passendes Spiel gefunden.' } = {}) {
+// `onAction` runs when the pinned footer action is picked. It is kept apart
+// from `onChange` on purpose: the action changes nothing about the selection,
+// so nothing here writes the hidden value or the visible label.
+export function wireSearchSelect(
+  container,
+  id,
+  options,
+  { onChange, onAction, emptyText = 'Kein passendes Spiel gefunden.' } = {},
+) {
   const hidden = container.querySelector(`#${id}`);
   const search = container.querySelector(`#${id}-search`);
   const wrapper = search?.closest('[data-search-select]');
   const list = container.querySelector(`#${id}-list`);
+  const results = container.querySelector(`#${id}-results`);
   const toggle = wrapper?.querySelector('.search-select-toggle');
   const valueIcon = wrapper?.querySelector('[data-search-select-value-icon]');
-  if (!hidden || !search || !wrapper || !list || !toggle) return;
+  const actionButton = list?.querySelector('[data-search-select-action]');
+  if (!hidden || !search || !wrapper || !list || !results || !toggle) return;
 
   let filteredOptions = options.map((option, originalIndex) => ({ ...option, originalIndex }));
   let activeIndex = -1;
@@ -115,7 +148,7 @@ export function wireSearchSelect(container, id, options, { onChange, emptyText =
   };
 
   const updateActiveOption = () => {
-    const optionElements = [...list.querySelectorAll('[data-search-select-index]')];
+    const optionElements = [...results.querySelectorAll('[data-search-select-index]')];
     optionElements.forEach((element, index) => {
       const active = index === activeIndex;
       element.classList.toggle('is-active', active);
@@ -133,14 +166,14 @@ export function wireSearchSelect(container, id, options, { onChange, emptyText =
       .filter((option) => option.label.toLocaleLowerCase('de-DE').includes(normalizedQuery));
 
     if (filteredOptions.length === 0) {
-      list.innerHTML = `<div class="search-select-empty">${escapeHtml(emptyText)}</div>`;
+      results.innerHTML = `<div class="search-select-empty">${escapeHtml(emptyText)}</div>`;
       activeIndex = -1;
       search.removeAttribute('aria-activedescendant');
       updateListPlacement();
       return;
     }
 
-    list.innerHTML = filteredOptions
+    results.innerHTML = filteredOptions
       .map((option) => optionHtml(id, option, option.originalIndex, hidden.value))
       .join('');
     const selectedIndex = filteredOptions.findIndex((option) => option.value === hidden.value);
@@ -235,7 +268,11 @@ export function wireSearchSelect(container, id, options, { onChange, emptyText =
       event.stopPropagation();
       close();
     } else if (event.key === 'Tab' && isOpen()) {
-      close();
+      // With a pinned action the popup holds a focusable of its own, and it is
+      // the next element in DOM order — let Tab land on it and keep the list
+      // open. Shift+Tab leaves the control, and focus leaving the wrapper
+      // entirely still closes it through the focusout handler below.
+      if (!actionButton || event.shiftKey) close();
     }
   });
 
@@ -249,7 +286,7 @@ export function wireSearchSelect(container, id, options, { onChange, emptyText =
     focusSearchWithoutOpening();
   });
 
-  list.addEventListener('pointermove', (event) => {
+  results.addEventListener('pointermove', (event) => {
     const optionElement = event.target.closest('[data-search-select-index]');
     if (!optionElement) return;
     const index = filteredOptions.findIndex((option) => option.originalIndex === Number(optionElement.dataset.searchSelectIndex));
@@ -257,11 +294,24 @@ export function wireSearchSelect(container, id, options, { onChange, emptyText =
     activeIndex = index;
     updateActiveOption();
   });
-  list.addEventListener('click', (event) => {
+  results.addEventListener('click', (event) => {
     const optionElement = event.target.closest('[data-search-select-index]');
     if (!optionElement) return;
     const option = options[Number(optionElement.dataset.searchSelectIndex)];
     selectOption(option);
+  });
+
+  actionButton?.addEventListener('click', () => {
+    close();
+    focusSearchWithoutOpening();
+    onAction?.();
+  });
+  actionButton?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    close();
+    focusSearchWithoutOpening();
   });
 
   wrapper.addEventListener('focusout', (event) => {

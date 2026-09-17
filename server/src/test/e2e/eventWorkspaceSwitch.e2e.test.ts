@@ -375,6 +375,58 @@ test('the workspace switcher keeps event names concise and shows state through i
   assert.equal(overflows, false, 'the topbar control must not create horizontal page scrolling');
 });
 
+test('managing events reads as a command in the switcher, not as one more event', async () => {
+  await switchWorkspaceInBrowser(eventA);
+  await page.click('#event-context .search-select-toggle');
+  await page.waitForSelector('#event-context-switcher-list:not([hidden])');
+
+  // The whole point of the change: it is not an option. It must not appear
+  // among the selectable rows, and it must sit outside the listbox so a
+  // screen reader announces an action rather than an extra event to switch to.
+  const optionLabels = await page.$$eval('#event-context-switcher-list .search-select-option-label', (nodes) =>
+    nodes.map((node) => node.textContent?.trim() ?? ''),
+  );
+  assert.ok(
+    optionLabels.every((label) => !label.includes('verwalten')),
+    `managing must not be one of the selectable events, got: ${JSON.stringify(optionLabels)}`,
+  );
+  const action = page.locator('#event-context-switcher-action');
+  assert.equal(await action.textContent(), 'Events & Gruppen verwalten');
+  assert.equal(
+    await action.evaluate((element) => element.closest('[role="listbox"]') !== null),
+    false,
+    'the action must live outside the listbox, not inside it as an option',
+  );
+
+  // A query is a filter over events; it must not be able to hide the command.
+  await page.fill('#event-context-switcher-search', 'kein treffer');
+  await page.waitForSelector('#event-context-switcher-list .search-select-empty');
+  assert.equal(await action.isVisible(), true, 'the action must survive a query that matches no event');
+
+  // Reachable by keyboard from the search field, with the list still open.
+  await page.locator('#event-context-switcher-search').focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'event-context-switcher-action');
+  assert.equal(
+    await page.$eval('#event-context-switcher-list', (el) => (el as HTMLElement).hidden),
+    false,
+    'tabbing onto the action must not close the popup it sits in',
+  );
+
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#view-container[data-view="events"]');
+  // Navigating is all it does: the active workspace is untouched, and the
+  // collapsed control shows the event again rather than the command's label.
+  assert.equal(
+    await page.$eval('#event-context-switcher', (el) => (el as HTMLInputElement).value),
+    eventA,
+  );
+  assert.equal(
+    await page.$eval('#event-context-switcher-search', (el) => (el as HTMLInputElement).value),
+    'E2E Workspace A',
+  );
+});
+
 test('the switcher disables itself while a workspace switch is in flight', async () => {
   await switchWorkspaceInBrowser(eventB);
   await page.click('#event-context .search-select-toggle');
