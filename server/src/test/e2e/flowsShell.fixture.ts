@@ -1666,7 +1666,7 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   assert.ok(await page.locator('[data-game-catalog-search-item]:not([hidden])').count() > 1, 'the always-visible SelectionSearch integration restores the catalog');
 
   await page.click('#suggest-new');
-  await page.waitForSelector('.info-tooltip-trigger[aria-controls="suggest-trailer-help"]');
+  await page.waitForSelector('#suggest-title');
   assert.equal(await page.locator('.modal-header h2').textContent(), 'Spiel vorschlagen');
   assert.equal(await page.locator('.modal').getAttribute('aria-label'), 'Spiel vorschlagen');
   await page.fill('#suggest-title', gameTitle);
@@ -1787,6 +1787,8 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   assert.equal(await partyspielRow.locator('[data-kind="bock"] .skill-value').textContent(), '–');
   assert.ok(await skillSlider.evaluate((el) => el.classList.contains('skill-row-slider-unset')));
 
+  // Rating filters live inside the collapsed filter menu now.
+  await page.click('.game-catalog-filter-trigger');
   // Both "X offen" facet filters are independent AND conditions: with both
   // active the still-fully-unrated game stays visible.
   await page.click('[data-rating-filter="bock"]');
@@ -1817,6 +1819,7 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   // Restore filter state for whatever runs next in this shared-page suite.
   await page.click('[data-rating-filter="skill"]');
   await partyspielRow.waitFor();
+  await page.click('.game-catalog-filter-trigger');
 });
 
 flowTest('Spiele: a skill suggestion chip appears after enough recorded results and can be applied', async () => {

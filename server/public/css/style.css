@@ -2513,21 +2513,103 @@ button.draft-pool-player {
   border-radius: 0 var(--radius-full) var(--radius-full) 0;
   background: var(--accent-gradient);
 }
-/* Spiele view: "Sortieren" and "Filtern" share one compact panel (see
-   gameCatalog.js) instead of two full nested sections each with their own
-   border/padding - a hairline plus a little top padding is enough to still
-   read as two categories without doubling the panel chrome. */
-.game-catalog-filter-group {
+/* The catalog keeps one stable toolbar. Variable-length filter choices move
+   into a menu instead of producing a different set of rows on every width. */
+.game-catalog-toolbar {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) repeat(2, 9.5rem);
+  align-items: center;
+  gap: var(--space-2);
+}
+.game-catalog-sort-menu,
+.game-catalog-filter-menu {
+  width: 100%;
+}
+.game-catalog-sort-trigger,
+.game-catalog-filter-trigger {
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+.game-catalog-sort-trigger {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.game-catalog-sort-trigger .ui-icon,
+.game-catalog-filter-trigger .ui-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+}
+.game-catalog-sort-menu[open] > summary svg,
+.game-catalog-filter-menu[open] > summary svg {
+  transform: rotate(180deg);
+}
+.game-catalog-sort-panel {
+  left: 0;
+  right: auto;
+  width: 100%;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius);
+}
+.game-catalog-sort-option {
+  width: 100%;
+  border-color: transparent;
+  background: transparent;
+}
+.game-catalog-sort-option.is-active {
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.game-catalog-filter-panel {
+  width: min(16rem, calc(100vw - var(--space-8)));
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+.game-catalog-filter-section {
+  gap: var(--space-2);
+}
+.game-catalog-filter-section + .game-catalog-filter-section {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
-/* Genre chips, the "Meine Bewertung" chips and the search field sit directly
-   under the single "Filtern" heading with no per-row label of their own
-   (each control's own text/aria-label already says what it does) - the same
-   hairline divider used above separates them from each other instead. */
-.game-catalog-filter-divider {
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
+.game-catalog-filter-heading {
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.game-catalog-filter-reset {
+  align-self: flex-start;
+}
+.check-row.game-detail-seat-option {
+  margin: calc(-1 * var(--space-1)) 0 0;
+  padding-block: 0 var(--space-2);
+}
+.game-detail-info-field textarea {
+  display: block;
+}
+.section-title.game-detail-process-title {
+  margin: 0;
+}
+@media (max-width: 639px) { /* --bp-md */
+  .game-catalog-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .game-catalog-toolbar > input[type='search'] {
+    grid-column: 1 / -1;
+  }
+  .game-catalog-sort-menu .game-catalog-sort-panel,
+  .game-catalog-filter-menu .game-catalog-filter-panel {
+    position: fixed;
+    inset: auto var(--space-3) calc(var(--shell-bottom-inset) + var(--space-3));
+    width: auto;
+    max-width: none;
+    max-height: calc(100dvh - var(--topbar-height) - var(--shell-bottom-inset) - var(--space-8));
+    overflow-y: auto;
+    border-radius: var(--radius);
+  }
 }
 .tournament-create-step-title {
   display: flex;
@@ -3401,23 +3483,39 @@ button.card {
   min-width: 0;
 }
 .game-row-detail-trigger {
+  justify-content: flex-start;
   padding-inline-end: 0;
   background: transparent;
   color: var(--text);
+  text-align: left;
 }
 @media (hover: hover) {
   .game-row-detail-trigger:hover:not(:disabled) {
     color: var(--accent);
   }
 }
-/* Optional genre tag next to the title; never allowed to shrink the title
-   below readability, so it's the one that gives way first on narrow rows. */
+/* Optional genre tag directly after the action group. It gives way before the
+   action slots on narrow rows, so the game name and every control remain usable. */
 .game-row-genre {
   flex: 0 1 auto;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--font-size-xs);
+}
+@media (max-width: 639px) { /* --bp-md */
+  .game-row-name {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .game-row-detail-trigger {
+    padding-inline-start: 0;
+  }
+  .game-row-genre {
+    flex-basis: 100%;
+    padding-inline-start: 0;
+  }
 }
 /* "Vorschlag" marker, only rendered in the mixed "Alle" list where catalog
    games and suggestions sit side by side. Unlike the genre tag it must not
@@ -3461,7 +3559,6 @@ button.card {
   display: inline-flex;
   align-items: center;
   gap: 0;
-  margin-left: calc(var(--space-2) * -1);
 }
 .game-icon-btn {
   display: inline-flex;
