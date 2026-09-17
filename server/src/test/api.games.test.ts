@@ -280,32 +280,40 @@ test('POST /api/games/:id/promote 404s for an unknown id', async () => {
   assert.equal(res.status, 404);
 });
 
-test('GET /api/games/genres returns the fixed genre multiselect options', async () => {
+test('GET /api/games/genres returns the fixed genre multiselect options in editor order', async () => {
   const res = await request(app).get('/api/games/genres');
   assert.equal(res.status, 200);
   assert.ok(Array.isArray(res.body));
-  assert.ok(res.body.includes('Shooter'));
-  assert.ok(res.body.includes('Party'));
-  assert.ok(res.body.includes('MOBA'));
-  assert.ok(res.body.includes('4X'));
-  assert.equal(new Set(res.body).size, res.body.length, 'genres are offered exactly once');
-  assert.equal(res.body.at(-1), 'Sonstiges', 'the catch-all option stays last');
+  assert.deepEqual(res.body, [
+    'Battle Royale',
+    'Fighting',
+    'MMO',
+    'MOBA',
+    'Party',
+    'Racing',
+    'RPG',
+    'Shooter',
+    'Sonstiges',
+    'Sport',
+    'Strategie',
+    'Survival',
+  ]);
 });
 
-test('POST /api/games accepts the genres added after the original set', async () => {
+test('POST /api/games accepts the configured genres', async () => {
   const res = await request(app)
     .post('/api/games')
-    .send({ name: 'Neue-Genres-Spiel', genres: ['MOBA', '4X', 'Battle Royale', 'Survival', 'Tower Defense'] });
+    .send({ name: 'Neue-Genres-Spiel', genres: ['MOBA', 'RPG', 'Battle Royale', 'Survival', 'Strategie'] });
   assert.equal(res.status, 201);
-  assert.deepEqual(res.body.genres, ['MOBA', '4X', 'Battle Royale', 'Survival', 'Tower Defense']);
+  assert.deepEqual(res.body.genres, ['MOBA', 'RPG', 'Battle Royale', 'Survival', 'Strategie']);
 });
 
 test('POST /api/games accepts genres and info', async () => {
   const res = await request(app)
     .post('/api/games')
-    .send({ name: 'Info-Genre-Spiel', genres: ['Shooter', 'Koop'], info: 'Nur mit Freunden.' });
+    .send({ name: 'Info-Genre-Spiel', genres: ['Shooter', 'Party'], info: 'Nur mit Freunden.' });
   assert.equal(res.status, 201);
-  assert.deepEqual(res.body.genres, ['Shooter', 'Koop']);
+  assert.deepEqual(res.body.genres, ['Shooter', 'Party']);
   assert.equal(res.body.info, 'Nur mit Freunden.');
 });
 

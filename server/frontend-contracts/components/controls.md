@@ -128,8 +128,35 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
 - Der Auslöser verwendet im Normalzustand die Standardtextfarbe und keinen gefüllten
   Button-Hintergrund. Auf Hover wechselt nur der Text in Blau `--accent`. Die Farbe ergänzt die
   vorhandene Tastatur- und Fokus-Rückmeldung.
+- Der Text ist immer linksbündig. Das gilt auch für mehrzeilige Spielnamen bei mittleren Breiten.
 - Der Button öffnet die bestehenden Spieldetails. Er bleibt per Tastatur erreichbar und verwendet
   den globalen sichtbaren Fokus-Ring.
+
+### Spielkatalog-Werkzeugleiste
+
+- Suche, Sortierung und Filterauslöser bilden eine stabile Werkzeugleiste.
+- Die Sortierung ist eine eindeutige Auswahl aus Feld und Richtung. Sie verwendet wie der Filter
+  eine abgerundete Menüfläche und markiert die aktive Auswahl dezent.
+- Der Filterauslöser zeigt die Anzahl aktiver Filter. Das Menü gruppiert offene Bewertungen und Genres.
+- Sortierung und Filterauslöser verwenden dieselbe Typografie und dieselbe neutrale Oberfläche.
+  Das Filtermenü bleibt schmal. Ein Querstrich trennt die beiden Filtergruppen.
+- Sortierung und Filterauslöser sind gleich breit, kompakt und linksbündig. Kurze Sortiertexte vermeiden
+  abgeschnittene Werte. Die Suche nutzt den verbleibenden Platz.
+- Auf schmalen Ansichten steht die Suche über Sortierung und Filter. Das Filtermenü erscheint oberhalb der Hauptnavigation.
+
+Registry-Zuordnung: `registry:game-catalog-toolbar`, `registry:game-catalog-sort-trigger`,
+`registry:game-catalog-sort-option`, `registry:game-catalog-filter-trigger`,
+`registry:game-catalog-filter-chevron`, `registry:game-catalog-menu-glyph`,
+`registry:game-catalog-filter-divider` und `registry:game-catalog-mobile-menu-panel`.
+
+### Spielkatalog-Detailformular
+
+- Das Infofeld beginnt einzeilig und kann bei Bedarf manuell vergrößert werden.
+- Oberhalb und unterhalb des sichtbaren Inhalts der Sitznachbar-Zeile liegt ein optisch gleicher Abstand.
+  Das Infofeld erzeugt keine zusätzliche Grundlinien-Lücke. Ein kleiner unterer Innenabstand positioniert
+  die Trennlinie symmetrisch zum Abstand oberhalb der Zeile.
+
+Registry-Zuordnung: `registry:game-detail-spacing` und `registry:section-label`.
 
 ### Zusatzklassen und zusammengesetzte Controls
 
@@ -342,6 +369,11 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `seating-pool`, `seating-player` | Strukturelle Sitzplatz-Ablagefläche und 44-px-Spielerzeile. |
 | `music-copy-actions`, `music-cover` | Globale Kopieraktionen; unverändertes nichtinteraktives 76-px-Cover. |
 | `kiosk-header-action`, `kiosk-match-row` | Permanente 44-px-Ziele der eigenständigen TV-Geräteklasse. |
+
+Die Glyphenvarianten `registry:event-card-detail-glyph`, `registry:desktop-navigation-glyph`,
+`registry:list-row-glyph`, `registry:navigation-glyph`, `registry:badge-glyph`,
+`registry:more-card-glyph` und `registry:game-track-glyph` verändern nur die Symbolgröße innerhalb
+der bestehenden Komponenten.
 
 Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: Der ungenutzte Modifier am Kiosk-Passwort-Retry wurde entfernt. Es bestehen keine offenen befristeten Ausnahmen.
 
@@ -592,6 +624,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:player-assignment-field`: Player assignment select fills its row column.
 
 - `registry:icon-button-glyph`: Base icon-button owns its 20px glyph independently of hit-box geometry.
+
+- `registry:ui-icon-glyph-base`: Shared icons own their default intrinsic size independently of surrounding controls.
 
 - `registry:chip-glyph`: Chip component owns its 15px glyph.
 

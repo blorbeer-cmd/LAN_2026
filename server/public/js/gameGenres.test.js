@@ -23,31 +23,25 @@ test('the frontend genre list matches the server list exactly', () => {
   assert.deepEqual([...GAME_GENRES], serverGenres());
 });
 
-test('genres are unique and Sonstiges stays the last catch-all option', () => {
+test('genres are unique and follow the configured editor order', () => {
+  assert.deepEqual([...GAME_GENRES], [
+    'Battle Royale',
+    'Fighting',
+    'MMO',
+    'MOBA',
+    'Party',
+    'Racing',
+    'RPG',
+    'Shooter',
+    'Sonstiges',
+    'Sport',
+    'Strategie',
+    'Survival',
+  ]);
   assert.equal(new Set(GAME_GENRES).size, GAME_GENRES.length);
-  assert.equal(GAME_GENRES.at(-1), 'Sonstiges');
   for (const genre of GAME_GENRES) {
     assert.equal(genre, genre.trim());
     assert.ok(genre.length > 0);
-  }
-});
-
-test('the genre list covers the LAN-relevant genres beyond the original set', () => {
-  for (const genre of [
-    'MOBA',
-    '4X',
-    'Battle Royale',
-    'Survival',
-    'Aufbau',
-    'Sandbox',
-    'Roguelike',
-    'Tower Defense',
-    'MMO',
-    'Rhythmus',
-    'Quiz',
-    'Abenteuer',
-  ]) {
-    assert.ok(GAME_GENRES.includes(genre), `missing genre: ${genre}`);
   }
 });
 

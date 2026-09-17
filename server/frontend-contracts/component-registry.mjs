@@ -149,11 +149,6 @@ export const components = [
       },
       {
         "file": "public/js/views/gameCatalog.js",
-        "source": "class=\"btn btn-sm${active ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/gameCatalog.js",
         "source": "class=\"btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
@@ -333,10 +328,121 @@ export const components = [
     "contract": "components/controls.md#spielkatalog-detailauslöser",
     "purpose": "Game-name detail trigger has plain text and switches to blue on hover without a filled button surface.",
     "properties": [
+      "justify-content",
       "padding-inline-start",
       "padding-inline-end",
       "background",
+      "color",
+      "text-align"
+    ]
+  },
+  {
+    "id": "game-catalog-toolbar",
+    "role": "composite-part",
+    "selector": ".game-catalog-toolbar, .game-catalog-sort-menu, .game-catalog-sort-panel, .game-catalog-filter-menu, .game-catalog-filter-panel, .game-catalog-filter-section, .game-catalog-filter-heading, .game-catalog-filter-reset",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-werkzeugleiste",
+    "purpose": "Search, sorting and the filter trigger form one stable toolbar; variable filter choices live in a responsive menu.",
+    "properties": [
+      "width",
+      "max-width",
+      "max-height",
+      "padding",
+      "padding-top",
+      "border-radius",
+      "font-size"
+    ]
+  },
+  {
+    "id": "game-catalog-sort-trigger",
+    "role": "standard-control",
+    "selector": ".game-catalog-sort-trigger",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-werkzeugleiste",
+    "purpose": "The compact sorting trigger matches the filter trigger's typography.",
+    "properties": [
+      "font-size",
+      "font-weight",
+      "width",
+      "min-width"
+    ]
+  },
+  {
+    "id": "game-catalog-sort-option",
+    "role": "composite-part",
+    "selector": ".game-catalog-sort-option",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-werkzeugleiste",
+    "purpose": "Sorting choices form compact rows inside the rounded sorting menu.",
+    "properties": [
+      "width",
+      "border-color",
+      "background",
       "color"
+    ]
+  },
+  {
+    "id": "game-catalog-filter-trigger",
+    "role": "standard-control",
+    "selector": ".game-catalog-filter-trigger",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-werkzeugleiste",
+    "purpose": "The filter trigger fills its grid column and aligns its label like the sorting field.",
+    "properties": [
+      "justify-content",
+      "width",
+      "min-width",
+      "text-align"
+    ]
+  },
+  {
+    "id": "game-catalog-filter-chevron",
+    "role": "composite-part",
+    "selector": ".game-catalog-sort-trigger .ui-icon, .game-catalog-filter-trigger .ui-icon",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-werkzeugleiste",
+    "purpose": "The filter chevron matches the native-looking sorting chevron.",
+    "properties": [
+      "width",
+      "height",
+      "color"
+    ]
+  },
+  {
+    "id": "game-detail-spacing",
+    "role": "composite-part",
+    "selector": ".game-detail-info-field, .game-detail-seat-option, .game-detail-process-title",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-detailformular",
+    "purpose": "The seat-neighbor row and following section use only the dialog stack's standard spacing.",
+    "properties": [
+      "display",
+      "padding-block",
+      "margin"
+    ]
+  },
+  {
+    "id": "section-label",
+    "role": "composite-part",
+    "selector": ".section-title",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-detailformular",
+    "purpose": "Section labels own their compact typography and standard vertical rhythm.",
+    "properties": [
+      "font-size",
+      "margin"
+    ]
+  },
+  {
+    "id": "ui-icon-glyph-base",
+    "role": "composite-part",
+    "selector": ".ui-icon",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "The shared icon glyph owns its default intrinsic size independently of surrounding controls.",
+    "properties": [
+      "width",
+      "height"
     ]
   },
   {
@@ -1102,6 +1208,86 @@ export const components = [
 ];
 
 export const permanentVariants = [
+  {
+    "id": "event-card-detail-glyph",
+    "role": "composite-part",
+    "selector": ".event-card-detail-icon .ui-icon",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Event detail actions size their internal glyph independently of the control surface."
+  },
+  {
+    "id": "desktop-navigation-glyph",
+    "role": "composite-part",
+    "selector": ":root[data-layout-mode='desktop'] .desktop-nav-icon .ui-icon",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Desktop navigation uses a compact glyph inside the standard navigation target."
+  },
+  {
+    "id": "list-row-glyph",
+    "role": "composite-part",
+    "selector": ".list-row-icon .ui-icon",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "List rows size their leading glyph independently of row geometry."
+  },
+  {
+    "id": "navigation-glyph",
+    "role": "composite-part",
+    "selector": ".nav-icon .ui-icon",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Primary navigation uses a dedicated glyph size inside its touch target."
+  },
+  {
+    "id": "badge-glyph",
+    "role": "composite-part",
+    "selector": ".badge .ui-icon",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Badge glyphs remain compact and do not define badge geometry."
+  },
+  {
+    "id": "game-catalog-menu-glyph",
+    "role": "composite-part",
+    "selector": ".game-catalog-sort-trigger .ui-icon, .game-catalog-filter-trigger .ui-icon",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-werkzeugleiste",
+    "reason": "Sorting and filter triggers share one compact chevron size."
+  },
+  {
+    "id": "game-catalog-filter-divider",
+    "role": "composite-part",
+    "selector": ".game-catalog-filter-section + .game-catalog-filter-section",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-werkzeugleiste",
+    "reason": "The second filter group adds spacing and a divider without changing its chip controls."
+  },
+  {
+    "id": "game-catalog-mobile-menu-panel",
+    "role": "composite-part",
+    "selector": ".game-catalog-sort-menu .game-catalog-sort-panel, .game-catalog-filter-menu .game-catalog-filter-panel",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#spielkatalog-werkzeugleiste",
+    "reason": "Catalog menus become bounded fixed panels above mobile navigation."
+  },
+  {
+    "id": "more-card-glyph",
+    "role": "composite-part",
+    "selector": ".more-card .list-row-icon .ui-icon",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "More cards reduce their list glyph within the existing icon slot."
+  },
+  {
+    "id": "game-track-glyph",
+    "role": "composite-part",
+    "selector": ".game-track-indicator .ui-icon",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The game tracking indicator uses a compact status glyph."
+  },
   {
     "id": "action-menu-trigger",
     "role": "standard-control",
