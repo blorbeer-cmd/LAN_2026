@@ -286,6 +286,14 @@ test('a group card drops every dated and paid control instead of disabling it', 
   }
   // Editing name, location and note stays available.
   assert.match(html, /data-edit-event="skatrunde"/);
+  // Period, calendar handoff, excuse and money are exactly what the shared
+  // information box holds, so a group without a location and without a note
+  // fills none of it and the box itself is dropped instead of framing nothing.
+  assert.doesNotMatch(html, /event-card-info/);
+  const documented = renderEventCard({ ...group, location: 'Bei Tim', description: 'Jeden Donnerstag' });
+  assert.match(documented, /class="food-order-details event-card-info"/);
+  assert.match(documented, /Jeden Donnerstag/);
+  assert.match(documented, /Bei Tim/);
   // A circle has members, not attendees.
   assert.match(html, /<strong>Mitglieder & Einladungen<\/strong>/);
   assert.doesNotMatch(html, /Teilnehmende/);
