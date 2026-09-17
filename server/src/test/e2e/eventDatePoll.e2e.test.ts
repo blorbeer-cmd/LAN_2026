@@ -97,12 +97,13 @@ async function selectActiveEvent(page: Page, eventId: string): Promise<void> {
 
 async function createPoll(
   page: Page,
-  { title, options, mode = 'feasibility', maxSelections, anonymous = false, withoutDeadline = false }: {
+  { title, options, mode = 'feasibility', anonymous = false, hideLiveResults = true, maxSelections, withoutDeadline = false }: {
     title: string;
     options: Array<string | { label: string; description?: string; url?: string }>;
     mode?: 'feasibility' | 'single_choice' | 'multiple_choice' | 'rating_1_5';
     maxSelections?: number;
     anonymous?: boolean;
+    hideLiveResults?: boolean;
     withoutDeadline?: boolean;
   },
 ): Promise<void> {
@@ -113,6 +114,8 @@ async function createPoll(
   await page.fill('#poll-title', title);
   await page.selectOption('#poll-mode', mode);
   if (anonymous) await page.check('#poll-anonymous');
+  assert.equal(await page.locator('#poll-hide-live-results').isChecked(), true, 'a new round hides its interim result by default');
+  if (!hideLiveResults) await page.uncheck('#poll-hide-live-results');
   if (withoutDeadline) await page.locator('[data-dt-field="poll-due"] [data-dt-clear]').click();
   if (maxSelections !== undefined) await page.fill('#poll-max', String(maxSelections));
   while ((await page.locator('[data-poll-option-input]').count()) > options.length) {
@@ -265,13 +268,42 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await memberPoll.locator('[data-save-poll]').tap();
   await memberPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
   assert.equal(await memberPage.locator('[data-participation]').count(), 0, 'attendance is not managed in the poll tab');
+  assert.match(await memberPoll.innerText(), /Zwischenstand verborgen/, 'the round says once that its interim result is withheld');
+  assert.equal(await memberPoll.locator('[data-view-poll-votes]').count(), 0, 'a withheld interim result names nobody else');
+  assert.deepEqual(
+    await memberPoll.locator('.event-poll-counts').allInnerTexts(),
+    ['', ''],
+    'the withheld interim result shows no counts either',
+  );
 
   await ownerPage.reload();
   await ownerPage.waitForSelector('#app:not([hidden])');
   await navigate(ownerPage, 'eventPolls');
   const refreshed = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
   await refreshed.waitFor();
-  assert.equal(await refreshed.locator('[data-view-poll-votes]').count(), 0, 'names stay hidden while voting is open');
+  // The creator keeps the interim result: avatars beside the option open the
+  // same dialog the round publishes to everyone once it ends.
+  assert.match(await refreshed.innerText(), /Zwischenstand nur für dich/);
+  const liveStack = refreshed.locator('.event-poll-option').first().locator('.event-poll-voter-stack');
+  await liveStack.waitFor();
+  assert.match((await liveStack.getAttribute('aria-label')) ?? '', new RegExp(`Passt: ${MEMBER_NAME}`));
+  assert.equal(await liveStack.locator('.avatar-dot, .avatar-img').count(), 1);
+  assert.equal(
+    await refreshed.locator('.event-poll-option').nth(1).locator('.event-poll-voter-stack').count(),
+    0,
+    'an option nobody voted for keeps its row free of avatars',
+  );
+  const stackRow = await liveStack.evaluate((element) => ({
+    stack: element.getBoundingClientRect().top,
+    title: element.closest('.event-poll-option')!.querySelector('.event-poll-option-title-row')!.getBoundingClientRect().top,
+  }));
+  assert.ok(Math.abs(stackRow.stack - stackRow.title) <= 16, `the avatars share the option title row (${JSON.stringify(stackRow)})`);
+  await liveStack.click();
+  const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
+  await liveVoteDialog.waitFor();
+  assert.match((await liveVoteDialog.textContent()) ?? '', new RegExp(MEMBER_NAME));
+  await liveVoteDialog.locator('[data-close]').click();
+  await liveVoteDialog.waitFor({ state: 'detached' });
   await choosePollAction(refreshed, '[data-close-poll]');
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
   await ownerPage.locator('.toast', { hasText: 'Umfrage beendet' }).waitFor();
