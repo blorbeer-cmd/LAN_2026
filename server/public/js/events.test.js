@@ -308,6 +308,19 @@ test('a group card drops every dated and paid control instead of disabling it', 
   const endedGroup = renderEventCard({ ...group, isEnded: true });
   assert.match(endedGroup, /aria-label="Beendet"/);
   assert.doesNotMatch(endedGroup, /data-end-event/);
+
+  // An event whose date is still open drops the same dated controls, but it is
+  // abandoned the same way a group is, so "Beenden" is not a dated control.
+  const undatedEvent = renderEventCard({
+    ...group,
+    id: 'termin-offen',
+    eventType: 'lan',
+    enabledFeatures: ['tracking'],
+  });
+  assert.match(undatedEvent, /data-end-event="termin-offen"/);
+  assert.match(undatedEvent, /Termin wird noch abgestimmt/);
+  assert.doesNotMatch(undatedEvent, /data-start-tracking/);
+  assert.doesNotMatch(undatedEvent, /data-export-event/);
 });
 
 test('a group has no keepsake PDF and no period text', () => {

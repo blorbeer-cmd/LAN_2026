@@ -751,7 +751,6 @@ function renderInvitationPayment(event) {
 export function renderEventCard(event, { collapsible = false } = {}) {
   // Tracking and exports require a scheduled event; roster editing does not.
   const hasDate = event.startsAt != null;
-  const isGroup = eventIsGroup(event);
   // The tooltip sits with the running/stopping pair only: "Event wieder
   // starten" is an event-lifecycle action whose confirmation already spells the
   // tracking part out.
@@ -763,9 +762,10 @@ export function renderEventCard(event, { collapsible = false } = {}) {
       : event.trackingEnabled
         ? `<div class="action-menu-row"><button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">Tracking stoppen</button>${trackingHelp}</div>`
         : `<div class="action-menu-row"><button type="button" class="btn btn-sm" data-start-tracking="${event.id}">Tracking starten</button>${trackingHelp}</div>`;
-  // A group has no period and is still closable, so "Beenden" follows the
-  // workspace kind rather than the presence of a date.
-  const endBtn = (!hasDate && !isGroup) || event.isEnded
+  // Closing a workspace is a lifecycle step, not a scheduled one: an event
+  // whose date is still being polled — or was removed again — is exactly the
+  // kind that gets abandoned, so "Beenden" follows the ended state alone.
+  const endBtn = event.isEnded
     ? ''
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
   const expanded = !collapsible || expandedEventCards.has(event.id);
@@ -1097,7 +1097,6 @@ function eventFormSubmitLabel(isGroup) {
 
 function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) {
   const isEdit = Boolean(existing);
-  const periodOptional = isEdit && existing.startsAt == null;
   const eventTypes = availableEventTypeOptions(state.eventTypeOptions);
   const selectedEventType = existing?.eventType ?? preselectedEventType ?? 'lan';
   // A group has no period and no money, so those blocks are hidden rather
@@ -1105,7 +1104,6 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
   // flag tracks the live selection because the type can still be switched
   // inside the dialog.
   let isGroup = isGroupEventType(selectedEventType);
-  const dateRequired = isEdit && !periodOptional && !isGroup;
   const eventTypeSelectOptions = eventTypes
     .map(
       (eventType) =>
@@ -1127,12 +1125,12 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
         </div>
         <div class="field-row" data-event-schedule-fields ${isGroup ? 'hidden' : ''}>
           <div>
-            <label for="event-starts-date" class="field-label${dateRequired ? ' is-required' : ''}">Beginnt am</label>
-            ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? null, { clearable: !isEdit, label: 'Beginnt am' })}
+            <label for="event-starts-date" class="field-label">Beginnt am</label>
+            ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? null, { clearable: true, label: 'Beginnt am' })}
           </div>
           <div>
-            <label for="event-ends-date" class="field-label${dateRequired ? ' is-required' : ''}">Endet am</label>
-            ${dateTimeFieldHtml('event-ends', existing?.endsAt ?? null, { clearable: !isEdit, label: 'Endet am' })}
+            <label for="event-ends-date" class="field-label">Endet am</label>
+            ${dateTimeFieldHtml('event-ends', existing?.endsAt ?? null, { clearable: true, label: 'Endet am' })}
           </div>
         </div>
         <div>
@@ -1284,12 +1282,12 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
             return;
           }
 
-          const schedulePayload = startsVal || endsVal
-            ? {
-                startsAt: startsVal ? new Date(startsVal).getTime() : null,
-                endsAt: endsVal ? new Date(endsVal).getTime() : null,
-              }
-            : {};
+          // Sent unconditionally: an omitted boundary leaves the stored one
+          // untouched, so a cleared field would silently keep the old date.
+          const schedulePayload = {
+            startsAt: startsVal ? new Date(startsVal).getTime() : null,
+            endsAt: endsVal ? new Date(endsVal).getTime() : null,
+          };
           // The server rejects a period or any cost on a group outright, so
           // the hidden blocks contribute nothing to the request.
           const payload = {
@@ -1605,7 +1603,9 @@ export function renderOrgaEvents(container, ctx) {
       const isGroup = eventIsGroup(event);
       const question = isGroup
         ? `Gruppe „${event.name}“ beenden? Sie wird in die Historie verschoben und ist danach nicht mehr auswählbar.`
-        : `Event „${event.name}“ beenden? Laufendes Tracking wird gestoppt und das Event in die Historie verschoben.`;
+        // The action now also reaches events that never tracked — an undated one
+        // cannot — so the stopped-tracking half only appears when it is true.
+        : `Event „${event.name}“ beenden? ${event.trackingEnabled ? 'Laufendes Tracking wird gestoppt und das Event wird' : 'Das Event wird'} in die Historie verschoben.`;
       if (!(await confirmDialog(question, { confirmText: 'Beenden', danger: true }))) return;
       try {
         await api.events.end(event.id);

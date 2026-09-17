@@ -270,7 +270,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   toggle repeats that header text in its accessible name instead of pointing an `aria-describedby` back
   into itself. Missing creators use „Unbekannt“, undated events keep „Termin wird noch abgestimmt“. Owner/admin cards expose
   „Bearbeiten“, state-dependent Tracking/Beenden/Wieder-starten and the LAN PDF export in the shared
-  „Aktion“ menu beside the header badges; member Event cards have no such menu. Cards in lists with
+  „Aktion“ menu beside the header badges; member Event cards have no such menu. „Beenden“ is not one
+  of the dated controls: an event whose date is still being polled — or whose period was removed
+  again — is exactly the kind that gets abandoned, so it closes like any other workspace, while
+  Tracking, „Wieder starten“ and the PDF export stay bound to a fixed period. The period itself stays
+  retractable in „Bearbeiten“: both boundaries are cleared together, never only one, which returns the
+  event to planning so it cannot be tracked until a new period is entered, and tells everyone invited
+  or accepted that the date is open again instead of that it moved. A running Tracking refuses the
+  removal until it is stopped, because live status and play sessions are attributed through that
+  period. Cards in lists with
   multiple events start collapsed, keep their disclosure state through refreshes and preserve keyboard
   focus when toggled. A single event stays expanded without collapse controls, and location links
   are clickable without a separate copy action when an event stores a web URL; plain locations remain

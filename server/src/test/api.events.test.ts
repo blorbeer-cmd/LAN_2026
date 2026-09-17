@@ -352,9 +352,29 @@ test('event creation validates name, optional periods and ordering', async () =>
     .post('/api/events')
     .send({ name: 'Teilnehmende', startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS, visibilityScope: 'participants' });
   assert.equal(participantsOnly.status, 201, JSON.stringify(participantsOnly.body));
+  // Clearing only one boundary would leave half a period behind.
   const clearedStart = await request(app).patch(`/api/events/${participantsOnly.body.id}`).send({ startsAt: null });
   assert.equal(clearedStart.status, 400, JSON.stringify(clearedStart.body));
-  assert.match(clearedStart.body.error, /startsAt darf nicht leer sein/);
+  assert.match(clearedStart.body.error, /vollständig oder gar nicht/);
+  // Clearing both retracts the period: a date entered too early has to be
+  // removable without deleting and recreating the event.
+  const clearedPeriod = await request(app)
+    .patch(`/api/events/${participantsOnly.body.id}`)
+    .send({ startsAt: null, endsAt: null });
+  assert.equal(clearedPeriod.status, 200, JSON.stringify(clearedPeriod.body));
+  assert.equal(clearedPeriod.body.startsAt, null);
+  assert.equal(clearedPeriod.body.endsAt, null);
+  // Period and lifecycle state are one invariant: back in planning, and
+  // therefore not trackable, exactly like an event that never had a date.
+  assert.equal(clearedPeriod.body.status, 'draft');
+  assert.equal((await request(app).post(`/api/events/${participantsOnly.body.id}/tracking/start`)).status, 400);
+  // Closing a workspace is a lifecycle step, not a scheduled one.
+  const endedWithoutPeriod = await request(app).post(`/api/events/${participantsOnly.body.id}/end`);
+  assert.equal(endedWithoutPeriod.status, 200, JSON.stringify(endedWithoutPeriod.body));
+  assert.equal(endedWithoutPeriod.body.isEnded, true);
+  // Reopening must not resurrect it as a published, undated event that reports
+  // tracking the tracking query can never reach.
+  assert.equal((await request(app).post(`/api/events/${participantsOnly.body.id}/restart`)).status, 400);
   const invalidType = await request(app)
     .post('/api/events')
     .send({ name: 'Unbekannter Typ', startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS, eventType: 'trip' });
@@ -1059,6 +1079,18 @@ test('event metadata remains editable without changing tracking state', async ()
     .patch(`/api/events/${eventBId}`)
     .send({ endsAt: updated.body.startsAt + EVENT_MINIMUM_DURATION_MS });
   assert.equal(minimumDuration.status, 200, JSON.stringify(minimumDuration.body));
+
+  // Removing the period is the one metadata edit a running tracking window
+  // refuses: live status and play sessions are attributed through that period,
+  // so it has to be stopped explicitly instead of silently losing its window.
+  assert.equal(minimumDuration.body.trackingEnabled, true);
+  const clearedWhileTracking = await request(app)
+    .patch(`/api/events/${eventBId}`)
+    .send({ startsAt: null, endsAt: null });
+  assert.equal(clearedWhileTracking.status, 409, JSON.stringify(clearedWhileTracking.body));
+  const unchanged = await request(app).get(`/api/events/${eventBId}`);
+  assert.equal(unchanged.body.startsAt, minimumDuration.body.startsAt);
+  assert.equal(unchanged.body.trackingEnabled, true);
 });
 
 test('an ended event can be restarted in an emergency', async () => {

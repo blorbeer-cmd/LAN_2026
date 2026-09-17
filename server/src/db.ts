@@ -4951,7 +4951,9 @@ registerMigration({
 // the table definition, so SQLite refuses to ever drop or rename it again —
 // which is exactly what the legacy-database migration tests do when they
 // rebuild a pre-89 fixture. The invariant it guarded is owned by createEvent
-// (see events.ts), the only writer of status and starts_at.
+// and updateEvent (see events.ts): createEvent when an event starts without a
+// period, updateEvent when one is removed again and the event falls back to
+// draft.
 function allowUndatedGroupEvents(): void {
   db.exec(`
     CREATE TABLE events_staging_103 AS SELECT * FROM events;
