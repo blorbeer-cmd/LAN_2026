@@ -404,7 +404,13 @@ const ctx = {
 // as an icon, visible collapsed and on every row of the open list. It is
 // rebuilt rather than patched because the option set itself changes when an
 // event starts, ends or is left.
-const MANAGE_WORKSPACES_OPTION = '__manage-workspaces__';
+// Managing events and groups sits at the same level as picking one, so the
+// list that switches workspaces is also the shortest way to the page that
+// creates them. It is not a workspace, though, and reading as one was the
+// problem: as an option it looked like a fourth event to switch to. It is the
+// picker's pinned action instead — separated from the results, unaffected by
+// the search query, and never the switcher's value.
+const MANAGE_WORKSPACES_ACTION = { label: 'Events & Gruppen verwalten', icon: 'calendar' };
 
 function renderEventContextSwitcher() {
   const container = document.getElementById('event-context');
@@ -418,13 +424,16 @@ function renderEventContextSwitcher() {
   // next render once the reader closes it again.
   const openSearch = container.querySelector('#event-context-switcher-search');
   const openList = container.querySelector('#event-context-switcher-list');
-  if (openList && !openList.hidden && document.activeElement === openSearch) {
+  const openWrapper = container.querySelector('[data-search-select]');
+  // Focus may sit on the search field or on the pinned action inside the open
+  // popup; either way the reader is mid-interaction and the rebuild waits.
+  if (openList && !openList.hidden && openWrapper?.contains(document.activeElement)) {
     // A queued activation (e.g. from a deep link) still has to disable the
     // switcher even while the reader keeps it open and focused, so a pick
     // made in this window is visibly blocked instead of only silently queued.
     if (pendingEventActivations > 0) {
       const toggle = container.querySelector('.search-select-toggle');
-      openSearch.disabled = true;
+      if (openSearch) openSearch.disabled = true;
       if (toggle) toggle.disabled = true;
     }
     return;
@@ -437,14 +446,7 @@ function renderEventContextSwitcher() {
   }
 
   const active = events.find((event) => event.id === state.activeEvent?.id) ?? state.activeEvent;
-  // Managing events and groups is the same level as picking one, so the list
-  // that switches workspaces is also the shortest way to the page that
-  // creates them. The entry is not a workspace: picking it navigates and the
-  // switcher is rebuilt on the active event immediately afterwards.
-  const options = [
-    ...eventSelectOptions(events),
-    { value: MANAGE_WORKSPACES_OPTION, label: 'Events & Gruppen verwalten…', icon: 'calendar', iconLabel: 'Verwalten' },
-  ];
+  const options = eventSelectOptions(events);
   const activeId = active?.id ?? '';
   // The state stays in words too: the icon carries the German label, and the
   // wrapper describes the whole control, so colour is never the only cue. The
@@ -459,17 +461,19 @@ function renderEventContextSwitcher() {
     placeholder: 'Event suchen…',
     ariaLabel: description,
     label: 'Auswählbare Events',
+    action: MANAGE_WORKSPACES_ACTION,
   });
   container.title = description;
 
   wireSearchSelect(container, 'event-context-switcher', options, {
     emptyText: 'Kein passendes Event gefunden.',
+    // The action leaves the switcher untouched, so the rebuild only restores
+    // the collapsed control on the still-active event before navigating.
+    onAction: () => {
+      renderEventContextSwitcher();
+      switchView('events');
+    },
     onChange: async (eventId) => {
-      if (eventId === MANAGE_WORKSPACES_OPTION) {
-        renderEventContextSwitcher();
-        switchView('events');
-        return;
-      }
       // Mirrors the disabled state the previous native <select> got for free
       // while its change handler awaited the switch: without it, a second
       // pick before the first request resolves fired a second overlapping

@@ -387,8 +387,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
   `Strg/Cmd + K`, searches both areas and current app content without an external service, and uses
   `.search-target-highlight` to expose a concrete result after navigation.
-- **Searchable select** — `.search-select` combines a text input with an app-rendered
-  `.search-select-list`/`.search-select-option` listbox. It replaces the browser's native
+- **Searchable select** — `.search-select` combines a text input with an app-rendered popup
+  (`.search-select-list`) holding a `.search-select-results`/`.search-select-option` listbox. It replaces the browser's native
   unthemeable `datalist` popup for long game catalogs, keeps the selected value in the existing
   hidden input contract, filters while typing, caps long result lists locally and supports
   pointer, touch, arrow keys, Enter, Escape and visible focus. A background re-render keeps its
@@ -403,6 +403,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   choosing, which a native `<select>` cannot do inside its options. `iconState` only colours the
   icon — each one also carries the German state as `aria-label` and `title`, so meaning is never
   colour alone. Option sets without icons render exactly the markup they did before.
+  A picker may additionally carry one pinned `action` (`.search-select-action`) — a command that
+  leaves the picker instead of selecting in it, such as the topbar switcher's „Events & Gruppen
+  verwalten“. It must read as a different kind of thing than the rows above it, because an action
+  rendered as an option reads as one more entry to pick: it sits in the popup's pinned footer
+  outside the `role="listbox"` element (`.search-select-results` holds the options and is the only
+  part that scrolls), keeps its own footer surface behind a full-bleed divider, uses accent text
+  with a leading icon and a trailing chevron, and is reachable with Tab while the list is open.
+  It is never filtered away by the query, never becomes the field's value and reports through its
+  own `onAction` callback rather than `onChange`.
 
 - **In-card footer actions** — card-footer-actions separates actions from a long preceding
   list with a hairline and scrolls with its card. Product-specific callers live in
