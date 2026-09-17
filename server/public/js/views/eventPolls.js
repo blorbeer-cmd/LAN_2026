@@ -434,11 +434,14 @@ function optionRowHtml(index, value = {}) {
   return `
     <div class="event-poll-form-option" data-poll-option-row="${index}"${value.id ? ` data-poll-option-id="${escapeHtml(value.id)}"` : ''}>
       <div class="row-between">
-        <label for="poll-option-${index}" class="field-label is-required">Option ${index + 1}</label>
+        <span class="event-poll-form-option-label">
+          <label for="poll-option-${index}" class="field-label is-required">Option ${index + 1}</label>
+          ${value.descriptionEditedAt ? '<span class="badge badge-offline">Bearbeitet</span>' : ''}
+        </span>
         <button type="button" class="icon-btn" data-remove-poll-option aria-label="Option entfernen" title="Option entfernen">${icon('trash')}</button>
       </div>
       <input type="text" id="poll-option-${index}" data-poll-option-input maxlength="120" required value="${escapeHtml(value.label ?? '')}" placeholder="z. B. Ferienhaus am See" />
-      ${value.id ? `<label class="event-poll-option-active"><input type="checkbox" data-poll-option-active ${value.active !== false ? 'checked' : ''} /> Option aktiv (wählbar)</label>` : ''}
+      <label class="event-poll-option-active"><input class="poll-option-switch" type="checkbox" role="switch" data-poll-option-active ${value.active !== false ? 'checked' : ''} /><span>Option aktiv (wählbar)</span></label>
       <details class="event-poll-form-option-details" ${showDetails ? 'open' : ''}>
         <summary>Notiz oder Link hinzufügen</summary>
         <div class="field-row event-poll-option-extra-fields">
@@ -592,6 +595,7 @@ function openEditPollForm(event, poll, ctx) {
     description: option.description ?? '',
     url: optionUrl(option) ?? '',
     active: option.active,
+    descriptionEditedAt: option.descriptionEditedAt,
   }));
   let nextOptionIndex = initialOptions.length;
   let dirty = false;

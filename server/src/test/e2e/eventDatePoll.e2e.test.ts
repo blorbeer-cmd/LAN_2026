@@ -119,6 +119,10 @@ async function createPoll(
     await page.locator('[data-remove-poll-option]').last().click();
   }
   while ((await page.locator('[data-poll-option-input]').count()) < options.length) await page.click('#poll-add-option');
+  assert.equal(await page.locator('#event-poll-form [role="switch"]').count(), options.length);
+  assert.deepEqual(await page.locator('#event-poll-form [role="switch"]').evaluateAll(
+    (switches) => switches.map((element) => (element as HTMLInputElement).checked),
+  ), options.map(() => true), 'new options are votable by default');
   for (let index = 0; index < options.length; index += 1) {
     const rawOption = options[index];
     const option = typeof rawOption === 'string' ? { label: rawOption } : rawOption;
@@ -393,8 +397,12 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await firstEditOption.locator('.event-poll-form-option-details').evaluate((details) => { (details as HTMLDetailsElement).open = true; });
   await firstEditOption.locator('[data-poll-option-note]').fill('Auch vegetarisch verfügbar');
   await firstEditOption.locator('[data-poll-option-url]').fill('https://example.com/pizza');
+  const secondEditOption = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1);
+  await secondEditOption.locator('.event-poll-form-option-details').evaluate((details) => { (details as HTMLDetailsElement).open = true; });
+  await secondEditOption.locator('[data-poll-option-note]').fill('Weitere Variante');
   await memberPage.click('#event-poll-edit-form #poll-add-option');
   await memberPage.locator('#event-poll-edit-form [data-poll-option-input]').last().fill('Dessert');
+  assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').last().locator('[role="switch"]').isChecked(), true);
   await memberPage.click('#event-poll-edit-form button[type="submit"]');
   await memberPage.locator('.toast', { hasText: 'Personen mit geänderter Antwort wurden informiert' }).waitFor();
   await memberPage.waitForFunction(() => {
@@ -406,6 +414,11 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await memberCreated.locator('.event-poll-option').first().locator('.badge', { hasText: 'Bearbeitet' }).count(), 1);
   await choosePollAction(memberCreated, '[data-edit-poll]');
   await memberPage.waitForSelector('#event-poll-edit-form');
+  assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first()
+    .locator('.event-poll-form-option-label label + .badge', { hasText: 'Bearbeitet' }).count(), 1);
+  assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1)
+    .locator('.event-poll-form-option-label label + .badge', { hasText: 'Bearbeitet' }).count(), 1);
+  assert.equal(await memberPage.locator('#event-poll-edit-form [role="switch"]').count(), 4);
   await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first().locator('[data-poll-option-active]').uncheck();
   await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1).locator('[data-remove-poll-option]').click();
   await memberPage.click('#event-poll-edit-form button[type="submit"]');
