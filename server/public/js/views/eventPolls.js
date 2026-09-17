@@ -306,12 +306,12 @@ function renderOption(poll, option) {
       <div class="row-between event-poll-option-header">
         <span class="event-poll-option-title-row">
           <strong>${escapeHtml(label)}</strong>
+          ${option.descriptionEditedAt ? '<span class="badge badge-offline">Bearbeitet</span>' : ''}
           ${option.description ? infoTooltipHtml(`poll-option-note-${poll.id}-${option.id}`, `Notiz zu ${label}`, option.description) : ''}
           ${link ? `<a class="icon-btn event-poll-option-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" aria-label="Link zu ${escapeHtml(label)} öffnen" title="Link öffnen">${icon('squareArrowOutUpRight')}</a>` : ''}
         </span>
         <span class="row event-poll-option-badges">
           ${recommendation}
-          ${option.descriptionEditedAt ? '<span class="badge badge-offline">Bearbeitet</span>' : ''}
           ${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}
         </span>
       </div>
@@ -436,12 +436,11 @@ function optionRowHtml(index, value = {}) {
       <div class="row-between">
         <span class="event-poll-form-option-label">
           <label for="poll-option-${index}" class="field-label is-required">Option ${index + 1}</label>
-          ${value.descriptionEditedAt ? '<span class="badge badge-offline">Bearbeitet</span>' : ''}
+          <label class="event-poll-option-active"><input class="poll-option-switch" type="checkbox" role="switch" data-poll-option-active aria-label="Option ${index + 1} aktiv (wählbar)" ${value.active !== false ? 'checked' : ''} /></label>
         </span>
         <button type="button" class="icon-btn" data-remove-poll-option aria-label="Option entfernen" title="Option entfernen">${icon('trash')}</button>
       </div>
       <input type="text" id="poll-option-${index}" data-poll-option-input maxlength="120" required value="${escapeHtml(value.label ?? '')}" placeholder="z. B. Ferienhaus am See" />
-      <label class="event-poll-option-active"><input class="poll-option-switch" type="checkbox" role="switch" data-poll-option-active ${value.active !== false ? 'checked' : ''} /><span>Option aktiv (wählbar)</span></label>
       <details class="event-poll-form-option-details" ${showDetails ? 'open' : ''}>
         <summary>Notiz oder Link hinzufügen</summary>
         <div class="field-row event-poll-option-extra-fields">
@@ -595,7 +594,6 @@ function openEditPollForm(event, poll, ctx) {
     description: option.description ?? '',
     url: optionUrl(option) ?? '',
     active: option.active,
-    descriptionEditedAt: option.descriptionEditedAt,
   }));
   let nextOptionIndex = initialOptions.length;
   let dirty = false;

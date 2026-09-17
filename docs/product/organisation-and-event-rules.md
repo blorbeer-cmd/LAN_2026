@@ -168,9 +168,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   Disabled options and their previous votes remain visible until someone changes
   a single or multiple choice vote; they cannot receive new answers or win the
   recommendation. Changed option notes carry a visible
-  „Bearbeitet“ marker, also directly beside the option number in the edit dialog.
-  Every option starts active; the „Option aktiv (wählbar)“ switch can disable and
-  later enable it again. Their existing votes remain visible, while
+  „Bearbeitet“ marker directly beside the option title in the poll view, but not in
+  the edit dialog. Every option starts active; the unlabeled visual switch beside
+  its option number can disable and later enable it again. Its accessible name
+  identifies the option. Existing votes remain visible, while
   inactive options no longer show an unanswered count. A new round only copies active options.
   Adding options informs everyone who had already completed the round and makes those responses
   incomplete until the added options have been answered. Removing or disabling a chosen option

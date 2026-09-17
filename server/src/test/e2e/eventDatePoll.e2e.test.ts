@@ -411,14 +411,16 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   });
   assert.equal(await memberCreated.locator('a[href="https://example.com/pizza"]').count(), 1);
   assert.equal(await memberCreated.locator('[aria-label="Mehr Informationen zu Notiz zu Pizza"]').count(), 1);
-  assert.equal(await memberCreated.locator('.event-poll-option').first().locator('.badge', { hasText: 'Bearbeitet' }).count(), 1);
+  assert.equal(await memberCreated.locator('.event-poll-option').first()
+    .locator('.event-poll-option-title-row strong + .badge', { hasText: 'Bearbeitet' }).count(), 1);
+  assert.equal(await memberCreated.locator('.event-poll-option').nth(1)
+    .locator('.event-poll-option-title-row strong + .badge', { hasText: 'Bearbeitet' }).count(), 1);
   await choosePollAction(memberCreated, '[data-edit-poll]');
   await memberPage.waitForSelector('#event-poll-edit-form');
-  assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first()
-    .locator('.event-poll-form-option-label label + .badge', { hasText: 'Bearbeitet' }).count(), 1);
-  assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1)
-    .locator('.event-poll-form-option-label label + .badge', { hasText: 'Bearbeitet' }).count(), 1);
+  assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-row] .badge', { hasText: 'Bearbeitet' }).count(), 0);
   assert.equal(await memberPage.locator('#event-poll-edit-form [role="switch"]').count(), 4);
+  assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1)
+    .locator('.event-poll-form-option-label > label.field-label + label.event-poll-option-active [role="switch"]').count(), 1);
   await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first().locator('[data-poll-option-active]').uncheck();
   await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1).locator('[data-remove-poll-option]').click();
   await memberPage.click('#event-poll-edit-form button[type="submit"]');
@@ -434,7 +436,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await choosePollAction(memberCreated, '[data-edit-poll]');
   const activeSwitch = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first().locator('[data-poll-option-active]');
   assert.equal(await activeSwitch.isChecked(), false);
-  assert.match((await activeSwitch.locator('..').textContent()) ?? '', /Option aktiv \(wählbar\)/);
+  assert.equal(await activeSwitch.getAttribute('aria-label'), 'Option 1 aktiv (wählbar)');
+  assert.equal((await activeSwitch.locator('..').textContent())?.trim(), '');
   await activeSwitch.check();
   await memberPage.click('#event-poll-edit-form button[type="submit"]');
   await memberCreated.locator('.event-poll-option').first().locator('[data-poll-choice]').waitFor();
