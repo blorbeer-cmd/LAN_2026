@@ -128,6 +128,8 @@ function serializeOption(
     label: string | null;
     description: string | null;
     payload_json: string;
+    is_active: number;
+    description_edited_at: number | null;
   },
   responses: ReturnType<typeof getDatePollResponses>,
   inviteeCount: number,
@@ -147,6 +149,8 @@ function serializeOption(
     id: option.id,
     label: option.label,
     description: option.description,
+    active: option.is_active === 1,
+    descriptionEditedAt: option.description_edited_at,
     payload: JSON.parse(option.payload_json || '{}') as unknown,
     startsOn: option.starts_on,
     endsOn: option.ends_on,
@@ -201,7 +205,9 @@ function serializeDatePoll(
     ...invitees.map((i) => i.player_id),
     ...(poll.created_by ? [poll.created_by] : []),
   ]);
-  const recommendedId = recommendedOptionId(options, responses, invitees.length, poll.response_mode);
+  const activeOptions = options.filter((option) => option.is_active === 1);
+  const activeOptionIds = new Set(activeOptions.map((option) => option.id));
+  const recommendedId = recommendedOptionId(activeOptions, responses.filter((response) => activeOptionIds.has(response.option_id)), invitees.length, poll.response_mode);
   const anonymous = Boolean(poll.is_anonymous);
   const canManage = canManageDatePoll(poll, event, viewerId, viewerRole);
   // While a round with a hidden interim result is open, only the people who
@@ -351,13 +357,15 @@ function pollOpenTopicKey(pollId: string, playerId: string): string {
   return `${pollOpenTopicPrefix(pollId)}:${playerId}`;
 }
 
-function notifyPreviouslyAnsweredPlayers(event: EventRow, poll: DatePollRow, playerIds: string[]): void {
+function notifyPreviouslyAnsweredPlayers(event: EventRow, poll: DatePollRow, playerIds: string[], kind: 'added' | 'changed' = 'added'): void {
   for (const playerId of playerIds) {
     notifyPlayers(
       [playerId],
       {
-        title: 'Abstimmung ergänzt',
-        body: `${event.name}: Bei „${poll.title}“ wurden neue Optionen ergänzt. Bitte prüfe deine Antwort.`,
+        title: kind === 'added' ? 'Abstimmung ergänzt' : 'Abstimmung geändert',
+        body: kind === 'added'
+          ? `${event.name}: Bei „${poll.title}“ wurden neue Optionen ergänzt. Bitte prüfe deine Antwort.`
+          : `${event.name}: Bei „${poll.title}“ wurden Optionen geändert. Bitte stimme erneut ab.`,
         url: `/#eventPolls/${poll.id}`,
         type: 'event-poll-updated',
         targetId: poll.id,
@@ -506,8 +514,12 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     label: string;
     description?: string | null;
     payload?: Record<string, unknown>;
+    active?: boolean;
   }> = [];
   for (const raw of options) {
+    if (raw?.active !== undefined && typeof raw.active !== 'boolean') {
+      return res.status(400).json({ error: 'active muss wahr oder falsch sein.' });
+    }
     if (topic === 'date_range') {
       const startsOn = raw?.startsOn;
       const endsOn = raw?.endsOn;
@@ -515,7 +527,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
         return res.status(400).json({ error: 'Jeder Zeitraum benötigt gültige Kalenderdaten (Beginn/Ende).' });
       }
       if (endsOn < startsOn) return res.status(400).json({ error: 'Ein Zeitraum darf nicht rückwärts laufen.' });
-      parsedOptions.push({ startsOn, endsOn, label: raw?.label?.trim() || `${startsOn} – ${endsOn}`, payload: raw?.payload });
+      parsedOptions.push({ startsOn, endsOn, label: raw?.label?.trim() || `${startsOn} – ${endsOn}`, payload: raw?.payload, active: raw.active ?? true });
       continue;
     }
     if (typeof raw?.label !== 'string' || !raw.label.trim() || raw.label.trim().length > 120) {
@@ -534,7 +546,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     ) {
       return res.status(400).json({ error: 'Ein Optionslink muss eine vollständige HTTP- oder HTTPS-Adresse sein.' });
     }
-    parsedOptions.push({ label: raw.label.trim(), description: raw.description?.trim() || null, payload: raw.payload });
+    parsedOptions.push({ label: raw.label.trim(), description: raw.description?.trim() || null, payload: raw.payload, active: raw.active ?? true });
   }
   const duplicateKey = new Set<string>();
   for (const option of parsedOptions) {
@@ -642,7 +654,7 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
   if (!canManageDatePoll(poll, event, playerId, req.groupMembership?.role)) {
     return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann die Runde bearbeiten.' });
   }
-  const { title, note, responseDueOn, options } = req.body ?? {};
+  const { title, note, responseDueOn, options, knownOptionIds } = req.body ?? {};
   const fields: Parameters<typeof updateDatePoll>[1] = {};
   if (title !== undefined) {
     if (typeof title !== 'string' || !title.trim() || title.trim().length > 100) {
@@ -666,6 +678,10 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     if (!Array.isArray(options) || options.length === 0) {
       return res.status(400).json({ error: 'Mindestens eine Option ist erforderlich.' });
     }
+    if (!Array.isArray(knownOptionIds) || knownOptionIds.some((id) => typeof id !== 'string' || !id)) {
+      return res.status(400).json({ error: 'knownOptionIds muss die bekannten Options-IDs enthalten.' });
+    }
+    fields.knownOptionIds = knownOptionIds;
     const parsedOptions: NonNullable<Parameters<typeof updateDatePoll>[1]['options']> = [];
     for (const raw of options) {
       if (raw?.id !== undefined && (typeof raw.id !== 'string' || !raw.id)) {
@@ -680,6 +696,9 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
       if (raw.payload !== undefined && (typeof raw.payload !== 'object' || raw.payload === null || Array.isArray(raw.payload))) {
         return res.status(400).json({ error: 'payload muss ein Objekt sein.' });
       }
+      if (raw.active !== undefined && typeof raw.active !== 'boolean') {
+        return res.status(400).json({ error: 'active muss wahr oder falsch sein.' });
+      }
       const optionUrl = raw.payload?.url;
       if (
         optionUrl !== undefined &&
@@ -692,6 +711,7 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
         label: raw.label.trim(),
         description: raw.description?.trim() || null,
         payload: raw.payload ?? {},
+        active: raw.active ?? true,
       });
     }
     if (new Set(parsedOptions.map((option) => option.label.toLocaleLowerCase('de'))).size !== parsedOptions.length) {
@@ -724,8 +744,16 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     updatePushTopicExpiry(pollOpenTopicPrefix(poll.id), result.poll.response_due_at, pollScope, true);
     updatePushTopicExpiry(pollUpdateTopicPrefix(poll.id), result.poll.response_due_at, pollScope, true);
   }
-  if (result.addedOptionCount > 0) {
-    notifyPreviouslyAnsweredPlayers(event, result.poll, result.previouslyAnsweredPlayerIds);
+  if (result.newlyIncompletePlayerIds.length > 0) {
+    notifyPreviouslyAnsweredPlayers(event, result.poll, result.newlyIncompletePlayerIds,
+      result.addedOptionCount > 0 ? 'added' : 'changed');
+  }
+  if (options !== undefined) {
+    for (const invitee of getDatePollInvitees(poll.id)) {
+      if (hasAnsweredDatePoll(poll.id, invitee.player_id)) {
+        resolvePollNotifications(event, poll.id, invitee.player_id);
+      }
+    }
   }
   res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
 });

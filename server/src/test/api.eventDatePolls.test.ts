@@ -61,7 +61,7 @@ interface PollOverrides {
   maxSelections?: number | null;
   decisionKey?: string;
   previousPollId?: string;
-  options?: Array<{ label: string; description?: string; payload?: { url?: string } }>;
+  options?: Array<{ label: string; description?: string; payload?: { url?: string }; active?: boolean }>;
   // undefined (the default) picks a 5-days-out deadline; explicit null omits
   // the field entirely so tests can exercise an open-ended poll.
   responseDueOn?: string | null;
@@ -194,7 +194,7 @@ test('polls accept one option and grow beyond the former eight-option cap', asyn
   const expanded = await request(app)
     .patch(`/api/events/${eventId}/polls/${singleOption.body.id}`)
     .set('x-test-player-id', alice)
-    .send({ options: expandedOptions });
+    .send({ knownOptionIds: [singleOption.body.options[0].id], options: expandedOptions });
   assert.equal(expanded.status, 200, JSON.stringify(expanded.body));
   assert.equal(expanded.body.options.length, 10);
 
@@ -632,6 +632,7 @@ test('an open poll can update option notes and links, add options and notify onl
   assert.equal(bobAnswer.status, 200, JSON.stringify(bobAnswer.body));
 
   const editPayload = {
+    knownOptionIds: created.body.options.map((option: { id: string }) => option.id),
     title: 'Bearbeitete Abstimmung',
     note: 'Mehr Kontext',
     responseDueOn: isoDate(6),
@@ -660,6 +661,8 @@ test('an open poll can update option notes and links, add options and notify onl
   assert.equal(edited.body.note, 'Mehr Kontext');
   assert.equal(edited.body.options.length, 3);
   assert.equal(edited.body.options[0].description, 'Zentral gelegen');
+  assert.equal(typeof edited.body.options[0].descriptionEditedAt, 'number');
+  assert.equal(edited.body.options[1].descriptionEditedAt, null);
   assert.equal(edited.body.options[0].payload.url, 'https://example.com/koeln');
   assert.equal(edited.body.invitees.find((entry: { playerId: string }) => entry.playerId === bob).hasAnswered, false);
   assert.equal(
@@ -672,21 +675,155 @@ test('an open poll can update option notes and links, add options and notify onl
     'the creator and participants who had not voted receive no edit notification',
   );
 
-  const missingExistingOption = await request(app)
+  const removedOption = await request(app)
     .patch(`/api/events/${eventId}/polls/${created.body.id}`)
     .set('x-test-player-id', alice)
-    .send({ options: editPayload.options.slice(0, 2) });
-  assert.equal(missingExistingOption.status, 400, 'editing cannot silently delete an option with response history');
+    .send({ knownOptionIds: edited.body.options.map((option: { id: string }) => option.id), options: editPayload.options.slice(0, 2) });
+  assert.equal(removedOption.status, 200);
+  assert.equal(removedOption.body.options.length, 2);
+  assert.equal(removedOption.body.options[0].descriptionEditedAt, edited.body.options[0].descriptionEditedAt);
   const removedOptionAttempt = await request(app)
     .delete(`/api/events/${eventId}/polls/${created.body.id}/options/${created.body.options[0].id}`)
     .set('x-test-player-id', alice);
-  assert.equal(removedOptionAttempt.status, 404, 'the legacy option-removal endpoint cannot bypass edit integrity');
+  assert.equal(removedOptionAttempt.status, 404);
   await request(app).post(`/api/events/${eventId}/polls/${created.body.id}/close`).set('x-test-player-id', alice);
   const editClosed = await request(app)
     .patch(`/api/events/${eventId}/polls/${created.body.id}`)
     .set('x-test-player-id', alice)
     .send({ note: 'Zu spät' });
   assert.equal(editClosed.status, 409);
+});
+
+test('new polls preserve disabled options and require an active choice', async () => {
+  const alice = 'poll-create-disabled-alice';
+  createMember(alice, 'Poll Create Disabled Alice');
+  const eventId = await createEvent('Poll Create Disabled Event', [alice]);
+  const created = await createPoll(eventId, alice, {
+    options: [{ label: 'Aktiv' }, { label: 'Pausiert', active: false }],
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.deepEqual(created.body.options.map((option: { active: boolean }) => option.active), [true, false]);
+  const allDisabled = await createPoll(eventId, alice, {
+    title: 'Nur deaktiviert', options: [{ label: 'Pausiert', active: false }],
+  });
+  assert.equal(allDisabled.status, 400);
+});
+
+test('deleted options lose their votes while disabled options keep results and reject new votes', async () => {
+  const alice = 'poll-lifecycle-alice';
+  const bob = 'poll-lifecycle-bob';
+  createMember(alice, 'Poll Lifecycle Alice');
+  createMember(bob, 'Poll Lifecycle Bob');
+  const eventId = await createEvent('Poll Lifecycle Event', [alice, bob]);
+  const created = await createPoll(eventId, alice, {
+    responseMode: 'single_choice',
+    responseDueOn: null,
+    options: [{ label: 'A' }, { label: 'B' }, { label: 'C' }],
+  });
+  assert.equal(created.status, 201);
+  const [a, b, c] = created.body.options;
+  const vote = await request(app).put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: [{ optionId: a.id, response: 'cannot' }, { optionId: b.id, response: 'can' }, { optionId: c.id, response: 'cannot' }] });
+  assert.equal(vote.status, 200);
+
+  const changed = await request(app).patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ knownOptionIds: [a.id, b.id, c.id], options: [{ id: b.id, label: 'B', active: false }, { id: c.id, label: 'C' }] });
+  assert.equal(changed.status, 200, JSON.stringify(changed.body));
+  assert.deepEqual(changed.body.options.map((option: { id: string }) => option.id), [b.id, c.id]);
+  assert.equal(changed.body.options[0].active, false);
+  assert.equal(changed.body.options[0].counts.can, 1);
+  assert.equal(changed.body.options[0].isRecommended, false);
+  assert.equal(changed.body.options[1].isRecommended, false, 'a choice with no active votes has no recommendation');
+  assert.equal(changed.body.invitees.find((entry: { playerId: string }) => entry.playerId === bob).hasAnswered, false);
+  assert.equal(
+    (db.prepare('SELECT title FROM push_log WHERE topic_key = ?').get(`event-poll-updated:${created.body.id}:${bob}`) as { title: string }).title,
+    'Abstimmung geändert',
+    'a voter whose selection was disabled is notified even without a deadline',
+  );
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM event_date_poll_responses WHERE option_id = ?').get(a.id) as { n: number }).n, 0);
+
+  const forbiddenVote = await request(app).put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: [{ optionId: b.id, response: 'can' }, { optionId: c.id, response: 'cannot' }] });
+  assert.equal(forbiddenVote.status, 400);
+  const newVote = await request(app).put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: [{ optionId: c.id, response: 'can' }] });
+  assert.equal(newVote.status, 200);
+  assert.equal(newVote.body.options[0].counts.can, 0, 'changing a single choice replaces its previous vote');
+  assert.equal(newVote.body.options[1].counts.can, 1);
+
+  const noActive = await request(app).patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ knownOptionIds: [b.id, c.id], options: [{ id: b.id, label: 'B', active: false }, { id: c.id, label: 'C', active: false }] });
+  assert.equal(noActive.status, 400);
+
+  const replacement = await request(app).patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ knownOptionIds: [b.id, c.id], options: [{ id: b.id, label: 'B', active: false }, { id: c.id, label: 'C' }, { label: 'D' }] });
+  assert.equal(replacement.status, 200, JSON.stringify(replacement.body));
+  const laterAddition = await request(app).post(`/api/events/${eventId}/polls/${created.body.id}/options`)
+    .set('x-test-player-id', alice)
+    .send({ label: 'E' });
+  assert.equal(laterAddition.status, 201, JSON.stringify(laterAddition.body));
+  assert.deepEqual(laterAddition.body.options.map((option: { label: string }) => option.label), ['B', 'C', 'D', 'E']);
+
+  const second = await createPoll(eventId, alice, {
+    title: 'Später ergänzen', decisionKey: 'poll-lifecycle-later',
+    options: [{ label: 'A' }, { label: 'B' }, { label: 'C' }],
+  });
+  assert.equal(second.status, 201, JSON.stringify(second.body));
+  const removedMiddle = await request(app).patch(`/api/events/${eventId}/polls/${second.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ knownOptionIds: second.body.options.map((option: { id: string }) => option.id), options: [second.body.options[0], second.body.options[2]].map((option: { id: string; label: string }) => ({ id: option.id, label: option.label })) });
+  assert.equal(removedMiddle.status, 200, JSON.stringify(removedMiddle.body));
+  const addedAfterRemoval = await request(app).post(`/api/events/${eventId}/polls/${second.body.id}/options`)
+    .set('x-test-player-id', alice)
+    .send({ label: 'D' });
+  assert.equal(addedAfterRemoval.status, 201, JSON.stringify(addedAfterRemoval.body));
+});
+
+test('parallel edits cannot delete different poll options into an invalid state', async () => {
+  const alice = 'poll-delete-race-alice';
+  createMember(alice, 'Poll Delete Race Alice');
+  const eventId = await createEvent('Poll Delete Race Event', [alice]);
+  const created = await createPoll(eventId, alice);
+  assert.equal(created.status, 201);
+  const requests = created.body.options.map((remaining: { id: string; label: string }) => request(app)
+    .patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ knownOptionIds: created.body.options.map((option: { id: string }) => option.id), options: [{ id: remaining.id, label: remaining.label }] }));
+  const results = await Promise.all(requests);
+  assert.deepEqual(results.map((result) => result.status).sort(), [200, 409]);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM event_date_poll_options WHERE poll_id = ?').get(created.body.id) as { n: number }).n, 1);
+});
+
+test('a stale edit cannot delete a newly added option and its votes', async () => {
+  const alice = 'poll-stale-edit-alice';
+  const bob = 'poll-stale-edit-bob';
+  createMember(alice, 'Poll Stale Edit Alice');
+  createMember(bob, 'Poll Stale Edit Bob');
+  const eventId = await createEvent('Poll Stale Edit Event', [alice, bob]);
+  const created = await createPoll(eventId, alice, { responseMode: 'single_choice' });
+  assert.equal(created.status, 201);
+  const originalIds = created.body.options.map((option: { id: string }) => option.id);
+  const added = await request(app).post(`/api/events/${eventId}/polls/${created.body.id}/options`)
+    .set('x-test-player-id', alice).send({ label: 'Neu' });
+  assert.equal(added.status, 201);
+  const newOption = added.body.options.find((option: { label: string }) => option.label === 'Neu');
+  const voted = await request(app).put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', bob).send({ responses: responsesFor(added.body, ['cannot', 'cannot', 'can']) });
+  assert.equal(voted.status, 200);
+  const staleEdit = await request(app).patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ knownOptionIds: originalIds, note: 'Nur eine Notiz', options: created.body.options.map((option: { id: string; label: string }) => ({ id: option.id, label: option.label })) });
+  assert.equal(staleEdit.status, 409);
+  const current = await request(app).get(`/api/events/${eventId}/polls/${created.body.id}`).set('x-test-player-id', alice);
+  assert.equal(current.body.options.length, 3);
+  assert.equal(current.body.note, null);
+  assert.equal(current.body.options.find((option: { id: string }) => option.id === newOption.id).counts.can, 1);
 });
 
 test('concurrent option additions can grow a poll beyond the former eight-option cap', async () => {

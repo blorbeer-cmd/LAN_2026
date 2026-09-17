@@ -4899,6 +4899,19 @@ registerMigration({
   name: 'add hidden live event poll results',
   up: addHiddenLiveEventPollResults,
 });
+registerMigration({
+  version: 101,
+  name: 'track editable event poll options',
+  up: () => {
+    const columns = db.prepare('PRAGMA table_info(event_date_poll_options)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'is_active')) {
+      db.exec('ALTER TABLE event_date_poll_options ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))');
+    }
+    if (!columns.some((column) => column.name === 'description_edited_at')) {
+      db.exec('ALTER TABLE event_date_poll_options ADD COLUMN description_edited_at INTEGER');
+    }
+  },
+});
 
 // The packing list becomes its own switchable area, split out of `tasks`.
 // Every existing event keeps exactly what it had: the new row inherits the
@@ -4919,7 +4932,7 @@ function addPackingFeature(): void {
   ).run(OUTSIDE_EVENTS_ID);
 }
 registerMigration({
-  version: 101,
+  version: 102,
   name: 'add packing feature',
   up: addPackingFeature,
 });
@@ -4941,7 +4954,7 @@ registerMigration({
 // (see events.ts), the only writer of status and starts_at.
 function allowUndatedGroupEvents(): void {
   db.exec(`
-    CREATE TABLE events_staging_102 AS SELECT * FROM events;
+    CREATE TABLE events_staging_103 AS SELECT * FROM events;
     DROP TABLE events;
     CREATE TABLE events (
       id                       TEXT PRIMARY KEY,
@@ -4972,8 +4985,8 @@ function allowUndatedGroupEvents(): void {
     SELECT id, name, starts_at, ends_at, location, description, cost_cents, accommodation_cost_cents,
            paypal_link, payment_due_at, created_by, tracking_enabled, ended_at, is_test, group_id, status,
            visibility_scope, schedule_revision, event_type_key, preset_version
-    FROM events_staging_102;
-    DROP TABLE events_staging_102;
+    FROM events_staging_103;
+    DROP TABLE events_staging_103;
     CREATE INDEX IF NOT EXISTS idx_events_group_start ON events(group_id, starts_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_events_group_pk ON events(group_id, id);
     CREATE TRIGGER create_kiosk_account_for_lan_event
@@ -4988,7 +5001,7 @@ function allowUndatedGroupEvents(): void {
   `);
 }
 registerMigration({
-  version: 102,
+  version: 103,
   name: 'allow undated group events',
   up: allowUndatedGroupEvents,
   disableForeignKeysForRebuild: true,
