@@ -20,6 +20,7 @@ import { GAME_GENRES, MAX_GENRES_PER_GAME } from '../gameGenres.js';
 import { wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { wireActionMenus } from '../actionMenu.js';
 import {
   isOnboardingRatingActive,
   onboardingRatingIds,
@@ -36,6 +37,7 @@ import {
 let activeTab = 'catalog'; // 'catalog' | 'suggestions' | 'all'
 let sortKey = 'name';
 let sortDir = 'asc';
+let sortMenuOpen = false;
 // Genre chip filter for the list (OR semantics: a game matches if it has at
 // least one of the selected genres). Empty set means "no filter, show all".
 let genreFilter = new Set();
@@ -44,6 +46,7 @@ let genreFilter = new Set();
 // ratings stay visible, since each is its own separate condition to satisfy
 // (unlike genreFilter's alternative-values-of-one-facet OR).
 let ratingFilter = new Set();
+let filterMenuOpen = false;
 // Free-text filter, same component/pattern as the Neue-Abstimmung game
 // picker in votes.js — hides already-rendered rows client-side instead of
 // re-filtering and re-rendering on every keystroke.
@@ -183,27 +186,38 @@ function sortedGames(games, myId) {
   });
 }
 
-function sortButton(key, label) {
-  const active = sortKey === key;
-  const mark = active ? ` ${icon(sortDir === 'asc' ? 'arrowUp' : 'arrowDown')}` : '';
-  return `<button type="button" class="btn btn-sm${active ? ' btn-primary' : ''}" data-sort="${key}" aria-pressed="${active}">${label}${mark}</button>`;
-}
-
-function statusBadgeHtml(game) {
-  if (game.isSuggestion) return `<span class="badge badge-paused">${icon('lightbulb')} Vorschlag</span>`;
-  if (game.processNames.length > 0) return `<span class="badge badge-playing">getrackt</span>`;
-  return `<span class="badge badge-offline">${icon('library')} Katalog</span>`;
-}
-
-// Sort keys grouped for the "Sortieren" panel below — kept as one array so
-// the panel and its wiring stay in sync automatically if a sort option is
-// ever added or removed.
+// Each option includes its direction. The toolbar therefore needs only one
+// stable control instead of a row of buttons whose second click reverses
+// the current direction.
 const SORT_OPTIONS = [
-  { key: 'name', label: 'Name' },
-  { key: 'myBock', label: 'Mein Bock' },
-  { key: 'avgBock', label: 'Ø Bock' },
-  { key: 'avgSkill', label: 'Ø Skill' },
+  { key: 'name', asc: 'Name · A–Z', desc: 'Name · Z–A' },
+  { key: 'myBock', asc: 'Mein Bock · ↑', desc: 'Mein Bock · ↓' },
+  { key: 'avgBock', asc: 'Ø Bock · ↑', desc: 'Ø Bock · ↓' },
+  { key: 'avgSkill', asc: 'Ø Skill · ↑', desc: 'Ø Skill · ↓' },
 ];
+
+function sortChoices() {
+  return SORT_OPTIONS.flatMap(({ key, asc, desc }) => [
+    { value: `${key}:asc`, label: asc },
+    { value: `${key}:desc`, label: desc },
+  ]);
+}
+
+function selectedSortLabel() {
+  return sortChoices().find(({ value }) => value === `${sortKey}:${sortDir}`)?.label ?? 'Name · A–Z';
+}
+
+function sortOptionsHtml() {
+  return sortChoices()
+    .map(({ value, label }) => {
+      const active = value === `${sortKey}:${sortDir}`;
+      if (active) {
+        return `<button type="button" class="btn btn-sm game-catalog-sort-option is-active" data-sort-value="${value}" aria-pressed="true">${label}</button>`;
+      }
+      return `<button type="button" class="btn btn-sm game-catalog-sort-option" data-sort-value="${value}" aria-pressed="false">${label}</button>`;
+    })
+    .join('');
+}
 
 // The process suggestion chip: only rendered once there's actually a suggestion
 // for this player+game (see suggestionFor/loadSuggestions above). Deliberately
@@ -343,8 +357,8 @@ function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false
         <button type="button" class="btn btn-sm game-row-detail-trigger" data-detail="${game.id}">${escapeHtml(game.name)}</button>
         ${onboardingRequired ? '<span class="badge badge-playing onboarding-required-badge">Pflicht</span>' : ''}
         ${suggestionBadge}
-        ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
         ${gameRowIconsHtml(game)}
+        ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
       </div>
       <div class="game-row-sliders">
         <div class="game-row-bock">${bockRow}</div>
@@ -364,22 +378,15 @@ function openSuggestForm(ctx) {
       <form id="suggest-form" class="stack">
         <div>
           <label class="field-label is-required" for="suggest-title">Titel</label>
-          <input type="text" id="suggest-title" maxlength="60" required autofocus />
+          <input type="text" id="suggest-title" maxlength="60" placeholder="Name des Spiels." required autofocus />
         </div>
         <div>
           <label class="field-label" for="suggest-platform">Plattform</label>
-          <input type="text" id="suggest-platform" maxlength="80" placeholder="Steam, Epic, Battle.net…" />
+          <input type="text" id="suggest-platform" maxlength="80" placeholder="Zum Beispiel Steam, Epic oder Battle.net." />
         </div>
         <div>
-          <span class="title-with-info">
-            <label class="field-label" for="suggest-trailer">YouTube-Gameplay-Link</label>
-            ${infoTooltipHtml(
-              'suggest-trailer-help',
-              'YouTube-Gameplay-Link',
-              'Leer lassen: Es wird automatisch ein YouTube-Suchlink für den Spielnamen mit „gameplay“ hinterlegt.',
-            )}
-          </span>
-          <input type="url" id="suggest-trailer" maxlength="500" placeholder="Leer lassen für automatische Suche" />
+          <label class="field-label" for="suggest-trailer">YouTube-Gameplay-Link</label>
+          <input type="url" id="suggest-trailer" maxlength="500" placeholder="Leer lassen für eine automatische Suche." />
         </div>
         <button type="submit" class="btn btn-primary btn-block">Vorschlagen</button>
       </form>
@@ -394,7 +401,6 @@ function openSuggestForm(ctx) {
       },
       onMount: (el) => {
         modalEl = el;
-        wireInfoTooltips(el);
         el.querySelector('#suggest-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = el.querySelector('#suggest-title').value.trim();
@@ -449,9 +455,6 @@ function openGameDetail(gameId, ctx) {
         <div class="row" style="align-items:center;">
                     <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
         </div>
-        <div class="row" style="gap:var(--space-2);flex-wrap:wrap;align-items:center;">
-          ${statusBadgeHtml(game)}
-        </div>
         ${gameLinksHtml(game)}
         <div>
           <label class="field-label" for="edit-platform">Plattform</label>
@@ -469,21 +472,11 @@ function openGameDetail(gameId, ctx) {
           <span class="field-label" id="edit-genre-label">Genre</span>
           <div class="chip-list" role="group" aria-labelledby="edit-genre-label" id="edit-genre-chips">${genreChipsHtml(selectedGenres)}</div>
         </div>
-        <div>
+        <div class="game-detail-info-field">
           <label class="field-label" for="edit-info">Info</label>
-          <textarea id="edit-info" maxlength="300" placeholder="Zusätzliche Hinweise…">${escapeHtml(game.info ?? '')}</textarea>
+          <textarea id="edit-info" rows="1" maxlength="300" placeholder="Zusätzliche Hinweise.">${escapeHtml(game.info ?? '')}</textarea>
         </div>
-        <div class="row" style="align-items:flex-start;">
-          <div style="flex:1;">
-            <label for="edit-min" class="field-label">Min. Teamgröße</label>
-            <input type="number" id="edit-min" min="1" max="20" value="${game.min_team_size}" />
-          </div>
-          <div style="flex:1;">
-            <label for="edit-max" class="field-label">Max. Teamgröße</label>
-            <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" />
-          </div>
-        </div>
-        <div class="check-row">
+        <div class="check-row game-detail-seat-option">
           <input type="checkbox" id="edit-consider-seat-neighbors" ${game.considerSeatNeighborsDefault ? 'checked' : ''} />
           <span class="title-with-info tournament-option-label">
             <label for="edit-consider-seat-neighbors">Sitznachbarn bei Auslosung</label>
@@ -495,7 +488,7 @@ function openGameDetail(gameId, ctx) {
           </span>
         </div>
 
-        <div class="section-title">Prozessname</div>
+        <div class="section-title game-detail-process-title">Prozessname</div>
         <div class="chip-list">${processChips || '<span class="muted">Noch keine Prozessnamen.</span>'}</div>
         ${
           suggestedProcessNames.length
@@ -524,8 +517,6 @@ function openGameDetail(gameId, ctx) {
         const platformUrl = modalEl.querySelector('#edit-platform-url').value.trim();
         const trailerUrl = modalEl.querySelector('#edit-trailer').value.trim();
         const info = modalEl.querySelector('#edit-info').value.trim();
-        const minTeamSize = modalEl.querySelector('#edit-min').value;
-        const maxTeamSize = modalEl.querySelector('#edit-max').value;
         const considerSeatNeighborsDefault = modalEl.querySelector('#edit-consider-seat-neighbors').checked;
         const newProcess = modalEl.querySelector('#new-process').value.trim();
         const dirty =
@@ -535,12 +526,10 @@ function openGameDetail(gameId, ctx) {
           trailerUrl !== (game.trailer_url ?? '') ||
           !sameGenres([...selectedGenres], game.genres ?? []) ||
           info !== (game.info ?? '') ||
-          Number(minTeamSize) !== game.min_team_size ||
-          Number(maxTeamSize) !== game.max_team_size ||
           considerSeatNeighborsDefault !== Boolean(game.considerSeatNeighborsDefault) ||
           Boolean(newProcess);
         return dirty
-          ? `Deine Änderungen am Spiel (Name, Plattform, Team-Größen, Prozessname und ${game.isSuggestion ? 'YouTube-Link' : 'Trailer-Link'}) werden nicht gespeichert.`
+          ? `Deine Änderungen am Spiel (Name, Plattform, Prozessname und ${game.isSuggestion ? 'YouTube-Link' : 'Trailer-Link'}) werden nicht gespeichert.`
           : null;
       },
       onMount: (el) => {
@@ -565,8 +554,6 @@ function openGameDetail(gameId, ctx) {
         });
         el.querySelector('#edit-save').addEventListener('click', async () => {
           const name = el.querySelector('#edit-name').value.trim();
-          const minTeamSize = parseInt(el.querySelector('#edit-min').value, 10);
-          const maxTeamSize = parseInt(el.querySelector('#edit-max').value, 10);
           const platform = el.querySelector('#edit-platform').value.trim();
           const platformUrl = el.querySelector('#edit-platform-url').value.trim();
           const trailerUrl = el.querySelector('#edit-trailer').value.trim();
@@ -575,8 +562,6 @@ function openGameDetail(gameId, ctx) {
           try {
             await api.games.update(gameId, {
               name,
-              minTeamSize,
-              maxTeamSize,
               platform: platform || null,
               platformUrl: platformUrl || null,
               trailerUrl: trailerUrl || null,
@@ -718,6 +703,7 @@ export function renderGameCatalog(container, ctx) {
   const sectionTitle =
     ratingMode ? 'Bewertungen' : activeTab === 'catalog' ? 'Spielekatalog' : activeTab === 'suggestions' ? 'Vorschläge' : 'Alle Spiele';
   const usedGenres = GAME_GENRES.filter((g) => state.games.some((game) => (game.genres ?? []).includes(g)));
+  const activeFilterCount = genreFilter.size + ratingFilter.size;
   // Distinguishes a genuinely empty catalog/suggestion pool from "filtered
   // down to nothing" - the rating filter case gets a positive framing since
   // reaching it is the point of using that filter, not an error state.
@@ -753,34 +739,54 @@ export function renderGameCatalog(container, ctx) {
           <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
           <button type="button" class="btn btn-sm ${activeTab === 'all' ? 'btn-primary' : ''}" data-tab="all">Alle</button>
         </div>`}
-        ${ratingMode ? '' : `<section class="tournament-section-panel stack" aria-label="Sortieren und Filtern">
-          <div class="row" role="group" aria-label="Sortieren" style="gap:var(--space-2);flex-wrap:wrap;">
-            ${SORT_OPTIONS.map((o) => sortButton(o.key, o.label)).join('')}
-          </div>
-          <div class="stack game-catalog-filter-group" role="group" aria-label="Filtern" style="gap:var(--space-2);">
-            ${[
-              usedGenres.length
-                ? `<div class="chip-list" role="group" aria-label="Nach Genre filtern">
-                     ${usedGenres
-                       .map(
-                         (g) =>
-                           `<button type="button" class="chip${genreFilter.has(g) ? ' is-active' : ''}" data-genre-filter="${escapeHtml(g)}" aria-pressed="${genreFilter.has(g)}">${escapeHtml(g)}</button>`,
-                       )
-                       .join('')}
-                   </div>`
-                : null,
-              myId
-                ? `<div class="chip-list" role="group" aria-label="Nach fehlender eigener Bewertung filtern">
-                     <button type="button" class="chip${ratingFilter.has('bock') ? ' is-active' : ''}" data-rating-filter="bock" aria-pressed="${ratingFilter.has('bock')}">Bock offen</button>
-                     <button type="button" class="chip${ratingFilter.has('skill') ? ' is-active' : ''}" data-rating-filter="skill" aria-pressed="${ratingFilter.has('skill')}">Skill offen</button>
-                   </div>`
-                : null,
-              `<input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />`,
-            ]
-              .filter(Boolean)
-              .map((html, i) => (i === 0 ? html : `<div class="game-catalog-filter-divider">${html}</div>`))
-              .join('')}
-          </div>
+        ${ratingMode ? '' : `<section class="tournament-section-panel game-catalog-toolbar" aria-label="Spiele durchsuchen, sortieren und filtern">
+          <input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />
+          <details class="action-menu game-catalog-sort-menu" ${sortMenuOpen ? 'open' : ''}>
+            <summary class="btn btn-sm game-catalog-sort-trigger" aria-label="Spiele sortieren">
+              ${selectedSortLabel()} ${icon('chevronDown')}
+            </summary>
+            <div class="action-menu-panel game-catalog-sort-panel" role="group" aria-label="Spiele sortieren">
+              ${sortOptionsHtml()}
+            </div>
+          </details>
+          <details class="action-menu game-catalog-filter-menu" ${filterMenuOpen ? 'open' : ''}>
+            <summary class="btn btn-sm game-catalog-filter-trigger" aria-label="Filter öffnen${activeFilterCount > 0 ? `, ${activeFilterCount} aktiv` : ''}">
+              Filter${activeFilterCount > 0 ? ` (${activeFilterCount})` : ''} ${icon('chevronDown')}
+            </summary>
+            <div class="action-menu-panel game-catalog-filter-panel">
+              ${
+                myId
+                  ? `<div class="stack game-catalog-filter-section" role="group" aria-label="Nach fehlender eigener Bewertung filtern">
+                       <span class="game-catalog-filter-heading">Offene Bewertungen</span>
+                       <div class="chip-list">
+                         <button type="button" class="chip${ratingFilter.has('bock') ? ' is-active' : ''}" data-rating-filter="bock" aria-pressed="${ratingFilter.has('bock')}">Bock offen</button>
+                         <button type="button" class="chip${ratingFilter.has('skill') ? ' is-active' : ''}" data-rating-filter="skill" aria-pressed="${ratingFilter.has('skill')}">Skill offen</button>
+                       </div>
+                     </div>`
+                  : ''
+              }
+              ${
+                usedGenres.length
+                  ? `<div class="stack game-catalog-filter-section" role="group" aria-label="Nach Genre filtern">
+                       <span class="game-catalog-filter-heading">Genres</span>
+                       <div class="chip-list">
+                         ${usedGenres
+                           .map(
+                             (g) =>
+                               `<button type="button" class="chip${genreFilter.has(g) ? ' is-active' : ''}" data-genre-filter="${escapeHtml(g)}" aria-pressed="${genreFilter.has(g)}">${escapeHtml(g)}</button>`,
+                           )
+                           .join('')}
+                       </div>
+                     </div>`
+                  : ''
+              }
+              ${
+                activeFilterCount > 0
+                  ? '<button type="button" class="btn btn-sm game-catalog-filter-reset" data-clear-game-filters>Filter zurücksetzen</button>'
+                  : ''
+              }
+            </div>
+          </details>
         </section>`}
         <div class="game-table${ratingMode ? ' onboarding-rating-list' : ''}">
           ${
@@ -800,6 +806,16 @@ export function renderGameCatalog(container, ctx) {
       activeTab = btn.dataset.tab;
       ctx.rerender();
     });
+  });
+
+  wireActionMenus(container);
+  const sortMenu = container.querySelector('.game-catalog-sort-menu');
+  sortMenu?.addEventListener('toggle', () => {
+    sortMenuOpen = sortMenu.open;
+  });
+  const filterMenu = container.querySelector('.game-catalog-filter-menu');
+  filterMenu?.addEventListener('toggle', () => {
+    filterMenuOpen = filterMenu.open;
   });
 
   wireSelectionSearch(container, {
@@ -829,16 +845,19 @@ export function renderGameCatalog(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-sort]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (sortKey === btn.dataset.sort) {
-        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-      } else {
-        sortKey = btn.dataset.sort;
-        sortDir = sortKey === 'name' ? 'asc' : 'desc';
-      }
+  container.querySelectorAll('[data-sort-value]').forEach((button) => {
+    button.addEventListener('click', () => {
+      [sortKey, sortDir] = button.dataset.sortValue.split(':');
+      sortMenuOpen = false;
       ctx.rerender();
     });
+  });
+
+  container.querySelector('[data-clear-game-filters]')?.addEventListener('click', () => {
+    genreFilter.clear();
+    ratingFilter.clear();
+    filterMenuOpen = false;
+    ctx.rerender();
   });
 
   container.querySelector('#suggest-new')?.addEventListener('click', () => openSuggestForm(ctx));

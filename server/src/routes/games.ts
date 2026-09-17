@@ -26,39 +26,23 @@ const MAX_INFO_LENGTH = 300;
 
 // Fixed multiselect options for a game's genre tags. Mirrored in the frontend
 // as GAME_GENRES in server/public/js/gameGenres.js — keep both in sync
-// (server/public/js/gameGenres.test.js fails if they drift apart). Ordered by
-// theme rather than alphabetically so related genres sit next to each other in
-// the chip list; 'Sonstiges' stays last as the catch-all.
+// (server/public/js/gameGenres.test.js fails if they drift apart). The order
+// is used in the game editor and genre filters.
 // The migration-time copy in db.ts is deliberately *not* kept in sync: see the
 // comment on GAME_GENRES_AT_MIGRATION_55 there.
 const GAME_GENRES = [
-  'Shooter',
   'Battle Royale',
   'Fighting',
-  'Racing',
-  'Sport',
-  'Party',
-  'Quiz',
-  'Strategie',
-  'MOBA',
-  '4X',
-  'Tower Defense',
-  'Aufbau',
-  'Rollenspiel',
   'MMO',
-  'Abenteuer',
-  'Plattformer',
-  'Roguelike',
-  'Puzzle',
-  'Simulation',
-  'Sandbox',
-  'Survival',
-  'Kartenspiel',
-  'Geschicklichkeit',
-  'Rhythmus',
-  'Koop',
-  'Horror',
+  'MOBA',
+  'Party',
+  'Racing',
+  'RPG',
+  'Shooter',
   'Sonstiges',
+  'Sport',
+  'Strategie',
+  'Survival',
 ] as const;
 const MAX_GENRES_PER_GAME = 5;
 
