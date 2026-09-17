@@ -501,6 +501,11 @@ function openGameDetail(gameId, ctx) {
         </div>
 
         <button type="button" class="btn btn-primary btn-block" id="edit-save">Speichern</button>
+        ${
+          game.isSuggestion
+            ? `<button type="button" class="btn btn-primary btn-block" id="edit-promote">In Katalog übernehmen</button>`
+            : `<button type="button" class="btn btn-block" id="edit-demote">Zurück zu Vorschlägen</button>`
+        }
         <button type="button" class="btn btn-danger btn-block" id="edit-delete">Spiel löschen</button>
       </div>
     `,
@@ -567,6 +572,29 @@ function openGameDetail(gameId, ctx) {
             close();
             await ctx.refresh();
             showToast('Gespeichert.');
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+
+        el.querySelector('#edit-promote')?.addEventListener('click', async () => {
+          try {
+            await api.games.promote(gameId);
+            close();
+            activeTab = 'catalog';
+            await ctx.refresh();
+            showToast('Spiel in den Katalog übernommen.');
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+
+        el.querySelector('#edit-demote')?.addEventListener('click', async () => {
+          try {
+            await api.games.demote(gameId);
+            close();
+            await ctx.refresh();
+            showToast('Spiel zurück in die Vorschlagsliste verschoben.');
           } catch (err) {
             showToast(err.message, { error: true });
           }

@@ -69,8 +69,9 @@ for (const width of [390, 1024]) {
 
       await page.click('.nav-btn[data-view="gameCatalog"]');
       await page.waitForSelector('#game-catalog-search');
+      await page.click('.game-catalog-filter-trigger');
       await page.click('[data-rating-filter="bock"]');
-      const filters = page.locator('[aria-label="Sortieren und Filtern"]');
+      const filters = page.locator('[aria-label="Spiele durchsuchen, sortieren und filtern"]');
       await scenes.capture(`core-filters-${width}`, filters, async () => {
         assert.equal(await page.locator('[data-rating-filter="bock"]').getAttribute('aria-pressed'), 'true');
         assert.equal(await page.locator('[data-rating-filter="skill"]').getAttribute('aria-pressed'), 'false');
