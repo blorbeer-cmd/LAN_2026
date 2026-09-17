@@ -75,7 +75,10 @@ for (const width of [390, 1024]) {
       await scenes.capture(`core-filters-${width}`, filters, async () => {
         assert.equal(await page.locator('[data-rating-filter="bock"]').getAttribute('aria-pressed'), 'true');
         assert.equal(await page.locator('[data-rating-filter="skill"]').getAttribute('aria-pressed'), 'false');
-        await assertControlHeights(filters.locator('button, input'));
+        // Action-menu entries (the closed sort panel's options, the filter
+        // panel's reset button) follow the separate 44px tap-target contract,
+        // not the 32px standard-control one checked here.
+        await assertControlHeights(filters.locator('#game-catalog-search, .game-catalog-sort-trigger, .game-catalog-filter-trigger, [data-rating-filter]'));
         await assertNoOverflow(filters);
       });
       await page.click('#suggest-new');
