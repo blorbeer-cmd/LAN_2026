@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 98);
+  assert.equal(migrations.length, 99);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 98 }, (_, index) => index + 1),
+    Array.from({ length: 99 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,8 +1342,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 98 }, (_, index) => index + 1),
-    'every version 1..98 runs exactly once',
+    Array.from({ length: 99 }, (_, index) => index + 1),
+    'every version 1..99 runs exactly once',
   );
 });
 
@@ -3424,6 +3424,39 @@ test('migration 97 makes the event poll deadline optional without losing existin
                'custom', 'migration-97-open-ended', 'Open-ended poll', 'feasibility', 0)`,
     ).run(now, now),
     'a new poll can now omit a deadline entirely',
+  );
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 99 keeps existing poll options votable and adds edit metadata', () => {
+  const dbFile = makeTempDbPath('event-poll-option-lifecycle');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture.exec(`
+    INSERT INTO event_date_polls
+      (id, event_id, round_number, status, created_at, updated_at,
+       topic, decision_key, title, response_mode, is_anonymous)
+      VALUES ('migration-99-poll', 'instance-base-event', 1, 'open', ${now}, ${now},
+              'custom', 'migration-99', 'Migration 99 Poll', 'feasibility', 0);
+    INSERT INTO event_date_poll_options
+      (id, poll_id, starts_on, ends_on, position, label, description, payload_json)
+      VALUES ('migration-99-option', 'migration-99-poll', '0001-01-01', '0001-01-01', 0, 'Option', 'Note', '{}');
+    ALTER TABLE event_date_poll_options DROP COLUMN description_edited_at;
+    ALTER TABLE event_date_poll_options DROP COLUMN is_active;
+    DELETE FROM schema_migrations WHERE version = 99;
+  `);
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  assert.deepEqual(
+    migrated.prepare('SELECT is_active AS active, description_edited_at AS editedAt, description FROM event_date_poll_options WHERE id = ?')
+      .get('migration-99-option'),
+    { active: 1, editedAt: null, description: 'Note' },
   );
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();

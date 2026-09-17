@@ -120,7 +120,7 @@ function groupPolls(polls) {
 }
 
 function responseDraftSource(poll) {
-  return JSON.stringify(poll.options.map((option) => [option.id, poll.myResponses?.[option.id] ?? null]));
+  return JSON.stringify(poll.options.filter((option) => option.active).map((option) => [option.id, poll.myResponses?.[option.id] ?? null]));
 }
 
 function defaultResponseValue(poll) {
@@ -130,8 +130,8 @@ function defaultResponseValue(poll) {
 }
 
 function freshResponseDraft(poll) {
-  const initial = { ...(poll.myResponses ?? {}) };
-  for (const option of poll.options) initial[option.id] ??= defaultResponseValue(poll);
+  const initial = {};
+  for (const option of poll.options.filter((entry) => entry.active)) initial[option.id] = poll.myResponses?.[option.id] ?? defaultResponseValue(poll);
   return initial;
 }
 
@@ -152,8 +152,8 @@ function responseDraftFor(poll) {
     return resetResponseDraft(poll);
   }
   const draft = responseDrafts.get(poll.id);
-  const optionIds = new Set(poll.options.map((option) => option.id));
-  for (const option of poll.options) draft[option.id] ??= defaultResponseValue(poll);
+  const optionIds = new Set(poll.options.filter((option) => option.active).map((option) => option.id));
+  for (const option of poll.options.filter((entry) => entry.active)) draft[option.id] ??= defaultResponseValue(poll);
   for (const optionId of Object.keys(draft)) {
     if (!optionIds.has(optionId)) delete draft[optionId];
   }
@@ -171,7 +171,7 @@ function responseDraftIsValid(poll) {
     : poll.responseMode === 'rating_1_5'
       ? RATING_VALUES
       : RESPONSE_VALUES;
-  if (poll.options.some((option) => !allowedValues.includes(draft[option.id]))) return false;
+  if (poll.options.some((option) => option.active && !allowedValues.includes(draft[option.id]))) return false;
   const selected = selectedResponseCount(poll);
   if (poll.responseMode === 'single_choice') return selected === 1;
   if (poll.responseMode === 'multiple_choice') {
@@ -251,7 +251,7 @@ function openVoteDetails(poll) {
 }
 
 function renderResponseControl(poll, option) {
-  if (!poll.isInvitee || poll.status !== 'open') return '';
+  if (!poll.isInvitee || poll.status !== 'open' || !option.active) return '';
   const draft = responseDraftFor(poll);
   if (poll.responseMode === 'rating_1_5') {
     return `
@@ -311,6 +311,8 @@ function renderOption(poll, option) {
         </span>
         <span class="row event-poll-option-badges">
           ${recommendation}
+          ${option.descriptionEditedAt ? '<span class="badge badge-offline">Bearbeitet</span>' : ''}
+          ${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}
         </span>
       </div>
       <div class="event-poll-option-response-row">
@@ -433,9 +435,10 @@ function optionRowHtml(index, value = {}) {
     <div class="event-poll-form-option" data-poll-option-row="${index}"${value.id ? ` data-poll-option-id="${escapeHtml(value.id)}"` : ''}>
       <div class="row-between">
         <label for="poll-option-${index}" class="field-label is-required">Option ${index + 1}</label>
-        ${value.id ? '' : `<button type="button" class="icon-btn" data-remove-poll-option aria-label="Option entfernen" title="Option entfernen">${icon('trash')}</button>`}
+        <button type="button" class="icon-btn" data-remove-poll-option aria-label="Option entfernen" title="Option entfernen">${icon('trash')}</button>
       </div>
       <input type="text" id="poll-option-${index}" data-poll-option-input maxlength="120" required value="${escapeHtml(value.label ?? '')}" placeholder="z. B. Ferienhaus am See" />
+      ${value.id ? `<label class="event-poll-option-active"><input type="checkbox" data-poll-option-active ${value.active !== false ? 'checked' : ''} /> Zur Abstimmung freigeben</label>` : ''}
       <details class="event-poll-form-option-details" ${showDetails ? 'open' : ''}>
         <summary>Notiz oder Link hinzufügen</summary>
         <div class="field-row event-poll-option-extra-fields">
@@ -452,12 +455,14 @@ function optionValuesFromForm(modal) {
     label: row.querySelector('[data-poll-option-input]').value.trim(),
     description: row.querySelector('[data-poll-option-note]').value.trim() || null,
     url: row.querySelector('[data-poll-option-url]').value.trim(),
+    active: row.querySelector('[data-poll-option-active]')?.checked ?? true,
   }));
 }
 
 function validateOptionValues(options) {
   const labels = options.map((option) => option.label);
   if (labels.some((label) => !label)) return 'Bitte alle Optionen benennen.';
+  if (!options.some((option) => option.active)) return 'Mindestens eine Option muss zur Abstimmung freigegeben sein.';
   if (new Set(labels.map((label) => label.toLocaleLowerCase('de'))).size !== labels.length) return 'Optionen dürfen nicht doppelt vorkommen.';
   if (options.some((option) => option.url && !/^https?:\/\/[^\s]+$/i.test(option.url))) return 'Links müssen mit http:// oder https:// beginnen.';
   return null;
@@ -586,6 +591,7 @@ function openEditPollForm(event, poll, ctx) {
     label: optionLabel(option),
     description: option.description ?? '',
     url: optionUrl(option) ?? '',
+    active: option.active,
   }));
   let nextOptionIndex = initialOptions.length;
   let dirty = false;
@@ -640,6 +646,11 @@ function openEditPollForm(event, poll, ctx) {
         if (!title) return showToast('Bitte einen Titel eingeben.', { error: true });
         const optionError = validateOptionValues(options);
         if (optionError) return showToast(optionError, { error: true });
+        const removedOptions = poll.options.filter((option) => !options.some((entry) => entry.id === option.id));
+        if (removedOptions.length) {
+          const confirmed = await confirmDialog('Die entfernten Optionen und ihre bisherigen Stimmen werden dauerhaft gelöscht.', { title: 'Optionen löschen?', confirmText: 'Löschen' });
+          if (!confirmed) return;
+        }
         const responseDueOn = readIsoDate(modal, 'poll-edit-due');
         submitEvent.submitter.disabled = true;
         try {
@@ -652,9 +663,10 @@ function openEditPollForm(event, poll, ctx) {
               label: option.label,
               description: option.description,
               payload: option.url ? { url: option.url } : {},
+              active: option.active,
             })),
           });
-          const addedOptionCount = updatedPoll.options.length - poll.options.length;
+          const addedOptionCount = updatedPoll.options.filter((option) => !poll.options.some((previous) => previous.id === option.id)).length;
           await replaceCachedPoll(event.id, updatedPoll, ctx);
           dirty = false;
           close();
@@ -757,7 +769,7 @@ function wirePollActions(container, event, polls, ctx) {
     const draft = responseDraftFor(poll);
     const optionId = button.dataset.optionId;
     if (poll.responseMode === 'single_choice') {
-      poll.options.forEach((option) => { draft[option.id] = option.id === optionId ? 'can' : 'cannot'; });
+      poll.options.filter((option) => option.active).forEach((option) => { draft[option.id] = option.id === optionId ? 'can' : 'cannot'; });
     } else {
       const nextSelected = draft[optionId] !== 'can';
       if (nextSelected && poll.maxSelections !== null && selectedResponseCount(poll) >= poll.maxSelections) return showToast(`Du kannst höchstens ${poll.maxSelections} Optionen auswählen.`, { error: true });
@@ -773,7 +785,7 @@ function wirePollActions(container, event, polls, ctx) {
     button.disabled = true;
     const draft = responseDraftFor(poll);
     try {
-      const responses = poll.options.flatMap((option) =>
+      const responses = poll.options.filter((option) => option.active).flatMap((option) =>
         poll.responseMode === 'feasibility' && draft[option.id] === 'open'
           ? []
           : [{ optionId: option.id, response: draft[option.id] }]

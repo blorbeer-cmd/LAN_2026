@@ -551,6 +551,8 @@ test('an open poll can update option notes and links, add options and notify onl
   assert.equal(edited.body.note, 'Mehr Kontext');
   assert.equal(edited.body.options.length, 3);
   assert.equal(edited.body.options[0].description, 'Zentral gelegen');
+  assert.equal(typeof edited.body.options[0].descriptionEditedAt, 'number');
+  assert.equal(edited.body.options[1].descriptionEditedAt, null);
   assert.equal(edited.body.options[0].payload.url, 'https://example.com/koeln');
   assert.equal(edited.body.invitees.find((entry: { playerId: string }) => entry.playerId === bob).hasAnswered, false);
   assert.equal(
@@ -563,21 +565,83 @@ test('an open poll can update option notes and links, add options and notify onl
     'the creator and participants who had not voted receive no edit notification',
   );
 
-  const missingExistingOption = await request(app)
+  const removedOption = await request(app)
     .patch(`/api/events/${eventId}/polls/${created.body.id}`)
     .set('x-test-player-id', alice)
     .send({ options: editPayload.options.slice(0, 2) });
-  assert.equal(missingExistingOption.status, 400, 'editing cannot silently delete an option with response history');
+  assert.equal(removedOption.status, 200);
+  assert.equal(removedOption.body.options.length, 2);
+  assert.equal(removedOption.body.options[0].descriptionEditedAt, edited.body.options[0].descriptionEditedAt);
   const removedOptionAttempt = await request(app)
     .delete(`/api/events/${eventId}/polls/${created.body.id}/options/${created.body.options[0].id}`)
     .set('x-test-player-id', alice);
-  assert.equal(removedOptionAttempt.status, 404, 'the legacy option-removal endpoint cannot bypass edit integrity');
+  assert.equal(removedOptionAttempt.status, 404);
   await request(app).post(`/api/events/${eventId}/polls/${created.body.id}/close`).set('x-test-player-id', alice);
   const editClosed = await request(app)
     .patch(`/api/events/${eventId}/polls/${created.body.id}`)
     .set('x-test-player-id', alice)
     .send({ note: 'Zu spät' });
   assert.equal(editClosed.status, 409);
+});
+
+test('deleted options lose their votes while disabled options keep results and reject new votes', async () => {
+  const alice = 'poll-lifecycle-alice';
+  const bob = 'poll-lifecycle-bob';
+  createMember(alice, 'Poll Lifecycle Alice');
+  createMember(bob, 'Poll Lifecycle Bob');
+  const eventId = await createEvent('Poll Lifecycle Event', [alice, bob]);
+  const created = await createPoll(eventId, alice, {
+    responseMode: 'single_choice',
+    options: [{ label: 'A' }, { label: 'B' }, { label: 'C' }],
+  });
+  assert.equal(created.status, 201);
+  const [a, b, c] = created.body.options;
+  const vote = await request(app).put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: [{ optionId: a.id, response: 'cannot' }, { optionId: b.id, response: 'can' }, { optionId: c.id, response: 'cannot' }] });
+  assert.equal(vote.status, 200);
+
+  const changed = await request(app).patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ options: [{ id: b.id, label: 'B', active: false }, { id: c.id, label: 'C' }] });
+  assert.equal(changed.status, 200, JSON.stringify(changed.body));
+  assert.deepEqual(changed.body.options.map((option: { id: string }) => option.id), [b.id, c.id]);
+  assert.equal(changed.body.options[0].active, false);
+  assert.equal(changed.body.options[0].counts.can, 1);
+  assert.equal(changed.body.options[0].isRecommended, false);
+  assert.equal(changed.body.invitees.find((entry: { playerId: string }) => entry.playerId === bob).hasAnswered, false);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM event_date_poll_responses WHERE option_id = ?').get(a.id) as { n: number }).n, 0);
+
+  const forbiddenVote = await request(app).put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: [{ optionId: b.id, response: 'can' }, { optionId: c.id, response: 'cannot' }] });
+  assert.equal(forbiddenVote.status, 400);
+  const newVote = await request(app).put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: [{ optionId: c.id, response: 'can' }] });
+  assert.equal(newVote.status, 200);
+  assert.equal(newVote.body.options[0].counts.can, 0, 'changing a single choice replaces its previous vote');
+  assert.equal(newVote.body.options[1].counts.can, 1);
+
+  const noActive = await request(app).patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ options: [{ id: b.id, label: 'B', active: false }, { id: c.id, label: 'C', active: false }] });
+  assert.equal(noActive.status, 400);
+});
+
+test('parallel edits cannot delete different poll options into an invalid state', async () => {
+  const alice = 'poll-delete-race-alice';
+  createMember(alice, 'Poll Delete Race Alice');
+  const eventId = await createEvent('Poll Delete Race Event', [alice]);
+  const created = await createPoll(eventId, alice);
+  assert.equal(created.status, 201);
+  const requests = created.body.options.map((remaining: { id: string; label: string }) => request(app)
+    .patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ options: [{ id: remaining.id, label: remaining.label }] }));
+  const results = await Promise.all(requests);
+  assert.deepEqual(results.map((result) => result.status).sort(), [200, 409]);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM event_date_poll_options WHERE poll_id = ?').get(created.body.id) as { n: number }).n, 1);
 });
 
 test('concurrent option additions can grow a poll beyond the former eight-option cap', async () => {

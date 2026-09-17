@@ -54,6 +54,8 @@ export interface DatePollOptionRow {
   description: string | null;
   payload_json: string;
   position: number;
+  is_active: number;
+  description_edited_at: number | null;
 }
 
 export interface DatePollInviteeRow {
@@ -111,17 +113,28 @@ export function isDatePollInvitee(pollId: string, playerId: string): boolean {
 }
 
 // A person "has answered" a round once they have a concrete response for
-// every option. In feasibility mode an explicitly selected "Offen" is stored
-// as no response, so the person remains incomplete and eligible for reminders.
+// every active option, including an active selection in choice modes. In
+// feasibility mode "Offen" is stored as no response and stays incomplete.
 export function hasAnsweredDatePoll(pollId: string, playerId: string): boolean {
   const row = db
     .prepare(
       `SELECT
-         (SELECT COUNT(*) FROM event_date_poll_options WHERE poll_id = ?) AS optionCount,
-         (SELECT COUNT(*) FROM event_date_poll_responses WHERE poll_id = ? AND player_id = ?) AS responseCount`,
+         (SELECT COUNT(*) FROM event_date_poll_options WHERE poll_id = ? AND is_active = 1) AS optionCount,
+         (SELECT COUNT(*) FROM event_date_poll_responses r
+          JOIN event_date_poll_options o ON o.id = r.option_id
+          WHERE r.poll_id = ? AND r.player_id = ? AND o.is_active = 1) AS responseCount,
+         (SELECT COUNT(*) FROM event_date_poll_responses r
+          JOIN event_date_poll_options o ON o.id = r.option_id
+          WHERE r.poll_id = ? AND r.player_id = ? AND o.is_active = 1 AND r.response = 'can') AS selectedCount,
+         (SELECT response_mode FROM event_date_polls WHERE id = ?) AS responseMode`,
     )
-    .get(pollId, pollId, playerId) as { optionCount: number; responseCount: number };
-  return row.optionCount > 0 && row.optionCount === row.responseCount;
+    .get(pollId, pollId, playerId, pollId, playerId, pollId) as {
+      optionCount: number; responseCount: number; selectedCount: number; responseMode: EventPollResponseMode;
+    };
+  if (row.optionCount === 0 || row.optionCount !== row.responseCount) return false;
+  if (row.responseMode === 'single_choice') return row.selectedCount === 1;
+  if (row.responseMode === 'multiple_choice') return row.selectedCount >= 1;
+  return true;
 }
 
 // ---------- permissions ----------
@@ -402,6 +415,7 @@ export interface UpdateDatePollFields {
     label: string;
     description?: string | null;
     payload?: Record<string, unknown>;
+    active?: boolean;
   }>;
 }
 
@@ -412,7 +426,7 @@ export type UpdateDatePollResult =
       addedOptionCount: number;
       previouslyAnsweredPlayerIds: string[];
     }
-  | { ok: false; code: 'not_open' | 'invalid'; error: string };
+  | { ok: false; code: 'not_open' | 'invalid' | 'conflict'; error: string };
 
 export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields): UpdateDatePollResult {
   if (poll.status !== 'open') {
@@ -430,19 +444,19 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
     const existingOptions = getDatePollOptions(poll.id);
     const nextOptions = fields.options;
     let addedOptionCount = 0;
+    let activeSetChanged = false;
     let previouslyAnsweredPlayerIds: string[] = [];
     if (nextOptions !== undefined) {
-      if (nextOptions.length === 0) {
-        return { ok: false, code: 'invalid', error: 'Mindestens eine Option ist erforderlich.' };
+      if (!nextOptions.some((option) => option.active !== false)) {
+        return { ok: false, code: 'invalid', error: 'Mindestens eine aktive Option ist erforderlich.' };
       }
       const existingIds = new Set(existingOptions.map((option) => option.id));
       const suppliedExistingIds = nextOptions.flatMap((option) => option.id ? [option.id] : []);
-      if (
-        new Set(suppliedExistingIds).size !== suppliedExistingIds.length ||
-        suppliedExistingIds.length !== existingIds.size ||
-        suppliedExistingIds.some((id) => !existingIds.has(id))
-      ) {
-        return { ok: false, code: 'invalid', error: 'Bestehende Optionen dürfen beim Bearbeiten nicht entfernt werden.' };
+      if (new Set(suppliedExistingIds).size !== suppliedExistingIds.length) {
+        return { ok: false, code: 'invalid', error: 'Eine Option ist mehrfach vorhanden.' };
+      }
+      if (suppliedExistingIds.some((id) => !existingIds.has(id))) {
+        return { ok: false, code: 'conflict', error: 'Die Umfrage wurde inzwischen geändert. Bitte neu laden.' };
       }
       const labels = nextOptions.map((option) => option.label.trim());
       if (labels.some((label) => !label)) {
@@ -451,7 +465,10 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
       if (new Set(labels.map((label) => label.toLocaleLowerCase('de'))).size !== labels.length) {
         return { ok: false, code: 'invalid', error: 'Optionen dürfen sich nicht duplizieren.' };
       }
-      addedOptionCount = nextOptions.length - existingOptions.length;
+      const activeIds = new Set(nextOptions.filter((option) => option.id && option.active !== false).map((option) => option.id));
+      activeSetChanged = nextOptions.some((option) => !option.id && option.active !== false) ||
+        existingOptions.some((option) => (option.is_active === 1) !== activeIds.has(option.id));
+      addedOptionCount = nextOptions.filter((option) => !option.id && option.active !== false).length;
       if (addedOptionCount > 0) {
         previouslyAnsweredPlayerIds = getDatePollInvitees(poll.id)
           .filter((invitee) => hasAnsweredDatePoll(poll.id, invitee.player_id))
@@ -475,30 +492,38 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
     if (nextOptions !== undefined) {
       const updateOption = db.prepare(
         `UPDATE event_date_poll_options
-         SET label = ?, description = ?, payload_json = ?, position = ?
+         SET label = ?, description = ?, payload_json = ?, position = ?, is_active = ?,
+             description_edited_at = CASE WHEN description IS NOT ? THEN ? ELSE description_edited_at END
          WHERE id = ? AND poll_id = ?`,
       );
       const insertOption = db.prepare(
         `INSERT INTO event_date_poll_options
-           (id, poll_id, starts_on, ends_on, position, label, description, payload_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, poll_id, starts_on, ends_on, position, label, description, payload_json, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
+      const keptIds = nextOptions.flatMap((option) => option.id ? [option.id] : []);
+      for (const existing of existingOptions) {
+        if (!keptIds.includes(existing.id)) {
+          db.prepare('DELETE FROM event_date_poll_options WHERE id = ? AND poll_id = ?').run(existing.id, poll.id);
+        }
+      }
       nextOptions.forEach((option, position) => {
         const label = option.label.trim();
         const description = option.description?.trim() || null;
         const payloadJson = JSON.stringify(option.payload ?? {});
+        const active = option.active === false ? 0 : 1;
         if (option.id) {
-          updateOption.run(label, description, payloadJson, position, option.id, poll.id);
+          updateOption.run(label, description, payloadJson, position, active, description, now, option.id, poll.id);
           return;
         }
         const placeholderDate = `0001-01-${String(position + 1).padStart(2, '0')}`;
-        insertOption.run(nanoid(), poll.id, placeholderDate, placeholderDate, position, label, description, payloadJson);
+        insertOption.run(nanoid(), poll.id, placeholderDate, placeholderDate, position, label, description, payloadJson, active);
       });
     }
 
     if (
       (fields.responseDueOn !== undefined && responseDueAt !== current.response_due_at) ||
-      addedOptionCount > 0
+      activeSetChanged
     ) {
       rescheduleRemindersForStillOpenInvitees(poll.id, responseDueAt, now);
     }
@@ -616,7 +641,7 @@ export function submitMyResponses(
   if (!isDatePollInvitee(poll.id, playerId)) {
     return { ok: false, code: 'not_invitee', error: 'Für diese Runde liegt keine Einladung vor.' };
   }
-  const options = getDatePollOptions(poll.id);
+  const options = getDatePollOptions(poll.id).filter((option) => option.is_active === 1);
   const optionIds = new Set(options.map((o) => o.id));
   const providedIds = new Set(responses.map((r) => r.optionId));
   const allowedResponses = poll.response_mode === 'rating_1_5'
@@ -657,7 +682,12 @@ export function submitMyResponses(
      ON CONFLICT(poll_id, option_id, player_id) DO UPDATE SET response = excluded.response, updated_at = excluded.updated_at`,
   );
   db.transaction(() => {
-    db.prepare('DELETE FROM event_date_poll_responses WHERE poll_id = ? AND player_id = ?').run(poll.id, playerId);
+    if (poll.response_mode === 'single_choice' || poll.response_mode === 'multiple_choice') {
+      db.prepare('DELETE FROM event_date_poll_responses WHERE poll_id = ? AND player_id = ?').run(poll.id, playerId);
+    } else {
+      db.prepare(`DELETE FROM event_date_poll_responses WHERE poll_id = ? AND player_id = ?
+        AND option_id IN (SELECT id FROM event_date_poll_options WHERE poll_id = ? AND is_active = 1)`).run(poll.id, playerId, poll.id);
+    }
     for (const r of responses) upsert.run(poll.id, r.optionId, playerId, r.response, now);
   })();
   return { ok: true };

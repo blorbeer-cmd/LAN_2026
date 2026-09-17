@@ -163,7 +163,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   the resulting incomplete-response count. Repeated reminders reuse one stable notification-center
   entry per poll and recipient, moving it to the top; automatic sends run 48 hours and 2 hours before
   the deadline. While a round is open, its creator can edit title, description, deadline, option
-  notes and links and append further options; existing options cannot be removed from that dialog.
+  notes and links, add options, remove options or disable them. Removing an option
+  deletes its votes after confirmation; at least one active option must remain.
+  Disabled options and their previous votes remain visible until someone changes
+  a single or multiple choice vote; they cannot receive new answers or win the
+  recommendation. Changed option notes carry a visible
+  „Bearbeitet“ marker. Disabled options can be enabled again in the edit dialog.
   Adding options informs everyone who had already completed the round and makes those responses
   incomplete until the added options have been answered. Option rows keep the title with a note
   info-tooltip and an icon-only link immediately beside it, counts and compact response controls

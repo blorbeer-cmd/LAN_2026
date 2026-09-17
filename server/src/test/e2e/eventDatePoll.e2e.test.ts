@@ -388,7 +388,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
 
   await choosePollAction(memberCreated, '[data-edit-poll]');
   await memberPage.waitForSelector('#event-poll-edit-form');
-  assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-id] [data-remove-poll-option]').count(), 0);
+  assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-id] [data-remove-poll-option]').count(), 3);
   const firstEditOption = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first();
   await firstEditOption.locator('.event-poll-form-option-details').evaluate((details) => { (details as HTMLDetailsElement).open = true; });
   await firstEditOption.locator('[data-poll-option-note]').fill('Auch vegetarisch verfügbar');
@@ -403,6 +403,20 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   });
   assert.equal(await memberCreated.locator('a[href="https://example.com/pizza"]').count(), 1);
   assert.equal(await memberCreated.locator('[aria-label="Mehr Informationen zu Notiz zu Pizza"]').count(), 1);
+  assert.equal(await memberCreated.locator('.event-poll-option').first().locator('.badge', { hasText: 'Bearbeitet' }).count(), 1);
+  await choosePollAction(memberCreated, '[data-edit-poll]');
+  await memberPage.waitForSelector('#event-poll-edit-form');
+  await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first().locator('[data-poll-option-active]').uncheck();
+  await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1).locator('[data-remove-poll-option]').click();
+  await memberPage.click('#event-poll-edit-form button[type="submit"]');
+  await memberPage.locator('.modal-backdrop [data-confirm]').click();
+  await memberPage.waitForFunction(() => {
+    const poll = Array.from(document.querySelectorAll('[data-poll-group]')).find((element) => element.textContent?.includes('Welche Verpflegung?'));
+    return poll?.querySelectorAll('.event-poll-option').length === 3;
+  });
+  assert.equal(await memberCreated.locator('.event-poll-option').first().locator('.badge', { hasText: 'Deaktiviert' }).count(), 1);
+  assert.equal(await memberCreated.locator('.event-poll-option').first().locator('[data-poll-choice]').count(), 0);
+  assert.equal(await memberCreated.locator('[data-poll-choice]').count(), 2);
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,

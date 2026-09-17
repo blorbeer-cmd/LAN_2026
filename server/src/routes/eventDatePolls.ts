@@ -128,6 +128,8 @@ function serializeOption(
     label: string | null;
     description: string | null;
     payload_json: string;
+    is_active: number;
+    description_edited_at: number | null;
   },
   responses: ReturnType<typeof getDatePollResponses>,
   inviteeCount: number,
@@ -146,6 +148,8 @@ function serializeOption(
     id: option.id,
     label: option.label,
     description: option.description,
+    active: option.is_active === 1,
+    descriptionEditedAt: option.description_edited_at,
     payload: JSON.parse(option.payload_json || '{}') as unknown,
     startsOn: option.starts_on,
     endsOn: option.ends_on,
@@ -196,7 +200,9 @@ function serializeDatePoll(
     ...invitees.map((i) => i.player_id),
     ...(poll.created_by ? [poll.created_by] : []),
   ]);
-  const recommendedId = recommendedOptionId(options, responses, invitees.length, poll.response_mode);
+  const activeOptions = options.filter((option) => option.is_active === 1);
+  const activeOptionIds = new Set(activeOptions.map((option) => option.id));
+  const recommendedId = recommendedOptionId(activeOptions, responses.filter((response) => activeOptionIds.has(response.option_id)), invitees.length, poll.response_mode);
   const anonymous = Boolean(poll.is_anonymous);
   const responseDetailsVisible = poll.status !== 'open' && !anonymous;
 
@@ -654,6 +660,9 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
       if (raw.payload !== undefined && (typeof raw.payload !== 'object' || raw.payload === null || Array.isArray(raw.payload))) {
         return res.status(400).json({ error: 'payload muss ein Objekt sein.' });
       }
+      if (raw.active !== undefined && typeof raw.active !== 'boolean') {
+        return res.status(400).json({ error: 'active muss wahr oder falsch sein.' });
+      }
       const optionUrl = raw.payload?.url;
       if (
         optionUrl !== undefined &&
@@ -666,6 +675,7 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
         label: raw.label.trim(),
         description: raw.description?.trim() || null,
         payload: raw.payload ?? {},
+        active: raw.active ?? true,
       });
     }
     if (new Set(parsedOptions.map((option) => option.label.toLocaleLowerCase('de'))).size !== parsedOptions.length) {
@@ -700,6 +710,13 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
   }
   if (result.addedOptionCount > 0) {
     notifyPreviouslyAnsweredPlayers(event, result.poll, result.previouslyAnsweredPlayerIds);
+  }
+  if (options !== undefined) {
+    for (const invitee of getDatePollInvitees(poll.id)) {
+      if (hasAnsweredDatePoll(poll.id, invitee.player_id)) {
+        resolvePollNotifications(event, poll.id, invitee.player_id);
+      }
+    }
   }
   res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
 });
