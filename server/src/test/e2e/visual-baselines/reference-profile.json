@@ -25,14 +25,14 @@
     "arcade-create-390.png": "sha256:8dd21c37600a9c69a7d3d3b8f1a926e89db492097b7a1e608847ead53997904c",
     "core-admin-row-1024.png": "sha256:a1fb2142764a1f9de156e2a408df46d15135ca0a185500de734981c2c03d5e7e",
     "core-admin-row-390.png": "sha256:bfac19f996a01611ec6fffe5000c0fe81b82044789ae62f93bdb0e2598509c85",
-    "core-filters-1024.png": "sha256:fd00220f450ecac3264eac93e6117c9df9f16110073a1364259a4f96a4ccbac3",
-    "core-filters-390.png": "sha256:8dae909f26da18f0a209ebd513cf567cf26afc3bf10435c0167ba8eef2dd080c",
+    "core-filters-1024.png": "sha256:8986342efaf7f2f244236c6fa2479b7ea12cbafd3eaef4c64840964cb386d0cf",
+    "core-filters-390.png": "sha256:a35de23c07f93072b11d6e205cfa414ab19bb5f2c8b54050bd3b6e2c5b8a3f15",
     "core-footer-1024.png": "sha256:2f9297edeece5c91e3fdf786abe46904b81cff1c1d129900de98cf76066fc026",
     "core-footer-390.png": "sha256:c71530b3dd16b03ddd1ac881401c71c7d2b73b2b7fe49b1ae26e03a18f678e78",
-    "core-form-1024.png": "sha256:ab85e08a3d885a41a7ee43407e073d0a57346ab15705bbb81c441a3aded96dcc",
-    "core-form-390.png": "sha256:0499ffd10b0a39ac71e2cbd42ca0645ecbc043d049d4b4a9c422212879e06518",
-    "core-modal-1024.png": "sha256:3ba10ee9924795886f1310724ab45ba63678ed34b62e728c0b184ba1b44b6bd0",
-    "core-modal-390.png": "sha256:559ef761e781d4469936dff91621ac60ffb912d153e5649a0336739cc62b0ad3",
+    "core-form-1024.png": "sha256:a8614860416e941e06d1bcd815223d59234437a97fea16720ec4f34227056a10",
+    "core-form-390.png": "sha256:a2292d60eab71f80cdd3b467ec6fb3c7625567564d81c30e40b622795fda5f33",
+    "core-modal-1024.png": "sha256:c6e0c9c7dcd5f65645cb91956f4728bbb7d91fa762f7b6b4577b943fb6089757",
+    "core-modal-390.png": "sha256:df72cd20bff18f0eab5d3d9dc4f0780c0cbc5fa763acff8e1998903b5d5a8f92",
     "core-roster-1024.png": "sha256:5dac86a766dd72e709fbd6dba1503472bc744295ef3460b754d91a6a0dd2981d",
     "core-roster-390.png": "sha256:3fc9eeeedcdbccb1fd3247ef441043fe9e0c54abac91c0891aed1262c2a5948e",
     "core-tabs-1024.png": "sha256:dde2668b1f76b531e9eab3fe480f5eb4aaa8cb7773c2ac3b9f7092b9ab47cb8d",
@@ -40,6 +40,6 @@
   },
   "provenance": {
     "environment": "Recorded from CI run 34905586877 (head d51a751be48c58d0c70cd2bdd6ccf2fb674c6e99), identical in Browser E2E Core and Arcade; artifacts e2e-core-failure-diagnostics 10372790933 and e2e-arcade-failure-diagnostics 10371554046; reviewed.",
-    "baselines": "Package 6 references from ubuntu-latest CI runs 34803888861 and 34829176381. All 17 actuals of CI run 34905586877 in server/visual-reference are byte-identical to them and were reviewed individually, so no reference file changed with the move to the container. core-modal-390, core-form-390, core-modal-1024 and core-form-1024 were replaced from artifact e2e-core-failure-diagnostics 10441959292 of CI run 35087200565 (PR #636, head cc605ceaa5e94187bbe6238a503746aa19e64038, checkout 766da70e371d637c3141dbadb10c515ace3cdf29) after the help trigger became a 32px square: each file was reviewed against its diff, and in all four the only deviation is one 22x16px block at the info trigger of the trailer field, 156 pixels per scene. The environment of that run matched the recorded one with no differences."
+    "baselines": "Package 6 references from ubuntu-latest CI runs 34803888861 and 34829176381. All 17 actuals of CI run 34905586877 in server/visual-reference are byte-identical to them and were reviewed individually, so no reference file changed with the move to the container. core-modal-390, core-form-390, core-modal-1024 and core-form-1024 were replaced from artifact e2e-core-failure-diagnostics 10441959292 of CI run 35087200565 (PR #636, head cc605ceaa5e94187bbe6238a503746aa19e64038, checkout 766da70e371d637c3141dbadb10c515ace3cdf29) after the help trigger became a 32px square: each file was reviewed against its diff, and in all four the only deviation is one 22x16px block at the info trigger of the trailer field, 156 pixels per scene. The environment of that run matched the recorded one with no differences. core-filters-390, core-filters-1024, core-modal-390, core-modal-1024, core-form-390 and core-form-1024 were replaced from artifact e2e-core-failure-diagnostics 10488963283 of CI run 35203931180 (PR #644, head 6ff8627357d0902873c5e8b899c5a4c2c42af6ec, checkout c555e6aee5fbb562ce4aa34018185b2ed4bbd2b1) after the game catalog toolbar was redesigned (search, sort and filter combined into one stable bar with a collapsed filter menu) and the suggest form's YouTube trailer info tooltip was removed: each actual was reviewed against its diff (all six failed only with 'Image dimensions differ', i.e. the intentional layout change, no unexpected pixel content) and matches the intended design. The environment of that run matched the recorded one with no differences."
   }
 }
