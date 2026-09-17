@@ -291,3 +291,7 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   previous control after completion. The rating panel is intentionally non-modal so its sliders
   remain usable; it stays below the shared modal layer so game details and other forms remain
   operable.
+- Immediately after Home, the tour highlights the event switcher in the topbar for members and
+  admins. It explains how to select the active event and that this choice scopes available areas,
+  event data and actions. Orga's Events page is the overview and admin management surface; the
+  analytics event filter remains a separate admin-only tour step.
