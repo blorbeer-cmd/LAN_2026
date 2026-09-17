@@ -152,7 +152,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   select for the four response modes (per-option feasibility, single choice, multiple choice and
   per-option 1–5 rating), and contextual info beside response mode and deadline. Every free option
   may additionally carry a short note and a validated HTTP-/HTTPS-link. A poll can be marked
-  anonymous in the same dialog; this permanently suppresses voter-to-answer mappings.
+  anonymous in the same dialog; this permanently suppresses voter-to-answer mappings. The same
+  dialog also offers „Zwischenstand verbergen“, preselected for every response mode including the
+  1–5 rating: while such a round is open, only the people who manage it see counts, the leading
+  option and the voters, and everyone else sees their own answer alone. The setting belongs to the
+  round and is restated, not edited, in „Umfrage bearbeiten“; a follow-up round starts from the
+  previous round's choice.
   Each poll is one collapsible card. Its current round and response progress stay together; the
   creator's compact „Bearbeiten“, „Erinnerung versenden (N)“, „Beenden“ and „Löschen“
   actions remain in the card header while collapsed. They share one „Aktion“ menu; opening one
@@ -168,10 +173,16 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   incomplete until the added options have been answered. Option rows keep the title with a note
   info-tooltip and an icon-only link immediately beside it, counts and compact response controls
   within a shallow two-row layout. Single- and multiple-choice controls say „Wählen“; their
-  „Meiste Stimmen“ badge stays on the same title line as the option name. An optional
-  response-details disclosure is rendered only after a non-anonymous round has
-  ended; the server withholds those identities while a poll is open and for anonymous polls at every
-  status. Avatar, name and response timestamp share one vertically aligned voter row. Progress and
+  „Meiste Stimmen“ badge stays on the same title line as the option name. A non-anonymous round
+  shows the voters of an option as up to four overlapping avatars on that same title line, followed
+  by the number of remaining voters; a rating round pictures everyone who rated the option, the
+  other modes picture the people the option won over. The avatars open the same „Stimmen“ dialog as
+  the poll's own action, which lists every answer group with avatar, name and response timestamp in
+  one vertically aligned voter row. The server decides who receives those identities: an anonymous
+  poll never exposes them, a round with a hidden interim result exposes them and its counts to its
+  managers while it runs, and ending the round publishes both to every participant. A round that
+  withholds its interim result says so once in its header instead of repeating it per option, and
+  its option rows keep the same height as a round that shows counts. Progress and
   deadline appear once in the card header, not again above the option rows. A round without a
   deadline shows „Keine Frist“ in its header and round history; automatic deadline reminders apply
   only to dated rounds. Poll re-renders preserve

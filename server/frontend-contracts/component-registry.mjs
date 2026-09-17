@@ -541,6 +541,19 @@ export const components = [
     ]
   },
   {
+    "id": "event-poll-voter-stack",
+    "role": "composite-part",
+    "selector": ".event-poll-voter-stack",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#umfrage-stimmenstapel",
+    "purpose": "Voter avatars beside a poll option open the vote dialog without a filled button surface.",
+    "properties": [
+      "padding-inline",
+      "background",
+      "margin-block"
+    ]
+  },
+  {
     "id": "poll-choice",
     "role": "standard-control",
     "selector": ".event-poll-choice-btn",

@@ -4880,6 +4880,26 @@ registerMigration({
   up: addOnboardingEventContextStep,
 });
 
+// A running round may now keep its interim result to itself: while the poll is
+// open only its managers see counts and voter identities, everyone else only
+// sees their own answer. Existing rounds adopt the new default (hidden). That
+// is the conservative direction: no identity becomes visible earlier than
+// before, only the live counts move behind the end of the round.
+function addHiddenLiveEventPollResults(): void {
+  const columns = db.prepare('PRAGMA table_info(event_date_polls)').all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === 'live_results_hidden')) return;
+  db.exec(`
+    ALTER TABLE event_date_polls
+      ADD COLUMN live_results_hidden INTEGER NOT NULL DEFAULT 1
+      CHECK (live_results_hidden IN (0, 1));
+  `);
+}
+registerMigration({
+  version: 100,
+  name: 'add hidden live event poll results',
+  up: addHiddenLiveEventPollResults,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
