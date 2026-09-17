@@ -185,9 +185,9 @@ export interface UpdateEventFields {
   paymentDueAt?: number | null;
 }
 
-// Metadata correction — never touches tracking state or live status. The one
-// lifecycle effect is the draft fallback below: removing a period puts a
-// published event back into planning, because the two are one invariant.
+// Metadata-only correction — never touches tracking state, live status or the
+// lifecycle status, so a period can be entered, removed and entered again
+// without the event changing what it is.
 // Safe to call on past/ended events too (e.g. backfilling a forgotten end
 // date/location). Not valid for the sentinel (nothing to correct there).
 export function updateEvent(id: string, fields: UpdateEventFields): EventRow | undefined {
@@ -208,19 +208,18 @@ export function updateEvent(id: string, fields: UpdateEventFields): EventRow | u
     payment_due_at: fields.paymentDueAt !== undefined ? fields.paymentDueAt : existing.payment_due_at,
   };
 
-  // Period and status are one invariant, so the writer that removes a period
-  // owns the matching status the same way createEvent owns it when there
-  // never was one: a published event without a start would still accept
-  // startTracking while getTrackingEvents — which only matches an already
-  // started period — could never deliver it. Only the published state falls
-  // back; a cancelled or ended event keeps the lifecycle state it reached,
-  // and a group never had a period to remove in the first place.
-  if (fields.startsAt === null && existing.starts_at !== null && existing.status === 'published') {
-    next.status = 'draft';
-  }
-
+  // Deliberately leaves `status` alone, including when this removes the period.
+  // Dropping a published event back to draft looked symmetric but is a one-way
+  // street: only publishPlanningEventIfScheduled leaves draft, and it needs a
+  // roster change to fire, so re-entering a period would strand the event in
+  // draft — visibly offering "Tracking starten" that startTracking then
+  // refuses. The period is what tracking actually depends on, so
+  // startTrackingInternal checks the period itself (see below). An undated
+  // published event is a legal row since migration 103 and simply cannot
+  // track: getTrackingEvents needs a started period, and tracking can never
+  // have been on, because removing a period is refused while it is running.
   db.prepare(
-    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, cost_cents = ?, accommodation_cost_cents = ?, paypal_link = ?, payment_due_at = ?, status = ? WHERE id = ?'
+    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, cost_cents = ?, accommodation_cost_cents = ?, paypal_link = ?, payment_due_at = ? WHERE id = ?'
   ).run(
     next.name,
     next.starts_at,
@@ -231,7 +230,6 @@ export function updateEvent(id: string, fields: UpdateEventFields): EventRow | u
     next.accommodation_cost_cents,
     next.paypal_link,
     next.payment_due_at,
-    next.status,
     next.id,
   );
 
@@ -268,10 +266,10 @@ function startTrackingInternal(id: string, reopenEnded: boolean): StartTrackingR
   if (event.status === 'cancelled') {
     return { ok: false, code: 'invalid', error: 'Ein abgesagtes Event kann nicht getrackt werden.' };
   }
-  // Checked on the period itself as well as on the draft status: reopening an
-  // ended event leaves 'ended' behind rather than 'draft', so an event whose
-  // period was removed before it was ended would otherwise come back as a
-  // published, undated, "tracking" event that getTrackingEvents never matches.
+  // The period itself, not just the draft status, is what tracking depends on:
+  // an event may lose its period again (updateEvent) or be reopened from
+  // 'ended' rather than 'draft', and in both cases getTrackingEvents — which
+  // only matches an already started period — could never deliver it.
   if (event.status === 'draft' || event.starts_at === null) {
     return {
       ok: false,

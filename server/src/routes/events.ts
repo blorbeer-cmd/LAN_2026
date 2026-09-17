@@ -1142,8 +1142,8 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
 
 // PATCH /api/events/:id - metadata correction only (name/dates/location/
 // description/payment details); never touches tracking state or live status.
-// A period may be entered, moved and removed again; removing it returns the
-// event to planning and is refused while it is tracking.
+// A period may be entered, moved, removed and entered again; the lifecycle
+// status stays untouched throughout. Removing it is refused while tracking.
 // Body: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
 // The event type is intentionally fixed after creation in the small MVP so a
 // type switch cannot hide a running LAN workflow without an impact check.

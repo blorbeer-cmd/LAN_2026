@@ -364,11 +364,28 @@ test('event creation validates name, optional periods and ordering', async () =>
   assert.equal(clearedPeriod.status, 200, JSON.stringify(clearedPeriod.body));
   assert.equal(clearedPeriod.body.startsAt, null);
   assert.equal(clearedPeriod.body.endsAt, null);
-  // Period and lifecycle state are one invariant: back in planning, and
-  // therefore not trackable, exactly like an event that never had a date.
-  assert.equal(clearedPeriod.body.status, 'draft');
+  // The lifecycle state survives the removal, so the round trip stays open.
+  // What blocks tracking is the missing period itself, not a status change.
+  assert.equal(clearedPeriod.body.status, participantsOnly.body.status);
   assert.equal((await request(app).post(`/api/events/${participantsOnly.body.id}/tracking/start`)).status, 400);
-  // Closing a workspace is a lifecycle step, not a scheduled one.
+  // Entering a period again has to restore exactly what removing it took away:
+  // a one-way removal would leave a normal-looking event that offers
+  // "Tracking starten" and is refused every time.
+  const rescheduled = await request(app)
+    .patch(`/api/events/${participantsOnly.body.id}`)
+    .send({ startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS });
+  assert.equal(rescheduled.status, 200, JSON.stringify(rescheduled.body));
+  assert.equal(rescheduled.body.startsAt, startsAt);
+  const trackingAgain = await request(app).post(`/api/events/${participantsOnly.body.id}/tracking/start`);
+  assert.equal(trackingAgain.status, 200, JSON.stringify(trackingAgain.body));
+  assert.equal(trackingAgain.body.trackingEnabled, true);
+  await request(app).post(`/api/events/${participantsOnly.body.id}/tracking/stop`);
+  // Closing a workspace is a lifecycle step, not a scheduled one: clear the
+  // period once more so the undated close is what gets proven below.
+  const clearedAgain = await request(app)
+    .patch(`/api/events/${participantsOnly.body.id}`)
+    .send({ startsAt: null, endsAt: null });
+  assert.equal(clearedAgain.status, 200, JSON.stringify(clearedAgain.body));
   const endedWithoutPeriod = await request(app).post(`/api/events/${participantsOnly.body.id}/end`);
   assert.equal(endedWithoutPeriod.status, 200, JSON.stringify(endedWithoutPeriod.body));
   assert.equal(endedWithoutPeriod.body.isEnded, true);

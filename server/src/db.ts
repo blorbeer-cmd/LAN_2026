@@ -4950,10 +4950,10 @@ registerMigration({
 // `... OR event_type_key = 'group'`. A CHECK naming that column pins it into
 // the table definition, so SQLite refuses to ever drop or rename it again —
 // which is exactly what the legacy-database migration tests do when they
-// rebuild a pre-89 fixture. The invariant it guarded is owned by createEvent
-// and updateEvent (see events.ts): createEvent when an event starts without a
-// period, updateEvent when one is removed again and the event falls back to
-// draft.
+// rebuild a pre-89 fixture. Nothing reintroduces it: updateEvent may now remove
+// a period from a published event, so a published row without a start is
+// legal. What the CHECK stood for — no tracking without a period — is enforced
+// where it belongs, in startTrackingInternal (see events.ts).
 function allowUndatedGroupEvents(): void {
   db.exec(`
     CREATE TABLE events_staging_103 AS SELECT * FROM events;

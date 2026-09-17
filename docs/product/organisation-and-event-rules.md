@@ -279,9 +279,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   of the dated controls: an event whose date is still being polled — or whose period was removed
   again — is exactly the kind that gets abandoned, so it closes like any other workspace, while
   Tracking, „Wieder starten“ and the PDF export stay bound to a fixed period. The period itself stays
-  retractable in „Bearbeiten“: both boundaries are cleared together, never only one, which returns the
-  event to planning so it cannot be tracked until a new period is entered, and tells everyone invited
-  or accepted that the date is open again instead of that it moved. A running Tracking refuses the
+  retractable in „Bearbeiten“: both boundaries are cleared together, never only one, and the event
+  keeps the lifecycle state it had so the same period can be entered again and Tracking becomes
+  available exactly as before. Without a period it cannot be tracked, and everyone invited or
+  accepted is told that the date is open again instead of that it moved. A running Tracking refuses the
   removal until it is stopped, because live status and play sessions are attributed through that
   period. Cards in lists with
   multiple events start collapsed, keep their disclosure state through refreshes and preserve keyboard
