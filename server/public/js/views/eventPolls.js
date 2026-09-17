@@ -287,12 +287,12 @@ function renderCounts(poll, option) {
   if (poll.responseMode === 'rating_1_5') {
     const ratingCount = RATING_VALUES.reduce((sum, value) => sum + (option.counts.ratings?.[value] ?? 0), 0);
     const average = option.counts.average === null ? '–' : option.counts.average.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-    return `Ø ${average} · ${ratingCount} ${ratingCount === 1 ? 'Bewertung' : 'Bewertungen'} · ${option.counts.open} offen`;
+    return `Ø ${average} · ${ratingCount} ${ratingCount === 1 ? 'Bewertung' : 'Bewertungen'}${option.active ? ` · ${option.counts.open} offen` : ''}`;
   }
   if (poll.responseMode === 'feasibility') {
-    return `Passt ${option.counts.can} · Notfalls ${option.counts.ifNeeded} · Nein ${option.counts.cannot} · Offen ${option.counts.open}`;
+    return `Passt ${option.counts.can} · Notfalls ${option.counts.ifNeeded} · Nein ${option.counts.cannot}${option.active ? ` · Offen ${option.counts.open}` : ''}`;
   }
-  return `${option.counts.can} ${option.counts.can === 1 ? 'Stimme' : 'Stimmen'} · ${option.counts.open} offen`;
+  return `${option.counts.can} ${option.counts.can === 1 ? 'Stimme' : 'Stimmen'}${option.active ? ` · ${option.counts.open} offen` : ''}`;
 }
 
 function renderOption(poll, option) {
@@ -438,7 +438,7 @@ function optionRowHtml(index, value = {}) {
         <button type="button" class="icon-btn" data-remove-poll-option aria-label="Option entfernen" title="Option entfernen">${icon('trash')}</button>
       </div>
       <input type="text" id="poll-option-${index}" data-poll-option-input maxlength="120" required value="${escapeHtml(value.label ?? '')}" placeholder="z. B. Ferienhaus am See" />
-      ${value.id ? `<label class="event-poll-option-active"><input type="checkbox" data-poll-option-active ${value.active !== false ? 'checked' : ''} /> Zur Abstimmung freigeben</label>` : ''}
+      ${value.id ? `<label class="event-poll-option-active"><input type="checkbox" data-poll-option-active ${value.active !== false ? 'checked' : ''} /> Option aktiv (wählbar)</label>` : ''}
       <details class="event-poll-form-option-details" ${showDetails ? 'open' : ''}>
         <summary>Notiz oder Link hinzufügen</summary>
         <div class="field-row event-poll-option-extra-fields">
@@ -462,7 +462,7 @@ function optionValuesFromForm(modal) {
 function validateOptionValues(options) {
   const labels = options.map((option) => option.label);
   if (labels.some((label) => !label)) return 'Bitte alle Optionen benennen.';
-  if (!options.some((option) => option.active)) return 'Mindestens eine Option muss zur Abstimmung freigegeben sein.';
+  if (!options.some((option) => option.active)) return 'Mindestens eine Option muss aktiv bleiben.';
   if (new Set(labels.map((label) => label.toLocaleLowerCase('de'))).size !== labels.length) return 'Optionen dürfen nicht doppelt vorkommen.';
   if (options.some((option) => option.url && !/^https?:\/\/[^\s]+$/i.test(option.url))) return 'Links müssen mit http:// oder https:// beginnen.';
   return null;
@@ -474,7 +474,7 @@ function readIsoDate(modal, id) {
 
 function openPollForm(event, ctx, previousRound = null) {
   const initialMode = previousRound?.responseMode ?? 'feasibility';
-  const initialOptions = previousRound?.options?.map((option) => ({
+  const initialOptions = previousRound?.options?.filter((option) => option.active).map((option) => ({
     label: optionLabel(option),
     description: option.description ?? '',
     url: optionUrl(option) ?? '',
@@ -636,6 +636,7 @@ function openEditPollForm(event, poll, ctx) {
       modal.querySelector('#poll-option-rows').addEventListener('click', (eventClick) => {
         const button = eventClick.target.closest('[data-remove-poll-option]');
         if (!button) return;
+        if (modal.querySelectorAll('[data-poll-option-row]').length <= 1) return showToast('Mindestens eine Option ist erforderlich.', { error: true });
         dirty = true;
         button.closest('[data-poll-option-row]').remove();
       });

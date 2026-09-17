@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 99);
+  assert.equal(migrations.length, 100);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 99 }, (_, index) => index + 1),
+    Array.from({ length: 100 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,8 +1342,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 99 }, (_, index) => index + 1),
-    'every version 1..99 runs exactly once',
+    Array.from({ length: 100 }, (_, index) => index + 1),
+    'every version 1..100 runs exactly once',
   );
 });
 
@@ -1523,6 +1523,76 @@ test('migration 78 widens the onboarding core step bound for event selection and
     'the widened CHECK must still reject anything past the new maximum',
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 78').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 99 preserves active onboarding positions while adding the header event step', () => {
+  const dbFile = makeTempDbPath('onboarding-header-event-step');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  for (const id of ['tour-first', 'tour-middle', 'tour-last', 'tour-completed']) {
+    fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+      .run(id, id, `key-${id}`, Date.now());
+  }
+  fixture.exec(`
+    ALTER TABLE player_onboarding RENAME TO player_onboarding_legacy_99;
+    CREATE TABLE player_onboarding (
+      player_id                 TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+      version                   INTEGER NOT NULL DEFAULT 1,
+      status                    TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (status IN ('pending', 'active', 'completed', 'skipped')),
+      last_core_step            INTEGER NOT NULL DEFAULT 9 CHECK (last_core_step BETWEEN 0 AND 12),
+      rating_status             TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (rating_status IN ('pending', 'active', 'completed', 'deferred')),
+      rating_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+      seen_views_json           TEXT NOT NULL DEFAULT '[]',
+      completed_at              INTEGER,
+      updated_at                INTEGER NOT NULL
+    );
+    INSERT INTO player_onboarding
+      (player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at)
+    SELECT player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at
+    FROM player_onboarding_legacy_99;
+    DROP TABLE player_onboarding_legacy_99;
+  `);
+  const insert = fixture.prepare(`
+    INSERT INTO player_onboarding (player_id, status, last_core_step, rating_status, updated_at)
+    VALUES (?, ?, ?, 'pending', ?)
+  `);
+  insert.run('tour-first', 'pending', 0, Date.now());
+  insert.run('tour-middle', 'active', 5, Date.now());
+  insert.run('tour-last', 'active', 12, Date.now());
+  insert.run('tour-completed', 'completed', 12, Date.now());
+  assert.throws(() => fixture.prepare('UPDATE player_onboarding SET last_core_step = 13 WHERE player_id = ?').run('tour-last'),
+    /CHECK constraint failed/);
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 99').run();
+  fixture.exec('CREATE TABLE player_onboarding_migration_99 (id INTEGER)');
+  fixture.close();
+
+  // A failed rebuild must roll back without recording the migration or moving a saved step.
+  assert.throws(() => runMigrations(dbFile));
+  const afterFailure = new Database(dbFile);
+  assert.deepEqual(afterFailure.prepare('SELECT last_core_step FROM player_onboarding WHERE player_id = ?').get('tour-last'),
+    { last_core_step: 12 });
+  assert.equal(afterFailure.prepare('SELECT 1 FROM schema_migrations WHERE version = 99').get(), undefined);
+  afterFailure.exec('DROP TABLE player_onboarding_migration_99');
+  afterFailure.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');
+  const migrated = new Database(dbFile);
+  const positions = migrated.prepare('SELECT player_id, status, last_core_step FROM player_onboarding ORDER BY player_id').all();
+  assert.deepEqual(positions, [
+    { player_id: 'tour-completed', status: 'completed', last_core_step: 12 },
+    { player_id: 'tour-first', status: 'pending', last_core_step: 0 },
+    { player_id: 'tour-last', status: 'active', last_core_step: 13 },
+    { player_id: 'tour-middle', status: 'active', last_core_step: 6 },
+  ]);
+  assert.throws(() => migrated.prepare('UPDATE player_onboarding SET last_core_step = 14 WHERE player_id = ?').run('tour-last'),
+    /CHECK constraint failed/);
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 99').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
@@ -3430,7 +3500,7 @@ test('migration 97 makes the event poll deadline optional without losing existin
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 99 keeps existing poll options votable and adds edit metadata', () => {
+test('migration 100 keeps existing poll options votable and adds edit metadata', () => {
   const dbFile = makeTempDbPath('event-poll-option-lifecycle');
   runMigrations(dbFile);
   const fixture = new Database(dbFile);
@@ -3439,14 +3509,14 @@ test('migration 99 keeps existing poll options votable and adds edit metadata', 
     INSERT INTO event_date_polls
       (id, event_id, round_number, status, created_at, updated_at,
        topic, decision_key, title, response_mode, is_anonymous)
-      VALUES ('migration-99-poll', 'instance-base-event', 1, 'open', ${now}, ${now},
-              'custom', 'migration-99', 'Migration 99 Poll', 'feasibility', 0);
+      VALUES ('migration-100-poll', 'instance-base-event', 1, 'open', ${now}, ${now},
+              'custom', 'migration-100', 'Migration 100 Poll', 'feasibility', 0);
     INSERT INTO event_date_poll_options
       (id, poll_id, starts_on, ends_on, position, label, description, payload_json)
-      VALUES ('migration-99-option', 'migration-99-poll', '0001-01-01', '0001-01-01', 0, 'Option', 'Note', '{}');
+      VALUES ('migration-100-option', 'migration-100-poll', '0001-01-01', '0001-01-01', 0, 'Option', 'Note', '{}');
     ALTER TABLE event_date_poll_options DROP COLUMN description_edited_at;
     ALTER TABLE event_date_poll_options DROP COLUMN is_active;
-    DELETE FROM schema_migrations WHERE version = 99;
+    DELETE FROM schema_migrations WHERE version = 100;
   `);
   fixture.close();
 
@@ -3455,7 +3525,7 @@ test('migration 99 keeps existing poll options votable and adds edit metadata', 
   const migrated = new Database(dbFile);
   assert.deepEqual(
     migrated.prepare('SELECT is_active AS active, description_edited_at AS editedAt, description FROM event_date_poll_options WHERE id = ?')
-      .get('migration-99-option'),
+      .get('migration-100-option'),
     { active: 1, editedAt: null, description: 'Note' },
   );
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);

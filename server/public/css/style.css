@@ -973,6 +973,16 @@ textarea {
 .event-poll-option-extra-fields {
   margin-top: var(--space-2);
 }
+.event-poll-option-active {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+.event-poll-option-active input {
+  flex: none;
+  accent-color: var(--accent);
+}
 .event-poll-max-field {
   grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
   align-items: center;

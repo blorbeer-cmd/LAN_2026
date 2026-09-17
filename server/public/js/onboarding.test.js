@@ -8,6 +8,10 @@ test('onboarding keeps the event-selection step admin-only', () => {
 
   assert.equal(memberSteps.some((step) => step.view === 'analytics'), false);
   assert.equal(memberSteps.some((step) => step.view === 'admin'), false);
+  assert.deepEqual(memberSteps[1], adminSteps[1]);
+  assert.equal(memberSteps[1].title, 'Aktives Event');
+  assert.equal(memberSteps[1].view, 'home');
+  assert.equal(memberSteps[1].target, '#event-context .search-select-control');
 
   const eventStep = adminSteps.find((step) => step.view === 'analytics');
   assert.deepEqual(eventStep, {
@@ -19,8 +23,8 @@ test('onboarding keeps the event-selection step admin-only', () => {
   assert.equal(adminSteps.at(-2)?.view, 'analytics');
   assert.equal(adminSteps.at(-1)?.view, 'gameCatalog');
   assert.equal(memberSteps.at(-1)?.view, 'gameCatalog');
-  assert.equal(memberSteps.length - 1, 10);
-  assert.equal(adminSteps.length - 1, 12);
+  assert.equal(memberSteps.length - 1, 11);
+  assert.equal(adminSteps.length - 1, 13);
 });
 
 test('onboarding targets the visible shell variant instead of a hidden duplicate', () => {

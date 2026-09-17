@@ -336,13 +336,15 @@ function pollOpenTopicKey(pollId: string, playerId: string): string {
   return `${pollOpenTopicPrefix(pollId)}:${playerId}`;
 }
 
-function notifyPreviouslyAnsweredPlayers(event: EventRow, poll: DatePollRow, playerIds: string[]): void {
+function notifyPreviouslyAnsweredPlayers(event: EventRow, poll: DatePollRow, playerIds: string[], kind: 'added' | 'changed' = 'added'): void {
   for (const playerId of playerIds) {
     notifyPlayers(
       [playerId],
       {
-        title: 'Abstimmung ergänzt',
-        body: `${event.name}: Bei „${poll.title}“ wurden neue Optionen ergänzt. Bitte prüfe deine Antwort.`,
+        title: kind === 'added' ? 'Abstimmung ergänzt' : 'Abstimmung geändert',
+        body: kind === 'added'
+          ? `${event.name}: Bei „${poll.title}“ wurden neue Optionen ergänzt. Bitte prüfe deine Antwort.`
+          : `${event.name}: Bei „${poll.title}“ wurden Optionen geändert. Bitte stimme erneut ab.`,
         url: `/#eventPolls/${poll.id}`,
         type: 'event-poll-updated',
         targetId: poll.id,
@@ -708,8 +710,9 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     updatePushTopicExpiry(pollOpenTopicPrefix(poll.id), result.poll.response_due_at, pollScope, true);
     updatePushTopicExpiry(pollUpdateTopicPrefix(poll.id), result.poll.response_due_at, pollScope, true);
   }
-  if (result.addedOptionCount > 0) {
-    notifyPreviouslyAnsweredPlayers(event, result.poll, result.previouslyAnsweredPlayerIds);
+  if (result.newlyIncompletePlayerIds.length > 0) {
+    notifyPreviouslyAnsweredPlayers(event, result.poll, result.newlyIncompletePlayerIds,
+      result.addedOptionCount > 0 ? 'added' : 'changed');
   }
   if (options !== undefined) {
     for (const invitee of getDatePollInvitees(poll.id)) {

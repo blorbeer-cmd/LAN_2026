@@ -416,7 +416,33 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   });
   assert.equal(await memberCreated.locator('.event-poll-option').first().locator('.badge', { hasText: 'Deaktiviert' }).count(), 1);
   assert.equal(await memberCreated.locator('.event-poll-option').first().locator('[data-poll-choice]').count(), 0);
+  assert.doesNotMatch((await memberCreated.locator('.event-poll-option').first().locator('.event-poll-counts').textContent()) ?? '', /offen/i);
   assert.equal(await memberCreated.locator('[data-poll-choice]').count(), 2);
+  await choosePollAction(memberCreated, '[data-edit-poll]');
+  const activeSwitch = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first().locator('[data-poll-option-active]');
+  assert.equal(await activeSwitch.isChecked(), false);
+  assert.match((await activeSwitch.locator('..').textContent()) ?? '', /Option aktiv \(wählbar\)/);
+  await activeSwitch.check();
+  await memberPage.click('#event-poll-edit-form button[type="submit"]');
+  await memberCreated.locator('.event-poll-option').first().locator('[data-poll-choice]').waitFor();
+  assert.equal(await memberCreated.locator('.event-poll-option').first().locator('.badge', { hasText: 'Deaktiviert' }).count(), 0);
+  await choosePollAction(memberCreated, '[data-edit-poll]');
+  await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first().locator('[data-poll-option-active]').uncheck();
+  await memberPage.click('#event-poll-edit-form button[type="submit"]');
+  await memberCreated.locator('.event-poll-option').first().locator('.badge', { hasText: 'Deaktiviert' }).waitFor();
+  await choosePollAction(memberCreated, '[data-close-poll]');
+  await memberPage.locator('.modal-backdrop [data-confirm]').click();
+  await memberPage.locator('.toast', { hasText: 'Umfrage beendet' }).waitFor();
+  await memberPage.locator('.event-poll-ended-history').evaluate((details) => {
+    (details as HTMLDetailsElement).open = true;
+    details.dispatchEvent(new Event('toggle'));
+  });
+  await choosePollAction(memberCreated, '[data-new-poll-round]');
+  await memberPage.waitForSelector('#event-poll-form');
+  assert.deepEqual(await memberPage.locator('#event-poll-form [data-poll-option-input]').evaluateAll(
+    (inputs) => inputs.map((input) => (input as HTMLInputElement).value),
+  ), ['Salat', 'Dessert'], 'a new round only copies options that are currently active');
+  await memberPage.locator('.modal-backdrop [data-close]').click();
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,

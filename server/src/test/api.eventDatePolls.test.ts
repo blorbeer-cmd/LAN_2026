@@ -592,6 +592,7 @@ test('deleted options lose their votes while disabled options keep results and r
   const eventId = await createEvent('Poll Lifecycle Event', [alice, bob]);
   const created = await createPoll(eventId, alice, {
     responseMode: 'single_choice',
+    responseDueOn: null,
     options: [{ label: 'A' }, { label: 'B' }, { label: 'C' }],
   });
   assert.equal(created.status, 201);
@@ -611,6 +612,11 @@ test('deleted options lose their votes while disabled options keep results and r
   assert.equal(changed.body.options[0].isRecommended, false);
   assert.equal(changed.body.options[1].isRecommended, false, 'a choice with no active votes has no recommendation');
   assert.equal(changed.body.invitees.find((entry: { playerId: string }) => entry.playerId === bob).hasAnswered, false);
+  assert.equal(
+    (db.prepare('SELECT title FROM push_log WHERE topic_key = ?').get(`event-poll-updated:${created.body.id}:${bob}`) as { title: string }).title,
+    'Abstimmung geändert',
+    'a voter whose selection was disabled is notified even without a deadline',
+  );
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM event_date_poll_responses WHERE option_id = ?').get(a.id) as { n: number }).n, 0);
 
   const forbiddenVote = await request(app).put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
@@ -628,6 +634,30 @@ test('deleted options lose their votes while disabled options keep results and r
     .set('x-test-player-id', alice)
     .send({ options: [{ id: b.id, label: 'B', active: false }, { id: c.id, label: 'C', active: false }] });
   assert.equal(noActive.status, 400);
+
+  const replacement = await request(app).patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ options: [{ id: b.id, label: 'B', active: false }, { id: c.id, label: 'C' }, { label: 'D' }] });
+  assert.equal(replacement.status, 200, JSON.stringify(replacement.body));
+  const laterAddition = await request(app).post(`/api/events/${eventId}/polls/${created.body.id}/options`)
+    .set('x-test-player-id', alice)
+    .send({ label: 'E' });
+  assert.equal(laterAddition.status, 201, JSON.stringify(laterAddition.body));
+  assert.deepEqual(laterAddition.body.options.map((option: { label: string }) => option.label), ['B', 'C', 'D', 'E']);
+
+  const second = await createPoll(eventId, alice, {
+    title: 'Später ergänzen', decisionKey: 'poll-lifecycle-later',
+    options: [{ label: 'A' }, { label: 'B' }, { label: 'C' }],
+  });
+  assert.equal(second.status, 201, JSON.stringify(second.body));
+  const removedMiddle = await request(app).patch(`/api/events/${eventId}/polls/${second.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ options: [second.body.options[0], second.body.options[2]].map((option: { id: string; label: string }) => ({ id: option.id, label: option.label })) });
+  assert.equal(removedMiddle.status, 200, JSON.stringify(removedMiddle.body));
+  const addedAfterRemoval = await request(app).post(`/api/events/${eventId}/polls/${second.body.id}/options`)
+    .set('x-test-player-id', alice)
+    .send({ label: 'D' });
+  assert.equal(addedAfterRemoval.status, 201, JSON.stringify(addedAfterRemoval.body));
 });
 
 test('parallel edits cannot delete different poll options into an invalid state', async () => {

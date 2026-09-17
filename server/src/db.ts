@@ -4845,8 +4845,43 @@ registerMigration({
   },
 });
 
+// A first-login step now explains the active event in the header immediately
+// after Home. Preserve the content position of in-progress tours by shifting
+// their saved index; completed tours must not be reopened by this migration.
+function addOnboardingEventContextStep(): void {
+  db.exec(`
+    ALTER TABLE player_onboarding RENAME TO player_onboarding_migration_99;
+    CREATE TABLE player_onboarding (
+      player_id                 TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+      version                   INTEGER NOT NULL DEFAULT 1,
+      status                    TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (status IN ('pending', 'active', 'completed', 'skipped')),
+      last_core_step            INTEGER NOT NULL DEFAULT 9 CHECK (last_core_step BETWEEN 0 AND 13),
+      rating_status             TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (rating_status IN ('pending', 'active', 'completed', 'deferred')),
+      rating_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+      seen_views_json           TEXT NOT NULL DEFAULT '[]',
+      completed_at              INTEGER,
+      updated_at                INTEGER NOT NULL
+    );
+    INSERT INTO player_onboarding
+      (player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at)
+    SELECT player_id, version, status,
+           CASE WHEN status IN ('pending', 'active') AND last_core_step >= 1 THEN last_core_step + 1 ELSE last_core_step END,
+           rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at
+    FROM player_onboarding_migration_99;
+    DROP TABLE player_onboarding_migration_99;
+    CREATE INDEX IF NOT EXISTS idx_player_onboarding_status ON player_onboarding(status, rating_status);
+  `);
+}
 registerMigration({
   version: 99,
+  name: 'add onboarding event context step',
+  up: addOnboardingEventContextStep,
+});
+
+registerMigration({
+  version: 100,
   name: 'track editable event poll options',
   up: () => {
     const columns = db.prepare('PRAGMA table_info(event_date_poll_options)').all() as Array<{ name: string }>;

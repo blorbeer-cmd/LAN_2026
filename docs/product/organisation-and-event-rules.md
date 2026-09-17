@@ -168,9 +168,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   Disabled options and their previous votes remain visible until someone changes
   a single or multiple choice vote; they cannot receive new answers or win the
   recommendation. Changed option notes carry a visible
-  „Bearbeitet“ marker. Disabled options can be enabled again in the edit dialog.
+  „Bearbeitet“ marker. Disabled options can be enabled again in the edit dialog with
+  the „Option aktiv (wählbar)“ checkbox. Their existing votes remain visible, while
+  inactive options no longer show an unanswered count. A new round only copies active options.
   Adding options informs everyone who had already completed the round and makes those responses
-  incomplete until the added options have been answered. Option rows keep the title with a note
+  incomplete until the added options have been answered. Removing or disabling a chosen option
+  also informs voters whose response thereby became incomplete. Option rows keep the title with a note
   info-tooltip and an icon-only link immediately beside it, counts and compact response controls
   within a shallow two-row layout. Single- and multiple-choice controls say „Wählen“; their
   „Meiste Stimmen“ badge stays on the same title line as the option name. An optional

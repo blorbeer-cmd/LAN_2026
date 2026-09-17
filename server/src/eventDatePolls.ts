@@ -223,6 +223,16 @@ export interface DatePollOptionInput {
   payload?: Record<string, unknown>;
 }
 
+function nextSyntheticOptionDate(usedSingleDates: Set<string>): string {
+  const date = new Date('0001-01-01T00:00:00.000Z');
+  while (usedSingleDates.has(date.toISOString().slice(0, 10))) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+  const value = date.toISOString().slice(0, 10);
+  usedSingleDates.add(value);
+  return value;
+}
+
 export interface CreateDatePollInput {
   options: DatePollOptionInput[];
   responseDueOn?: string;
@@ -295,8 +305,11 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
          (id, poll_id, starts_on, ends_on, position, label, description, payload_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     );
+    const usedSingleDates = new Set(input.options
+      .filter((option) => option.startsOn && (option.endsOn ?? option.startsOn) === option.startsOn)
+      .map((option) => option.startsOn!));
     input.options.forEach((option, index) => {
-      const startsOn = option.startsOn ?? `0001-01-${String(index + 1).padStart(2, '0')}`;
+      const startsOn = option.startsOn ?? nextSyntheticOptionDate(usedSingleDates);
       const endsOn = option.endsOn ?? startsOn;
       const label = option.label?.trim() || (startsOn === endsOn ? startsOn : `${startsOn} – ${endsOn}`);
       const payload = topic === 'date_range' ? { startsOn, endsOn, ...option.payload } : (option.payload ?? {});
@@ -424,7 +437,7 @@ export type UpdateDatePollResult =
       ok: true;
       poll: DatePollRow;
       addedOptionCount: number;
-      previouslyAnsweredPlayerIds: string[];
+      newlyIncompletePlayerIds: string[];
     }
   | { ok: false; code: 'not_open' | 'invalid' | 'conflict'; error: string };
 
@@ -469,7 +482,7 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
       activeSetChanged = nextOptions.some((option) => !option.id && option.active !== false) ||
         existingOptions.some((option) => (option.is_active === 1) !== activeIds.has(option.id));
       addedOptionCount = nextOptions.filter((option) => !option.id && option.active !== false).length;
-      if (addedOptionCount > 0) {
+      if (activeSetChanged) {
         previouslyAnsweredPlayerIds = getDatePollInvitees(poll.id)
           .filter((invitee) => hasAnsweredDatePoll(poll.id, invitee.player_id))
           .map((invitee) => invitee.player_id);
@@ -502,6 +515,9 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       const keptIds = nextOptions.flatMap((option) => option.id ? [option.id] : []);
+      const usedSingleDates = new Set(existingOptions
+        .filter((option) => keptIds.includes(option.id) && option.starts_on === option.ends_on)
+        .map((option) => option.starts_on));
       for (const existing of existingOptions) {
         if (!keptIds.includes(existing.id)) {
           db.prepare('DELETE FROM event_date_poll_options WHERE id = ? AND poll_id = ?').run(existing.id, poll.id);
@@ -516,7 +532,7 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
           updateOption.run(label, description, payloadJson, position, active, description, now, option.id, poll.id);
           return;
         }
-        const placeholderDate = `0001-01-${String(position + 1).padStart(2, '0')}`;
+        const placeholderDate = nextSyntheticOptionDate(usedSingleDates);
         insertOption.run(nanoid(), poll.id, placeholderDate, placeholderDate, position, label, description, payloadJson, active);
       });
     }
@@ -527,7 +543,8 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
     ) {
       rescheduleRemindersForStillOpenInvitees(poll.id, responseDueAt, now);
     }
-    return { ok: true, poll: getDatePoll(poll.id)!, addedOptionCount, previouslyAnsweredPlayerIds };
+    const newlyIncompletePlayerIds = previouslyAnsweredPlayerIds.filter((playerId) => !hasAnsweredDatePoll(poll.id, playerId));
+    return { ok: true, poll: getDatePoll(poll.id)!, addedOptionCount, newlyIncompletePlayerIds };
   })();
 }
 
@@ -557,20 +574,17 @@ export function addDatePollOption(poll: DatePollRow, input: DatePollOptionInput)
   if (poll.status !== 'open') {
     return { ok: false, code: 'not_open', error: 'Optionen können nur während einer offenen Runde ergänzt werden.' };
   }
-  const existing = getDatePollOptions(poll.id);
-  const position = existing.reduce((max, o) => Math.max(max, o.position), -1) + 1;
-  const startsOn = input.startsOn ?? `0001-01-${String(position + 1).padStart(2, '0')}`;
-  const endsOn = input.endsOn ?? startsOn;
-  const label = input.label?.trim() || (startsOn === endsOn ? startsOn : `${startsOn} – ${endsOn}`);
-  if (existing.some((o) => (o.label ?? '').toLocaleLowerCase('de') === label.toLocaleLowerCase('de'))) {
-    return { ok: false, code: 'invalid', error: 'Diese Option ist bereits vorhanden.' };
-  }
   return db.transaction((): OptionMutationResult => {
     const current = getDatePoll(poll.id);
     if (!current || current.status !== 'open') {
       return { ok: false, code: 'not_open', error: 'Die Abstimmung läuft nicht mehr.' };
     }
     const currentOptions = getDatePollOptions(poll.id);
+    const position = currentOptions.reduce((max, option) => Math.max(max, option.position), -1) + 1;
+    const usedSingleDates = new Set(currentOptions.filter((option) => option.starts_on === option.ends_on).map((option) => option.starts_on));
+    const startsOn = input.startsOn ?? nextSyntheticOptionDate(usedSingleDates);
+    const endsOn = input.endsOn ?? startsOn;
+    const label = input.label?.trim() || (startsOn === endsOn ? startsOn : `${startsOn} – ${endsOn}`);
     if (currentOptions.some((option) => (option.label ?? '').toLocaleLowerCase('de') === label.toLocaleLowerCase('de'))) {
       return { ok: false, code: 'invalid', error: 'Diese Option ist bereits vorhanden.' };
     }
