@@ -989,8 +989,16 @@ textarea {
 .event-poll-option-active {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-2);
   min-height: var(--control-height);
   cursor: pointer;
+}
+.poll-option-switch:checked + .event-poll-option-disabled {
+  display: none;
+}
+.event-poll-form-option:has(.poll-option-switch:not(:checked)) [data-poll-option-input] {
+  color: var(--text-muted);
+  text-decoration: line-through;
 }
 .poll-option-switch {
   appearance: none;

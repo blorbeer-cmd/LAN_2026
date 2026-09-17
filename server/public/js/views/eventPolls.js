@@ -436,7 +436,7 @@ function optionRowHtml(index, value = {}) {
       <div class="row-between">
         <span class="event-poll-form-option-label">
           <label for="poll-option-${index}" class="field-label is-required">Option ${index + 1}</label>
-          <label class="event-poll-option-active"><input class="poll-option-switch" type="checkbox" role="switch" data-poll-option-active aria-label="Option ${index + 1} aktiv (wählbar)" ${value.active !== false ? 'checked' : ''} /></label>
+          <label class="event-poll-option-active"><input class="poll-option-switch" type="checkbox" role="switch" data-poll-option-active aria-label="Option ${index + 1} aktiv (wählbar)" ${value.active !== false ? 'checked' : ''} /><span class="badge badge-paused event-poll-option-disabled">Deaktiviert</span></label>
         </span>
         <button type="button" class="icon-btn" data-remove-poll-option aria-label="Option entfernen" title="Option entfernen">${icon('trash')}</button>
       </div>

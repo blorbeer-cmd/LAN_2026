@@ -170,8 +170,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   recommendation. Changed option notes carry a visible
   „Bearbeitet“ marker directly beside the option title in the poll view, but not in
   the edit dialog. Every option starts active; the unlabeled visual switch beside
-  its option number can disable and later enable it again. Its accessible name
-  identifies the option. Existing votes remain visible, while
+  its option number can disable and later enable it again. In the edit dialog,
+  a disabled option shows „Deaktiviert“ beside the switch and a struck-through
+  option name; both disappear immediately when enabled again. The switch's accessible
+  name identifies the option. Existing votes remain visible, while
   inactive options no longer show an unanswered count. A new round only copies active options.
   Adding options informs everyone who had already completed the round and makes those responses
   incomplete until the added options have been answered. Removing or disabling a chosen option

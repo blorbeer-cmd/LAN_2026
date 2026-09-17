@@ -22,7 +22,7 @@ Aufrufer dürfen die Zeile innerhalb einer Optionskarte platzieren. Die Schalter
 
 ## 6. Komponenteneigene Invarianten
 
-Die Spur ist 44 × 24 px aus `--space-*`-Tokens; der Knauf ist 16 px groß. Der Schalter steht direkt rechts neben „Option N“, ohne sichtbaren Zusatztext. Neue Optionen starten eingeschaltet, gespeicherte Optionen spiegeln ihren aktiven Zustand. Mindestens eine Option bleibt aktiv.
+Die Spur ist 44 × 24 px aus `--space-*`-Tokens; der Knauf ist 16 px groß. Der Schalter steht direkt rechts neben „Option N“. Bei aktiven Optionen steht daneben kein Text; im ausgeschalteten Zustand erscheint „Deaktiviert“ und der Optionsname ist durchgestrichen. Beide Markierungen folgen dem Schalter sofort. Neue Optionen starten eingeschaltet, gespeicherte Optionen spiegeln ihren aktiven Zustand. Mindestens eine Option bleibt aktiv.
 
 ## 7. Erreichbare Zustände
 
@@ -38,7 +38,7 @@ Der native Checkbox-Input erhält `role='switch'` und einen eindeutigen deutsche
 
 ## 10. Prüfungen und Abnahmebeispiele
 
-`eventDatePoll.e2e.test.ts` prüft neue standardmäßig aktive Optionen und das Deaktivieren und Wiederaktivieren einer bestehenden Option. `check:components` und `check:tokens` prüfen CSS-Eigentümerschaft und Tokenverwendung.
+`eventDatePoll.e2e.test.ts` prüft neue standardmäßig aktive Optionen, das Deaktivieren und Wiederaktivieren einer bestehenden Option sowie die sichtbare Statusmarkierung und Durchstreichung im Bearbeitungsdialog. `check:components` und `check:tokens` prüfen CSS-Eigentümerschaft und Tokenverwendung.
 
 ## 11. Permanente Varianten und befristete Ausnahmen
 

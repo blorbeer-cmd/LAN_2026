@@ -435,10 +435,14 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await memberCreated.locator('[data-poll-choice]').count(), 2);
   await choosePollAction(memberCreated, '[data-edit-poll]');
   const activeSwitch = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first().locator('[data-poll-option-active]');
+  const disabledEditRow = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first();
   assert.equal(await activeSwitch.isChecked(), false);
   assert.equal(await activeSwitch.getAttribute('aria-label'), 'Option 1 aktiv (wählbar)');
-  assert.equal((await activeSwitch.locator('..').textContent())?.trim(), '');
+  assert.equal(await disabledEditRow.locator('.event-poll-option-disabled').isVisible(), true);
+  assert.match(await disabledEditRow.locator('[data-poll-option-input]').evaluate((input) => getComputedStyle(input).textDecorationLine), /line-through/);
   await activeSwitch.check();
+  assert.equal(await disabledEditRow.locator('.event-poll-option-disabled').isVisible(), false);
+  assert.doesNotMatch(await disabledEditRow.locator('[data-poll-option-input]').evaluate((input) => getComputedStyle(input).textDecorationLine), /line-through/);
   await memberPage.click('#event-poll-edit-form button[type="submit"]');
   await memberCreated.locator('.event-poll-option').first().locator('[data-poll-choice]').waitFor();
   assert.equal(await memberCreated.locator('.event-poll-option').first().locator('.badge', { hasText: 'Deaktiviert' }).count(), 0);
