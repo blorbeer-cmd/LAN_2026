@@ -292,8 +292,12 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const stackRow = await liveStack.evaluate((element) => ({
     stack: element.getBoundingClientRect().top,
     title: element.closest('.event-poll-option')!.querySelector('.event-poll-option-title-row')!.getBoundingClientRect().top,
+    avatarWidth: element.querySelector('.avatar-dot, .avatar-img')!.getBoundingClientRect().width,
+    rightInset: element.parentElement!.getBoundingClientRect().right - element.getBoundingClientRect().right,
   }));
   assert.ok(Math.abs(stackRow.stack - stackRow.title) <= 16, `the avatars share the option title row (${JSON.stringify(stackRow)})`);
+  assert.equal(stackRow.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(stackRow)})`);
+  assert.ok(stackRow.rightInset >= 12, `the desktop voter stack sits away from the right edge (${JSON.stringify(stackRow)})`);
   await liveStack.click();
   const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await liveVoteDialog.waitFor();

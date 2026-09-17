@@ -237,7 +237,7 @@ function renderVoterStack(poll, option) {
     <button type="button" class="btn btn-sm event-poll-voter-stack" data-view-poll-votes="${escapeHtml(poll.id)}"
       aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
       <span class="event-poll-voter-stack-avatars" aria-hidden="true">${shown
-        .map((person) => avatarHtml(state.players?.find((entry) => entry.id === person.playerId) ?? person, 20))
+        .map((person) => avatarHtml(state.players?.find((entry) => entry.id === person.playerId) ?? person, 24))
         .join('')}</span>
       ${rest > 0 ? `<span class="event-poll-voter-stack-more" aria-hidden="true">+${rest}</span>` : ''}
     </button>`;

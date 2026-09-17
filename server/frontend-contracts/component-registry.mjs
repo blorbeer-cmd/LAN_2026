@@ -557,8 +557,10 @@ export const components = [
     "purpose": "Voter avatars beside a poll option open the vote dialog without a filled button surface.",
     "properties": [
       "padding-inline",
+      "padding-block",
       "background",
-      "margin-block"
+      "margin-block",
+      "margin-inline-end"
     ]
   },
   {
