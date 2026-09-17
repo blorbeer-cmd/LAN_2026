@@ -889,6 +889,10 @@ export function recommendedOptionId(
   responseMode: EventPollResponseMode = 'feasibility',
 ): string | undefined {
   if (options.length === 0 || responses.length === 0) return undefined;
+  if (
+    (responseMode === 'single_choice' || responseMode === 'multiple_choice') &&
+    !responses.some((response) => response.response === 'can' && options.some((option) => option.id === response.option_id))
+  ) return undefined;
   const ranked = [...options].sort((a, b) => {
     const countsA = optionCounts(a, responses, inviteeCount);
     const countsB = optionCounts(b, responses, inviteeCount);

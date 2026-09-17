@@ -609,6 +609,7 @@ test('deleted options lose their votes while disabled options keep results and r
   assert.equal(changed.body.options[0].active, false);
   assert.equal(changed.body.options[0].counts.can, 1);
   assert.equal(changed.body.options[0].isRecommended, false);
+  assert.equal(changed.body.options[1].isRecommended, false, 'a choice with no active votes has no recommendation');
   assert.equal(changed.body.invitees.find((entry: { playerId: string }) => entry.playerId === bob).hasAnswered, false);
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM event_date_poll_responses WHERE option_id = ?').get(a.id) as { n: number }).n, 0);
 
