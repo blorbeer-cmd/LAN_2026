@@ -137,14 +137,15 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
 
 - `.event-poll-voter-stack` erweitert ausschließlich den Basisbutton `.btn.btn-sm` für die
   Wählenden einer Umfrageoption in `public/js/views/eventPolls.js`.
-- Der Stapel behält die 32-px-Mindesthöhe und damit seine vollständige Trefferfläche. Beide
-  Inline-Innenkanten und der Block-Innenabstand sind null; der Buttonhintergrund bleibt transparent,
-  damit die 24-px-Avatare in die Trefferfläche passen und der Optionszeile keine zusätzliche Zeile
-  entsteht.
+- Der Stapel behält mindestens `--tap-target-size` Breite und die 32-px-Mindesthöhe. Beide
+  Inline-Innenkanten und der Block-Innenabstand sind null; bei nur einer Stimme zentriert die
+  Mindestbreite den 24-px-Avatar in einer komfortablen Trefferfläche. Der Buttonhintergrund bleibt
+  transparent und die Optionszeile erhält keine zusätzliche Zeile.
 - Ausschließlich sein Außenabstand gibt nach: ein negativer Blockabstand von `--space-1` je Seite
   lässt ihn in der 24-px-Badgezeile mitlaufen. Optionen mit und ohne Stimmen behalten dadurch
-  dieselbe Zeilenhöhe. Ab 640 px hält der Stapel `--space-3` Abstand zur rechten Kante, damit die
-  Avatare in der breiteren Zeile weiter links stehen.
+  dieselbe Zeilenhöhe. Der rechte Außenabstand beträgt auf schmalen Ansichten `--space-1`, sodass
+  die Avatarposition dort stabil bleibt. Ab 640 px wächst er auf `--space-4` und rückt die Avatare
+  in der breiteren Zeile sichtbar nach links.
 - Er zeigt höchstens vier Avatare; weitere Personen erscheinen als zusammengefasste Anzahl. Die
   Avatare überlappen einander nur um `--space-1` und heben sich mit einem Ring von der
   Optionsfläche ab.

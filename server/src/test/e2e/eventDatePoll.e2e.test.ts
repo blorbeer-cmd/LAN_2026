@@ -289,15 +289,29 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     0,
     'an option nobody voted for keeps its row free of avatars',
   );
-  const stackRow = await liveStack.evaluate((element) => ({
-    stack: element.getBoundingClientRect().top,
-    title: element.closest('.event-poll-option')!.querySelector('.event-poll-option-title-row')!.getBoundingClientRect().top,
-    avatarWidth: element.querySelector('.avatar-dot, .avatar-img')!.getBoundingClientRect().width,
-    rightInset: element.parentElement!.getBoundingClientRect().right - element.getBoundingClientRect().right,
-  }));
-  assert.ok(Math.abs(stackRow.stack - stackRow.title) <= 16, `the avatars share the option title row (${JSON.stringify(stackRow)})`);
-  assert.equal(stackRow.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(stackRow)})`);
-  assert.ok(stackRow.rightInset >= 12, `the desktop voter stack sits away from the right edge (${JSON.stringify(stackRow)})`);
+  const voterStackGeometry = () => liveStack.evaluate((element) => {
+    const option = element.closest('.event-poll-option')!;
+    const avatar = element.querySelector('.avatar-dot, .avatar-img')!;
+    const stackBox = element.getBoundingClientRect();
+    const avatarBox = avatar.getBoundingClientRect();
+    return {
+      stackTop: stackBox.top,
+      titleTop: option.querySelector('.event-poll-option-title-row')!.getBoundingClientRect().top,
+      stackWidth: stackBox.width,
+      stackHeight: stackBox.height,
+      avatarWidth: avatarBox.width,
+      avatarRightInset: option.getBoundingClientRect().right - avatarBox.right,
+    };
+  });
+  await ownerPage.setViewportSize({ width: 390, height: 844 });
+  const mobileStack = await voterStackGeometry();
+  assert.ok(mobileStack.stackWidth >= 44 && mobileStack.stackHeight >= 32, `the voter stack keeps a comfortable tap target (${JSON.stringify(mobileStack)})`);
+  assert.ok(mobileStack.avatarRightInset >= 20, `the mobile avatar stays away from the option edge (${JSON.stringify(mobileStack)})`);
+  await ownerPage.setViewportSize({ width: 1024, height: 800 });
+  const desktopStack = await voterStackGeometry();
+  assert.ok(Math.abs(desktopStack.stackTop - desktopStack.titleTop) <= 16, `the avatars share the option title row (${JSON.stringify(desktopStack)})`);
+  assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
+  assert.ok(desktopStack.avatarRightInset >= 32, `the desktop voter stack stays visibly left of the option edge (${JSON.stringify(desktopStack)})`);
   await liveStack.click();
   const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await liveVoteDialog.waitFor();

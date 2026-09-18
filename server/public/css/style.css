@@ -876,9 +876,11 @@ textarea {
    dialog lists, compressed into the option's existing title row so a visible
    interim result never costs the round an extra line. */
 .btn.event-poll-voter-stack {
+  min-width: var(--tap-target-size);
   padding-inline: 0;
   padding-block: 0;
   background: transparent;
+  margin-inline-end: var(--space-1);
   /* The control keeps its full 32px target; only its outer box gives way, so
      the avatars ride inside the badge line's 24px instead of making every
      option row with voters taller than the ones without. */
@@ -901,8 +903,8 @@ textarea {
   font-size: var(--font-size-xs);
 }
 @media (min-width: 640px) { /* --bp-md */
-  .event-poll-voter-stack {
-    margin-inline-end: var(--space-3);
+  .btn.event-poll-voter-stack {
+    margin-inline-end: var(--space-4);
   }
 }
 .event-poll-response-toolbar {
