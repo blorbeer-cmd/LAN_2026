@@ -53,10 +53,10 @@ test('general-event planning routes each represent their own bottom-nav entry', 
   assert.equal(navGroupForView('arrivals', { eventType: 'lan' }), 'more');
 });
 
-test('a group reaches its planning routes directly, like a general event', () => {
+test('a group keeps its planning routes together under the Orga navigation', () => {
   const group = { eventType: 'group' };
-  assert.equal(navGroupForView('checklist', group), 'checklist');
-  assert.equal(navGroupForView('eventPolls', group), 'eventPolls');
+  assert.equal(navGroupForView('checklist', group), 'more');
+  assert.equal(navGroupForView('eventPolls', group), 'more');
   assert.equal(navGroupForView('events', group), 'more');
 });
 
@@ -188,6 +188,21 @@ test('general-event planning routes render as standalone pages without an Orga t
   });
   assert.match(container.innerHTML, /<h1 class="view-title">To-Do<\/h1>/);
   assert.doesNotMatch(container.innerHTML, /class="section-tabs"/);
+});
+
+test('group planning routes share the compact two-tab Orga area', () => {
+  const container = stubContainer();
+  renderSectionShell(container, 'eventPolls', {
+    event: {
+      eventType: 'group',
+      enabledFeatures: ['tasks', 'food', 'music', 'games', 'competition', 'arcade'],
+    },
+  });
+  assert.match(container.innerHTML, /class="more-subpage-header more-subpage-header--tabs"/);
+  assert.match(container.innerHTML, /data-section-tab="eventPolls" aria-current="page"/);
+  assert.match(container.innerHTML, /data-section-tab="checklist"/);
+  assert.doesNotMatch(container.innerHTML, /data-section-tab="arrivals"/);
+  assert.doesNotMatch(container.innerHTML, /data-section-tab="checklistPacking"/);
 });
 
 test('Orga exposes the shared back navigation to the More hub', () => {

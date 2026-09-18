@@ -48,11 +48,11 @@ test('navigation resolves semantic domain keys to the established symbols', () =
   );
   assert.deepEqual(
     bottomNavigationEntries('group').map((entry) => domainIcon(entry.iconKey)),
-    ['house', 'vote', 'listChecks', 'hamburger', 'gamepad', 'menu'],
+    ['house', 'swords', 'vote', 'hamburger', 'gamepad', 'menu'],
   );
   assert.deepEqual(
     moreNavigationEntries('group').map((entry) => domainIcon(entry.iconKey)),
-    ['calendar', 'circleUser', 'shield', 'joystick', 'megaphone', 'music'],
+    ['calendar', 'circleUser', 'shield', 'joystick', 'megaphone', 'music', 'clipboard'],
   );
 });
 

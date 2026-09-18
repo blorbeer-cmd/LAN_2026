@@ -28,9 +28,9 @@ test('LAN events retain the existing Orga entry in More', () => {
   assert.equal(items.some((item) => item.view === 'foodOrders'), false);
 });
 
-// A group has no travel and no packing list, so Orga would hold only routes it
-// already carries in its bottom nav.
-test('groups reach their planning routes directly and get no Orga wrapper', () => {
+// Match and Vote occupy the game-night slots in a group, so its remaining
+// planning routes stay together behind the shared Orga entry.
+test('groups keep their planning routes in the Orga wrapper', () => {
   const items = moreItemsForEvent({ eventType: 'group' });
-  assert.equal(items.some((item) => item.section === 'orga'), false);
+  assert.equal(items.some((item) => item.section === 'orga' && item.title === 'Orga'), true);
 });

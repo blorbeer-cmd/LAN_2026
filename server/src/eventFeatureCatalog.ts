@@ -152,10 +152,10 @@ export const EVENT_TYPE_PRESETS: Readonly<Record<EventTypeKey, EventTypePreset>>
   // that meets again and again actually uses.
   group: {
     key: 'group',
-    version: 1,
+    version: 2,
     title: 'Gruppe',
     description: 'Dauerhafter Kreis ohne Zeitraum und ohne Kosten, zum Beispiel eine feste Spielrunde',
-    recommendedFeatureKeys: ['tasks', 'food', 'music', 'games', 'arcade'],
+    recommendedFeatureKeys: ['tasks', 'food', 'music', 'games', 'competition', 'arcade'],
     suggestedFeatureKeys: [],
   },
 };

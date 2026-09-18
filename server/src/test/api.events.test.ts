@@ -1346,7 +1346,8 @@ test('groups are published without a period and refuse every dated or paid field
   assert.equal(created.body.startsAt, null);
   assert.equal(created.body.endsAt, null);
   assert.equal(created.body.costCents, null);
-  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'food', 'music', 'games', 'arcade']);
+  assert.equal(created.body.presetVersion, 2);
+  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'food', 'music', 'games', 'competition', 'arcade']);
 
   // Published, not a draft: a draft waits for a date, a group never gets one.
   assert.deepEqual(

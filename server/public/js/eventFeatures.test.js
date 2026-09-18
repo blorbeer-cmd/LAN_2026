@@ -19,3 +19,16 @@ test('missing snapshots preserve the historical all-features behavior', () => {
   assert.equal(eventHasFeature(null, 'tracking'), true);
   assert.equal(viewIsEnabledForEvent('arcade', {}), true);
 });
+
+test('groups expose game voting and competition while keeping LAN-only areas hidden', () => {
+  const group = {
+    eventType: 'group',
+    enabledFeatures: ['tasks', 'food', 'music', 'games', 'competition', 'arcade'],
+  };
+  for (const view of ['matchmaking', 'tournaments', 'votes', 'gameCatalog']) {
+    assert.equal(viewIsEnabledForEvent(view, group), true, view);
+  }
+  for (const view of ['arrivals', 'checklistPacking', 'leaderboard', 'kiosk', 'seating']) {
+    assert.equal(viewIsEnabledForEvent(view, group), false, view);
+  }
+});

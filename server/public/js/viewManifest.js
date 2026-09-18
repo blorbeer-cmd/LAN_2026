@@ -87,7 +87,7 @@ export const SECTION_MANIFEST = Object.freeze({
   orga: Object.freeze({
     label: 'Orga',
     iconKey: 'clipboard',
-    navigation: Object.freeze({ more: Object.freeze({ eventTypes: Object.freeze(['lan']), order: 5 }) }),
+    navigation: Object.freeze({ more: Object.freeze({ eventTypes: Object.freeze(['lan', 'group']), order: 5 }) }),
   }),
 });
 
@@ -113,8 +113,11 @@ export const VIEW_MANIFEST = Object.freeze({
     label: 'Teams', section: 'competition', sectionOrder: 0, iconKey: 'scale', eventFeature: 'competition',
     search: search('Match', 'Auslosen, Captain Draft und Historie', 'match wettkampf teams auslosen matchmaking captain draft kraft team-historie ergebnis-historie', 98),
     navigation: Object.freeze({
-      bottom: Object.freeze({ lan: Object.freeze({ order: 1, label: 'Match', ariaLabel: 'Match: Teams und Turniere', iconKey: 'competition' }) }),
-      desktop: desktopNavigation('lan', 0, { eventTypes: ['lan'], label: 'Match', iconKey: 'competition' }),
+      bottom: Object.freeze({
+        lan: Object.freeze({ order: 1, label: 'Match', ariaLabel: 'Match: Teams und Turniere', iconKey: 'competition' }),
+        group: Object.freeze({ order: 1, label: 'Match', ariaLabel: 'Match: Teams und Turniere', iconKey: 'competition' }),
+      }),
+      desktop: desktopNavigation('lan', 0, { eventTypes: ['lan', 'group'], label: 'Match', iconKey: 'competition' }),
     }),
     lifecycle: lifecycle('matchmaking', { eventScoped: true, reconnect: true, invalidateOn: [
       CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard,
@@ -125,8 +128,11 @@ export const VIEW_MANIFEST = Object.freeze({
     label: 'Vote', iconKey: 'vote', eventFeature: 'games',
     search: search('Bereich', 'Gemeinsam das nächste Spiel wählen', 'abstimmung voting punkte spielwahl', 97),
     navigation: Object.freeze({
-      bottom: Object.freeze({ lan: Object.freeze({ order: 2, ariaLabel: 'Abstimmung' }) }),
-      desktop: desktopNavigation('lan', 1, { eventTypes: ['lan'] }),
+      bottom: Object.freeze({
+        lan: Object.freeze({ order: 2, ariaLabel: 'Abstimmung' }),
+        group: Object.freeze({ order: 2, ariaLabel: 'Abstimmung' }),
+      }),
+      desktop: desktopNavigation('lan', 1, { eventTypes: ['lan', 'group'] }),
     }),
     lifecycle: lifecycle('votes', { eventScoped: true, reconnect: true, invalidateOn: ['votes:closed'] }),
   }),
@@ -154,7 +160,6 @@ export const VIEW_MANIFEST = Object.freeze({
     navigation: Object.freeze({
       bottom: Object.freeze({
         general: Object.freeze({ order: 4, labelBreakAfter: 6, ariaLabel: 'Umfragen' }),
-        group: Object.freeze({ order: 1, labelBreakAfter: 6, ariaLabel: 'Umfragen' }),
       }),
       desktop: desktopNavigation('orga', 1),
     }),
@@ -237,7 +242,6 @@ export const VIEW_MANIFEST = Object.freeze({
     navigation: Object.freeze({
       bottom: Object.freeze({
         general: Object.freeze({ order: 3, ariaLabel: 'To-Do' }),
-        group: Object.freeze({ order: 2, ariaLabel: 'To-Do' }),
       }),
       desktop: desktopNavigation('orga', 4),
     }),
@@ -327,11 +331,11 @@ export function navigationEventType(event) {
   return NAVIGATION_EVENT_TYPES.includes(eventType) && eventType !== 'lan' ? eventType : 'lan';
 }
 
-// Only the LAN profile wraps its preparation routes in the Orga area with a
-// tab row. The other profiles reach the same routes directly, so each page
-// owns its own title instead of sitting under a shared one.
+// LAN and permanent groups wrap their preparation routes in the Orga area
+// with a tab row. A general event reaches the same routes directly, so each
+// page owns its own title instead of sitting under a shared one.
 export function usesStandaloneOrgaPages(eventType) {
-  return eventType === 'general' || eventType === 'group';
+  return eventType === 'general';
 }
 
 export function viewDefinition(view) {

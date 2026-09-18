@@ -112,10 +112,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   In a general event the same routes keep their data and deep links but lose the Orga wrapper:
   An- & Abreise, Packliste and To-Do are direct bottom-nav pages. Each page owns its concise title
   and shows no Orga tab row. Umfragen occupies
-  the fifth bottom-nav slot and opens the shared event poll view directly. A group works the same
-  way with the routes it actually has: Umfragen, To-Do and Essen are direct bottom-nav pages beside
-  Home and Spiele, and there is no Orga wrapper at all, because An- & Abreise and Packliste do not
-  exist for a workspace nobody travels to.
+  the fifth bottom-nav slot and opens the shared event poll view directly. A group instead uses the
+  game-night navigation Home, Match, Vote, Essen, Spiele and Mehr. Its remaining planning routes
+  stay together in the Orga wrapper under Mehr: Umfragen and To-Do are its only tabs because An- &
+  Abreise and Packliste do not exist for a workspace nobody travels to.
   The personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
   custom entries) with a checked item shown via muted, struck-through text instead of a separate
   badge, followed by the plain add-item field/button row.

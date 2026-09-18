@@ -12,13 +12,30 @@ import {
   moreNavigationEntries,
   sectionViews,
 } from './viewManifest.js';
+import { viewIsEnabledForEvent } from './eventFeatures.js';
+
+const EVENT_FEATURES = Object.freeze({
+  lan: undefined,
+  general: ['tasks', 'packing', 'travel', 'food', 'costs', 'music', 'arcade'],
+  group: ['tasks', 'food', 'music', 'games', 'competition', 'arcade'],
+});
+
+function eventSnapshot(eventType) {
+  return { eventType, ...(EVENT_FEATURES[eventType] ? { enabledFeatures: EVENT_FEATURES[eventType] } : {}) };
+}
 
 function compactDestinationSet(eventType) {
+  const event = eventSnapshot(eventType);
   const bottom = bottomNavigationEntries(eventType)
     .filter((entry) => entry.view !== 'more')
+    .filter((entry) => viewIsEnabledForEvent(entry.view, event))
     .map((entry) => entry.view);
   const more = moreNavigationEntries(eventType).flatMap((entry) =>
-    entry.section ? sectionViews(entry.section).map((sectionEntry) => sectionEntry.view) : [entry.view]);
+    entry.section
+      ? sectionViews(entry.section)
+        .map((sectionEntry) => sectionEntry.view)
+        .filter((view) => viewIsEnabledForEvent(view, event))
+      : [entry.view]);
   return [...new Set([...bottom, ...more])].sort();
 }
 
@@ -49,6 +66,27 @@ test('general events promote planning and polls into the bottom navigation', () 
     'Mehr',
   ]);
   assert.equal(items.some((item) => item.id === 'nav-food-orders'), false);
+});
+
+test('groups expose Match and Vote in the game-night navigation', () => {
+  const items = bottomNavItemsForEvent({ eventType: 'group' });
+  assert.deepEqual(
+    items.map((item) => item.view),
+    ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more'],
+  );
+  assert.deepEqual(
+    items.map((item) => item.label),
+    ['Home', 'Match', 'Vote', 'Essen', 'Spiele', 'Mehr'],
+  );
+
+  const navigation = desktopNavItemsForEvent(
+    { eventType: 'group', enabledFeatures: ['tasks', 'food', 'music', 'games', 'competition', 'arcade'] },
+  );
+  assert.deepEqual(navigation.groups.map((group) => group.label), ['', 'Gruppe', 'Orga', 'Sonstiges']);
+  assert.deepEqual(
+    navigation.groups.flatMap((group) => group.entries.map((entry) => entry.view)),
+    ['home', 'matchmaking', 'votes', 'gameCatalog', 'eventPolls', 'checklist', 'foodOrders', 'broadcast', 'arcade', 'music'],
+  );
 });
 
 test('missing and older event snapshots retain LAN-compatible navigation', () => {
@@ -120,7 +158,10 @@ test('desktop child routes highlight their stable parent destination', () => {
 test('the manifest keeps every compact destination reachable in the desktop rail', () => {
   for (const eventType of ['lan', 'general', 'group']) {
     assert.deepEqual(
-      desktopNavigationEntries(eventType).map((entry) => entry.view).sort(),
+      desktopNavigationEntries(eventType)
+        .filter((entry) => viewIsEnabledForEvent(entry.view, eventSnapshot(eventType)))
+        .map((entry) => entry.view)
+        .sort(),
       compactDestinationSet(eventType),
       eventType,
     );
