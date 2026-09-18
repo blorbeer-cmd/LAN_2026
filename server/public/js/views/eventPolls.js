@@ -356,9 +356,9 @@ function renderOption(poll, option) {
           ${link ? `<a class="icon-btn event-poll-option-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" aria-label="Link zu ${escapeHtml(label)} öffnen" title="Link öffnen">${icon('squareArrowOutUpRight')}</a>` : ''}
         </span>
         <span class="row event-poll-option-badges">
+          ${renderVoterStack(poll, option)}
           ${recommendation}
           ${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}
-          ${renderVoterStack(poll, option)}
         </span>
       </div>
       <div class="event-poll-option-response-row">

@@ -299,29 +299,28 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     const option = element.closest('.event-poll-option')!;
     const avatars = element.querySelectorAll('.avatar-dot, .avatar-img');
     const avatar = avatars.item(avatars.length - 1);
+    const recommendation = option.querySelector('.badge-online')!;
     const stackBox = element.getBoundingClientRect();
     const avatarBox = avatar.getBoundingClientRect();
+    const recommendationBox = recommendation.getBoundingClientRect();
     return {
       stackTop: stackBox.top,
       titleTop: option.querySelector('.event-poll-option-title-row')!.getBoundingClientRect().top,
       stackWidth: stackBox.width,
       stackHeight: stackBox.height,
       avatarWidth: avatarBox.width,
-      avatarRightInset: option.getBoundingClientRect().right - avatarBox.right,
-      marginInlineEnd: Number.parseFloat(getComputedStyle(element).marginInlineEnd),
+      avatarsBeforeRecommendation: avatarBox.right <= recommendationBox.left,
     };
   });
   await ownerPage.setViewportSize({ width: 390, height: 844 });
   const mobileStack = await voterStackGeometry();
   assert.ok(mobileStack.stackWidth >= 44 && mobileStack.stackHeight >= 32, `the voter stack keeps a comfortable tap target (${JSON.stringify(mobileStack)})`);
-  assert.equal(mobileStack.marginInlineEnd, 12, `the mobile voter stack keeps the original outer spacing (${JSON.stringify(mobileStack)})`);
-  assert.ok(mobileStack.avatarRightInset >= 20, `the mobile rightmost avatar keeps its original distance from the option edge (${JSON.stringify(mobileStack)})`);
+  assert.equal(mobileStack.avatarsBeforeRecommendation, true, `mobile avatars sit between the option title and recommendation (${JSON.stringify(mobileStack)})`);
   await ownerPage.setViewportSize({ width: 1024, height: 800 });
   const desktopStack = await voterStackGeometry();
   assert.ok(Math.abs(desktopStack.stackTop - desktopStack.titleTop) <= 16, `the avatars share the option title row (${JSON.stringify(desktopStack)})`);
   assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
-  assert.equal(desktopStack.marginInlineEnd, 16, `the desktop voter stack gains additional outer spacing (${JSON.stringify(desktopStack)})`);
-  assert.ok(desktopStack.avatarRightInset >= 24, `the desktop rightmost avatar stays left of the option edge (${JSON.stringify(desktopStack)})`);
+  assert.equal(desktopStack.avatarsBeforeRecommendation, true, `desktop avatars sit between the option title and recommendation (${JSON.stringify(desktopStack)})`);
   await liveStack.click();
   const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await liveVoteDialog.waitFor();

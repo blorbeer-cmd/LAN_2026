@@ -880,7 +880,6 @@ textarea {
   padding-inline: 0;
   padding-block: 0;
   background: transparent;
-  margin-inline-end: var(--space-3);
   /* The control keeps its full 32px target; only its outer box gives way, so
      the avatars ride inside the badge line's 24px instead of making every
      option row with voters taller than the ones without. */
@@ -901,11 +900,6 @@ textarea {
 .event-poll-voter-stack-more {
   color: var(--text-muted);
   font-size: var(--font-size-xs);
-}
-@media (min-width: 640px) { /* --bp-md */
-  .btn.event-poll-voter-stack {
-    margin-inline-end: var(--space-4);
-  }
 }
 .event-poll-response-toolbar {
   min-width: 0;
