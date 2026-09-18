@@ -886,6 +886,12 @@ textarea {
      option row with voters taller than the ones without. */
   margin-block: calc(var(--space-1) * -1);
 }
+/* Keep the same outer inset when no recommendation or status badge follows
+   the stack. A following badge already supplies that inset through the row's
+   trailing content and shared gap. */
+.btn.event-poll-voter-stack:last-child {
+  margin-inline-end: var(--space-3);
+}
 .event-poll-voter-stack-avatars {
   display: inline-flex;
   align-items: center;

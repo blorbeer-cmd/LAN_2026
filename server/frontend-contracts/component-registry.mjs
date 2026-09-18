@@ -560,7 +560,8 @@ export const components = [
       "padding-inline",
       "padding-block",
       "background",
-      "margin-block"
+      "margin-block",
+      "margin-inline-end"
     ]
   },
   {
