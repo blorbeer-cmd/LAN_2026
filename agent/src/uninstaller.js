@@ -10,10 +10,13 @@ const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
 
-function scheduleUninstall({ installDir, startupShortcutPath }) {
+function scheduleUninstall({ installDir, startupShortcutPath, desktopShortcutPaths = [] }) {
   if (os.platform() !== 'win32') {
     // Dev/test convenience path — no running .exe to worry about.
     if (startupShortcutPath && fs.existsSync(startupShortcutPath)) fs.unlinkSync(startupShortcutPath);
+    for (const shortcutPath of desktopShortcutPaths) {
+      if (shortcutPath && fs.existsSync(shortcutPath)) fs.unlinkSync(shortcutPath);
+    }
     if (installDir && fs.existsSync(installDir)) fs.rmSync(installDir, { recursive: true, force: true });
     return;
   }
@@ -22,6 +25,9 @@ function scheduleUninstall({ installDir, startupShortcutPath }) {
     '@echo off',
     'timeout /t 2 /nobreak >nul',
     startupShortcutPath ? `if exist "${startupShortcutPath}" del /f /q "${startupShortcutPath}"` : '',
+    ...desktopShortcutPaths.map((shortcutPath) =>
+      shortcutPath ? `if exist "${shortcutPath}" del /f /q "${shortcutPath}"` : '',
+    ),
     installDir ? `if exist "${installDir}" rmdir /s /q "${installDir}"` : '',
   ].filter(Boolean);
 

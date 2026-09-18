@@ -13,6 +13,8 @@ server/data/
 
 # Lokale Agent-Konfiguration (enthält API-Key)
 agent/agent.config.json
+agent/.respawn-control.json
+agent/.respawn-control.json.*.tmp
 
 # Lokale Server-Zugangsdaten
 server/.env*.local

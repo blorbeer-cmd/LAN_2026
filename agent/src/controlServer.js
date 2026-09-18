@@ -9,9 +9,23 @@
 // project's frontend.
 
 const http = require('http');
+const crypto = require('crypto');
 const { URL } = require('url');
 
-function renderPage() {
+const ACCESS_KEY_HEADER = 'x-respawn-control-key';
+const LAUNCH_TICKET_HEADER = 'x-respawn-control-ticket';
+const SESSION_COOKIE = 'respawn_control_session';
+const LAUNCH_TICKET_TTL_MS = 30_000;
+
+function randomToken() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+function generateControlAccessKey() {
+  return randomToken();
+}
+
+function renderPage(scriptNonce = randomToken()) {
   return `<!doctype html>
 <html lang="de">
 <head>
@@ -122,9 +136,31 @@ function renderPage() {
     <div id="msg"></div>
   </div>
 
-<script>
+<script nonce="${scriptNonce}">
+const launchTicket = new URLSearchParams(window.location.hash.slice(1)).get('ticket');
+if (window.location.hash) history.replaceState(null, '', window.location.pathname);
+
+let sessionReady;
+if (launchTicket) {
+  sessionReady = fetch('/api/session', {
+    method: 'POST',
+    headers: { 'X-Respawn-Control-Ticket': launchTicket },
+  }).then((res) => {
+    if (!res.ok) throw new Error('Der sichere Zugriff ist abgelaufen.');
+  });
+} else {
+  // A reload has no ticket anymore, but can reuse the HttpOnly session cookie.
+  sessionReady = Promise.resolve();
+}
+
+async function controlFetch(path, options) {
+  await sessionReady;
+  return fetch(path, options);
+}
+
 async function loadStatus() {
-  const res = await fetch('/api/status');
+  const res = await controlFetch('/api/status');
+  if (!res.ok) throw new Error('Bitte die Steuerung über das Tray-Icon oder die Desktop-Verknüpfung öffnen.');
   const s = await res.json();
   document.getElementById('serverUrl').textContent = 'Server: ' + s.serverUrl;
   const badge = document.getElementById('statusBadge');
@@ -154,14 +190,14 @@ function showMsg(text, isError) {
 document.getElementById('toggleBtn').addEventListener('click', async () => {
   const s = await loadStatus();
   const action = s.paused ? 'resume' : 'pause';
-  const res = await fetch('/api/' + action, { method: 'POST' });
+  const res = await controlFetch('/api/' + action, { method: 'POST' });
   if (res.ok) { await loadStatus(); showMsg(action === 'pause' ? 'Pausiert.' : 'Fortgesetzt.'); }
   else showMsg('Fehler beim Umschalten.', true);
 });
 
 document.getElementById('activityToggle').addEventListener('change', async (e) => {
   const enable = e.target.checked;
-  const res = await fetch('/api/activity-tracking/' + (enable ? 'enable' : 'disable'), { method: 'POST' });
+  const res = await controlFetch('/api/activity-tracking/' + (enable ? 'enable' : 'disable'), { method: 'POST' });
   if (res.ok) { showMsg(enable ? 'Erweiterte Daten aktiviert.' : 'Erweiterte Daten deaktiviert.'); }
   else { e.target.checked = !enable; showMsg('Fehler.', true); }
   await loadStatus();
@@ -169,7 +205,7 @@ document.getElementById('activityToggle').addEventListener('change', async (e) =
 
 document.getElementById('autostartToggle').addEventListener('change', async (e) => {
   const enable = e.target.checked;
-  const res = await fetch('/api/autostart/' + (enable ? 'enable' : 'disable'), { method: 'POST' });
+  const res = await controlFetch('/api/autostart/' + (enable ? 'enable' : 'disable'), { method: 'POST' });
   const body = await res.json().catch(() => ({}));
   if (res.ok) showMsg(enable ? 'Autostart aktiviert.' : 'Autostart deaktiviert.');
   else { e.target.checked = !enable; showMsg(body.error || 'Fehler.', true); }
@@ -189,7 +225,7 @@ document.getElementById('uninstallCancelBtn').addEventListener('click', () => {
   document.getElementById('uninstallBtn').hidden = false;
 });
 document.getElementById('uninstallConfirmBtn').addEventListener('click', async () => {
-  const res = await fetch('/api/uninstall', { method: 'POST' });
+  const res = await controlFetch('/api/uninstall', { method: 'POST' });
   if (res.ok) {
     document.getElementById('card').innerHTML =
       '<h1>Deinstalliert</h1><p class="sub">Der Agent wurde beendet und alle Dateien wurden entfernt. Dieses Fenster kannst du jetzt schließen.</p>';
@@ -200,35 +236,186 @@ document.getElementById('uninstallConfirmBtn').addEventListener('click', async (
   }
 });
 
-loadStatus();
-setInterval(loadStatus, 5000);
+loadStatus().catch((err) => showMsg(err.message, true));
+setInterval(() => loadStatus().catch((err) => showMsg(err.message, true)), 5000);
 </script>
 </body>
 </html>`;
 }
 
+function applySecurityHeaders(res) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+}
+
 function sendJson(res, status, body) {
+  applySecurityHeaders(res);
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(body));
+}
+
+function expectedOrigin(req) {
+  return `http://127.0.0.1:${req.socket.localPort}`;
+}
+
+function hasExpectedHost(req) {
+  return req.headers.host === `127.0.0.1:${req.socket.localPort}`;
+}
+
+function hasForeignBrowserProvenance(req, origin) {
+  const requestOrigin = req.headers.origin;
+  const fetchSite = req.headers['sec-fetch-site'];
+  return (
+    (requestOrigin !== undefined && requestOrigin !== origin) ||
+    (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none')
+  );
+}
+
+function isTopLevelOrSameOriginNavigation(req) {
+  const fetchSite = req.headers['sec-fetch-site'];
+  if (fetchSite === 'same-origin') return true;
+  return (
+    fetchSite === 'none' && req.headers['sec-fetch-mode'] === 'navigate' && req.headers['sec-fetch-dest'] === 'document'
+  );
+}
+
+function isSameOriginBrowserRequest(req, origin, requireOrigin) {
+  if (req.headers['sec-fetch-site'] !== 'same-origin') return false;
+  if (req.headers.origin !== undefined && req.headers.origin !== origin) return false;
+  return !requireOrigin || req.headers.origin === origin;
+}
+
+function safeTokenEqual(actual, expected) {
+  if (typeof actual !== 'string' || typeof expected !== 'string') return false;
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function readCookie(req, name) {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator === -1) continue;
+    if (part.slice(0, separator).trim() === name) return part.slice(separator + 1).trim();
+  }
+  return null;
+}
+
+function sessionCookieName(req) {
+  return `${SESSION_COOKIE}_${req.socket.localPort}`;
 }
 
 // handlers: { getStatus, pause, resume, enableActivityTracking, disableActivityTracking,
 // enableAutostart, disableAutostart, uninstall } — all may be sync or return a Promise;
 // getStatus returns the full status object.
-function createControlServer(handlers) {
+function createControlServer(handlers, { accessKey } = {}) {
+  if (typeof accessKey !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(accessKey)) {
+    throw new Error('Ein sicherer lokaler Zugriffsschlüssel ist erforderlich.');
+  }
+
+  const launchTickets = new Map();
+  const sessions = new Set();
+
+  function pruneLaunchTickets() {
+    const now = Date.now();
+    for (const [ticket, expiresAt] of launchTickets) {
+      if (expiresAt <= now) launchTickets.delete(ticket);
+    }
+  }
+
+  function issueLaunchTicket() {
+    pruneLaunchTickets();
+    const ticket = randomToken();
+    launchTickets.set(ticket, Date.now() + LAUNCH_TICKET_TTL_MS);
+    return ticket;
+  }
+
+  function consumeLaunchTicket(ticket) {
+    pruneLaunchTickets();
+    const expiresAt = launchTickets.get(ticket);
+    if (!expiresAt) return false;
+    launchTickets.delete(ticket);
+    return expiresAt > Date.now();
+  }
+
+  function hasSession(req) {
+    const session = readCookie(req, sessionCookieName(req));
+    return typeof session === 'string' && sessions.has(session);
+  }
+
   return http.createServer(async (req, res) => {
+    if (!hasExpectedHost(req)) {
+      return sendJson(res, 403, { error: 'Ungültiger Host.' });
+    }
+
+    const origin = expectedOrigin(req);
+    if (hasForeignBrowserProvenance(req, origin)) {
+      return sendJson(res, 403, { error: 'Ungültige Herkunft.' });
+    }
+
     let pathname;
     try {
-      pathname = new URL(req.url, 'http://localhost').pathname;
+      pathname = new URL(req.url, origin).pathname;
     } catch {
       return sendJson(res, 400, { error: 'Ungültige Anfrage.' });
     }
 
     try {
-      if (req.method === 'GET' && pathname === '/') {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(renderPage());
+      if (req.method === 'POST' && pathname === '/api/launch') {
+        if (req.headers.origin !== undefined || req.headers['sec-fetch-site'] !== undefined) {
+          return sendJson(res, 403, { error: 'Browserzugriff ist hier nicht erlaubt.' });
+        }
+        if (!safeTokenEqual(req.headers[ACCESS_KEY_HEADER], accessKey)) {
+          return sendJson(res, 401, { error: 'Zugriff verweigert.' });
+        }
+        return sendJson(res, 200, { ticket: issueLaunchTicket() });
       }
+
+      if (req.method === 'GET' && pathname === '/') {
+        if (!isTopLevelOrSameOriginNavigation(req)) {
+          return sendJson(res, 403, { error: 'Ungültige Browsernavigation.' });
+        }
+        const scriptNonce = randomToken();
+        const page = renderPage(scriptNonce);
+        applySecurityHeaders(res);
+        res.setHeader(
+          'Content-Security-Policy',
+          `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${scriptNonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+        );
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(page);
+      }
+
+      if (req.method === 'POST' && pathname === '/api/session') {
+        if (!isSameOriginBrowserRequest(req, origin, true)) {
+          return sendJson(res, 403, { error: 'Ungültige Herkunft.' });
+        }
+        const ticket = req.headers[LAUNCH_TICKET_HEADER];
+        if (typeof ticket !== 'string' || !consumeLaunchTicket(ticket)) {
+          return sendJson(res, 401, { error: 'Ungültiger oder abgelaufener Zugriff.' });
+        }
+        const session = randomToken();
+        sessions.add(session);
+        applySecurityHeaders(res);
+        res.setHeader('Set-Cookie', `${sessionCookieName(req)}=${session}; HttpOnly; SameSite=Strict; Path=/`);
+        res.writeHead(204);
+        return res.end();
+      }
+
+      if (pathname.startsWith('/api/')) {
+        const requireOrigin = req.method !== 'GET' && req.method !== 'HEAD';
+        if (!isSameOriginBrowserRequest(req, origin, requireOrigin)) {
+          return sendJson(res, 403, { error: 'Ungültige Herkunft.' });
+        }
+        if (!hasSession(req)) {
+          return sendJson(res, 401, { error: 'Zugriff verweigert.' });
+        }
+      }
+
       if (req.method === 'GET' && pathname === '/api/status') {
         return sendJson(res, 200, await handlers.getStatus());
       }
@@ -297,4 +484,4 @@ function listenWithRetry(server, preferredPort, attempts = 5) {
   });
 }
 
-module.exports = { createControlServer, listenWithRetry, renderPage };
+module.exports = { createControlServer, generateControlAccessKey, listenWithRetry, renderPage };

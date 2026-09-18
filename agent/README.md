@@ -24,13 +24,19 @@ relevant.
 Läuft die installierte `.exe` unter Windows, verschwindet das Konsolenfenster nach dem Start
 (keine sichtbare Log-Ausgabe mehr alle paar Sekunden) und stattdessen erscheint ein kleines Icon im
 System-Tray. Doppelklick darauf (oder Rechtsklick → „Steuerung oeffnen") öffnet die eigentliche
-Steuerung – eine kleine Weboberfläche unter `http://127.0.0.1:47813`, solange der Agent läuft.
+Steuerung – eine kleine, ausschließlich über Loopback erreichbare Weboberfläche. Die Oberfläche
+verlangt einen zufälligen lokalen Zugriffsnachweis; Tray und Desktop-Verknüpfung holen automatisch
+ein kurzlebiges Einmal-Ticket und öffnen danach den Browser. Eine manuelle Schlüsseleingabe ist
+nicht nötig. Das Einmal-Ticket liegt nur kurz im URL-Fragment und wird von der Seite sofort aus der
+Adresszeile und dem Verlaufseintrag entfernt; der eigentliche Zugriffsschlüssel steht weder in der
+URL noch im Agent-Log.
 Rechtsklick → „Beenden" beendet den Agent direkt aus dem Tray. `install.bat` legt zusätzlich eine
 Verknüpfung „Respawn-Agent Steuerung" auf dem Desktop an, die zur selben Weboberfläche führt.
 Klappt das Tray-Icon aus irgendeinem Grund nicht (z. B. sehr alte Windows-Version ohne .NET), bleibt
 das Konsolenfenster einfach sichtbar und die Desktop-Verknüpfung funktioniert unverändert. Läuft der
 Agent per `npm start` (nicht als `.exe`), bleibt die Konsole immer sichtbar – das Tray-Icon ist nur
-etwas für die gepackte Variante.
+etwas für die gepackte Variante. In diesem Entwicklungsmodus öffnet `npm run control` die
+Steuerung sicher im Browser.
 
 Nach dem Ausblenden landet die Log-Ausgabe zusätzlich in `agent.log` im Installationsordner
 (`%LOCALAPPDATA%\Respawn-Agent`), damit sich Verbindungsprobleme trotzdem nachvollziehen lassen.
@@ -53,8 +59,9 @@ In der Weboberfläche gibt es vier Aktionen:
 - **Komplett deinstallieren** – entfernt den Autostart-Eintrag, beendet den Agent-Prozess und löscht
   den gesamten Installationsordner (`%LOCALAPPDATA%\Respawn-Agent`) von diesem PC.
 
-Ist der Port belegt (z. B. zwei Agenten auf demselben PC), probiert der Agent automatisch die
-nächsten Ports (47814, 47815, …) und loggt, welchen er tatsächlich benutzt.
+Ist der Port 47813 belegt (z. B. zwei Agenten auf demselben PC), probiert der Agent automatisch die
+nächsten Ports (47814, 47815, …). Tray und Desktop-Verknüpfung verwenden immer den tatsächlich
+gebundenen Port – auch nach einem Agent-Neustart.
 
 ## Manuelle Einrichtung
 
