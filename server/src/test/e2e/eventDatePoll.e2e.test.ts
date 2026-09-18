@@ -255,6 +255,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await ownerPoll.locator('.event-poll-progress').count(), 0, 'progress and deadline are not repeated above the options');
   const ownerOptions = ownerPoll.locator('.event-poll-option');
   await ownerOptions.nth(0).locator('[data-poll-response="can"]').click();
+  await ownerOptions.nth(1).locator('[data-poll-response="can"]').click();
   await ownerPoll.locator('[data-save-poll]').click();
   await ownerPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
 
@@ -285,42 +286,47 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   // same dialog the round publishes to everyone once it ends.
   assert.match(await refreshed.innerText(), /Zwischenstand nur für dich/);
   const liveStack = refreshed.locator('.event-poll-option').first().locator('.event-poll-voter-stack');
+  const singleVoterStack = refreshed.locator('.event-poll-option').nth(1).locator('.event-poll-voter-stack');
   await liveStack.waitFor();
+  await singleVoterStack.waitFor();
   const liveStackLabel = (await liveStack.getAttribute('aria-label')) ?? '';
+  assert.match(liveStackLabel, /· Passt: /);
   assert.match(liveStackLabel, new RegExp(OWNER_NAME));
   assert.match(liveStackLabel, new RegExp(MEMBER_NAME));
   assert.equal(await liveStack.locator('.avatar-dot, .avatar-img').count(), 2);
-  assert.equal(
-    await refreshed.locator('.event-poll-option').nth(1).locator('.event-poll-voter-stack').count(),
-    0,
-    'an option nobody voted for keeps its row free of avatars',
-  );
-  const voterStackGeometry = () => liveStack.evaluate((element) => {
+  assert.equal(await singleVoterStack.locator('.avatar-dot, .avatar-img').count(), 1);
+  const voterStackGeometry = (stack: typeof liveStack) => stack.evaluate((element) => {
     const option = element.closest('.event-poll-option')!;
     const avatars = element.querySelectorAll('.avatar-dot, .avatar-img');
     const avatar = avatars.item(avatars.length - 1);
-    const recommendation = option.querySelector('.badge-online')!;
+    const recommendation = option.querySelector('.badge-online');
     const stackBox = element.getBoundingClientRect();
     const avatarBox = avatar.getBoundingClientRect();
-    const recommendationBox = recommendation.getBoundingClientRect();
+    const recommendationBox = recommendation?.getBoundingClientRect();
     return {
       stackTop: stackBox.top,
       titleTop: option.querySelector('.event-poll-option-title-row')!.getBoundingClientRect().top,
       stackWidth: stackBox.width,
       stackHeight: stackBox.height,
       avatarWidth: avatarBox.width,
-      avatarsBeforeRecommendation: avatarBox.right <= recommendationBox.left,
+      stackContentRightInset: stackBox.right - avatarBox.right,
+      avatarsBeforeRecommendation: !recommendationBox || avatarBox.right <= recommendationBox.left,
     };
   });
   await ownerPage.setViewportSize({ width: 390, height: 844 });
-  const mobileStack = await voterStackGeometry();
-  assert.ok(mobileStack.stackWidth >= 44 && mobileStack.stackHeight >= 32, `the voter stack keeps a comfortable tap target (${JSON.stringify(mobileStack)})`);
-  assert.equal(mobileStack.avatarsBeforeRecommendation, true, `mobile avatars sit between the option title and recommendation (${JSON.stringify(mobileStack)})`);
+  const mobileStack = await voterStackGeometry(liveStack);
+  const mobileSingleStack = await voterStackGeometry(singleVoterStack);
+  assert.ok(mobileStack.stackWidth >= 44 && mobileStack.stackHeight >= 32, `the multi-voter stack keeps a comfortable tap target (${JSON.stringify(mobileStack)})`);
+  assert.equal(mobileSingleStack.stackWidth, 44, `the single-voter stack keeps the minimum width (${JSON.stringify(mobileSingleStack)})`);
+  assert.equal(mobileSingleStack.avatarsBeforeRecommendation, true, `mobile avatars sit between the option title and recommendation (${JSON.stringify(mobileSingleStack)})`);
+  assert.ok(mobileStack.stackContentRightInset <= 1 && mobileSingleStack.stackContentRightInset <= 1, `mobile avatars align to their tap target edge (${JSON.stringify({ mobileStack, mobileSingleStack })})`);
   await ownerPage.setViewportSize({ width: 1024, height: 800 });
-  const desktopStack = await voterStackGeometry();
+  const desktopStack = await voterStackGeometry(liveStack);
+  const desktopSingleStack = await voterStackGeometry(singleVoterStack);
   assert.ok(Math.abs(desktopStack.stackTop - desktopStack.titleTop) <= 16, `the avatars share the option title row (${JSON.stringify(desktopStack)})`);
   assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
-  assert.equal(desktopStack.avatarsBeforeRecommendation, true, `desktop avatars sit between the option title and recommendation (${JSON.stringify(desktopStack)})`);
+  assert.equal(desktopSingleStack.avatarsBeforeRecommendation, true, `desktop avatars sit between the option title and recommendation (${JSON.stringify(desktopSingleStack)})`);
+  assert.ok(desktopStack.stackContentRightInset <= 1 && desktopSingleStack.stackContentRightInset <= 1, `desktop avatars align to their tap target edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
   await liveStack.click();
   const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await liveVoteDialog.waitFor();

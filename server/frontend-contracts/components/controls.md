@@ -145,7 +145,9 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
   lässt ihn in der 24-px-Badgezeile mitlaufen. Optionen mit und ohne Stimmen behalten dadurch
   dieselbe Zeilenhöhe. Innerhalb von `.event-poll-option-badges` steht der Stimmenstapel direkt
   hinter dem Optionstitel und vor Empfehlungs- oder Status-Badges. Den Abstand zwischen diesen
-  Elementen liefert ausschließlich der gemeinsame `--space-1`-Gap der Badgezeile.
+  Elementen liefert ausschließlich der gemeinsame `--space-1`-Gap der Badgezeile. Sein Inhalt ist
+  am rechten Rand des 44-px-Mindestziels ausgerichtet, damit der rechte Avatar bei einer und bei
+  mehreren Stimmen dieselbe Kante behält.
 - Er zeigt höchstens vier Avatare; weitere Personen erscheinen als zusammengefasste Anzahl. Die
   Avatare überlappen einander nur um `--space-1` und heben sich mit einem Ring von der
   Optionsfläche ab.
