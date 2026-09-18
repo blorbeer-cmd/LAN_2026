@@ -237,7 +237,7 @@ function renderVoterStack(poll, option) {
     <button type="button" class="btn btn-sm event-poll-voter-stack" data-view-poll-votes="${escapeHtml(poll.id)}"
       aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
       <span class="event-poll-voter-stack-avatars" aria-hidden="true">${shown
-        .map((person) => avatarHtml(state.players?.find((entry) => entry.id === person.playerId) ?? person, 20))
+        .map((person) => avatarHtml(state.players?.find((entry) => entry.id === person.playerId) ?? person, 24))
         .join('')}</span>
       ${rest > 0 ? `<span class="event-poll-voter-stack-more" aria-hidden="true">+${rest}</span>` : ''}
     </button>`;
@@ -356,9 +356,9 @@ function renderOption(poll, option) {
           ${link ? `<a class="icon-btn event-poll-option-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" aria-label="Link zu ${escapeHtml(label)} öffnen" title="Link öffnen">${icon('squareArrowOutUpRight')}</a>` : ''}
         </span>
         <span class="row event-poll-option-badges">
+          ${renderVoterStack(poll, option)}
           ${recommendation}
           ${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}
-          ${renderVoterStack(poll, option)}
         </span>
       </div>
       <div class="event-poll-option-response-row">

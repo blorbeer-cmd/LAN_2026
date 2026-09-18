@@ -253,6 +253,11 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await ownerPoll.locator('[data-poll-response="cannot"]').count(), 2);
   assert.equal(await ownerPoll.locator('[data-poll-response="open"]').count(), 2);
   assert.equal(await ownerPoll.locator('.event-poll-progress').count(), 0, 'progress and deadline are not repeated above the options');
+  const ownerOptions = ownerPoll.locator('.event-poll-option');
+  await ownerOptions.nth(0).locator('[data-poll-response="can"]').click();
+  await ownerOptions.nth(1).locator('[data-poll-response="can"]').click();
+  await ownerPoll.locator('[data-save-poll]').click();
+  await ownerPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
 
   await navigate(memberPage, 'eventPolls');
   const memberPoll = memberPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
@@ -281,19 +286,53 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   // same dialog the round publishes to everyone once it ends.
   assert.match(await refreshed.innerText(), /Zwischenstand nur für dich/);
   const liveStack = refreshed.locator('.event-poll-option').first().locator('.event-poll-voter-stack');
+  const singleVoterStack = refreshed.locator('.event-poll-option').nth(1).locator('.event-poll-voter-stack');
+  const recommendationStack = refreshed.locator('.event-poll-option:has(.badge-online) .event-poll-voter-stack');
   await liveStack.waitFor();
-  assert.match((await liveStack.getAttribute('aria-label')) ?? '', new RegExp(`Passt: ${MEMBER_NAME}`));
-  assert.equal(await liveStack.locator('.avatar-dot, .avatar-img').count(), 1);
-  assert.equal(
-    await refreshed.locator('.event-poll-option').nth(1).locator('.event-poll-voter-stack').count(),
-    0,
-    'an option nobody voted for keeps its row free of avatars',
-  );
-  const stackRow = await liveStack.evaluate((element) => ({
-    stack: element.getBoundingClientRect().top,
-    title: element.closest('.event-poll-option')!.querySelector('.event-poll-option-title-row')!.getBoundingClientRect().top,
-  }));
-  assert.ok(Math.abs(stackRow.stack - stackRow.title) <= 16, `the avatars share the option title row (${JSON.stringify(stackRow)})`);
+  await singleVoterStack.waitFor();
+  await recommendationStack.waitFor();
+  const liveStackLabel = (await liveStack.getAttribute('aria-label')) ?? '';
+  assert.match(liveStackLabel, /· Passt: /);
+  assert.match(liveStackLabel, new RegExp(OWNER_NAME));
+  assert.match(liveStackLabel, new RegExp(MEMBER_NAME));
+  assert.equal(await liveStack.locator('.avatar-dot, .avatar-img').count(), 2);
+  assert.equal(await singleVoterStack.locator('.avatar-dot, .avatar-img').count(), 1);
+  const voterStackGeometry = (stack: typeof liveStack) => stack.evaluate((element) => {
+    const option = element.closest('.event-poll-option')!;
+    const avatars = element.querySelectorAll('.avatar-dot, .avatar-img');
+    const avatar = avatars.item(avatars.length - 1);
+    const recommendation = option.querySelector('.badge-online');
+    const stackBox = element.getBoundingClientRect();
+    const avatarBox = avatar.getBoundingClientRect();
+    const recommendationBox = recommendation?.getBoundingClientRect();
+    return {
+      stackTop: stackBox.top,
+      titleTop: option.querySelector('.event-poll-option-title-row')!.getBoundingClientRect().top,
+      stackWidth: stackBox.width,
+      stackHeight: stackBox.height,
+      avatarWidth: avatarBox.width,
+      stackContentRightInset: stackBox.right - avatarBox.right,
+      avatarToOptionRightInset: option.getBoundingClientRect().right - avatarBox.right,
+      avatarsBeforeRecommendation: !recommendationBox || avatarBox.right <= recommendationBox.left,
+    };
+  });
+  await ownerPage.setViewportSize({ width: 390, height: 844 });
+  const mobileStack = await voterStackGeometry(liveStack);
+  const mobileSingleStack = await voterStackGeometry(singleVoterStack);
+  const mobileRecommendationStack = await voterStackGeometry(recommendationStack);
+  assert.ok(mobileStack.stackWidth >= 44 && mobileStack.stackHeight >= 32, `the multi-voter stack keeps a comfortable tap target (${JSON.stringify(mobileStack)})`);
+  assert.equal(mobileSingleStack.stackWidth, 44, `the single-voter stack keeps the minimum width (${JSON.stringify(mobileSingleStack)})`);
+  assert.equal(mobileRecommendationStack.avatarsBeforeRecommendation, true, `mobile avatars sit before the recommendation badge (${JSON.stringify(mobileRecommendationStack)})`);
+  assert.ok(mobileStack.stackContentRightInset <= 1 && mobileSingleStack.stackContentRightInset <= 1, `mobile avatars align to their tap target edge (${JSON.stringify({ mobileStack, mobileSingleStack })})`);
+  await ownerPage.setViewportSize({ width: 1024, height: 800 });
+  const desktopStack = await voterStackGeometry(liveStack);
+  const desktopSingleStack = await voterStackGeometry(singleVoterStack);
+  const desktopRecommendationStack = await voterStackGeometry(recommendationStack);
+  assert.ok(Math.abs(desktopStack.stackTop - desktopStack.titleTop) <= 16, `the avatars share the option title row (${JSON.stringify(desktopStack)})`);
+  assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
+  assert.equal(desktopRecommendationStack.avatarsBeforeRecommendation, true, `desktop avatars sit before the recommendation badge (${JSON.stringify(desktopRecommendationStack)})`);
+  assert.ok(desktopSingleStack.avatarToOptionRightInset >= 20, `a stack without a following badge keeps the option inset (${JSON.stringify(desktopSingleStack)})`);
+  assert.ok(desktopStack.stackContentRightInset <= 1 && desktopSingleStack.stackContentRightInset <= 1, `desktop avatars align to their tap target edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
   await liveStack.click();
   const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await liveVoteDialog.waitFor();
@@ -774,6 +813,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const manyOptionPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Viele Möglichkeiten' });
   await manyOptionPoll.waitFor();
   assert.equal(await manyOptionPoll.locator('.event-poll-option').count(), 9);
+  assert.equal(await manyOptionPoll.locator('.event-poll-voter-stack').count(), 0, 'options without votes stay avatar-free');
 
   await createPoll(ownerPage, {
     title: 'Schalter beim Starten',

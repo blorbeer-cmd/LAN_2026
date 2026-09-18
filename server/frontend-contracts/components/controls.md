@@ -137,14 +137,24 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
 
 - `.event-poll-voter-stack` erweitert ausschließlich den Basisbutton `.btn.btn-sm` für die
   Wählenden einer Umfrageoption in `public/js/views/eventPolls.js`.
-- Der Stapel behält die 32-px-Mindesthöhe und damit seine vollständige Trefferfläche. Beide
-  Inline-Innenkanten sind null und der Buttonhintergrund bleibt transparent, damit die Avatare
-  direkt neben Optionstitel und Badge stehen und der Optionszeile keine zusätzliche Zeile entsteht.
+- Der Stapel behält mindestens `--tap-target-size` Breite und die 32-px-Mindesthöhe. Beide
+  Inline-Innenkanten und der Block-Innenabstand sind null; bei nur einer Stimme vergrößert die
+  Mindestbreite die Trefferfläche auf 44 px, ohne den 24-px-Avatar an der rechten Kante zu
+  verschieben. Der Buttonhintergrund bleibt
+  transparent und die Optionszeile erhält keine zusätzliche Zeile.
 - Ausschließlich sein Außenabstand gibt nach: ein negativer Blockabstand von `--space-1` je Seite
   lässt ihn in der 24-px-Badgezeile mitlaufen. Optionen mit und ohne Stimmen behalten dadurch
-  dieselbe Zeilenhöhe.
+  dieselbe Zeilenhöhe. Innerhalb von `.event-poll-option-badges` steht der Stimmenstapel direkt
+  hinter dem Optionstitel und vor Empfehlungs- oder Status-Badges. Den Abstand zwischen diesen
+  Elementen liefert der gemeinsame `--space-1`-Gap der Badgezeile. Ist kein Badge nachfolgend,
+  hält `margin-inline-end: var(--space-3)` denselben äußeren Abstand zur Optionskante. Sein Inhalt ist
+  am rechten Rand des 44-px-Mindestziels ausgerichtet, damit der rechte Avatar bei einer und bei
+  mehreren Stimmen dieselbe Kante behält. Folgt ein Badge, bestimmt dessen Breite die Position der
+  gesamten Badgezeile; ohne nachfolgendes Badge bleibt der Außenabstand zur Optionskante wie in
+  `main`.
 - Er zeigt höchstens vier Avatare; weitere Personen erscheinen als zusammengefasste Anzahl. Die
-  Avatare überlappen einander und heben sich mit einem Ring von der Optionsfläche ab.
+  Avatare überlappen einander nur um `--space-1` und heben sich mit einem Ring von der
+  Optionsfläche ab.
 - Bild und Anzahl sind rein visuell. Der Accessible Name nennt die Option, die dargestellte
   Antwort und die Namen; die vollständige Aufstellung bleibt der Stimmen-Dialog, den der Button
   öffnet.

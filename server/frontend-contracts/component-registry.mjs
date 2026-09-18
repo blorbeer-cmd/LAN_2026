@@ -556,9 +556,12 @@ export const components = [
     "contract": "components/controls.md#umfrage-stimmenstapel",
     "purpose": "Voter avatars beside a poll option open the vote dialog without a filled button surface.",
     "properties": [
+      "min-width",
       "padding-inline",
+      "padding-block",
       "background",
-      "margin-block"
+      "margin-block",
+      "margin-inline-end"
     ]
   },
   {
