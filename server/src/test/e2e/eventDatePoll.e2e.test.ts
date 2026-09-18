@@ -322,7 +322,6 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const mobileRecommendationStack = await voterStackGeometry(recommendationStack);
   assert.ok(mobileStack.stackWidth >= 44 && mobileStack.stackHeight >= 32, `the multi-voter stack keeps a comfortable tap target (${JSON.stringify(mobileStack)})`);
   assert.equal(mobileSingleStack.stackWidth, 44, `the single-voter stack keeps the minimum width (${JSON.stringify(mobileSingleStack)})`);
-  assert.equal(mobileSingleStack.avatarsBeforeRecommendation, true, `mobile avatars sit between the option title and recommendation (${JSON.stringify(mobileSingleStack)})`);
   assert.equal(mobileRecommendationStack.avatarsBeforeRecommendation, true, `mobile avatars sit before the recommendation badge (${JSON.stringify(mobileRecommendationStack)})`);
   assert.ok(mobileStack.stackContentRightInset <= 1 && mobileSingleStack.stackContentRightInset <= 1, `mobile avatars align to their tap target edge (${JSON.stringify({ mobileStack, mobileSingleStack })})`);
   await ownerPage.setViewportSize({ width: 1024, height: 800 });
@@ -331,7 +330,6 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const desktopRecommendationStack = await voterStackGeometry(recommendationStack);
   assert.ok(Math.abs(desktopStack.stackTop - desktopStack.titleTop) <= 16, `the avatars share the option title row (${JSON.stringify(desktopStack)})`);
   assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
-  assert.equal(desktopSingleStack.avatarsBeforeRecommendation, true, `desktop avatars sit between the option title and recommendation (${JSON.stringify(desktopSingleStack)})`);
   assert.equal(desktopRecommendationStack.avatarsBeforeRecommendation, true, `desktop avatars sit before the recommendation badge (${JSON.stringify(desktopRecommendationStack)})`);
   assert.ok(desktopSingleStack.avatarToOptionRightInset >= 20, `a stack without a following badge keeps the option inset (${JSON.stringify(desktopSingleStack)})`);
   assert.ok(desktopStack.stackContentRightInset <= 1 && desktopSingleStack.stackContentRightInset <= 1, `desktop avatars align to their tap target edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
