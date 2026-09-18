@@ -64,7 +64,7 @@ test('wide desktop exposes grouped direct destinations without a More duplicate'
   assert.deepEqual(
     navigation.groups.map((group) => group.entries.map((entry) => entry.view)),
     [
-      ['home', 'events'],
+      ['home'],
       ['matchmaking', 'votes', 'gameCatalog'],
       ['eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'foodOrders'],
       ['broadcast', 'arcade', 'music'],
@@ -72,13 +72,12 @@ test('wide desktop exposes grouped direct destinations without a More duplicate'
   );
   assert.deepEqual(
     navigation.utilities.map((entry) => entry.action ?? entry.view),
-    ['feedback', 'admin', 'profile'],
+    ['feedback', 'events', 'admin', 'profile'],
   );
   assert.deepEqual(
     navigation.groups.flatMap((group) => group.entries.map((entry) => entry.iconKey)),
     [
       'home',
-      'events',
       'competition',
       'votes',
       'gameCatalog',
@@ -92,6 +91,7 @@ test('wide desktop exposes grouped direct destinations without a More duplicate'
       'music',
     ],
   );
+  assert.equal(navigation.utilities[1].iconKey, 'events');
   assert.equal(navigation.groups.some((group) => group.entries.some((entry) => entry.view === 'more')), false);
 });
 
@@ -101,9 +101,12 @@ test('desktop navigation remains feature- and role-aware', () => {
   assert.deepEqual(navigation.groups.map((group) => group.label), ['', 'Orga', 'Sonstiges']);
   assert.deepEqual(
     navigation.groups.flatMap((group) => group.entries.map((entry) => entry.view)),
-    ['home', 'events', 'eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'broadcast'],
+    ['home', 'eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'broadcast'],
   );
-  assert.deepEqual(navigation.utilities.map((entry) => entry.action ?? entry.view), ['feedback', 'profile']);
+  assert.deepEqual(
+    navigation.utilities.map((entry) => entry.action ?? entry.view),
+    ['feedback', 'events', 'profile'],
+  );
 });
 
 test('desktop child routes highlight their stable parent destination', () => {

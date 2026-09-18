@@ -92,7 +92,7 @@ test('every route carries the shared navigation and lifecycle contract', () => {
   assert.deepEqual(moreNavigationEntries('group').map((entry) => entry.view ?? entry.section), ['events', 'profile', 'admin', 'arcade', 'broadcast', 'music']);
   assert.deepEqual(
     desktopNavigationEntries('lan').map((entry) => entry.view),
-    ['home', 'events', 'matchmaking', 'votes', 'gameCatalog', 'eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'foodOrders', 'broadcast', 'arcade', 'music', 'admin', 'profile'],
+    ['home', 'matchmaking', 'votes', 'gameCatalog', 'eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'foodOrders', 'broadcast', 'arcade', 'music', 'events', 'admin', 'profile'],
   );
   assert.equal(navigationEventType({ eventType: 'group' }), 'group');
   assert.equal(navigationEventType({ eventType: 'unknown' }), 'lan');
