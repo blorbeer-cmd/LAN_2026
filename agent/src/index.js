@@ -28,7 +28,13 @@ const { reportToServer, syncTrackingPaused, fetchAllowedProcessNames } = require
 const { loadState, setPaused, setTrackActivity } = require('./state');
 const { getStartupShortcutPath, isAutostartEnabled, enableAutostart, disableAutostart } = require('./autostart');
 const { scheduleUninstall } = require('./uninstaller');
-const { createControlServer, listenWithRetry } = require('./controlServer');
+const { createControlServer, generateControlAccessKey, listenWithRetry } = require('./controlServer');
+const {
+  getControlAccessPath,
+  openControlPanel,
+  removeControlAccess,
+  writeControlAccess,
+} = require('./controlLauncher');
 const { startTrayIcon, hideConsoleWindow } = require('./tray');
 
 const DEFAULT_CONTROL_PORT = 47813;
@@ -143,6 +149,8 @@ function start(configPath) {
   const stateFilePath = path.join(installDir, 'agent.state.json');
   const startupDir = getStartupDir();
   const shortcutPath = getStartupShortcutPath(startupDir);
+  const controlAccessPath = getControlAccessPath(installDir);
+  const controlAccessKey = generateControlAccessKey();
   // pkg (the packager used for the distributed .exe) sets process.pkg; running
   // from source (dev/tests) has no real install dir to manage autostart for.
   const isPackaged = typeof process.pkg !== 'undefined';
@@ -217,12 +225,18 @@ function start(configPath) {
       // Give the HTTP response time to flush to the browser before we exit.
       setTimeout(() => process.exit(0), 300);
     },
-  });
+  }, { accessKey: controlAccessKey });
 
   listenWithRetry(controlServer, DEFAULT_CONTROL_PORT)
     .then(({ port }) => {
-      const controlUrl = `http://127.0.0.1:${port}`;
-      log(`🖥️  Steuerung erreichbar unter ${controlUrl}`);
+      const controlOrigin = `http://127.0.0.1:${port}`;
+      try {
+        writeControlAccess(controlAccessPath, { origin: controlOrigin, accessKey: controlAccessKey });
+      } catch (err) {
+        controlServer.close();
+        throw new Error(`Sicheren lokalen Zugang konnte nicht vorbereitet werden: ${err.message}`);
+      }
+      log(`🖥️  Steuerung bereit auf ${controlOrigin}; bitte über Tray oder Desktop-Verknüpfung öffnen.`);
 
       // Dev runs (npm start) keep their console — only the packaged .exe on
       // Windows gets the tray treatment, and only once the tray process is
@@ -230,12 +244,12 @@ function start(configPath) {
       // away — e.g. antivirus killing an unsigned .exe's hidden PowerShell
       // child — never leaves the agent invisible and uncontrollable).
       if (isPackaged && os.platform() === 'win32') {
-        trayProcess = startTrayIcon(controlUrl, process.pid, log);
+        trayProcess = startTrayIcon({ origin: controlOrigin, accessKey: controlAccessKey }, process.pid, log);
         if (trayProcess) {
           setTimeout(() => {
             if (trayProcess && trayProcess.exitCode === null && !trayProcess.killed) {
               hideConsoleWindow(log);
-              log('🔽 Konsole ausgeblendet – Steuerung jetzt über das Tray-Icon oder ' + controlUrl + '.');
+              log('🔽 Konsole ausgeblendet – Steuerung jetzt über das Tray-Icon oder die Desktop-Verknüpfung.');
             } else {
               log('⚠️ Tray-Icon ist gleich nach dem Start wieder beendet, Konsole bleibt sichtbar.');
             }
@@ -249,6 +263,7 @@ function start(configPath) {
 
   return () => {
     clearInterval(timer);
+    removeControlAccess(controlAccessPath, controlAccessKey);
     try {
       controlServer.close();
     } catch {
@@ -268,7 +283,17 @@ process.on('uncaughtException', (err) => log(`Unerwarteter Fehler: ${err.message
 process.on('unhandledRejection', (reason) => log(`Unerwarteter Promise-Fehler: ${reason}`));
 
 if (require.main === module) {
-  start(process.argv[2]);
+  if (process.argv[2] === '--open-control') {
+    const accessPath = process.argv[3]
+      ? path.resolve(process.argv[3])
+      : getControlAccessPath(path.dirname(process.execPath));
+    openControlPanel(accessPath).catch((err) => {
+      log(`Steuerung konnte nicht geöffnet werden: ${err.message}`);
+      process.exitCode = 1;
+    });
+  } else {
+    start(process.argv[2]);
+  }
 }
 
 // tick/log/setUpLogFile are exported alongside start() so the core

@@ -11,12 +11,21 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { once } from 'node:events';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import request from 'supertest';
 import { createTestApp } from './testApp';
-import { agentExePath, buildAgentConfig, resolveAgentServerUrl } from '../routes/agentDownload';
+import {
+  agentExePath,
+  buildAgentConfig,
+  buildDesktopShortcutCleanupPowerShell,
+  buildInstallBat,
+  buildUninstallBat,
+  resolveAgentServerUrl,
+} from '../routes/agentDownload';
 
 const app = createTestApp();
 let stubDistDir: string;
@@ -52,6 +61,143 @@ test('buildAgentConfig only turns trackActivity on for exactly "1"', () => {
 test('resolveAgentServerUrl prefers the configured public URL', () => {
   assert.equal(resolveAgentServerUrl('http', 'internal:3000', 'https://lan.example/'), 'https://lan.example');
   assert.equal(resolveAgentServerUrl('https', 'lan.example', ''), 'https://lan.example');
+});
+
+test('buildInstallBat replaces a running legacy agent before installing the secure launcher', () => {
+  const script = buildInstallBat();
+  const stageIndex = script.indexOf('respawn-agent.exe.new');
+  const stopIndex = script.indexOf('Stop-Process -Id $_.ProcessId -Force');
+  const replaceIndex = script.indexOf('move /Y "%INSTALL_DIR%\\respawn-agent.exe.new"');
+  const shortcutIndex = script.indexOf('Respawn-Agent Steuerung.lnk');
+
+  assert.ok(stageIndex >= 0 && stageIndex < stopIndex, 'the replacement must be staged before stopping the old agent');
+  assert.ok(stopIndex < replaceIndex, 'the running executable must be stopped before replacement');
+  assert.match(script, /if \(@\(Get-InstalledAgent\)\.Count -gt 0\) \{ exit 1 \}/);
+  assert.ok(replaceIndex < shortcutIndex, 'the secure launcher must be created only after replacement succeeds');
+  assert.ok((script.match(/if errorlevel 1 goto install_failed/g) ?? []).length >= 8);
+  assert.match(script, /:install_failed[\s\S]*exit \/b 1/);
+  assert.match(script, /Respawn-Agent Steuerung\.lnk/);
+  assert.match(script, /--open-control/);
+  assert.match(script, /Join-Path \$env:STARTUP_DIR/);
+  assert.match(script, /\[Environment\]::GetFolderPath\('Desktop'\)/);
+  assert.match(script, /Join-Path \$env:INSTALL_DIR 'respawn-agent\.exe'/);
+  assert.doesNotMatch(script, /CreateShortcut\('%(?:USERPROFILE|STARTUP_DIR)%/);
+  assert.doesNotMatch(script, /TargetPath = '%INSTALL_DIR%/);
+  assert.doesNotMatch(script, /URL=http:\/\/127\.0\.0\.1/);
+});
+
+test('buildUninstallBat removes launchers from the Windows known Desktop folder', () => {
+  const script = buildUninstallBat();
+  assert.match(script, /\[Environment\]::GetFolderPath\('Desktop'\)/);
+  assert.doesNotMatch(script, /%USERPROFILE%\\Desktop/);
+  assert.match(script, /Respawn-Agent Steuerung\.lnk/);
+  assert.match(script, /Respawn-Agent Steuerung\.url/);
+});
+
+test('the generated cleanup removes launchers from a redirected Desktop', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const redirectedDesktop = fs.mkdtempSync(path.join(os.tmpdir(), "respawn-agent-redirected-O'Brien-"));
+  const launcher = path.join(redirectedDesktop, 'Respawn-Agent Steuerung.lnk');
+  const legacyLauncher = path.join(redirectedDesktop, 'Respawn-Agent Steuerung.url');
+  fs.writeFileSync(launcher, 'placeholder');
+  fs.writeFileSync(legacyLauncher, 'placeholder');
+
+  try {
+    const command = buildDesktopShortcutCleanupPowerShell('$env:RESPAWN_TEST_DESKTOP');
+    execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], {
+      env: { ...process.env, RESPAWN_TEST_DESKTOP: redirectedDesktop },
+      windowsHide: true,
+    });
+    assert.equal(fs.existsSync(launcher), false);
+    assert.equal(fs.existsSync(legacyLauncher), false);
+  } finally {
+    fs.rmSync(redirectedDesktop, { recursive: true, force: true });
+  }
+});
+
+test('the generated upgrade command releases a running Windows executable for replacement', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-agent-upgrade-'));
+  const installedExe = path.join(tempDir, 'respawn-agent.exe');
+  const stagedExe = `${installedExe}.new`;
+  let legacyAgent: ChildProcess | undefined;
+
+  try {
+    fs.copyFileSync(process.execPath, installedExe);
+    fs.writeFileSync(stagedExe, 'secure replacement');
+    legacyAgent = spawn(installedExe, ['-e', 'setInterval(() => {}, 1000)'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    await once(legacyAgent, 'spawn');
+    const exitPromise = once(legacyAgent, 'exit');
+
+    const stopLine = buildInstallBat().split('\r\n')
+      .find((line) => line.includes('function Get-InstalledAgent'));
+    assert.ok(stopLine);
+    const commandMarker = '-Command "';
+    const commandStart = stopLine.indexOf(commandMarker);
+    assert.ok(commandStart >= 0 && stopLine.endsWith('"'));
+    const command = stopLine.slice(commandStart + commandMarker.length, -1);
+
+    execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], {
+      env: { ...process.env, RESPAWN_AGENT_PATH: installedExe },
+      windowsHide: true,
+    });
+    await exitPromise;
+
+    fs.renameSync(stagedExe, installedExe);
+    assert.equal(fs.readFileSync(installedExe, 'utf8'), 'secure replacement');
+  } finally {
+    legacyAgent?.kill();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('the generated shortcut commands keep apostrophes out of PowerShell source', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const script = buildInstallBat();
+  const commandMarker = '-Command "';
+  const extractCommand = (line: string | undefined): string => {
+    assert.ok(line);
+    const commandStart = line.indexOf(commandMarker);
+    assert.ok(commandStart >= 0 && line.endsWith('"'));
+    return line.slice(commandStart + commandMarker.length, -1);
+  };
+  const startupCommand = extractCommand(script.split('\r\n')
+    .find((line) => line.includes('CreateShortcut((Join-Path $env:STARTUP_DIR')));
+  const desktopCommand = extractCommand(script.split('\r\n')
+    .find((line) => line.includes("[Environment]::GetFolderPath('Desktop')")));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "respawn-agent-O'Brien-"));
+  const startupDir = path.join(tempDir, 'Startup');
+  const installDir = path.join(tempDir, 'Install');
+
+  try {
+    fs.mkdirSync(startupDir);
+    fs.mkdirSync(installDir);
+    const env = { ...process.env, STARTUP_DIR: startupDir, INSTALL_DIR: installDir };
+    execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', startupCommand], {
+      env,
+      windowsHide: true,
+    });
+    assert.ok(fs.existsSync(path.join(startupDir, 'Respawn-Agent.lnk')));
+
+    for (const command of [startupCommand, desktopCommand]) {
+      execFileSync('powershell.exe', [
+        '-NoProfile',
+        '-Command',
+        '$tokens = $null; $errors = $null; [System.Management.Automation.Language.Parser]::ParseInput($env:RESPAWN_COMMAND, [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count) { exit 1 }',
+      ], {
+        env: { ...env, RESPAWN_COMMAND: command },
+        windowsHide: true,
+      });
+    }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test('agentExePath honours AGENT_DIST_DIR and falls back to the shipped directory', () => {
