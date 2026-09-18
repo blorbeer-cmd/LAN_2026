@@ -96,6 +96,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   lightbulb with an accessible name and native title, not the spelled-out word) since it repeats on
   every suggestion row in that mixed list; the „Vorschläge“ tab's own label and active state already
   say what the whole list is, so its rows carry no additional per-row marker.
+  The „Spiel vorschlagen“ form exposes the same game metadata that can later be edited: title,
+  platform and its link, YouTube gameplay link, genres, additional info and the seat-neighbor
+  default. Process-name mappings remain an admin-only management action because they control
+  automatic game detection on participant computers.
   Below the tabs, the sort buttons and the filter controls share one compact
   `.tournament-section-panel` — the same bordered/accent-rail pattern the Tournament create form
   and result dialogs use to separate sibling control groups, but one panel instead of two so the
