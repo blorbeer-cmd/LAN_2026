@@ -88,7 +88,7 @@ for (const width of [390, 1024]) {
       await scenes.capture(`core-modal-${width}`, modal, async () => {
         assert.equal(await modal.locator('h2').innerText(), 'Spiel vorschlagen');
         assert.equal(await page.locator('#suggest-title').evaluate((element) => document.activeElement === element), true);
-        await assertControlHeights(modal.locator('input, button'));
+        await assertControlHeights(modal.locator('input:not([type="checkbox"]), textarea, button'));
         const box = await modal.boundingBox();
         assert.ok(box && box.width <= Math.min(width, 480) + 1);
         await assertNoOverflow(modal);
@@ -99,9 +99,13 @@ for (const width of [390, 1024]) {
       await scenes.capture(`core-form-${width}`, form, async () => {
         assert.equal(await form.locator('#suggest-title').inputValue(), 'Referenzspiel');
         assert.equal(await form.locator('#suggest-title').getAttribute('required'), '');
+        assert.equal(await form.locator('#suggest-platform-url').getAttribute('type'), 'url');
         assert.equal(await form.locator('#suggest-trailer').getAttribute('type'), 'url');
+        assert.equal(await form.locator('[data-genre-toggle]').count(), 12);
+        assert.equal(await form.locator('#suggest-info').getAttribute('maxlength'), '300');
+        assert.equal(await form.locator('#suggest-consider-seat-neighbors').getAttribute('type'), 'checkbox');
         assert.equal(await form.locator('button[type="submit"]').innerText(), 'Vorschlagen');
-        await assertControlHeights(form.locator('input, button'));
+        await assertControlHeights(form.locator('input:not([type="checkbox"]), textarea, button'));
         await assertNoOverflow(form);
       });
       await page.fill('#suggest-title', '');
