@@ -176,7 +176,11 @@ test('manager invites a member who accepts and both open clients update', async 
   await ownerEventCard.locator('[data-edit-event]').click();
   const editEventModal = ownerPage.locator('.modal-backdrop', { hasText: 'Event bearbeiten' });
   await editEventModal.waitFor();
-  assert.equal(await editEventModal.locator('[data-dt-field="event-ends"] [data-dt-clear]').count(), 0);
+  assert.equal(
+    await editEventModal.locator('[data-dt-field="event-ends"] [data-dt-clear]:not([hidden])').count(),
+    1,
+    'an entered period stays retractable instead of being locked in by the first save',
+  );
   await editEventModal.locator('[data-close]').click();
   const discardChanges = ownerPage.locator('.modal-backdrop [data-confirm]');
   assert.equal(await discardChanges.count(), 0, 'opening and closing an unchanged event must not ask to discard changes');
