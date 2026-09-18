@@ -880,7 +880,7 @@ textarea {
   padding-inline: 0;
   padding-block: 0;
   background: transparent;
-  margin-inline-end: var(--space-1);
+  margin-inline-end: var(--space-3);
   /* The control keeps its full 32px target; only its outer box gives way, so
      the avatars ride inside the badge line's 24px instead of making every
      option row with voters taller than the ones without. */

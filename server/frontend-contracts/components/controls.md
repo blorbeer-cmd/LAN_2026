@@ -143,9 +143,9 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
   transparent und die Optionszeile erhält keine zusätzliche Zeile.
 - Ausschließlich sein Außenabstand gibt nach: ein negativer Blockabstand von `--space-1` je Seite
   lässt ihn in der 24-px-Badgezeile mitlaufen. Optionen mit und ohne Stimmen behalten dadurch
-  dieselbe Zeilenhöhe. Der rechte Außenabstand beträgt auf schmalen Ansichten `--space-1`, sodass
-  die Avatarposition dort stabil bleibt. Ab 640 px wächst er auf `--space-4` und rückt die Avatare
-  in der breiteren Zeile sichtbar nach links.
+  dieselbe Zeilenhöhe. Der rechte Außenabstand beträgt auf schmalen Ansichten `--space-3`, sodass
+  der rechte Avatar unabhängig von der Stimmenzahl seine bisherige Position behält. Ab 640 px
+  wächst der Abstand auf `--space-4` und rückt den rechten Avatar um `--space-1` nach links.
 - Er zeigt höchstens vier Avatare; weitere Personen erscheinen als zusammengefasste Anzahl. Die
   Avatare überlappen einander nur um `--space-1` und heben sich mit einem Ring von der
   Optionsfläche ab.

@@ -253,6 +253,10 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await ownerPoll.locator('[data-poll-response="cannot"]').count(), 2);
   assert.equal(await ownerPoll.locator('[data-poll-response="open"]').count(), 2);
   assert.equal(await ownerPoll.locator('.event-poll-progress').count(), 0, 'progress and deadline are not repeated above the options');
+  const ownerOptions = ownerPoll.locator('.event-poll-option');
+  await ownerOptions.nth(0).locator('[data-poll-response="can"]').click();
+  await ownerPoll.locator('[data-save-poll]').click();
+  await ownerPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
 
   await navigate(memberPage, 'eventPolls');
   const memberPoll = memberPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
@@ -282,8 +286,10 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.match(await refreshed.innerText(), /Zwischenstand nur für dich/);
   const liveStack = refreshed.locator('.event-poll-option').first().locator('.event-poll-voter-stack');
   await liveStack.waitFor();
-  assert.match((await liveStack.getAttribute('aria-label')) ?? '', new RegExp(`Passt: ${MEMBER_NAME}`));
-  assert.equal(await liveStack.locator('.avatar-dot, .avatar-img').count(), 1);
+  const liveStackLabel = (await liveStack.getAttribute('aria-label')) ?? '';
+  assert.match(liveStackLabel, new RegExp(OWNER_NAME));
+  assert.match(liveStackLabel, new RegExp(MEMBER_NAME));
+  assert.equal(await liveStack.locator('.avatar-dot, .avatar-img').count(), 2);
   assert.equal(
     await refreshed.locator('.event-poll-option').nth(1).locator('.event-poll-voter-stack').count(),
     0,
@@ -291,7 +297,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   );
   const voterStackGeometry = () => liveStack.evaluate((element) => {
     const option = element.closest('.event-poll-option')!;
-    const avatar = element.querySelector('.avatar-dot, .avatar-img')!;
+    const avatars = element.querySelectorAll('.avatar-dot, .avatar-img');
+    const avatar = avatars.item(avatars.length - 1);
     const stackBox = element.getBoundingClientRect();
     const avatarBox = avatar.getBoundingClientRect();
     return {
@@ -301,17 +308,20 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
       stackHeight: stackBox.height,
       avatarWidth: avatarBox.width,
       avatarRightInset: option.getBoundingClientRect().right - avatarBox.right,
+      marginInlineEnd: Number.parseFloat(getComputedStyle(element).marginInlineEnd),
     };
   });
   await ownerPage.setViewportSize({ width: 390, height: 844 });
   const mobileStack = await voterStackGeometry();
   assert.ok(mobileStack.stackWidth >= 44 && mobileStack.stackHeight >= 32, `the voter stack keeps a comfortable tap target (${JSON.stringify(mobileStack)})`);
-  assert.ok(mobileStack.avatarRightInset >= 20, `the mobile avatar stays away from the option edge (${JSON.stringify(mobileStack)})`);
+  assert.equal(mobileStack.marginInlineEnd, 12, `the mobile voter stack keeps the original outer spacing (${JSON.stringify(mobileStack)})`);
+  assert.ok(mobileStack.avatarRightInset >= 20, `the mobile rightmost avatar keeps its original distance from the option edge (${JSON.stringify(mobileStack)})`);
   await ownerPage.setViewportSize({ width: 1024, height: 800 });
   const desktopStack = await voterStackGeometry();
   assert.ok(Math.abs(desktopStack.stackTop - desktopStack.titleTop) <= 16, `the avatars share the option title row (${JSON.stringify(desktopStack)})`);
   assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
-  assert.ok(desktopStack.avatarRightInset >= 32, `the desktop voter stack stays visibly left of the option edge (${JSON.stringify(desktopStack)})`);
+  assert.equal(desktopStack.marginInlineEnd, 16, `the desktop voter stack gains additional outer spacing (${JSON.stringify(desktopStack)})`);
+  assert.ok(desktopStack.avatarRightInset >= 24, `the desktop rightmost avatar stays left of the option edge (${JSON.stringify(desktopStack)})`);
   await liveStack.click();
   const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await liveVoteDialog.waitFor();
