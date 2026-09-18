@@ -5009,6 +5009,33 @@ registerMigration({
   disableForeignKeysForRebuild: true,
 });
 
+// Permanent groups use the same game-night workflows as LAN events. Upgrade
+// their immutable feature snapshots so Match/Turniere is usable immediately,
+// including for groups created before preset version 2.
+function enableCompetitionForGroupEvents(): void {
+  const changedAt = Date.now();
+  db.prepare(
+    `INSERT OR IGNORE INTO event_features (event_id, feature_key, enabled, changed_at, changed_by)
+     SELECT id, 'competition', 1, ?, NULL
+     FROM events
+     WHERE event_type_key = 'group' AND id != ?`,
+  ).run(changedAt, OUTSIDE_EVENTS_ID);
+  db.prepare(
+    `UPDATE event_features
+     SET enabled = 1, changed_at = ?, changed_by = NULL
+     WHERE feature_key = 'competition'
+       AND event_id IN (SELECT id FROM events WHERE event_type_key = 'group' AND id != ?)`,
+  ).run(changedAt, OUTSIDE_EVENTS_ID);
+  db.prepare(
+    "UPDATE events SET preset_version = 2 WHERE event_type_key = 'group' AND preset_version < 2 AND id != ?",
+  ).run(OUTSIDE_EVENTS_ID);
+}
+registerMigration({
+  version: 104,
+  name: 'enable competition for group events',
+  up: enableCompetitionForGroupEvents,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

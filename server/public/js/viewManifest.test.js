@@ -85,11 +85,11 @@ test('every route carries the shared navigation and lifecycle contract', () => {
   assert.deepEqual(sectionViews('orga').map((entry) => entry.view), ['eventPolls', 'arrivals', 'checklistPacking', 'checklist']);
   assert.deepEqual(bottomNavigationEntries('lan').map((entry) => entry.view), ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more']);
   assert.deepEqual(bottomNavigationEntries('general').map((entry) => entry.view), ['home', 'arrivals', 'checklistPacking', 'checklist', 'eventPolls', 'more']);
-  // A group has no travel and no packing list, so its six slots carry what it
-  // actually uses instead.
-  assert.deepEqual(bottomNavigationEntries('group').map((entry) => entry.view), ['home', 'eventPolls', 'checklist', 'foodOrders', 'gameCatalog', 'more']);
+  // A permanent gaming group keeps the same game-night destinations as a LAN.
+  // Its planning routes remain reachable together through Orga in More.
+  assert.deepEqual(bottomNavigationEntries('group').map((entry) => entry.view), ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more']);
   assert.deepEqual(moreNavigationEntries('lan').map((entry) => entry.view ?? entry.section), ['events', 'profile', 'admin', 'arcade', 'broadcast', 'music', 'orga']);
-  assert.deepEqual(moreNavigationEntries('group').map((entry) => entry.view ?? entry.section), ['events', 'profile', 'admin', 'arcade', 'broadcast', 'music']);
+  assert.deepEqual(moreNavigationEntries('group').map((entry) => entry.view ?? entry.section), ['events', 'profile', 'admin', 'arcade', 'broadcast', 'music', 'orga']);
   assert.deepEqual(
     desktopNavigationEntries('lan').map((entry) => entry.view),
     ['home', 'matchmaking', 'votes', 'gameCatalog', 'eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'foodOrders', 'broadcast', 'arcade', 'music', 'events', 'admin', 'profile'],
@@ -97,7 +97,7 @@ test('every route carries the shared navigation and lifecycle contract', () => {
   assert.equal(navigationEventType({ eventType: 'group' }), 'group');
   assert.equal(navigationEventType({ eventType: 'unknown' }), 'lan');
   assert.equal(navigationEventType(null), 'lan');
-  assert.equal(usesStandaloneOrgaPages('group'), true);
+  assert.equal(usesStandaloneOrgaPages('group'), false);
   assert.equal(usesStandaloneOrgaPages('general'), true);
   assert.equal(usesStandaloneOrgaPages('lan'), false);
   assert.ok(searchableViewEntries().every((entry) => entry.view && entry.title && entry.description));

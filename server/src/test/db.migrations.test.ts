@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 103);
+  assert.equal(migrations.length, 104);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 103 }, (_, index) => index + 1),
+    Array.from({ length: 104 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,8 +1342,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 103 }, (_, index) => index + 1),
-    'every version 1..103 runs exactly once',
+    Array.from({ length: 104 }, (_, index) => index + 1),
+    'every version 1..104 runs exactly once',
   );
 });
 
@@ -3633,6 +3633,58 @@ test('migrations 102 and 103 inherit the packing state and rebuild events withou
   assert.ok(
     migrated.prepare('SELECT 1 FROM kiosk_accounts WHERE event_id = ?').get('packing-lan-2'),
     'the kiosk trigger was recreated with the rebuilt table',
+  );
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 104 enables competition for existing groups only and is restart-safe', () => {
+  const dbFile = makeTempDbPath('group-competition');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  const insertEvent = fixture.prepare(
+    `INSERT INTO events
+       (id, name, starts_at, ends_at, group_id, status, visibility_scope, event_type_key, preset_version)
+     VALUES (?, ?, ?, ?, 'default-group', 'published', 'participants', ?, ?)`,
+  );
+  insertEvent.run('competition-group-disabled', 'Legacy Gruppe', null, null, 'group', 1);
+  insertEvent.run('competition-group-missing', 'Legacy Gruppe ohne Zeile', null, null, 'group', 1);
+  insertEvent.run('competition-general', 'Allgemeines Event', now, now + 60_000, 'general', 4);
+  insertEvent.run('competition-lan', 'LAN ohne Wettbewerb', now, now + 60_000, 'lan', 2);
+
+  const insertFeature = fixture.prepare(
+    `INSERT INTO event_features (event_id, feature_key, enabled, changed_at, changed_by)
+     VALUES (?, 'competition', 0, ?, NULL)`,
+  );
+  insertFeature.run('competition-group-disabled', now);
+  insertFeature.run('competition-general', now);
+  insertFeature.run('competition-lan', now);
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 104').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated
+      .prepare(
+        `SELECT e.id, e.preset_version AS presetVersion, ef.enabled
+         FROM events e
+         LEFT JOIN event_features ef ON ef.event_id = e.id AND ef.feature_key = 'competition'
+         WHERE e.id LIKE 'competition-%'
+         ORDER BY e.id`,
+      )
+      .all(),
+    [
+      { id: 'competition-general', presetVersion: 4, enabled: 0 },
+      { id: 'competition-group-disabled', presetVersion: 2, enabled: 1 },
+      { id: 'competition-group-missing', presetVersion: 2, enabled: 1 },
+      { id: 'competition-lan', presetVersion: 2, enabled: 0 },
+    ],
   );
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();

@@ -62,6 +62,7 @@ test('event type presets only reference known features and satisfy hard dependen
     'food',
     'music',
     'games',
+    'competition',
     'arcade',
   ]);
   assert.equal(eventTypeIsUndated('group'), true);

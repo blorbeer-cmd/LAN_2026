@@ -14,7 +14,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 11. **Match primary navigation to the event type.** For LAN events, primary navigation carries exactly
     the six during-party destinations Home, Match, Vote, Essen, Spiele and Mehr. A general event
     instead promotes its planning workflow to Home, An & Abreise, Packliste, To-Do, Umfragen
-    and Mehr; the remaining destinations live directly under „Mehr“. It is a bottom bar below
+    and Mehr; the remaining destinations live directly under „Mehr“. A permanent group uses the
+    same game-night destinations as a LAN: Home, Match, Vote, Essen, Spiele and Mehr; its Umfragen
+    and To-Dos remain together in the Orga area under „Mehr“. It is a bottom bar below
     `--bp-xl`. At `--bp-xl`, the account's Profile setting chooses between that
     compact shell and a grouped direct rail: Home, LAN, Orga and Sonstiges form the main scrollable
     area; Feedback, Events & Gruppen, role-gated Admin and Mein Profil stay pinned below it. The
@@ -39,11 +41,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 ## Bereich-Tabs
 
 - **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
-  (Match, Auswertung and compact LAN Orga; defined in `sectionNav.js`). General events present
+  (Match, Auswertung and compact LAN/group Orga; defined in `sectionNav.js`). General events present
   every Orga route as a standalone page with its own title because those routes are their primary
-  navigation, not a secondary Orga collection. Match and Auswertung use `.section-page-header`;
-  LAN Orga uses `.more-subpage-header--tabs` on phone and laptop layouts. Those headers place tabs
-  on a dedicated second row and share the intentional lower first-card edge. Desktop LAN Orga
+  navigation, not a secondary Orga collection. A group instead keeps Umfragen and To-Do as the two
+  tabs of its secondary Orga area. Match and Auswertung use `.section-page-header`; LAN/group Orga
+  uses `.more-subpage-header--tabs` on phone and laptop layouts. Those headers place tabs
+  on a dedicated second row and share the intentional lower first-card edge. Desktop LAN/group Orga
   hides the duplicate tabs and shows the opened page's title in the compact header. Every tab row
   remains outside any card, distinct from the in-card controls further down. Each tab is a real
   route, so the row is `<nav>` navigation rather than a toggle: the active tab carries
@@ -179,12 +182,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 
 ## Bereichsseiten und Mehr-Navigation
 
-The LAN „Mehr“ hub holds Events & Gruppen, Mein Profil, Admin, Arcade, Durchsage, Jam and Orga.
+The LAN and group „Mehr“ hubs hold Events & Gruppen, Mein Profil, Admin, Arcade, Durchsage, Jam and Orga.
 Events & Gruppen leads the hub for every event type: it picks and creates the workspaces the other
 entries then work inside, so it sits one level above them rather than inside Orga. For a general
 event, the hub replaces the Orga wrapper with a direct entry for Essen; An & Abreise, Packliste,
-To-Do and Umfragen already occupy the bottom nav. A group has no Orga wrapper either and no Essen
-entry, because Essen occupies one of its own bottom-nav slots. Mein Profil remains here as the compact/mobile
+To-Do and Umfragen already occupy the bottom nav. A group has no Essen entry because Essen occupies
+one of its own bottom-nav slots; its Orga wrapper contains only Umfragen and To-Do. Mein Profil remains here as the compact/mobile
 path. From `--bp-xl`, selecting Desktop replaces the bottom bar and „Mehr“ detour visually with
 a grouped direct rail: Home; LAN (labelled „Event“ for a general event and
 „Gruppe“ for a group); Orga; Sonstiges; plus the bottom utilities Feedback,
@@ -192,7 +195,7 @@ Events & Gruppen, role-gated Admin and Mein Profil. The active event feature sna
 and empty groups. Profile and Feedback are not duplicated in the desktop top ribbon; the ribbon
 contains only global tools. The account-scoped Automatic/Desktop/Laptop choice lives in Mein
 Profil so it remains reachable in every shell. Essen is listed in „Mehr“ only for
-general events; LAN events retain its
+general events; LAN events and groups retain its
 unconditional bottom-nav slot (`more.js`). Auswertung is never listed here —
 it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
 (see „Admin tools“). It keeps each destination's canonical icon
