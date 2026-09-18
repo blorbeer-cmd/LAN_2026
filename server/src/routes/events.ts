@@ -1142,6 +1142,8 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
 
 // PATCH /api/events/:id - metadata correction only (name/dates/location/
 // description/payment details); never touches tracking state or live status.
+// A period may be entered, moved, removed and entered again; the lifecycle
+// status stays untouched throughout. Removing it is refused while tracking.
 // Body: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
 // The event type is intentionally fixed after creation in the small MVP so a
 // type switch cannot hide a running LAN workflow without an impact check.
@@ -1182,24 +1184,25 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     if (!isNonEmptyString(name, 80)) return res.status(400).json({ error: 'Name muss 1-80 Zeichen lang sein.' });
     fields.name = name.trim();
   }
+  // An explicit null removes the boundary again: a period that was entered too
+  // early — or belongs to a date poll that is being reopened — must be
+  // retractable without deleting and recreating the whole event.
   if (startsAt !== undefined) {
     const parsed = parseOptionalTimestamp(startsAt, 'startsAt');
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
-    if (parsed.value === null) return res.status(400).json({ error: 'startsAt darf nicht leer sein.' });
     fields.startsAt = parsed.value;
   }
   if (endsAt !== undefined) {
     const parsed = parseOptionalTimestamp(endsAt, 'endsAt');
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
-    if (parsed.value === null) return res.status(400).json({ error: 'endsAt darf nicht leer sein.' });
     fields.endsAt = parsed.value;
   }
   // Validated against the EFFECTIVE start/end (existing values merged with
   // whatever this request is changing), so e.g. patching just endsAt on an
   // event whose existing startsAt is later still gets caught. A planning
-  // event may remain undated, but a period update must always provide both
-  // boundaries.
-  const effectiveStartsAt = fields.startsAt ?? existing.starts_at;
+  // event may remain undated and may become undated again, but a period must
+  // always be complete or absent — never half of one.
+  const effectiveStartsAt = fields.startsAt !== undefined ? fields.startsAt : existing.starts_at;
   const effectiveEndsAt = fields.endsAt !== undefined ? fields.endsAt : existing.ends_at;
   if ((effectiveStartsAt === null) !== (effectiveEndsAt === null)) {
     return res.status(400).json({ error: 'Der Zeitraum muss entweder vollständig oder gar nicht angegeben werden.' });
@@ -1208,6 +1211,16 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     if (effectiveEndsAt === null || effectiveEndsAt < effectiveStartsAt + EVENT_MINIMUM_DURATION_MS) {
       return res.status(400).json({ error: 'endsAt muss mindestens fünf Minuten nach startsAt liegen.' });
     }
+  }
+  // Running tracking is bound to the period it was started for, so removing
+  // that period would leave live status and play sessions attributed to an
+  // event the tracking query can no longer reach. Stopping tracking first is
+  // the explicit, reversible step; a silent half-tracked event is not.
+  const periodRemoved = existing.starts_at !== null && effectiveStartsAt === null;
+  if (periodRemoved && existing.tracking_enabled) {
+    return res.status(409).json({
+      error: 'Solange dieses Event trackt, kann der Zeitraum nicht entfernt werden. Zuerst das Tracking stoppen.',
+    });
   }
   if (location !== undefined) {
     const parsed = parseOptionalText(location, 500, 'location');
@@ -1282,7 +1295,9 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
       `Unterkunft: ${money(existing.accommodation_cost_cents)} → ${money(updated.accommodation_cost_cents)}`,
     );
   }
-  if (endChanged) {
+  // A removed period already says everything about the end; repeating
+  // "Dauer/Ende wurde geändert" beside it would only restate the same fact.
+  if (endChanged && !periodRemoved) {
     relevantChanges.push('Dauer/Ende wurde geändert');
   }
   if (startChanged || relevantChanges.length > 0) {
@@ -1295,8 +1310,8 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     notifyPlayers(
       recipients.map((row) => row.playerId).filter((id) => id !== req.player?.id),
       {
-        title: startChanged ? 'Eventtermin geändert' : 'Eventplanung geändert',
-        body: `${updated.name}: ${startChanged ? 'Der Termin wurde geändert' : relevantChanges.join('; ')}${startChanged && relevantChanges.length ? `; ${relevantChanges.join('; ')}` : ''}. Deine Zusage bleibt bestehen.`,
+        title: startChanged ? (periodRemoved ? 'Eventtermin entfernt' : 'Eventtermin geändert') : 'Eventplanung geändert',
+        body: `${updated.name}: ${startChanged ? (periodRemoved ? 'Der Termin steht wieder offen' : 'Der Termin wurde geändert') : relevantChanges.join('; ')}${startChanged && relevantChanges.length ? `; ${relevantChanges.join('; ')}` : ''}. Deine Zusage bleibt bestehen.`,
         url: '/#events',
       },
       'direct',

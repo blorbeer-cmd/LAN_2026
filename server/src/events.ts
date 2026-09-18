@@ -173,7 +173,9 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
 
 export interface UpdateEventFields {
   name?: string;
-  startsAt?: number;
+  // Both boundaries accept null: a period may be removed again, which returns
+  // the event to planning instead of leaving a half-scheduled row behind.
+  startsAt?: number | null;
   endsAt?: number | null;
   location?: string | null;
   description?: string | null;
@@ -183,7 +185,9 @@ export interface UpdateEventFields {
   paymentDueAt?: number | null;
 }
 
-// Metadata-only correction — never touches tracking state or live status.
+// Metadata-only correction — never touches tracking state, live status or the
+// lifecycle status, so a period can be entered, removed and entered again
+// without the event changing what it is.
 // Safe to call on past/ended events too (e.g. backfilling a forgotten end
 // date/location). Not valid for the sentinel (nothing to correct there).
 export function updateEvent(id: string, fields: UpdateEventFields): EventRow | undefined {
@@ -204,6 +208,16 @@ export function updateEvent(id: string, fields: UpdateEventFields): EventRow | u
     payment_due_at: fields.paymentDueAt !== undefined ? fields.paymentDueAt : existing.payment_due_at,
   };
 
+  // Deliberately leaves `status` alone, including when this removes the period.
+  // Dropping a published event back to draft looked symmetric but is a one-way
+  // street: only publishPlanningEventIfScheduled leaves draft, and it needs a
+  // roster change to fire, so re-entering a period would strand the event in
+  // draft — visibly offering "Tracking starten" that startTracking then
+  // refuses. The period is what tracking actually depends on, so
+  // startTrackingInternal checks the period itself (see below). An undated
+  // published event is a legal row since migration 103 and simply cannot
+  // track: getTrackingEvents needs a started period, and tracking can never
+  // have been on, because removing a period is refused while it is running.
   db.prepare(
     'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, cost_cents = ?, accommodation_cost_cents = ?, paypal_link = ?, payment_due_at = ? WHERE id = ?'
   ).run(
@@ -252,7 +266,11 @@ function startTrackingInternal(id: string, reopenEnded: boolean): StartTrackingR
   if (event.status === 'cancelled') {
     return { ok: false, code: 'invalid', error: 'Ein abgesagtes Event kann nicht getrackt werden.' };
   }
-  if (event.status === 'draft') {
+  // The period itself, not just the draft status, is what tracking depends on:
+  // an event may lose its period again (updateEvent) or be reopened from
+  // 'ended' rather than 'draft', and in both cases getTrackingEvents — which
+  // only matches an already started period — could never deliver it.
+  if (event.status === 'draft' || event.starts_at === null) {
     return {
       ok: false,
       code: 'invalid',
