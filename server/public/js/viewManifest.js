@@ -137,14 +137,14 @@ export const VIEW_MANIFEST = Object.freeze({
   }),
   // Deliberately not an Orga tab. Orga organises work *inside* the selected
   // workspace; this view picks and creates the workspaces themselves, so it
-  // sits one level up: first entry in "Mehr", beside Home on the desktop rail
-  // and reachable straight from the topbar switcher.
+  // sits one level up: first entry in "Mehr", in the desktop rail's pinned
+  // utility area and reachable straight from the topbar switcher.
   events: defineView({
     label: 'Events & Gruppen', iconKey: 'calendar',
     search: search('Bereich', 'Events und Gruppen anlegen, Tracking und Teilnehmer verwalten', 'orga einstellungen setup konfiguration tracking teilnehmer einladung gruppe', 85),
     navigation: Object.freeze({
       more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general', 'group']), order: 0 }),
-      desktop: desktopNavigation('start', 1),
+      desktop: desktopNavigation('utility', 0),
     }),
     lifecycle: lifecycle('events'),
   }),

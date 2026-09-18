@@ -17,7 +17,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
     and Mehr; the remaining destinations live directly under „Mehr“. It is a bottom bar below
     `--bp-xl`. At `--bp-xl`, the account's Profile setting chooses between that
     compact shell and a grouped direct rail: Home, LAN, Orga and Sonstiges form the main scrollable
-    area; Feedback, role-gated Admin and Mein Profil stay pinned below it. The choice is stored as
+    area; Feedback, Events & Gruppen, role-gated Admin and Mein Profil stay pinned below it. The
+    choice is stored as
     `respawn_layout_mode:<verified-account-id>`, survives logout/reload and is restored before the
     authenticated app becomes visible. Automatic is the default and resolves against `--bp-xl` on
     every breakpoint change. It changes neither routes nor permissions. The active event
@@ -185,9 +186,9 @@ event, the hub replaces the Orga wrapper with a direct entry for Essen; An & Abr
 To-Do and Umfragen already occupy the bottom nav. A group has no Orga wrapper either and no Essen
 entry, because Essen occupies one of its own bottom-nav slots. Mein Profil remains here as the compact/mobile
 path. From `--bp-xl`, selecting Desktop replaces the bottom bar and „Mehr“ detour visually with
-a grouped direct rail: Home and Events & Gruppen; LAN (labelled „Event“ for a general event and
+a grouped direct rail: Home; LAN (labelled „Event“ for a general event and
 „Gruppe“ for a group); Orga; Sonstiges; plus the bottom utilities Feedback,
-role-gated Admin and Mein Profil. The active event feature snapshot removes unavailable entries
+Events & Gruppen, role-gated Admin and Mein Profil. The active event feature snapshot removes unavailable entries
 and empty groups. Profile and Feedback are not duplicated in the desktop top ribbon; the ribbon
 contains only global tools. The account-scoped Automatic/Desktop/Laptop choice lives in Mein
 Profil so it remains reachable in every shell. Essen is listed in „Mehr“ only for
