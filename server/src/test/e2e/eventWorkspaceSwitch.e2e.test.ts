@@ -509,7 +509,6 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   const expectedNavViews = [
     'home',
-    'events',
     'eventPolls',
     'arrivals',
     'checklistPacking',
@@ -518,6 +517,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
     'broadcast',
     'arcade',
     'music',
+    'events',
     'admin',
     'profile',
   ];
@@ -653,7 +653,6 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   await page.waitForFunction(() => document.querySelector('.desktop-nav-btn[data-view="matchmaking"]')?.getClientRects().length);
   const expectedLanDesktopViews = [
     'home',
-    'events',
     'matchmaking',
     'votes',
     'gameCatalog',
@@ -665,6 +664,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
     'broadcast',
     'arcade',
     'music',
+    'events',
     'admin',
     'profile',
   ];
