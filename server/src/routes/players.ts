@@ -20,6 +20,7 @@ import { resolveAccessibleGroupEventScope } from '../groupEventScope';
 import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
 import { includesTestPlayers } from '../testDataVisibility';
 import { getOrRepairActiveEvent } from '../eventContext';
+import { deleteAccount } from '../privacyService';
 
 export const playersRouter = Router();
 
@@ -73,24 +74,6 @@ function toPublicPlayer(row: PlayerRow) {
 function toPrivatePlayer(row: PlayerRow) {
   const { password_hash: _passwordHash, last_login_at: _lastLoginAt, ...rest } = row;
   return rest;
-}
-
-function removePlayerFromRecipientSnapshots(playerId: string): void {
-  const pushRows = db.prepare('SELECT id, player_ids FROM push_log WHERE player_ids IS NOT NULL').all() as Array<{ id: string; player_ids: string }>;
-  const updatePush = db.prepare('UPDATE push_log SET player_ids = ? WHERE id = ?');
-  for (const row of pushRows) {
-    const ids = JSON.parse(row.player_ids) as unknown;
-    if (!Array.isArray(ids) || !ids.includes(playerId)) continue;
-    updatePush.run(JSON.stringify(ids.filter((id): id is string => typeof id === 'string' && id !== playerId)), row.id);
-  }
-
-  const broadcastRows = db.prepare('SELECT id, recipient_ids FROM broadcasts').all() as Array<{ id: string; recipient_ids: string }>;
-  const updateBroadcast = db.prepare('UPDATE broadcasts SET recipient_ids = ? WHERE id = ?');
-  for (const row of broadcastRows) {
-    const ids = JSON.parse(row.recipient_ids) as unknown;
-    if (!Array.isArray(ids) || !ids.includes(playerId)) continue;
-    updateBroadcast.run(JSON.stringify(ids.filter((id): id is string => typeof id === 'string' && id !== playerId)), row.id);
-  }
 }
 
 // GET /api/players - roster without API keys.
@@ -411,71 +394,23 @@ playersRouter.post('/:id/api-key/rotate', requireUser, (req, res) => {
   res.json({ apiKey });
 });
 
-// Hard-delete removes the account and all account/tracking data. Historical
-// match JSON may still contain a name snapshot, but no player-owned tracking
-// row or selectable account survives the operation.
+// Hard-delete shares the complete privacy erasure path with self-service.
 playersRouter.delete('/:id', requireAdmin, (req, res) => {
   if (req.player && !hasRecentReauthentication(req.sessionId)) {
     return res.status(403).json({ error: 'Bitte bestätige dein Passwort.', code: 'reauth_required' });
   }
-  const target = db
-    .prepare('SELECT id, is_admin, is_test, deactivated_at FROM players WHERE id = ?')
-    .get(req.params.id) as { id: string; is_admin: number; is_test: number; deactivated_at: number | null } | undefined;
-  if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  const affectedGroupIds = activePlayerGroupIds(req.params.id);
-  const deleted = db.transaction(() => {
-    if (target.is_admin) {
-      const admins = (db.prepare('SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL').get() as { count: number }).count;
-      if (admins <= 1) return 'last_admin' as const;
-    }
-    const soleOwnedGroup = db.prepare(
-      `SELECT 1 FROM group_memberships gm JOIN groups g ON g.id = gm.group_id AND g.archived_at IS NULL
-       WHERE gm.player_id = ? AND gm.status = 'active' AND gm.role = 'owner'
-       AND NOT EXISTS (SELECT 1 FROM group_memberships other JOIN players p ON p.id = other.player_id
-         WHERE other.group_id = gm.group_id AND other.player_id != gm.player_id AND other.status = 'active'
-           AND other.role = 'owner' AND p.deactivated_at IS NULL) LIMIT 1`,
-    ).get(target.id);
-    if (soleOwnedGroup) return 'last_group_owner' as const;
-    const confirmedEventPayment = db
-      .prepare('SELECT 1 FROM event_participants WHERE player_id = ? AND paid = 1 LIMIT 1')
-      .get(target.id);
-    if (confirmedEventPayment) return 'confirmed_event_payment' as const;
-    const membershipGroups = db.prepare('SELECT group_id FROM group_memberships WHERE player_id = ?').all(target.id) as Array<{ group_id: string }>;
-    const groupIds = membershipGroups.map((row) => row.group_id);
-    if (groupIds.length > 0) {
-      const placeholders = groupIds.map(() => '?').join(',');
-      db.prepare(`DELETE FROM votes WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
-      db.prepare(`DELETE FROM draft_player_refs WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
-      db.prepare(`DELETE FROM arcade_result_participants WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
-      db.prepare(`DELETE FROM broadcasts WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
-    }
-    removePlayerFromRecipientSnapshots(target.id);
-    revokeRegistrationInvitesCreatedBy(target.id, 'creator_deleted', req.player?.id);
-    db.prepare('DELETE FROM group_memberships WHERE player_id = ?').run(target.id);
-    for (const table of ['play_sessions', 'live_status_games', 'live_status', 'agent_diagnostics', 'tracking_live_games', 'tracking_game_state', 'group_tracking_consents', 'event_tracking_consents', 'push_subscriptions', 'sessions']) {
-      try {
-        db.prepare(`DELETE FROM ${table} WHERE player_id = ?`).run(target.id);
-      } catch (error) {
-        if (!(error instanceof Error) || !/no such table/i.test(error.message)) throw error;
-      }
-    }
-    const result = db.prepare('DELETE FROM players WHERE id = ?').run(target.id);
-    return result.changes === 1 ? 'ok' as const : 'missing' as const;
-  })();
-  if (deleted === 'missing') return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  if (deleted === 'last_admin') return res.status(409).json({ error: 'Der letzte Admin kann nicht gelöscht werden.' });
-  if (deleted === 'last_group_owner') return res.status(409).json({ error: 'Der letzte aktive Owner einer Community kann nicht gelöscht werden.' });
-  if (deleted === 'confirmed_event_payment') {
-    return res.status(409).json({ error: 'Eine bestätigte Event-Zahlung muss vor dem Löschen zurückgesetzt werden.' });
+  const deleted = deleteAccount(req.params.id, req.player?.id);
+  if (!deleted.ok) {
+    return res.status(deleted.code === 'not_found' ? 404 : 409).json({ error: deleted.message, code: deleted.code });
   }
   disconnectPlayerSockets(req.params.id);
   writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    action: target.is_test ? 'test_player_deleted' : 'player_deleted',
-    targetType: 'player',
-    targetId: req.params.id,
+    actorPlayerId: req.player?.id === req.params.id ? undefined : req.player?.id,
+    action: deleted.wasTest ? 'test_player_deleted' : 'player_deleted',
+    targetType: 'deleted_account',
+    details: { subjectHash: deleted.subjectHash },
   });
-  for (const groupId of affectedGroupIds) {
+  for (const groupId of deleted.affectedGroupIds) {
     broadcast(Events.playersChanged, null, { groupId });
   }
   res.status(204).end();

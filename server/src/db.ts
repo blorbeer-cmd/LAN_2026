@@ -5036,6 +5036,29 @@ registerMigration({
   up: enableCompetitionForGroupEvents,
 });
 
+// Privacy package: consent records describe the exact optional purpose and
+// the version of the text that was shown. Existing rows intentionally remain
+// NULL instead of being relabelled as if an older decision had covered the
+// current wording. Historical diagnostic process names are cleared once;
+// current code only stores them while a valid tracking context exists.
+function addVersionedConsentMetadata(): void {
+  for (const table of ['group_tracking_consents', 'event_tracking_consents']) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'purpose')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN purpose TEXT`);
+    }
+    if (!columns.some((column) => column.name === 'text_version')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN text_version TEXT`);
+    }
+  }
+  db.prepare("UPDATE agent_diagnostics SET process_names = '[]' WHERE process_names != '[]'").run();
+}
+registerMigration({
+  version: 105,
+  name: 'version privacy consents and clear legacy diagnostic process names',
+  up: addVersionedConsentMetadata,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

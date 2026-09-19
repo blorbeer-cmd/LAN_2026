@@ -16,6 +16,7 @@ import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from './db';
 import { addPlayersToLayout, removePlayersFromLayouts } from './seatingLayout';
 import { ensureAccountEventContext } from './eventContext';
 import { setEventTrackingConsent } from './trackingContexts';
+import { TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION } from './privacyPolicy';
 import { EVENT_TYPE_PRESETS } from './eventFeatureCatalog';
 import { createEventFeatureSnapshot } from './eventFeatures';
 
@@ -222,7 +223,14 @@ export function createTestUsers(
       insertPlayer.run(id, name, color, null, nanoid(24), ownerGroupId, now);
       insertMembership.run(ownerGroupId, id, now);
       ensureAccountEventContext(id, eventId);
-      setEventTrackingConsent(eventId, ownerGroupId, id, true, now);
+      setEventTrackingConsent(
+        eventId,
+        ownerGroupId,
+        id,
+        true,
+        { purpose: TRACKING_CONSENT_PURPOSE, textVersion: TRACKING_CONSENT_TEXT_VERSION },
+        now,
+      );
       created.push({ id, name });
 
       // Bock loosely follows skill (people usually feel like playing what

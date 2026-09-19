@@ -41,6 +41,7 @@ import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResourc
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { setEventTrackingConsent } from '../trackingContexts';
+import { TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION } from '../privacyPolicy';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
 import { eventAccessLevel, fallbackPlayerEventContext, getOrRepairActiveEvent } from '../eventContext';
@@ -678,7 +679,21 @@ function updateEventTrackingConsent(req: Request, res: Response, granted: boolea
     res.status(409).json({ error: 'Tracking kann erst nach Annahme der Event-Einladung aktiviert werden.' });
     return;
   }
-  setEventTrackingConsent(event.id, event.group_id!, playerId, granted);
+  const textVersion = req.body?.textVersion;
+  if (granted && textVersion !== TRACKING_CONSENT_TEXT_VERSION) {
+    res.status(409).json({
+      error: 'Der Einwilligungstext hat sich geändert. Bitte lade die Datenschutzangaben neu.',
+      code: 'consent_text_changed',
+    });
+    return;
+  }
+  setEventTrackingConsent(
+    event.id,
+    event.group_id!,
+    playerId,
+    granted,
+    granted ? { purpose: TRACKING_CONSENT_PURPOSE, textVersion } : undefined,
+  );
   if (!granted) {
     broadcast(Events.liveStatusChanged, getLiveBoard(event.group_id!, event.id), {
       groupId: event.group_id!,

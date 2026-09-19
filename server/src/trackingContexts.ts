@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
+import type { ConsentMetadata } from './privacyPolicy';
 
 export interface TrackingContext {
   groupId: string;
@@ -31,15 +32,31 @@ export function activeTrackingContexts(playerId: string, now = Date.now()): Trac
   return active ? [{ groupId: active.groupId, eventId: active.eventId, weight: 1 }] : [];
 }
 
-export function setGroupTrackingConsent(groupId: string, playerId: string, granted: boolean, now = Date.now()): void {
+export function setGroupTrackingConsent(
+  groupId: string,
+  playerId: string,
+  granted: boolean,
+  metadata?: ConsentMetadata,
+  now = Date.now(),
+): void {
   db.transaction(() => {
     const current = db.prepare(
-      'SELECT 1 FROM group_tracking_consents WHERE group_id = ? AND player_id = ? AND revoked_at IS NULL LIMIT 1',
-    ).get(groupId, playerId);
-    if (granted && !current) {
+      'SELECT id, purpose, text_version FROM group_tracking_consents WHERE group_id = ? AND player_id = ? AND revoked_at IS NULL ORDER BY granted_at DESC',
+    ).all(groupId, playerId) as Array<{ id: string; purpose: string | null; text_version: string | null }>;
+    if (granted && !metadata) throw new Error('Consent metadata is required for a new grant.');
+    const matching = granted
+      ? current.find((row) => row.purpose === metadata!.purpose && row.text_version === metadata!.textVersion)
+      : undefined;
+    if (granted) {
+      const revoke = db.prepare(
+        'UPDATE group_tracking_consents SET revoked_at = CASE WHEN granted_at > ? THEN granted_at ELSE ? END WHERE id = ?',
+      );
+      for (const row of current) if (row.id !== matching?.id) revoke.run(now, now, row.id);
+    }
+    if (granted && !matching) {
       db.prepare(
-        'INSERT INTO group_tracking_consents (id, group_id, player_id, granted_at, source) VALUES (?, ?, ?, ?, ?)',
-      ).run(nanoid(), groupId, playerId, now, 'user');
+        'INSERT INTO group_tracking_consents (id, group_id, player_id, granted_at, source, purpose, text_version) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ).run(nanoid(), groupId, playerId, now, 'user', metadata!.purpose, metadata!.textVersion);
     }
     if (!granted) {
       db.prepare(
@@ -52,19 +69,36 @@ export function setGroupTrackingConsent(groupId: string, playerId: string, grant
   })();
 }
 
-export function setEventTrackingConsent(eventId: string, groupId: string, playerId: string, accepted: boolean, now = Date.now()): void {
+export function setEventTrackingConsent(
+  eventId: string,
+  groupId: string,
+  playerId: string,
+  accepted: boolean,
+  metadata?: ConsentMetadata,
+  now = Date.now(),
+): void {
   db.transaction(() => {
     const current = db.prepare(
-      'SELECT 1 FROM event_tracking_consents WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL LIMIT 1',
-    ).get(eventId, playerId);
-    if (accepted && !current) {
+      'SELECT id, purpose, text_version FROM event_tracking_consents WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL ORDER BY accepted_at DESC',
+    ).all(eventId, playerId) as Array<{ id: string; purpose: string | null; text_version: string | null }>;
+    if (accepted && !metadata) throw new Error('Consent metadata is required for a new grant.');
+    const matching = accepted
+      ? current.find((row) => row.purpose === metadata!.purpose && row.text_version === metadata!.textVersion)
+      : undefined;
+    if (accepted) {
+      const revoke = db.prepare(
+        'UPDATE event_tracking_consents SET revoked_at = CASE WHEN accepted_at > ? THEN accepted_at ELSE ? END WHERE id = ?',
+      );
+      for (const row of current) if (row.id !== matching?.id) revoke.run(now, now, row.id);
+    }
+    if (accepted && !matching) {
       const latest = db.prepare(
         'SELECT MAX(accepted_at) AS accepted_at FROM event_tracking_consents WHERE event_id = ? AND player_id = ?',
       ).get(eventId, playerId) as { accepted_at: number | null };
       const acceptedAt = latest.accepted_at === null ? now : Math.max(now, latest.accepted_at + 1);
       db.prepare(
-        'INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, source) VALUES (?, ?, ?, ?, ?, ?)',
-      ).run(nanoid(), eventId, groupId, playerId, acceptedAt, 'user');
+        'INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, source, purpose, text_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ).run(nanoid(), eventId, groupId, playerId, acceptedAt, 'user', metadata!.purpose, metadata!.textVersion);
     }
     if (!accepted) {
       db.prepare(

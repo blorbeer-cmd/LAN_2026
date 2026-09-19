@@ -159,6 +159,11 @@ export const api = {
       }),
     cleanupTestUsers: (groupId) =>
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}/test-users`, { method: 'DELETE' }),
+    setTrackingConsent: (groupId, granted, textVersion) =>
+      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/tracking-consent`, {
+        method: 'POST',
+        body: JSON.stringify({ granted, ...(textVersion ? { textVersion } : {}) }),
+      }),
   },
 
   // Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md).
@@ -335,6 +340,11 @@ export const api = {
       }),
     acceptInvitation: (id) => apiFetch(`/api/events/${id}/invitation/accept`, { method: 'POST' }),
     declineInvitation: (id) => apiFetch(`/api/events/${id}/invitation/decline`, { method: 'POST' }),
+    setTrackingConsent: (id, granted, textVersion) =>
+      apiFetch(`/api/events/${id}/tracking-consent`, {
+        method: 'POST',
+        body: JSON.stringify({ granted, ...(textVersion ? { textVersion } : {}) }),
+      }),
     confirmCalendar: (id) => apiFetch(`/api/events/${id}/calendar-confirmation`, { method: 'POST' }),
   },
 
@@ -397,6 +407,13 @@ export const api = {
   export: {
     snapshot: (eventId) => apiFetch(`/api/export${eventId ? `?eventId=${eventId}` : ''}`),
     pdf: (eventId) => fetchBlob(`/api/export/pdf${eventId ? `?eventId=${eventId}` : ''}`),
+  },
+
+  privacy: {
+    get: () => apiFetch('/api/privacy'),
+    export: () => fetchBlob('/api/privacy/export'),
+    deleteAccount: () => apiFetch('/api/privacy/account', { method: 'DELETE' }),
+    retentionPreview: () => apiFetch('/api/privacy/retention-preview'),
   },
 
   backup: {
