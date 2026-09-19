@@ -21,7 +21,7 @@ const { spawn, spawnSync } = require('child_process');
 // its own trace log — the process exited clean (code 0, no stderr) on the
 // very first real test, meaning it finished *without* ever actually
 // blocking on Application.Run(), and there was nothing to tell us why.
-function buildTrayScript(controlUrl, agentPid) {
+function buildTrayScript(agentPid) {
   return `
 $traceLog = "$env:TEMP\\respawn-agent-tray-${agentPid}.trace.log"
 function Trace($msg) { Add-Content -Path $traceLog -Value "$(Get-Date -Format o) $msg" }
@@ -33,7 +33,8 @@ try {
   Add-Type -AssemblyName System.Drawing
   Trace "assemblies loaded"
 
-  $controlUrl = "${controlUrl}"
+  $controlOrigin = $env:RESPAWN_CONTROL_ORIGIN
+  $controlKey = $env:RESPAWN_CONTROL_KEY
   $agentPid = ${agentPid}
 
   $icon = New-Object System.Windows.Forms.NotifyIcon
@@ -47,7 +48,16 @@ try {
   $exitItem = $menu.Items.Add("Beenden")
   $icon.ContextMenuStrip = $menu
 
-  $openAction = { Start-Process $controlUrl }
+  $openAction = {
+    try {
+      $headers = @{ "X-Respawn-Control-Key" = $controlKey }
+      $response = Invoke-RestMethod -Method Post -Uri "$controlOrigin/api/launch" -Headers $headers -TimeoutSec 3
+      if ($response.ticket -notmatch '^[A-Za-z0-9_-]{43}$') { throw "invalid launch ticket" }
+      Start-Process ($controlOrigin + "/#ticket=" + [Uri]::EscapeDataString($response.ticket))
+    } catch {
+      Trace "open failed: $($_.Exception.Message)"
+    }
+  }
   $openItem.add_Click($openAction)
   $icon.add_DoubleClick($openAction)
 
@@ -110,13 +120,13 @@ function hideConsoleWindow(log = () => {}) {
 // `log` (optional) gets every step of what happened on the Node side — every
 // previous failure here was completely silent, which made it undiagnosable
 // over chat.
-function startTrayIcon(controlUrl, agentPid, log = () => {}) {
+function startTrayIcon({ origin, accessKey }, agentPid, log = () => {}) {
   if (os.platform() !== 'win32') return null;
 
   let scriptPath;
   try {
     scriptPath = path.join(os.tmpdir(), `respawn-agent-tray-${agentPid}.ps1`);
-    fs.writeFileSync(scriptPath, buildTrayScript(controlUrl, agentPid), 'utf8');
+    fs.writeFileSync(scriptPath, buildTrayScript(agentPid), 'utf8');
     log(`Tray: Skript geschrieben (${scriptPath}).`);
   } catch (err) {
     log(`Tray: Skript konnte nicht geschrieben werden: ${err.message}`);
@@ -138,7 +148,15 @@ function startTrayIcon(controlUrl, agentPid, log = () => {}) {
         '-File',
         scriptPath,
       ],
-      { windowsHide: true, stdio: 'ignore' }
+      {
+        windowsHide: true,
+        stdio: 'ignore',
+        env: {
+          ...process.env,
+          RESPAWN_CONTROL_ORIGIN: origin,
+          RESPAWN_CONTROL_KEY: accessKey,
+        },
+      },
     );
   } catch (err) {
     log(`Tray: PowerShell konnte nicht gestartet werden: ${err.message}`);

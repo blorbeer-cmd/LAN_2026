@@ -62,11 +62,11 @@ export function resolveAgentServerUrl(protocol: string, host: string, publicBase
 // Kept plain-ASCII (no umlauts) since a .bat file's default codepage often
 // mangles them; \r\n line endings since Windows batch is picky about that.
 //
-// Also drops a desktop shortcut to the agent's own local control panel (a
-// tiny web page it serves on 127.0.0.1) — that's where a player later
-// pauses tracking, turns autostart off, or uninstalls, without ever touching
-// the task manager or the startup folder by hand.
-function buildInstallBat(): string {
+// Also drops a desktop launcher shortcut for the agent's own local control
+// panel. The launcher asks the running agent for a one-time browser ticket,
+// so neither a fixed fallback port nor a long-lived secret has to live in a
+// URL shortcut.
+export function buildInstallBat(): string {
   const lines = [
     '@echo off',
     'setlocal',
@@ -75,24 +75,46 @@ function buildInstallBat(): string {
     '',
     'echo Respawn-Agent wird eingerichtet...',
     'if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"',
-    'copy /Y "%SRC_DIR%respawn-agent.exe" "%INSTALL_DIR%\\respawn-agent.exe" >nul',
-    'copy /Y "%SRC_DIR%agent.config.json" "%INSTALL_DIR%\\agent.config.json" >nul',
+    'if not exist "%INSTALL_DIR%" goto install_failed',
+    'copy /Y "%SRC_DIR%respawn-agent.exe" "%INSTALL_DIR%\\respawn-agent.exe.new" >nul',
+    'if errorlevel 1 goto install_failed',
+    'copy /Y "%SRC_DIR%agent.config.json" "%INSTALL_DIR%\\agent.config.json.new" >nul',
+    'if errorlevel 1 goto install_failed',
+    '',
+    'rem Eine laufende Windows-EXE kann nicht ersetzt werden. Erst nachdem',
+    'rem beide neuen Dateien sicher bereitliegen, alten Agent und Tray beenden.',
+    'powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -Filter \'Name = \'\'powershell.exe\'\'\' | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like \'*\\respawn-agent-tray-*.ps1*\' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"',
+    'set "RESPAWN_AGENT_PATH=%INSTALL_DIR%\\respawn-agent.exe"',
+    'powershell -NoProfile -ExecutionPolicy Bypass -Command "$agentPath = [IO.Path]::GetFullPath($env:RESPAWN_AGENT_PATH); function Get-InstalledAgent { @(Get-CimInstance Win32_Process -Filter \'Name = \'\'respawn-agent.exe\'\'\' | Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath) -eq $agentPath }) }; Get-InstalledAgent | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; for ($i = 0; $i -lt 20 -and @(Get-InstalledAgent).Count -gt 0; $i++) { Start-Sleep -Milliseconds 250 }; if (@(Get-InstalledAgent).Count -gt 0) { exit 1 }"',
+    'if errorlevel 1 goto install_failed',
+    'move /Y "%INSTALL_DIR%\\respawn-agent.exe.new" "%INSTALL_DIR%\\respawn-agent.exe" >nul',
+    'if errorlevel 1 goto install_failed',
+    'move /Y "%INSTALL_DIR%\\agent.config.json.new" "%INSTALL_DIR%\\agent.config.json" >nul',
+    'if errorlevel 1 goto install_failed',
     '',
     'set "STARTUP_DIR=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"',
     'powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut(\'%STARTUP_DIR%\\Respawn-Agent.lnk\'); $s.TargetPath = \'%INSTALL_DIR%\\respawn-agent.exe\'; $s.WorkingDirectory = \'%INSTALL_DIR%\'; $s.WindowStyle = 7; $s.Save()"',
     '',
-    '(',
-    '  echo [InternetShortcut]',
-    '  echo URL=http://127.0.0.1:47813',
-    ') > "%USERPROFILE%\\Desktop\\Respawn-Agent Steuerung.url"',
+    'del /Q "%USERPROFILE%\\Desktop\\Respawn-Agent Steuerung.url" >nul 2>&1',
+    "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('%USERPROFILE%\\Desktop\\Respawn-Agent Steuerung.lnk'); $s.TargetPath = '%INSTALL_DIR%\\respawn-agent.exe'; $s.Arguments = '--open-control'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.WindowStyle = 7; $s.Save()\"",
     '',
     'echo Fertig! Der Agent startet ab jetzt automatisch bei jedem Windows-Login.',
     'echo Auf dem Desktop liegt eine Verknuepfung "Respawn-Agent Steuerung" zum',
     'echo Pausieren, Autostart an/aus stellen oder Deinstallieren.',
     'echo Starte ihn jetzt auch gleich...',
     'start "" "%INSTALL_DIR%\\respawn-agent.exe"',
+    'if errorlevel 1 goto install_failed',
     '',
     'timeout /t 5',
+    'exit /b 0',
+    '',
+    ':install_failed',
+    'del /Q "%INSTALL_DIR%\\respawn-agent.exe.new" >nul 2>&1',
+    'del /Q "%INSTALL_DIR%\\agent.config.json.new" >nul 2>&1',
+    'echo Fehler: Der Respawn-Agent konnte nicht sicher aktualisiert werden.',
+    'echo Es wurde kein unsicherer Mischstand gestartet.',
+    'timeout /t 10',
+    'exit /b 1',
   ];
   return lines.join('\r\n') + '\r\n';
 }
@@ -113,6 +135,8 @@ function buildUninstallBat(): string {
     'echo Respawn-Agent wird entfernt...',
     'taskkill /IM respawn-agent.exe /F >nul 2>&1',
     'del /Q "%STARTUP_DIR%\\Respawn-Agent.lnk" >nul 2>&1',
+    'del /Q "%USERPROFILE%\\Desktop\\Respawn-Agent Steuerung.lnk" >nul 2>&1',
+    'del /Q "%USERPROFILE%\\Desktop\\Respawn-Agent Steuerung.url" >nul 2>&1',
     'rmdir /S /Q "%INSTALL_DIR%" >nul 2>&1',
     '',
     'echo Fertig! Der Agent laeuft nicht mehr und startet auch nicht mehr automatisch.',

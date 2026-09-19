@@ -14,12 +14,15 @@ test('scheduleUninstall removes the install dir and shortcut on non-Windows', (t
   fs.writeFileSync(path.join(installDir, 'agent.config.json'), '{}');
   const shortcutDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-uninstall-shortcut-'));
   const shortcutPath = path.join(shortcutDir, 'Respawn-Agent.lnk');
+  const desktopShortcutPath = path.join(shortcutDir, 'Respawn-Agent Steuerung.lnk');
   fs.writeFileSync(shortcutPath, 'placeholder');
+  fs.writeFileSync(desktopShortcutPath, 'placeholder');
 
-  scheduleUninstall({ installDir, startupShortcutPath: shortcutPath });
+  scheduleUninstall({ installDir, startupShortcutPath: shortcutPath, desktopShortcutPaths: [desktopShortcutPath] });
 
   assert.equal(fs.existsSync(installDir), false);
   assert.equal(fs.existsSync(shortcutPath), false);
+  assert.equal(fs.existsSync(desktopShortcutPath), false);
   fs.rmSync(shortcutDir, { recursive: true, force: true });
 });
 
