@@ -16,6 +16,11 @@ optionale Aufbewahrungsregeln. Hashbasierte Löschbelege verhindern, dass ein Re
 gelöschte Konten unbemerkt wieder freigibt. Profil und Betriebsdokumentation erklären Datenarten,
 Fristen, Widerruf und noch notwendige Betreiberentscheidungen.
 
+Die Review-Nacharbeit bindet aktive Erfassung strikt an die aktuelle Einwilligungsversion,
+schreibt Löschbelege atomar, anonymisiert auch Profilbilder und Scribble-Namenskopien in
+historischen Daten und erweitert den persönlichen Export um Sitz-, Ping-, Termin-, Arcade-,
+Benachrichtigungs- und selbst erstellte Inhalte.
+
 ## Offene Punkte
 
 Review und Merge stehen aus. Die automatische Bereinigung bleibt bis zur Betreiberentscheidung

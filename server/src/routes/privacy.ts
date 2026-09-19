@@ -13,7 +13,6 @@ import {
   TRACKING_CONSENT_TEXT_VERSION,
 } from '../privacyPolicy';
 import { disconnectPlayerSockets, broadcast, Events } from '../realtime';
-import { writeAdminAudit } from '../adminAudit';
 
 export const privacyRouter = Router();
 
@@ -27,10 +26,11 @@ privacyRouter.get('/', (req, res) => {
        JOIN events e ON e.id = ep.event_id
        LEFT JOIN event_tracking_consents c
          ON c.event_id = e.id AND c.player_id = ep.player_id AND c.revoked_at IS NULL
+        AND c.purpose = ? AND c.text_version = ?
        WHERE ep.player_id = ? AND ep.status = 'accepted'
        ORDER BY e.starts_at DESC`,
     )
-    .all(req.player!.id);
+    .all(TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION, req.player!.id);
   const retention = previewPrivacyRetention();
   const legacyGroupConsents = db.prepare(
     `SELECT g.id AS groupId, g.name AS groupName, c.granted_at AS grantedAt,
@@ -104,11 +104,6 @@ privacyRouter.delete('/account', requireRecentReauthentication, (req, res) => {
     return res.status(result.code === 'not_found' ? 404 : 409).json({ error: result.message, code: result.code });
   }
   disconnectPlayerSockets(playerId);
-  writeAdminAudit({
-    action: 'player_self_deleted',
-    targetType: 'deleted_account',
-    details: { subjectHash: result.subjectHash },
-  });
   for (const groupId of result.affectedGroupIds) broadcast(Events.playersChanged, null, { groupId });
   clearSessionCookie(res);
   return res.status(204).end();

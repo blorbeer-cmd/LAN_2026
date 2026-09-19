@@ -26,6 +26,36 @@ test('personal export is self-scoped and excludes every reusable access secret',
   const ownMessage = `own-${nanoid()}`;
   const foreignMessage = `foreign-${nanoid()}`;
   const endpointSecret = `https://push.invalid/${nanoid()}`;
+  const exportEventId = nanoid();
+  const drawingId = nanoid();
+  const pingId = nanoid();
+  const gameId = (db.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get(DEFAULT_GROUP_ID) as { id: string }).id;
+  db.prepare(
+    `INSERT INTO events (id, name, starts_at, ends_at, group_id, status)
+     VALUES (?, 'Export event', ?, ?, ?, 'ended')`,
+  ).run(exportEventId, Date.now() - 2_000, Date.now() - 1_000, DEFAULT_GROUP_ID);
+  db.prepare(
+    `INSERT INTO seating_layouts (group_id, event_id, assignments, updated_at)
+     VALUES (?, ?, ?, ?)`,
+  ).run(DEFAULT_GROUP_ID, exportEventId, JSON.stringify([{ side: 'top', seat: 1, playerId: own.id }]), Date.now());
+  db.prepare(
+    `INSERT INTO seat_neighbors
+       (group_id, event_id, player_id, neighbor_id, player_name_snapshot, neighbor_name_snapshot, source)
+     VALUES (?, ?, ?, ?, ?, ?, 'manual')`,
+  ).run(DEFAULT_GROUP_ID, exportEventId, own.id, other.id, 'Export Own Gamertag', 'Export Foreign Gamertag');
+  db.prepare(
+    `INSERT INTO scribble_drawings
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops,
+        created_at, group_id, event_id)
+     VALUES (?, ?, 1, 1, ?, ?, 'Datenschutz', ?, ?, ?, ?)`,
+  ).run(drawingId, nanoid(), own.id, 'Export Own Gamertag', JSON.stringify([{ x: 1, y: 2 }]), Date.now(), DEFAULT_GROUP_ID, exportEventId);
+  db.prepare(
+    `INSERT INTO game_pings
+       (id, group_id, event_id, player_id, player_name_snapshot, player_color_snapshot,
+        player_avatar_snapshot, game_id, game_name_snapshot, game_icon_snapshot, message,
+        created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, '#123456', NULL, ?, 'Export game', '🎮', 'Eigener Ping', ?, ?)`,
+  ).run(pingId, DEFAULT_GROUP_ID, exportEventId, own.id, 'Export Own Gamertag', gameId, Date.now(), Date.now() + 60_000);
   db.prepare(
     `INSERT INTO push_subscriptions (id, player_id, endpoint, p256dh, auth, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
@@ -53,6 +83,10 @@ test('personal export is self-scoped and excludes every reusable access secret',
   assert.doesNotMatch(serialized, /p256-|auth-/);
   assert.equal(response.body.browserAndPush.pushSubscriptions.length, 1);
   assert.deepEqual(Object.keys(response.body.browserAndPush.pushSubscriptions[0]), ['createdAt']);
+  assert.equal(response.body.arcade.scribbleDrawings.some((drawing: { id: string }) => drawing.id === drawingId), true);
+  assert.equal(response.body.organisation.seatingAssignments.some((seat: { eventId: string }) => seat.eventId === exportEventId), true);
+  assert.equal(response.body.organisation.seatNeighborRelations.length, 1);
+  assert.equal(response.body.organisation.authoredGamePings.some((ping: { id: string }) => ping.id === pingId), true);
   assert.equal((await request(app).get('/api/privacy/retention-preview').set('Cookie', own.cookie)).status, 403);
   assert.equal((await request(app).get('/api/privacy/deletion-receipts').set('Cookie', own.cookie)).status, 403);
 
@@ -70,6 +104,8 @@ test('self deletion revokes access and scrubs recipient, result and historical n
   const arcadeResultId = nanoid();
   const snapshotEventId = nanoid();
   const drawId = nanoid();
+  const drawingId = nanoid();
+  db.prepare('UPDATE players SET avatar = ? WHERE id = ?').run('data:image/png;base64,private-avatar', target.id);
   db.prepare(
     `INSERT INTO events (id, name, starts_at, ends_at, group_id, status)
      VALUES (?, 'Privacy snapshot event', ?, ?, ?, 'ended')`,
@@ -93,7 +129,20 @@ test('self deletion revokes access and scrubs recipient, result and historical n
     `INSERT INTO matchmaking_draws
        (id, game_id, event_id, teams, generated_at, group_id)
      VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(drawId, gameId, snapshotEventId, JSON.stringify([{ players: [{ id: target.id, name: 'Delete Target Gamertag' }] }]), now, DEFAULT_GROUP_ID);
+  ).run(
+    drawId,
+    gameId,
+    snapshotEventId,
+    JSON.stringify([{ players: [{ id: target.id, name: 'Delete Target Gamertag', realName: 'Delete Target Klarname', avatar: 'data:image/png;base64,private-avatar', color: '#abcdef', rating: 9 }] }]),
+    now,
+    DEFAULT_GROUP_ID,
+  );
+  db.prepare(
+    `INSERT INTO scribble_drawings
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops,
+        created_at, group_id, event_id)
+     VALUES (?, ?, 1, 1, ?, ?, 'Löschtest', '[]', ?, ?, ?)`,
+  ).run(drawingId, nanoid(), target.id, 'Delete Target Gamertag', now, DEFAULT_GROUP_ID, snapshotEventId);
   db.prepare(
     `INSERT INTO seating_layouts
        (event_id, assignments, updated_at, group_id)
@@ -126,6 +175,19 @@ test('self deletion revokes access and scrubs recipient, result and historical n
   assert.equal(
     JSON.stringify(db.prepare('SELECT teams FROM matchmaking_draws WHERE id = ?').get(drawId)).includes(target.id),
     false,
+  );
+  const drawTeams = JSON.parse((db.prepare('SELECT teams FROM matchmaking_draws WHERE id = ?').get(drawId) as { teams: string }).teams);
+  assert.deepEqual(drawTeams[0].players[0], {
+    id: null,
+    name: 'Gelöschtes Konto',
+    realName: 'Gelöschtes Konto',
+    avatar: null,
+    color: null,
+    rating: null,
+  });
+  assert.deepEqual(
+    db.prepare('SELECT artist_id AS artistId, artist_name AS artistName FROM scribble_drawings WHERE id = ?').get(drawingId),
+    { artistId: null, artistName: 'Gelöschtes Konto' },
   );
   assert.equal(
     (db.prepare('SELECT assignments FROM seating_layouts WHERE event_id = ?').get(snapshotEventId) as { assignments: string }).assignments.includes(target.id),

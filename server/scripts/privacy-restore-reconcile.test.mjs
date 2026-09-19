@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const reconcileScript = path.join(scriptDir, 'privacy-restore-reconcile.js');
 const dbModule = path.join(scriptDir, '..', 'dist-test', 'db.js');
+const privacyServiceModule = path.join(scriptDir, '..', 'dist-test', 'privacyService.js');
 
 function run(args, env) {
   return JSON.parse(execFileSync(process.execPath, [reconcileScript, ...args], { env, encoding: 'utf8' }));
@@ -45,6 +46,15 @@ test('restore reconciliation previews and reapplies hash-only account deletions 
     assert.deepEqual(applied.failures, []);
     assert.equal(applied.deleted, 1);
     assert.equal(run(['--preview', receipts], env).restoredAccountsToDelete, 0);
+    const recordedReceiptCount = Number(execFileSync(
+      process.execPath,
+      [
+        '-e',
+        `const { db } = require(${JSON.stringify(dbModule)}); const { listDeletionReceipts } = require(${JSON.stringify(privacyServiceModule)}); console.log(listDeletionReceipts().length); db.close();`,
+      ],
+      { env, encoding: 'utf8' },
+    ).trim());
+    assert.equal(recordedReceiptCount, 1, 'restore reconciliation persists a fresh deletion receipt atomically');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

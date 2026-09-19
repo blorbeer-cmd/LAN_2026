@@ -125,10 +125,22 @@ test('tracking consent is self-only, idempotent and revokes agent fan-out immedi
       ).status,
       400,
     );
+    db.prepare(
+      `INSERT INTO event_tracking_consents
+         (id, event_id, group_id, player_id, accepted_at, source)
+       VALUES (?, ?, ?, ?, ?, 'migration')`,
+    ).run(nanoid(), eventId, DEFAULT_GROUP_ID, playerId, now);
+    const legacyPrivacy = await request(app).get('/api/privacy').set('Cookie', cookie);
+    assert.equal(legacyPrivacy.status, 200);
+    assert.equal(
+      legacyPrivacy.body.trackingConsent.events.find((event: { eventId: string }) => event.eventId === eventId).consentId,
+      null,
+      'an unversioned legacy row is shown as inactive until the current text is confirmed',
+    );
     assert.deepEqual(
       (await request(app).get('/api/agent/process-names').set('x-api-key', apiKey)).body.processNames,
       [],
-      'without consent the current agent receives no process allow-list to transmit',
+      'an unversioned legacy consent never activates the process allow-list',
     );
     const staleText = await request(app)
       .post(`/api/events/${eventId}/tracking-consent`)

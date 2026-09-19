@@ -1,7 +1,11 @@
 import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
-import type { ConsentMetadata } from './privacyPolicy';
+import {
+  TRACKING_CONSENT_PURPOSE,
+  TRACKING_CONSENT_TEXT_VERSION,
+  type ConsentMetadata,
+} from './privacyPolicy';
 
 export interface TrackingContext {
   groupId: string;
@@ -24,11 +28,14 @@ export function activeTrackingContexts(playerId: string, now = Date.now()): Trac
        JOIN groups g ON g.id = gm.group_id AND g.archived_at IS NULL
        JOIN event_tracking_consents c
          ON c.event_id = e.id AND c.player_id = pec.player_id AND c.revoked_at IS NULL
+        AND c.purpose = ? AND c.text_version = ?
        WHERE pec.player_id = ? AND e.tracking_enabled = 1 AND e.status = 'published'
          AND e.starts_at <= ? AND (e.ends_at IS NULL OR e.ends_at > ?)
        LIMIT 1`,
     )
-    .get(playerId, now, now) as { eventId: string; groupId: string } | undefined;
+    .get(TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION, playerId, now, now) as
+    | { eventId: string; groupId: string }
+    | undefined;
   return active ? [{ groupId: active.groupId, eventId: active.eventId, weight: 1 }] : [];
 }
 

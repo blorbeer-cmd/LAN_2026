@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { db } from './db';
 import { activeTrackingContexts } from './trackingContexts';
 import { revokeRegistrationInvitesCreatedBy, voidOutstandingInvites } from './invites';
+import { writeAdminAudit } from './adminAudit';
 
 const DELETED_NAME = 'Gelöschtes Konto';
 
@@ -78,6 +79,26 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
     const recipients = parseJson(row.player_ids, []);
     return Array.isArray(recipients) && recipients.includes(playerId);
   }).map(({ player_ids: _playerIds, ...row }) => row);
+  const seatingAssignments = rows(
+    `SELECT group_id AS groupId, event_id AS eventId, assignments, updated_at AS updatedAt
+     FROM seating_layouts ORDER BY updated_at`,
+  ).flatMap((row) => {
+    const assignments = parseJson(row.assignments, []);
+    if (!Array.isArray(assignments)) return [];
+    return assignments
+      .filter(
+        (assignment): assignment is Record<string, unknown> =>
+          Boolean(assignment) &&
+          typeof assignment === 'object' &&
+          (assignment as Record<string, unknown>).playerId === playerId,
+      )
+      .map(({ playerId: _playerId, ...assignment }) => ({
+        groupId: row.groupId,
+        eventId: row.eventId,
+        updatedAt: row.updatedAt,
+        ...assignment,
+      }));
+  });
 
   return {
     format: 'respawn-personal-data',
@@ -98,6 +119,13 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
               ep.confirmed_schedule_revision AS confirmedScheduleRevision
        FROM event_participants ep JOIN events e ON e.id = ep.event_id
        WHERE ep.player_id = ? ORDER BY e.starts_at`,
+      playerId,
+    ),
+    eventParticipationHistory: rows(
+      `SELECT h.event_id AS eventId, e.name AS eventName, h.accepted_at AS acceptedAt,
+              h.declined_at AS declinedAt, h.removed_at AS removedAt, h.updated_at AS updatedAt
+       FROM event_participation_history h JOIN events e ON e.id = h.event_id
+       WHERE h.player_id = ? ORDER BY h.updated_at`,
       playerId,
     ),
     consents: {
@@ -192,6 +220,55 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
         playerId,
         playerId,
       ),
+      calendarConfirmations: rows(
+        `SELECT event_id AS eventId, schedule_key AS scheduleKey, confirmed_at AS confirmedAt
+         FROM event_calendar_confirmations WHERE player_id = ? ORDER BY confirmed_at`,
+        playerId,
+      ),
+      pollInvitations: rows(
+        `SELECT i.poll_id AS pollId, p.event_id AS eventId, p.title, p.topic,
+                i.invited_at AS invitedAt, i.last_reminder_at AS lastReminderAt,
+                i.automatic_reminder_stage AS automaticReminderStage,
+                i.automatic_reminder_due_at AS automaticReminderDueAt
+         FROM event_date_poll_invitees i JOIN event_date_polls p ON p.id = i.poll_id
+         WHERE i.player_id = ? ORDER BY i.invited_at`,
+        playerId,
+      ),
+      pollResponses: rows(
+        `SELECT r.poll_id AS pollId, p.event_id AS eventId, p.title, p.topic,
+                r.option_id AS optionId, o.label AS optionLabel, o.starts_on AS startsOn,
+                o.ends_on AS endsOn, r.response, r.updated_at AS updatedAt
+         FROM event_date_poll_responses r
+         JOIN event_date_polls p ON p.id = r.poll_id
+         JOIN event_date_poll_options o ON o.poll_id = r.poll_id AND o.id = r.option_id
+         WHERE r.player_id = ? ORDER BY r.updated_at`,
+        playerId,
+      ),
+      seatingAssignments,
+      seatNeighborRelations: rows(
+        `SELECT group_id AS groupId, event_id AS eventId, source,
+                CASE WHEN player_id = ? THEN 'declared_by_me' ELSE 'declared_about_me' END AS relationship
+         FROM seat_neighbors WHERE player_id = ? OR neighbor_id = ?
+         ORDER BY group_id, event_id, source`,
+        playerId,
+        playerId,
+        playerId,
+      ),
+      authoredGamePings: rows(
+        `SELECT id, group_id AS groupId, event_id AS eventId, game_id AS gameId,
+                game_name_snapshot AS gameName, message, created_at AS createdAt,
+                expires_at AS expiresAt, cancelled_at AS cancelledAt
+         FROM game_pings WHERE player_id = ? ORDER BY created_at`,
+        playerId,
+      ),
+      gamePingInterests: rows(
+        `SELECT i.ping_id AS pingId, i.group_id AS groupId, p.event_id AS eventId,
+                p.game_id AS gameId, p.game_name_snapshot AS gameName, i.created_at AS createdAt
+         FROM game_ping_interested i
+         JOIN game_pings p ON p.group_id = i.group_id AND p.id = i.ping_id
+         WHERE i.player_id = ? ORDER BY i.created_at`,
+        playerId,
+      ),
     },
     communications: {
       authoredBroadcasts: rows(
@@ -223,6 +300,23 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
          FROM player_onboarding WHERE player_id = ?`,
         playerId,
       )[0] ?? null,
+      notificationState: {
+        seen: rows(
+          `SELECT push_id AS pushId, seen_at AS seenAt
+           FROM push_log_seen WHERE player_id = ? ORDER BY seen_at`,
+          playerId,
+        ),
+        hidden: rows(
+          `SELECT push_id AS pushId, hidden_at AS hiddenAt
+           FROM push_log_hidden WHERE player_id = ? ORDER BY hidden_at`,
+          playerId,
+        ),
+        mutes: rows(
+          `SELECT group_id AS groupId, event_id AS eventId, muted_at AS mutedAt
+           FROM push_mutes WHERE player_id = ? ORDER BY muted_at`,
+          playerId,
+        ),
+      },
     },
     arcade: {
       results: rows(
@@ -246,6 +340,72 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
       scribbleFavorites: rows(
         `SELECT drawing_id AS drawingId, match_id AS matchId, round_number AS roundNumber, created_at AS createdAt
          FROM scribble_drawing_favorites WHERE player_id = ? ORDER BY created_at`,
+        playerId,
+      ),
+      scribbleDrawings: rows(
+        `SELECT id, match_id AS matchId, round_number AS roundNumber, turn_number AS turnNumber,
+                word, draw_ops AS drawOps, is_round_winner AS isRoundWinner,
+                is_ai_match AS isAiMatch, created_at AS createdAt, group_id AS groupId,
+                event_id AS eventId
+         FROM scribble_drawings WHERE artist_id = ? ORDER BY created_at`,
+        playerId,
+      ).map((row) => ({ ...row, drawOps: parseJson(row.drawOps, row.drawOps) })),
+      scribbleSeenWords: rows(
+        `SELECT s.word_id AS wordId, w.word, s.seen_at AS seenAt,
+                s.group_id AS groupId, s.event_id AS eventId
+         FROM scribble_seen s JOIN scribble_words w ON w.id = s.word_id
+         WHERE s.player_id = ? ORDER BY s.seen_at`,
+        playerId,
+      ),
+    },
+    authoredContent: {
+      groups: rows(
+        `SELECT id, name, description, created_at AS createdAt, archived_at AS archivedAt
+         FROM groups WHERE created_by = ? ORDER BY created_at`,
+        playerId,
+      ),
+      events: rows(
+        `SELECT id, name, starts_at AS startsAt, ends_at AS endsAt, location, description,
+                status, event_type_key AS eventTypeKey
+         FROM events WHERE created_by = ? ORDER BY starts_at`,
+        playerId,
+      ),
+      games: rows(
+        `SELECT id, name, platform, platform_url AS platformUrl, trailer_url AS trailerUrl,
+                genre, info, status, created_at AS createdAt
+         FROM games WHERE created_by = ? ORDER BY created_at`,
+        playerId,
+      ),
+      polls: rows(
+        `SELECT id, event_id AS eventId, round_number AS roundNumber, title, topic, note,
+                decision_note AS decisionNote, status, response_mode AS responseMode,
+                created_at AS createdAt, updated_at AS updatedAt
+         FROM event_date_polls WHERE created_by = ? ORDER BY created_at`,
+        playerId,
+      ),
+      invites: rows(
+        `SELECT purpose, event_id AS eventId, created_at AS createdAt, expires_at AS expiresAt,
+                revoked_at AS revokedAt, used_at AS usedAt,
+                CASE WHEN player_id = ? THEN 1 ELSE 0 END AS targetsOwnAccount,
+                CASE WHEN used_by = ? THEN 1 ELSE 0 END AS usedByMe
+         FROM invites WHERE created_by = ? OR player_id = ? OR used_by = ? ORDER BY created_at`,
+        playerId,
+        playerId,
+        playerId,
+        playerId,
+        playerId,
+      ),
+      musicRequests: rows(
+        `SELECT id, session_id AS sessionId, track_uri AS trackUri, track_id AS trackId,
+                track_name AS trackName, artist_name AS artistName, album_name AS albumName,
+                duration_ms AS durationMs, status, created_at AS createdAt, played_at AS playedAt
+         FROM music_requests WHERE requested_by = ? ORDER BY created_at`,
+        playerId,
+      ),
+      hostedMusicSessions: rows(
+        `SELECT id, group_id AS groupId, event_id AS eventId, device_name AS deviceName,
+                status, started_at AS startedAt, ended_at AS endedAt
+         FROM music_sessions WHERE host_player_id = ? ORDER BY started_at`,
         playerId,
       ),
     },
@@ -334,21 +494,32 @@ function removePlayerAssignments(playerId: string): void {
   }
 }
 
-function redactJson(value: unknown, playerId: string, names: Set<string>, key = ''): unknown {
+function redactJson(value: unknown, playerId: string, names: Set<string>, key = '', targetSnapshot = false): unknown {
   if (Array.isArray(value)) {
-    return value.filter((item) => item !== playerId).map((item) => redactJson(item, playerId, names, key));
+    return value
+      .filter((item) => item !== playerId)
+      .map((item) => redactJson(item, playerId, names, key, targetSnapshot));
   }
   if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    const isTargetSnapshot = targetSnapshot || entries.some(
+      ([childKey, childValue]) =>
+        childValue === playerId && /(?:player|winner|captain|artist|user).*id|^id$/i.test(childKey),
+    );
     const output: Record<string, unknown> = {};
-    for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+    for (const [childKey, childValue] of entries) {
       if (childKey === playerId) {
-        output.deletedAccount = redactJson(childValue, playerId, names, childKey);
+        output.deletedAccount = redactJson(childValue, playerId, names, childKey, true);
         continue;
       }
       if (childValue === playerId && /(?:player|winner|captain|artist|user).*id|^id$/i.test(childKey)) {
         output[childKey] = null;
+      } else if (isTargetSnapshot && /name/i.test(childKey)) {
+        output[childKey] = DELETED_NAME;
+      } else if (isTargetSnapshot && /avatar|photo|image|color|rating/i.test(childKey)) {
+        output[childKey] = null;
       } else {
-        output[childKey] = redactJson(childValue, playerId, names, childKey);
+        output[childKey] = redactJson(childValue, playerId, names, childKey, isTargetSnapshot);
       }
     }
     return output;
@@ -398,6 +569,7 @@ function scrubAccountCopies(playerId: string, names: Set<string>): void {
   redactJsonColumn('arcade_results', 'id', 'players', playerId, names);
   redactJsonColumn('arcade_results', 'id', 'scores', playerId, names);
   redactJsonColumn('admin_log', 'id', 'details', playerId, names);
+  db.prepare('UPDATE scribble_drawings SET artist_name = ? WHERE artist_id = ?').run(DELETED_NAME, playerId);
   redactKnownNamesInPushHistory(names);
   db.prepare('UPDATE admin_log SET target_id = NULL WHERE target_id = ?').run(playerId);
   db.prepare('DELETE FROM seat_neighbors WHERE player_id = ? OR neighbor_id = ?').run(playerId, playerId);
@@ -437,6 +609,11 @@ export function deleteAccount(playerId: string, actorPlayerId?: string): Account
   if (blocked) return blocked;
   const affectedGroupIds = (db.prepare('SELECT group_id FROM group_memberships WHERE player_id = ?').all(player.id) as Array<{ group_id: string }>).map((row) => row.group_id);
   const subjectHash = deletionReceiptHash(player.id);
+  const deletionAction = player.is_test
+    ? 'test_player_deleted'
+    : actorPlayerId === player.id
+      ? 'player_self_deleted'
+      : 'player_deleted';
 
   db.transaction(() => {
     for (const purpose of ['register', 'claim', 'reset', 'test_login'] as const) voidOutstandingInvites(player.id, purpose);
@@ -445,6 +622,12 @@ export function deleteAccount(playerId: string, actorPlayerId?: string): Account
     scrubAccountCopies(player.id, new Set([player.name, ...(player.real_name ? [player.real_name] : [])]));
     db.prepare('DELETE FROM group_memberships WHERE player_id = ?').run(player.id);
     db.prepare('DELETE FROM players WHERE id = ?').run(player.id);
+    writeAdminAudit({
+      actorPlayerId: actorPlayerId === player.id ? undefined : actorPlayerId,
+      action: deletionAction,
+      targetType: 'deleted_account',
+      details: { subjectHash },
+    });
   })();
 
   return { ok: true, affectedGroupIds, subjectHash, wasTest: Boolean(player.is_test) };

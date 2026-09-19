@@ -404,12 +404,6 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
     return res.status(deleted.code === 'not_found' ? 404 : 409).json({ error: deleted.message, code: deleted.code });
   }
   disconnectPlayerSockets(req.params.id);
-  writeAdminAudit({
-    actorPlayerId: req.player?.id === req.params.id ? undefined : req.player?.id,
-    action: deleted.wasTest ? 'test_player_deleted' : 'player_deleted',
-    targetType: 'deleted_account',
-    details: { subjectHash: deleted.subjectHash },
-  });
   for (const groupId of deleted.affectedGroupIds) {
     broadcast(Events.playersChanged, null, { groupId });
   }
