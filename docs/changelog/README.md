@@ -18,7 +18,7 @@ keinen Eintrag.
 ## Übersicht
 
 - Gemergte PRs dokumentiert: 239 (Dateien unter `pr/`)
-- Branch-Seiten dokumentiert: 198 (Dateien unter `branches/`)
+- Branch-Seiten dokumentiert: 199 (Dateien unter `branches/`)
 - Gemergte PRs #214–#352: 83 von 83 dokumentiert
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 

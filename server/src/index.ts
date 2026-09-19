@@ -26,6 +26,7 @@ import { registerSnakeSockets } from './arcade/snake';
 import { registerBattleshipSockets } from './arcade/battleship';
 import { registerChallengeRushSockets } from './arcade/challengeRush';
 import { registerArcadeSockets as registerArcadeRealtimeSockets } from './arcade/realtime';
+import { startPrivacyRetention } from './privacyRetention';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -99,6 +100,7 @@ function start(): void {
   startEventPaymentReminder();
   startEventDatePollReminderSweep();
   startEventReminderSweep();
+  startPrivacyRetention();
   // Arcade matches are process-local. A restart cannot resume them, so close
   // any persisted live rows before the heartbeat can keep them fresh.
   recoverInterruptedArcadeSessions();

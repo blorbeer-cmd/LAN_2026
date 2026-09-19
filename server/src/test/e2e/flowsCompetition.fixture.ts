@@ -19,6 +19,7 @@ import {
   ensureAdminMode,
 } from './flowsShared.fixture';
 import { openMoreViewEntry } from './navHelpers';
+import { TRACKING_CONSENT_TEXT_VERSION } from '../../privacyPolicy';
 
 registerFlowFixture('competition');
 
@@ -706,7 +707,7 @@ flowTest('Auswertungen (via Mehr) shows a real award and keeps detail logs colla
   const consentResponse = await fetch(`${BASE_URL}/api/events/${activeEvent.id}/tracking-consent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie: account.cookie },
-    body: JSON.stringify({ granted: true }),
+    body: JSON.stringify({ granted: true, textVersion: TRACKING_CONSENT_TEXT_VERSION }),
   });
   assert.equal(consentResponse.status, 200, await consentResponse.text());
   await page.request.post(`${BASE_URL}/api/agent/report`, {

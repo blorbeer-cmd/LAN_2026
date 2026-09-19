@@ -10,6 +10,16 @@ function intFromEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function boolFromEnv(name: string, fallback = false): boolean {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  return raw === '1' || raw.toLowerCase() === 'true';
+}
+
+function retentionDays(name: string, fallback: number): number {
+  return Math.max(1, intFromEnv(name, fallback));
+}
+
 const configuredDbFile =
   process.env.DB_FILE === ':memory:'
     ? ':memory:'
@@ -68,6 +78,20 @@ export const config = {
   // invite first (see accounts.ts). Empty = bootstrap via recovery code is
   // disabled entirely.
   adminRecoveryCode: process.env.ADMIN_RECOVERY_CODE ?? '',
+
+  // Technical retention proposals, not statutory periods. Destructive
+  // cleanup is opt-in so an operator can inspect /api/privacy/retention-preview
+  // before enabling it. Every run is capped and safe to repeat.
+  privacyRetention: {
+    enabled: boolFromEnv('PRIVACY_RETENTION_ENABLED'),
+    batchSize: Math.min(5_000, Math.max(1, intFromEnv('PRIVACY_RETENTION_BATCH_SIZE', 500))),
+    agentDiagnosticsDays: retentionDays('PRIVACY_RETENTION_AGENT_DIAGNOSTICS_DAYS', 7),
+    resolvedPushDays: retentionDays('PRIVACY_RETENTION_RESOLVED_PUSH_DAYS', 90),
+    endedBroadcastDays: retentionDays('PRIVACY_RETENTION_ENDED_BROADCAST_DAYS', 180),
+    resolvedFeedbackDays: retentionDays('PRIVACY_RETENTION_RESOLVED_FEEDBACK_DAYS', 365),
+    auditDays: retentionDays('PRIVACY_RETENTION_AUDIT_DAYS', 365),
+    endedPlaySessionsDays: retentionDays('PRIVACY_RETENTION_PLAY_SESSIONS_DAYS', 730),
+  },
 } as const;
 
 // Production needs the recovery secret that bootstraps and recovers the

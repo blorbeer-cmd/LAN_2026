@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 104);
+  assert.equal(migrations.length, 105);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 104 }, (_, index) => index + 1),
+    Array.from({ length: 105 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,8 +1342,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 104 }, (_, index) => index + 1),
-    'every version 1..104 runs exactly once',
+    Array.from({ length: 105 }, (_, index) => index + 1),
+    'every version 1..105 runs exactly once',
   );
 });
 
@@ -3687,6 +3687,49 @@ test('migration 104 enables competition for existing groups only and is restart-
     ],
   );
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 105 preserves legacy consent as unversioned and clears stored diagnostic processes', () => {
+  const dbFile = makeTempDbPath('privacy-consent-version');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture.prepare(
+    `INSERT INTO players (id, name, api_key, created_at)
+     VALUES ('privacy-legacy-player', 'Legacy Privacy', 'privacy-legacy-key', ?)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES ('default-group', 'privacy-legacy-player', 'member', 'active', ?, 1)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO event_tracking_consents
+       (id, event_id, group_id, player_id, accepted_at, source, purpose, text_version)
+     VALUES ('privacy-legacy-consent', 'instance-base-event', 'default-group', 'privacy-legacy-player', ?, 'migration', NULL, NULL)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO agent_diagnostics (player_id, agent_version, last_report_at, process_names)
+     VALUES ('privacy-legacy-player', '1.0.0', ?, '["legacy-game.exe"]')`,
+  ).run(now);
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 105').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the guarded migration is restart-safe');
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT purpose, text_version AS textVersion FROM event_tracking_consents WHERE id = ?').get('privacy-legacy-consent'),
+    { purpose: null, textVersion: null },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT process_names AS processNames FROM agent_diagnostics WHERE player_id = ?').get('privacy-legacy-player'),
+    { processNames: '[]' },
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 105').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

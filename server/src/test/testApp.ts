@@ -11,6 +11,7 @@ import {
 } from '../sessions';
 import { ensureAccountEventContext, getOrRepairActiveEvent } from '../eventContext';
 import { setEventTrackingConsent } from '../trackingContexts';
+import { TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION } from '../privacyPolicy';
 
 const TEST_ADMIN_ID = '__integration-test-admin__';
 
@@ -84,7 +85,10 @@ export function enableTestTracking(playerId: string, eventId = BASE_EVENT_ID): v
   if (!event) throw new Error(`Test event ${eventId} does not exist.`);
   ensureAccountEventContext(playerId, eventId);
   db.prepare('UPDATE events SET tracking_enabled = 1, starts_at = 0 WHERE id = ?').run(eventId);
-  setEventTrackingConsent(eventId, event.groupId, playerId, true);
+  setEventTrackingConsent(eventId, event.groupId, playerId, true, {
+    purpose: TRACKING_CONSENT_PURPOSE,
+    textVersion: TRACKING_CONSENT_TEXT_VERSION,
+  });
 }
 
 /**

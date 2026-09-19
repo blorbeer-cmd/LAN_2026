@@ -1186,7 +1186,7 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   await page.click('[data-profile-color-apply]');
   assert.equal(await page.inputValue('#profile-color'), appliedColor);
   assert.equal(await page.getByText('Erweitertes Tracking', { exact: true }).count(), 1);
-  const profileSectionKeys = ['password', 'push', 'monitors', 'agent'];
+  const profileSectionKeys = ['password', 'push', 'privacy', 'monitors', 'agent'];
   assert.deepEqual(
     await page.locator('[data-profile-section]').evaluateAll((sections) =>
       sections.map((section) => ({ key: (section as HTMLElement).dataset.profileSection, open: (section as HTMLDetailsElement).open })),
@@ -1194,6 +1194,9 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
     profileSectionKeys.map((key) => ({ key, open: true })),
     'profile groups should start expanded',
   );
+  assert.equal(await page.getByRole('heading', { name: 'Datenschutz & meine Daten' }).count(), 1);
+  assert.equal(await page.locator('#privacy-export').count(), 1);
+  assert.equal(await page.locator('#privacy-delete-account').count(), 1);
   await page.click('[data-profile-section="push"] > summary');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:rerender')));
   assert.equal(

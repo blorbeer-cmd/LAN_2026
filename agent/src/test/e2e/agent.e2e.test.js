@@ -180,10 +180,13 @@ test('agent reports the running node process and the server reflects it as "play
     headers: { Cookie: adminCookie },
   });
   assert.equal(trackingStartRes.status, 200, await trackingStartRes.text());
+  const privacyRes = await fetch(`${BASE_URL}/api/privacy`, { headers: { Cookie: playerCookie } });
+  assert.equal(privacyRes.status, 200);
+  const privacy = await privacyRes.json();
   const consentRes = await fetch(`${BASE_URL}/api/events/${activeEvent.id}/tracking-consent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: playerCookie },
-    body: JSON.stringify({ granted: true }),
+    body: JSON.stringify({ granted: true, textVersion: privacy.trackingConsent.textVersion }),
   });
   assert.equal(consentRes.status, 200, await consentRes.text());
 

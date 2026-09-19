@@ -33,7 +33,11 @@ agentRouter.get('/process-names', (req, res) => {
   if (!apiKey) return res.status(401).json({ error: 'API-Key fehlt (Header x-api-key).' });
   const player = db.prepare('SELECT id FROM players WHERE api_key = ? AND deactivated_at IS NULL').get(apiKey) as { id: string } | undefined;
   if (!player) return res.status(401).json({ error: 'Ungültiger API-Key.' });
-  res.json({ processNames: allowedProcessNames(activePlayerGroupIds(player.id)) });
+  // Returning an empty allow-list prevents a current agent from transmitting
+  // detected games before the selected event, participation, organizer switch
+  // and the account's consent form one valid tracking context.
+  const hasTrackingContext = activeTrackingContexts(player.id).length > 0;
+  res.json({ processNames: hasTrackingContext ? allowedProcessNames(activePlayerGroupIds(player.id)) : [] });
 });
 
 agentRouter.post('/report', (req, res) => {
@@ -52,16 +56,18 @@ agentRouter.post('/report', (req, res) => {
   const activityTracked = foregroundProcessName !== undefined;
   const now = Date.now();
   const groupIds = activePlayerGroupIds(player.id);
+  const contexts = player.tracking_paused ? [] : activeTrackingContexts(player.id, now);
   // A current agent already only ever sends matched names (see the allow-list
   // endpoint above), but this filters again server-side so a stale agent that
   // hasn't picked up that behavior yet still can't leak arbitrary process
   // names into the diagnostics view or the database.
   const allowed = new Set(allowedProcessNames(groupIds));
-  const diagnosticProcessNames = normalized.filter((name) => allowed.has(name));
+  const diagnosticProcessNames = contexts.length > 0
+    ? normalized.filter((name) => allowed.has(name))
+    : [];
   db.prepare(`INSERT INTO agent_diagnostics (player_id, agent_version, last_report_at, process_names) VALUES (?, ?, ?, ?)
     ON CONFLICT(player_id) DO UPDATE SET agent_version=excluded.agent_version, last_report_at=excluded.last_report_at, process_names=excluded.process_names`)
     .run(player.id, typeof agentVersion === 'string' && agentVersion.trim() ? agentVersion.trim() : null, now, JSON.stringify(diagnosticProcessNames));
-  const contexts = player.tracking_paused ? [] : activeTrackingContexts(player.id, now);
   const previousContexts = db.prepare(
     'SELECT group_id, event_id FROM tracking_live_contexts WHERE player_id = ?',
   ).all(player.id) as Array<{ group_id: string; event_id: string | null }>;

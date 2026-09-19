@@ -28,6 +28,7 @@ import {
 import { eventHasFeature } from '../eventFeatures.js';
 import { backButtonHtml } from '../backButton.js';
 import { layoutModeForPlayer, LAYOUT_MODES, setLayoutModeForPlayer } from '../layoutMode.js';
+import { withStepUp } from '../reauth.js';
 
 // Tracking is the one feature that runs on a private PC, so its labels alone
 // ("Tracking pausieren") read like surveillance without saying what leaves the
@@ -35,16 +36,11 @@ import { layoutModeForPlayer, LAYOUT_MODES, setLayoutModeForPlayer } from '../la
 // agent asks the OS only about the mapped game processes and never reads
 // anything else (see agent/src/systemProbe.js), so this is a factual
 // description of the probe, not a reassurance.
-// Boundaries the wording must not overstate, because a privacy promise
-// that outruns the code is worse than none: the allow-list spans every active
-// group the account belongs to (allowedProcessNames(activePlayerGroupIds(...))
-// in routes/agent.ts), and a report writes agent_diagnostics before any event
-// context is resolved — so reporting does not stop outside an event, only
-// live status and playtime are bound to the account's selected event, with
-// accepted participation, enabled tracking and valid consent while it runs
-// (activeTrackingContexts in trackingContexts.ts).
+// The allow-list is returned only while activeTrackingContexts resolves a
+// valid selected event. Technical reachability and version remain separate;
+// recognized game processes are neither stored nor shown without consent.
 const TRACKING_OVERVIEW_HELP =
-  'Der Agent fragt deinen PC nur nach den Spielen aus den Spielekatalogen deiner Communitys – andere Programme, Fenstertitel oder Dateien liest er gar nicht erst aus. Live-Status, Spielzeit und Auswertungen entstehen nur für das aktuell in deinem Konto ausgewählte Event: Es muss gerade laufen, du musst zugesagt haben, die Orga muss Tracking aktiviert haben und deine Einwilligung zum Event-Tracking muss gültig sein. Andere gleichzeitig laufende Events erhalten daraus keine Live-Daten oder Spielzeit. Solange der Agent läuft und nicht pausiert ist, meldet er auch ohne diese Voraussetzungen weiter: Die erkannten Spielnamen landen dann nur in der Agent-Diagnose für die Administration.';
+  'Der Agent fragt deinen PC nur während eines gültigen Tracking-Kontexts nach den Spielen aus der veröffentlichten Spieleliste – andere Programme, Fenstertitel oder Dateien liest er nicht aus. Das ausgewählte Event muss laufen, du musst zugesagt haben, die Orga muss Tracking aktiviert haben und deine Einwilligung muss gültig sein. Ohne diesen Kontext werden keine erkannten Spiele übertragen, gespeichert oder der Administration angezeigt; technische Erreichbarkeit und Agent-Version bleiben davon getrennt.';
 const TRACKING_PAUSE_HELP =
   'Stoppt die Erfassung sofort: Der Agent meldet dann kein laufendes Spiel und keine Spielzeit mehr, und du erscheinst auf dem Board als „pausiert“. Bereits erfasste Spielzeit bleibt erhalten. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP =
@@ -52,6 +48,80 @@ const ACTIVITY_TRACKING_HELP =
 const PUSH_HELP = 'Benachrichtigt dich auch, wenn Respawn nicht geöffnet ist.';
 const RATING_HELP = 'Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.';
 const AGENT_DOWNLOAD_HELP = 'Das ZIP enthält bereits Server-Adresse und deinen persönlichen Key.';
+
+let privacyState = null;
+let privacyLoading = false;
+
+globalThis.window?.addEventListener('respawn:identity-changed', () => {
+  privacyState = null;
+  privacyLoading = false;
+});
+
+async function loadPrivacy(ctx, force = false) {
+  if (privacyLoading || (!force && privacyState)) return;
+  privacyLoading = true;
+  try {
+    privacyState = { data: await api.privacy.get(), error: null };
+  } catch (error) {
+    privacyState = { data: null, error: error.message };
+  } finally {
+    privacyLoading = false;
+    ctx.rerender();
+  }
+}
+
+function renderPrivacySection() {
+  if (!privacyState) {
+    return '<p class="muted">Datenschutzangaben werden geladen…</p>';
+  }
+  if (privacyState.error) {
+    return `<div class="stack"><p class="error-text">${escapeHtml(privacyState.error)}</p><button type="button" class="btn" id="privacy-retry">Erneut laden</button></div>`;
+  }
+  const { trackingConsent, legacyGroupTracking, retention, operatorDecisionsRequired } = privacyState.data;
+  const consentRows = trackingConsent.events.map((event) => {
+    const active = Boolean(event.consentId);
+    const versionLabel = active
+      ? event.textVersion
+        ? `Bestätigt: Text ${event.textVersion}`
+        : 'Bestandseinwilligung ohne dokumentierte Textversion'
+      : 'Nicht aktiviert';
+    return `<label class="check-row">
+      <input type="checkbox" data-consent-event="${escapeHtml(event.eventId)}" ${active ? 'checked' : ''} />
+      <span style="flex:1;"><strong>${escapeHtml(event.eventName)}</strong><br><span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(versionLabel)}</span></span>
+    </label>`;
+  }).join('');
+  const retentionRows = retention.policies
+    .map((policy) => `<li>${escapeHtml(policy.purpose)}: ${policy.retentionDays === null ? 'bis zum Ablauf' : `${policy.retentionDays} Tage`}<br><span class="muted">${escapeHtml(policy.protection)}</span></li>`)
+    .join('');
+  const legacyGroupRows = legacyGroupTracking.groups
+    .map((group) => `<label class="check-row">
+      <input type="checkbox" data-consent-group="${escapeHtml(group.groupId)}" checked />
+      <span style="flex:1;"><strong>${escapeHtml(group.groupName)}</strong><br><span class="muted" style="font-size:var(--font-size-xs);">${group.textVersion ? `Bestätigt: Text ${escapeHtml(group.textVersion)}` : 'Bestandseinwilligung ohne dokumentierte Textversion'}</span></span>
+    </label>`)
+    .join('');
+  return `<div class="stack">
+    <p class="muted" style="margin:0;">Respawn speichert Profil- und Kontodaten für Anmeldung und Teilnahme, Event- und Zahlungsstatus für die Organisation, freiwillige Spiel-/Aktivitätsdaten für Live-Status und Auswertung, Nachrichten und Push-Status für Kommunikation sowie begrenzte technische Protokolle für Betrieb und Sicherheit. Sichtbarkeit richtet sich nach Eventteilnahme und Rolle.</p>
+    <div class="card stack">
+      <strong>Freiwilliges Event-Tracking</strong>
+      <p class="muted" style="margin:0;">${escapeHtml(trackingConsent.text)}</p>
+      ${consentRows || '<p class="muted" style="margin:0;">Keine zugesagten Events.</p>'}
+      ${legacyGroupRows ? `<strong>Frühere Community-Einwilligungen</strong><p class="muted" style="margin:0;">Diese Einwilligung für Aktivität außerhalb eigener Events wird aktuell nicht für Erfassung verwendet. Du kannst sie hier widerrufen.</p>${legacyGroupRows}` : ''}
+    </div>
+    <div class="card stack">
+      <strong>Aufbewahrung</strong>
+      <p class="muted" style="margin:0;">${retention.enabled ? 'Die technische Bereinigung ist aktiviert.' : 'Die automatische Bereinigung ist noch nicht aktiviert; die Administration muss zuerst die Vorschau und die Betreiberpflichten prüfen.'}</p>
+      <ul>${retentionRows}</ul>
+    </div>
+    <div class="card stack">
+      <strong>Deine Rechte und Werkzeuge</strong>
+      <p class="muted" style="margin:0;">Der Export ist eine verständliche JSON-Datei mit deinen gespeicherten Daten. Passwörter, Schlüssel, Recovery-Codes und private Daten anderer Personen fehlen bewusst. Der Event-Andenkenexport bleibt davon getrennt.</p>
+      <button type="button" class="btn btn-primary btn-block" id="privacy-export">Meine Daten exportieren</button>
+      <button type="button" class="btn btn-danger btn-block" id="privacy-delete-account">Konto dauerhaft löschen</button>
+    </div>
+    <p class="muted" style="margin:0;">Noch vom Betreiber festzulegen: ${operatorDecisionsRequired.map(escapeHtml).join(', ')}. Diese technische Information ist keine Zusage allgemeiner „DSGVO-Konformität“.</p>
+    <p style="margin:0;"><a href="https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32016R0679" target="_blank" rel="noopener noreferrer">Amtlicher Text der Datenschutz-Grundverordnung</a></p>
+  </div>`;
+}
 
 function normalizedProfileColor(value) {
   return /^#[0-9a-f]{6}$/i.test(value ?? '')
@@ -317,6 +387,7 @@ export function renderProfile(container, ctx) {
   if (pushState === null) {
     loadPushState(ctx);
   }
+  if (!privacyState) loadPrivacy(ctx);
 
   // A brand-new player has rated nothing yet — nudge them to the Spiele
   // view once, prominently. Once at least one rating exists, a plain link
@@ -487,6 +558,11 @@ export function renderProfile(container, ctx) {
         <div class="collapsible-section-content">${renderPushSection()}</div>
       </details>
 
+      <details class="card grouped-page-section collapsible-section" data-profile-section="privacy" aria-labelledby="profile-privacy-title" open>
+        <summary class="collapsible-section-header"><h2 id="profile-privacy-title">Datenschutz &amp; meine Daten</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+        <div class="collapsible-section-content">${renderPrivacySection()}</div>
+      </details>
+
       ${monitorsEnabled ? `<details class="card grouped-page-section collapsible-section" data-profile-section="monitors" aria-labelledby="profile-monitors-title" open>
         <summary class="collapsible-section-header"><h2 id="profile-monitors-title">Sichtbare Monitore</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
         <div class="collapsible-section-content">${renderNeighbors(myId)}</div>
@@ -517,6 +593,7 @@ export function renderProfile(container, ctx) {
     '[aria-labelledby="profile-layout-title"]',
     '[aria-labelledby="profile-password-title"]',
     '[aria-labelledby="profile-push-title"]',
+    '[aria-labelledby="profile-privacy-title"]',
   ].forEach((selector) => {
     const section = profileLayout.querySelector(selector);
     if (section) accountColumn.append(section);
@@ -536,6 +613,80 @@ export function renderProfile(container, ctx) {
 
   wireInfoTooltips(container);
   wirePendingInvitationActions(container, ctx);
+
+  container.querySelector('#privacy-retry')?.addEventListener('click', () => {
+    privacyState = null;
+    loadPrivacy(ctx, true);
+  });
+  container.querySelectorAll('[data-consent-event]').forEach((checkbox) => {
+    checkbox.addEventListener('change', async () => {
+      checkbox.disabled = true;
+      const granted = checkbox.checked;
+      try {
+        await api.events.setTrackingConsent(
+          checkbox.dataset.consentEvent,
+          granted,
+          granted ? privacyState.data.trackingConsent.textVersion : undefined,
+        );
+        privacyState = null;
+        await loadPrivacy(ctx, true);
+        showToast(granted ? 'Tracking-Einwilligung gespeichert.' : 'Tracking-Einwilligung widerrufen. Weitere Erfassung ist gestoppt.');
+      } catch (error) {
+        checkbox.checked = !granted;
+        checkbox.disabled = false;
+        showToast(error.message, { error: true });
+      }
+    });
+  });
+  container.querySelectorAll('[data-consent-group]').forEach((checkbox) => {
+    checkbox.addEventListener('change', async () => {
+      checkbox.disabled = true;
+      try {
+        await api.groups.setTrackingConsent(checkbox.dataset.consentGroup, false);
+        privacyState = null;
+        await loadPrivacy(ctx, true);
+        showToast('Frühere Community-Einwilligung widerrufen.');
+      } catch (error) {
+        checkbox.checked = true;
+        checkbox.disabled = false;
+        showToast(error.message, { error: true });
+      }
+    });
+  });
+  container.querySelector('#privacy-export')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const { blob, filename } = await api.privacy.export();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showToast('Persönlicher Datenexport heruntergeladen.');
+    } catch (error) {
+      showToast(error.message, { error: true });
+    } finally {
+      button.disabled = false;
+    }
+  });
+  container.querySelector('#privacy-delete-account')?.addEventListener('click', async () => {
+    const confirmed = await confirmDialog(
+      'Dein Konto, persönliche Zugangsschlüssel, Sitzungen, Einwilligungen und zuordenbare Daten werden dauerhaft gelöscht. Historische Ergebnisse bleiben nur ohne deine Identität erhalten. Frei formulierte Erwähnungen durch andere können eine Prüfung der Orga erfordern. Offene Zahlungen, eigene Bestellungen, Fahrgemeinschaften, To-dos oder die letzte Admin-/Ownerrolle müssen vorher geklärt werden.',
+      { title: 'Konto dauerhaft löschen', confirmText: 'Dauerhaft löschen', danger: true },
+    );
+    if (!confirmed) return;
+    try {
+      const removed = await withStepUp(() => api.privacy.deleteAccount());
+      if (removed === undefined) return;
+      location.reload();
+    } catch (error) {
+      showToast(error.message, { error: true });
+    }
+  });
 
   container.querySelectorAll('[data-layout-preference]').forEach((button) => {
     button.addEventListener('click', () => {
