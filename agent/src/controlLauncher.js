@@ -4,6 +4,28 @@ const { spawn } = require('child_process');
 
 const CONTROL_ACCESS_FILENAME = '.respawn-control.json';
 
+// The desktop shortcut starts the packaged .exe minimized, so a console
+// message about a failed launch is gone before anyone can read it. The text
+// travels through the environment rather than the command line — the same
+// reason the installer stopped pasting paths into PowerShell source.
+const LAUNCH_FAILURE_DIALOG_COMMAND =
+  'Add-Type -AssemblyName System.Windows.Forms; ' +
+  "[void][System.Windows.Forms.MessageBox]::Show($env:RESPAWN_CONTROL_ERROR, 'Respawn-Agent Steuerung', 'OK', 'Warning')";
+
+// -STA is not optional: without it PowerShell runs the apartment WinForms
+// cannot show a modal dialog in, and MessageBox::Show returns straight away
+// without ever drawing a window. The tray script carries the same flag.
+const LAUNCH_FAILURE_DIALOG_ARGS = [
+  '-NoProfile',
+  '-STA',
+  '-ExecutionPolicy',
+  'Bypass',
+  '-WindowStyle',
+  'Hidden',
+  '-Command',
+  LAUNCH_FAILURE_DIALOG_COMMAND,
+];
+
 function getControlAccessPath(installDir) {
   return path.join(installDir, CONTROL_ACCESS_FILENAME);
 }
@@ -79,6 +101,31 @@ function openExternalUrl(url) {
   child.unref();
 }
 
+// Best-effort: a player who double-clicks the desktop shortcut while the
+// agent is not running must learn why nothing happened. Returns whether a
+// dialog was attempted, so the caller can still fall back to the log.
+function showLaunchFailure(message, { spawnImpl = spawn, platform = process.platform } = {}) {
+  if (platform !== 'win32') return false;
+  try {
+    const child = spawnImpl(
+      'powershell.exe',
+      LAUNCH_FAILURE_DIALOG_ARGS,
+      {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+        env: { ...process.env, RESPAWN_CONTROL_ERROR: message },
+      },
+    );
+    child.on('error', () => {});
+    child.unref();
+    return true;
+  } catch {
+    // No PowerShell, no dialog — the log line stays the fallback.
+    return false;
+  }
+}
+
 async function openControlPanel(accessPath, { fetchImpl = fetch, openUrl = openExternalUrl } = {}) {
   const controlAccess = parseControlAccess(fs.readFileSync(accessPath, 'utf8'));
   const launchUrl = await requestControlLaunch(controlAccess, fetchImpl);
@@ -86,10 +133,12 @@ async function openControlPanel(accessPath, { fetchImpl = fetch, openUrl = openE
 }
 
 module.exports = {
+  LAUNCH_FAILURE_DIALOG_COMMAND,
   getControlAccessPath,
   openControlPanel,
   parseControlAccess,
   removeControlAccess,
   requestControlLaunch,
+  showLaunchFailure,
   writeControlAccess,
 };

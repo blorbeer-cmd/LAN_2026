@@ -84,6 +84,11 @@ test('buildInstallBat replaces a running legacy agent before installing the secu
   assert.doesNotMatch(script, /CreateShortcut\('%(?:USERPROFILE|STARTUP_DIR)%/);
   assert.doesNotMatch(script, /TargetPath = '%INSTALL_DIR%/);
   assert.doesNotMatch(script, /URL=http:\/\/127\.0\.0\.1/);
+  // Without /D the agent inherits this script's directory (the unpacked
+  // download folder) and writes its config-relative files — state, log and
+  // the control panel's runtime access file — next to the ZIP, where the
+  // desktop launcher never looks for them.
+  assert.match(script, /^start "" \/D "%INSTALL_DIR%" "%INSTALL_DIR%\\respawn-agent\.exe"$/m);
 });
 
 test('buildUninstallBat removes launchers from the Windows known Desktop folder', () => {

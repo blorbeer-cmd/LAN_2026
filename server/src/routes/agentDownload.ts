@@ -109,7 +109,11 @@ export function buildInstallBat(): string {
     'echo Auf dem Desktop liegt eine Verknuepfung "Respawn-Agent Steuerung" zum',
     'echo Pausieren, Autostart an/aus stellen oder Deinstallieren.',
     'echo Starte ihn jetzt auch gleich...',
-    'start "" "%INSTALL_DIR%\\respawn-agent.exe"',
+    // /D pins the agent's working directory to the install directory. Without
+    // it the agent inherits this script's directory (the unpacked download
+    // folder) and would put its config-relative files — state, log, the local
+    // control panel's runtime file — next to the ZIP instead of the install.
+    'start "" /D "%INSTALL_DIR%" "%INSTALL_DIR%\\respawn-agent.exe"',
     'if errorlevel 1 goto install_failed',
     '',
     'timeout /t 5',

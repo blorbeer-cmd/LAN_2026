@@ -33,10 +33,13 @@ URL noch im Agent-Log.
 Rechtsklick → „Beenden" beendet den Agent direkt aus dem Tray. `install.bat` legt zusätzlich eine
 Verknüpfung „Respawn-Agent Steuerung" auf dem Desktop an, die zur selben Weboberfläche führt.
 Klappt das Tray-Icon aus irgendeinem Grund nicht (z. B. sehr alte Windows-Version ohne .NET), bleibt
-das Konsolenfenster einfach sichtbar und die Desktop-Verknüpfung funktioniert unverändert. Läuft der
-Agent per `npm start` (nicht als `.exe`), bleibt die Konsole immer sichtbar – das Tray-Icon ist nur
-etwas für die gepackte Variante. In diesem Entwicklungsmodus öffnet `npm run control` die
-Steuerung sicher im Browser.
+das Konsolenfenster einfach sichtbar und die Desktop-Verknüpfung funktioniert unverändert. Klappt
+umgekehrt die Desktop-Verknüpfung nicht – etwa weil der Agent gerade nicht läuft –, erscheint ein
+Hinweisfenster mit dem Grund; die Verknüpfung startet minimiert, ihre Konsole wäre sonst zu schnell
+wieder weg. Läuft der Agent per `npm start` (nicht als `.exe`), bleibt die Konsole immer sichtbar –
+das Tray-Icon ist nur etwas für die gepackte Variante. In diesem Entwicklungsmodus öffnet
+`npm run control` die Steuerung sicher im Browser; das funktioniert wie die Desktop-Verknüpfung nur
+unter Windows, weil beide den Windows-Standardbrowser über die Windows-Shell aufrufen.
 
 Nach dem Ausblenden landet die Log-Ausgabe zusätzlich in `agent.log` im Installationsordner
 (`%LOCALAPPDATA%\Respawn-Agent`), damit sich Verbindungsprobleme trotzdem nachvollziehen lassen.

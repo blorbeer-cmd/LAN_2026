@@ -33,6 +33,7 @@ const {
   getControlAccessPath,
   openControlPanel,
   removeControlAccess,
+  showLaunchFailure,
   writeControlAccess,
 } = require('./controlLauncher');
 const { startTrayIcon, hideConsoleWindow } = require('./tray');
@@ -288,7 +289,9 @@ if (require.main === module) {
       ? path.resolve(process.argv[3])
       : getControlAccessPath(path.dirname(process.execPath));
     openControlPanel(accessPath).catch((err) => {
-      log(`Steuerung konnte nicht geöffnet werden: ${err.message}`);
+      const message = `Steuerung konnte nicht geöffnet werden: ${err.message}`;
+      log(message);
+      showLaunchFailure(`${message}\n\nLäuft der Respawn-Agent gerade? Starte ihn und versuche es erneut.`);
       process.exitCode = 1;
     });
   } else {
