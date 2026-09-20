@@ -29,6 +29,7 @@ test('personal export is self-scoped and excludes every reusable access secret',
   const exportEventId = nanoid();
   const drawingId = nanoid();
   const pingId = nanoid();
+  const auditId = nanoid();
   const gameId = (db.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get(DEFAULT_GROUP_ID) as { id: string }).id;
   db.prepare(
     `INSERT INTO events (id, name, starts_at, ends_at, group_id, status)
@@ -70,6 +71,11 @@ test('personal export is self-scoped and excludes every reusable access secret',
        (id, group_id, event_id, player_id, view, sentiment, message, device, created_at)
      VALUES (?, ?, ?, ?, 'profile', 'negative', ?, 'mobile', ?)`,
   ).run(nanoid(), DEFAULT_GROUP_ID, BASE_EVENT_ID, other.id, foreignMessage, Date.now());
+  db.prepare(
+    `INSERT INTO admin_log
+       (id, actor_player_id, group_id, action, target_type, target_id, details, created_at)
+     VALUES (?, ?, ?, 'event_participant_invited', 'event_participant', ?, '{}', ?)`,
+  ).run(auditId, other.id, DEFAULT_GROUP_ID, `${exportEventId}:${own.id}`, Date.now());
 
   const response = await request(app).get('/api/privacy/export').set('Cookie', own.cookie);
   assert.equal(response.status, 200, JSON.stringify(response.body));
@@ -87,6 +93,15 @@ test('personal export is self-scoped and excludes every reusable access secret',
   assert.equal(response.body.organisation.seatingAssignments.some((seat: { eventId: string }) => seat.eventId === exportEventId), true);
   assert.equal(response.body.organisation.seatNeighborRelations.length, 1);
   assert.equal(response.body.organisation.authoredGamePings.some((ping: { id: string }) => ping.id === pingId), true);
+  assert.equal(
+    response.body.audit.some(
+      (entry: { action: string; targetType: string; targetedOwnAccount: number }) =>
+        entry.action === 'event_participant_invited' &&
+        entry.targetType === 'event_participant' &&
+        entry.targetedOwnAccount === 1,
+    ),
+    true,
+  );
   assert.equal((await request(app).get('/api/privacy/retention-preview').set('Cookie', own.cookie)).status, 403);
   assert.equal((await request(app).get('/api/privacy/deletion-receipts').set('Cookie', own.cookie)).status, 403);
 
@@ -114,9 +129,18 @@ test('self deletion revokes access and scrubs recipient, result and historical n
      VALUES (?, 'Privacy snapshot event', ?, ?, ?, 'ended')`,
   ).run(snapshotEventId, now - 2_000, now - 1_000, DEFAULT_GROUP_ID);
   db.prepare(
-    `INSERT INTO push_log (id, group_id, event_id, title, body, audience, player_ids, created_at)
-     VALUES (?, ?, ?, 'Test', 'Test', 'direct', ?, ?)`,
-  ).run(pushId, DEFAULT_GROUP_ID, BASE_EVENT_ID, JSON.stringify([target.id, other.id]), now);
+    `INSERT INTO push_log
+       (id, group_id, event_id, title, body, audience, player_ids, topic_key, target_id, created_at)
+     VALUES (?, ?, ?, 'Test', 'Test', 'direct', ?, ?, ?, ?)`,
+  ).run(
+    pushId,
+    DEFAULT_GROUP_ID,
+    BASE_EVENT_ID,
+    JSON.stringify([target.id, other.id]),
+    `event-payment-reminder:${target.id}:${BASE_EVENT_ID}`,
+    `event-reminder:${BASE_EVENT_ID}:${target.id}:schedule-1`,
+    now,
+  );
   db.prepare("UPDATE push_log SET title = ?, body = ? WHERE id = ?")
     .run('Delete Target Gamertag-Party', 'Delete Target GamertagA bleibt bestehen', pushId);
   db.prepare(
@@ -191,10 +215,14 @@ test('self deletion revokes access and scrubs recipient, result and historical n
   assert.equal(db.prepare('SELECT 1 FROM players WHERE id = ?').get(target.id), undefined);
   assert.equal(db.prepare('SELECT 1 FROM sessions WHERE player_id = ?').get(target.id), undefined);
   assert.deepEqual(JSON.parse((db.prepare('SELECT player_ids FROM push_log WHERE id = ?').get(pushId) as { player_ids: string }).player_ids), [other.id]);
-  const pushCopy = db.prepare('SELECT title, body FROM push_log WHERE id = ?').get(pushId) as { title: string; body: string };
+  const pushCopy = db.prepare(
+    'SELECT title, body, topic_key AS topicKey, target_id AS targetId FROM push_log WHERE id = ?',
+  ).get(pushId) as { title: string; body: string; topicKey: string | null; targetId: string | null };
   assert.deepEqual(pushCopy, {
     title: 'Delete Target Gamertag-Party',
     body: 'Delete Target GamertagA bleibt bestehen',
+    topicKey: null,
+    targetId: null,
   });
   assert.deepEqual(JSON.parse((db.prepare('SELECT recipient_ids FROM broadcasts WHERE id = ?').get(broadcastId) as { recipient_ids: string }).recipient_ids), [other.id]);
   const matchResult = (db.prepare('SELECT result FROM matches WHERE id = ?').get(matchId) as { result: string }).result;

@@ -25,6 +25,10 @@ Die zweite Review-Nacharbeit stoppt die Agent-Allowlist auch bei einer Web-Pause
 zusammengesetzte Teilnahme-Audit-IDs strukturiert, bewahrt fremde Musikwünsche beim Löschen eines
 früheren Hosts und lässt nicht eindeutig zuordenbare Benachrichtigungsfreitexte unverändert.
 
+Die dritte Review-Nacharbeit entfernt Spielerkennungen auch aus strukturierten Push-Schlüsseln,
+nimmt zusammengesetzte Teilnahme-Audits in den persönlichen Export auf und blockiert die
+Kontolöschung während eines laufenden Captain-Drafts, damit dieser konsistent abgeschlossen wird.
+
 ## Offene Punkte
 
 Review und Merge stehen aus. Die automatische Bereinigung bleibt bis zur Betreiberentscheidung

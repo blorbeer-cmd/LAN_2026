@@ -57,6 +57,38 @@ function safeDiagnosticProcesses(playerId: string, processNames: unknown): strin
   return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
 }
 
+function isOwnAdminAuditTarget(targetType: unknown, targetId: unknown, playerId: string): boolean {
+  if (targetId === playerId) return true;
+  return (
+    targetType === 'event_participant' &&
+    typeof targetId === 'string' &&
+    targetId.split(':').at(-1) === playerId
+  );
+}
+
+function personalAuditRows(playerId: string): Array<Record<string, unknown>> {
+  return rows(
+    `SELECT action, target_type AS targetType, target_id AS targetId,
+            actor_player_id AS actorPlayerId, created_at AS createdAt
+     FROM admin_log
+     WHERE actor_player_id = ? OR target_id = ? OR target_type = 'event_participant'
+     ORDER BY created_at`,
+    playerId,
+    playerId,
+  )
+    .filter(
+      (row) =>
+        row.actorPlayerId === playerId ||
+        isOwnAdminAuditTarget(row.targetType, row.targetId, playerId),
+    )
+    .map((row) => ({
+      action: row.action,
+      targetType: row.targetType,
+      createdAt: row.createdAt,
+      targetedOwnAccount: isOwnAdminAuditTarget(row.targetType, row.targetId, playerId) ? 1 : 0,
+    }));
+}
+
 export function buildPersonalDataExport(playerId: string): Record<string, unknown> | undefined {
   const profile = db
     .prepare(
@@ -409,14 +441,7 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
         playerId,
       ),
     },
-    audit: rows(
-      `SELECT action, target_type AS targetType, created_at AS createdAt,
-              CASE WHEN target_id = ? THEN 1 ELSE 0 END AS targetedOwnAccount
-       FROM admin_log WHERE actor_player_id = ? OR target_id = ? ORDER BY created_at`,
-      playerId,
-      playerId,
-      playerId,
-    ),
+    audit: personalAuditRows(playerId),
   };
 }
 
@@ -427,6 +452,7 @@ export type AccountDeletionBlockCode =
   | 'owned_food_orders'
   | 'owned_carpools'
   | 'open_checklist_tasks'
+  | 'active_draft_participation'
   | 'active_music_session';
 
 export type AccountDeletionResult =
@@ -460,6 +486,15 @@ function blocker(playerId: string, isAdmin: boolean): Exclude<AccountDeletionRes
   }
   if (db.prepare("SELECT 1 FROM checklist_tasks WHERE (created_by = ? OR assignee_id = ?) AND status NOT IN ('done', 'cancelled') LIMIT 1").get(playerId, playerId)) {
     return { ok: false, code: 'open_checklist_tasks', message: 'Schließe, storniere oder übergib zuerst deine offenen To-dos.' };
+  }
+  if (db.prepare(
+    `SELECT 1
+     FROM drafts d
+     JOIN draft_player_refs r ON r.group_id = d.group_id AND r.draft_id = d.id
+     WHERE d.status = 'active' AND r.player_id = ?
+     LIMIT 1`,
+  ).get(playerId)) {
+    return { ok: false, code: 'active_draft_participation', message: 'Beende oder storniere zuerst den laufenden Captain-Draft.' };
   }
   if (db.prepare("SELECT 1 FROM music_sessions WHERE host_player_id = ? AND status = 'active' LIMIT 1").get(playerId)) {
     return { ok: false, code: 'active_music_session', message: 'Beende zuerst deine laufende Jam-Session.' };
@@ -545,15 +580,29 @@ function scrubAdminAuditTargets(playerId: string): void {
   ).all() as Array<{ id: string; targetType: string; targetId: string }>;
   const clear = db.prepare('UPDATE admin_log SET target_id = NULL WHERE id = ?');
   for (const row of rows) {
-    const isOwnAccount = row.targetId === playerId;
-    const isOwnEventParticipation =
-      row.targetType === 'event_participant' && row.targetId.split(':').at(-1) === playerId;
-    if (isOwnAccount || isOwnEventParticipation) clear.run(row.id);
+    if (isOwnAdminAuditTarget(row.targetType, row.targetId, playerId)) clear.run(row.id);
+  }
+}
+
+function structuredIdentifierReferencesPlayer(value: string | null, playerId: string): boolean {
+  return value === playerId || Boolean(value?.split(':').includes(playerId));
+}
+
+function scrubPushLogIdentifiers(playerId: string): void {
+  const pushRows = db.prepare(
+    'SELECT id, topic_key AS topicKey, target_id AS targetId FROM push_log WHERE topic_key IS NOT NULL OR target_id IS NOT NULL',
+  ).all() as Array<{ id: string; topicKey: string | null; targetId: string | null }>;
+  const update = db.prepare('UPDATE push_log SET topic_key = ?, target_id = ? WHERE id = ?');
+  for (const row of pushRows) {
+    const topicKey = structuredIdentifierReferencesPlayer(row.topicKey, playerId) ? null : row.topicKey;
+    const targetId = structuredIdentifierReferencesPlayer(row.targetId, playerId) ? null : row.targetId;
+    if (topicKey !== row.topicKey || targetId !== row.targetId) update.run(topicKey, targetId, row.id);
   }
 }
 
 function scrubAccountCopies(playerId: string, names: Set<string>): void {
   removeIdFromJsonArrayTable('push_log', 'id', 'player_ids', playerId);
+  scrubPushLogIdentifiers(playerId);
   removeIdFromJsonArrayTable('broadcasts', 'id', 'recipient_ids', playerId);
   removeIdFromJsonArrayTable('tournament_teams', 'id', 'player_ids', playerId);
   for (const column of ['captain_ids', 'pool_ids', 'picks']) redactJsonColumn('drafts', 'id', column, playerId, names);
