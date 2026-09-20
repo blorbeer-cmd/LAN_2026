@@ -18,9 +18,10 @@ Betreiber für seine konkrete Installation festlegen.
   Wiederverwendbare Geheimnisse wie Sitzungstoken, API-Schlüssel, Passwort-Hashes und Push-Schlüssel
   sind nie Teil des Exports.
 
-Bei der Kontolöschung entfernt Respawn außerdem Empfängerlisten, Sitzplatzzuordnungen und IDs,
-Namen, Profilbilder oder weitere Profil-Snapshots in Match-, Team-, Arcade-, Push- und
-Protokollhistorien. Scribble-Zeichnungen bleiben als anonymer Spielinhalt ohne Kontobezug erhalten. Eigene Nachrichten und
+Bei der Kontolöschung entfernt Respawn außerdem Empfängerlisten und andere strukturierte
+Kontobezüge aus der Push-Historie sowie Sitzplatzzuordnungen, IDs, Namen, Profilbilder oder weitere
+Profil-Snapshots in Match-, Team-, Arcade- und Protokollhistorien. Scribble-Zeichnungen bleiben als
+anonymer Spielinhalt ohne Kontobezug erhalten. Eigene Nachrichten und
 sonstige eigene Freitexte werden gelöscht. Erwähnungen in frei formulierten Texten anderer Personen
 können nicht zuverlässig als Bezug erkannt werden; solche begründeten Einzelfälle muss die Orga nach
 einem Betroffenenhinweis prüfen. Diese Grenze wird nicht als Anonymisierung ausgegeben.

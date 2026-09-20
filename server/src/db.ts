@@ -2847,7 +2847,7 @@ function createMusicSessionTables(): void {
     CREATE TABLE IF NOT EXISTS music_sessions (
       id                    TEXT PRIMARY KEY,
       group_id              TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-      host_player_id        TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      host_player_id        TEXT REFERENCES players(id) ON DELETE SET NULL,
       device_id             TEXT NOT NULL,
       device_name           TEXT NOT NULL,
       status                TEXT NOT NULL CHECK (status IN ('active', 'ended')),
@@ -5057,6 +5057,78 @@ registerMigration({
   version: 105,
   name: 'version privacy consents and clear legacy diagnostic process names',
   up: addVersionedConsentMetadata,
+});
+
+// An ended Jam session is historical event data and can contain requests from
+// several accounts. Deleting its former host must therefore anonymize only
+// the host reference instead of cascading through the session and erasing
+// requests that belong to other players.
+function preserveEndedMusicSessionsAfterHostDeletion(): void {
+  const hostColumn = (db.prepare('PRAGMA table_info(music_sessions)').all() as Array<{
+    name: string;
+    notnull: number;
+  }>).find((column) => column.name === 'host_player_id');
+  const hostForeignKey = (db.prepare('PRAGMA foreign_key_list(music_sessions)').all() as Array<{
+    from: string;
+    on_delete: string;
+  }>).find((foreignKey) => foreignKey.from === 'host_player_id');
+  if (hostColumn?.notnull === 0 && hostForeignKey?.on_delete === 'SET NULL') return;
+
+  db.exec(`
+    CREATE TABLE music_sessions_rebuilt_106 (
+      id                    TEXT PRIMARY KEY,
+      group_id              TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      host_player_id        TEXT REFERENCES players(id) ON DELETE SET NULL,
+      device_id             TEXT NOT NULL,
+      device_name           TEXT NOT NULL,
+      status                TEXT NOT NULL CHECK (status IN ('active', 'ended')),
+      current_track_uri     TEXT,
+      current_track_json    TEXT,
+      playback_is_playing   INTEGER NOT NULL DEFAULT 0,
+      playback_progress_ms  INTEGER NOT NULL DEFAULT 0,
+      playback_updated_at   INTEGER,
+      started_at            INTEGER NOT NULL,
+      ended_at              INTEGER,
+      playback_context_json TEXT,
+      event_id              TEXT REFERENCES events(id) ON DELETE RESTRICT
+    );
+    INSERT INTO music_sessions_rebuilt_106
+      (id, group_id, host_player_id, device_id, device_name, status, current_track_uri,
+       current_track_json, playback_is_playing, playback_progress_ms, playback_updated_at,
+       started_at, ended_at, playback_context_json, event_id)
+    SELECT id, group_id, host_player_id, device_id, device_name, status, current_track_uri,
+           current_track_json, playback_is_playing, playback_progress_ms, playback_updated_at,
+           started_at, ended_at, playback_context_json, event_id
+    FROM music_sessions;
+    DROP TABLE music_sessions;
+    ALTER TABLE music_sessions_rebuilt_106 RENAME TO music_sessions;
+    CREATE UNIQUE INDEX idx_music_sessions_one_active_group
+      ON music_sessions(group_id) WHERE status = 'active';
+    CREATE INDEX idx_music_sessions_event_status
+      ON music_sessions(event_id, status, started_at);
+    CREATE TRIGGER trg_music_sessions_event_group_insert
+    BEFORE INSERT ON music_sessions
+    WHEN NEW.event_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM events e WHERE e.id = NEW.event_id AND e.group_id = NEW.group_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'music session event/group mismatch');
+    END;
+    CREATE TRIGGER trg_music_sessions_event_group_update
+    BEFORE UPDATE OF event_id, group_id ON music_sessions
+    WHEN NEW.event_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM events e WHERE e.id = NEW.event_id AND e.group_id = NEW.group_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'music session event/group mismatch');
+    END;
+  `);
+}
+registerMigration({
+  version: 106,
+  name: 'preserve ended music sessions after host deletion',
+  up: preserveEndedMusicSessionsAfterHostDeletion,
+  disableForeignKeysForRebuild: true,
 });
 
 runRegisteredMigrations();

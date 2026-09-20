@@ -105,6 +105,9 @@ test('self deletion revokes access and scrubs recipient, result and historical n
   const snapshotEventId = nanoid();
   const drawId = nanoid();
   const drawingId = nanoid();
+  const auditId = nanoid();
+  const musicSessionId = nanoid();
+  const musicRequestId = nanoid();
   db.prepare('UPDATE players SET avatar = ? WHERE id = ?').run('data:image/png;base64,private-avatar', target.id);
   db.prepare(
     `INSERT INTO events (id, name, starts_at, ends_at, group_id, status)
@@ -115,7 +118,7 @@ test('self deletion revokes access and scrubs recipient, result and historical n
      VALUES (?, ?, ?, 'Test', 'Test', 'direct', ?, ?)`,
   ).run(pushId, DEFAULT_GROUP_ID, BASE_EVENT_ID, JSON.stringify([target.id, other.id]), now);
   db.prepare("UPDATE push_log SET title = ?, body = ? WHERE id = ?")
-    .run('Delete Target Gamertag ist aktiv', 'Nachricht von Delete Target Klarname', pushId);
+    .run('Delete Target Gamertag-Party', 'Delete Target GamertagA bleibt bestehen', pushId);
   db.prepare(
     `INSERT INTO broadcasts
        (id, group_id, event_id, player_id, player_name_snapshot, message, ends_at, recipient_ids, created_at)
@@ -158,6 +161,30 @@ test('self deletion revokes access and scrubs recipient, result and historical n
        (result_id, group_id, player_id, participant_key, player_name_snapshot, score_snapshot, is_winner)
      VALUES (?, ?, ?, ?, ?, ?, 1)`,
   ).run(arcadeResultId, DEFAULT_GROUP_ID, target.id, target.id, 'Delete Target Gamertag', JSON.stringify({ playerId: target.id, playerName: 'Delete Target Klarname', points: 5 }));
+  db.prepare(
+    `INSERT INTO admin_log
+       (id, actor_player_id, group_id, action, target_type, target_id, details, created_at)
+     VALUES (?, ?, ?, 'event_participant_invited', 'event_participant', ?, ?, ?)`,
+  ).run(
+    auditId,
+    other.id,
+    DEFAULT_GROUP_ID,
+    `${snapshotEventId}:${target.id}`,
+    JSON.stringify({ eventId: snapshotEventId, playerId: target.id }),
+    now,
+  );
+  db.prepare(
+    `INSERT INTO music_sessions
+       (id, group_id, event_id, host_player_id, device_id, device_name, status, started_at, ended_at)
+     VALUES (?, ?, ?, ?, 'privacy-device', 'Privacy device', 'ended', ?, ?)`,
+  ).run(musicSessionId, DEFAULT_GROUP_ID, snapshotEventId, target.id, now - 1_000, now);
+  db.prepare(
+    `INSERT INTO music_requests
+       (id, session_id, track_uri, track_id, track_name, artist_name, duration_ms,
+        requested_by, requested_by_name_snapshot, status, created_at, played_at)
+     VALUES (?, ?, 'spotify:track:privacy', 'privacy-track', 'Privacy track', 'Privacy artist',
+             180000, ?, 'Delete Other Gamertag', 'played', ?, ?)`,
+  ).run(musicRequestId, musicSessionId, other.id, now - 500, now);
 
   const deleted = await request(app).delete('/api/privacy/account').set('Cookie', target.cookie);
   assert.equal(deleted.status, 204, JSON.stringify(deleted.body));
@@ -165,8 +192,10 @@ test('self deletion revokes access and scrubs recipient, result and historical n
   assert.equal(db.prepare('SELECT 1 FROM sessions WHERE player_id = ?').get(target.id), undefined);
   assert.deepEqual(JSON.parse((db.prepare('SELECT player_ids FROM push_log WHERE id = ?').get(pushId) as { player_ids: string }).player_ids), [other.id]);
   const pushCopy = db.prepare('SELECT title, body FROM push_log WHERE id = ?').get(pushId) as { title: string; body: string };
-  assert.doesNotMatch(`${pushCopy.title} ${pushCopy.body}`, /Delete Target/);
-  assert.match(`${pushCopy.title} ${pushCopy.body}`, /Gelöschtes Konto/);
+  assert.deepEqual(pushCopy, {
+    title: 'Delete Target Gamertag-Party',
+    body: 'Delete Target GamertagA bleibt bestehen',
+  });
   assert.deepEqual(JSON.parse((db.prepare('SELECT recipient_ids FROM broadcasts WHERE id = ?').get(broadcastId) as { recipient_ids: string }).recipient_ids), [other.id]);
   const matchResult = (db.prepare('SELECT result FROM matches WHERE id = ?').get(matchId) as { result: string }).result;
   assert.doesNotMatch(matchResult, new RegExp(target.id));
@@ -201,6 +230,20 @@ test('self deletion revokes access and scrubs recipient, result and historical n
   assert.equal(arcadeParticipant.playerName, 'Gelöschtes Konto');
   assert.doesNotMatch(arcadeParticipant.score, /Delete Target/);
   assert.equal(arcadeParticipant.score.includes(target.id), false);
+  const audit = db.prepare('SELECT target_id AS targetId, details FROM admin_log WHERE id = ?').get(auditId) as {
+    targetId: string | null;
+    details: string;
+  };
+  assert.equal(audit.targetId, null);
+  assert.equal((JSON.parse(audit.details) as { playerId: string | null }).playerId, null);
+  assert.deepEqual(
+    db.prepare('SELECT host_player_id AS hostPlayerId FROM music_sessions WHERE id = ?').get(musicSessionId),
+    { hostPlayerId: null },
+  );
+  assert.deepEqual(
+    db.prepare('SELECT requested_by AS requestedBy FROM music_requests WHERE id = ?').get(musicRequestId),
+    { requestedBy: other.id },
+  );
   assert.equal((await request(app).get('/api/privacy').set('Cookie', target.cookie)).status, 401);
   const receipts = await request(app).get('/api/privacy/deletion-receipts');
   assert.equal(receipts.status, 200);

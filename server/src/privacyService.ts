@@ -539,22 +539,16 @@ function redactJsonColumn(table: string, idColumn: string, jsonColumn: string, p
   }
 }
 
-function redactKnownNamesInPushHistory(names: Set<string>): void {
-  const entries = db.prepare('SELECT id, title, body FROM push_log').all() as Array<{
-    id: string;
-    title: string;
-    body: string;
-  }>;
-  const update = db.prepare('UPDATE push_log SET title = ?, body = ? WHERE id = ?');
-  for (const entry of entries) {
-    let title = entry.title;
-    let body = entry.body;
-    for (const name of [...names].sort((left, right) => right.length - left.length)) {
-      if (!name) continue;
-      title = title.split(name).join(DELETED_NAME);
-      body = body.split(name).join(DELETED_NAME);
-    }
-    if (title !== entry.title || body !== entry.body) update.run(title, body, entry.id);
+function scrubAdminAuditTargets(playerId: string): void {
+  const rows = db.prepare(
+    'SELECT id, target_type AS targetType, target_id AS targetId FROM admin_log WHERE target_id IS NOT NULL',
+  ).all() as Array<{ id: string; targetType: string; targetId: string }>;
+  const clear = db.prepare('UPDATE admin_log SET target_id = NULL WHERE id = ?');
+  for (const row of rows) {
+    const isOwnAccount = row.targetId === playerId;
+    const isOwnEventParticipation =
+      row.targetType === 'event_participant' && row.targetId.split(':').at(-1) === playerId;
+    if (isOwnAccount || isOwnEventParticipation) clear.run(row.id);
   }
 }
 
@@ -570,8 +564,11 @@ function scrubAccountCopies(playerId: string, names: Set<string>): void {
   redactJsonColumn('arcade_results', 'id', 'scores', playerId, names);
   redactJsonColumn('admin_log', 'id', 'details', playerId, names);
   db.prepare('UPDATE scribble_drawings SET artist_name = ? WHERE artist_id = ?').run(DELETED_NAME, playerId);
-  redactKnownNamesInPushHistory(names);
-  db.prepare('UPDATE admin_log SET target_id = NULL WHERE target_id = ?').run(playerId);
+  // Notification titles and bodies are free text and can contain unrelated
+  // words that merely include a short gamer tag (for example LAN-Party).
+  // Structured recipient ids are removed above; do not corrupt other
+  // people's historical text with an unbound substring replacement.
+  scrubAdminAuditTargets(playerId);
   db.prepare('DELETE FROM seat_neighbors WHERE player_id = ? OR neighbor_id = ?').run(playerId, playerId);
   db.prepare('DELETE FROM event_calendar_confirmations WHERE player_id = ?').run(playerId);
   db.prepare('DELETE FROM event_date_poll_responses WHERE player_id = ?').run(playerId);

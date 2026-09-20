@@ -31,12 +31,14 @@ function allowedProcessNames(groupIds: string[]): string[] {
 agentRouter.get('/process-names', (req, res) => {
   const apiKey = req.header('x-api-key');
   if (!apiKey) return res.status(401).json({ error: 'API-Key fehlt (Header x-api-key).' });
-  const player = db.prepare('SELECT id FROM players WHERE api_key = ? AND deactivated_at IS NULL').get(apiKey) as { id: string } | undefined;
+  const player = db.prepare('SELECT id, tracking_paused FROM players WHERE api_key = ? AND deactivated_at IS NULL').get(apiKey) as
+    | { id: string; tracking_paused: number }
+    | undefined;
   if (!player) return res.status(401).json({ error: 'Ungültiger API-Key.' });
   // Returning an empty allow-list prevents a current agent from transmitting
   // detected games before the selected event, participation, organizer switch
   // and the account's consent form one valid tracking context.
-  const hasTrackingContext = activeTrackingContexts(player.id).length > 0;
+  const hasTrackingContext = !player.tracking_paused && activeTrackingContexts(player.id).length > 0;
   res.json({ processNames: hasTrackingContext ? allowedProcessNames(activePlayerGroupIds(player.id)) : [] });
 });
 

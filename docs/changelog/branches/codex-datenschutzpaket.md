@@ -21,6 +21,10 @@ schreibt Löschbelege atomar, anonymisiert auch Profilbilder und Scribble-Namens
 historischen Daten und erweitert den persönlichen Export um Sitz-, Ping-, Termin-, Arcade-,
 Benachrichtigungs- und selbst erstellte Inhalte.
 
+Die zweite Review-Nacharbeit stoppt die Agent-Allowlist auch bei einer Web-Pause, bereinigt
+zusammengesetzte Teilnahme-Audit-IDs strukturiert, bewahrt fremde Musikwünsche beim Löschen eines
+früheren Hosts und lässt nicht eindeutig zuordenbare Benachrichtigungsfreitexte unverändert.
+
 ## Offene Punkte
 
 Review und Merge stehen aus. Die automatische Bereinigung bleibt bis zur Betreiberentscheidung

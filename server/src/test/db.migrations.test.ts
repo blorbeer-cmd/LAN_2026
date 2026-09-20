@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 105);
+  assert.equal(migrations.length, 106);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 105 }, (_, index) => index + 1),
+    Array.from({ length: 106 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -776,8 +776,12 @@ test('records the complete migration history and does not duplicate it on restar
     const row = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
     assert.ok(row, `${table} should be created for legacy databases`);
   }
-  const musicSessionColumns = migrated.prepare('PRAGMA table_info(music_sessions)').all() as Array<{ name: string }>;
+  const musicSessionColumns = migrated.prepare('PRAGMA table_info(music_sessions)').all() as Array<{
+    name: string;
+    notnull: number;
+  }>;
   assert.ok(musicSessionColumns.some((column) => column.name === 'playback_context_json'));
+  assert.equal(musicSessionColumns.find((column) => column.name === 'host_player_id')?.notnull, 0);
   const musicControllerColumns = migrated.prepare('PRAGMA table_info(music_controllers)').all() as Array<{ name: string }>;
   assert.ok(musicControllerColumns.some((column) => column.name === 'connection_status_json'));
   for (const removedTable of ['spotify_connections', 'spotify_oauth_states']) {
@@ -851,6 +855,14 @@ test('records the complete migration history and does not duplicate it on restar
   assert.ok(scribbleDrawingColumns.some((column) => column.name === 'is_ai_match'));
   const auditColumns = migrated.prepare('PRAGMA table_info(admin_log)').all() as Array<{ name: string }>;
   assert.ok(auditColumns.some((column) => column.name === 'group_id'));
+  const musicSessionForeignKeys = migrated.prepare('PRAGMA foreign_key_list(music_sessions)').all() as Array<{
+    from: string;
+    on_delete: string;
+  }>;
+  assert.equal(
+    musicSessionForeignKeys.find((foreignKey) => foreignKey.from === 'host_player_id')?.on_delete,
+    'SET NULL',
+  );
   for (const table of ['seating_layouts', 'seat_neighbors', 'game_pings', 'game_ping_interested']) {
     const columns = migrated.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     assert.ok(columns.some((column) => column.name === 'group_id'), `${table} should be group-owned`);
@@ -1342,8 +1354,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 105 }, (_, index) => index + 1),
-    'every version 1..105 runs exactly once',
+    Array.from({ length: 106 }, (_, index) => index + 1),
+    'every version 1..106 runs exactly once',
   );
 });
 

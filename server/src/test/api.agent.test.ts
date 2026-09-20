@@ -257,6 +257,10 @@ test('POST /api/agent/tracking-paused sets the flag that both the web profile an
   const profile = await request(app).get(`/api/players/${playerId}`);
   assert.equal(profile.body.tracking_paused, 1);
 
+  const pausedAllowList = await request(app).get('/api/agent/process-names').set('x-api-key', apiKey);
+  assert.equal(pausedAllowList.status, 200);
+  assert.deepEqual(pausedAllowList.body.processNames, []);
+
   const report = await request(app)
     .post('/api/agent/report')
     .set('x-api-key', apiKey)
