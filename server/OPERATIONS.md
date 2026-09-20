@@ -65,11 +65,16 @@ docker compose run --rm --no-deps app npm run backup:verify -- /app/data/backups
 Der produktive Restore bleibt bewusst ein Operator-Vorgang. So bleibt die bisherige Datenbank als
 Rückfall erhalten:
 
-Vor jedem Restore muss ein Admin die Hash-Löschbelege über
-`GET /api/privacy/deletion-receipts` herunterladen und getrennt von der SQLite-Datei dauerhaft
-sichern. Der Export enthält keine Konto-ID und keinen Namen. Er verhindert, dass ein bereits
-gelöschtes Konto aus einem älteren Backup wieder produktiv wird. Die Datei wird für den Abgleich
-vorübergehend als `data/deletion-receipts.json` bereitgestellt.
+Jede Kontolöschung schreibt vor der SQLite-Änderung einen hashbasierten Beleg synchron in das
+append-only Ledger aus `PRIVACY_DELETION_LEDGER_FILE`. Ohne gesetzten Pfad landet es neben der
+SQLite-Datei und überlebt damit den unten beschriebenen Restore, aber nicht den Komplettverlust des
+`data`-Volumes; der Produktionsstart warnt in diesem Fall. Für den vollen Schutz gehört das Ziel auf
+ein unabhängig gesichertes Volume, im Docker-Betrieb als separater persistenter Mount im
+App-Container, zum Beispiel vom Hostpfad `/opt/respawn-deletion-ledger` nach `/app/deletion-ledger`;
+dann ist `PRIVACY_DELETION_LEDGER_FILE` zusätzlich dauerhaft in `/opt/respawn/.env` zu setzen.
+Das Ledger enthält weder Konto-ID noch Name.
+Der zusätzliche Download über `GET /api/privacy/deletion-receipts` bleibt als manuelle
+Kontrollkopie möglich.
 
 ```bash
 cd /opt/respawn
@@ -77,17 +82,19 @@ docker compose stop app
 cp -- data/lan.db data/lan.db.before-restore.sqlite
 cp -- data/backups/<backup-datei>.sqlite data/lan.db
 rm -f -- data/lan.db-wal data/lan.db-shm
-docker compose run --rm --no-deps -e DB_FILE=/app/data/lan.db app npm run privacy:reconcile-restore -- --preview /app/data/deletion-receipts.json
-docker compose run --rm --no-deps -e DB_FILE=/app/data/lan.db -e PRIVACY_RESTORE_CONFIRMED_OFFLINE=1 app npm run privacy:reconcile-restore -- --apply /app/data/deletion-receipts.json
-docker compose run --rm --no-deps -e DB_FILE=/app/data/lan.db app npm run privacy:reconcile-restore -- --preview /app/data/deletion-receipts.json
+docker compose run --rm --no-deps -v /opt/respawn-deletion-ledger:/app/deletion-ledger -e DB_FILE=/app/data/lan.db -e PRIVACY_DELETION_LEDGER_FILE=/app/deletion-ledger/deletion-receipts.jsonl app npm run privacy:reconcile-restore -- --preview
+docker compose run --rm --no-deps -v /opt/respawn-deletion-ledger:/app/deletion-ledger -e DB_FILE=/app/data/lan.db -e PRIVACY_DELETION_LEDGER_FILE=/app/deletion-ledger/deletion-receipts.jsonl -e PRIVACY_RESTORE_CONFIRMED_OFFLINE=1 app npm run privacy:reconcile-restore -- --apply
+docker compose run --rm --no-deps -v /opt/respawn-deletion-ledger:/app/deletion-ledger -e DB_FILE=/app/data/lan.db -e PRIVACY_DELETION_LEDGER_FILE=/app/deletion-ledger/deletion-receipts.jsonl app npm run privacy:reconcile-restore -- --preview
 docker compose up -d --wait app
 ```
 
 Der letzte Preview-Lauf muss `restoredAccountsToDelete: 0` melden. Meldet `--apply` einen Blocker,
 bleibt die App gestoppt: Rolle oder offenen Fachvorgang in der isolierten Restore-Umgebung klären,
-den Abgleich wiederholen und erst dann freigeben. Die Löschbeleg-Datei bleibt außerhalb der
+den Abgleich wiederholen und erst dann freigeben. Das externe Ledger bleibt außerhalb der
 SQLite-Backups erhalten, bis alle Backups vor den enthaltenen Löschzeitpunkten abgelaufen sind.
 Ohne vollständige Löschbelege darf ein älteres Backup nicht als neue Produktion freigegeben werden.
+Als Notfallalternative akzeptiert der Befehl weiterhin einen zuvor heruntergeladenen JSON-Export
+oder eine JSONL-Ledgerdatei als optionalen letzten Parameter.
 
 Danach `/api/health` und die LAN-Bereitschaft im Admin-Bereich prüfen und stichprobenartig Event,
 Spieler und Historie öffnen. Schlägt die Prüfung fehl, den Container erneut stoppen, die gesicherte

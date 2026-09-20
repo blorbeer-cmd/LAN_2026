@@ -101,7 +101,8 @@ privacyRouter.delete('/account', requireRecentReauthentication, (req, res) => {
   const playerId = req.player!.id;
   const result = deleteAccount(playerId, playerId);
   if (!result.ok) {
-    return res.status(result.code === 'not_found' ? 404 : 409).json({ error: result.message, code: result.code });
+    const status = result.code === 'not_found' ? 404 : result.code === 'deletion_receipt_unavailable' ? 503 : 409;
+    return res.status(status).json({ error: result.message, code: result.code });
   }
   disconnectPlayerSockets(playerId);
   for (const groupId of result.affectedGroupIds) broadcast(Events.playersChanged, null, { groupId });

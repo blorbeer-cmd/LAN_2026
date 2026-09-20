@@ -1,11 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { nanoid } from 'nanoid';
 import request from 'supertest';
 import { createApp } from '../app';
 import { createTestApp, DEFAULT_GROUP_ID, sessionCookie } from './testApp';
 import { BASE_EVENT_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
+import { config } from '../config';
 
 function createMember(label: string): { id: string; apiKey: string; cookie: string } {
   const id = nanoid();
@@ -30,6 +34,12 @@ test('personal export is self-scoped and excludes every reusable access secret',
   const drawingId = nanoid();
   const pingId = nanoid();
   const auditId = nanoid();
+  const draftId = nanoid();
+  const tournamentId = nanoid();
+  const ownTeamId = nanoid();
+  const otherTeamId = nanoid();
+  const tournamentMatchId = nanoid();
+  const recordedMatchId = nanoid();
   const gameId = (db.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get(DEFAULT_GROUP_ID) as { id: string }).id;
   db.prepare(
     `INSERT INTO events (id, name, starts_at, ends_at, group_id, status)
@@ -76,6 +86,50 @@ test('personal export is self-scoped and excludes every reusable access secret',
        (id, actor_player_id, group_id, action, target_type, target_id, details, created_at)
      VALUES (?, ?, ?, 'event_participant_invited', 'event_participant', ?, '{}', ?)`,
   ).run(auditId, other.id, DEFAULT_GROUP_ID, `${exportEventId}:${own.id}`, Date.now());
+  db.prepare(
+    `INSERT INTO drafts
+       (id, group_id, event_id, game_id, status, captain_ids, pool_ids, picks, created_at)
+     VALUES (?, ?, ?, ?, 'completed', ?, '[]', '[]', ?)`,
+  ).run(draftId, DEFAULT_GROUP_ID, exportEventId, gameId, JSON.stringify([own.id]), Date.now());
+  db.prepare(
+    `INSERT INTO draft_player_refs
+       (draft_id, group_id, player_id, role, player_name_snapshot, player_color_snapshot)
+     VALUES (?, ?, ?, 'captain', 'Export Own Gamertag', '#123456')`,
+  ).run(draftId, DEFAULT_GROUP_ID, own.id);
+  db.prepare(
+    `INSERT INTO tournaments
+       (id, group_id, event_id, game_id, name, format, status, created_at)
+     VALUES (?, ?, ?, ?, 'Export Cup', 'round_robin', 'completed', ?)`,
+  ).run(tournamentId, DEFAULT_GROUP_ID, exportEventId, gameId, Date.now());
+  db.prepare(
+    'INSERT INTO tournament_teams (id, tournament_id, name, player_ids) VALUES (?, ?, ?, ?)',
+  ).run(ownTeamId, tournamentId, 'Export Own Team', JSON.stringify([own.id]));
+  db.prepare(
+    'INSERT INTO tournament_teams (id, tournament_id, name, player_ids) VALUES (?, ?, ?, ?)',
+  ).run(otherTeamId, tournamentId, 'Export Other Team', JSON.stringify([other.id]));
+  db.prepare(
+    `INSERT INTO tournament_matches
+       (id, tournament_id, round, slot, team_a_id, team_b_id, winner_team_id,
+        score_a, score_b, is_draw, is_bye, played_at)
+     VALUES (?, ?, 1, 0, ?, ?, ?, 2, 1, 0, 0, ?)`,
+  ).run(tournamentMatchId, tournamentId, ownTeamId, otherTeamId, ownTeamId, Date.now());
+  db.prepare(
+    `INSERT INTO matches (id, group_id, game_id, event_id, played_at, result)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(
+    recordedMatchId,
+    DEFAULT_GROUP_ID,
+    gameId,
+    exportEventId,
+    Date.now(),
+    JSON.stringify({
+      teams: [
+        { playerIds: [own.id], score: 2 },
+        { playerIds: [other.id], score: 1 },
+      ],
+      winnerTeamIndex: 0,
+    }),
+  );
 
   const response = await request(app).get('/api/privacy/export').set('Cookie', own.cookie);
   assert.equal(response.status, 200, JSON.stringify(response.body));
@@ -93,6 +147,11 @@ test('personal export is self-scoped and excludes every reusable access secret',
   assert.equal(response.body.organisation.seatingAssignments.some((seat: { eventId: string }) => seat.eventId === exportEventId), true);
   assert.equal(response.body.organisation.seatNeighborRelations.length, 1);
   assert.equal(response.body.organisation.authoredGamePings.some((ping: { id: string }) => ping.id === pingId), true);
+  assert.equal(response.body.competition.drafts.some((draft: { draftId: string }) => draft.draftId === draftId), true);
+  assert.equal(response.body.competition.tournamentTeams.some((team: { teamId: string }) => team.teamId === ownTeamId), true);
+  assert.equal(response.body.competition.tournamentMatches.some((match: { id: string; outcome: string }) => match.id === tournamentMatchId && match.outcome === 'win'), true);
+  assert.equal(response.body.competition.recordedMatches.some((match: { id: string; outcome: string }) => match.id === recordedMatchId && match.outcome === 'win'), true);
+  assert.equal(JSON.stringify(response.body.competition).includes(other.id), false);
   assert.equal(
     response.body.audit.some(
       (entry: { action: string; targetType: string; targetedOwnAccount: number }) =>
@@ -123,6 +182,9 @@ test('self deletion revokes access and scrubs recipient, result and historical n
   const auditId = nanoid();
   const musicSessionId = nanoid();
   const musicRequestId = nanoid();
+  const accountAuditId = nanoid();
+  const checklistTaskId = nanoid();
+  const checklistPushId = nanoid();
   db.prepare('UPDATE players SET avatar = ? WHERE id = ?').run('data:image/png;base64,private-avatar', target.id);
   db.prepare(
     `INSERT INTO events (id, name, starts_at, ends_at, group_id, status)
@@ -139,6 +201,45 @@ test('self deletion revokes access and scrubs recipient, result and historical n
     JSON.stringify([target.id, other.id]),
     `event-payment-reminder:${target.id}:${BASE_EVENT_ID}`,
     `event-reminder:${BASE_EVENT_ID}:${target.id}:schedule-1`,
+    now,
+  );
+  db.prepare(
+    `INSERT INTO admin_log
+       (id, actor_player_id, group_id, action, target_type, target_id, details, created_at)
+     VALUES (?, NULL, ?, 'login_failed', 'account_name', 'delete target gamertag', '{}', ?)`,
+  ).run(accountAuditId, DEFAULT_GROUP_ID, now);
+  db.prepare(
+    `INSERT INTO checklist_tasks
+       (id, group_id, event_id, type, title, created_by, assignee_id, status, created_at, done_at)
+     VALUES (?, ?, ?, 'todo', 'Private Aufgabe', ?, ?, 'done', ?, ?)`,
+  ).run(checklistTaskId, DEFAULT_GROUP_ID, snapshotEventId, target.id, target.id, now, now);
+  db.prepare(
+    `INSERT INTO push_log
+       (id, group_id, event_id, title, body, audience, player_ids, topic_key, created_at)
+     VALUES (?, ?, ?, 'To-do', 'Delete Target Gamertag: Private Aufgabe', 'direct', ?, ?, ?)`,
+  ).run(
+    checklistPushId,
+    DEFAULT_GROUP_ID,
+    snapshotEventId,
+    JSON.stringify([other.id]),
+    `checklist-task:${checklistTaskId}`,
+    now,
+  );
+  // A claim push is sent to the task creator but its body is a sentence about
+  // the claiming account and quotes that account's own comment, so clearing
+  // the identifier would not be enough.
+  const claimPushId = nanoid();
+  db.prepare(
+    `INSERT INTO push_log
+       (id, group_id, event_id, title, body, audience, player_ids, target_id, created_at)
+     VALUES (?, ?, ?, 'Übernommen', ?, 'direct', ?, ?, ?)`,
+  ).run(
+    claimPushId,
+    DEFAULT_GROUP_ID,
+    snapshotEventId,
+    'Delete Target Gamertag übernimmt: Tische aufbauen – bringe eigenes Werkzeug mit',
+    JSON.stringify([other.id]),
+    `about-account:checklist-claim:${nanoid()}:${target.id}`,
     now,
   );
   db.prepare("UPDATE push_log SET title = ?, body = ? WHERE id = ?")
@@ -175,11 +276,24 @@ test('self deletion revokes access and scrubs recipient, result and historical n
        (event_id, assignments, updated_at, group_id)
      VALUES (?, ?, ?, ?)`,
   ).run(snapshotEventId, JSON.stringify([{ side: 'top', seat: 0, playerId: target.id }]), now, DEFAULT_GROUP_ID);
+  // The permanent room plan of a group is the same table with event_id = NULL
+  // and additionally stores a plain name snapshot.
+  db.prepare(
+    `INSERT INTO seating_layouts
+       (event_id, assignments, updated_at, group_id)
+     VALUES (NULL, ?, ?, ?)`,
+  ).run(
+    JSON.stringify([{ side: 'left', seat: 1, playerId: target.id, playerNameSnapshot: 'Delete Target Gamertag' }]),
+    now,
+    DEFAULT_GROUP_ID,
+  );
   db.prepare(
     `INSERT INTO arcade_results
        (id, game_type, winner_id, players, scores, reason, started_at, ended_at, group_id, event_id)
      VALUES (?, 'quiz', ?, ?, ?, 'finished', ?, ?, ?, ?)`,
-  ).run(arcadeResultId, target.id, JSON.stringify([{ playerId: target.id, name: 'Delete Target Gamertag' }]), JSON.stringify({ [target.id]: 5 }), now - 1_000, now, DEFAULT_GROUP_ID, BASE_EVENT_ID);
+    // The score map already carries an earlier erasure, so the anonymous key
+    // has to stay free for this account instead of overwriting that entry.
+  ).run(arcadeResultId, target.id, JSON.stringify([{ playerId: target.id, name: 'Delete Target Gamertag' }]), JSON.stringify({ deletedAccount: 3, [target.id]: 5 }), now - 1_000, now, DEFAULT_GROUP_ID, BASE_EVENT_ID);
   db.prepare(
     `INSERT INTO arcade_result_participants
        (result_id, group_id, player_id, participant_key, player_name_snapshot, score_snapshot, is_winner)
@@ -250,6 +364,16 @@ test('self deletion revokes access and scrubs recipient, result and historical n
     (db.prepare('SELECT assignments FROM seating_layouts WHERE event_id = ?').get(snapshotEventId) as { assignments: string }).assignments.includes(target.id),
     false,
   );
+  const roomLayout = (db.prepare(
+    'SELECT assignments FROM seating_layouts WHERE group_id = ? AND event_id IS NULL',
+  ).get(DEFAULT_GROUP_ID) as { assignments: string }).assignments;
+  assert.equal(roomLayout.includes(target.id), false, 'the room plan must not keep the account id');
+  assert.doesNotMatch(roomLayout, /Delete Target/, 'the room plan must not keep the name snapshot');
+  assert.deepEqual(
+    JSON.parse((db.prepare('SELECT scores FROM arcade_results WHERE id = ?').get(arcadeResultId) as { scores: string }).scores),
+    { deletedAccount: 3, 'deletedAccount-2': 5 },
+    'a second erasure must not overwrite an earlier anonymous entry',
+  );
   const arcadeParticipant = db.prepare(
     'SELECT player_id AS playerId, participant_key AS participantKey, player_name_snapshot AS playerName, score_snapshot AS score FROM arcade_result_participants WHERE result_id = ?',
   ).get(arcadeResultId) as { playerId: string | null; participantKey: string; playerName: string; score: string };
@@ -264,6 +388,16 @@ test('self deletion revokes access and scrubs recipient, result and historical n
   };
   assert.equal(audit.targetId, null);
   assert.equal((JSON.parse(audit.details) as { playerId: string | null }).playerId, null);
+  assert.deepEqual(
+    db.prepare('SELECT target_id AS targetId FROM admin_log WHERE id = ?').get(accountAuditId),
+    { targetId: null },
+  );
+  assert.equal(db.prepare('SELECT 1 FROM push_log WHERE id = ?').get(checklistPushId), undefined);
+  assert.equal(
+    db.prepare('SELECT 1 FROM push_log WHERE id = ?').get(claimPushId),
+    undefined,
+    'a push whose body is a sentence about the account must be removed, not only unlinked',
+  );
   assert.deepEqual(
     db.prepare('SELECT host_player_id AS hostPlayerId FROM music_sessions WHERE id = ?').get(musicSessionId),
     { hostPlayerId: null },
@@ -291,6 +425,59 @@ test('self deletion explains role and open-process blockers without partial dele
   assert.equal(response.status, 409);
   assert.equal(response.body.code, 'owned_food_orders');
   assert.match(response.body.error, /Sammelbestellungen/);
+  assert.match(response.body.error, /von dir/, 'self service addresses the account owner');
   assert.ok(db.prepare('SELECT 1 FROM players WHERE id = ?').get(target.id));
   assert.ok(db.prepare('SELECT 1 FROM food_orders WHERE id = ?').get(orderId));
+
+  // The admin path shares the blockers but must not tell the admin to clean
+  // up "your" own order.
+  const admin = createMember('Delete Blocking Admin');
+  db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(admin.id);
+  db.prepare("UPDATE group_memberships SET role = 'owner' WHERE group_id = ? AND player_id = ?").run(DEFAULT_GROUP_ID, admin.id);
+  const adminAttempt = await request(app).delete(`/api/players/${target.id}`).set('Cookie', admin.cookie);
+  assert.equal(adminAttempt.status, 409, JSON.stringify(adminAttempt.body));
+  assert.equal(adminAttempt.body.code, 'owned_food_orders');
+  assert.match(adminAttempt.body.error, /Sammelbestellungen/);
+  assert.doesNotMatch(adminAttempt.body.error, /von dir|deine/i, 'the admin is not the account owner');
+  assert.ok(db.prepare('SELECT 1 FROM players WHERE id = ?').get(target.id));
+});
+
+test('self deletion writes a durable hash-only ledger before removing the account', async () => {
+  const app = createTestApp();
+  const target = createMember('Durable Receipt');
+  const directory = mkdtempSync(path.join(tmpdir(), 'respawn-deletion-ledger-'));
+  const ledger = path.join(directory, 'receipts.jsonl');
+  const mutableConfig = config as unknown as { deletionLedgerFile: string };
+  const previousLedger = mutableConfig.deletionLedgerFile;
+  mutableConfig.deletionLedgerFile = ledger;
+  try {
+    const deleted = await request(app).delete('/api/privacy/account').set('Cookie', target.cookie);
+    assert.equal(deleted.status, 204, JSON.stringify(deleted.body));
+    const entries = readFileSync(ledger, 'utf8').trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    assert.equal(entries.length, 1);
+    assert.match(entries[0].subjectHash, /^[a-f0-9]{64}$/);
+    assert.equal(JSON.stringify(entries).includes(target.id), false);
+    assert.equal(JSON.stringify(entries).includes('Durable Receipt'), false);
+  } finally {
+    mutableConfig.deletionLedgerFile = previousLedger;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('self deletion fails closed when the durable ledger is unavailable', async () => {
+  const app = createTestApp();
+  const target = createMember('Unavailable Receipt');
+  const directory = mkdtempSync(path.join(tmpdir(), 'respawn-deletion-ledger-blocked-'));
+  const mutableConfig = config as unknown as { deletionLedgerFile: string };
+  const previousLedger = mutableConfig.deletionLedgerFile;
+  mutableConfig.deletionLedgerFile = directory;
+  try {
+    const response = await request(app).delete('/api/privacy/account').set('Cookie', target.cookie);
+    assert.equal(response.status, 503);
+    assert.equal(response.body.code, 'deletion_receipt_unavailable');
+    assert.ok(db.prepare('SELECT 1 FROM players WHERE id = ?').get(target.id));
+  } finally {
+    mutableConfig.deletionLedgerFile = previousLedger;
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

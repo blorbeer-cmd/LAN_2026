@@ -9,8 +9,8 @@ function fail(message) {
 }
 
 const [mode, receiptPath] = process.argv.slice(2);
-if (!['--preview', '--apply'].includes(mode) || !receiptPath) {
-  fail('Aufruf: npm run privacy:reconcile-restore -- --preview|--apply <loeschnachweise.json>');
+if (!['--preview', '--apply'].includes(mode)) {
+  fail('Aufruf: npm run privacy:reconcile-restore -- --preview|--apply [loeschnachweise.json|jsonl]');
   return;
 }
 if (!process.env.DB_FILE || process.env.DB_FILE === ':memory:') {
@@ -22,24 +22,33 @@ if (mode === '--apply' && process.env.PRIVACY_RESTORE_CONFIRMED_OFFLINE !== '1')
   return;
 }
 
-let document;
-try {
-  document = JSON.parse(fs.readFileSync(path.resolve(receiptPath), 'utf8'));
-} catch (error) {
-  fail(`Löschbelege konnten nicht gelesen werden: ${error instanceof Error ? error.message : String(error)}`);
-  return;
-}
-if (document?.format !== 'respawn-deletion-receipts' || document?.version !== 1 || !Array.isArray(document.receipts)) {
-  fail('Löschbeleg-Datei hat kein unterstütztes Respawn-Format.');
-  return;
-}
-
 process.env.PRIVACY_RETENTION_ENABLED = '0';
 const runtimeDir = fs.existsSync(path.join(__dirname, '..', 'dist', 'db.js')) ? '../dist' : '../dist-test';
 const { db } = require(`${runtimeDir}/db`);
-const { deletionReceiptHash, deleteAccount } = require(`${runtimeDir}/privacyService`);
+const { deletionReceiptHash, deleteAccount, listDeletionReceipts } = require(`${runtimeDir}/privacyService`);
+let receipts;
+try {
+  if (!receiptPath) {
+    receipts = listDeletionReceipts();
+  } else {
+    const content = fs.readFileSync(path.resolve(receiptPath), 'utf8');
+    if (content.trimStart().startsWith('{')) {
+      const document = JSON.parse(content);
+      if (document?.format !== 'respawn-deletion-receipts' || document?.version !== 1 || !Array.isArray(document.receipts)) {
+        throw new Error('Datei hat kein unterstütztes Respawn-Format.');
+      }
+      receipts = document.receipts;
+    } else {
+      receipts = content.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+    }
+  }
+} catch (error) {
+  db.close();
+  fail(`Löschbelege konnten nicht gelesen werden: ${error instanceof Error ? error.message : String(error)}`);
+  return;
+}
 const receiptHashes = new Set(
-  document.receipts
+  receipts
     .map((receipt) => receipt?.subjectHash)
     .filter((value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)),
 );

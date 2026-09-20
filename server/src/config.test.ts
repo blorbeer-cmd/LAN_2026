@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { productionConfigError, startupAccessConfigError } from './config';
+import { productionConfigError, productionConfigWarning, startupAccessConfigError } from './config';
 
 test('productionConfigError accepts a configured recovery code', () => {
   assert.equal(productionConfigError({ adminRecoveryCode: 'recovery-secret' }), null);
@@ -12,6 +12,14 @@ test('productionConfigError accepts a configured recovery code', () => {
 
 test('productionConfigError requires ADMIN_RECOVERY_CODE', () => {
   assert.match(productionConfigError({ adminRecoveryCode: '' }) ?? '', /ADMIN_RECOVERY_CODE/);
+});
+
+// A default ledger still survives the documented restore path, so a missing
+// separate path warns instead of stopping an already running installation.
+test('an implicit deletion ledger warns instead of blocking startup', () => {
+  assert.equal(productionConfigError({ adminRecoveryCode: 'recovery-secret' }), null);
+  assert.match(productionConfigWarning({ deletionLedgerFileExplicit: false }) ?? '', /PRIVACY_DELETION_LEDGER_FILE/);
+  assert.equal(productionConfigWarning({ deletionLedgerFileExplicit: true }), null);
 });
 
 test('startupAccessConfigError accepts an existing claimed admin account', () => {

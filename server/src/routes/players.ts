@@ -401,7 +401,8 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
   }
   const deleted = deleteAccount(req.params.id, req.player?.id);
   if (!deleted.ok) {
-    return res.status(deleted.code === 'not_found' ? 404 : 409).json({ error: deleted.message, code: deleted.code });
+    const status = deleted.code === 'not_found' ? 404 : deleted.code === 'deletion_receipt_unavailable' ? 503 : 409;
+    return res.status(status).json({ error: deleted.message, code: deleted.code });
   }
   disconnectPlayerSockets(req.params.id);
   for (const groupId of deleted.affectedGroupIds) {

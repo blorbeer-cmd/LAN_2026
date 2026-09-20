@@ -27,6 +27,12 @@ const configuredDbFile =
       ? path.resolve(process.env.DB_FILE)
       : path.join(__dirname, '..', 'data', 'lan.db');
 
+const configuredDeletionLedgerFile = process.env.PRIVACY_DELETION_LEDGER_FILE
+  ? path.resolve(process.env.PRIVACY_DELETION_LEDGER_FILE)
+  : configuredDbFile === ':memory:'
+    ? ''
+    : path.join(path.dirname(configuredDbFile), 'deletion-receipts.jsonl');
+
 export const config = {
   // Port the HTTP/WebSocket server listens on.
   port: intFromEnv('PORT', 3000),
@@ -45,6 +51,12 @@ export const config = {
       ? ''
       : path.join(path.dirname(configuredDbFile), 'backups'),
   backupRetention: Math.max(1, intFromEnv('BACKUP_RETENTION', 20)),
+
+  // Append-only, hash-only erasure ledger. Production startup requires an
+  // explicit path so operators deliberately place it on storage independent
+  // from the SQLite database and its backups.
+  deletionLedgerFile: configuredDeletionLedgerFile,
+  deletionLedgerFileExplicit: Boolean(process.env.PRIVACY_DELETION_LEDGER_FILE),
 
   // Public URL used inside downloaded agent configurations. This is preferred
   // over request-derived URL data when the app sits behind a reverse proxy.
@@ -101,6 +113,21 @@ export function productionConfigError(
 ): string | null {
   if (!cfg.adminRecoveryCode) {
     return 'NODE_ENV=production erfordert ADMIN_RECOVERY_CODE. Server wird nicht gestartet.';
+  }
+  return null;
+}
+
+// An unconfigured deletion ledger still works — it lands next to the SQLite
+// file and therefore survives a database restore, which is the documented
+// reconcile path. It does not survive losing the whole data volume, so this
+// warns instead of refusing to boot: an existing installation must keep
+// starting after an update, and the operator decision belongs in
+// docs/privacy-and-retention.md, not in a failed deploy.
+export function productionConfigWarning(
+  cfg: Pick<typeof config, 'deletionLedgerFileExplicit'> = config
+): string | null {
+  if (!cfg.deletionLedgerFileExplicit) {
+    return 'PRIVACY_DELETION_LEDGER_FILE ist nicht gesetzt. Die Löschbelege liegen neben der SQLite-Datei und überleben deren Verlust nicht. Siehe docs/privacy-and-retention.md.';
   }
   return null;
 }

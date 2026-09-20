@@ -26,6 +26,14 @@ sonstige eigene Freitexte werden gelöscht. Erwähnungen in frei formulierten Te
 können nicht zuverlässig als Bezug erkannt werden; solche begründeten Einzelfälle muss die Orga nach
 einem Betroffenenhinweis prüfen. Diese Grenze wird nicht als Anonymisierung ausgegeben.
 
+Selbstbedienung und adminseitiges Löschen nutzen denselben Löschpfad und damit auch dieselben
+Voraussetzungen: unübertragene Admin-/Ownerrolle, bestätigte Event-Zahlung, selbst angelegte
+Sammelbestellungen oder Fahrgemeinschaften, offene To-dos, ein laufender Captain-Draft und eine
+laufende Jam-Session blockieren die Löschung. Das gilt bewusst auch für Admins, damit ein fremder
+Fachvorgang nicht unbemerkt mitgelöscht wird; die Orga klärt den genannten Vorgang zuerst in der
+jeweiligen Ansicht und löscht danach. Die Meldung benennt den konkreten Grund und ist für die
+Selbstlöschung und den Adminfall getrennt formuliert.
+
 ## Dateninventar
 
 | Datenkategorie | Zweck | Sichtbarkeit | Erhebung | Technische Aufbewahrung | Löschpfad |
@@ -74,6 +82,13 @@ PRIVACY_RETENTION_PLAY_SESSIONS_DAYS=730
 Nach dem Neustart läuft sofort eine begrenzte Runde, danach täglich. Vor einer Friständerung erneut
 die Vorschau prüfen. Die Löschbelege für Backup-Abgleiche werden bewusst nicht von der Audit-Regel
 erfasst; sie dürfen erst entfernt werden, wenn kein älteres Backup mehr wiederhergestellt werden kann.
+Zusätzlich schreibt jede Kontolöschung einen hashbasierten Beleg in das append-only Ledger aus
+`PRIVACY_DELETION_LEDGER_FILE`. Ohne gesetzten Pfad liegt das Ledger neben der SQLite-Datei: Das
+überlebt das Zurückspielen eines Backups, also genau den dokumentierten Restore-Ablauf, aber nicht
+den Verlust des ganzen Datenverzeichnisses. Der Betreiber legt das Ziel deshalb auf unabhängig
+gesicherten Speicher; fehlt der Pfad, warnt der Produktionsstart deutlich, bricht aber eine
+laufende Installation nicht ab. Kann das Ledger nicht synchron geschrieben werden, wird die
+Kontolöschung ohne Datenänderung abgebrochen.
 
 ## Betreiberentscheidungen vor Produktion
 

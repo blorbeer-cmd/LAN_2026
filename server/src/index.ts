@@ -4,7 +4,7 @@
 import http from 'http';
 import { Server } from 'socket.io';
 
-import { config, productionConfigError, startupAccessConfigError } from './config';
+import { config, productionConfigError, productionConfigWarning, startupAccessConfigError } from './config';
 import './db'; // side-effect: open DB, create schema, seed defaults
 import { hasClaimedAdmin } from './accounts';
 import { runBootstrapAdmins } from './bootstrapAdmins';
@@ -72,6 +72,11 @@ function start(): void {
       // eslint-disable-next-line no-console
       console.error(`FATAL: ${error}`);
       process.exit(1);
+    }
+    const warning = productionConfigWarning();
+    if (warning) {
+      // eslint-disable-next-line no-console
+      console.warn(`WARN: ${warning}`);
     }
   }
 

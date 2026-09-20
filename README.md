@@ -266,6 +266,7 @@ Recovery-Code oder ein bereits beanspruchtes Admin-Konto.
 | `DB_FILE` | `server/data/lan.db` | Pfad zur SQLite-Datei. Wird beim ersten Start angelegt. |
 | `BACKUP_DIR` | `<DB-Verzeichnis>/backups` | Verzeichnis für persistente, atomar geschriebene SQLite-Snapshots. Im Docker-Setup liegt es damit auf dem gemounteten `data`-Volume. |
 | `BACKUP_RETENTION` | `20` | Maximale Anzahl persistenter Snapshots; ältere Dateien werden nach einem erfolgreichen Backup entfernt. |
+| `PRIVACY_DELETION_LEDGER_FILE` | `<DB-Verzeichnis>/deletion-receipts.jsonl` | Append-only, hashbasiertes Ledger gegen das Wiederaufleben gelöschter Konten nach einem Restore. Der Standardpfad überlebt das Zurückspielen eines Backups, aber nicht den Verlust des ganzen Datenverzeichnisses; in Produktion deshalb auf unabhängig gesicherten Speicher legen. Ohne gesetzten Pfad warnt der Start deutlich. |
 | `ADMIN_RECOVERY_CODE` | *(leer)* | Starkes Bootstrap-/Recovery-Secret für den ersten beziehungsweise letzten Admin. In Produktion Pflicht. |
 | `BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD` | *(leer)* | Optionale, beim Start angelegte fertige Admin-Konten (Slot `n` = 1…20), damit du nicht den Recovery-Weg gehen musst. Idempotent, überschreibt kein bestehendes Passwort. Details in [`docs/BOOTSTRAP-ADMINS.md`](docs/BOOTSTRAP-ADMINS.md). |
 | `KIOSK_PASSWORD` | *(fällt auf `KIOSK_TOKEN` zurück, sonst automatisch generiert)* | Gemeinsames Passwort der automatisch für alle LAN-Events angelegten Konten `kiosk-<eventId>`. Ohne beide Variablen erzeugt der Server beim ersten Bedarf ein zufälliges Passwort und speichert es dauerhaft in der DB; Admins sehen es in der Kioskverwaltung. Die Anmeldung auf `/kiosk.html` erzeugt nur einen eventgebundenen Read-only-Token. |
@@ -274,7 +275,7 @@ Recovery-Code oder ein bereits beanspruchtes Admin-Konto.
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |
 | `EXPECTED_AGENT_VERSION` | `1.0.0` | Version, die die LAN-Bereitschaft als aktuell bewertet. Abweichende oder unbekannte Agent-Versionen werden vor dem Event hervorgehoben. |
 | `PRIVACY_RETENTION_ENABLED` | `0` | Aktiviert erst nach Admin-Vorschau die begrenzte tägliche Datenschutz-Bereinigung. Fristen und weitere `PRIVACY_RETENTION_*`-Variablen: [`docs/privacy-and-retention.md`](docs/privacy-and-retention.md). |
-| `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verlangt `ADMIN_RECOVERY_CODE` und beendet den Prozess bei unerwarteten Fehlern, damit Docker sauber neu startet. Für die LAN-Party selbst ohne Supervisor bewusst **nicht** setzen. |
+| `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verlangt `ADMIN_RECOVERY_CODE`, warnt bei fehlendem `PRIVACY_DELETION_LEDGER_FILE` und beendet den Prozess bei unerwarteten Fehlern, damit Docker sauber neu startet. Für die LAN-Party selbst ohne Supervisor bewusst **nicht** setzen. |
 
 Beispiel:
 

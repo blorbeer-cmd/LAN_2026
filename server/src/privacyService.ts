@@ -1,11 +1,19 @@
 import { createHash } from 'node:crypto';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync } from 'node:fs';
+import path from 'node:path';
 import { nanoid } from 'nanoid';
+import { config } from './config';
 import { db } from './db';
 import { activeTrackingContexts } from './trackingContexts';
 import { revokeRegistrationInvitesCreatedBy, voidOutstandingInvites } from './invites';
 import { writeAdminAudit } from './adminAudit';
+import { SUBJECT_SCOPED_TARGET_PREFIX } from './push';
 
 const DELETED_NAME = 'Gelöschtes Konto';
+// Replaces an account id used as an object key in historical JSON. Repeated
+// erasures in the same object get a numbered variant so no earlier entry is
+// overwritten.
+const DELETED_ACCOUNT_KEY = 'deletedAccount';
 
 export function deletionReceiptHash(playerId: string): string {
   return createHash('sha256').update(playerId).digest('hex');
@@ -17,6 +25,48 @@ export interface DeletionReceipt {
   action: string;
 }
 
+function validDeletionReceipt(value: unknown): value is DeletionReceipt {
+  if (!value || typeof value !== 'object') return false;
+  const receipt = value as Record<string, unknown>;
+  return (
+    typeof receipt.subjectHash === 'string' &&
+    /^[a-f0-9]{64}$/.test(receipt.subjectHash) &&
+    typeof receipt.deletedAt === 'number' &&
+    Number.isFinite(receipt.deletedAt) &&
+    typeof receipt.action === 'string'
+  );
+}
+
+function readDeletionLedger(): DeletionReceipt[] {
+  if (!config.deletionLedgerFile || !existsSync(config.deletionLedgerFile)) return [];
+  const lines = readFileSync(config.deletionLedgerFile, 'utf8').split(/\r?\n/);
+  return lines.flatMap((line, index) => {
+    if (!line.trim()) return [];
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      throw new Error(`Löschbeleg-Ledger ist in Zeile ${index + 1} beschädigt.`);
+    }
+    if (!validDeletionReceipt(value)) {
+      throw new Error(`Löschbeleg-Ledger enthält in Zeile ${index + 1} einen ungültigen Beleg.`);
+    }
+    return [value];
+  });
+}
+
+function appendDeletionReceipt(receipt: DeletionReceipt): void {
+  if (!config.deletionLedgerFile) return;
+  mkdirSync(path.dirname(config.deletionLedgerFile), { recursive: true, mode: 0o700 });
+  const descriptor = openSync(config.deletionLedgerFile, 'a', 0o600);
+  try {
+    writeSync(descriptor, `${JSON.stringify(receipt)}\n`, undefined, 'utf8');
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 export function listDeletionReceipts(): DeletionReceipt[] {
   const auditRows = db.prepare(
     `SELECT action, details, created_at AS deletedAt
@@ -25,7 +75,9 @@ export function listDeletionReceipts(): DeletionReceipt[] {
        AND action IN ('player_self_deleted', 'player_deleted', 'test_player_deleted')
      ORDER BY created_at`,
   ).all() as Array<{ action: string; details: string | null; deletedAt: number }>;
-  const receipts = new Map<string, DeletionReceipt>();
+  const receipts = new Map<string, DeletionReceipt>(
+    readDeletionLedger().map((receipt) => [receipt.subjectHash, receipt]),
+  );
   for (const row of auditRows) {
     const details = parseJson(row.details, {}) as Record<string, unknown>;
     if (typeof details.subjectHash !== 'string' || !/^[a-f0-9]{64}$/.test(details.subjectHash)) continue;
@@ -57,8 +109,22 @@ function safeDiagnosticProcesses(playerId: string, processNames: unknown): strin
   return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
 }
 
-function isOwnAdminAuditTarget(targetType: unknown, targetId: unknown, playerId: string): boolean {
+function normalizedNames(names: Set<string>): Set<string> {
+  return new Set([...names].map((name) => name.trim().toLocaleLowerCase('de-DE')).filter(Boolean));
+}
+
+function isOwnAdminAuditTarget(
+  targetType: unknown,
+  targetId: unknown,
+  playerId: string,
+  names: Set<string> = new Set(),
+): boolean {
   if (targetId === playerId) return true;
+  if (
+    targetType === 'account_name' &&
+    typeof targetId === 'string' &&
+    normalizedNames(names).has(targetId.trim().toLocaleLowerCase('de-DE'))
+  ) return true;
   return (
     targetType === 'event_participant' &&
     typeof targetId === 'string' &&
@@ -66,12 +132,12 @@ function isOwnAdminAuditTarget(targetType: unknown, targetId: unknown, playerId:
   );
 }
 
-function personalAuditRows(playerId: string): Array<Record<string, unknown>> {
+function personalAuditRows(playerId: string, names: Set<string>): Array<Record<string, unknown>> {
   return rows(
     `SELECT action, target_type AS targetType, target_id AS targetId,
             actor_player_id AS actorPlayerId, created_at AS createdAt
      FROM admin_log
-     WHERE actor_player_id = ? OR target_id = ? OR target_type = 'event_participant'
+     WHERE actor_player_id = ? OR target_id = ? OR target_type IN ('event_participant', 'account_name')
      ORDER BY created_at`,
     playerId,
     playerId,
@@ -79,13 +145,13 @@ function personalAuditRows(playerId: string): Array<Record<string, unknown>> {
     .filter(
       (row) =>
         row.actorPlayerId === playerId ||
-        isOwnAdminAuditTarget(row.targetType, row.targetId, playerId),
+        isOwnAdminAuditTarget(row.targetType, row.targetId, playerId, names),
     )
     .map((row) => ({
       action: row.action,
       targetType: row.targetType,
       createdAt: row.createdAt,
-      targetedOwnAccount: isOwnAdminAuditTarget(row.targetType, row.targetId, playerId) ? 1 : 0,
+      targetedOwnAccount: isOwnAdminAuditTarget(row.targetType, row.targetId, playerId, names) ? 1 : 0,
     }));
 }
 
@@ -99,6 +165,9 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
     )
     .get(playerId) as Record<string, unknown> | undefined;
   if (!profile) return undefined;
+  const profileNames = new Set(
+    [profile.name, profile.realName].filter((value): value is string => typeof value === 'string'),
+  );
 
   const diagnostic = db
     .prepare('SELECT agent_version AS agentVersion, last_report_at AS lastReportAt, process_names FROM agent_diagnostics WHERE player_id = ?')
@@ -193,6 +262,105 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
          FROM votes v JOIN games g ON g.id = v.game_id WHERE v.player_id = ? ORDER BY v.created_at`,
         playerId,
       ),
+    },
+    competition: {
+      drafts: rows(
+        `SELECT d.id AS draftId, d.event_id AS eventId, e.name AS eventName,
+                d.game_id AS gameId, g.name AS gameName, d.status, d.created_at AS createdAt,
+                r.role, r.player_name_snapshot AS recordedName
+         FROM draft_player_refs r
+         JOIN drafts d ON d.group_id = r.group_id AND d.id = r.draft_id
+         LEFT JOIN events e ON e.group_id = d.group_id AND e.id = d.event_id
+         JOIN games g ON g.group_id = d.group_id AND g.id = d.game_id
+         WHERE r.player_id = ? ORDER BY d.created_at`,
+        playerId,
+      ),
+      tournamentTeams: rows(
+        `SELECT tt.id AS teamId, tt.name AS teamName, tt.player_ids AS playerIds,
+                t.id AS tournamentId, t.name AS tournamentName, t.format, t.status,
+                t.event_id AS eventId, e.name AS eventName, t.game_id AS gameId, g.name AS gameName,
+                t.created_at AS createdAt
+         FROM tournament_teams tt
+         JOIN tournaments t ON t.id = tt.tournament_id
+         JOIN events e ON e.group_id = t.group_id AND e.id = t.event_id
+         JOIN games g ON g.group_id = t.group_id AND g.id = t.game_id
+         ORDER BY t.created_at`,
+      ).flatMap(({ playerIds, ...row }) => {
+        const members = parseJson(playerIds, []);
+        return Array.isArray(members) && members.includes(playerId)
+          ? [{ ...row, teamSize: members.length }]
+          : [];
+      }),
+      tournamentMatches: rows(
+        `SELECT tm.id, tm.round, tm.slot, tm.stage, tm.group_index AS groupIndex,
+                tm.team_a_id AS teamAId, tm.team_b_id AS teamBId,
+                tm.winner_team_id AS winnerTeamId, tm.score_a AS scoreA, tm.score_b AS scoreB,
+                tm.is_draw AS isDraw, tm.is_bye AS isBye, tm.played_at AS playedAt,
+                t.id AS tournamentId, t.name AS tournamentName,
+                a.name AS teamAName, a.player_ids AS teamAPlayerIds,
+                b.name AS teamBName, b.player_ids AS teamBPlayerIds
+         FROM tournament_matches tm
+         JOIN tournaments t ON t.id = tm.tournament_id
+         LEFT JOIN tournament_teams a ON a.id = tm.team_a_id
+         LEFT JOIN tournament_teams b ON b.id = tm.team_b_id
+         ORDER BY tm.played_at, tm.round, tm.slot`,
+      ).flatMap((row) => {
+        const teamAPlayers = parseJson(row.teamAPlayerIds, []);
+        const teamBPlayers = parseJson(row.teamBPlayerIds, []);
+        const ownSide = Array.isArray(teamAPlayers) && teamAPlayers.includes(playerId)
+          ? 'a'
+          : Array.isArray(teamBPlayers) && teamBPlayers.includes(playerId)
+            ? 'b'
+            : null;
+        if (!ownSide) return [];
+        const ownTeamId = ownSide === 'a' ? row.teamAId : row.teamBId;
+        return [{
+          id: row.id,
+          tournamentId: row.tournamentId,
+          tournamentName: row.tournamentName,
+          round: row.round,
+          slot: row.slot,
+          stage: row.stage,
+          groupIndex: row.groupIndex,
+          ownTeamName: ownSide === 'a' ? row.teamAName : row.teamBName,
+          opponentTeamName: ownSide === 'a' ? row.teamBName : row.teamAName,
+          ownScore: ownSide === 'a' ? row.scoreA : row.scoreB,
+          opponentScore: ownSide === 'a' ? row.scoreB : row.scoreA,
+          outcome: row.isDraw ? 'draw' : row.winnerTeamId === null ? null : row.winnerTeamId === ownTeamId ? 'win' : 'loss',
+          isBye: row.isBye,
+          playedAt: row.playedAt,
+        }];
+      }),
+      recordedMatches: rows(
+        `SELECT m.id, m.event_id AS eventId, e.name AS eventName, m.game_id AS gameId,
+                g.name AS gameName, m.played_at AS playedAt, m.result
+         FROM matches m
+         JOIN events e ON e.group_id = m.group_id AND e.id = m.event_id
+         JOIN games g ON g.group_id = m.group_id AND g.id = m.game_id
+         ORDER BY m.played_at`,
+      ).flatMap(({ result, ...row }) => {
+        const parsed = parseJson(result, null);
+        if (!parsed || typeof parsed !== 'object') return [];
+        const match = parsed as Record<string, unknown>;
+        if (!Array.isArray(match.teams)) return [];
+        const ownTeamIndex = match.teams.findIndex((team) => {
+          if (!team || typeof team !== 'object') return false;
+          const players = (team as Record<string, unknown>).playerIds;
+          return Array.isArray(players) && players.includes(playerId);
+        });
+        if (ownTeamIndex < 0) return [];
+        const ownTeam = match.teams[ownTeamIndex] as Record<string, unknown>;
+        return [{
+          ...row,
+          ownTeamIndex,
+          teamSize: Array.isArray(ownTeam.playerIds) ? ownTeam.playerIds.length : 0,
+          score: ownTeam.score ?? null,
+          rank: ownTeam.rank ?? null,
+          outcome: typeof match.winnerTeamIndex !== 'number'
+            ? null
+            : match.winnerTeamIndex === ownTeamIndex ? 'win' : 'loss',
+        }];
+      }),
     },
     activity: {
       agent: diagnostic
@@ -441,7 +609,7 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
         playerId,
       ),
     },
-    audit: personalAuditRows(playerId),
+    audit: personalAuditRows(playerId, profileNames),
   };
 }
 
@@ -457,12 +625,61 @@ export type AccountDeletionBlockCode =
 
 export type AccountDeletionResult =
   | { ok: true; affectedGroupIds: string[]; subjectHash: string; wasTest: boolean }
-  | { ok: false; code: 'not_found' | AccountDeletionBlockCode; message: string };
+  | { ok: false; code: 'not_found' | 'deletion_receipt_unavailable' | AccountDeletionBlockCode; message: string };
 
-function blocker(playerId: string, isAdmin: boolean): Exclude<AccountDeletionResult, { ok: true }> | null {
+// The same organisational preconditions guard self-service and admin
+// deletion, but the wording must not tell an admin to clean up "your" own
+// carpool. Each blocker therefore carries both readings.
+const BLOCK_MESSAGES: Record<AccountDeletionBlockCode, { self: string; admin: string }> = {
+  last_admin: {
+    self: 'Übertrage zuerst die Adminrolle auf ein anderes aktives Konto.',
+    admin: 'Die Adminrolle muss zuerst auf ein anderes aktives Konto übertragen werden.',
+  },
+  last_group_owner: {
+    self: 'Übertrage zuerst die Ownerrolle auf ein anderes aktives Konto.',
+    admin: 'Die Ownerrolle muss zuerst auf ein anderes aktives Konto übertragen werden.',
+  },
+  confirmed_event_payment: {
+    self: 'Die bestätigte Event-Zahlung muss von der Orga zuerst zurückgesetzt werden.',
+    admin: 'Die bestätigte Event-Zahlung dieses Kontos muss zuerst zurückgesetzt werden.',
+  },
+  owned_food_orders: {
+    self: 'Lösche zuerst die von dir angelegten Sammelbestellungen oder übergib sie über die Orga.',
+    admin: 'Die von diesem Konto angelegten Sammelbestellungen müssen zuerst gelöscht oder übernommen werden.',
+  },
+  owned_carpools: {
+    self: 'Lösche zuerst die von dir angelegten Fahrgemeinschaften oder übergib sie über die Orga.',
+    admin: 'Die von diesem Konto angelegten Fahrgemeinschaften müssen zuerst gelöscht oder übernommen werden.',
+  },
+  open_checklist_tasks: {
+    self: 'Schließe, storniere oder übergib zuerst deine offenen To-dos.',
+    admin: 'Die offenen To-dos dieses Kontos müssen zuerst geschlossen, storniert oder übergeben werden.',
+  },
+  active_draft_participation: {
+    self: 'Beende oder storniere zuerst den laufenden Captain-Draft.',
+    admin: 'Der laufende Captain-Draft mit diesem Konto muss zuerst beendet oder storniert werden.',
+  },
+  active_music_session: {
+    self: 'Beende zuerst deine laufende Jam-Session.',
+    admin: 'Die laufende Jam-Session dieses Kontos muss zuerst beendet werden.',
+  },
+};
+
+function blocked(
+  code: AccountDeletionBlockCode,
+  selfService: boolean,
+): Exclude<AccountDeletionResult, { ok: true }> {
+  return { ok: false, code, message: BLOCK_MESSAGES[code][selfService ? 'self' : 'admin'] };
+}
+
+function blocker(
+  playerId: string,
+  isAdmin: boolean,
+  selfService: boolean,
+): Exclude<AccountDeletionResult, { ok: true }> | null {
   if (isAdmin) {
     const count = (db.prepare('SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL').get() as { count: number }).count;
-    if (count <= 1) return { ok: false, code: 'last_admin', message: 'Übertrage zuerst die Adminrolle auf ein anderes aktives Konto.' };
+    if (count <= 1) return blocked('last_admin', selfService);
   }
   if (db.prepare(
     `SELECT 1 FROM group_memberships gm JOIN groups g ON g.id = gm.group_id AND g.archived_at IS NULL
@@ -473,19 +690,19 @@ function blocker(playerId: string, isAdmin: boolean): Exclude<AccountDeletionRes
            AND other.status = 'active' AND other.role = 'owner' AND p.deactivated_at IS NULL
        ) LIMIT 1`,
   ).get(playerId)) {
-    return { ok: false, code: 'last_group_owner', message: 'Übertrage zuerst die Ownerrolle auf ein anderes aktives Konto.' };
+    return blocked('last_group_owner', selfService);
   }
   if (db.prepare('SELECT 1 FROM event_participants WHERE player_id = ? AND paid = 1 LIMIT 1').get(playerId)) {
-    return { ok: false, code: 'confirmed_event_payment', message: 'Die bestätigte Event-Zahlung muss von der Orga zuerst zurückgesetzt werden.' };
+    return blocked('confirmed_event_payment', selfService);
   }
   if (db.prepare('SELECT 1 FROM food_orders WHERE created_by = ? LIMIT 1').get(playerId)) {
-    return { ok: false, code: 'owned_food_orders', message: 'Lösche zuerst die von dir angelegten Sammelbestellungen oder übergib sie über die Orga.' };
+    return blocked('owned_food_orders', selfService);
   }
   if (db.prepare('SELECT 1 FROM carpools WHERE created_by = ? LIMIT 1').get(playerId)) {
-    return { ok: false, code: 'owned_carpools', message: 'Lösche zuerst die von dir angelegten Fahrgemeinschaften oder übergib sie über die Orga.' };
+    return blocked('owned_carpools', selfService);
   }
   if (db.prepare("SELECT 1 FROM checklist_tasks WHERE (created_by = ? OR assignee_id = ?) AND status NOT IN ('done', 'cancelled') LIMIT 1").get(playerId, playerId)) {
-    return { ok: false, code: 'open_checklist_tasks', message: 'Schließe, storniere oder übergib zuerst deine offenen To-dos.' };
+    return blocked('open_checklist_tasks', selfService);
   }
   if (db.prepare(
     `SELECT 1
@@ -494,10 +711,10 @@ function blocker(playerId: string, isAdmin: boolean): Exclude<AccountDeletionRes
      WHERE d.status = 'active' AND r.player_id = ?
      LIMIT 1`,
   ).get(playerId)) {
-    return { ok: false, code: 'active_draft_participation', message: 'Beende oder storniere zuerst den laufenden Captain-Draft.' };
+    return blocked('active_draft_participation', selfService);
   }
   if (db.prepare("SELECT 1 FROM music_sessions WHERE host_player_id = ? AND status = 'active' LIMIT 1").get(playerId)) {
-    return { ok: false, code: 'active_music_session', message: 'Beende zuerst deine laufende Jam-Session.' };
+    return blocked('active_music_session', selfService);
   }
   return null;
 }
@@ -512,12 +729,15 @@ function removeIdFromJsonArrayTable(table: string, idColumn: string, jsonColumn:
   }
 }
 
+// Seating layouts are keyed by (group_id, event_id); a group's permanent room
+// plan stores event_id = NULL. Matching on event_id alone silently skips
+// exactly that row, because `= NULL` is never true in SQL — and the stored
+// assignment carries both the account id and a plain name snapshot.
 function removePlayerAssignments(playerId: string): void {
-  const layouts = db.prepare('SELECT event_id AS id, assignments AS value FROM seating_layouts').all() as Array<{
-    id: string;
-    value: string;
-  }>;
-  const update = db.prepare('UPDATE seating_layouts SET assignments = ? WHERE event_id = ?');
+  const layouts = db.prepare(
+    'SELECT group_id AS groupId, event_id AS eventId, assignments AS value FROM seating_layouts',
+  ).all() as Array<{ groupId: string; eventId: string | null; value: string }>;
+  const update = db.prepare('UPDATE seating_layouts SET assignments = ? WHERE group_id = ? AND event_id IS ?');
   for (const layout of layouts) {
     const parsed = parseJson(layout.value, null);
     if (!Array.isArray(parsed)) continue;
@@ -525,7 +745,7 @@ function removePlayerAssignments(playerId: string): void {
       (assignment) =>
         !assignment || typeof assignment !== 'object' || (assignment as Record<string, unknown>).playerId !== playerId,
     );
-    if (filtered.length !== parsed.length) update.run(JSON.stringify(filtered), layout.id);
+    if (filtered.length !== parsed.length) update.run(JSON.stringify(filtered), layout.groupId, layout.eventId);
   }
 }
 
@@ -544,7 +764,14 @@ function redactJson(value: unknown, playerId: string, names: Set<string>, key = 
     const output: Record<string, unknown> = {};
     for (const [childKey, childValue] of entries) {
       if (childKey === playerId) {
-        output.deletedAccount = redactJson(childValue, playerId, names, childKey, true);
+        // A later erasure must not overwrite an earlier one's entry in the
+        // same object (for example two deleted accounts in one arcade score
+        // map), so pick a key that is still free.
+        let anonymousKey = DELETED_ACCOUNT_KEY;
+        for (let suffix = 2; anonymousKey in output || entries.some(([key]) => key === anonymousKey); suffix += 1) {
+          anonymousKey = `${DELETED_ACCOUNT_KEY}-${suffix}`;
+        }
+        output[anonymousKey] = redactJson(childValue, playerId, names, childKey, true);
         continue;
       }
       if (childValue === playerId && /(?:player|winner|captain|artist|user).*id|^id$/i.test(childKey)) {
@@ -574,18 +801,34 @@ function redactJsonColumn(table: string, idColumn: string, jsonColumn: string, p
   }
 }
 
-function scrubAdminAuditTargets(playerId: string): void {
+function scrubAdminAuditTargets(playerId: string, names: Set<string>): void {
   const rows = db.prepare(
     'SELECT id, target_type AS targetType, target_id AS targetId FROM admin_log WHERE target_id IS NOT NULL',
   ).all() as Array<{ id: string; targetType: string; targetId: string }>;
   const clear = db.prepare('UPDATE admin_log SET target_id = NULL WHERE id = ?');
   for (const row of rows) {
-    if (isOwnAdminAuditTarget(row.targetType, row.targetId, playerId)) clear.run(row.id);
+    if (isOwnAdminAuditTarget(row.targetType, row.targetId, playerId, names)) clear.run(row.id);
   }
 }
 
 function structuredIdentifierReferencesPlayer(value: string | null, playerId: string): boolean {
   return value === playerId || Boolean(value?.split(':').includes(playerId));
+}
+
+// Pushes whose own body is a system-generated sentence about this account
+// ("<Name> übernimmt: …", possibly quoting its own comment) cannot be fixed
+// by clearing the identifier — the text itself is the account reference, so
+// the row goes. Must run before scrubPushLogIdentifiers clears the marker.
+// Account ids may contain SQL LIKE wildcards, so match in JavaScript.
+function removeSubjectScopedPushes(playerId: string): void {
+  const candidates = db.prepare(
+    'SELECT id, target_id AS targetId FROM push_log WHERE target_id IS NOT NULL',
+  ).all() as Array<{ id: string; targetId: string }>;
+  const remove = db.prepare('DELETE FROM push_log WHERE id = ?');
+  for (const row of candidates) {
+    const parts = row.targetId.split(':');
+    if (parts[0] === SUBJECT_SCOPED_TARGET_PREFIX && parts.at(-1) === playerId) remove.run(row.id);
+  }
 }
 
 function scrubPushLogIdentifiers(playerId: string): void {
@@ -601,6 +844,7 @@ function scrubPushLogIdentifiers(playerId: string): void {
 }
 
 function scrubAccountCopies(playerId: string, names: Set<string>): void {
+  removeSubjectScopedPushes(playerId);
   removeIdFromJsonArrayTable('push_log', 'id', 'player_ids', playerId);
   scrubPushLogIdentifiers(playerId);
   removeIdFromJsonArrayTable('broadcasts', 'id', 'recipient_ids', playerId);
@@ -617,7 +861,13 @@ function scrubAccountCopies(playerId: string, names: Set<string>): void {
   // words that merely include a short gamer tag (for example LAN-Party).
   // Structured recipient ids are removed above; do not corrupt other
   // people's historical text with an unbound substring replacement.
-  scrubAdminAuditTargets(playerId);
+  scrubAdminAuditTargets(playerId, names);
+  db.prepare(
+    `DELETE FROM push_log
+     WHERE topic_key IN (
+       SELECT 'checklist-task:' || id FROM checklist_tasks WHERE created_by = ?
+     )`,
+  ).run(playerId);
   db.prepare('DELETE FROM seat_neighbors WHERE player_id = ? OR neighbor_id = ?').run(playerId, playerId);
   db.prepare('DELETE FROM event_calendar_confirmations WHERE player_id = ?').run(playerId);
   db.prepare('DELETE FROM event_date_poll_responses WHERE player_id = ?').run(playerId);
@@ -651,8 +901,8 @@ export function deleteAccount(playerId: string, actorPlayerId?: string): Account
     | { id: string; name: string; real_name: string | null; is_admin: number; is_test: number }
     | undefined;
   if (!player) return { ok: false, code: 'not_found', message: 'Konto nicht gefunden.' };
-  const blocked = blocker(player.id, Boolean(player.is_admin));
-  if (blocked) return blocked;
+  const blockedBy = blocker(player.id, Boolean(player.is_admin), actorPlayerId === player.id);
+  if (blockedBy) return blockedBy;
   const affectedGroupIds = (db.prepare('SELECT group_id FROM group_memberships WHERE player_id = ?').all(player.id) as Array<{ group_id: string }>).map((row) => row.group_id);
   const subjectHash = deletionReceiptHash(player.id);
   const deletionAction = player.is_test
@@ -660,6 +910,19 @@ export function deleteAccount(playerId: string, actorPlayerId?: string): Account
     : actorPlayerId === player.id
       ? 'player_self_deleted'
       : 'player_deleted';
+
+  const receipt = { subjectHash, deletedAt: Date.now(), action: deletionAction };
+  try {
+    // The hash-only ledger is deliberately durable before SQLite is changed:
+    // once erasure starts, an older backup must never be allowed to revive the account.
+    appendDeletionReceipt(receipt);
+  } catch (error) {
+    return {
+      ok: false,
+      code: 'deletion_receipt_unavailable',
+      message: `Konto wurde nicht gelöscht, weil der externe Löschbeleg nicht sicher gespeichert werden konnte: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 
   db.transaction(() => {
     for (const purpose of ['register', 'claim', 'reset', 'test_login'] as const) voidOutstandingInvites(player.id, purpose);
@@ -672,7 +935,7 @@ export function deleteAccount(playerId: string, actorPlayerId?: string): Account
       actorPlayerId: actorPlayerId === player.id ? undefined : actorPlayerId,
       action: deletionAction,
       targetType: 'deleted_account',
-      details: { subjectHash },
+      details: { subjectHash, deletedAt: receipt.deletedAt },
     });
   })();
 

@@ -31,6 +31,15 @@ Kontolöschung während eines laufenden Captain-Drafts, damit dieser konsistent 
 Der dabei wiederholt rote Checklisten-Browsertest wartet beim Kontowechsel nun auf die vollständig
 geladene Personensicht und läuft dadurch auch im parallelen CI-Gesamtlauf stabil.
 
+Die vierte Review-Nacharbeit sichert Löschbelege in einem append-only Ledger außerhalb der
+SQLite-Datei, entfernt Kontonamen aus Fehlanmeldungs-Audits und aus systemgenerierten
+Benachrichtigungen über das eigene Konto, nimmt Draft-, Turnier- und Matchteilnahmen in den
+persönlichen Export auf und hält die Datenschutzansicht bei schnell aufeinanderfolgenden
+Einwilligungsänderungen aktuell. Zusätzlich bereinigt die Löschung jetzt auch den dauerhaften
+Raumsitzplan einer Community, das Produktions-Image enthält das im Restore-Runbook vorgeschriebene
+Abgleichsskript, die Blockermeldungen unterscheiden Selbstlöschung und Adminfall, und eine zweite
+Löschung überschreibt keinen anonymisierten Eintrag einer früheren Löschung mehr.
+
 ## Offene Punkte
 
 Review und Merge stehen aus. Die automatische Bereinigung bleibt bis zur Betreiberentscheidung

@@ -37,7 +37,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString } from '../validation';
-import { notifyPlayers, resolvePushTopic } from '../push';
+import { notifyPlayers, resolvePushTopic, subjectScopedTargetId } from '../push';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
@@ -649,6 +649,9 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
         ? `${player.name} übernimmt: ${task.title} – ${trimmedComment}`
         : `${player.name} übernimmt: ${task.title}`,
       url: '/#checklist',
+      // The body names the claiming account and can quote its own comment, so
+      // an erasure has to be able to find and remove this row.
+      targetId: subjectScopedTargetId(playerId, `checklist-claim:${task.id}`),
     },
     'direct',
     undefined,

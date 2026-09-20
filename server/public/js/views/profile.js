@@ -19,6 +19,7 @@ import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { createLatestValueLoader } from '../latestValueLoader.js';
 import {
   acceptedInvitationHandoffHtml,
   pendingEventInvitations,
@@ -50,24 +51,27 @@ const RATING_HELP = 'Bock unterstützt die Spielauswahl, Skill die Teamaufteilun
 const AGENT_DOWNLOAD_HELP = 'Das ZIP enthält bereits Server-Adresse und deinen persönlichen Key.';
 
 let privacyState = null;
-let privacyLoading = false;
-
-globalThis.window?.addEventListener('respawn:identity-changed', () => {
-  privacyState = null;
-  privacyLoading = false;
-});
-
-async function loadPrivacy(ctx, force = false) {
-  if (privacyLoading || (!force && privacyState)) return;
-  privacyLoading = true;
+let privacyContext = null;
+const privacyLoader = createLatestValueLoader(async () => {
+  const context = privacyContext;
   try {
     privacyState = { data: await api.privacy.get(), error: null };
   } catch (error) {
     privacyState = { data: null, error: error.message };
   } finally {
-    privacyLoading = false;
-    ctx.rerender();
+    context?.rerender();
   }
+});
+
+globalThis.window?.addEventListener('respawn:identity-changed', () => {
+  privacyState = null;
+  privacyLoader.invalidate();
+});
+
+async function loadPrivacy(ctx, force = false) {
+  privacyContext = ctx;
+  if (!force && privacyState) return;
+  await privacyLoader.run(force);
 }
 
 function renderPrivacySection() {
