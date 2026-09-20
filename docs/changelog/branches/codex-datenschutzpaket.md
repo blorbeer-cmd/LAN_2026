@@ -28,6 +28,8 @@ früheren Hosts und lässt nicht eindeutig zuordenbare Benachrichtigungsfreitext
 Die dritte Review-Nacharbeit entfernt Spielerkennungen auch aus strukturierten Push-Schlüsseln,
 nimmt zusammengesetzte Teilnahme-Audits in den persönlichen Export auf und blockiert die
 Kontolöschung während eines laufenden Captain-Drafts, damit dieser konsistent abgeschlossen wird.
+Der dabei wiederholt rote Checklisten-Browsertest wartet beim Kontowechsel nun auf die vollständig
+geladene Personensicht und läuft dadurch auch im parallelen CI-Gesamtlauf stabil.
 
 ## Offene Punkte
 

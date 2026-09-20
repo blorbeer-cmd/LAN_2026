@@ -15,6 +15,7 @@ import {
   createE2EAccount,
   E2EAccount,
   loginE2EAdmin,
+  waitForPlayerData,
 } from './authHelpers';
 import { createE2EDiagnosticTest } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
@@ -39,7 +40,7 @@ async function openChecklist(): Promise<void> {
 
 async function switchAccount(account: E2EAccount): Promise<void> {
   await switchSessionCookie(page, BASE_URL, account.cookie);
-  await page.waitForSelector('#app:not([hidden])');
+  await waitForPlayerData(page);
 }
 
 before(async () => {
