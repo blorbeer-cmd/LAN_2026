@@ -314,12 +314,9 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   await page.click('.desktop-nav-btn[data-view="home"]');
   await page.waitForSelector('#view-container h1:text-is("Home")');
 
-  const homeColumns = await page.locator('.home-priority-grid').evaluate((layout) => ({
-    display: getComputedStyle(layout).display,
-    columns: getComputedStyle(layout).gridTemplateColumns.split(' ').length,
-    alignItems: getComputedStyle(layout).alignItems,
-  }));
-  assert.deepEqual(homeColumns, { display: 'grid', columns: 2, alignItems: 'stretch' });
+  // The desktop priority grid is gone: "Aktuell" and "Meine To-Dos" now stack
+  // as full-width main cards instead of sharing a two-column row.
+  assert.equal(await page.locator('.home-priority-grid').count(), 0);
   const homeSectionFlow = await page.evaluate(() => {
     const rect = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
     const todos = rect('[aria-labelledby="home-todos-title"]');
@@ -327,7 +324,6 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
     const live = rect('[aria-labelledby="home-live-title"]');
     const leaderboard = rect('[aria-labelledby="home-leaderboard-title"]');
     const seating = rect('[aria-labelledby="home-seating-title"]');
-    const priority = rect('.home-priority-grid');
     if (!todos || !live) return null;
     return {
       todosTop: Math.round(todos.top),
@@ -335,18 +331,16 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
       currentTop: current ? Math.round(current.top) : null,
       currentBottom: current ? Math.round(current.bottom) : null,
       liveTop: Math.round(live.top),
-      priorityBottom: priority ? Math.round(priority.bottom) : null,
       seatingGap: seating ? Math.round(seating.top - live.bottom) : null,
       leaderboardGap: leaderboard && seating ? Math.round(leaderboard.top - seating.bottom) : null,
     };
   });
   assert.ok(homeSectionFlow);
-  assert.ok(homeSectionFlow.priorityBottom !== null);
+  // "Aktuell" is a full-width main card stacked above "Meine To-Dos".
   if (homeSectionFlow.currentTop !== null && homeSectionFlow.currentBottom !== null) {
-    assert.equal(homeSectionFlow.currentTop, homeSectionFlow.todosTop);
-    assert.equal(homeSectionFlow.currentBottom, homeSectionFlow.todosBottom);
+    assert.ok(homeSectionFlow.currentBottom <= homeSectionFlow.todosTop);
   }
-  assert.ok(homeSectionFlow.liveTop > homeSectionFlow.priorityBottom);
+  assert.ok(homeSectionFlow.liveTop > homeSectionFlow.todosBottom);
   assert.equal(
     await page.locator('.home-live-grid').evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length),
     3,
