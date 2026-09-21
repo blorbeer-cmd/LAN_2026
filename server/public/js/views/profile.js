@@ -82,18 +82,22 @@ function renderPrivacySection() {
     return `<div class="stack"><p class="error-text">${escapeHtml(privacyState.error)}</p><button type="button" class="btn" id="privacy-retry">Erneut laden</button></div>`;
   }
   const { trackingConsent, legacyGroupTracking, retention, operatorDecisionsRequired } = privacyState.data;
+  // A row only counts as active when the server matched the current purpose
+  // and text version, so an active row always carries that version.
   const consentRows = trackingConsent.events.map((event) => {
     const active = Boolean(event.consentId);
-    const versionLabel = active
-      ? event.textVersion
-        ? `Bestätigt: Text ${event.textVersion}`
-        : 'Bestandseinwilligung ohne dokumentierte Textversion'
-      : 'Nicht aktiviert';
+    const versionLabel = active ? `Bestätigt: Text ${event.textVersion}` : 'Nicht aktiviert';
     return `<label class="check-row">
       <input type="checkbox" data-consent-event="${escapeHtml(event.eventId)}" ${active ? 'checked' : ''} />
       <span style="flex:1;"><strong>${escapeHtml(event.eventName)}</strong><br><span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(versionLabel)}</span></span>
     </label>`;
   }).join('');
+  const legacyEventRows = (trackingConsent.legacyEvents ?? [])
+    .map((event) => `<label class="check-row">
+      <input type="checkbox" data-consent-legacy-event="${escapeHtml(event.eventId)}" checked />
+      <span style="flex:1;"><strong>${escapeHtml(event.eventName)}</strong><br><span class="muted" style="font-size:var(--font-size-xs);">${event.textVersion ? `Bestätigt: Text ${escapeHtml(event.textVersion)}` : 'Bestandseinwilligung ohne dokumentierte Textversion'}</span></span>
+    </label>`)
+    .join('');
   const retentionRows = retention.policies
     .map((policy) => `<li>${escapeHtml(policy.purpose)}: ${policy.retentionDays === null ? 'bis zum Ablauf' : `${policy.retentionDays} Tage`}<br><span class="muted">${escapeHtml(policy.protection)}</span></li>`)
     .join('');
@@ -109,6 +113,7 @@ function renderPrivacySection() {
       <strong>Freiwilliges Event-Tracking</strong>
       <p class="muted" style="margin:0;">${escapeHtml(trackingConsent.text)}</p>
       ${consentRows || '<p class="muted" style="margin:0;">Keine zugesagten Events.</p>'}
+      ${legacyEventRows ? `<strong>Frühere Event-Einwilligungen</strong><p class="muted" style="margin:0;">Diese Einwilligungen gehören zu einer älteren Textversion und aktivieren keine Erfassung mehr. Du kannst sie hier endgültig widerrufen.</p>${legacyEventRows}` : ''}
       ${legacyGroupRows ? `<strong>Frühere Community-Einwilligungen</strong><p class="muted" style="margin:0;">Diese Einwilligung für Aktivität außerhalb eigener Events wird aktuell nicht für Erfassung verwendet. Du kannst sie hier widerrufen.</p>${legacyGroupRows}` : ''}
     </div>
     <div class="card stack">
@@ -637,6 +642,23 @@ export function renderProfile(container, ctx) {
         showToast(granted ? 'Tracking-Einwilligung gespeichert.' : 'Tracking-Einwilligung widerrufen. Weitere Erfassung ist gestoppt.');
       } catch (error) {
         checkbox.checked = !granted;
+        checkbox.disabled = false;
+        showToast(error.message, { error: true });
+      }
+    });
+  });
+  // Revoking never carries a text version, so an outdated consent can always
+  // be withdrawn through the ordinary event endpoint.
+  container.querySelectorAll('[data-consent-legacy-event]').forEach((checkbox) => {
+    checkbox.addEventListener('change', async () => {
+      checkbox.disabled = true;
+      try {
+        await api.events.setTrackingConsent(checkbox.dataset.consentLegacyEvent, false);
+        privacyState = null;
+        await loadPrivacy(ctx, true);
+        showToast('Frühere Event-Einwilligung widerrufen.');
+      } catch (error) {
+        checkbox.checked = true;
         checkbox.disabled = false;
         showToast(error.message, { error: true });
       }

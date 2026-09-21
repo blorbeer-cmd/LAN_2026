@@ -31,6 +31,23 @@ privacyRouter.get('/', (req, res) => {
        ORDER BY e.starts_at DESC`,
     )
     .all(TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION, req.player!.id);
+  // Consents kept unversioned by migration 105 no longer match the join
+  // above, so they render as "Nicht aktiviert" and stay unreachable while
+  // still holding revoked_at IS NULL — which is what the personal export
+  // shows. List them separately so they can be revoked, exactly like the
+  // legacy community consents below.
+  const legacyEventConsents = db
+    .prepare(
+      `SELECT e.id AS eventId, e.name AS eventName, c.id AS consentId,
+              c.accepted_at AS grantedAt, c.purpose, c.text_version AS textVersion, c.source
+       FROM event_tracking_consents c
+       JOIN events e ON e.id = c.event_id
+       JOIN group_memberships gm ON gm.group_id = e.group_id AND gm.player_id = c.player_id
+       WHERE c.player_id = ? AND c.revoked_at IS NULL AND gm.status = 'active'
+         AND NOT (c.purpose IS ? AND c.text_version IS ?)
+       ORDER BY e.starts_at DESC`,
+    )
+    .all(req.player!.id, TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION);
   const retention = previewPrivacyRetention();
   const legacyGroupConsents = db.prepare(
     `SELECT g.id AS groupId, g.name AS groupName, c.granted_at AS grantedAt,
@@ -47,6 +64,7 @@ privacyRouter.get('/', (req, res) => {
       textVersion: TRACKING_CONSENT_TEXT_VERSION,
       text: TRACKING_CONSENT_TEXT,
       events,
+      legacyEvents: legacyEventConsents,
     },
     legacyGroupTracking: {
       purpose: GROUP_TRACKING_CONSENT_PURPOSE,

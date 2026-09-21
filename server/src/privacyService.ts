@@ -927,7 +927,13 @@ export function deleteAccount(playerId: string, actorPlayerId?: string): Account
   db.transaction(() => {
     for (const purpose of ['register', 'claim', 'reset', 'test_login'] as const) voidOutstandingInvites(player.id, purpose);
     revokeRegistrationInvitesCreatedBy(player.id, 'creator_deleted', actorPlayerId);
-    db.prepare('UPDATE checklist_tasks SET assignee_id = NULL WHERE assignee_id = ? AND created_by != ?').run(player.id, player.id);
+    // Detaching keeps another account's task alive against the assignee_id
+    // cascade, so the claim comment has to go explicitly: it is this account's
+    // own free text, the checklist history still renders it, and the derived
+    // "Übernommen" push is removed for exactly that reason.
+    db.prepare(
+      'UPDATE checklist_tasks SET assignee_id = NULL, claim_comment = NULL WHERE assignee_id = ? AND created_by != ?',
+    ).run(player.id, player.id);
     scrubAccountCopies(player.id, new Set([player.name, ...(player.real_name ? [player.real_name] : [])]));
     db.prepare('DELETE FROM group_memberships WHERE player_id = ?').run(player.id);
     db.prepare('DELETE FROM players WHERE id = ?').run(player.id);

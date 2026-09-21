@@ -41,7 +41,7 @@ Selbstlöschung und den Adminfall getrennt formuliert.
 | Konto, Profil, Community-Rolle | Anmeldung, Anzeige, Berechtigung | eigenes Konto; Profilfelder für Community-Mitglieder; Rollen für Admins | Registrierung und Profilpflege | bis Kontolöschung | Konto > Datenschutz; blockiert nur bei unübertragener Rolle oder offenem Fachvorgang |
 | Event-Teilnahme und Zahlungsstatus | Planung und Abrechnung | betroffene Person und Orga | Einladung, Zu-/Absage, Orga-Bestätigung | bis Kontolöschung; bestätigte Zahlung muss zuvor fachlich geklärt werden | Teilnahme/Zahlung zurücksetzen, dann Konto löschen |
 | Tracking-Einwilligung | Nachweis der freiwilligen Aktivitätserfassung | betroffene Person und technisch berechtigte Orga | ausdrückliche Checkbox; Zeitpunkt, Quelle, Zweck und Textversion | Historie bis Kontolöschung | Widerruf sofort; Historie mit Kontolöschung |
-| Agent-Erreichbarkeit und Spielaktivität | Live-Status, Spielzeit, Auswertung, Fehlersuche | eigener Status; Event-/Adminansichten im jeweiligen Umfang | Windows-Agent nur bei gültigem Event-Kontext | Diagnose standardmäßig 7 Tage; beendete Rohsitzungen abgeschlossener Events 730 Tage, wenn Bereinigung aktiviert | Widerruf stoppt neue Erfassung; Kontolöschung oder aktivierte Bereinigung entfernt Rohdaten |
+| Agent-Erreichbarkeit und Spielaktivität | Live-Status, Spielzeit, Auswertung, Fehlersuche | eigener Status; Event-/Adminansichten im jeweiligen Umfang | Windows-Agent nur bei gültigem Event-Kontext | Diagnose standardmäßig 7 Tage; beendete Rohsitzungen abgeschlossener Events 730 Tage, wenn Bereinigung aktiviert | Widerruf stoppt neue Erfassung und leert den zuletzt gespeicherten Prozess-Snapshot der Diagnose, sobald kein gültiger Kontext mehr besteht; Kontolöschung oder aktivierte Bereinigung entfernt die übrigen Rohdaten |
 | Skills, Vorlieben und Abstimmungen | Spielauswahl und Matchmaking | Community-/Eventansichten | Eingabe durch Mitglied | bis Kontolöschung | einzelne Eingaben in der App; vollständig mit Kontolöschung |
 | Essen, Anreise, Fahrgemeinschaften, Checklisten | Event-Organisation | Eventteilnehmer und Orga | Eingabe durch Mitglieder/Orga | fachlicher Vorgang; kein automatischer Zeitraum | offene oder verantwortete Vorgänge zuerst abschließen/übergeben; danach Kontolöschung |
 | Nachrichten, Push-Historie und Feedback | Kommunikation und Support | Empfänger, Absender und Orga je Funktion | Eingabe/Ereignis; Push-Abo durch Browser | erledigte/abgelaufene Push-Historie standardmäßig 90 Tage, beendete Rundrufe 180 Tage und erledigtes Feedback 365 Tage bei aktivierter Bereinigung | Ausblenden/auflösen; Kontolöschung entfernt eigene Inhalte und Empfängerbezüge |
@@ -60,7 +60,10 @@ wenn Browser und Server dieselbe Version verwenden. Ändert sich der Text, muss 
 eingewilligt werden. Vorhandene Einwilligungen aus älteren Versionen bleiben als unveränderter,
 unversionierter Verlauf erhalten; sie werden nicht stillschweigend in eine aktuelle Einwilligung
 umgedeutet und aktivieren keine Erfassung. Ein Widerruf bleibt jederzeit ohne Textversionsprüfung
-möglich.
+möglich. Damit eine solche Altzeile nicht unwiderrufbar im Bestand liegt, führt die
+Datenschutzansicht sie getrennt unter „Frühere Event-Einwilligungen“ beziehungsweise „Frühere
+Community-Einwilligungen“ auf; dort widerrufene Zeilen verschwinden aus der Liste und erscheinen im
+persönlichen Export mit gesetztem Widerrufszeitpunkt.
 
 ## Aufbewahrung aktivieren
 

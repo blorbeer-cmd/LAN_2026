@@ -40,6 +40,12 @@ Raumsitzplan einer Community, das Produktions-Image enthält das im Restore-Runb
 Abgleichsskript, die Blockermeldungen unterscheiden Selbstlöschung und Adminfall, und eine zweite
 Löschung überschreibt keinen anonymisierten Eintrag einer früheren Löschung mehr.
 
+Die fünfte Review-Nacharbeit löscht den selbst geschriebenen Übernahmekommentar einer fremden
+Checklistenaufgabe mit dem Konto, leert beim Einwilligungswiderruf auch den bereits gespeicherten
+Prozess-Snapshot der Agent-Diagnose, sobald kein gültiger Tracking-Kontext mehr besteht, und listet
+unversionierte Alteinwilligungen zu Events in der Datenschutzansicht als eigene, widerrufbare
+Gruppe.
+
 ## Offene Punkte
 
 Review und Merge stehen aus. Die automatische Bereinigung bleibt bis zur Betreiberentscheidung

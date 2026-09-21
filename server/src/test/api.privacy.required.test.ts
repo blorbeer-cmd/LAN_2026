@@ -6,7 +6,7 @@ import path from 'node:path';
 import { nanoid } from 'nanoid';
 import request from 'supertest';
 import { createApp } from '../app';
-import { createTestApp, DEFAULT_GROUP_ID, sessionCookie } from './testApp';
+import { createTestApp, DEFAULT_GROUP_ID, enableTestTracking, sessionCookie } from './testApp';
 import { BASE_EVENT_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { config } from '../config';
@@ -480,4 +480,115 @@ test('self deletion fails closed when the durable ledger is unavailable', async 
     mutableConfig.deletionLedgerFile = previousLedger;
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('self deletion clears the own claim comment on another account\'s task', async () => {
+  const app = createTestApp();
+  const creator = createMember('Claim Creator');
+  const claimer = createMember('Claim Author');
+  const taskId = nanoid();
+  const claimComment = `beamer-${nanoid()}`;
+  // Completed, so no open-to-do blocker applies; created by someone else, so
+  // the assignee_id cascade must not take the task with it.
+  db.prepare(
+    `INSERT INTO checklist_tasks
+       (id, group_id, event_id, type, title, description, created_by, assignee_id,
+        claim_comment, status, created_at, taken_at, done_at)
+     VALUES (?, ?, ?, 'todo', 'Beamer holen', NULL, ?, ?, ?, 'done', ?, ?, ?)`,
+  ).run(taskId, DEFAULT_GROUP_ID, BASE_EVENT_ID, creator.id, claimer.id, claimComment, Date.now(), Date.now(), Date.now());
+
+  const exported = await request(app).get('/api/privacy/export').set('Cookie', claimer.cookie);
+  assert.equal(exported.status, 200);
+  assert.ok(
+    exported.text.includes(claimComment),
+    'the export presents the claim comment as the account\'s own data',
+  );
+
+  const response = await request(app).delete('/api/privacy/account').set('Cookie', claimer.cookie);
+  assert.equal(response.status, 204, JSON.stringify(response.body));
+
+  const task = db
+    .prepare('SELECT created_by, assignee_id, claim_comment FROM checklist_tasks WHERE id = ?')
+    .get(taskId) as { created_by: string; assignee_id: string | null; claim_comment: string | null } | undefined;
+  assert.ok(task, 'the other account keeps its task');
+  assert.equal(task!.created_by, creator.id);
+  assert.equal(task!.assignee_id, null);
+  assert.equal(task!.claim_comment, null, 'the deleted account\'s own free text is gone');
+});
+
+test('revoking event consent clears the stored diagnostic process snapshot', async () => {
+  const app = createTestApp();
+  const member = createMember('Revoke Diagnostics');
+  db.prepare(
+    `INSERT OR REPLACE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')`,
+  ).run(BASE_EVENT_ID, member.id);
+  enableTestTracking(member.id, BASE_EVENT_ID);
+  const game = db.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get(DEFAULT_GROUP_ID) as { id: string };
+  db.prepare(
+    'INSERT OR IGNORE INTO game_process_names (id, group_id, game_id, process_name) VALUES (?, ?, ?, ?)',
+  ).run(nanoid(), DEFAULT_GROUP_ID, game.id, 'cs2.exe');
+
+  const report = await request(app)
+    .post('/api/agent/report')
+    .set('x-api-key', member.apiKey)
+    .send({ processNames: ['cs2.exe'], foregroundProcessName: 'cs2.exe', agentVersion: '1.0.0' });
+  assert.equal(report.status, 200);
+  const stored = () =>
+    (db.prepare('SELECT process_names FROM agent_diagnostics WHERE player_id = ?').get(member.id) as
+      | { process_names: string }
+      | undefined)?.process_names;
+  assert.equal(stored(), JSON.stringify(['cs2.exe']), 'a valid context stores the matched name');
+
+  const revoked = await request(app)
+    .post(`/api/events/${BASE_EVENT_ID}/tracking-consent`)
+    .set('Cookie', member.cookie)
+    .send({ granted: false });
+  assert.equal(revoked.status, 200, JSON.stringify(revoked.body));
+  assert.equal(stored(), '[]', 'the revocation clears what was already collected');
+
+  // The export must not claim emptiness while the row still holds names.
+  const exported = await request(app).get('/api/privacy/export').set('Cookie', member.cookie);
+  assert.equal(exported.status, 200);
+  assert.deepEqual(JSON.parse(exported.text).activity.agent.processNames, []);
+});
+
+test('an outdated event consent stays revocable through the privacy view', async () => {
+  const app = createTestApp();
+  const member = createMember('Legacy Consent');
+  db.prepare(
+    `INSERT OR REPLACE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')`,
+  ).run(BASE_EVENT_ID, member.id);
+  const consentId = nanoid();
+  // The shape migration 105 deliberately preserves: granted, never revoked,
+  // without purpose or text version.
+  db.prepare(
+    `INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, source)
+     VALUES (?, ?, ?, ?, ?, 'user')`,
+  ).run(consentId, BASE_EVENT_ID, DEFAULT_GROUP_ID, member.id, Date.now() - 1_000);
+
+  const view = await request(app).get('/api/privacy').set('Cookie', member.cookie);
+  assert.equal(view.status, 200);
+  assert.equal(
+    view.body.trackingConsent.events.find((row: { eventId: string }) => row.eventId === BASE_EVENT_ID)?.consentId,
+    null,
+    'an unversioned row never counts as an active consent',
+  );
+  const legacy = view.body.trackingConsent.legacyEvents as Array<{ eventId: string; textVersion: string | null }>;
+  assert.equal(legacy.length, 1, 'it is offered separately instead of staying invisible');
+  assert.equal(legacy[0].eventId, BASE_EVENT_ID);
+  assert.equal(legacy[0].textVersion, null);
+
+  const revoked = await request(app)
+    .post(`/api/events/${BASE_EVENT_ID}/tracking-consent`)
+    .set('Cookie', member.cookie)
+    .send({ granted: false });
+  assert.equal(revoked.status, 200, JSON.stringify(revoked.body));
+  assert.ok(
+    (db.prepare('SELECT revoked_at FROM event_tracking_consents WHERE id = ?').get(consentId) as {
+      revoked_at: number | null;
+    }).revoked_at,
+    'revoking needs no text version',
+  );
+  const after = await request(app).get('/api/privacy').set('Cookie', member.cookie);
+  assert.deepEqual(after.body.trackingConsent.legacyEvents, []);
 });

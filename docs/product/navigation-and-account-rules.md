@@ -130,7 +130,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   storage or admin diagnostics. The event tracking tooltip and start confirmation explain the same
   prerequisites. A separate collapsed „Datenschutz & meine Daten“ section shows purpose and
   visibility, the versioned event-consent controls, proposed retention rules and unresolved operator
-  decisions. It also provides a secret-free personal JSON export and a reauthentication-protected
+  decisions. Consents from an older text version never count as active; they are listed below the
+  current ones as revocable „Frühere Event-Einwilligungen“ and „Frühere Community-Einwilligungen“
+  so no granted row stays without a way to withdraw it. It also provides a secret-free personal
+  JSON export and a reauthentication-protected
   account deletion with concrete remedies for roles or open organisational work that must first be
   transferred.
   The profile header owns

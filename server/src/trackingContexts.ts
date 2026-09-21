@@ -114,8 +114,22 @@ export function setEventTrackingConsent(
          WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL`,
       ).run(now, now, eventId, playerId);
       closeTrackingContextRows(playerId, groupId, eventId, now);
+      clearDiagnosticProcessNamesWithoutContext(playerId, now);
     }
   })();
+}
+
+// A revoked consent must not leave the last detected game names sitting in
+// agent_diagnostics: the agent may never report again (event over, agent
+// uninstalled), the retention sweep is opt-in and off by default, and the
+// personal export deliberately hides the row — so it would be stored without
+// ever being disclosed. Only clear once no other event still carries a valid
+// context, otherwise a parallel event's current snapshot would be lost.
+function clearDiagnosticProcessNamesWithoutContext(playerId: string, now: number): void {
+  if (activeTrackingContexts(playerId, now).length > 0) return;
+  db.prepare("UPDATE agent_diagnostics SET process_names = '[]' WHERE player_id = ? AND process_names != '[]'").run(
+    playerId,
+  );
 }
 
 function closeTrackingContextRows(
