@@ -15,7 +15,13 @@ const { URL } = require('url');
 const ACCESS_KEY_HEADER = 'x-respawn-control-key';
 const LAUNCH_TICKET_HEADER = 'x-respawn-control-ticket';
 const SESSION_COOKIE = 'respawn_control_session';
-const LAUNCH_TICKET_TTL_MS = 30_000;
+// The clock starts when the tray or the desktop launcher fetches the ticket,
+// and only stops once the page the browser eventually loads calls
+// /api/session -- so the whole cold start of the default browser (process,
+// profile, extensions) has to fit inside this window. Single use is what
+// actually secures the ticket; the TTL only bounds how long an unused one
+// stays in the URL the shell was handed.
+const LAUNCH_TICKET_TTL_MS = 120_000;
 
 function randomToken() {
   return crypto.randomBytes(32).toString('base64url');
@@ -146,7 +152,9 @@ if (launchTicket) {
     method: 'POST',
     headers: { 'X-Respawn-Control-Ticket': launchTicket },
   }).then((res) => {
-    if (!res.ok) throw new Error('Der sichere Zugriff ist abgelaufen.');
+    if (!res.ok) {
+      throw new Error('Der sichere Zugriff ist abgelaufen. Bitte die Steuerung über das Tray-Icon oder die Desktop-Verknüpfung neu öffnen.');
+    }
   });
 } else {
   // A reload has no ticket anymore, but can reuse the HttpOnly session cookie.
@@ -187,29 +195,49 @@ function showMsg(text, isError) {
   el.style.color = isError ? '#ff453a' : '#34c759';
 }
 
+// Every action goes through controlFetch, which rejects as soon as the
+// session could not be established -- an expired or already used launch
+// ticket. A switch must never keep the position the click gave it in that
+// case: the status poll fails for the same reason and would not repaint it,
+// so the page would keep claiming a setting the agent does not have.
 document.getElementById('toggleBtn').addEventListener('click', async () => {
-  const s = await loadStatus();
-  const action = s.paused ? 'resume' : 'pause';
-  const res = await controlFetch('/api/' + action, { method: 'POST' });
-  if (res.ok) { await loadStatus(); showMsg(action === 'pause' ? 'Pausiert.' : 'Fortgesetzt.'); }
-  else showMsg('Fehler beim Umschalten.', true);
+  try {
+    const s = await loadStatus();
+    const action = s.paused ? 'resume' : 'pause';
+    const res = await controlFetch('/api/' + action, { method: 'POST' });
+    if (!res.ok) throw new Error('Fehler beim Umschalten.');
+    await loadStatus();
+    showMsg(action === 'pause' ? 'Pausiert.' : 'Fortgesetzt.');
+  } catch (err) {
+    showMsg(err.message, true);
+  }
 });
 
 document.getElementById('activityToggle').addEventListener('change', async (e) => {
   const enable = e.target.checked;
-  const res = await controlFetch('/api/activity-tracking/' + (enable ? 'enable' : 'disable'), { method: 'POST' });
-  if (res.ok) { showMsg(enable ? 'Erweiterte Daten aktiviert.' : 'Erweiterte Daten deaktiviert.'); }
-  else { e.target.checked = !enable; showMsg('Fehler.', true); }
-  await loadStatus();
+  try {
+    const res = await controlFetch('/api/activity-tracking/' + (enable ? 'enable' : 'disable'), { method: 'POST' });
+    if (!res.ok) throw new Error('Fehler.');
+    showMsg(enable ? 'Erweiterte Daten aktiviert.' : 'Erweiterte Daten deaktiviert.');
+  } catch (err) {
+    e.target.checked = !enable;
+    showMsg(err.message, true);
+  }
+  await loadStatus().catch((err) => showMsg(err.message, true));
 });
 
 document.getElementById('autostartToggle').addEventListener('change', async (e) => {
   const enable = e.target.checked;
-  const res = await controlFetch('/api/autostart/' + (enable ? 'enable' : 'disable'), { method: 'POST' });
-  const body = await res.json().catch(() => ({}));
-  if (res.ok) showMsg(enable ? 'Autostart aktiviert.' : 'Autostart deaktiviert.');
-  else { e.target.checked = !enable; showMsg(body.error || 'Fehler.', true); }
-  await loadStatus();
+  try {
+    const res = await controlFetch('/api/autostart/' + (enable ? 'enable' : 'disable'), { method: 'POST' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'Fehler.');
+    showMsg(enable ? 'Autostart aktiviert.' : 'Autostart deaktiviert.');
+  } catch (err) {
+    e.target.checked = !enable;
+    showMsg(err.message, true);
+  }
+  await loadStatus().catch((err) => showMsg(err.message, true));
 });
 
 document.getElementById('uninstallBtn').addEventListener('click', () => {
@@ -225,7 +253,7 @@ document.getElementById('uninstallCancelBtn').addEventListener('click', () => {
   document.getElementById('uninstallBtn').hidden = false;
 });
 document.getElementById('uninstallConfirmBtn').addEventListener('click', async () => {
-  const res = await controlFetch('/api/uninstall', { method: 'POST' });
+  const res = await controlFetch('/api/uninstall', { method: 'POST' }).catch(() => ({ ok: false }));
   if (res.ok) {
     document.getElementById('card').innerHTML =
       '<h1>Deinstalliert</h1><p class="sub">Der Agent wurde beendet und alle Dateien wurden entfernt. Dieses Fenster kannst du jetzt schließen.</p>';

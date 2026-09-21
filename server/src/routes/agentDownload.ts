@@ -105,16 +105,21 @@ export function buildInstallBat(): string {
     "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$desktop = [Environment]::GetFolderPath('Desktop'); Remove-Item -LiteralPath (Join-Path $desktop 'Respawn-Agent Steuerung.url') -Force -ErrorAction SilentlyContinue; $s = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $desktop 'Respawn-Agent Steuerung.lnk')); $s.TargetPath = Join-Path $env:INSTALL_DIR 'respawn-agent.exe'; $s.Arguments = '--open-control'; $s.WorkingDirectory = $env:INSTALL_DIR; $s.WindowStyle = 7; $s.Save()\"",
     'if errorlevel 1 goto install_failed',
     '',
-    'echo Fertig! Der Agent startet ab jetzt automatisch bei jedem Windows-Login.',
-    'echo Auf dem Desktop liegt eine Verknuepfung "Respawn-Agent Steuerung" zum',
-    'echo Pausieren, Autostart an/aus stellen oder Deinstallieren.',
-    'echo Starte ihn jetzt auch gleich...',
+    'echo Starte den Agent...',
     // /D pins the agent's working directory to the install directory. Without
     // it the agent inherits this script's directory (the unpacked download
     // folder) and would put its config-relative files — state, log, the local
     // control panel's runtime file — next to the ZIP instead of the install.
     'start "" /D "%INSTALL_DIR%" "%INSTALL_DIR%\\respawn-agent.exe"',
-    'if errorlevel 1 goto install_failed',
+    // Its own label, not install_failed: by this line both moves are through,
+    // so the installation is complete and there is nothing left to roll back.
+    // Claiming a failed update here would be wrong, and would send the player
+    // into a second install of something that is already installed.
+    'if errorlevel 1 goto start_failed',
+    '',
+    'echo Fertig! Der Agent startet ab jetzt automatisch bei jedem Windows-Login.',
+    'echo Auf dem Desktop liegt eine Verknuepfung "Respawn-Agent Steuerung" zum',
+    'echo Pausieren, Autostart an/aus stellen oder Deinstallieren.',
     '',
     'timeout /t 5',
     'exit /b 0',
@@ -124,6 +129,13 @@ export function buildInstallBat(): string {
     'del /Q "%INSTALL_DIR%\\agent.config.json.new" >nul 2>&1',
     'echo Fehler: Der Respawn-Agent konnte nicht sicher aktualisiert werden.',
     'echo Es wurde kein unsicherer Mischstand gestartet.',
+    'timeout /t 10',
+    'exit /b 1',
+    '',
+    ':start_failed',
+    'echo Der Respawn-Agent wurde vollstaendig installiert, liess sich aber nicht starten.',
+    'echo Das kann ein Virenscanner sein, der die neue Datei noch prueft.',
+    'echo Er startet spaetestens beim naechsten Windows-Login automatisch.',
     'timeout /t 10',
     'exit /b 1',
   ];

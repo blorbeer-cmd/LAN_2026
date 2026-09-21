@@ -29,7 +29,10 @@ verlangt einen zufälligen lokalen Zugriffsnachweis; Tray und Desktop-Verknüpfu
 ein kurzlebiges Einmal-Ticket und öffnen danach den Browser. Eine manuelle Schlüsseleingabe ist
 nicht nötig. Das Einmal-Ticket liegt nur kurz im URL-Fragment und wird von der Seite sofort aus der
 Adresszeile und dem Verlaufseintrag entfernt; der eigentliche Zugriffsschlüssel steht weder in der
-URL noch im Agent-Log.
+URL noch im Agent-Log. Ist das Ticket beim Laden der Seite schon verbraucht oder abgelaufen, sagt
+die Oberfläche das und führt keine Aktion mehr aus – Schalter springen dann sichtbar in ihren
+tatsächlichen Zustand zurück. Ein erneuter Klick auf Tray-Icon oder Desktop-Verknüpfung holt ein
+frisches Ticket.
 Rechtsklick → „Beenden" beendet den Agent direkt aus dem Tray. `install.bat` legt zusätzlich eine
 Verknüpfung „Respawn-Agent Steuerung" auf dem Desktop an, die zur selben Weboberfläche führt.
 Klappt das Tray-Icon aus irgendeinem Grund nicht (z. B. sehr alte Windows-Version ohne .NET), bleibt

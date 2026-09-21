@@ -1,7 +1,7 @@
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
-const { createControlServer, listenWithRetry } = require('./controlServer');
+const { createControlServer, listenWithRetry, renderPage } = require('./controlServer');
 
 const ACCESS_KEY = 'A'.repeat(43);
 
@@ -296,5 +296,25 @@ test('listenWithRetry keeps loopback binding and advances to the next port', asy
   } finally {
     occupied.close();
     retryServer.close();
+  }
+});
+
+// Asserted against the page source because this suite has no DOM: the page is
+// a string the agent serves, and pulling a browser into the agent package for
+// one assertion would cost far more than the bug is worth. The shape is the
+// contract, not an incidental detail -- with the reset sitting in an `else`
+// of `res.ok`, a controlFetch that rejects before `res` exists skips it, and
+// the status poll that would repaint the switch fails for the same reason.
+// The switch then keeps showing a setting the agent does not have.
+test('a control action that never reaches the agent restores its switch', () => {
+  const page = renderPage('test-nonce');
+
+  for (const id of ['activityToggle', 'autostartToggle']) {
+    const start = page.indexOf(`document.getElementById('${id}').addEventListener`);
+    assert.ok(start >= 0, `${id} handler not found`);
+    const handler = page.slice(start, page.indexOf('\n});', start));
+
+    assert.match(handler, /catch \(err\) \{\s*\n\s*e\.target\.checked = !enable;/, id);
+    assert.doesNotMatch(handler, /else \{ e\.target\.checked = !enable;/, id);
   }
 });

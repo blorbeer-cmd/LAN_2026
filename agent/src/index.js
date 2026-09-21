@@ -295,7 +295,18 @@ if (require.main === module) {
       process.exitCode = 1;
     });
   } else {
-    start(process.argv[2]);
+    const stop = start(process.argv[2]);
+    // Without this the shutdown cleanup only ever ran in the e2e test: the
+    // uninstall handler leaves through process.exit(0), and Ctrl+C or a
+    // Windows logoff ends the process without touching start()'s return
+    // value. 'exit' covers both, because stop() is fully synchronous.
+    // A forced kill (taskkill /F, Stop-Process -Force, a crash) still runs
+    // nothing — there the stale runtime file is harmless, since its key
+    // belongs to a server that is gone and the next start overwrites it.
+    process.on('exit', stop);
+    for (const signal of ['SIGINT', 'SIGTERM']) {
+      process.on(signal, () => process.exit(0));
+    }
   }
 }
 

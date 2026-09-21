@@ -74,7 +74,9 @@ test('buildInstallBat replaces a running legacy agent before installing the secu
   assert.ok(stopIndex < replaceIndex, 'the running executable must be stopped before replacement');
   assert.match(script, /if \(@\(Get-InstalledAgent\)\.Count -gt 0\) \{ exit 1 \}/);
   assert.ok(replaceIndex < shortcutIndex, 'the secure launcher must be created only after replacement succeeds');
-  assert.ok((script.match(/if errorlevel 1 goto install_failed/g) ?? []).length >= 8);
+  // Every critical step stays guarded; only the final start routes to its own
+  // label, because a failure there is no longer an incomplete installation.
+  assert.ok((script.match(/if errorlevel 1 goto (?:install_failed|start_failed)/g) ?? []).length >= 8);
   assert.match(script, /:install_failed[\s\S]*exit \/b 1/);
   assert.match(script, /Respawn-Agent Steuerung\.lnk/);
   assert.match(script, /--open-control/);
@@ -89,6 +91,16 @@ test('buildInstallBat replaces a running legacy agent before installing the secu
   // the control panel's runtime access file — next to the ZIP, where the
   // desktop launcher never looks for them.
   assert.match(script, /^start "" \/D "%INSTALL_DIR%" "%INSTALL_DIR%\\respawn-agent\.exe"$/m);
+
+  // By the time `start` runs, both moves are through and the installation is
+  // complete. Sending that case to install_failed would print "konnte nicht
+  // sicher aktualisiert werden" over a finished install and push the player
+  // into reinstalling what they already have.
+  const startIndex = script.indexOf('start "" /D');
+  const doneIndex = script.indexOf('echo Fertig!');
+  assert.match(script.slice(startIndex), /^if errorlevel 1 goto start_failed$/m);
+  assert.ok(startIndex < doneIndex, 'the success message must not be printed before the agent was started');
+  assert.match(script, /:start_failed[\s\S]*vollstaendig installiert[\s\S]*exit \/b 1/);
 });
 
 test('buildUninstallBat removes launchers from the Windows known Desktop folder', () => {
@@ -97,6 +109,22 @@ test('buildUninstallBat removes launchers from the Windows known Desktop folder'
   assert.doesNotMatch(script, /%USERPROFILE%\\Desktop/);
   assert.match(script, /Respawn-Agent Steuerung\.lnk/);
   assert.match(script, /Respawn-Agent Steuerung\.url/);
+
+  // The agent ships the same cleanup for its in-app uninstall, and the two
+  // live on opposite sides of a module boundary that has no shared code path.
+  // When they drifted apart before, one uninstall route silently left a dead
+  // shortcut on a redirected Desktop while every test stayed green. This is
+  // the only check that fails on that drift.
+  const agentUninstallerPath = path.join(__dirname, '..', '..', '..', 'agent', 'src', 'uninstaller.js');
+  assert.ok(fs.existsSync(agentUninstallerPath), `agent uninstaller not found at ${agentUninstallerPath}`);
+  const agentUninstaller = require(agentUninstallerPath) as {
+    buildDesktopShortcutCleanupPowerShell: () => string;
+  };
+  assert.equal(
+    agentUninstaller.buildDesktopShortcutCleanupPowerShell(),
+    buildDesktopShortcutCleanupPowerShell(),
+    'the in-app uninstall and uninstall.bat must remove the same shortcuts from the same Desktop folder'
+  );
 });
 
 test('the generated cleanup removes launchers from a redirected Desktop', {
