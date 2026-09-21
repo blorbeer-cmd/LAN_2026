@@ -1805,10 +1805,29 @@ input.food-order-price-input {
 .home-my-status {
   flex-wrap: wrap;
 }
-.home-priority-grid {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-4);
+.home-group-member {
+  min-height: var(--row-min-h);
+}
+.home-group-overview-members {
+  align-items: center;
+}
+.home-group-overview-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+  text-align: right;
+  cursor: pointer;
+}
+.home-group-overview-open .ui-icon {
+  color: var(--text-muted);
 }
 
 /* Dashboard columns are semantic reading groups: the primary column is read
@@ -1834,13 +1853,6 @@ input.food-order-price-input {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   :root[data-layout-mode='desktop'] .profile-dashboard-columns > :only-child {
-    grid-column: 1 / -1;
-  }
-  :root[data-layout-mode='desktop'] .home-priority-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: stretch;
-  }
-  :root[data-layout-mode='desktop'] .home-priority-grid > :only-child {
     grid-column: 1 / -1;
   }
   :root[data-layout-mode='desktop'] .home-live-grid,
