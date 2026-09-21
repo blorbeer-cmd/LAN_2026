@@ -341,28 +341,26 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
     assert.ok(homeSectionFlow.currentBottom <= homeSectionFlow.todosTop);
   }
   assert.ok(homeSectionFlow.liveTop > homeSectionFlow.todosBottom);
-  assert.equal(
-    await page.locator('.home-live-grid').evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length),
-    3,
-  );
+  // The desktop three-column grid is applied by the layout-mode switch a tick
+  // after the view mounts and its rows load, so wait for that settled state
+  // instead of sampling the computed columns exactly once.
+  const waitForThreeColumns = (selector: string) =>
+    page.waitForFunction((sel) => {
+      const grid = document.querySelector(sel);
+      return grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length === 3 : false;
+    }, selector);
+  await waitForThreeColumns('.home-live-grid');
   if (homeSectionFlow.seatingGap !== null) {
     assert.ok(homeSectionFlow.seatingGap >= 8 && homeSectionFlow.seatingGap <= 32);
   }
   if (homeSectionFlow.leaderboardGap !== null) {
     assert.ok(homeSectionFlow.leaderboardGap >= 8 && homeSectionFlow.leaderboardGap <= 32);
-    assert.equal(
-      await page.locator('.home-leaderboard-grid').evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length),
-      3,
-    );
+    await waitForThreeColumns('.home-leaderboard-grid');
   }
 
   await page.click('.desktop-nav-btn[data-view="matchmaking"]');
   await page.waitForSelector('#view-container[data-view="matchmaking"] .tournament-player-grid');
-  assert.equal(
-    await page.locator('#view-container[data-view="matchmaking"] .tournament-player-grid').first()
-      .evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length),
-    3,
-  );
+  await waitForThreeColumns('#view-container[data-view="matchmaking"] .tournament-player-grid');
   await page.click('.desktop-nav-btn[data-view="home"]');
   await page.waitForSelector('#view-container h1:text-is("Home")');
 
