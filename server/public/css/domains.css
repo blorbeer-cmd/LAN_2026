@@ -1810,6 +1810,30 @@ input.food-order-price-input {
   min-width: 0;
   gap: var(--space-4);
 }
+.home-group-member {
+  min-height: var(--row-min-h);
+}
+.home-group-overview-members {
+  align-items: center;
+}
+.home-group-overview-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+  text-align: right;
+  cursor: pointer;
+}
+.home-group-overview-open .ui-icon {
+  color: var(--text-muted);
+}
 
 /* Dashboard columns are semantic reading groups: the primary column is read
    first, followed by supporting content. They remain a single, matching

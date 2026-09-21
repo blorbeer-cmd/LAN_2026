@@ -14,7 +14,7 @@ import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
-import { ensureAktuellLoaded, aktuellItems, dismissAktuellItem } from '../aktuellStatus.js';
+import { ensureAktuellLoaded, aktuellItems } from '../aktuellStatus.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { isAdmin } from '../admin.js';
 import { eventHasFeature, viewIsEnabledForEvent } from '../eventFeatures.js';
@@ -90,15 +90,14 @@ window.addEventListener('respawn:aktuell-changed', () => {
   if (homeIsOpen()) lastCtx?.rerender();
 });
 
-// Compact single-line row (the "Mehr" hub's list-row component, see
-// more.js). Navigation and dismissal are sibling buttons so both remain
-// semantic, keyboard-operable controls without nesting one button in another.
+// Compact single-line row using the shared list-row component from the
+// "Mehr" hub (see more.js).
 function statusRowHtml({ id, iconName, title, sub, navigate, target }) {
   const targetAttrs = target?.type && target?.id
     ? `data-navigate-target-type="${escapeHtml(target.type)}" data-navigate-target-id="${escapeHtml(target.id)}"`
     : '';
   return `
-    <article class="card list-row home-current-row" data-current-item="${id}">
+    <article class="list-row home-current-row" data-current-item="${id}">
       <button type="button" class="home-current-navigate" data-navigate="${navigate}" ${targetAttrs}>
         <span class="list-row-icon">${icon(iconName)}</span>
         <span class="home-current-copy">
@@ -107,7 +106,6 @@ function statusRowHtml({ id, iconName, title, sub, navigate, target }) {
         </span>
         <span class="muted">${icon('chevronRight')}</span>
       </button>
-      <button type="button" class="icon-btn home-current-dismiss" data-dismiss-current="${id}" aria-label="${title} ausblenden" title="Meldung ausblenden">${icon('x')}</button>
     </article>`;
 }
 
@@ -127,9 +125,9 @@ function renderStatus() {
 
   if (rows.length === 0) return '';
   return `
-    <section class="card grouped-page-section stack" aria-labelledby="home-current-title">
+    <section class="card grouped-page-section stack home-current home-current--compact" aria-labelledby="home-current-title">
       <div class="grouped-page-section-title"><h2 id="home-current-title">Aktuell</h2></div>
-      <div class="card-grid">${rows.join('')}</div>
+      <div class="home-current-items">${rows.join('')}</div>
     </section>
   `;
 }
@@ -177,13 +175,20 @@ function renderGeneralEventOverview() {
             <span>${escapeHtml(event.description)}</span>
           </span>
         </div>` : ''}
-        ${participantCount === null ? '' : `<div class="event-card-detail">
+        ${participantCount === null ? '' : isGroup ? `<div class="event-card-detail home-group-overview-members">
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">Mitglieder</span>
+            <span>${participantCount === 1 ? '1 Mitglied' : `${participantCount} Mitglieder`}</span>
+          </span>
+          <button type="button" class="home-group-overview-open" data-navigate="events" aria-label="Mitglieder und Gruppeninfos öffnen">
+            <span>Mitglieder und Gruppeninfos</span>
+            ${icon('chevronRight')}
+          </button>
+        </div>` : `<div class="event-card-detail">
           <span class="event-card-detail-icon" aria-hidden="true">${icon('users')}</span>
           <span class="event-card-detail-content">
-            <span class="event-card-detail-label">${isGroup ? 'Mitglieder' : 'Teilnehmende'}</span>
-            <span>${isGroup
-              ? (participantCount === 1 ? '1 Mitglied' : `${participantCount} Mitglieder`)
-              : (participantCount === 1 ? '1 teilnehmende Person' : `${participantCount} Teilnehmende`)}</span>
+            <span class="event-card-detail-label">Teilnehmende</span>
+            <span>${participantCount === 1 ? '1 teilnehmende Person' : `${participantCount} Teilnehmende`}</span>
           </span>
         </div>`}
         ${!isGroup && event.costCents ? `<div class="event-card-detail">
@@ -197,10 +202,41 @@ function renderGeneralEventOverview() {
     </section>`;
 }
 
+function renderGroupMembers() {
+  const memberIds = new Set(state.activeEvent?.participantIds ?? []);
+  const members = state.players.filter((player) => memberIds.has(player.id));
+  return `
+    <section class="card grouped-page-section stack" aria-labelledby="home-group-members-title">
+      <div class="grouped-page-section-title">
+        <h2 id="home-group-members-title">Mitglieder</h2>
+        <span class="badge">${members.length === 1 ? '1 Mitglied' : `${members.length} Mitglieder`}</span>
+      </div>
+      <div class="two-column-card-grid home-group-members">
+        ${members.map((member) => {
+          const isOwnProfile = member.id === getMyId();
+          const action = isOwnProfile
+            ? 'data-navigate="profile"'
+            : `data-open-player-detail="${escapeHtml(member.id)}"`;
+          const actionLabel = isOwnProfile ? 'Mein Profil öffnen' : 'Profil öffnen';
+          return `
+          <button type="button" class="card player-card home-group-member" ${action} aria-label="${escapeHtml(`${member.name}: ${actionLabel}`)}">
+            ${avatarHtml(member, 36)}
+            <span class="player-card-main">
+              <span class="row-between">
+                <span class="player-name">${escapeHtml(member.name)}</span>
+                <span class="muted">${member.is_admin ? 'Gruppenverwaltung' : 'Mitglied'}</span>
+              </span>
+            </span>
+          </button>`;
+        }).join('')}
+      </div>
+    </section>`;
+}
+
 function homeTaskHtml(task) {
   const due = dueBadgeInfo(task.dueAt);
   return `
-    <button type="button" class="card row list-row" data-navigate="checklist" data-home-assigned-task="${escapeHtml(task.id)}">
+    <button type="button" class="list-row home-current-navigate home-todo-navigate" data-navigate="checklist" data-home-assigned-task="${escapeHtml(task.id)}">
       <span class="list-row-icon">${icon('check')}</span>
       <span class="home-current-copy">
         <span class="player-name">${escapeHtml(task.title)}</span>
@@ -215,7 +251,7 @@ function homeTaskHtml(task) {
 // renderAssignedTodos), so it still needs one clickable way into the list.
 function homeFreeTodosHtml(count) {
   return `
-    <button type="button" class="card row list-row" data-navigate="checklist">
+    <button type="button" class="list-row home-current-navigate home-todo-navigate" data-navigate="checklist">
       <span class="list-row-icon">${icon('check')}</span>
       <span class="home-current-copy">
         <span class="player-name">${count === 1 ? 'Ein offenes To-Do' : `${count} offene To-Dos`}</span>
@@ -243,13 +279,13 @@ function renderAssignedTodos() {
   // once freeCount > 0 (the gate above already hid the tile otherwise) — the
   // pool row keeps a navigable way in even before an identity is chosen.
   if (!myId) {
-    content = `<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p><div class="card-grid">${homeFreeTodosHtml(freeCount)}</div>`;
-  } else if (tasks.length === 0) content = `<div class="card-grid">${homeFreeTodosHtml(freeCount)}</div>`;
+    content = `<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p><div class="home-compact-items">${homeFreeTodosHtml(freeCount)}</div>`;
+  } else if (tasks.length === 0) content = `<div class="home-compact-items">${homeFreeTodosHtml(freeCount)}</div>`;
   else {
     const visibleTasks = tasks.slice(0, 3);
     const remaining = tasks.length - visibleTasks.length;
     content = `
-      <div class="card-grid">${visibleTasks.map(homeTaskHtml).join('')}</div>
+      <div class="home-compact-items">${visibleTasks.map(homeTaskHtml).join('')}</div>
       ${remaining > 0 ? `<p class="muted">${remaining === 1 ? 'Ein weiteres To-Do' : `${remaining} weitere To-Dos`} findest du in der vollständigen Liste.</p>` : ''}`;
   }
   return `
@@ -357,12 +393,14 @@ export function renderHome(container, ctx) {
   });
 
   if (eventHasFeature(state.activeEvent, 'tasks')) ensureTasksLoaded(ctx);
+  ensureAktuellLoaded();
 
   if (players.length === 0 && trackingEnabled) {
     container.innerHTML = `
       <h1 class="view-title">Home</h1>
       <div class="grouped-page-sections home-desktop-layout">
-        <div class="home-priority-grid">${renderAssignedTodos()}</div>
+        ${renderStatus()}
+        ${renderAssignedTodos()}
         ${emptyStateHtml({
           text: 'Noch keine Spieler.',
           illustration: { src: '/img/mascot.svg', alt: '', width: 72, height: 66, className: 'mascot' },
@@ -373,7 +411,7 @@ export function renderHome(container, ctx) {
   }
 
   const myId = getMyId();
-  ensureAktuellLoaded();
+  const isEventlessGroup = state.activeEvent?.eventType === 'group';
   const cards = players
     .map((p) => {
       const badgeClass = `badge-${p.state}`;
@@ -423,10 +461,7 @@ export function renderHome(container, ctx) {
     <h1 class="view-title">Home</h1>
     <div class="grouped-page-sections home-desktop-layout">
       ${renderGeneralEventOverview()}
-      <div class="home-priority-grid">
-        ${renderAssignedTodos()}
-        ${renderStatus()}
-      </div>
+      ${isEventlessGroup ? renderGroupMembers() : `${renderStatus()}${renderAssignedTodos()}`}
       ${
         trackingEnabled
           ? `<section class="card grouped-page-section stack" aria-labelledby="home-live-title">
@@ -454,11 +489,4 @@ export function renderHome(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-dismiss-current]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (!dismissAktuellItem(btn.dataset.dismissCurrent)) return;
-      showToast('Meldung ausgeblendet.');
-      ctx.rerender();
-    });
-  });
 }

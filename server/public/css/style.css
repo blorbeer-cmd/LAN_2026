@@ -2542,6 +2542,12 @@ button.draft-pool-player {
   margin: 0;
   font-size: var(--font-size-lg);
 }
+/* History cards use the compact Home header alignment. */
+.history-details > .collapsible-section-header,
+[data-checklist-history] > .collapsible-section-header,
+[data-broadcast-history] > .collapsible-section-header {
+  align-items: center;
+}
 .collapsible-section-header::-webkit-details-marker {
   display: none;
 }
@@ -3455,6 +3461,52 @@ button.card {
   padding: 0;
   cursor: default;
 }
+.home-current-items {
+  display: grid;
+  gap: var(--space-2);
+}
+.home-current--compact .home-current-items,
+.home-compact-items {
+  display: grid;
+  gap: var(--space-1);
+}
+.home-current--compact .home-current-items {
+  gap: 0;
+}
+.home-current--compact {
+  padding-block: var(--space-3);
+}
+.home-current--compact .home-current-row {
+  min-height: var(--tap-target-size);
+}
+.home-current--compact .home-current-navigate {
+  min-height: var(--tap-target-size);
+  padding: var(--space-1) var(--space-3);
+}
+.home-current--compact .home-current-copy,
+.home-todo-navigate .home-current-copy {
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.home-current--compact .list-row-desc,
+.home-todo-navigate .list-row-desc {
+  display: block;
+  min-height: 0;
+  margin-left: auto;
+  white-space: nowrap;
+}
+@media (max-width: 479px) { /* --bp-sm */
+  .home-current--compact .home-current-copy,
+  .home-todo-navigate .home-current-copy {
+    flex-direction: column;
+    gap: 0;
+  }
+  .home-current--compact .list-row-desc,
+  .home-todo-navigate .list-row-desc {
+    margin-left: 0;
+  }
+}
 .home-current-navigate {
   display: flex;
   align-items: center;
@@ -3475,20 +3527,18 @@ button.card {
   flex: 1;
   flex-direction: column;
 }
-.home-current-dismiss {
-  width: var(--tap-target-size);
-  min-height: var(--control-height);
-  align-self: center;
-  flex: 0 0 var(--tap-target-size);
-  margin-right: var(--space-2);
-  color: var(--text-muted);
-}
 @media (hover: hover) {
   .home-current-navigate:hover {
     background: var(--bg-elevated-2);
   }
   .home-current-row:has(.home-current-navigate:hover) {
     border-color: var(--accent);
+  }
+  .home-current--compact .home-current-navigate:hover {
+    background: transparent;
+  }
+  .home-current--compact .home-current-row:has(.home-current-navigate:hover) {
+    border-color: transparent;
   }
 }
 .more-card {
