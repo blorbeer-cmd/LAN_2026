@@ -132,7 +132,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   visibility, the versioned event-consent controls, proposed retention rules and unresolved operator
   decisions. Consents from an older text version never count as active; they are listed below the
   current ones as revocable „Frühere Event-Einwilligungen“ and „Frühere Community-Einwilligungen“
-  so no granted row stays without a way to withdraw it. It also provides a secret-free personal
+  so no granted row stays without a way to withdraw it. A standing pre-authorization below the
+  per-event rows lets an account agree in advance to events that only become trackable later; it is
+  bound to the consent text version it was set under and never overrides a single event's own
+  decision. It also provides a secret-free personal
   JSON export and a reauthentication-protected
   account deletion with concrete remedies for roles or open organisational work that must first be
   transferred.

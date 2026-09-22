@@ -15,6 +15,10 @@ export interface TrackingContext {
 
 // Resolve the single trackable context selected by this account. Parallel
 // events are supported, but one account report belongs to one active event.
+// A group carries no period on purpose (eventTypeIsUndated): it is permanently
+// open rather than undated by accident, so a NULL start counts as "running"
+// here. Only a group can reach this with tracking enabled — events.ts refuses
+// the flag for the base workspace and for general events.
 export function activeTrackingContexts(playerId: string, now = Date.now()): TrackingContext[] {
   const active = db
     .prepare(
@@ -30,7 +34,7 @@ export function activeTrackingContexts(playerId: string, now = Date.now()): Trac
          ON c.event_id = e.id AND c.player_id = pec.player_id AND c.revoked_at IS NULL
         AND c.purpose = ? AND c.text_version = ?
        WHERE pec.player_id = ? AND e.tracking_enabled = 1 AND e.status = 'published'
-         AND e.starts_at <= ? AND (e.ends_at IS NULL OR e.ends_at > ?)
+         AND (e.starts_at IS NULL OR e.starts_at <= ?) AND (e.ends_at IS NULL OR e.ends_at > ?)
        LIMIT 1`,
     )
     .get(TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION, playerId, now, now) as
@@ -117,6 +121,77 @@ export function setEventTrackingConsent(
       clearDiagnosticProcessNamesWithoutContext(playerId, now);
     }
   })();
+}
+
+// The account's own standing pre-authorization for events that only become
+// trackable later. It stores the text version it was agreed under, so a
+// changed wording stops it from applying and asks again — the same guarantee
+// the per-event checkbox gives. Revoking a single event stays possible and is
+// never overridden by this default, because it only ever fills a gap where no
+// consent row exists at all.
+export function getTrackingConsentDefaultVersion(playerId: string): string | null {
+  const row = db
+    .prepare('SELECT tracking_consent_default_version AS version FROM players WHERE id = ?')
+    .get(playerId) as { version: string | null } | undefined;
+  return row?.version ?? null;
+}
+
+export function setTrackingConsentDefault(playerId: string, textVersion: string | null): void {
+  db.prepare('UPDATE players SET tracking_consent_default_version = ? WHERE id = ?').run(textVersion, playerId);
+}
+
+function trackingConsentDefaultApplies(playerId: string): boolean {
+  return getTrackingConsentDefaultVersion(playerId) === TRACKING_CONSENT_TEXT_VERSION;
+}
+
+/**
+ * Grants the current-version consent for one account and event when that
+ * account asked for it in advance and has not decided about this event yet.
+ * Returns whether a consent was created, so callers can report it.
+ */
+export function applyTrackingConsentDefault(
+  eventId: string,
+  groupId: string,
+  playerId: string,
+  now = Date.now(),
+): boolean {
+  if (!trackingConsentDefaultApplies(playerId)) return false;
+  // An explicit decision always wins: a revoked row means the account said no
+  // for this event, and re-granting it here would silently reverse that.
+  const decided = db
+    .prepare('SELECT 1 FROM event_tracking_consents WHERE event_id = ? AND player_id = ? LIMIT 1')
+    .get(eventId, playerId);
+  if (decided) return false;
+  setEventTrackingConsent(
+    eventId,
+    groupId,
+    playerId,
+    true,
+    { purpose: TRACKING_CONSENT_PURPOSE, textVersion: TRACKING_CONSENT_TEXT_VERSION },
+    now,
+  );
+  return true;
+}
+
+/** Applies the standing default for every accepted participant of one event. */
+export function applyTrackingConsentDefaultForEvent(eventId: string, now = Date.now()): number {
+  const event = db.prepare('SELECT group_id AS groupId FROM events WHERE id = ?').get(eventId) as
+    | { groupId: string | null }
+    | undefined;
+  if (!event?.groupId) return 0;
+  const participants = db
+    .prepare(
+      `SELECT ep.player_id AS playerId
+       FROM event_participants ep
+       JOIN players p ON p.id = ep.player_id AND p.deactivated_at IS NULL
+       WHERE ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}`,
+    )
+    .all(eventId) as Array<{ playerId: string }>;
+  let granted = 0;
+  for (const participant of participants) {
+    if (applyTrackingConsentDefault(eventId, event.groupId, participant.playerId, now)) granted += 1;
+  }
+  return granted;
 }
 
 // A revoked consent must not leave the last detected game names sitting in

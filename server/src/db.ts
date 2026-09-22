@@ -38,6 +38,10 @@ db.exec(`
     avatar          TEXT,
     api_key         TEXT NOT NULL UNIQUE,
     tracking_paused INTEGER NOT NULL DEFAULT 0, -- player-side opt-out; agent reports for this player are dropped
+    -- Standing pre-authorization for newly trackable events: holds the consent
+    -- text version it was set under, NULL when off. A changed text therefore
+    -- stops it from applying until the account agrees to the new wording.
+    tracking_consent_default_version TEXT,
     is_admin        INTEGER NOT NULL DEFAULT 0, -- moderation role; can be granted via PATCH /api/players/:id
     is_test         INTEGER NOT NULL DEFAULT 0, -- admin-seeded test player; hidden outside admin mode (see testUsers.ts)
     deactivated_at  INTEGER, -- former participant: kept for history, denied login/agent access and hidden from active rosters
@@ -5129,6 +5133,27 @@ registerMigration({
   name: 'preserve ended music sessions after host deletion',
   up: preserveEndedMusicSessionsAfterHostDeletion,
   disableForeignKeysForRebuild: true,
+});
+
+// The permanently open base workspace is never a trackable period: it has no
+// organizer who starts and ends it, so nobody could meaningfully consent to
+// "this event". It was seeded with tracking off, but an older installation may
+// still carry a started flag, so clear it once and let events.ts refuse to set
+// it again. The standing consent default lives next to tracking_paused as the
+// account's own preference.
+function excludeBaseWorkspaceFromTrackingAndAddConsentDefault(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'tracking_consent_default_version')) {
+    db.exec('ALTER TABLE players ADD COLUMN tracking_consent_default_version TEXT');
+  }
+  db.prepare('UPDATE events SET tracking_enabled = 0 WHERE id = ? AND tracking_enabled = 1').run(BASE_EVENT_ID);
+  db.prepare('DELETE FROM tracking_live_contexts WHERE event_id = ?').run(BASE_EVENT_ID);
+  db.prepare('DELETE FROM tracking_live_games WHERE event_id = ?').run(BASE_EVENT_ID);
+}
+registerMigration({
+  version: 107,
+  name: 'exclude base workspace from tracking and add standing consent default',
+  up: excludeBaseWorkspaceFromTrackingAndAddConsentDefault,
 });
 
 runRegisteredMigrations();

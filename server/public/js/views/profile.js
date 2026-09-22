@@ -113,6 +113,10 @@ function renderPrivacySection() {
       <strong>Freiwilliges Event-Tracking</strong>
       <p class="muted" style="margin:0;">${escapeHtml(trackingConsent.text)}</p>
       ${consentRows || '<p class="muted" style="margin:0;">Keine zugesagten Events.</p>'}
+      <label class="check-row">
+        <input type="checkbox" id="privacy-auto-consent" ${trackingConsent.autoConsent?.enabled ? 'checked' : ''} />
+        <span style="flex:1;"><strong>Bei neuen trackbaren Events automatisch einwilligen</strong><br><span class="muted" style="font-size:var(--font-size-xs);">Gilt nur für diesen Einwilligungstext. Ändert er sich, wirst du erneut gefragt. Einzelne Events kannst du oben jederzeit wieder abwählen.</span></span>
+      </label>
       ${legacyEventRows ? `<strong>Frühere Event-Einwilligungen</strong><p class="muted" style="margin:0;">Diese Einwilligungen gehören zu einer älteren Textversion und aktivieren keine Erfassung mehr. Du kannst sie hier endgültig widerrufen.</p>${legacyEventRows}` : ''}
       ${legacyGroupRows ? `<strong>Frühere Community-Einwilligungen</strong><p class="muted" style="margin:0;">Diese Einwilligung für Aktivität außerhalb eigener Events wird aktuell nicht für Erfassung verwendet. Du kannst sie hier widerrufen.</p>${legacyGroupRows}` : ''}
     </div>
@@ -646,6 +650,28 @@ export function renderProfile(container, ctx) {
         showToast(error.message, { error: true });
       }
     });
+  });
+  container.querySelector('#privacy-auto-consent')?.addEventListener('change', async (event) => {
+    const checkbox = event.currentTarget;
+    const enabled = checkbox.checked;
+    checkbox.disabled = true;
+    try {
+      await api.privacy.setTrackingDefault(
+        enabled,
+        enabled ? privacyState.data.trackingConsent.textVersion : undefined,
+      );
+      privacyState = null;
+      await loadPrivacy(ctx, true);
+      showToast(
+        enabled
+          ? 'Neue trackbare Events werden künftig automatisch eingewilligt.'
+          : 'Neue trackbare Events brauchen wieder deine ausdrückliche Einwilligung.',
+      );
+    } catch (error) {
+      checkbox.checked = !enabled;
+      checkbox.disabled = false;
+      showToast(error.message, { error: true });
+    }
   });
   // Revoking never carries a text version, so an outdated consent can always
   // be withdrawn through the ordinary event endpoint.

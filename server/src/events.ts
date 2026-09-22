@@ -6,7 +6,7 @@
 import { nanoid } from 'nanoid';
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL, type EventParticipationStatus } from './eventParticipation';
-import { closeEventContexts } from './trackingContexts';
+import { applyTrackingConsentDefaultForEvent, closeEventContexts } from './trackingContexts';
 import { fallbackEventContexts, fallbackPlayerEventContext } from './eventContext';
 import {
   DEFAULT_EVENT_PRESET_VERSION,
@@ -266,11 +266,33 @@ function startTrackingInternal(id: string, reopenEnded: boolean): StartTrackingR
   if (event.status === 'cancelled') {
     return { ok: false, code: 'invalid', error: 'Ein abgesagtes Event kann nicht getrackt werden.' };
   }
+  // The permanently open base workspace has no organizer who starts and ends
+  // it, so "activity during this event" has no meaning there and nobody could
+  // consent to a period. It stays excluded no matter what an admin clicks.
+  if (event.id === BASE_EVENT_ID) {
+    return {
+      ok: false,
+      code: 'invalid',
+      error: 'Der dauerhaft geöffnete Bereich „Allgemein“ kann nicht getrackt werden.',
+    };
+  }
+  // A general event is a celebration, trip or workshop — game activity is not
+  // what it is about, and its preset does not offer the tracking feature.
+  // Excluding it here keeps that true even if the flag is reached elsewhere.
+  if (event.event_type_key === 'general') {
+    return {
+      ok: false,
+      code: 'invalid',
+      error: 'Ein allgemeines Event kann nicht getrackt werden.',
+    };
+  }
   // The period itself, not just the draft status, is what tracking depends on:
   // an event may lose its period again (updateEvent) or be reopened from
   // 'ended' rather than 'draft', and in both cases getTrackingEvents — which
-  // only matches an already started period — could never deliver it.
-  if (event.status === 'draft' || event.starts_at === null) {
+  // only matches an already started period — could never deliver it. A group
+  // is the deliberate exception: it is permanently open rather than undated by
+  // accident, so activeTrackingContexts accepts its NULL start.
+  if (event.status === 'draft' || (event.starts_at === null && !eventTypeIsUndated(event.event_type_key))) {
     return {
       ok: false,
       code: 'invalid',
@@ -287,6 +309,12 @@ function startTrackingInternal(id: string, reopenEnded: boolean): StartTrackingR
   if (updated.changes !== 1) {
     return { ok: false, code: 'invalid', error: 'Event konnte nicht gestartet werden.' };
   }
+
+  // This is the moment the event becomes trackable for its participants, so it
+  // is also the moment an account's standing pre-authorization has to take
+  // effect — otherwise the default would only ever work for events that were
+  // already running when someone accepted.
+  applyTrackingConsentDefaultForEvent(id);
 
   return { ok: true, event: getEvent(id)! };
 }

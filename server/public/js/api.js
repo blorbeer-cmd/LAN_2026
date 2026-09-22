@@ -414,6 +414,11 @@ export const api = {
     export: () => fetchBlob('/api/privacy/export'),
     deleteAccount: () => apiFetch('/api/privacy/account', { method: 'DELETE' }),
     retentionPreview: () => apiFetch('/api/privacy/retention-preview'),
+    setTrackingDefault: (enabled, textVersion) =>
+      apiFetch('/api/privacy/tracking-default', {
+        method: 'POST',
+        body: JSON.stringify({ enabled, ...(textVersion ? { textVersion } : {}) }),
+      }),
   },
 
   backup: {

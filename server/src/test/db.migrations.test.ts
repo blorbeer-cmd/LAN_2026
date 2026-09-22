@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 106);
+  assert.equal(migrations.length, 107);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 106 }, (_, index) => index + 1),
+    Array.from({ length: 107 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1354,8 +1354,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 106 }, (_, index) => index + 1),
-    'every version 1..106 runs exactly once',
+    Array.from({ length: 107 }, (_, index) => index + 1),
+    'every version 1..107 runs exactly once',
   );
 });
 
@@ -3742,6 +3742,50 @@ test('migration 105 preserves legacy consent as unversioned and clears stored di
     { processNames: '[]' },
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 105').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 107 stops tracking the base workspace and adds the consent default column', () => {
+  const dbFile = makeTempDbPath('privacy-base-workspace');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture.prepare(
+    `INSERT INTO players (id, name, api_key, created_at)
+     VALUES ('base-track-player', 'Base Tracker', 'base-track-key', ?)`,
+  ).run(now);
+  // An older installation could reach this state through the former start
+  // path; migration 107 has to clear it along with the live rows it produced.
+  fixture.prepare("UPDATE events SET tracking_enabled = 1 WHERE id = 'instance-base-event'").run();
+  fixture.prepare(
+    `INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen)
+     VALUES ('base-track-player', 'default-group', 'instance-base-event', ?)`,
+  ).run(now);
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 107').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the guarded migration is restart-safe');
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated
+      .prepare("SELECT tracking_enabled AS trackingEnabled FROM events WHERE id = 'instance-base-event'")
+      .get(),
+    { trackingEnabled: 0 },
+  );
+  assert.equal(
+    migrated.prepare("SELECT 1 FROM tracking_live_contexts WHERE event_id = 'instance-base-event'").get(),
+    undefined,
+    'the live rows of the former base-event tracking are gone',
+  );
+  assert.ok(
+    (migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>).some(
+      (column) => column.name === 'tracking_consent_default_version',
+    ),
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 107').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

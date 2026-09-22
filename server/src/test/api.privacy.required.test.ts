@@ -8,6 +8,10 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { createTestApp, DEFAULT_GROUP_ID, enableTestTracking, sessionCookie } from './testApp';
 import { BASE_EVENT_ID, db } from '../db';
+import { createEvent, startTracking } from '../events';
+import { ensureAccountEventContext } from '../eventContext';
+import { activeTrackingContexts, setEventTrackingConsent } from '../trackingContexts';
+import { TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION } from '../privacyPolicy';
 import { ensureDefaultGroupMembership } from '../groups';
 import { config } from '../config';
 
@@ -591,4 +595,152 @@ test('an outdated event consent stays revocable through the privacy view', async
   );
   const after = await request(app).get('/api/privacy').set('Cookie', member.cookie);
   assert.deepEqual(after.body.trackingConsent.legacyEvents, []);
+});
+
+test('only a real event period can be tracked: base workspace and general events never', () => {
+  createTestApp();
+  // The permanently open base workspace looks trackable on paper — published,
+  // starts_at = 0, no end — so the guard must be explicit. A sibling fixture in
+  // this file may already have flipped the flag through direct SQL, so assert
+  // the guard rather than the seeded value; migration 107 covers legacy rows.
+  const base = db
+    .prepare('SELECT id, status, starts_at FROM events WHERE id = ?')
+    .get(BASE_EVENT_ID) as { status: string; starts_at: number | null };
+  assert.equal(base.status, 'published');
+  assert.equal(base.starts_at, 0);
+  db.prepare('UPDATE events SET tracking_enabled = 0 WHERE id = ?').run(BASE_EVENT_ID);
+
+  const baseAttempt = startTracking(BASE_EVENT_ID);
+  assert.equal(baseAttempt.ok, false);
+  assert.match((baseAttempt as { error: string }).error, /Allgemein/);
+  assert.equal(
+    (db.prepare('SELECT tracking_enabled FROM events WHERE id = ?').get(BASE_EVENT_ID) as { tracking_enabled: number })
+      .tracking_enabled,
+    0,
+  );
+
+  const general = createEvent('Sommerfest', {
+    groupId: DEFAULT_GROUP_ID,
+    startsAt: Date.now() - 1_000,
+    endsAt: Date.now() + 3_600_000,
+    eventTypeKey: 'general',
+  });
+  const generalAttempt = startTracking(general.id);
+  assert.equal(generalAttempt.ok, false);
+  assert.match((generalAttempt as { error: string }).error, /allgemeines Event/);
+  assert.equal(
+    (db.prepare('SELECT tracking_enabled FROM events WHERE id = ?').get(general.id) as { tracking_enabled: number })
+      .tracking_enabled,
+    0,
+  );
+});
+
+test('a permanently open group can be tracked once the organizer starts it', () => {
+  createTestApp();
+  const member = createMember('Group Tracked');
+  const group = createEvent('Feste Spielrunde', { groupId: DEFAULT_GROUP_ID, startsAt: null, endsAt: null, eventTypeKey: 'group' });
+  assert.equal(group.starts_at, null, 'a group carries no period on purpose');
+  db.prepare(
+    `INSERT OR REPLACE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')`,
+  ).run(group.id, member.id);
+  ensureAccountEventContext(member.id, group.id);
+
+  // Without the organizer's switch a group must not deliver a context, even
+  // though it is permanently "running".
+  assert.deepEqual(activeTrackingContexts(member.id), []);
+
+  const started = startTracking(group.id);
+  assert.equal(started.ok, true, JSON.stringify(started));
+
+  // The switch alone is not consent either.
+  assert.deepEqual(activeTrackingContexts(member.id), []);
+
+  setEventTrackingConsent(group.id, DEFAULT_GROUP_ID, member.id, true, {
+    purpose: TRACKING_CONSENT_PURPOSE,
+    textVersion: TRACKING_CONSENT_TEXT_VERSION,
+  });
+  assert.deepEqual(activeTrackingContexts(member.id), [
+    { groupId: DEFAULT_GROUP_ID, eventId: group.id, weight: 1 },
+  ]);
+});
+
+test('the standing consent default only applies to the wording it was agreed under', async () => {
+  const app = createTestApp();
+  const member = createMember('Auto Consent');
+  const before = await request(app).get('/api/privacy').set('Cookie', member.cookie);
+  assert.equal(before.body.trackingConsent.autoConsent.enabled, false);
+
+  assert.equal(
+    (await request(app).post('/api/privacy/tracking-default').set('Cookie', member.cookie).send({ enabled: true }))
+      .status,
+    409,
+    'enabling without the shown text version is refused like a per-event grant',
+  );
+  const set = await request(app)
+    .post('/api/privacy/tracking-default')
+    .set('Cookie', member.cookie)
+    .send({ enabled: true, textVersion: TRACKING_CONSENT_TEXT_VERSION });
+  assert.equal(set.status, 200, JSON.stringify(set.body));
+
+  const event = createEvent('Winter-LAN', {
+    groupId: DEFAULT_GROUP_ID,
+    startsAt: Date.now() - 1_000,
+    endsAt: Date.now() + 3_600_000,
+  });
+  db.prepare(
+    `INSERT OR REPLACE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')`,
+  ).run(event.id, member.id);
+  ensureAccountEventContext(member.id, event.id);
+  assert.deepEqual(activeTrackingContexts(member.id), [], 'nothing before the organizer starts it');
+
+  assert.equal(startTracking(event.id).ok, true);
+  assert.deepEqual(
+    activeTrackingContexts(member.id),
+    [{ groupId: DEFAULT_GROUP_ID, eventId: event.id, weight: 1 }],
+    'starting tracking applies the standing default',
+  );
+  const granted = db
+    .prepare('SELECT purpose, text_version AS textVersion FROM event_tracking_consents WHERE event_id = ? AND player_id = ?')
+    .get(event.id, member.id) as { purpose: string; textVersion: string };
+  assert.equal(granted.purpose, TRACKING_CONSENT_PURPOSE, 'a real consent row is recorded, not an implicit grant');
+  assert.equal(granted.textVersion, TRACKING_CONSENT_TEXT_VERSION);
+
+  // A per-event revocation must survive: the default fills gaps, it never
+  // reverses an explicit "no".
+  const revoked = await request(app)
+    .post(`/api/events/${event.id}/tracking-consent`)
+    .set('Cookie', member.cookie)
+    .send({ granted: false });
+  assert.equal(revoked.status, 200, JSON.stringify(revoked.body));
+  const second = createEvent('Zweites LAN', {
+    groupId: DEFAULT_GROUP_ID,
+    startsAt: Date.now() - 1_000,
+    endsAt: Date.now() + 3_600_000,
+  });
+  db.prepare(
+    `INSERT OR REPLACE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')`,
+  ).run(second.id, member.id);
+  assert.equal(startTracking(second.id).ok, true);
+  ensureAccountEventContext(member.id, event.id);
+  assert.deepEqual(activeTrackingContexts(member.id), [], 'the revoked event stays revoked');
+
+  // An outdated agreement must not keep granting consent.
+  db.prepare('UPDATE players SET tracking_consent_default_version = ? WHERE id = ?').run('2000-01-01.1', member.id);
+  const third = createEvent('Drittes LAN', {
+    groupId: DEFAULT_GROUP_ID,
+    startsAt: Date.now() - 1_000,
+    endsAt: Date.now() + 3_600_000,
+  });
+  db.prepare(
+    `INSERT OR REPLACE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')`,
+  ).run(third.id, member.id);
+  assert.equal(startTracking(third.id).ok, true);
+  assert.equal(
+    db.prepare('SELECT 1 FROM event_tracking_consents WHERE event_id = ? AND player_id = ?').get(third.id, member.id),
+    undefined,
+    'a default agreed under an older text grants nothing',
+  );
+  const view = await request(app).get('/api/privacy').set('Cookie', member.cookie);
+  assert.equal(view.body.trackingConsent.autoConsent.enabled, false);
+  assert.equal(view.body.trackingConsent.autoConsent.agreedTextVersion, '2000-01-01.1');
 });

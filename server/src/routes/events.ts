@@ -40,7 +40,7 @@ import type { GroupRole } from '../groups';
 import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
-import { setEventTrackingConsent } from '../trackingContexts';
+import { applyTrackingConsentDefault, setEventTrackingConsent } from '../trackingContexts';
 import { TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION } from '../privacyPolicy';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
@@ -809,6 +809,12 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
         changed: result.changed,
       },
     });
+    // Accepting an already tracking event is the other moment the standing
+    // pre-authorization has to take effect; startTracking covers the reverse
+    // order, where the event only becomes trackable later.
+    if (result.changed && response === 'accepted' && event.tracking_enabled && event.group_id) {
+      applyTrackingConsentDefault(event.id, event.group_id, playerId);
+    }
     // Withdrawing an acceptance leaves the same two loose ends an organizer's
     // removal does: a workspace the account may no longer select, and a live
     // status inside an event it just left.

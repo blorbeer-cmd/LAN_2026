@@ -46,6 +46,13 @@ Prozess-Snapshot der Agent-Diagnose, sobald kein gültiger Tracking-Kontext mehr
 unversionierte Alteinwilligungen zu Events in der Datenschutzansicht als eigene, widerrufbare
 Gruppe.
 
+Die sechste Nacharbeit schärft, welche Bereiche überhaupt trackbar sind, und nimmt den Mitgliedern
+die Wiederholungsarbeit ab: Der dauerhaft geöffnete Bereich „Allgemein“ und allgemeine Events sind
+vom Tracking ausgeschlossen, eine Gruppe kann von der Orga freigeschaltet werden und wird danach
+wie ein Event einzeln eingewilligt, und im Profil lässt sich eine stehende, an die Textversion
+gebundene Vorab-Einwilligung für künftige trackbare Events setzen. Migration 107 setzt ein in
+Altbeständen gestartetes Tracking des Basisbereichs zurück und ergänzt die Profilspalte.
+
 ## Offene Punkte
 
 Review und Merge stehen aus. Die automatische Bereinigung bleibt bis zur Betreiberentscheidung

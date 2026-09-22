@@ -4,6 +4,7 @@ import { requireAdmin } from '../auth';
 import { clearSessionCookie, requireRecentReauthentication } from '../sessions';
 import { buildPersonalDataExport, deleteAccount, listDeletionReceipts } from '../privacyService';
 import { previewPrivacyRetention } from '../privacyRetention';
+import { getTrackingConsentDefaultVersion, setTrackingConsentDefault } from '../trackingContexts';
 import {
   GROUP_TRACKING_CONSENT_PURPOSE,
   GROUP_TRACKING_CONSENT_TEXT,
@@ -48,6 +49,7 @@ privacyRouter.get('/', (req, res) => {
        ORDER BY e.starts_at DESC`,
     )
     .all(req.player!.id, TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION);
+  const defaultVersion = getTrackingConsentDefaultVersion(req.player!.id);
   const retention = previewPrivacyRetention();
   const legacyGroupConsents = db.prepare(
     `SELECT g.id AS groupId, g.name AS groupName, c.granted_at AS grantedAt,
@@ -65,6 +67,12 @@ privacyRouter.get('/', (req, res) => {
       text: TRACKING_CONSENT_TEXT,
       events,
       legacyEvents: legacyEventConsents,
+      // The stored version is reported as-is so the view can say that an
+      // older agreement no longer applies instead of silently showing "off".
+      autoConsent: {
+        enabled: defaultVersion === TRACKING_CONSENT_TEXT_VERSION,
+        agreedTextVersion: defaultVersion,
+      },
     },
     legacyGroupTracking: {
       purpose: GROUP_TRACKING_CONSENT_PURPOSE,
@@ -88,6 +96,24 @@ privacyRouter.get('/', (req, res) => {
       'eingesetzte Hosting-, Push- und weitere Dienstleister',
     ],
   });
+});
+
+// Setting the standing default is itself the informed decision, so it carries
+// the same text version check as a per-event grant: an account can only
+// pre-authorize the wording it was actually shown.
+privacyRouter.post('/tracking-default', (req, res) => {
+  const { enabled, textVersion } = req.body ?? {};
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'enabled muss ein Boolean sein.' });
+  }
+  if (enabled && textVersion !== TRACKING_CONSENT_TEXT_VERSION) {
+    return res.status(409).json({
+      error: 'Der Einwilligungstext hat sich geändert. Bitte lade die Datenschutzangaben neu.',
+      code: 'consent_text_changed',
+    });
+  }
+  setTrackingConsentDefault(req.player!.id, enabled ? TRACKING_CONSENT_TEXT_VERSION : null);
+  return res.json({ enabled, agreedTextVersion: enabled ? TRACKING_CONSENT_TEXT_VERSION : null });
 });
 
 privacyRouter.get('/export', (req, res) => {

@@ -65,6 +65,31 @@ Datenschutzansicht sie getrennt unter „Frühere Event-Einwilligungen“ bezieh
 Community-Einwilligungen“ auf; dort widerrufene Zeilen verschwinden aus der Liste und erscheinen im
 persönlichen Export mit gesetztem Widerrufszeitpunkt.
 
+Wer nicht bei jedem neuen Event erneut entscheiden möchte, kann im Profil eine stehende
+Vorab-Einwilligung setzen. Sie merkt sich die Textversion, unter der sie erteilt wurde, und wirkt
+nur für genau diese Fassung: Sobald der Einwilligungstext sich ändert, greift sie nicht mehr und es
+wird wieder aktiv gefragt. Sie füllt ausschließlich Lücken — für ein Event, zu dem bereits eine
+Entscheidung vorliegt, ändert sie nichts, und ein einzelner Widerruf bleibt bestehen. Eingetragen
+wird sie in dem Moment, in dem ein Event tatsächlich trackbar wird: wenn die Orga das Tracking
+startet oder wenn jemand ein bereits laufendes Tracking-Event zusagt. In beiden Fällen entsteht
+eine reguläre Einwilligungszeile mit Zweck und Textversion, kein stillschweigender Sonderfall.
+
+## Welche Bereiche überhaupt trackbar sind
+
+Nicht jeder Arbeitsbereich kann Tracking erhalten:
+
+- Der dauerhaft geöffnete Bereich „Allgemein“ ist davon ausgenommen. Er hat keinen Zeitraum, den
+  eine Orga startet und beendet, also gäbe es auch keinen abgrenzbaren Vorgang, in den jemand
+  einwilligen könnte. Eine ältere Installation, in der das Tracking dort einmal gestartet wurde,
+  wird durch Migration 107 zurückgesetzt.
+- Ein allgemeines Event (Feier, Reise, Ausflug, Workshop) ist ebenfalls ausgenommen; Spielaktivität
+  ist nicht sein Zweck, und sein Funktionsvorschlag enthält das Tracking-Modul nicht.
+- Eine Gruppe ist der eine dauerhafte Bereich, der Tracking erhalten kann. Sie ist bewusst
+  permanent geöffnet statt zufällig ohne Datum, deshalb zählt ihr fehlender Startzeitpunkt als
+  „läuft“. Auch dort gilt die übliche Zweistufigkeit: Die Orga schaltet das Tracking für die Gruppe
+  frei, und danach entscheidet jedes Mitglied für sich per Einwilligung.
+- Eine LAN-Party mit festem Zeitraum bleibt der Regelfall.
+
 ## Aufbewahrung aktivieren
 
 Die Bereinigung ist standardmäßig aus. Ein Admin prüft zuerst angemeldet
