@@ -69,7 +69,7 @@ export const config = {
 
   // Version currently shipped through the agent download. Diagnostics flag
   // clients on another version before a LAN starts.
-  expectedAgentVersion: (process.env.EXPECTED_AGENT_VERSION ?? '1.0.0').trim(),
+  expectedAgentVersion: (process.env.EXPECTED_AGENT_VERSION ?? '1.1.0').trim(),
 
   // Dedicated shared-kiosk credential. It is read-only except for the narrow
   // same-device Jam recovery route documented in routes/index.ts.

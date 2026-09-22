@@ -1,11 +1,15 @@
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { createControlServer } = require('./controlServer');
+const http = require('http');
+const { createControlServer, listenWithRetry, renderPage } = require('./controlServer');
+
+const ACCESS_KEY = 'A'.repeat(43);
 
 let server;
 let baseUrl;
 let state;
 let handlerCalls;
+let failEnableAutostart;
 
 function makeHandlers() {
   return {
@@ -35,6 +39,9 @@ function makeHandlers() {
       state.trackActivity = false;
     },
     enableAutostart: () => {
+      if (failEnableAutostart) {
+        throw new Error('Autostart kann nur mit der installierten .exe eingerichtet werden.');
+      }
       handlerCalls.push('enableAutostart');
       state.autostart = true;
     },
@@ -48,10 +55,61 @@ function makeHandlers() {
   };
 }
 
+async function createSession() {
+  const launchResponse = await fetch(`${baseUrl}/api/launch`, {
+    method: 'POST',
+    headers: { 'X-Respawn-Control-Key': ACCESS_KEY },
+  });
+  assert.equal(launchResponse.status, 200);
+  const { ticket } = await launchResponse.json();
+  const sessionResponse = await fetch(`${baseUrl}/api/session`, {
+    method: 'POST',
+    headers: {
+      Origin: baseUrl,
+      'Sec-Fetch-Site': 'same-origin',
+      'X-Respawn-Control-Ticket': ticket,
+    },
+  });
+  assert.equal(sessionResponse.status, 204);
+  return sessionResponse.headers.getSetCookie()[0].split(';', 1)[0];
+}
+
+function authenticatedHeaders(cookie, { origin = true } = {}) {
+  return {
+    Cookie: cookie,
+    ...(origin ? { Origin: baseUrl } : {}),
+    'Sec-Fetch-Site': 'same-origin',
+  };
+}
+
+function requestWithHost(pathname, host, headers = {}) {
+  const port = Number(new URL(baseUrl).port);
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        hostname: '127.0.0.1',
+        port,
+        path: pathname,
+        headers: { ...headers, Host: host },
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          body += chunk;
+        });
+        response.on('end', () => resolve({ response, body }));
+      },
+    );
+    request.on('error', reject);
+    request.end();
+  });
+}
+
 before(async () => {
   state = { paused: false, autostart: false, trackActivity: false };
   handlerCalls = [];
-  server = createControlServer(makeHandlers());
+  server = createControlServer(makeHandlers(), { accessKey: ACCESS_KEY });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
   baseUrl = `http://127.0.0.1:${port}`;
@@ -66,83 +124,197 @@ beforeEach(() => {
   state.autostart = false;
   state.trackActivity = false;
   handlerCalls = [];
+  failEnableAutostart = false;
 });
 
-test('GET / serves the HTML control page', async () => {
-  const res = await fetch(`${baseUrl}/`);
-  assert.equal(res.status, 200);
-  assert.match(res.headers.get('content-type'), /text\/html/);
-  const body = await res.text();
+test('GET / serves the hardened control page only as a direct navigation', async () => {
+  const { response, body } = await requestWithHost('/', new URL(baseUrl).host, {
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Dest': 'document',
+  });
+  assert.equal(response.statusCode, 200);
+  assert.match(response.headers['content-type'], /text\/html/);
+  assert.match(response.headers['content-security-policy'], /frame-ancestors 'none'/);
+  assert.equal(response.headers['referrer-policy'], 'no-referrer');
   assert.match(body, /Respawn-Agent/);
+  assert.match(body, /history\.replaceState/);
+  assert.doesNotMatch(body, new RegExp(ACCESS_KEY));
 });
 
-test('GET / uses an inline confirm step for uninstall, not the native confirm()', async () => {
-  const res = await fetch(`${baseUrl}/`);
-  const body = await res.text();
+test('GET / keeps the inline uninstall confirmation behind the authenticated API', async () => {
+  const { body } = await requestWithHost('/', new URL(baseUrl).host, {
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Dest': 'document',
+  });
   assert.doesNotMatch(body, /confirm\(/);
   assert.match(body, /id="uninstallConfirmRow"/);
   assert.match(body, /id="uninstallCancelBtn"/);
   assert.match(body, /id="uninstallConfirmBtn"/);
 });
 
-test('GET /api/status reflects current state', async () => {
+test('a launch ticket establishes a session for status and all control actions', async () => {
+  const cookie = await createSession();
+
   state.paused = true;
-  const res = await fetch(`${baseUrl}/api/status`);
-  assert.equal(res.status, 200);
-  const body = await res.json();
-  assert.equal(body.paused, true);
-  assert.equal(body.serverUrl, 'http://example.test');
+  const statusResponse = await fetch(`${baseUrl}/api/status`, {
+    headers: authenticatedHeaders(cookie, { origin: false }),
+  });
+  assert.equal(statusResponse.status, 200);
+  assert.equal((await statusResponse.json()).paused, true);
+
+  for (const route of [
+    '/api/resume',
+    '/api/pause',
+    '/api/activity-tracking/enable',
+    '/api/activity-tracking/disable',
+    '/api/autostart/enable',
+    '/api/autostart/disable',
+    '/api/uninstall',
+  ]) {
+    const response = await fetch(`${baseUrl}${route}`, {
+      method: 'POST',
+      headers: authenticatedHeaders(cookie),
+    });
+    assert.equal(response.status, 200, route);
+  }
+
+  assert.deepEqual(handlerCalls, [
+    'resume',
+    'pause',
+    'enableActivityTracking',
+    'disableActivityTracking',
+    'enableAutostart',
+    'disableAutostart',
+    'uninstall',
+  ]);
 });
 
-test('POST /api/pause and /api/resume toggle paused state', async () => {
-  const pauseRes = await fetch(`${baseUrl}/api/pause`, { method: 'POST' });
-  assert.equal(pauseRes.status, 200);
-  assert.equal(state.paused, true);
+test('foreign origins, cross-site fetches, and missing mutation origins are rejected before handlers', async () => {
+  const cookie = await createSession();
+  const attempts = [
+    {
+      Origin: 'https://untrusted.example',
+      'Sec-Fetch-Site': 'cross-site',
+      Cookie: cookie,
+    },
+    authenticatedHeaders(cookie, { origin: false }),
+  ];
 
-  const resumeRes = await fetch(`${baseUrl}/api/resume`, { method: 'POST' });
-  assert.equal(resumeRes.status, 200);
-  assert.equal(state.paused, false);
+  for (const headers of attempts) {
+    const response = await fetch(`${baseUrl}/api/activity-tracking/enable`, { method: 'POST', headers });
+    assert.equal(response.status, 403);
+  }
+  assert.deepEqual(handlerCalls, []);
+
+  const readResponse = await fetch(`${baseUrl}/api/status`, {
+    headers: {
+      Origin: 'https://untrusted.example',
+      'Sec-Fetch-Site': 'cross-site',
+      Cookie: cookie,
+    },
+  });
+  assert.equal(readResponse.status, 403);
 });
 
-test('POST /api/activity-tracking/enable and /disable call through to handlers', async () => {
-  await fetch(`${baseUrl}/api/activity-tracking/enable`, { method: 'POST' });
-  assert.equal(state.trackActivity, true);
-
-  await fetch(`${baseUrl}/api/activity-tracking/disable`, { method: 'POST' });
-  assert.equal(state.trackActivity, false);
+test('a foreign Host header is rejected even with an otherwise valid session', async () => {
+  const cookie = await createSession();
+  const { response } = await requestWithHost(
+    '/api/status',
+    'untrusted.example',
+    authenticatedHeaders(cookie, { origin: false }),
+  );
+  assert.equal(response.statusCode, 403);
+  assert.deepEqual(handlerCalls, []);
 });
 
-test('POST /api/autostart/enable and /disable call through to handlers', async () => {
-  await fetch(`${baseUrl}/api/autostart/enable`, { method: 'POST' });
-  assert.equal(state.autostart, true);
+test('missing or invalid access evidence cannot read status or create a session', async () => {
+  const missingSession = await fetch(`${baseUrl}/api/status`, {
+    headers: { 'Sec-Fetch-Site': 'same-origin' },
+  });
+  assert.equal(missingSession.status, 401);
 
-  await fetch(`${baseUrl}/api/autostart/disable`, { method: 'POST' });
-  assert.equal(state.autostart, false);
+  const badLaunch = await fetch(`${baseUrl}/api/launch`, {
+    method: 'POST',
+    headers: { 'X-Respawn-Control-Key': 'wrong' },
+  });
+  assert.equal(badLaunch.status, 401);
+
+  const badTicket = await fetch(`${baseUrl}/api/session`, {
+    method: 'POST',
+    headers: {
+      Origin: baseUrl,
+      'Sec-Fetch-Site': 'same-origin',
+      'X-Respawn-Control-Ticket': 'missing',
+    },
+  });
+  assert.equal(badTicket.status, 401);
 });
 
-test('POST /api/uninstall invokes the uninstall handler', async () => {
-  const res = await fetch(`${baseUrl}/api/uninstall`, { method: 'POST' });
-  assert.equal(res.status, 200);
-  assert.ok(handlerCalls.includes('uninstall'));
-});
-
-test('a handler throwing results in a 400 with the error message', async () => {
-  server.close();
-  const failingHandlers = makeHandlers();
-  failingHandlers.enableAutostart = () => {
-    throw new Error('Autostart kann nur mit der installierten .exe eingerichtet werden.');
+test('launch tickets are single-use', async () => {
+  const launchResponse = await fetch(`${baseUrl}/api/launch`, {
+    method: 'POST',
+    headers: { 'X-Respawn-Control-Key': ACCESS_KEY },
+  });
+  const { ticket } = await launchResponse.json();
+  const headers = {
+    Origin: baseUrl,
+    'Sec-Fetch-Site': 'same-origin',
+    'X-Respawn-Control-Ticket': ticket,
   };
-  server = createControlServer(failingHandlers);
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  baseUrl = `http://127.0.0.1:${server.address().port}`;
+  assert.equal((await fetch(`${baseUrl}/api/session`, { method: 'POST', headers })).status, 204);
+  assert.equal((await fetch(`${baseUrl}/api/session`, { method: 'POST', headers })).status, 401);
+});
 
-  const res = await fetch(`${baseUrl}/api/autostart/enable`, { method: 'POST' });
+test('handler failures still return a bounded client error after authorization', async () => {
+  failEnableAutostart = true;
+  const cookie = await createSession();
+  const res = await fetch(`${baseUrl}/api/autostart/enable`, {
+    method: 'POST',
+    headers: authenticatedHeaders(cookie),
+  });
   assert.equal(res.status, 400);
   const body = await res.json();
   assert.match(body.error, /installierten \.exe/);
 });
 
-test('unknown routes 404', async () => {
+test('unknown routes return 404 for the expected Host', async () => {
   const res = await fetch(`${baseUrl}/nope`);
   assert.equal(res.status, 404);
+});
+
+test('listenWithRetry keeps loopback binding and advances to the next port', async () => {
+  const occupied = http.createServer();
+  await new Promise((resolve) => occupied.listen(0, '127.0.0.1', resolve));
+  const preferredPort = occupied.address().port;
+  const retryServer = createControlServer(makeHandlers(), { accessKey: ACCESS_KEY });
+  try {
+    const { port } = await listenWithRetry(retryServer, preferredPort, 1);
+    assert.equal(port, preferredPort + 1);
+    assert.equal(retryServer.address().address, '127.0.0.1');
+  } finally {
+    occupied.close();
+    retryServer.close();
+  }
+});
+
+// Asserted against the page source because this suite has no DOM: the page is
+// a string the agent serves, and pulling a browser into the agent package for
+// one assertion would cost far more than the bug is worth. The shape is the
+// contract, not an incidental detail -- with the reset sitting in an `else`
+// of `res.ok`, a controlFetch that rejects before `res` exists skips it, and
+// the status poll that would repaint the switch fails for the same reason.
+// The switch then keeps showing a setting the agent does not have.
+test('a control action that never reaches the agent restores its switch', () => {
+  const page = renderPage('test-nonce');
+
+  for (const id of ['activityToggle', 'autostartToggle']) {
+    const start = page.indexOf(`document.getElementById('${id}').addEventListener`);
+    assert.ok(start >= 0, `${id} handler not found`);
+    const handler = page.slice(start, page.indexOf('\n});', start));
+
+    assert.match(handler, /catch \(err\) \{\s*\n\s*e\.target\.checked = !enable;/, id);
+    assert.doesNotMatch(handler, /else \{ e\.target\.checked = !enable;/, id);
+  }
 });

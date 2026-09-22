@@ -7,8 +7,20 @@ const path = require('path');
 
 const DEFAULT_POLL_INTERVAL_MS = 10_000;
 
+// The installed .exe always sits next to its own agent.config.json, but its
+// working directory is whatever started it — install.bat runs from the
+// unpacked download folder, the autostart shortcut from the install
+// directory. Resolving the default relative to the .exe keeps the install
+// directory (and with it the state file, the log and the local control
+// panel's runtime file) in one place no matter who launched the agent.
+// Unpackaged dev runs have no install directory and stay on the cwd.
+function defaultConfigPath() {
+  const baseDir = typeof process.pkg === 'undefined' ? process.cwd() : path.dirname(process.execPath);
+  return path.join(baseDir, 'agent.config.json');
+}
+
 function loadConfig(configPath) {
-  const resolved = configPath ? path.resolve(configPath) : path.join(process.cwd(), 'agent.config.json');
+  const resolved = configPath ? path.resolve(configPath) : defaultConfigPath();
 
   if (!fs.existsSync(resolved)) {
     throw new Error(
@@ -54,4 +66,4 @@ function loadConfig(configPath) {
   };
 }
 
-module.exports = { loadConfig, DEFAULT_POLL_INTERVAL_MS };
+module.exports = { defaultConfigPath, loadConfig, DEFAULT_POLL_INTERVAL_MS };

@@ -10,6 +10,18 @@ const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
 
+const CONTROL_SHORTCUT_NAMES = [
+  'Respawn-Agent Steuerung.lnk',
+  'Respawn-Agent Steuerung.url',
+];
+
+function buildDesktopShortcutCleanupPowerShell(
+  desktopExpression = "[Environment]::GetFolderPath('Desktop')",
+) {
+  const names = CONTROL_SHORTCUT_NAMES.map((name) => `'${name}'`).join(', ');
+  return `$desktop = ${desktopExpression}; @(${names}) | ForEach-Object { Remove-Item -LiteralPath (Join-Path $desktop $_) -Force -ErrorAction SilentlyContinue }`;
+}
+
 function scheduleUninstall({ installDir, startupShortcutPath }) {
   if (os.platform() !== 'win32') {
     // Dev/test convenience path — no running .exe to worry about.
@@ -22,6 +34,7 @@ function scheduleUninstall({ installDir, startupShortcutPath }) {
     '@echo off',
     'timeout /t 2 /nobreak >nul',
     startupShortcutPath ? `if exist "${startupShortcutPath}" del /f /q "${startupShortcutPath}"` : '',
+    `powershell -NoProfile -ExecutionPolicy Bypass -Command "${buildDesktopShortcutCleanupPowerShell()}"`,
     installDir ? `if exist "${installDir}" rmdir /s /q "${installDir}"` : '',
   ].filter(Boolean);
 
@@ -33,4 +46,4 @@ function scheduleUninstall({ installDir, startupShortcutPath }) {
   spawn('cmd.exe', ['/c', scriptPath], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
 }
 
-module.exports = { scheduleUninstall };
+module.exports = { buildDesktopShortcutCleanupPowerShell, scheduleUninstall };

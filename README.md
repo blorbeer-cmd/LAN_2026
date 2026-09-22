@@ -273,7 +273,7 @@ Recovery-Code oder ein bereits beanspruchtes Admin-Konto.
 | `KIOSK_TOKEN` | *(leer = installationsweiter Direktzugriff gesperrt)* | Optionaler kompatibler Read-only-Token für Kiosk-GET-Endpunkte und `kiosk:subscribe`; dient ohne separates `KIOSK_PASSWORD` zugleich als gemeinsames Kiosk-Passwort. Die eventgebundene Kontoanmeldung bleibt ohne ihn nutzbar. |
 | `COOKIE_SECURE` | `1` | Sichere Session-Cookies; nur für bewusstes lokales HTTP-Hosting mit `0` abschalten. |
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |
-| `EXPECTED_AGENT_VERSION` | `1.0.0` | Version, die die LAN-Bereitschaft als aktuell bewertet. Abweichende oder unbekannte Agent-Versionen werden vor dem Event hervorgehoben. |
+| `EXPECTED_AGENT_VERSION` | `1.1.0` | Version, die die LAN-Bereitschaft als aktuell bewertet. Abweichende oder unbekannte Agent-Versionen werden vor dem Event hervorgehoben. Muss der Version in `agent/package.json` folgen, sonst meldet die Bereitschaft dauerhaft „Abweichende Version". |
 | `PRIVACY_RETENTION_ENABLED` | `0` | Aktiviert erst nach Admin-Vorschau die begrenzte tägliche Datenschutz-Bereinigung. Fristen und weitere `PRIVACY_RETENTION_*`-Variablen: [`docs/privacy-and-retention.md`](docs/privacy-and-retention.md). |
 | `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verlangt `ADMIN_RECOVERY_CODE`, warnt bei fehlendem `PRIVACY_DELETION_LEDGER_FILE` und beendet den Prozess bei unerwarteten Fehlern, damit Docker sauber neu startet. Für die LAN-Party selbst ohne Supervisor bewusst **nicht** setzen. |
 
