@@ -139,8 +139,11 @@ async function tick(config, stateFilePath) {
 
     // Length-capped because it ends up as text in the control panel; an older
     // server simply omits the field and the panel then says nothing at all.
-    if (typeof result?.expectedAgentVersion === 'string' && result.expectedAgentVersion.length <= 64) {
-      expectedAgentVersion = result.expectedAgentVersion;
+    // A blank value is treated the same way as a missing one: it names no
+    // version, so it must never make the panel claim a mismatch.
+    const reportedVersion = typeof result?.expectedAgentVersion === 'string' ? result.expectedAgentVersion.trim() : '';
+    if (reportedVersion && reportedVersion.length <= 64) {
+      expectedAgentVersion = reportedVersion;
     }
 
     if (state.paused) {

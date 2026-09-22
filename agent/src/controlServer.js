@@ -94,6 +94,9 @@ function renderPage(scriptNonce = randomToken()) {
     border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; font-size: 0.85rem;
   }
   .update-link { display: inline-block; margin-top: 6px; color: #ff9f0a; font-weight: 600; }
+  /* display: inline-block would otherwise beat the browser's own
+     [hidden] { display: none }, leaving a dead link visible. */
+  .update-link[hidden] { display: none; }
   .danger-zone { margin-top: 22px; padding-top: 16px; border-top: 1px solid rgba(255,69,58,0.25); }
   .hint { font-size: 0.78rem; opacity: 0.55; margin-top: 2px; }
   #msg { font-size: 0.82rem; margin-top: 14px; min-height: 1em; }
@@ -107,7 +110,7 @@ function renderPage(scriptNonce = randomToken()) {
 
     <div class="update-note" id="updateNote" hidden>
       <div id="updateText"></div>
-      <a class="update-link" id="updateLink" rel="noreferrer">Neue Version im Profil herunterladen</a>
+      <a class="update-link" id="updateLink" rel="noreferrer">Passende Version im Profil herunterladen</a>
     </div>
 
     <div class="row">
@@ -188,8 +191,8 @@ function renderUpdateNote(s) {
   if (!stale) { note.hidden = true; return; }
 
   document.getElementById('updateText').textContent =
-    'Neue Agent-Version verfügbar: ' + s.agentVersion + ' → ' + s.expectedAgentVersion
-    + '. Der Agent aktualisiert sich nicht selbst.';
+    'Abweichende Agent-Version: die Orga erwartet ' + s.expectedAgentVersion
+    + ' (installiert: ' + s.agentVersion + '). Der Agent aktualisiert sich nicht selbst.';
 
   const link = document.getElementById('updateLink');
   // Only ever link somewhere the config actually points at, and only over
