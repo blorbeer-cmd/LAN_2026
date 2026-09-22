@@ -70,9 +70,15 @@ Vorab-Einwilligung setzen. Sie merkt sich die Textversion, unter der sie erteilt
 nur für genau diese Fassung: Sobald der Einwilligungstext sich ändert, greift sie nicht mehr und es
 wird wieder aktiv gefragt. Sie füllt ausschließlich Lücken — für ein Event, zu dem bereits eine
 Entscheidung vorliegt, ändert sie nichts, und ein einzelner Widerruf bleibt bestehen. Eingetragen
-wird sie in dem Moment, in dem ein Event tatsächlich trackbar wird: wenn die Orga das Tracking
+wird sie in dem Moment, in dem ein Bereich tatsächlich trackbar wird: wenn die Orga das Tracking
 startet oder wenn jemand ein bereits laufendes Tracking-Event zusagt. In beiden Fällen entsteht
 eine reguläre Einwilligungszeile mit Zweck und Textversion, kein stillschweigender Sonderfall.
+
+Sie gilt auch für eine freigeschaltete Gruppe. Das ist bewusst so, muss aber klar sein: Eine Gruppe
+ist der eine trackbare Bereich ohne Endzeitpunkt, die Erfassung läuft dort also bis zum Widerruf
+statt bis zum Eventende. Die Profilbeschriftung nennt Gruppen deshalb ausdrücklich und benennt
+diesen Unterschied. Wer das nicht will, lässt die Vorab-Einwilligung aus und entscheidet weiter je
+Bereich einzeln; ein Widerruf der einzelnen Gruppenzeile bleibt jederzeit möglich.
 
 ## Welche Bereiche überhaupt trackbar sind
 
@@ -87,7 +93,8 @@ Nicht jeder Arbeitsbereich kann Tracking erhalten:
 - Eine Gruppe ist der eine dauerhafte Bereich, der Tracking erhalten kann. Sie ist bewusst
   permanent geöffnet statt zufällig ohne Datum, deshalb zählt ihr fehlender Startzeitpunkt als
   „läuft“. Auch dort gilt die übliche Zweistufigkeit: Die Orga schaltet das Tracking für die Gruppe
-  frei, und danach entscheidet jedes Mitglied für sich per Einwilligung.
+  frei, und danach entscheidet jedes Mitglied für sich per Einwilligung — entweder direkt oder über
+  die oben beschriebene stehende Vorab-Einwilligung, die genau diese Entscheidung vorwegnimmt.
 - Eine LAN-Party mit festem Zeitraum bleibt der Regelfall.
 
 ## Aufbewahrung aktivieren

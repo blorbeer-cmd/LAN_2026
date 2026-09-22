@@ -3763,6 +3763,18 @@ test('migration 107 stops tracking the base workspace and adds the consent defau
     `INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen)
      VALUES ('base-track-player', 'default-group', 'instance-base-event', ?)`,
   ).run(now);
+  // Someone was mid-game when the upgrade ran. Deleting only the live rows
+  // would strand this session: closeStaleSessions finds an orphan solely by
+  // joining tracking_live_games onto tracking_live_contexts.
+  fixture.prepare('INSERT INTO games (id, name, created_at) VALUES (?, ?, ?)').run('base-track-game', 'Base Game', now);
+  fixture.prepare(
+    `INSERT INTO tracking_live_games (player_id, group_id, event_id, game_id, since)
+     VALUES ('base-track-player', 'default-group', 'instance-base-event', 'base-track-game', ?)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at)
+     VALUES ('base-track-session', 'base-track-player', 'base-track-game', 'instance-base-event', ?, NULL)`,
+  ).run(now);
   fixture.prepare('DELETE FROM schema_migrations WHERE version = 107').run();
   fixture.close();
 
@@ -3779,6 +3791,17 @@ test('migration 107 stops tracking the base workspace and adds the consent defau
     migrated.prepare("SELECT 1 FROM tracking_live_contexts WHERE event_id = 'instance-base-event'").get(),
     undefined,
     'the live rows of the former base-event tracking are gone',
+  );
+  assert.equal(
+    migrated.prepare("SELECT 1 FROM tracking_live_games WHERE event_id = 'instance-base-event'").get(),
+    undefined,
+  );
+  const strandedSession = migrated
+    .prepare("SELECT ended_at AS endedAt FROM play_sessions WHERE id = 'base-track-session'")
+    .get() as { endedAt: number | null };
+  assert.ok(
+    strandedSession.endedAt !== null,
+    'the session open at upgrade time is closed, not left to inflate playtime forever',
   );
   assert.ok(
     (migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>).some(

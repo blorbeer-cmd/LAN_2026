@@ -5147,6 +5147,16 @@ function excludeBaseWorkspaceFromTrackingAndAddConsentDefault(): void {
     db.exec('ALTER TABLE players ADD COLUMN tracking_consent_default_version TEXT');
   }
   db.prepare('UPDATE events SET tracking_enabled = 0 WHERE id = ? AND tracking_enabled = 1').run(BASE_EVENT_ID);
+  // Same order and scope as closeEventContexts: a still-open session has to be
+  // closed *before* its live rows go, because closeStaleSessions only ever
+  // finds an orphan by joining those two tables. Without this the row would
+  // stay open forever — inflating that game's playtime (FR-29) and staying
+  // outside the ended_play_sessions retention rule, which only takes rows that
+  // have an ended_at.
+  db.prepare('UPDATE play_sessions SET ended_at = ? WHERE event_id = ? AND ended_at IS NULL').run(
+    Date.now(),
+    BASE_EVENT_ID,
+  );
   db.prepare('DELETE FROM tracking_live_contexts WHERE event_id = ?').run(BASE_EVENT_ID);
   db.prepare('DELETE FROM tracking_live_games WHERE event_id = ?').run(BASE_EVENT_ID);
 }

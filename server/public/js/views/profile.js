@@ -98,6 +98,13 @@ function renderPrivacySection() {
       <span style="flex:1;"><strong>${escapeHtml(event.eventName)}</strong><br><span class="muted" style="font-size:var(--font-size-xs);">${event.textVersion ? `Bestätigt: Text ${escapeHtml(event.textVersion)}` : 'Bestandseinwilligung ohne dokumentierte Textversion'}</span></span>
     </label>`)
     .join('');
+  // A pre-authorization set under an older text stops applying, and the empty
+  // checkbox alone would read as "never set". Name it instead, the same way
+  // the legacy event consents below are named.
+  const staleAutoConsent =
+    trackingConsent.autoConsent?.agreedTextVersion && !trackingConsent.autoConsent.enabled
+      ? `<p class="muted" style="margin:0;font-size:var(--font-size-xs);">Frühere Vorab-Einwilligung zu Text ${escapeHtml(trackingConsent.autoConsent.agreedTextVersion)} – gilt nicht mehr für den aktuellen Text. Setze das Häkchen neu, um sie zu erneuern.</p>`
+      : '';
   const retentionRows = retention.policies
     .map((policy) => `<li>${escapeHtml(policy.purpose)}: ${policy.retentionDays === null ? 'bis zum Ablauf' : `${policy.retentionDays} Tage`}<br><span class="muted">${escapeHtml(policy.protection)}</span></li>`)
     .join('');
@@ -115,8 +122,9 @@ function renderPrivacySection() {
       ${consentRows || '<p class="muted" style="margin:0;">Keine zugesagten Events.</p>'}
       <label class="check-row">
         <input type="checkbox" id="privacy-auto-consent" ${trackingConsent.autoConsent?.enabled ? 'checked' : ''} />
-        <span style="flex:1;"><strong>Bei neuen trackbaren Events automatisch einwilligen</strong><br><span class="muted" style="font-size:var(--font-size-xs);">Gilt nur für diesen Einwilligungstext. Ändert er sich, wirst du erneut gefragt. Einzelne Events kannst du oben jederzeit wieder abwählen.</span></span>
+        <span style="flex:1;"><strong>Bei neuen trackbaren Events und Gruppen automatisch einwilligen</strong><br><span class="muted" style="font-size:var(--font-size-xs);">Gilt nur für diesen Einwilligungstext. Ändert er sich, wirst du erneut gefragt. Eine freigeschaltete Gruppe hat keinen Endzeitpunkt – dort läuft die Erfassung, bis du sie abwählst. Einzelne Einträge kannst du oben jederzeit wieder abwählen.</span></span>
       </label>
+      ${staleAutoConsent}
       ${legacyEventRows ? `<strong>Frühere Event-Einwilligungen</strong><p class="muted" style="margin:0;">Diese Einwilligungen gehören zu einer älteren Textversion und aktivieren keine Erfassung mehr. Du kannst sie hier endgültig widerrufen.</p>${legacyEventRows}` : ''}
       ${legacyGroupRows ? `<strong>Frühere Community-Einwilligungen</strong><p class="muted" style="margin:0;">Diese Einwilligung für Aktivität außerhalb eigener Events wird aktuell nicht für Erfassung verwendet. Du kannst sie hier widerrufen.</p>${legacyGroupRows}` : ''}
     </div>
