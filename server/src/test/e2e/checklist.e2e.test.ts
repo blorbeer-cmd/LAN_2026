@@ -40,6 +40,14 @@ async function openChecklist(): Promise<void> {
 async function switchAccount(account: E2EAccount): Promise<void> {
   await switchSessionCookie(page, BASE_URL, account.cookie);
   await page.waitForSelector('#app:not([hidden])');
+  // The shell unhides while main() is still booting: it wires the
+  // 'respawn:navigate' listener and applies the URL's own route only
+  // afterwards. A navigation dispatched inside that window is dropped (no
+  // listener yet) or overwritten by that startup route, and the test then
+  // runs against the view the previous test left behind. main() publishes
+  // the end of that phase as the history entry it replaces right before its
+  // own switchView, so wait for that state instead of the shell alone.
+  await page.waitForFunction(() => Boolean(window.history.state?.view));
 }
 
 before(async () => {
