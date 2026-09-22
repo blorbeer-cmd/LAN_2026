@@ -307,7 +307,7 @@ export const components = [
   {
     "id": "row-icons",
     "role": "standard-control",
-    "selector": ".tournament-lobby-copy, .home-current-dismiss, .notification-center-seen, .notification-center-remove, .notification-highlight-dismiss",
+    "selector": ".tournament-lobby-copy, .notification-center-seen, .notification-center-remove, .notification-highlight-dismiss",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "Copy, dismiss and detail actions retain their 44px icon slot."
@@ -725,7 +725,7 @@ export const components = [
   {
     "id": "structural-cards",
     "role": "structural-target",
-    "selector": ".card, .list-row, .more-card, .home-current-navigate, .notification-highlight-link, .tournament-list-card",
+    "selector": ".card, .list-row, .more-card, .home-current-navigate, .home-todo-navigate, .notification-highlight-link, .tournament-list-card",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#strukturziele-mit-44-px",
     "purpose": "Whole navigation/result cards preserve their existing row or multiline card geometry.",
@@ -1228,6 +1228,23 @@ export const components = [
     "purpose": "Selected swatch changes its border color without resizing the palette control.",
     "control": false,
     "properties": []
+  },
+  {
+    "id": "home-group-member",
+    "role": "structural-target",
+    "selector": ".home-group-member",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#gruppen-home-und-kompakte-aktuell-liste",
+    "purpose": "Whole group member card keeps its existing row height as a navigation target into the member profile.",
+    "control": false
+  },
+  {
+    "id": "home-group-overview-open",
+    "role": "standard-control",
+    "selector": ".home-group-overview-open",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#gruppen-home-und-kompakte-aktuell-liste",
+    "purpose": "Inline group overview action links into group management without a filled button surface."
   }
 ];
 
@@ -2112,6 +2129,18 @@ export const permanentVariants = [
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "properties": [],
     "reason": "The tournament and matchmaking drag callers lower the moving roster row opacity without resizing it."
+  },
+  {
+    "id": "home-current-compact-navigate",
+    "role": "composite-part",
+    "selector": ".home-current--compact .home-current-navigate",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#gruppen-home-und-kompakte-aktuell-liste",
+    "properties": [
+      "min-height",
+      "padding"
+    ],
+    "reason": "Compact current list tightens its existing navigation rows to the tap-target height and inset."
   }
 ];
 
