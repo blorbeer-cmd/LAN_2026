@@ -169,12 +169,42 @@ test('agent reports the running node process and the server reflects it as "play
   // Agent reports are deliberately counted only inside the account's active
   // event, while that event's tracking window is open and the participant has
   // opted in. Set up that real contract explicitly instead of relying on the
-  // legacy group-wide tracking default.
-  const activeEventRes = await fetch(`${BASE_URL}/api/events/active`, {
-    headers: { Cookie: playerCookie },
+  // legacy group-wide tracking default. The permanently open base workspace is
+  // not trackable, so this needs a real LAN period the account joins and
+  // selects — the same sequence an organizer walks through in production.
+  const now = Date.now();
+  const createdEventRes = await fetch(`${BASE_URL}/api/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ name: 'E2E Agent LAN', startsAt: now - 1000, endsAt: now + 3600000 }),
   });
-  assert.equal(activeEventRes.status, 200);
-  const activeEvent = await activeEventRes.json();
+  const activeEvent = await createdEventRes.json();
+  assert.equal(createdEventRes.status, 201, JSON.stringify(activeEvent));
+  // Both identities join and select it: the account produces the report, and
+  // the live board below is scoped to the *reader's* active event, so the
+  // admin has to be in the same period to see it.
+  const meRes = await fetch(`${BASE_URL}/api/me`, { headers: { Cookie: adminCookie } });
+  const admin = await meRes.json();
+  assert.equal(meRes.status, 200, JSON.stringify(admin));
+  const participantsRes = await fetch(`${BASE_URL}/api/events/${activeEvent.id}/participants`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ playerIds: [player.id, admin.id] }),
+  });
+  assert.equal(participantsRes.status, 200, await participantsRes.text());
+  for (const cookie of [playerCookie, adminCookie]) {
+    const acceptRes = await fetch(`${BASE_URL}/api/events/${activeEvent.id}/invitation/accept`, {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+    assert.equal(acceptRes.status, 200, await acceptRes.text());
+    const selectRes = await fetch(`${BASE_URL}/api/me/active-event`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ eventId: activeEvent.id }),
+    });
+    assert.equal(selectRes.status, 200, await selectRes.text());
+  }
   const trackingStartRes = await fetch(`${BASE_URL}/api/events/${activeEvent.id}/tracking/start`, {
     method: 'POST',
     headers: { Cookie: adminCookie },
