@@ -302,6 +302,16 @@ Rahmen/Padding überprüft. Die CSS-Range-Abfrage auf die tatsächliche Containe
 auch 319,75 px; 320 px bleibt einzeilig. Die rohe 320-px-Schwelle besitzt den Kommentar
 `design-token-ok: DataRowAction-Schwelle` auf derselben Zeile.
 
+### Gruppen-Home und kompakte Aktuell-Liste
+
+Das Home einer Gruppe ohne Termin zeigt die Mitglieder als eigene Karten und verlinkt aus der
+Übersicht in die Gruppenverwaltung. Die kompakte „Aktuell“-Liste stellt ihre Navigationszeilen
+dichter dar, ohne neue Innengeometrie einzuführen.
+
+- `registry:home-group-member`: Whole group member card keeps its existing row height as a navigation target into the member profile.
+- `registry:home-group-overview-open`: Inline overview action links into group management and owns only its inline text metrics, without a filled button surface.
+- `registry:home-current-compact-navigate`: Compact current list tightens its existing navigation rows to the tap-target height and inset.
+
 ## 7. Erreichbare Zustände
 
 - Standard: aktiv, Hover nur auf Hover-Geräten, Tastaturfokus und deaktiviert.

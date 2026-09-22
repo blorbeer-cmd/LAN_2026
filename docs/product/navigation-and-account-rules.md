@@ -285,21 +285,20 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   up to three tasks assigned to the signed-in identity, ordered by due date, or — while none are
   assigned yet — a single row nudging toward the shared pool's still-open To-Dos; with neither, the
   tile stays hidden rather than offering an empty link into the full list. Every current
-  item pairs its full-row navigation action with a
-  separate icon action that hides only that live occurrence for the signed-in identity and active
-  event on the current device; a new vote round, order, tournament or lobby remains visible again.
-  Tappable current items, the personal status and player entries remain nested cards on the
-  secondary elevated background; „Gerade aktiv“ is a subsection of
+  item is a single full-row action that navigates into its source view.
+  Current items and To-Dos use the same compact, divided row treatment inside their main card.
+  The personal status and player entries remain nested cards on the secondary elevated background;
+  „Gerade aktiv“ is a subsection of
   „Live-Status“ rather than a competing page-level group. A pending event invitation appears here as
   a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); the full card with
   Annehmen/Ablehnen lives only in Profile, not in this list. Main groups stay in one continuous column
-  at phone and laptop widths while their existing internal grids remain responsive. In Desktop mode,
-  „Meine To-Dos“ and „Aktuell“ share the first priority row, followed by a three-column Live-Status,
-  the full-width seating plan and a three-column top-six ranking. If only one priority card exists it
-  spans the row. A general event
+  at phone and laptop widths while their existing internal grids remain responsive. „Aktuell“ appears
+  above „Meine To-Dos“ as its own full-width main card in every layout. A general event
   replaces the LAN-only live and ranking groups with a leading event overview containing its type,
   period, optional location/note, participant count and contribution. It has no „Organisation“
-  shortcut group; planning workflows remain reachable through navigation. Seating is LAN-only,
+  shortcut group; planning workflows remain reachable through navigation. A group without an event
+  instead shows its members. Its
+  overview links directly to group management. Seating is LAN-only,
   including Home's read-only plan and Admin's editor. Arcade stays available for
   both event types because its browser games do not depend on LAN tracking or competition areas.
   The personal live-state action says only „Pause“ while active and „Bin wieder da“ while paused;

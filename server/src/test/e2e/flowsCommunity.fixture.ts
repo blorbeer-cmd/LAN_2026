@@ -4,7 +4,7 @@
 // Sibling tests here intentionally share that state and run in order.
 
 import assert from 'node:assert/strict';
-import { E2E_KIOSK_TOKEN, waitForPlayerData } from './authHelpers';
+import { E2E_KIOSK_TOKEN } from './authHelpers';
 import {
   flowTest,
   registerFlowFixture,
@@ -477,84 +477,24 @@ flowTest('the device back button steps back through in-app views instead of leav
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Vote');
 });
 
-flowTest('Aktuell: an open vote can be dismissed without hiding the next round', async (t) => {
-  t.after(async () => page.setViewportSize({ width: 390, height: 844 }));
+flowTest('Aktuell: an open vote appears as a compact navigation row on Home', async () => {
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-title');
   await page.fill('#votes-title', 'Freitagabend-Runde');
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
 
-  // This shard deliberately has no earlier vote lifecycle that happens to
-  // warm the shared app state. Rehydrate once from the server so the Home
-  // assertion proves persisted state instead of relying on test order.
   const openedVote = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
   assert.equal(openedVote.title, 'Freitagabend-Runde');
-  await page.reload();
-  // The shell unhides before app.js attaches the bottom-navigation handlers,
-  // so a click right after #app appears can be dropped. Player data is only
-  // published after that wiring, but startup may still be waiting for the
-  // onboarding state and only then restores the Vote route; until then the
-  // app shows its default Home, so a Home click changes nothing and is undone
-  // by that restore. switchView() is the only writer of data-view, which makes
-  // the restored Vote route the observable "startup navigation done" state.
-  await waitForPlayerData(page);
-  await page.waitForSelector('#view-container[data-view="votes"]');
 
   await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('section.grouped-page-section:has(h2:text-is("Aktuell"))');
   const currentVote = page.locator(`[data-current-item="vote:${openedVote.round}"]`);
   await currentVote.waitFor();
-  const dismissButton = currentVote.locator('[data-dismiss-current]');
-  assert.equal(await dismissButton.getAttribute('aria-label'), 'Freitagabend-Runde ausblenden');
-  // Icon-only controls keep the 44px --tap-target-size as their minimum WIDTH
-  // (the horizontal touch target); height follows --control-height (32px), see
-  // the "icon-only controls" assertion in flowsShell.fixture.ts.
-  // Home re-renders its whole container whenever a realtime signal lands (the
-  // new round also raises the push banner). Locator boundingBox() resolves the
-  // button and measures its handle in two protocol steps, so a re-render in
-  // between returned null for a replaced button. Look it up and measure it in
-  // one page task once it is visible.
-  const dismissBoxHandle = await page.waitForFunction((round) => {
-    const button = document.querySelector(`[data-current-item="vote:${round}"] [data-dismiss-current]`);
-    if (!button?.checkVisibility()) return null;
-    const box = button.getBoundingClientRect();
-    return { width: box.width, height: box.height };
-  }, openedVote.round);
-  const mobileDismissBox = await dismissBoxHandle.jsonValue();
-  assert.ok(mobileDismissBox && mobileDismissBox.width >= 44 && mobileDismissBox.height >= 32, JSON.stringify(mobileDismissBox));
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
-  await page.setViewportSize({ width: 900, height: 844 });
-  await currentVote.waitFor();
-  assert.ok(await dismissButton.isVisible());
-  await page.setViewportSize({ width: 390, height: 844 });
-  await dismissButton.focus();
-  await page.keyboard.press('Enter');
-  await currentVote.waitFor({ state: 'detached' });
-
-  // The personal dismissal survives a reload, just like removing an entry
-  // from Mitteilungen, without closing the shared vote itself.
-  await page.reload();
-  await waitForPlayerData(page);
-  // This reload restores Home; wait until startup has applied that route, as
-  // above, so the absence below is checked on the Home it rendered.
-  await page.waitForSelector('#view-container[data-view="home"]');
-  await page.click('.nav-btn[data-view="home"]');
-  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Home');
-  assert.equal(await page.locator(`[data-current-item="vote:${openedVote.round}"]`).count(), 0);
-  assert.equal((await (await page.request.get(`${BASE_URL}/api/votes`)).json()).open, true);
-
-  // A later lifecycle gets a new stable id and must be visible again.
-  await page.click('.nav-btn[data-view="votes"]');
-  await page.click('#votes-close');
-  await page.waitForSelector('#votes-start');
-  await page.fill('#votes-title', 'Samstagabend-Runde');
-  await page.click('#votes-start');
-  await page.waitForSelector('#votes-close');
-  const nextVote = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
-  assert.notEqual(nextVote.round, openedVote.round);
-  await page.click('.nav-btn[data-view="home"]');
-  await page.waitForSelector(`[data-current-item="vote:${nextVote.round}"]:has-text("Samstagabend-Runde")`);
+  // The compact row is a single full-row navigation action into the vote; the
+  // per-item dismiss control was removed with the compact redesign.
+  assert.equal(await currentVote.locator('[data-dismiss-current]').count(), 0);
+  assert.equal(await currentVote.locator('.home-current-navigate').getAttribute('data-navigate'), 'votes');
 
   // Leave no open round behind for later tests.
   await page.click('.nav-btn[data-view="votes"]');
