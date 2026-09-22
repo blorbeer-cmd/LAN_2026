@@ -12,9 +12,22 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawn } = require('child_process');
+const { once } = require('events');
 const { tick, setUpLogFile, formatLocalTime, LOG_FILE_MAX_BYTES, matchAllowedProcessNames } = require('./index.js');
 const systemProbe = require('./systemProbe');
 const { setPaused } = require('./state');
+
+// Polls a condition instead of sleeping for a guessed duration: the test
+// continues the moment the state it needs is actually there, and only the
+// failure case costs the full budget.
+async function waitFor(condition, message, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`Timeout: ${message}`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
 
 function startFakeServer(handler) {
   return new Promise((resolve) => {
@@ -276,4 +289,38 @@ test('setUpLogFile leaves a small existing log file alone', () => {
 test('formatLocalTime pads hours/minutes/seconds to two digits', () => {
   const d = new Date(2026, 0, 5, 3, 7, 9);
   assert.equal(formatLocalTime(d), '03:07:09');
+});
+
+// Runs index.js the way Windows does — as the entry point, not by importing
+// start() — because that wiring is exactly what broke: the shutdown cleanup
+// lived only in start()'s return value, which the entry point discarded.
+// An in-process test cannot see that difference.
+test('shutting the running agent down removes the local control runtime file', async () => {
+  const installDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-shutdown-test-'));
+  const configPath = path.join(installDir, 'agent.config.json');
+  const accessPath = path.join(installDir, '.respawn-control.json');
+  // Unreachable server: the agent logs a failed tick and keeps running, which
+  // is all this test needs. It must not touch a real server.
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify({ serverUrl: 'http://127.0.0.1:1', apiKey: 'shutdown-test-key', pollIntervalMs: 60_000 })
+  );
+
+  const agent = spawn(process.execPath, [path.join(__dirname, 'index.js'), configPath], { stdio: 'ignore' });
+  const exited = once(agent, 'exit');
+
+  try {
+    await waitFor(() => fs.existsSync(accessPath), 'the agent never published its control runtime file');
+    agent.kill('SIGTERM');
+    await exited;
+
+    assert.equal(
+      fs.existsSync(accessPath),
+      false,
+      'a stopped agent must not leave the origin and access key of its dead control server behind'
+    );
+  } finally {
+    agent.kill('SIGKILL');
+    fs.rmSync(installDir, { recursive: true, force: true });
+  }
 });
