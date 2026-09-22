@@ -2,6 +2,13 @@ const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { reportToServer, syncTrackingPaused, fetchAllowedProcessNames } = require('./report');
 
+// Read from the manifest rather than repeating the literal: the version the
+// agent reports is what the readiness check compares against
+// EXPECTED_AGENT_VERSION, so the contract under test is "every report carries
+// the packaged version", not one particular number. Pinning the literal here
+// only produced a second place to forget on a release.
+const AGENT_VERSION = require('../package.json').version;
+
 let calls;
 let originalFetch;
 
@@ -31,7 +38,7 @@ test('reportToServer posts processNames and the api key header to /api/agent/rep
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, 'http://x/api/agent/report');
   assert.equal(calls[0].options.headers['x-api-key'], 'key123');
-  assert.deepEqual(JSON.parse(calls[0].options.body), { processNames: ['cs2.exe'], agentVersion: '1.0.0' });
+  assert.deepEqual(JSON.parse(calls[0].options.body), { processNames: ['cs2.exe'], agentVersion: AGENT_VERSION });
   assert.deepEqual(result, { ok: true, gameIds: ['g1'], tracked: true, trackingPaused: false });
 });
 
@@ -44,7 +51,7 @@ test('reportToServer includes the activity snapshot fields when given one', asyn
   );
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     processNames: ['cs2.exe'],
-    agentVersion: '1.0.0',
+    agentVersion: AGENT_VERSION,
     foregroundProcessName: 'cs2.exe',
     idleSeconds: 3,
   });
