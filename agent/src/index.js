@@ -38,10 +38,17 @@ const {
 } = require('./controlLauncher');
 const { startTrayIcon, hideConsoleWindow } = require('./tray');
 
+const AGENT_VERSION = require('../package.json').version;
 const DEFAULT_CONTROL_PORT = 47813;
 const LOG_FILE_MAX_BYTES = 2 * 1024 * 1024; // reset instead of growing forever across a multi-day LAN party
 
 let logFilePath = null;
+
+// The version the server last said it expects. Deliberately kept in memory
+// only: it is a hint for the control panel, not state the agent acts on, and
+// re-learning it on the first tick after a restart costs nothing. Stays null
+// until a report succeeds, so an offline agent shows no claim about updates.
+let expectedAgentVersion = null;
 
 // toISOString() would print UTC, which reads as "wrong" (and was, in
 // Germany, consistently 1-2h behind) to anyone glancing at the console —
@@ -130,6 +137,12 @@ async function tick(config, stateFilePath) {
       setPaused(stateFilePath, result.trackingPaused);
     }
 
+    // Length-capped because it ends up as text in the control panel; an older
+    // server simply omits the field and the panel then says nothing at all.
+    if (typeof result?.expectedAgentVersion === 'string' && result.expectedAgentVersion.length <= 64) {
+      expectedAgentVersion = result.expectedAgentVersion;
+    }
+
     if (state.paused) {
       log('⏸ Pausiert – kein Tracking.');
     } else {
@@ -183,6 +196,8 @@ function start(configPath) {
         activityTrackingSupported: os.platform() === 'win32',
         autostart: isAutostartEnabled(startupDir),
         autostartSupported: os.platform() === 'win32' && isPackaged,
+        agentVersion: AGENT_VERSION,
+        expectedAgentVersion,
       };
     },
     // Local state flips instantly regardless of network (the control panel

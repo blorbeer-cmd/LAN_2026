@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createTestApp, enableTestTracking } from './testApp';
 import { db } from '../db';
+import { config } from '../config';
 
 const app = createTestApp();
 let apiKey: string;
@@ -59,6 +60,10 @@ test('POST /api/agent/report matches a known process to its game', async () => {
     .send({ processNames: ['explorer.exe', 'CS2.EXE'], agentVersion: '1.0.0' });
   assert.equal(res.status, 200);
   assert.deepEqual(res.body.gameIds, [cs2GameId]);
+  // The report is the only channel the agent has for learning which version
+  // the orga expects; without it the local control panel cannot tell a player
+  // that their install is stale, because the agent never updates itself.
+  assert.equal(res.body.expectedAgentVersion, config.expectedAgentVersion);
 });
 
 test('GET /api/admin/agent-diagnostics exposes the latest agent heartbeat, filtered to configured game processes', async () => {

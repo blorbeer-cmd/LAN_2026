@@ -23,7 +23,9 @@ const { setPaused } = require('./state');
 // failure case costs the full budget.
 async function waitFor(condition, message, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
-  while (!condition()) {
+  // Awaited so an async probe (an HTTP poll, say) is actually evaluated —
+  // a returned Promise is truthy, which would end the loop on the first turn.
+  while (!(await condition())) {
     if (Date.now() > deadline) throw new Error(`Timeout: ${message}`);
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
@@ -321,6 +323,72 @@ test('shutting the running agent down removes the local control runtime file', a
     );
   } finally {
     agent.kill('SIGKILL');
+    fs.rmSync(installDir, { recursive: true, force: true });
+  }
+});
+
+// Proves the whole hint chain in one go: the server's expectedAgentVersion
+// has to survive a tick and come back out of the control panel's status, or
+// the panel silently never mentions an update. Unit-testing the pieces would
+// miss exactly the wiring that broke before (a value computed but never
+// exposed), so this drives the real entry point and the real HTTP surface.
+test('the control panel reports the agent version the server expects', async () => {
+  const installDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-update-hint-'));
+  const configPath = path.join(installDir, 'agent.config.json');
+  const accessPath = path.join(installDir, '.respawn-control.json');
+
+  const server = await startFakeServer((req, res, body) => {
+    if (req.url === '/api/agent/process-names') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ processNames: [] }));
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, gameIds: [], tracked: false, trackingPaused: false, expectedAgentVersion: '9.9.9' }));
+  });
+  const fakeServerUrl = serverUrl(server);
+  fs.writeFileSync(configPath, JSON.stringify({ serverUrl: fakeServerUrl, apiKey: 'hint-test-key', pollIntervalMs: 200 }));
+
+  const agent = spawn(process.execPath, [path.join(__dirname, 'index.js'), configPath], { stdio: 'ignore' });
+  const exited = once(agent, 'exit');
+
+  try {
+    await waitFor(() => fs.existsSync(accessPath), 'the agent never published its control runtime file');
+    const access = JSON.parse(fs.readFileSync(accessPath, 'utf8'));
+
+    // Same handshake the tray and the desktop launcher perform.
+    const launch = await fetch(`${access.origin}/api/launch`, {
+      method: 'POST',
+      headers: { 'X-Respawn-Control-Key': access.accessKey },
+    });
+    assert.equal(launch.status, 200);
+    const { ticket } = await launch.json();
+    const session = await fetch(`${access.origin}/api/session`, {
+      method: 'POST',
+      headers: { Origin: access.origin, 'Sec-Fetch-Site': 'same-origin', 'X-Respawn-Control-Ticket': ticket },
+    });
+    assert.equal(session.status, 204);
+    const cookie = session.headers.getSetCookie()[0].split(';', 1)[0];
+
+    // The value only appears once a report succeeded, so poll for the tick
+    // rather than guessing how long the first one takes.
+    let status;
+    await waitFor(
+      async () => {
+        const res = await fetch(`${access.origin}/api/status`, {
+          headers: { Cookie: cookie, 'Sec-Fetch-Site': 'same-origin' },
+        });
+        status = await res.json();
+        return status.expectedAgentVersion !== null;
+      },
+      'the control panel never picked up the expected version from a report',
+    );
+
+    assert.equal(status.expectedAgentVersion, '9.9.9');
+    assert.equal(status.agentVersion, require('../package.json').version);
+  } finally {
+    agent.kill('SIGKILL');
+    await exited.catch(() => {});
+    server.close();
     fs.rmSync(installDir, { recursive: true, force: true });
   }
 });
