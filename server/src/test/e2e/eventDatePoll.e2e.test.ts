@@ -314,6 +314,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
       stackContentRightInset: stackBox.right - avatarBox.right,
       avatarToOptionRightInset: option.getBoundingClientRect().right - avatarBox.right,
       avatarsBeforeRecommendation: !recommendationBox || avatarBox.right <= recommendationBox.left,
+      avatarToRecommendationGap: recommendationBox ? recommendationBox.left - avatarBox.right : null,
     };
   });
   await ownerPage.setViewportSize({ width: 390, height: 844 });
@@ -323,6 +324,9 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.ok(mobileStack.stackWidth >= 44 && mobileStack.stackHeight >= 32, `the multi-voter stack keeps a comfortable tap target (${JSON.stringify(mobileStack)})`);
   assert.equal(mobileSingleStack.stackWidth, 44, `the single-voter stack keeps the minimum width (${JSON.stringify(mobileSingleStack)})`);
   assert.equal(mobileRecommendationStack.avatarsBeforeRecommendation, true, `mobile avatars sit before the recommendation badge (${JSON.stringify(mobileRecommendationStack)})`);
+  // The badge row's own 4px gap, not the shared `.row` 12px, separates the
+  // avatars from the recommendation so the badge does not look indented.
+  assert.ok(mobileRecommendationStack.avatarToRecommendationGap! <= 5, `the recommendation badge follows the avatars closely (${JSON.stringify(mobileRecommendationStack)})`);
   assert.ok(mobileStack.stackContentRightInset <= 1 && mobileSingleStack.stackContentRightInset <= 1, `mobile avatars align to their tap target edge (${JSON.stringify({ mobileStack, mobileSingleStack })})`);
   await ownerPage.setViewportSize({ width: 1024, height: 800 });
   const desktopStack = await voterStackGeometry(liveStack);
@@ -331,6 +335,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.ok(Math.abs(desktopStack.stackTop - desktopStack.titleTop) <= 16, `the avatars share the option title row (${JSON.stringify(desktopStack)})`);
   assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
   assert.equal(desktopRecommendationStack.avatarsBeforeRecommendation, true, `desktop avatars sit before the recommendation badge (${JSON.stringify(desktopRecommendationStack)})`);
+  assert.ok(desktopRecommendationStack.avatarToRecommendationGap! <= 5, `the recommendation badge follows the avatars closely (${JSON.stringify(desktopRecommendationStack)})`);
   assert.ok(desktopSingleStack.avatarToOptionRightInset >= 20, `a stack without a following badge keeps the option inset (${JSON.stringify(desktopSingleStack)})`);
   assert.ok(desktopStack.stackContentRightInset <= 1 && desktopSingleStack.stackContentRightInset <= 1, `desktop avatars align to their tap target edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
   await liveStack.click();

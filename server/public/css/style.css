@@ -830,7 +830,11 @@ textarea {
   border-radius: var(--radius-sm);
   background: var(--bg-elevated-2);
 }
+/* Own flex row instead of the shared `.row`: that class is declared later in
+   this file and its 12px gap would push the recommendation badge visibly away
+   from the voter avatars. */
 .event-poll-option-badges {
+  display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-1);
