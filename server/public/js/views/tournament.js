@@ -5,20 +5,19 @@
 // "Teams auslosen" (api.matchmaking.generate) rather than reinventing it.
 
 import { api } from '../api.js';
-import { confirmDialog } from '../modal.js';
+import { confirmDialog, openModal } from '../modal.js';
 import { state, catalogGames } from '../state.js';
 import { escapeHtml, avatarHtml, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
-import { moveTournamentDraftPlayer } from '../tournamentTeamDraft.js';
+import { moveTournamentDraftPlayer, teamMoveControlHtml } from '../tournamentTeamDraft.js';
 import { createTournamentPresentation } from '../tournamentPresentation.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { withStepUp } from '../reauth.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { backButtonHtml } from '../backButton.js';
 import { localRouteKey } from '../appRoute.js';
 import { copyText } from '../clipboard.js';
 
@@ -47,7 +46,6 @@ let detailLoading = false;
 let detailForId = null;
 let detailStale = false;
 let detailRequestVersion = 0;
-let editingResultMatchId = null;
 
 let createOpen = false;
 let createCheckedIds = null;
@@ -61,7 +59,6 @@ let createTeamCount = ''; // persisted across re-rolls, so "Teams auslosen" acts
 let createLobbyName = '';
 let createLobbyPassword = '';
 let createProposedTeams = null; // [{ name, playerIds, players (for display), totalRating }]
-let createSelectedPlayerId = null; // touch/keyboard fallback for moving a proposed player
 let createSeatConflicts = null; // { conflicts, considered } from the last proposal, for the seating note
 let createAvoidPairs = []; // seat-neighbor pairs from the last proposal, to re-flag conflicts after a manual move
 let createPlayerSearchQuery = '';
@@ -171,7 +168,6 @@ function applyLocalRoute(route) {
   const key = localRouteKey(route);
   if (key === appliedRouteKey) return;
   appliedRouteKey = key;
-  editingResultMatchId = null;
   if (route?.kind === 'create') {
     createOpen = true;
     currentTournamentId = null;
@@ -194,7 +190,6 @@ function resetCreateForm() {
   createLobbyName = '';
   createLobbyPassword = '';
   createProposedTeams = null;
-  createSelectedPlayerId = null;
   createSeatConflicts = null;
   createAvoidPairs = [];
   createPlayerSearchQuery = '';
@@ -218,6 +213,15 @@ function renderList(container, ctx) {
           <span class="player-name">${escapeHtml(t.name)}</span>
           <span class="muted tournament-list-game">${escapeHtml(t.gameName)}</span>
           <span class="muted tournament-list-meta">${SHORT_FORMAT_LABELS[t.format]} · ${t.teamCount} Teams</span>
+          ${
+            t.status === 'completed'
+              ? t.championName
+                ? `<span class="tournament-list-result">Sieger: <strong>${escapeHtml(t.championName)}</strong></span>`
+                : ''
+              : Number.isInteger(t.matchCount)
+                ? `<span class="tournament-list-result">${t.decidedMatchCount}/${t.matchCount} Partien</span>`
+                : ''
+          }
         </span>
         <span class="tournament-list-card-end">
           <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
@@ -274,11 +278,10 @@ function renderList(container, ctx) {
     completedListHtml = tournamentSection('Abgeschlossene Turniere', completedTournaments, { collapsible: true });
   }
 
-  container.innerHTML = `
+  container.innerHTML = `<div class="grouped-page-sections">
     ${currentListHtml}
-    <div id="tourn-create" class="tournament-create-slot"></div>
     ${completedListHtml}
-  `;
+  </div>`;
 
   container.querySelector('#tourn-new-btn').addEventListener('click', () => {
     ctx.navigateLocal({ kind: 'create' });
@@ -340,9 +343,6 @@ function renderCreateForm(el, ctx) {
         : ''
       : '';
 
-  const selectedTeamIndex = createProposedTeams && createSelectedPlayerId
-    ? createProposedTeams.findIndex((team) => team.players.some((player) => player.id === createSelectedPlayerId))
-    : -1;
 
   const teamsPreview = createProposedTeams
     ? `
@@ -351,7 +351,7 @@ function renderCreateForm(el, ctx) {
         ${createProposedTeams
           .map(
             (t, i) => `
-          <div class="team-card tournament-draft-team${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" data-tourn-drop-team="${i}" role="group" aria-label="${escapeHtml(t.name)}">
+          <div class="team-card tournament-draft-team" data-tourn-drop-team="${i}" role="group" aria-label="${escapeHtml(t.name)}">
             <div class="team-card-header tournament-team-skill-header">
               <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" />
               ${teamSkillHtml(t.players, selectedGameId, { stored: true })}
@@ -359,12 +359,20 @@ function renderCreateForm(el, ctx) {
             ${t.players
               .map(
                 (p) => `
-              <button type="button" class="team-player tournament-drag-player${createSelectedPlayerId === p.id ? ' is-selected' : ''}" draggable="true" data-tourn-drag-player="${p.id}" data-team-index="${i}" aria-pressed="${createSelectedPlayerId === p.id}" aria-label="${escapeHtml(p.name)} verschieben">
-                ${avatarHtml(p, 18)}
-                <span class="player-name team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-                ${seatConflictIconHtml(p)}
-                ${playerSkillHtml(p, selectedGameId, { stored: true })}
-              </button>`
+              <div class="team-player-move-row">
+                <button type="button" class="team-player tournament-drag-player" draggable="true" data-tourn-drag-player="${p.id}" data-team-index="${i}" aria-label="${escapeHtml(p.name)} verschieben">
+                  ${avatarHtml(p, 18)}
+                  <span class="player-name team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
+                  ${seatConflictIconHtml(p)}
+                  ${playerSkillHtml(p, selectedGameId, { stored: true })}
+                </button>
+                ${teamMoveControlHtml({
+                  teamNames: createProposedTeams.map((team) => team.name),
+                  currentIndex: i,
+                  playerName: p.name,
+                  attributes: `data-tourn-move-select="${p.id}"`,
+                })}
+              </div>`
               )
               .join('')}
           </div>`
@@ -397,7 +405,6 @@ function renderCreateForm(el, ctx) {
           playerAttribute: 'data-create-player',
           emptyAttribute: 'data-tourn-player-search-empty',
           selectAllId: 'tourn-select-all',
-          selectNoneId: 'tourn-select-none',
           toolbarLeadingHtml: `<div class="tournament-team-count-field">
             <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
             <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
@@ -459,7 +466,7 @@ function renderCreateForm(el, ctx) {
           createFormat === 'round_robin' || createFormat === 'group_knockout'
             ? `<div class="check-row">
                  <input type="checkbox" id="tourn-two-legged" ${createTwoLegged ? 'checked' : ''} />
-                 <label for="tourn-two-legged">Hin- und Rückspiel${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
+                 <label for="tourn-two-legged">Hin- & Rückrunde${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
                </div>`
             : ''
         }
@@ -588,7 +595,6 @@ function renderCreateForm(el, ctx) {
         playerIds: t.players.map((p) => p.id),
         totalRating: t.totalRating,
       }));
-      createSelectedPlayerId = null;
       createAvoidPairs = result.avoidPairs ?? [];
       createSeatConflicts = result.seatPairsConsidered
         ? { conflicts: result.seatConflicts, considered: result.seatPairsConsidered }
@@ -608,22 +614,26 @@ function renderCreateForm(el, ctx) {
   });
 
   // Proposed teams only exist client-side until the tournament is created.
-  // Pointer drag/drop, touch selection and keyboard arrows all share this
+  // Pointer drag/drop and keyboard arrows share this
   // guarded mutation so no interaction path can leave an empty team behind.
   function moveDraftPlayer(playerId, toIndex) {
     const result = moveTournamentDraftPlayer(createProposedTeams, playerId, toIndex);
     if (result.error) {
-      createSelectedPlayerId = null;
       showToast(result.error, { error: true });
       ctx.rerender();
       return false;
     }
     if (!result.moved) return false;
-    createSelectedPlayerId = null;
     recomputeSeatConflicts();
     ctx.rerender();
     return true;
   }
+
+  el.querySelectorAll('[data-tourn-move-select]').forEach((select) => {
+    select.addEventListener('change', () => {
+      if (!moveDraftPlayer(select.dataset.tournMoveSelect, Number(select.value))) ctx.rerender();
+    });
+  });
 
   let draggedPlayerId = null;
   const clearDragState = () => {
@@ -635,20 +645,12 @@ function renderCreateForm(el, ctx) {
 
   el.querySelectorAll('[data-tourn-drag-player]').forEach((playerRow) => {
     playerRow.addEventListener('dragstart', (event) => {
-      createSelectedPlayerId = null;
       draggedPlayerId = playerRow.dataset.tournDragPlayer;
       playerRow.classList.add('is-dragging');
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', draggedPlayerId);
     });
     playerRow.addEventListener('dragend', clearDragState);
-    playerRow.addEventListener('click', (event) => {
-      event.stopPropagation();
-      createSelectedPlayerId = createSelectedPlayerId === playerRow.dataset.tournDragPlayer
-        ? null
-        : playerRow.dataset.tournDragPlayer;
-      ctx.rerender();
-    });
     playerRow.addEventListener('keydown', (event) => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
@@ -676,10 +678,6 @@ function renderCreateForm(el, ctx) {
       const playerId = draggedPlayerId || event.dataTransfer.getData('text/plain');
       clearDragState();
       if (playerId) moveDraftPlayer(playerId, toIndex);
-    });
-    teamCard.addEventListener('click', (event) => {
-      if (!createSelectedPlayerId || event.target.closest('input, [data-tourn-drag-player]')) return;
-      moveDraftPlayer(createSelectedPlayerId, toIndex);
     });
   });
 
@@ -720,23 +718,19 @@ function renderDetail(container, ctx) {
     loadDetail(currentTournamentId, ctx);
   }
   if (detailForId !== currentTournamentId || !detailCache) {
-    container.innerHTML = `
-      ${backButtonHtml({ id: 'tourn-back' })}
-      ${emptyStateHtml('Lädt…')}`;
-    container.querySelector('#tourn-back').addEventListener('click', () => {
-      ctx.backLocal(null);
-    });
+    container.innerHTML = emptyStateHtml('Lädt…');
     return;
   }
 
   const t = detailCache;
   const {
+    matchPhaseLabel,
     renderActiveLobbies,
     renderBracket,
     renderGroupKnockout,
     renderRoundRobin,
     renderTournamentTeams,
-  } = createTournamentPresentation({ editingResultMatchId });
+  } = createTournamentPresentation();
   const boardContent =
     t.format === 'single_elimination'
       ? renderBracket(t)
@@ -745,43 +739,32 @@ function renderDetail(container, ctx) {
         : renderRoundRobin(t);
   const board =
     t.format === 'single_elimination'
-      ? `<div class="section-title">Turnierbaum</div><div class="card tournament-board-panel">${boardContent}</div>`
+      ? `<section class="card stack grouped-page-section tournament-board-card">
+           <div class="grouped-page-section-title"><h2>Turnierbaum</h2></div>
+           ${boardContent}
+         </section>`
       : boardContent;
 
   const decidedMatches = t.matches.filter((match) => match.winnerTeamId !== null || match.isDraw).length;
   const participantCount = t.teams.reduce((sum, team) => sum + team.players.length, 0);
 
   const formatMeta = [
-    t.twoLegged ? 'Hin- und Rückspiele' : null,
+    t.twoLegged ? 'Hin- & Rückrunde' : null,
     t.format === 'group_knockout' ? `${t.groupCount} Gruppen · Top ${t.advancersPerGroup} steigen auf` : null,
     t.trackScore ? 'Punktestand' : null,
   ]
     .filter(Boolean)
     .join(' · ');
   const formatExplanation = `${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''}`;
-  const compactFormatLabel =
-    t.format === 'round_robin' || t.format === 'group_knockout' ? SHORT_FORMAT_LABELS[t.format] : null;
-  const formatDisplay = compactFormatLabel
-    ? `<span class="title-with-info tournament-detail-format">
-         <span>${compactFormatLabel}</span>
-         ${infoTooltipHtml(
-             `tournament-detail-format-${t.id}`,
-             compactFormatLabel,
-             formatExplanation
-           )}
-       </span>`
-    : `<span>${formatExplanation}</span>`;
-
   const activeLobbies = renderActiveLobbies(t);
 
   container.innerHTML = `
-    <div class="row-between">
-      ${backButtonHtml({ id: 'tourn-back' })}
+    <div class="row-between page-title-row">
+      <h2 class="view-title">${escapeHtml(t.name)}</h2>
       <button type="button" class="btn btn-sm btn-danger" id="tourn-delete">Löschen</button>
     </div>
-    <h2 class="view-title">${escapeHtml(t.name)}</h2>
     <div class="muted tournament-detail-meta">
-      ${formatDisplay}
+      <span>${formatExplanation}</span>
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
     </div>
     ${activeLobbies}
@@ -792,10 +775,8 @@ function renderDetail(container, ctx) {
       <div class="card tournament-stat"><span class="muted">Partien entschieden</span><strong>${decidedMatches} / ${t.matches.length}</strong></div>
     </div>
     ${renderTournamentTeams(t)}
-    ${board}
+    <div class="grouped-page-sections tournament-board">${board}</div>
   `;
-
-  wireInfoTooltips(container);
 
   container.querySelectorAll('[data-copy-lobby-match]').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -812,17 +793,12 @@ function renderDetail(container, ctx) {
     });
   });
 
-  container.querySelector('#tourn-back').addEventListener('click', () => {
-    ctx.backLocal(null);
-  });
-
   container.querySelector('#tourn-delete').addEventListener('click', async () => {
     if (!(await confirmDialog(`Turnier "${t.name}" wirklich löschen?`, { confirmText: 'Löschen', danger: true }))) return;
     try {
       const removed = await withStepUp(() => api.tournaments.remove(t.id));
       if (removed === undefined) return;
       currentTournamentId = null;
-      editingResultMatchId = null;
       if (listCache) listCache = listCache.filter((entry) => entry.id !== t.id);
       listStale = true;
       showToast('Turnier gelöscht.');
@@ -832,57 +808,69 @@ function renderDetail(container, ctx) {
     }
   });
 
-  container.querySelectorAll('[data-match]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const winnerTeamId = btn.dataset.winner || null;
-      const match = t.matches.find((candidate) => candidate.id === btn.dataset.match);
-      try {
-        detailCache = btn.dataset.updateResult
-          ? await api.tournaments.updateResult(t.id, btn.dataset.match, {
-              winnerTeamId,
-              expectedPlayedAt: match?.playedAt,
-            })
-          : await api.tournaments.recordResult(t.id, btn.dataset.match, { winnerTeamId });
-        editingResultMatchId = null;
-        ctx.rerender();
-      } catch (err) {
-        showToast(err.message, { error: true });
-      }
-    });
-  });
-
-  container.querySelectorAll('[data-submit-score]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const matchId = btn.dataset.submitScore;
-      const inputA = container.querySelector(`[data-score-a="${matchId}"]`);
-      const inputB = container.querySelector(`[data-score-b="${matchId}"]`);
-      const scoreA = parseInt(inputA.value, 10);
-      const scoreB = parseInt(inputB.value, 10);
-      if (!Number.isInteger(scoreA) || !Number.isInteger(scoreB) || scoreA < 0 || scoreB < 0) {
-        return showToast('Bitte beide Ergebnisse eintragen.', { error: true });
-      }
-      try {
-        const match = t.matches.find((candidate) => candidate.id === matchId);
-        detailCache = btn.dataset.updateResult
-          ? await api.tournaments.updateResult(t.id, matchId, {
-              scoreA,
-              scoreB,
-              expectedPlayedAt: match?.playedAt,
-            })
-          : await api.tournaments.recordResult(t.id, matchId, { scoreA, scoreB });
-        editingResultMatchId = null;
-        ctx.rerender();
-      } catch (err) {
-        showToast(err.message, { error: true });
-      }
-    });
-  });
-
-  container.querySelectorAll('[data-edit-result]').forEach((btn) => {
+  container.querySelectorAll('[data-open-result]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      editingResultMatchId = btn.dataset.editResult;
-      ctx.rerender();
+      const match = t.matches.find((candidate) => candidate.id === btn.dataset.openResult);
+      if (match) openResultDialog(t, match, matchPhaseLabel(t, match), ctx);
     });
+  });
+}
+
+// One dialog enters and edits every result, for all formats: two large score
+// fields when the tournament tracks a score, otherwise one button per outcome
+// that saves immediately. Knockout matches never offer a draw.
+function openResultDialog(t, match, phaseLabel, ctx) {
+  const teamName = (teamId) => escapeHtml(t.teams.find((team) => team.id === teamId)?.name ?? 'offen');
+  const decided = match.winnerTeamId !== null || match.isDraw;
+  const knockout = t.format === 'single_elimination' || match.stage === 'knockout';
+
+  const body = t.trackScore
+    ? `<form class="stack tournament-result-form" data-result-form>
+        <div class="tournament-result-teams">
+          <label for="result-score-a">${teamName(match.teamAId)}</label>
+          <span class="muted">vs</span>
+          <label for="result-score-b">${teamName(match.teamBId)}</label>
+        </div>
+        <div class="tournament-result-teams">
+          <input type="number" id="result-score-a" class="tournament-result-score" min="0" inputmode="numeric" placeholder="0" required value="${decided && match.scoreA != null ? match.scoreA : ''}" />
+          <span class="muted">:</span>
+          <input type="number" id="result-score-b" class="tournament-result-score" min="0" inputmode="numeric" placeholder="0" required value="${decided && match.scoreB != null ? match.scoreB : ''}" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Speichern</button>
+      </form>`
+    : `<div class="stack tournament-result-form">
+        <span class="muted">Wer hat gewonnen?</span>
+        <button type="button" class="tournament-result-pick${match.winnerTeamId === match.teamAId ? ' is-selected' : ''}" data-result-winner="${match.teamAId}">${teamName(match.teamAId)}</button>
+        <button type="button" class="tournament-result-pick${match.winnerTeamId === match.teamBId ? ' is-selected' : ''}" data-result-winner="${match.teamBId}">${teamName(match.teamBId)}</button>
+        ${knockout ? '' : `<button type="button" class="tournament-result-pick is-draw${match.isDraw ? ' is-selected' : ''}" data-result-winner="">Unentschieden</button>`}
+      </div>`;
+
+  const { close, el } = openModal(`Ergebnis · ${phaseLabel}`, body);
+
+  async function save(payload) {
+    try {
+      detailCache = decided
+        ? await api.tournaments.updateResult(t.id, match.id, { ...payload, expectedPlayedAt: match.playedAt })
+        : await api.tournaments.recordResult(t.id, match.id, payload);
+      close();
+      ctx.rerender();
+    } catch (err) {
+      showToast(err.message, { error: true });
+    }
+  }
+
+  el.querySelector('[data-result-form]')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const scoreA = parseInt(el.querySelector('#result-score-a').value, 10);
+    const scoreB = parseInt(el.querySelector('#result-score-b').value, 10);
+    if (!Number.isInteger(scoreA) || !Number.isInteger(scoreB) || scoreA < 0 || scoreB < 0) {
+      showToast('Bitte beide Ergebnisse eintragen.', { error: true });
+      return;
+    }
+    save({ scoreA, scoreB });
+  });
+  el.querySelectorAll('[data-result-winner]').forEach((btn) => {
+    btn.addEventListener('click', () => save({ winnerTeamId: btn.dataset.resultWinner || null }));
   });
 }
 

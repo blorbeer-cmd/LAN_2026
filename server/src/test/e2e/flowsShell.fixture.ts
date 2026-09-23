@@ -2116,12 +2116,12 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
   assert.equal(await page.locator('[aria-controls="tournament-score-help"]').count(), 0);
   assert.equal(await page.locator('[aria-controls="tournament-two-legged-help"]').count(), 0);
   assert.ok((await page.locator('[data-create-player]').count()) >= 2);
-  await page.click('[data-selection-search-trigger][aria-controls="tourn-player-search"]');
   await page.fill('#tourn-player-search', 'E2E Alice');
   await page.waitForFunction(() => document.querySelectorAll('[data-tourn-player-search-item]:not([hidden])').length === 1);
   assert.equal(await page.locator('[data-tourn-player-search-item]:not([hidden])').getByText('E2E Alice Pro', { exact: true }).count(), 1);
   const hiddenTournamentSelections = await page.locator('[data-tourn-player-search-item][hidden] [data-create-player]:checked').count();
-  await page.click('#tourn-select-none');
+  assert.equal(await page.getAttribute('#tourn-select-all', 'aria-label'), 'Sichtbare Spieler abwählen');
+  await page.click('#tourn-select-all');
   assert.equal(await page.locator('[data-tourn-player-search-item]:not([hidden]) [data-create-player]:checked').count(), 0);
   assert.equal(
     await page.locator('[data-tourn-player-search-item][hidden] [data-create-player]:checked').count(),
@@ -2129,7 +2129,7 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
     'filtering must preserve hidden tournament participants',
   );
   await page.click('#tourn-select-all');
-  await page.click('[data-selection-search]:has(#tourn-player-search) [data-selection-search-close]');
+  await page.fill('#tourn-player-search', '');
   // Single column on the phone viewport; the two-column cap applies from
   // --bp-md where the cards have room for avatar, name and skill value.
   assert.equal(
@@ -2160,8 +2160,8 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
   await page.waitForSelector('[data-team-name]');
   await page.click('#tourn-submit');
 
-  // Bracket renders with clickable team buttons; click winners until the
-  // tournament reports itself finished.
+  // Each open bracket match has a "+" action that opens the shared result
+  // dialog; pick the first team as winner until the tournament is finished.
   await page.waitForSelector('.bracket-match');
   assert.match(new URL(page.url()).hash, /^#tournaments\/.+/);
   const tournamentDetailHash = new URL(page.url()).hash;
@@ -2169,11 +2169,12 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
   await page.waitForSelector('.bracket-match');
   assert.equal(new URL(page.url()).hash, tournamentDetailHash);
   for (let i = 0; i < 8; i++) {
-    const btn = page.locator('button.bracket-team-row:not(.is-tbd)').first();
-    if ((await btn.count()) === 0) break;
     if (await page.locator('text=Beendet').count()) break;
-    await btn.click();
-    await page.waitForTimeout(300);
+    const openMatch = page.locator('.bracket-side.is-open[data-open-result]').first();
+    if ((await openMatch.count()) === 0) break;
+    await openMatch.click();
+    await page.locator('.modal [data-result-winner]').first().click();
+    await page.waitForSelector('.modal', { state: 'detached' });
   }
   await page.waitForSelector('text=Beendet', { timeout: 5000 });
 });

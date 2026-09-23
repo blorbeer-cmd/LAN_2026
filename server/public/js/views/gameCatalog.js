@@ -787,7 +787,7 @@ export function renderGameCatalog(container, ctx) {
           <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
           <button type="button" class="btn btn-sm ${activeTab === 'all' ? 'btn-primary' : ''}" data-tab="all">Alle</button>
         </div>`}
-        ${ratingMode ? '' : `<section class="tournament-section-panel game-catalog-toolbar" aria-label="Spiele durchsuchen, sortieren und filtern">
+        ${ratingMode ? '' : `<section class="game-catalog-toolbar" aria-label="Spiele durchsuchen, sortieren und filtern">
           <input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />
           <details class="action-menu game-catalog-sort-menu" ${sortMenuOpen ? 'open' : ''}>
             <summary class="btn btn-sm game-catalog-sort-trigger" aria-label="Spiele sortieren">

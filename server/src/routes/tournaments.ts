@@ -282,7 +282,10 @@ tournamentsRouter.get('/', (req, res) => {
     .prepare(
       `SELECT t.id, t.name, t.format, t.two_legged AS twoLegged, t.status, t.created_at AS createdAt,
               t.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
-              (SELECT COUNT(*) FROM tournament_teams tt WHERE tt.tournament_id = t.id) AS teamCount
+              (SELECT COUNT(*) FROM tournament_teams tt WHERE tt.tournament_id = t.id) AS teamCount,
+              (SELECT COUNT(*) FROM tournament_matches m WHERE m.tournament_id = t.id AND m.is_bye = 0) AS matchCount,
+              (SELECT COUNT(*) FROM tournament_matches m WHERE m.tournament_id = t.id AND m.is_bye = 0
+                 AND (m.winner_team_id IS NOT NULL OR m.is_draw = 1)) AS decidedMatchCount
        FROM tournaments t
        JOIN games g ON g.id = t.game_id
        WHERE t.group_id = ? AND t.event_id = ?
@@ -290,8 +293,30 @@ tournamentsRouter.get('/', (req, res) => {
     )
     .all(req.group!.id, filterEventId) as Array<Record<string, unknown>>;
 
-  res.json(rows.map((r) => ({ ...r, twoLegged: Boolean(r.twoLegged) })));
+  res.json(
+    rows.map((r) => ({
+      ...r,
+      twoLegged: Boolean(r.twoLegged),
+      championName: r.status === 'completed' ? championName(r.id as string, req.group!.id) : null,
+    })),
+  );
 });
+
+// The winner shown on a completed tournament's list card: the knockout
+// final's winner, or the league leader for a pure round-robin.
+function championName(tournamentId: string, groupId: string): string | null {
+  const detail = buildDetail(tournamentId, groupId);
+  if (!detail) return null;
+  let championId: string | null = null;
+  if (detail.format === 'round_robin') {
+    championId = detail.standings?.[0]?.teamId ?? null;
+  } else {
+    const knockout = detail.matches.filter((m) => detail.format === 'single_elimination' || m.stage === 'knockout');
+    const finalRound = Math.max(...knockout.map((m) => m.round));
+    championId = knockout.find((m) => m.round === finalRound)?.winnerTeamId ?? null;
+  }
+  return detail.teams.find((team) => team.id === championId)?.name ?? null;
+}
 
 // GET /api/tournaments/:id - full board: teams, bracket/fixtures, standings.
 tournamentsRouter.get('/:id', (req, res) => {
