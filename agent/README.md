@@ -63,7 +63,9 @@ In der Weboberfläche gibt es vier Aktionen:
 - **Autostart an/aus** – entfernt bzw. erstellt die Verknüpfung im Windows-Autostart-Ordner. Nur
   mit der installierten `.exe` verfügbar (nicht beim manuellen `npm start`).
 - **Komplett deinstallieren** – entfernt den Autostart-Eintrag, beendet den Agent-Prozess und löscht
-  den gesamten Installationsordner (`%LOCALAPPDATA%\Respawn-Agent`) von diesem PC.
+  den gesamten Installationsordner (`%LOCALAPPDATA%\Respawn-Agent`) von diesem PC. Der erste Klick
+  blendet nur die Rückfrage „Abbrechen / Ja, deinstallieren" ein; entfernt wird erst nach der
+  Bestätigung.
 
 Ist der Port 47813 belegt (z. B. zwei Agenten auf demselben PC), probiert der Agent automatisch die
 nächsten Ports (47814, 47815, …). Tray und Desktop-Verknüpfung verwenden immer den tatsächlich

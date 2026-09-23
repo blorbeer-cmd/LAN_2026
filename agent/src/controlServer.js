@@ -97,6 +97,11 @@ function renderPage(scriptNonce = randomToken()) {
   /* display: inline-block would otherwise beat the browser's own
      [hidden] { display: none }, leaving a dead link visible. */
   .update-link[hidden] { display: none; }
+  .confirm-row { display: flex; gap: 10px; margin-top: 10px; }
+  /* Same reason as above: a display rule on the element itself outranks
+     the browser's [hidden] { display: none }, so the confirmation would
+     stand there permanently instead of only after the first click. */
+  .confirm-row[hidden] { display: none; }
   .danger-zone { margin-top: 22px; padding-top: 16px; border-top: 1px solid rgba(255,69,58,0.25); }
   .hint { font-size: 0.78rem; opacity: 0.55; margin-top: 2px; }
   #msg { font-size: 0.82rem; margin-top: 14px; min-height: 1em; }
@@ -145,7 +150,7 @@ function renderPage(scriptNonce = randomToken()) {
 
     <div class="danger-zone">
       <button class="btn-danger" id="uninstallBtn">🗑 Agent komplett deinstallieren</button>
-      <div id="uninstallConfirmRow" style="display:flex;gap:10px;margin-top:10px;" hidden>
+      <div class="confirm-row" id="uninstallConfirmRow" hidden>
         <button class="btn-cancel" id="uninstallCancelBtn" style="flex:1;">Abbrechen</button>
         <button class="btn-danger" id="uninstallConfirmBtn" style="width:auto;flex:1;">Ja, deinstallieren</button>
       </div>
