@@ -35,9 +35,13 @@ for (const width of [390, 1024]) {
       await page.click('.nav-btn[data-view="matchmaking"]');
       const roster = page.locator('[data-roster-picker="mm-draw-roster"]');
       await roster.waitFor();
+      // Matchmaking re-renders once its history and draft requests resolve;
+      // capture only after they settled so the roster is not replaced mid-shot.
+      await page.waitForLoadState('networkidle');
       // A deliberate UI selection is stable regardless of live-status defaults.
       if ((await page.getAttribute('#mm-select-all', 'aria-label')) === 'Sichtbare Spieler markieren') {
         await page.click('#mm-select-all');
+        await page.waitForSelector('#mm-select-all[aria-label="Sichtbare Spieler abwählen"]');
       }
       await scenes.capture(`core-roster-${width}`, roster, async () => {
         assert.equal(await roster.locator('input[type="checkbox"]:checked').count(), 2);
