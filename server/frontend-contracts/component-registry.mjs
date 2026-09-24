@@ -632,7 +632,7 @@ export const components = [
   {
     "id": "payment-controls",
     "role": "standard-control",
-    "selector": ".payment-paid-marker, .food-order-paid-marker, .payment-paypal-button, .event-paypal-button, .food-order-group-copy, .food-order-group-pay, .food-order-group-remove",
+    "selector": ".payment-paid-marker, .food-order-paid-marker, .payment-paypal-button, .event-paypal-button, .food-order-group-copy, .food-order-group-pay",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "32px payment/copy actions; icon actions inherit the shared minimum width.",
@@ -657,10 +657,10 @@ export const components = [
   {
     "id": "food-action-slots",
     "role": "composite-part",
-    "selector": ".food-order-item-action, .food-order-item-action-spacer, .food-order-item-copy, .food-order-item-remove",
+    "selector": ".food-order-item-action, .food-order-item-copy, .food-order-item-remove",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Composite position row reserves matching 44 by 32px action and empty slots."
+    "purpose": "Group-row icon actions keep 44 by 32px slots; the position remove action is an inline icon after the dish."
   },
   {
     "id": "food-disclosure",
@@ -1592,10 +1592,10 @@ export const permanentVariants = [
   {
     "id": "food-position-slots",
     "role": "composite-part",
-    "selector": ".food-order-item-action, .food-order-item-action-spacer",
+    "selector": ".food-order-item-action",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Matching action/spacer slots in a composite position row."
+    "reason": "Group-row icon actions share one 44px slot width, so every row of an order card keeps the same controls column."
   },
   {
     "id": "food-payment-marker",
@@ -1612,6 +1612,30 @@ export const permanentVariants = [
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "reason": "Permanent 44px card header row, including its disclosure and other actions."
+  },
+  {
+    "id": "food-open-section-action",
+    "role": "standard-control",
+    "selector": ".food-order-open-section > .grouped-page-section-title > .btn",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The primary header action stays on one line; the section title wraps on phones instead."
+  },
+  {
+    "id": "food-amount-copy",
+    "role": "standard-control",
+    "selector": ".food-order-group-amount-wrap > .food-order-group-copy, .food-order-total-value > .food-order-item-copy",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The copy action directly before an amount is a 32px square, so person sums and the total share one right-aligned amount column."
+  },
+  {
+    "id": "food-inline-remove",
+    "role": "composite-part",
+    "selector": ".food-order-item-main > .food-order-item-remove, .food-order-item-main > .food-order-item-remove .ui-icon",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The own position remove action sits inline after the dish name, exactly one text line high with a 14px glyph, so position rows keep a single amount column."
   },
   {
     "id": "vote-submitted-state",

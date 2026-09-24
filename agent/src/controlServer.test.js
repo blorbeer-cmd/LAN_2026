@@ -318,3 +318,18 @@ test('a control action that never reaches the agent restores its switch', () => 
     assert.doesNotMatch(handler, /else \{ e\.target\.checked = !enable;/, id);
   }
 });
+
+// The hint is the only thing telling a player their install is stale, so the
+// page must never render it from markup it did not build itself: the version
+// strings arrive from the server, and the link target from a local config file.
+test('the update hint renders as text and only links to an http(s) server', () => {
+  const page = renderPage('test-nonce');
+
+  assert.match(page, /id="updateNote"/);
+  assert.match(page, /getElementById\('updateText'\)\.textContent =/);
+  assert.doesNotMatch(page, /updateText'\)\.innerHTML/);
+  assert.match(page, /parsed\.protocol === 'http:' \|\| parsed\.protocol === 'https:'/);
+  // Hidden unless the two versions actually differ -- an agent that never
+  // reached the server must not claim anything about updates.
+  assert.match(page, /s\.expectedAgentVersion !== s\.agentVersion/);
+});

@@ -115,7 +115,18 @@ agentRouter.post('/report', (req, res) => {
     broadcast(Events.liveStatusChanged, getLiveBoard(groupId, eventId), { groupId, eventId });
   }
   const gameIds = [...new Set((db.prepare('SELECT game_id FROM tracking_live_games WHERE player_id = ?').all(player.id) as Array<{ game_id: string }>).map((row) => row.game_id))];
-  res.json({ ok: true, playerId: player.id, gameIds, tracked: contexts.length > 0, trackingPaused: Boolean(player.tracking_paused) });
+  // The agent has no self-update: it learns the version the orga expects from
+  // this response and only tells the player about it in its local control
+  // panel. Nothing is downloaded or executed from here — a reinstall stays a
+  // deliberate act, which keeps this response from becoming a code channel.
+  res.json({
+    ok: true,
+    playerId: player.id,
+    gameIds,
+    tracked: contexts.length > 0,
+    trackingPaused: Boolean(player.tracking_paused),
+    expectedAgentVersion: config.expectedAgentVersion,
+  });
 });
 
 agentRouter.post('/tracking-paused', (req, res) => {

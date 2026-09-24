@@ -3,6 +3,14 @@
 
 import path from 'path';
 
+// An empty or whitespace-only override names no version at all. Taking it at
+// face value would mark every installed agent as deviating in the readiness
+// check and make the agent's control panel announce a mismatch against
+// nothing, so a blank value is treated like an unset one.
+export function expectedAgentVersionFrom(raw: string | undefined, fallback: string): string {
+  return (raw ?? '').trim() || fallback;
+}
+
 function intFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -47,7 +55,7 @@ export const config = {
 
   // Version currently shipped through the agent download. Diagnostics flag
   // clients on another version before a LAN starts.
-  expectedAgentVersion: (process.env.EXPECTED_AGENT_VERSION ?? '1.1.0').trim(),
+  expectedAgentVersion: expectedAgentVersionFrom(process.env.EXPECTED_AGENT_VERSION, '1.1.0'),
 
   // Dedicated shared-kiosk credential. It is read-only except for the narrow
   // same-device Jam recovery route documented in routes/index.ts.

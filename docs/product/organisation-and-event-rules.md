@@ -19,26 +19,34 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   persistent explanation below the form. Recent broadcasts live in one standard, initially
   collapsed „Historie“ section whose open state survives live re-renders; its entries use the
   responsive two-column row grid.
-- **Food orders** — Open and historical orders use one full-width nested card per row. Consecutive
-  open cards alternate blue and pink accent rails; orderer groups and position rows use no decorative
-  order, timer or link symbols. A send time is shown as `20.08. 19:30 Uhr`; without one the detail
-  line reads `Kein Zeitpunkt festgelegt`. The view keeps the existing free-text description suggestions,
-  quantity field, optional unit price with euro suffix, consolidated list and lifecycle actions.
+- **Food orders** — Open and historical orders use one full-width nested card per row with the
+  standard hairline border and no accent rails or state badges. The card header holds the title and,
+  for the creator or an admin, the next lock step as a compact neutral button (`Abschicken` for an
+  open order, `Schließen` for a sent one) plus the shared `Aktion` menu with `Bestellübersicht`,
+  `Info bearbeiten`, `Wieder öffnen` and `Löschen` as the state allows. Once an order has several
+  orderer groups, the menu starts with `Alle ausklappen`/`Alle einklappen`; members who do not manage
+  the order get a menu with only that entry. Below the header one compact meta line lists, in this
+  order and leaving out empty values: the state in Historie (`Abgeschickt`/`Geschlossen`), the
+  creator, `Versand 20.08. 19:30 Uhr` or else the creation time, the number of people, `offen <Betrag>`
+  or `alle bezahlt`, `1 Preis fehlt`/`<n> Preise fehlen`, and a `Speisekarte` link. Free-text info
+  follows as one gray line. The order-wide PayPal link is not repeated there; paying happens per
+  person. The view keeps the free-text description suggestions, quantity field, optional unit price
+  with euro suffix, consolidated list and lifecycle actions. The add form sits above the orderer
+  groups so `Gesamt` stays the card's last row; its `Hinzufügen` button is compact and, on phones,
+  sits at the bottom right below quantity and price.
 
-  Payment is a per-person handoff, never a per-position action. Each orderer group shows the
-  quantity-weighted meta line (`<n> Positionen`, plus `Preis fehlt` when necessary), the complete
-  tip-inclusive person sum with a small `inkl. x % Trinkgeld` line when a tip is set, a copy action, a PayPal action when the order has a link, and one two-state
-  paid marker. `Bezahlt?` uses a dashed circle; `Bezahlt` uses a green check and names the confirmer.
-  Its fixed-width slot follows directly to the right of the PayPal action in the group action
-  cluster, so label, position and total changes do not move it.
-  The marker is derived from the group's items, is available to every authenticated member, and is
-  disabled only after finalization. Both marking and reversing happen directly without a confirmation;
-  the paid marker's tooltip names existing confirmers. A group delete is available only for the current
-  member's open, entirely unpaid group and confirms the complete position list. When a group is paid,
-  every one of its position descriptions and amounts is struck through; reversing removes that treatment.
-  Finalization itself is not permanent: the creator/an admin can reopen a finalized ("Geschlossen") order
-  back to the closed/"Abgeschickt" state through the same `Wieder öffnen` action shown for a merely closed
-  order, which restores paid marking and metadata edits (items stay frozen until a further reopen).
+  Payment is a per-person handoff, never a per-position action. The card reads like an invoice:
+  every amount sits in one right-aligned last column. Each orderer group row carries the same
+  controls so the columns never open gaps: the two-state paid marker, the PayPal action when the order
+  has a link, then the copy action directly before the tip-inclusive person sum. Copy stays visible
+  but disabled while no price is known. The paid marker is checkbox-like: an empty box while open, a
+  green checked box once paid, always labelled `Bezahlt`, so its fixed width never changes. It is
+  derived from the group's items, is available to every authenticated member, and is disabled only
+  after finalization. Marking and reversing happen directly without a confirmation; the tooltip
+  names existing confirmers. When a group is paid, its position descriptions and amounts are struck
+  through; reversing removes that treatment. Finalization is not permanent: the creator/an admin can
+  reopen a finalized ("Geschlossen") order back to "Abgeschickt" through the same `Wieder öffnen`
+  entry, which restores paid marking and metadata edits (items stay frozen until a further reopen).
 
   The PayPal button is the only payment handoff. It opens a blank tab synchronously, clears its opener,
   refreshes the order immediately before navigation, aborts when the order or any group item vanished,
@@ -49,44 +57,28 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   affirmative answer marks all group items paid. The local `paypal` icon is the filled brand path in
   `icons.js`; other icons remain line icons.
 
-  Below `--bp-md` an orderer group becomes two rows instead of one: the person, then their sum with
-  its tip note beside it at the same left edge as the name, sharing that row with the action
-  cluster. The four fixed-width controls need 240px on one line, which no supported phone width
-  leaves next to a name, so the name keeps a row of its own; where the remaining row cannot hold
-  the sum and all four controls either, wrapping moves the cluster down whole rather than dropping
-  a single control onto a ragged extra line. The cluster fills the width its row leaves it, which
-  is what keeps the marker's slot independent of its label. A group holding a single position drops
-  its sum entirely there: that position already prints the identical tip-inclusive total one row
-  below, so the sum only cost a row. A collapsed group keeps its sum, because its position rows are
-  hidden and the sum is then the only amount on screen. Position rows follow the same split: the
-  description takes the first row, amount and actions share the second, so every position's
-  trailing action ends on the group action row's right edge. The order's detail links stack
-  full-width there for the same reason — wrapped, `Bestellübersicht`'s `margin-left:auto` left it
-  alone against the right edge.
+  Below `--bp-md` an orderer group keeps its sum and copy action on the name row, above the position
+  amounts, and moves the paid marker and PayPal action to a right-aligned row of their own.
 
-  Position rows contain only quantity × description, amount, copy and delete. The displayed amount
-  includes quantity and tip; copy uses exactly that display string. There is no position-level paid
-  marker, selection state or row divider; their strike-through is derived from the person-level paid
-  state. Own open positions can be deleted after the existing confirmation; paid positions disable
-  deletion. Foreign and unavailable actions keep their reserved spacer so columns stay aligned. The
-  order summary counts quantity-weighted positions,
-  people, fully paid people and the open sum of people not fully confirmed. Missing prices show the
-  actual priced subtotal with `Preise unvollständig`; the total is labeled `(unvollständig)`.
+  Position rows contain only quantity × description, the unit price as `je 2,50 €` when the quantity
+  is above one, and the amount in the last column. The tip is named once, at `Gesamt`, not per row.
+  Own open positions carry a small inline delete icon right after the description, one text line
+  high; paid positions disable it and it opens the existing confirmation. There is no group-wide
+  delete, no position-level copy or paid marker, and no row divider inside a group; orderer groups are
+  flat rows divided by hairlines. `Gesamt` names `inkl. x % Trinkgeld` and a missing price.
 
-  The detail-links row always contains `Bestellübersicht`, visible to everyone, with `margin-left:auto`.
-  The list deliberately contains no names or paid state: it consolidates normalized descriptions by
-  exact unit price and shows quantity, unit price, line total, subtotal and tip-inclusive total.
-  The order card puts title/status, creator/time metadata, info, summary, toolbar, groups, total,
-  add form and lifecycle actions in that order. The toolbar contains only
-  `Alle ausklappen`/`Alle einklappen`, aligned left. When more than one order is open, each card
-  starts collapsed; a sibling `aria-expanded` button controls its body, and a search/push target
-  expands exactly that card. A single open order has no card-collapse chrome. The same rule applies
+  `Bestellübersicht` is the orderer's tool and lives in the creator's/admin's `Aktion` menu. It is a
+  small table (`Gericht`, `Einzeln`, `Summe`) that deliberately contains no names or paid state: it
+  consolidates normalized descriptions by exact unit price and ends with subtotal, tip and
+  tip-inclusive total as its footer. Every orderer group starts collapsed; adding an own position
+  opens the own group. When more than one order is open, each card starts collapsed to its header and
+  meta line; a sibling `aria-expanded` button controls its body, and a search/push target expands
+  exactly that card. A single open order has no card-collapse chrome. The same rule applies
   independently inside Historie: once it holds more than one closed/finalized order, each of its
   cards gets the identical collapsible header/chevron and starts collapsed too, while a single
   history entry stays chrome-free. A target for a sent order opens the history section and expands
   that specific card within it (when Historie holds more than one entry) instead of only the section
   itself. Both expanded-state sets live in module state and survive live re-renders.
-  The add action is a normal `.btn` spanning the last grid columns and stretching to field height.
 
   Two hours after an order is sent, unpaid active members become eligible for a direct payment
   reminder, repeated at most once per rolling two-hour window. Home's `Aktuell` list enriches the
@@ -290,7 +282,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   removal notifies them unless they had declined themselves. Event
   cards stay in one vertical column at
   phone and laptop widths so payment and participant controls keep enough room. Their card hierarchy
-  deliberately mirrors Food orders: alternating accent rails and a concise title/status header lead
+  use alternating accent rails and a concise title/status header that lead
   into one shared `.food-order-details` information box, followed by the separately collapsible
   participant list. Date, location, note and payment information therefore never form competing
   sibling boxes; each header also shows the recorded creator, and adds the date range while the card is
@@ -360,8 +352,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   prefills the EUR amount for PayPal.me, attempts to copy an e-mail recipient for the generic PayPal
   flow and keeps that recipient visible in the confirmation if clipboard access is unavailable. It
   asks „Bezahlt?“ afterwards; only an affirmative answer records the payment. The recorded event
-  creator instead receives the aggregate overview and the same `Offen`/`Bezahlt` toggle used by food
-  orders on every accepted participant row. There is no bulk-payment action. The edit form can also
+  creator instead receives the aggregate overview and the same checkbox-like `Bezahlt` toggle used by
+  food orders on every accepted participant row. There is no bulk-payment action. The edit form can also
   record the accommodation's total invoice separately from the fixed contribution per person. The
   creator's payment box compares snapshotted received contributions with that invoice. Confirmed
   payments remain in the received total after a decline or account deactivation; a paid roster row

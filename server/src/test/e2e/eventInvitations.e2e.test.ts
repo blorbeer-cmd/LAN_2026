@@ -609,7 +609,7 @@ test('manager invites a member who accepts and both open clients update', async 
   await ownerParticipantList.locator(`[data-toggle-event-paid="${eventId}"][data-payment-player="${memberId}"][aria-pressed="false"]`).waitFor();
   assert.equal(
     await ownerParticipantList.locator(`[data-toggle-event-paid="${eventId}"][data-payment-player="${memberId}"]`).textContent(),
-    'Bezahlt?',
+    'Bezahlt',
   );
 
   const noPaypalRefresh = memberPage.waitForResponse(
