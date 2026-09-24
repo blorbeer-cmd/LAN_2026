@@ -5051,6 +5051,49 @@ registerMigration({
   up: migrateDrawTournamentLink,
 });
 
+// Migration: a finished To-Do stays visible in the list (marked as done)
+// until someone archives it; only archived ones move into the history.
+// To-Dos finished before this change were already in the history, so they
+// count as archived at their completion time.
+function migrateChecklistTaskArchive(): void {
+  const columns = db.prepare('PRAGMA table_info(checklist_tasks)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'archived_at')) {
+    db.exec('ALTER TABLE checklist_tasks ADD COLUMN archived_at INTEGER');
+  }
+  db.prepare("UPDATE checklist_tasks SET archived_at = done_at WHERE status = 'done' AND archived_at IS NULL").run();
+}
+registerMigration({
+  version: 106,
+  name: 'archive finished checklist tasks',
+  up: migrateChecklistTaskArchive,
+});
+
+// Migration: several people can sign up for one To-Do. The participants
+// live in their own table; checklist_tasks.assignee_id keeps mirroring the
+// first one for older readers. Existing assignments become participants.
+function migrateChecklistTaskAssignees(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS checklist_task_assignees (
+      task_id    TEXT NOT NULL REFERENCES checklist_tasks(id) ON DELETE CASCADE,
+      player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      comment    TEXT,
+      joined_at  INTEGER NOT NULL,
+      PRIMARY KEY (task_id, player_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_checklist_task_assignees_player ON checklist_task_assignees(player_id);
+  `);
+  db.prepare(
+    `INSERT OR IGNORE INTO checklist_task_assignees (task_id, player_id, comment, joined_at)
+     SELECT id, assignee_id, claim_comment, COALESCE(taken_at, created_at)
+     FROM checklist_tasks WHERE assignee_id IS NOT NULL`,
+  ).run();
+}
+registerMigration({
+  version: 107,
+  name: 'multiple participants per checklist task',
+  up: migrateChecklistTaskAssignees,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

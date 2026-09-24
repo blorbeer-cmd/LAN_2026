@@ -4,7 +4,7 @@ import { renderEventPolls } from './views/eventPolls.js';
 import { renderMatchmaking } from './views/matchmaking.js';
 import { renderBroadcast } from './views/broadcast.js';
 import { renderFoodOrders } from './views/foodOrders.js';
-import { renderChecklist, ensureTasksLoaded, openTaskCount } from './views/checklist.js';
+import { renderChecklist, ensureTasksLoaded } from './views/checklist.js';
 import { renderGameCatalog } from './views/gameCatalog.js';
 import { renderArrivals } from './views/arrivals.js';
 import { renderVotes } from './views/votes.js';
@@ -35,7 +35,6 @@ function inSection(view, render) {
     // the underlying data — not just the one that renders the list.
     if (inOrga) ensureTasksLoaded(ctx);
     const content = renderSectionShell(container, view, {
-      badges: { checklist: openTaskCount() },
       event: state.activeEvent,
     });
     render(content, ctx);

@@ -91,6 +91,7 @@ interface TaskRow {
   cancelled_at: number | null;
   claim_comment: string | null;
   due_at: number | null;
+  archived_at: number | null;
 }
 
 function serializeItem(row: ItemRow) {
@@ -112,7 +113,50 @@ function playerRef(id: string | null): { id: string; name: string; color: string
   return row ?? null;
 }
 
+interface ParticipantRow {
+  task_id: string;
+  player_id: string;
+  comment: string | null;
+  joined_at: number;
+}
+
+function taskParticipants(taskId: string): ParticipantRow[] {
+  return db
+    .prepare('SELECT * FROM checklist_task_assignees WHERE task_id = ? ORDER BY joined_at, rowid')
+    .all(taskId) as ParticipantRow[];
+}
+
+function isTaskParticipant(taskId: string, playerId: unknown): boolean {
+  if (typeof playerId !== 'string') return false;
+  return !!db.prepare('SELECT 1 FROM checklist_task_assignees WHERE task_id = ? AND player_id = ?').get(taskId, playerId);
+}
+
+const insertParticipant = () =>
+  db.prepare('INSERT OR IGNORE INTO checklist_task_assignees (task_id, player_id, comment, joined_at) VALUES (?, ?, ?, ?)');
+
+// Keeps the legacy single-assignee columns in line with the participants:
+// the first one mirrors into assignee_id/claim_comment, and a To-Do without
+// participants goes back to the open pool.
+function syncTaskAssignee(taskId: string): void {
+  const [first] = taskParticipants(taskId);
+  if (first) {
+    db.prepare(
+      `UPDATE checklist_tasks SET status = 'taken', assignee_id = ?, claim_comment = ?, taken_at = COALESCE(taken_at, ?)
+       WHERE id = ? AND status IN ('open', 'taken')`,
+    ).run(first.player_id, first.comment, first.joined_at, taskId);
+  } else {
+    db.prepare(
+      `UPDATE checklist_tasks SET status = 'open', assignee_id = NULL, claim_comment = NULL, taken_at = NULL
+       WHERE id = ? AND status = 'taken'`,
+    ).run(taskId);
+  }
+}
+
 function serializeTask(row: TaskRow) {
+  const assignees = taskParticipants(row.id).flatMap((participant) => {
+    const ref = playerRef(participant.player_id);
+    return ref ? [{ ...ref, comment: participant.comment, joinedAt: participant.joined_at }] : [];
+  });
   return {
     id: row.id,
     type: row.type,
@@ -120,6 +164,7 @@ function serializeTask(row: TaskRow) {
     description: row.description,
     createdBy: playerRef(row.created_by),
     assignee: playerRef(row.assignee_id),
+    assignees,
     batchId: row.batch_id,
     status: row.status,
     createdAt: row.created_at,
@@ -128,6 +173,7 @@ function serializeTask(row: TaskRow) {
     cancelledAt: row.cancelled_at,
     claimComment: row.claim_comment,
     dueAt: row.due_at,
+    archivedAt: row.archived_at,
   };
 }
 
@@ -416,6 +462,7 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
             cancelled_at: null,
             claim_comment: null,
             due_at: parsedDueAt.value,
+            archived_at: null,
           },
         ]
       : assigneeIds.map((assigneeId) => ({
@@ -435,11 +482,13 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
           cancelled_at: null,
           claim_comment: null,
           due_at: parsedDueAt.value,
+          archived_at: null,
         }));
 
   db.transaction(() => {
     for (const row of rows) {
       insert.run(row.id, row.group_id, row.event_id, row.title, row.description, row.created_by, row.assignee_id, row.batch_id, row.status, row.created_at, row.taken_at, row.due_at);
+      if (row.assignee_id) insertParticipant().run(row.id, row.assignee_id, null, row.created_at);
     }
   })();
 
@@ -549,6 +598,7 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
             cancelled_at: null,
             claim_comment: null,
             due_at: parsedDueAt.value,
+            archived_at: null,
           },
         ]
       : assigneeIds.map((assigneeId) => ({
@@ -568,11 +618,13 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
           cancelled_at: null,
           claim_comment: null,
           due_at: parsedDueAt.value,
+          archived_at: null,
         }));
 
   db.transaction(() => {
     for (const row of rows) {
       insert.run(row.id, row.group_id, row.event_id, row.title, row.description, row.created_by, row.assignee_id, row.batch_id, row.status, row.created_at, row.taken_at, row.due_at);
+      if (row.assignee_id) insertParticipant().run(row.id, row.assignee_id, null, row.created_at);
     }
   })();
 
@@ -605,10 +657,11 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
   res.status(201).json({ tasks: rows.map(serializeTask) });
 });
 
-// POST /api/checklist/tasks/:id/claim - body: { playerId, comment? }. First
-// request wins: exactly one concurrent claim succeeds, everyone else gets a
-// 409. The optional comment (e.g. "Bringe einen XBOX Controller mit.") is
-// stored on the task and included in the creator's notification.
+// POST /api/checklist/tasks/:id/claim - body: { playerId, comment? }. Signs
+// the player up for the To-Do. Several people may sign up for the same one,
+// including its creator; signing up twice is a 409. The optional comment
+// (e.g. "Bringe zwei mit") belongs to that sign-up and is included in the
+// creator's notification.
 checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
   const scope = currentEventScope(req, res);
@@ -621,9 +674,6 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
   if (comment !== undefined && comment !== null && !isNonEmptyString(comment, MAX_CLAIM_COMMENT)) {
     return res.status(400).json({ error: `Kommentar darf höchstens ${MAX_CLAIM_COMMENT} Zeichen lang sein.` });
   }
-  if (task.created_by === playerId) {
-    return res.status(409).json({ error: 'Die eigene Aufgabe kann nicht selbst übernommen werden.' });
-  }
   const player = db.prepare('SELECT id, name FROM players WHERE id = ?').get(playerId) as
     | { id: string; name: string }
     | undefined;
@@ -631,61 +681,68 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
 
   const trimmedComment = comment ? comment.trim() : null;
   const now = Date.now();
-  const update = db
-    .prepare(
-      `UPDATE checklist_tasks SET status = 'taken', assignee_id = ?, taken_at = ?, claim_comment = ? WHERE id = ? AND status = 'open'`,
-    )
-    .run(playerId, now, trimmedComment, task.id);
-  if (update.changes !== 1) {
-    return res.status(409).json({ error: 'Diese Aufgabe wurde bereits übernommen.' });
-  }
+  // One transaction: the sign-up only counts while the To-Do is still open
+  // or taken, and a second sign-up of the same person is rejected by the
+  // primary key instead of duplicating the row.
+  const outcome = db.transaction((): 'ok' | 'closed' | 'duplicate' => {
+    const current = getTask(task.id);
+    if (!current || (current.status !== 'open' && current.status !== 'taken')) return 'closed';
+    const inserted = insertParticipant().run(task.id, playerId, trimmedComment, now);
+    if (inserted.changes !== 1) return 'duplicate';
+    syncTaskAssignee(task.id);
+    return 'ok';
+  })();
+  if (outcome === 'closed') return res.status(409).json({ error: 'Diese Aufgabe ist bereits abgeschlossen.' });
+  if (outcome === 'duplicate') return res.status(409).json({ error: 'Du bist bereits eingetragen.' });
 
-  resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
-  notifyPlayers(
-    [task.created_by],
-    {
-      title: 'Übernommen',
-      body: trimmedComment
-        ? `${player.name} übernimmt: ${task.title} – ${trimmedComment}`
-        : `${player.name} übernimmt: ${task.title}`,
-      url: '/#checklist',
-    },
-    'direct',
-    undefined,
-    { groupId: task.group_id, eventId: task.event_id },
-  );
+  if (task.created_by !== playerId) {
+    notifyPlayers(
+      [task.created_by],
+      {
+        title: 'Eingetragen',
+        body: trimmedComment
+          ? `${player.name} übernimmt: ${task.title}: ${trimmedComment}`
+          : `${player.name} übernimmt: ${task.title}`,
+        url: '/#checklist',
+      },
+      'direct',
+      undefined,
+      { groupId: task.group_id, eventId: task.event_id },
+    );
+  }
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask({ ...task, status: 'taken', assignee_id: playerId, taken_at: now, claim_comment: trimmedComment }));
+  res.json(serializeTask(getTask(task.id)!));
 });
 
-// POST /api/checklist/tasks/:id/release - body: { playerId }. Only the
-// current assignee can back out, returning the task to the open pool.
+// POST /api/checklist/tasks/:id/release - body: { playerId }. A participant
+// signs out again; once nobody is left, the To-Do returns to the open pool.
 checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
   const scope = currentEventScope(req, res);
   if (!scope) return;
   if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
-  if (task.assignee_id !== playerId) {
-    return res.status(403).json({ error: 'Nur die zugewiesene Person kann die Aufgabe wieder freigeben.' });
+  if (!isTaskParticipant(task.id, playerId)) {
+    return res.status(403).json({ error: 'Nur eingetragene Personen können sich wieder austragen.' });
   }
   if (task.status !== 'taken') {
     return res.status(409).json({ error: 'Diese Aufgabe ist nicht übernommen.' });
   }
 
-  db.prepare(
-    `UPDATE checklist_tasks SET status = 'open', assignee_id = NULL, taken_at = NULL, claim_comment = NULL WHERE id = ? AND status = 'taken'`,
-  ).run(task.id);
+  db.transaction(() => {
+    db.prepare('DELETE FROM checklist_task_assignees WHERE task_id = ? AND player_id = ?').run(task.id, playerId);
+    syncTaskAssignee(task.id);
+  })();
   // The create-with-assigneePlayerIds path records an active "you were
   // assigned" push topic for the assignee - releasing must close it too, or
   // their notification center keeps claiming they're still assigned to a
   // task that's back in the open pool.
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask({ ...task, status: 'open', assignee_id: null, taken_at: null, claim_comment: null }));
+  res.json(serializeTask(getTask(task.id)!));
 });
 
-// PATCH /api/checklist/tasks/:id/done - body: { playerId }. The assignee,
+// PATCH /api/checklist/tasks/:id/done - body: { playerId }. Any participant,
 // the creator, or a group moderator (owner/admin) can mark a taken task done.
 checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
   const task = req.groupResource as TaskRow;
@@ -693,8 +750,8 @@ checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayer
   if (!scope) return;
   if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
-  if (playerId !== task.assignee_id && playerId !== task.created_by && !isChecklistModerator(req)) {
-    return res.status(403).json({ error: 'Nur die zugewiesene Person, der Ersteller oder ein Admin kann dies als erledigt markieren.' });
+  if (!isTaskParticipant(task.id, playerId) && playerId !== task.created_by && !isChecklistModerator(req)) {
+    return res.status(403).json({ error: 'Nur eingetragene Personen, der Ersteller oder ein Admin kann dies als erledigt markieren.' });
   }
   if (task.status !== 'taken') {
     return res.status(409).json({ error: 'Diese Aufgabe ist nicht übernommen.' });
@@ -705,6 +762,89 @@ checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayer
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
   res.json(serializeTask({ ...task, status: 'done', done_at: doneAt }));
+});
+
+// POST /api/checklist/tasks/:id/archive - body: { playerId }. A done task
+// stays in the list until a participant, the creator or a group moderator
+// archives it; archived tasks form the history.
+checklistRouter.post('/tasks/:id/archive', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
+  const task = req.groupResource as TaskRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
+  const { playerId } = req.body ?? {};
+  if (!isTaskParticipant(task.id, playerId) && playerId !== task.created_by && !isChecklistModerator(req)) {
+    return res.status(403).json({ error: 'Nur eingetragene Personen, der Ersteller oder ein Admin kann dies archivieren.' });
+  }
+  const archivedAt = Date.now();
+  const update = db
+    .prepare(`UPDATE checklist_tasks SET archived_at = ? WHERE id = ? AND status = 'done' AND archived_at IS NULL`)
+    .run(archivedAt, task.id);
+  if (update.changes !== 1) {
+    return res.status(409).json({ error: 'Nur erledigte, noch nicht archivierte Aufgaben können archiviert werden.' });
+  }
+  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
+  res.json(serializeTask({ ...task, archived_at: archivedAt }));
+});
+
+// PATCH /api/checklist/tasks/:id - body: { playerId, type?, title?,
+// description?, dueAt? }. Creator or group moderator only, and only before
+// it's done. Assignment is not editable here (claim/release own that). A
+// task from one multi-assign batch is edited together with its still-active
+// siblings, since the frontend shows the batch as one To-Do.
+checklistRouter.patch('/tasks/:id', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
+  const task = req.groupResource as TaskRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
+  const { playerId, type, title, description, dueAt } = req.body ?? {};
+  if (playerId !== task.created_by && !isChecklistModerator(req)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann dies bearbeiten.' });
+  }
+  if (type !== undefined && type !== 'todo' && type !== 'item_request') {
+    return res.status(400).json({ error: 'type muss todo oder item_request sein.' });
+  }
+  if (title !== undefined && !isNonEmptyString(title, MAX_TASK_TITLE)) {
+    return res.status(400).json({ error: `Titel ist erforderlich (1-${MAX_TASK_TITLE} Zeichen).` });
+  }
+  if (description !== undefined && description !== null && !isNonEmptyString(description, MAX_TASK_DESCRIPTION)) {
+    return res.status(400).json({ error: `Beschreibung darf höchstens ${MAX_TASK_DESCRIPTION} Zeichen lang sein.` });
+  }
+  const parsedDueAt = parseOptionalDueAt(dueAt);
+  if (!parsedDueAt.ok) return res.status(400).json({ error: parsedDueAt.error });
+
+  const next = {
+    type: type ?? task.type,
+    title: title !== undefined ? title.trim() : task.title,
+    description: description === undefined ? task.description : description ? description.trim() : null,
+    due_at: dueAt === undefined ? task.due_at : parsedDueAt.value,
+  };
+  const update = task.batch_id
+    ? db
+        .prepare(
+          `UPDATE checklist_tasks SET type = ?, title = ?, description = ?, due_at = ?
+           WHERE batch_id = ? AND group_id = ? AND status IN ('open', 'taken')`,
+        )
+        .run(next.type, next.title, next.description, next.due_at, task.batch_id, task.group_id)
+    : db
+        .prepare(
+          `UPDATE checklist_tasks SET type = ?, title = ?, description = ?, due_at = ?
+           WHERE id = ? AND status IN ('open', 'taken')`,
+        )
+        .run(next.type, next.title, next.description, next.due_at, task.id);
+  if (update.changes === 0) {
+    return res.status(409).json({ error: 'Diese Aufgabe ist bereits abgeschlossen.' });
+  }
+
+  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
+  const rows = (
+    task.batch_id
+      ? db
+          .prepare(`SELECT * FROM checklist_tasks WHERE batch_id = ? AND group_id = ? AND status IN ('open', 'taken')`)
+          .all(task.batch_id, task.group_id)
+      : [getTask(task.id)]
+  ) as TaskRow[];
+  res.json({ tasks: rows.map(serializeTask) });
 });
 
 // DELETE /api/checklist/tasks/:id - body: { playerId }. Creator or group

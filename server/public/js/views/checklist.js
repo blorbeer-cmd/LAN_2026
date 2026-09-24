@@ -7,16 +7,17 @@
 // plate, sorted by due date. Claiming is immediate and binding - no
 // confirmation step, same as a captain-draft pick.
 
-import { api, GROUP_KEY } from '../api.js';
-import { state } from '../state.js';
-import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
+import { api } from '../api.js';
+import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField, parseDatetimeLocalMs } from '../dateTimeField.js';
-import { dueBadgeInfo, isOverdue } from '../checklistDue.js';
+import { dueDiffDays } from '../checklistDue.js';
+import { wireSelectionSearch } from '../selectionSearch.js';
+import { wireActionMenus } from '../actionMenu.js';
 
 let tasksCache = null;
 let itemsCache = null;
@@ -34,8 +35,16 @@ let historyOpen = false;
 // Packliste: the remove buttons only show while editing, so the everyday
 // view is just the list to tick off.
 let editingItems = false;
-let typeFilter = 'all'; // 'all' | 'todo' | 'item_request', open-pool only
-let onlyMineFilter = false; // open-pool only: "von mir erstellt"
+// Rows rendered last, by the id of their first task, for the detail dialog.
+let taskEntriesById = new Map();
+// One list for every active To-Do; the chips narrow it by who holds it:
+// 'all' | 'mine' | 'open' | 'underway' | 'created'.
+let statusFilter = 'all';
+let kindFilter = 'all'; // 'all' | 'todo' | 'item_request'
+let taskSort = 'due'; // 'due' | 'title' | 'who'
+let taskQuery = '';
+let taskSortMenuOpen = false;
+let taskFilterMenuOpen = false;
 
 async function loadTasks(ctx) {
   const version = ++tasksRequestVersion;
@@ -160,7 +169,7 @@ export function assignedTasks() {
   if (tasksCache === null) return null;
   if (!myId) return [];
   return tasksCache
-    .filter((task) => task.status === 'taken' && task.assignee?.id === myId)
+    .filter((task) => task.status === 'taken' && isParticipant([task], myId))
     .sort((a, b) => {
       if (a.dueAt && b.dueAt) return a.dueAt - b.dueAt;
       if (a.dueAt) return -1;
@@ -241,74 +250,326 @@ function taskTypeLabel(task) {
   return task.type === 'todo' ? 'Aufgabe' : 'Mitbring-Anfrage';
 }
 
-function dueBadgeHtml(task) {
-  const info = dueBadgeInfo(task.dueAt);
-  if (!info) return '';
-  return `<span class="badge ${info.cls}">${escapeHtml(info.text)}</span>`;
+// Self-explaining due text (the table has no column headers); an empty cell
+// means no due date.
+function dueCellHtml(task) {
+  if (!task.dueAt) return '';
+  const diff = dueDiffDays(task.dueAt);
+  if (diff < 0) return 'Überfällig';
+  if (diff === 0) return 'Fällig heute';
+  if (diff === 1) return 'Fällig morgen';
+  if (diff <= 3) return `Fällig in ${diff} Tagen`;
+  return `Fällig am ${escapeHtml(formatDate(task.dueAt))}`;
 }
 
-// mode drives which footer actions/meta line a card gets: 'open' (in the
-// shared pool), 'mine' (taken by the current identity), 'underway' (taken by
-// someone else) or 'done' (Historie).
-function renderTaskCard(task, myId, mode) {
-  const overdue = mode !== 'done' && isOverdue(task.dueAt);
-  let footer = '';
-  if (mode === 'open') {
-    const isOwn = task.createdBy?.id === myId;
-    footer =
-      myId && !isOwn
-        ? `<button type="button" class="btn btn-primary btn-sm" data-claim-task="${task.id}">Übernehmen</button>`
-        : isOwn
-          ? `<button type="button" class="btn btn-danger btn-sm" data-cancel-task="${task.id}">Zurückziehen</button>`
-          : '';
-  } else if (mode === 'mine') {
-    footer = `
-      <div class="row" style="gap:var(--space-2);">
-        <button type="button" class="btn btn-sm" data-release-task="${task.id}" style="flex:1;">Freigeben</button>
-        <button type="button" class="btn btn-primary btn-sm" data-done-task="${task.id}" style="flex:1;">Erledigt</button>
-      </div>`;
-  }
+// Everyone signed up for these task rows (a legacy multi-assign batch is
+// several rows), each with the comment they left when signing up.
+function taskPeople(tasks) {
+  return tasks.flatMap((t) =>
+    t.assignees?.length ? t.assignees : t.assignee ? [{ ...t.assignee, comment: t.claimComment }] : [],
+  );
+}
+
+function isParticipant(tasks, myId) {
+  return !!myId && taskPeople(tasks).some((p) => p.id === myId);
+}
+
+function whoText(tasks) {
+  return taskPeople(tasks)
+    .map((p) => p.name)
+    .join(', ');
+}
+
+// At most two names in the row, the rest as "+N"; the tooltip and the
+// detail dialog list everyone.
+const WHO_PREVIEW_COUNT = 2;
+function whoCellHtml(tasks, who) {
+  const names = taskPeople(tasks).map((p) => p.name);
+  const rest = names.length - WHO_PREVIEW_COUNT;
+  return `<span title="${escapeHtml(who)}">${escapeHtml(names.slice(0, WHO_PREVIEW_COUNT).join(', '))}</span>${
+    rest > 0 ? `<span class="checklist-table-who-more">+${rest}</span>` : ''
+  }`;
+}
+
+// Long titles are cut at a fixed length so the list reads calmly; the
+// detail dialog shows the full title.
+const TITLE_PREVIEW_LENGTH = 40;
+function shortTitle(title) {
+  return title.length > TITLE_PREVIEW_LENGTH ? `${title.slice(0, TITLE_PREVIEW_LENGTH).trimEnd()}…` : title;
+}
+
+// One table row per To-Do (or per legacy multi-assign batch).
+// mode: 'open' (nobody signed up), 'mine' (the current identity is signed
+// up), 'underway' (only others are signed up), 'done' (finished, still in
+// the list) or 'archived' (Historie).
+function renderTaskRow(tasks, myId, mode) {
+  const task = tasks[0];
+  const who = whoText(tasks);
+  const isDone = mode === 'done' || mode === 'archived';
+  // Signing up is the one action in the row, in its own column so names and
+  // buttons stay flush; everything else lives in the detail dialog, which
+  // the whole row opens.
+  const action =
+    !isDone && myId && !isParticipant(tasks, myId)
+      ? `<button type="button" class="btn btn-sm" data-claim-task="${task.id}">Eintragen</button>`
+      : '';
   return `
-    <div class="card stack ${overdue ? 'checklist-task-overdue' : ''}" data-checklist-task="${task.id}">
-      <div class="row-between">
-        <strong>${escapeHtml(task.title)}</strong>
-        <span class="badge badge-neutral">${taskTypeLabel(task)}</span>
+    <div class="checklist-table-row${isDone ? ' is-done' : ''}" role="row" data-checklist-task="${task.id}" data-checklist-task-item data-selection-search="${escapeHtml(`${task.title} ${who}`)}">
+      <div class="checklist-table-task" role="cell">
+        <button type="button" class="checklist-task-title" data-task-detail="${task.id}" title="${escapeHtml(task.title)}">${escapeHtml(shortTitle(task.title))}</button>
       </div>
-      ${task.description ? `<div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(task.description)}</div>` : ''}
-      ${
-        mode === 'underway'
-          ? `<div class="row" style="gap:var(--space-2);">
-               ${avatarHtml(task.assignee, 20)}
-               <span class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(task.assignee?.name ?? '?')} kümmert sich darum</span>
-             </div>`
-          : ''
-      }
-      ${task.claimComment ? `<div class="muted" style="font-size:var(--font-size-sm);">„${escapeHtml(task.claimComment)}“</div>` : ''}
-      <div class="row-between">
-        <span class="muted" style="font-size:var(--font-size-xs);">${
-          mode === 'done'
-            ? `${escapeHtml(task.assignee?.name ?? '?')} · ${formatDateTime(task.doneAt)}`
-            : `von ${escapeHtml(task.createdBy?.name ?? '?')}`
-        }</span>
-        ${mode === 'done' ? '' : dueBadgeHtml(task)}
-      </div>
-      ${footer}
+      <div class="checklist-table-who" role="cell">${who ? whoCellHtml(tasks, who) : '<span class="muted">offen</span>'}</div>
+      <div class="checklist-table-due" role="cell">${
+        isDone ? `Erledigt am ${escapeHtml(formatDate(task.doneAt))}` : dueCellHtml(task)
+      }</div>
+      <div class="checklist-table-action" role="cell">${action}</div>
     </div>`;
+}
+
+// Due dates carry meaning, so dated To-Dos come first (soonest on top); the
+// rest follow alphabetically.
+function byDueThenTitle(a, b) {
+  if (a.dueAt && b.dueAt && a.dueAt !== b.dueAt) return a.dueAt - b.dueAt;
+  if (a.dueAt && !b.dueAt) return -1;
+  if (!a.dueAt && b.dueAt) return 1;
+  return a.title.localeCompare(b.title, 'de');
+}
+
+function taskTableHtml(entries, myId, { label }) {
+  return `<div class="checklist-table" role="table" aria-label="${label}">
+    ${entries.map(({ tasks, mode }) => renderTaskRow(tasks, myId, mode)).join('')}
+  </div>`;
+}
+
+const TASK_SORTS = [
+  ['due', 'Fälligkeit'],
+  ['title', 'Titel · A–Z'],
+  ['who', 'Wer · A–Z'],
+];
+const TASK_STATUS_FILTERS = [
+  ['all', 'Alle'],
+  ['mine', 'Meine'],
+  ['open', 'Offen'],
+  ['underway', 'Unterwegs'],
+  ['done', 'Erledigt'],
+  ['created', 'Von mir erstellt'],
+];
+const TASK_KIND_FILTERS = [
+  ['all', 'Alle'],
+  ['todo', 'Aufgaben'],
+  ['item_request', 'Mitbring-Anfragen'],
+];
+
+function menuOptionsHtml(options, current, attr) {
+  return options
+    .map(
+      ([value, label]) =>
+        `<button type="button" class="btn btn-sm game-catalog-sort-option${value === current ? ' is-active' : ''}" ${attr}="${value}" aria-pressed="${value === current}">${label}</button>`,
+    )
+    .join('');
+}
+
+function taskToolbarHtml() {
+  const activeFilters = (statusFilter !== 'all' ? 1 : 0) + (kindFilter !== 'all' ? 1 : 0);
+  return `<section class="game-catalog-toolbar checklist-task-toolbar" aria-label="To-Dos durchsuchen, sortieren und filtern">
+    <input type="search" id="checklist-task-search" value="${escapeHtml(taskQuery)}" placeholder="To-Do suchen" aria-label="To-Dos suchen" autocomplete="off" />
+    <details class="action-menu game-catalog-sort-menu checklist-task-sort-menu" ${taskSortMenuOpen ? 'open' : ''}>
+      <summary class="btn btn-sm game-catalog-sort-trigger" aria-label="To-Dos sortieren">
+        ${TASK_SORTS.find(([key]) => key === taskSort)[1]} ${icon('chevronDown')}
+      </summary>
+      <div class="action-menu-panel game-catalog-sort-panel" role="group" aria-label="To-Dos sortieren">
+        ${menuOptionsHtml(TASK_SORTS, taskSort, 'data-task-sort')}
+      </div>
+    </details>
+    <details class="action-menu game-catalog-filter-menu checklist-task-filter-menu" ${taskFilterMenuOpen ? 'open' : ''}>
+      <summary class="btn btn-sm game-catalog-filter-trigger" aria-label="Filter öffnen${activeFilters ? `, ${activeFilters} aktiv` : ''}">
+        Filter${activeFilters ? ` (${activeFilters})` : ''} ${icon('chevronDown')}
+      </summary>
+      <div class="action-menu-panel game-catalog-filter-panel">
+        <div class="stack game-catalog-filter-section" role="group" aria-label="Nach Zuständigkeit filtern">
+          <span class="game-catalog-filter-heading">Wer</span>
+          <div class="checklist-filter-options">${menuOptionsHtml(TASK_STATUS_FILTERS, statusFilter, 'data-task-status-filter')}</div>
+        </div>
+        <div class="stack game-catalog-filter-section" role="group" aria-label="Nach Art filtern">
+          <span class="game-catalog-filter-heading">Art</span>
+          <div class="checklist-filter-options">${menuOptionsHtml(TASK_KIND_FILTERS, kindFilter, 'data-task-kind-filter')}</div>
+        </div>
+      </div>
+    </details>
+    <button type="button" class="btn btn-primary btn-sm" id="checklist-new-todo-btn" ${getMyId() ? '' : 'disabled'}>To-Do erstellen</button>
+  </section>`;
+}
+
+// "Unterwegs" folds one multi-assign batch into a single row with all
+// assignees, so "Stühle mitbringen" for three people reads as one To-Do.
+function groupByBatch(tasks) {
+  const groups = [];
+  const byBatch = new Map();
+  for (const task of tasks) {
+    if (task.batchId && byBatch.has(task.batchId)) {
+      byBatch.get(task.batchId).push(task);
+      continue;
+    }
+    const group = [task];
+    if (task.batchId) byBatch.set(task.batchId, group);
+    groups.push(group);
+  }
+  return groups;
+}
+
+async function markTaskDone(ctx, myId, taskId) {
+  try {
+    reconcileTasks(await api.checklist.setDone(taskId, myId));
+    showToast('Als erledigt markiert.');
+    ctx.rerender();
+    return true;
+  } catch (err) {
+    showToast(err.message, { error: true });
+    return false;
+  }
+}
+
+async function archiveTask(ctx, myId, taskId) {
+  try {
+    reconcileTasks(await api.checklist.archive(taskId, myId));
+    showToast('Archiviert.');
+    ctx.rerender();
+    return true;
+  } catch (err) {
+    showToast(err.message, { error: true });
+    return false;
+  }
+}
+
+async function returnTask(ctx, myId, taskId) {
+  try {
+    reconcileTasks(await api.checklist.release(taskId, myId));
+    showToast('Ausgetragen.');
+    ctx.rerender();
+    return true;
+  } catch (err) {
+    showToast(err.message, { error: true });
+    return false;
+  }
+}
+
+async function deleteTask(ctx, myId, taskId) {
+  if (!(await confirmDialog('To-Do löschen?', { confirmText: 'Löschen' }))) return false;
+  try {
+    await api.checklist.cancel(taskId, myId);
+    removeTaskFromCache(taskId);
+    ctx.rerender();
+    return true;
+  } catch (err) {
+    showToast(err.message, { error: true });
+    return false;
+  }
+}
+
+// "Morgen · 25.09.": relative day plus the date itself for the detail view.
+function dueDetailText(dueAt) {
+  const diff = dueDiffDays(dueAt);
+  const date = escapeHtml(formatDate(dueAt));
+  if (diff < 0) return `Überfällig seit ${date}`;
+  if (diff === 0) return `Heute · ${date}`;
+  if (diff === 1) return `Morgen · ${date}`;
+  return `In ${diff} Tagen · ${date}`;
+}
+
+// Everything about one To-Do plus its rarer actions: signing out again
+// ("Austragen"), editing or deleting an own one and archiving a done one.
+function openTaskDetail(ctx, myId, taskId) {
+  const entry = taskEntriesById.get(taskId);
+  if (!entry) return;
+  const { tasks, mode } = entry;
+  const task = tasks[0];
+  const isOwn = task.createdBy?.id === myId;
+  const isDone = mode === 'done' || mode === 'archived';
+  const joined = isParticipant(tasks, myId);
+  // Names flow as one list; only the comments people left get lines of
+  // their own, so a long sign-up list stays compact.
+  const people = taskPeople(tasks);
+  const commentLines = people
+    .filter((p) => p.comment)
+    .map((p) => `<span>${escapeHtml(p.name)}: „${escapeHtml(p.comment)}“</span>`);
+  const facts = [
+    ['Art', escapeHtml(taskTypeLabel(task))],
+    ['Erstellt von', `${escapeHtml(task.createdBy?.name ?? '?')} · ${escapeHtml(formatDate(task.createdAt))}`],
+    ['Eingetragen', people.length ? escapeHtml(people.map((p) => p.name).join(', ')) : '<span class="muted">offen</span>'],
+    commentLines.length ? ['Kommentare', commentLines.join('')] : null,
+    !isDone && task.dueAt ? ['Fällig', dueDetailText(task.dueAt)] : null,
+    isDone ? ['Erledigt', escapeHtml(formatDateTime(task.doneAt))] : null,
+  ].filter(Boolean);
+  const canManage = isOwn && !isDone;
+  const canArchive = mode === 'done' && (isOwn || joined);
+  const secondary = [
+    canManage ? '<button type="button" class="btn btn-sm" data-detail-delete>Löschen</button>' : '',
+    joined && !isDone ? '<button type="button" class="btn btn-sm" data-detail-return>Austragen</button>' : '',
+    canManage ? '<button type="button" class="btn btn-sm" data-detail-edit>Bearbeiten</button>' : '',
+  ].join('');
+  const primary =
+    joined && !isDone
+      ? '<button type="button" class="btn btn-primary btn-sm" data-detail-done>Erledigt</button>'
+      : !isDone && myId
+        ? '<button type="button" class="btn btn-primary btn-sm" data-detail-claim>Eintragen</button>'
+        : canArchive
+          ? '<button type="button" class="btn btn-primary btn-sm" data-detail-archive>Archivieren</button>'
+          : '';
+  const { close } = openModal(
+    task.title,
+    `<div class="stack">
+       ${task.description ? `<p class="checklist-detail-description">${escapeHtml(task.description)}</p>` : ''}
+       <dl class="checklist-detail-facts">
+         ${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
+       </dl>
+       ${secondary || primary ? `<div class="checklist-form-footer">${secondary}${primary}</div>` : ''}
+     </div>`,
+    {
+      onMount: (el) => {
+        (el.closest('.modal') ?? el.querySelector('.modal'))?.classList.add('checklist-detail-modal');
+        el.querySelector('[data-detail-done]')?.addEventListener('click', async () => {
+          if (await markTaskDone(ctx, myId, task.id)) close();
+        });
+        el.querySelector('[data-detail-archive]')?.addEventListener('click', async () => {
+          if (await archiveTask(ctx, myId, task.id)) close();
+        });
+        el.querySelector('[data-detail-return]')?.addEventListener('click', async () => {
+          if (await returnTask(ctx, myId, task.id)) close();
+        });
+        el.querySelector('[data-detail-delete]')?.addEventListener('click', async () => {
+          if (await deleteTask(ctx, myId, task.id)) close();
+        });
+        el.querySelector('[data-detail-edit]')?.addEventListener('click', () => {
+          close();
+          openCreateTodoForm(ctx, myId, task);
+        });
+        el.querySelector('[data-detail-claim]')?.addEventListener('click', () => {
+          close();
+          openClaimForm(ctx, myId, task.id);
+        });
+      },
+    },
+  );
 }
 
 function openClaimForm(ctx, myId, taskId) {
   const { close } = openModal(
-    'To-Do übernehmen',
+    'Eintragen',
     `
       <form id="checklist-claim-form" class="stack">
-        <input
-          type="text"
-          id="claim-comment"
-          maxlength="200"
-          autofocus
-          placeholder="Bringe einen Xbox-Controller mit"
-        />
-        <button type="submit" class="btn btn-primary btn-block">Übernehmen</button>
+        <div>
+          <label for="claim-comment" class="field-label">Kommentar</label>
+          <input
+            type="text"
+            id="claim-comment"
+            maxlength="200"
+            autofocus
+            placeholder="Bringe zwei mit"
+          />
+        </div>
+        <div class="checklist-form-footer">
+          <button type="submit" class="btn btn-primary btn-sm">Eintragen</button>
+        </div>
       </form>
     `,
     {
@@ -320,7 +581,7 @@ function openClaimForm(ctx, myId, taskId) {
             const updated = await api.checklist.claim(taskId, myId, comment);
             reconcileTasks(updated);
             close();
-            showToast('Übernommen.');
+            showToast('Eingetragen.');
             ctx.rerender();
           } catch (err) {
             showToast(err.message, { error: true });
@@ -331,29 +592,14 @@ function openClaimForm(ctx, myId, taskId) {
   );
 }
 
-// Use the start group's active memberships because activeGroupPlayers
-// validates the same retained group_id boundary on creation.
-async function assigneeCandidates() {
-  const groupId = sessionStorage.getItem(GROUP_KEY);
-  if (!groupId) return state.players;
-  try {
-    const members = await api.groups.members(groupId);
-    return members.map((m) => ({ id: m.playerId, name: m.name, color: m.color, avatar: m.avatar }));
-  } catch {
-    return state.players;
-  }
-}
-
-// Single unified "To-Do erstellen" dialog replacing the old separate
-// "Anfrage stellen"/"Aufgabe verteilen" flows: kind, assignment and due date
-// are all one form now (docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 6).
-// Switching kind/assignment rebuilds the assignee grid, so already-typed
-// title/description/due-date fields are snapshotted and written straight
-// back into the regenerated markup - the same pattern renderChecklist()
-// itself uses to survive its own re-renders (see prevItemLabel below).
-async function openCreateTodoForm(ctx, myId) {
-  const candidates = (await assigneeCandidates()).filter((p) => p.id !== myId);
-  const form = { kind: 'todo', assignMode: 'none', selected: new Set() };
+// Single "To-Do erstellen" dialog: kind, title, description and due date.
+// Nobody is assigned on creation; people sign up themselves ("Eintragen").
+// Switching the kind rebuilds the form, so already-typed fields are
+// snapshotted and written straight back into the regenerated markup - the
+// same pattern renderChecklist() uses to survive its own re-renders.
+// `existing` (a task) turns the same form into "To-Do bearbeiten".
+async function openCreateTodoForm(ctx, myId, existing = null) {
+  const form = { kind: existing?.type ?? 'todo' };
 
   let bodyEl;
   let anyFieldEverTouched = false;
@@ -373,69 +619,51 @@ async function openCreateTodoForm(ctx, myId) {
   function focusRestoreSelector(el) {
     if (!el) return null;
     if (el.dataset.todoKind !== undefined) return `[data-todo-kind="${el.dataset.todoKind}"]`;
-    if (el.dataset.todoAssignMode !== undefined) return `[data-todo-assign-mode="${el.dataset.todoAssignMode}"]`;
-    if (el.hasAttribute('data-todo-select-all')) return '[data-todo-select-all]';
-    if (el.hasAttribute('data-todo-select-none')) return '[data-todo-select-none]';
     return null;
   }
 
   function renderForm() {
     const isFreshOpen = !bodyEl.querySelector('#todo-title');
-    const prev = isFreshOpen ? { title: '', description: '', dueAtMs: null } : fieldValues();
+    const prev = !isFreshOpen
+      ? fieldValues()
+      : existing
+        ? { title: existing.title, description: existing.description ?? '', dueAtMs: existing.dueAt ?? null }
+        : { title: '', description: '', dueAtMs: null };
     const restoreSelector = isFreshOpen
       ? null
       : focusRestoreSelector(bodyEl.contains(document.activeElement) ? document.activeElement : null);
 
-    const assigneeOptions = candidates
-      .map(
-        (p) => `
-        <label class="check-row">
-          <input type="checkbox" value="${p.id}" data-todo-assignee ${form.selected.has(p.id) ? 'checked' : ''} />
-          ${avatarHtml(p, 20)}
-          <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-        </label>`,
-      )
-      .join('');
+    const choice = (attr, value, current, label) =>
+      `<button type="button" class="btn btn-sm${current === value ? ' is-selected' : ''}" ${attr}="${value}" aria-pressed="${current === value}">${label}</button>`;
 
     bodyEl.innerHTML = `
       <form id="checklist-todo-form" class="stack">
-        <div class="selection-toolbar" role="group" aria-labelledby="todo-kind-label">
+        <div>
           <span class="field-label" id="todo-kind-label">Art</span>
-          <button type="button" class="btn btn-sm${form.kind === 'todo' ? ' btn-primary' : ''}" data-todo-kind="todo" aria-pressed="${form.kind === 'todo'}">Aufgabe</button>
-          <button type="button" class="btn btn-sm${form.kind === 'item_request' ? ' btn-primary' : ''}" data-todo-kind="item_request" aria-pressed="${form.kind === 'item_request'}">Mitbring-Anfrage</button>
+          <div class="checklist-choice-toolbar" role="group" aria-labelledby="todo-kind-label">
+            ${choice('data-todo-kind', 'todo', form.kind, 'Aufgabe')}
+            ${choice('data-todo-kind', 'item_request', form.kind, 'Mitbring-Anfrage')}
+          </div>
         </div>
         <div>
           <span class="field-label is-required">Titel</span>
           <input type="text" id="todo-title" maxlength="80" required value="${escapeHtml(prev.title)}" placeholder="${
-            form.kind === 'todo' ? 'Mehrfachsteckdosen mitbringen' : 'Kann mir jemand einen Controller mitnehmen'
+            form.kind === 'todo' ? 'Mehrfachsteckdosen mitbringen' : 'Xbox-Controller'
           }" />
         </div>
         <div>
           <span class="field-label">Beschreibung</span>
-          <textarea id="todo-description" rows="2" maxlength="300" placeholder="Mindestens 6 Plätze">${escapeHtml(prev.description)}</textarea>
-        </div>
-        <div class="checklist-assignment-section">
-          <div class="selection-toolbar" role="group" aria-labelledby="todo-assign-label">
-            <span class="field-label" id="todo-assign-label">Zuweisen an</span>
-            <button type="button" class="btn btn-sm${form.assignMode === 'none' ? ' btn-primary' : ''}" data-todo-assign-mode="none" aria-pressed="${form.assignMode === 'none'}">Niemand (offen)</button>
-            <button type="button" class="btn btn-sm${form.assignMode === 'self' ? ' btn-primary' : ''}" data-todo-assign-mode="self" aria-pressed="${form.assignMode === 'self'}">Ich</button>
-            <button type="button" class="btn btn-sm${form.assignMode === 'pick' ? ' btn-primary' : ''}" data-todo-assign-mode="pick" aria-pressed="${form.assignMode === 'pick'}">Personen wählen…</button>
-          </div>
-          ${
-            form.assignMode === 'pick'
-              ? `<div class="checklist-assignment-actions" style="margin-top:var(--space-2);">
-                   <button type="button" class="btn btn-sm" data-todo-select-all>Alle auswählen</button>
-                   <button type="button" class="btn btn-sm" data-todo-select-none>Alle abwählen</button>
-                 </div>
-                 <div class="player-selection-grid tournament-player-grid" style="margin-top:var(--space-2);">${assigneeOptions}</div>`
-              : ''
-          }
+          <textarea id="todo-description" rows="1" maxlength="300" placeholder="${
+            form.kind === 'todo' ? 'Mindestens 6 Plätze' : 'Gern kabellos'
+          }">${escapeHtml(prev.description)}</textarea>
         </div>
         <div>
           <label for="todo-due-date" class="field-label">Fällig bis</label>
           ${dateTimeFieldHtml('todo-due', prev.dueAtMs, { dateOnly: true, clearable: true, label: 'Fällig bis' })}
         </div>
-        <button type="submit" class="btn btn-primary btn-block">To-Do erstellen</button>
+        <div class="checklist-form-footer">
+          <button type="submit" class="btn btn-primary btn-sm">${existing ? 'Speichern' : 'To-Do erstellen'}</button>
+        </div>
       </form>`;
 
     wireDateTimeField(bodyEl, 'todo-due');
@@ -446,38 +674,33 @@ async function openCreateTodoForm(ctx, myId) {
         renderForm();
       });
     });
-    bodyEl.querySelectorAll('[data-todo-assign-mode]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        form.assignMode = btn.dataset.todoAssignMode;
-        renderForm();
-      });
-    });
-    bodyEl.querySelectorAll('[data-todo-assignee]').forEach((checkbox) => {
-      checkbox.addEventListener('change', () => {
-        if (checkbox.checked) form.selected.add(checkbox.value);
-        else form.selected.delete(checkbox.value);
-      });
-    });
-    bodyEl.querySelector('[data-todo-select-all]')?.addEventListener('click', () => {
-      candidates.forEach((p) => form.selected.add(p.id));
-      renderForm();
-    });
-    bodyEl.querySelector('[data-todo-select-none]')?.addEventListener('click', () => {
-      form.selected.clear();
-      renderForm();
-    });
     bodyEl.querySelector('#checklist-todo-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const { title, description, dueAtMs } = fieldValues();
       const trimmedTitle = title.trim();
       if (!trimmedTitle) return;
       const trimmedDescription = description.trim() || undefined;
-      const assigneePlayerIds =
-        form.assignMode === 'self' ? [myId] : form.assignMode === 'pick' && form.selected.size ? [...form.selected] : undefined;
+      if (existing) {
+        try {
+          const updated = await api.checklist.updateTask(existing.id, myId, {
+            type: form.kind,
+            title: trimmedTitle,
+            description: trimmedDescription ?? null,
+            dueAt: dueAtMs ?? null,
+          });
+          reconcileTasks(updated);
+          close();
+          showToast('Gespeichert.');
+          ctx.rerender();
+        } catch (err) {
+          showToast(err.message, { error: true });
+        }
+        return;
+      }
       try {
         const created = form.kind === 'todo'
-          ? await api.checklist.createTodo(myId, trimmedTitle, trimmedDescription, assigneePlayerIds, dueAtMs ?? undefined)
-          : await api.checklist.createRequest(myId, trimmedTitle, trimmedDescription, assigneePlayerIds, dueAtMs ?? undefined);
+          ? await api.checklist.createTodo(myId, trimmedTitle, trimmedDescription, undefined, dueAtMs ?? undefined)
+          : await api.checklist.createRequest(myId, trimmedTitle, trimmedDescription, undefined, dueAtMs ?? undefined);
         reconcileTasks(created);
         close();
         showToast('To-Do erstellt.');
@@ -494,16 +717,16 @@ async function openCreateTodoForm(ctx, myId) {
     }
   }
 
-  const { close } = openModal('To-Do erstellen', '<div data-todo-form-body></div>', {
-    confirmClose: () => (anyFieldEverTouched ? 'Das To-Do mit den bisherigen Angaben geht verloren.' : null),
+  const { close } = openModal(existing ? 'To-Do bearbeiten' : 'To-Do erstellen', '<div data-todo-form-body></div>', {
+    confirmClose: () =>
+      anyFieldEverTouched ? (existing ? 'Die Änderungen gehen verloren.' : 'Das To-Do mit den bisherigen Angaben geht verloren.') : null,
     onMount: (el) => {
       bodyEl = el.querySelector('[data-todo-form-body]');
       // Attached once on the stable wrapper (never replaced by renderForm()'s
       // innerHTML rewrites, unlike its children) so it survives every
-      // kind/assignment toggle without stacking duplicate listeners. Both
-      // events are needed: 'input' for the text fields and the due-date
-      // picker (see its own dispatched 'input' in dateTimeField.js), 'change'
-      // for the assignee checkboxes, which never fire 'input'.
+      // kind toggle without stacking duplicate listeners. 'input' covers the
+      // text fields and the due-date picker (see its own dispatched 'input'
+      // in dateTimeField.js); 'change' stays as a safety net.
       const markTouched = () => {
         anyFieldEverTouched = true;
       };
@@ -527,34 +750,46 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
   const prevItemFocused = document.activeElement?.matches('[data-add-item-form] [data-item-label]');
 
   const tasks = tasksCache || [];
-  const openAll = tasks.filter((t) => t.status === 'open');
   const mineTasks = assignedTasks() ?? [];
-  const underwayTasks = tasks.filter((t) => t.status === 'taken' && t.assignee?.id !== myId);
-  const doneTasks = tasks.filter((t) => t.status === 'done');
-  const openFiltered = openAll
-    .filter((t) => (typeFilter === 'all' ? true : t.type === typeFilter))
-    .filter((t) => (onlyMineFilter ? t.createdBy?.id === myId : true));
+  const openTasks = tasks.filter((t) => t.status === 'open');
+  const underwayTasks = tasks.filter((t) => t.status === 'taken' && !isParticipant([t], myId));
+  const byDoneDesc = (a, b) => (b.doneAt ?? 0) - (a.doneAt ?? 0);
+  // Done To-Dos stay in the list, marked, until someone archives them.
+  const finishedTasks = tasks.filter((t) => t.status === 'done' && !t.archivedAt).sort(byDoneDesc);
+  const doneTasks = tasks.filter((t) => t.status === 'done' && t.archivedAt).sort(byDoneDesc);
+  const activeEntries = [
+    ...mineTasks.map((t) => ({ tasks: [t], mode: 'mine' })),
+    ...openTasks.map((t) => ({ tasks: [t], mode: 'open' })),
+    ...groupByBatch(underwayTasks).map((group) => ({ tasks: group, mode: 'underway' })),
+    ...finishedTasks.map((t) => ({ tasks: [t], mode: 'done' })),
+  ];
+  const matchesStatus = (e) =>
+    statusFilter === 'all' ||
+    (statusFilter === 'created' ? e.tasks[0].createdBy?.id === myId : e.mode === statusFilter);
+  const whoKey = (e) => whoText(e.tasks) || '\uffff';
+  const sorters = {
+    due: (a, b) => byDueThenTitle(a.tasks[0], b.tasks[0]),
+    title: (a, b) => a.tasks[0].title.localeCompare(b.tasks[0].title, 'de'),
+    who: (a, b) => whoKey(a).localeCompare(whoKey(b), 'de') || byDueThenTitle(a.tasks[0], b.tasks[0]),
+  };
+  // Done To-Dos always follow the open work, newest first.
+  const visibleEntries = activeEntries
+    .filter(matchesStatus)
+    .filter((e) => kindFilter === 'all' || e.tasks[0].type === kindFilter)
+    .sort((a, b) =>
+      a.mode === 'done' || b.mode === 'done'
+        ? Number(a.mode === 'done') - Number(b.mode === 'done') || byDoneDesc(a.tasks[0], b.tasks[0])
+        : sorters[taskSort](a, b),
+    );
+  const archivedEntries = doneTasks.map((t) => ({ tasks: [t], mode: 'archived' }));
+  taskEntriesById = new Map([...activeEntries, ...archivedEntries].map((e) => [e.tasks[0].id, e]));
 
-  const mineHtml =
+  const todoListHtml =
     tasksCache === null
       ? emptyStateHtml('Lädt…')
-      : mineTasks.length === 0
-        ? emptyStateHtml('Noch keine To-Dos.')
-        : `<div class="two-column-card-grid">${mineTasks.map((t) => renderTaskCard(t, myId, 'mine')).join('')}</div>`;
-
-  const openHtml =
-    tasksCache === null
-      ? emptyStateHtml('Lädt…')
-      : openFiltered.length === 0
-        ? emptyStateHtml('Noch keine To-Dos.')
-        : `<div class="two-column-card-grid">${openFiltered.map((t) => renderTaskCard(t, myId, 'open')).join('')}</div>`;
-
-  const underwayHtml =
-    underwayTasks.length === 0
-      ? ''
-      : `<div class="section-title">Unterwegs</div><div class="two-column-card-grid">${underwayTasks
-          .map((t) => renderTaskCard(t, myId, 'underway'))
-          .join('')}</div>`;
+      : `${taskToolbarHtml()}
+           ${activeEntries.length === 0 ? emptyStateHtml('Noch keine To-Dos.') : visibleEntries.length ? taskTableHtml(visibleEntries, myId, { label: 'To-Dos' }) : emptyStateHtml('Keine To-Dos für diese Filter.')}
+           <p class="muted" data-checklist-task-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden To-Dos gefunden.</p>`;
 
   container.innerHTML = `
     <div class="grouped-page-sections">
@@ -568,19 +803,8 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
                ${myId && itemsCacheForId === myId ? packingProgressHtml() : ''}
                ${renderItems(myId)}
              </section>`
-          : `<section class="card stack grouped-page-section" aria-label="To-Do">
-               <button type="button" class="btn btn-primary btn-sm" id="checklist-new-todo-btn" ${myId ? '' : 'disabled'}>To-Do erstellen</button>
-               <div class="section-title" style="margin-top:0;">Mir zugewiesen</div>
-               ${mineHtml}
-               <div class="section-title">Offen</div>
-               <div class="chip-list">
-                 <button type="button" class="chip${typeFilter === 'all' ? ' is-active' : ''}" aria-pressed="${typeFilter === 'all'}" data-checklist-type-filter="all">Alle</button>
-                 <button type="button" class="chip${typeFilter === 'todo' ? ' is-active' : ''}" aria-pressed="${typeFilter === 'todo'}" data-checklist-type-filter="todo">Aufgaben</button>
-                 <button type="button" class="chip${typeFilter === 'item_request' ? ' is-active' : ''}" aria-pressed="${typeFilter === 'item_request'}" data-checklist-type-filter="item_request">Mitbring-Anfragen</button>
-                 <button type="button" class="chip${onlyMineFilter ? ' is-active' : ''}" aria-pressed="${onlyMineFilter}" data-checklist-only-mine>Von mir erstellt</button>
-               </div>
-               ${openHtml}
-               ${underwayHtml}
+          : `<section class="card stack grouped-page-section" aria-label="To-Dos">
+               ${todoListHtml}
              </section>`
       }
       ${
@@ -594,7 +818,7 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
                  </span>
                </summary>
                <div class="collapsible-section-content">
-                 <div class="two-column-card-grid">${doneTasks.map((t) => renderTaskCard(t, myId, 'done')).join('')}</div>
+                 ${taskTableHtml(archivedEntries, myId, { label: 'Historie' })}
                </div>
              </details>`
           : ''
@@ -609,15 +833,41 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
   }
 
 
-  container.querySelectorAll('[data-checklist-type-filter]').forEach((btn) => {
+  wireActionMenus(container);
+  const taskSortMenu = container.querySelector('.checklist-task-sort-menu');
+  taskSortMenu?.addEventListener('toggle', () => {
+    taskSortMenuOpen = taskSortMenu.open;
+  });
+  const taskFilterMenu = container.querySelector('.checklist-task-filter-menu');
+  taskFilterMenu?.addEventListener('toggle', () => {
+    taskFilterMenuOpen = taskFilterMenu.open;
+  });
+  wireSelectionSearch(container, {
+    inputId: 'checklist-task-search',
+    itemSelector: '[data-checklist-task-item]',
+    emptySelector: '[data-checklist-task-search-empty]',
+    onQueryChange: (query) => {
+      taskQuery = query;
+    },
+  });
+  container.querySelectorAll('[data-task-sort]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      typeFilter = btn.dataset.checklistTypeFilter;
+      taskSort = btn.dataset.taskSort;
+      taskSortMenuOpen = false;
       ctx.rerender();
     });
   });
-  container.querySelector('[data-checklist-only-mine]')?.addEventListener('click', () => {
-    onlyMineFilter = !onlyMineFilter;
-    ctx.rerender();
+  container.querySelectorAll('[data-task-status-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      statusFilter = btn.dataset.taskStatusFilter;
+      ctx.rerender();
+    });
+  });
+  container.querySelectorAll('[data-task-kind-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      kindFilter = btn.dataset.taskKindFilter;
+      ctx.rerender();
+    });
   });
 
   container.querySelector('[data-toggle-item-editing]')?.addEventListener('click', () => {
@@ -690,46 +940,10 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
   });
 
   container.querySelectorAll('[data-claim-task]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      openClaimForm(ctx, myId, btn.dataset.claimTask);
-    });
+    btn.addEventListener('click', () => openClaimForm(ctx, myId, btn.dataset.claimTask));
   });
 
-  container.querySelectorAll('[data-release-task]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      try {
-        const updated = await api.checklist.release(btn.dataset.releaseTask, myId);
-        reconcileTasks(updated);
-        ctx.rerender();
-      } catch (err) {
-        showToast(err.message, { error: true });
-      }
-    });
-  });
-
-  container.querySelectorAll('[data-done-task]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      try {
-        const updated = await api.checklist.setDone(btn.dataset.doneTask, myId);
-        reconcileTasks(updated);
-        showToast('Als erledigt markiert.');
-        ctx.rerender();
-      } catch (err) {
-        showToast(err.message, { error: true });
-      }
-    });
-  });
-
-  container.querySelectorAll('[data-cancel-task]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Zurückziehen? Das To-Do verschwindet aus dem Pool.', { confirmText: 'Zurückziehen' }))) return;
-      try {
-        await api.checklist.cancel(btn.dataset.cancelTask, myId);
-        removeTaskFromCache(btn.dataset.cancelTask);
-        ctx.rerender();
-      } catch (err) {
-        showToast(err.message, { error: true });
-      }
-    });
+  container.querySelectorAll('[data-task-detail]').forEach((btn) => {
+    btn.addEventListener('click', () => openTaskDetail(ctx, myId, btn.dataset.taskDetail));
   });
 }

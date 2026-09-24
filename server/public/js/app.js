@@ -21,7 +21,7 @@ import { openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
 import { focusGameCatalog } from './views/gameCatalog.js';
-import { ensureTasksLoaded, openTaskCount } from './views/checklist.js';
+import { ensureTasksLoaded } from './views/checklist.js';
 import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from './searchSelect.js';
 import { icon, installIconReplacement } from './icons.js';
@@ -217,8 +217,7 @@ function syncDesktopNavigationActiveState() {
 function syncDesktopTaskCount() {
   const button = document.querySelector('.desktop-nav-btn[data-view="checklist"]');
   if (!button) return;
-  const count = openTaskCount();
-  const label = `${button.dataset.baseLabel}${count ? ` (${count})` : ''}`;
+  const label = button.dataset.baseLabel;
   const labelElement = button.querySelector('.desktop-nav-label');
   if (labelElement.textContent !== label) labelElement.textContent = label;
   button.setAttribute('aria-label', label);
