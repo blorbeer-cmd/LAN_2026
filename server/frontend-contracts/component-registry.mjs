@@ -313,6 +313,14 @@ export const components = [
     "purpose": "Copy, dismiss and detail actions retain their 44px icon slot."
   },
   {
+    "id": "checklist-item-remove",
+    "role": "standard-control",
+    "selector": ".checklist-item-remove",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Packliste remove action keeps the 44px icon slot, muted, and only renders while the list is in editing mode."
+  },
+  {
     "id": "game-catalog-link-action",
     "role": "standard-control",
     "selector": ".game-icon-btn",

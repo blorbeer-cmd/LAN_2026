@@ -450,6 +450,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:row-icons`: Copy, dismiss and detail actions retain their 44px icon slot.
 
+- `registry:checklist-item-remove`: Packliste remove action keeps the 44px icon slot, muted, and only renders while the list is in editing mode.
+
 - `registry:game-catalog-link-action`: Platform and trailer links use compact 32 by 32px slots next to the game details and use blue hover feedback.
 
 - `registry:game-catalog-detail-trigger`: Game-name detail trigger has plain text and switches to blue on hover without a filled button surface.

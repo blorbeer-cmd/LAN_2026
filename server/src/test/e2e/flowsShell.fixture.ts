@@ -754,7 +754,9 @@ flowTest('icon-only controls keep the shared height and minimum width on phones'
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 
   await openOrgaTab('checklistPacking');
-  await page.waitForSelector('.checklist-item-list [data-remove-item]');
+  // Remove buttons only exist visibly in the Packliste's editing mode.
+  await page.click('[data-toggle-item-editing]');
+  await page.waitForSelector('.checklist-item-list.is-editing [data-remove-item]');
   await assertTouchTargets('.icon-btn', 'shared icon buttons in the packing list');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 });
@@ -877,7 +879,7 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
     tabbedMetrics.push(['Auswertung', await firstCardMetrics('Auswertung')]);
 
     await openOrgaTab('checklistPacking');
-    await page.waitForSelector('.checklist-item-list [data-remove-item]');
+    await page.waitForSelector('.checklist-item-list [data-toggle-item]');
     assert.deepEqual(
       await page.locator('.more-subpage-header--tabs .section-tabs').evaluate((tabs) => {
         const style = getComputedStyle(tabs);
