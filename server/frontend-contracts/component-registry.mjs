@@ -664,18 +664,75 @@ export const components = [
   {
     "id": "result-fields",
     "role": "standard-control",
-    "selector": ".bracket-score-input, .tournament-score-input",
+    "selector": ".tournament-result-score",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "32px score fields reserve the existing internal stepper column."
+    "purpose": "Large score fields of the shared result dialog keep one tap-target height."
   },
   {
     "id": "result-actions",
     "role": "composite-part",
-    "selector": ".bracket-result-edit, .bracket-score-submit, .tournament-result-edit, .tournament-score-submit",
+    "selector": ".tournament-fixture-action, .bracket-side",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Actions embedded in the score/bracket grid retain its reserved gutter and slot geometry."
+    "purpose": "Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one.",
+    "dynamicUses": [
+      {
+        "file": "public/js/tournamentPresentation.js",
+        "source": "class=\"${className}${decided ? '' : ' is-open'}\"",
+        "reason": "Concrete result-actions caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"tournament-fixture-action ${primaryRecord ? 'is-primary' : 'is-open'}\"",
+        "reason": "Concrete result-actions caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      }
+    ]
+  },
+  {
+    "id": "result-pick",
+    "role": "composite-part",
+    "selector": ".tournament-result-pick",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Whole-row outcome choice in the shared result dialog: team name plus players at tap-target height.",
+    "dynamicUses": [
+      {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"tournament-result-pick${recorded && draw.winnerTeamIndex === index ? ' is-selected' : ''}\"",
+        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"tournament-result-pick is-draw${recorded && draw.winnerTeamIndex === null ? ' is-selected' : ''}\"",
+        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/tournament.js",
+        "source": "class=\"tournament-result-pick${match.winnerTeamId === match.teamAId ? ' is-selected' : ''}\"",
+        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/tournament.js",
+        "source": "class=\"tournament-result-pick${match.winnerTeamId === match.teamBId ? ' is-selected' : ''}\"",
+        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/tournament.js",
+        "source": "class=\"tournament-result-pick is-draw${match.isDraw ? ' is-selected' : ''}\"",
+        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      }
+    ]
+  },
+  {
+    "id": "result-state",
+    "role": "composite-part",
+    "selector": ".is-open, .is-primary, .is-draw",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Open, primary next-step and draw markers recolor their result host without changing its geometry.",
+    "control": false,
+    "properties": []
   },
   {
     "id": "bracket-row",
@@ -753,19 +810,7 @@ export const components = [
     "selector": ".draft-pool-player, .tournament-drag-player",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#strukturziele-mit-44-px",
-    "purpose": "Whole roster cards for picking/reordering, not standalone text buttons.",
-    "dynamicUses": [
-      {
-        "file": "public/js/views/matchmaking.js",
-        "source": "class=\"team-player tournament-drag-player${selectedDrawPlayer?.drawId === draw.id && selectedDrawPlayer.playerId === p.id ? ' is-selected' : ''}\"",
-        "reason": "Concrete player-selection-actions caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/tournament.js",
-        "source": "class=\"team-player tournament-drag-player${createSelectedPlayerId === p.id ? ' is-selected' : ''}\"",
-        "reason": "Concrete player-selection-actions caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      }
-    ]
+    "purpose": "Whole roster cards for picking/reordering, not standalone text buttons."
   },
   {
     "id": "structural-disclosure",
@@ -991,15 +1036,6 @@ export const components = [
     "control": false
   },
   {
-    "id": "draw-team-surface",
-    "role": "composite-part",
-    "selector": ".matchmaking-draw-team",
-    "owner": "public/css/style.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Winner emphasis belongs to the existing drawn-team surface.",
-    "control": false
-  },
-  {
     "id": "onboarding-target-ring",
     "role": "composite-part",
     "selector": ".onboarding-target-ring",
@@ -1157,10 +1193,10 @@ export const components = [
   {
     "id": "bracket-state",
     "role": "composite-part",
-    "selector": ".is-tbd, .is-winner",
+    "selector": ".is-tbd, .is-winner, .is-loser",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Bracket availability and winner emphasis preserve the host geometry; only winner elevation may differ.",
+    "purpose": "Bracket availability, winner and loser emphasis preserve the host geometry; only winner elevation may differ.",
     "control": false,
     "properties": [
       "box-shadow"
@@ -1418,6 +1454,22 @@ export const permanentVariants = [
     "reason": "Noninteractive field label occupies its sibling control line."
   },
   {
+    "id": "team-move-picker",
+    "role": "standard-control",
+    "selector": ".team-move-control select",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Transparent native team picker covers its icon slot on touch layouts."
+  },
+  {
+    "id": "vote-start-field",
+    "role": "standard-control",
+    "selector": ".vote-start-row .vote-info-input",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The info textarea matches the single-line title field in the one-row start form."
+  },
+  {
     "id": "arrival-sort-mobile",
     "role": "standard-control",
     "selector": ".arrivals-mobile-sort .arrivals-sort-button",
@@ -1661,17 +1713,6 @@ export const permanentVariants = [
       "padding"
     ],
     "reason": "Existing composite checkbox setting row, not a standalone text button."
-  },
-  {
-    "id": "bracket-action-gutter",
-    "role": "composite-part",
-    "selector": ".bracket-match.has-result-action .bracket-team-row",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "padding-right"
-    ],
-    "reason": "Composite bracket row reserves the embedded result-action gutter."
   },
   {
     "id": "checkbox-in-row",

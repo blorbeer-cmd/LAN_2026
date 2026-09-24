@@ -313,8 +313,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   follow the [EmptyState contract](frontend-contracts/components/empty-state.md).
 - **Primary collection** — `.primary-collection-section` gives the current collection of Events,
   polls, food orders and tournaments one shared main-card treatment. The title and primary action
-  stay together in the card header. Border, empty-state height and spacing therefore remain stable
-  across these areas.
+  stay together in the card header. The card keeps the standard hairline border (no accent frame),
+  so empty-state height and spacing remain stable across these areas.
 - **Area tabs** — use real route navigation, an active aria-current page state and
   the established responsive tab layout. Product-specific areas, routes and labels live in
   [Product rules](../docs/product/README.md).
@@ -472,7 +472,9 @@ space pattern rather than content-dependent card heights.
 - Use semantic elements: `<button>` for actions, `<a>` for navigation and associated
   `<label>` elements for form controls. Do not simulate controls with clickable `<div>`
   elements.
-- Every interactive element must be usable by keyboard and show a visible focus state. Focus order
+- Every interactive element must be usable by keyboard and show a visible focus state. Elements
+  that are only focused by script (`tabindex="-1"`, e.g. the view heading after navigation) are
+  not controls and show no focus ring. Focus order
   follows the visual and logical order. Shared dialog focus and calendar keyboard/reflow behavior
   follow the
   [Modal](frontend-contracts/components/modal.md) and
