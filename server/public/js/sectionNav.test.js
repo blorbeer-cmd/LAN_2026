@@ -205,12 +205,12 @@ test('group planning routes share the compact two-tab Orga area', () => {
   assert.doesNotMatch(container.innerHTML, /data-section-tab="checklistPacking"/);
 });
 
-test('Orga exposes the shared back navigation to the More hub', () => {
+test('Orga renders its tabbed header without a back action', () => {
   const container = stubContainer();
   renderSectionShell(container, 'arrivals');
   assert.match(container.innerHTML, /class="more-subpage-header more-subpage-header--tabs"/);
   assert.match(container.innerHTML, /<span class="orga-area-title">Orga<\/span><span class="orga-page-title">An- & Abreise<\/span>/);
-  assert.match(container.innerHTML, /data-navigate="more"[^>]*>.*Zurück<\/button>/s);
+  assert.doesNotMatch(container.innerHTML, /data-navigate="more"/);
 });
 
 test('the shell rebuilds a same-route tab row when the event feature set changes', () => {

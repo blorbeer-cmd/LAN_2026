@@ -376,7 +376,6 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.view),
     'profile',
   );
-  assert.equal(await page.locator('.more-subpage-title-row [data-navigate="more"]').isHidden(), true);
   const profileColumns = await page.locator('.profile-dashboard-columns').evaluate((layout) => {
     const account = layout.querySelector('.profile-dashboard-account')?.getBoundingClientRect();
     const lan = layout.querySelector('.profile-dashboard-lan')?.getBoundingClientRect();
@@ -847,10 +846,8 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
       await page.click(`[data-navigate="${view}"]`);
       await page.waitForSelector(readySelector);
       metrics.push([title, await firstCardMetrics(title)]);
-      const backButton = page.locator('.more-subpage-header [data-navigate="more"]');
-      assert.equal(await backButton.count(), 1);
-      assert.equal((await backButton.textContent())?.trim(), 'Zurück');
-      assert.equal(await backButton.locator('svg').count(), 1);
+      // Secondary pages carry no back action; the navigation leads back.
+      assert.equal(await page.locator('.more-subpage-header [data-navigate="more"]').count(), 0);
     }
 
     const alignedTops = new Set(metrics.map(([, value]) => value.top));
@@ -902,8 +899,8 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
         `desktop tabbed areas should share one first-card edge: ${JSON.stringify(tabbedMetrics)}`,
       );
     }
-    assert.equal(await page.locator('.more-subpage-header--tabs [data-navigate="more"]').count(), 1);
-    await page.click('.more-subpage-header--tabs [data-navigate="more"]');
+    assert.equal(await page.locator('.more-subpage-header--tabs [data-navigate="more"]').count(), 0);
+    await page.click('.nav-btn[data-view="more"]');
     await page.waitForSelector('.more-grid');
   }
 });

@@ -205,7 +205,7 @@ export async function switchIdentityAndOpenArrivals(label: string): Promise<void
   await switchSessionCookie(page, BASE_URL, account.cookie);
   await page.waitForSelector('#app:not([hidden])');
   await openOrgaTab('arrivals');
-  await page.waitForSelector('[data-new-carpool="arrival"]');
+  await page.waitForSelector('[data-carpool-direction="arrival"]');
 }
 
 export async function switchIdentityAndOpenFoodOrders(label: string): Promise<void> {

@@ -296,7 +296,7 @@ arcadeTest('navigation', 'a direct or expired-match link to Tetris, Gaming-Quiz,
   // Regression for issue #577: these four routes only render while a match
   // is live (app.js maps them straight to their game module, unlike the
   // in-place `#arcade/<game>` launcher route). Without a match they used to
-  // show only a back button and free-floating text; they now match Pong,
+  // show only free-floating text; they now match Pong,
   // Snake and Battleship's own standalone-route fallback of a titled,
   // stable lobby card.
   const player = await createPlayer('Arcade Direct Match Link');
@@ -313,9 +313,9 @@ arcadeTest('navigation', 'a direct or expired-match link to Tetris, Gaming-Quiz,
       await actor.page.waitForSelector(`.view-title:has-text("${title}")`);
       assert.equal(await activeView(actor.page), route);
       assert.equal(
-        await actor.page.locator('[data-navigate="arcade"]').count(),
-        1,
-        `${route} keeps a way back to Arcade`,
+        await actor.page.locator('#view-container [data-navigate="arcade"]').count(),
+        0,
+        `${route} carries no back button; the navigation leads back to Arcade`,
       );
       assert.equal(
         await actor.page.locator('.arcade-lobby-card').count(),

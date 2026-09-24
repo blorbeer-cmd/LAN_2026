@@ -568,7 +568,8 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   assert.equal(await page.locator('.desktop-nav-btn[data-view="more"]').count(), 0);
 
   await openView('arrivals');
-  await page.waitForSelector('#arrivals-times-title');
+  await page.click('[data-arrivals-times] > summary');
+  await page.waitForSelector('.arrivals-times-header');
   assert.doesNotMatch(await viewText(), /Spieler/);
   assert.match(await viewText(), /Person|Teilnehmende/i);
   assert.match(await page.locator('#view-container > .view-title').innerText(), /An- & Abreise/);

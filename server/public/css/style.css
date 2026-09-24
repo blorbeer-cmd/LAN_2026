@@ -1670,17 +1670,6 @@ textarea {
   }
 }
 
-@media (min-width: 1280px) { /* --bp-xl */
-  /* These destinations are direct desktop navigation items. Their compact
-     mobile back control would otherwise lead to the now-hidden More hub and
-     contradict the browser's real history. */
-  :root[data-layout-mode='desktop'] .more-subpage-title-row > [data-navigate='more'] {
-    display: none;
-  }
-  :root[data-layout-mode='desktop'] .more-subpage-title-row:has(> [data-navigate='more']) {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-}
 
 .nav-btn {
   flex: 1;
@@ -3283,9 +3272,12 @@ button.draft-pool-player {
   .dt-date-control {
     flex-basis: calc(100% - var(--tap-target-size) - var(--space-2));
   }
+  /* The time grows to the row width on phones; it then starts at the
+     same left edge as the date above it instead of floating centered. */
   .dt-time-input {
     flex: 1 1 88px;
     width: auto;
+    text-align: left;
   }
   .dt-popover {
     right: var(--space-2);
@@ -3379,7 +3371,7 @@ button.draft-pool-player {
 }
 .more-subpage-title-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: var(--tap-target-size);
   align-items: center;
   gap: var(--space-2);
@@ -3388,14 +3380,13 @@ button.draft-pool-player {
   min-width: 0;
   margin: 0;
 }
-/* Keep a trailing header action inside the phone viewport when the back
-   control, a long title and its help trigger cannot share one row. */
+/* Keep a trailing header action inside the phone viewport when a long title
+   and its help trigger cannot share one row with it. */
 @media (max-width: 479px) { /* --bp-sm */
   .more-subpage-title-row--stack-action {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
   .more-subpage-title-row--stack-action > .btn:last-child {
-    grid-column: 2;
     justify-self: end;
   }
 }
@@ -4025,10 +4016,18 @@ button.card {
 .arrival-note-input {
   min-height: var(--control-height);
 }
+/* The collapsible times card follows the page rhythm, not the extra
+   history offset. */
+.arrivals-layout > .history-details {
+  margin-top: 0;
+}
+.arrivals-form-footer {
+  display: flex;
+  justify-content: flex-end;
+}
 .arrivals-member-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-1) var(--space-4);
 }
 .arrivals-member-row {
   display: flex;
@@ -4046,34 +4045,24 @@ button.card {
   white-space: nowrap;
 }
 .arrivals-member-role {
-  display: inline-flex;
-  width: calc(var(--space-8) + var(--space-8));
-  align-items: center;
-  justify-content: center;
   margin-left: auto;
-  padding: var(--space-1) var(--space-3);
   flex-shrink: 0;
   color: var(--text-muted);
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
 }
-.arrivals-carpool-directions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
+/* The long direction title wraps on phones; the header action keeps one line. */
+.arrivals-carpool-section > .grouped-page-section-title > .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
-.arrivals-carpool-section {
-  min-width: 0;
-  gap: var(--space-3);
+/* "Frei" lines up with the member names next to the avatar column. */
+.arrivals-free-seat-row {
+  padding-left: calc(var(--avatar-size-sm) + var(--space-2));
 }
-.arrivals-carpool-section.is-arrival::before {
-  background: var(--accent);
-}
-.arrivals-carpool-section.is-departure::before {
-  background: var(--accent-3);
-}
-.arrivals-carpool-row {
-  gap: var(--space-3);
+.arrivals-carpool-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   padding: var(--space-3);
 }
 .arrivals-carpool-head {
@@ -4082,60 +4071,42 @@ button.card {
   justify-content: space-between;
   gap: var(--space-2);
 }
-.arrivals-carpool-head > strong {
+.arrivals-carpool-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   min-width: 0;
+}
+.arrivals-carpool-title > strong {
   overflow-wrap: anywhere;
 }
-.arrivals-carpool-seats {
+.arrivals-carpool-meta {
+  font-size: var(--font-size-sm);
+}
+.arrivals-carpool-action {
+  display: inline-flex;
   flex-shrink: 0;
 }
-.arrivals-carpool-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
-  margin-top: auto;
-  padding-top: var(--space-1);
-  border-top: 1px solid var(--border);
-}
-.arrivals-carpool-actions.is-driver {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.arrivals-carpool-actions .btn {
-  width: 100%;
-}
-.arrivals-carpool-members {
-  display: grid;
-  gap: var(--space-1);
-}
-.arrivals-free-seat-row {
-  justify-content: space-between;
-}
-.arrivals-free-seat-label {
-  padding-left: calc(var(--avatar-size-sm) + var(--space-2));
-}
-.arrivals-free-seat-row .btn {
-  width: calc(var(--space-8) + var(--space-8));
-}
-.arrivals-carpool-empty {
-  font-size: var(--font-size-sm);
+/* Eintragen/Austragen match the bordered "Aktion" menu trigger. */
+.arrivals-carpool-action > .btn {
+  border: 1px solid var(--border);
 }
 .arrivals-mobile-sort {
   display: none;
 }
-.arrivals-people-card {
-  padding: 0;
-  overflow: hidden;
-}
 .arrivals-times-header,
 .arrivals-times-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr)) minmax(0, 1.25fr);
+  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-2) 0;
+}
+.arrivals-times-row {
+  border-top: 1px solid var(--border);
 }
 .arrivals-times-header {
+  padding-top: 0;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
@@ -4164,13 +4135,15 @@ button.card {
   width: 1em;
   height: 1em;
 }
-.arrivals-times-row:last-child {
-  border-bottom: none;
-}
 .arrivals-times-player {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+.arrivals-times-name {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 .arrivals-times-player .player-name {
@@ -4178,34 +4151,18 @@ button.card {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.arrivals-times-value,
-.arrivals-times-note {
-  min-width: 0;
+.arrivals-times-note,
+.arrivals-times-driver {
+  font-size: var(--font-size-xs);
   overflow-wrap: anywhere;
+}
+.arrivals-times-value {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   font-size: var(--font-size-sm);
 }
 .arrivals-times-value strong {
-  font-weight: var(--font-weight-medium);
-}
-.arrivals-time-line {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: baseline;
-  font-size: var(--font-size-sm);
-}
-.arrivals-time-pair {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
-}
-.arrivals-time-pair .arrivals-time-line {
-  grid-template-columns: auto minmax(0, 1fr);
-}
-.arrivals-time-line span {
-  color: var(--text-muted);
-}
-.arrivals-time-line strong {
   font-weight: var(--font-weight-medium);
 }
 @media (hover: hover) {
@@ -4249,22 +4206,24 @@ button.card {
   }
   .arrivals-times-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: var(--space-2) var(--space-3);
   }
-  .arrivals-times-player,
-  .arrivals-times-note {
+  .arrivals-times-player {
     grid-column: 1 / -1;
   }
-  .arrivals-times-value::before,
-  .arrivals-times-note::before {
+  .arrivals-times-value {
+    padding-left: calc(var(--avatar-size-sm) + var(--space-2));
+  }
+  .arrivals-times-value + .arrivals-times-value {
+    padding-left: 0;
+  }
+  .arrivals-times-value::before {
     content: attr(data-label);
-    display: block;
-    margin-bottom: var(--space-1);
     color: var(--text-muted);
     font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-regular);
   }
 }
-
 
 /* The QR code SVG already draws its own white background (needed for
    scanability regardless of theme) — just round its corners and give it

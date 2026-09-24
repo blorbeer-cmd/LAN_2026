@@ -388,14 +388,21 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
 
 ## An- und Abreise
 
-- **Arrival carpools** — the „An- & Abreise“ tab of Orga. Anreise and Abreise remain separate
-  full-width accented panels. Their
-  carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
-  width instead of spanning the row; phones stay single-column. Every card repeats Start and
-  Ankunft vertically and proceeds directly into the passenger rows without a redundant
-  „Mitfahrende“ caption. Below the current passengers, every available passenger seat has its own
-  compact „Frei“ row with a direct „Mitfahren“ action for eligible players. The driver row uses the
-  same right-hand action column for a neutral „Fahrer“ label. Occupied passenger rows and free rows
-  without an available join action show the parallel neutral „Mitfahrer“ role. All member and free
-  rows share one minimum height; the join action stays compact inside it. A driver's „Bearbeiten“
-  action uses the primary button treatment next to the destructive delete action.
+- **Arrival carpools**: the „An- & Abreise“ tab of Orga. The page stacks the card „Meine An- &
+  Abreise“ (its „Speichern“ right-aligned at the form's end), the two main cards „Fahrgemeinschaften
+  Anreise“ and „Fahrgemeinschaften Abreise“ and the collapsible card „Alle Zeiten“. Each direction
+  card carries „Fahrt anlegen“ as its compact primary header action; the action is absent while the
+  player already drives or rides in a carpool of that direction, and an empty direction collapses to
+  the shared one-row empty card. Carpool cards use two columns from `--bp-md`, but an odd final card
+  deliberately keeps one-column width instead of spanning the row; phones stay single-column.
+- **Carpool card**: the label with one muted meta line („ab Hamburg · Start 01.10., 08:21 ·
+  Ankunft 10:21“) that leaves out unknown values and drops the arrival date when it matches the
+  start day. One header action slot: „Eintragen“ for an eligible player while a seat is free,
+  „Austragen“ for a passenger (both compact neutral bordered buttons) and the „Aktion“ menu with
+  „Bearbeiten“ and „Löschen“ for the driver; deleting still asks for confirmation. The driver row
+  comes first with a muted „Fahrer“ label, passengers follow as flat hairline rows and every free
+  seat is its own muted „Frei“ row aligned with the names.
+- **Alle Zeiten**: starts collapsed with the participant count and keeps its open state across
+  live re-renders. Rows list each accepted participant with Ankunft and Abreise (sortable; open
+  values read a muted „offen“ and sort last), „mit <Fahrer>“ below a time that comes from someone
+  else's carpool and the note as a muted line under the name.

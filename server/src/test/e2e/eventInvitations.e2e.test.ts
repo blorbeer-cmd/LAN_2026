@@ -528,6 +528,7 @@ test('manager invites a member who accepts and both open clients update', async 
   );
 
   await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'arrivals' })));
+  await memberPage.click('#view-container[data-view="arrivals"] [data-arrivals-times] > summary');
   await memberPage.waitForSelector('#view-container[data-view="arrivals"] .arrivals-times-row');
   await memberPage.locator('.arrivals-times-row', { hasText: MEMBER_NAME }).waitFor();
   assert.equal(

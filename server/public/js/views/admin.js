@@ -15,7 +15,6 @@ import { getMyId } from '../whoami.js';
 import { currentGroup, refreshGroupContext } from '../groupContext.js';
 import { eventSelectOptions } from '../eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
-import { backButtonHtml } from '../backButton.js';
 
 const ONBOARDING_HELP = 'Neue Person: Registrierungslink. Bestehendes Profil: Claim-Link. Vergessenes Passwort: Reset-Link.';
 const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit sowie ein Test-LAN und ein allgemeines Testevent an. Nur im Admin-Modus sichtbar.';
@@ -646,7 +645,6 @@ function renderPanel(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title">Admin</h1>
       </div>
     </div>
@@ -836,7 +834,6 @@ export function renderAdmin(container, ctx) {
     container.innerHTML = `
       <div class="more-subpage-header">
         <div class="more-subpage-title-row">
-          ${backButtonHtml({ view: 'more' })}
           <h1 class="view-title">Admin</h1>
         </div>
       </div>

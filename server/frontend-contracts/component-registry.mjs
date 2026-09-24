@@ -1121,15 +1121,7 @@ export const components = [
     "purpose": "Hall-of-Fame result slot spans the result layout.",
     "control": false
   },
-  {
-    "id": "empty-state-arrivals",
-    "role": "composite-part",
-    "selector": ".arrivals-carpool-empty",
-    "owner": "public/css/style.css",
-    "contract": "components/empty-state.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Empty arrival collection occupies the carpool grid.",
-    "control": false
-  },
+
   {
     "id": "empty-state-notifications",
     "role": "composite-part",
@@ -1924,15 +1916,15 @@ export const permanentVariants = [
     "reason": "Internal active navigation indicator preserves the whole navigation target."
   },
   {
-    "id": "arrival-action-width",
+    "id": "arrival-header-action",
     "role": "composite-part",
-    "selector": ".arrivals-carpool-actions .btn, .arrivals-free-seat-row .btn",
+    "selector": ".arrivals-carpool-section > .grouped-page-section-title > .btn",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
-      "width"
+      "white-space"
     ],
-    "reason": "Carpool actions occupy the existing footer or free-seat action column."
+    "reason": "The carpool header action keeps one line while the long direction title wraps on phones."
   },
   {
     "id": "calendar-month-fields",

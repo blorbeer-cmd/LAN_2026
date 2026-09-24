@@ -11,7 +11,6 @@ import { showToast } from '../toast.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { eventSelectOptions } from '../eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
-import { backButtonHtml } from '../backButton.js';
 
 let statsCache = null;
 let statsLoading = false;
@@ -193,7 +192,6 @@ function renderStats() {
 const subpageHeaderHtml = `
   <div class="more-subpage-header">
     <div class="more-subpage-title-row">
-      ${backButtonHtml({ view: 'profile' })}
       <h1 class="view-title">Meine Statistiken</h1>
     </div>
   </div>`;

@@ -33,7 +33,6 @@ import {
   eventCalendarFilename,
   eventCalendarIcs,
 } from '../calendarExport.js';
-import { backButtonHtml } from '../backButton.js';
 import { EXCUSE_CATEGORIES, excuseCategoryLabel, pickEventExcuse } from '../eventExcuses.js';
 import { settleNotificationTarget } from '../notificationBanner.js';
 import { copyText } from '../clipboard.js';
@@ -1396,7 +1395,6 @@ export function renderOrgaKiosk(container, ctx) {
     container.innerHTML = `
       <div class="more-subpage-header">
         <div class="more-subpage-title-row">
-          ${backButtonHtml({ view: 'more' })}
           <h1 class="view-title">TV-Kiosk</h1>
         </div>
       </div>
@@ -1411,7 +1409,6 @@ export function renderOrgaKiosk(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'admin' })}
         <h1 class="view-title title-with-info">
           <span>TV-Kiosk</span>
           ${infoTooltipHtml('orga-kiosk-help', 'TV-Kiosk', KIOSK_HELP)}
@@ -1442,7 +1439,6 @@ export function renderOrgaEvents(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title">Events &amp; Gruppen</h1>
       </div>
     </div>

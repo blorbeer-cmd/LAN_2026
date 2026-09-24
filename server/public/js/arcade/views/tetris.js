@@ -25,7 +25,6 @@ import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcade
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
-import { backButtonHtml } from '../../backButton.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -650,7 +649,7 @@ export function renderTetris(container, _ctx) {
     // A direct or expired-match link lands here without a running match;
     // show the same named lobby area as opening Tetris from Arcade instead
     // of a dead end (see Pong/Snake/Battleship's identical fallback).
-    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Tetris</h1>${renderTetrisLobbyCard()}`;
+    container.innerHTML = `<h1 class="view-title">Tetris</h1>${renderTetrisLobbyCard()}`;
     wireTetrisLobbyCard(container);
     return;
   }
