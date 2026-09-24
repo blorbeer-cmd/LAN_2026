@@ -5,8 +5,8 @@
 Status: `umgesetzt`.
 
 SelectionSearch filtert bereits gerenderte Auswahlzeilen lokal und lässt deren Auswahlzustand
-unangetastet. Der Helper stellt sowohl eine einklappbare Toolbar-Suche als auch die reine
-Verdrahtung eines bereits sichtbaren Suchfelds bereit. Er ist kein serverseitiges Suchsystem und
+unangetastet. Der Helper stellt ein ständig sichtbares, benanntes Toolbar-Suchfeld („Spieler
+suchen…“, „Spiel suchen…“) sowie die reine Verdrahtung eines bereits vorhandenen Suchfelds bereit. Er ist kein serverseitiges Suchsystem und
 besitzt weder Ergebnisnavigation noch fachliche Auswahlregeln.
 
 ## 2. Quelle
@@ -34,8 +34,8 @@ Reflowgeometrie. Der Aufrufer besitzt ausschließlich das Layout der gefilterten
 
 | Variante | API/Markup | Status | Bedeutung |
 |---|---|---|---|
-| Einklappbare Suche | `selectionSearchHtml(...)` plus `wireSelectionSearch(...)` | umgesetzt | Icontrigger wird zu Suchfeld und Schließen-Aktion |
-| Beibehaltener Suchbegriff | nichtleeres `query` | umgesetzt | Suche startet sichtbar und filtert sofort |
+| Sichtbares Toolbar-Suchfeld | `selectionSearchHtml(...)` plus `wireSelectionSearch(...)` | umgesetzt | benanntes Suchfeld ohne Icontrigger; der Platzhalter sagt, was gesucht wird |
+| Beibehaltener Suchbegriff | nichtleeres `query` | umgesetzt | Suchbegriff steht im Feld und filtert sofort |
 | Ständig sichtbares Suchfeld | nur `wireSelectionSearch(...)` | umgesetzt | vorhandenes `input[type='search']`, derzeit im Spielekatalog |
 
 Ein Disabled-Gesamtzustand und eine asynchrone Suchvariante existieren nicht.
@@ -47,7 +47,7 @@ Ein Disabled-Gesamtzustand und eine asynchrone Suchvariante existieren nicht.
 - Aufrufer DÜRFEN die reine Verdrahtungsvariante mit einem eigenen sichtbaren Suchfeld verwenden.
 - `onQueryChange` DARF den Suchbegriff für einen späteren View-Re-Render speichern.
 - Der Aufrufer DARF die gefilterten Zeilen fachlich gestalten, aber nicht die innere Geometrie der
-  einklappbaren Suche überschreiben.
+  Suchgruppe überschreiben.
 
 ## 6. Komponenteneigene Invarianten
 
@@ -59,51 +59,47 @@ Ein Disabled-Gesamtzustand und eine asynchrone Suchvariante existieren nicht.
   Auswahlzustand bleibt unverändert.
 - Der Kein-Treffer-Status wird nur bei nichtleerem Suchbegriff und null sichtbaren Treffern
   eingeblendet.
-- Öffnen fokussiert das Suchfeld mit `preventScroll`. Schließen leert und filtert synchron,
-  klappt die Suche ein und gibt den Fokus an den Trigger zurück.
-- Ein beibehaltener nichtleerer Suchbegriff öffnet die Suche schon im Markup und wird beim Wiring
-  sofort angewendet.
+- Das Suchfeld ist immer sichtbar; Leeren des Felds filtert synchron zurück auf den Vollbestand.
+- Ein beibehaltener nichtleerer Suchbegriff steht schon im Markup und wird beim Wiring sofort
+  angewendet.
 
 Registry-Bezüge: `selection-toolbar`, `selection-icons`, `selection-search-actions` und
 `native-fields` in [component-registry.mjs](../component-registry.mjs).
 
 ## 7. Erreichbare Zustände
 
-- eingeklappt ohne Suchbegriff;
-- geöffnet ohne Suchbegriff;
-- geöffnet mit beibehaltenem oder neu eingegebenem Suchbegriff;
+- ohne Suchbegriff;
+- mit beibehaltenem oder neu eingegebenem Suchbegriff;
 - mindestens ein Treffer;
 - kein Suchtreffer mit sichtbarem Status;
-- Schließen mit zurückgesetztem Filter;
+- geleertes Feld mit zurückgesetztem Filter;
 - Re-Render des Aufrufers mit wieder übergebenem Suchbegriff.
 
 ## 8. Accessibility
 
-- Der Trigger ist ein echter Button mit zugänglichem Namen, `aria-controls` und aktuellem
-  `aria-expanded`.
-- Das Suchfeld besitzt ein `aria-label`; die Schließen-Aktion heißt „Suche schließen“.
+- Das Suchfeld besitzt ein `aria-label` und einen sichtbaren Platzhalter mit demselben Zweck.
 - Der Aufrufer MUSS den Kein-Treffer-Text als Statusregion bereitstellen.
-- Öffnen, Eingabe und Schließen sind vollständig per Tastatur erreichbar; sichtbarer Fokus folgt
-  dem Controls-Vertrag.
+- Eingabe und Leeren sind vollständig per Tastatur erreichbar; sichtbarer Fokus folgt dem
+  Controls-Vertrag.
 - Filtern verändert weder DOM- noch Tab-Reihenfolge der verbleibenden Elemente.
 
 ## 9. Repräsentative Aufrufer
 
 - `public/js/rosterPicker.js` für Matchmaking und Turniererstellung
-- `public/js/views/votes.js` für die einklappbare Spielesuche der neuen Abstimmung
+- `public/js/views/votes.js` für die Spielesuche („Spiel suchen…“) der neuen Abstimmung
 - `public/js/views/gameCatalog.js` für das ständig sichtbare Suchfeld des Spielekatalogs
 
 ## 10. Prüfungen und Abnahmebeispiele
 
-- `public/js/selectionSearch.test.js` prüft Normalisierung sowie eingeklapptes und mit Suchbegriff
-  geöffnetes Markup.
+- `public/js/selectionSearch.test.js` prüft Normalisierung sowie das sichtbare, benannte Markup mit
+  beibehaltenem Suchbegriff.
 - `src/test/e2e/flowsCompetition.fixture.ts` prüft Matchmaking und Vote: ungefiltert, Treffer,
-  kein Treffer, verborgene Auswahl, Sammeländerung und Fokus nach Schließen.
+  kein Treffer, verborgene Auswahl, Sammeländerung und Zurücksetzen durch Leeren.
 - `src/test/e2e/flowsShell.fixture.ts` prüft Turniererstellung und Spielekatalog einschließlich
   ständig sichtbarer Suche und wiederhergestelltem Vollbestand.
 - Bei 320×568, 390×844, 512×384, 640 px, 720×450 und Desktop darf die Suchgruppe keinen
-  horizontalen Overflow im tatsächlich scrollenden View-Container erzeugen. Trigger und
-  Schließen-Aktion messen 31–33 px Höhe und mindestens 44 px Breite.
+  horizontalen Overflow im tatsächlich scrollenden View-Container erzeugen. Das Suchfeld hat die
+  Standardhöhe der Controls.
 
 ## 11. Permanente Varianten und befristete Ausnahmen
 

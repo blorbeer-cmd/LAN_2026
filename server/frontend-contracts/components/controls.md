@@ -210,8 +210,9 @@ Die Standardfamilien `date-fields`, `search-select`, `profile-controls`, `row-ic
 und `music-controls` verwenden die passende Basisvariante.
 
 Die internen Familien `selection-toolbar`, `number-stepper`, `data-row-action`, `food-action-slots`,
-`result-actions`, `bracket-row`, `rating-slider`, `rating-suggestion`, `row-layout`, `selection-state`,
-`payment-state`, `scribble-tools` und `arcade-segment` behalten ihre dokumentierte Einbettung.
+`result-actions`, `result-pick`, `result-state`, `bracket-row`, `rating-slider`, `rating-suggestion`,
+`row-layout`, `selection-state`, `payment-state`, `scribble-tools` und `arcade-segment` behalten ihre
+dokumentierte Einbettung.
 NumberStepper-Hälften ergänzen das native Zahlenfeld; Slider, Zeichenpalette und Bracketzeilen
 sind keine unabhängigen Standardbuttons. Zustands-/Layoutmarker besitzen keine eigene Controlhöhe.
 
@@ -400,6 +401,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
 | `profile-preview`, `tournament-label` | Nichtinteraktive Vorschau bzw. Feldbeschriftung folgt der benachbarten Controlzeile. |
 | `arrival-sort-mobile`, `interactive-chip`, `invite-link-controls`, `admin-test-fields` | Bestehende Formular-/Sortierkontexte behalten Platzierung und kurze eigene Labels bei 32 px. |
+| `team-move-picker`, `vote-start-field` | Der transparente Team-Picker füllt seinen Iconplatz; das Info-Feld hat im einzeiligen Startformular die Höhe des Titelfelds. |
 | `data-row-name`, `data-row-action-label` | Nur der Name ellipsiert; die vollständige kurze Aktion stapelt unter 320 px. |
 | `food-position-slots`, `food-payment-marker`, `food-header` | Passende Aktions-/Leerplätze, 32-px-Zahlungsaktion und permanenter 44-px-Kartenkopf. |
 | `vote-submitted-state` | Nichtinteraktive Bestätigung mit Statusinhalt. |
@@ -478,9 +480,13 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:food-disclosure`: Card/roster heading and person plus metadata form a composite, optionally multiline disclosure.
 
-- `registry:result-fields`: 32px score fields reserve the existing internal stepper column.
+- `registry:result-fields`: Large score fields of the shared result dialog keep one tap-target height.
 
-- `registry:result-actions`: Actions embedded in the score/bracket grid retain its reserved gutter and slot geometry.
+- `registry:result-actions`: Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one.
+
+- `registry:result-pick`: Whole-row outcome choice in the shared result dialog: team name plus players at tap-target height.
+
+- `registry:result-state`: Open, primary next-step and draw markers recolor their result host without changing its geometry.
 
 - `registry:bracket-row`: Each team is one half of the fixed composite bracket match; states own no separate height.
 
@@ -534,8 +540,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:arcade-player-surface`: Winner emphasis belongs to the existing player surface, not to an independent control.
 
-- `registry:draw-team-surface`: Winner emphasis belongs to the existing drawn-team surface.
-
 - `registry:onboarding-target-ring`: Noninteractive tour decoration follows the highlighted element rectangle; it never resizes that control.
 
 - `registry:action-menu-trigger`: Bordered 32px trigger with chevron; short application-owned label.
@@ -559,6 +563,10 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:profile-preview`: Noninteractive preview exactly mirrors the adjacent 32px field height.
 
 - `registry:tournament-label`: Noninteractive field label occupies its sibling control line.
+
+- `registry:team-move-picker`: Transparent native team picker covers its icon slot on touch layouts.
+
+- `registry:vote-start-field`: The info textarea matches the single-line title field in the one-row start form.
 
 - `registry:arrival-sort-mobile`: Bordered phone sorting controls retain the same single-line height.
 
@@ -617,8 +625,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:arcade-entry-width`: Whole entry actions yield to their wrapping footer.
 
 - `registry:arcade-setting-row`: Existing composite checkbox setting row, not a standalone text button.
-
-- `registry:bracket-action-gutter`: Composite bracket row reserves the embedded result-action gutter.
 
 - `registry:checkbox-in-row`: Native checkbox glyph is an internal 20px part of the labeled selection row.
 
@@ -680,7 +686,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:calendar-day-state`: Calendar selection/today colors and inset emphasis preserve the day target.
 
-- `registry:bracket-state`: Bracket availability and winner emphasis preserve the host geometry; only winner elevation may differ.
+- `registry:bracket-state`: Bracket availability, winner and loser emphasis preserve the host geometry; only winner elevation may differ.
 
 - `registry:rating-unset-state`: Unset rating only changes the slider color.
 

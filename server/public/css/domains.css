@@ -554,6 +554,42 @@ input[type='range'].preference-row-slider {
 .team-player .rating {
   margin-left: auto;
 }
+.team-player-move-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.team-player-move-row > .team-player {
+  flex: 1;
+}
+/* Phones cannot use native drag and drop, so only touch/phone layouts get the
+   native team picker; desktop keeps pure drag and drop. */
+.team-move-control {
+  display: none;
+  position: relative;
+  flex: 0 0 var(--control-height);
+  width: var(--control-height);
+  height: var(--control-height);
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+}
+.team-move-control select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+@media (pointer: coarse), (max-width: 639px) { /* --bp-md */
+  .team-move-control {
+    display: grid;
+  }
+}
 
 /* ---------- Tournament bracket ----------
    Rendered as a recursively nested tree (see buildBracketNode in
@@ -659,12 +695,19 @@ input[type='range'].preference-row-slider {
   height: var(--bracket-match-h);
   flex-shrink: 0;
   display: flex;
-  flex-direction: column;
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  overflow: visible;
+  background: var(--bg-elevated-2);
   position: relative;
+}
+.bracket-match.is-open {
+  border-style: dashed;
+}
+.bracket-rows {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 .bracket-team-row {
   flex: 1;
@@ -672,24 +715,12 @@ input[type='range'].preference-row-slider {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-2);
-  border: none;
-  background: none;
+  padding: 0 var(--space-3);
   color: var(--text);
   font-size: var(--font-size-sm);
-  text-align: left;
-  cursor: default;
-  width: 100%;
 }
-.bracket-team-row:first-child {
-  border-bottom: 1px solid var(--border);
-  border-radius: var(--radius) var(--radius) 0 0;
-}
-.bracket-team-row:last-child {
-  border-radius: 0 0 var(--radius) var(--radius);
-}
-.bracket-match.has-result-action .bracket-team-row {
-  padding-right: calc(var(--space-7) + var(--space-3));
+.bracket-team-row + .bracket-team-row {
+  border-top: 1px solid var(--border);
 }
 .bracket-team-name {
   flex: 1;
@@ -698,17 +729,11 @@ input[type='range'].preference-row-slider {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-button.bracket-team-row {
-  cursor: pointer;
-}
-@media (hover: hover) {
-  button.bracket-team-row:hover {
-    background: var(--bg-elevated-2);
-  }
-}
 .bracket-team-row.is-winner {
-  font-weight: var(--font-weight-bold);
-  color: var(--state-playing);
+  font-weight: var(--font-weight-medium);
+}
+.bracket-team-row.is-loser {
+  color: var(--text-muted);
 }
 .bracket-team-row.is-tbd {
   color: var(--text-muted);
@@ -719,39 +744,300 @@ button.bracket-team-row {
   font-weight: var(--font-weight-bold);
   flex-shrink: 0;
 }
-/* input[type='number'] (below) sets width:100% at specificity (0,1,1) — an
-   attribute selector counts as a class for specificity purposes, so a bare
-   `.bracket-score-input` class (0,1,0) alone loses to it. Repeat the type
-   selector to win outright instead of reaching for !important. */
-input[type='number'].bracket-score-input,
-input[type='number'].tournament-score-input {
-  /* The shared number stepper occupies the right side of the field. Keep
-     enough room for it plus a two-digit score instead of letting the value
-     sit underneath the arrows. */
-  width: calc(var(--space-7) + var(--space-7));
-  height: var(--space-7);
-  flex: 0 0 calc(var(--space-7) + var(--space-7));
-  padding: 0 var(--space-7) 0 var(--space-2);
-  text-align: center;
+.bracket-team-row.is-winner .bracket-score,
+.bracket-win-mark {
+  color: var(--state-playing);
+}
+.bracket-win-mark {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+/* The result action lives in a fixed trailing column inside the box, so it
+   never floats over the connector lines and every box keeps one width. */
+.bracket-side {
+  flex: 0 0 var(--control-height);
+  display: grid;
+  place-items: center;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: none;
+  color: var(--text-muted);
+  padding: 0;
+}
+button.bracket-side {
+  cursor: pointer;
+}
+.bracket-side.is-open {
+  color: var(--accent);
+}
+@media (hover: hover) {
+  button.bracket-side:hover {
+    background: var(--bg-elevated);
+    color: var(--text);
+  }
+}
+.bracket-final-row {
+  display: flex;
+  align-items: center;
+  gap: var(--bracket-round-gap);
+}
+.bracket-champion {
+  width: var(--bracket-match-w);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+  font-weight: var(--font-weight-bold);
+  position: relative;
+}
+.bracket-champion::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  width: var(--bracket-round-gap);
+  height: 2px;
+  background: var(--border);
+  transform: translateY(-1px);
+}
+
+/* ---------- Tournament league: fixtures, standings, result dialog ---------- */
+
+.tournament-board {
+  margin-top: var(--space-5);
+}
+.tournament-board > .tournament-group-stage {
+  margin-top: 0;
+}
+.tournament-round + .tournament-round {
+  margin-top: var(--space-4);
+}
+.tournament-round-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.tournament-fixture {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) var(--control-height);
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target-size);
+}
+.tournament-fixture + .tournament-fixture {
+  border-top: 1px solid var(--border);
+}
+.tournament-fixture-team {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tournament-fixture-team.is-home {
+  text-align: right;
+}
+.tournament-fixture-team.is-winner {
+  font-weight: var(--font-weight-medium);
+}
+.tournament-fixture-team.is-loser {
+  color: var(--text-muted);
+}
+.tournament-fixture-score {
+  min-width: calc(var(--space-8) + var(--space-3));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.tournament-fixture-score .is-win {
+  color: var(--state-playing);
+}
+.tournament-fixture-score.is-open {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-weight: var(--font-weight-regular);
+}
+.tournament-fixture-score.is-pick {
+  background: var(--state-playing-bg);
+  color: var(--state-playing);
+  font-size: var(--font-size-xs);
+}
+.tournament-fixture-action {
+  width: var(--control-height);
+  height: var(--control-height);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+span.tournament-fixture-action {
+  border-color: transparent;
+  background: none;
+}
+.tournament-fixture-action.is-open {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tournament-fixture-action.is-primary {
+  border-color: transparent;
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+}
+@media (hover: hover) {
+  button.tournament-fixture-action:hover {
+    color: var(--text);
+  }
+  button.tournament-fixture-action.is-primary:hover {
+    color: var(--accent-text);
+  }
+}
+@media (max-width: 479px) { /* --bp-sm */
+  .tournament-fixture {
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+  }
+}
+.tournament-group-fixtures {
+  margin-top: var(--space-4);
+}
+.tournament-standings {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
   font-size: var(--font-size-sm);
 }
-.tournament-score-submit,
-.tournament-result-edit,
-.bracket-score-submit,
-.bracket-result-edit {
-  width: var(--space-7);
-  height: var(--space-7);
-  flex: 0 0 var(--space-7);
-  padding: 0;
-  border-radius: var(--radius-sm);
+.tournament-standings th {
+  white-space: nowrap;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  text-align: right;
 }
-.bracket-score-submit,
-.bracket-result-edit {
-  position: absolute;
-  right: var(--space-1);
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
+.tournament-standings td {
+  padding: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  text-align: right;
+}
+.tournament-standings th:first-child,
+.tournament-standings td:first-child {
+  text-align: center;
+  width: var(--space-6);
+}
+.tournament-standings th:nth-child(2),
+.tournament-standings td:nth-child(2) {
+  width: 100%;
+  text-align: left;
+}
+.tournament-standings-team {
+  color: var(--text);
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tournament-standings tr.is-leader .tournament-standings-rank {
+  color: var(--rank-1-gold);
+  font-weight: var(--font-weight-bold);
+}
+.tournament-standings-advance {
+  margin-left: var(--space-2);
+  font-size: var(--font-size-2xs);
+  color: var(--accent);
+}
+.tournament-standings td.tournament-standings-points {
+  color: var(--text);
+  font-weight: var(--font-weight-bold);
+}
+.tournament-result-teams {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+.tournament-result-teams label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-weight-medium);
+}
+input[type='number'].tournament-result-score {
+  height: var(--tap-target-size);
+  text-align: center;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+}
+.tournament-result-pick {
+  min-height: var(--tap-target-size);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  cursor: pointer;
+}
+.tournament-result-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px; /* design-token-ok: tight title/subtitle pairing inside one pick button, below the 4px spacing step */
+}
+.tournament-result-pick-players {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  color: var(--text-muted);
+  text-align: left;
+}
+.draw-result-value-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(var(--space-8) + var(--space-8));
+  align-items: center;
+  gap: var(--space-3);
+}
+.draw-result-value-row label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: var(--font-weight-medium);
+}
+.tournament-result-pick.is-draw {
+  color: var(--text-muted);
+}
+.tournament-result-pick.is-selected {
+  border-color: var(--state-playing);
+  background: var(--state-playing-bg);
+}
+@media (hover: hover) {
+  .tournament-result-pick:hover {
+    border-color: var(--accent);
+  }
 }
 
 /* ---------- Checkbox list (present players) ---------- */
@@ -811,30 +1097,84 @@ input[type='number'].tournament-score-input {
 .vote-ranking-column:only-child {
   grid-column: 1 / -1;
 }
-.vote-ranking-column .lb-row.is-tied {
-  margin: var(--space-1) 0;
-  padding: var(--space-3) var(--space-2);
-  border: 1px solid var(--rank-1-gold);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
+.vote-ranking-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
-.vote-tie-action {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+.vote-ranking-name .player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.vote-participation-status {
+.vote-win-chip {
+  min-width: 0;
+  flex-shrink: 0;
+  padding-block: 0;
+  line-height: var(--control-line-height);
+}
+.vote-open-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.vote-open-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.vote-open-title h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+.vote-open-admin {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.vote-open-info {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+.vote-progress-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
+  gap: var(--space-2);
 }
-.vote-participation-status strong {
-  flex-shrink: 0;
+.vote-open-row {
+  gap: var(--space-1);
+}
+.vote-open-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+}
+.vote-open-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vote-points-slider {
+  margin-top: var(--space-2);
+}
+.vote-points-value {
   font-size: var(--font-size-lg);
+}
+.vote-open-meta {
+  font-size: var(--font-size-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .vote-result-meta {
   font-size: var(--font-size-xs);
@@ -845,16 +1185,6 @@ input[type='number'].tournament-score-input {
 }
 .vote-history-round [data-open-history-round] {
   flex-shrink: 0;
-}
-.vote-action-stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.vote-secondary-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
 }
 .vote-submitted-state {
   display: flex;
@@ -883,6 +1213,33 @@ input[type='number'].tournament-score-input {
 }
 .vote-game-select-wrap {
   gap: var(--space-2);
+}
+.vote-start-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: end;
+}
+@media (min-width: 640px) { /* --bp-md */
+  .vote-start-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.vote-start-toolbar {
+  flex-wrap: nowrap;
+}
+.vote-game-grid.is-runoff {
+  grid-template-columns: minmax(0, 1fr);
+}
+.vote-submit-row {
+  display: flex;
+  justify-content: flex-end;
+}
+.vote-start-row .vote-info-input {
+  display: block;
+  height: var(--control-height);
+  min-height: var(--control-height);
+  resize: none;
 }
 .vote-workflow-section .tournament-create-step-title h2,
 .vote-page-section .tournament-create-step-title h2 {
@@ -940,9 +1297,6 @@ input[type='number'].tournament-score-input {
 }
 .grouped-page-section {
   min-width: 0;
-}
-.primary-collection-section {
-  border-color: var(--accent);
 }
 .grouped-page-section-title {
   display: flex;

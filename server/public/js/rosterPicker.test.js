@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  allVisibleRosterSelected,
   pruneRosterSelection,
   rosterPickerHtml,
   setVisibleRosterSelection,
@@ -24,6 +25,26 @@ test('bulk selection changes only the visible search intersection', () => {
   assert.deepEqual([...selected].sort(), ['a', 'b']);
   setVisibleRosterSelection(selected, players, 'anne', false);
   assert.deepEqual([...selected], ['b']);
+});
+
+test('the single bulk toggle offers deselect only when every visible player is selected', () => {
+  assert.equal(allVisibleRosterSelected(new Set(['a', 'b']), players, ''), false);
+  assert.equal(allVisibleRosterSelected(new Set(['a', 'b']), players, 'anne'), true);
+  assert.equal(allVisibleRosterSelected(new Set(['a', 'b', 'c']), players, ''), true);
+  assert.equal(allVisibleRosterSelected(new Set(), players, 'nobody'), false);
+
+  const partly = rosterPickerHtml({ id: 'r', players, selectedIds: new Set(['a']) });
+  assert.equal((partly.match(/data-roster-select-toggle/g) ?? []).length, 1);
+  assert.match(partly, /aria-label="Sichtbare Spieler markieren"/);
+  const all = rosterPickerHtml({ id: 'r', players, selectedIds: new Set(['a', 'b', 'c']) });
+  assert.match(all, /aria-label="Sichtbare Spieler abwählen"/);
+});
+
+test('a roster without its own search is pre-filtered by an external query', () => {
+  const html = rosterPickerHtml({ id: 'r', players, selectedIds: new Set(), query: 'bo', showSearch: false });
+  assert.doesNotMatch(html, /data-selection-search-trigger/);
+  assert.match(html, /data-selection-search="Boris">/);
+  assert.match(html, /data-selection-search="Carla" hidden>/);
 });
 
 test('roster markup keeps one shared checkbox/search contract and custom metadata', () => {
@@ -50,12 +71,10 @@ test('roster markup can retain stable view selectors during migration', () => {
     playerAttribute: 'data-legacy-player',
     emptyAttribute: 'data-legacy-empty',
     selectAllId: 'legacy-all',
-    selectNoneId: 'legacy-none',
   });
   assert.match(html, /id="legacy-search"/);
   assert.match(html, /data-legacy-item/);
   assert.match(html, /data-legacy-player="a"/);
   assert.match(html, /data-legacy-empty/);
   assert.match(html, /id="legacy-all"/);
-  assert.match(html, /id="legacy-none"/);
 });
