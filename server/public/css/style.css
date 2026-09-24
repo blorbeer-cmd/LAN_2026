@@ -3579,6 +3579,11 @@ button.card {
 .home-current--compact {
   padding-block: var(--space-3);
 }
+/* "Meine To-Dos" borrows the compact rows but keeps the standard card inset,
+   so its heading lines up with the first card of every other area. */
+.home-current--compact[data-home-assigned-todos] {
+  padding-block: var(--space-4);
+}
 .home-current--compact .home-current-row {
   min-height: var(--tap-target-size);
 }
