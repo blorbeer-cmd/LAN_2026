@@ -56,7 +56,7 @@ export function searchSelectHtml(
   id,
   options,
   selectedValue,
-  { placeholder = 'Suchen…', label = 'Verfügbare Optionen', ariaLabel = '', action = null } = {},
+  { placeholder = 'Suchen', label = 'Verfügbare Optionen', ariaLabel = '', action = null } = {},
 ) {
   const selected = options.find((option) => option.value === (selectedValue ?? ''));
   const initialLabel = selected ? selected.label : '';

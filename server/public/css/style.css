@@ -669,8 +669,7 @@ textarea {
      focused response button is replaced. */
   overflow-anchor: none;
 }
-.event-poll-round-header,
-.event-poll-option-header {
+.event-poll-round-header {
   align-items: flex-start;
 }
 .event-poll-card-title strong {
@@ -720,8 +719,7 @@ textarea {
     background: var(--bg-elevated-2);
   }
 }
-.event-poll-card-title,
-.event-poll-card-meta {
+.event-poll-card-title {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -731,10 +729,15 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.event-poll-card-meta {
-  align-items: flex-end;
-  text-align: right;
-  min-width: 9rem;
+/* One compact meta line: author, round, answers, deadline and, once ended,
+   the winning option. Empty values are left out by the renderer. */
+.event-poll-card-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  font-size: var(--font-size-sm);
 }
 .event-poll-card-side {
   display: flex;
@@ -743,12 +746,22 @@ textarea {
   flex: 0 0 auto;
   gap: var(--space-2);
 }
-.event-poll-best-result {
-  max-width: 15rem;
-  overflow: hidden;
-  color: var(--accent);
-  font-size: var(--font-size-xs);
+/* The side action matches the bordered "Aktion" menu trigger beside it. */
+.event-poll-card-side > .btn,
+.event-poll-history-round > .btn {
+  border: 1px solid var(--border);
+}
+.event-poll-best-result,
+.event-poll-history-result {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
   font-weight: var(--font-weight-medium);
+}
+.event-poll-best-result > span:last-child,
+.event-poll-history-result > span:last-child {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -773,8 +786,9 @@ textarea {
   z-index: 12;
   display: flex;
   width: max-content;
+  min-width: 11rem;
   max-width: calc(100vw - var(--space-8));
-  gap: var(--space-1);
+  gap: 0;
   flex-direction: column;
   padding: var(--space-1);
   border: 1px solid var(--border);
@@ -782,14 +796,35 @@ textarea {
   background: var(--bg-elevated);
   box-shadow: var(--shadow);
 }
-/* Menu entries compose the standard button variants with a full touch target. */
+/* Menu entries compose the standard button variants with a full touch target.
+   They are flat list rows: no box per entry, a hover surface only, and the
+   destructive entry keeps its red text behind a hairline instead of a red box. */
 .action-menu-panel .btn {
   min-height: var(--tap-target-size);
   min-width: var(--tap-target-size);
   justify-content: flex-start;
+  background: transparent;
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+@media (hover: hover) {
+  .action-menu-panel .btn:not(:disabled):hover {
+    background: var(--bg-elevated-2);
+  }
+  .action-menu-panel .btn-danger:not(:disabled):hover {
+    background: var(--danger-bg);
+  }
+}
+.action-menu-panel .btn-danger {
+  position: relative;
+  margin-top: var(--space-1);
+}
+.action-menu-panel .btn-danger::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--space-1) * -1) 0 auto;
+  border-top: 1px solid var(--border);
 }
 .action-menu-row {
   display: flex;
@@ -819,32 +854,137 @@ textarea {
   margin: 0;
 }
 .event-poll-options {
-  gap: var(--space-2);
+  gap: 0;
 }
+/* Options are flat rows separated by hairlines, not boxes inside the card. */
+/* Fixed columns keep every bar the same length: name and note, result bar,
+   voter avatars, answer buttons. Ended rounds simply have no last column. */
 .event-poll-option {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) 7rem auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.event-poll-option:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.event-poll-option:last-child {
+  padding-bottom: 0;
+}
+.event-poll-option-note {
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+.event-poll-option-info {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
+  min-width: 0;
 }
-.event-poll-option-badges {
+.event-poll-result {
+  /* The legend hangs below the bar. An empty first row of the same flexible
+     height mirrors it, so the bar stays on the row's middle line, level with
+     the avatars and answer buttons, even when the legend wraps. */
+  display: grid;
+  grid-template-rows: 1fr auto 1fr;
+  row-gap: var(--space-1);
+  min-width: 0;
+  margin-inline-end: var(--space-4);
+}
+.event-poll-result::before {
+  content: '';
+}
+.event-poll-bar {
+  display: block;
+  height: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--border);
+}
+.event-poll-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+}
+.event-poll-bar-fill.is-choice {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+.event-poll-legend-item {
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--space-1);
-  min-width: 7.5rem;
+}
+.event-poll-legend-dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+}
+.event-poll-legend-dot.is-can {
+  background: var(--accent);
+}
+.event-poll-legend-dot.is-if-needed {
+  background: var(--accent-2);
+}
+.event-poll-legend-dot.is-cannot {
+  background: var(--accent-3);
+}
+.event-poll-legend-dot.is-open {
+  background: var(--border);
+}
+.event-poll-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.event-poll-tag {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--control-line-height);
+}
+.event-poll-answer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+.event-poll-answer-chip svg {
+  width: var(--space-3);
+  height: var(--space-3);
+}
+.event-poll-answer-chip.is-missing {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: transparent;
+  color: var(--accent);
+}
+.event-poll-answer-inline {
+  display: none;
+}
+.event-poll-save-row.event-poll-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+}
+/* Its own flex row, not the shared `.row`: that 12px gap would push a
+   following badge visibly away from the voter avatars. */
+/* Avatars start at the column's left edge, so a trailing "+N" never shifts
+   them against the rows above and below. */
+.event-poll-option-badges {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-1);
   min-height: 24px;
 }
-/* No rule of its own: the renderer gives this row both `row-between` and
-   `event-poll-option-header`, and `.row-between` is declared later in this file
-   at the same specificity. Display, columns and gap set here would be dead
-   declarations, so the row is a flex row and everything it needs beyond
-   `.row-between` lives in the narrow-viewport block further down. */
-/* No flex-wrap: a long, user-entered option title used to push the help
-   trigger onto its own line below the text. The title wraps inside its own
-   box instead, so the trigger keeps its place beside it. */
 .event-poll-option-title-row {
   display: inline-flex;
   align-items: center;
@@ -861,16 +1001,13 @@ textarea {
 .event-poll-option-link {
   flex: none;
 }
-.event-poll-option-response-row {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
 .event-poll-counts {
-  font-size: var(--font-size-sm);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--control-line-height);
 }
 /* Voter avatars beside their option. They carry the same identities the vote
    dialog lists, compressed into the option's existing title row so a visible
@@ -880,17 +1017,11 @@ textarea {
   padding-inline: 0;
   padding-block: 0;
   background: transparent;
-  justify-content: flex-end;
+  justify-content: flex-start;
   /* The control keeps its full 32px target; only its outer box gives way, so
      the avatars ride inside the badge line's 24px instead of making every
      option row with voters taller than the ones without. */
   margin-block: calc(var(--space-1) * -1);
-}
-/* Keep the same outer inset when no recommendation or status badge follows
-   the stack. A following badge already supplies that inset through the row's
-   trailing content and shared gap. */
-.btn.event-poll-voter-stack:last-child {
-  margin-inline-end: var(--space-3);
 }
 .event-poll-voter-stack-avatars {
   display: inline-flex;
@@ -914,8 +1045,21 @@ textarea {
   max-width: 100%;
   flex-wrap: wrap;
 }
-.event-poll-response-toolbar .btn:not(.btn-primary) {
+.event-poll-response-toolbar .btn {
   background: var(--bg-elevated);
+}
+/* Answer buttons of one option share one width, so the chosen outline never
+   makes a row look uneven. */
+.event-poll-option > .event-poll-response-toolbar:not(.event-poll-rating-toolbar) {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+/* The chosen answer gets the blue outline of an open result action; the
+   gradient stays reserved for the one save action below the options. */
+.event-poll-response-toolbar .btn.is-selected {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
 }
 .event-poll-response-toolbar .btn:not(.btn-square) {
   min-width: var(--tap-target-size);
@@ -926,41 +1070,48 @@ textarea {
   margin-left: auto;
 }
 .event-poll-choice-control .selection-toolbar .event-poll-choice-btn {
+  /* One width for "Wählen" and "Ausgewählt", so the bar beside it keeps its
+     length in every row. */
+  min-width: calc(var(--space-8) * 2);
+  justify-content: center;
   height: auto;
   padding: var(--space-1) var(--space-2);
   font-size: var(--font-size-xs);
 }
-.event-poll-form-option-details > summary {
-  color: var(--text-muted);
-  cursor: pointer;
-}
 .event-poll-save-row {
   justify-content: flex-end;
 }
-.event-poll-result-title {
-  margin: 0;
-}
-.event-poll-edit-mode {
-  gap: var(--space-1);
+.event-poll-history > .collapsible-section-header {
+  align-items: center;
 }
 .event-poll-history-round {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
 }
-.event-poll-history-result {
-  color: var(--accent);
-  font-weight: var(--font-weight-medium);
+.event-poll-history-round:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
-.event-poll-history-details > summary {
+.event-poll-history-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+  font-size: var(--font-size-sm);
+}
+.event-poll-history-meta {
   color: var(--text-muted);
-  cursor: pointer;
-}
-.event-poll-history-details > .event-poll-options {
-  padding-top: var(--space-2);
 }
 .event-poll-ended-history > .collapsible-section-content {
   padding-top: 0;
+}
+.event-poll-vote-option-name {
+  gap: var(--space-2);
 }
 .event-poll-vote-details {
   gap: var(--space-3);
@@ -993,48 +1144,61 @@ textarea {
   flex: none;
   font-size: var(--font-size-xs);
 }
-.event-poll-form-option {
+.event-poll-note-input {
+  field-sizing: content;
+  max-height: calc(var(--control-height) * 4);
+}
+.event-poll-form-option-list {
+  gap: var(--space-2);
+}
+.event-poll-form-option-main {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
-.event-poll-form-option:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-.event-poll-form-option > .row-between {
-  align-items: center;
-}
-.event-poll-form-option-label {
-  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
 }
-.event-poll-form-option-label .field-label {
-  margin-bottom: 0;
+.event-poll-form-option-main > [data-poll-option-input] {
+  flex: 1 1 auto;
+  min-width: 0;
 }
-.event-poll-form-option-details > summary {
-  font-size: var(--font-size-sm);
+.event-poll-option-extra-toggle[aria-expanded='true'] {
+  color: var(--accent);
 }
 .event-poll-option-extra-fields {
   margin-top: var(--space-2);
 }
-.event-poll-option-active {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--control-height);
-  cursor: pointer;
-}
-.poll-option-switch:checked + .event-poll-option-disabled {
-  display: none;
-}
 .event-poll-form-option:has(.poll-option-switch:not(:checked)) [data-poll-option-input] {
   color: var(--text-muted);
   text-decoration: line-through;
+}
+/* Paired fields keep their labels on one line height, with or without an
+   info trigger, so both inputs start on the same edge. */
+.event-poll-form-pair > div > .field-label:first-child,
+.event-poll-form-pair > div > .title-with-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-height);
+  margin-bottom: var(--space-1);
+}
+.event-poll-form-pair > div > .title-with-info > .field-label {
+  margin-bottom: 0;
+}
+.event-poll-form-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-5);
+}
+.event-poll-flag {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+}
+.event-poll-flag input[type='checkbox'] {
+  width: var(--space-5);
+  height: var(--space-5);
+  margin: 0;
+  accent-color: var(--accent);
 }
 .poll-option-switch {
   appearance: none;
@@ -1071,10 +1235,6 @@ textarea {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.event-poll-max-field {
-  grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
-  align-items: center;
-}
 @media (max-width: 639px) { /* --bp-md */
   .event-poll-card-header {
     flex-wrap: wrap;
@@ -1084,46 +1244,56 @@ textarea {
     flex-basis: 100%;
     grid-template-columns: auto minmax(0, 1fr);
   }
-  /* Status, response count and the "Aktion" menu move to their own row
-     instead of squeezing next to the title — otherwise all of that had to
-     share one cramped line with the toggle button on a phone. */
+  /* The compact header actions move below the title on a phone, aligned
+     right, instead of squeezing the title into a narrow column. */
   .event-poll-card-side {
     flex: 1 1 100%;
-    align-self: stretch;
-    align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
   }
-  .event-poll-card-meta {
-    min-width: 0;
-    align-items: flex-start;
-    text-align: left;
+  /* Phone: name and avatars share the first line; bar, counts and the
+     answer buttons use the full width below. The answer status moves into
+     the card's meta line. */
+  .event-poll-answer-side {
+    display: none;
   }
-  .event-poll-best-result {
-    max-width: 8rem;
+  .event-poll-answer-inline {
+    display: inline-flex;
   }
-  .event-poll-max-field {
-    grid-template-columns: minmax(0, 1fr);
+  .event-poll-option {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2);
   }
-  .event-poll-option-extra-fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  /* The badge moves to its own row below --bp-md as soon as the title needs
-     that width. Sharing the row unconditionally left the title about 80px on a
-     320px phone, and `overflow-wrap: anywhere` then broke a long option name
-     almost letter by letter — 12 lines where the same name needs 7. The row is
-     a flex row — the later `.row-between` wins over `.event-poll-option-header`
-     — so the badge wraps through flex-wrap instead of a grid column, and only
-     when the untruncated title no longer fits beside it: a short option name
-     keeps badge and title on one line and stays as compact as before. The help
-     trigger stays beside the title either way. */
-  .event-poll-option-header {
-    flex-wrap: wrap;
+  .event-poll-option-info {
+    grid-column: 1;
+    grid-row: 1;
   }
   .event-poll-option-badges {
-    min-width: 0;
-    justify-content: flex-start;
+    grid-column: 2;
+    grid-row: 1;
   }
-  .event-poll-vote-person {
+  .event-poll-result {
+    grid-template-rows: auto;
+    margin-inline-end: 0;
+  }
+  .event-poll-result::before {
+    display: none;
+  }
+  .event-poll-option-badges,
+  .btn.event-poll-voter-stack {
+    justify-content: flex-end;
+  }
+  .event-poll-result,
+  .event-poll-option > .event-poll-response-toolbar,
+  .event-poll-option > .event-poll-choice-control {
+    grid-column: 1 / -1;
+  }
+  .event-poll-option > .event-poll-response-toolbar,
+  .event-poll-option > .event-poll-choice-control,
+  .event-poll-choice-control .selection-toolbar,
+  .event-poll-choice-control .selection-toolbar .event-poll-choice-btn {
+    width: 100%;
+  }
+  .event-poll-vote-person.row-between {
     align-items: flex-start;
     flex-direction: column;
     gap: 0;
@@ -1500,17 +1670,6 @@ textarea {
   }
 }
 
-@media (min-width: 1280px) { /* --bp-xl */
-  /* These destinations are direct desktop navigation items. Their compact
-     mobile back control would otherwise lead to the now-hidden More hub and
-     contradict the browser's real history. */
-  :root[data-layout-mode='desktop'] .more-subpage-title-row > [data-navigate='more'] {
-    display: none;
-  }
-  :root[data-layout-mode='desktop'] .more-subpage-title-row:has(> [data-navigate='more']) {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-}
 
 .nav-btn {
   flex: 1;
@@ -1711,6 +1870,12 @@ textarea {
   font-family: inherit;
   resize: vertical;
 }
+/* Placeholders show an example or a format, never a value. Italic keeps them
+   visibly apart from real input in every field. */
+input::placeholder,
+textarea::placeholder {
+  font-style: italic;
+}
 
 /* Focus: accent ring on fields, visible keyboard-focus outline everywhere
    else — without leaving mouse/touch users with permanent outlines. */
@@ -1729,6 +1894,12 @@ textarea:focus {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+/* Headings and other script-only focus targets (tabindex="-1", e.g. the view
+   heading focused after navigation for screen readers) are not controls, so
+   they must not show the keyboard ring as a stray blue frame. */
+[tabindex='-1']:focus-visible {
+  outline: none;
 }
 
 /* Native dropdown arrows don't theme; replace with a custom chevron so
@@ -2156,15 +2327,6 @@ input[type='number']::-webkit-inner-spin-button {
 .tournament-team-count-field .field-label {
   margin-bottom: var(--space-1);
 }
-/* On phones the team-count field and the two selection buttons no longer fit
-   one row; forcing the field onto its own row lets "Alle markieren" and
-   "Auswahl aufheben" wrap together onto the next line instead of splitting
-   across two rows, matching the Captain-Draft toolbar below it. */
-@media (max-width: 639px) { /* --bp-md */
-  .tournament-team-count-field {
-    flex-basis: 100%;
-  }
-}
 .player-selection-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2448,9 +2610,36 @@ input[type='number']::-webkit-inner-spin-button {
 .history-details + .history-details {
   margin-top: var(--space-3);
 }
-.matchmaking-draw-team.is-winner {
-  border-color: var(--state-playing);
-  box-shadow: inset 0 0 0 1px var(--state-playing);
+.matchmaking-draw-card {
+  margin-bottom: var(--space-3);
+}
+.matchmaking-draw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+}
+.matchmaking-draw-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.matchmaking-draw-team .team-card-header .tournament-fixture-score {
+  padding-block: 0;
+  line-height: var(--control-line-height);
+}
+.matchmaking-draw-team.is-loser .team-player-name,
+.matchmaking-draw-team.is-loser .team-card-header {
+  color: var(--text-muted);
+}
+.matchmaking-new-draw {
+  margin-top: var(--space-4);
+}
+.matchmaking-new-draw-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-lg);
 }
 .captain-selection-group {
   display: flex;
@@ -2482,22 +2671,9 @@ button.draft-pool-player {
   }
 }
 
-/* Tournament overview and creation deliberately use their available width:
-   one or two entries stretch instead of reserving empty auto-fill columns,
-   while the tournament player picker caps at two cards per row from
-   --bp-md and stacks a single column on phones. */
-.tournament-detail-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));
-  gap: var(--space-3);
-}
-/* Phones fit exactly two stat columns; an odd final summary card spans the
-   row instead of leaving a hole beside it. */
-@media (max-width: 639px) { /* --bp-md */
-  .tournament-detail-stats > :nth-child(odd):last-child {
-    grid-column: 1 / -1;
-  }
-}
+/* Tournament overview deliberately uses its available width: one or two
+   entries stretch instead of reserving empty auto-fill columns, while player
+   pickers cap at two cards per row from --bp-md and stack on phones. */
 .tournament-detail-meta {
   display: flex;
   align-items: center;
@@ -2506,27 +2682,13 @@ button.draft-pool-player {
   margin-top: calc(var(--space-3) * -1);
   margin-bottom: var(--space-3);
 }
-.tournament-detail-format {
-  align-items: center;
-}
 .tournament-team-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
-.tournament-stat {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.tournament-stat strong {
-  font-size: var(--font-size-xl);
-}
 .card-grid.tournament-list-grid {
   grid-template-columns: minmax(0, 1fr);
-}
-.tournament-create-slot:not(:empty) {
-  margin-top: var(--space-4);
 }
 .collapsible-section-header {
   display: flex;
@@ -2545,7 +2707,9 @@ button.draft-pool-player {
 /* History cards use the compact Home header alignment. */
 .history-details > .collapsible-section-header,
 [data-checklist-history] > .collapsible-section-header,
-[data-broadcast-history] > .collapsible-section-header {
+[data-broadcast-history] > .collapsible-section-header,
+[data-completed-tournaments] > .collapsible-section-header,
+[data-tournament-teams] > .collapsible-section-header {
   align-items: center;
 }
 .collapsible-section-header::-webkit-details-marker {
@@ -2566,6 +2730,10 @@ button.draft-pool-player {
 }
 .collapsible-section[open] .collapsible-section-chevron {
   transform: rotate(90deg);
+}
+.tournament-list-result {
+  font-size: var(--font-size-xs);
+  color: var(--text);
 }
 .tournament-list-section .tournament-list-card {
   background: var(--bg-elevated-2);
@@ -2721,19 +2889,6 @@ button.draft-pool-player {
     border-radius: var(--radius);
   }
 }
-.tournament-create-step-title {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-}
-.tournament-create-step-title h3 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-}
-.tournament-create-step-title .muted {
-  font-size: var(--font-size-xs);
-}
 .tournament-group-stage {
   display: grid;
   gap: var(--space-4);
@@ -2750,22 +2905,12 @@ button.draft-pool-player {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
-.tournament-format-label {
-  align-items: center;
-}
-.tournament-format-label .field-label {
-  margin: 0;
-}
 .tournament-draft-team {
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
-.tournament-draft-team.is-drag-target,
-.tournament-draft-team.is-select-target {
+.tournament-draft-team.is-drag-target {
   border-color: var(--accent);
   background: var(--bg-elevated-2);
-}
-.tournament-draft-team.is-select-target {
-  cursor: pointer;
 }
 .tournament-drag-player {
   width: 100%;
@@ -2781,10 +2926,6 @@ button.draft-pool-player {
 .tournament-drag-player:active {
   cursor: grabbing;
 }
-.tournament-drag-player.is-selected {
-  border-color: var(--accent);
-  background: var(--bg-elevated-2);
-}
 .tournament-drag-player.is-dragging {
   opacity: 0.45;
 }
@@ -2793,42 +2934,6 @@ button.draft-pool-player {
 }
 .tournament-option-label label {
   cursor: pointer;
-}
-.tournament-field-label {
-  min-height: var(--control-height);
-  display: flex;
-  align-items: center;
-}
-.tournament-field-label .field-label {
-  margin: 0;
-}
-.tournament-lobby-info {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-3);
-  border-color: var(--accent);
-  background: var(--bg-elevated-2);
-}
-.tournament-active-lobby-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-.tournament-lobby-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-.tournament-lobby-phase {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
 }
 .tournament-lobby-matchup {
   color: var(--text);
@@ -2901,12 +3006,6 @@ button.draft-pool-player {
   .tournament-team-preview-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .tournament-active-lobby-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .tournament-active-lobby-grid .tournament-lobby-info:only-child {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (hover: hover) {
@@ -2978,12 +3077,13 @@ button.draft-pool-player {
 
 /* A date, 44px calendar action and time cannot stay legible in the narrow
    half of a paired form. React to the component's own width (not only the
-   viewport) and give the date row the full available width. */
+   viewport) and give the date row the full available width. A date-only
+   field has no time input and keeps its clear action on the same line. */
 @container (max-width: 280px) {
-  .dt-inputs {
+  .dt-field:not([data-dt-date-only='true']) .dt-inputs {
     flex-wrap: wrap;
   }
-  .dt-date-control {
+  .dt-field:not([data-dt-date-only='true']) .dt-date-control {
     flex-basis: 100%;
   }
 }
@@ -3085,9 +3185,12 @@ button.draft-pool-player {
   .dt-date-control {
     flex-basis: calc(100% - var(--tap-target-size) - var(--space-2));
   }
+  /* The time grows to the row width on phones; it then starts at the
+     same left edge as the date above it instead of floating centered. */
   .dt-time-input {
     flex: 1 1 88px;
     width: auto;
+    text-align: left;
   }
   .dt-popover {
     right: var(--space-2);
@@ -3181,7 +3284,7 @@ button.draft-pool-player {
 }
 .more-subpage-title-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: var(--tap-target-size);
   align-items: center;
   gap: var(--space-2);
@@ -3190,14 +3293,13 @@ button.draft-pool-player {
   min-width: 0;
   margin: 0;
 }
-/* Keep a trailing header action inside the phone viewport when the back
-   control, a long title and its help trigger cannot share one row. */
+/* Keep a trailing header action inside the phone viewport when a long title
+   and its help trigger cannot share one row with it. */
 @media (max-width: 479px) { /* --bp-sm */
   .more-subpage-title-row--stack-action {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
   .more-subpage-title-row--stack-action > .btn:last-child {
-    grid-column: 2;
     justify-self: end;
   }
 }
@@ -3681,9 +3783,8 @@ button.card {
   flex: 0 0 auto;
 }
 /* Same status, reinforced on the row itself so it doesn't depend on
-   noticing the small badge alone — same border+inset-shadow pattern as
-   .matchmaking-draw-team.is-winner, just in the paused/amber color already
-   tied to "Vorschlag" everywhere else. */
+   noticing the small badge alone: a border plus inset shadow in the
+   paused/amber color already tied to "Vorschlag" everywhere else. */
 .game-table-row.is-suggestion {
   border-color: var(--state-paused);
   box-shadow: inset 0 0 0 1px var(--state-paused);
@@ -3828,10 +3929,18 @@ button.card {
 .arrival-note-input {
   min-height: var(--control-height);
 }
+/* The collapsible times card follows the page rhythm, not the extra
+   history offset. */
+.arrivals-layout > .history-details {
+  margin-top: 0;
+}
+.arrivals-form-footer {
+  display: flex;
+  justify-content: flex-end;
+}
 .arrivals-member-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-1) var(--space-4);
 }
 .arrivals-member-row {
   display: flex;
@@ -3849,34 +3958,24 @@ button.card {
   white-space: nowrap;
 }
 .arrivals-member-role {
-  display: inline-flex;
-  width: calc(var(--space-8) + var(--space-8));
-  align-items: center;
-  justify-content: center;
   margin-left: auto;
-  padding: var(--space-1) var(--space-3);
   flex-shrink: 0;
   color: var(--text-muted);
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
 }
-.arrivals-carpool-directions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
+/* The long direction title wraps on phones; the header action keeps one line. */
+.arrivals-carpool-section > .grouped-page-section-title > .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
-.arrivals-carpool-section {
-  min-width: 0;
-  gap: var(--space-3);
+/* "Frei" lines up with the member names next to the avatar column. */
+.arrivals-free-seat-row {
+  padding-left: calc(var(--avatar-size-sm) + var(--space-2));
 }
-.arrivals-carpool-section.is-arrival::before {
-  background: var(--accent);
-}
-.arrivals-carpool-section.is-departure::before {
-  background: var(--accent-3);
-}
-.arrivals-carpool-row {
-  gap: var(--space-3);
+.arrivals-carpool-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   padding: var(--space-3);
 }
 .arrivals-carpool-head {
@@ -3885,67 +3984,50 @@ button.card {
   justify-content: space-between;
   gap: var(--space-2);
 }
-.arrivals-carpool-head > strong {
+.arrivals-carpool-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   min-width: 0;
+}
+.arrivals-carpool-title > strong {
   overflow-wrap: anywhere;
 }
-.arrivals-carpool-seats {
+.arrivals-carpool-meta {
+  font-size: var(--font-size-sm);
+}
+.arrivals-carpool-action {
+  display: inline-flex;
   flex-shrink: 0;
 }
-.arrivals-carpool-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
-  margin-top: auto;
-  padding-top: var(--space-1);
-  border-top: 1px solid var(--border);
-}
-.arrivals-carpool-actions.is-driver {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.arrivals-carpool-actions .btn {
-  width: 100%;
-}
-.arrivals-carpool-members {
-  display: grid;
-  gap: var(--space-1);
-}
-.arrivals-free-seat-row {
-  justify-content: space-between;
-}
-.arrivals-free-seat-label {
-  padding-left: calc(var(--avatar-size-sm) + var(--space-2));
-}
-.arrivals-free-seat-row .btn {
-  width: calc(var(--space-8) + var(--space-8));
-}
-.arrivals-carpool-empty {
-  font-size: var(--font-size-sm);
+/* Eintragen/Austragen match the bordered "Aktion" menu trigger. */
+.arrivals-carpool-action > .btn {
+  border: 1px solid var(--border);
 }
 .arrivals-mobile-sort {
   display: none;
 }
-.arrivals-people-card {
-  padding: 0;
-  overflow: hidden;
-}
 .arrivals-times-header,
 .arrivals-times-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr)) minmax(0, 1.25fr);
+  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-2) 0;
+}
+.arrivals-times-row {
+  border-top: 1px solid var(--border);
 }
 .arrivals-times-header {
+  padding-top: 0;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.arrivals-sort-button {
+.arrivals-sort-button,
+.player-detail-sort-button {
   display: inline-flex;
   min-height: var(--control-height);
   align-items: center;
@@ -3960,15 +4042,14 @@ button.card {
   background: transparent;
   cursor: pointer;
 }
-.arrivals-sort-button.is-active {
+.arrivals-sort-button.is-active,
+.player-detail-sort-button.is-active {
   color: var(--text);
 }
-.arrivals-sort-button .ui-icon {
+.arrivals-sort-button .ui-icon,
+.player-detail-sort-button .ui-icon {
   width: 1em;
   height: 1em;
-}
-.arrivals-times-row:last-child {
-  border-bottom: none;
 }
 .arrivals-times-player {
   display: flex;
@@ -3976,39 +4057,28 @@ button.card {
   gap: var(--space-2);
   min-width: 0;
 }
+.arrivals-times-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
 .arrivals-times-player .player-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.arrivals-times-value,
-.arrivals-times-note {
-  min-width: 0;
+.arrivals-times-note,
+.arrivals-times-driver {
+  font-size: var(--font-size-xs);
   overflow-wrap: anywhere;
+}
+.arrivals-times-value {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   font-size: var(--font-size-sm);
 }
 .arrivals-times-value strong {
-  font-weight: var(--font-weight-medium);
-}
-.arrivals-time-line {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: baseline;
-  font-size: var(--font-size-sm);
-}
-.arrivals-time-pair {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
-}
-.arrivals-time-pair .arrivals-time-line {
-  grid-template-columns: auto minmax(0, 1fr);
-}
-.arrivals-time-line span {
-  color: var(--text-muted);
-}
-.arrivals-time-line strong {
   font-weight: var(--font-weight-medium);
 }
 @media (hover: hover) {
@@ -4052,22 +4122,24 @@ button.card {
   }
   .arrivals-times-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: var(--space-2) var(--space-3);
   }
-  .arrivals-times-player,
-  .arrivals-times-note {
+  .arrivals-times-player {
     grid-column: 1 / -1;
   }
-  .arrivals-times-value::before,
-  .arrivals-times-note::before {
+  .arrivals-times-value {
+    padding-left: calc(var(--avatar-size-sm) + var(--space-2));
+  }
+  .arrivals-times-value + .arrivals-times-value {
+    padding-left: 0;
+  }
+  .arrivals-times-value::before {
     content: attr(data-label);
-    display: block;
-    margin-bottom: var(--space-1);
     color: var(--text-muted);
     font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-regular);
   }
 }
-
 
 /* The QR code SVG already draws its own white background (needed for
    scanability regardless of theme) — just round its corners and give it

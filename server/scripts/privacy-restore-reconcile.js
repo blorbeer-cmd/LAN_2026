@@ -24,22 +24,27 @@ if (mode === '--apply' && process.env.PRIVACY_RESTORE_CONFIRMED_OFFLINE !== '1')
 
 process.env.PRIVACY_RETENTION_ENABLED = '0';
 const runtimeDir = fs.existsSync(path.join(__dirname, '..', 'dist', 'db.js')) ? '../dist' : '../dist-test';
+const { config } = require(`${runtimeDir}/config`);
+if (!receiptPath && (!config.deletionLedgerFile || !fs.existsSync(config.deletionLedgerFile))) {
+  fail(`Ledger fehlt: ${config.deletionLedgerFile || '(kein Pfad)'}. Vollständige Löschbelege als letzten Parameter übergeben oder den Ledger-Pfad prüfen.`);
+  return;
+}
 const { db } = require(`${runtimeDir}/db`);
-const { deletionReceiptHash, deleteAccount, listDeletionReceipts } = require(`${runtimeDir}/privacyService`);
+const { deletionReceiptHash, deleteAccount, listDeletionReceipts, parseDeletionLedger } = require(`${runtimeDir}/privacyService`);
 let receipts;
 try {
   if (!receiptPath) {
     receipts = listDeletionReceipts();
   } else {
     const content = fs.readFileSync(path.resolve(receiptPath), 'utf8');
-    if (content.trimStart().startsWith('{')) {
-      const document = JSON.parse(content);
-      if (document?.format !== 'respawn-deletion-receipts' || document?.version !== 1 || !Array.isArray(document.receipts)) {
-        throw new Error('Datei hat kein unterstütztes Respawn-Format.');
-      }
+    let document;
+    try { document = JSON.parse(content); } catch { /* JSONL is parsed below. */ }
+    if (document?.format === 'respawn-deletion-receipts' && document.version === 1 && Array.isArray(document.receipts)) {
       receipts = document.receipts;
+    } else if (document !== undefined) {
+      throw new Error('Datei hat kein unterstütztes Respawn-Format.');
     } else {
-      receipts = content.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+      receipts = parseDeletionLedger(content);
     }
   }
 } catch (error) {

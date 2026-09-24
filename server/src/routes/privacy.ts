@@ -20,7 +20,7 @@ export const privacyRouter = Router();
 privacyRouter.get('/', (req, res) => {
   const events = db
     .prepare(
-      `SELECT e.id AS eventId, e.name AS eventName,
+      `SELECT e.id AS eventId, e.name AS eventName, e.event_type_key AS eventType,
               c.id AS consentId, c.accepted_at AS grantedAt, c.revoked_at AS revokedAt,
               c.purpose, c.text_version AS textVersion, c.source
        FROM event_participants ep
@@ -32,7 +32,7 @@ privacyRouter.get('/', (req, res) => {
        ORDER BY e.starts_at DESC`,
     )
     .all(TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION, req.player!.id);
-  // Consents kept unversioned by migration 105 no longer match the join
+  // Consents kept unversioned by migration 106 no longer match the join
   // above, so they render as "Nicht aktiviert" and stay unreachable while
   // still holding revoked_at IS NULL — which is what the personal export
   // shows. List them separately so they can be revoked, exactly like the

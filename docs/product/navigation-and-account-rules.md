@@ -111,10 +111,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   Foreign profiles expose neither edit/delete actions nor the private agent key;
   the API omits the private agent key and rejects profile-field updates when the session does not
   match the target player.
-  A foreign profile's detail dialog leads with identity (avatar, Gamertag, real name); the complete
-  „Bock & Skill“ rating list across every game sits inside one initially collapsed
-  `.collapsible-section` carrying the total game count, so a roster of many games does not force a
-  long scroll just to see who someone is.
+  A foreign profile's detail dialog names the Gamertag once, as its title, and leads with the
+  avatar, the real name and how many games the person rated. One table follows with one row per
+  rated game and the columns Spiel, Bock and Skill (games without any value are left out, a missing
+  single value shows „–“). The column headers sort like the An- & Abreise table; the dialog opens
+  sorted by Bock, highest first, because that order carries meaning.
   Player creation stays in the authenticated Admin workflow. The desktop live board keeps exactly
   two equal-width cards per row; an odd final player does not stretch.
   The self-service profile uses the shared
@@ -223,10 +224,10 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
 ## Hall of Fame, Info und Feedback
 
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
-  grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
-  the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and
-  pink accent rails distinguish the two result groups; tournament game names have no decorative
-  game symbols. Admin fixtures cover twelve years with full standings and three tournament winners per LAN so dense
+  grid. „Nach Event“ uses one directly labeled event dropdown („Event suchen“) and shows the selected
+  event's dates, then every overall placement, then tournament winners in the same leaderboard-row
+  structure. Both result groups sit flat inside the card under plain subheadings and a hairline,
+  without nested cards or accent rails; tournament game names have no decorative game symbols. Admin fixtures cover twelve years with full standings and three tournament winners per LAN so dense
   long-term states remain testable. Hall of Fame is the third tab of the „Auswertung“ area.
   Info is not an area at all: the topbar's „i“ (`#info-btn`, the canonical `info` icon from
   `domainIcons.js`) opens it as a dialog over whatever view is open, because it is reference

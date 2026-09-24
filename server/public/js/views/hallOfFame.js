@@ -90,7 +90,7 @@ function renderTournamentChampion(t, index) {
 }
 
 function renderEvent(e) {
-  const range = `${formatDate(e.startsAt)}${e.endsAt ? ' – ' + formatDate(e.endsAt) : ' (läuft)'}`;
+  const range = `${formatDate(e.startsAt)}${e.endsAt ? ` bis ${formatDate(e.endsAt)}` : ' (läuft)'}`;
   const standings = e.overallStandings ?? [];
   const standingsHtml = standings.length
     ? `<div class="leaderboard-list-grid">${standings.map(renderEventStanding).join('')}</div>`
@@ -100,17 +100,16 @@ function renderEvent(e) {
     ? `<div class="leaderboard-list-grid">${e.tournamentChampions.map(renderTournamentChampion).join('')}</div>`
     : '';
 
+  // Flat inside the "Nach Event" card: the picker already names the event, so
+  // only its dates follow, then the result lists under plain subheadings.
   return `
     <div class="stack hall-of-fame-event">
-      <div class="row-between hall-of-fame-event-header">
-        <span class="player-name">${escapeHtml(e.eventName)}</span>
-        <span class="muted" style="font-size:var(--font-size-xs);">${range}</span>
-      </div>
-      <section class="hall-of-fame-event-section is-overall">
+      <span class="muted hall-of-fame-event-range">${range}</span>
+      <section class="stack hall-of-fame-event-section is-overall">
         <div class="section-title hall-of-fame-subtitle">Gesamtplatzierungen</div>
         ${standingsHtml}
       </section>
-      ${tournamentsHtml ? `<section class="hall-of-fame-event-section is-tournaments"><div class="section-title hall-of-fame-subtitle">Turniere</div>${tournamentsHtml}</section>` : ''}
+      ${tournamentsHtml ? `<section class="stack hall-of-fame-event-section is-tournaments"><div class="section-title hall-of-fame-subtitle">Turniere</div>${tournamentsHtml}</section>` : ''}
     </div>
   `;
 }
@@ -150,16 +149,16 @@ export function renderHallOfFame(container, ctx) {
           <div class="leaderboard-list-grid">${rankedRows(cache.allTime.mostTournamentWins, 'Turnier')}</div>
         </section>
         <section class="card stack grouped-page-section" aria-labelledby="hall-events-title">
-          <div class="grouped-page-section-title"><h2 id="hall-events-title">Nach LAN</h2></div>
+          <div class="grouped-page-section-title"><h2 id="hall-events-title">Nach Event</h2></div>
           ${
             events.length === 0
               ? emptyStateHtml('Noch keine Events.')
               : `${searchSelectHtml('hall-event-select', eventPickerOptions(events), selectedEventId, {
-                  placeholder: 'LAN suchen…',
-                  ariaLabel: 'LAN',
-                  label: 'LANs mit Ergebnissen',
+                  placeholder: 'Event suchen',
+                  ariaLabel: 'Event',
+                  label: 'Events mit Ergebnissen',
                 })}
-                 <div class="card hall-of-fame-selected-event">${renderEvent(selectedEvent)}</div>`
+                 <div class="hall-of-fame-selected-event">${renderEvent(selectedEvent)}</div>`
           }
         </section>
       </div>

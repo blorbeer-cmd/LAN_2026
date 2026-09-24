@@ -23,7 +23,10 @@ export interface DeletionReceipt {
   subjectHash: string;
   deletedAt: number;
   action: string;
+  attemptId?: string;
 }
+
+interface DeletionCancellation { cancelledAttemptId: string }
 
 function validDeletionReceipt(value: unknown): value is DeletionReceipt {
   if (!value || typeof value !== 'object') return false;
@@ -33,29 +36,43 @@ function validDeletionReceipt(value: unknown): value is DeletionReceipt {
     /^[a-f0-9]{64}$/.test(receipt.subjectHash) &&
     typeof receipt.deletedAt === 'number' &&
     Number.isFinite(receipt.deletedAt) &&
-    typeof receipt.action === 'string'
+    typeof receipt.action === 'string' &&
+    (receipt.attemptId === undefined || (typeof receipt.attemptId === 'string' && receipt.attemptId.length > 0))
   );
 }
 
-function readDeletionLedger(): DeletionReceipt[] {
-  if (!config.deletionLedgerFile || !existsSync(config.deletionLedgerFile)) return [];
-  const lines = readFileSync(config.deletionLedgerFile, 'utf8').split(/\r?\n/);
-  return lines.flatMap((line, index) => {
-    if (!line.trim()) return [];
+export function parseDeletionLedger(content: string): DeletionReceipt[] {
+  const lines = content.split(/\r?\n/);
+  const active = new Map<string, DeletionReceipt>();
+  const legacy: DeletionReceipt[] = [];
+  for (const [index, line] of lines.entries()) {
+    if (!line.trim()) continue;
     let value: unknown;
     try {
       value = JSON.parse(line);
     } catch {
       throw new Error(`Löschbeleg-Ledger ist in Zeile ${index + 1} beschädigt.`);
     }
-    if (!validDeletionReceipt(value)) {
+    if (validDeletionReceipt(value)) {
+      if (value.attemptId) active.set(value.attemptId, value);
+      else legacy.push(value);
+    } else if (value && typeof value === 'object' &&
+      typeof (value as DeletionCancellation).cancelledAttemptId === 'string' &&
+      (value as DeletionCancellation).cancelledAttemptId.length > 0) {
+      active.delete((value as DeletionCancellation).cancelledAttemptId);
+    } else {
       throw new Error(`Löschbeleg-Ledger enthält in Zeile ${index + 1} einen ungültigen Beleg.`);
     }
-    return [value];
-  });
+  }
+  return [...legacy, ...active.values()];
 }
 
-function appendDeletionReceipt(receipt: DeletionReceipt): void {
+function readDeletionLedger(): DeletionReceipt[] {
+  if (!config.deletionLedgerFile || !existsSync(config.deletionLedgerFile)) return [];
+  return parseDeletionLedger(readFileSync(config.deletionLedgerFile, 'utf8'));
+}
+
+function appendDeletionReceipt(receipt: DeletionReceipt | DeletionCancellation): void {
   if (!config.deletionLedgerFile) return;
   mkdirSync(path.dirname(config.deletionLedgerFile), { recursive: true, mode: 0o700 });
   const descriptor = openSync(config.deletionLedgerFile, 'a', 0o600);
@@ -911,7 +928,7 @@ export function deleteAccount(playerId: string, actorPlayerId?: string): Account
       ? 'player_self_deleted'
       : 'player_deleted';
 
-  const receipt = { subjectHash, deletedAt: Date.now(), action: deletionAction };
+  const receipt = { subjectHash, deletedAt: Date.now(), action: deletionAction, attemptId: nanoid() };
   try {
     // The hash-only ledger is deliberately durable before SQLite is changed:
     // once erasure starts, an older backup must never be allowed to revive the account.
@@ -924,7 +941,7 @@ export function deleteAccount(playerId: string, actorPlayerId?: string): Account
     };
   }
 
-  db.transaction(() => {
+  const deleteInTransaction = db.transaction(() => {
     for (const purpose of ['register', 'claim', 'reset', 'test_login'] as const) voidOutstandingInvites(player.id, purpose);
     revokeRegistrationInvitesCreatedBy(player.id, 'creator_deleted', actorPlayerId);
     // Detaching keeps another account's task alive against the assignee_id
@@ -943,7 +960,15 @@ export function deleteAccount(playerId: string, actorPlayerId?: string): Account
       targetType: 'deleted_account',
       details: { subjectHash, deletedAt: receipt.deletedAt },
     });
-  })();
+  });
+  try {
+    deleteInTransaction();
+  } catch (error) {
+    // The SQLite transaction rolled back. Cancel its pre-written receipt so
+    // an older backup cannot turn a failed attempt into a later deletion.
+    appendDeletionReceipt({ cancelledAttemptId: receipt.attemptId });
+    throw error;
+  }
 
   return { ok: true, affectedGroupIds, subjectHash, wasTest: Boolean(player.is_test) };
 }

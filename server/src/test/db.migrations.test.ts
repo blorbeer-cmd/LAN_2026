@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 107);
+  assert.equal(migrations.length, 108);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 107 }, (_, index) => index + 1),
+    Array.from({ length: 108 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1354,9 +1354,68 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 107 }, (_, index) => index + 1),
-    'every version 1..107 runs exactly once',
+    Array.from({ length: 108 }, (_, index) => index + 1),
+    'every version 1..108 runs exactly once',
   );
+});
+
+test('migration 105 adds the draw-to-tournament link to legacy draws and is restart-safe', () => {
+  const dbFile = makeTempDbPath('draw-tournament-link');
+  runMigrations(dbFile);
+
+  // Rebuild matchmaking_draws without tournament_id, the shape every database
+  // had before a draw could become a tournament.
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`
+    CREATE TABLE matchmaking_draws_legacy AS
+      SELECT id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, match_id, source, group_id
+      FROM matchmaking_draws;
+    DROP TABLE matchmaking_draws;
+    ALTER TABLE matchmaking_draws_legacy RENAME TO matchmaking_draws;
+    DELETE FROM schema_migrations WHERE version = 105;
+  `);
+  const game = fixture.prepare('SELECT id FROM games LIMIT 1').get() as { id: string };
+  fixture.prepare(
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, group_id)
+     VALUES ('legacy-draw', ?, 'instance-base-event', '[]', 0, 0, 1, 'default-group')`,
+  ).run(game.id);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the draw-tournament link migration must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const columns = migrated.prepare('PRAGMA table_info(matchmaking_draws)').all() as Array<{ name: string }>;
+  assert.equal(columns.filter((column) => column.name === 'tournament_id').length, 1);
+  assert.deepEqual(
+    migrated.prepare('SELECT id, tournament_id AS tournamentId FROM matchmaking_draws WHERE id = ?').get('legacy-draw'),
+    { id: 'legacy-draw', tournamentId: null },
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 105').get());
+  migrated.close();
+
+  // A test installation of the draft privacy PR may have recorded its own
+  // version 105 before main used that number for this draw link.
+  const draftFixture = new Database(dbFile);
+  draftFixture.pragma('foreign_keys = OFF');
+  draftFixture.exec(`
+    CREATE TABLE matchmaking_draws_draft AS
+      SELECT id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, match_id, source, group_id
+      FROM matchmaking_draws;
+    DROP TABLE matchmaking_draws;
+    ALTER TABLE matchmaking_draws_draft RENAME TO matchmaking_draws;
+    UPDATE schema_migrations SET name = 'version privacy consents and clear legacy diagnostic process names' WHERE version = 105;
+    DELETE FROM schema_migrations WHERE version = 108;
+  `);
+  draftFixture.close();
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  const repaired = new Database(dbFile, { readonly: true });
+  assert.ok((repaired.prepare('PRAGMA table_info(matchmaking_draws)').all() as Array<{ name: string }>).some(
+    (column) => column.name === 'tournament_id',
+  ));
+  repaired.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
 test('migration 62 backfills existing players as completed and is restart-safe', () => {
@@ -3703,7 +3762,7 @@ test('migration 104 enables competition for existing groups only and is restart-
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 105 preserves legacy consent as unversioned and clears stored diagnostic processes', () => {
+test('migration 106 preserves legacy consent as unversioned and clears stored diagnostic processes', () => {
   const dbFile = makeTempDbPath('privacy-consent-version');
   runMigrations(dbFile);
 
@@ -3727,7 +3786,7 @@ test('migration 105 preserves legacy consent as unversioned and clears stored di
     `INSERT INTO agent_diagnostics (player_id, agent_version, last_report_at, process_names)
      VALUES ('privacy-legacy-player', '1.0.0', ?, '["legacy-game.exe"]')`,
   ).run(now);
-  fixture.prepare('DELETE FROM schema_migrations WHERE version = 105').run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 106').run();
   fixture.close();
 
   assert.doesNotThrow(() => runMigrations(dbFile));
@@ -3741,12 +3800,12 @@ test('migration 105 preserves legacy consent as unversioned and clears stored di
     migrated.prepare('SELECT process_names AS processNames FROM agent_diagnostics WHERE player_id = ?').get('privacy-legacy-player'),
     { processNames: '[]' },
   );
-  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 105').get());
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 106').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 107 stops tracking the base workspace and adds the consent default column', () => {
+test('migration 108 stops tracking the base workspace and general events', () => {
   const dbFile = makeTempDbPath('privacy-base-workspace');
   runMigrations(dbFile);
 
@@ -3757,11 +3816,17 @@ test('migration 107 stops tracking the base workspace and adds the consent defau
      VALUES ('base-track-player', 'Base Tracker', 'base-track-key', ?)`,
   ).run(now);
   // An older installation could reach this state through the former start
-  // path; migration 107 has to clear it along with the live rows it produced.
+  // path; migration 108 has to clear it along with the live rows it produced.
   fixture.prepare("UPDATE events SET tracking_enabled = 1 WHERE id = 'instance-base-event'").run();
+  fixture.exec(`INSERT INTO events (id, name, group_id, event_type_key, status, tracking_enabled)
+    VALUES ('legacy-general-track', 'General', 'default-group', 'general', 'published', 1)`);
   fixture.prepare(
     `INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen)
      VALUES ('base-track-player', 'default-group', 'instance-base-event', ?)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen)
+     VALUES ('base-track-player', 'default-group', 'legacy-general-track', ?)`,
   ).run(now);
   // Someone was mid-game when the upgrade ran. Deleting only the live rows
   // would strand this session: closeStaleSessions finds an orphan solely by
@@ -3772,10 +3837,18 @@ test('migration 107 stops tracking the base workspace and adds the consent defau
      VALUES ('base-track-player', 'default-group', 'instance-base-event', 'base-track-game', ?)`,
   ).run(now);
   fixture.prepare(
+    `INSERT INTO tracking_live_games (player_id, group_id, event_id, game_id, since)
+     VALUES ('base-track-player', 'default-group', 'legacy-general-track', 'base-track-game', ?)`,
+  ).run(now);
+  fixture.prepare(
     `INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at)
      VALUES ('base-track-session', 'base-track-player', 'base-track-game', 'instance-base-event', ?, NULL)`,
   ).run(now);
-  fixture.prepare('DELETE FROM schema_migrations WHERE version = 107').run();
+  fixture.prepare(
+    `INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at)
+     VALUES ('general-track-session', 'base-track-player', 'base-track-game', 'legacy-general-track', ?, NULL)`,
+  ).run(now);
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 108').run();
   fixture.close();
 
   assert.doesNotThrow(() => runMigrations(dbFile));
@@ -3787,6 +3860,10 @@ test('migration 107 stops tracking the base workspace and adds the consent defau
       .get(),
     { trackingEnabled: 0 },
   );
+  assert.deepEqual(
+    migrated.prepare("SELECT tracking_enabled AS trackingEnabled FROM events WHERE id = 'legacy-general-track'").get(),
+    { trackingEnabled: 0 },
+  );
   assert.equal(
     migrated.prepare("SELECT 1 FROM tracking_live_contexts WHERE event_id = 'instance-base-event'").get(),
     undefined,
@@ -3796,6 +3873,8 @@ test('migration 107 stops tracking the base workspace and adds the consent defau
     migrated.prepare("SELECT 1 FROM tracking_live_games WHERE event_id = 'instance-base-event'").get(),
     undefined,
   );
+  assert.equal(migrated.prepare("SELECT 1 FROM tracking_live_contexts WHERE event_id = 'legacy-general-track'").get(), undefined);
+  assert.equal(migrated.prepare("SELECT 1 FROM tracking_live_games WHERE event_id = 'legacy-general-track'").get(), undefined);
   const strandedSession = migrated
     .prepare("SELECT ended_at AS endedAt FROM play_sessions WHERE id = 'base-track-session'")
     .get() as { endedAt: number | null };
@@ -3803,12 +3882,13 @@ test('migration 107 stops tracking the base workspace and adds the consent defau
     strandedSession.endedAt !== null,
     'the session open at upgrade time is closed, not left to inflate playtime forever',
   );
+  assert.ok((migrated.prepare("SELECT ended_at AS endedAt FROM play_sessions WHERE id = 'general-track-session'").get() as { endedAt: number | null }).endedAt !== null);
   assert.ok(
     (migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>).some(
       (column) => column.name === 'tracking_consent_default_version',
     ),
   );
-  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 107').get());
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 108').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

@@ -14,7 +14,6 @@ import {
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
-import { backButtonHtml } from '../backButton.js';
 
 let historyCache = null;
 let historyLoading = false;
@@ -108,7 +107,6 @@ export function renderBroadcast(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title">Durchsage</h1>
       </div>
     </div>
@@ -127,7 +125,7 @@ export function renderBroadcast(container, ctx) {
         <form id="broadcast-form" class="stack">
           <div>
             <label for="broadcast-message" class="field-label">Nachricht</label>
-            <input type="text" id="broadcast-message" placeholder="z.B. Essen ist da!" maxlength="200" ${myId ? '' : 'disabled'} />
+            <input type="text" id="broadcast-message" placeholder="Essen ist da" maxlength="200" ${myId ? '' : 'disabled'} />
           </div>
           <div>
             <label for="broadcast-ends-at-date" class="field-label">Sichtbar bis</label>

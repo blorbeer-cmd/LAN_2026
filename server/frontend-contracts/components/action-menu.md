@@ -65,6 +65,10 @@ Eine dauerhaft geöffnete, verschachtelte oder mehrspaltige Variante existiert n
   dessen Trigger zurück.
 - Die Wahl einer aktiven Buttonaktion schließt das Menü in der Capture-Phase und gibt den Fokus an
   den Trigger zurück, bevor der Aufrufer beispielsweise einen Dialog fokussiert.
+- Einträge sind flache Listenzeilen ohne eigene Fläche: Hintergrund transparent, bei Hover die
+  Fläche `--bg-elevated-2`. Ein destruktiver Eintrag (`.btn-danger`) behält die rote Schrift, trägt
+  keine rote Box und steht hinter einer Haarlinie; bei Hover erhält er `--danger-bg`. Das Panel ist
+  mindestens 11rem breit.
 - Deaktivierte oder `aria-disabled="true"` Einträge lösen den Aktionswahl-Schließpfad nicht aus.
 - Eine offene Karte MUSS über späteren Geschwistern liegen; beim Schließen wird der Marker
   entfernt.

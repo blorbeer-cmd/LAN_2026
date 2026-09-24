@@ -345,6 +345,8 @@ interface DrawRow {
   generatedAt: number;
   matchId: string | null;
   source: string | null;
+  tournamentId?: string | null;
+  tournamentName?: string | null;
 }
 
 function parseDrawRow(r: DrawRow) {
@@ -359,6 +361,8 @@ function parseDrawRow(r: DrawRow) {
     generatedAt: r.generatedAt,
     matchId: r.matchId,
     source: r.source,
+    tournamentId: r.tournamentId ?? null,
+    tournamentName: r.tournamentName ?? null,
   };
 }
 
@@ -422,9 +426,11 @@ matchmakingRouter.get('/history', (req, res) => {
       `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
               md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
               md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
-              md.match_id AS matchId, md.source AS source
+              md.match_id AS matchId, md.source AS source,
+              md.tournament_id AS tournamentId, t.name AS tournamentName
        FROM matchmaking_draws md
        JOIN games g ON g.id = md.game_id
+       LEFT JOIN tournaments t ON t.id = md.tournament_id
        WHERE ${clauses.join(' AND ')}
        ORDER BY md.generated_at DESC
        LIMIT ?`
@@ -456,6 +462,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
         event_id: string;
         teams: string;
         match_id: string | null;
+        tournament_id: string | null;
         seat_pairs_considered: number;
         source: string | null;
       }
@@ -467,6 +474,9 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   if (!requireGroupEventAccess(req, res, row.event_id)) return;
   if (row.match_id) {
     return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
+  }
+  if (row.tournament_id) {
+    return res.status(409).json({ error: 'Aus dieser Auslosung wurde bereits ein Turnier erstellt.' });
   }
 
   const teams = JSON.parse(row.teams) as Array<{
@@ -515,8 +525,10 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
       `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
               md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
               md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
-              md.match_id AS matchId, md.source AS source
-       FROM matchmaking_draws md JOIN games g ON g.id = md.game_id WHERE md.id = ?`
+              md.match_id AS matchId, md.source AS source,
+              md.tournament_id AS tournamentId, t.name AS tournamentName
+       FROM matchmaking_draws md JOIN games g ON g.id = md.game_id
+       LEFT JOIN tournaments t ON t.id = md.tournament_id WHERE md.id = ?`
     )
     .get(row.id) as DrawRow;
 

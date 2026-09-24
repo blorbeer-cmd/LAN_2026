@@ -6,7 +6,6 @@ import { icon } from '../../icons.js';
 import { showToast } from '../../toast.js';
 import { snakeArenaLegendHtml } from '../shared/snakeArenaLegend.js';
 import { emptyStateHtml } from '../../emptyState.js';
-import { backButtonHtml } from '../../backButton.js';
 
 const GAME_NAMES = {
   quiz: 'Gaming-Quiz',
@@ -223,8 +222,10 @@ export function renderArcadeWatch(container) {
   const name = GAME_NAMES[state?.gameType] ?? GAME_NAMES[watchList.find((match) => match.matchId === watchedMatchId)?.gameType] ?? 'Arcade';
   container.innerHTML = `
     <div class="arcade-game-shell arcade-watch-shell">
-      ${backButtonHtml({ id: 'arcade-watch-back' })}
-      <h1 class="view-title">${escapeHtml(name)} ansehen</h1>
+      <div class="page-title-row row-between">
+        <h1 class="view-title">${escapeHtml(name)} ansehen</h1>
+        <button type="button" class="btn btn-sm" id="arcade-watch-back">Beenden</button>
+      </div>
       <div class="arcade-watch-header"><span id="arcade-watch-status">${state?.paused ? 'Pause' : 'Läuft'}</span><span class="muted">Nur Zuschauer</span></div>
       ${rosterHtml(state ?? {})}
       ${snakeArenaLegendHtml(state)}

@@ -245,7 +245,9 @@ layout needs, not a phone/laptop breakpoint that happens to be slightly off.
 ## Core composition and content rules
 
 These rules are the durable outcome of the general UI-polish pass. They apply to every existing
-view and to new views unless a documented domain constraint requires a different presentation.
+view and to new views unless a documented domain constraint requires a different presentation. Rules 10 to 13 were
+established with the Match and Vote pass (PR #662); pages not reworked yet are brought in line when
+they are next changed, and new work follows them right away.
 
 1. **Build pages from three visible levels.** A page consists of full-width main groups, nested
    cards for repeated entities or independent subflows, and stable rows inside those cards. Main
@@ -264,16 +266,20 @@ view and to new views unless a documented domain constraint requires a different
    events and orders keep the same width as their siblings. Never let CSS auto-placement make that
    decision accidentally.
 3. **Use accent rails only to distinguish siblings.** Blue and pink left rails separate adjacent
-   workflows or datasets such as Anreise/Abreise or tournament-format/game counts. They are not
-   generic decoration and are omitted where card hierarchy already communicates the structure.
+   workflows or datasets such as tournament-format/game counts. They are not
+   generic decoration and are omitted where card hierarchy already communicates the structure:
+   never around a whole card, a toolbar or a results board. Main cards keep the standard hairline
+   border; an accent frame is reserved for a real state such as a drag target or the current step.
 4. **Keep visible copy short.** Remove repeated titles, counts, status sentences and instructions
-   that are already evident from controls or state. A non-obvious rule moves into the shared
-   contextual help component. Its info trigger sits immediately to the right of the exact title or
-   label it explains; it never lives in a detached help row or to the left of a checkbox.
+   that are already evident from controls or state. Only a genuinely non-obvious rule moves into the
+   shared contextual help component, typically in a form where a choice has hidden consequences.
+   Views that only display state (boards, results, running rounds) carry no info tooltips. An info
+   trigger sits immediately to the right of the exact title or label it explains; it never lives in
+   a detached help row or to the left of a checkbox.
 5. **Keep controls aligned.** Controls sharing a row use the same visual height and baseline.
    Compact actions must not increase the height of data rows. A primary action uses the Respawn
-   gradient, destructive actions use the danger treatment, and parallel secondary actions share
-   the available width. Actions for a repeated card belong in a separated, consistently positioned
+   gradient; its placement follows rule 10. Parallel secondary actions inside one footer share the
+   available width. Actions for a repeated card belong in a separated, consistently positioned
    footer when variable content would otherwise make cards drift. See the
    [Controls contract](frontend-contracts/components/controls.md) for normative geometry and reflow.
 6. **Prefer rectangular rows over pills for people and data.** Player selections, assigned players,
@@ -286,7 +292,10 @@ view and to new views unless a documented domain constraint requires a different
    unless the domain requires a more specific active/completed label.
 8. **Make states structural, not ornamental.** Empty states center one short, regular-weight text
    line in the available surface and stay free of decorative icons. Nearby headings and controls
-   provide the context, so the line does not repeat a section or explain the next action. The
+   provide the context, so the line does not repeat a section or explain the next action. A titled
+   card whose only content is its empty state collapses to one row as high as a closed collapsible
+   card: the line is centered over the card on the title's line (on phones it follows as one compact
+   line below the title), and an opened collapsible with nothing inside behaves the same way. The
    established mascot illustration on Home remains the explicit brand exception. Selection remains
    recognizable through its semantic
    control; winner, unread, running and error states use border/background plus text or accessible
@@ -294,6 +303,31 @@ view and to new views unless a documented domain constraint requires a different
    states must retain the same geometry as the populated state.
 9. **Keep product rules separate.** Routes, roles, business flows, product copy and
    domain-state details live in [Product rules](../docs/product/README.md).
+10. **Place actions compactly and predictably.** A card's primary action is a compact gradient
+    button (`.btn-primary.btn-sm`) at the right of the card heading, like „Turnier anlegen“,
+    „Starten“ or „Spiel vorschlagen“. A form's final submit sits right-aligned at the card's end at
+    its natural width. Buttons spanning the full card width are avoided. Management actions such as
+    „Beenden“ or „Abbrechen“ are compact neutral buttons in the card header; a destructive action
+    keeps its danger meaning in the confirmation dialog instead of a large red button in the page.
+    On phones, header actions may wrap below the title.
+11. **Present results the same way everywhere.** A winner carries the green „Win“ chip (or a green
+    winning score), the losers are muted and a draw reads „Remis“; gold frames or result badges are
+    not used. Each result row or card has one fixed trailing action slot: „+“ for an open result,
+    a pencil for a recorded one. The „+“ itself stays neutral; on a fresh Match draw the
+    highlighted next step is the rightmost „Turnier erstellen“ in the primary gradient. Recording and editing open one compact dialog: one button per outcome that
+    saves immediately, or large value fields with a single „Speichern“. Standings are real tables
+    with column headers, not packed strings.
+12. **Make selection lists quick to scan.** Selection lists are sorted alphabetically unless the
+    order itself carries meaning (rankings, results). A list offers one bulk toggle that selects
+    all visible rows or, when all are selected, deselects them; there are no separate select/
+    deselect buttons and no red bulk action. Search is a visible field whose placeholder names its
+    target („Spieler suchen“, „Spiel suchen“), not a magnifier that expands. One search field may
+    filter several related lists. Dragging is a desktop affordance; touch layouts get an explicit
+    alternative such as a native picker, never a tap-to-select mode that highlights other targets.
+13. **Keep metadata dense and honest.** Secondary facts about an entity share one compact meta line
+    and leave out empty or zero values („0× gewonnen“, „–“). Fields that share one form row have
+    equal widths and aligned baselines; a row may use the full width for label/field pairs plus a
+    search field instead of stacking them.
 
 ## Components
 
@@ -304,23 +338,21 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Variants and status: [Controls](frontend-contracts/components/controls.md).
 - **Action menu** — Shared disclosure, geometry, focus, dismissal and caller boundaries follow the
   [ActionMenu contract](frontend-contracts/components/action-menu.md).
-- **Back navigation** — `backButtonHtml({ view, id, label })` in `backButton.js` renders every
-  compact view-level back action with Lucide's `chevronLeft` and the visible default label
-  „Zurück“. `view` creates normal route navigation; `id` supports a local sub-view handler. Do not
-  hand-roll the arrow, use Unicode chevrons or repeat the destination in the visible label when the
-  surrounding header already names it.
+- **No back buttons**: page headers carry no „Zurück“ action. The bottom navigation, the desktop
+  rail, area tabs and the browser history lead back. A sub-view without any other exit names its
+  exit as a compact header action instead (Arcade spectating: „Beenden“).
 - **Empty state** — Safe text, structured content, illustration, recovery and Legacy boundaries
   follow the [EmptyState contract](frontend-contracts/components/empty-state.md).
 - **Primary collection** — `.primary-collection-section` gives the current collection of Events,
   polls, food orders and tournaments one shared main-card treatment. The title and primary action
-  stay together in the card header. Border, empty-state height and spacing therefore remain stable
-  across these areas.
+  stay together in the card header. The card keeps the standard hairline border (no accent frame);
+  an empty collection collapses to the shared one-row empty card from rule 8.
 - **Area tabs** — use real route navigation, an active aria-current page state and
   the established responsive tab layout. Product-specific areas, routes and labels live in
   [Product rules](../docs/product/README.md).
 - **Secondary page header** — `.more-subpage-header` with `.more-subpage-title-row` is the shared
-  header for destinations reached through „Mehr“ or Admin. It keeps the „Zurück“ action, page
-  title and an optional trailing action on one stable, compact row. Untabbed destinations share
+  header for destinations reached through „Mehr“ or Admin. It keeps the page title and an optional
+  trailing action on one stable, compact row. Untabbed destinations share
   the same first-card top edge as the untabbed main areas. On phone and laptop layouts,
   `.more-subpage-header--tabs` reserves a lower row for LAN Orga's tabs; at phone widths that
   reservation covers the wrapped two-row tab layout. Desktop Orga uses the opened page's title
@@ -340,6 +372,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Product-specific choices live in [Product rules](../docs/product/README.md).
 - **Input** — plain `<input>`/`<select>`/`<textarea>` are styled globally by
   type selector; no class needed.
+- **Placeholders** — a placeholder shows a concrete example or a format, never an instruction or a
+  repeated label: no „z. B.“, no end punctuation and no ellipsis („Samstagabend“, „Rocket League“,
+  `https://`, `TT.MM.JJJJ`). Searches read „<Objekt> suchen“ in the singular („Spiel suchen“). A
+  placeholder may name what an empty field means („Unbegrenzt“, „Leer lassen für automatische
+  Suche“). Fields without a visible label (compact value rows) use their short label instead.
+  Every `input`/`textarea` placeholder is set in italics so it never reads as a real value.
 - **Required fields** — mark required labels with `class="field-label is-required"`; the shared
   CSS adds the visual `*`. Optional fields remain unmarked, so `(optional)` is not used as a
   default label suffix. Keep the native `required` attribute on inputs where browser validation
@@ -367,7 +405,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   deliberately not a click-to-pin control and keeps the normal cursor (`cursor: default`, no pointer
   or help cursor on hover): hovering is enough on a pointer device,
   while focus is what a keyboard Tab and a touch tap produce, so the text stays reachable where there
-  is no hover (phones). It closes on mouse-leave, blur, Escape or an outside pointer press. A tooltip
+  is no hover (phones). It closes on mouse-leave, blur, Escape or an outside pointer press; inside a dialog that Escape closes only the panel, never the dialog around it. A tooltip
   trigger always follows
   directly to the right of the visible text — or of the control — it explains, as its sibling and
   never inside it; it does not precede a checkbox or float independently at the far edge of a row.
@@ -472,7 +510,9 @@ space pattern rather than content-dependent card heights.
 - Use semantic elements: `<button>` for actions, `<a>` for navigation and associated
   `<label>` elements for form controls. Do not simulate controls with clickable `<div>`
   elements.
-- Every interactive element must be usable by keyboard and show a visible focus state. Focus order
+- Every interactive element must be usable by keyboard and show a visible focus state. Elements
+  that are only focused by script (`tabindex="-1"`, e.g. the view heading after navigation) are
+  not controls and show no focus ring. Focus order
   follows the visual and logical order. Shared dialog focus and calendar keyboard/reflow behavior
   follow the
   [Modal](frontend-contracts/components/modal.md) and
@@ -632,7 +672,14 @@ nothing and produce a misleading success.
 - [ ] Repeated content uses the intended one-/two-column grid and an odd final entity has an
   explicit, domain-appropriate width.
 - [ ] Explanations are either removed as redundant or placed in contextual help immediately to the
-  right of the text they explain.
+  right of the text they explain; display-only views carry no info tooltips.
+- [ ] Primary actions are compact header buttons, submits are right-aligned, and no button or red
+  action spans the full card width without a documented reason.
+- [ ] Results use the „Win“ chip, muted losers and one trailing „+“/pencil slot with the shared
+  compact result dialog.
+- [ ] Selection lists are alphabetical, offer one bulk toggle and a visible named search field,
+  and touch layouts have an alternative to drag and drop.
+- [ ] No accent rail or accent frame is used as decoration.
 - [ ] Related controls share height and baseline; compact actions do not stretch their data rows.
 - [ ] No new raw color, spacing, radius or font values exist without a documented
   `design-token-ok` reason.

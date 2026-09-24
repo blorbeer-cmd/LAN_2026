@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
+import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { ensureAccountEventContext, setActiveEventForPlayer } from './eventContext';
 import { activeTrackingContexts, setEventTrackingConsent, setGroupTrackingConsent } from './trackingContexts';
 import {
@@ -71,33 +71,34 @@ beforeEach(() => {
   `);
 });
 
-test('the selected base event requires event consent and revocation closes only that context', () => {
+test('a selected event requires consent and revocation closes only that context', () => {
   const now = Date.now();
   const playerId = createPlayer(now);
-  db.prepare('UPDATE events SET tracking_enabled = 1, starts_at = 0 WHERE id = ?').run(BASE_EVENT_ID);
+  const eventId = createTrackingEvent(playerId, now);
+  assert.equal(setActiveEventForPlayer(playerId, eventId)?.id, eventId);
 
   setGroupTrackingConsent(DEFAULT_GROUP_ID, playerId, true, groupConsent, now);
   assert.deepEqual(activeTrackingContexts(playerId, now), [], 'group consent never substitutes for event consent');
-  setEventTrackingConsent(BASE_EVENT_ID, DEFAULT_GROUP_ID, playerId, true, eventConsent, now);
+  setEventTrackingConsent(eventId, DEFAULT_GROUP_ID, playerId, true, eventConsent, now);
   assert.deepEqual(activeTrackingContexts(playerId, now), [
-    { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID, weight: 1 },
+    { groupId: DEFAULT_GROUP_ID, eventId, weight: 1 },
   ]);
 
   db.prepare(
     `INSERT INTO tracking_live_contexts
        (player_id, group_id, event_id, last_seen, activity_tracked)
      VALUES (?, ?, ?, ?, 0)`,
-  ).run(playerId, DEFAULT_GROUP_ID, BASE_EVENT_ID, now);
+  ).run(playerId, DEFAULT_GROUP_ID, eventId, now);
   const gameId = (db.prepare('SELECT id FROM games LIMIT 1').get() as { id: string }).id;
   const sessionId = ids('session');
   db.prepare(
     `INSERT INTO play_sessions
        (id, player_id, game_id, group_id, event_id, started_at, ended_at)
      VALUES (?, ?, ?, ?, ?, ?, NULL)`,
-  ).run(sessionId, playerId, gameId, DEFAULT_GROUP_ID, BASE_EVENT_ID, now);
+  ).run(sessionId, playerId, gameId, DEFAULT_GROUP_ID, eventId, now);
 
-  setEventTrackingConsent(BASE_EVENT_ID, DEFAULT_GROUP_ID, playerId, false, undefined, now + 1);
-  setEventTrackingConsent(BASE_EVENT_ID, DEFAULT_GROUP_ID, playerId, false, undefined, now + 1);
+  setEventTrackingConsent(eventId, DEFAULT_GROUP_ID, playerId, false, undefined, now + 1);
+  setEventTrackingConsent(eventId, DEFAULT_GROUP_ID, playerId, false, undefined, now + 1);
   assert.deepEqual(activeTrackingContexts(playerId, now + 1), []);
   assert.equal(
     (db.prepare('SELECT ended_at FROM play_sessions WHERE id = ?').get(sessionId) as { ended_at: number }).ended_at,

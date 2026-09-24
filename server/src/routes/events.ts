@@ -673,6 +673,10 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
 function updateEventTrackingConsent(req: Request, res: Response, granted: boolean): void {
   const event = req.groupResource as EventRow;
   if (!event || event.id === OUTSIDE_EVENTS_ID) { res.status(404).json({ error: 'Event nicht gefunden.' }); return; }
+  if (granted && (event.id === BASE_EVENT_ID || event.event_type_key === 'general')) {
+    res.status(409).json({ error: 'Für diesen Bereich kann kein Tracking aktiviert werden.' });
+    return;
+  }
   const playerId = requestPlayerId(req);
   if (!playerId) { res.status(400).json({ error: 'Spieleridentität ist erforderlich.' }); return; }
   if (granted && !isParticipant(event.id, playerId)) {

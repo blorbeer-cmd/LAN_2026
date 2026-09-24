@@ -282,7 +282,10 @@ tournamentsRouter.get('/', (req, res) => {
     .prepare(
       `SELECT t.id, t.name, t.format, t.two_legged AS twoLegged, t.status, t.created_at AS createdAt,
               t.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
-              (SELECT COUNT(*) FROM tournament_teams tt WHERE tt.tournament_id = t.id) AS teamCount
+              (SELECT COUNT(*) FROM tournament_teams tt WHERE tt.tournament_id = t.id) AS teamCount,
+              (SELECT COUNT(*) FROM tournament_matches m WHERE m.tournament_id = t.id AND m.is_bye = 0) AS matchCount,
+              (SELECT COUNT(*) FROM tournament_matches m WHERE m.tournament_id = t.id AND m.is_bye = 0
+                 AND (m.winner_team_id IS NOT NULL OR m.is_draw = 1)) AS decidedMatchCount
        FROM tournaments t
        JOIN games g ON g.id = t.game_id
        WHERE t.group_id = ? AND t.event_id = ?
@@ -290,8 +293,30 @@ tournamentsRouter.get('/', (req, res) => {
     )
     .all(req.group!.id, filterEventId) as Array<Record<string, unknown>>;
 
-  res.json(rows.map((r) => ({ ...r, twoLegged: Boolean(r.twoLegged) })));
+  res.json(
+    rows.map((r) => ({
+      ...r,
+      twoLegged: Boolean(r.twoLegged),
+      championName: r.status === 'completed' ? championName(r.id as string, req.group!.id) : null,
+    })),
+  );
 });
+
+// The winner shown on a completed tournament's list card: the knockout
+// final's winner, or the league leader for a pure round-robin.
+function championName(tournamentId: string, groupId: string): string | null {
+  const detail = buildDetail(tournamentId, groupId);
+  if (!detail) return null;
+  let championId: string | null = null;
+  if (detail.format === 'round_robin') {
+    championId = detail.standings?.[0]?.teamId ?? null;
+  } else {
+    const knockout = detail.matches.filter((m) => detail.format === 'single_elimination' || m.stage === 'knockout');
+    const finalRound = Math.max(...knockout.map((m) => m.round));
+    championId = knockout.find((m) => m.round === finalRound)?.winnerTeamId ?? null;
+  }
+  return detail.teams.find((team) => team.id === championId)?.name ?? null;
+}
 
 // GET /api/tournaments/:id - full board: teams, bracket/fixtures, standings.
 tournamentsRouter.get('/:id', (req, res) => {
@@ -333,14 +358,18 @@ function validateTeamsInput(teams: unknown): TeamInput[] | { error: string } {
   return result;
 }
 
+class DrawAlreadyUsedError extends Error {}
+
 // POST /api/tournaments - create a tournament and generate its full
 // starting schedule immediately (the knockout bracket of group_knockout is
 // the one exception — it can't be generated until the group stage decides
 // who advances, see the result-recording handler below).
 // Body: { gameId, name?, format, twoLegged?, trackScore?, groupCount?,
-//         advancersPerGroup?, lobbyName?, lobbyPassword?, teams: [{ name?, playerIds }] }
+//         advancersPerGroup?, lobbyName?, lobbyPassword?, teams: [{ name?, playerIds }], drawId? }
+// drawId names the Match draw these teams came from; the draw is claimed in
+// the same transaction so it can no longer be recorded as a single result.
 tournamentsRouter.post('/', (req, res) => {
-  const { gameId, name, format, twoLegged, trackScore, groupCount, advancersPerGroup, lobbyName, lobbyPassword, teams } =
+  const { gameId, name, format, twoLegged, trackScore, groupCount, advancersPerGroup, lobbyName, lobbyPassword, teams, drawId } =
     req.body ?? {};
 
   if (typeof gameId !== 'string' || !gameId) {
@@ -373,6 +402,9 @@ tournamentsRouter.post('/', (req, res) => {
 
   const teamsInput = validateTeamsInput(teams);
   if ('error' in teamsInput) return res.status(400).json({ error: teamsInput.error });
+  if (drawId !== undefined && (typeof drawId !== 'string' || !drawId)) {
+    return res.status(400).json({ error: 'drawId ist ungültig.' });
+  }
 
   const resolvedFormat = format as TournamentFormat;
   let resolvedGroupCount: number | null = null;
@@ -402,6 +434,18 @@ tournamentsRouter.post('/', (req, res) => {
   if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const eventId = scope.eventId;
+  if (drawId) {
+    const draw = db
+      .prepare('SELECT event_id, game_id, match_id, tournament_id FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+      .get(drawId, req.group!.id) as
+      | { event_id: string; game_id: string; match_id: string | null; tournament_id: string | null }
+      | undefined;
+    if (!draw || draw.event_id !== eventId || draw.game_id !== gameId) {
+      return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+    }
+    if (draw.match_id) return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
+    if (draw.tournament_id) return res.status(409).json({ error: 'Aus dieser Auslosung wurde bereits ein Turnier erstellt.' });
+  }
   if (!competitionPlayersBelongToGroup(req.group!.id, eventId, allPlayerIds)) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
@@ -511,8 +555,31 @@ tournamentsRouter.post('/', (req, res) => {
         }
       }
     }
+
+    if (drawId) {
+      // Claim and insert share one transaction: if a concurrent request
+      // already recorded or converted the draw, the tournament rolls back.
+      const claimed = db
+        .prepare('UPDATE matchmaking_draws SET tournament_id = ? WHERE id = ? AND match_id IS NULL AND tournament_id IS NULL')
+        .run(tournamentId, drawId);
+      if (claimed.changes === 0) throw new DrawAlreadyUsedError();
+    }
   });
-  create();
+  try {
+    create();
+  } catch (error) {
+    if (error instanceof DrawAlreadyUsedError) {
+      return res.status(409).json({ error: 'Diese Auslosung wurde bereits verwendet.' });
+    }
+    throw error;
+  }
+  if (drawId) {
+    broadcast(
+      Events.matchmakingDrawsChanged,
+      { id: drawId, tournamentId },
+      { groupId: req.group!.id, eventId },
+    );
+  }
 
   // Every participant gets nudged that they've been entered into a new
   // tournament — otherwise the only way to notice is to happen to open the

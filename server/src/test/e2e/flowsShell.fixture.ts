@@ -376,7 +376,6 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.view),
     'profile',
   );
-  assert.equal(await page.locator('.more-subpage-title-row [data-navigate="more"]').isHidden(), true);
   const profileColumns = await page.locator('.profile-dashboard-columns').evaluate((layout) => {
     const account = layout.querySelector('.profile-dashboard-account')?.getBoundingClientRect();
     const lan = layout.querySelector('.profile-dashboard-lan')?.getBoundingClientRect();
@@ -755,7 +754,9 @@ flowTest('icon-only controls keep the shared height and minimum width on phones'
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 
   await openOrgaTab('checklistPacking');
-  await page.waitForSelector('.checklist-item-list [data-remove-item]');
+  // Remove buttons only exist visibly in the Packliste's editing mode.
+  await page.click('[data-toggle-item-editing]');
+  await page.waitForSelector('.checklist-item-list.is-editing [data-remove-item]');
   await assertTouchTargets('.icon-btn', 'shared icon buttons in the packing list');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 });
@@ -775,6 +776,9 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
   type CardMetrics = {
     top: number;
     headingMetrics: { fontSize: string; inset: number } | null;
+    // A titled card that only holds its empty state collapses to one row and
+    // centers its heading; it is compared by that middle line instead.
+    emptyRowOffset: number | null;
   };
   const firstCardMetrics = async (label: string): Promise<CardMetrics> => {
     const metrics = await page.waitForFunction((areaLabel) => {
@@ -785,7 +789,13 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
       const cardBox = card.getBoundingClientRect();
       if (!cardBox.width || !cardBox.height) return null;
       const heading = card.querySelector('h2');
-      const headingMetrics = heading
+      const emptyRow = card.querySelector(':scope > .grouped-page-section-title:first-child + .empty-state:last-child, '
+        + ':scope > .grouped-page-section-title:first-child + :last-child > .empty-state:only-child');
+      const middle = (box: DOMRect) => (box.top + box.bottom) / 2;
+      const emptyRowOffset = emptyRow && heading && window.innerWidth >= 640
+        ? Math.round(Math.abs(middle(heading.getBoundingClientRect()) - middle(cardBox)))
+        : null;
+      const headingMetrics = heading && !emptyRow
         ? {
             fontSize: getComputedStyle(heading).fontSize,
             inset: Math.round(heading.getBoundingClientRect().top - cardBox.top),
@@ -797,11 +807,11 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
       // happened to be scrolled. The comparisons below (one shared edge, and
       // a tabbed header reserving more room) are about the edge itself.
       const top = Math.round(cardBox.top - container.getBoundingClientRect().top + container.scrollTop);
-      return { label: areaLabel, top, headingMetrics };
+      return { label: areaLabel, top, headingMetrics, emptyRowOffset };
     }, label);
     const value = await metrics.jsonValue();
     assert.ok(value, `${label} should render a first card`);
-    return { top: value.top, headingMetrics: value.headingMetrics };
+    return { top: value.top, headingMetrics: value.headingMetrics, emptyRowOffset: value.emptyRowOffset };
   };
 
   for (const width of [390, 900]) {
@@ -838,10 +848,8 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
       await page.click(`[data-navigate="${view}"]`);
       await page.waitForSelector(readySelector);
       metrics.push([title, await firstCardMetrics(title)]);
-      const backButton = page.locator('.more-subpage-header [data-navigate="more"]');
-      assert.equal(await backButton.count(), 1);
-      assert.equal((await backButton.textContent())?.trim(), 'Zurück');
-      assert.equal(await backButton.locator('svg').count(), 1);
+      // Secondary pages carry no back action; the navigation leads back.
+      assert.equal(await page.locator('.more-subpage-header [data-navigate="more"]').count(), 0);
     }
 
     const alignedTops = new Set(metrics.map(([, value]) => value.top));
@@ -856,6 +864,11 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
       .filter((value): value is NonNullable<CardMetrics['headingMetrics']> => value !== null);
     assert.equal(new Set(headingMetrics.map((value) => value.fontSize)).size, 1);
     assert.equal(new Set(headingMetrics.map((value) => value.inset)).size, 1);
+    for (const [title, value] of metrics) {
+      if (value.emptyRowOffset !== null) {
+        assert.ok(value.emptyRowOffset <= 1, `${title}: an empty one-row card centers its heading with the empty text (${value.emptyRowOffset}px)`);
+      }
+    }
 
     await page.click('.nav-btn[data-view="more"]');
     await page.waitForSelector('.more-grid');
@@ -866,7 +879,7 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
     tabbedMetrics.push(['Auswertung', await firstCardMetrics('Auswertung')]);
 
     await openOrgaTab('checklistPacking');
-    await page.waitForSelector('.checklist-item-list [data-remove-item]');
+    await page.waitForSelector('.checklist-item-list [data-toggle-item]');
     assert.deepEqual(
       await page.locator('.more-subpage-header--tabs .section-tabs').evaluate((tabs) => {
         const style = getComputedStyle(tabs);
@@ -888,8 +901,8 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
         `desktop tabbed areas should share one first-card edge: ${JSON.stringify(tabbedMetrics)}`,
       );
     }
-    assert.equal(await page.locator('.more-subpage-header--tabs [data-navigate="more"]').count(), 1);
-    await page.click('.more-subpage-header--tabs [data-navigate="more"]');
+    assert.equal(await page.locator('.more-subpage-header--tabs [data-navigate="more"]').count(), 0);
+    await page.click('.nav-btn[data-view="more"]');
     await page.waitForSelector('.more-grid');
   }
 });
@@ -1215,7 +1228,8 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     const header = page.locator('.more-subpage-header');
     assert.equal(await header.count(), 1);
     assert.equal(await header.locator('.more-subpage-title-row h1.view-title').innerText(), title);
-    assert.equal(await header.locator('[data-navigate="admin"]').count(), 1);
+    // Admin subpages carry no back button; the navigation leads back.
+    assert.equal(await header.locator('[data-navigate="admin"]').count(), 0);
     // #view-container is itself the scroll box (overflow-y: auto in
     // style.css), so comparing two viewport rects measures "inset minus
     // however far the view happens to be scrolled" rather than the layout
@@ -1356,27 +1370,19 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     feedbackId,
   );
 
-  // Desktop only hides back actions that return to the direct "Mehr" hub.
-  // Admin subpages keep their compact back button before the title instead
-  // of stretching it across the first grid column.
+  // On desktop the title starts the compact header row; no back button
+  // precedes it.
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   const feedbackHeaderLayout = await page.locator('.more-subpage-title-row').evaluate((row) => {
-    const button = row.querySelector('[data-navigate="admin"]')?.getBoundingClientRect();
     const title = row.querySelector('h1')?.getBoundingClientRect();
-    const rowRect = row.getBoundingClientRect();
-    if (!button || !title) throw new Error('Feedback header controls are missing');
+    if (!title) throw new Error('Feedback header title is missing');
     return {
-      buttonWidth: Math.round(button.width),
-      rowWidth: Math.round(rowRect.width),
-      buttonRight: Math.round(button.right),
-      titleLeft: Math.round(title.left),
-      centerDifference: Math.round(Math.abs(button.top + button.height / 2 - (title.top + title.height / 2))),
+      buttons: row.querySelectorAll('button').length,
+      titleInset: Math.round(title.left - row.getBoundingClientRect().left),
     };
   });
-  assert.ok(feedbackHeaderLayout.buttonWidth < feedbackHeaderLayout.rowWidth / 2, 'the back button must stay compact');
-  assert.ok(feedbackHeaderLayout.buttonRight < feedbackHeaderLayout.titleLeft, 'the title must follow the back button');
-  assert.ok(feedbackHeaderLayout.centerDifference <= 1, 'the back button and title must stay vertically aligned');
+  assert.deepEqual(feedbackHeaderLayout, { buttons: 0, titleInset: 0 });
   await page.setViewportSize({ width: 390, height: 844 });
   // The same role gate applies to the wide-viewport desktop rail, which
   // filters `.desktop-nav-btn` entries independently of the old bottom-nav
@@ -1422,12 +1428,12 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await page.click('[data-navigate="adminFeatureUsage"]');
   await page.waitForSelector('#admin-feature-usage-refresh');
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
   await page.click('[data-navigate="adminFeedback"]');
   await page.waitForSelector('#admin-feedback-title');
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
   let rejectFirstKioskPasswordRequest = true;
   const kioskPasswordUrl = '**/api/admin/kiosk-password';
@@ -1462,7 +1468,7 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     0,
   );
   assert.equal(await page.locator('#orga-kiosk-help').count(), 1);
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
@@ -1661,7 +1667,7 @@ flowTest('Mein Profil: rename with a uniqueness conflict, then succeed; Meine St
   await page.waitForSelector('#my-stats-event-search');
 
   // Back to the profile; the session remains bound to this account.
-  await page.click('[data-navigate="profile"]');
+  await openMoreViewEntry(page, '[data-navigate="profile"]');
   await page.waitForSelector('#profile-name');
   // Restore the identity — later tests (tournament) still act as her.
   assert.equal(await page.inputValue('#profile-name'), 'E2E Alice Pro');
@@ -1920,40 +1926,30 @@ flowTest('Spiele: a skill suggestion chip appears after enough recorded results 
   });
 });
 
-flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
-  // Tournaments live in the second tab of the shared Match area.
+flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a champion', async () => {
+  // Tournaments live in the second tab of the shared Match area. Every
+  // tournament starts from a draw, so "Turnier anlegen" leads to Teams.
   await page.click('.nav-btn[data-view="matchmaking"]');
   await page.click('[data-section-tab="tournaments"]');
   await page.waitForSelector('#tourn-new-btn');
   await page.click('#tourn-new-btn');
-  assert.equal(new URL(page.url()).hash, '#tournaments/new');
-  assert.equal(await page.locator('#tourn-new-btn').count(), 0);
-  assert.equal(await page.locator('[data-open-tournament], [data-completed-tournaments]').count(), 0);
-  await page.goBack();
-  await page.waitForSelector('#tourn-new-btn');
-  assert.equal(new URL(page.url()).hash, '#tournaments');
-  await page.goForward();
-  await page.waitForSelector('#tourn-propose');
-  assert.equal(new URL(page.url()).hash, '#tournaments/new');
+  await page.waitForSelector('#mm-generate');
+  assert.equal(new URL(page.url()).hash, '#matchmaking');
 
-  // Propose balanced teams from the checked players (all by default), then
-  // create — the submit button only unlocks once a proposal exists.
-  await page.waitForSelector('#tourn-propose');
-  assert.equal(await page.locator('#tourn-submit').isDisabled(), true);
   const tournamentGamesRes = await page.request.get(`${BASE_URL}/api/games`);
   const tournamentGames = (await tournamentGamesRes.json()) as Array<{ id: string; icon: string; name: string }>;
   assert.ok(tournamentGames.length >= 2, 'the searchable tournament picker needs at least two games');
-  const initialTournamentGameId = await page.locator('#tourn-game').inputValue();
+  const initialTournamentGameId = await page.locator('#mm-game').inputValue();
   const initialTournamentGame = tournamentGames.find((game) => game.id === initialTournamentGameId)!;
   const otherTournamentGame = tournamentGames.find((game) => game.id !== initialTournamentGameId)!;
   assert.ok(initialTournamentGame);
-  await page.click('#tourn-game-search');
+  await page.click('#mm-game-search');
   assert.equal(
-    await page.locator('#tourn-game-search').inputValue(),
+    await page.locator('#mm-game-search').inputValue(),
     '',
     'focusing the searchable picker should expose the full list without manually deleting the selected game',
   );
-  const tournamentGameList = page.locator('#tourn-game-list');
+  const tournamentGameList = page.locator('#mm-game-list');
   await tournamentGameList.waitFor({ state: 'visible' });
   assert.equal(
     await tournamentGameList.locator('.search-select-option').count(),
@@ -1971,27 +1967,21 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
     'long game lists should scroll inside a bounded dropdown',
   );
   assert.notEqual(
-    await page.locator('#tourn-game-search + .search-select-toggle .ui-icon').evaluate((element) => getComputedStyle(element).transform),
+    await page.locator('#mm-game-search + .search-select-toggle .ui-icon').evaluate((element) => getComputedStyle(element).transform),
     'none',
     'the dropdown chevron should rotate to communicate the open state',
   );
   await page.keyboard.press('Tab');
   await tournamentGameList.waitFor({ state: 'hidden' });
   assert.equal(
-    await page.evaluate(() => document.activeElement?.id),
-    'tourn-teamcount',
-    'Tab should leave the combobox instead of moving through every listbox option',
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.mmMode),
+    'draw',
+    'Tab should leave the combobox for the mode choice instead of moving through every listbox option',
   );
-  assert.ok(
-    await page.locator('[data-selection-search]:has(#tourn-player-search)').evaluate((search) => {
-      return search.closest('.selection-toolbar')?.nextElementSibling?.matches('.tournament-player-grid') === true;
-    }),
-    'the player search should be directly before the player list after the filters',
-  );
-  await page.click('#tourn-game-search');
+  await page.click('#mm-game-search');
   await tournamentGameList.waitFor({ state: 'visible' });
   await page.keyboard.press('ArrowDown');
-  const activeTournamentGameId = await page.locator('#tourn-game-search').getAttribute('aria-activedescendant');
+  const activeTournamentGameId = await page.locator('#mm-game-search').getAttribute('aria-activedescendant');
   assert.ok(
     activeTournamentGameId,
     'arrow-key navigation should expose the active option to assistive technology',
@@ -2009,7 +1999,7 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
   await page.keyboard.press('Escape');
   await tournamentGameList.waitFor({ state: 'hidden' });
   assert.equal(
-    await page.locator('#tourn-game-search').inputValue(),
+    await page.locator('#mm-game-search').inputValue(),
     initialTournamentGame.name,
     'Escape should close the listbox without changing the game',
   );
@@ -2017,13 +2007,13 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
   // Background re-renders arrive at any time while the picker keeps focus. The marker on the
   // current field shows whether the form was rebuilt; restored focus must never act like a new
   // user focus that opens the list or clears its text.
-  const markTournamentForm = () => page.locator('#tourn-game-search').evaluate((element) => {
+  const markTournamentForm = () => page.locator('#mm-game-search').evaluate((element) => {
     element.setAttribute('data-e2e-render-probe', '');
   });
   const tournamentPickerState = () => page.evaluate(() => ({
-    value: (document.querySelector('#tourn-game-search') as HTMLInputElement).value,
-    expanded: document.querySelector('#tourn-game-search')?.getAttribute('aria-expanded'),
-    listHidden: (document.querySelector('#tourn-game-list') as HTMLElement).hidden,
+    value: (document.querySelector('#mm-game-search') as HTMLInputElement).value,
+    expanded: document.querySelector('#mm-game-search')?.getAttribute('aria-expanded'),
+    listHidden: (document.querySelector('#mm-game-list') as HTMLElement).hidden,
     focused: document.activeElement?.id,
   }));
   await markTournamentForm();
@@ -2040,30 +2030,30 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
   await page.evaluate(() => delete document.documentElement.dataset.e2eHomeStatusReloaded);
   await presenceContext.close();
   assert.equal(
-    await page.locator('#tourn-game-search[data-e2e-render-probe]').count(),
+    await page.locator('#mm-game-search[data-e2e-render-probe]').count(),
     1,
-    'a Home status reload must not rebuild the open tournament form',
+    'a Home status reload must not rebuild the open Match form',
   );
   // Saving an unchanged profile emits players:changed, which legitimately redraws this view.
   const redrawTournamentForm = async () => {
     const me = await (await page.request.get(`${BASE_URL}/api/me`)).json() as { id: string; name: string };
     const saved = await page.request.patch(`${BASE_URL}/api/players/${me.id}`, { data: { name: me.name } });
     assert.equal(saved.status(), 200, await saved.text());
-    await page.waitForFunction(() => !document.querySelector('#tourn-game-search')?.hasAttribute('data-e2e-render-probe'));
+    await page.waitForFunction(() => !document.querySelector('#mm-game-search')?.hasAttribute('data-e2e-render-probe'));
   };
   await redrawTournamentForm();
   assert.deepEqual(
     await tournamentPickerState(),
-    { value: initialTournamentGame.name, expanded: 'false', listHidden: true, focused: 'tourn-game-search' },
+    { value: initialTournamentGame.name, expanded: 'false', listHidden: true, focused: 'mm-game-search' },
     'a redraw keeps a closed picker closed with its selected game',
   );
-  await page.locator('#tourn-game-search').fill('Age');
+  await page.locator('#mm-game-search').fill('Age');
   await tournamentGameList.waitFor({ state: 'visible' });
   await markTournamentForm();
   await redrawTournamentForm();
   assert.deepEqual(
     await tournamentPickerState(),
-    { value: 'Age', expanded: 'true', listHidden: false, focused: 'tourn-game-search' },
+    { value: 'Age', expanded: 'true', listHidden: false, focused: 'mm-game-search' },
     'a redraw keeps an open picker open with the typed query',
   );
   const filteredTournamentGames = await tournamentGameList.locator('.search-select-option-label').allTextContents();
@@ -2074,9 +2064,9 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
   );
   await page.keyboard.press('Escape');
   await tournamentGameList.waitFor({ state: 'hidden' });
-  assert.equal(await page.locator('#tourn-game-search').inputValue(), initialTournamentGame.name);
+  assert.equal(await page.locator('#mm-game-search').inputValue(), initialTournamentGame.name);
 
-  const tournamentGameToggle = page.locator('#tourn-game-search + .search-select-toggle');
+  const tournamentGameToggle = page.locator('#mm-game-search + .search-select-toggle');
   assert.equal(await tournamentGameToggle.getAttribute('aria-label'), 'Auswahl öffnen');
   await tournamentGameToggle.dispatchEvent('click');
   await tournamentGameList.waitFor({ state: 'visible' });
@@ -2085,69 +2075,36 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
     'Auswahl schließen',
     'the toggle should expose its current close action while the listbox is open',
   );
-  await page.locator('#tournament-draw-step-title').dispatchEvent('pointerdown');
+  await page.locator('#mm-mode-label').dispatchEvent('pointerdown');
   await tournamentGameList.waitFor({ state: 'hidden' });
   assert.equal(
     await tournamentGameToggle.getAttribute('aria-label'),
     'Auswahl öffnen',
     'a pointer interaction outside the picker should close it and restore the toggle action',
   );
-  await page.click('#tourn-game-search');
+  await page.click('#mm-game-search');
   await tournamentGameList.waitFor({ state: 'visible' });
-  await page.locator('#tourn-teamcount').focus();
+  await page.locator('#mm-teamcount').focus();
   assert.equal(
-    await page.locator('#tourn-game-search').inputValue(),
+    await page.locator('#mm-game-search').inputValue(),
     initialTournamentGame.name,
     'leaving the picker without a new valid choice should restore its current selection',
   );
-  await page.click('#tourn-game-search');
-  await page.locator(`#tourn-game-list [data-search-select-value="${otherTournamentGame.id}"]`).click();
+  await page.click('#mm-game-search');
+  await page.locator(`#mm-game-list [data-search-select-value="${otherTournamentGame.id}"]`).click();
   await page.waitForFunction(
-    (gameId) => (document.querySelector('#tourn-game') as HTMLInputElement | null)?.value === gameId,
+    (gameId) => (document.querySelector('#mm-game') as HTMLInputElement | null)?.value === gameId,
     otherTournamentGame.id,
   );
-  await page.click('#tourn-game-search');
+  await page.click('#mm-game-search');
   await tournamentGameList.waitFor({ state: 'visible' });
   assert.equal(
-    await page.locator('#tourn-game-search').getAttribute('aria-expanded'),
+    await page.locator('#mm-game-search').getAttribute('aria-expanded'),
     'true',
     'clicking the still-focused search field should reopen the listbox after a pointer selection',
   );
   await page.keyboard.press('Escape');
-  const neighborHelp = page.locator('[aria-controls="tournament-neighbors-help"]');
-  const lobbyHelp = page.locator('[aria-controls="tournament-lobby-help"]');
-  assert.equal(await page.locator('[aria-controls="tournament-score-help"]').count(), 0);
-  assert.equal(await page.locator('[aria-controls="tournament-two-legged-help"]').count(), 0);
-  assert.ok((await page.locator('[data-create-player]').count()) >= 2);
-  await page.click('[data-selection-search-trigger][aria-controls="tourn-player-search"]');
-  await page.fill('#tourn-player-search', 'E2E Alice');
-  await page.waitForFunction(() => document.querySelectorAll('[data-tourn-player-search-item]:not([hidden])').length === 1);
-  assert.equal(await page.locator('[data-tourn-player-search-item]:not([hidden])').getByText('E2E Alice Pro', { exact: true }).count(), 1);
-  const hiddenTournamentSelections = await page.locator('[data-tourn-player-search-item][hidden] [data-create-player]:checked').count();
-  await page.click('#tourn-select-none');
-  assert.equal(await page.locator('[data-tourn-player-search-item]:not([hidden]) [data-create-player]:checked').count(), 0);
-  assert.equal(
-    await page.locator('[data-tourn-player-search-item][hidden] [data-create-player]:checked').count(),
-    hiddenTournamentSelections,
-    'filtering must preserve hidden tournament participants',
-  );
-  await page.click('#tourn-select-all');
-  await page.click('[data-selection-search]:has(#tourn-player-search) [data-selection-search-close]');
-  // Single column on the phone viewport; the two-column cap applies from
-  // --bp-md where the cards have room for avatar, name and skill value.
-  assert.equal(
-    await page.locator('.tournament-player-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
-    1,
-  );
-  await page.setViewportSize({ width: 1280, height: 844 });
-  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
-  assert.equal(
-    await page.locator('.tournament-player-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
-    2,
-    'Tournament keeps two roster columns even when Matchmaking uses three in desktop mode',
-  );
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
+  const neighborHelp = page.locator('[aria-controls="matchmaking-neighbors-help"]');
   await neighborHelp.click();
   assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'true');
   await page.keyboard.press('Escape');
@@ -2155,16 +2112,24 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
   await page.keyboard.press('Enter');
   assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'true');
   await page.keyboard.press('Escape');
+
+  // Draw, then turn the fresh draw into a tournament; recording a single
+  // result stays available through the "+" beside it.
+  await page.fill('#mm-teamcount', '2');
+  await page.click('#mm-generate');
+  const freshDraw = page.locator('.matchmaking-new-draw');
+  await freshDraw.locator('[data-draw-tournament].btn-primary').click();
+  await page.waitForSelector('#draw-tournament-form');
+  assert.equal(await page.locator('[data-draw-team-name]').count(), 2);
+  assert.equal(await page.locator('#draw-tournament-two-legged').count(), 0, 'K.O. has no second leg');
+  const lobbyHelp = page.locator('[aria-controls="draw-tournament-lobby-help"]');
   await lobbyHelp.click();
   assert.equal(await lobbyHelp.getAttribute('aria-expanded'), 'true');
   await page.keyboard.press('Escape');
+  await page.click('#draw-tournament-form button[type="submit"]');
 
-  await page.click('#tourn-propose');
-  await page.waitForSelector('[data-team-name]');
-  await page.click('#tourn-submit');
-
-  // Bracket renders with clickable team buttons; click winners until the
-  // tournament reports itself finished.
+  // Each open bracket match has a "+" action that opens the shared result
+  // dialog; pick the first team as winner until the tournament is finished.
   await page.waitForSelector('.bracket-match');
   assert.match(new URL(page.url()).hash, /^#tournaments\/.+/);
   const tournamentDetailHash = new URL(page.url()).hash;
@@ -2172,11 +2137,12 @@ flowTest('Turnier: create a K.O. bracket from proposed teams and play it to a ch
   await page.waitForSelector('.bracket-match');
   assert.equal(new URL(page.url()).hash, tournamentDetailHash);
   for (let i = 0; i < 8; i++) {
-    const btn = page.locator('button.bracket-team-row:not(.is-tbd)').first();
-    if ((await btn.count()) === 0) break;
     if (await page.locator('text=Beendet').count()) break;
-    await btn.click();
-    await page.waitForTimeout(300);
+    const openMatch = page.locator('.bracket-side.is-open[data-open-result]').first();
+    if ((await openMatch.count()) === 0) break;
+    await openMatch.click();
+    await page.locator('.modal [data-result-winner]').first().click();
+    await page.waitForSelector('.modal', { state: 'detached' });
   }
   await page.waitForSelector('text=Beendet', { timeout: 5000 });
 });

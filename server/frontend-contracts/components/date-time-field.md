@@ -93,6 +93,9 @@ Popoverbreite, Tageszellengröße, Breakpointlogik noch innere Controlmaße übe
   positioniert.
 - Oberhalb 640 px misst das Popover höchstens `--date-picker-width`; an schmaleren Viewports
   überschreitet es nie die Viewportbreite.
+- Ist das Feld selbst höchstens 280 px breit, bricht ein Feld mit Uhrzeit Datum und Uhrzeit in
+  eigene Zeilen um. Ein reines Datumsfeld (`dateOnly`) behält Datum, Kalender- und Löschen-Aktion
+  in einer Zeile, damit es neben einem zweiten Feld gleicher Breite stehen kann.
 
 Registry-Bezüge: `date-fields`, `calendar-days`, `native-fields`, `icon-button`, `button` und
 `button-small` in [component-registry.mjs](../component-registry.mjs).

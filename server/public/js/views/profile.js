@@ -27,7 +27,6 @@ import {
   wirePendingInvitationActions,
 } from './events.js';
 import { eventHasFeature } from '../eventFeatures.js';
-import { backButtonHtml } from '../backButton.js';
 import { layoutModeForPlayer, LAYOUT_MODES, setLayoutModeForPlayer } from '../layoutMode.js';
 import { withStepUp } from '../reauth.js';
 
@@ -86,9 +85,12 @@ function renderPrivacySection() {
   // and text version, so an active row always carries that version.
   const consentRows = trackingConsent.events.map((event) => {
     const active = Boolean(event.consentId);
-    const versionLabel = active ? `Bestätigt: Text ${event.textVersion}` : 'Nicht aktiviert';
+    const unavailable = event.eventId === 'instance-base-event' || event.eventType === 'general';
+    const versionLabel = unavailable
+      ? 'Für diesen Bereich ist Tracking nicht verfügbar.'
+      : active ? `Bestätigt: Text ${event.textVersion}` : 'Nicht aktiviert';
     return `<label class="check-row">
-      <input type="checkbox" data-consent-event="${escapeHtml(event.eventId)}" ${active ? 'checked' : ''} />
+      <input type="checkbox" data-consent-event="${escapeHtml(event.eventId)}" ${active ? 'checked' : ''} ${unavailable && !active ? 'disabled' : ''} />
       <span style="flex:1;"><strong>${escapeHtml(event.eventName)}</strong><br><span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(versionLabel)}</span></span>
     </label>`;
   }).join('');
@@ -426,7 +428,6 @@ export function renderProfile(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title" id="profile-view-title" tabindex="-1">Mein Profil</h1>
         <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
       </div>
@@ -457,11 +458,11 @@ export function renderProfile(container, ctx) {
             </div>
             <div class="profile-text-field">
               <label for="profile-name" class="field-label is-required">Gamertag</label>
-              <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" required />
+              <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" required placeholder="NightOwl" />
             </div>
             <div class="profile-text-field">
               <label for="profile-real-name" class="field-label">Name</label>
-              <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="z.B. Robert" />
+              <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Robert" />
             </div>
           </div>
           <button type="button" class="btn btn-primary btn-block" id="profile-save">Speichern</button>

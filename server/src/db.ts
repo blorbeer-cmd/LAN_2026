@@ -5040,6 +5040,19 @@ registerMigration({
   up: enableCompetitionForGroupEvents,
 });
 
+// A draw can become a tournament instead of a single recorded match.
+function migrateDrawTournamentLink(): void {
+  const columns = db.prepare('PRAGMA table_info(matchmaking_draws)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'tournament_id')) {
+    db.exec('ALTER TABLE matchmaking_draws ADD COLUMN tournament_id TEXT REFERENCES tournaments(id) ON DELETE SET NULL');
+  }
+}
+registerMigration({
+  version: 105,
+  name: 'link matchmaking draws to tournaments',
+  up: migrateDrawTournamentLink,
+});
+
 // Privacy package: consent records describe the exact optional purpose and
 // the version of the text that was shown. Existing rows intentionally remain
 // NULL instead of being relabelled as if an older decision had covered the
@@ -5058,7 +5071,7 @@ function addVersionedConsentMetadata(): void {
   db.prepare("UPDATE agent_diagnostics SET process_names = '[]' WHERE process_names != '[]'").run();
 }
 registerMigration({
-  version: 105,
+  version: 106,
   name: 'version privacy consents and clear legacy diagnostic process names',
   up: addVersionedConsentMetadata,
 });
@@ -5129,40 +5142,41 @@ function preserveEndedMusicSessionsAfterHostDeletion(): void {
   `);
 }
 registerMigration({
-  version: 106,
+  version: 107,
   name: 'preserve ended music sessions after host deletion',
   up: preserveEndedMusicSessionsAfterHostDeletion,
   disableForeignKeysForRebuild: true,
 });
 
-// The permanently open base workspace is never a trackable period: it has no
-// organizer who starts and ends it, so nobody could meaningfully consent to
-// "this event". It was seeded with tracking off, but an older installation may
-// still carry a started flag, so clear it once and let events.ts refuse to set
-// it again. The standing consent default lives next to tracking_paused as the
-// account's own preference.
+// The base workspace and general events cannot be tracked. Older rows may
+// still carry the enabled flag and live sessions, so clear them during upgrade.
+// The standing consent default lives next to tracking_paused.
 function excludeBaseWorkspaceFromTrackingAndAddConsentDefault(): void {
+  // Draft PR installations may already have used versions 105-107 for the
+  // privacy migrations before main acquired the draw-link migration at 105.
+  // Repair that skipped draw link while this new version is applied.
+  migrateDrawTournamentLink();
   const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
   if (!columns.some((column) => column.name === 'tracking_consent_default_version')) {
     db.exec('ALTER TABLE players ADD COLUMN tracking_consent_default_version TEXT');
   }
-  db.prepare('UPDATE events SET tracking_enabled = 0 WHERE id = ? AND tracking_enabled = 1').run(BASE_EVENT_ID);
+  db.prepare("UPDATE events SET tracking_enabled = 0 WHERE (id = ? OR event_type_key = 'general') AND tracking_enabled = 1").run(BASE_EVENT_ID);
   // Same order and scope as closeEventContexts: a still-open session has to be
   // closed *before* its live rows go, because closeStaleSessions only ever
   // finds an orphan by joining those two tables. Without this the row would
   // stay open forever — inflating that game's playtime (FR-29) and staying
   // outside the ended_play_sessions retention rule, which only takes rows that
   // have an ended_at.
-  db.prepare('UPDATE play_sessions SET ended_at = ? WHERE event_id = ? AND ended_at IS NULL').run(
+  db.prepare("UPDATE play_sessions SET ended_at = ? WHERE event_id IN (SELECT id FROM events WHERE id = ? OR event_type_key = 'general') AND ended_at IS NULL").run(
     Date.now(),
     BASE_EVENT_ID,
   );
-  db.prepare('DELETE FROM tracking_live_contexts WHERE event_id = ?').run(BASE_EVENT_ID);
-  db.prepare('DELETE FROM tracking_live_games WHERE event_id = ?').run(BASE_EVENT_ID);
+  db.prepare("DELETE FROM tracking_live_contexts WHERE event_id IN (SELECT id FROM events WHERE id = ? OR event_type_key = 'general')").run(BASE_EVENT_ID);
+  db.prepare("DELETE FROM tracking_live_games WHERE event_id IN (SELECT id FROM events WHERE id = ? OR event_type_key = 'general')").run(BASE_EVENT_ID);
 }
 registerMigration({
-  version: 107,
-  name: 'exclude base workspace from tracking and add standing consent default',
+  version: 108,
+  name: 'exclude base and general events from tracking and add standing consent default',
   up: excludeBaseWorkspaceFromTrackingAndAddConsentDefault,
 });
 

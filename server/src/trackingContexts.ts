@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
+import { db, BASE_EVENT_ID, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import {
   TRACKING_CONSENT_PURPOSE,
@@ -34,10 +34,11 @@ export function activeTrackingContexts(playerId: string, now = Date.now()): Trac
          ON c.event_id = e.id AND c.player_id = pec.player_id AND c.revoked_at IS NULL
         AND c.purpose = ? AND c.text_version = ?
        WHERE pec.player_id = ? AND e.tracking_enabled = 1 AND e.status = 'published'
+         AND e.id != ? AND e.event_type_key != 'general'
          AND (e.starts_at IS NULL OR e.starts_at <= ?) AND (e.ends_at IS NULL OR e.ends_at > ?)
        LIMIT 1`,
     )
-    .get(TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION, playerId, now, now) as
+    .get(TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION, playerId, BASE_EVENT_ID, now, now) as
     | { eventId: string; groupId: string }
     | undefined;
   return active ? [{ groupId: active.groupId, eventId: active.eventId, weight: 1 }] : [];
@@ -155,6 +156,10 @@ export function applyTrackingConsentDefault(
   playerId: string,
   now = Date.now(),
 ): boolean {
+  const event = db.prepare('SELECT event_type_key AS eventType FROM events WHERE id = ?').get(eventId) as
+    | { eventType: string }
+    | undefined;
+  if (!event || eventId === BASE_EVENT_ID || event.eventType === 'general') return false;
   if (!trackingConsentDefaultApplies(playerId)) return false;
   // An explicit decision always wins: a revoked row means the account said no
   // for this event, and re-granting it here would silently reverse that.

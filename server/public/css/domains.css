@@ -554,6 +554,42 @@ input[type='range'].preference-row-slider {
 .team-player .rating {
   margin-left: auto;
 }
+.team-player-move-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.team-player-move-row > .team-player {
+  flex: 1;
+}
+/* Phones cannot use native drag and drop, so only touch/phone layouts get the
+   native team picker; desktop keeps pure drag and drop. */
+.team-move-control {
+  display: none;
+  position: relative;
+  flex: 0 0 var(--control-height);
+  width: var(--control-height);
+  height: var(--control-height);
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+}
+.team-move-control select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+@media (pointer: coarse), (max-width: 639px) { /* --bp-md */
+  .team-move-control {
+    display: grid;
+  }
+}
 
 /* ---------- Tournament bracket ----------
    Rendered as a recursively nested tree (see buildBracketNode in
@@ -659,12 +695,19 @@ input[type='range'].preference-row-slider {
   height: var(--bracket-match-h);
   flex-shrink: 0;
   display: flex;
-  flex-direction: column;
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  overflow: visible;
+  background: var(--bg-elevated-2);
   position: relative;
+}
+.bracket-match.is-open {
+  border-style: dashed;
+}
+.bracket-rows {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 .bracket-team-row {
   flex: 1;
@@ -672,24 +715,12 @@ input[type='range'].preference-row-slider {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-2);
-  border: none;
-  background: none;
+  padding: 0 var(--space-3);
   color: var(--text);
   font-size: var(--font-size-sm);
-  text-align: left;
-  cursor: default;
-  width: 100%;
 }
-.bracket-team-row:first-child {
-  border-bottom: 1px solid var(--border);
-  border-radius: var(--radius) var(--radius) 0 0;
-}
-.bracket-team-row:last-child {
-  border-radius: 0 0 var(--radius) var(--radius);
-}
-.bracket-match.has-result-action .bracket-team-row {
-  padding-right: calc(var(--space-7) + var(--space-3));
+.bracket-team-row + .bracket-team-row {
+  border-top: 1px solid var(--border);
 }
 .bracket-team-name {
   flex: 1;
@@ -698,17 +729,11 @@ input[type='range'].preference-row-slider {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-button.bracket-team-row {
-  cursor: pointer;
-}
-@media (hover: hover) {
-  button.bracket-team-row:hover {
-    background: var(--bg-elevated-2);
-  }
-}
 .bracket-team-row.is-winner {
-  font-weight: var(--font-weight-bold);
-  color: var(--state-playing);
+  font-weight: var(--font-weight-medium);
+}
+.bracket-team-row.is-loser {
+  color: var(--text-muted);
 }
 .bracket-team-row.is-tbd {
   color: var(--text-muted);
@@ -719,39 +744,300 @@ button.bracket-team-row {
   font-weight: var(--font-weight-bold);
   flex-shrink: 0;
 }
-/* input[type='number'] (below) sets width:100% at specificity (0,1,1) — an
-   attribute selector counts as a class for specificity purposes, so a bare
-   `.bracket-score-input` class (0,1,0) alone loses to it. Repeat the type
-   selector to win outright instead of reaching for !important. */
-input[type='number'].bracket-score-input,
-input[type='number'].tournament-score-input {
-  /* The shared number stepper occupies the right side of the field. Keep
-     enough room for it plus a two-digit score instead of letting the value
-     sit underneath the arrows. */
-  width: calc(var(--space-7) + var(--space-7));
-  height: var(--space-7);
-  flex: 0 0 calc(var(--space-7) + var(--space-7));
-  padding: 0 var(--space-7) 0 var(--space-2);
-  text-align: center;
+.bracket-team-row.is-winner .bracket-score,
+.bracket-win-mark {
+  color: var(--state-playing);
+}
+.bracket-win-mark {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+/* The result action lives in a fixed trailing column inside the box, so it
+   never floats over the connector lines and every box keeps one width. */
+.bracket-side {
+  flex: 0 0 var(--control-height);
+  display: grid;
+  place-items: center;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: none;
+  color: var(--text-muted);
+  padding: 0;
+}
+button.bracket-side {
+  cursor: pointer;
+}
+.bracket-side.is-open {
+  color: var(--accent);
+}
+@media (hover: hover) {
+  button.bracket-side:hover {
+    background: var(--bg-elevated);
+    color: var(--text);
+  }
+}
+.bracket-final-row {
+  display: flex;
+  align-items: center;
+  gap: var(--bracket-round-gap);
+}
+.bracket-champion {
+  width: var(--bracket-match-w);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+  font-weight: var(--font-weight-bold);
+  position: relative;
+}
+.bracket-champion::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  width: var(--bracket-round-gap);
+  height: 2px;
+  background: var(--border);
+  transform: translateY(-1px);
+}
+
+/* ---------- Tournament league: fixtures, standings, result dialog ---------- */
+
+.tournament-board {
+  margin-top: var(--space-5);
+}
+.tournament-board > .tournament-group-stage {
+  margin-top: 0;
+}
+.tournament-round + .tournament-round {
+  margin-top: var(--space-4);
+}
+.tournament-round-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.tournament-fixture {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) var(--control-height);
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target-size);
+}
+.tournament-fixture + .tournament-fixture {
+  border-top: 1px solid var(--border);
+}
+.tournament-fixture-team {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tournament-fixture-team.is-home {
+  text-align: right;
+}
+.tournament-fixture-team.is-winner {
+  font-weight: var(--font-weight-medium);
+}
+.tournament-fixture-team.is-loser {
+  color: var(--text-muted);
+}
+.tournament-fixture-score {
+  min-width: calc(var(--space-8) + var(--space-3));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.tournament-fixture-score .is-win {
+  color: var(--state-playing);
+}
+.tournament-fixture-score.is-open {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-weight: var(--font-weight-regular);
+}
+.tournament-fixture-score.is-pick {
+  background: var(--state-playing-bg);
+  color: var(--state-playing);
+  font-size: var(--font-size-xs);
+}
+.tournament-fixture-action {
+  width: var(--control-height);
+  height: var(--control-height);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+span.tournament-fixture-action {
+  border-color: transparent;
+  background: none;
+}
+.tournament-fixture-action.is-open {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tournament-fixture-action.is-primary {
+  border-color: transparent;
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+}
+@media (hover: hover) {
+  button.tournament-fixture-action:hover {
+    color: var(--text);
+  }
+  button.tournament-fixture-action.is-primary:hover {
+    color: var(--accent-text);
+  }
+}
+@media (max-width: 479px) { /* --bp-sm */
+  .tournament-fixture {
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+  }
+}
+.tournament-group-fixtures {
+  margin-top: var(--space-4);
+}
+.tournament-standings {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
   font-size: var(--font-size-sm);
 }
-.tournament-score-submit,
-.tournament-result-edit,
-.bracket-score-submit,
-.bracket-result-edit {
-  width: var(--space-7);
-  height: var(--space-7);
-  flex: 0 0 var(--space-7);
-  padding: 0;
-  border-radius: var(--radius-sm);
+.tournament-standings th {
+  white-space: nowrap;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  text-align: right;
 }
-.bracket-score-submit,
-.bracket-result-edit {
-  position: absolute;
-  right: var(--space-1);
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
+.tournament-standings td {
+  padding: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  text-align: right;
+}
+.tournament-standings th:first-child,
+.tournament-standings td:first-child {
+  text-align: center;
+  width: var(--space-6);
+}
+.tournament-standings th:nth-child(2),
+.tournament-standings td:nth-child(2) {
+  width: 100%;
+  text-align: left;
+}
+.tournament-standings-team {
+  color: var(--text);
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tournament-standings tr.is-leader .tournament-standings-rank {
+  color: var(--rank-1-gold);
+  font-weight: var(--font-weight-bold);
+}
+.tournament-standings-advance {
+  margin-left: var(--space-2);
+  font-size: var(--font-size-2xs);
+  color: var(--accent);
+}
+.tournament-standings td.tournament-standings-points {
+  color: var(--text);
+  font-weight: var(--font-weight-bold);
+}
+.tournament-result-teams {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+.tournament-result-teams label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-weight-medium);
+}
+input[type='number'].tournament-result-score {
+  height: var(--tap-target-size);
+  text-align: center;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+}
+.tournament-result-pick {
+  min-height: var(--tap-target-size);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  cursor: pointer;
+}
+.tournament-result-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px; /* design-token-ok: tight title/subtitle pairing inside one pick button, below the 4px spacing step */
+}
+.tournament-result-pick-players {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  color: var(--text-muted);
+  text-align: left;
+}
+.draw-result-value-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(var(--space-8) + var(--space-8));
+  align-items: center;
+  gap: var(--space-3);
+}
+.draw-result-value-row label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: var(--font-weight-medium);
+}
+.tournament-result-pick.is-draw {
+  color: var(--text-muted);
+}
+.tournament-result-pick.is-selected {
+  border-color: var(--state-playing);
+  background: var(--state-playing-bg);
+}
+@media (hover: hover) {
+  .tournament-result-pick:hover {
+    border-color: var(--accent);
+  }
 }
 
 /* ---------- Checkbox list (present players) ---------- */
@@ -811,30 +1097,84 @@ input[type='number'].tournament-score-input {
 .vote-ranking-column:only-child {
   grid-column: 1 / -1;
 }
-.vote-ranking-column .lb-row.is-tied {
-  margin: var(--space-1) 0;
-  padding: var(--space-3) var(--space-2);
-  border: 1px solid var(--rank-1-gold);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
+.vote-ranking-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
-.vote-tie-action {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+.vote-ranking-name .player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.vote-participation-status {
+.vote-win-chip {
+  min-width: 0;
+  flex-shrink: 0;
+  padding-block: 0;
+  line-height: var(--control-line-height);
+}
+.vote-open-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.vote-open-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.vote-open-title h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+.vote-open-admin {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.vote-open-info {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+.vote-progress-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
+  gap: var(--space-2);
 }
-.vote-participation-status strong {
-  flex-shrink: 0;
+.vote-open-row {
+  gap: var(--space-1);
+}
+.vote-open-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+}
+.vote-open-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vote-points-slider {
+  margin-top: var(--space-2);
+}
+.vote-points-value {
   font-size: var(--font-size-lg);
+}
+.vote-open-meta {
+  font-size: var(--font-size-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .vote-result-meta {
   font-size: var(--font-size-xs);
@@ -845,16 +1185,6 @@ input[type='number'].tournament-score-input {
 }
 .vote-history-round [data-open-history-round] {
   flex-shrink: 0;
-}
-.vote-action-stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.vote-secondary-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
 }
 .vote-submitted-state {
   display: flex;
@@ -884,10 +1214,32 @@ input[type='number'].tournament-score-input {
 .vote-game-select-wrap {
   gap: var(--space-2);
 }
-.vote-workflow-section .tournament-create-step-title h2,
-.vote-page-section .tournament-create-step-title h2 {
-  margin: 0;
-  font-size: var(--font-size-lg);
+.vote-start-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: end;
+}
+@media (min-width: 640px) { /* --bp-md */
+  .vote-start-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.vote-start-toolbar {
+  flex-wrap: nowrap;
+}
+.vote-game-grid.is-runoff {
+  grid-template-columns: minmax(0, 1fr);
+}
+.vote-submit-row {
+  display: flex;
+  justify-content: flex-end;
+}
+.vote-start-row .vote-info-input {
+  display: block;
+  height: var(--control-height);
+  min-height: var(--control-height);
+  resize: none;
 }
 @media (min-width: 640px) { /* --bp-md */
   .vote-game-grid {
@@ -941,9 +1293,6 @@ input[type='number'].tournament-score-input {
 .grouped-page-section {
   min-width: 0;
 }
-.primary-collection-section {
-  border-color: var(--accent);
-}
 .grouped-page-section-title {
   display: flex;
   align-items: flex-start;
@@ -964,6 +1313,62 @@ input[type='number'].tournament-score-input {
 .primary-collection-section > .empty-state {
   min-height: calc(var(--row-min-h) * 2);
 }
+/* A titled card with nothing but its empty state collapses to one row, as
+   high as a closed collapsible card: the empty text is centered over the
+   card and sits on the title's line, and header actions stay clickable.
+   The same applies to an opened collapsible whose content is only its empty
+   state. Phones keep the text on its own compact line, because a centered
+   line would collide with the title there. */
+.card:has(> .grouped-page-section-title:first-child + .empty-state:last-child),
+.card:has(> .grouped-page-section-title:first-child + :last-child > .empty-state:only-child),
+.collapsible-section[open]:has(> .collapsible-section-content > .empty-state:only-child) {
+  position: relative;
+}
+.card:has(> .grouped-page-section-title:first-child + .empty-state:last-child) > .grouped-page-section-title,
+.card:has(> .grouped-page-section-title:first-child + :last-child > .empty-state:only-child) > .grouped-page-section-title {
+  align-items: center;
+  min-height: var(--tap-target-size);
+}
+.collapsible-section[open]:has(> .collapsible-section-content > .empty-state:only-child) > .collapsible-section-header {
+  margin-bottom: 0;
+}
+@media (min-width: 640px) { /* --bp-md */
+  /* A wrapper around the empty state leaves the flow with it, so its own gap
+     or padding cannot add height to the card. */
+  .card > .grouped-page-section-title:first-child + :last-child:has(> .empty-state:only-child) {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    pointer-events: none;
+  }
+  .card > .grouped-page-section-title:first-child + :last-child > .empty-state:only-child {
+    height: 100%;
+  }
+  .card > .grouped-page-section-title:first-child + .empty-state:last-child,
+  .card > .grouped-page-section-title:first-child + :last-child > .empty-state:only-child,
+  .collapsible-section[open] > .collapsible-section-content > .empty-state:only-child {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    padding: 0;
+    pointer-events: none;
+  }
+  .card > .grouped-page-section-title:first-child + :last-child > .empty-state:only-child {
+    position: static;
+  }
+}
+@media (max-width: 639px) { /* --bp-md */
+  .card > .grouped-page-section-title:first-child + .empty-state:last-child,
+  .card > .grouped-page-section-title:first-child + :last-child > .empty-state:only-child,
+  .collapsible-section[open] > .collapsible-section-content > .empty-state:only-child {
+    min-height: 0;
+    padding: var(--space-2) 0 0;
+  }
+}
 .grouped-page-section-title h2 {
   margin: 0;
   font-size: var(--font-size-lg);
@@ -973,7 +1378,8 @@ input[type='number'].tournament-score-input {
    margin keeps the hit area while removing that extra height from flex
    layout. */
 .grouped-page-section-title .info-tooltip-trigger,
-.card h2.title-with-info .info-tooltip-trigger {
+.card h2.title-with-info .info-tooltip-trigger,
+.draw-tournament-form .title-with-info .info-tooltip-trigger {
   margin-block: calc(-1 * var(--space-3));
 }
 /* Bare h2 headings still appear in game/result cards. Keep their type scale
@@ -1666,21 +2072,56 @@ input.food-order-price-input {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
+.checklist-progress-count {
+  margin-left: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+.checklist-progress {
+  display: block;
+  height: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--border);
+}
+.checklist-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent-3));
+}
 .checklist-item-row {
-  min-height: var(--space-7);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--row-icon-size);
+  min-width: 0;
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--border);
+}
+.checklist-item-row:first-child {
+  border-top: 0;
 }
 .checklist-item-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
+  column-gap: var(--space-6);
 }
 @media (min-width: 640px) { /* --bp-md */
   .checklist-item-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .checklist-item-row:nth-child(2) {
+    border-top: 0;
+  }
+}
+.checklist-item-remove {
+  color: var(--text-muted);
+}
+.checklist-item-list:not(.is-editing) .checklist-item-remove {
+  display: none;
 }
 .checklist-item-label {
   display: flex;
@@ -1693,32 +2134,17 @@ input.food-order-price-input {
   color: var(--text-muted);
   text-decoration: line-through;
 }
-.hall-of-fame-event-header {
-  align-items: flex-start;
-  flex-wrap: wrap;
-}
-.hall-of-fame-selected-event {
-  margin-top: var(--space-1);
+.hall-of-fame-event-range {
+  font-size: var(--font-size-sm);
 }
 .hall-of-fame-event-section {
-  position: relative;
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
 }
-.hall-of-fame-event-section::before {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--space-1);
-  background: var(--accent);
-  content: '';
-}
-.hall-of-fame-event-section.is-tournaments::before {
-  background: var(--accent-3);
+.grouped-page-section .hall-of-fame-event-section > .empty-state {
+  min-height: 0;
+  padding: var(--space-2) 0;
 }
 .hall-of-fame-subtitle {
   margin: 0;
@@ -1898,4 +2324,239 @@ input.food-order-price-input {
 .empty-state-food-items {
   font-size: var(--font-size-sm);
   padding: var(--space-2) 0;
+}
+
+/* Match's draw/draft area is the only visible mode at a time, so it sits
+   flat in the card: no nested panel, no accent rail (rule 3). */
+.match-mode-panel > .check-row {
+  border-bottom: none;
+}
+.match-mode-panel .card-footer-actions > .row {
+  justify-content: flex-end;
+}
+
+/* "Turnier erstellen" from a draw: options share a wrapping row and the
+   submit sits compact at the bottom right. */
+.draw-tournament-options {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-6);
+}
+.draw-tournament-options > .check-row {
+  padding-block: 0;
+  border-bottom: none;
+}
+.draw-tournament-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.draw-tournament-team-names {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+/* Active lobbies: flat hairline rows inside one card. The credentials sit
+   as code chips with their copy action and never wrap mid-name. */
+.tournament-lobby-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) 0;
+}
+.tournament-lobby-row + .tournament-lobby-row {
+  border-top: 1px solid var(--border);
+}
+.tournament-lobby-row:first-child {
+  padding-top: 0;
+}
+.tournament-lobby-row:last-child {
+  padding-bottom: 0;
+}
+.tournament-lobby-row .tournament-lobby-matchup {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.tournament-lobby-row .tournament-lobby-matchup .muted {
+  font-size: var(--font-size-sm);
+}
+.tournament-lobby-row .tournament-lobby-access {
+  flex: 0 1 auto;
+  align-items: center;
+  column-gap: var(--space-4);
+}
+.tournament-lobby-row .tournament-lobby-credential {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.tournament-lobby-credential-label {
+  min-width: calc(var(--space-8) + var(--space-3));
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.tournament-lobby-credential-value {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+}
+
+
+/* Stimmen dialog: numbered legend plus one person x option table. */
+.event-poll-vote-legend {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.event-poll-vote-legend-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  min-width: 0;
+}
+.event-poll-vote-legend-label {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+}
+.event-poll-vote-legend-summary {
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+.event-poll-vote-number {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--avatar-size-sm);
+  height: var(--avatar-size-sm);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated-2);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+.event-poll-vote-number.is-win {
+  background: var(--state-playing-bg);
+  color: var(--state-playing);
+}
+.event-poll-vote-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--font-size-xs);
+}
+.event-poll-vote-key > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.event-poll-vote-table-wrap {
+  overflow-x: auto;
+}
+.event-poll-vote-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+.event-poll-vote-col {
+  width: calc(var(--space-7) + var(--space-3));
+}
+.event-poll-vote-table th,
+.event-poll-vote-table td {
+  padding: var(--space-1) 0;
+  text-align: center;
+}
+.event-poll-vote-table thead th {
+  padding-bottom: var(--space-2);
+}
+.event-poll-vote-table tbody tr {
+  border-top: 1px solid var(--border);
+}
+.event-poll-vote-table tbody th {
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+}
+.event-poll-vote-table tbody th .player-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.event-poll-vote-table .event-poll-voter-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-poll-vote-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.event-poll-vote-cell .ui-icon {
+  width: 16px; /* design-token-ok: matches the compact legend glyph */
+  height: 16px; /* design-token-ok: matches the compact legend glyph */
+}
+/* Neutral on purpose: brightness, not color, separates the answers. */
+.event-poll-vote-cell.is-can {
+  color: var(--text);
+}
+.event-poll-vote-cell.is-if-needed,
+.event-poll-vote-cell.is-empty {
+  color: var(--text-muted);
+}
+.event-poll-vote-cell.is-cannot {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+/* Spieler-Details: one Bock/Skill row per game with sortable headers. */
+.player-detail-ratings {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.player-detail-rating-col {
+  width: calc(var(--space-8) + var(--space-4));
+}
+.player-detail-ratings th,
+.player-detail-ratings td {
+  padding: var(--space-1) 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.player-detail-ratings thead th {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.player-detail-ratings th:first-child {
+  text-align: left;
+}
+.player-detail-ratings tbody tr {
+  border-top: 1px solid var(--border);
+}
+.player-detail-ratings tbody th {
+  overflow: hidden;
+  font-weight: var(--font-weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player-detail-ratings tbody td {
+  font-weight: var(--font-weight-bold);
 }

@@ -76,11 +76,15 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // Matchmaking: draw teams for both players.
   await openTeams();
   assert.equal(await page.inputValue('#mm-teamcount'), '2');
-  await page.click('[data-selection-search-trigger][aria-controls="mm-player-search"]');
+  // The roster search is an always-visible named field, not a magnifier toggle.
+  assert.equal(await page.getAttribute('#mm-player-search', 'placeholder'), 'Spieler suchen');
   await page.fill('#mm-player-search', profileTitle);
   await page.waitForFunction(() => document.querySelectorAll('[data-mm-draw-search-item]:not([hidden])').length === 1);
   assert.equal(await page.locator('[data-mm-draw-search-item]:not([hidden])').getByText(profileTitle, { exact: true }).count(), 1);
-  await page.click('#mm-select-none');
+  // One bulk toggle: with every visible player selected it offers deselect.
+  assert.equal(await page.getAttribute('#mm-select-all', 'aria-label'), 'Sichtbare Spieler abwählen');
+  await page.click('#mm-select-all');
+  assert.equal(await page.getAttribute('#mm-select-all', 'aria-label'), 'Sichtbare Spieler markieren');
   assert.equal(await page.locator('[data-mm-draw-search-item]:not([hidden]) [data-player]:checked').count(), 0);
   assert.equal(
     await page.locator('[data-mm-draw-search-item][hidden] [data-player]:checked').count(),
@@ -89,10 +93,11 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   );
   await page.fill('#mm-player-search', 'Kein passender Spieler XYZ');
   await page.waitForSelector('[data-roster-picker="mm-draw-roster"] [data-roster-picker-empty]:not([hidden])');
-  await page.click('[data-selection-search]:has(#mm-player-search) [data-selection-search-close]');
-  const matchmakingSearchTrigger = page.locator('[data-selection-search-trigger][aria-controls="mm-player-search"]');
-  assert.equal(await matchmakingSearchTrigger.evaluate((element) => document.activeElement === element), true, 'closing SelectionSearch returns focus to its trigger');
-  await page.click('#mm-select-none');
+  await page.fill('#mm-player-search', '');
+  await page.waitForFunction(() => document.querySelectorAll('[data-mm-draw-search-item][hidden]').length === 0);
+  await page.click('#mm-select-all');
+  assert.equal(await page.locator('[data-player]:checked').count(), 2);
+  await page.click('#mm-select-all');
   assert.equal(await page.locator('[data-player]:checked').count(), 0);
   await page.click('#mm-select-all');
   assert.equal(await page.locator('[data-player]:checked').count(), 2);
@@ -164,11 +169,13 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // reach its tooltip, then back to Auslosung to reach "Teams auslosen".
   await page.click('[data-mm-mode="draft"]');
   assert.equal(await page.locator('#draft-player-search').count(), 1);
-  await page.click('[data-selection-search-trigger][aria-controls="captain-player-search"]');
-  await page.fill('#captain-player-search', 'E2E Alice');
+  // The draft roster search is the only search field and narrows the captain list too.
+  assert.equal(await page.locator('[data-roster-picker="mm-captain-roster"] input[type="search"]').count(), 0);
+  await page.fill('#draft-player-search', 'E2E Alice');
   await page.waitForFunction(() => document.querySelectorAll('[data-mm-captain-search-item]:not([hidden])').length === 1);
   assert.equal(await page.locator('[data-mm-captain-search-item]:not([hidden])').getByText('E2E Alice', { exact: true }).count(), 1);
-  await page.click('[data-selection-search]:has(#captain-player-search) [data-selection-search-close]');
+  await page.fill('#draft-player-search', '');
+  await page.waitForFunction(() => document.querySelectorAll('[data-mm-captain-search-item][hidden]').length === 0);
   const draftHelp = page.locator('[aria-controls="captain-draft-help"]');
   await draftHelp.waitFor();
   await draftHelp.click();
@@ -218,7 +225,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once the round shows as open
-  await page.waitForSelector('.vote-participation-status:has-text("Bewertungen abgegeben"):has-text("0 / 2")');
+  await page.waitForSelector('.vote-open-title .badge[aria-label="Bewertungen abgegeben: 0 von 2"]:has-text("0/2 abgegeben")');
   // Opening the round also kicks off votes.js's own follow-up mine/history
   // fetches, each of which rerenders (replacing this whole section) again
   // once it resolves. Settling on network idle first, then reading all
@@ -231,8 +238,12 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     closeWidth: document.querySelector('#votes-close')?.getBoundingClientRect().width ?? 0,
     cancelWidth: document.querySelector('#votes-cancel')?.getBoundingClientRect().width ?? 0,
   }));
-  assert.ok(submitWidth > closeWidth);
-  assert.equal(Math.round(cancelWidth), Math.round(closeWidth));
+  // Beenden/Abbrechen are compact header actions; submitting is the one
+  // primary action at the card's end, sized to its label rather than the row.
+  assert.equal(await page.locator('.vote-open-admin #votes-close, .vote-open-admin #votes-cancel').count(), 2);
+  assert.ok(closeWidth > 0 && cancelWidth > 0);
+  const gridWidth = await page.locator('.vote-game-grid').evaluate((element) => element.getBoundingClientRect().width);
+  assert.ok(submitWidth > 0 && submitWidth < gridWidth, 'the submit button no longer spans the full card width');
   assert.equal(await page.locator('.vote-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 1);
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(await page.locator('.vote-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 2);
@@ -248,7 +259,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   });
   await page.waitForSelector('.skill-value:text("5")'); // staged locally
   assert.equal(
-    await page.locator('.vote-participation-status:has-text("0 / 2")').count(),
+    await page.locator('.vote-open-title .badge:has-text("0/2 abgegeben")').count(),
     1,
     'moving a slider must not submit it by itself'
   );
@@ -269,7 +280,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   );
 
   await page.click('#votes-submit');
-  await page.waitForSelector('.vote-participation-status:has-text("1 / 2")');
+  await page.waitForSelector('.vote-open-title .badge:has-text("1/2 abgegeben")');
   await page.waitForSelector('.vote-submitted-state:has-text("Bewertung abgegeben")');
   assert.equal(await page.locator('#votes-submit').count(), 0);
   assert.ok(await page.locator('[data-points-slider]').first().isDisabled());
@@ -283,20 +294,21 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.waitForFunction(() => document.querySelectorAll('section[aria-labelledby="vote-current-result-title"] .lb-row').length >= 2);
   const currentVote = page.locator('section[aria-labelledby="vote-current-result-title"]');
   assert.equal(await currentVote.locator('.lb-row').count(), 2);
-  assert.equal(await currentVote.locator('.lb-row.is-tied').count(), 2);
-  assert.deepEqual(await currentVote.locator('.lb-row.is-tied .lb-rank').allTextContents(), ['1', '1']);
+  // Tied winners share place 1 and each carry the "Win" chip.
+  assert.equal(await currentVote.locator('.lb-row .vote-win-chip').count(), 2);
+  assert.deepEqual(await currentVote.locator('.lb-row.rank-1 .lb-rank').allTextContents(), ['1', '1']);
   assert.equal(await currentVote.getByText('Unentschieden', { exact: true }).count(), 0);
   assert.equal(await currentVote.locator('#votes-runoff').count(), 1, 'the runoff action belongs to the current Vote card');
   assert.equal(await page.locator('section[aria-labelledby="vote-runoff-title"]').count(), 0, 'no separate runoff card remains');
   assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars on the main page, even after closing');
   assert.equal(await page.locator('details.history-details:has(summary:has-text("Historie"))').getAttribute('open'), null);
 
-  // The just-closed round can be reopened from the history list for the
-  // full detailed breakdown.
+  // Historie lists only older rounds, so the just-closed round is not
+  // repeated there; its full breakdown opens from "Letzter Vote" instead.
   await page.click('details.history-details:has(summary:has-text("Historie")) > summary');
-  await page.waitForFunction(() => document.querySelectorAll('.vote-history-round .lb-row').length >= 2);
-  assert.equal(await page.locator('.vote-history-round').first().locator('.lb-row').count(), 2);
-  await page.click('[data-open-history-round]');
+  await page.waitForSelector('[data-vote-history] >> text=Noch keine älteren Abstimmungen.');
+  assert.equal(await page.locator('.vote-history-round').count(), 0);
+  await currentVote.locator('[data-open-history-round]').click();
   await page.waitForSelector('text=Abstimmung Runde 1');
   await page.waitForSelector('.modal .vote-bar-track');
   assert.equal(await page.locator('.modal .vote-row').count(), 2);
@@ -497,16 +509,20 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
       return preferenceDiff !== 0 ? preferenceDiff : a.name.localeCompare(b.name, 'de');
     })
     .map((game) => game.id);
+  const alphabeticalVoteOrder = catalogGames
+    .filter((game) => catalogGameIds.has(game.id))
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+    .map((game) => game.id);
   const renderedVoteOrder = await page.locator('[data-vote-game-checkbox]').evaluateAll((els) =>
     els.map((el) => (el as HTMLInputElement).value),
   );
-  assert.deepEqual(renderedVoteOrder, expectedVoteOrder, 'the vote game list should be sorted by Bock level');
+  assert.deepEqual(renderedVoteOrder, alphabeticalVoteOrder, 'the vote game list should be sorted alphabetically');
   let initiallySelected = await page.locator('[data-vote-game-checkbox]:checked').evaluateAll((els) =>
     els.map((el) => (el as HTMLInputElement).value),
   );
   assert.deepEqual(
-    initiallySelected,
-    expectedVoteOrder.slice(0, 10),
+    [...initiallySelected].sort(),
+    expectedVoteOrder.slice(0, 10).sort(),
     'the initial vote selection should contain the current Top 10 by Bock level',
   );
 
@@ -549,8 +565,8 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
       els.map((el) => (el as HTMLInputElement).value),
     );
     assert.deepEqual(
-      liveSelected,
-      liveExpectedVoteOrder.slice(0, 10),
+      [...liveSelected].sort(),
+      liveExpectedVoteOrder.slice(0, 10).sort(),
       'a live Bock update should refresh the untouched Top-10 selection',
     );
 
@@ -570,10 +586,15 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
   const voteGameCheckboxes = page.locator('[data-vote-game-checkbox]');
   const voteGameCount = await voteGameCheckboxes.count();
   assert.ok(voteGameCount >= 2, 'test fixture must ship at least two games');
-  await page.click('[data-selection-search-trigger][aria-controls="votes-game-search"]');
+  assert.equal(await page.getAttribute('#votes-game-search', 'placeholder'), 'Spiel suchen');
   await page.fill('#votes-game-search', 'Counter-Strike 2');
   await page.waitForFunction(() => document.querySelectorAll('[data-vote-game-search-item]:not([hidden])').length === 1);
-  await page.click('#votes-select-none');
+  // One bulk toggle acts on the visible result only; flip it until the lone
+  // visible game is deselected.
+  await page.click('#votes-select-all');
+  if (await page.locator('[data-vote-game-search-item]:not([hidden]) [data-vote-game-checkbox]:checked').count()) {
+    await page.click('#votes-select-all');
+  }
   assert.equal(await page.locator('[data-vote-game-search-item]:not([hidden]) [data-vote-game-checkbox]:checked').count(), 0);
   assert.equal(
     await page.locator('[data-vote-game-search-item][hidden] [data-vote-game-checkbox]:checked').count(),
@@ -583,13 +604,10 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
   await page.fill('#votes-game-search', 'Kein Treffer XYZ');
   await page.waitForSelector('[data-vote-game-search-empty]:not([hidden])');
   await page.fill('#votes-game-search', '');
-  await page.click('[data-selection-search]:has(#votes-game-search) [data-selection-search-close]');
-  assert.equal(
-    await page.locator('[data-selection-search-trigger][aria-controls="votes-game-search"]').evaluate((element) => document.activeElement === element),
-    true,
-    'the Vote SelectionSearch returns focus to its trigger',
-  );
-  await page.click('#votes-select-all');
+  await page.waitForFunction(() => document.querySelectorAll('[data-vote-game-search-item][hidden]').length === 0);
+  if ((await page.getAttribute('#votes-select-all', 'aria-label')) === 'Sichtbare Spiele markieren') {
+    await page.click('#votes-select-all');
+  }
   await voteGameCheckboxes.nth(0).uncheck();
   await voteGameCheckboxes.nth(1).uncheck();
 
@@ -599,19 +617,18 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
   assert.equal(await voteGameCheckboxes.nth(0).isChecked(), false, 'a manual deselection must survive an unrelated re-render');
   assert.equal(await voteGameCheckboxes.nth(1).isChecked(), false);
 
-  // The previous single toggle button computed its action from whether
-  // *all* boxes were checked, so clicking it in this exact mixed state
-  // (2 unchecked, rest checked) re-checked everything instead of clearing
-  // the rest. The two dedicated buttons must not depend on prior state.
-  await page.click('#votes-select-none');
-  assert.deepEqual(
-    await voteGameCheckboxes.evaluateAll((els) => els.map((el) => (el as HTMLInputElement).checked)),
-    Array(voteGameCount).fill(false)
-  );
+  // The single bulk toggle derives its action from the visible state: in this
+  // mixed state (2 unchecked) it selects all, then a second click clears all.
+  assert.equal(await page.getAttribute('#votes-select-all', 'aria-label'), 'Sichtbare Spiele markieren');
   await page.click('#votes-select-all');
   assert.deepEqual(
     await voteGameCheckboxes.evaluateAll((els) => els.map((el) => (el as HTMLInputElement).checked)),
     Array(voteGameCount).fill(true)
+  );
+  await page.click('#votes-select-all');
+  assert.deepEqual(
+    await voteGameCheckboxes.evaluateAll((els) => els.map((el) => (el as HTMLInputElement).checked)),
+    Array(voteGameCount).fill(false)
   );
 });
 
@@ -622,48 +639,45 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   await page.waitForSelector('[data-record-draw]');
   await page.click('[data-record-draw]');
 
-  // "Unentschieden" is the default winner radio in the result form — submit
-  // as-is to record a drawn result.
-  await page.waitForSelector('#match-form');
-  await page.click('#match-form button[type="submit"]');
+  // The draw's own result dialog saves "Unentschieden" with one click.
+  await page.waitForSelector('[data-draw-winner=""]');
+  await page.click('[data-draw-winner=""]');
 
   await page.waitForFunction(() => !!document.querySelector('[data-edit-draw-result]'));
   await openMatchmakingHistory();
-  await page.waitForSelector('[data-draw-card] .badge:has-text("Unentschieden")');
+  await page.waitForSelector('[data-draw-card] .tournament-fixture-score:has-text("Remis")');
 });
 
-flowTest('matchmaking Historie shows the winner after switching to Frei-für-alle for a drawn lineup', async () => {
-  // Regression test: teams were drawn, but the result was entered as
-  // "Frei-für-alle" instead of the drawn team shape — the draw must still
-  // remain in Historie with the winner shown instead of retaining the open
-  // draw actions.
+flowTest('matchmaking Historie derives the winner from values entered in the draw result dialog', async () => {
+  // Values mode: the higher value wins, places follow the values, and the
+  // recorded draw shows its winner with the "Win" chip in Historie.
   await openTeams();
   await page.click('#mm-generate');
   await openMatchmakingHistory();
   await page.waitForSelector('[data-record-draw]');
   await page.click('[data-record-draw]');
 
-  await page.waitForSelector('#match-form');
-  await page.check('#match-ffa');
-  await page.waitForSelector('input[name="ffa-winner"]');
-  // First radio is a real participant (the "Kein Sieger" fallback is last).
-  await page.check('input[name="ffa-winner"] >> nth=0');
-  await page.click('#match-form button[type="submit"]');
+  await page.click('[data-draw-result-mode="values"]');
+  await page.fill('#draw-result-score-0', '3');
+  await page.fill('#draw-result-score-1', '1');
+  await page.click('[data-draw-result-values] button[type="submit"]');
 
   await page.waitForFunction(() => !!document.querySelector('[data-edit-draw-result]'));
   await openMatchmakingHistory();
-  await page.waitForSelector('[data-draw-card] .matchmaking-draw-team.is-winner');
+  const winnerTeam = page.locator('[data-draw-card] .matchmaking-draw-team.is-winner').first();
+  await winnerTeam.waitFor();
+  assert.equal(await winnerTeam.locator('.tournament-fixture-score:has-text("Win")').count(), 1);
+  assert.match(await winnerTeam.innerText(), /Platz 1 · Wert 3/);
 });
 
 flowTest('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl Teams"', async () => {
   // Regression test: reassigning a player to a different team in the entry
   // form, then changing "Anzahl Teams", must not silently revert that player
   // back to the original drawn team.
-  await openTeams();
-  await page.click('#mm-generate');
-  await openMatchmakingHistory();
-  await page.waitForSelector('[data-record-draw]');
-  await page.click('[data-record-draw]');
+  // Drawn lineups use their own compact result dialog; the free result form
+  // lives in Auswertung.
+  await openAuswertungTab('leaderboard');
+  await page.click('#add-match-btn');
   await page.waitForSelector('#match-players');
 
   await page.click('#match-game-search');

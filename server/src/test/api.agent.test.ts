@@ -12,6 +12,7 @@ import { db } from '../db';
 const app = createTestApp();
 let apiKey: string;
 let playerId: string;
+let trackingEventId: string;
 let cs2GameId: string;
 let rocketLeagueGameId: string;
 
@@ -23,7 +24,7 @@ test('setup: create a player and locate two seeded games', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Agent Tester' });
   playerId = player.body.id;
   apiKey = player.body.api_key;
-  enableTestTracking(playerId);
+  trackingEventId = enableTestTracking(playerId);
 
   const games = await request(app).get('/api/games');
   cs2GameId = games.body.find((g: { name: string }) => g.name === 'Counter-Strike 2').id;
@@ -161,6 +162,7 @@ test('reporting no matching process clears all games but remains online while tr
 
 test('a player with no report at all appears as offline on the board', async () => {
   const other = await request(app).post('/api/players').send({ name: 'Never Reported' });
+  enableTestTracking(other.body.id, trackingEventId);
   const res = await request(app).get('/api/live');
   const entry = res.body.find((r: { player_id: string }) => r.player_id === other.body.id);
   assert.ok(entry);

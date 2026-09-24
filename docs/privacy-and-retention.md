@@ -87,9 +87,10 @@ Nicht jeder Arbeitsbereich kann Tracking erhalten:
 - Der dauerhaft geöffnete Bereich „Allgemein“ ist davon ausgenommen. Er hat keinen Zeitraum, den
   eine Orga startet und beendet, also gäbe es auch keinen abgrenzbaren Vorgang, in den jemand
   einwilligen könnte. Eine ältere Installation, in der das Tracking dort einmal gestartet wurde,
-  wird durch Migration 107 zurückgesetzt.
+  wird durch Migration 108 zurückgesetzt.
 - Ein allgemeines Event (Feier, Reise, Ausflug, Workshop) ist ebenfalls ausgenommen; Spielaktivität
-  ist nicht sein Zweck, und sein Funktionsvorschlag enthält das Tracking-Modul nicht.
+  ist nicht sein Zweck, und sein Funktionsvorschlag enthält das Tracking-Modul nicht. Migration 108
+  schaltet Tracking bei älteren allgemeinen Events ab und schließt noch offene Tracking-Sitzungen.
 - Eine Gruppe ist der eine dauerhafte Bereich, der Tracking erhalten kann. Sie ist bewusst
   permanent geöffnet statt zufällig ohne Datum, deshalb zählt ihr fehlender Startzeitpunkt als
   „läuft“. Auch dort gilt die übliche Zweistufigkeit: Die Orga schaltet das Tracking für die Gruppe

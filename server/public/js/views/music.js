@@ -6,7 +6,6 @@ import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { confirmDialog } from '../modal.js';
-import { backButtonHtml } from '../backButton.js';
 import {
   connectLocalSpotifyPlayer,
   localSpotifyPlaybackStatus,
@@ -382,7 +381,7 @@ export function musicActiveSessionHtml(status, browserPlayback = localPlayback) 
     <section class="card stack grouped-page-section" aria-labelledby="music-search-title">
       <div class="grouped-page-section-title"><h2 id="music-search-title">Musik suchen</h2></div>
       <form id="music-search-form" class="music-search-form">
-        <input type="search" id="music-search-input" minlength="2" maxlength="80" required aria-label="Spotify durchsuchen" placeholder="Titel, Interpret oder Playlist" autocomplete="off" value="${escapeHtml(searchQuery)}" />
+        <input type="search" id="music-search-input" minlength="2" maxlength="80" required aria-label="Spotify durchsuchen" placeholder="Titel, Interpret oder Playlist suchen" autocomplete="off" value="${escapeHtml(searchQuery)}" />
         <button type="submit" class="btn btn-primary">Suchen</button>
       </form>
       <div id="music-search-results">${searchResultsHtml()}</div>
@@ -765,7 +764,6 @@ export function renderMusic(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title title-with-info" data-music-view-root>
           <span>Jam</span>
           ${infoTooltipHtml('music-help', 'Jam', JAM_HELP)}

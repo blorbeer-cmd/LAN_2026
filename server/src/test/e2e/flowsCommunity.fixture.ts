@@ -166,26 +166,29 @@ flowTest('An- & Abreise: carpool marks the driver, enforces seats, driver can on
   await page.click('#carpool-form button[type="submit"]');
   await page.waitForSelector('.arrivals-member-row:has-text("E2E Alice Pro"):has-text("Fahrer")');
   await page.waitForSelector('.arrivals-free-seat-row');
-  // The driver only ever gets Bearbeiten/Löschen, never a "Raus" button.
-  await page.waitForSelector('[data-edit-carpool]');
-  await page.waitForSelector('[data-remove-carpool]');
-  assert.equal(await page.locator('[data-leave-carpool]').count(), 0);
+  // The driver only ever gets Bearbeiten/Löschen in the "Aktion" menu, never
+  // Eintragen/Austragen, and no second carpool of the same direction.
+  await page.waitForSelector('[data-carpool] .action-menu [data-edit-carpool]', { state: 'attached' });
+  await page.waitForSelector('[data-carpool] .action-menu [data-remove-carpool]', { state: 'attached' });
+  assert.equal(await page.locator('[data-leave-carpool], [data-join-carpool]').count(), 0);
+  assert.equal(await page.locator('[data-new-carpool="arrival"]').count(), 0);
 
   // Switch identity to Bob: he joins, taking the last seat.
   await switchIdentityAndOpenArrivals('E2E Bob');
-  await page.waitForSelector('[data-join-carpool]');
+  await page.waitForSelector('[data-join-carpool]:text-is("Eintragen")');
   await page.click('[data-join-carpool]');
   await page.waitForSelector('.arrivals-free-seat-row', { state: 'detached' });
-  await page.waitForSelector('[data-leave-carpool]');
+  await page.waitForSelector('[data-leave-carpool]:text-is("Austragen")');
 
   // "Alle Zeiten" below shows who Bob is riding with.
+  await page.click('[data-arrivals-times] > summary');
   const bobTimesRow = page.locator('.arrivals-times-row', { hasText: 'E2E Bob' });
   await bobTimesRow.waitFor();
-  assert.match((await bobTimesRow.textContent()) ?? '', /Fahrer: E2E Alice Pro/);
+  assert.match((await bobTimesRow.textContent()) ?? '', /mit E2E Alice Pro/);
 
   // A third player finds the carpool full and can't join.
   await switchIdentityAndOpenArrivals('E2E Carol');
-  await page.waitForSelector('.arrivals-member-row:has-text("E2E Bob"):has-text("Mitfahrer")');
+  await page.waitForSelector('.arrivals-member-row:has-text("E2E Bob")');
   assert.equal(await page.locator('.arrivals-free-seat-row').count(), 0);
   assert.equal(await page.locator('[data-join-carpool]').count(), 0);
 
@@ -193,9 +196,10 @@ flowTest('An- & Abreise: carpool marks the driver, enforces seats, driver can on
   await switchIdentityAndOpenArrivals('E2E Bob');
   await page.click('[data-leave-carpool]');
   await page.waitForSelector('.arrivals-free-seat-row');
-  assert.doesNotMatch((await bobTimesRow.textContent()) ?? '', /Fahrer:/);
+  assert.doesNotMatch((await bobTimesRow.textContent()) ?? '', /mit E2E Alice Pro/);
 
   await switchIdentityAndOpenArrivals('E2E Alice Pro');
+  await page.click('[data-carpool] .action-menu > summary');
   await page.click('[data-remove-carpool]');
   await page.waitForSelector('[data-confirm]');
   // Destructive confirm dialogs must default focus to Cancel (not the danger
@@ -213,12 +217,13 @@ flowTest('An- & Abreise: carpool marks the driver, enforces seats, driver can on
   await page.keyboard.press('Enter');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
   // The carpool must still exist - Enter cancelled instead of confirming.
-  await page.waitForSelector('[data-remove-carpool]');
+  await page.waitForSelector('[data-remove-carpool]', { state: 'attached' });
 
   // Deleting for real still works through an explicit confirm click.
+  await page.click('[data-carpool] .action-menu > summary');
   await page.click('[data-remove-carpool]');
   await page.click('[data-confirm]');
-  await page.waitForSelector('text=Noch keine Fahrgemeinschaften.');
+  await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
 
 flowTest(
@@ -266,7 +271,7 @@ flowTest(
 
     // Saving afterwards still works, so the surviving node is the live one.
     await page.click('#arrival-form button[type="submit"]');
-    await page.waitForSelector('text=An-/Abreise gespeichert.');
+    await page.waitForSelector('text=An- & Abreise gespeichert.');
 
     // The assignment above sent Alice a personal, still-unread push
     // notification ("Dir wurde eine Aufgabe zugewiesen") - the same

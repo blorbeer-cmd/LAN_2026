@@ -74,3 +74,23 @@ test('restore reconciliation previews and reapplies hash-only account deletions 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('restore preview uses the default ledger and refuses a missing ledger', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'respawn-privacy-default-ledger-'));
+  const database = path.join(directory, 'restore.sqlite');
+  const playerId = 'restored-default-ledger-player';
+  const subjectHash = createHash('sha256').update(playerId).digest('hex');
+  const { PRIVACY_DELETION_LEDGER_FILE: _unused, ...withoutOverride } = process.env;
+  const env = { ...withoutOverride, DB_FILE: database, NODE_ENV: 'test' };
+  try {
+    execFileSync(process.execPath, ['-e',
+      `const { db } = require(${JSON.stringify(dbModule)}); db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(${JSON.stringify(playerId)}, 'Restore Person', 'restore-default-key', Date.now()); db.close();`,
+    ], { env });
+    assert.throws(() => run(['--preview'], env), /Command failed/);
+    await writeFile(path.join(directory, 'deletion-receipts.jsonl'),
+      `${JSON.stringify({ subjectHash, deletedAt: Date.now(), action: 'player_self_deleted' })}\n`);
+    assert.equal(run(['--preview'], env).restoredAccountsToDelete, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

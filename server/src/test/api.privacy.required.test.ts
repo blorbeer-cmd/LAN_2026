@@ -14,6 +14,7 @@ import { activeTrackingContexts, setEventTrackingConsent } from '../trackingCont
 import { TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION } from '../privacyPolicy';
 import { ensureDefaultGroupMembership } from '../groups';
 import { config } from '../config';
+import { deleteAccount, deletionReceiptHash, listDeletionReceipts } from '../privacyService';
 
 function createMember(label: string): { id: string; apiKey: string; cookie: string } {
   const id = nanoid();
@@ -486,6 +487,30 @@ test('self deletion fails closed when the durable ledger is unavailable', async 
   }
 });
 
+test('a rolled-back account deletion cancels its durable receipt', () => {
+  createTestApp();
+  const target = createMember('Rollback Receipt');
+  const directory = mkdtempSync(path.join(tmpdir(), 'respawn-deletion-rollback-'));
+  const ledger = path.join(directory, 'receipts.jsonl');
+  const mutableConfig = config as unknown as { deletionLedgerFile: string };
+  const previousLedger = mutableConfig.deletionLedgerFile;
+  mutableConfig.deletionLedgerFile = ledger;
+  db.exec(`CREATE TRIGGER reject_privacy_delete BEFORE DELETE ON players
+    WHEN OLD.id = '${target.id}' BEGIN SELECT RAISE(ABORT, 'blocked deletion'); END`);
+  try {
+    assert.throws(() => deleteAccount(target.id, target.id), /blocked deletion/);
+    assert.ok(db.prepare('SELECT 1 FROM players WHERE id = ?').get(target.id));
+    const entries = readFileSync(ledger, 'utf8').trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    assert.equal(entries.length, 2);
+    assert.equal(entries[1].cancelledAttemptId, entries[0].attemptId);
+    assert.equal(listDeletionReceipts().some((receipt) => receipt.subjectHash === deletionReceiptHash(target.id)), false);
+  } finally {
+    db.exec('DROP TRIGGER reject_privacy_delete');
+    mutableConfig.deletionLedgerFile = previousLedger;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('self deletion clears the own claim comment on another account\'s task', async () => {
   const app = createTestApp();
   const creator = createMember('Claim Creator');
@@ -523,10 +548,15 @@ test('self deletion clears the own claim comment on another account\'s task', as
 test('revoking event consent clears the stored diagnostic process snapshot', async () => {
   const app = createTestApp();
   const member = createMember('Revoke Diagnostics');
+  const event = createEvent('Diagnostics LAN', {
+    groupId: DEFAULT_GROUP_ID,
+    startsAt: Date.now() - 1_000,
+    endsAt: Date.now() + 3_600_000,
+  });
   db.prepare(
     `INSERT OR REPLACE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')`,
-  ).run(BASE_EVENT_ID, member.id);
-  enableTestTracking(member.id, BASE_EVENT_ID);
+  ).run(event.id, member.id);
+  enableTestTracking(member.id, event.id);
   const game = db.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get(DEFAULT_GROUP_ID) as { id: string };
   db.prepare(
     'INSERT OR IGNORE INTO game_process_names (id, group_id, game_id, process_name) VALUES (?, ?, ?, ?)',
@@ -544,7 +574,7 @@ test('revoking event consent clears the stored diagnostic process snapshot', asy
   assert.equal(stored(), JSON.stringify(['cs2.exe']), 'a valid context stores the matched name');
 
   const revoked = await request(app)
-    .post(`/api/events/${BASE_EVENT_ID}/tracking-consent`)
+    .post(`/api/events/${event.id}/tracking-consent`)
     .set('Cookie', member.cookie)
     .send({ granted: false });
   assert.equal(revoked.status, 200, JSON.stringify(revoked.body));
@@ -563,7 +593,7 @@ test('an outdated event consent stays revocable through the privacy view', async
     `INSERT OR REPLACE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')`,
   ).run(BASE_EVENT_ID, member.id);
   const consentId = nanoid();
-  // The shape migration 105 deliberately preserves: granted, never revoked,
+  // The shape migration 106 deliberately preserves: granted, never revoked,
   // without purpose or text version.
   db.prepare(
     `INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, source)
@@ -597,12 +627,12 @@ test('an outdated event consent stays revocable through the privacy view', async
   assert.deepEqual(after.body.trackingConsent.legacyEvents, []);
 });
 
-test('only a real event period can be tracked: base workspace and general events never', () => {
-  createTestApp();
+test('only a real event period can be tracked: base workspace and general events never', async () => {
+  const app = createTestApp();
   // The permanently open base workspace looks trackable on paper — published,
   // starts_at = 0, no end — so the guard must be explicit. A sibling fixture in
   // this file may already have flipped the flag through direct SQL, so assert
-  // the guard rather than the seeded value; migration 107 covers legacy rows.
+  // the guard rather than the seeded value; migration 108 covers legacy rows.
   const base = db
     .prepare('SELECT id, status, starts_at FROM events WHERE id = ?')
     .get(BASE_EVENT_ID) as { status: string; starts_at: number | null };
@@ -633,6 +663,20 @@ test('only a real event period can be tracked: base workspace and general events
       .tracking_enabled,
     0,
   );
+  const member = createMember('General Guard');
+  db.prepare("UPDATE events SET status = 'published', tracking_enabled = 1 WHERE id = ?").run(general.id);
+  db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(general.id, member.id);
+  ensureAccountEventContext(member.id, general.id);
+  const grant = await request(app).post(`/api/events/${general.id}/tracking-consent`)
+    .set('Cookie', member.cookie).send({ granted: true, textVersion: TRACKING_CONSENT_TEXT_VERSION });
+  assert.equal(grant.status, 409);
+  setEventTrackingConsent(general.id, DEFAULT_GROUP_ID, member.id, true, {
+    purpose: TRACKING_CONSENT_PURPOSE,
+    textVersion: TRACKING_CONSENT_TEXT_VERSION,
+  });
+  assert.deepEqual(activeTrackingContexts(member.id), [], 'legacy enabled rows cannot activate tracking');
+  const privacy = await request(app).get('/api/privacy').set('Cookie', member.cookie);
+  assert.equal(privacy.body.trackingConsent.events.find((row: { eventId: string }) => row.eventId === general.id)?.eventType, 'general');
 });
 
 test('a permanently open group can be tracked once the organizer starts it', () => {

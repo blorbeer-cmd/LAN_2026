@@ -93,6 +93,11 @@ export const components = [
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"btn btn-sm${primaryTournament ? ' btn-primary' : ''}\"",
+        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
         "file": "public/js/feedback.js",
         "source": "class=\"btn btn-sm${selectedSentiment === s.value ? ' btn-primary' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
@@ -144,7 +149,7 @@ export const components = [
       },
       {
         "file": "public/js/views/eventPolls.js",
-        "source": "class=\"btn btn-sm${draft[option.id] === value ? ' btn-primary' : ''}\"",
+        "source": "class=\"btn btn-sm${draft[option.id] === value ? ' is-selected' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
@@ -189,7 +194,7 @@ export const components = [
     "dynamicUses": [
       {
         "file": "public/js/views/eventPolls.js",
-        "source": "class=\"btn btn-square${draft[option.id] === value ? ' btn-primary' : ''}\"",
+        "source": "class=\"btn btn-square${draft[option.id] === value ? ' is-selected' : ''}\"",
         "reason": "Concrete button-square caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
     ]
@@ -311,6 +316,14 @@ export const components = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "Copy, dismiss and detail actions retain their 44px icon slot."
+  },
+  {
+    "id": "checklist-item-remove",
+    "role": "standard-control",
+    "selector": ".checklist-item-remove",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Packliste remove action keeps the 44px icon slot, muted, and only renders while the list is in editing mode."
   },
   {
     "id": "game-catalog-link-action",
@@ -448,14 +461,19 @@ export const components = [
   {
     "id": "arrival-controls",
     "role": "standard-control",
-    "selector": ".arrival-note-input, .arrivals-sort-button",
+    "selector": ".arrival-note-input, .arrivals-sort-button, .player-detail-sort-button",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Native textarea rows and 32px sorting buttons.",
+    "purpose": "Native textarea rows and 32px sorting buttons (An- & Abreise and the Spieler-Details Bock/Skill table).",
     "dynamicUses": [
       {
         "file": "public/js/views/arrivals.js",
         "source": "class=\"arrivals-sort-button${isActive ? ' is-active' : ''}\"",
+        "reason": "Concrete arrival-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/playerDetail.js",
+        "source": "class=\"player-detail-sort-button${isActive ? ' is-active' : ''}\"",
         "reason": "Concrete arrival-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
     ]
@@ -574,8 +592,8 @@ export const components = [
     "dynamicUses": [
       {
         "file": "public/js/views/eventPolls.js",
-        "source": "event-poll-choice-btn${selected ? ' btn-primary' : ''}",
-        "reason": "Literal class followed by a conditional meaning modifier; this exact template supplies the registered choice control."
+        "source": "event-poll-choice-btn${selected ? ' is-selected' : ''}",
+        "reason": "Literal class followed by the conditional selected-state marker; this exact template supplies the registered choice control."
       }
     ]
   },
@@ -664,18 +682,90 @@ export const components = [
   {
     "id": "result-fields",
     "role": "standard-control",
-    "selector": ".bracket-score-input, .tournament-score-input",
+    "selector": ".tournament-result-score",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "32px score fields reserve the existing internal stepper column."
+    "purpose": "Large score fields of the shared result dialog keep one tap-target height."
   },
   {
     "id": "result-actions",
     "role": "composite-part",
-    "selector": ".bracket-result-edit, .bracket-score-submit, .tournament-result-edit, .tournament-score-submit",
+    "selector": ".tournament-fixture-action, .bracket-side",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Actions embedded in the score/bracket grid retain its reserved gutter and slot geometry."
+    "purpose": "Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one.",
+    "dynamicUses": [
+      {
+        "file": "public/js/tournamentPresentation.js",
+        "source": "class=\"${className}${decided ? '' : ' is-open'}\"",
+        "reason": "Concrete result-actions caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      }
+    ]
+  },
+  {
+    "id": "result-pick",
+    "role": "composite-part",
+    "selector": ".tournament-result-pick",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Whole-row outcome choice in the shared result dialog: team name plus players at tap-target height.",
+    "dynamicUses": [
+      {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"tournament-result-pick${recorded && draw.winnerTeamIndex === index ? ' is-selected' : ''}\"",
+        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"tournament-result-pick is-draw${recorded && draw.winnerTeamIndex === null ? ' is-selected' : ''}\"",
+        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/tournament.js",
+        "source": "class=\"tournament-result-pick${match.winnerTeamId === match.teamAId ? ' is-selected' : ''}\"",
+        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/tournament.js",
+        "source": "class=\"tournament-result-pick${match.winnerTeamId === match.teamBId ? ' is-selected' : ''}\"",
+        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/tournament.js",
+        "source": "class=\"tournament-result-pick is-draw${match.isDraw ? ' is-selected' : ''}\"",
+        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      }
+    ]
+  },
+  {
+    "id": "result-state",
+    "role": "composite-part",
+    "selector": ".is-open, .is-primary, .is-draw",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Open, primary next-step and draw markers recolor their result host without changing its geometry.",
+    "control": false,
+    "properties": []
+  },
+  {
+    "id": "result-open-hosts",
+    "role": "composite-part",
+    "selector": ".bracket-match.is-open, .tournament-fixture-score.is-open",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Open bracket boxes and open fixture scores only recolor their host; the static open result action shares the marker class.",
+    "control": false,
+    "properties": []
+  },
+  {
+    "id": "poll-legend-open",
+    "role": "composite-part",
+    "selector": ".event-poll-legend-dot.is-open",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "The open-answer legend dot only recolors itself; it shares the open marker class with result actions.",
+    "control": false,
+    "properties": []
   },
   {
     "id": "bracket-row",
@@ -753,19 +843,7 @@ export const components = [
     "selector": ".draft-pool-player, .tournament-drag-player",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#strukturziele-mit-44-px",
-    "purpose": "Whole roster cards for picking/reordering, not standalone text buttons.",
-    "dynamicUses": [
-      {
-        "file": "public/js/views/matchmaking.js",
-        "source": "class=\"team-player tournament-drag-player${selectedDrawPlayer?.drawId === draw.id && selectedDrawPlayer.playerId === p.id ? ' is-selected' : ''}\"",
-        "reason": "Concrete player-selection-actions caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/tournament.js",
-        "source": "class=\"team-player tournament-drag-player${createSelectedPlayerId === p.id ? ' is-selected' : ''}\"",
-        "reason": "Concrete player-selection-actions caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      }
-    ]
+    "purpose": "Whole roster cards for picking/reordering, not standalone text buttons."
   },
   {
     "id": "structural-disclosure",
@@ -991,15 +1069,6 @@ export const components = [
     "control": false
   },
   {
-    "id": "draw-team-surface",
-    "role": "composite-part",
-    "selector": ".matchmaking-draw-team",
-    "owner": "public/css/style.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Winner emphasis belongs to the existing drawn-team surface.",
-    "control": false
-  },
-  {
     "id": "onboarding-target-ring",
     "role": "composite-part",
     "selector": ".onboarding-target-ring",
@@ -1085,15 +1154,7 @@ export const components = [
     "purpose": "Hall-of-Fame result slot spans the result layout.",
     "control": false
   },
-  {
-    "id": "empty-state-arrivals",
-    "role": "composite-part",
-    "selector": ".arrivals-carpool-empty",
-    "owner": "public/css/style.css",
-    "contract": "components/empty-state.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Empty arrival collection occupies the carpool grid.",
-    "control": false
-  },
+
   {
     "id": "empty-state-notifications",
     "role": "composite-part",
@@ -1157,10 +1218,10 @@ export const components = [
   {
     "id": "bracket-state",
     "role": "composite-part",
-    "selector": ".is-tbd, .is-winner",
+    "selector": ".is-tbd, .is-winner, .is-loser",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Bracket availability and winner emphasis preserve the host geometry; only winner elevation may differ.",
+    "purpose": "Bracket availability, winner and loser emphasis preserve the host geometry; only winner elevation may differ.",
     "control": false,
     "properties": [
       "box-shadow"
@@ -1364,7 +1425,7 @@ export const permanentVariants = [
   {
     "id": "poll-secondary",
     "role": "standard-control",
-    "selector": ".event-poll-response-toolbar .btn:not(.btn-primary)",
+    "selector": ".event-poll-response-toolbar .btn",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "reason": "Only the secondary background is contextual."
@@ -1384,6 +1445,48 @@ export const permanentVariants = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "reason": "Compact text presentation keeps the standard 32px minimum."
+  },
+  {
+    "id": "poll-selected-answer",
+    "role": "standard-control",
+    "selector": ".event-poll-response-toolbar .btn.is-selected",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.",
+    "properties": [
+      "box-shadow"
+    ]
+  },
+  {
+    "id": "poll-note-field",
+    "role": "standard-control",
+    "selector": ".event-poll-note-input",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The poll description starts as one line and grows with its content up to four control heights.",
+    "properties": [
+      "max-height"
+    ]
+  },
+  {
+    "id": "poll-option-extra-toggle",
+    "role": "standard-control",
+    "selector": ".event-poll-option-extra-toggle[aria-expanded='true']",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Icon button that opens an option's note and link fields; only its expanded color is contextual."
+  },
+  {
+    "id": "poll-flag-checkbox",
+    "role": "composite-part",
+    "selector": ".event-poll-flag input[type='checkbox']",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Native checkbox glyph is an internal 20px part of a labeled poll setting.",
+    "properties": [
+      "width",
+      "height"
+    ]
   },
   {
     "id": "search-field",
@@ -1410,12 +1513,20 @@ export const permanentVariants = [
     "reason": "Noninteractive preview exactly mirrors the adjacent 32px field height."
   },
   {
-    "id": "tournament-label",
-    "role": "composite-part",
-    "selector": ".tournament-field-label",
-    "owner": "public/css/style.css",
+    "id": "team-move-picker",
+    "role": "standard-control",
+    "selector": ".team-move-control select",
+    "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Noninteractive field label occupies its sibling control line."
+    "reason": "Transparent native team picker covers its icon slot on touch layouts."
+  },
+  {
+    "id": "vote-start-field",
+    "role": "standard-control",
+    "selector": ".vote-start-row .vote-info-input",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The info textarea matches the single-line title field in the one-row start form."
   },
   {
     "id": "arrival-sort-mobile",
@@ -1663,17 +1774,6 @@ export const permanentVariants = [
     "reason": "Existing composite checkbox setting row, not a standalone text button."
   },
   {
-    "id": "bracket-action-gutter",
-    "role": "composite-part",
-    "selector": ".bracket-match.has-result-action .bracket-team-row",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "padding-right"
-    ],
-    "reason": "Composite bracket row reserves the embedded result-action gutter."
-  },
-  {
     "id": "checkbox-in-row",
     "role": "composite-part",
     "selector": ".check-row input[type='checkbox']",
@@ -1841,15 +1941,15 @@ export const permanentVariants = [
     "reason": "Internal active navigation indicator preserves the whole navigation target."
   },
   {
-    "id": "arrival-action-width",
+    "id": "arrival-header-action",
     "role": "composite-part",
-    "selector": ".arrivals-carpool-actions .btn, .arrivals-free-seat-row .btn",
+    "selector": ".arrivals-carpool-section > .grouped-page-section-title > .btn",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
-      "width"
+      "white-space"
     ],
-    "reason": "Carpool actions occupy the existing footer or free-seat action column."
+    "reason": "The carpool header action keeps one line while the long direction title wraps on phones."
   },
   {
     "id": "calendar-month-fields",
@@ -2029,7 +2129,7 @@ export const permanentVariants = [
   {
     "id": "arrival-sort-glyph",
     "role": "composite-part",
-    "selector": ".arrivals-sort-button .ui-icon",
+    "selector": ".arrivals-sort-button .ui-icon, .player-detail-sort-button .ui-icon",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
@@ -2037,6 +2137,29 @@ export const permanentVariants = [
       "height"
     ],
     "reason": "Sort control owns its font-relative glyph."
+  },
+  {
+    "id": "poll-vote-cell-glyph",
+    "role": "composite-part",
+    "selector": ".event-poll-vote-cell .ui-icon",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width",
+      "height"
+    ],
+    "reason": "Answer symbols of the vote table keep one compact glyph size so every cell reads at the same weight."
+  },
+  {
+    "id": "draw-tournament-options",
+    "role": "composite-part",
+    "selector": ".draw-tournament-options > .check-row",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "padding-block"
+    ],
+    "reason": "Checkbox options share one wrapping row in the compact tournament dialog; the row gap replaces the list-row padding."
   },
   {
     "id": "battleship-miss-glyph",

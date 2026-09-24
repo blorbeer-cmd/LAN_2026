@@ -70,8 +70,10 @@ append-only Ledger aus `PRIVACY_DELETION_LEDGER_FILE`. Ohne gesetzten Pfad lande
 SQLite-Datei und überlebt damit den unten beschriebenen Restore, aber nicht den Komplettverlust des
 `data`-Volumes; der Produktionsstart warnt in diesem Fall. Für den vollen Schutz gehört das Ziel auf
 ein unabhängig gesichertes Volume, im Docker-Betrieb als separater persistenter Mount im
-App-Container, zum Beispiel vom Hostpfad `/opt/respawn-deletion-ledger` nach `/app/deletion-ledger`;
-dann ist `PRIVACY_DELETION_LEDGER_FILE` zusätzlich dauerhaft in `/opt/respawn/.env` zu setzen.
+App-Container, zum Beispiel vom Hostpfad `/opt/respawn-deletion-ledger` nach `/app/deletion-ledger`.
+Dafür den Mount dauerhaft unter `app.volumes` in `docker-compose.yml` ergänzen und
+`PRIVACY_DELETION_LEDGER_FILE=/app/deletion-ledger/deletion-receipts.jsonl` in
+`/opt/respawn/.env` setzen. Der Restore-Container übernimmt dann denselben Mount und Pfad.
 Das Ledger enthält weder Konto-ID noch Name.
 Der zusätzliche Download über `GET /api/privacy/deletion-receipts` bleibt als manuelle
 Kontrollkopie möglich.
@@ -82,9 +84,9 @@ docker compose stop app
 cp -- data/lan.db data/lan.db.before-restore.sqlite
 cp -- data/backups/<backup-datei>.sqlite data/lan.db
 rm -f -- data/lan.db-wal data/lan.db-shm
-docker compose run --rm --no-deps -v /opt/respawn-deletion-ledger:/app/deletion-ledger -e DB_FILE=/app/data/lan.db -e PRIVACY_DELETION_LEDGER_FILE=/app/deletion-ledger/deletion-receipts.jsonl app npm run privacy:reconcile-restore -- --preview
-docker compose run --rm --no-deps -v /opt/respawn-deletion-ledger:/app/deletion-ledger -e DB_FILE=/app/data/lan.db -e PRIVACY_DELETION_LEDGER_FILE=/app/deletion-ledger/deletion-receipts.jsonl -e PRIVACY_RESTORE_CONFIRMED_OFFLINE=1 app npm run privacy:reconcile-restore -- --apply
-docker compose run --rm --no-deps -v /opt/respawn-deletion-ledger:/app/deletion-ledger -e DB_FILE=/app/data/lan.db -e PRIVACY_DELETION_LEDGER_FILE=/app/deletion-ledger/deletion-receipts.jsonl app npm run privacy:reconcile-restore -- --preview
+docker compose run --rm --no-deps -e DB_FILE=/app/data/lan.db app npm run privacy:reconcile-restore -- --preview
+docker compose run --rm --no-deps -e DB_FILE=/app/data/lan.db -e PRIVACY_RESTORE_CONFIRMED_OFFLINE=1 app npm run privacy:reconcile-restore -- --apply
+docker compose run --rm --no-deps -e DB_FILE=/app/data/lan.db app npm run privacy:reconcile-restore -- --preview
 docker compose up -d --wait app
 ```
 

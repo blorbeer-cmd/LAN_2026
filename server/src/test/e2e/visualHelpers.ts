@@ -123,6 +123,9 @@ export class VisualScenes {
   }
 
   async capture(name: string, target: Locator, semanticAssertions: () => Promise<void>): Promise<void> {
+    // Views re-render when their data requests resolve. Settle those first so
+    // the target is not replaced while it is scrolled into view.
+    await this.ready();
     await target.scrollIntoViewIfNeeded();
     await this.page.mouse.move(0, 0);
     await this.ready();

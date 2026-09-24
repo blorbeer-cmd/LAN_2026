@@ -727,20 +727,8 @@ test('admin creates, displays and revokes a registration link in the UI', async 
         if (window.innerWidth !== width || !button?.checkVisibility()) return null;
         const row = button.closest('.row-between')!.getBoundingClientRect();
         const view = document.getElementById('view-container')!;
-        const backButtons = Array.from(document.querySelectorAll('button'))
-          .filter((candidate) => candidate.textContent?.trim() === 'Zurück' && candidate.checkVisibility());
-        const iconGap = (backButton: Element) => {
-          const icon = backButton.querySelector('.ui-icon')!;
-          const text = Array.from(backButton.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())!;
-          const content = text.textContent!;
-          const range = document.createRange();
-          range.setStart(text, content.search(/\S/));
-          range.setEnd(text, content.trimEnd().length);
-          return range.getBoundingClientRect().left - icon.getBoundingClientRect().right;
-        };
         return { viewOverflow: view.scrollWidth - view.clientWidth,
           pageFits: document.documentElement.scrollWidth <= window.innerWidth,
-          backButtons: backButtons.length, iconGap: backButtons.length === 1 ? iconGap(backButtons[0]) : null,
           actions: Array.from(button.parentElement!.querySelectorAll('button')).map((action) => {
             const range = document.createRange();
             range.selectNodeContents(action);
@@ -760,8 +748,6 @@ test('admin creates, displays and revokes a registration link in the UI', async 
         assert.ok(action.leftOverflow <= 0.5 && action.rightOverflow <= 0.5, JSON.stringify({ viewport, action }));
       }
       assert.equal(geometry.viewOverflow, 0, `invitation actions must not overflow the view at ${viewport.width}`);
-      assert.equal(geometry.backButtons, 1, 'exactly one visible canonical back button');
-      assert.equal(geometry.iconGap, 4, 'the canonical back button must separate its icon and label');
       assert.equal(geometry.pageFits, true, `invitation actions must not overflow the page at ${viewport.width}`);
     }
     await adminPage.locator(`[data-revoke-login-link="${inviteCode}"]`).click();
