@@ -94,6 +94,9 @@ function renderPage(scriptNonce = randomToken()) {
     border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; font-size: 0.85rem;
   }
   .update-link { display: inline-block; margin-top: 6px; color: #ff9f0a; font-weight: 600; }
+  @media (prefers-color-scheme: light) {
+    .update-link { color: #8a4500; }
+  }
   /* display: inline-block would otherwise beat the browser's own
      [hidden] { display: none }, leaving a dead link visible. */
   .update-link[hidden] { display: none; }

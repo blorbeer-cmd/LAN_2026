@@ -401,6 +401,16 @@ test('the control panel reports the agent version the server expects', async () 
 
     assert.equal(status.expectedAgentVersion, '9.9.9');
     assert.equal(status.agentVersion, require('../package.json').version);
+
+    // A successful report from an older server omits this field. It must
+    // clear the previously learned hint rather than leave a stale warning.
+    expectedAgentVersion = undefined;
+    const previousReports = reports;
+    await waitFor(() => reports >= previousReports + 2, 'the agent never reported after the version was omitted');
+    await waitFor(
+      async () => (await readStatus()).expectedAgentVersion === null,
+      'the control panel kept a stale expected version after the server omitted it',
+    );
   } finally {
     agent.kill('SIGKILL');
     await exited.catch(() => {});

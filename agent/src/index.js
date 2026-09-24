@@ -142,9 +142,7 @@ async function tick(config, stateFilePath) {
     // A blank value is treated the same way as a missing one: it names no
     // version, so it must never make the panel claim a mismatch.
     const reportedVersion = typeof result?.expectedAgentVersion === 'string' ? result.expectedAgentVersion.trim() : '';
-    if (reportedVersion && reportedVersion.length <= 64) {
-      expectedAgentVersion = reportedVersion;
-    }
+    expectedAgentVersion = reportedVersion && reportedVersion.length <= 64 ? reportedVersion : null;
 
     if (state.paused) {
       log('⏸ Pausiert – kein Tracking.');
