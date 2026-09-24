@@ -1542,29 +1542,23 @@ input[type='number'].tournament-result-score {
   align-content: start;
   overflow: hidden;
 }
-/* The card clips its own content by design (the accent rail below stays
-   flush with the rounded corners), but that same clip cut off the add-item
+/* The card clips its own content by design (the Orga event card's accent
+   rail below stays flush with the rounded corners), but that same clip cut off the add-item
    description field's suggestion dropdown (.search-select-list) whenever it
    had less room below the input than the open list needed, hiding or
    truncating later suggestions instead of letting them float over the next
    card the way the shared .search-select component does everywhere else. */
 .food-order-card:has(.search-select.is-open),
+.food-order-card:has(.action-menu[open]),
 .event-card:has(.action-menu[open]) {
   overflow: visible;
 }
-.food-order-card::before,
 .event-card::before {
   content: '';
   position: absolute;
   inset: var(--space-3) auto var(--space-3) 0;
   width: var(--space-1);
   border-radius: 0 var(--radius-full) var(--radius-full) 0;
-}
-.food-order-grid > .food-order-card:nth-child(odd)::before {
-  background: var(--accent);
-}
-.food-order-grid > .food-order-card:nth-child(even)::before {
-  background: var(--accent-3);
 }
 .orga-event-grid > .event-card:nth-child(odd)::before {
   background: var(--accent);
@@ -1604,29 +1598,43 @@ input[type='number'].tournament-result-score {
   flex: 0 0 auto;
 }
 .food-order-details-note {
-  padding-top: var(--space-3);
   color: var(--text-muted);
   font-size: var(--font-size-sm);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.food-order-detail-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
+/* The menu link closes the meta line as a plain accent link. */
+.food-order-meta-link {
+  color: var(--accent);
+  text-decoration: none;
 }
-.food-order-detail-links [data-open-order-list] {
-  margin-left: auto;
+@media (hover: hover) {
+  .food-order-meta-link:hover {
+    text-decoration: underline;
+  }
 }
-.food-order-card-toolbar {
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  justify-content: flex-start;
+/* Neutral card actions match the bordered "Aktion" menu trigger. */
+.food-order-card-header-end > .btn,
+.food-order-add-button {
+  border: 1px solid var(--border);
 }
 .food-order-card-header {
   align-items: center;
   min-height: var(--tap-target-size);
+}
+.food-order-card > .food-order-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+/* A long order title wraps; the header actions keep one line. */
+.food-order-card > .food-order-card-header .food-order-card-title {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.food-order-card > .food-order-card-header > .food-order-card-header-end {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .food-order-card-title {
   min-width: 0;
@@ -1655,6 +1663,124 @@ input[type='number'].tournament-result-score {
   align-items: center;
   gap: var(--space-2);
 }
+/* The section title wraps on phones; its primary action keeps one line. */
+.food-order-open-section > .grouped-page-section-title > .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+/* Title, meta, info and links read as one block below the header. */
+.food-order-card-lead {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: calc(-1 * var(--space-2));
+}
+.food-order-card-lead > .food-order-meta {
+  font-size: var(--font-size-sm);
+}
+/* Read like an invoice: every amount of an order card sits in the last,
+   right-aligned column together with its copy action. Every group row
+   carries the same controls (Bezahlt, plus PayPal when the order has a link),
+   so the auto-sized controls column has one width per card and never gaps. */
+.food-order-card {
+  --food-order-amount-width: 5.5rem; /* design-token-ok: widest euro amount of an order line */
+  --food-order-amount-column: calc(var(--control-height) + var(--space-1) + var(--food-order-amount-width));
+}
+.food-order-items .food-order-group-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto var(--food-order-amount-column);
+  align-items: center;
+  gap: var(--space-3);
+}
+.food-order-items .food-order-item,
+.food-order-card .food-order-total {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--food-order-amount-column);
+  align-items: center;
+  gap: var(--space-3);
+}
+.food-order-items .food-order-group-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+  margin-left: 0;
+}
+.food-order-items .food-order-group-amount-wrap,
+.food-order-card .food-order-total-value {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+.food-order-group-amount-wrap > .food-order-group-copy,
+.food-order-total-value > .food-order-item-copy {
+  width: var(--control-height);
+  min-width: var(--control-height);
+}
+.food-order-items .food-order-group-amount,
+.food-order-card .food-order-total-value > strong {
+  min-width: var(--food-order-amount-width);
+  text-align: right;
+  white-space: nowrap;
+}
+.food-order-items .food-order-group-amount.muted {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.food-order-items .food-order-item-amount {
+  justify-self: end;
+  white-space: nowrap;
+}
+/* The inline remove action is exactly one text line high and sits on the
+   description's first line, also when a long description wraps. */
+.food-order-item-main {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+.food-order-item-main > .food-order-item-description {
+  flex: 0 1 auto;
+}
+.food-order-item-main > .food-order-item-remove {
+  flex: none;
+  width: var(--space-6);
+  min-width: var(--space-6);
+  height: 1lh;
+  min-height: 0;
+  font-size: inherit;
+  line-height: inherit;
+  padding: 0;
+}
+.food-order-item-main > .food-order-item-remove .ui-icon {
+  width: calc(var(--space-3) + var(--space-1) / 2);
+  height: calc(var(--space-3) + var(--space-1) / 2);
+}
+.food-order-item-unit {
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+/* Checkbox-like paid marker: an empty box while open, a checked box once
+   paid. The label stays "Bezahlt" so the marker never changes width. */
+.payment-paid-box {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 1px solid currentColor;
+  border-radius: var(--space-1);
+}
+.payment-paid-box svg {
+  width: var(--space-3);
+  height: var(--space-3);
+}
+.payment-paid-marker.is-paid .payment-paid-box {
+  background: var(--state-playing);
+  border-color: var(--state-playing);
+  color: var(--bg);
+}
 .food-order-card-chevron {
   display: inline-flex;
   color: var(--text-muted);
@@ -1666,7 +1792,23 @@ input[type='number'].tournament-result-score {
 .food-order-card-body[hidden] {
   display: none;
 }
-/* Each orderer group is its own subtle nested surface. */
+/* Orderer groups are flat rows divided by hairlines inside the order card. */
+.food-order-items {
+  display: grid;
+}
+.food-order-items > .food-order-group {
+  padding: var(--space-2) 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+}
+.food-order-items > .food-order-group.is-all-paid {
+  background: none;
+}
+.food-order-items > .empty-state-food-items {
+  border-bottom: 1px solid var(--border);
+}
 .food-order-group {
   gap: var(--space-2);
   padding: var(--space-3);
@@ -1734,10 +1876,6 @@ input[type='number'].tournament-result-score {
   align-items: flex-end;
   flex-shrink: 0;
 }
-.food-order-group-tip {
-  font-size: var(--font-size-2xs);
-  white-space: nowrap;
-}
 .food-order-group-amount {
   font-weight: var(--font-weight-bold);
   font-variant-numeric: tabular-nums;
@@ -1745,10 +1883,6 @@ input[type='number'].tournament-result-score {
 .food-order-group-amount.is-paid {
   color: var(--text-muted);
   text-decoration: line-through;
-}
-.food-order-group-partial {
-  font-size: var(--font-size-2xs);
-  font-variant-numeric: tabular-nums;
 }
 .food-order-group-actions {
   display: inline-flex;
@@ -1762,13 +1896,18 @@ input[type='number'].tournament-result-score {
 }
 .food-order-group-items {
   padding-left: calc(var(--space-5) + var(--space-2));
-  padding-top: var(--space-2);
 }
-/* One line per position: quantity × description / amount / copy / remove. */
+.food-order-items .food-order-group-items {
+  padding-left: calc(var(--space-4) + var(--space-2) + var(--avatar-size-sm) + var(--space-2));
+}
+.food-order-items .food-order-group.is-static .food-order-group-items {
+  padding-left: calc(var(--avatar-size-sm) + var(--space-2));
+}
+/* One line per position: quantity × description / amount / remove. */
 .food-order-item {
   flex-wrap: wrap;
   gap: var(--space-2);
-  padding: var(--space-3) 0;
+  padding: var(--space-1) 0;
   font-size: var(--font-size-sm);
 }
 /* The person's two-state payment marker stays stable as its label changes. */
@@ -1806,41 +1945,29 @@ input[type='number'].tournament-result-score {
 /* Betrag ist Anzeige, kein Knopf - a plain display block. */
 .food-order-item-amount {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  align-items: baseline;
+  gap: var(--space-2);
   flex-shrink: 0;
   font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
 }
-.food-order-item-amount strong {
-  font-size: var(--font-size-md);
-}
 .food-order-item-amount .muted {
   font-size: var(--font-size-xs);
 }
-/* Copy and remove keep stable slots, even when copying is unavailable. */
-.food-order-item-action-cluster {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-shrink: 0;
-}
-.food-order-item-action,
-.food-order-item-action-spacer {
+.food-order-item-action {
   width: var(--tap-target-size);
   min-height: var(--control-height);
   flex-shrink: 0;
-}
-.food-order-item-action {
   padding: var(--space-1);
   font-size: var(--font-size-xs);
 }
-.food-order-item-action:disabled {
+.food-order-item-action:disabled,
+.food-order-item-remove:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .food-order-item-remove {
-  color: var(--danger);
+  color: var(--text-muted);
 }
 /* Deliberately heavier than the surrounding muted meta/info text (send time,
    notes, per-item rows) so the order-wide total reads as a real total at a
@@ -1852,6 +1979,15 @@ input[type='number'].tournament-result-score {
 .food-order-total-label {
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-bold);
+}
+.food-order-total-note {
+  margin-left: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+}
+.food-order-card .food-order-total {
+  padding-top: 0;
+  border-top: 0;
 }
 .food-order-total-value {
   display: inline-flex;
@@ -1873,32 +2009,56 @@ input[type='number'].tournament-result-score {
 .food-order-confirm-list li {
   overflow-wrap: anywhere;
 }
-/* AP4: consolidated order list dialog. */
+/* AP4: consolidated order list dialog as a small table: dish, unit price
+   and line sum, with the totals as its footer. */
 .food-order-consolidated-rows {
-  gap: var(--space-1);
   max-height: 50vh;
   overflow-y: auto;
 }
-.food-order-consolidated-row {
-  gap: var(--space-2);
-  padding: var(--space-1) 0;
+.food-order-consolidated-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
 }
-.food-order-consolidated-row-desc {
-  min-width: 0;
-  flex: 1;
-  overflow-wrap: anywhere;
+.food-order-consolidated-table th,
+.food-order-consolidated-table td {
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+  font-weight: var(--font-weight-regular);
+  text-align: right;
+  vertical-align: top;
+  white-space: nowrap;
 }
-.food-order-consolidated-totals {
-  gap: var(--space-1);
-  margin-top: var(--space-3);
+.food-order-consolidated-table th:first-child,
+.food-order-consolidated-table td:first-child {
+  padding-left: 0;
+  text-align: left;
+  white-space: normal;
+}
+.food-order-consolidated-table thead th {
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+.food-order-consolidated-table tbody tr:first-child td {
+  padding-top: var(--space-2);
+}
+.food-order-consolidated-table tfoot tr:first-child > * {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
-  font-size: var(--font-size-sm);
 }
-.food-order-consolidated-open-note {
-  margin-bottom: var(--space-2);
-  font-size: var(--font-size-xs);
+.food-order-consolidated-table .food-order-consolidated-total > * {
+  font-weight: var(--font-weight-bold);
+}
+.food-order-consolidated-row-desc {
+  overflow-wrap: anywhere;
+}
+.food-order-form-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
 }
 .food-order-item-form {
   display: grid;
@@ -1910,7 +2070,7 @@ input[type='number'].tournament-result-score {
 }
 .food-order-add-button {
   grid-column: -2 / -1;
-  align-self: stretch;
+  align-self: center;
 }
 .food-order-item.is-paid .food-order-item-description,
 .food-order-item.is-paid .food-order-item-amount {
@@ -1998,32 +2158,67 @@ input[type='number'].tournament-result-score {
   .food-order-item-description {
     grid-column: 1 / -1;
   }
-  .food-order-item-amount {
-    align-items: flex-start;
-  }
   .food-order-total {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--space-1);
   }
-  /* Stacked full-width secondary actions: wrapping them left an always
-     present `Bestellübersicht` pushed to the right edge of its own line. */
-  .food-order-detail-links {
-    display: grid;
-    grid-auto-flow: row;
-  }
-  .food-order-detail-links [data-open-order-list] {
-    margin-left: 0;
-  }
+  /* Description on its own row, quantity and price share the next one and
+     the add button sits compact at the bottom right. */
   .food-order-item-form {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .food-order-item-form > .food-order-desc-field,
-  .food-order-add-button {
-    grid-column: 1;
+  .food-order-item-form > .food-order-desc-field {
+    grid-column: 1 / -1;
   }
   .food-order-add-button {
-    width: 100%;
+    grid-column: 2;
+    justify-self: end;
+  }
+  /* Too narrow for title and actions side by side: the actions move below
+     the title as one unbroken right-aligned group. */
+  .food-order-card > .food-order-card-header {
+    flex-wrap: wrap;
+  }
+  .food-order-card > .food-order-card-header > :first-child {
+    flex: 1 1 10rem;
+  }
+  .food-order-card > .food-order-card-header > .food-order-card-header-end {
+    margin-left: auto;
+  }
+  /* In an order card the person's sum stays on the name row above the
+     position amounts; Bezahlt and PayPal take the second row, right-aligned. */
+  .food-order-card {
+    --food-order-amount-width: 4.5rem; /* design-token-ok: widest euro amount of an order line at phone size */
+  }
+  .food-order-items .food-order-group-header {
+    grid-template-columns: minmax(0, 1fr) var(--food-order-amount-column);
+  }
+  .food-order-items .food-order-group-toggle,
+  .food-order-items .food-order-group-static {
+    flex: none;
+  }
+  .food-order-items .food-order-group-amount-wrap {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .food-order-items .food-order-group-actions {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+  .food-order-items .food-order-group.is-single-position .food-order-group-amount-wrap {
+    display: flex;
+  }
+  .food-order-items .food-order-item-description {
+    grid-column: auto;
+  }
+  .food-order-card .food-order-total {
+    flex-direction: row;
+  }
+  .food-order-items .food-order-group-items,
+  .food-order-items .food-order-group.is-static .food-order-group-items {
+    padding-left: 0;
   }
 }
 @media (max-width: 359px) { /* design-token-ok: compact payment marker below the smallest supported phone width */
@@ -2067,10 +2262,6 @@ input.food-order-price-input {
   color: var(--text-muted);
   transform: translateY(-50%);
   pointer-events: none;
-}
-.food-order-close-action {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
 }
 .checklist-progress-count {
   margin-left: var(--space-2);

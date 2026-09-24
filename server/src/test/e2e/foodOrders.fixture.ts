@@ -21,25 +21,43 @@ import {
 
 registerFlowFixture('food-orders');
 
-async function assertOrderFooter(card: Locator): Promise<void> {
-  const footer = card.locator('.food-order-close-action');
-  await assertControlHeights(footer.locator('button'));
+// Order management lives in the card header: the next lock step as a compact
+// neutral button plus the shared "Aktion" menu, both on one row at the right.
+async function assertOrderHeaderActions(card: Locator): Promise<void> {
+  const actions = card.locator('.food-order-card-header-end');
+  await assertControlHeights(actions.locator(':scope > .btn, :scope > .action-menu > summary'));
   await assertNoOverflow(card);
   await assertNoOverflow(page.locator('#view-container'));
-  const geometry = await footer.evaluate((element) => {
-    const box = element.getBoundingClientRect();
-    const preceding = element.previousElementSibling!.getBoundingClientRect();
-    const buttons = Array.from(element.querySelectorAll('button')).map((button) => {
-      const rect = button.getBoundingClientRect();
-      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+  const geometry = await actions.evaluate((element) => {
+    const card = element.closest('.food-order-card')!.getBoundingClientRect();
+    const controls = Array.from(element.querySelectorAll(':scope > .btn, :scope > .action-menu > summary')).map((control) => {
+      const rect = control.getBoundingClientRect();
+      return { top: Math.round(rect.top), right: rect.right, width: rect.width };
     });
-    return { left: box.left, right: box.right, top: box.top, precedingBottom: preceding.bottom, buttons };
+    return { cardRight: card.right, controls };
   });
-  assert.ok(geometry.top >= geometry.precedingBottom, JSON.stringify(geometry));
-  for (const [index, button] of geometry.buttons.entries()) {
-    assert.ok(Math.abs(button.left - geometry.left) <= 1 && Math.abs(button.right - geometry.right) <= 1, 'footer buttons use the available container width');
-    if (index) assert.ok(Math.abs(button.top - geometry.buttons[index - 1].bottom - 8) <= 1, 'footer actions retain their 8px gap');
-  }
+  assert.ok(geometry.controls.length >= 1, JSON.stringify(geometry));
+  assert.equal(new Set(geometry.controls.map((control) => control.top)).size, 1, `header actions share one row: ${JSON.stringify(geometry)}`);
+  assert.ok(geometry.controls.every((control) => control.right <= geometry.cardRight), JSON.stringify(geometry));
+  assert.ok(geometry.controls.every((control) => control.width < 200), `header actions stay compact: ${JSON.stringify(geometry)}`);
+}
+
+// Opens the order card's "Aktion" menu and runs one of its entries.
+async function clickOrderMenuAction(card: Locator, selector: string): Promise<void> {
+  await card.locator('.food-order-card-header-end .action-menu > summary').click();
+  await card.locator(`.action-menu[open] ${selector}`).click();
+}
+
+// Read like an invoice: person sums, position amounts and the order total
+// share one right edge.
+async function assertAmountColumn(card: Locator): Promise<void> {
+  const edges = await card.evaluate((element) =>
+    Array.from(element.querySelectorAll('.food-order-group-amount, .food-order-item-amount, .food-order-total-value > strong'))
+      .filter((amount) => amount.getClientRects().length > 0)
+      .map((amount) => Math.round(amount.getBoundingClientRect().right)),
+  );
+  assert.ok(edges.length >= 2, JSON.stringify(edges));
+  assert.ok(Math.max(...edges) - Math.min(...edges) <= 1, `amounts share one right edge: ${JSON.stringify(edges)}`);
 }
 
 flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus', async () => {
@@ -55,23 +73,26 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   await page.fill('#order-tip', '10');
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Pizza bei Luigi');
-  await page.waitForSelector('text=24.12. 20:00 Uhr');
+  await page.waitForSelector('text=Versand 24.12. 20:00 Uhr');
   await page.waitForSelector('text=Mindestbestellwert 15€, bar zahlen');
-  await page.waitForSelector('a[href="https://luigis-pizza.example/karte"]');
-  assert.equal(await page.locator('a[href="https://paypal.me/luigi"] .ui-icon').count(), 1);
-  await page.getByRole('button', { name: 'Bestellübersicht', exact: true }).waitFor();
+  const pizzaCard = page.locator('[data-order-card]', { hasText: 'Pizza bei Luigi' });
+  // The menu link closes the meta line; paying happens per person, so the
+  // order-wide PayPal link is not repeated there.
+  await pizzaCard.locator('.food-order-meta a.food-order-meta-link[href="https://luigis-pizza.example/karte"]').waitFor();
+  assert.equal(await pizzaCard.locator('a[href="https://paypal.me/luigi"]').count(), 0);
+  assert.equal(await pizzaCard.locator('.food-order-card-header-end .action-menu [data-open-order-list]').count(), 1);
   for (const viewport of [{ width: 320, height: 568 }, { width: 640, height: 768 }, { width: 1440, height: 900 }]) {
     await page.setViewportSize(viewport);
-    await assertOrderFooter(page.locator('[data-order-card]', { hasText: 'Pizza bei Luigi' }));
+    await assertOrderHeaderActions(pizzaCard);
   }
   await page.setViewportSize({ width: 390, height: 844 });
 
-  await page.click('[data-edit-details]');
+  await clickOrderMenuAction(pizzaCard, '[data-edit-details]');
   await page.getByLabel('Speisekarte', { exact: true }).waitFor();
   await setDateTimeField('sendat-input', '2026-12-24T21:30');
   await page.fill('#notes-input', 'Doch Kartenzahlung möglich');
   await page.click('#details-form button[type="submit"]');
-  await page.waitForSelector('text=24.12. 21:30 Uhr');
+  await page.waitForSelector('text=Versand 24.12. 21:30 Uhr');
   await page.waitForSelector('text=Doch Kartenzahlung möglich');
 
   assert.equal(await page.locator('[data-item-quantity]').inputValue(), '');
@@ -85,22 +106,15 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   await page.fill('[data-item-quantity]', '2');
   await page.fill('[data-item-price]', '9,50');
   await page.click('[data-add-item-form] button[type="submit"]');
-  await page.waitForSelector('text=Margherita');
+  await page.waitForSelector('.food-order-item:has-text("Margherita")');
   await page.waitForSelector('.food-order-item-amount:has-text("20,90 €")');
-  await page.waitForSelector('.food-order-item-amount:has-text("2 × 9,50 €")');
-  await page.waitForSelector('.food-order-item-amount:has-text("inkl. 10% Trinkgeld")');
-  // Alice's group holds this one position, so the phone layout drops the
-  // group's own sum block. Its tip note stays in the DOM and the position row
-  // asserted above still shows the tip-inclusive total and the tip itself.
-  const groupTip = page.locator('.food-order-group-tip').first();
-  await groupTip.waitFor({ state: 'attached' });
-  assert.equal((await groupTip.textContent())?.trim(), 'inkl. 10 % Trinkgeld');
-  assert.equal(await groupTip.isVisible(), false);
-  await page.waitForSelector('.food-order-total:has-text("Gesamtsumme inkl. 10% Trinkgeld")');
-  await page.waitForSelector('.food-order-overview:has-text("2 Positionen von 1 Person")');
-  await page.waitForSelector('.food-order-overview:has-text("0 von 1 bezahlt")');
-  await page.waitForSelector('.food-order-overview:has-text("Gesamt 20,90")');
-  await page.waitForSelector('.food-order-overview:has-text("offen 20,90")');
+  // The unit price stays with the dish; the tip is named once at "Gesamt".
+  await page.waitForSelector('.food-order-item-description:has-text("je 9,50 €")');
+  assert.equal(await pizzaCard.locator('.food-order-item:has-text("Trinkgeld")').count(), 0);
+  await page.waitForSelector('.food-order-total:has-text("inkl. 10 % Trinkgeld")');
+  await page.waitForSelector('.food-order-meta:has-text("1 Person")');
+  await page.waitForSelector('.food-order-meta:has-text("offen 20,90")');
+  await assertAmountColumn(pizzaCard);
 
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', {
@@ -109,51 +123,43 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
     });
   });
   const marghieRow = page.locator('.food-order-item', { hasText: 'Margherita' }).first();
+  // A position row is the dish (with its inline remove action) and its amount.
   const rowOrder = await marghieRow.evaluate((row) =>
     Array.from(row.children).map((child) => {
-      if (child.matches('.food-order-item-description')) return 'description';
+      if (child.matches('.food-order-item-main')) {
+        return Array.from(child.children).map((part) => (part.matches('.food-order-item-description') ? 'description' : part.matches('[data-remove-item]') ? 'remove' : 'other')).join('+');
+      }
       if (child.matches('.food-order-item-amount')) return 'amount';
-      if (child.matches('.food-order-item-action-cluster')) return 'cluster';
       return 'other';
     })
   );
-  assert.deepEqual(rowOrder, ['description', 'amount', 'cluster', 'other']);
-  assert.equal(await marghieRow.locator('[data-toggle-group-paid], [data-group-pay]').count(), 0);
-  await marghieRow.locator('[data-copy-food-total]').click();
-  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
+  assert.deepEqual(rowOrder, ['description+remove', 'amount']);
+  assert.equal(await marghieRow.locator('[data-toggle-group-paid], [data-group-pay], [data-copy-food-total]').count(), 0);
 
   const group = page.locator('.food-order-group', { hasText: alice.name });
-  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
+  await group.locator('.food-order-group-copy').click();
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt")');
   assert.equal(await group.locator('.food-order-paid-marker').getAttribute('aria-pressed'), 'false');
   const openMarkerGeometry = await readPaidMarkerRect(alice.id);
   const groupSum = group.locator('.food-order-group-amount');
   assert.equal((await groupSum.textContent())?.trim(), '20,90 €');
-  assert.equal(await groupSum.isVisible(), false);
+  assert.equal(await groupSum.isVisible(), true);
   assert.equal(await group.locator('[data-group-pay]').count(), 1);
   assert.equal(await page.locator('.food-order-item [data-group-pay]').count(), 0);
-  const groupActionOrder = await group.locator('.food-order-group-actions').evaluate((actions) =>
-    Array.from(actions.children).map((child) => {
-      if (child.matches('[data-copy-food-total]')) return 'copy';
-      if (child.matches('[data-group-pay]')) return 'paypal';
-      if (child.matches('[data-toggle-group-paid]')) return 'paid';
-      if (child.matches('[data-remove-group]')) return 'remove';
-      return 'spacer';
-    })
-  );
-  assert.deepEqual(groupActionOrder, ['copy', 'paypal', 'paid', 'remove']);
-  // Phone layout: a position's trailing action ends on the same edge as the
-  // group's action row, so per-person and per-position controls read as one
-  // column instead of drifting apart.
-  const phoneActionEdges = await group.evaluate((groupElement) => ({
-    actionsRight: Math.round(groupElement.querySelector('.food-order-group-actions')!.getBoundingClientRect().right),
-    itemActionsRight: Array.from(groupElement.querySelectorAll('.food-order-item')).map((row) =>
-      Math.round(row.children[row.children.length - 1].getBoundingClientRect().right)
+  // Every group row carries the same controls: Bezahlt, then PayPal when the
+  // order has a link; copy belongs to the amount at the row's end.
+  const groupControlOrder = await group.locator('.food-order-group-header').evaluate((header) => ({
+    actions: Array.from(header.querySelector('.food-order-group-actions')!.children).map((child) =>
+      child.matches('[data-toggle-group-paid]') ? 'paid' : child.matches('[data-group-pay]') ? 'paypal' : 'other'
+    ),
+    amount: Array.from(header.querySelector('.food-order-group-amount-wrap')!.children).map((child) =>
+      child.matches('.food-order-group-copy') ? 'copy' : child.matches('.food-order-group-amount') ? 'amount' : 'other'
     ),
   }));
-  assert.ok(phoneActionEdges.itemActionsRight.length > 0, JSON.stringify(phoneActionEdges));
-  for (const right of phoneActionEdges.itemActionsRight) {
-    assert.ok(Math.abs(right - phoneActionEdges.actionsRight) <= 1, JSON.stringify(phoneActionEdges));
-  }
+  assert.deepEqual(groupControlOrder, { actions: ['paid', 'paypal'], amount: ['copy', 'amount'] });
+  assert.equal(await group.locator('[data-remove-group]').count(), 0);
+  await assertAmountColumn(pizzaCard);
 
   await page.evaluate(() => {
     const original = window.open;
@@ -212,30 +218,25 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'line-through');
   await waitForTextDecoration(marghieRow.locator('.food-order-item-amount'), 'line-through');
   assert.equal(await marghieRow.locator('[data-remove-item]').isDisabled(), true);
-  assert.equal(await marghieRow.locator('[data-copy-food-total]').isDisabled(), false);
+  assert.equal(await group.locator('.food-order-group-copy').isDisabled(), false);
   assert.equal(await marghieRow.locator('[data-group-pay]').count(), 0);
   assert.equal(await group.locator('[data-group-pay]').isDisabled(), true);
-  assert.equal(await group.locator('[data-remove-group]').isDisabled(), true);
   assert.match((await group.locator('.food-order-paid-marker').getAttribute('title')) ?? '', new RegExp('Bezahlt, bestätigt von ' + alice.name));
 
   await group.locator('[data-toggle-group-paid]').click();
-  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt")');
   await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'none');
 
   await page.fill('[data-item-desc]', 'Wasser');
   await page.fill('[data-item-quantity]', '1');
   await page.click('[data-add-item-form] button[type="submit"]');
-  await page.waitForSelector('text=Wasser');
-  assert.equal(await group.locator('.food-order-group-meta').innerText(), '3 Positionen · Preis fehlt');
+  await page.waitForSelector('.food-order-item:has-text("Wasser")');
+  await pizzaCard.locator('.food-order-meta:has-text("1 Preis fehlt")').waitFor();
+  await pizzaCard.locator('.food-order-total:has-text("1 Preis fehlt")').waitFor();
   assert.equal(await group.locator('.food-order-group-amount').innerText(), '20,90 €');
   assert.equal(await group.locator('.food-order-group-copy').getAttribute('data-copy-food-total'), '20,90 €');
   assert.equal(await group.locator('[data-group-pay]').isDisabled(), true);
-  await group.locator('[data-remove-group]').click();
-  await page.waitForSelector('.modal h2:has-text("Deine 2 Positionen löschen?")');
-  assert.equal(await page.locator('.food-order-confirm-list li').count(), 2);
-  assert.equal(await page.locator('.modal-body').getByText('Lässt sich nicht rückgängig machen.').count(), 1);
-  await page.click('[data-confirm-cancel]');
-  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+  await pizzaCard.locator('.food-order-item', { hasText: 'Wasser' }).locator('.food-order-item-amount:has-text("Preis fehlt")').waitFor();
   const wasserRow = page.locator('.food-order-item', { hasText: 'Wasser' });
   await wasserRow.locator('[data-remove-item]').click();
   await page.waitForSelector('[data-confirm]');
@@ -271,8 +272,8 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   await page.fill('[data-item-quantity]', '1');
   await page.fill('[data-item-price]', '4,00');
   await page.click('[data-add-item-form] button[type="submit"]');
-  await page.waitForSelector('text=Nachtrag nach Bestätigung');
-  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
+  await page.waitForSelector('.food-order-item:has-text("Nachtrag nach Bestätigung")');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt")');
   assert.equal(await group.locator('.food-order-group-amount').innerText(), '25,30 €');
   const changedTotalMarkerGeometry = await readPaidMarkerRect(alice.id);
   assertMarkerStaysPut(changedTotalMarkerGeometry, openMarkerGeometry, 'adding a position to a paid group');
@@ -321,6 +322,9 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
     await route.continue();
   };
   await page.route('**/api/food-orders', closeRefreshRoute);
+  // A short phone viewport keeps the compact sent card taller than the
+  // scroller, so a scroll reset would still be observable after closing.
+  await page.setViewportSize({ width: 390, height: 480 });
   const foodScroller = page.locator('#view-container');
   const scrollTopBeforeClose = await foodScroller.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
@@ -331,7 +335,7 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
     await page.click('[data-close-order]');
     await page.click('[data-confirm]');
     await closeRefreshStarted;
-    await page.waitForSelector('[data-food-history][open] .badge-paused:has-text("Abgeschickt")');
+    await page.waitForSelector('[data-food-history][open] [data-closed-order] .food-order-meta:has-text("Abgeschickt")');
     assert.equal(await page.getByText('Lädt…', { exact: true }).count(), 0);
     assert.equal(await page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' }).isVisible(), true);
     assert.ok(await foodScroller.evaluate((element) => element.scrollTop > 0));
@@ -339,20 +343,21 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
     releaseCloseRefresh();
     if (closeRefreshBlocked) await closeRefreshDone;
     await page.unroute('**/api/food-orders', closeRefreshRoute);
+    await page.setViewportSize({ width: 390, height: 844 });
   }
-  await page.click('[data-reopen-order]');
-  await page.waitForSelector('.badge-playing >> text=Offen');
+  await clickOrderMenuAction(page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' }), '[data-reopen-order]');
+  await page.locator('[data-order-card]', { hasText: 'Pizza bei Luigi' }).waitFor();
   await page.fill('[data-item-desc]', 'Vergessene Cola');
   await page.fill('[data-item-quantity]', '1');
   await page.fill('[data-item-price]', '2,50');
   await page.click('[data-add-item-form] button[type="submit"]');
-  await page.waitForSelector('text=Vergessene Cola');
+  await page.waitForSelector('.food-order-item:has-text("Vergessene Cola")');
   await page.click('[data-close-order]');
   await page.click('[data-confirm]');
-  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
+  await page.waitForSelector('[data-closed-order] .food-order-meta:has-text("Abgeschickt")');
   await page.click('[data-finalize-order]');
   await page.click('[data-confirm]');
-  await page.waitForSelector('.badge-offline >> text=Geschlossen');
+  await page.waitForSelector('[data-closed-order] .food-order-meta:has-text("Geschlossen")');
   const closedOrder = page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' });
   assert.equal(await closedOrder.locator('[data-reopen-order]').count(), 1);
   assert.equal(await closedOrder.locator('[data-edit-details]').count(), 0);
@@ -360,7 +365,7 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   assert.equal(await closedOrder.locator('[data-group-pay]').first().isDisabled(), true);
   for (const viewport of [{ width: 512, height: 384 }, { width: 720, height: 450 }]) {
     await page.setViewportSize(viewport);
-    await assertOrderFooter(closedOrder);
+    await assertOrderHeaderActions(closedOrder);
     await assertControlHeights(closedOrder.locator('[data-toggle-group-paid], [data-group-pay]'));
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -368,8 +373,8 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   // Finalizing is reversible one lock step at a time: reopening a finalized
   // order drops it back to "Abgeschickt", unlocking payment marking and
   // metadata edits again while items stay frozen.
-  await closedOrder.locator('[data-reopen-order]').click();
-  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
+  await clickOrderMenuAction(closedOrder, '[data-reopen-order]');
+  await page.waitForSelector('[data-closed-order] .food-order-meta:has-text("Abgeschickt")');
   assert.equal(await closedOrder.locator('[data-edit-details]').count(), 1);
   assert.equal(await closedOrder.locator('[data-toggle-group-paid]').first().isDisabled(), false);
 
@@ -388,7 +393,7 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   await groupOrderCard.locator('[data-item-quantity]').fill('1');
   await groupOrderCard.locator('[data-item-price]').fill('3,00');
   await groupOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
-  await page.waitForSelector('text=Alice-Snack');
+  await page.waitForSelector('.food-order-item:has-text("Alice-Snack")');
   assert.equal(await groupOrderCard.locator('.food-order-group-toggle').count(), 0);
   assert.equal(await groupOrderCard.locator('[data-toggle-all-groups]').count(), 0);
   assert.equal(await groupOrderCard.locator('.food-order-card-header-toggle').count(), 0);
@@ -399,31 +404,31 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   await bobFormCard.locator('[data-item-quantity]').fill('1');
   await bobFormCard.locator('[data-item-price]').fill('1,00');
   await bobFormCard.locator('[data-add-item-form] button[type="submit"]').click();
-  await page.waitForSelector('text=Bob Erster Snack');
+  await page.waitForSelector('.food-order-item:has-text("Bob Erster Snack")');
 
   const orderCard = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' });
   const bobGroup = orderCard.locator('.food-order-group', { hasText: 'E2E Bob' });
   const aliceGroup = orderCard.locator('.food-order-group', { hasText: 'E2E Alice Pro' });
+  // Every orderer group starts collapsed; only the own group opens because
+  // Bob just added the position that created the second group.
   await bobGroup.locator('.food-order-group-toggle').waitFor();
   assert.equal(await bobGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'true');
   assert.equal(await aliceGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'false');
   assert.equal(await aliceGroup.locator('.food-order-group-items').isHidden(), true);
   assert.match(await bobGroup.locator('.food-order-group-toggle').innerText(), /E2E Bob \(du\)/);
-  assert.equal(await bobGroup.locator('.food-order-group-toggle[aria-expanded="true"] .food-order-group-meta').textContent(), '1 Position');
-  // Bob's expanded group holds a single position, so the phone layout drops
-  // its sum. Alice's group holds one too but is collapsed, so its sum is the
-  // only amount left on screen and has to stay: without the expanded guard in
-  // renderItems() a collapsed group would show no amount at all.
+  assert.equal(await bobGroup.locator('.food-order-group-meta').count(), 0);
   const bobGroupSum = bobGroup.locator('.food-order-group-amount');
   assert.equal((await bobGroupSum.textContent())?.trim(), '1,00 €');
-  assert.equal(await bobGroupSum.isVisible(), false);
+  assert.equal(await bobGroupSum.isVisible(), true);
   assert.equal(await aliceGroup.locator('.food-order-group-amount').isVisible(), true);
-  assert.equal(await bobGroup.locator('.food-order-item-copy').getAttribute('title'), 'Betrag dieser Position kopieren');
+  assert.equal(await bobGroup.locator('.food-order-item [data-copy-food-total]').count(), 0);
 
-  await orderCard.locator('[data-toggle-all-groups]').click();
+  // "Alle ausklappen" is an entry of the card's "Aktion" menu, available to
+  // everyone once an order has several groups.
+  await clickOrderMenuAction(orderCard, '[data-toggle-all-groups]');
   await aliceGroup.locator('.food-order-group-toggle[aria-expanded="true"]').waitFor();
-  assert.equal(await orderCard.locator('[data-toggle-all-groups]').innerText(), 'Alle einklappen');
-  await orderCard.locator('[data-toggle-all-groups]').click();
+  assert.equal((await orderCard.locator('[data-toggle-all-groups]').textContent())?.trim(), 'Alle einklappen');
+  await clickOrderMenuAction(orderCard, '[data-toggle-all-groups]');
   assert.equal(await aliceGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'false');
 
   assert.equal(await bobGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'false');
@@ -431,14 +436,14 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   await bobFormCard.locator('[data-item-quantity]').fill('1');
   await bobFormCard.locator('[data-item-price]').fill('1,50');
   await bobFormCard.locator('[data-add-item-form] button[type="submit"]').click();
-  await page.waitForSelector('text=Bob Zweiter Snack');
+  await page.waitForSelector('.food-order-item:has-text("Bob Zweiter Snack")');
   assert.equal(await bobGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'true');
 
   assert.equal(await bobGroup.locator('[data-group-pay]').count(), 0);
 
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   const detailsCard = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' });
-  await detailsCard.locator('[data-edit-details]').click();
+  await clickOrderMenuAction(detailsCard, '[data-edit-details]');
   await page.fill('#paypal-input', 'https://paypal.me/luigi');
   await page.click('#details-form button[type="submit"]');
   await page.waitForSelector('[data-group-pay]');
@@ -451,9 +456,8 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   assert.equal(await bobGroupAfterLink.locator('[data-group-pay]').isDisabled(), true);
   assert.equal(await bobGroupAfterLink.locator('[data-toggle-group-paid]').getAttribute('aria-pressed'), 'true');
   assert.equal(await bobGroupAfterLink.locator('.food-order-item .food-order-paid-marker').count(), 0);
-  assert.equal(await bobGroupAfterLink.locator('[data-remove-group]').count(), 0);
 
-  // The payment marker plus three action slots must stay inside the header at
+  // The payment marker, PayPal and the copy action must stay inside the header at
   // narrow phone widths instead of being clipped, and from the smallest
   // supported width upwards they must also share a single row: a wrapped
   // cluster drops one lone control onto a ragged extra line.
@@ -470,10 +474,8 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
     const box = header.getBoundingClientRect();
     const marker = header.querySelector('.food-order-paid-marker');
     const markerLabel = marker?.querySelector('span');
-    // A single-position group deliberately drops its own sum on phones, so
-    // only the actually rendered controls are measured for clipping.
     const controls = Array.from(
-      header.querySelectorAll('.food-order-paid-marker, .food-order-group-amount, .food-order-group-actions button')
+      header.querySelectorAll('.food-order-paid-marker, .food-order-group-amount, .food-order-group-actions button, .food-order-group-copy')
     ).filter((control) => control.getClientRects().length > 0);
     return {
       markerWidth: marker?.getBoundingClientRect().width ?? 0,
@@ -504,46 +506,23 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   assert.equal(narrowGroupLayout.pageFits, true);
   await page.setViewportSize({ width: 390, height: 844 });
 
-  // Phone layout contract for the group header (domains.css, --bp-md block):
-  // a group holding a single position drops its own sum, because that position
-  // already prints the identical tip-inclusive total one row below; a group
-  // with more positions keeps the sum and shares one row with the action
-  // cluster instead of leaving that cluster alone on a row of its own. Laptop
-  // width always shows the sum. Without the rule the sum renders on every
-  // width and the shared row never happens.
-  const readGroupSumLayout = async (): Promise<{
-    positionRows: number;
-    amountRendered: boolean;
-    sharesRowWithActions: boolean;
-  }> => bobGroupAfterLink.evaluate((groupElement) => {
-    const centreY = (rect: DOMRect) => rect.top + rect.height / 2;
-    const amount = groupElement.querySelector('.food-order-group-amount-wrap');
-    const actions = groupElement.querySelector('.food-order-group-actions')!;
-    const amountRendered = amount !== null && amount.getClientRects().length > 0;
-    return {
-      positionRows: groupElement.querySelectorAll('.food-order-group-items > .food-order-item').length,
-      amountRendered,
-      // align-items: center gives the short amount and the 44px control
-      // cluster different tops on the very same row, so compare centres.
-      sharesRowWithActions:
-        amountRendered && amount !== null
-          ? Math.abs(centreY(amount.getBoundingClientRect()) - centreY(actions.getBoundingClientRect())) <= 1
-          : false,
-    };
-  });
-  const phoneSumLayout = await readGroupSumLayout();
-  assert.equal(phoneSumLayout.amountRendered, phoneSumLayout.positionRows > 1, JSON.stringify(phoneSumLayout));
-  // Just below --bp-md the phone rules still apply but the row has room for
-  // the sum next to all four controls, so both must share it. At 390px with a
-  // PayPal action they legitimately do not fit and the cluster drops onto its
-  // own row whole - that fallback is covered by the single-row assertion above.
-  await page.setViewportSize({ width: 639, height: 844 });
-  const roomySumLayout = await readGroupSumLayout();
-  assert.equal(roomySumLayout.amountRendered, true, JSON.stringify(roomySumLayout));
-  assert.equal(roomySumLayout.sharesRowWithActions, true, JSON.stringify(roomySumLayout));
+  // Group row contract (domains.css): the sum with its copy action stays on
+  // the name row in every layout. On phones Bezahlt and PayPal move to a row
+  // of their own below the name; from --bp-md they share the name row.
+  const readGroupRowLayout = async (): Promise<{ amountSharesNameRow: boolean; actionsBelowName: boolean }> =>
+    bobGroupAfterLink.evaluate((groupElement) => {
+      const centreY = (rect: DOMRect) => rect.top + rect.height / 2;
+      const name = groupElement.querySelector('.food-order-group-toggle, .food-order-group-static')!.getBoundingClientRect();
+      const amount = groupElement.querySelector('.food-order-group-amount-wrap')!.getBoundingClientRect();
+      const actions = groupElement.querySelector('.food-order-group-actions')!.getBoundingClientRect();
+      return {
+        amountSharesNameRow: Math.abs(centreY(amount) - centreY(name)) <= 1,
+        actionsBelowName: actions.top >= name.bottom - 1,
+      };
+    });
+  assert.deepEqual(await readGroupRowLayout(), { amountSharesNameRow: true, actionsBelowName: true });
   await page.setViewportSize({ width: 900, height: 844 });
-  const laptopSumLayout = await readGroupSumLayout();
-  assert.equal(laptopSumLayout.amountRendered, true, JSON.stringify(laptopSumLayout));
+  assert.deepEqual(await readGroupRowLayout(), { amountSharesNameRow: true, actionsBelowName: false });
   await page.setViewportSize({ width: 390, height: 844 });
 
   // Bob can undo the paid marker directly; reopening the group is an explicit
@@ -551,7 +530,7 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   await switchIdentityAndOpenFoodOrders('E2E Bob');
   const bobPaidGroup = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' }).locator('.food-order-group', { hasText: 'E2E Bob' });
   await bobPaidGroup.locator('[data-toggle-group-paid]').click();
-  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
+  await bobPaidGroup.locator('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt")').waitFor();
 });
 
 flowTest('Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt synchron', async () => {
@@ -692,7 +671,7 @@ flowTest('Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt s
       const finalizeResponse = await page.request.post(`${BASE_URL}/api/food-orders/${scenario.id}/finalize`);
       assert.equal(finalizeResponse.status(), 200, await finalizeResponse.text());
     },
-    'Bestellung geschlossen – keine Änderungen mehr möglich',
+    'Bestellung geschlossen, keine Änderungen mehr möglich',
   );
 
   const genericPaypalLink = 'https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=luigi%40example.com';
@@ -778,8 +757,7 @@ flowTest('Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt s
     { description: 'Preis noch offen' },
   ]);
   const { card: zeroCard, group: zeroGroup } = await openScenario(zeroScenario);
-  assert.match(await zeroCard.locator('.food-order-total').innerText(), /Gesamtsumme.*unvollständig[\s\S]*0,00/);
-  assert.equal(await zeroGroup.locator('.food-order-group-meta').innerText(), '2 Positionen · Preis fehlt');
+  assert.match(await zeroCard.locator('.food-order-total').innerText(), /Gesamt[\s\S]*1 Preis fehlt[\s\S]*0,00/);
   assert.equal(await zeroGroup.locator('.food-order-group-amount').innerText(), '0,00 €');
   assert.equal(await zeroGroup.locator('.food-order-group-copy').getAttribute('data-copy-food-total'), '0,00 €');
   assert.equal(await zeroGroup.locator('[data-group-pay]').isDisabled(), true);
@@ -789,7 +767,7 @@ flowTest('Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt s
   await cleanupScenario(zeroScenario);
 
   // Tip rounding is defined per payable line, so the group sum, order
-  // overview, total row and PayPal handoff must agree even when aggregation
+  // meta line, total row and PayPal handoff must agree even when aggregation
   // would round differently (two 1-cent lines at 50% tip are 0,04 €).
   const roundingScenario = await createScenario('Trinkgeld-Rundung', [
     { description: 'Ein-Cent-Position A', priceCents: 1 },
@@ -797,7 +775,7 @@ flowTest('Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt s
   ], 'https://paypal.me/rounding-test', 50);
   const { card: roundingCard, group: roundingGroup } = await openScenario(roundingScenario);
   assert.equal(await roundingGroup.locator('.food-order-group-amount').innerText(), '0,04 €');
-  assert.match(await roundingCard.locator('.food-order-overview').innerText(), /Gesamt 0,04 €/);
+  assert.match(await roundingCard.locator('.food-order-meta').innerText(), /offen 0,04 €/);
   assert.match(await roundingCard.locator('.food-order-total').innerText(), /0,04 €/);
   await cleanupScenario(roundingScenario);
 
@@ -848,63 +826,6 @@ flowTest('Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt s
   }
   await cleanupScenario(concurrencyScenario);
 
-  // Group deletion is confirmed against a visible snapshot. A position added
-  // while that dialog is open is outside the confirmed list and must survive.
-  const deleteSnapshotScenario = await createScenario('Freshness Löschen-Snapshot', [{ description: 'Vorhandene Position', priceCents: 1_00 }]);
-  const { card: deleteSnapshotCard, group: deleteSnapshotGroup } = await openScenario(deleteSnapshotScenario);
-  let deleteSnapshotIntercepted = false;
-  const deleteSnapshotRoute = async (route: import('playwright').Route) => {
-    if (!deleteSnapshotIntercepted && route.request().method() === 'GET') {
-      deleteSnapshotIntercepted = true;
-      const response = await page.request.post(`${BASE_URL}/api/food-orders/${deleteSnapshotScenario.id}/items`, {
-        data: { playerId: alice.id, description: 'Während Bestätigung ergänzt', quantity: 1, priceCents: 2_00 },
-      });
-      assert.equal(response.status(), 201, await response.text());
-    }
-    await route.continue();
-  };
-  await page.route('**/api/food-orders', deleteSnapshotRoute);
-  try {
-    await deleteSnapshotGroup.locator('[data-remove-group]').click();
-    await page.waitForSelector('.modal h2:has-text("Deine 1 Position löschen?")');
-    await page.click('[data-confirm-ok]');
-    await page.waitForSelector('text=Während Bestätigung ergänzt');
-    await deleteSnapshotCard.locator('.food-order-item', { hasText: 'Vorhandene Position' }).waitFor({ state: 'detached' });
-    assert.equal(await deleteSnapshotCard.locator('.food-order-item', { hasText: 'Während Bestätigung ergänzt' }).count(), 1);
-    assert.equal(deleteSnapshotIntercepted, true);
-  } finally {
-    await page.unroute('**/api/food-orders', deleteSnapshotRoute);
-  }
-  await cleanupScenario(deleteSnapshotScenario);
-
-  // Promise.all deletion is deliberately partial-safe: if one DELETE fails,
-  // the successful sibling is gone, the failed one remains, and the quiet
-  // authoritative refresh reconciles both without a loading frame.
-  const partialScenario = await createScenario('Freshness Teil-Löschen', [
-    { description: 'Teilweise entfernen', priceCents: 1_00 },
-    { description: 'Teilweise behalten', priceCents: 1_50 },
-  ]);
-  const { card: partialCard, group: partialGroup } = await openScenario(partialScenario);
-  const failingItemId = partialScenario.itemIds[1];
-  const partialRoute = async (route: import('playwright').Route) => {
-    if (route.request().method() === 'DELETE' && route.request().url().endsWith(`/items/${failingItemId}`)) {
-      await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'Simulierter Teilfehler' }) });
-      return;
-    }
-    await route.continue();
-  };
-  await page.route(`**/api/food-orders/${partialScenario.id}/items/${failingItemId}`, partialRoute);
-  try {
-    await partialGroup.locator('[data-remove-group]').click();
-    await page.waitForSelector('.modal h2:has-text("Deine 2 Positionen löschen?")');
-    await page.click('[data-confirm-ok]');
-    await page.waitForSelector('.toast-error');
-    await partialCard.locator('.food-order-item', { hasText: 'Teilweise entfernen' }).waitFor({ state: 'detached' });
-    await partialCard.locator('.food-order-item', { hasText: 'Teilweise behalten' }).waitFor();
-  } finally {
-    await page.unroute(`**/api/food-orders/${partialScenario.id}/items/${failingItemId}`, partialRoute);
-  }
-  await cleanupScenario(partialScenario);
   await page.evaluate(() => (window as unknown as { __restoreFreshPopup?: () => void }).__restoreFreshPopup?.());
 });
 
@@ -955,7 +876,10 @@ flowTest('Essensbestellung: Bestellübersicht consolidates positions for the cre
     // Earlier orders in this shared shard contain the same descriptions.
     // A page-wide or case-insensitive wait can therefore resolve before this
     // exact add and live re-render finish, letting the next add race it.
-    await listOrderCard.getByText(`${quantity} × ${desc}`, { exact: true }).waitFor();
+    // A quantity above one appends the unit price ("je 8,50 €"), so match the
+    // exact, case-sensitive start of the description instead of its full text.
+    const exactStart = new RegExp(`^${`${quantity} × ${desc}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`);
+    await listOrderCard.locator('.food-order-item-description', { hasText: exactStart }).waitFor();
   };
   await addItem('Margherita', '1', '8,50');
   await addItem('margherita', '2', '8,50');
@@ -968,18 +892,19 @@ flowTest('Essensbestellung: Bestellübersicht consolidates positions for the cre
   await groupOrderCard.locator('.food-order-card-header-toggle').click();
   await page.waitForSelector('[data-order-card]:has-text("Gruppen-Test-Bestellung") .food-order-card-body:not([hidden])');
 
-  await listOrderCard.locator('[data-open-order-list]').click();
-  await page.waitForSelector('.modal h2:has-text("Bestellübersicht – Bestellübersicht-Test")');
+  await clickOrderMenuAction(listOrderCard, '[data-open-order-list]');
+  await page.waitForSelector('.modal h2:has-text("Bestellübersicht: Bestellübersicht-Test")');
+  // A small table: dish, unit price and line sum, totals as its footer.
+  assert.deepEqual(await page.locator('.food-order-consolidated-table thead th').allTextContents(), ['Gericht', 'Einzeln', 'Summe']);
   // Same normalized description + same price merges into one consolidated
-  // row (AP4.2) — 1 + 2 = 3 × Margherita.
-  await page.waitForSelector('.food-order-consolidated-row:has-text("3 × Margherita")');
-  await page.waitForSelector('.food-order-consolidated-row:has-text("1 × Wasser")');
-  await page.waitForSelector('.food-order-consolidated-row:has-text("kein Preis")');
-  await page.waitForSelector('text=Bestellung ist noch offen.');
-  // Unpriced Wasser keeps the subtotal flagged as incomplete.
-  await page.waitForSelector('.food-order-consolidated-totals:has-text("Zwischensumme (unvollständig)")');
-  await page.waitForSelector('.food-order-consolidated-totals:has-text("+ 10% Trinkgeld")');
-  await page.waitForSelector('.food-order-consolidated-totals:has-text("Gesamt (unvollständig)")');
+  // row (AP4.2): 1 + 2 = 3 × Margherita.
+  await page.waitForSelector('.food-order-consolidated-table tbody tr:has-text("3 × Margherita")');
+  await page.waitForSelector('.food-order-consolidated-table tbody tr:has-text("1 × Wasser")');
+  await page.waitForSelector('.food-order-consolidated-table tbody tr:has-text("Preis fehlt")');
+  // Unpriced Wasser names the missing price at the total.
+  await page.waitForSelector('.food-order-consolidated-table tfoot:has-text("Zwischensumme")');
+  await page.waitForSelector('.food-order-consolidated-table tfoot:has-text("10 % Trinkgeld")');
+  await page.waitForSelector('.food-order-consolidated-total:has-text("1 Preis fehlt")');
 
   // The clipboard "Liste kopieren" action was removed - the dialog no longer
   // offers it at all.
@@ -1005,10 +930,9 @@ flowTest('Essensbestellung: Bestellübersicht consolidates positions for the cre
   assert.equal(await directOrderCard.locator('.food-order-card-body').isVisible(), true);
 
   // The dialog can close the still-open order directly (AP4.7).
-  await directOrderCard.locator('[data-open-order-list]').click();
+  await clickOrderMenuAction(directOrderCard, '[data-open-order-list]');
   await page.click('[data-close-order-from-list]');
   await page.click('[data-confirm]');
-  await page.waitForSelector('text=Bestellung ist noch offen.', { state: 'detached' });
   await page.waitForSelector('[data-close-order-from-list]', { state: 'detached' });
   await page.keyboard.press('Escape');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
@@ -1025,12 +949,13 @@ flowTest('Essensbestellung: Bestellübersicht consolidates positions for the cre
     true,
   );
 
-  // The list is visible to everyone, including a non-creator on a closed order.
+  // The list is the orderer's tool: it lives in the creator's/admin's
+  // "Aktion" menu, so a plain participant does not get it.
   await switchIdentityAndOpenFoodOrders('E2E Bob');
   await page.waitForSelector('text=Bestellübersicht-Test');
   assert.equal(
     await page.locator('[data-closed-order]', { hasText: 'Bestellübersicht-Test' }).locator('[data-open-order-list]').count(),
-    1
+    0
   );
 
   // Leave the shared page back on Alice's identity - every later flow in
@@ -1295,22 +1220,15 @@ flowTest("Essensbestellung: the description field suggests the order's own exist
   await suggestOrderCard.locator('[data-item-quantity]').fill('2');
   await suggestOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
 
-  await suggestOrderCard.locator('[data-open-order-list]').click();
-  await page.waitForSelector('.modal h2:has-text("Bestellübersicht – Vorschlags-Test")');
-  await page.waitForSelector('.food-order-consolidated-row:has-text("3 × Margherita groß")');
-  await page.waitForSelector('.food-order-consolidated-row:has-text("1 × Wasser")');
-  await page.waitForSelector('.food-order-consolidated-row:has-text("1 × Cola")');
-  assert.equal(await page.locator('.food-order-consolidated-row').count(), 3);
+  await clickOrderMenuAction(suggestOrderCard, '[data-open-order-list]');
+  await page.waitForSelector('.modal h2:has-text("Bestellübersicht: Vorschlags-Test")');
+  const consolidatedRows = page.locator('.food-order-consolidated-table tbody tr');
+  await consolidatedRows.filter({ hasText: '3 × Margherita groß' }).waitFor();
+  await consolidatedRows.filter({ hasText: '1 × Wasser' }).waitFor();
+  await consolidatedRows.filter({ hasText: '1 × Cola' }).waitFor();
+  assert.equal(await consolidatedRows.count(), 3);
   await page.keyboard.press('Escape');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
-
-  // The own-group delete is the only destructive bulk action and therefore
-  // shows the full list before it can be confirmed.
-  await suggestOrderCard.locator('[data-remove-group]').click();
-  await page.waitForSelector('.modal h2:has-text("Deine 4 Positionen löschen?")');
-  assert.equal(await page.locator('.food-order-confirm-list li').count(), 4);
-  await page.click('[data-confirm-ok]');
-  await page.waitForSelector('text=Noch keine Positionen.');
 });
 
 flowTest('Essensbestellung: marking a position paid does not scroll the Essen view back to the top', async () => {

@@ -14,7 +14,9 @@ Kalenderaktionen bleiben außerhalb dieses Menüs.
 - Markup und Verhalten: `public/js/actionMenu.js`
 - Geometrie und offene Kartenlage: `public/css/style.css`
 - Ergänzende bestehende Kartenlage: `public/css/domains.css`
-- Markup-API: `actionMenuHtml(actions, label)`
+- Markup-API: `actionMenuHtml(actions, label, { key })`; der optionale `key` setzt
+  `data-action-menu` als stabile Identität, damit die Zustandssicherung beim Live-Re-Render
+  (`viewRenderState.js`) Menüs und andere `details`-Elemente nicht verwechselt.
 - Verdrahtung: `wireActionMenus(container)`
 
 `actions` ist vertrauenswürdiges, vom Aufrufer erzeugtes Button-Markup; Nutzerinhalte darin
