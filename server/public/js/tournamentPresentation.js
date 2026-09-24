@@ -41,40 +41,33 @@ export function createTournamentPresentation() {
     if (matches.length === 0) return '';
 
     const teamsById = new Map(tournament.teams.map((team) => [team.id, team]));
-    const cards = matches
+    const credential = (label, value, match, kind, teamA, teamB) => `
+      <span class="tournament-lobby-credential">
+        <span class="tournament-lobby-credential-label">${label}</span>
+        <code class="tournament-lobby-credential-value">${escapeHtml(value)}</code>
+        <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby-match="${escapeHtml(match.id)}" data-copy-lobby-kind="${kind}" title="${label === 'Lobby' ? 'Lobbyname' : 'Passwort'} kopieren" aria-label="${label === 'Lobby' ? 'Lobbyname' : 'Passwort'} für ${teamA} gegen ${teamB} kopieren">${icon('copy')}</button>
+      </span>`;
+    const rows = matches
       .map((match) => {
         const teamA = teamLabel(teamsById, match.teamAId);
         const teamB = teamLabel(teamsById, match.teamBId);
-        return `<section class="card tournament-lobby-info" aria-label="Lobby für ${teamA} gegen ${teamB}">
-          <div class="tournament-lobby-header">
-            <span class="tournament-lobby-phase">${escapeHtml(activeLobbyPhaseLabel(tournament, match))}</span>
-            <span class="badge badge-playing">Eröffnet: ${teamA}</span>
+        return `<div class="tournament-lobby-row" aria-label="Lobby für ${teamA} gegen ${teamB}">
+          <div class="tournament-lobby-matchup">
+            <strong>${teamA} <span class="muted">vs</span> ${teamB}</strong>
+            <span class="muted">${escapeHtml(activeLobbyPhaseLabel(tournament, match))} · ${teamA} eröffnet</span>
           </div>
-          <strong class="tournament-lobby-matchup">${teamA} <span class="muted">vs</span> ${teamB}</strong>
           <div class="tournament-lobby-access">
-            ${
-              match.lobbyName
-                ? `<div class="tournament-lobby-credential">
-                     <span>Lobby</span><strong>${escapeHtml(match.lobbyName)}</strong>
-                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby-match="${escapeHtml(match.id)}" data-copy-lobby-kind="name" title="Lobbyname kopieren" aria-label="Lobbyname für ${teamA} gegen ${teamB} kopieren">${icon('copy')}</button>
-                   </div>`
-                : ''
-            }
-            ${
-              tournament.lobbyPassword
-                ? `<div class="tournament-lobby-credential">
-                     <span>Passwort</span><strong>${escapeHtml(tournament.lobbyPassword)}</strong>
-                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby-match="${escapeHtml(match.id)}" data-copy-lobby-kind="password" title="Passwort kopieren" aria-label="Passwort für ${teamA} gegen ${teamB} kopieren">${icon('copy')}</button>
-                   </div>`
-                : ''
-            }
+            ${match.lobbyName ? credential('Lobby', match.lobbyName, match, 'name', teamA, teamB) : ''}
+            ${tournament.lobbyPassword ? credential('Passwort', tournament.lobbyPassword, match, 'password', teamA, teamB) : ''}
           </div>
-        </section>`;
+        </div>`;
       })
       .join('');
 
-    return `<div class="section-title">Aktive Lobbys</div>
-      <div class="tournament-active-lobby-grid">${cards}</div>`;
+    return `<section class="card stack grouped-page-section" aria-labelledby="tournament-lobbies-title">
+      <div class="grouped-page-section-title"><h2 id="tournament-lobbies-title">Aktive Lobbys</h2></div>
+      <div class="tournament-lobby-list">${rows}</div>
+    </section>`;
   }
 
   // Every result is entered and edited through one dialog (see
@@ -325,7 +318,7 @@ export function createTournamentPresentation() {
     return `<div class="tournament-group-stage">${groupBlocks}${knockoutHtml}</div>`;
   }
 
-  function renderTournamentTeams(t) {
+  function renderTournamentTeams(t, { teamsOpen = false } = {}) {
     const cards = t.teams
       .map(
         (team) => `
@@ -355,7 +348,18 @@ export function createTournamentPresentation() {
       )
       .join('');
 
-    return `<div class="section-title">Teams & Teilnehmer</div><div class="tournament-team-grid">${cards}</div>`;
+    // Teams are a lookup next to the live bracket, so they sit in the shared
+    // collapsible card that starts closed (open state lives in the view).
+    return `<details class="card grouped-page-section collapsible-section" data-tournament-teams ${teamsOpen ? 'open' : ''}>
+      <summary class="collapsible-section-header">
+        <h2>Teams</h2>
+        <span class="collapsible-section-summary-end">
+          <span class="badge badge-offline">${t.teams.length}</span>
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+        </span>
+      </summary>
+      <div class="collapsible-section-content"><div class="tournament-team-grid">${cards}</div></div>
+    </details>`;
   }
 
   return {

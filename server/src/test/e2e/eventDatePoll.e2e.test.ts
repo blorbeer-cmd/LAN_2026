@@ -356,16 +356,22 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const voteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await voteDialog.waitFor();
   assert.match((await voteDialog.textContent()) ?? '', new RegExp(MEMBER_NAME));
-  assert.match((await voteDialog.textContent()) ?? '', /\d{2}:\d{2}/, 'the vote dialog shows when the response was saved');
-  const voterAvatar = voteDialog.locator('.event-poll-vote-person .avatar-dot, .event-poll-vote-person .avatar-img').first();
-  const voterName = voteDialog.locator('.event-poll-voter-name').first();
-  const voterAlignment = await voteDialog.locator('.event-poll-vote-person .player-name').first().evaluate((element) => {
+  // One row per person, one numbered column per option; the legend names the
+  // numbers and marks the winner, so long option labels never widen a column.
+  assert.match((await voteDialog.locator('.event-poll-vote-legend').textContent()) ?? '', /1\s*Erstes Wochenende\s*Win/);
+  assert.equal(await voteDialog.locator('thead .event-poll-vote-number.is-win').count(), 1, 'the winning column is marked');
+  const memberRow = voteDialog.locator('.event-poll-vote-table tbody tr', { hasText: MEMBER_NAME });
+  assert.equal(await memberRow.count(), 1);
+  assert.equal(await memberRow.locator('.avatar-dot, .avatar-img').count(), 1);
+  assert.ok(
+    (await memberRow.locator('.event-poll-vote-cell[aria-label]').count()) >= 1,
+    'each answer cell names its answer for assistive technology',
+  );
+  const voterAlignment = await memberRow.locator('.player-name').evaluate((element) => {
     const styles = getComputedStyle(element);
     return { display: styles.display, alignItems: styles.alignItems };
   });
   assert.ok(voterAlignment.display.includes('flex') && voterAlignment.alignItems === 'center', 'the voter identity uses a centered flex row');
-  assert.equal(await voterAvatar.count(), 1);
-  assert.equal(await voterName.count(), 1);
   await voteDialog.locator('[data-close]').click();
   assert.equal(await closed.locator('.event-poll-option.is-winner .vote-win-chip').count(), 1, 'the ended round marks its winner');
   assert.match((await closed.locator('.event-poll-option').first().textContent()) ?? '', /Erstes Wochenende/, 'the ended round lists its options by result');

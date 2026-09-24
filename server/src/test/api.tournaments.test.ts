@@ -349,6 +349,57 @@ test('DELETE /api/tournaments/:id 404s for an unknown id', async () => {
   assert.equal(res.status, 404);
 });
 
+test('a Match draw becomes a tournament exactly once and is then frozen for single results', async () => {
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId, playerIds: playerIds.slice(0, 4), teamCount: 2 });
+  assert.equal(draw.status, 200);
+  const teams = draw.body.teams.map((team: { players: Array<{ id: string }> }, index: number) => ({
+    name: `Draw ${index + 1}`,
+    playerIds: team.players.map((player) => player.id),
+  }));
+  const body = { gameId, format: 'single_elimination', teams, drawId: draw.body.id };
+
+  assert.equal((await request(app).post('/api/tournaments').send({ ...body, drawId: '' })).status, 400);
+  assert.equal((await request(app).post('/api/tournaments').send({ ...body, drawId: 'ghost' })).status, 404);
+
+  const created = await request(app).post('/api/tournaments').send(body);
+  assert.equal(created.status, 201);
+
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  const linked = history.body.history.find((entry: { id: string }) => entry.id === draw.body.id);
+  assert.equal(linked.tournamentId, created.body.id);
+  assert.equal(linked.tournamentName, created.body.name);
+  assert.equal(linked.matchId, null);
+
+  const again = await request(app).post('/api/tournaments').send(body);
+  assert.equal(again.status, 409);
+  const recorded = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: teams.map((team: { playerIds: string[] }) => ({ playerIds: team.playerIds })), drawId: draw.body.id });
+  assert.equal(recorded.status, 409);
+  const moved = await request(app)
+    .patch(`/api/matchmaking/draws/${draw.body.id}/move`)
+    .send({ playerId: teams[0].playerIds[0], toTeamIndex: 1 });
+  assert.equal(moved.status, 409);
+});
+
+test('a draw with a recorded result cannot become a tournament', async () => {
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId, playerIds: playerIds.slice(0, 2), teamCount: 2 });
+  const teams = draw.body.teams.map((team: { players: Array<{ id: string }> }) => ({ playerIds: team.players.map((player) => player.id) }));
+  const recorded = await request(app).post('/api/matches').send({ gameId, teams, drawId: draw.body.id });
+  assert.equal(recorded.status, 201);
+  const before = (await request(app).get('/api/tournaments')).body.length;
+
+  const created = await request(app)
+    .post('/api/tournaments')
+    .send({ gameId, format: 'single_elimination', teams, drawId: draw.body.id });
+  assert.equal(created.status, 409);
+  assert.equal((await request(app).get('/api/tournaments')).body.length, before, 'a rejected draw must not leave a tournament behind');
+});
+
 // ---------- group_knockout ----------
 
 let groupPlayerIds: string[];

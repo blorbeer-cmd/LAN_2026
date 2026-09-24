@@ -211,8 +211,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   name no leader. A non-anonymous round shows the voters of an option as up to four overlapping
   avatars, left-aligned in their column, followed by the number of remaining voters; a rating round pictures everyone who rated the option, the
   other modes picture the people the option won over. The avatars open the same „Stimmen“ dialog as
-  the poll's own action, which lists every answer group with avatar, name and response timestamp in
-  one vertically aligned voter row. The server decides who receives those identities: an anonymous
+  the poll's own action. That dialog is one compact table: a legend numbers the options (with the
+  „Win“ chip after a decided round and the average, „N× Passt“ or the vote count on the right), and
+  one row per person (alphabetical, avatar and name) has one equally narrow numbered column per
+  option, however long the option labels are. Ratings show the number, availability rounds show a
+  neutral symbol per answer (bright check for Passt, grey dash for Notfalls, faded cross for Nein,
+  explained once above the table and named for assistive technology), choice rounds a check for the
+  chosen option. Response timestamps are not shown. The server decides who receives those identities: an anonymous
   poll never exposes them, a round with a hidden interim result exposes them and its counts to its
   managers while it runs, and ending the round publishes both to every participant. The round's
   response mode and settings appear once as small tags above the options; a round that withholds its

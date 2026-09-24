@@ -358,14 +358,18 @@ function validateTeamsInput(teams: unknown): TeamInput[] | { error: string } {
   return result;
 }
 
+class DrawAlreadyUsedError extends Error {}
+
 // POST /api/tournaments - create a tournament and generate its full
 // starting schedule immediately (the knockout bracket of group_knockout is
 // the one exception — it can't be generated until the group stage decides
 // who advances, see the result-recording handler below).
 // Body: { gameId, name?, format, twoLegged?, trackScore?, groupCount?,
-//         advancersPerGroup?, lobbyName?, lobbyPassword?, teams: [{ name?, playerIds }] }
+//         advancersPerGroup?, lobbyName?, lobbyPassword?, teams: [{ name?, playerIds }], drawId? }
+// drawId names the Match draw these teams came from; the draw is claimed in
+// the same transaction so it can no longer be recorded as a single result.
 tournamentsRouter.post('/', (req, res) => {
-  const { gameId, name, format, twoLegged, trackScore, groupCount, advancersPerGroup, lobbyName, lobbyPassword, teams } =
+  const { gameId, name, format, twoLegged, trackScore, groupCount, advancersPerGroup, lobbyName, lobbyPassword, teams, drawId } =
     req.body ?? {};
 
   if (typeof gameId !== 'string' || !gameId) {
@@ -398,6 +402,9 @@ tournamentsRouter.post('/', (req, res) => {
 
   const teamsInput = validateTeamsInput(teams);
   if ('error' in teamsInput) return res.status(400).json({ error: teamsInput.error });
+  if (drawId !== undefined && (typeof drawId !== 'string' || !drawId)) {
+    return res.status(400).json({ error: 'drawId ist ungültig.' });
+  }
 
   const resolvedFormat = format as TournamentFormat;
   let resolvedGroupCount: number | null = null;
@@ -427,6 +434,18 @@ tournamentsRouter.post('/', (req, res) => {
   if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const eventId = scope.eventId;
+  if (drawId) {
+    const draw = db
+      .prepare('SELECT event_id, game_id, match_id, tournament_id FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+      .get(drawId, req.group!.id) as
+      | { event_id: string; game_id: string; match_id: string | null; tournament_id: string | null }
+      | undefined;
+    if (!draw || draw.event_id !== eventId || draw.game_id !== gameId) {
+      return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+    }
+    if (draw.match_id) return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
+    if (draw.tournament_id) return res.status(409).json({ error: 'Aus dieser Auslosung wurde bereits ein Turnier erstellt.' });
+  }
   if (!competitionPlayersBelongToGroup(req.group!.id, eventId, allPlayerIds)) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
@@ -536,8 +555,31 @@ tournamentsRouter.post('/', (req, res) => {
         }
       }
     }
+
+    if (drawId) {
+      // Claim and insert share one transaction: if a concurrent request
+      // already recorded or converted the draw, the tournament rolls back.
+      const claimed = db
+        .prepare('UPDATE matchmaking_draws SET tournament_id = ? WHERE id = ? AND match_id IS NULL AND tournament_id IS NULL')
+        .run(tournamentId, drawId);
+      if (claimed.changes === 0) throw new DrawAlreadyUsedError();
+    }
   });
-  create();
+  try {
+    create();
+  } catch (error) {
+    if (error instanceof DrawAlreadyUsedError) {
+      return res.status(409).json({ error: 'Diese Auslosung wurde bereits verwendet.' });
+    }
+    throw error;
+  }
+  if (drawId) {
+    broadcast(
+      Events.matchmakingDrawsChanged,
+      { id: drawId, tournamentId },
+      { groupId: req.group!.id, eventId },
+    );
+  }
 
   // Every participant gets nudged that they've been entered into a new
   // tournament — otherwise the only way to notice is to happen to open the

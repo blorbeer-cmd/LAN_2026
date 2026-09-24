@@ -22,6 +22,7 @@ export const matchesRouter = Router();
 interface DrawLinkRow {
   id: string;
   match_id: string | null;
+  tournament_id: string | null;
   event_id: string;
   seat_pairs_considered: number;
 }
@@ -188,10 +189,11 @@ matchesRouter.post('/', (req, res) => {
   let draw: DrawLinkRow | undefined;
   if (drawId) {
     draw = db
-      .prepare('SELECT id, match_id, event_id, seat_pairs_considered FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+      .prepare('SELECT id, match_id, tournament_id, event_id, seat_pairs_considered FROM matchmaking_draws WHERE id = ? AND group_id = ?')
       .get(drawId, req.group!.id) as DrawLinkRow | undefined;
     if (!draw) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
     if (draw.match_id) return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
+    if (draw.tournament_id) return res.status(409).json({ error: 'Aus dieser Auslosung wurde bereits ein Turnier erstellt.' });
     if (draw.event_id !== eventId) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
   }
 
@@ -218,7 +220,7 @@ matchesRouter.post('/', (req, res) => {
         // Insert and claim share one transaction. If another request already
         // claimed the draw, throwing rolls the just-inserted match back too.
         const claimed = db
-          .prepare('UPDATE matchmaking_draws SET match_id = ? WHERE id = ? AND match_id IS NULL')
+          .prepare('UPDATE matchmaking_draws SET match_id = ? WHERE id = ? AND match_id IS NULL AND tournament_id IS NULL')
           .run(row.id, drawId);
         if (claimed.changes === 0) throw new DrawAlreadyClaimedError();
 

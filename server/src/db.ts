@@ -5036,6 +5036,21 @@ registerMigration({
   up: enableCompetitionForGroupEvents,
 });
 
+// Migration: a drawn lineup can become a tournament instead of a single
+// result. The link marks the draw as used, so the same teams cannot also be
+// recorded as a single match (and vice versa, see POST /api/matches).
+function migrateDrawTournamentLink(): void {
+  const columns = db.prepare('PRAGMA table_info(matchmaking_draws)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'tournament_id')) {
+    db.exec('ALTER TABLE matchmaking_draws ADD COLUMN tournament_id TEXT REFERENCES tournaments(id) ON DELETE SET NULL');
+  }
+}
+registerMigration({
+  version: 105,
+  name: 'link matchmaking draws to tournaments',
+  up: migrateDrawTournamentLink,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

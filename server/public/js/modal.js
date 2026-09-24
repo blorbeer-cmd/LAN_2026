@@ -87,7 +87,9 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose } = 
   };
   const onKeydown = (e) => {
     if (!isTopmostModal(backdrop)) return;
-    if (e.key === 'Escape') requestClose();
+    // An Escape already spent inside the dialog (an open help panel) must
+    // not also close the dialog.
+    if (e.key === 'Escape' && !e.defaultPrevented) requestClose();
     trapTabFocus(e, backdrop);
   };
   // A click's target is the nearest common ancestor of its mousedown and
@@ -155,7 +157,7 @@ export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'O
     // The document listener only owns Escape and the cyclic Tab boundary.
     const onKey = (e) => {
       if (!isTopmostModal(backdrop)) return;
-      if (e.key === 'Escape') finish(false);
+      if (e.key === 'Escape' && !e.defaultPrevented) finish(false);
       trapTabFocus(e, backdrop);
     };
     let pointerDownOnBackdrop = false;

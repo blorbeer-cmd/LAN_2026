@@ -31,17 +31,20 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 - **Team formation** — the „Teams“ tab of the „Match“ area. The view first asks for game and mode: one shared `<select>` picks the
   game, followed by a `Modus` toggle (two `.btn`/`.btn-sm` buttons, `.btn-primary` marking the active
   one, `aria-pressed` conveying state beyond color) choosing between „Auslosung“ and „Captain Draft“.
-  Only the chosen mode's `.tournament-section-panel` renders below — the two workflows never compete
-  for space — while the shared game picker and the loaded history stay visible regardless of mode.
+  Only the chosen mode's form renders below, flat inside the same card (no nested panel and no
+  accent rail, because only one mode is ever visible) — the two workflows never compete for space —
+  while the shared game picker and the loaded history stay visible regardless of mode. The mode
+  toggle already names the open mode, so the form carries no visible repeated heading.
   Draw participants and draft participants are independent `.tournament-player-grid` checkbox
   selections; captains are then chosen only from the prepared draft roster. In Desktop mode these
   Match-specific player grids use three equal columns; Laptop and phone keep the existing responsive
-  one/two-column fallback. One tooltip beside
-  „Captain Draft“ explains the complete participant/captain/pick sequence; the Captains label has no
+  one/two-column fallback. One tooltip directly beside
+  the „Captain Draft“ toggle explains the complete participant/captain/pick sequence; the Captains label has no
   duplicate tooltip or empty-state instruction. `.captain-selection-group` keeps its label close to
   the associated player grid. Both selections use the standard checkbox-card state without an
-  additional selected-card highlight. The captain action stretches like the draw action and stays
-  labeled simply „Draft starten“ without repeating participant counts already visible in the
+  additional selected-card highlight. „Teams auslosen“ and „Draft starten“ are compact gradient buttons at the bottom
+  right; the lone „Sitznachbarn“ option carries no list-row hairline, so only the footer divider
+  separates it from the action. The captain action stays labeled simply „Draft starten“ without repeating participant counts already visible in the
   selections. The draw and draft participant grids each show a visible, named search field
   („Spieler suchen“) that filters rows without changing hidden selections; the draft field also
   filters the captain list, which has no search field of its own. A single bulk toggle selects all
@@ -63,11 +66,18 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   The title and accessible label retain the full term „Skill-Level“.
   Open draws and recorded results share one newest-first „Historie“ because they are two states of
   the same lineup. It starts collapsed through the shared collapsible-section component. Every
-  history card repeats its game name. A fresh draw appears under the heading „Neue Auslosung“.
+  history card repeats its game name. A fresh draw appears under the heading „Neue Auslosung“; a
+  finished Captain Draft becomes the fresh draw on every device the same way.
   The winning team carries the green „Win“ chip and an accessible group label, the losing teams
   are muted and a drawn result shows „Remis“. Card actions sit in the card header: an open draw
-  offers „+“ (the fresh draw's „+“ uses the primary gradient as the obvious next step), a recorded
-  draw offers „Rematch“ and a pencil. Recording and editing share one compact result dialog: one
+  offers a neutral „+“ for a single result and, rightmost, „Turnier erstellen“ (the primary
+  gradient on the fresh draw, neutral in Historie); a recorded draw offers „Rematch“ and a pencil;
+  a draw that became a tournament offers only a button named after its tournament that opens it.
+  „Turnier erstellen“ opens one compact dialog: Turnierformat, the group fields for „Gruppenphase +
+  K.O.“, one name field per team (a drafted team is prefilled as „Team <Captain>“, a drawn one as
+  „Team 1“ …), the options side by side and the optional lobby base name and password. The server
+  claims the draw in the same transaction that creates the tournament, so one lineup becomes either
+  a single result or a tournament, never both (`409` for the loser of a race). Recording and editing share one compact result dialog: one
   button per team plus „Unentschieden“ saves immediately, or „Mit Werten eintragen“ takes one value
   per team from which the winner (unique highest value) and the places follow. Editing updates the
   existing match instead of creating a duplicate result, and „Rematch“ opens the same dialog. The
@@ -316,25 +326,22 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   closed and retains its open state across live re-renders.
 - **Tournament overview** — the „Turniere“ tab in the „Match“ area, whose first/default tab is
   „Teams“; switching back to „Turniere“ from the tab row always returns to the
-  list rather than the tournament board that was last open. A tournament's own detail page keeps
-  the area tabs above it, titles itself with an `h2` and needs no „Zurück“ action; „Löschen“ sits
-  beside the title. The page never carries two `h1` headings. `.tournament-list-grid` shows at most two tournament cards per row;
+  list rather than the tournament board that was last open. Tournaments have no creation form of
+  their own: every tournament starts from a draw or Captain Draft on „Teams“ (see „Team
+  formation“), so the list's „Turnier anlegen“ action leads there and a legacy `#tournaments/new`
+  link opens the list. A tournament's own detail page keeps
+  the area tabs above it, titles itself with an `h2` and needs no „Zurück“ action; a compact neutral
+  „Löschen“ sits beside the title while its confirmation dialog keeps the danger meaning. The page never carries two `h1` headings. `.tournament-list-grid` shows at most two tournament cards per row;
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat
   cards and with the standard gap between them. Tournament cards show the progress of a running
   tournament („X/Y Partien“) and the winner of a completed one („Sieger: …“). The completed row
   uses the shared collapsible-section presentation with a vertically centered header, starts
-  collapsed and retains its open state across view re-renders. `.tournament-player-grid` keeps the player picker at two cards per row from `--bp-md`; phones
-  stack one card per row so checkbox, avatar, name and skill value stay readable inside each card.
-  Tournament creation places a directly labeled player search above that grid; it filters rows
-  without clearing hidden selections, and its single bulk toggle affects only visible search
-  results.
-  `.tournament-detail-stats` and `.tournament-team-grid` expose real progress and roster information
-  above a centered, locally scrollable bracket; team cards use at most two columns. The proposal
-  grid follows the same two-column cap and uses draggable `.tournament-drag-player` rows; touch and
-  phone layouts add a native team picker per row and keyboard arrows remain available. The create form separates
-  „Auslosung“ from „Modus“ through reusable bordered `.tournament-section-panel` sections with a
-  restrained accent rail instead of numbered badges. Tournament results use plain cards without
+  collapsed and retains its open state across view re-renders.
+  The detail page's meta line carries format, options, team and player counts and the decided
+  matches („4 Teams · 15 Spieler · 0/3 entschieden“) instead of separate counter tiles. Below it
+  follow „Aktive Lobbys“, the results and a collapsible „Teams“ card with its team count that
+  starts closed and keeps its open state; team cards use at most two columns. Tournament results use plain cards without
   accent rails: a knockout bracket card, stacked „Tabelle“ and „Spielplan“ cards for a league, and
   one card per group with its table and rounds plus a „K.O.-Runde“ card. Fixtures read like a
   scoreboard (home team right-aligned, result chip centered, away team left-aligned); winners are
@@ -343,17 +350,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   „weiter“ marker. Every result action sits in a fixed trailing slot („+“ open, pencil recorded)
   and opens one shared result dialog: two score fields, or one button per team plus
   „Unentschieden“ (not in knockout matches) that saves immediately. A decided final adds a
-  „Sieger“ box in the primary gradient beside the bracket. The standard `.section-title` introduces „Aktive Lobbys“ while
-  `.tournament-active-lobby-grid` presents up to two currently playable pairings per row; a single
-  active lobby spans the full row. Each
-  `.tournament-lobby-info` card names the phase, matchup and hosting team. A stored lobby base name
+  „Sieger“ box in the primary gradient beside the bracket. „Aktive Lobbys“ is one card with its
+  heading inside; each currently playable pairing is a flat hairline row with the matchup, a muted
+  line naming phase and hosting team („Halbfinale · Team 1 eröffnet“) and, on the right, the lobby
+  name and password as non-wrapping code chips with equal-width labels. A stored lobby base name
   receives a deterministic phase/round/match suffix, so parallel pairings always have distinct
   lobby names without mutable lobby assignments. League and group modes show only the earliest
   unfinished round; knockout modes show every open match whose two teams are known. Each credential
-  uses a centered label/value/action grid and provides Lucide's `copy` action with a full touch
-  target. Tournament details show no info tooltips.
-  A separate „Turnierstatus“ section groups the team, participant and decided-match counters so
-  they remain visually distinct from the lobby cards.
+  provides Lucide's `copy` action with a full touch target. Tournament details show no info
+  tooltips.
   Bracket matches keep a fixed height with an internal trailing action column. Tournament details
   show the full format configuration as plain text (for example „Liga · Hin- & Rückrunde ·
   Punktestand“). Tournament overview cards use the compact format names without explanatory

@@ -93,6 +93,11 @@ export const components = [
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"btn btn-sm${primaryTournament ? ' btn-primary' : ''}\"",
+        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
         "file": "public/js/feedback.js",
         "source": "class=\"btn btn-sm${selectedSentiment === s.value ? ' btn-primary' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
@@ -456,14 +461,19 @@ export const components = [
   {
     "id": "arrival-controls",
     "role": "standard-control",
-    "selector": ".arrival-note-input, .arrivals-sort-button",
+    "selector": ".arrival-note-input, .arrivals-sort-button, .player-detail-sort-button",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Native textarea rows and 32px sorting buttons.",
+    "purpose": "Native textarea rows and 32px sorting buttons (An- & Abreise and the Spieler-Details Bock/Skill table).",
     "dynamicUses": [
       {
         "file": "public/js/views/arrivals.js",
         "source": "class=\"arrivals-sort-button${isActive ? ' is-active' : ''}\"",
+        "reason": "Concrete arrival-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/playerDetail.js",
+        "source": "class=\"player-detail-sort-button${isActive ? ' is-active' : ''}\"",
         "reason": "Concrete arrival-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
     ]
@@ -689,11 +699,6 @@ export const components = [
         "file": "public/js/tournamentPresentation.js",
         "source": "class=\"${className}${decided ? '' : ' is-open'}\"",
         "reason": "Concrete result-actions caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/matchmaking.js",
-        "source": "class=\"tournament-fixture-action ${primaryRecord ? 'is-primary' : 'is-open'}\"",
-        "reason": "Concrete result-actions caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
     ]
   },
@@ -739,6 +744,26 @@ export const components = [
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "purpose": "Open, primary next-step and draw markers recolor their result host without changing its geometry.",
+    "control": false,
+    "properties": []
+  },
+  {
+    "id": "result-open-hosts",
+    "role": "composite-part",
+    "selector": ".bracket-match.is-open, .tournament-fixture-score.is-open",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Open bracket boxes and open fixture scores only recolor their host; the static open result action shares the marker class.",
+    "control": false,
+    "properties": []
+  },
+  {
+    "id": "poll-legend-open",
+    "role": "composite-part",
+    "selector": ".event-poll-legend-dot.is-open",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "The open-answer legend dot only recolors itself; it shares the open marker class with result actions.",
     "control": false,
     "properties": []
   },
@@ -1488,14 +1513,6 @@ export const permanentVariants = [
     "reason": "Noninteractive preview exactly mirrors the adjacent 32px field height."
   },
   {
-    "id": "tournament-label",
-    "role": "composite-part",
-    "selector": ".tournament-field-label",
-    "owner": "public/css/style.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Noninteractive field label occupies its sibling control line."
-  },
-  {
     "id": "team-move-picker",
     "role": "standard-control",
     "selector": ".team-move-control select",
@@ -2112,7 +2129,7 @@ export const permanentVariants = [
   {
     "id": "arrival-sort-glyph",
     "role": "composite-part",
-    "selector": ".arrivals-sort-button .ui-icon",
+    "selector": ".arrivals-sort-button .ui-icon, .player-detail-sort-button .ui-icon",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
@@ -2120,6 +2137,29 @@ export const permanentVariants = [
       "height"
     ],
     "reason": "Sort control owns its font-relative glyph."
+  },
+  {
+    "id": "poll-vote-cell-glyph",
+    "role": "composite-part",
+    "selector": ".event-poll-vote-cell .ui-icon",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width",
+      "height"
+    ],
+    "reason": "Answer symbols of the vote table keep one compact glyph size so every cell reads at the same weight."
+  },
+  {
+    "id": "draw-tournament-options",
+    "role": "composite-part",
+    "selector": ".draw-tournament-options > .check-row",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "padding-block"
+    ],
+    "reason": "Checkbox options share one wrapping row in the compact tournament dialog; the row gap replaces the list-row padding."
   },
   {
     "id": "battleship-miss-glyph",

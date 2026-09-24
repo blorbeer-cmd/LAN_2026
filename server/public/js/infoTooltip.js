@@ -66,10 +66,15 @@ function installGlobalListeners() {
   });
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || !activeTrigger) return;
+    // This Escape is spent on the help panel: a surrounding modal must not
+    // also treat it as "close the dialog" (see modal.js).
+    event.preventDefault();
     const trigger = activeTrigger;
     close(trigger);
     trigger.focus();
-  });
+    // Capture phase: runs before any modal's bubbling keydown listener,
+    // whichever was registered first.
+  }, true);
   window.addEventListener('resize', () => close());
   window.addEventListener(
     'scroll',

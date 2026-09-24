@@ -12,51 +12,100 @@ import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { icon } from '../icons.js';
 
+// Bock and Skill share one row per game instead of two stacked lists: a
+// person's profile reads as "what do they like and how good are they" at a
+// glance. Sorting starts on Bock (the order carries meaning here); games
+// without any value are left out.
+const SORT_LABELS = { name: 'Spiel', bock: 'Bock', skill: 'Skill' };
+
+function ratingTableRows(playerId) {
+  return state.games
+    .map((game) => ({
+      name: game.name,
+      bock: state.preferences.find((entry) => entry.player_id === playerId && entry.game_id === game.id)?.rating ?? null,
+      skill: state.skills.find((entry) => entry.player_id === playerId && entry.game_id === game.id)?.rating ?? null,
+    }))
+    .filter((row) => row.bock !== null || row.skill !== null);
+}
+
+function sortRows(rows, key, direction) {
+  const byName = (a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' });
+  return [...rows].sort((a, b) => {
+    if (key === 'name') return direction === 'asc' ? byName(a, b) : byName(b, a);
+    if (a[key] === null && b[key] === null) return byName(a, b);
+    if (a[key] === null) return 1;
+    if (b[key] === null) return -1;
+    const difference = a[key] - b[key] || byName(a, b);
+    return direction === 'asc' ? difference : -difference;
+  });
+}
+
+function sortButtonHtml(key, sort) {
+  const isActive = sort.key === key;
+  const directionLabel = sort.direction === 'asc' ? 'aufsteigend' : 'absteigend';
+  return `<button type="button" class="player-detail-sort-button${isActive ? ' is-active' : ''}" data-player-detail-sort="${key}"
+    aria-pressed="${isActive}" aria-label="${SORT_LABELS[key]}: ${isActive ? directionLabel : 'nicht sortiert'}">
+    <span>${SORT_LABELS[key]}</span>${isActive ? icon(sort.direction === 'asc' ? 'arrowUp' : 'arrowDown') : ''}
+  </button>`;
+}
+
 export function openPlayerDetail(playerId) {
   const player = playerById(playerId);
   if (!player) return;
 
-  const ratingRows = (kind) => state.games
-    .map((g) => {
-      const stored = kind === 'bock'
-        ? state.preferences.find((entry) => entry.player_id === playerId && entry.game_id === g.id)
-        : state.skills.find((entry) => entry.player_id === playerId && entry.game_id === g.id);
-      return `
-        <div class="skill-row">
-          <span class="row" style="gap:var(--space-2);">${escapeHtml(g.name)}</span>
-          <span class="skill-value">${stored?.rating ?? '–'}</span>
-        </div>`;
-    })
-    .join('');
+  const rows = ratingTableRows(playerId);
+  const sort = { key: 'bock', direction: 'desc' };
+  let bodyEl;
 
-  openModal(
-    player.name,
-    `
+  function render() {
+    const sorted = sortRows(rows, sort.key, sort.direction);
+    bodyEl.innerHTML = `
       <div class="stack">
-        <div class="row">
+        <div class="row player-detail-head">
           ${avatarHtml(player, 48)}
-          <div class="stack" style="gap:var(--space-1);">
-            <strong class="player-name">${escapeHtml(player.name)}</strong>
-            ${player.real_name ? `<span class="muted">${escapeHtml(player.real_name)}</span>` : ''}
+          <div class="stack" style="gap:var(--space-1);min-width:0;">
+            ${player.real_name ? `<span>${escapeHtml(player.real_name)}</span>` : ''}
+            <span class="muted">${rows.length ? `${rows.length} ${rows.length === 1 ? 'Spiel' : 'Spiele'} bewertet` : 'Noch nichts bewertet'}</span>
           </div>
         </div>
         ${
-          state.games.length > 0
-            ? `<details class="collapsible-section">
-                 <summary class="collapsible-section-header">
-                   <h2>Bock &amp; Skill</h2>
-                   <span class="collapsible-section-summary-end">
-                     <span class="badge badge-offline">${state.games.length}</span>
-                     <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
-                   </span>
-                 </summary>
-                 <div class="collapsible-section-content">
-                   <div class="section-title">Bock-o-Meter</div>${ratingRows('bock')}<div class="section-title">Skill-Ratings</div>${ratingRows('skill')}
-                 </div>
-               </details>`
+          rows.length
+            ? `<table class="player-detail-ratings">
+                 <colgroup><col /><col class="player-detail-rating-col" /><col class="player-detail-rating-col" /></colgroup>
+                 <thead><tr>
+                   <th scope="col">${sortButtonHtml('name', sort)}</th>
+                   <th scope="col">${sortButtonHtml('bock', sort)}</th>
+                   <th scope="col">${sortButtonHtml('skill', sort)}</th>
+                 </tr></thead>
+                 <tbody>${sorted
+                   .map((row) => `<tr>
+                     <th scope="row">${escapeHtml(row.name)}</th>
+                     <td>${row.bock ?? '<span class="muted">–</span>'}</td>
+                     <td>${row.skill ?? '<span class="muted">–</span>'}</td>
+                   </tr>`)
+                   .join('')}</tbody>
+               </table>`
             : ''
         }
-      </div>
-    `
-  );
+      </div>`;
+    bodyEl.querySelectorAll('[data-player-detail-sort]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const key = button.dataset.playerDetailSort;
+        if (sort.key === key) sort.direction = sort.direction === 'asc' ? 'desc' : 'asc';
+        else {
+          sort.key = key;
+          sort.direction = key === 'name' ? 'asc' : 'desc';
+        }
+        render();
+        bodyEl.querySelector(`[data-player-detail-sort="${key}"]`)?.focus();
+      });
+    });
+  }
+
+  openModal(player.name, '<div data-player-detail-body></div>', {
+    onMount: (el) => {
+      bodyEl = el.querySelector('[data-player-detail-body]');
+      render();
+    },
+  });
 }
