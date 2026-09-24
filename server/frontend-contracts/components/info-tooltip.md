@@ -142,8 +142,7 @@ existiert nicht: der Trigger bleibt bedienbar, gerade wenn das erklärte Control
 - Breit: `server/public/js/views/votes.js` (`h2.title-with-info` der laufenden Abstimmung).
 - Neben einem Control: `server/public/js/eventPresentation.js` („Übernahme bestätigen“) und
   `server/public/js/views/events.js` (Tracking starten/stoppen in `.action-menu-row`).
-- Warnvariante: `server/public/js/arcade/views/tetris.js` (eigene offene Lobby) und
-  `server/public/js/views/arrivals.js` (deaktiviertes „Mitfahren“).
+- Warnvariante: `server/public/js/arcade/views/tetris.js` (eigene offene Lobby).
 
 ## 10. Prüfungen und Abnahmebeispiele
 

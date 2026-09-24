@@ -136,8 +136,6 @@ steht im [Paket-5-Inventar](../evidence/package-5-baseline.tsv). Es gibt keine b
 
 - `registry:empty-state-hall-of-fame`: Hall-of-Fame result slot spans the result layout.
 
-- `registry:empty-state-arrivals`: Empty arrival collection occupies the carpool grid.
-
 - `registry:empty-state-notifications`: Shared empty/loading/error slot inside the notification panel.
 
 - `registry:empty-state-music`: Centered current-playback placeholder.

@@ -375,7 +375,7 @@ Die bestehenden Core-Owner prüfen zusätzlich bei 320×568, 390×844, 512×384,
 - ActionMenu-Trigger 31–33 px und Einträge mindestens 44×44 px.
 - Echte Admin-Einladungszeilen bei 320/390 px: Anzeigen/Widerrufen einzeilig bei 31–33 px
   vollständig innerhalb der Zeile; der tatsächliche View-Container darf nicht horizontal
-  überlaufen. Die kanonische Zurück-Navigation behält 4 px Icon-/Textabstand.
+  überlaufen.
 - Infoboard-Aktionsgruppen bleiben bei 390 px neben einem langen Titel innerhalb ihrer Zeile.
 - DataRowAction bei 320/319/319,75 px Innenbreite: volle zweite Aktionszeile, unverkleinertes
   Badge, vollständiger Name im DOM und Accessibility Tree, sichtbarer Tastaturfokus.
@@ -662,7 +662,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:desktop-nav-indicator`: Internal active navigation indicator preserves the whole navigation target.
 
-- `registry:arrival-action-width`: Carpool actions occupy the existing footer or free-seat action column.
+- `registry:arrival-header-action`: The carpool header action keeps one line while the long direction title wraps on phones.
 
 - `registry:event-context-search-field`: Compact event switcher reserves its integrated selector action.
 

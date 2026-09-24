@@ -266,7 +266,7 @@ they are next changed, and new work follows them right away.
    events and orders keep the same width as their siblings. Never let CSS auto-placement make that
    decision accidentally.
 3. **Use accent rails only to distinguish siblings.** Blue and pink left rails separate adjacent
-   workflows or datasets such as Anreise/Abreise or tournament-format/game counts. They are not
+   workflows or datasets such as tournament-format/game counts. They are not
    generic decoration and are omitted where card hierarchy already communicates the structure:
    never around a whole card, a toolbar or a results board. Main cards keep the standard hairline
    border; an accent frame is reserved for a real state such as a drag target or the current step.
@@ -338,11 +338,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Variants and status: [Controls](frontend-contracts/components/controls.md).
 - **Action menu** — Shared disclosure, geometry, focus, dismissal and caller boundaries follow the
   [ActionMenu contract](frontend-contracts/components/action-menu.md).
-- **Back navigation** — `backButtonHtml({ view, id, label })` in `backButton.js` renders every
-  compact view-level back action with Lucide's `chevronLeft` and the visible default label
-  „Zurück“. `view` creates normal route navigation; `id` supports a local sub-view handler. Do not
-  hand-roll the arrow, use Unicode chevrons or repeat the destination in the visible label when the
-  surrounding header already names it.
+- **No back buttons**: page headers carry no „Zurück“ action. The bottom navigation, the desktop
+  rail, area tabs and the browser history lead back. A sub-view without any other exit names its
+  exit as a compact header action instead (Arcade spectating: „Beenden“).
 - **Empty state** — Safe text, structured content, illustration, recovery and Legacy boundaries
   follow the [EmptyState contract](frontend-contracts/components/empty-state.md).
 - **Primary collection** — `.primary-collection-section` gives the current collection of Events,
@@ -353,8 +351,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the established responsive tab layout. Product-specific areas, routes and labels live in
   [Product rules](../docs/product/README.md).
 - **Secondary page header** — `.more-subpage-header` with `.more-subpage-title-row` is the shared
-  header for destinations reached through „Mehr“ or Admin. It keeps the „Zurück“ action, page
-  title and an optional trailing action on one stable, compact row. Untabbed destinations share
+  header for destinations reached through „Mehr“ or Admin. It keeps the page title and an optional
+  trailing action on one stable, compact row. Untabbed destinations share
   the same first-card top edge as the untabbed main areas. On phone and laptop layouts,
   `.more-subpage-header--tabs` reserves a lower row for LAN Orga's tabs; at phone widths that
   reservation covers the wrapped two-row tab layout. Desktop Orga uses the opened page's title

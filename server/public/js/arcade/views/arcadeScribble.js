@@ -26,7 +26,6 @@ import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcade
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
-import { backButtonHtml } from '../../backButton.js';
 
 const SWATCHES = [
   '#1a1a1a',
@@ -1039,7 +1038,7 @@ export function renderScribbleRoom(container) {
     // A direct or expired-match link lands here without a running match;
     // show the same named lobby area as opening Scribble from Arcade instead
     // of a dead end (see Pong/Snake/Battleship's identical fallback).
-    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Scribble</h1>${renderScribbleLobbyCard()}`;
+    container.innerHTML = `<h1 class="view-title">Scribble</h1>${renderScribbleLobbyCard()}`;
     wireScribbleLobbyCard(container);
     return;
   }

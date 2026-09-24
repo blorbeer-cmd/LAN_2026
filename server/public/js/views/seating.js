@@ -13,7 +13,6 @@ import { showToast } from '../toast.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { backButtonHtml } from '../backButton.js';
 
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const LABELS = { top: 'Oben', right: 'Rechts', bottom: 'Unten', left: 'Links' };
@@ -296,7 +295,6 @@ export function renderSeating(container, ctx) {
     container.innerHTML = `
       <div class="more-subpage-header">
         <div class="more-subpage-title-row">
-          ${backButtonHtml({ view: 'more' })}
           <h1 class="view-title">Sitzplan</h1>
         </div>
       </div>
@@ -311,7 +309,6 @@ export function renderSeating(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'admin' })}
         <h1 class="view-title title-with-info">
           <span>Sitzplan</span>
           ${infoTooltipHtml('seating-monitors-help', 'Sitzplan', 'Sitznachbarn werden automatisch als sichtbare Monitore eingetragen.')}

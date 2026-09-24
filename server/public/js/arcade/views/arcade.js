@@ -31,7 +31,6 @@ import { infoTooltipHtml, wireInfoTooltips } from '../../infoTooltip.js';
 import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 import { searchSelectHtml, wireSearchSelect } from '../../searchSelect.js';
 import { emptyStateHtml } from '../../emptyState.js';
-import { backButtonHtml } from '../../backButton.js';
 import { localRouteKey } from '../../appRoute.js';
 import { createDeferredInteractiveRender } from '../../deferredInteractiveRender.js';
 
@@ -695,7 +694,6 @@ export function renderArcade(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title">Arcade</h1>
       </div>
     </div>
@@ -774,7 +772,7 @@ export function renderQuizRoom(container, ctx) {
     // A direct or expired-match link lands here without a running match;
     // show the same named lobby area as opening Gaming-Quiz from Arcade
     // instead of a dead end (see Pong/Snake/Battleship's identical fallback).
-    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Gaming-Quiz</h1>${renderQuizLobbyCard()}`;
+    container.innerHTML = `<h1 class="view-title">Gaming-Quiz</h1>${renderQuizLobbyCard()}`;
     wireQuizLobbyCard(container, ctx);
     return;
   }

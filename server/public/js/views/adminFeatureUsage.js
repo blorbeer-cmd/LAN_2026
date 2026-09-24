@@ -7,7 +7,6 @@ import { currentPlayerHasAdminRole } from '../adminAccess.js';
 import { eventSelectOptions } from '../eventStatus.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
-import { backButtonHtml } from '../backButton.js';
 
 const FEATURE_USAGE_AREAS = ['Wettkampf', 'Orga', 'Sonstiges'];
 const featureUsageFilters = { eventId: '' };
@@ -92,7 +91,6 @@ function renderAccessDenied(container) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'admin' })}
         <h1 class="view-title">Nutzungsauswertung</h1>
       </div>
     </div>
@@ -109,7 +107,6 @@ export function renderAdminFeatureUsage(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row more-subpage-title-row--stack-action">
-        ${backButtonHtml({ view: 'admin' })}
         <h1 class="view-title title-with-info">
           <span>Nutzungsauswertung</span>
           ${infoTooltipHtml('admin-feature-usage-help', 'Nutzungsauswertung', FEATURE_USAGE_HELP)}

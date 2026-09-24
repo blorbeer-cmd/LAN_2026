@@ -6,7 +6,6 @@ import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { confirmDialog } from '../modal.js';
-import { backButtonHtml } from '../backButton.js';
 import {
   connectLocalSpotifyPlayer,
   localSpotifyPlaybackStatus,
@@ -765,7 +764,6 @@ export function renderMusic(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title title-with-info" data-music-view-root>
           <span>Jam</span>
           ${infoTooltipHtml('music-help', 'Jam', JAM_HELP)}

@@ -26,7 +26,6 @@ import {
   wirePendingInvitationActions,
 } from './events.js';
 import { eventHasFeature } from '../eventFeatures.js';
-import { backButtonHtml } from '../backButton.js';
 import { layoutModeForPlayer, LAYOUT_MODES, setLayoutModeForPlayer } from '../layoutMode.js';
 
 // Tracking is the one feature that runs on a private PC, so its labels alone
@@ -334,7 +333,6 @@ export function renderProfile(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title" id="profile-view-title" tabindex="-1">Mein Profil</h1>
         <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
       </div>
