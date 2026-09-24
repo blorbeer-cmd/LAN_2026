@@ -24,6 +24,6 @@ test('matchesSelectionSearch rejects non-matching entries', () => {
 test('selectionSearchHtml renders an always-visible named search field', () => {
   const html = selectionSearchHtml('players-search', 'Alex');
   assert.match(html, /class="selection-search is-open"/);
-  assert.match(html, /id="players-search"[^>]*value="Alex"[^>]*placeholder="Spieler suchen…"[^>]*aria-label="Spieler suchen"/);
+  assert.match(html, /id="players-search"[^>]*value="Alex"[^>]*placeholder="Spieler suchen"[^>]*aria-label="Spieler suchen"/);
   assert.doesNotMatch(html, /selection-search-trigger|hidden/);
 });

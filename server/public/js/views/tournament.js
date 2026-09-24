@@ -394,7 +394,7 @@ function renderCreateForm(el, ctx) {
           <h3 id="tournament-draw-step-title">Auslosung</h3>
         </div>
         <label class="field-label is-required" for="tourn-game-search">Spiel auswählen</label>
-        ${searchSelectHtml('tourn-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
+        ${searchSelectHtml('tourn-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen' })}
         ${rosterPickerHtml({
           id: 'tourn-create-roster',
           players: state.players,
@@ -484,13 +484,13 @@ function renderCreateForm(el, ctx) {
                   'Aus dem Basisnamen wird für jede gleichzeitig spielbare Paarung ein eindeutiger Lobbyname erzeugt. Das zuerst genannte Team eröffnet die Lobby.'
                 )}
             </div>
-            <input type="text" id="tourn-lobby-name" maxlength="60" value="${escapeHtml(createLobbyName)}" placeholder="z. B. LAN26" />
+            <input type="text" id="tourn-lobby-name" maxlength="60" value="${escapeHtml(createLobbyName)}" placeholder="LAN26" />
           </div>
           <div>
             <div class="tournament-field-label">
               <label for="tourn-lobby-password" class="field-label">Lobby-Passwort</label>
             </div>
-            <input type="text" id="tourn-lobby-password" maxlength="60" value="${escapeHtml(createLobbyPassword)}" placeholder="z. B. zocken123" />
+            <input type="text" id="tourn-lobby-password" maxlength="60" value="${escapeHtml(createLobbyPassword)}" placeholder="zocken123" />
           </div>
         </div>
         <button type="button" class="btn btn-primary btn-block" id="tourn-submit" ${createProposedTeams ? '' : 'disabled'}>Turnier erstellen</button>

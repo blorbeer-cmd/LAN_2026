@@ -669,8 +669,7 @@ textarea {
      focused response button is replaced. */
   overflow-anchor: none;
 }
-.event-poll-round-header,
-.event-poll-option-header {
+.event-poll-round-header {
   align-items: flex-start;
 }
 .event-poll-card-title strong {
@@ -720,8 +719,7 @@ textarea {
     background: var(--bg-elevated-2);
   }
 }
-.event-poll-card-title,
-.event-poll-card-meta {
+.event-poll-card-title {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -731,10 +729,15 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.event-poll-card-meta {
-  align-items: flex-end;
-  text-align: right;
-  min-width: 9rem;
+/* One compact meta line: author, round, answers, deadline and, once ended,
+   the winning option. Empty values are left out by the renderer. */
+.event-poll-card-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  font-size: var(--font-size-sm);
 }
 .event-poll-card-side {
   display: flex;
@@ -743,12 +746,22 @@ textarea {
   flex: 0 0 auto;
   gap: var(--space-2);
 }
-.event-poll-best-result {
-  max-width: 15rem;
-  overflow: hidden;
-  color: var(--accent);
-  font-size: var(--font-size-xs);
+/* The side action matches the bordered "Aktion" menu trigger beside it. */
+.event-poll-card-side > .btn,
+.event-poll-history-round > .btn {
+  border: 1px solid var(--border);
+}
+.event-poll-best-result,
+.event-poll-history-result {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
   font-weight: var(--font-weight-medium);
+}
+.event-poll-best-result > span:last-child,
+.event-poll-history-result > span:last-child {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -773,8 +786,9 @@ textarea {
   z-index: 12;
   display: flex;
   width: max-content;
+  min-width: 11rem;
   max-width: calc(100vw - var(--space-8));
-  gap: var(--space-1);
+  gap: 0;
   flex-direction: column;
   padding: var(--space-1);
   border: 1px solid var(--border);
@@ -782,14 +796,35 @@ textarea {
   background: var(--bg-elevated);
   box-shadow: var(--shadow);
 }
-/* Menu entries compose the standard button variants with a full touch target. */
+/* Menu entries compose the standard button variants with a full touch target.
+   They are flat list rows: no box per entry, a hover surface only, and the
+   destructive entry keeps its red text behind a hairline instead of a red box. */
 .action-menu-panel .btn {
   min-height: var(--tap-target-size);
   min-width: var(--tap-target-size);
   justify-content: flex-start;
+  background: transparent;
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+@media (hover: hover) {
+  .action-menu-panel .btn:not(:disabled):hover {
+    background: var(--bg-elevated-2);
+  }
+  .action-menu-panel .btn-danger:not(:disabled):hover {
+    background: var(--danger-bg);
+  }
+}
+.action-menu-panel .btn-danger {
+  position: relative;
+  margin-top: var(--space-1);
+}
+.action-menu-panel .btn-danger::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--space-1) * -1) 0 auto;
+  border-top: 1px solid var(--border);
 }
 .action-menu-row {
   display: flex;
@@ -819,32 +854,137 @@ textarea {
   margin: 0;
 }
 .event-poll-options {
-  gap: var(--space-2);
+  gap: 0;
 }
+/* Options are flat rows separated by hairlines, not boxes inside the card. */
+/* Fixed columns keep every bar the same length: name and note, result bar,
+   voter avatars, answer buttons. Ended rounds simply have no last column. */
 .event-poll-option {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) 7rem auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.event-poll-option:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.event-poll-option:last-child {
+  padding-bottom: 0;
+}
+.event-poll-option-note {
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+.event-poll-option-info {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
+  min-width: 0;
 }
-.event-poll-option-badges {
+.event-poll-result {
+  /* The legend hangs below the bar. An empty first row of the same flexible
+     height mirrors it, so the bar stays on the row's middle line, level with
+     the avatars and answer buttons, even when the legend wraps. */
+  display: grid;
+  grid-template-rows: 1fr auto 1fr;
+  row-gap: var(--space-1);
+  min-width: 0;
+  margin-inline-end: var(--space-4);
+}
+.event-poll-result::before {
+  content: '';
+}
+.event-poll-bar {
+  display: block;
+  height: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--border);
+}
+.event-poll-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+}
+.event-poll-bar-fill.is-choice {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+.event-poll-legend-item {
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--space-1);
-  min-width: 7.5rem;
+}
+.event-poll-legend-dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+}
+.event-poll-legend-dot.is-can {
+  background: var(--accent);
+}
+.event-poll-legend-dot.is-if-needed {
+  background: var(--accent-2);
+}
+.event-poll-legend-dot.is-cannot {
+  background: var(--accent-3);
+}
+.event-poll-legend-dot.is-open {
+  background: var(--border);
+}
+.event-poll-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.event-poll-tag {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--control-line-height);
+}
+.event-poll-answer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+.event-poll-answer-chip svg {
+  width: var(--space-3);
+  height: var(--space-3);
+}
+.event-poll-answer-chip.is-missing {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: transparent;
+  color: var(--accent);
+}
+.event-poll-answer-inline {
+  display: none;
+}
+.event-poll-save-row.event-poll-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+}
+/* Its own flex row, not the shared `.row`: that 12px gap would push a
+   following badge visibly away from the voter avatars. */
+/* Avatars start at the column's left edge, so a trailing "+N" never shifts
+   them against the rows above and below. */
+.event-poll-option-badges {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-1);
   min-height: 24px;
 }
-/* No rule of its own: the renderer gives this row both `row-between` and
-   `event-poll-option-header`, and `.row-between` is declared later in this file
-   at the same specificity. Display, columns and gap set here would be dead
-   declarations, so the row is a flex row and everything it needs beyond
-   `.row-between` lives in the narrow-viewport block further down. */
-/* No flex-wrap: a long, user-entered option title used to push the help
-   trigger onto its own line below the text. The title wraps inside its own
-   box instead, so the trigger keeps its place beside it. */
 .event-poll-option-title-row {
   display: inline-flex;
   align-items: center;
@@ -861,16 +1001,13 @@ textarea {
 .event-poll-option-link {
   flex: none;
 }
-.event-poll-option-response-row {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
 .event-poll-counts {
-  font-size: var(--font-size-sm);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--control-line-height);
 }
 /* Voter avatars beside their option. They carry the same identities the vote
    dialog lists, compressed into the option's existing title row so a visible
@@ -880,17 +1017,11 @@ textarea {
   padding-inline: 0;
   padding-block: 0;
   background: transparent;
-  justify-content: flex-end;
+  justify-content: flex-start;
   /* The control keeps its full 32px target; only its outer box gives way, so
      the avatars ride inside the badge line's 24px instead of making every
      option row with voters taller than the ones without. */
   margin-block: calc(var(--space-1) * -1);
-}
-/* Keep the same outer inset when no recommendation or status badge follows
-   the stack. A following badge already supplies that inset through the row's
-   trailing content and shared gap. */
-.btn.event-poll-voter-stack:last-child {
-  margin-inline-end: var(--space-3);
 }
 .event-poll-voter-stack-avatars {
   display: inline-flex;
@@ -914,8 +1045,21 @@ textarea {
   max-width: 100%;
   flex-wrap: wrap;
 }
-.event-poll-response-toolbar .btn:not(.btn-primary) {
+.event-poll-response-toolbar .btn {
   background: var(--bg-elevated);
+}
+/* Answer buttons of one option share one width, so the chosen outline never
+   makes a row look uneven. */
+.event-poll-option > .event-poll-response-toolbar:not(.event-poll-rating-toolbar) {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+/* The chosen answer gets the blue outline of an open result action; the
+   gradient stays reserved for the one save action below the options. */
+.event-poll-response-toolbar .btn.is-selected {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
 }
 .event-poll-response-toolbar .btn:not(.btn-square) {
   min-width: var(--tap-target-size);
@@ -926,41 +1070,48 @@ textarea {
   margin-left: auto;
 }
 .event-poll-choice-control .selection-toolbar .event-poll-choice-btn {
+  /* One width for "Wählen" and "Ausgewählt", so the bar beside it keeps its
+     length in every row. */
+  min-width: calc(var(--space-8) * 2);
+  justify-content: center;
   height: auto;
   padding: var(--space-1) var(--space-2);
   font-size: var(--font-size-xs);
 }
-.event-poll-form-option-details > summary {
-  color: var(--text-muted);
-  cursor: pointer;
-}
 .event-poll-save-row {
   justify-content: flex-end;
 }
-.event-poll-result-title {
-  margin: 0;
-}
-.event-poll-edit-mode {
-  gap: var(--space-1);
+.event-poll-history > .collapsible-section-header {
+  align-items: center;
 }
 .event-poll-history-round {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
 }
-.event-poll-history-result {
-  color: var(--accent);
-  font-weight: var(--font-weight-medium);
+.event-poll-history-round:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
-.event-poll-history-details > summary {
+.event-poll-history-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+  font-size: var(--font-size-sm);
+}
+.event-poll-history-meta {
   color: var(--text-muted);
-  cursor: pointer;
-}
-.event-poll-history-details > .event-poll-options {
-  padding-top: var(--space-2);
 }
 .event-poll-ended-history > .collapsible-section-content {
   padding-top: 0;
+}
+.event-poll-vote-option-name {
+  gap: var(--space-2);
 }
 .event-poll-vote-details {
   gap: var(--space-3);
@@ -993,48 +1144,61 @@ textarea {
   flex: none;
   font-size: var(--font-size-xs);
 }
-.event-poll-form-option {
+.event-poll-note-input {
+  field-sizing: content;
+  max-height: calc(var(--control-height) * 4);
+}
+.event-poll-form-option-list {
+  gap: var(--space-2);
+}
+.event-poll-form-option-main {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
-.event-poll-form-option:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-.event-poll-form-option > .row-between {
-  align-items: center;
-}
-.event-poll-form-option-label {
-  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
 }
-.event-poll-form-option-label .field-label {
-  margin-bottom: 0;
+.event-poll-form-option-main > [data-poll-option-input] {
+  flex: 1 1 auto;
+  min-width: 0;
 }
-.event-poll-form-option-details > summary {
-  font-size: var(--font-size-sm);
+.event-poll-option-extra-toggle[aria-expanded='true'] {
+  color: var(--accent);
 }
 .event-poll-option-extra-fields {
   margin-top: var(--space-2);
 }
-.event-poll-option-active {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--control-height);
-  cursor: pointer;
-}
-.poll-option-switch:checked + .event-poll-option-disabled {
-  display: none;
-}
 .event-poll-form-option:has(.poll-option-switch:not(:checked)) [data-poll-option-input] {
   color: var(--text-muted);
   text-decoration: line-through;
+}
+/* Paired fields keep their labels on one line height, with or without an
+   info trigger, so both inputs start on the same edge. */
+.event-poll-form-pair > div > .field-label:first-child,
+.event-poll-form-pair > div > .title-with-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-height);
+  margin-bottom: var(--space-1);
+}
+.event-poll-form-pair > div > .title-with-info > .field-label {
+  margin-bottom: 0;
+}
+.event-poll-form-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-5);
+}
+.event-poll-flag {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+}
+.event-poll-flag input[type='checkbox'] {
+  width: var(--space-5);
+  height: var(--space-5);
+  margin: 0;
+  accent-color: var(--accent);
 }
 .poll-option-switch {
   appearance: none;
@@ -1071,10 +1235,6 @@ textarea {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.event-poll-max-field {
-  grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
-  align-items: center;
-}
 @media (max-width: 639px) { /* --bp-md */
   .event-poll-card-header {
     flex-wrap: wrap;
@@ -1084,46 +1244,56 @@ textarea {
     flex-basis: 100%;
     grid-template-columns: auto minmax(0, 1fr);
   }
-  /* Status, response count and the "Aktion" menu move to their own row
-     instead of squeezing next to the title — otherwise all of that had to
-     share one cramped line with the toggle button on a phone. */
+  /* The compact header actions move below the title on a phone, aligned
+     right, instead of squeezing the title into a narrow column. */
   .event-poll-card-side {
     flex: 1 1 100%;
-    align-self: stretch;
-    align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
   }
-  .event-poll-card-meta {
-    min-width: 0;
-    align-items: flex-start;
-    text-align: left;
+  /* Phone: name and avatars share the first line; bar, counts and the
+     answer buttons use the full width below. The answer status moves into
+     the card's meta line. */
+  .event-poll-answer-side {
+    display: none;
   }
-  .event-poll-best-result {
-    max-width: 8rem;
+  .event-poll-answer-inline {
+    display: inline-flex;
   }
-  .event-poll-max-field {
-    grid-template-columns: minmax(0, 1fr);
+  .event-poll-option {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2);
   }
-  .event-poll-option-extra-fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  /* The badge moves to its own row below --bp-md as soon as the title needs
-     that width. Sharing the row unconditionally left the title about 80px on a
-     320px phone, and `overflow-wrap: anywhere` then broke a long option name
-     almost letter by letter — 12 lines where the same name needs 7. The row is
-     a flex row — the later `.row-between` wins over `.event-poll-option-header`
-     — so the badge wraps through flex-wrap instead of a grid column, and only
-     when the untruncated title no longer fits beside it: a short option name
-     keeps badge and title on one line and stays as compact as before. The help
-     trigger stays beside the title either way. */
-  .event-poll-option-header {
-    flex-wrap: wrap;
+  .event-poll-option-info {
+    grid-column: 1;
+    grid-row: 1;
   }
   .event-poll-option-badges {
-    min-width: 0;
-    justify-content: flex-start;
+    grid-column: 2;
+    grid-row: 1;
   }
-  .event-poll-vote-person {
+  .event-poll-result {
+    grid-template-rows: auto;
+    margin-inline-end: 0;
+  }
+  .event-poll-result::before {
+    display: none;
+  }
+  .event-poll-option-badges,
+  .btn.event-poll-voter-stack {
+    justify-content: flex-end;
+  }
+  .event-poll-result,
+  .event-poll-option > .event-poll-response-toolbar,
+  .event-poll-option > .event-poll-choice-control {
+    grid-column: 1 / -1;
+  }
+  .event-poll-option > .event-poll-response-toolbar,
+  .event-poll-option > .event-poll-choice-control,
+  .event-poll-choice-control .selection-toolbar,
+  .event-poll-choice-control .selection-toolbar .event-poll-choice-btn {
+    width: 100%;
+  }
+  .event-poll-vote-person.row-between {
     align-items: flex-start;
     flex-direction: column;
     gap: 0;
@@ -1710,6 +1880,12 @@ textarea {
 textarea {
   font-family: inherit;
   resize: vertical;
+}
+/* Placeholders show an example or a format, never a value. Italic keeps them
+   visibly apart from real input in every field. */
+input::placeholder,
+textarea::placeholder {
+  font-style: italic;
 }
 
 /* Focus: accent ring on fields, visible keyboard-focus outline everywhere
@@ -2999,12 +3175,13 @@ button.draft-pool-player {
 
 /* A date, 44px calendar action and time cannot stay legible in the narrow
    half of a paired form. React to the component's own width (not only the
-   viewport) and give the date row the full available width. */
+   viewport) and give the date row the full available width. A date-only
+   field has no time input and keeps its clear action on the same line. */
 @container (max-width: 280px) {
-  .dt-inputs {
+  .dt-field:not([data-dt-date-only='true']) .dt-inputs {
     flex-wrap: wrap;
   }
-  .dt-date-control {
+  .dt-field:not([data-dt-date-only='true']) .dt-date-control {
     flex-basis: 100%;
   }
 }

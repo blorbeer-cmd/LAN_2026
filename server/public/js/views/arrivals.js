@@ -106,7 +106,7 @@ function renderMyForm(myId, draft) {
         </div>
         <div>
           <label for="arrival-note" class="field-label">Notiz</label>
-          <textarea class="arrival-note-input" id="arrival-note" maxlength="240" rows="1" ${myId ? '' : 'disabled'}>${escapeHtml(note)}</textarea>
+          <textarea class="arrival-note-input" id="arrival-note" maxlength="240" rows="1" placeholder="Komme erst gegen 20 Uhr" ${myId ? '' : 'disabled'}>${escapeHtml(note)}</textarea>
         </div>
         <button type="submit" class="btn btn-primary btn-block" ${myId ? '' : 'disabled'}>Speichern</button>
       </form>
@@ -378,10 +378,10 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
     `
       <form id="carpool-form" class="stack">
         <label for="carpool-label" class="field-label is-required">Bezeichnung</label>
-        <input type="text" id="carpool-label" maxlength="120" required autofocus placeholder="z.B. Auto Tim" value="${escapeHtml(existing?.label ?? '')}" />
+        <input type="text" id="carpool-label" maxlength="120" required autofocus placeholder="Auto Tim" value="${escapeHtml(existing?.label ?? '')}" />
         <div>
           <label for="carpool-location" class="field-label">Von wo</label>
-          <input type="text" id="carpool-location" maxlength="120" placeholder="z.B. Hamburg" value="${escapeHtml(existing?.startLocation ?? '')}" />
+          <input type="text" id="carpool-location" maxlength="120" placeholder="Hamburg" value="${escapeHtml(existing?.startLocation ?? '')}" />
         </div>
         <div class="field-row">
           <div>

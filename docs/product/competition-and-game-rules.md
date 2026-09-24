@@ -43,7 +43,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   additional selected-card highlight. The captain action stretches like the draw action and stays
   labeled simply „Draft starten“ without repeating participant counts already visible in the
   selections. The draw and draft participant grids each show a visible, named search field
-  („Spieler suchen…“) that filters rows without changing hidden selections; the draft field also
+  („Spieler suchen“) that filters rows without changing hidden selections; the draft field also
   filters the captain list, which has no search field of its own. A single bulk toggle selects all
   visible rows, or deselects them when every visible row is already selected. Switching modes keeps both selections and search
   terms intact, so toggling back and forth loses no work.
@@ -290,7 +290,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   The Top 10 form two ordered five-item columns from `--bp-md`, while phones keep one continuous
   list. Game rows remain one
   column on phones and two from `--bp-md`, with the same bordered card treatment at both sizes.
-  Vote shows no info tooltips. Title, info and the game search („Spiel suchen…“) with the bulk toggle
+  Vote shows no info tooltips. Title, info and the game search („Spiel suchen“) with the bulk toggle
   share one row of equal-width parts from `--bp-md` and stack on phones; title and info have the
   same control height. „Starten“ is a compact primary action in the new-round card header, an open
   round offers compact neutral „Beenden“ and „Abbrechen“ in its header and a right-aligned submit

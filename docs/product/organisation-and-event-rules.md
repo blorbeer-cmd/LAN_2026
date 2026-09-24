@@ -147,15 +147,18 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   voting all require confirmed participation in that event; being Owner/Admin or merely invited
   never bypasses this boundary. Every confirmed participant may start a poll, while the creator of
   that poll manages its deadline, reminders and rounds. The create dialog uses labelled fields,
-  repeatable free-text option rows and four explicit response modes: per-option „Passt / Wenn nötig
-  / Passt nicht / Offen“, exactly one choice, multiple choices with an optional maximum, or a
+  repeatable free-text option rows and four explicit response modes: per-option „Passt / Notfalls
+  / Nein“ with unanswered options counted as „offen“, exactly one choice, multiple choices with an optional maximum, or a
   per-option rating from 1 to 5. It never exposes
   a participant picker because the accepted event roster is the single source of truth.
   The tab adds no own page heading or explanatory subtitle below the Orga tabs because the active
   event is already visible in the top-right workspace switcher. Its compact „Umfrage starten“
   action has no decorative plus sign. The create dialog uses ordinary global text fields, one native
-  select for the four response modes (per-option feasibility, single choice, multiple choice and
-  per-option 1–5 rating), and contextual info beside response mode and deadline. Every free option
+  select for the four response modes („Jede Option bewerten“, „Einzelauswahl“, „Mehrfachauswahl“,
+  „Bewertung 1 bis 5“) paired with the deadline in one row, and contextual info only beside the
+  deadline and the two round settings. The description starts as one line and grows with its text.
+  Each option is one compact row with its name, a link icon that opens the note and link fields, the
+  active switch and a remove action; the submit sits right-aligned at the dialog's end. Every free option
   may additionally carry a short note and a validated HTTP-/HTTPS-link. A poll can be marked
   anonymous in the same dialog; this permanently suppresses voter-to-answer mappings. The same
   dialog also offers „Zwischenstand verbergen“, preselected for every response mode including the
@@ -163,14 +166,19 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   option and the voters, and everyone else sees their own answer alone. The setting belongs to the
   round and is restated, not edited, in „Umfrage bearbeiten“; a follow-up round starts from the
   previous round's choice.
-  Each poll is one collapsible card. Its current round and response progress stay together; the
-  creator's compact „Bearbeiten“, „Erinnerung versenden (N)“, „Beenden“ and „Löschen“
-  actions remain in the card header while collapsed. They share one „Aktion“ menu; opening one
+  Each poll is one collapsible card. Its header shows the title and one compact meta line (creator,
+  the round from round 2 on, answered count and, while open, the deadline; an ended poll adds its
+  winning option with the green „Win“ chip). An open round shows the viewer's answer state as
+  „Deine Antwort fehlt“ or „Beantwortet“; rounds still waiting for the viewer's answer come first
+  and start expanded. The creator's compact „Beenden“ (open) or „Neue Runde“ (ended) is a header
+  button, while „Stimmen ansehen“, „Bearbeiten“, „Erinnern (N)“, „Wieder öffnen“ and „Löschen“
+  remain in the card header while collapsed and share one „Aktion“ menu; opening one
   poll's menu closes every other poll menu, clicking outside or pressing Escape closes it, and its
   card is raised above later siblings while the menu is open. Earlier rounds live in a nested,
-  initially collapsed history and show their best result, start time, creator and end time before
-  the detailed options. „Offen“ is both an explicit way to clear a per-option feasibility rating and
-  the resulting incomplete-response count. Repeated reminders reuse one stable notification-center
+  initially collapsed history with one compact row per round (round, end date, answered count and
+  winning option) and a „Details“ button that opens the round's result dialog. Ended polls collect
+  in the page's collapsible „Historie“. Choosing the current feasibility answer again clears it
+  back to „offen“, which is also the incomplete-response count. Repeated reminders reuse one stable notification-center
   entry per poll and recipient, moving it to the top; automatic sends run 48 hours and 2 hours before
   the deadline. While a round is open, its creator can edit title, description, deadline, option
   notes and links, add options, remove options or disable them. Removing an option
@@ -179,29 +187,34 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   a single or multiple choice vote; they cannot receive new answers or win the
   recommendation. Changed option notes carry a visible
   „Bearbeitet“ marker directly beside the option title in the poll view, but not in
-  the edit dialog. Every option starts active; the unlabeled visual switch beside
-  its option number can disable and later enable it again. In the edit dialog,
-  a disabled option shows „Deaktiviert“ beside the switch and a struck-through
-  option name; both disappear immediately when enabled again. The switch's accessible
+  the edit dialog. Every option starts active; the unlabeled visual switch in
+  its option row can disable and later enable it again. In the edit dialog,
+  a disabled option shows a struck-through option name that returns to normal
+  immediately when enabled again. The switch's accessible
   name identifies the option. Existing votes remain visible, while
   inactive options no longer show an unanswered count. A new round only copies active options.
   Adding options informs everyone who had already completed the round and makes those responses
   incomplete until the added options have been answered. Removing or disabling a chosen option
-  also informs voters whose response thereby became incomplete. Option rows keep the title with a note
-  info-tooltip and an icon-only link immediately beside it, counts and compact response controls
-  within a shallow two-row layout. Single- and multiple-choice controls say „Wählen“; their
-  „Meiste Stimmen“ badge stays on the same title line as the option name. A non-anonymous round
-  shows the voters of an option as up to four overlapping avatars on that same title line, followed
-  by the number of remaining voters; a rating round pictures everyone who rated the option, the
+  also informs voters whose response thereby became incomplete. Option rows are flat rows with fixed columns:
+  the title with an icon-only link and its note as a muted line below, a result bar with a legend of
+  the counts, the voter avatars and the response controls. The bar is a soft brand gradient on a
+  grey track (Passt blue, Notfalls violet and Nein pink for per-option ratings; blue to violet for
+  choices and the 1 to 5 average), and bar, avatars and controls share one middle line. The chosen
+  answer is outlined in the accent color; single- and multiple-choice controls say „Wählen“ or
+  „Ausgewählt“, and „Speichern“ sits in the round's footer beside the response progress. An ended
+  round lists its options by result and marks the winner with the green „Win“ chip; running rounds
+  name no leader. A non-anonymous round shows the voters of an option as up to four overlapping
+  avatars, left-aligned in their column, followed by the number of remaining voters; a rating round pictures everyone who rated the option, the
   other modes picture the people the option won over. The avatars open the same „Stimmen“ dialog as
   the poll's own action, which lists every answer group with avatar, name and response timestamp in
   one vertically aligned voter row. The server decides who receives those identities: an anonymous
   poll never exposes them, a round with a hidden interim result exposes them and its counts to its
-  managers while it runs, and ending the round publishes both to every participant. A round that
-  withholds its interim result says so once in its header instead of repeating it per option, and
+  managers while it runs, and ending the round publishes both to every participant. The round's
+  response mode and settings appear once as small tags above the options; a round that withholds its
+  interim result says so there instead of repeating it per option, and
   its option rows keep the same height as a round that shows counts. Progress and
   deadline appear once in the card header, not again above the option rows. A round without a
-  deadline shows „Keine Frist“ in its header and round history; automatic deadline reminders apply
+  deadline simply shows no deadline; automatic deadline reminders apply
   only to dated rounds. Poll re-renders preserve
   the visible card's scroll anchor. Ending a round immediately turns
   its counts into the read-only result overview; there is no separate result-recording action. Event

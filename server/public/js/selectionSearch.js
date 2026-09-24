@@ -3,7 +3,7 @@ import { escapeHtml } from './format.js';
 
 // Always-visible search field: it names what it searches ("Spieler suchen",
 // "Spiel suchen") instead of hiding behind a magnifier icon.
-export function selectionSearchHtml(inputId, query = '', { placeholder = 'Spieler suchen…', label = 'Spieler suchen' } = {}) {
+export function selectionSearchHtml(inputId, query = '', { placeholder = 'Spieler suchen', label = 'Spieler suchen' } = {}) {
   return `
     <div class="selection-search is-open" data-selection-search>
       <div class="selection-search-field" data-selection-search-field>

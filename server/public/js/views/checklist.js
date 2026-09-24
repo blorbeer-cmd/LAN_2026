@@ -184,7 +184,7 @@ window.addEventListener('respawn:group-changed', () => invalidateChecklist(undef
 // into (see renderChecklist's snapshot).
 const addItemFormHtml = () => `
     <form class="row" data-add-item-form style="gap:var(--space-2);">
-      <input type="text" data-item-label placeholder="z.B. Skill" maxlength="80" required style="flex:1;" aria-label="Neuer Packlisten-Eintrag" />
+      <input type="text" data-item-label placeholder="Mehrfachsteckdose" maxlength="80" required style="flex:1;" aria-label="Neuer Packlisten-Eintrag" />
       <button type="submit" class="btn">Hinzufügen</button>
     </form>`;
 
@@ -281,7 +281,7 @@ function openClaimForm(ctx, myId, taskId) {
           id="claim-comment"
           maxlength="200"
           autofocus
-          placeholder="Kommentar, z.B. Bringe einen XBOX Controller mit."
+          placeholder="Bringe einen Xbox-Controller mit"
         />
         <button type="submit" class="btn btn-primary btn-block">Übernehmen</button>
       </form>
@@ -382,12 +382,12 @@ async function openCreateTodoForm(ctx, myId) {
         <div>
           <span class="field-label is-required">Titel</span>
           <input type="text" id="todo-title" maxlength="80" required value="${escapeHtml(prev.title)}" placeholder="${
-            form.kind === 'todo' ? 'z.B. Mehrfachsteckdosen mitbringen' : 'z.B. Kann mir jemand einen Controller mitnehmen?'
+            form.kind === 'todo' ? 'Mehrfachsteckdosen mitbringen' : 'Kann mir jemand einen Controller mitnehmen'
           }" />
         </div>
         <div>
           <span class="field-label">Beschreibung</span>
-          <textarea id="todo-description" rows="2" maxlength="300">${escapeHtml(prev.description)}</textarea>
+          <textarea id="todo-description" rows="2" maxlength="300" placeholder="Mindestens 6 Plätze">${escapeHtml(prev.description)}</textarea>
         </div>
         <div class="checklist-assignment-section">
           <div class="selection-toolbar" role="group" aria-labelledby="todo-assign-label">

@@ -99,7 +99,7 @@ export function renderLeaderboard(container, ctx) {
         </div>
         <div>
           <label class="field-label" for="lb-filter-search">Spiel auswählen</label>
-          ${searchSelectHtml('lb-filter', lbGameOptions, filterGameId, { placeholder: 'Spiel suchen…' })}
+          ${searchSelectHtml('lb-filter', lbGameOptions, filterGameId, { placeholder: 'Spiel suchen' })}
         </div>
         <div class="stack">
           <section class="tournament-section-panel stack" aria-labelledby="leaderboard-ranking-title">
@@ -233,7 +233,7 @@ export function openMatchForm(ctx, options = {}) {
           </div>
           <div>
             <label class="field-label" for="match-game-search">Spiel</label>
-            ${searchSelectHtml('match-game', matchGameOptions, defaultGameId, { placeholder: 'Spiel suchen…' })}
+            ${searchSelectHtml('match-game', matchGameOptions, defaultGameId, { placeholder: 'Spiel suchen' })}
           </div>
           <div>
             <label class="check-row">

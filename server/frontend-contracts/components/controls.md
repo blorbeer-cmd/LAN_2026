@@ -145,13 +145,11 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
 - Ausschließlich sein Außenabstand gibt nach: ein negativer Blockabstand von `--space-1` je Seite
   lässt ihn in der 24-px-Badgezeile mitlaufen. Optionen mit und ohne Stimmen behalten dadurch
   dieselbe Zeilenhöhe. Innerhalb von `.event-poll-option-badges` steht der Stimmenstapel direkt
-  hinter dem Optionstitel und vor Empfehlungs- oder Status-Badges. Den Abstand zwischen diesen
-  Elementen liefert der gemeinsame `--space-1`-Gap der Badgezeile. Ist kein Badge nachfolgend,
-  hält `margin-inline-end: var(--space-3)` denselben äußeren Abstand zur Optionskante. Sein Inhalt ist
-  am rechten Rand des 44-px-Mindestziels ausgerichtet, damit der rechte Avatar bei einer und bei
-  mehreren Stimmen dieselbe Kante behält. Folgt ein Badge, bestimmt dessen Breite die Position der
-  gesamten Badgezeile; ohne nachfolgendes Badge bleibt der Außenabstand zur Optionskante wie in
-  `main`.
+  in einer eigenen Spalte zwischen Ergebnisbalken und Antwortbuttons und vor einem Status-Badge.
+  Den Abstand zu einem Badge liefert der eigene `--space-1`-Gap der Badgezeile, nicht der
+  12-px-Gap von `.row`. Ab `--bp-md` ist die Spalte 7rem breit und der Inhalt linksbündig: der
+  linke Avatar steht in jeder Zeile an derselben Kante, eine Anzahl „+N“ folgt rechts. Auf
+  Telefonen steht der Stapel rechtsbündig neben dem Optionstitel.
 - Er zeigt höchstens vier Avatare; weitere Personen erscheinen als zusammengefasste Anzahl. Die
   Avatare überlappen einander nur um `--space-1` und heben sich mit einem Ring von der
   Optionsfläche ab.
@@ -398,6 +396,8 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `topbar-icons`, `selection-search-actions` | Iconaktionen mit reservierter 44-px-Breite und globaler Innengeometrie. |
 | `game-catalog-link-action` | Plattform- und Trailer-Links stehen als dichte 32×32-px-Gruppe direkt an den Spielinformationen. |
 | `selection-buttons`, `poll-secondary`, `poll-text-width`, `poll-choice-text` | Toolbarlayout und Bedeutung respektieren die gewählte Basis-/Quadratvariante. |
+| `poll-selected-answer`, `poll-option-extra-toggle` | Die gewählte Umfrageantwort und der geöffnete Notiz-/Link-Schalter zeigen ihren Zustand mit Akzentumriss bzw. Akzentfarbe, ohne eigene Geometrie. |
+| `poll-note-field`, `poll-flag-checkbox` | Die einzeilige Umfragebeschreibung wächst bis vier Controlhöhen; die 20-px-Checkbox ist Teil der beschrifteten Umfrageeinstellung. |
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
 | `profile-preview`, `tournament-label` | Nichtinteraktive Vorschau bzw. Feldbeschriftung folgt der benachbarten Controlzeile. |
 | `arrival-sort-mobile`, `interactive-chip`, `invite-link-controls`, `admin-test-fields` | Bestehende Formular-/Sortierkontexte behalten Platzierung und kurze eigene Labels bei 32 px. |
@@ -555,6 +555,14 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:poll-text-width`: 44px text minimum excludes numeric squares in both selected and unselected states.
 
 - `registry:poll-choice-text`: Compact text presentation keeps the standard 32px minimum.
+
+- `registry:poll-selected-answer`: The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.
+
+- `registry:poll-note-field`: The poll description starts as one line and grows with its content up to four control heights.
+
+- `registry:poll-option-extra-toggle`: Icon button that opens an option's note and link fields; only its expanded color is contextual.
+
+- `registry:poll-flag-checkbox`: Native checkbox glyph is an internal 20px part of a labeled poll setting.
 
 - `registry:search-field`: Native field reserves the integrated dropdown action width.
 

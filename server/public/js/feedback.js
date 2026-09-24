@@ -48,7 +48,7 @@ export function openFeedbackModal(view) {
       <div>
         <label for="feedback-message" class="field-label is-required">Nachricht</label>
         <textarea id="feedback-message" rows="4" maxlength="${MAX_MESSAGE_LENGTH}" required
-          placeholder="Was fällt dir auf?"></textarea>
+          placeholder="Die Suche findet kein Spiel"></textarea>
       </div>
       <button type="submit" class="btn btn-primary btn-block">Senden</button>
     </form>`,

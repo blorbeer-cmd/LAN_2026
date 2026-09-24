@@ -320,7 +320,7 @@ function arcadeStatsHtml() {
   const gameSelect = `
     <div>
       <label for="arcade-stats-game-search" class="field-label">Spiel auswählen</label>
-      ${searchSelectHtml('arcade-stats-game', statsGameOptions, activeStatsGame, { placeholder: 'Spiel suchen…' })}
+      ${searchSelectHtml('arcade-stats-game', statsGameOptions, activeStatsGame, { placeholder: 'Spiel suchen' })}
     </div>`;
 
   const game = games.find((g) => (g.statsKey ?? g.gameType) === activeStatsGame);

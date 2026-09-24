@@ -144,7 +144,7 @@ export const components = [
       },
       {
         "file": "public/js/views/eventPolls.js",
-        "source": "class=\"btn btn-sm${draft[option.id] === value ? ' btn-primary' : ''}\"",
+        "source": "class=\"btn btn-sm${draft[option.id] === value ? ' is-selected' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
@@ -189,7 +189,7 @@ export const components = [
     "dynamicUses": [
       {
         "file": "public/js/views/eventPolls.js",
-        "source": "class=\"btn btn-square${draft[option.id] === value ? ' btn-primary' : ''}\"",
+        "source": "class=\"btn btn-square${draft[option.id] === value ? ' is-selected' : ''}\"",
         "reason": "Concrete button-square caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
     ]
@@ -574,8 +574,8 @@ export const components = [
     "dynamicUses": [
       {
         "file": "public/js/views/eventPolls.js",
-        "source": "event-poll-choice-btn${selected ? ' btn-primary' : ''}",
-        "reason": "Literal class followed by a conditional meaning modifier; this exact template supplies the registered choice control."
+        "source": "event-poll-choice-btn${selected ? ' is-selected' : ''}",
+        "reason": "Literal class followed by the conditional selected-state marker; this exact template supplies the registered choice control."
       }
     ]
   },
@@ -1400,7 +1400,7 @@ export const permanentVariants = [
   {
     "id": "poll-secondary",
     "role": "standard-control",
-    "selector": ".event-poll-response-toolbar .btn:not(.btn-primary)",
+    "selector": ".event-poll-response-toolbar .btn",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "reason": "Only the secondary background is contextual."
@@ -1420,6 +1420,48 @@ export const permanentVariants = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "reason": "Compact text presentation keeps the standard 32px minimum."
+  },
+  {
+    "id": "poll-selected-answer",
+    "role": "standard-control",
+    "selector": ".event-poll-response-toolbar .btn.is-selected",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.",
+    "properties": [
+      "box-shadow"
+    ]
+  },
+  {
+    "id": "poll-note-field",
+    "role": "standard-control",
+    "selector": ".event-poll-note-input",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The poll description starts as one line and grows with its content up to four control heights.",
+    "properties": [
+      "max-height"
+    ]
+  },
+  {
+    "id": "poll-option-extra-toggle",
+    "role": "standard-control",
+    "selector": ".event-poll-option-extra-toggle[aria-expanded='true']",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Icon button that opens an option's note and link fields; only its expanded color is contextual."
+  },
+  {
+    "id": "poll-flag-checkbox",
+    "role": "composite-part",
+    "selector": ".event-poll-flag input[type='checkbox']",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Native checkbox glyph is an internal 20px part of a labeled poll setting.",
+    "properties": [
+      "width",
+      "height"
+    ]
   },
   {
     "id": "search-field",
