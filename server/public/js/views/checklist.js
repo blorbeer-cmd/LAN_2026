@@ -31,6 +31,9 @@ let tasksRequestVersion = 0;
 // "Lädt…" flash a full invalidateItems() would cause on every checkbox tap.
 let itemsStale = false;
 let historyOpen = false;
+// Packliste: the remove buttons only show while editing, so the everyday
+// view is just the list to tick off.
+let editingItems = false;
 let typeFilter = 'all'; // 'all' | 'todo' | 'item_request', open-pool only
 let onlyMineFilter = false; // open-pool only: "von mir erstellt"
 
@@ -193,23 +196,45 @@ function renderItems(myId) {
     return `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um deine Packliste zu sehen.</div>`;
   }
   if (itemsCache === null || itemsCacheForId !== myId) {
-    return `${emptyStateHtml('Lädt…')}${addItemFormHtml()}`;
+    return `${addItemFormHtml()}${emptyStateHtml('Lädt…')}`;
   }
-  const rows = itemsCache
-    .map(
-      (item) => `
-      <div class="row checklist-item-row ${item.checked ? 'is-checked' : ''}">
+  if (itemsCache.length === 0) editingItems = false;
+  const rowHtml = (item) => `
+      <div class="checklist-item-row ${item.checked ? 'is-checked' : ''}">
         <label class="checklist-item-label">
           <input type="checkbox" data-toggle-item="${item.id}" ${item.checked ? 'checked' : ''} />
           <span>${escapeHtml(item.label)}</span>
         </label>
-        <button type="button" class="icon-btn" data-remove-item="${item.id}" aria-label="Entfernen">${icon('x')}</button>
-      </div>`,
-    )
-    .join('');
+        <button type="button" class="icon-btn checklist-item-remove" data-remove-item="${item.id}" aria-label="${escapeHtml(item.label)} entfernen">${icon('x')}</button>
+      </div>`;
   return `
-    <div class="checklist-item-list">${rows}</div>
-    ${addItemFormHtml()}`;
+    ${addItemFormHtml()}
+    ${
+      itemsCache.length === 0
+        ? emptyStateHtml('Noch keine Einträge.')
+        : `<div class="checklist-item-list${editingItems ? ' is-editing' : ''}">${itemsCache.map(rowHtml).join('')}</div>`
+    }`;
+}
+
+function packingProgressHtml() {
+  if (!itemsCache?.length) return '';
+  const done = itemsCache.filter((item) => item.checked).length;
+  const pct = Math.round((done / itemsCache.length) * 100);
+  return `
+    <div class="checklist-progress" role="progressbar" aria-label="Eingepackt" aria-valuemin="0" aria-valuemax="${itemsCache.length}" aria-valuenow="${done}">
+      <span class="checklist-progress-fill" style="width:${pct}%;"></span>
+    </div>`;
+}
+
+function packingCountHtml() {
+  if (!itemsCache?.length) return '';
+  const done = itemsCache.filter((item) => item.checked).length;
+  return `<span class="checklist-progress-count">${done}/${itemsCache.length}</span>`;
+}
+
+function packingEditButtonHtml() {
+  if (!itemsCache?.length) return '';
+  return `<button type="button" class="btn btn-sm" data-toggle-item-editing aria-pressed="${editingItems}">${editingItems ? 'Fertig' : 'Bearbeiten'}</button>`;
 }
 
 function taskTypeLabel(task) {
@@ -535,7 +560,12 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
     <div class="grouped-page-sections">
       ${
         activeTab === 'packliste'
-          ? `<section class="card stack grouped-page-section" aria-label="Meine Packliste">
+          ? `<section class="card stack grouped-page-section" aria-labelledby="checklist-packing-title">
+               <div class="grouped-page-section-title">
+                 <h2 id="checklist-packing-title">Eingepackt ${myId && itemsCacheForId === myId ? packingCountHtml() : ''}</h2>
+                 ${myId && itemsCacheForId === myId ? packingEditButtonHtml() : ''}
+               </div>
+               ${myId && itemsCacheForId === myId ? packingProgressHtml() : ''}
                ${renderItems(myId)}
              </section>`
           : `<section class="card stack grouped-page-section" aria-label="To-Do">
@@ -587,6 +617,11 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
   });
   container.querySelector('[data-checklist-only-mine]')?.addEventListener('click', () => {
     onlyMineFilter = !onlyMineFilter;
+    ctx.rerender();
+  });
+
+  container.querySelector('[data-toggle-item-editing]')?.addEventListener('click', () => {
+    editingItems = !editingItems;
     ctx.rerender();
   });
 

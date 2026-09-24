@@ -1,25 +1,23 @@
-// Tournament view (FR-33): pick a game + teams, get an automatically
-// generated single-elimination bracket ("Turnierbaum") or round-robin
-// league ("jeder gegen jeden", optionally Hin- und Rückspiele), then record
-// results as they happen. Team formation reuses the same skill-balancing as
-// "Teams auslosen" (api.matchmaking.generate) rather than reinventing it.
+// Tournament view (FR-33): list and detail of tournaments with an
+// automatically generated single-elimination bracket ("Turnierbaum") or
+// round-robin league ("jeder gegen jeden", optionally Hin- und Rückspiele),
+// then record results as they happen. Teams come from a Match draw or
+// Captain Draft: its "Turnier erstellen" action (views/matchmaking.js)
+// creates the tournament, so this view no longer forms teams itself.
 
 import { api } from '../api.js';
 import { confirmDialog, openModal } from '../modal.js';
-import { state, catalogGames } from '../state.js';
-import { escapeHtml, avatarHtml, seatConflictIconHtml } from '../format.js';
+import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
-import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
-import { moveTournamentDraftPlayer, teamMoveControlHtml } from '../tournamentTeamDraft.js';
 import { createTournamentPresentation } from '../tournamentPresentation.js';
-import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { withStepUp } from '../reauth.js';
-import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
-import { pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { localRouteKey } from '../appRoute.js';
 import { copyText } from '../clipboard.js';
+
+// Open state of the detail page's collapsible Teams card across re-renders.
+let tournamentTeamsOpen = false;
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -40,69 +38,14 @@ let listStale = false;
 let listRequestVersion = 0;
 let completedSectionOpen = false;
 
-let currentTournamentId = null; // null = list/create view
+let currentTournamentId = null; // null = list view
 let detailCache = null;
 let detailLoading = false;
 let detailForId = null;
 let detailStale = false;
 let detailRequestVersion = 0;
 
-let createOpen = false;
-let createCheckedIds = null;
-let createFormat = 'single_elimination';
-let createTwoLegged = false;
-let createAvoidAdjacent = false;
-let createTrackScore = false;
-let createGroupCount = 2;
-let createAdvancersPerGroup = 2;
-let createTeamCount = ''; // persisted across re-rolls, so "Teams auslosen" acts as reroll
-let createLobbyName = '';
-let createLobbyPassword = '';
-let createProposedTeams = null; // [{ name, playerIds, players (for display), totalRating }]
-let createSeatConflicts = null; // { conflicts, considered } from the last proposal, for the seating note
-let createAvoidPairs = []; // seat-neighbor pairs from the last proposal, to re-flag conflicts after a manual move
-let createPlayerSearchQuery = '';
 let appliedRouteKey = null;
-
-// Re-derives each player's seatConflict flag/neighbor names (and the
-// seating-note count) from createAvoidPairs — needed after a manual
-// Feinschliff move on the unsaved proposal, since the server only computes
-// this once at draw time.
-function recomputeSeatConflicts() {
-  if (!createProposedTeams || createAvoidPairs.length === 0) return;
-  const teamOf = new Map();
-  const nameById = new Map();
-  createProposedTeams.forEach((t, i) =>
-    t.players.forEach((p) => {
-      teamOf.set(p.id, i);
-      nameById.set(p.id, p.name);
-    })
-  );
-  const conflictNeighborIds = new Map();
-  const addConflict = (id, opponentId) => {
-    const list = conflictNeighborIds.get(id);
-    if (list) list.push(opponentId);
-    else conflictNeighborIds.set(id, [opponentId]);
-  };
-  let conflicts = 0;
-  for (const [a, b] of createAvoidPairs) {
-    const teamA = teamOf.get(a);
-    const teamB = teamOf.get(b);
-    if (teamA !== undefined && teamB !== undefined && teamA !== teamB) {
-      addConflict(a, b);
-      addConflict(b, a);
-      conflicts++;
-    }
-  }
-  for (const t of createProposedTeams) {
-    for (const p of t.players) {
-      const neighborIds = conflictNeighborIds.get(p.id);
-      p.seatConflict = !!neighborIds;
-      p.seatConflictNames = neighborIds?.map((id) => nameById.get(id)).filter(Boolean) ?? [];
-    }
-  }
-  createSeatConflicts = { conflicts, considered: createAvoidPairs.length };
-}
 
 async function loadList(ctx) {
   const version = ++listRequestVersion;
@@ -168,42 +111,13 @@ function applyLocalRoute(route) {
   const key = localRouteKey(route);
   if (key === appliedRouteKey) return;
   appliedRouteKey = key;
-  if (route?.kind === 'create') {
-    createOpen = true;
-    currentTournamentId = null;
-    return;
-  }
-  createOpen = false;
   currentTournamentId = route?.kind === 'detail' ? route.id : null;
 }
 
-function resetCreateForm() {
-  createOpen = false;
-  createCheckedIds = null;
-  createFormat = 'single_elimination';
-  createTwoLegged = false;
-  createAvoidAdjacent = false;
-  createTrackScore = false;
-  createGroupCount = 2;
-  createAdvancersPerGroup = 2;
-  createTeamCount = '';
-  createLobbyName = '';
-  createLobbyPassword = '';
-  createProposedTeams = null;
-  createSeatConflicts = null;
-  createAvoidPairs = [];
-  createPlayerSearchQuery = '';
-}
-
-// ---------- list + create ----------
+// ---------- list ----------
 
 function renderList(container, ctx) {
   if ((listCache === null || listStale) && !listLoading) loadList(ctx);
-  if (createOpen) {
-    container.innerHTML = '<div id="tourn-create" class="tournament-create-slot"></div>';
-    renderCreateForm(container.querySelector('#tourn-create'), ctx);
-    return;
-  }
 
   const tournamentCards = (tournaments) => `<div class="card-grid tournament-list-grid">${tournaments
     .map(
@@ -283,8 +197,10 @@ function renderList(container, ctx) {
     ${completedListHtml}
   </div>`;
 
-  container.querySelector('#tourn-new-btn').addEventListener('click', () => {
-    ctx.navigateLocal({ kind: 'create' });
+  // Every tournament starts from a draw: Match > Teams draws or drafts the
+  // lineup, and that draw offers "Turnier erstellen".
+  container.querySelector('#tourn-new-btn')?.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'matchmaking' }));
   });
 
   container.querySelectorAll('[data-open-tournament]').forEach((btn) => {
@@ -298,419 +214,6 @@ function renderList(container, ctx) {
     completedSectionOpen = completedSection.open;
   });
 
-}
-
-// A tournament runs on an accepted game only — a suggestion nobody has taken
-// into the catalog yet is not something to schedule a bracket for.
-function createFormGameId() {
-  const games = catalogGames();
-  return games.some((game) => game.id === state.selectedGameId) ? state.selectedGameId : games[0]?.id;
-}
-
-function renderCreateForm(el, ctx) {
-  if (catalogGames().length === 0 || state.players.length < 2) {
-    el.innerHTML = `<div class="card stack">
-      <div class="row-between">
-        <div class="section-title" style="margin:0;">Neues Turnier</div>
-        <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">${icon('x')}</button>
-      </div>
-      ${emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', {
-        className: 'empty-state-compact',
-      })}
-    </div>`;
-    el.querySelector('#tourn-create-close').addEventListener('click', () => {
-      resetCreateForm();
-      ctx.backLocal(null);
-    });
-    return;
-  }
-
-  if (createCheckedIds === null) {
-    createCheckedIds = new Set(state.live.filter((p) => p.state === 'playing').map((p) => p.player_id));
-    if (createCheckedIds.size === 0) createCheckedIds = new Set(state.players.map((p) => p.id));
-  }
-  createCheckedIds = pruneRosterSelection(createCheckedIds, state.players);
-
-  const selectedGameId = createFormGameId();
-  state.selectedGameId = selectedGameId;
-
-  const gameSelectOptions = catalogGames().map((g) => ({ value: g.id, label: g.name }));
-
-  const seatingNote =
-    createSeatConflicts && createSeatConflicts.considered
-      ? createSeatConflicts.conflicts > 0
-        ? `<div class="muted" style="font-size:var(--font-size-xs);">${icon('armchair')} ${createSeatConflicts.conflicts} von ${createSeatConflicts.considered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten (sonst wäre es zu unfair geworden).</div>`
-        : ''
-      : '';
-
-
-  const teamsPreview = createProposedTeams
-    ? `
-      <div class="section-title" style="margin:0;">Teams</div>
-      <div class="tournament-team-preview-grid">
-        ${createProposedTeams
-          .map(
-            (t, i) => `
-          <div class="team-card tournament-draft-team" data-tourn-drop-team="${i}" role="group" aria-label="${escapeHtml(t.name)}">
-            <div class="team-card-header tournament-team-skill-header">
-              <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" />
-              ${teamSkillHtml(t.players, selectedGameId, { stored: true })}
-            </div>
-            ${t.players
-              .map(
-                (p) => `
-              <div class="team-player-move-row">
-                <button type="button" class="team-player tournament-drag-player" draggable="true" data-tourn-drag-player="${p.id}" data-team-index="${i}" aria-label="${escapeHtml(p.name)} verschieben">
-                  ${avatarHtml(p, 18)}
-                  <span class="player-name team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-                  ${seatConflictIconHtml(p)}
-                  ${playerSkillHtml(p, selectedGameId, { stored: true })}
-                </button>
-                ${teamMoveControlHtml({
-                  teamNames: createProposedTeams.map((team) => team.name),
-                  currentIndex: i,
-                  playerName: p.name,
-                  attributes: `data-tourn-move-select="${p.id}"`,
-                })}
-              </div>`
-              )
-              .join('')}
-          </div>`
-          )
-          .join('')}
-      </div>
-      ${seatingNote}
-    `
-    : '';
-
-  el.innerHTML = `
-    <div class="card stack">
-      <div class="row-between">
-        <div class="section-title" style="margin:0;">Neues Turnier</div>
-        <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">${icon('x')}</button>
-      </div>
-      <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="tournament-draw-step-title">
-        <div class="tournament-create-step-title">
-          <h3 id="tournament-draw-step-title">Auslosung</h3>
-        </div>
-        <label class="field-label is-required" for="tourn-game-search">Spiel auswählen</label>
-        ${searchSelectHtml('tourn-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen' })}
-        ${rosterPickerHtml({
-          id: 'tourn-create-roster',
-          players: state.players,
-          selectedIds: createCheckedIds,
-          query: createPlayerSearchQuery,
-          searchId: 'tourn-player-search',
-          itemAttribute: 'data-tourn-player-search-item',
-          playerAttribute: 'data-create-player',
-          emptyAttribute: 'data-tourn-player-search-empty',
-          selectAllId: 'tourn-select-all',
-          toolbarLeadingHtml: `<div class="tournament-team-count-field">
-            <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
-            <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
-          </div>`,
-          renderTrailing: (player) => playerSkillHtml(player, selectedGameId),
-        })}
-        <div class="check-row">
-          <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
-          <span class="title-with-info tournament-option-label">
-            <label for="tourn-avoid-adjacent">Sitznachbarn</label>
-            ${infoTooltipHtml(
-                'tournament-neighbors-help',
-                'Sitznachbarn',
-                'Sitznachbarn werden nach Möglichkeit in dasselbe Team gelost. Die Skill-Balance hat Vorrang, wenn beides nicht gleichzeitig möglich ist.'
-              )}
-          </span>
-        </div>
-        <div class="card-footer-actions">
-          <button type="button" class="btn btn-primary" id="tourn-propose">Teams auslosen</button>
-        </div>
-
-        ${teamsPreview}
-      </section>
-
-      <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="tournament-mode-step-title">
-        <div class="tournament-create-step-title">
-          <h3 id="tournament-mode-step-title">Modus</h3>
-        </div>
-        <div class="title-with-info tournament-format-label">
-          <label class="field-label is-required" for="tourn-format">Turnierformat</label>
-          ${
-            createFormat === 'group_knockout'
-              ? infoTooltipHtml(
-                  'tournament-group-format-help',
-                  'Gruppenphase + K.O.',
-                  'Die Teams spielen zuerst in Gruppen jeder gegen jeden, danach ziehen die besten Teams je Gruppe automatisch in ein K.O.-Turnier ein.'
-                )
-              : ''
-          }
-        </div>
-        <select id="tourn-format">
-          ${Object.entries(FORMAT_LABELS).map(([v, label]) => `<option value="${v}" ${v === createFormat ? 'selected' : ''}>${label}</option>`).join('')}
-        </select>
-        ${
-          createFormat === 'group_knockout'
-            ? `<div class="row" style="align-items:flex-start;">
-                 <div style="flex:1;">
-                   <label for="tourn-group-count" class="field-label is-required">Anzahl Gruppen</label>
-                   <input type="number" id="tourn-group-count" min="2" value="${createGroupCount}" />
-                 </div>
-                 <div style="flex:1;">
-                   <label for="tourn-advancers" class="field-label is-required">Aufsteiger pro Gruppe</label>
-                   <input type="number" id="tourn-advancers" min="1" value="${createAdvancersPerGroup}" />
-                 </div>
-               </div>`
-            : ''
-        }
-        ${
-          createFormat === 'round_robin' || createFormat === 'group_knockout'
-            ? `<div class="check-row">
-                 <input type="checkbox" id="tourn-two-legged" ${createTwoLegged ? 'checked' : ''} />
-                 <label for="tourn-two-legged">Hin- & Rückrunde${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
-               </div>`
-            : ''
-        }
-        <div class="check-row">
-          <input type="checkbox" id="tourn-track-score" ${createTrackScore ? 'checked' : ''} />
-          <label for="tourn-track-score">Ergebnisse inkl. Punktestand</label>
-        </div>
-        <div class="field-row">
-          <div>
-            <div class="title-with-info tournament-field-label">
-              <label for="tourn-lobby-name" class="field-label">Lobby-Basisname</label>
-              ${infoTooltipHtml(
-                  'tournament-lobby-help',
-                  'Lobby-Basisname',
-                  'Aus dem Basisnamen wird für jede gleichzeitig spielbare Paarung ein eindeutiger Lobbyname erzeugt. Das zuerst genannte Team eröffnet die Lobby.'
-                )}
-            </div>
-            <input type="text" id="tourn-lobby-name" maxlength="60" value="${escapeHtml(createLobbyName)}" placeholder="LAN26" />
-          </div>
-          <div>
-            <div class="tournament-field-label">
-              <label for="tourn-lobby-password" class="field-label">Lobby-Passwort</label>
-            </div>
-            <input type="text" id="tourn-lobby-password" maxlength="60" value="${escapeHtml(createLobbyPassword)}" placeholder="zocken123" />
-          </div>
-        </div>
-        <button type="button" class="btn btn-primary btn-block" id="tourn-submit" ${createProposedTeams ? '' : 'disabled'}>Turnier erstellen</button>
-      </section>
-    </div>
-  `;
-
-  wireInfoTooltips(el);
-  wireRosterPicker(el, {
-    id: 'tourn-create-roster',
-    players: state.players,
-    selectedIds: createCheckedIds,
-    searchId: 'tourn-player-search',
-    onQueryChange: (query) => {
-      createPlayerSearchQuery = query;
-    },
-    onSelectionChange: ({ kind }) => {
-      const hadProposal = Boolean(createProposedTeams);
-      createProposedTeams = null;
-      if (hadProposal || kind === 'bulk') ctx.rerender();
-    },
-  });
-
-  el.querySelector('#tourn-create-close').addEventListener('click', async () => {
-    const hasEnteredData = Boolean(createProposedTeams) || Boolean(createLobbyName.trim()) || Boolean(createLobbyPassword.trim());
-    if (
-      hasEnteredData &&
-      !(await confirmDialog(
-        'Die Turnier-Einrichtung geht verloren: ausgeloste Teams sowie Lobby-Name und -Passwort werden verworfen.',
-        { title: 'Einrichtung verwerfen?', confirmText: 'Verwerfen', danger: true },
-      ))
-    )
-      return;
-    resetCreateForm();
-    ctx.backLocal(null);
-  });
-
-  wireSearchSelect(el, 'tourn-game', gameSelectOptions);
-  el.querySelector('#tourn-game').addEventListener('change', (e) => {
-    state.selectedGameId = e.target.value;
-    createProposedTeams = null;
-    ctx.rerender();
-  });
-
-  el.querySelector('#tourn-format').addEventListener('change', (e) => {
-    createFormat = e.target.value;
-    ctx.rerender();
-  });
-
-  const twoLeggedCb = el.querySelector('#tourn-two-legged');
-  if (twoLeggedCb) {
-    twoLeggedCb.addEventListener('change', (e) => {
-      createTwoLegged = e.target.checked;
-    });
-  }
-
-  el.querySelector('#tourn-teamcount').addEventListener('input', (e) => {
-    createTeamCount = e.target.value;
-  });
-
-  el.querySelector('#tourn-avoid-adjacent').addEventListener('change', (e) => {
-    createAvoidAdjacent = e.target.checked;
-  });
-
-  el.querySelector('#tourn-track-score').addEventListener('change', (e) => {
-    createTrackScore = e.target.checked;
-  });
-
-  el.querySelector('#tourn-lobby-name').addEventListener('input', (e) => {
-    createLobbyName = e.target.value;
-  });
-  el.querySelector('#tourn-lobby-password').addEventListener('input', (e) => {
-    createLobbyPassword = e.target.value;
-  });
-
-  const groupCountInput = el.querySelector('#tourn-group-count');
-  if (groupCountInput) {
-    groupCountInput.addEventListener('input', (e) => {
-      createGroupCount = parseInt(e.target.value, 10) || 2;
-    });
-  }
-  const advancersInput = el.querySelector('#tourn-advancers');
-  if (advancersInput) {
-    advancersInput.addEventListener('input', (e) => {
-      createAdvancersPerGroup = parseInt(e.target.value, 10) || 1;
-    });
-  }
-
-  async function proposeTeams() {
-    const gameId = createFormGameId();
-    const playerIds = [...createCheckedIds];
-    if (playerIds.length < 2) {
-      return showToast('Mindestens 2 Spieler auswählen.', { error: true });
-    }
-    const body = { gameId, playerIds, avoidAdjacentOpponents: createAvoidAdjacent };
-    if (createTeamCount) body.teamCount = parseInt(createTeamCount, 10);
-    try {
-      const result = await api.matchmaking.generate(body);
-      createProposedTeams = result.teams.map((t, i) => ({
-        name: `Team ${i + 1}`,
-        players: t.players,
-        playerIds: t.players.map((p) => p.id),
-        totalRating: t.totalRating,
-      }));
-      createAvoidPairs = result.avoidPairs ?? [];
-      createSeatConflicts = result.seatPairsConsidered
-        ? { conflicts: result.seatConflicts, considered: result.seatPairsConsidered }
-        : null;
-      ctx.rerender();
-    } catch (err) {
-      showToast(err.message, { error: true });
-    }
-  }
-
-  el.querySelector('#tourn-propose').addEventListener('click', proposeTeams);
-
-  el.querySelectorAll('[data-team-name]').forEach((input) => {
-    input.addEventListener('input', () => {
-      createProposedTeams[parseInt(input.dataset.teamName, 10)].name = input.value;
-    });
-  });
-
-  // Proposed teams only exist client-side until the tournament is created.
-  // Pointer drag/drop and keyboard arrows share this
-  // guarded mutation so no interaction path can leave an empty team behind.
-  function moveDraftPlayer(playerId, toIndex) {
-    const result = moveTournamentDraftPlayer(createProposedTeams, playerId, toIndex);
-    if (result.error) {
-      showToast(result.error, { error: true });
-      ctx.rerender();
-      return false;
-    }
-    if (!result.moved) return false;
-    recomputeSeatConflicts();
-    ctx.rerender();
-    return true;
-  }
-
-  el.querySelectorAll('[data-tourn-move-select]').forEach((select) => {
-    select.addEventListener('change', () => {
-      if (!moveDraftPlayer(select.dataset.tournMoveSelect, Number(select.value))) ctx.rerender();
-    });
-  });
-
-  let draggedPlayerId = null;
-  const clearDragState = () => {
-    el.querySelectorAll('.is-drag-target, .is-dragging').forEach((element) => {
-      element.classList.remove('is-drag-target', 'is-dragging');
-    });
-    draggedPlayerId = null;
-  };
-
-  el.querySelectorAll('[data-tourn-drag-player]').forEach((playerRow) => {
-    playerRow.addEventListener('dragstart', (event) => {
-      draggedPlayerId = playerRow.dataset.tournDragPlayer;
-      playerRow.classList.add('is-dragging');
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', draggedPlayerId);
-    });
-    playerRow.addEventListener('dragend', clearDragState);
-    playerRow.addEventListener('keydown', (event) => {
-      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-      event.preventDefault();
-      const currentIndex = Number(playerRow.dataset.teamIndex);
-      const direction = event.key === 'ArrowLeft' ? -1 : 1;
-      const toIndex = (currentIndex + direction + createProposedTeams.length) % createProposedTeams.length;
-      moveDraftPlayer(playerRow.dataset.tournDragPlayer, toIndex);
-    });
-  });
-
-  el.querySelectorAll('[data-tourn-drop-team]').forEach((teamCard) => {
-    const toIndex = Number(teamCard.dataset.tournDropTeam);
-    teamCard.addEventListener('dragover', (event) => {
-      if (!draggedPlayerId) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-      teamCard.classList.add('is-drag-target');
-    });
-    teamCard.addEventListener('dragleave', (event) => {
-      if (event.relatedTarget && teamCard.contains(event.relatedTarget)) return;
-      teamCard.classList.remove('is-drag-target');
-    });
-    teamCard.addEventListener('drop', (event) => {
-      event.preventDefault();
-      const playerId = draggedPlayerId || event.dataTransfer.getData('text/plain');
-      clearDragState();
-      if (playerId) moveDraftPlayer(playerId, toIndex);
-    });
-  });
-
-  const submitBtn = el.querySelector('#tourn-submit');
-  if (submitBtn) {
-    submitBtn.addEventListener('click', async () => {
-      if (!createProposedTeams) return;
-      const gameId = createFormGameId();
-      try {
-        const created = await api.tournaments.create({
-          gameId,
-          format: createFormat,
-          twoLegged: createFormat === 'round_robin' || createFormat === 'group_knockout' ? createTwoLegged : false,
-          trackScore: createTrackScore,
-          ...(createFormat === 'group_knockout'
-            ? { groupCount: createGroupCount, advancersPerGroup: createAdvancersPerGroup }
-            : {}),
-          ...(createLobbyName.trim() ? { lobbyName: createLobbyName.trim() } : {}),
-          ...(createLobbyPassword.trim() ? { lobbyPassword: createLobbyPassword.trim() } : {}),
-          teams: createProposedTeams.map((t) => ({ name: t.name, playerIds: t.playerIds })),
-        });
-        resetCreateForm();
-        currentTournamentId = created.id;
-        detailCache = created;
-        detailForId = created.id;
-        listStale = true;
-        showToast('Turnier erstellt.');
-        ctx.navigateLocal({ kind: 'detail', id: created.id }, { replace: true });
-      } catch (err) {
-        showToast(err.message, { error: true });
-      }
-    });
-  }
 }
 
 function renderDetail(container, ctx) {
@@ -761,22 +264,22 @@ function renderDetail(container, ctx) {
   container.innerHTML = `
     <div class="row-between page-title-row">
       <h2 class="view-title">${escapeHtml(t.name)}</h2>
-      <button type="button" class="btn btn-sm btn-danger" id="tourn-delete">Löschen</button>
+      <button type="button" class="btn btn-sm" id="tourn-delete">Löschen</button>
     </div>
     <div class="muted tournament-detail-meta">
-      <span>${formatExplanation}</span>
+      <span>${formatExplanation} · ${t.teams.length} Teams · ${participantCount} Spieler · ${decidedMatches}/${t.matches.length} entschieden</span>
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
     </div>
-    ${activeLobbies}
-    <div class="section-title">Turnierstatus</div>
-    <div class="tournament-detail-stats" aria-label="Turnierstatus">
-      <div class="card tournament-stat"><span class="muted">Teams</span><strong>${t.teams.length}</strong></div>
-      <div class="card tournament-stat"><span class="muted">Teilnehmende</span><strong>${participantCount}</strong></div>
-      <div class="card tournament-stat"><span class="muted">Partien entschieden</span><strong>${decidedMatches} / ${t.matches.length}</strong></div>
+    <div class="grouped-page-sections tournament-board">
+      ${activeLobbies}
+      ${board}
+      ${renderTournamentTeams(t, { teamsOpen: tournamentTeamsOpen })}
     </div>
-    ${renderTournamentTeams(t)}
-    <div class="grouped-page-sections tournament-board">${board}</div>
   `;
+
+  container.querySelector('[data-tournament-teams]')?.addEventListener('toggle', (event) => {
+    tournamentTeamsOpen = event.currentTarget.open;
+  });
 
   container.querySelectorAll('[data-copy-lobby-match]').forEach((btn) => {
     btn.addEventListener('click', async () => {

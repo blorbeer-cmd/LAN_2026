@@ -111,10 +111,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   Foreign profiles expose neither edit/delete actions nor the private agent key;
   the API omits the private agent key and rejects profile-field updates when the session does not
   match the target player.
-  A foreign profile's detail dialog leads with identity (avatar, Gamertag, real name); the complete
-  „Bock & Skill“ rating list across every game sits inside one initially collapsed
-  `.collapsible-section` carrying the total game count, so a roster of many games does not force a
-  long scroll just to see who someone is.
+  A foreign profile's detail dialog names the Gamertag once, as its title, and leads with the
+  avatar, the real name and how many games the person rated. One table follows with one row per
+  rated game and the columns Spiel, Bock and Skill (games without any value are left out, a missing
+  single value shows „–“). The column headers sort like the An- & Abreise table; the dialog opens
+  sorted by Bock, highest first, because that order carries meaning.
   Player creation stays in the authenticated Admin workflow. The desktop live board keeps exactly
   two equal-width cards per row; an odd final player does not stretch.
   The self-service profile uses the shared

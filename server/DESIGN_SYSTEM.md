@@ -313,8 +313,8 @@ they are next changed, and new work follows them right away.
 11. **Present results the same way everywhere.** A winner carries the green „Win“ chip (or a green
     winning score), the losers are muted and a draw reads „Remis“; gold frames or result badges are
     not used. Each result row or card has one fixed trailing action slot: „+“ for an open result,
-    a pencil for a recorded one. Where recording is the obvious next step, the „+“ uses the
-    primary gradient. Recording and editing open one compact dialog: one button per outcome that
+    a pencil for a recorded one. The „+“ itself stays neutral; on a fresh Match draw the
+    highlighted next step is the rightmost „Turnier erstellen“ in the primary gradient. Recording and editing open one compact dialog: one button per outcome that
     saves immediately, or large value fields with a single „Speichern“. Standings are real tables
     with column headers, not packed strings.
 12. **Make selection lists quick to scan.** Selection lists are sorted alphabetically unless the
@@ -405,7 +405,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   deliberately not a click-to-pin control and keeps the normal cursor (`cursor: default`, no pointer
   or help cursor on hover): hovering is enough on a pointer device,
   while focus is what a keyboard Tab and a touch tap produce, so the text stays reachable where there
-  is no hover (phones). It closes on mouse-leave, blur, Escape or an outside pointer press. A tooltip
+  is no hover (phones). It closes on mouse-leave, blur, Escape or an outside pointer press; inside a dialog that Escape closes only the panel, never the dialog around it. A tooltip
   trigger always follows
   directly to the right of the visible text — or of the control — it explains, as its sibling and
   never inside it; it does not precede a checkbox or float independently at the far edge of a row.

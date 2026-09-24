@@ -1241,11 +1241,6 @@ input[type='number'].tournament-result-score {
   min-height: var(--control-height);
   resize: none;
 }
-.vote-workflow-section .tournament-create-step-title h2,
-.vote-page-section .tournament-create-step-title h2 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-}
 @media (min-width: 640px) { /* --bp-md */
   .vote-game-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1383,7 +1378,8 @@ input[type='number'].tournament-result-score {
    margin keeps the hit area while removing that extra height from flex
    layout. */
 .grouped-page-section-title .info-tooltip-trigger,
-.card h2.title-with-info .info-tooltip-trigger {
+.card h2.title-with-info .info-tooltip-trigger,
+.draw-tournament-form .title-with-info .info-tooltip-trigger {
   margin-block: calc(-1 * var(--space-3));
 }
 /* Bare h2 headings still appear in game/result cards. Keep their type scale
@@ -2076,21 +2072,56 @@ input.food-order-price-input {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
+.checklist-progress-count {
+  margin-left: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+.checklist-progress {
+  display: block;
+  height: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--border);
+}
+.checklist-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent-3));
+}
 .checklist-item-row {
-  min-height: var(--space-7);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--row-icon-size);
+  min-width: 0;
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--border);
+}
+.checklist-item-row:first-child {
+  border-top: 0;
 }
 .checklist-item-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
+  column-gap: var(--space-6);
 }
 @media (min-width: 640px) { /* --bp-md */
   .checklist-item-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .checklist-item-row:nth-child(2) {
+    border-top: 0;
+  }
+}
+.checklist-item-remove {
+  color: var(--text-muted);
+}
+.checklist-item-list:not(.is-editing) .checklist-item-remove {
+  display: none;
 }
 .checklist-item-label {
   display: flex;
@@ -2293,4 +2324,239 @@ input.food-order-price-input {
 .empty-state-food-items {
   font-size: var(--font-size-sm);
   padding: var(--space-2) 0;
+}
+
+/* Match's draw/draft area is the only visible mode at a time, so it sits
+   flat in the card: no nested panel, no accent rail (rule 3). */
+.match-mode-panel > .check-row {
+  border-bottom: none;
+}
+.match-mode-panel .card-footer-actions > .row {
+  justify-content: flex-end;
+}
+
+/* "Turnier erstellen" from a draw: options share a wrapping row and the
+   submit sits compact at the bottom right. */
+.draw-tournament-options {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-6);
+}
+.draw-tournament-options > .check-row {
+  padding-block: 0;
+  border-bottom: none;
+}
+.draw-tournament-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.draw-tournament-team-names {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+/* Active lobbies: flat hairline rows inside one card. The credentials sit
+   as code chips with their copy action and never wrap mid-name. */
+.tournament-lobby-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) 0;
+}
+.tournament-lobby-row + .tournament-lobby-row {
+  border-top: 1px solid var(--border);
+}
+.tournament-lobby-row:first-child {
+  padding-top: 0;
+}
+.tournament-lobby-row:last-child {
+  padding-bottom: 0;
+}
+.tournament-lobby-row .tournament-lobby-matchup {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.tournament-lobby-row .tournament-lobby-matchup .muted {
+  font-size: var(--font-size-sm);
+}
+.tournament-lobby-row .tournament-lobby-access {
+  flex: 0 1 auto;
+  align-items: center;
+  column-gap: var(--space-4);
+}
+.tournament-lobby-row .tournament-lobby-credential {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.tournament-lobby-credential-label {
+  min-width: calc(var(--space-8) + var(--space-3));
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.tournament-lobby-credential-value {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+}
+
+
+/* Stimmen dialog: numbered legend plus one person x option table. */
+.event-poll-vote-legend {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.event-poll-vote-legend-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  min-width: 0;
+}
+.event-poll-vote-legend-label {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+}
+.event-poll-vote-legend-summary {
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+.event-poll-vote-number {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--avatar-size-sm);
+  height: var(--avatar-size-sm);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated-2);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+.event-poll-vote-number.is-win {
+  background: var(--state-playing-bg);
+  color: var(--state-playing);
+}
+.event-poll-vote-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--font-size-xs);
+}
+.event-poll-vote-key > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.event-poll-vote-table-wrap {
+  overflow-x: auto;
+}
+.event-poll-vote-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+.event-poll-vote-col {
+  width: calc(var(--space-7) + var(--space-3));
+}
+.event-poll-vote-table th,
+.event-poll-vote-table td {
+  padding: var(--space-1) 0;
+  text-align: center;
+}
+.event-poll-vote-table thead th {
+  padding-bottom: var(--space-2);
+}
+.event-poll-vote-table tbody tr {
+  border-top: 1px solid var(--border);
+}
+.event-poll-vote-table tbody th {
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+}
+.event-poll-vote-table tbody th .player-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.event-poll-vote-table .event-poll-voter-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-poll-vote-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.event-poll-vote-cell .ui-icon {
+  width: 16px; /* design-token-ok: matches the compact legend glyph */
+  height: 16px; /* design-token-ok: matches the compact legend glyph */
+}
+/* Neutral on purpose: brightness, not color, separates the answers. */
+.event-poll-vote-cell.is-can {
+  color: var(--text);
+}
+.event-poll-vote-cell.is-if-needed,
+.event-poll-vote-cell.is-empty {
+  color: var(--text-muted);
+}
+.event-poll-vote-cell.is-cannot {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+/* Spieler-Details: one Bock/Skill row per game with sortable headers. */
+.player-detail-ratings {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.player-detail-rating-col {
+  width: calc(var(--space-8) + var(--space-4));
+}
+.player-detail-ratings th,
+.player-detail-ratings td {
+  padding: var(--space-1) 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.player-detail-ratings thead th {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.player-detail-ratings th:first-child {
+  text-align: left;
+}
+.player-detail-ratings tbody tr {
+  border-top: 1px solid var(--border);
+}
+.player-detail-ratings tbody th {
+  overflow: hidden;
+  font-weight: var(--font-weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player-detail-ratings tbody td {
+  font-weight: var(--font-weight-bold);
 }

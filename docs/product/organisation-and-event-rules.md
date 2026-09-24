@@ -116,9 +116,14 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   game-night navigation Home, Match, Vote, Essen, Spiele and Mehr. Its remaining planning routes
   stay together in the Orga wrapper under Mehr: Umfragen and To-Do are its only tabs because An- &
   Abreise and Packliste do not exist for a workspace nobody travels to.
-  The personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
-  custom entries) with a checked item shown via muted, struck-through text instead of a separate
-  badge, followed by the plain add-item field/button row.
+  The personal list is one card headed „Eingepackt“ with the packed/total count beside the title
+  and a soft gradient progress bar below it. The add-item field/button row sits directly under the
+  bar, followed by one alphabetical list of flat hairline rows (Grundstock plus freely added
+  custom entries, two columns from `--bp-md`). A checked item stays in place, shown via muted,
+  struck-through text instead of a separate badge or group. Removing is an editing task: the
+  compact neutral „Bearbeiten“ header action reveals a muted remove button in every row and turns
+  into „Fertig“; ticking items works in both modes. An empty list shows „Noch keine Einträge.“ and
+  no „Bearbeiten“ action.
   Any active member — not only Owner/Admin — can create a To-Do of either Art (Aufgabe/
   Mitbring-Anfrage) through one unified „To-Do erstellen“ dialog: a `.selection-toolbar` Art toggle,
   Titel/Beschreibung, a second `.selection-toolbar` for „Zuweisen an“ (Niemand/Ich/Personen wählen —
@@ -206,8 +211,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   name no leader. A non-anonymous round shows the voters of an option as up to four overlapping
   avatars, left-aligned in their column, followed by the number of remaining voters; a rating round pictures everyone who rated the option, the
   other modes picture the people the option won over. The avatars open the same „Stimmen“ dialog as
-  the poll's own action, which lists every answer group with avatar, name and response timestamp in
-  one vertically aligned voter row. The server decides who receives those identities: an anonymous
+  the poll's own action. That dialog is one compact table: a legend numbers the options (with the
+  „Win“ chip after a decided round and the average, „N× Passt“ or the vote count on the right), and
+  one row per person (alphabetical, avatar and name) has one equally narrow numbered column per
+  option, however long the option labels are. Ratings show the number, availability rounds show a
+  neutral symbol per answer (bright check for Passt, grey dash for Notfalls, faded cross for Nein,
+  explained once above the table and named for assistive technology), choice rounds a check for the
+  chosen option. Response timestamps are not shown. The server decides who receives those identities: an anonymous
   poll never exposes them, a round with a hidden interim result exposes them and its counts to its
   managers while it runs, and ending the round publishes both to every participant. The round's
   response mode and settings appear once as small tags above the options; a round that withholds its

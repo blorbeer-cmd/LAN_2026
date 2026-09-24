@@ -308,6 +308,40 @@ test('two results submitted for the same draw at once: exactly one is recorded a
   assert.equal(linked.matchId, winner.body.id);
 });
 
+test('a draw turned into a tournament while its result is recorded: exactly one claim wins, nothing is left half-done', async () => {
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: gameIds[0], playerIds: playerIds.slice(0, 2), teamCount: 2 });
+  const teams = [{ playerIds: [playerIds[0]] }, { playerIds: [playerIds[1]] }];
+  const tournamentsBefore = (await request(app).get('/api/tournaments')).body.length;
+  const matchesBefore = (await request(app).get(`/api/matches?gameId=${gameIds[0]}`)).body.length;
+
+  const results = await Promise.all([
+    request(app).post('/api/tournaments').send({ gameId: gameIds[0], format: 'single_elimination', teams, drawId: draw.body.id }),
+    request(app).post('/api/tournaments').send({ gameId: gameIds[0], format: 'single_elimination', teams, drawId: draw.body.id }),
+    request(app).post('/api/matches').send({ gameId: gameIds[0], teams, drawId: draw.body.id }),
+  ]);
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[201], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 2, JSON.stringify(counts));
+
+  const tournamentsAfter = (await request(app).get('/api/tournaments')).body.length;
+  const matchesAfter = (await request(app).get(`/api/matches?gameId=${gameIds[0]}`)).body.length;
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${gameIds[0]}`);
+  const linked = history.body.history.find((h: { id: string }) => h.id === draw.body.id);
+  const winner = results.find((r) => r.status === 201)!;
+  if (linked.tournamentId) {
+    assert.equal(linked.tournamentId, winner.body.id);
+    assert.equal(linked.matchId, null);
+    assert.equal(tournamentsAfter, tournamentsBefore + 1);
+    assert.equal(matchesAfter, matchesBefore);
+  } else {
+    assert.equal(linked.matchId, winner.body.id);
+    assert.equal(tournamentsAfter, tournamentsBefore);
+    assert.equal(matchesAfter, matchesBefore + 1);
+  }
+});
+
 test('simultaneous test-user seeding: no duplicate names or double-booked seats', async () => {
   // Both requests run their whole seed in one synchronous transaction, so
   // they serialize — the second must see the first's taken names and seats.

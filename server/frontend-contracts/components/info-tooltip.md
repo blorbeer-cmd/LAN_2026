@@ -134,6 +134,10 @@ existiert nicht: der Trigger bleibt bedienbar, gerade wenn das erklärte Control
   der Pfad für Tastatur und Touch. Der Trigger behält den normalen Zeiger (`cursor: default`).
 - `Escape` schließt und gibt den Fokus an den Trigger zurück. Der Fokusring bleibt sichtbar und
   wird nicht beschnitten.
+- In einem Dialog verbraucht dieses `Escape` nur das Panel: Der Listener läuft in der
+  Capture-Phase und markiert das Ereignis (`preventDefault`), und `modal.js` schließt den Dialog
+  bei einem so markierten `Escape` nicht. Regression: der Turnier-Ablauf in
+  `flowsShell.fixture.ts` (Hilfe zum Lobby-Basisnamen im Dialog „Turnier erstellen“).
 
 ## 9. Repräsentative Aufrufer
 

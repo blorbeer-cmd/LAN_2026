@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 104);
+  assert.equal(migrations.length, 105);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 104 }, (_, index) => index + 1),
+    Array.from({ length: 105 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,9 +1342,47 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 104 }, (_, index) => index + 1),
-    'every version 1..104 runs exactly once',
+    Array.from({ length: 105 }, (_, index) => index + 1),
+    'every version 1..105 runs exactly once',
   );
+});
+
+test('migration 105 adds the draw-to-tournament link to legacy draws and is restart-safe', () => {
+  const dbFile = makeTempDbPath('draw-tournament-link');
+  runMigrations(dbFile);
+
+  // Rebuild matchmaking_draws without tournament_id, the shape every database
+  // had before a draw could become a tournament.
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`
+    CREATE TABLE matchmaking_draws_legacy AS
+      SELECT id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, match_id, source, group_id
+      FROM matchmaking_draws;
+    DROP TABLE matchmaking_draws;
+    ALTER TABLE matchmaking_draws_legacy RENAME TO matchmaking_draws;
+    DELETE FROM schema_migrations WHERE version = 105;
+  `);
+  const game = fixture.prepare('SELECT id FROM games LIMIT 1').get() as { id: string };
+  fixture.prepare(
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, teams, seat_conflicts, seat_pairs_considered, generated_at, group_id)
+     VALUES ('legacy-draw', ?, 'instance-base-event', '[]', 0, 0, 1, 'default-group')`,
+  ).run(game.id);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the draw-tournament link migration must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const columns = migrated.prepare('PRAGMA table_info(matchmaking_draws)').all() as Array<{ name: string }>;
+  assert.equal(columns.filter((column) => column.name === 'tournament_id').length, 1);
+  assert.deepEqual(
+    migrated.prepare('SELECT id, tournament_id AS tournamentId FROM matchmaking_draws WHERE id = ?').get('legacy-draw'),
+    { id: 'legacy-draw', tournamentId: null },
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 105').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
 test('migration 62 backfills existing players as completed and is restart-safe', () => {

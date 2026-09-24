@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { appHash, localRouteKey, parseAppHash } from './appRoute.js';
 
-test('tournament create and detail routes survive hash round trips', () => {
+test('tournament detail routes survive hash round trips and a legacy create link opens the list', () => {
   assert.deepEqual(parseAppHash('#tournaments/new'), {
     view: 'tournaments',
-    localRoute: { kind: 'create' },
+    localRoute: null,
     searchTarget: null,
   });
   assert.deepEqual(parseAppHash('#tournaments/turnier%201'), {

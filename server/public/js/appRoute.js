@@ -17,7 +17,9 @@ export function parseAppHash(hash) {
   const segment = parts[1] ? decodeSegment(parts[1]) : null;
 
   if (view === 'tournaments') {
-    if (segment === 'new') return { view, localRoute: { kind: 'create' }, searchTarget: null };
+    // Tournaments are created from a Match draw now; an old "new" link simply
+    // lands on the list instead of being mistaken for a tournament id.
+    if (segment === 'new') return { view, localRoute: null, searchTarget: null };
     if (segment) return { view, localRoute: { kind: 'detail', id: segment }, searchTarget: null };
     return { view, localRoute: null, searchTarget: null };
   }
@@ -42,7 +44,6 @@ export function parseAppHash(hash) {
 
 export function appHash(view, localRoute = null, searchTarget = null) {
   if (view === 'tournaments') {
-    if (localRoute?.kind === 'create') return '#tournaments/new';
     if (localRoute?.kind === 'detail' && localRoute.id) {
       return `#tournaments/${encodeURIComponent(localRoute.id)}`;
     }

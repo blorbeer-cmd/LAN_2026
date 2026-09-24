@@ -2671,22 +2671,9 @@ button.draft-pool-player {
   }
 }
 
-/* Tournament overview and creation deliberately use their available width:
-   one or two entries stretch instead of reserving empty auto-fill columns,
-   while the tournament player picker caps at two cards per row from
-   --bp-md and stacks a single column on phones. */
-.tournament-detail-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));
-  gap: var(--space-3);
-}
-/* Phones fit exactly two stat columns; an odd final summary card spans the
-   row instead of leaving a hole beside it. */
-@media (max-width: 639px) { /* --bp-md */
-  .tournament-detail-stats > :nth-child(odd):last-child {
-    grid-column: 1 / -1;
-  }
-}
+/* Tournament overview deliberately uses its available width: one or two
+   entries stretch instead of reserving empty auto-fill columns, while player
+   pickers cap at two cards per row from --bp-md and stack on phones. */
 .tournament-detail-meta {
   display: flex;
   align-items: center;
@@ -2695,27 +2682,13 @@ button.draft-pool-player {
   margin-top: calc(var(--space-3) * -1);
   margin-bottom: var(--space-3);
 }
-.tournament-detail-format {
-  align-items: center;
-}
 .tournament-team-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
-.tournament-stat {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.tournament-stat strong {
-  font-size: var(--font-size-xl);
-}
 .card-grid.tournament-list-grid {
   grid-template-columns: minmax(0, 1fr);
-}
-.tournament-create-slot:not(:empty) {
-  margin-top: var(--space-4);
 }
 .collapsible-section-header {
   display: flex;
@@ -2735,7 +2708,8 @@ button.draft-pool-player {
 .history-details > .collapsible-section-header,
 [data-checklist-history] > .collapsible-section-header,
 [data-broadcast-history] > .collapsible-section-header,
-[data-completed-tournaments] > .collapsible-section-header {
+[data-completed-tournaments] > .collapsible-section-header,
+[data-tournament-teams] > .collapsible-section-header {
   align-items: center;
 }
 .collapsible-section-header::-webkit-details-marker {
@@ -2915,19 +2889,6 @@ button.draft-pool-player {
     border-radius: var(--radius);
   }
 }
-.tournament-create-step-title {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-}
-.tournament-create-step-title h3 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-}
-.tournament-create-step-title .muted {
-  font-size: var(--font-size-xs);
-}
 .tournament-group-stage {
   display: grid;
   gap: var(--space-4);
@@ -2943,12 +2904,6 @@ button.draft-pool-player {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
-}
-.tournament-format-label {
-  align-items: center;
-}
-.tournament-format-label .field-label {
-  margin: 0;
 }
 .tournament-draft-team {
   transition: border-color 0.15s ease, background-color 0.15s ease;
@@ -2979,42 +2934,6 @@ button.draft-pool-player {
 }
 .tournament-option-label label {
   cursor: pointer;
-}
-.tournament-field-label {
-  min-height: var(--control-height);
-  display: flex;
-  align-items: center;
-}
-.tournament-field-label .field-label {
-  margin: 0;
-}
-.tournament-lobby-info {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-3);
-  border-color: var(--accent);
-  background: var(--bg-elevated-2);
-}
-.tournament-active-lobby-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-.tournament-lobby-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-.tournament-lobby-phase {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
 }
 .tournament-lobby-matchup {
   color: var(--text);
@@ -3086,12 +3005,6 @@ button.draft-pool-player {
   .tournament-team-grid,
   .tournament-team-preview-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .tournament-active-lobby-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .tournament-active-lobby-grid .tournament-lobby-info:only-child {
-    grid-column: 1 / -1;
   }
 }
 
@@ -4113,7 +4026,8 @@ button.card {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.arrivals-sort-button {
+.arrivals-sort-button,
+.player-detail-sort-button {
   display: inline-flex;
   min-height: var(--control-height);
   align-items: center;
@@ -4128,10 +4042,12 @@ button.card {
   background: transparent;
   cursor: pointer;
 }
-.arrivals-sort-button.is-active {
+.arrivals-sort-button.is-active,
+.player-detail-sort-button.is-active {
   color: var(--text);
 }
-.arrivals-sort-button .ui-icon {
+.arrivals-sort-button .ui-icon,
+.player-detail-sort-button .ui-icon {
   width: 1em;
   height: 1em;
 }

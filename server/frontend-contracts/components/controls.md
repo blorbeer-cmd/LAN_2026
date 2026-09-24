@@ -399,7 +399,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `poll-selected-answer`, `poll-option-extra-toggle` | Die gewählte Umfrageantwort und der geöffnete Notiz-/Link-Schalter zeigen ihren Zustand mit Akzentumriss bzw. Akzentfarbe, ohne eigene Geometrie. |
 | `poll-note-field`, `poll-flag-checkbox` | Die einzeilige Umfragebeschreibung wächst bis vier Controlhöhen; die 20-px-Checkbox ist Teil der beschrifteten Umfrageeinstellung. |
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
-| `profile-preview`, `tournament-label` | Nichtinteraktive Vorschau bzw. Feldbeschriftung folgt der benachbarten Controlzeile. |
+| `profile-preview` | Nichtinteraktive Vorschau folgt der benachbarten Controlzeile. |
 | `arrival-sort-mobile`, `interactive-chip`, `invite-link-controls`, `admin-test-fields` | Bestehende Formular-/Sortierkontexte behalten Platzierung und kurze eigene Labels bei 32 px. |
 | `team-move-picker`, `vote-start-field` | Der transparente Team-Picker füllt seinen Iconplatz; das Info-Feld hat im einzeiligen Startformular die Höhe des Titelfelds. |
 | `data-row-name`, `data-row-action-label` | Nur der Name ellipsiert; die vollständige kurze Aktion stapelt unter 320 px. |
@@ -450,11 +450,13 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:row-icons`: Copy, dismiss and detail actions retain their 44px icon slot.
 
+- `registry:checklist-item-remove`: Packliste remove action keeps the 44px icon slot, muted, and only renders while the list is in editing mode.
+
 - `registry:game-catalog-link-action`: Platform and trailer links use compact 32 by 32px slots next to the game details and use blue hover feedback.
 
 - `registry:game-catalog-detail-trigger`: Game-name detail trigger has plain text and switches to blue on hover without a filled button surface.
 
-- `registry:arrival-controls`: Native textarea rows and 32px sorting buttons.
+- `registry:arrival-controls`: Native textarea rows and 32px sorting buttons (An- & Abreise and the Spieler-Details Bock/Skill table).
 
 - `registry:filter-chip`: Interactive filter chips use 32px; passive chip labels are outside this control variant.
 
@@ -483,6 +485,10 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:result-fields`: Large score fields of the shared result dialog keep one tap-target height.
 
 - `registry:result-actions`: Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one.
+
+- `registry:result-open-hosts`: Open bracket boxes and open fixture scores only recolor their host; the static open result action shares the marker class.
+
+- `registry:poll-legend-open`: The open-answer legend dot only recolors itself; it shares the open marker class with result actions.
 
 - `registry:result-pick`: Whole-row outcome choice in the shared result dialog: team name plus players at tap-target height.
 
@@ -570,7 +576,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:profile-preview`: Noninteractive preview exactly mirrors the adjacent 32px field height.
 
-- `registry:tournament-label`: Noninteractive field label occupies its sibling control line.
 
 - `registry:team-move-picker`: Transparent native team picker covers its icon slot on touch layouts.
 
@@ -689,6 +694,10 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:rating-suggestion-glyph`: Inline rating shortcut owns its 14px glyph.
 
 - `registry:arrival-sort-glyph`: Sort control owns its font-relative glyph.
+
+- `registry:poll-vote-cell-glyph`: Answer symbols of the vote table keep one compact glyph size so every cell reads at the same weight.
+
+- `registry:draw-tournament-options`: Checkbox options share one wrapping row in the compact tournament dialog; the row gap replaces the list-row padding.
 
 - `registry:invite-link-field`: Kompakte Einladungs-URL mit unveränderter Standardhöhe; der auf Textfelder begrenzte Eigentümerselektor setzt ausschließlich die kleine Schrift und gewinnt gegen die native Feldbasis. Der Browserflow prüft den berechneten Wert.
 

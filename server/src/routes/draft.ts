@@ -354,18 +354,38 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   // into the same history so Team-Historie shows drafted teams too. Ratings
   // aren't part of a draft, so they're stored as 0/absent.
   const historyEventId = row.event_id;
+  let finishedDraw: Record<string, unknown> | null = null;
   if (completed && state.draft) {
     const teamsSnapshot = state.draft.teams.map((t) => ({
       players: t.players.map((p) => ({ ...p, rating: null })),
       totalRating: 0,
     }));
+    const drawId = nanoid();
     db.prepare(
       "INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'draft')",
-    ).run(nanoid(), row.game_id, historyEventId, groupId, JSON.stringify(teamsSnapshot), now);
+    ).run(drawId, row.game_id, historyEventId, groupId, JSON.stringify(teamsSnapshot), now);
+    finishedDraw = {
+      id: drawId,
+      gameId: row.game_id,
+      gameName: state.draft.gameName,
+      teams: teamsSnapshot,
+      seatConflicts: 0,
+      seatPairsConsidered: 0,
+      generatedAt: now,
+      matchId: null,
+      source: 'draft',
+      tournamentId: null,
+      tournamentName: null,
+    };
   }
   if (completed) resolvePushTopic(`draft:${row.id}`, false, { groupId, eventId: row.event_id });
 
   broadcast(Events.draftChanged, { ...state, completed }, { groupId: req.group!.id, eventId: row.event_id });
+  // The drafted lineup becomes the current draw on every device, exactly like
+  // a balanced draw: record a single result or turn it into a tournament.
+  if (finishedDraw) {
+    broadcast(Events.matchmakingGenerated, finishedDraw, { groupId: req.group!.id, eventId: row.event_id });
+  }
   res.json(state);
 });
 
