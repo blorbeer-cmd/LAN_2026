@@ -775,6 +775,9 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
   type CardMetrics = {
     top: number;
     headingMetrics: { fontSize: string; inset: number } | null;
+    // A titled card that only holds its empty state collapses to one row and
+    // centers its heading; it is compared by that middle line instead.
+    emptyRowOffset: number | null;
   };
   const firstCardMetrics = async (label: string): Promise<CardMetrics> => {
     const metrics = await page.waitForFunction((areaLabel) => {
@@ -785,7 +788,13 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
       const cardBox = card.getBoundingClientRect();
       if (!cardBox.width || !cardBox.height) return null;
       const heading = card.querySelector('h2');
-      const headingMetrics = heading
+      const emptyRow = card.querySelector(':scope > .grouped-page-section-title:first-child + .empty-state:last-child, '
+        + ':scope > .grouped-page-section-title:first-child + :last-child > .empty-state:only-child');
+      const middle = (box: DOMRect) => (box.top + box.bottom) / 2;
+      const emptyRowOffset = emptyRow && heading && window.innerWidth >= 640
+        ? Math.round(Math.abs(middle(heading.getBoundingClientRect()) - middle(cardBox)))
+        : null;
+      const headingMetrics = heading && !emptyRow
         ? {
             fontSize: getComputedStyle(heading).fontSize,
             inset: Math.round(heading.getBoundingClientRect().top - cardBox.top),
@@ -797,11 +806,11 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
       // happened to be scrolled. The comparisons below (one shared edge, and
       // a tabbed header reserving more room) are about the edge itself.
       const top = Math.round(cardBox.top - container.getBoundingClientRect().top + container.scrollTop);
-      return { label: areaLabel, top, headingMetrics };
+      return { label: areaLabel, top, headingMetrics, emptyRowOffset };
     }, label);
     const value = await metrics.jsonValue();
     assert.ok(value, `${label} should render a first card`);
-    return { top: value.top, headingMetrics: value.headingMetrics };
+    return { top: value.top, headingMetrics: value.headingMetrics, emptyRowOffset: value.emptyRowOffset };
   };
 
   for (const width of [390, 900]) {
@@ -856,6 +865,11 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
       .filter((value): value is NonNullable<CardMetrics['headingMetrics']> => value !== null);
     assert.equal(new Set(headingMetrics.map((value) => value.fontSize)).size, 1);
     assert.equal(new Set(headingMetrics.map((value) => value.inset)).size, 1);
+    for (const [title, value] of metrics) {
+      if (value.emptyRowOffset !== null) {
+        assert.ok(value.emptyRowOffset <= 1, `${title}: an empty one-row card centers its heading with the empty text (${value.emptyRowOffset}px)`);
+      }
+    }
 
     await page.click('.nav-btn[data-view="more"]');
     await page.waitForSelector('.more-grid');
