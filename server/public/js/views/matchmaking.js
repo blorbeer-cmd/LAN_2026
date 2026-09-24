@@ -9,13 +9,13 @@ import { confirmDialog, openModal } from '../modal.js';
 import { state, gameById, catalogGames, gamesWithHistory, eventPlayers } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
-import { openMatchForm } from './leaderboard.js';
 import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
+import { teamMoveControlHtml } from '../tournamentTeamDraft.js';
+import { filterRosterPicker, pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -27,7 +27,6 @@ let avoidAdjacentOpponents = false;
 // for the same game (e.g. from an unrelated realtime update).
 let avoidAdjacentOpponentsGameId = null;
 let teamCountValue = '2';
-let selectedDrawPlayer = null;
 let drawPlayerSearchQuery = '';
 
 // Which of the two team-formation workflows is currently open below the
@@ -47,7 +46,6 @@ let draftLoading = false;
 let draftPlayerIds = null; // independently selected participants for the next draft
 let draftCaptainIds = new Set(); // captains chosen in the start form
 let draftPlayerSearchQuery = '';
-let captainSearchQuery = '';
 
 async function loadDraft(ctx) {
   draftLoading = true;
@@ -131,18 +129,18 @@ function findDrawById(id) {
 
 // One drawn/recorded lineup: team cards plus, for a still-unrecorded draw,
 // draggable player rows and the button to record a result — which is what
-// changes its actions inside the shared Historie. Selecting a player and
-// then a team is the touch equivalent; arrow keys provide the keyboard path.
-function renderDrawCard(draw, { editable, showGame = false }) {
+// changes its actions inside the shared Historie. Arrow keys provide the
+// keyboard path for moving a player between teams.
+function renderDrawCard(draw, { editable: editableInput, showGame = false, primaryTournament = false }) {
+  // A draw that became a tournament is frozen like a recorded one, but it has
+  // no result of its own: no winner, no "Remis", just the link to its bracket.
+  const inTournament = Boolean(draw.tournamentId);
+  const editable = editableInput && !inTournament;
   // A drawn lineup carries the ratings it was balanced with, so it keeps
   // showing those instead of drifting when someone rates the game later. A
   // drafted lineup was never balanced by rating and stores none, so its rows
   // stay informational and read from the current state.
   const skillOptions = draw.source === 'draft' ? { balanced: false } : { stored: true };
-  const selectedTeamIndex =
-    editable && selectedDrawPlayer?.drawId === draw.id
-      ? draw.teams.findIndex((team) => team.players.some((player) => player.id === selectedDrawPlayer.playerId))
-      : -1;
   const teamsHtml = draw.teams
     .map((t, i) => {
       // Only meaningful once a result is actually recorded (read-only cards)
@@ -154,21 +152,35 @@ function renderDrawCard(draw, { editable, showGame = false }) {
       const resultLine = resultParts.length
         ? `<div class="muted" style="font-size:var(--font-size-xs);">${resultParts.join(' · ')}</div>`
         : '';
-      const isWinner = !editable && draw.winnerTeamIndex === i;
+      const decided = Boolean(draw.matchId);
+      const isWinner = decided && draw.winnerTeamIndex === i;
+      const isLoser = decided && draw.winnerTeamIndex !== null && !isWinner;
 
       return `
-      <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" role="group" aria-label="Team ${i + 1}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
-        <div class="team-card-header"><span>Team ${i + 1}</span>${teamSkillHtml(t.players, draw.gameId, skillOptions)}</div>
+      <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${isLoser ? ' is-loser' : ''}" role="group" aria-label="Team ${i + 1}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
+        <div class="team-card-header">
+          <span class="row" style="gap:var(--space-2);">Team ${i + 1}${isWinner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}</span>
+          ${teamSkillHtml(t.players, draw.gameId, skillOptions)}
+        </div>
         ${resultLine}
         ${t.players
           .map(
             (p) => `
-          ${editable ? `<button type="button" class="team-player tournament-drag-player${selectedDrawPlayer?.drawId === draw.id && selectedDrawPlayer.playerId === p.id ? ' is-selected' : ''}" draggable="true" data-move-draw="${draw.id}" data-move-player="${p.id}" data-team-index="${i}" aria-pressed="${selectedDrawPlayer?.drawId === draw.id && selectedDrawPlayer.playerId === p.id}" aria-label="${escapeHtml(p.name)} verschieben">` : '<div class="team-player">'}
+          ${editable ? `<div class="team-player-move-row"><button type="button" class="team-player tournament-drag-player" draggable="true" data-move-draw="${draw.id}" data-move-player="${p.id}" data-team-index="${i}" aria-label="${escapeHtml(p.name)} verschieben">` : '<div class="team-player">'}
             ${avatarHtml(p, 18)}
             <span class="team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
             ${seatConflictIconHtml(p)}
             ${playerSkillHtml(p, draw.gameId, skillOptions)}
-          ${editable ? '</button>' : '</div>'}`
+          ${
+            editable
+              ? `</button>${teamMoveControlHtml({
+                  teamNames: draw.teams.map((_, index) => `Team ${index + 1}`),
+                  currentIndex: i,
+                  playerName: p.name,
+                  attributes: `data-move-draw-select="${draw.id}" data-move-player="${p.id}"`,
+                })}</div>`
+              : '</div>'
+          }`
           )
           .join('')}
       </div>`;
@@ -181,117 +193,270 @@ function renderDrawCard(draw, { editable, showGame = false }) {
       : ''
     : '';
 
+  // Same action slot as tournament fixtures: a pencil for a recorded result,
+  // "+" for an open draw. An open draw can alternatively become a tournament;
+  // on the freshly drawn lineup that is the highlighted next step, so
+  // "Turnier erstellen" carries the gradient and sits rightmost.
+  const actions = inTournament
+    ? `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(draw.tournamentId)}">${escapeHtml(draw.tournamentName ?? 'Turnier')}</button>`
+    : editable
+    ? `<button type="button" class="tournament-fixture-action is-open" data-record-draw="${draw.id}" aria-label="Ergebnis eintragen" title="Ergebnis eintragen">${icon('plus')}</button>
+       <button type="button" class="btn btn-sm${primaryTournament ? ' btn-primary' : ''}" data-draw-tournament="${draw.id}">Turnier erstellen</button>`
+    : `<button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>
+       <button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>`;
+
   return `
-    <div class="card stack" style="margin-bottom:var(--space-3);" data-draw-card="${draw.id}">
-      <div class="row-between" style="flex-wrap:wrap;">
-        <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-          ${
-            showGame
-              ? `                 <span class="player-name">${escapeHtml(draw.gameName)}</span>`
-              : ''
-          }
+    <div class="card stack matchmaking-draw-card" data-draw-card="${draw.id}">
+      <div class="matchmaking-draw-head">
+        <div class="row" style="gap:var(--space-2);flex-wrap:wrap;min-width:0;">
+          ${showGame ? `<span class="player-name">${escapeHtml(draw.gameName)}</span>` : ''}
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</span>
           ${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}
+          ${draw.matchId && draw.winnerTeamIndex === null ? '<span class="tournament-fixture-score">Remis</span>' : ''}
         </div>
-        ${!editable && draw.winnerTeamIndex === null ? `<span class="badge">${icon('users')} Unentschieden</span>` : ''}
+        ${actions ? `<div class="matchmaking-draw-actions">${actions}</div>` : ''}
       </div>
       <div class="tournament-team-preview-grid">${teamsHtml}</div>
       ${seatingNote}
-      ${editable ? `<button type="button" class="btn btn-primary btn-sm" data-record-draw="${draw.id}">Ergebnis eintragen</button>` : ''}
-      ${
-        !editable
-          ? `<div class="row" style="flex-wrap:wrap;">
-               <button type="button" class="btn btn-sm" style="flex:1 1 var(--selection-card-min-width);" data-edit-draw-result="${draw.id}">Ergebnis bearbeiten</button>
-               <button type="button" class="btn btn-primary btn-sm" style="flex:1 1 var(--selection-card-min-width);" data-rematch-draw="${draw.id}">Rematch</button>
-             </div>`
-          : ''
-      }
     </div>`;
 }
 
-function openDrawResultEdit(draw, ctx) {
-  if (!draw.matchId) return;
-  const teamFields = draw.teams
-    .map(
-      (team, index) => `<div class="team-card stack">
-        <label class="check-row">
-          <input type="radio" name="edit-draw-winner" value="${index}" ${draw.winnerTeamIndex === index ? 'checked' : ''} />
-          <strong>Team ${index + 1} gewinnt</strong>
-        </label>
-        <div class="muted" style="font-size:var(--font-size-xs);">${team.players.map((player) => escapeHtml(player.name)).join(', ')}</div>
-        <div class="field-row">
-          <div>
-            <label class="field-label" for="edit-draw-score-${index}">Wert</label>
-            <input type="number" id="edit-draw-score-${index}" data-edit-draw-score="${index}" step="any" value="${team.score ?? ''}" />
-          </div>
-          <div>
-            <label class="field-label" for="edit-draw-rank-${index}">Platz</label>
-            <input type="number" id="edit-draw-rank-${index}" data-edit-draw-rank="${index}" min="1" value="${team.rank ?? ''}" />
-          </div>
-        </div>
-      </div>`
-    )
-    .join('');
+// Records or edits a draw's result in the same dialog style as tournament
+// results: one button per team (plus Unentschieden) that saves immediately,
+// or, via "Mit Werten eintragen", one value per team from which the winner
+// and the places are derived. A draw that already has values opens there.
+function openDrawResultDialog(draw, ctx) {
+  const recorded = Boolean(draw.matchId);
+  const hasValues = recorded && draw.teams.some((team) => team.score != null);
+  const teamLabel = (index) => `Team ${index + 1}`;
+  const playerNames = (team) => team.players.map((player) => escapeHtml(player.name)).join(', ');
 
-  const { close, el } = openModal(
-    'Ergebnis bearbeiten',
-    `<form id="edit-draw-result-form" class="stack">
-      ${teamFields}
-      <label class="check-row">
-        <input type="radio" name="edit-draw-winner" value="" ${draw.winnerTeamIndex === null ? 'checked' : ''} />
-        <span>Unentschieden</span>
-      </label>
-      <button type="submit" class="btn btn-primary btn-block">Änderung speichern</button>
-    </form>`,
-    {
-      confirmClose: () => {
-        if (!el) return null;
-        const dirty = draw.teams.some((team, index) => {
-          const scoreRaw = el.querySelector(`[data-edit-draw-score="${index}"]`).value;
-          const rankRaw = el.querySelector(`[data-edit-draw-rank="${index}"]`).value;
-          return scoreRaw !== String(team.score ?? '') || rankRaw !== String(team.rank ?? '');
-        });
-        const winnerRaw = el.querySelector('input[name="edit-draw-winner"]:checked')?.value ?? '';
-        const winnerDirty = winnerRaw !== (draw.winnerTeamIndex === null ? '' : String(draw.winnerTeamIndex));
-        return dirty || winnerDirty ? 'Deine Änderungen am Ergebnis (Sieger, Wert, Platz) werden nicht gespeichert.' : null;
-      },
-    }
-  );
+  const pickHtml = `
+    <div class="stack tournament-result-form" data-draw-result-pick>
+      <span class="muted">Wer hat gewonnen?</span>
+      ${draw.teams
+        .map(
+          (team, index) => `<button type="button" class="tournament-result-pick${recorded && draw.winnerTeamIndex === index ? ' is-selected' : ''}" data-draw-winner="${index}">
+            <span>${teamLabel(index)}</span>
+            <span class="tournament-result-pick-players">${playerNames(team)}</span>
+          </button>`,
+        )
+        .join('')}
+      <button type="button" class="tournament-result-pick is-draw${recorded && draw.winnerTeamIndex === null ? ' is-selected' : ''}" data-draw-winner="">Unentschieden</button>
+      <button type="button" class="btn btn-sm" data-draw-result-mode="values">Mit Werten eintragen</button>
+    </div>`;
 
-  el.querySelector('#edit-draw-result-form').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const submitButton = event.currentTarget.querySelector('button[type="submit"]');
-    if (submitButton.disabled) return;
-    submitButton.disabled = true;
-    const teams = draw.teams.map((team, index) => {
-      const scoreRaw = el.querySelector(`[data-edit-draw-score="${index}"]`).value;
-      const rankRaw = el.querySelector(`[data-edit-draw-rank="${index}"]`).value;
-      return {
-        playerIds: team.players.map((player) => player.id),
-        score: scoreRaw === '' ? null : Number(scoreRaw),
-        rank: rankRaw === '' ? null : Number(rankRaw),
-      };
-    });
-    const winnerRaw = el.querySelector('input[name="edit-draw-winner"]:checked')?.value ?? '';
+  const valuesHtml = `
+    <form class="stack tournament-result-form" data-draw-result-values hidden>
+      ${draw.teams
+        .map(
+          (team, index) => `<div class="draw-result-value-row">
+            <label for="draw-result-score-${index}">
+              <span>${teamLabel(index)}</span>
+              <span class="tournament-result-pick-players">${playerNames(team)}</span>
+            </label>
+            <input type="number" id="draw-result-score-${index}" class="tournament-result-score" data-draw-score="${index}" step="any" placeholder="0" value="${team.score ?? ''}" />
+          </div>`,
+        )
+        .join('')}
+      <button type="submit" class="btn btn-primary btn-block">Speichern</button>
+      <button type="button" class="btn btn-sm" data-draw-result-mode="pick">Nur Sieger wählen</button>
+    </form>`;
+
+  const { close, el } = openModal(`Ergebnis · ${draw.gameName}`, `${pickHtml}${valuesHtml}`);
+  const pickEl = el.querySelector('[data-draw-result-pick]');
+  const valuesEl = el.querySelector('[data-draw-result-values]');
+  const showValues = (show) => {
+    pickEl.hidden = show;
+    valuesEl.hidden = !show;
+  };
+  showValues(hasValues);
+
+  async function save(teams, winnerTeamIndex) {
     try {
-      await api.matches.update(draw.matchId, {
-        teams,
-        winnerTeamIndex: winnerRaw === '' ? null : Number(winnerRaw),
-      });
+      if (recorded) {
+        await api.matches.update(draw.matchId, { teams, winnerTeamIndex });
+      } else {
+        await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams, winnerTeamIndex });
+        if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
+      }
       invalidateMatchmakingHistory();
       close();
       await ctx.refresh();
-      showToast('Ergebnis aktualisiert.');
+      showToast('Ergebnis gespeichert.');
     } catch (err) {
-      submitButton.disabled = false;
       showToast(err.message, { error: true });
     }
+  }
+
+  el.querySelectorAll('[data-draw-result-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => showValues(btn.dataset.drawResultMode === 'values'));
+  });
+  el.querySelectorAll('[data-draw-winner]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const winnerTeamIndex = btn.dataset.drawWinner === '' ? null : Number(btn.dataset.drawWinner);
+      const teams = draw.teams.map((team) => ({
+        playerIds: team.players.map((player) => player.id),
+        score: null,
+        rank: null,
+      }));
+      save(teams, winnerTeamIndex);
+    });
+  });
+  valuesEl.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const scores = draw.teams.map((_, index) => {
+      const raw = el.querySelector(`[data-draw-score="${index}"]`).value;
+      return raw === '' ? null : Number(raw);
+    });
+    if (scores.some((score) => score === null || !Number.isFinite(score))) {
+      showToast('Bitte für jedes Team einen Wert eintragen.', { error: true });
+      return;
+    }
+    // Places follow the values (ties share a place); a unique top value wins.
+    const teams = draw.teams.map((team, index) => ({
+      playerIds: team.players.map((player) => player.id),
+      score: scores[index],
+      rank: 1 + scores.filter((other) => other > scores[index]).length,
+    }));
+    const max = Math.max(...scores);
+    const winnerTeamIndex = scores.filter((score) => score === max).length === 1 ? scores.indexOf(max) : null;
+    save(teams, winnerTeamIndex);
   });
 }
 
 // Wires D&D/touch/keyboard player moves and result buttons for every draw
 // card currently in the DOM — shared between the fresh result and history.
+const TOURNAMENT_FORMAT_LABELS = {
+  single_elimination: 'K.O.-Turnier',
+  round_robin: 'Liga (jeder gegen jeden)',
+  group_knockout: 'Gruppenphase + K.O.',
+};
+
+// A drafted lineup is named after its captain (the first player of each
+// drafted team, see draft.ts); a balanced draw keeps the neutral numbering.
+function defaultDrawTeamName(draw, team, index) {
+  const captain = draw.source === 'draft' ? team.players[0]?.name : null;
+  return captain ? `Team ${captain}` : `Team ${index + 1}`;
+}
+
+// Turns a drawn lineup into a tournament: the teams are fixed by the draw,
+// only format, names and lobby details are chosen here. The draw is claimed
+// server-side in the same step, so it can no longer become a single result.
+function openDrawTournamentDialog(draw) {
+  const form = { format: 'single_elimination', twoLegged: false, trackScore: false, groupCount: 2, advancers: 1 };
+  let bodyEl;
+  const names = draw.teams.map((team, index) => defaultDrawTeamName(draw, team, index));
+  const lobby = { name: '', password: '' };
+
+  function render() {
+    const hasLeague = form.format === 'round_robin' || form.format === 'group_knockout';
+    bodyEl.innerHTML = `
+      <form class="stack draw-tournament-form" id="draw-tournament-form">
+        <div>
+          <label class="field-label is-required" for="draw-tournament-format">Turnierformat</label>
+          <select id="draw-tournament-format">
+            ${Object.entries(TOURNAMENT_FORMAT_LABELS).map(([value, label]) => `<option value="${value}" ${value === form.format ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </div>
+        ${
+          form.format === 'group_knockout'
+            ? `<div class="field-row">
+                 <div><label class="field-label is-required" for="draw-tournament-groups">Anzahl Gruppen</label><input type="number" id="draw-tournament-groups" min="2" value="${form.groupCount}" /></div>
+                 <div><label class="field-label is-required" for="draw-tournament-advancers">Aufsteiger pro Gruppe</label><input type="number" id="draw-tournament-advancers" min="1" value="${form.advancers}" /></div>
+               </div>`
+            : ''
+        }
+        <div>
+          <span class="field-label">Teamnamen</span>
+          <div class="draw-tournament-team-names">
+            ${names.map((name, index) => `<input type="text" data-draw-team-name="${index}" maxlength="60" value="${escapeHtml(name)}" aria-label="Name Team ${index + 1}" />`).join('')}
+          </div>
+        </div>
+        <div class="draw-tournament-options">
+          ${hasLeague ? `<label class="check-row"><input type="checkbox" id="draw-tournament-two-legged" ${form.twoLegged ? 'checked' : ''} /> Hin- & Rückrunde${form.format === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>` : ''}
+          <label class="check-row"><input type="checkbox" id="draw-tournament-track-score" ${form.trackScore ? 'checked' : ''} /> Ergebnisse inkl. Punktestand</label>
+        </div>
+        <div class="field-row">
+          <div><span class="title-with-info"><label class="field-label" for="draw-tournament-lobby">Lobby-Basisname</label>${infoTooltipHtml(
+              'draw-tournament-lobby-help',
+              'Lobby-Basisname',
+              'Aus dem Basisnamen wird für jede gleichzeitig spielbare Paarung ein eindeutiger Lobbyname erzeugt. Das zuerst genannte Team eröffnet die Lobby.'
+            )}</span><input type="text" id="draw-tournament-lobby" maxlength="60" placeholder="LAN26" value="${escapeHtml(lobby.name)}" /></div>
+          <div><span class="title-with-info"><label class="field-label" for="draw-tournament-password">Lobby-Passwort</label></span><input type="text" id="draw-tournament-password" maxlength="60" placeholder="zocken123" value="${escapeHtml(lobby.password)}" /></div>
+        </div>
+        <div class="draw-tournament-footer"><button type="submit" class="btn btn-primary btn-sm">Turnier erstellen</button></div>
+      </form>`;
+
+    const read = () => {
+      form.format = bodyEl.querySelector('#draw-tournament-format').value;
+      form.twoLegged = Boolean(bodyEl.querySelector('#draw-tournament-two-legged')?.checked);
+      form.trackScore = bodyEl.querySelector('#draw-tournament-track-score').checked;
+      form.groupCount = Number(bodyEl.querySelector('#draw-tournament-groups')?.value ?? form.groupCount);
+      form.advancers = Number(bodyEl.querySelector('#draw-tournament-advancers')?.value ?? form.advancers);
+      bodyEl.querySelectorAll('[data-draw-team-name]').forEach((input) => {
+        names[Number(input.dataset.drawTeamName)] = input.value;
+      });
+      lobby.name = bodyEl.querySelector('#draw-tournament-lobby').value;
+      lobby.password = bodyEl.querySelector('#draw-tournament-password').value;
+    };
+    wireInfoTooltips(bodyEl);
+    bodyEl.querySelector('#draw-tournament-format').addEventListener('change', () => {
+      read();
+      render();
+    });
+    bodyEl.querySelector('#draw-tournament-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      read();
+      try {
+        const created = await api.tournaments.create({
+          gameId: draw.gameId,
+          format: form.format,
+          twoLegged: form.twoLegged,
+          trackScore: form.trackScore,
+          ...(form.format === 'group_knockout' ? { groupCount: form.groupCount, advancersPerGroup: form.advancers } : {}),
+          ...(lobby.name.trim() ? { lobbyName: lobby.name.trim() } : {}),
+          ...(lobby.password.trim() ? { lobbyPassword: lobby.password.trim() } : {}),
+          teams: draw.teams.map((team, index) => ({
+            name: names[index].trim() || defaultDrawTeamName(draw, team, index),
+            playerIds: team.players.map((player) => player.id),
+          })),
+          drawId: draw.id,
+        });
+        close();
+        if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = { ...state.lastMatchmaking, tournamentId: created.id, tournamentName: created.name };
+        invalidateMatchmakingHistory();
+        window.dispatchEvent(new CustomEvent('respawn:navigate', {
+          detail: { view: 'tournaments', localRoute: { kind: 'detail', id: created.id } },
+        }));
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  }
+
+  const { close } = openModal('Turnier erstellen', '<div data-draw-tournament-body></div>', {
+    onMount: (el) => {
+      bodyEl = el.querySelector('[data-draw-tournament-body]');
+      render();
+    },
+  });
+}
+
 function wireDrawCards(container, ctx) {
+  container.querySelectorAll('[data-draw-tournament]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const draw = findDrawById(btn.dataset.drawTournament);
+      if (draw) openDrawTournamentDialog(draw);
+    });
+  });
+  container.querySelectorAll('[data-open-draw-tournament]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('respawn:navigate', {
+        detail: { view: 'tournaments', localRoute: { kind: 'detail', id: btn.dataset.openDrawTournament } },
+      }));
+    });
+  });
   async function moveDrawPlayer(drawId, playerId, toTeamIndex) {
     try {
       const updated = await api.matchmaking.moveDrawPlayer(drawId, playerId, toTeamIndex);
@@ -300,14 +465,18 @@ function wireDrawCards(container, ctx) {
         const idx = historyCache.findIndex((draw) => draw.id === drawId);
         if (idx !== -1) historyCache[idx] = updated;
       }
-      selectedDrawPlayer = null;
       ctx.rerender();
     } catch (err) {
-      selectedDrawPlayer = null;
       showToast(err.message, { error: true });
       ctx.rerender();
     }
   }
+
+  container.querySelectorAll('[data-move-draw-select]').forEach((select) => {
+    select.addEventListener('change', () => {
+      moveDrawPlayer(select.dataset.moveDrawSelect, select.dataset.movePlayer, Number(select.value));
+    });
+  });
 
   let draggedPlayer = null;
   const clearDragState = () => {
@@ -319,20 +488,12 @@ function wireDrawCards(container, ctx) {
 
   container.querySelectorAll('[data-move-draw]').forEach((playerRow) => {
     playerRow.addEventListener('dragstart', (event) => {
-      selectedDrawPlayer = null;
       draggedPlayer = { drawId: playerRow.dataset.moveDraw, playerId: playerRow.dataset.movePlayer };
       playerRow.classList.add('is-dragging');
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', JSON.stringify(draggedPlayer));
     });
     playerRow.addEventListener('dragend', clearDragState);
-    playerRow.addEventListener('click', (event) => {
-      event.stopPropagation();
-      const next = { drawId: playerRow.dataset.moveDraw, playerId: playerRow.dataset.movePlayer };
-      selectedDrawPlayer =
-        selectedDrawPlayer?.drawId === next.drawId && selectedDrawPlayer.playerId === next.playerId ? null : next;
-      ctx.rerender();
-    });
     playerRow.addEventListener('keydown', (event) => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
@@ -371,31 +532,19 @@ function wireDrawCards(container, ctx) {
       clearDragState();
       if (player?.drawId === drawId) moveDrawPlayer(drawId, player.playerId, toTeamIndex);
     });
-    teamCard.addEventListener('click', (event) => {
-      if (
-        selectedDrawPlayer?.drawId !== drawId ||
-        event.target.closest('[data-move-draw]')
-      ) return;
-      moveDrawPlayer(drawId, selectedDrawPlayer.playerId, toTeamIndex);
-    });
   });
 
   container.querySelectorAll('[data-record-draw]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const draw = findDrawById(btn.dataset.recordDraw);
-      if (!draw) return;
-      openMatchForm(ctx, {
-        presetGameId: draw.gameId,
-        presetTeams: draw.teams.map((t) => ({ playerIds: t.players.map((p) => p.id) })),
-        presetDrawId: draw.id,
-      });
+      if (draw) openDrawResultDialog(draw, ctx);
     });
   });
 
   container.querySelectorAll('[data-edit-draw-result]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const draw = findDrawById(btn.dataset.editDrawResult);
-      if (draw) openDrawResultEdit(draw, ctx);
+      if (draw) openDrawResultDialog(draw, ctx);
     });
   });
 
@@ -412,11 +561,7 @@ function wireDrawCards(container, ctx) {
         const rematchDraw = await api.matchmaking.rematch({ gameId: draw.gameId, teams });
         state.lastMatchmaking = rematchDraw;
         ctx.rerender();
-        openMatchForm(ctx, {
-          presetGameId: rematchDraw.gameId,
-          presetTeams: teams,
-          presetDrawId: rematchDraw.id,
-        });
+        openDrawResultDialog(rematchDraw, ctx);
       } catch (err) {
         showToast(err.message, { error: true });
       }
@@ -497,17 +642,21 @@ function renderDraftBoard(draft) {
 
   return `
     <div class="card stack">
-      <div class="row-between">
-        <strong>Captain Draft läuft</strong>
-        <span class="badge badge-playing">Live</span>
+      <div class="matchmaking-draw-head">
+        <div class="stack" style="gap:0;min-width:0;">
+          <strong>Captain Draft läuft</strong>
+          <span class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(draft.gameName)}</span>
+        </div>
+        <div class="matchmaking-draw-actions">
+          <span class="badge badge-playing">Live</span>
+          <button type="button" class="btn btn-sm" id="draft-cancel">Abbrechen</button>
+        </div>
       </div>
-      <div class="player-name">${escapeHtml(draft.gameName)}</div>
       <div class="section-title" style="margin:var(--space-2) 0 0;">Captains</div>
       <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(var(--selection-card-min-width), 1fr));">${teamsHtml}</div>
       <div class="section-title" style="margin:var(--space-2) 0 0;">Spieler</div>
       <div class="player-selection-grid tournament-player-grid draft-pool-grid">${poolHtml}</div>
       ${isMyTurn ? '' : `<div class="muted" style="font-size:var(--font-size-sm);">Warten auf <strong>${escapeHtml(turnCaptain?.name ?? '?')}</strong>…</div>`}
-      <button type="button" class="btn btn-danger btn-sm" id="draft-cancel">Draft abbrechen</button>
     </div>`;
 }
 
@@ -624,21 +773,24 @@ export function renderMatchmaking(container, ctx) {
         <span class="field-label" id="mm-mode-label">Modus</span>
         <button type="button" class="btn btn-sm${teamsMode === 'draw' ? ' btn-primary' : ''}" data-mm-mode="draw" aria-pressed="${teamsMode === 'draw'}">Auslosung</button>
         <button type="button" class="btn btn-sm${teamsMode === 'draft' ? ' btn-primary' : ''}" data-mm-mode="draft" aria-pressed="${teamsMode === 'draft'}">Captain Draft</button>
+        ${infoTooltipHtml(
+            'captain-draft-help',
+            'Captain Draft',
+            'Zuerst Teilnehmer, dann Captains benennen. Anschließend abwechselnd aus den Spielern wählen.'
+          )}
       </div>`;
 
   container.innerHTML = `
     <div class="card stack">
       <div>
         <label class="field-label is-required" for="mm-game-search">Spiel auswählen</label>
-        ${searchSelectHtml('mm-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
+        ${searchSelectHtml('mm-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen' })}
       </div>
       ${modeToggleHtml}
 
       ${teamsMode === 'draw' ? `
-      <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="matchmaking-draw-title">
-        <div class="tournament-create-step-title">
-          <h3 id="matchmaking-draw-title">Auslosung</h3>
-        </div>
+      <section class="match-mode-panel stack" aria-labelledby="matchmaking-draw-title">
+        <h3 id="matchmaking-draw-title" class="visually-hidden">Auslosung</h3>
         ${rosterPickerHtml({
           id: 'mm-draw-roster',
           players: eventPlayers(),
@@ -648,7 +800,6 @@ export function renderMatchmaking(container, ctx) {
           itemAttribute: 'data-mm-draw-search-item',
           playerAttribute: 'data-player',
           selectAllId: 'mm-select-all',
-          selectNoneId: 'mm-select-none',
           toolbarLeadingHtml: `<div class="tournament-team-count-field">
             <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
             <input type="number" id="mm-teamcount" min="2" value="${escapeHtml(teamCountValue)}" />
@@ -668,7 +819,7 @@ export function renderMatchmaking(container, ctx) {
         </div>
         <div class="card-footer-actions">
           <div class="row" style="flex-wrap:wrap;">
-            <button type="button" class="btn btn-primary" id="mm-generate" ${drawReady ? '' : 'disabled'}>Teams auslosen</button>
+            <button type="button" class="btn btn-primary btn-sm" id="mm-generate" ${drawReady ? '' : 'disabled'}>Teams auslosen</button>
             ${drawReady ? '' : infoTooltipHtml(
                 'matchmaking-draw-disabled-help',
                 'Warum ist „Teams auslosen“ deaktiviert?',
@@ -680,17 +831,8 @@ export function renderMatchmaking(container, ctx) {
       </section>` : ''}
 
       ${teamsMode === 'draft' ? `
-      <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="matchmaking-draft-title">
-        <div class="tournament-create-step-title">
-          <h3 id="matchmaking-draft-title" class="title-with-info">
-            <span>Captain Draft</span>
-            ${infoTooltipHtml(
-                'captain-draft-help',
-                'Captain Draft',
-                'Zuerst Teilnehmer, dann Captains benennen. Anschließend abwechselnd aus den Spielern wählen.'
-              )}
-          </h3>
-        </div>
+      <section class="match-mode-panel stack" aria-labelledby="matchmaking-draft-title">
+        <h3 id="matchmaking-draft-title" class="visually-hidden">Captain Draft</h3>
         ${rosterPickerHtml({
           id: 'mm-draft-roster',
           players: eventPlayers(),
@@ -709,21 +851,20 @@ export function renderMatchmaking(container, ctx) {
             id: 'mm-captain-roster',
             players: draftPlayers,
             selectedIds: draftCaptainIds,
-            query: captainSearchQuery,
-            searchId: 'captain-player-search',
+            query: draftPlayerSearchQuery,
             itemAttribute: 'data-mm-captain-search-item',
             playerAttribute: 'data-captain-toggle',
             emptyAttribute: 'data-mm-captain-search-empty',
             toolbarLabel: 'Captains',
-            searchLabel: 'Captains suchen',
             gridClass: 'captain-selection-grid',
             showBulkActions: false,
+            showSearch: false,
             renderTrailing: (player) => playerSkillHtml(player, selectedGameId, { balanced: false }),
           })}
         </div>
         <div class="card-footer-actions">
           <div class="row" style="flex-wrap:wrap;">
-            <button type="button" class="btn btn-primary" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten</button>
+            <button type="button" class="btn btn-primary btn-sm" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten</button>
             ${draftReady ? '' : infoTooltipHtml(
                 'matchmaking-draft-disabled-help',
                 'Warum ist „Draft starten“ deaktiviert?',
@@ -758,6 +899,8 @@ export function renderMatchmaking(container, ctx) {
     searchId: 'draft-player-search',
     onQueryChange: (query) => {
       draftPlayerSearchQuery = query;
+      // The one search field above narrows both the roster and the captain list.
+      filterRosterPicker(container, 'mm-captain-roster', query);
     },
     onSelectionChange: ({ kind, playerId, checked }) => {
       if (kind === 'bulk') {
@@ -772,10 +915,6 @@ export function renderMatchmaking(container, ctx) {
     id: 'mm-captain-roster',
     players: draftPlayers,
     selectedIds: draftCaptainIds,
-    searchId: 'captain-player-search',
-    onQueryChange: (query) => {
-      captainSearchQuery = query;
-    },
     onSelectionChange: ({ playerId, checked }) => {
       if (checked && draftCaptainIds.size > 4) {
         draftCaptainIds.delete(playerId);
@@ -789,6 +928,8 @@ export function renderMatchmaking(container, ctx) {
       ctx.rerender();
     },
   });
+
+  filterRosterPicker(container, 'mm-captain-roster', draftPlayerSearchQuery);
 
   container.querySelectorAll('[data-mm-mode]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -846,10 +987,12 @@ export function renderMatchmaking(container, ctx) {
 
 function renderResult(result) {
   // Once a result is recorded, this draw stays in Historie with result
-  // actions while the "gerade ausgelost" panel has nothing left to show.
-  if (!result || result.matchId) return '';
+  // actions while the "Neue Auslosung" panel has nothing left to show.
+  if (!result || result.matchId || result.tournamentId) return '';
   return `
-    <div class="section-title">${escapeHtml(result.gameName)} — gerade ausgelost</div>
-    ${renderDrawCard(result, { editable: true })}
+    <section class="matchmaking-new-draw" aria-labelledby="matchmaking-new-draw-title">
+      <h2 id="matchmaking-new-draw-title" class="matchmaking-new-draw-title">Neue Auslosung</h2>
+      ${renderDrawCard(result, { editable: true, showGame: true, primaryTournament: true })}
+    </section>
   `;
 }

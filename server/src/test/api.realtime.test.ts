@@ -111,6 +111,44 @@ async function withGuardedServer(
   }
 }
 
+test('a finished Captain Draft reaches every device as the current draw', async () => {
+  await withServer(async (baseUrl) => {
+    const ids: string[] = [];
+    for (const name of ['Draft Live A', 'Draft Live B', 'Draft Live C', 'Draft Live D']) {
+      const player = await request(baseUrl).post('/api/players').send({ name });
+      ids.push(player.body.id);
+    }
+    const games = await request(baseUrl).get('/api/games');
+    const gameId = games.body[0].id;
+    const client = await connectClient(baseUrl, createSession(ids[0]));
+    try {
+      await socketAck(client, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
+      const generated = new Promise<Record<string, unknown>>((resolve) => {
+        client.on(Events.matchmakingGenerated, (payload) => resolve(payload));
+      });
+
+      const started = await request(baseUrl)
+        .post('/api/draft/start')
+        .send({ gameId, captainIds: [ids[0], ids[1]], poolPlayerIds: [ids[2], ids[3]] });
+      assert.equal(started.status, 201, JSON.stringify(started.body));
+      // Captain A picks one; the last pool player is auto-assigned, which
+      // completes the draft.
+      const picked = await request(baseUrl).post('/api/draft/pick').send({ playerId: ids[0], pickPlayerId: ids[2] });
+      assert.equal(picked.status, 200, JSON.stringify(picked.body));
+
+      const draw = await generated;
+      assert.equal(draw.source, 'draft');
+      assert.equal(draw.gameId, gameId);
+      assert.equal(draw.matchId, null);
+      assert.equal(draw.tournamentId, null);
+      const history = await request(baseUrl).get(`/api/matchmaking/history?gameId=${gameId}`);
+      assert.ok(history.body.history.some((entry: { id: string }) => entry.id === draw.id), 'the broadcast draw is the stored one');
+    } finally {
+      client.close();
+    }
+  });
+});
+
 test('createSocketAuthGuard rejects a kiosk socket with the wrong kiosk token', async () => {
   await withGuardedServer('secret-token', async (baseUrl) => {
     const rejected = new Promise<Error>((resolve) => {

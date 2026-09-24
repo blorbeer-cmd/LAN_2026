@@ -10,7 +10,6 @@ import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcade
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
-import { backButtonHtml } from '../../backButton.js';
 
 const W = 1000;
 const H = 600;
@@ -406,7 +405,7 @@ export function renderBlobby(container) {
     // A direct or expired-match link lands here without a running match;
     // show the same named lobby area as opening Blobby Volley from Arcade
     // instead of a dead end (see Pong/Snake/Battleship's identical fallback).
-    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Blobby Volley</h1>${renderBlobbyLobbyCard()}`;
+    container.innerHTML = `<h1 class="view-title">Blobby Volley</h1>${renderBlobbyLobbyCard()}`;
     wireBlobbyLobbyCard(container);
     return;
   }

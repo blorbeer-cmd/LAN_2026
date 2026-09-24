@@ -35,13 +35,19 @@ for (const width of [390, 1024]) {
       await page.click('.nav-btn[data-view="matchmaking"]');
       const roster = page.locator('[data-roster-picker="mm-draw-roster"]');
       await roster.waitFor();
+      // Matchmaking re-renders once its history and draft requests resolve;
+      // capture only after they settled so the roster is not replaced mid-shot.
+      await page.waitForLoadState('networkidle');
       // A deliberate UI selection is stable regardless of live-status defaults.
-      await page.click('#mm-select-all');
+      if ((await page.getAttribute('#mm-select-all', 'aria-label')) === 'Sichtbare Spieler markieren') {
+        await page.click('#mm-select-all');
+        await page.waitForSelector('#mm-select-all[aria-label="Sichtbare Spieler abwählen"]');
+      }
       await scenes.capture(`core-roster-${width}`, roster, async () => {
         assert.equal(await roster.locator('input[type="checkbox"]:checked').count(), 2);
         assert.equal(await roster.getByText('Alex Referenz', { exact: true }).count(), 1);
-        assert.equal(await roster.locator('#mm-select-all svg.ui-icon, #mm-select-none svg.ui-icon, [data-selection-search-trigger] svg.ui-icon').count(), 3);
-        await assertControlHeights(roster.locator('#mm-select-all, #mm-select-none, [data-selection-search-trigger], #mm-teamcount'));
+        assert.equal(await roster.locator('#mm-select-all svg.ui-icon').count(), 1);
+        await assertControlHeights(roster.locator('#mm-select-all, #mm-player-search, #mm-teamcount'));
         const layout = await roster.evaluate((element) => {
           const toolbar = element.querySelector('.selection-toolbar')!.getBoundingClientRect();
           const grid = element.querySelector('.player-selection-grid')!;

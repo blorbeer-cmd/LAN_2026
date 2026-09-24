@@ -26,7 +26,6 @@ import {
   wirePendingInvitationActions,
 } from './events.js';
 import { eventHasFeature } from '../eventFeatures.js';
-import { backButtonHtml } from '../backButton.js';
 import { layoutModeForPlayer, LAYOUT_MODES, setLayoutModeForPlayer } from '../layoutMode.js';
 
 // Tracking is the one feature that runs on a private PC, so its labels alone
@@ -334,7 +333,6 @@ export function renderProfile(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title" id="profile-view-title" tabindex="-1">Mein Profil</h1>
         <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
       </div>
@@ -365,11 +363,11 @@ export function renderProfile(container, ctx) {
             </div>
             <div class="profile-text-field">
               <label for="profile-name" class="field-label is-required">Gamertag</label>
-              <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" required />
+              <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" required placeholder="NightOwl" />
             </div>
             <div class="profile-text-field">
               <label for="profile-real-name" class="field-label">Name</label>
-              <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="z.B. Robert" />
+              <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Robert" />
             </div>
           </div>
           <button type="button" class="btn btn-primary btn-block" id="profile-save">Speichern</button>

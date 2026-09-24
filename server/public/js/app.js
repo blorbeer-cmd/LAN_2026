@@ -458,7 +458,7 @@ function renderEventContextSwitcher() {
     ? `Aktives Event: ${activeName}${activeState === activeName ? '' : ` – ${activeState}`}`
     : 'Aktives Event';
   container.innerHTML = searchSelectHtml('event-context-switcher', options, activeId, {
-    placeholder: 'Event suchen…',
+    placeholder: 'Event suchen',
     ariaLabel: description,
     label: 'Auswählbare Events',
     action: MANAGE_WORKSPACES_ACTION,

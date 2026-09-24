@@ -10,7 +10,6 @@ import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcade
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
-import { backButtonHtml } from '../../backButton.js';
 import { snakeColor } from '../shared/snakeColors.js';
 
 const DEFAULT_COLS = 48;
@@ -325,7 +324,7 @@ function updateArenaStatusDisplay() {
 export function renderSnake(container) {
   ensureSnakeSocket();
   if (!match) {
-    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Snake</h1>${renderSnakeLobbyCard()}`;
+    container.innerHTML = `<h1 class="view-title">Snake</h1>${renderSnakeLobbyCard()}`;
     wireSnakeLobbyCard(container);
     return;
   }

@@ -10,7 +10,6 @@ import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcade
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
-import { backButtonHtml } from '../../backButton.js';
 import { projectPongWorld } from '../pongPrediction.js';
 
 const W = 960;
@@ -474,7 +473,7 @@ function matchControlsHtml(isHost) {
 export function renderPong(container) {
   ensurePongSocket();
   if (!match) {
-    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Pong</h1>${renderPongLobbyCard()}`;
+    container.innerHTML = `<h1 class="view-title">Pong</h1>${renderPongLobbyCard()}`;
     wirePongLobbyCard(container);
     return;
   }

@@ -124,10 +124,10 @@ test('the listbox label defaults generically and can name what is being chosen',
 
 test('the placeholder defaults to a generic search hint and can be overridden', () => {
   const withDefault = searchSelectHtml('my-field', OPTIONS, null);
-  assert.match(withDefault, /placeholder="Suchen…"/);
+  assert.match(withDefault, /placeholder="Suchen"/);
 
-  const withCustom = searchSelectHtml('my-field', OPTIONS, null, { placeholder: 'Spiel suchen…' });
-  assert.match(withCustom, /placeholder="Spiel suchen…"/);
+  const withCustom = searchSelectHtml('my-field', OPTIONS, null, { placeholder: 'Spiel suchen' });
+  assert.match(withCustom, /placeholder="Spiel suchen"/);
 });
 
 // --- Pinned action (the topbar workspace switcher's "manage") ---------------

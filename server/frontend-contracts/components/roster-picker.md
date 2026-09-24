@@ -14,15 +14,17 @@ Packlisten und andere Listen mit abweichender Fachsemantik sind keine RosterPick
 - Helper: `public/js/rosterPicker.js`
 - Suche: `public/js/selectionSearch.js`
 - Öffentliche Datenfunktionen:
-  `pruneRosterSelection(selectedIds, players)`, `visibleRosterIds(players, query)` und
-  `setVisibleRosterSelection(selectedIds, players, query, checked)`
+  `pruneRosterSelection(selectedIds, players)`, `visibleRosterIds(players, query)`,
+  `setVisibleRosterSelection(selectedIds, players, query, checked)` und
+  `allVisibleRosterSelected(selectedIds, players, query)`
 - Markup:
   `rosterPickerHtml({ id, players, selectedIds, query, toolbarLeadingHtml, toolbarLabel,
-  searchLabel, gridClass, renderTrailing, showBulkActions, emptyText, searchId, itemAttribute,
-  playerAttribute, emptyAttribute, selectAllId, selectNoneId })`
+  searchLabel, gridClass, renderTrailing, showBulkActions, showSearch, emptyText, searchId,
+  itemAttribute, playerAttribute, emptyAttribute, selectAllId })`
 - Verdrahtung:
   `wireRosterPicker(container, { id, players, selectedIds, searchId, onQueryChange,
   onSelectionChange })`
+- Externer Filter: `filterRosterPicker(container, id, query)` für ein Roster ohne eigenes Suchfeld
 
 `toolbarLeadingHtml` und das Ergebnis von `renderTrailing(player)` sind vertrauenswürdiges,
 aufruferseitig erzeugtes Markup. IDs, Labels, Klassenparameter, Spielernamen und Spieler-IDs
@@ -44,8 +46,9 @@ duplizieren.
 
 | Variante | API/Markup | Status | Bedeutung |
 |---|---|---|---|
-| Standardroster | `rosterPickerHtml(...)` | umgesetzt | Checkboxkarten mit Suche und sichtbarkeitsbezogenen Sammelaktionen |
-| Ohne Sammelaktionen | `showBulkActions: false` | umgesetzt | Suche und Einzelwahl ohne „sichtbare markieren/abwählen“ |
+| Standardroster | `rosterPickerHtml(...)` | umgesetzt | Checkboxkarten mit Suche und einem sichtbarkeitsbezogenen Sammel-Umschalter |
+| Ohne Sammelaktionen | `showBulkActions: false` | umgesetzt | Suche und Einzelwahl ohne Sammel-Umschalter |
+| Ohne eigene Suche | `showSearch: false` plus `filterRosterPicker(...)` | umgesetzt | ein Suchfeld eines anderen Rosters filtert mit, etwa die Captains im Captain Draft |
 | Erweiterte Toolbar | `toolbarLabel`, `toolbarLeadingHtml` | umgesetzt | fachliches Label oder aufruferspezifisches Control vor den Standardaktionen |
 | Spielerzusatz | `renderTrailing(player)` | umgesetzt | vorhandene Skill-/Rolleninformation am Zeilenende |
 | Kompatibilitätsanker | `itemAttribute`, `playerAttribute`, `emptyAttribute`, explizite IDs | umgesetzt | stabile bestehende View-Selektoren während der gemeinsamen Nutzung |
@@ -72,8 +75,11 @@ Es gibt keinen Disabled-Gesamtzustand und keine Variante für eine insgesamt lee
   gleich breite Spalten. Turnier- und andere Raster bleiben dort zweispaltig.
 - `.check-row` stammt aus `domains.css`; das Roster ergänzt nur Kartenrahmen, Innenabstand und
   sicheren Namensumbruch.
-- Filtern DARF bestehende Auswahl nicht verändern. Sammelaktionen MÜSSEN ausschließlich die
+- Filtern DARF bestehende Auswahl nicht verändern. Die Sammelaktion MUSS ausschließlich die
   aktuell sichtbaren Treffer ändern.
+- Es gibt genau einen Sammel-Umschalter: Sind alle sichtbaren Treffer ausgewählt, wählt er sie ab
+  (`listX`, „Sichtbare Spieler abwählen“), sonst wählt er sie aus (`listChecks`, „Sichtbare
+  Spieler markieren“). Symbol und Name folgen Einzeländerungen und Suche ohne Re-Render.
 - Einzeländerungen melden `onSelectionChange({ kind: 'single', playerId, checked })`,
   Sammeländerungen `onSelectionChange({ kind: 'bulk', checked })`.
 - `pruneRosterSelection` entfernt ausschließlich IDs, die im aktuellen Roster nicht mehr
@@ -103,20 +109,22 @@ Registry-Bezüge: `selection-toolbar`, `selection-icons`, `selection-buttons`,
 - Jede Spielerzeile ist ein echtes `label` mit nativem Checkbox-Control.
 - Der sichtbare Name bleibt vollständig im DOM; ein Umbruch oder eine künftige zulässige Ellipse
   DARF den zugänglichen Namen nicht kürzen.
-- Iconaktionen verwenden die zugänglichen Namen „Sichtbare Spieler markieren“ und „Sichtbare
-  Spieler abwählen“ sowie sichtbare Fokusdarstellung.
+- Der Sammel-Umschalter trägt je nach Zustand den zugänglichen Namen „Sichtbare Spieler
+  markieren“ oder „Sichtbare Spieler abwählen“ und zeigt sichtbare Fokusdarstellung.
 - Die Suche ist beschriftet und ihr Trefferstatus verwendet `role="status"`.
 - Filtern und Raster-Reflow DÜRFEN DOM- und Tab-Reihenfolge nicht verändern.
 
 ## 9. Repräsentative Aufrufer
 
-- Schmal und breit: `public/js/views/matchmaking.js` für Auslosung, Draftteilnehmer und Captains
+- Schmal und breit: `public/js/views/matchmaking.js` für Auslosung, Draftteilnehmer und Captains;
+  die Captains nutzen `showSearch: false` und werden vom Draftteilnehmer-Suchfeld mitgefiltert
 - Schmal und breit: `public/js/views/tournament.js` für die Turniererstellung
 
 ## 10. Prüfungen und Abnahmebeispiele
 
-- `public/js/rosterPicker.test.js` prüft Bereinigung, sichtbare IDs, Sammeländerungen und das
-  bestehende Markup-/Kompatibilitätsinterface.
+- `public/js/rosterPicker.test.js` prüft Bereinigung, sichtbare IDs, Sammeländerungen, den
+  Zustand des Sammel-Umschalters, die Variante ohne eigene Suche und das
+  Markup-/Kompatibilitätsinterface.
 - `src/test/e2e/flowsCompetition.fixture.ts` prüft Matchmaking mit ungefiltertem und gefiltertem
   Roster, keinem Treffer, Einzel-/Sammelauswahl, verborgener Auswahl, langem Namen und
   1-/2-/3-Spaltenlayout.

@@ -35,7 +35,6 @@ import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { isGroupAdmin } from '../groupContext.js';
@@ -46,6 +45,7 @@ let historyCache = null;
 let historyLoading = false;
 let historyStale = false;
 let historyOpen = false;
+let top10Open = false;
 let historyRequestVersion = 0;
 
 async function loadHistory(ctx) {
@@ -143,7 +143,14 @@ let voteSelectionDirty = false;
 let voteGameSearchQuery = '';
 let lastRenderedRoundOpen = false;
 
-function sortVoteGames(games, results = state.votes?.catalogResults ?? []) {
+// Games are listed alphabetically everywhere on this page, so a game is
+// always found at the same place while choosing or rating.
+function sortVoteGames(games) {
+  return [...games].sort((a, b) => a.name.localeCompare(b.name, 'de'));
+}
+
+// The start form still preselects the ten games the group most wants to play.
+function gamesByPreference(games, results) {
   const preferences = new Map(results.map((result) => [result.gameId, result.avgPreference ?? -1]));
   return [...games].sort((a, b) => {
     const preferenceDiff = (preferences.get(b.id) ?? -1) - (preferences.get(a.id) ?? -1);
@@ -155,7 +162,7 @@ function sortVoteGames(games, results = state.votes?.catalogResults ?? []) {
 function initializeVoteGameSelection(votes) {
   if (voteSelectionInitialized && voteSelectionDirty) return;
   const catalog = catalogGames();
-  const selectedGameIds = new Set(sortVoteGames(catalog, votes.catalogResults).slice(0, 10).map((game) => game.id));
+  const selectedGameIds = new Set(gamesByPreference(catalog, votes.catalogResults ?? []).slice(0, 10).map((game) => game.id));
   excludedGameIds = new Set(catalog.filter((game) => !selectedGameIds.has(game.id)).map((game) => game.id));
   voteSelectionInitialized = true;
 }
@@ -168,6 +175,30 @@ function resetVoteGameSelection() {
 
 function voteSearchVisibleGames() {
   return sortVoteGames(catalogGames()).filter((game) => matchesSelectionSearch(game.name, voteGameSearchQuery));
+}
+
+function allVisibleVoteGamesSelected() {
+  const visible = voteSearchVisibleGames();
+  return visible.length > 0 && visible.every((g) => !excludedGameIds.has(g.id));
+}
+
+function voteSelectToggleContent(allSelected) {
+  return allSelected
+    ? { iconName: 'listX', label: 'Sichtbare Spiele abwählen', tooltip: 'Sichtbare abwählen' }
+    : { iconName: 'listChecks', label: 'Sichtbare Spiele markieren', tooltip: 'Sichtbare markieren' };
+}
+
+function voteSelectToggleHtml(allSelected) {
+  const { iconName, label, tooltip } = voteSelectToggleContent(allSelected);
+  return `<button type="button" class="icon-btn selection-toolbar-icon" id="votes-select-all" aria-label="${label}" data-tooltip="${tooltip}">${icon(iconName)}</button>`;
+}
+
+function syncVoteSelectToggle(button) {
+  if (!button) return;
+  const { iconName, label, tooltip } = voteSelectToggleContent(allVisibleVoteGamesSelected());
+  button.setAttribute('aria-label', label);
+  button.dataset.tooltip = tooltip;
+  button.innerHTML = icon(iconName);
 }
 
 // Guards the points sliders against a re-render landing mid-drag (another
@@ -196,39 +227,17 @@ function ensureDragGuardInstalled() {
   document.addEventListener('touchend', endDrag);
 }
 
-function preferenceChipHtml(r) {
-  if (!r.preferenceCount) {
-    return `<span class="muted" style="font-size:var(--font-size-xs);">${icon('flame')} –</span>`;
-  }
-  return `<span class="muted" style="font-size:var(--font-size-xs);">${icon('flame')} Ø ${r.avgPreference.toFixed(1)} (${r.preferenceCount})</span>`;
-}
-
-function lastPlayedHtml(r) {
-  return r.playCount > 0 ? `zuletzt gespielt: ${formatDate(r.lastPlayedAt)} · ${r.playCount}× gespielt` : 'noch nie gespielt';
-}
-
-function playtimeChipHtml(r) {
-  return `<span class="muted" style="font-size:var(--font-size-xs);">${icon('timer')} ${r.totalPlaytimeMs > 0 ? r.totalPlaytimeFormatted : '–'}</span>`;
-}
-
-function winCountChipHtml(r) {
-  return `<span class="muted" style="font-size:var(--font-size-xs);">${icon('trophy')} ${r.voteWinCount}× gewonnen</span>`;
-}
-
-function statsRowHtml(r) {
-  return `
-    <div class="row-between">
-      <span class="row" style="gap:var(--space-3);flex-wrap:wrap;">
-        <span class="muted" style="font-size:var(--font-size-xs);">${lastPlayedHtml(r)}</span>
-        ${preferenceChipHtml(r)}
-      </span>
-    </div>
-    <div class="row-between">
-      <span class="row" style="gap:var(--space-3);flex-wrap:wrap;">
-        ${playtimeChipHtml(r)}
-        ${winCountChipHtml(r)}
-      </span>
-    </div>`;
+// One compact meta line per game, shared by the open round and the detail
+// dialog: empty values ("0× gewonnen", "–") are left out instead of shown.
+function gameMetaHtml(r) {
+  return [
+    r.playCount > 0 ? `zuletzt ${formatDate(r.lastPlayedAt)}` : 'noch nie gespielt',
+    r.totalPlaytimeMs > 0 ? r.totalPlaytimeFormatted : null,
+    r.preferenceCount ? `${icon('flame')} Ø ${r.avgPreference.toFixed(1)}` : null,
+    r.voteWinCount > 0 ? `${icon('trophy')} ${r.voteWinCount}×` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 // ---------- Top 10 by aggregate "Bock" rating: always visible, read-only ----------
@@ -292,38 +301,35 @@ function renderTop10(results) {
 
 function renderOpenRows(votes, draftReady, hasSubmitted) {
   const showUnratedOnly = votes.mode === 'points' && voteUnratedOnly && draftReady && !hasSubmitted;
-  const results = showUnratedOnly ? votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) === 0) : votes.results;
+  const results = (showUnratedOnly ? votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) === 0) : [...votes.results])
+    .sort((a, b) => a.gameName.localeCompare(b.gameName, 'de'));
   if (showUnratedOnly && results.length === 0) {
     return emptyStateHtml('Alle Spiele bewertet.');
   }
   return results
     .map((r) => {
-      let action = '';
-      let pointsSliderRow = '';
+      let trailing = '';
+      let sliderHtml = '';
       if (!draftReady) {
-        pointsSliderRow = `<div class="muted" style="font-size:var(--font-size-xs);padding:var(--space-1) 0 0;">Lädt deine Auswahl…</div>`;
+        sliderHtml = `<div class="muted" style="font-size:var(--font-size-xs);">Lädt deine Auswahl…</div>`;
       } else if (votes.mode === 'single') {
         const isSelected = draftSingleGameId === r.gameId;
-        action = `<button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : ''}" data-vote-select="${r.gameId}" ${hasSubmitted ? 'disabled' : ''}>${isSelected ? 'Ausgewählt' : 'Auswählen'}</button>`;
+        trailing = `<button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : ''}" data-vote-select="${r.gameId}" ${hasSubmitted ? 'disabled' : ''}>${isSelected ? 'Ausgewählt' : 'Auswählen'}</button>`;
       } else {
         const pointsVal = draftPoints.get(r.gameId) ?? 0;
-        pointsSliderRow = `
-          <div class="skill-row" data-points-row="${r.gameId}" style="padding:var(--space-1) 0 0;">
-            <span class="muted" style="font-size:var(--font-size-xs);">Punkte</span>
-            <span class="skill-value">${pointsVal}</span>
-            <input type="range" class="skill-row-slider" min="0" max="10" step="1"
-                   data-points-slider="${r.gameId}" value="${pointsVal}" aria-label="${escapeHtml(`Punkte für ${r.gameName}`)}" ${hasSubmitted ? 'disabled' : ''} />
-          </div>`;
+        trailing = `<span class="skill-value vote-points-value" aria-hidden="true">${pointsVal}</span>`;
+        sliderHtml = `<div class="vote-points-slider"><input type="range" class="skill-row-slider" min="0" max="10" step="1"
+                 data-points-slider="${r.gameId}" value="${pointsVal}" aria-label="${escapeHtml(`Punkte für ${r.gameName}`)}" ${hasSubmitted ? 'disabled' : ''} /></div>`;
       }
 
       return `
-        <div class="vote-row">
-          <div class="row-between">
-            <span class="row" style="gap:var(--space-2);">${escapeHtml(r.gameName)}</span>
-            ${action}
+        <div class="vote-row vote-open-row" data-points-row="${r.gameId}">
+          <div class="vote-open-head">
+            <span class="player-name vote-open-name">${escapeHtml(r.gameName)}</span>
+            ${trailing}
           </div>
-          ${statsRowHtml(r)}
-          ${pointsSliderRow}
+          <div class="muted vote-open-meta">${gameMetaHtml(r)}</div>
+          ${sliderHtml}
         </div>`;
     })
     .join('');
@@ -342,11 +348,11 @@ function renderClosedRows(results, mode, winnerGameIds) {
       return `
         <div class="vote-row ${isWinner ? 'is-winner' : ''}">
           <div class="row-between">
-            <span class="row" style="gap:var(--space-2);">${escapeHtml(r.gameName)}</span>
+            <span class="row" style="gap:var(--space-2);">${escapeHtml(r.gameName)}${isWinner ? '<span class="tournament-fixture-score is-pick vote-win-chip">Win</span>' : ''}</span>
             <span class="muted">${scoreLabel}</span>
           </div>
           <div class="vote-bar-track"><div class="vote-bar-mask" style="width:${100 - (r.score / maxScore) * 100}%"></div></div>
-          ${statsRowHtml(r)}
+          <div class="muted vote-open-meta">${gameMetaHtml(r)}</div>
         </div>`;
     })
     .join('');
@@ -354,7 +360,6 @@ function renderClosedRows(results, mode, winnerGameIds) {
 
 function renderVoteRanking(results, mode, winnerGameIds) {
   const winners = new Set(winnerGameIds ?? []);
-  const tiedWinners = winners.size > 1;
   let previousScore = null;
   let currentRank = 0;
   const rankedResults = results.filter((result) => result.score > 0).slice(0, 10).map((result, index) => {
@@ -365,13 +370,12 @@ function renderVoteRanking(results, mode, winnerGameIds) {
   return renderRankingColumns(rankedResults, ({ result, rank }) => {
     const score = mode === 'points' ? `${result.points} Pkt.` : submissionCountLabel(result.votes, 'single');
     const isWinner = winners.has(result.gameId);
-    const isTiedWinner = tiedWinners && isWinner;
     return `
-      <div class="lb-row ${isWinner ? 'rank-1' : ''}${isTiedWinner ? ' is-tied' : ''}">
+      <div class="lb-row ${isWinner ? 'rank-1' : ''}">
         <span class="lb-rank">${rank}</span>
-                <span style="flex:1;min-width:0;">
-          <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(result.gameName)}</div>
-          <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topMetaHtml(result)}</div>
+        <span class="vote-ranking-name">
+          <span class="player-name">${escapeHtml(result.gameName)}</span>
+          ${isWinner ? '<span class="tournament-fixture-score is-pick vote-win-chip">Win</span>' : ''}
         </span>
         <span class="lb-points">${score}</span>
       </div>`;
@@ -380,7 +384,7 @@ function renderVoteRanking(results, mode, winnerGameIds) {
 
 // ---------- current vote: the most recent closed round, straight from history ----------
 
-function renderCurrentVote({ allowRunoff = false } = {}) {
+function renderCurrentVote() {
   if (historyCache === null) {
     return emptyStateHtml('Lädt…', { className: 'vote-empty-state empty-state-compact' });
   }
@@ -397,17 +401,10 @@ function renderCurrentVote({ allowRunoff = false } = {}) {
     .filter(Boolean)
     .map(escapeHtml)
     .join(' · ');
-  const hasTie = h.winnerGameIds?.length > 1;
   return `
     <div class="muted vote-result-meta">${meta} · ${submissionCountLabel(h.totalVoters, h.mode)}</div>
     ${renderVoteRanking(h.results, h.mode, h.winnerGameIds)}
-    ${
-      hasTie && allowRunoff
-        ? `<div class="vote-tie-action">
-            <button type="button" class="btn btn-primary btn-block" id="votes-runoff">Stichwahl starten</button>
-          </div>`
-        : ''
-    }`;
+`;
 }
 
 // ---------- history: list + reopen a past round's full detail ----------
@@ -416,14 +413,15 @@ function renderHistory() {
   if (historyCache === null) {
     return emptyStateHtml('Lädt…', { className: 'vote-empty-state empty-state-compact' });
   }
-  if (historyCache.length === 0) {
-    return emptyStateHtml('Noch keine Abstimmungen.', {
+  // The most recent round is already shown as "Letzter Vote" above, so
+  // Historie lists only the older rounds.
+  const olderRounds = historyCache.slice(1);
+  if (olderRounds.length === 0) {
+    return emptyStateHtml('Noch keine älteren Abstimmungen.', {
       className: 'vote-empty-state empty-state-compact',
     });
   }
-  // Each round stays visually separate and repeats the same compact ranking
-  // used by "Letzter Vote". The detail action retains the full bar view.
-  return historyCache
+  return olderRounds
     .map((h) => {
       const title = h.title ? escapeHtml(h.title) : `Abstimmung Runde ${h.round}`;
       const mode = h.mode === 'single' ? ' · Stichwahl' : '';
@@ -516,12 +514,11 @@ export function renderVotes(container, ctx) {
 
   let openSectionHtml = '';
   if (votes.open) {
-    const modeLabel = votes.mode === 'single' ? 'Stichwahl' : '';
-    const resultHelp =
-      votes.mode === 'points'
-        ? 'Die Punkteverteilung bleibt bis zum Ende der Abstimmung verborgen.'
-        : 'Das Ergebnis bleibt bis zum Ende der Stichwahl verborgen.';
-    const rows = `<div class="vote-game-grid">${renderOpenRows(votes, mineReady, hasSubmitted)}</div>`;
+    // Runoffs are titled "Stichwahl: …" already, so the mode badge only shows
+    // when the title does not say it.
+    const modeLabel = votes.mode === 'single' && !(votes.title ?? '').includes('Stichwahl') ? 'Stichwahl' : '';
+    // A runoff offers only the few tied games, so each option spans the full width.
+    const rows = `<div class="vote-game-grid${votes.mode === 'single' ? ' is-runoff' : ''}">${renderOpenRows(votes, mineReady, hasSubmitted)}</div>`;
     const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
     const submittedLabel = votes.mode === 'points' ? 'Bewertung abgegeben' : 'Stimme abgegeben';
     const participationLabel = votes.mode === 'points' ? 'Bewertungen abgegeben' : 'Stimmen abgegeben';
@@ -531,37 +528,33 @@ export function renderVotes(container, ctx) {
     const ratedCount = votes.mode === 'points' && mineReady ? ratedDraftCount(votes) : 0;
     const showProgress = votes.mode === 'points' && mineReady && !hasSubmitted;
     const progressHtml = showProgress
-      ? `<div class="row-between" style="flex-wrap:wrap;gap:var(--space-2);">
+      ? `<div class="vote-progress-row">
            <span class="muted" style="font-size:var(--font-size-xs);" data-vote-rated-progress>${ratedProgressText(ratedCount, votes)}</span>
            <button type="button" class="chip${voteUnratedOnly ? ' is-active' : ''}" id="votes-unrated-toggle" aria-pressed="${voteUnratedOnly}">Unbewertet</button>
          </div>`
       : '';
     openSectionHtml = `
       <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-current-title">
-        <div class="tournament-create-step-title">
-          <h2 id="vote-current-title" class="title-with-info">
-            <span>${votes.title ? escapeHtml(votes.title) : 'Abstimmung läuft'}</span>
-            ${infoTooltipHtml('vote-result-visibility-help', 'Verdeckte Auswertung', resultHelp)}
-          </h2>
-          ${modeLabel ? `<span class="muted">${modeLabel}</span>` : ''}
+        <div class="vote-open-header">
+          <div class="vote-open-title">
+            <h2 id="vote-current-title">${votes.title ? escapeHtml(votes.title) : 'Abstimmung läuft'}</h2>
+            <span class="badge badge-playing" aria-label="${participationLabel}: ${votes.totalVoters} von ${totalPlayers}">${votes.totalVoters}/${totalPlayers} abgegeben</span>
+            ${modeLabel ? `<span class="badge">${modeLabel}</span>` : ''}
+          </div>
+          <div class="vote-open-admin">
+            <button type="button" class="btn btn-sm" id="votes-close">Beenden</button>
+            <button type="button" class="btn btn-sm" id="votes-cancel">Abbrechen</button>
+          </div>
         </div>
-        <div class="vote-participation-status" aria-label="${participationLabel}: ${votes.totalVoters} von ${totalPlayers}">
-          <span>${participationLabel}</span>
-          <strong>${votes.totalVoters} / ${totalPlayers}</strong>
-        </div>
+        ${votes.info ? `<p class="muted vote-open-info">${escapeHtml(votes.info)}</p>` : ''}
         ${progressHtml}
-        ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
         ${rows}
-        <div class="vote-action-stack card-footer-actions">
+        <div class="card-footer-actions vote-submit-row">
           ${
             hasSubmitted
               ? `<div class="vote-submitted-state">${icon('circleCheck')} ${submittedLabel}</div>`
-              : `<button type="button" class="btn btn-primary btn-block" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>`
+              : `<button type="button" class="btn btn-primary" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>`
           }
-          <div class="vote-secondary-actions">
-            <button type="button" class="btn btn-danger btn-block" id="votes-cancel">Abbrechen</button>
-            <button type="button" class="btn btn-block" id="votes-close">Beenden</button>
-          </div>
         </div>
       </section>`;
   } else {
@@ -577,35 +570,27 @@ export function renderVotes(container, ctx) {
       .join('');
     openSectionHtml = `
       <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-start-title">
-        <div class="tournament-create-step-title">
-          <h2 id="vote-start-title" class="title-with-info">
-            <span>Neue Abstimmung</span>
-            ${infoTooltipHtml(
-                'vote-points-help',
-                'Neue Abstimmung',
-                'Punkte frei verteilen, höchste Summe gewinnt.'
-              )}
-          </h2>
+        <div class="grouped-page-section-title">
+          <h2 id="vote-start-title">Neue Abstimmung</h2>
+          <button type="button" class="btn btn-primary btn-sm" id="votes-start">Starten</button>
         </div>
-        <label class="stack" style="gap:var(--space-1);">
-          <span class="muted" style="font-size:var(--font-size-xs);">Titel</span>
-          <input type="text" id="votes-title" maxlength="80" placeholder="z.B. Samstagabend" />
-        </label>
-        <label class="stack" style="gap:var(--space-1);">
-          <span class="muted" style="font-size:var(--font-size-xs);">Info</span>
-          <textarea class="vote-info-input" id="votes-info" maxlength="500" rows="1" placeholder="z.B. Nur Spiele für 4 Leute"></textarea>
-        </label>
-        <div id="votes-game-select-wrap" class="stack vote-game-select-wrap">
-          <div class="selection-toolbar">
-            <button type="button" class="icon-btn selection-toolbar-icon" id="votes-select-all" aria-label="Sichtbare Spiele markieren" data-tooltip="Sichtbare markieren">${icon('listChecks')}</button>
-            <button type="button" class="icon-btn selection-toolbar-icon selection-toolbar-icon--clear" id="votes-select-none" aria-label="Sichtbare Spiele abwählen" data-tooltip="Sichtbare abwählen">${icon('listX')}</button>
-            ${selectionSearchHtml('votes-game-search', voteGameSearchQuery, { placeholder: 'Spiele suchen…', label: 'Spiele suchen' })}
+        <div class="vote-start-row">
+          <div>
+            <label class="field-label" for="votes-title">Titel</label>
+            <input type="text" id="votes-title" maxlength="80" placeholder="Samstagabend" />
           </div>
+          <div>
+            <label class="field-label" for="votes-info">Info</label>
+            <textarea class="vote-info-input" id="votes-info" maxlength="500" rows="1" placeholder="Nur Spiele für 4 Leute"></textarea>
+          </div>
+          <div class="selection-toolbar vote-start-toolbar">
+            ${voteSelectToggleHtml(allVisibleVoteGamesSelected())}
+            ${selectionSearchHtml('votes-game-search', voteGameSearchQuery, { placeholder: 'Spiel suchen', label: 'Spiel suchen' })}
+          </div>
+        </div>
+        <div id="votes-game-select-wrap" class="stack vote-game-select-wrap">
           <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
           <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
-        </div>
-        <div class="card-footer-actions">
-          <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
         </div>
       </section>`;
   }
@@ -622,25 +607,41 @@ export function renderVotes(container, ctx) {
     focusedId: document.activeElement?.closest?.('#votes-title, #votes-info')?.id ?? null,
   };
 
+  // A tie in the most recent round offers the runoff right in that card's
+  // header, like every other primary action on this page.
+  const latestRound = historyCache?.[0];
+  const showRunoff = !votes.open && isGroupAdmin() && Boolean(latestRound?.totalVoters) && latestRound.winnerGameIds?.length > 1;
+
   container.innerHTML = `
     <h1 class="view-title">Vote</h1>
     ${openSectionHtml}
 
     <section class="card vote-page-section stack" aria-labelledby="vote-current-result-title">
-      <div class="tournament-create-step-title"><h2 id="vote-current-result-title">Letzter Vote</h2></div>
-      ${renderCurrentVote({ allowRunoff: !votes.open && isGroupAdmin() })}
+      <div class="grouped-page-section-title">
+        <h2 id="vote-current-result-title">Letzter Vote</h2>
+        <span class="row" style="gap:var(--space-2);">
+          ${latestRound?.totalVoters ? `<button type="button" class="btn btn-sm" data-open-history-round="${latestRound.round}">Details</button>` : ''}
+          ${showRunoff ? '<button type="button" class="btn btn-primary btn-sm" id="votes-runoff">Stichwahl starten</button>' : ''}
+        </span>
+      </div>
+      ${renderCurrentVote()}
     </section>
 
-    <section class="card vote-page-section stack" aria-labelledby="vote-top-games-title">
-      <div class="tournament-create-step-title"><h2 id="vote-top-games-title">Top 10 nach Bock-Level</h2></div>
-      ${renderTop10(votes.catalogResults)}
-    </section>
+    <details class="card history-details collapsible-section vote-page-section" data-vote-top10 ${top10Open ? 'open' : ''}>
+      <summary class="collapsible-section-header">
+        <h2>Top 10 nach Bock-Level</h2>
+        <span class="collapsible-section-summary-end">
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+        </span>
+      </summary>
+      <div class="collapsible-section-content">${renderTop10(votes.catalogResults)}</div>
+    </details>
 
     <details class="card history-details collapsible-section" data-vote-history ${historyOpen ? 'open' : ''}>
       <summary class="collapsible-section-header">
         <h2>Historie</h2>
         <span class="collapsible-section-summary-end">
-          <span class="badge badge-offline">${historyCache?.length ?? 0}</span>
+          <span class="badge badge-offline">${Math.max(0, (historyCache?.length ?? 0) - 1)}</span>
           <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         </span>
       </summary>
@@ -648,7 +649,6 @@ export function renderVotes(container, ctx) {
     </details>
   `;
 
-  wireInfoTooltips(container);
 
   for (const [id, value] of [['votes-title', previousDraft.title], ['votes-info', previousDraft.info]]) {
     if (!value) continue;
@@ -659,6 +659,9 @@ export function renderVotes(container, ctx) {
 
   container.querySelector('[data-vote-history]')?.addEventListener('toggle', (event) => {
     historyOpen = event.currentTarget.open;
+  });
+  container.querySelector('[data-vote-top10]')?.addEventListener('toggle', (event) => {
+    top10Open = event.currentTarget.open;
   });
 
   container.querySelectorAll('[data-vote-select]').forEach((btn) => {
@@ -746,6 +749,7 @@ export function renderVotes(container, ctx) {
       voteSelectionDirty = true;
       if (checkbox.checked) excludedGameIds.delete(checkbox.value);
       else excludedGameIds.add(checkbox.value);
+      syncVoteSelectToggle(container.querySelector('#votes-select-all'));
     });
   });
 
@@ -755,17 +759,19 @@ export function renderVotes(container, ctx) {
     emptySelector: '[data-vote-game-search-empty]',
     onQueryChange: (query) => {
       voteGameSearchQuery = query;
+      syncVoteSelectToggle(container.querySelector('#votes-select-all'));
     },
   });
 
+  // One bulk toggle like the Match rosters: deselect when every visible game
+  // is selected, otherwise select all visible games.
   container.querySelector('#votes-select-all')?.addEventListener('click', () => {
     voteSelectionDirty = true;
-    for (const g of voteSearchVisibleGames()) excludedGameIds.delete(g.id);
-    ctx.rerender();
-  });
-  container.querySelector('#votes-select-none')?.addEventListener('click', () => {
-    voteSelectionDirty = true;
-    for (const g of voteSearchVisibleGames()) excludedGameIds.add(g.id);
+    const deselect = allVisibleVoteGamesSelected();
+    for (const g of voteSearchVisibleGames()) {
+      if (deselect) excludedGameIds.add(g.id);
+      else excludedGameIds.delete(g.id);
+    }
     ctx.rerender();
   });
 

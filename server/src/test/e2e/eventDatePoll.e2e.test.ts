@@ -5,7 +5,6 @@ import { chromium, Browser, Locator, Page } from 'playwright';
 import { finishE2EOnboarding } from './authHelpers';
 import { createE2EDiagnosticTest } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
-import { assertInfoTooltipPlacement } from './visualHelpers';
 
 let BASE_URL: string;
 const RECOVERY_CODE = 'event-polls-e2e-recovery';
@@ -124,9 +123,8 @@ async function createPoll(
     await page.locator('[data-poll-option-input]').nth(index).fill(option.label);
     if (option.active === false) await page.locator('[data-poll-option-active]').nth(index).uncheck();
     if (option.description || option.url) {
-      await page.locator('[data-poll-option-row]').nth(index).locator('.event-poll-form-option-details').evaluate((details) => {
-        (details as HTMLDetailsElement).open = true;
-      });
+      const extraToggle = page.locator('[data-poll-option-row]').nth(index).locator('[data-toggle-option-extra]');
+      if ((await extraToggle.getAttribute('aria-expanded')) !== 'true') await extraToggle.click();
       if (option.description) await page.locator('[data-poll-option-note]').nth(index).fill(option.description);
       if (option.url) await page.locator('[data-poll-option-url]').nth(index).fill(option.url);
     }
@@ -136,6 +134,13 @@ async function createPoll(
 }
 
 async function choosePollAction(poll: Locator, selector: string): Promise<void> {
+  // „Beenden“ and „Neue Runde“ are compact header buttons; everything else
+  // lives in the card's „Aktion“ menu.
+  const headerAction = poll.locator(`.event-poll-card-side > ${selector}`);
+  if (await headerAction.count()) {
+    await headerAction.click();
+    return;
+  }
   const menu = poll.locator('.action-menu');
   if (!(await menu.evaluate((details) => (details as HTMLDetailsElement).open))) await menu.locator('summary').click();
   await menu.locator(selector).click();
@@ -237,7 +242,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   });
   const ownerPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
   await ownerPoll.waitFor();
-  assert.match(await ownerPoll.locator('.event-poll-card-title').innerText(), /Keine Frist/);
+  assert.doesNotMatch(await ownerPoll.locator('.event-poll-card-title').innerText(), /Frist/, 'an undated round names no deadline');
+  assert.match(await ownerPoll.locator('.event-poll-answer-side').innerText(), /Deine Antwort fehlt/, 'the header says the viewer still has to answer');
   assert.doesNotMatch(await ownerPoll.innerText(), /01\.01\.1970/);
   await ownerPoll.locator('[data-toggle-poll]').click();
   assert.equal(await ownerPoll.locator('[data-poll-round]:visible').count(), 0, 'the poll can be collapsed');
@@ -251,18 +257,23 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await ownerPoll.locator('[data-poll-response="can"]').count(), 2);
   assert.equal(await ownerPoll.locator('[data-poll-response="if_needed"]').count(), 2);
   assert.equal(await ownerPoll.locator('[data-poll-response="cannot"]').count(), 2);
-  assert.equal(await ownerPoll.locator('[data-poll-response="open"]').count(), 2);
+  assert.equal(await ownerPoll.locator('[data-poll-response="open"]').count(), 0, '„offen“ is no answer button of its own');
   assert.equal(await ownerPoll.locator('.event-poll-progress').count(), 0, 'progress and deadline are not repeated above the options');
   const ownerOptions = ownerPoll.locator('.event-poll-option');
+  await ownerOptions.nth(0).locator('[data-poll-response="cannot"]').click();
+  await ownerOptions.nth(0).locator('[data-poll-response="cannot"]').click();
+  assert.equal(await ownerOptions.nth(0).locator('[aria-pressed="true"]').count(), 0, 'choosing the current answer again clears it back to „offen“');
   await ownerOptions.nth(0).locator('[data-poll-response="can"]').click();
   await ownerOptions.nth(1).locator('[data-poll-response="can"]').click();
+  assert.match(await ownerPoll.locator('.event-poll-footer').innerText(), /2 von 2 bewertet/);
   await ownerPoll.locator('[data-save-poll]').click();
   await ownerPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
+  await ownerPoll.locator('.event-poll-answer-side', { hasText: 'Beantwortet' }).waitFor();
 
   await navigate(memberPage, 'eventPolls');
   const memberPoll = memberPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
   await memberPoll.waitFor();
-  assert.match(await memberPoll.locator('.event-poll-card-title').innerText(), /Keine Frist/);
+  assert.match(await memberPoll.locator('.event-poll-answer-inline').innerText(), /Deine Antwort fehlt/, 'phones show the answer state in the meta line');
   const memberOptions = memberPoll.locator('.event-poll-option');
   await memberOptions.nth(0).locator('[data-poll-response="can"]').tap();
   await memberOptions.nth(1).locator('[data-poll-response="cannot"]').tap();
@@ -271,11 +282,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await memberPage.locator('[data-participation]').count(), 0, 'attendance is not managed in the poll tab');
   assert.match(await memberPoll.innerText(), /Zwischenstand verborgen/, 'the round says once that its interim result is withheld');
   assert.equal(await memberPoll.locator('[data-view-poll-votes]').count(), 0, 'a withheld interim result names nobody else');
-  assert.deepEqual(
-    await memberPoll.locator('.event-poll-counts').allInnerTexts(),
-    ['', ''],
-    'the withheld interim result shows no counts either',
-  );
+  assert.equal(await memberPoll.locator('.event-poll-counts').count(), 0, 'the withheld interim result shows no counts either');
+  assert.equal(await memberPoll.locator('.event-poll-bar').count(), 0, 'nor a result bar');
 
   await ownerPage.reload();
   await ownerPage.waitForSelector('#app:not([hidden])');
@@ -287,10 +295,9 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.match(await refreshed.innerText(), /Zwischenstand nur für dich/);
   const liveStack = refreshed.locator('.event-poll-option').first().locator('.event-poll-voter-stack');
   const singleVoterStack = refreshed.locator('.event-poll-option').nth(1).locator('.event-poll-voter-stack');
-  const recommendationStack = refreshed.locator('.event-poll-option:has(.badge-online) .event-poll-voter-stack');
   await liveStack.waitFor();
   await singleVoterStack.waitFor();
-  await recommendationStack.waitFor();
+  assert.equal(await refreshed.locator('.badge-online').count(), 0, 'a running round names no leader');
   const liveStackLabel = (await liveStack.getAttribute('aria-label')) ?? '';
   assert.match(liveStackLabel, /· Passt: /);
   assert.match(liveStackLabel, new RegExp(OWNER_NAME));
@@ -300,39 +307,36 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const voterStackGeometry = (stack: typeof liveStack) => stack.evaluate((element) => {
     const option = element.closest('.event-poll-option')!;
     const avatars = element.querySelectorAll('.avatar-dot, .avatar-img');
-    const avatar = avatars.item(avatars.length - 1);
-    const recommendation = option.querySelector('.badge-online');
+    const first = avatars.item(0).getBoundingClientRect();
+    const last = avatars.item(avatars.length - 1).getBoundingClientRect();
     const stackBox = element.getBoundingClientRect();
-    const avatarBox = avatar.getBoundingClientRect();
-    const recommendationBox = recommendation?.getBoundingClientRect();
+    const bar = option.querySelector('.event-poll-bar')!.getBoundingClientRect();
+    const controls = option.querySelector('.event-poll-response-toolbar')!.getBoundingClientRect();
+    const middle = (box: DOMRect) => (box.top + box.bottom) / 2;
     return {
-      stackTop: stackBox.top,
-      titleTop: option.querySelector('.event-poll-option-title-row')!.getBoundingClientRect().top,
       stackWidth: stackBox.width,
       stackHeight: stackBox.height,
-      avatarWidth: avatarBox.width,
-      stackContentRightInset: stackBox.right - avatarBox.right,
-      avatarToOptionRightInset: option.getBoundingClientRect().right - avatarBox.right,
-      avatarsBeforeRecommendation: !recommendationBox || avatarBox.right <= recommendationBox.left,
+      avatarWidth: last.width,
+      stackContentLeftInset: first.left - stackBox.left,
+      stackContentRightInset: stackBox.right - last.right,
+      avatarLeft: first.left,
+      avatarToBarMiddle: Math.abs(middle(first) - middle(bar)),
+      avatarToControlsMiddle: Math.abs(middle(first) - middle(controls)),
     };
   });
   await ownerPage.setViewportSize({ width: 390, height: 844 });
   const mobileStack = await voterStackGeometry(liveStack);
   const mobileSingleStack = await voterStackGeometry(singleVoterStack);
-  const mobileRecommendationStack = await voterStackGeometry(recommendationStack);
   assert.ok(mobileStack.stackWidth >= 44 && mobileStack.stackHeight >= 32, `the multi-voter stack keeps a comfortable tap target (${JSON.stringify(mobileStack)})`);
   assert.equal(mobileSingleStack.stackWidth, 44, `the single-voter stack keeps the minimum width (${JSON.stringify(mobileSingleStack)})`);
-  assert.equal(mobileRecommendationStack.avatarsBeforeRecommendation, true, `mobile avatars sit before the recommendation badge (${JSON.stringify(mobileRecommendationStack)})`);
-  assert.ok(mobileStack.stackContentRightInset <= 1 && mobileSingleStack.stackContentRightInset <= 1, `mobile avatars align to their tap target edge (${JSON.stringify({ mobileStack, mobileSingleStack })})`);
+  assert.ok(mobileStack.stackContentRightInset <= 1 && mobileSingleStack.stackContentRightInset <= 1, `mobile avatars align to the right of the title line (${JSON.stringify({ mobileStack, mobileSingleStack })})`);
   await ownerPage.setViewportSize({ width: 1024, height: 800 });
   const desktopStack = await voterStackGeometry(liveStack);
   const desktopSingleStack = await voterStackGeometry(singleVoterStack);
-  const desktopRecommendationStack = await voterStackGeometry(recommendationStack);
-  assert.ok(Math.abs(desktopStack.stackTop - desktopStack.titleTop) <= 16, `the avatars share the option title row (${JSON.stringify(desktopStack)})`);
   assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
-  assert.equal(desktopRecommendationStack.avatarsBeforeRecommendation, true, `desktop avatars sit before the recommendation badge (${JSON.stringify(desktopRecommendationStack)})`);
-  assert.ok(desktopSingleStack.avatarToOptionRightInset >= 20, `a stack without a following badge keeps the option inset (${JSON.stringify(desktopSingleStack)})`);
-  assert.ok(desktopStack.stackContentRightInset <= 1 && desktopSingleStack.stackContentRightInset <= 1, `desktop avatars align to their tap target edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
+  assert.ok(desktopStack.stackContentLeftInset <= 1 && desktopSingleStack.stackContentLeftInset <= 1, `desktop avatars start at their column edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
+  assert.ok(Math.abs(desktopStack.avatarLeft - desktopSingleStack.avatarLeft) <= 1, `avatars of different rows share one left edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
+  assert.ok(desktopStack.avatarToBarMiddle <= 1 && desktopStack.avatarToControlsMiddle <= 1, `bar, avatars and answers share one middle line (${JSON.stringify(desktopStack)})`);
   await liveStack.click();
   const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await liveVoteDialog.waitFor();
@@ -347,23 +351,30 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     details.dispatchEvent(new Event('toggle'));
   });
   const closed = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
-  assert.match((await closed.locator('.event-poll-best-result').textContent()) ?? '', /Ergebnis:/, 'the collapsed card includes the best result');
+  assert.match((await closed.locator('.event-poll-best-result').textContent()) ?? '', /Win\s*Erstes Wochenende/, 'the collapsed card includes the winning option');
   await choosePollAction(closed, '[data-view-poll-votes]');
   const voteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await voteDialog.waitFor();
   assert.match((await voteDialog.textContent()) ?? '', new RegExp(MEMBER_NAME));
-  assert.match((await voteDialog.textContent()) ?? '', /\d{2}:\d{2}/, 'the vote dialog shows when the response was saved');
-  const voterAvatar = voteDialog.locator('.event-poll-vote-person .avatar-dot, .event-poll-vote-person .avatar-img').first();
-  const voterName = voteDialog.locator('.event-poll-voter-name').first();
-  const voterAlignment = await voteDialog.locator('.event-poll-vote-person .player-name').first().evaluate((element) => {
+  // One row per person, one numbered column per option; the legend names the
+  // numbers and marks the winner, so long option labels never widen a column.
+  assert.match((await voteDialog.locator('.event-poll-vote-legend').textContent()) ?? '', /1\s*Erstes Wochenende\s*Win/);
+  assert.equal(await voteDialog.locator('thead .event-poll-vote-number.is-win').count(), 1, 'the winning column is marked');
+  const memberRow = voteDialog.locator('.event-poll-vote-table tbody tr', { hasText: MEMBER_NAME });
+  assert.equal(await memberRow.count(), 1);
+  assert.equal(await memberRow.locator('.avatar-dot, .avatar-img').count(), 1);
+  assert.ok(
+    (await memberRow.locator('.event-poll-vote-cell[aria-label]').count()) >= 1,
+    'each answer cell names its answer for assistive technology',
+  );
+  const voterAlignment = await memberRow.locator('.player-name').evaluate((element) => {
     const styles = getComputedStyle(element);
     return { display: styles.display, alignItems: styles.alignItems };
   });
   assert.ok(voterAlignment.display.includes('flex') && voterAlignment.alignItems === 'center', 'the voter identity uses a centered flex row');
-  assert.equal(await voterAvatar.count(), 1);
-  assert.equal(await voterName.count(), 1);
   await voteDialog.locator('[data-close]').click();
-  assert.equal(await closed.locator('.event-poll-result-title', { hasText: 'Ergebnis' }).count(), 1);
+  assert.equal(await closed.locator('.event-poll-option.is-winner .vote-win-chip').count(), 1, 'the ended round marks its winner');
+  assert.match((await closed.locator('.event-poll-option').first().textContent()) ?? '', /Erstes Wochenende/, 'the ended round lists its options by result');
   assert.equal(await closed.locator('[data-decide-poll]').count(), 0, 'the closed counts are the result; there is no second decision step');
   await choosePollAction(closed, '[data-new-poll-round]');
   await ownerPage.waitForSelector('#event-poll-form');
@@ -377,12 +388,15 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const previousRounds = repeated.locator('.event-poll-history');
   if (!(await previousRounds.evaluate((details) => (details as HTMLDetailsElement).open))) await previousRounds.locator(':scope > summary').click();
   const previousRoundText = (await previousRounds.locator('.event-poll-history-round').textContent()) ?? '';
-  assert.match(previousRoundText, /Sieger: Erstes Wochenende/, 'the earlier round exposes its winner directly');
-  assert.match(previousRoundText, /Gestartet: .* von E2E Poll Owner/, 'the earlier round exposes when and by whom it started');
-  assert.match(previousRoundText, /Beendet:/, 'the earlier round exposes when it ended');
-  assert.match(previousRoundText, /Keine Frist/, 'an earlier open-ended round keeps its missing deadline');
+  assert.match(previousRoundText, /Runde 1 · \d{2}\.\d{2}\. · 2\/2 beantwortet/, 'the earlier round is one compact row');
+  assert.match(previousRoundText, /Win\s*Erstes Wochenende/, 'the earlier round exposes its winner directly');
   assert.doesNotMatch(previousRoundText, /01\.01\.1970/);
-  assert.match(await repeated.locator('.event-poll-card-title').innerText(), /Frist: \d{2}\.\d{2}\.\d{4}/, 'the new dated round still displays its deadline');
+  await previousRounds.locator('.event-poll-history-round [data-view-poll-votes]').click();
+  const previousRoundDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt? · Runde 1' });
+  await previousRoundDialog.waitFor();
+  await previousRoundDialog.locator('[data-close]').click();
+  await previousRoundDialog.waitFor({ state: 'detached' });
+  assert.match(await repeated.locator('.event-poll-card-title').innerText(), /Frist \d{2}\.\d{2}\./, 'the new dated round still displays its deadline');
 
   await createPoll(memberPage, {
     title: 'Welche Verpflegung?',
@@ -427,11 +441,16 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     `saving keeps the visible poll anchored instead of jumping to the top (${beforeSave.top}/${beforeSave.height} -> ${afterSaveTop}/${afterSaveHeight})`,
   );
   assert.deepEqual(await memberCreated.locator('[data-poll-choice]').allTextContents(), ['Ausgewählt', 'Wählen', 'Wählen']);
-  assert.equal(await memberCreated.locator('.event-poll-option-header .badge', { hasText: 'Meiste Stimmen' }).count(), 1);
+  assert.equal(await memberCreated.locator('.badge', { hasText: 'Meiste Stimmen' }).count(), 0, 'a running round names no leader');
   const compactOptionHeight = (await memberCreated.locator('.event-poll-option').first().boundingBox())!.height;
-  assert.ok(compactOptionHeight < 80, `choice options stay compact (${compactOptionHeight}px)`);
-  const optionHeights = await memberCreated.locator('.event-poll-option').evaluateAll((options) => options.map((option) => option.getBoundingClientRect().height));
-  assert.ok(Math.max(...optionHeights) - Math.min(...optionHeights) <= 1, `recommendation does not change option height (${optionHeights.join('/')})`);
+  assert.ok(compactOptionHeight < 130, `choice options stay compact (${compactOptionHeight}px)`);
+  // Flat rows drop the outer padding of the first and last row, so compare the
+  // content height each row needs.
+  const optionHeights = await memberCreated.locator('.event-poll-option').evaluateAll((options) => options.map((option) => {
+    const style = getComputedStyle(option);
+    return option.getBoundingClientRect().height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+  }));
+  assert.ok(Math.max(...optionHeights) - Math.min(...optionHeights) <= 1, `voters do not change option height (${optionHeights.join('/')})`);
 
   await memberCreated.locator('[data-poll-choice]').nth(1).tap();
   await memberCreated.locator('[data-poll-choice]').nth(0).tap();
@@ -444,24 +463,19 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.deepEqual(
     await memberCreated.locator('[data-poll-choice]').allTextContents(),
     ['Wählen', 'Ausgewählt', 'Wählen'],
-    'the saved answer, counts and recommendation reconcile to the same server response',
+    'the saved answer and counts reconcile to the same server response',
   );
   assert.equal(await memberCreated.locator('[data-poll-choice]').nth(1).locator('.ui-icon').count(), 0, 'the compact selected action has no redundant check icon');
-  assert.equal(
-    await memberCreated.locator('.event-poll-option').nth(1).locator('.event-poll-option-header .badge', { hasText: 'Meiste Stimmen' }).count(),
-    1,
-    'the recommendation stays on the title line',
-  );
 
   await choosePollAction(memberCreated, '[data-edit-poll]');
   await memberPage.waitForSelector('#event-poll-edit-form');
   assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-id] [data-remove-poll-option]').count(), 3);
   const firstEditOption = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first();
-  await firstEditOption.locator('.event-poll-form-option-details').evaluate((details) => { (details as HTMLDetailsElement).open = true; });
+  await firstEditOption.locator('[data-toggle-option-extra]').click();
   await firstEditOption.locator('[data-poll-option-note]').fill('Auch vegetarisch verfügbar');
   await firstEditOption.locator('[data-poll-option-url]').fill('https://example.com/pizza');
   const secondEditOption = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1);
-  await secondEditOption.locator('.event-poll-form-option-details').evaluate((details) => { (details as HTMLDetailsElement).open = true; });
+  await secondEditOption.locator('[data-toggle-option-extra]').click();
   await secondEditOption.locator('[data-poll-option-note]').fill('Weitere Variante');
   await memberPage.click('#event-poll-edit-form #poll-add-option');
   await memberPage.locator('#event-poll-edit-form [data-poll-option-input]').last().fill('Dessert');
@@ -473,7 +487,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     return poll?.querySelectorAll('.event-poll-option').length === 4;
   });
   assert.equal(await memberCreated.locator('a[href="https://example.com/pizza"]').count(), 1);
-  assert.equal(await memberCreated.locator('[aria-label="Mehr Informationen zu Notiz zu Pizza"]').count(), 1);
+  assert.equal(await memberCreated.locator('.event-poll-option-note', { hasText: 'Auch vegetarisch verfügbar' }).count(), 1, 'an option note is a visible line');
   assert.equal(await memberCreated.locator('.event-poll-option').first()
     .locator('.event-poll-option-title-row strong + .badge', { hasText: 'Bearbeitet' }).count(), 1);
   assert.equal(await memberCreated.locator('.event-poll-option').nth(1)
@@ -483,13 +497,13 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-row] .badge', { hasText: 'Bearbeitet' }).count(), 0);
   assert.equal(await memberPage.locator('#event-poll-edit-form [role="switch"]').count(), 4);
   assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1)
-    .locator('.event-poll-form-option-label > label.field-label + label.event-poll-option-active [role="switch"]').count(), 1);
+    .locator('.event-poll-form-option-main > [data-poll-option-input] ~ [role="switch"]').count(), 1);
   await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first().locator('[data-poll-option-active]').uncheck();
   await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1).locator('[data-remove-poll-option]').click();
-  assert.deepEqual(await memberPage.locator('#event-poll-edit-form .event-poll-form-option-label .field-label').allTextContents(),
-    ['Option 1', 'Option 2', 'Option 3']);
+  assert.deepEqual(await memberPage.locator('#event-poll-edit-form [data-poll-option-input]').evaluateAll(
+    (inputs) => inputs.map((input) => input.getAttribute('aria-label'))), ['Option 1', 'Option 2', 'Option 3']);
   assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').nth(1)
-    .locator('[data-poll-option-active]').getAttribute('aria-label'), 'Option 2 aktiv (wählbar)');
+    .locator('[data-poll-option-active]').getAttribute('aria-label'), 'Option 2 wählbar');
   await memberPage.click('#event-poll-edit-form button[type="submit"]');
   await memberPage.locator('.modal-backdrop [data-confirm]').click();
   await memberPage.waitForFunction(() => {
@@ -504,11 +518,9 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const activeSwitch = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first().locator('[data-poll-option-active]');
   const disabledEditRow = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first();
   assert.equal(await activeSwitch.isChecked(), false);
-  assert.equal(await activeSwitch.getAttribute('aria-label'), 'Option 1 aktiv (wählbar)');
-  assert.equal(await disabledEditRow.locator('.event-poll-option-disabled').isVisible(), true);
+  assert.equal(await activeSwitch.getAttribute('aria-label'), 'Option 1 wählbar');
   assert.match(await disabledEditRow.locator('[data-poll-option-input]').evaluate((input) => getComputedStyle(input).textDecorationLine), /line-through/);
   await activeSwitch.check();
-  assert.equal(await disabledEditRow.locator('.event-poll-option-disabled').isVisible(), false);
   assert.doesNotMatch(await disabledEditRow.locator('[data-poll-option-input]').evaluate((input) => getComputedStyle(input).textDecorationLine), /line-through/);
   await memberPage.click('#event-poll-edit-form button[type="submit"]');
   await memberCreated.locator('.event-poll-option').first().locator('[data-poll-choice]').waitFor();
@@ -557,20 +569,14 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await optionLink.count(), 1);
   assert.ok((await optionLink.getAttribute('class'))?.includes('icon-btn'));
   assert.equal(await optionLink.getAttribute('aria-label'), 'Link zu Haus am See öffnen');
-  assert.ok((await optionLink.evaluate((element) => element.previousElementSibling?.classList.contains('info-tooltip'))) === true);
-  assert.equal(await linkedOption.locator('[aria-label="Mehr Informationen zu Notiz zu Haus am See"]').count(), 1);
-  assert.equal(await linkedOption.locator('.event-poll-option-title-row > .muted').count(), 0, 'the note is no longer an extra visible line');
-  // Option notes and the create-form labels sit in different type sizes; the
-  // help glyph keeps one distance to both.
-  await assertInfoTooltipPlacement(ownerPage, 1);
+  assert.equal(await linkedOption.locator('.info-tooltip').count(), 0, 'a display-only poll view carries no info tooltips');
+  assert.equal((await linkedOption.locator('.event-poll-option-note').textContent())?.trim(), 'Mit Sauna', 'the note is a visible line below the title');
   const ratingButtons = linkedOption.locator('[data-poll-response]');
   const assertRatingGeometry = async () => {
     const geometry = await linkedOption.evaluate((option) => {
-      const toolbar = option.querySelector('.event-poll-rating-toolbar')!;
-      const parent = toolbar.parentElement!;
-      const parentStyle = getComputedStyle(parent);
+      const toolbar = option.querySelector('.event-poll-rating-toolbar')! as HTMLElement;
       return {
-        availableWidth: parent.clientWidth - parseFloat(parentStyle.paddingLeft) - parseFloat(parentStyle.paddingRight),
+        availableWidth: toolbar.clientWidth,
         gap: parseFloat(getComputedStyle(toolbar).columnGap),
         buttons: Array.from(toolbar.querySelectorAll('button')).map((button) => {
           const box = button.getBoundingClientRect();
@@ -604,42 +610,26 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   ]) {
     await ownerPage.setViewportSize(viewport);
     await assertRatingGeometry();
-    const optionControls = await linkedOption.locator('.info-tooltip-trigger, .event-poll-option-link').evaluateAll((controls) => controls.map((control) => {
+    const optionLinkControl = await optionLink.evaluate((control) => {
       const box = control.getBoundingClientRect();
       const icon = control.querySelector('.ui-icon')!.getBoundingClientRect();
       return { width: box.width, height: box.height, iconWidth: icon.width, iconHeight: icon.height };
-    }));
-    assert.equal(optionControls.length, 2);
-    // Two neighbours, two targets: the help trigger is the 32px square of the
-    // InfoTooltip contract, the option link keeps the 44px icon-button width.
-    const [helpTrigger, optionLinkControl] = optionControls;
-    assert.ok(helpTrigger.width >= 31 && helpTrigger.width <= 33 && helpTrigger.height >= 31 && helpTrigger.height <= 33,
-      JSON.stringify({ viewport, helpTrigger }));
-    assert.equal(helpTrigger.iconWidth, 16, 'the help trigger pins its own glyph');
-    assert.equal(helpTrigger.iconHeight, 16);
+    });
     assert.ok(optionLinkControl.width >= 44 && optionLinkControl.height >= 31 && optionLinkControl.height <= 33,
       JSON.stringify({ viewport, optionLinkControl }));
     assert.equal(optionLinkControl.iconWidth, 20, 'the option link uses its icon-button owner glyph');
     assert.equal(optionLinkControl.iconHeight, 20);
-    // The geometry above still passes when the row keeps its trigger by
-    // squeezing the text to letter width. On a phone the badge column must
-    // therefore stop competing for that width: title, help trigger and link
-    // get the whole row, and the badge wraps underneath.
+    // A long option title keeps a readable column instead of being squeezed
+    // to letter width by the avatars or the answer buttons.
     const longTitle = await ratingPoll.locator('.event-poll-option', { hasText: 'Ein langer frei eingegebener' })
-      .evaluate((option) => ({
-        row: option.querySelector('.event-poll-option-header')!.getBoundingClientRect().width,
-        titleRow: option.querySelector('.event-poll-option-title-row')!.getBoundingClientRect().width,
-        title: option.querySelector('.event-poll-option-title-row strong')!.getBoundingClientRect().width,
-      }));
-    if (viewport.width < 640) {
-      assert.ok(longTitle.titleRow >= longTitle.row - 1,
-        `a long option title keeps the whole row on a phone: ${JSON.stringify({ viewport, longTitle })}`);
-    }
+      .evaluate((option) => option.querySelector('.event-poll-option-title-row strong')!.getBoundingClientRect().width);
+    assert.ok(longTitle >= 120, `a long option title keeps a readable width: ${JSON.stringify({ viewport, longTitle })}`);
   }
   await optionLink.focus();
   await ownerPage.keyboard.press('Shift+Tab');
-  assert.equal(await linkedOption.locator('.info-tooltip-trigger').evaluate((element) => document.activeElement === element), true);
-  assert.notEqual(await linkedOption.locator('.info-tooltip-trigger').evaluate((element) => getComputedStyle(element).outlineStyle), 'none');
+  await ownerPage.keyboard.press('Tab');
+  assert.equal(await optionLink.evaluate((element) => document.activeElement === element), true);
+  assert.notEqual(await optionLink.evaluate((element) => getComputedStyle(element).outlineStyle), 'none', 'the option link shows its keyboard focus');
   // Every value is measured both unselected and selected through the real draft handler.
   for (let value = 1; value <= 5; value += 1) {
     await ratingButtons.nth(value - 1).click();
@@ -648,9 +638,9 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     assert.equal(await ratingButtons.nth(value - 1).getAttribute('aria-pressed'), 'true');
     await assertRatingGeometry();
   }
-  const responseParent = linkedOption.locator('.event-poll-option-response-row');
+  const ratingToolbar = linkedOption.locator('.event-poll-rating-toolbar');
   for (const width of [192, 191]) {
-    await responseParent.evaluate((parent, available) => { (parent as HTMLElement).style.width = `${available}px`; }, width);
+    await ratingToolbar.evaluate((toolbar, available) => { (toolbar as HTMLElement).style.width = `${available}px`; }, width);
     await assertRatingGeometry();
     await ratingButtons.first().focus();
     await ownerPage.keyboard.press('Tab');
@@ -664,35 +654,18 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
       assert.equal(await ratingButtons.nth(index).evaluate((button) => document.activeElement === button), true);
     }
   }
-  await responseParent.evaluate((parent) => { (parent as HTMLElement).style.removeProperty('width'); });
-  // The result badge only exists once a response is stored — without one
-  // `recommendedOptionId` returns nothing and the loop above measures an empty
-  // badge container. Rating the long option highest makes it the recommended
-  // one, so the worst case of the contract (long title, note, link and a real
-  // badge) is what gets measured on a phone.
+  await ratingToolbar.evaluate((toolbar) => { (toolbar as HTMLElement).style.removeProperty('width'); });
   const longOption = ratingPoll.locator('.event-poll-option', { hasText: 'Ein langer frei eingegebener' });
   await longOption.locator('[data-poll-response="5"]').click();
   await linkedOption.locator('[data-poll-response="1"]').click();
   await ratingPoll.locator('[data-save-poll]').click();
   const ratingSavedToast = ownerPage.locator('.toast', { hasText: 'Antwort gespeichert' });
   await ratingSavedToast.waitFor();
-  await longOption.locator('.event-poll-option-badges .badge').waitFor();
-  for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
-    await ownerPage.setViewportSize(viewport);
-    const withBadge = await longOption.evaluate((option) => {
-      const row = option.querySelector('.event-poll-option-header')!.getBoundingClientRect();
-      const titleRow = option.querySelector('.event-poll-option-title-row')!.getBoundingClientRect();
-      const badge = option.querySelector('.event-poll-option-badges .badge')!.getBoundingClientRect();
-      return {
-        row: row.width, titleRow: titleRow.width, title: option.querySelector('.event-poll-option-title-row strong')!.getBoundingClientRect().width,
-        badgeTop: badge.top, titleBottom: titleRow.bottom,
-      };
-    });
-    assert.ok(withBadge.titleRow >= withBadge.row - 1,
-      `a visible badge does not take the long title's row: ${JSON.stringify({ viewport, withBadge })}`);
-    assert.ok(withBadge.badgeTop >= withBadge.titleBottom - 2,
-      `the badge wraps below the long title instead of beside it: ${JSON.stringify({ viewport, withBadge })}`);
-  }
+  // The saved ratings fill each option's bar in proportion to its average.
+  await ownerPage.waitForFunction((pollId) => {
+    const fills = Array.from(document.querySelectorAll(`[data-poll-card="${pollId}"] .event-poll-bar-fill`)) as HTMLElement[];
+    return fills.map((fill) => fill.style.width).sort().join('/') === '100%/20%';
+  }, await ratingPoll.getAttribute('data-poll-card'));
   // This response's toast has to be gone before the anonymous poll waits for
   // its own one below, otherwise that wait matches this stale toast and the
   // vote count is read before the save has landed.

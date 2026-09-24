@@ -19,15 +19,15 @@ const MODE_INFO = {
     description: 'Für jede Option wird Passt, Wenn nötig, Passt nicht oder Offen gewählt.',
   },
   single_choice: {
-    label: 'Eine Option wählen',
+    label: 'Einzelauswahl',
     description: 'Jede Person gibt genau einer Option ihre Stimme.',
   },
   multiple_choice: {
-    label: 'Mehrere Optionen wählen',
+    label: 'Mehrfachauswahl',
     description: 'Jede Person kann mehrere passende Optionen auswählen.',
   },
   rating_1_5: {
-    label: 'Optionen von 1 bis 5 bewerten',
+    label: 'Bewertung 1 bis 5',
     description: 'Jede Person vergibt für jede Option eine Bewertung von 1 bis 5.',
   },
 };
@@ -40,6 +40,10 @@ const dirtyResponseDrafts = new Set();
 const expandedPolls = new Set();
 const expandedHistories = new Set();
 const initializedEvents = new Set();
+// Polls that waited for the viewer's answer when the page first loaded stay
+// on top for the whole visit; answering never reorders the list under the
+// viewer's finger.
+const waitingAtLoad = new Map();
 let pendingAnchorFrame;
 
 export function invalidateEventPolls() {
@@ -86,26 +90,17 @@ function optionLabel(option) {
   return option.label || (option.startsOn === option.endsOn ? option.startsOn : `${option.startsOn} – ${option.endsOn}`);
 }
 
-function formatDate(timestamp) {
-  return new Date(timestamp).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+function formatShortDate(timestamp) {
+  return new Date(timestamp).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 }
 
-function formatDeadline(timestamp) {
-  return timestamp === null ? 'Keine Frist' : `Frist: ${formatDate(timestamp)}`;
-}
+const WIN_CHIP = '<span class="tournament-fixture-score is-pick vote-win-chip">Win</span>';
 
-function formatDateTime(timestamp) {
-  return new Date(timestamp).toLocaleString('de-DE', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
-}
-
-function pollStatusInfo(status) {
-  if (status === 'open') return { label: 'Umfrage läuft', badge: 'badge-playing' };
-  if (status === 'closed') return { label: 'Umfrage beendet', badge: 'badge-paused' };
-  if (status === 'scheduled') return { label: 'Umfrage beendet', badge: 'badge-paused' };
-  if (status === 'superseded') return { label: 'Frühere Runde', badge: 'badge-offline' };
-  return { label: 'Umfrage abgebrochen', badge: 'badge-offline' };
+// Running and ended polls are already told apart by their section, so only an
+// exceptional state earns a badge of its own.
+function pollStatusBadge(status) {
+  if (status === 'cancelled') return '<span class="badge badge-offline">Abgebrochen</span>';
+  return '';
 }
 
 function groupPolls(polls) {
@@ -185,20 +180,6 @@ function optionUrl(option) {
   return typeof url === 'string' && /^https?:\/\/[^\s]+$/i.test(url) ? url : null;
 }
 
-function responsePeopleGroups(poll, option) {
-  if (poll.responseMode === 'rating_1_5') {
-    return [...RATING_VALUES].reverse().map((value) => ({ label: `${value} von 5`, people: option.people.ratings?.[value] ?? [] }));
-  }
-  if (poll.responseMode === 'feasibility') {
-    return [
-      { label: 'Passt', people: option.people.can },
-      { label: 'Wenn nötig', people: option.people.ifNeeded },
-      { label: 'Passt nicht', people: option.people.cannot },
-    ];
-  }
-  return [{ label: 'Gewählt', people: option.people.can }];
-}
-
 // How many voter avatars an option row shows before the rest becomes a count.
 const VOTER_STACK_LIMIT = 4;
 
@@ -266,32 +247,109 @@ function bestResultLabel(poll) {
   return best ? optionLabel(best) : '';
 }
 
-function openVoteDetails(poll) {
-  if (!poll.responseDetailsVisible) return;
+// Who answered what, as one compact table: one row per person (alphabetical),
+// one numbered column per option. The legend above names each number, so the
+// column heads stay equally narrow no matter how long an option label is.
+const VOTE_CELL_SYMBOLS = {
+  can: { icon: 'check', state: 'can', label: 'Passt' },
+  if_needed: { icon: 'minus', state: 'if-needed', label: 'Notfalls' },
+  cannot: { icon: 'x', state: 'cannot', label: 'Nein' },
+};
+
+function voteDetailAnswers(poll, options) {
+  const names = new Map();
+  const answers = new Map();
+  const remember = (option, value, people) => {
+    for (const person of people ?? []) {
+      names.set(person.playerId, person.name);
+      if (!answers.has(person.playerId)) answers.set(person.playerId, new Map());
+      answers.get(person.playerId).set(option.id, value);
+    }
+  };
+  for (const option of options) {
+    if (poll.responseMode === 'rating_1_5') {
+      for (const value of RATING_VALUES) remember(option, String(value), option.people.ratings?.[value]);
+    } else if (poll.responseMode === 'feasibility') {
+      remember(option, 'can', option.people.can);
+      remember(option, 'if_needed', option.people.ifNeeded);
+      remember(option, 'cannot', option.people.cannot);
+    } else {
+      remember(option, 'can', option.people.can);
+    }
+  }
+  const people = [...names.entries()]
+    .map(([playerId, name]) => ({ playerId, name }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'de', { sensitivity: 'base' }));
+  return { people, answers };
+}
+
+function voteDetailCell(poll, value) {
+  if (value === undefined) {
+    return poll.responseMode === 'feasibility' || poll.responseMode === 'rating_1_5'
+      ? '<span class="event-poll-vote-cell is-empty" aria-label="Offen">–</span>'
+      : '<span class="event-poll-vote-cell is-empty" aria-hidden="true"></span>';
+  }
+  if (poll.responseMode === 'rating_1_5') return `<span class="event-poll-vote-cell is-rating">${escapeHtml(value)}</span>`;
+  const symbol = VOTE_CELL_SYMBOLS[value];
+  const label = poll.responseMode === 'feasibility' ? symbol.label : 'Gewählt';
+  return `<span class="event-poll-vote-cell is-${symbol.state}" role="img" aria-label="${label}" title="${label}">${icon(symbol.icon)}</span>`;
+}
+
+function voteDetailSummary(poll, option) {
+  if (!option.counts) return '';
+  if (poll.responseMode === 'rating_1_5') {
+    return option.counts.average === null
+      ? ''
+      : `Ø ${option.counts.average.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
+  }
+  if (poll.responseMode === 'feasibility') return `${option.counts.can}× Passt`;
+  return `${option.counts.can} ${option.counts.can === 1 ? 'Stimme' : 'Stimmen'}`;
+}
+
+function openVoteDetails(poll, { showRound = false } = {}) {
   const options = optionsByResult(poll);
-  const hasResponses = options.some((option) => responsePeopleGroups(poll, option).some((group) => group.people?.length));
-  openModal(`Stimmen · ${poll.title}`, hasResponses ? `
-    <div class="stack event-poll-vote-details">
+  const decided = poll.status !== 'open' && poll.status !== 'cancelled';
+  const { people, answers } = poll.responseDetailsVisible ? voteDetailAnswers(poll, options) : { people: [], answers: new Map() };
+  const hasResponses = people.length > 0 || options.some((option) => option.counts?.can || option.counts?.average != null);
+  const title = `Stimmen · ${poll.title}${showRound ? ` · Runde ${poll.roundNumber}` : ''}`;
+  const number = (index, win) => `<span class="event-poll-vote-number${win ? ' is-win' : ''}">${index + 1}</span>`;
+  const legend = `
+    <ol class="event-poll-vote-legend">
       ${options.map((option, index) => {
-        const groups = responsePeopleGroups(poll, option).filter((group) => group.people?.length);
-        if (!groups.length) return '';
-        return `
-          <section class="event-poll-vote-option stack">
-            <div class="row-between"><strong>${index + 1}. ${escapeHtml(optionLabel(option))}</strong><span class="muted">${escapeHtml(renderCounts(poll, option))}</span></div>
-            ${groups.map((group) => `
-              <div class="event-poll-vote-group stack">
-                <span class="muted">${escapeHtml(group.label)}</span>
-                ${group.people
-                  .slice()
-                  .sort((left, right) => right.updatedAt - left.updatedAt)
-                  .map((person) => {
-                    const player = state.players?.find((entry) => entry.id === person.playerId) ?? person;
-                    return `<div class="event-poll-vote-person row-between"><span class="player-name">${avatarHtml(player, 20)}<span class="event-poll-voter-name">${escapeHtml(person.name)}</span></span><time class="muted" datetime="${new Date(person.updatedAt).toISOString()}">${escapeHtml(formatDateTime(person.updatedAt))}</time></div>`;
-                  }).join('')}
-              </div>`).join('')}
-          </section>`;
+        const win = option.isRecommended && decided;
+        return `<li class="event-poll-vote-legend-row">
+          ${number(index, win)}
+          <span class="event-poll-vote-legend-label">${escapeHtml(optionLabel(option))}</span>
+          ${win ? WIN_CHIP : ''}
+          <span class="muted event-poll-vote-legend-summary">${escapeHtml(voteDetailSummary(poll, option))}</span>
+        </li>`;
       }).join('')}
-    </div>` : '<p class="muted">Für diese Runde wurden keine Stimmen abgegeben.</p>');
+    </ol>
+    ${poll.responseMode === 'feasibility' && people.length
+      ? `<div class="muted event-poll-vote-key">
+           ${Object.values(VOTE_CELL_SYMBOLS).map((symbol) => `<span><span class="event-poll-vote-cell is-${symbol.state}" aria-hidden="true">${icon(symbol.icon)}</span>${symbol.label}</span>`).join('')}
+         </div>`
+      : ''}`;
+  const table = people.length
+    ? `<div class="event-poll-vote-table-wrap">
+         <table class="event-poll-vote-table">
+           <colgroup><col />${options.map(() => '<col class="event-poll-vote-col" />').join('')}</colgroup>
+           <thead><tr><th scope="col"><span class="visually-hidden">Person</span></th>${options
+             .map((option, index) => `<th scope="col" aria-label="${escapeHtml(optionLabel(option))}">${number(index, option.isRecommended && decided)}</th>`)
+             .join('')}</tr></thead>
+           <tbody>${people
+             .map((person) => {
+               const player = state.players?.find((entry) => entry.id === person.playerId) ?? person;
+               return `<tr>
+                 <th scope="row"><span class="player-name">${avatarHtml(player, 20)}<span class="event-poll-voter-name">${escapeHtml(person.name)}</span></span></th>
+                 ${options.map((option) => `<td>${voteDetailCell(poll, answers.get(person.playerId)?.get(option.id))}</td>`).join('')}
+               </tr>`;
+             })
+             .join('')}</tbody>
+         </table>
+       </div>`
+    : '';
+  openModal(title, hasResponses ? `<div class="stack event-poll-vote-details">${legend}${table}</div>` : '<p class="muted">Für diese Runde wurden keine Stimmen abgegeben.</p>');
 }
 
 function renderResponseControl(poll, option) {
@@ -301,17 +359,17 @@ function renderResponseControl(poll, option) {
     return `
       <div class="selection-toolbar event-poll-response-toolbar event-poll-rating-toolbar" role="group" aria-label="Bewertung für ${escapeHtml(optionLabel(option))}">
         ${RATING_VALUES.map((value) => `
-          <button type="button" class="btn btn-square${draft[option.id] === value ? ' btn-primary' : ''}"
+          <button type="button" class="btn btn-square${draft[option.id] === value ? ' is-selected' : ''}"
             data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"
             aria-label="${value} von 5" aria-pressed="${draft[option.id] === value}">${value}</button>`).join('')}
       </div>`;
   }
   if (poll.responseMode === 'feasibility') {
-    const fullLabels = { can: 'Passt', if_needed: 'Wenn nötig', cannot: 'Passt nicht', open: 'Offen' };
+    const fullLabels = { can: 'Passt', if_needed: 'Wenn nötig', cannot: 'Passt nicht' };
     return `
       <div class="selection-toolbar event-poll-response-toolbar" role="group" aria-label="Bewertung für ${escapeHtml(optionLabel(option))}">
-        ${FEASIBILITY_VALUES.map((value) => `
-          <button type="button" class="btn btn-sm${draft[option.id] === value ? ' btn-primary' : ''}"
+        ${RESPONSE_VALUES.map((value) => `
+          <button type="button" class="btn btn-sm${draft[option.id] === value ? ' is-selected' : ''}"
             data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"
             aria-label="${fullLabels[value]}" aria-pressed="${draft[option.id] === value}">${RESPONSE_LABELS[value]}</button>`).join('')}
       </div>`;
@@ -321,7 +379,7 @@ function renderResponseControl(poll, option) {
   return `
     <div class="event-poll-choice-control">
       <div class="selection-toolbar event-poll-response-toolbar">
-        <button type="button" class="btn btn-sm event-poll-choice-btn${selected ? ' btn-primary' : ''}" data-poll-choice="${escapeHtml(poll.id)}"
+        <button type="button" class="btn btn-sm event-poll-choice-btn${selected ? ' is-selected' : ''}" data-poll-choice="${escapeHtml(poll.id)}"
           data-option-id="${escapeHtml(option.id)}" aria-pressed="${selected}">${label}</button>
       </div>
     </div>`;
@@ -335,37 +393,119 @@ function renderCounts(poll, option) {
     return `Ø ${average} · ${ratingCount} ${ratingCount === 1 ? 'Bewertung' : 'Bewertungen'}${option.active ? ` · ${option.counts.open} offen` : ''}`;
   }
   if (poll.responseMode === 'feasibility') {
-    return `Passt ${option.counts.can} · Notfalls ${option.counts.ifNeeded} · Nein ${option.counts.cannot}${option.active ? ` · Offen ${option.counts.open}` : ''}`;
+    return `${option.counts.can} Passt · ${option.counts.ifNeeded} Notfalls · ${option.counts.cannot} Nein${option.active ? ` · ${option.counts.open} offen` : ''}`;
   }
   return `${option.counts.can} ${option.counts.can === 1 ? 'Stimme' : 'Stimmen'}${option.active ? ` · ${option.counts.open} offen` : ''}`;
+}
+
+const percent = (value, total) => `${Math.round((Math.max(0, value) / Math.max(1, total)) * 1000) / 10}%`;
+
+// Interim or final result as one bar in the middle of the option row. The
+// fill is a soft gradient in the brand colors: for "Jede Option bewerten" the
+// colors of Passt, Notfalls and Nein meet at the middle of their segments, so
+// each answer keeps its hue while neighbours blend instead of hard edges.
+function renderResultBar(poll, option) {
+  // An empty cell keeps the avatar and answer columns in place.
+  if (!option.counts) return '<span class="event-poll-result"></span>';
+  const total = poll.invitees.length;
+  let fill = '';
+  if (poll.responseMode === 'feasibility') {
+    const parts = [
+      ['var(--accent)', option.counts.can],
+      ['var(--accent-2)', option.counts.ifNeeded],
+      ['var(--accent-3)', option.counts.cannot],
+    ].filter(([, count]) => count > 0);
+    const answered = parts.reduce((sum, [, count]) => sum + count, 0);
+    if (answered) {
+      let offset = 0;
+      const stops = parts.map(([color, count]) => {
+        const middle = offset + count / 2;
+        offset += count;
+        return `${color} ${percent(middle, answered)}`;
+      });
+      const background = stops.length === 1 ? parts[0][0] : `linear-gradient(90deg, ${stops.join(', ')})`;
+      fill = `<span class="event-poll-bar-fill" style="width:${percent(answered, total)};background:${background};"></span>`;
+    }
+  } else if (poll.responseMode === 'rating_1_5') {
+    if (option.counts.average !== null) fill = `<span class="event-poll-bar-fill is-choice" style="width:${percent(option.counts.average, 5)};"></span>`;
+  } else if (option.counts.can) {
+    fill = `<span class="event-poll-bar-fill is-choice" style="width:${percent(option.counts.can, total)};"></span>`;
+  }
+  return `
+    <span class="event-poll-result">
+      <span class="event-poll-bar" aria-hidden="true">${fill}</span>
+      <span class="event-poll-counts">${renderLegend(poll, option)}</span>
+    </span>`;
+}
+
+function renderLegend(poll, option) {
+  if (poll.responseMode !== 'feasibility') return escapeHtml(renderCounts(poll, option));
+  const item = (key, count, label) => `<span class="event-poll-legend-item"><span class="event-poll-legend-dot is-${key}" aria-hidden="true"></span>${count} ${label}</span>`;
+  return [
+    item('can', option.counts.can, 'Passt'),
+    item('if-needed', option.counts.ifNeeded, 'Notfalls'),
+    item('cannot', option.counts.cannot, 'Nein'),
+    option.active ? item('open', option.counts.open, 'offen') : '',
+  ].join('');
+}
+
+// Mirrors the server's hasAnsweredDatePoll on the viewer's own saved answers.
+function myAnswerComplete(poll) {
+  const active = poll.options.filter((option) => option.active);
+  const mine = poll.myResponses ?? {};
+  if (!active.length || active.some((option) => !mine[option.id])) return false;
+  const selected = active.filter((option) => mine[option.id] === 'can').length;
+  if (poll.responseMode === 'single_choice') return selected === 1;
+  if (poll.responseMode === 'multiple_choice') return selected >= 1;
+  return true;
+}
+
+function answerStatusChip(poll) {
+  if (poll.status !== 'open' || !poll.isInvitee) return '';
+  return myAnswerComplete(poll)
+    ? `<span class="badge badge-playing event-poll-answer-chip">${icon('check')}Beantwortet</span>`
+    : '<span class="badge event-poll-answer-chip is-missing">Deine Antwort fehlt</span>';
+}
+
+function draftProgress(poll) {
+  const draft = responseDraftFor(poll);
+  const active = poll.options.filter((option) => option.active);
+  if (poll.responseMode === 'feasibility' || poll.responseMode === 'rating_1_5') {
+    const done = active.filter((option) => draft[option.id] && draft[option.id] !== 'open').length;
+    return `${done} von ${active.length} bewertet`;
+  }
+  const selected = selectedResponseCount(poll);
+  if (poll.responseMode === 'multiple_choice' && poll.maxSelections) return `${selected} von ${poll.maxSelections} gewählt`;
+  return `${selected} gewählt`;
 }
 
 function renderOption(poll, option) {
   const link = optionUrl(option);
   const label = optionLabel(option);
-  const recommendation = option.isRecommended && poll.status !== 'cancelled'
-    ? `<span class="badge badge-online">${['feasibility', 'rating_1_5'].includes(poll.responseMode) ? 'Beste Bewertung' : 'Meiste Stimmen'}</span>`
-    : '';
+  const win = option.isRecommended && poll.status !== 'open' && poll.status !== 'cancelled';
+  const badges = `${renderVoterStack(poll, option)}${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}`;
+  // Fixed columns: name and note, result bar, voter avatars, answer buttons.
   return `
-    <div class="event-poll-option${recommendation ? ' has-recommendation' : ''}" data-poll-option="${escapeHtml(option.id)}">
-      <div class="row-between event-poll-option-header">
+    <div class="event-poll-option${win ? ' is-winner' : ''}" data-poll-option="${escapeHtml(option.id)}">
+      <div class="event-poll-option-info">
         <span class="event-poll-option-title-row">
           <strong>${escapeHtml(label)}</strong>
+          ${win ? WIN_CHIP : ''}
           ${option.descriptionEditedAt ? '<span class="badge badge-offline">Bearbeitet</span>' : ''}
-          ${option.description ? infoTooltipHtml(`poll-option-note-${poll.id}-${option.id}`, `Notiz zu ${label}`, option.description) : ''}
           ${link ? `<a class="icon-btn event-poll-option-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" aria-label="Link zu ${escapeHtml(label)} öffnen" title="Link öffnen">${icon('squareArrowOutUpRight')}</a>` : ''}
         </span>
-        <span class="row event-poll-option-badges">
-          ${renderVoterStack(poll, option)}
-          ${recommendation}
-          ${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}
-        </span>
+        ${option.description ? `<span class="muted event-poll-option-note">${escapeHtml(option.description)}</span>` : ''}
       </div>
-      <div class="event-poll-option-response-row">
-        <span class="muted event-poll-counts">${renderCounts(poll, option)}</span>
-        ${renderResponseControl(poll, option)}
-      </div>
+      ${renderResultBar(poll, option)}
+      <span class="event-poll-option-badges">${badges}</span>
+      ${renderResponseControl(poll, option)}
     </div>`;
+}
+
+function renderPollSideAction(poll) {
+  if (!poll.canManage) return '';
+  if (poll.status === 'open') return `<button type="button" class="btn btn-sm" data-close-poll="${escapeHtml(poll.id)}">Beenden</button>`;
+  return `<button type="button" class="btn btn-sm" data-new-poll-round="${escapeHtml(poll.id)}">Neue Runde</button>`;
 }
 
 function renderPollActions(poll) {
@@ -374,59 +514,52 @@ function renderPollActions(poll) {
   if (poll.responseDetailsVisible) {
     actions.push(`<button type="button" class="btn btn-sm" data-view-poll-votes="${escapeHtml(poll.id)}">Stimmen ansehen</button>`);
   }
-  if (poll.status === 'open') {
-    if (poll.canManage) {
+  if (poll.canManage) {
+    if (poll.status === 'open') {
       actions.push(`<button type="button" class="btn btn-sm" data-edit-poll="${escapeHtml(poll.id)}">Bearbeiten</button>`);
-      actions.push(`<button type="button" class="btn btn-sm" data-remind-poll="${escapeHtml(poll.id)}" ${unanswered === 0 ? 'disabled' : ''}>Erinnerung versenden (${unanswered})</button>`);
-      actions.push(`<button type="button" class="btn btn-sm" data-close-poll="${escapeHtml(poll.id)}">Beenden</button>`);
-      actions.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
-    }
-  } else {
-    if (poll.canManage) {
+      actions.push(`<button type="button" class="btn btn-sm" data-remind-poll="${escapeHtml(poll.id)}" ${unanswered === 0 ? 'disabled' : ''}>Erinnern (${unanswered})</button>`);
+    } else {
       actions.push(`<button type="button" class="btn btn-sm" data-reopen-poll="${escapeHtml(poll.id)}">Wieder öffnen</button>`);
-      actions.push(`<button type="button" class="btn btn-sm" data-new-poll-round="${escapeHtml(poll.id)}">Neue Runde</button>`);
-      actions.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
     }
+    actions.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
   }
+  if (!actions.length) return '';
   return actionMenuHtml(actions.join(''), `Aktionen für Umfrage ${poll.title}`);
 }
 
 function renderRound(poll) {
   const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
-  const maxCopy = poll.responseMode === 'multiple_choice' && poll.maxSelections ? ` · höchstens ${poll.maxSelections}` : '';
-  const modeParts = poll.responseMode === 'rating_1_5' ? [] : [`${mode.label}${maxCopy}`];
-  if (poll.anonymous) modeParts.push('Anonym');
+  const tags = [mode.label];
+  if (poll.responseMode === 'multiple_choice' && poll.maxSelections) tags.push(`höchstens ${poll.maxSelections}`);
+  if (poll.anonymous) tags.push('Anonym');
   // Said once for the whole round instead of repeating it in every option row.
   if (poll.status === 'open' && poll.liveResultsHidden) {
-    modeParts.push(poll.resultsVisible ? 'Zwischenstand nur für dich' : 'Zwischenstand verborgen');
+    tags.push(poll.resultsVisible ? 'Zwischenstand nur für dich' : 'Zwischenstand verborgen');
   }
-  const modeCopy = modeParts.join(' · ');
+  const canAnswer = poll.isInvitee && poll.status === 'open';
   return `
     <section class="stack event-poll-round" data-poll-round="${escapeHtml(poll.id)}">
-      ${modeCopy ? `<span class="muted">${escapeHtml(modeCopy)}</span>` : ''}
+      <div class="event-poll-tags">${tags.map((tag) => `<span class="event-poll-tag">${escapeHtml(tag)}</span>`).join('')}</div>
       ${poll.note ? `<p class="event-poll-note">${escapeHtml(poll.note)}</p>` : ''}
-      ${poll.status !== 'open' && poll.status !== 'cancelled' ? '<div class="section-title event-poll-result-title">Ergebnis</div>' : ''}
-      <div class="stack event-poll-options">${poll.options.map((option) => renderOption(poll, option)).join('')}</div>
-      ${poll.isInvitee && poll.status === 'open'
-        ? `<div class="row event-poll-save-row"><button type="button" class="btn btn-primary btn-sm" data-save-poll="${escapeHtml(poll.id)}" ${responseDraftIsValid(poll) ? '' : 'disabled'}>Speichern</button></div>`
+      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}">${(poll.status === 'open' ? poll.options : optionsByResult(poll)).map((option) => renderOption(poll, option)).join('')}</div>
+      ${canAnswer
+        ? `<div class="event-poll-save-row event-poll-footer"><span class="muted">${escapeHtml(draftProgress(poll))}</span><button type="button" class="btn btn-primary btn-sm" data-save-poll="${escapeHtml(poll.id)}" ${responseDraftIsValid(poll) ? '' : 'disabled'}>Speichern</button></div>`
         : ''}
     </section>`;
 }
 
 function renderHistoryRound(poll) {
-  const status = pollStatusInfo(poll.status);
   const bestResult = bestResultLabel(poll);
   const answered = poll.invitees.filter((entry) => entry.hasAnswered).length;
+  const meta = [`Runde ${poll.roundNumber}`, formatShortDate(poll.updatedAt), `${answered}/${poll.invitees.length} beantwortet`].join(' · ');
   return `
-    <div class="tournament-section-panel event-poll-history-round">
-      <div class="row-between"><strong>Runde ${poll.roundNumber}</strong><span class="badge ${status.badge}">${status.label}</span></div>
-      <span class="event-poll-history-result">${bestResult ? `Sieger: ${escapeHtml(bestResult)}` : 'Ergebnis: Keine Stimmen'}</span>
-      <span class="muted">Gestartet: ${formatDateTime(poll.createdAt)} · von ${escapeHtml(poll.createdByName ?? 'Unbekannt')}</span>
-      <span class="muted">Beendet: ${formatDateTime(poll.updatedAt)} · ${formatDeadline(poll.responseDueAt)} · ${answered} von ${poll.invitees.length} beantwortet${poll.anonymous ? ' · Anonym' : ''}</span>
-      <details class="event-poll-history-details">
-        <summary>Ergebnisdetails</summary>
-        <div class="stack event-poll-options">${poll.options.map((option) => renderOption(poll, option)).join('')}</div>
-      </details>
+    <div class="event-poll-history-round">
+      <span class="event-poll-history-main">
+        <span class="event-poll-history-meta">${escapeHtml(meta)}</span>
+        ${bestResult ? `<span class="event-poll-history-result">${WIN_CHIP}<span>${escapeHtml(bestResult)}</span></span>` : '<span class="muted">Keine Stimmen</span>'}
+        ${pollStatusBadge(poll.status)}
+      </span>
+      <button type="button" class="btn btn-sm" data-view-poll-votes="${escapeHtml(poll.id)}">Details</button>
     </div>`;
 }
 
@@ -439,7 +572,7 @@ function renderHistory(group) {
       <summary class="collapsible-section-header">
         <span class="row"><span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span><span>Frühere Runden (${history.length})</span></span>
       </summary>
-      <div class="collapsible-section-content stack">${history.map(renderHistoryRound).join('')}</div>
+      <div class="collapsible-section-content event-poll-history-list">${history.map(renderHistoryRound).join('')}</div>
     </details>`;
 }
 
@@ -447,9 +580,13 @@ function renderEndedPolls(groups, eventId) {
   if (!groups.length) return '';
   const key = `${eventId}:ended-polls`;
   return `
-    <details class="card grouped-page-section collapsible-section event-poll-ended-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
+    <details class="card grouped-page-section history-details collapsible-section event-poll-ended-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
       <summary class="collapsible-section-header">
-        <span class="row"><span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span><span>Beendete Umfragen (${groups.length})</span></span>
+        <h2>Historie</h2>
+        <span class="collapsible-section-summary-end">
+          <span class="badge badge-offline">${groups.length}</span>
+          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
+        </span>
       </summary>
       <div class="collapsible-section-content stack event-poll-list">${groups.map(renderPollGroup).join('')}</div>
     </details>`;
@@ -457,19 +594,28 @@ function renderEndedPolls(groups, eventId) {
 
 function renderPollGroup(group) {
   const latest = group.rounds[0];
-  const status = pollStatusInfo(latest.status);
   const answered = latest.invitees.filter((invitee) => invitee.hasAnswered).length;
   const expanded = expandedPolls.has(group.key);
   const bestResult = bestResultLabel(latest);
+  const meta = [
+    latest.createdByName,
+    latest.roundNumber > 1 ? `Runde ${latest.roundNumber}` : null,
+    `${answered}/${latest.invitees.length} beantwortet`,
+    latest.status === 'open' && latest.responseDueAt !== null ? `Frist ${formatShortDate(latest.responseDueAt)}` : null,
+  ].filter(Boolean).map(escapeHtml).join(' · ');
   return `
     <article class="card event-poll-card" data-poll-group="${escapeHtml(group.key)}" data-poll-card="${escapeHtml(latest.id)}">
       <header class="event-poll-card-header">
         <button type="button" class="event-poll-card-toggle" data-toggle-poll="${escapeHtml(group.key)}" aria-expanded="${expanded}">
           <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
-          <span class="event-poll-card-title"><strong>${escapeHtml(latest.title)}</strong><span class="muted">von ${escapeHtml(latest.createdByName ?? 'Unbekannt')} · Runde ${latest.roundNumber}</span><span class="muted">Gestartet: ${formatDate(latest.createdAt)} · ${formatDeadline(latest.responseDueAt)}</span></span>
+          <span class="event-poll-card-title">
+            <strong>${escapeHtml(latest.title)}</strong>
+            <span class="event-poll-card-meta-line"><span class="muted">${meta}</span>${bestResult ? `<span class="event-poll-best-result">${WIN_CHIP}<span>${escapeHtml(bestResult)}</span></span>` : ''}${pollStatusBadge(latest.status)}<span class="event-poll-answer-inline">${answerStatusChip(latest)}</span></span>
+          </span>
         </button>
         <div class="event-poll-card-side">
-          <span class="event-poll-card-meta"><span class="badge ${status.badge}">${status.label}</span><span class="muted">${answered}/${latest.invitees.length} beantwortet</span>${bestResult ? `<span class="event-poll-best-result" title="Bestes Ergebnis: ${escapeHtml(bestResult)}">Ergebnis: ${escapeHtml(bestResult)}</span>` : ''}</span>
+          <span class="event-poll-answer-side">${answerStatusChip(latest)}</span>
+          ${renderPollSideAction(latest)}
           ${renderPollActions(latest)}
         </div>
       </header>
@@ -480,45 +626,78 @@ function renderPollGroup(group) {
     </article>`;
 }
 
+// One compact line per option: name, note/link toggle, selectable switch and
+// remove. Note and link open below the line only when asked for or filled.
 function optionRowHtml(index, value = {}) {
   const showDetails = Boolean(value.description || value.url);
+  const name = `Option ${index + 1}`;
   return `
     <div class="event-poll-form-option" data-poll-option-row="${index}"${value.id ? ` data-poll-option-id="${escapeHtml(value.id)}"` : ''}>
-      <div class="row-between">
-        <span class="event-poll-form-option-label">
-          <label for="poll-option-${index}" class="field-label is-required">Option ${index + 1}</label>
-          <label class="event-poll-option-active"><input class="poll-option-switch" type="checkbox" role="switch" data-poll-option-active aria-label="Option ${index + 1} aktiv (wählbar)" ${value.active !== false ? 'checked' : ''} /><span class="badge badge-paused event-poll-option-disabled">Deaktiviert</span></label>
-        </span>
-        <button type="button" class="icon-btn" data-remove-poll-option aria-label="Option entfernen" title="Option entfernen">${icon('trash')}</button>
+      <div class="event-poll-form-option-main">
+        <input type="text" id="poll-option-${index}" data-poll-option-input maxlength="120" required value="${escapeHtml(value.label ?? '')}" placeholder="${name}" aria-label="${name}" />
+        <button type="button" class="icon-btn event-poll-option-extra-toggle" data-toggle-option-extra aria-expanded="${showDetails}" aria-label="Notiz oder Link zu ${name}" title="Notiz oder Link">${icon('link')}</button>
+        <input class="poll-option-switch" type="checkbox" role="switch" data-poll-option-active aria-label="${name} wählbar" title="Wählbar" ${value.active !== false ? 'checked' : ''} />
+        <button type="button" class="icon-btn" data-remove-poll-option aria-label="${name} entfernen" title="Option entfernen">${icon('trash')}</button>
       </div>
-      <input type="text" id="poll-option-${index}" data-poll-option-input maxlength="120" required value="${escapeHtml(value.label ?? '')}" placeholder="z. B. Ferienhaus am See" />
-      <details class="event-poll-form-option-details" ${showDetails ? 'open' : ''}>
-        <summary>Notiz oder Link hinzufügen</summary>
-        <div class="field-row event-poll-option-extra-fields">
-          <div><label for="poll-option-note-${index}" class="field-label">Kurze Notiz</label><input type="text" id="poll-option-note-${index}" data-poll-option-note maxlength="500" value="${escapeHtml(value.description ?? '')}" placeholder="Zusätzliche Information" /></div>
-          <div><label for="poll-option-url-${index}" class="field-label">Link</label><input type="url" id="poll-option-url-${index}" data-poll-option-url maxlength="500" value="${escapeHtml(value.url ?? '')}" placeholder="https://…" /></div>
-        </div>
-      </details>
+      <div class="field-row event-poll-option-extra-fields" data-poll-option-extra ${showDetails ? '' : 'hidden'}>
+        <div><label for="poll-option-note-${index}" class="field-label">Notiz</label><input type="text" id="poll-option-note-${index}" data-poll-option-note maxlength="500" value="${escapeHtml(value.description ?? '')}" placeholder="12 Betten, schnelles WLAN" /></div>
+        <div><label for="poll-option-url-${index}" class="field-label">Link</label><input type="url" id="poll-option-url-${index}" data-poll-option-url maxlength="500" value="${escapeHtml(value.url ?? '')}" placeholder="https://" /></div>
+      </div>
     </div>`;
 }
 
 function renumberOptionRows(modal) {
   modal.querySelectorAll('[data-poll-option-row]').forEach((row, index) => {
+    const name = `Option ${index + 1}`;
     row.dataset.pollOptionRow = String(index);
-    const label = row.querySelector('.event-poll-form-option-label .field-label');
-    label.textContent = `Option ${index + 1}`;
-    label.htmlFor = `poll-option-${index}`;
-    row.querySelector('[data-poll-option-active]').setAttribute('aria-label', `Option ${index + 1} aktiv (wählbar)`);
-    for (const [selector, name] of [
+    const input = row.querySelector('[data-poll-option-input]');
+    input.placeholder = name;
+    input.setAttribute('aria-label', name);
+    row.querySelector('[data-toggle-option-extra]').setAttribute('aria-label', `Notiz oder Link zu ${name}`);
+    row.querySelector('[data-poll-option-active]').setAttribute('aria-label', `${name} wählbar`);
+    row.querySelector('[data-remove-poll-option]').setAttribute('aria-label', `${name} entfernen`);
+    for (const [selector, id] of [
       ['[data-poll-option-input]', 'poll-option'],
       ['[data-poll-option-note]', 'poll-option-note'],
       ['[data-poll-option-url]', 'poll-option-url'],
     ]) {
-      row.querySelector(selector).id = `${name}-${index}`;
+      row.querySelector(selector).id = `${id}-${index}`;
     }
     row.querySelector('label[for^="poll-option-note-"]').htmlFor = `poll-option-note-${index}`;
     row.querySelector('label[for^="poll-option-url-"]').htmlFor = `poll-option-url-${index}`;
   });
+}
+
+function toggleOptionExtra(eventClick) {
+  const toggle = eventClick.target.closest('[data-toggle-option-extra]');
+  if (!toggle) return false;
+  const extra = toggle.closest('[data-poll-option-row]').querySelector('[data-poll-option-extra]');
+  extra.hidden = !extra.hidden;
+  toggle.setAttribute('aria-expanded', String(!extra.hidden));
+  if (!extra.hidden) extra.querySelector('input')?.focus();
+  return true;
+}
+
+const DUE_HELP = 'Ohne Frist läuft die Umfrage, bis sie manuell beendet wird. Ist eine Frist gesetzt, werden Teilnehmer mit noch offener Antwort automatisch zwei Tage und zwei Stunden vor Fristende erinnert.';
+
+function dueFieldHtml(id, helpId, value) {
+  return `
+    <div>
+      <div class="title-with-info">
+        <label for="${id}-date" class="field-label">Antwortfrist</label>
+        ${infoTooltipHtml(helpId, 'Antwortfrist', DUE_HELP)}
+      </div>
+      ${dateTimeFieldHtml(id, value, { dateOnly: true, clearable: true, label: 'Antwortfrist' })}
+    </div>`;
+}
+
+function optionsBlockHtml(initialOptions) {
+  return `
+    <div class="stack event-poll-form-options">
+      <span class="field-label is-required">Optionen</span>
+      <div class="stack event-poll-form-option-list" id="poll-option-rows">${initialOptions.map((value, index) => optionRowHtml(index, value)).join('')}</div>
+      <div class="row"><button type="button" class="btn btn-sm" id="poll-add-option">Option hinzufügen</button></div>
+    </div>`;
 }
 
 function optionValuesFromForm(modal) {
@@ -554,49 +733,36 @@ function openPollForm(event, ctx, previousRound = null) {
   let dirty = false;
   let capturedModal;
   const { close } = openModal(previousRound ? `Neue Runde · ${previousRound.title}` : 'Umfrage starten', `
-    <form id="event-poll-form" class="stack">
-      <div><label for="poll-title" class="field-label is-required">Titel</label><input type="text" id="poll-title" maxlength="100" required value="${escapeHtml(previousRound?.title ?? '')}" placeholder="Was möchtet ihr gemeinsam klären?" autofocus /></div>
-      <div><label for="poll-note" class="field-label">Beschreibung</label><textarea id="poll-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(previousRound?.note ?? '')}</textarea></div>
-      <div>
-        <div class="title-with-info">
+    <form id="event-poll-form" class="stack event-poll-form">
+      <div><label for="poll-title" class="field-label is-required">Titel</label><input type="text" id="poll-title" maxlength="100" required value="${escapeHtml(previousRound?.title ?? '')}" placeholder="Termin für die Sommer-LAN" autofocus /></div>
+      <div><label for="poll-note" class="field-label">Beschreibung</label><textarea id="poll-note" class="event-poll-note-input" maxlength="500" rows="1" placeholder="Bitte bis Freitag abstimmen">${escapeHtml(previousRound?.note ?? '')}</textarea></div>
+      <div class="field-row event-poll-form-pair">
+        <div>
           <label for="poll-mode" class="field-label is-required">Antwortart</label>
-          ${infoTooltipHtml('poll-mode-help', 'Antwortart', 'Wähle Einzel- oder Mehrfachauswahl, eine Bewertung jeder Option als Passt/Wenn nötig/Passt nicht oder eine Punktzahl von 1 bis 5.')}
+          <select id="poll-mode">
+            ${Object.entries(MODE_INFO).map(([value, info]) => `<option value="${value}" ${initialMode === value ? 'selected' : ''}>${escapeHtml(info.label)}</option>`).join('')}
+          </select>
         </div>
-        <select id="poll-mode">
-          ${Object.entries(MODE_INFO).map(([value, info]) => `<option value="${value}" ${initialMode === value ? 'selected' : ''}>${escapeHtml(info.label)}</option>`).join('')}
-        </select>
+        ${dueFieldHtml('poll-due', 'poll-due-help', Date.now() + 7 * 86_400_000)}
       </div>
-      <div id="poll-max-wrap" ${initialMode === 'multiple_choice' ? '' : 'hidden'}>
-        <label for="poll-max" class="field-label">Stimmen pro Person</label>
-        <div class="field-row event-poll-max-field"><input id="poll-max" type="number" min="1" value="${previousRound?.maxSelections ?? ''}" placeholder="Unbegrenzt" /><span class="muted">Leer lassen, wenn alle Optionen gewählt werden dürfen.</span></div>
+      <div class="field-row event-poll-form-pair" id="poll-max-wrap" ${initialMode === 'multiple_choice' ? '' : 'hidden'}>
+        <div><label for="poll-max" class="field-label">Stimmen pro Person</label><input id="poll-max" type="number" min="1" value="${previousRound?.maxSelections ?? ''}" placeholder="Unbegrenzt" /></div>
+        <div aria-hidden="true"></div>
       </div>
-      <div class="check-row">
-        <input type="checkbox" id="poll-anonymous" ${previousRound?.anonymous ? 'checked' : ''} />
-        <span class="title-with-info tournament-option-label">
-          <label for="poll-anonymous">Anonyme Umfrage</label>
-          ${infoTooltipHtml('poll-anonymous-help', 'Anonyme Umfrage', 'Antworten bleiben dauerhaft anonym. Auch nach Ende der Umfrage ist nicht sichtbar, wer wie geantwortet hat.')}
-        </span>
-      </div>
-      <div class="check-row">
-        <input type="checkbox" id="poll-hide-live-results" ${(previousRound?.liveResultsHidden ?? true) ? 'checked' : ''} />
-        <span class="title-with-info tournament-option-label">
+      <div class="event-poll-form-flags">
+        <div class="event-poll-flag">
+          <input type="checkbox" id="poll-anonymous" ${previousRound?.anonymous ? 'checked' : ''} />
+          <label for="poll-anonymous">Anonym</label>
+          ${infoTooltipHtml('poll-anonymous-help', 'Anonym', 'Antworten bleiben dauerhaft anonym. Auch nach Ende der Umfrage ist nicht sichtbar, wer wie geantwortet hat.')}
+        </div>
+        <div class="event-poll-flag">
+          <input type="checkbox" id="poll-hide-live-results" ${(previousRound?.liveResultsHidden ?? true) ? 'checked' : ''} />
           <label for="poll-hide-live-results">Zwischenstand verbergen</label>
           ${infoTooltipHtml('poll-live-results-help', 'Zwischenstand verbergen', 'Solange die Umfrage läuft, sehen nur die Verwaltenden der Umfrage die Stimmen und die Namen. Alle anderen sehen nur ihre eigene Antwort. Nach dem Ende sind Stimmen und Namen für alle sichtbar.')}
-        </span>
-      </div>
-      <div class="stack">
-        <span class="field-label">Optionen</span>
-        <div class="stack" id="poll-option-rows">${initialOptions.map((value, index) => optionRowHtml(index, value)).join('')}</div>
-        <button type="button" class="btn btn-sm" id="poll-add-option">Option hinzufügen</button>
-      </div>
-      <div>
-        <div class="title-with-info">
-          <label for="poll-due-date" class="field-label">Antwortfrist</label>
-          ${infoTooltipHtml('poll-due-help', 'Antwortfrist', 'Ohne Frist läuft die Umfrage, bis sie manuell beendet wird. Ist eine Frist gesetzt, werden Teilnehmer mit noch offener Antwort automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
         </div>
-        ${dateTimeFieldHtml('poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: true, label: 'Antwortfrist' })}
       </div>
-      <button type="submit" class="btn btn-primary btn-block">${previousRound ? 'Neue Runde starten' : 'Umfrage starten'}</button>
+      ${optionsBlockHtml(initialOptions)}
+      <div class="row event-poll-save-row"><button type="submit" class="btn btn-primary btn-sm">${previousRound ? 'Neue Runde starten' : 'Umfrage starten'}</button></div>
     </form>`, {
     confirmClose: () => (dirty && capturedModal ? 'Die eingegebenen Angaben gehen verloren.' : null),
     onMount: (modal) => {
@@ -617,6 +783,7 @@ function openPollForm(event, ctx, previousRound = null) {
         modal.querySelector(`#poll-option-${index}`)?.focus();
       });
       modal.querySelector('#poll-option-rows').addEventListener('click', (eventClick) => {
+        if (toggleOptionExtra(eventClick)) return;
         const button = eventClick.target.closest('[data-remove-poll-option]');
         if (!button) return;
         if (modal.querySelectorAll('[data-poll-option-row]').length <= 1) return showToast('Mindestens eine Option ist erforderlich.', { error: true });
@@ -678,26 +845,18 @@ function openEditPollForm(event, poll, ctx) {
   let capturedModal;
   const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
   const { close } = openModal('Umfrage bearbeiten', `
-    <form id="event-poll-edit-form" class="stack">
-      <div><label for="poll-edit-title" class="field-label is-required">Titel</label><input type="text" id="poll-edit-title" maxlength="100" required value="${escapeHtml(poll.title)}" autofocus /></div>
-      <div><label for="poll-edit-note" class="field-label">Beschreibung</label><textarea id="poll-edit-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(poll.note ?? '')}</textarea></div>
-      <div class="stack event-poll-edit-mode">
-        <span class="field-label">Antwortart</span>
-        <span class="muted">${escapeHtml(mode.label)}${poll.anonymous ? ' · Anonym' : ''}${poll.liveResultsHidden ? ' · Zwischenstand verborgen' : ''}</span>
-      </div>
-      <div class="stack">
-        <span class="field-label">Optionen</span>
-        <div class="stack" id="poll-option-rows">${initialOptions.map((value, index) => optionRowHtml(index, value)).join('')}</div>
-        <button type="button" class="btn btn-sm" id="poll-add-option">Option hinzufügen</button>
-      </div>
-      <div>
-        <div class="title-with-info">
-          <label for="poll-edit-due-date" class="field-label">Antwortfrist</label>
-          ${infoTooltipHtml(`poll-edit-due-help-${poll.id}`, 'Antwortfrist', 'Ohne Frist läuft die Umfrage, bis sie manuell beendet wird. Ist eine Frist gesetzt, werden Teilnehmer mit noch offener Antwort automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
+    <form id="event-poll-edit-form" class="stack event-poll-form">
+      <div><label for="poll-edit-title" class="field-label is-required">Titel</label><input type="text" id="poll-edit-title" maxlength="100" required value="${escapeHtml(poll.title)}" placeholder="Termin für die Sommer-LAN" autofocus /></div>
+      <div><label for="poll-edit-note" class="field-label">Beschreibung</label><textarea id="poll-edit-note" class="event-poll-note-input" maxlength="500" rows="1" placeholder="Bitte bis Freitag abstimmen">${escapeHtml(poll.note ?? '')}</textarea></div>
+      <div class="field-row event-poll-form-pair">
+        <div>
+          <label for="poll-edit-mode" class="field-label">Antwortart</label>
+          <select id="poll-edit-mode" disabled><option>${escapeHtml([mode.label, poll.anonymous ? 'Anonym' : null].filter(Boolean).join(' · '))}</option></select>
         </div>
-        ${dateTimeFieldHtml('poll-edit-due', poll.responseDueAt, { dateOnly: true, clearable: true, label: 'Antwortfrist' })}
+        ${dueFieldHtml('poll-edit-due', `poll-edit-due-help-${poll.id}`, poll.responseDueAt)}
       </div>
-      <button type="submit" class="btn btn-primary btn-block">Speichern</button>
+      ${optionsBlockHtml(initialOptions)}
+      <div class="row event-poll-save-row"><button type="submit" class="btn btn-primary btn-sm">Speichern</button></div>
     </form>`, {
     confirmClose: () => (dirty && capturedModal ? 'Die Änderungen gehen verloren.' : null),
     onMount: (modal) => {
@@ -714,6 +873,7 @@ function openEditPollForm(event, poll, ctx) {
         modal.querySelector(`#poll-option-${index}`)?.focus();
       });
       modal.querySelector('#poll-option-rows').addEventListener('click', (eventClick) => {
+        if (toggleOptionExtra(eventClick)) return;
         const button = eventClick.target.closest('[data-remove-poll-option]');
         if (!button) return;
         if (modal.querySelectorAll('[data-poll-option-row]').length <= 1) return showToast('Mindestens eine Option ist erforderlich.', { error: true });
@@ -771,7 +931,7 @@ function openReopenForm(event, poll, ctx) {
     <form id="reopen-poll-form" class="stack">
       <p class="muted">Danach können alle bestätigten Eventteilnehmer ihre Antwort wieder ändern.</p>
       <div><label for="reopen-poll-due-date" class="field-label">Neue Antwortfrist</label>${dateTimeFieldHtml('reopen-poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: true, label: 'Neue Antwortfrist' })}</div>
-      <button type="submit" class="btn btn-primary btn-block">Umfrage wieder öffnen</button>
+      <div class="row event-poll-save-row"><button type="submit" class="btn btn-primary btn-sm">Wieder öffnen</button></div>
     </form>`, {
     confirmClose: () => (dirty ? 'Die gewählte Frist geht verloren.' : null),
     onMount: (modal) => {
@@ -842,7 +1002,12 @@ function wirePollActions(container, event, polls, ctx) {
   container.querySelectorAll('[data-poll-response]').forEach((button) => button.addEventListener('click', () => {
     const poll = findPoll(polls, button.dataset.pollId);
     if (!poll) return;
-    responseDraftFor(poll)[button.dataset.optionId] = button.dataset.pollResponse;
+    const draft = responseDraftFor(poll);
+    const optionId = button.dataset.optionId;
+    // Choosing the current answer again clears it back to "offen".
+    draft[optionId] = draft[optionId] === button.dataset.pollResponse
+      ? defaultResponseValue(poll)
+      : button.dataset.pollResponse;
     dirtyResponseDrafts.add(poll.id);
     ctx.rerender();
   }));
@@ -918,7 +1083,7 @@ function wirePollActions(container, event, polls, ctx) {
   }));
   container.querySelectorAll('[data-view-poll-votes]').forEach((button) => button.addEventListener('click', () => {
     const poll = findPoll(polls, button.dataset.viewPollVotes);
-    if (poll) openVoteDetails(poll);
+    if (poll) openVoteDetails(poll, { showRound: polls.some((entry) => entry.decisionKey === poll.decisionKey && entry.id !== poll.id) });
   }));
   container.querySelectorAll('[data-delete-poll]').forEach((button) => button.addEventListener('click', async () => {
     const poll = findPoll(polls, button.dataset.deletePoll);
@@ -1003,12 +1168,19 @@ export function renderEventPolls(container, ctx) {
   const cached = pollCache.get(event.id);
   const polls = cached?.polls ?? [];
   const groups = groupPolls(polls);
-  const activeGroups = groups.filter((group) => group.rounds[0]?.status === 'open');
+  const waitsForMe = (group) => group.rounds[0].isInvitee && !myAnswerComplete(group.rounds[0]);
+  const openGroups = groups.filter((group) => group.rounds[0]?.status === 'open');
+  if (cached?.loaded && !waitingAtLoad.has(event.id)) {
+    waitingAtLoad.set(event.id, new Set(openGroups.filter(waitsForMe).map((group) => group.key)));
+  }
+  const waitingKeys = waitingAtLoad.get(event.id) ?? new Set();
+  const activeGroups = openGroups
+    .sort((left, right) => Number(waitingKeys.has(right.key)) - Number(waitingKeys.has(left.key)));
   const endedGroups = groups.filter((group) => group.rounds[0]?.status !== 'open');
   if (cached?.loaded && !initializedEvents.has(event.id)) {
     initializedEvents.add(event.id);
-    const preferred = activeGroups[0];
-    if (preferred) expandedPolls.add(preferred.key);
+    const waiting = activeGroups.filter((group) => waitingKeys.has(group.key));
+    for (const group of waiting.length ? waiting : activeGroups.slice(0, 1)) expandedPolls.add(group.key);
   }
   let currentContent;
   if (cached?.loading && !groups.length) currentContent = emptyStateHtml('Umfragen werden geladen…');

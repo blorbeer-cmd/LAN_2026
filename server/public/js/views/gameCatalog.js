@@ -379,19 +379,19 @@ function openSuggestForm(ctx) {
       <form id="suggest-form" class="stack">
         <div>
           <label class="field-label is-required" for="suggest-title">Titel</label>
-          <input type="text" id="suggest-title" maxlength="60" placeholder="Name des Spiels." required autofocus />
+          <input type="text" id="suggest-title" maxlength="60" placeholder="Rocket League" required autofocus />
         </div>
         <div>
           <label class="field-label" for="suggest-platform">Plattform</label>
-          <input type="text" id="suggest-platform" maxlength="80" placeholder="Zum Beispiel Steam, Epic oder Battle.net." />
+          <input type="text" id="suggest-platform" maxlength="80" placeholder="Steam" />
         </div>
         <div>
           <label class="field-label" for="suggest-platform-url">Plattform-Link</label>
-          <input type="url" id="suggest-platform-url" maxlength="500" placeholder="https://…" />
+          <input type="url" id="suggest-platform-url" maxlength="500" placeholder="https://" />
         </div>
         <div>
           <label class="field-label" for="suggest-trailer">YouTube-Gameplay-Link</label>
-          <input type="url" id="suggest-trailer" maxlength="500" placeholder="Leer lassen für eine automatische Suche." />
+          <input type="url" id="suggest-trailer" maxlength="500" placeholder="Leer lassen für automatische Suche" />
         </div>
         <div>
           <span class="field-label" id="suggest-genre-label">Genre</span>
@@ -399,7 +399,7 @@ function openSuggestForm(ctx) {
         </div>
         <div class="game-detail-info-field">
           <label class="field-label" for="suggest-info">Info</label>
-          <textarea id="suggest-info" rows="1" maxlength="300" placeholder="Zusätzliche Hinweise."></textarea>
+          <textarea id="suggest-info" rows="1" maxlength="300" placeholder="Braucht einen Controller"></textarea>
         </div>
         <div class="check-row game-detail-seat-option">
           <input type="checkbox" id="suggest-consider-seat-neighbors" />
@@ -501,20 +501,20 @@ function openGameDetail(gameId, ctx) {
     `
       <div class="stack">
         <div class="row" style="align-items:center;">
-                    <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" />
+                    <input type="text" id="edit-name" value="${escapeHtml(game.name)}" maxlength="60" style="flex:1;" placeholder="Rocket League" />
         </div>
         ${gameLinksHtml(game)}
         <div>
           <label class="field-label" for="edit-platform">Plattform</label>
-          <input type="text" id="edit-platform" maxlength="80" value="${escapeHtml(game.platform ?? '')}" placeholder="Steam, Epic, Battle.net…" />
+          <input type="text" id="edit-platform" maxlength="80" value="${escapeHtml(game.platform ?? '')}" placeholder="Steam" />
         </div>
         <div>
           <label class="field-label" for="edit-platform-url">Plattform-Link</label>
-          <input type="url" id="edit-platform-url" maxlength="500" value="${escapeHtml(game.platform_url ?? '')}" placeholder="https://…" />
+          <input type="url" id="edit-platform-url" maxlength="500" value="${escapeHtml(game.platform_url ?? '')}" placeholder="https://" />
         </div>
         <div>
           <label class="field-label" for="edit-trailer">${game.isSuggestion ? 'YouTube-Gameplay-Link' : 'Gameplay-Trailer'}</label>
-          <input type="url" id="edit-trailer" maxlength="500" value="${escapeHtml(game.trailer_url ?? '')}" placeholder="${game.isSuggestion ? 'Leer lassen für automatische Suche' : 'https://…'}" />
+          <input type="url" id="edit-trailer" maxlength="500" value="${escapeHtml(game.trailer_url ?? '')}" placeholder="${game.isSuggestion ? 'Leer lassen für automatische Suche' : 'https://'}" />
         </div>
         <div>
           <span class="field-label" id="edit-genre-label">Genre</span>
@@ -522,7 +522,7 @@ function openGameDetail(gameId, ctx) {
         </div>
         <div class="game-detail-info-field">
           <label class="field-label" for="edit-info">Info</label>
-          <textarea id="edit-info" rows="1" maxlength="300" placeholder="Zusätzliche Hinweise.">${escapeHtml(game.info ?? '')}</textarea>
+          <textarea id="edit-info" rows="1" maxlength="300" placeholder="Braucht einen Controller">${escapeHtml(game.info ?? '')}</textarea>
         </div>
         <div class="check-row game-detail-seat-option">
           <input type="checkbox" id="edit-consider-seat-neighbors" ${game.considerSeatNeighborsDefault ? 'checked' : ''} />
@@ -544,7 +544,7 @@ function openGameDetail(gameId, ctx) {
             : ''
         }
         <div class="row" style="align-items:stretch;">
-          <input type="text" id="new-process" placeholder="z.B. cs2.exe" style="flex:1;" aria-label="Prozessname" />
+          <input type="text" id="new-process" placeholder="cs2.exe" style="flex:1;" aria-label="Prozessname" />
           <button type="button" class="btn" id="add-process">+</button>
         </div>
 
@@ -787,8 +787,8 @@ export function renderGameCatalog(container, ctx) {
           <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
           <button type="button" class="btn btn-sm ${activeTab === 'all' ? 'btn-primary' : ''}" data-tab="all">Alle</button>
         </div>`}
-        ${ratingMode ? '' : `<section class="tournament-section-panel game-catalog-toolbar" aria-label="Spiele durchsuchen, sortieren und filtern">
-          <input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />
+        ${ratingMode ? '' : `<section class="game-catalog-toolbar" aria-label="Spiele durchsuchen, sortieren und filtern">
+          <input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiel suchen" aria-label="Spiele suchen" autocomplete="off" />
           <details class="action-menu game-catalog-sort-menu" ${sortMenuOpen ? 'open' : ''}>
             <summary class="btn btn-sm game-catalog-sort-trigger" aria-label="Spiele sortieren">
               ${selectedSortLabel()} ${icon('chevronDown')}

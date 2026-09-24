@@ -31,6 +31,9 @@ let tasksRequestVersion = 0;
 // "Lädt…" flash a full invalidateItems() would cause on every checkbox tap.
 let itemsStale = false;
 let historyOpen = false;
+// Packliste: the remove buttons only show while editing, so the everyday
+// view is just the list to tick off.
+let editingItems = false;
 let typeFilter = 'all'; // 'all' | 'todo' | 'item_request', open-pool only
 let onlyMineFilter = false; // open-pool only: "von mir erstellt"
 
@@ -184,7 +187,7 @@ window.addEventListener('respawn:group-changed', () => invalidateChecklist(undef
 // into (see renderChecklist's snapshot).
 const addItemFormHtml = () => `
     <form class="row" data-add-item-form style="gap:var(--space-2);">
-      <input type="text" data-item-label placeholder="z.B. Skill" maxlength="80" required style="flex:1;" aria-label="Neuer Packlisten-Eintrag" />
+      <input type="text" data-item-label placeholder="Mehrfachsteckdose" maxlength="80" required style="flex:1;" aria-label="Neuer Packlisten-Eintrag" />
       <button type="submit" class="btn">Hinzufügen</button>
     </form>`;
 
@@ -193,23 +196,45 @@ function renderItems(myId) {
     return `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um deine Packliste zu sehen.</div>`;
   }
   if (itemsCache === null || itemsCacheForId !== myId) {
-    return `${emptyStateHtml('Lädt…')}${addItemFormHtml()}`;
+    return `${addItemFormHtml()}${emptyStateHtml('Lädt…')}`;
   }
-  const rows = itemsCache
-    .map(
-      (item) => `
-      <div class="row checklist-item-row ${item.checked ? 'is-checked' : ''}">
+  if (itemsCache.length === 0) editingItems = false;
+  const rowHtml = (item) => `
+      <div class="checklist-item-row ${item.checked ? 'is-checked' : ''}">
         <label class="checklist-item-label">
           <input type="checkbox" data-toggle-item="${item.id}" ${item.checked ? 'checked' : ''} />
           <span>${escapeHtml(item.label)}</span>
         </label>
-        <button type="button" class="icon-btn" data-remove-item="${item.id}" aria-label="Entfernen">${icon('x')}</button>
-      </div>`,
-    )
-    .join('');
+        <button type="button" class="icon-btn checklist-item-remove" data-remove-item="${item.id}" aria-label="${escapeHtml(item.label)} entfernen">${icon('x')}</button>
+      </div>`;
   return `
-    <div class="checklist-item-list">${rows}</div>
-    ${addItemFormHtml()}`;
+    ${addItemFormHtml()}
+    ${
+      itemsCache.length === 0
+        ? emptyStateHtml('Noch keine Einträge.')
+        : `<div class="checklist-item-list${editingItems ? ' is-editing' : ''}">${itemsCache.map(rowHtml).join('')}</div>`
+    }`;
+}
+
+function packingProgressHtml() {
+  if (!itemsCache?.length) return '';
+  const done = itemsCache.filter((item) => item.checked).length;
+  const pct = Math.round((done / itemsCache.length) * 100);
+  return `
+    <div class="checklist-progress" role="progressbar" aria-label="Eingepackt" aria-valuemin="0" aria-valuemax="${itemsCache.length}" aria-valuenow="${done}">
+      <span class="checklist-progress-fill" style="width:${pct}%;"></span>
+    </div>`;
+}
+
+function packingCountHtml() {
+  if (!itemsCache?.length) return '';
+  const done = itemsCache.filter((item) => item.checked).length;
+  return `<span class="checklist-progress-count">${done}/${itemsCache.length}</span>`;
+}
+
+function packingEditButtonHtml() {
+  if (!itemsCache?.length) return '';
+  return `<button type="button" class="btn btn-sm" data-toggle-item-editing aria-pressed="${editingItems}">${editingItems ? 'Fertig' : 'Bearbeiten'}</button>`;
 }
 
 function taskTypeLabel(task) {
@@ -281,7 +306,7 @@ function openClaimForm(ctx, myId, taskId) {
           id="claim-comment"
           maxlength="200"
           autofocus
-          placeholder="Kommentar, z.B. Bringe einen XBOX Controller mit."
+          placeholder="Bringe einen Xbox-Controller mit"
         />
         <button type="submit" class="btn btn-primary btn-block">Übernehmen</button>
       </form>
@@ -382,12 +407,12 @@ async function openCreateTodoForm(ctx, myId) {
         <div>
           <span class="field-label is-required">Titel</span>
           <input type="text" id="todo-title" maxlength="80" required value="${escapeHtml(prev.title)}" placeholder="${
-            form.kind === 'todo' ? 'z.B. Mehrfachsteckdosen mitbringen' : 'z.B. Kann mir jemand einen Controller mitnehmen?'
+            form.kind === 'todo' ? 'Mehrfachsteckdosen mitbringen' : 'Kann mir jemand einen Controller mitnehmen'
           }" />
         </div>
         <div>
           <span class="field-label">Beschreibung</span>
-          <textarea id="todo-description" rows="2" maxlength="300">${escapeHtml(prev.description)}</textarea>
+          <textarea id="todo-description" rows="2" maxlength="300" placeholder="Mindestens 6 Plätze">${escapeHtml(prev.description)}</textarea>
         </div>
         <div class="checklist-assignment-section">
           <div class="selection-toolbar" role="group" aria-labelledby="todo-assign-label">
@@ -535,7 +560,12 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
     <div class="grouped-page-sections">
       ${
         activeTab === 'packliste'
-          ? `<section class="card stack grouped-page-section" aria-label="Meine Packliste">
+          ? `<section class="card stack grouped-page-section" aria-labelledby="checklist-packing-title">
+               <div class="grouped-page-section-title">
+                 <h2 id="checklist-packing-title">Eingepackt ${myId && itemsCacheForId === myId ? packingCountHtml() : ''}</h2>
+                 ${myId && itemsCacheForId === myId ? packingEditButtonHtml() : ''}
+               </div>
+               ${myId && itemsCacheForId === myId ? packingProgressHtml() : ''}
                ${renderItems(myId)}
              </section>`
           : `<section class="card stack grouped-page-section" aria-label="To-Do">
@@ -587,6 +617,11 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
   });
   container.querySelector('[data-checklist-only-mine]')?.addEventListener('click', () => {
     onlyMineFilter = !onlyMineFilter;
+    ctx.rerender();
+  });
+
+  container.querySelector('[data-toggle-item-editing]')?.addEventListener('click', () => {
+    editingItems = !editingItems;
     ctx.rerender();
   });
 

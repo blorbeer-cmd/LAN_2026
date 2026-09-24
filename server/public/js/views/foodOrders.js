@@ -732,14 +732,14 @@ function descOptionHtml(listId, suggestion, index, selected) {
 function renderDescField(order) {
   const suggestions = foodOrderDescriptionSuggestions(order.items);
   if (suggestions.length === 0) {
-    return `<input type="text" class="food-order-desc-field" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required aria-label="Artikelbezeichnung" autocomplete="off" />`;
+    return `<input type="text" class="food-order-desc-field" data-item-desc placeholder="Margherita groß" maxlength="120" required aria-label="Artikelbezeichnung" autocomplete="off" />`;
   }
   const listId = `food-order-desc-${order.id}`;
   const optionsHtml = suggestions.map((suggestion, index) => descOptionHtml(listId, suggestion, index, false)).join('');
   return `
     <div class="search-select food-order-desc-field" data-desc-suggest>
       <div class="search-select-control">
-        <input type="text" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${listId}" aria-label="Artikelbezeichnung – bereits eingetragene Positionen vorschlagen" />
+        <input type="text" data-item-desc placeholder="Margherita groß" maxlength="120" required autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${listId}" aria-label="Artikelbezeichnung – bereits eingetragene Positionen vorschlagen" />
         <button type="button" class="search-select-toggle" data-desc-toggle aria-controls="${listId}" aria-expanded="false" aria-label="Vorhandene Bezeichnungen anzeigen" tabindex="-1">${icon('chevronDown')}</button>
       </div>
       <div id="${listId}" class="search-select-list" role="listbox" aria-label="Bereits eingetragene Positionen" hidden>${optionsHtml}</div>
@@ -1407,18 +1407,18 @@ function openNewOrderForm(ctx, myId) {
     `
       <form id="order-form" class="stack">
         <label for="order-title" class="field-label is-required">Titel</label>
-        <input type="text" id="order-title" maxlength="80" required autofocus placeholder="z.B. Pizza bei Luigi's" />
+        <input type="text" id="order-title" maxlength="80" required autofocus placeholder="Pizza bei Luigi's" />
         <div>
           <label for="order-sendat-date" class="field-label">Versand</label>
           ${dateTimeFieldHtml('order-sendat', null, { clearable: true, label: 'Versand' })}
         </div>
         <div>
           <label for="order-notes" class="field-label">Info</label>
-          <textarea id="order-notes" rows="1" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen"></textarea>
+          <textarea id="order-notes" rows="1" maxlength="500" placeholder="Mindestbestellwert 15 €, bar zahlen"></textarea>
         </div>
         <div>
           <label for="order-link" class="field-label">Speisekarte</label>
-          <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
+          <input type="url" id="order-link" maxlength="300" placeholder="https://" />
         </div>
         <div>
           <div class="food-order-paypal-label">
@@ -1433,7 +1433,7 @@ function openNewOrderForm(ctx, myId) {
         </div>
         <div>
           <label for="order-tip" class="field-label">Trinkgeld in %</label>
-          <input type="number" id="order-tip" min="0" max="100" inputmode="numeric" placeholder="z.B. 10" />
+          <input type="number" id="order-tip" min="0" max="100" inputmode="numeric" placeholder="10" />
         </div>
         <button type="submit" class="btn btn-primary btn-block">Bestellung öffnen</button>
       </form>
@@ -1503,11 +1503,11 @@ function openDetailsForm(ctx, order) {
         </div>
         <div>
           <label for="notes-input" class="field-label">Info</label>
-          <textarea id="notes-input" rows="3" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen">${escapeHtml(order.notes ?? '')}</textarea>
+          <textarea id="notes-input" rows="3" maxlength="500" placeholder="Mindestbestellwert 15 €, bar zahlen">${escapeHtml(order.notes ?? '')}</textarea>
         </div>
         <div>
           <label for="link-input" class="field-label">Speisekarte</label>
-          <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
+          <input type="url" id="link-input" maxlength="300" placeholder="https://" value="${escapeHtml(order.link ?? '')}" />
         </div>
         <div>
           <div class="food-order-paypal-label">
@@ -1522,7 +1522,7 @@ function openDetailsForm(ctx, order) {
         </div>
         <div>
           <label for="tip-input" class="field-label">Trinkgeld in %</label>
-          <input type="number" id="tip-input" min="0" max="100" inputmode="numeric" placeholder="z.B. 10" value="${order.tipPercent ?? ''}" />
+          <input type="number" id="tip-input" min="0" max="100" inputmode="numeric" placeholder="10" value="${order.tipPercent ?? ''}" />
         </div>
         <button type="submit" class="btn btn-primary btn-block">Speichern</button>
       </form>

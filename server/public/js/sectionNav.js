@@ -9,7 +9,6 @@
 // changed, not what it is called.
 
 import { viewIsEnabledForEvent } from './eventFeatures.js';
-import { backButtonHtml } from './backButton.js';
 import { SECTION_MANIFEST, sectionViews, usesStandaloneOrgaPages, viewDefinition } from './viewManifest.js';
 
 // Tabs and labels come from the route registry. The section manifest only
@@ -118,7 +117,6 @@ export function renderSectionShell(container, view, { badges = {}, event } = {})
   const heading = sectionKey === 'orga' && !standalone
     ? `<div class="more-subpage-header more-subpage-header--tabs">
          <div class="more-subpage-title-row">
-           ${backButtonHtml({ view: 'more' })}
            <h1 class="view-title"><span class="orga-area-title">${title}</span><span class="orga-page-title">${pageTitle}</span></h1>
          </div>
          ${tabNavigation}

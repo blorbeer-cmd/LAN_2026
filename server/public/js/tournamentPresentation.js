@@ -1,14 +1,13 @@
 import { emptyStateHtml } from './emptyState.js';
 import { escapeHtml, avatarHtml } from './format.js';
 import { icon } from './icons.js';
-import { infoTooltipHtml } from './infoTooltip.js';
 import { playerSkillHtml, teamSkillHtml } from './skillDisplay.js';
 import { selectActiveLobbyMatches } from './tournamentLobbies.js';
 
 // Presentation functions share one immutable render-state snapshot. Keeping
 // bracket/league markup here leaves views/tournament.js responsible for data,
 // forms and actions without introducing a framework or another dependency.
-export function createTournamentPresentation({ editingResultMatchId }) {
+export function createTournamentPresentation() {
   // ---------- detail: bracket ----------
 
   function bracketRoundLabel(round, totalRounds) {
@@ -42,63 +41,54 @@ export function createTournamentPresentation({ editingResultMatchId }) {
     if (matches.length === 0) return '';
 
     const teamsById = new Map(tournament.teams.map((team) => [team.id, team]));
-    const cards = matches
+    const credential = (label, value, match, kind, teamA, teamB) => `
+      <span class="tournament-lobby-credential">
+        <span class="tournament-lobby-credential-label">${label}</span>
+        <code class="tournament-lobby-credential-value">${escapeHtml(value)}</code>
+        <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby-match="${escapeHtml(match.id)}" data-copy-lobby-kind="${kind}" title="${label === 'Lobby' ? 'Lobbyname' : 'Passwort'} kopieren" aria-label="${label === 'Lobby' ? 'Lobbyname' : 'Passwort'} für ${teamA} gegen ${teamB} kopieren">${icon('copy')}</button>
+      </span>`;
+    const rows = matches
       .map((match) => {
         const teamA = teamLabel(teamsById, match.teamAId);
         const teamB = teamLabel(teamsById, match.teamBId);
-        return `<section class="card tournament-lobby-info" aria-label="Lobby für ${teamA} gegen ${teamB}">
-          <div class="tournament-lobby-header">
-            <span class="tournament-lobby-phase">${escapeHtml(activeLobbyPhaseLabel(tournament, match))}</span>
-            <span class="badge badge-playing">Eröffnet: ${teamA}</span>
+        return `<div class="tournament-lobby-row" aria-label="Lobby für ${teamA} gegen ${teamB}">
+          <div class="tournament-lobby-matchup">
+            <strong>${teamA} <span class="muted">vs</span> ${teamB}</strong>
+            <span class="muted">${escapeHtml(activeLobbyPhaseLabel(tournament, match))} · ${teamA} eröffnet</span>
           </div>
-          <strong class="tournament-lobby-matchup">${teamA} <span class="muted">vs</span> ${teamB}</strong>
           <div class="tournament-lobby-access">
-            ${
-              match.lobbyName
-                ? `<div class="tournament-lobby-credential">
-                     <span>Lobby</span><strong>${escapeHtml(match.lobbyName)}</strong>
-                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby-match="${escapeHtml(match.id)}" data-copy-lobby-kind="name" title="Lobbyname kopieren" aria-label="Lobbyname für ${teamA} gegen ${teamB} kopieren">${icon('copy')}</button>
-                   </div>`
-                : ''
-            }
-            ${
-              tournament.lobbyPassword
-                ? `<div class="tournament-lobby-credential">
-                     <span>Passwort</span><strong>${escapeHtml(tournament.lobbyPassword)}</strong>
-                     <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby-match="${escapeHtml(match.id)}" data-copy-lobby-kind="password" title="Passwort kopieren" aria-label="Passwort für ${teamA} gegen ${teamB} kopieren">${icon('copy')}</button>
-                   </div>`
-                : ''
-            }
+            ${match.lobbyName ? credential('Lobby', match.lobbyName, match, 'name', teamA, teamB) : ''}
+            ${tournament.lobbyPassword ? credential('Passwort', tournament.lobbyPassword, match, 'password', teamA, teamB) : ''}
           </div>
-        </section>`;
+        </div>`;
       })
       .join('');
 
-    return `<div class="section-title title-with-info">
-        <span>Aktive Lobbys</span>
-        ${infoTooltipHtml(
-          `tournament-lobby-detail-${tournament.id}`,
-          'Aktive Lobbys',
-          'Jede gleichzeitig spielbare Paarung erhält eine eigene Lobby. Das zuerst genannte Team eröffnet sie.',
-        )}
-      </div>
-      <div class="tournament-active-lobby-grid">${cards}</div>`;
+    return `<section class="card stack grouped-page-section" aria-labelledby="tournament-lobbies-title">
+      <div class="grouped-page-section-title"><h2 id="tournament-lobbies-title">Aktive Lobbys</h2></div>
+      <div class="tournament-lobby-list">${rows}</div>
+    </section>`;
   }
 
-  // A team's score-entry mini-form for round-robin fixtures (the bracket has
-  // its own inline variant, see renderBracketMatchBox) — shown instead of the
-  // plain winner-pick buttons whenever the tournament tracks a real score, the
-  // winner itself is derived server-side from whichever number is higher.
-  function renderScoreForm(m, { editing = false } = {}) {
-    return `
-      <input type="number" min="0" inputmode="numeric" class="tournament-score-input" data-score-a="${m.id}" value="${editing && m.scoreA != null ? m.scoreA : ''}" placeholder="0" />
-      <span class="muted">:</span>
-      <input type="number" min="0" inputmode="numeric" class="tournament-score-input" data-score-b="${m.id}" value="${editing && m.scoreB != null ? m.scoreB : ''}" placeholder="0" />
-      <button type="button" class="btn tournament-score-submit" data-submit-score="${m.id}" ${editing ? 'data-update-result="true"' : ''} aria-label="${editing ? 'Änderung speichern' : 'Ergebnis speichern'}">${icon('check')}</button>`;
+  // Every result is entered and edited through one dialog (see
+  // openResultDialog in views/tournament.js), so boards stay read-only and the
+  // action always sits in the same trailing slot: "+" for an open match,
+  // a pencil for a decided one.
+  function canOpenResult(m, t) {
+    if (!m.teamAId || !m.teamBId || m.isBye) return false;
+    const decided = m.winnerTeamId !== null || m.isDraw;
+    return decided || t.status === 'active';
+  }
+
+  function resultActionHtml(m, t, className) {
+    if (!canOpenResult(m, t)) return `<span class="${className}" aria-hidden="true"></span>`;
+    const decided = m.winnerTeamId !== null || m.isDraw;
+    const label = decided ? 'Ergebnis bearbeiten' : 'Ergebnis eintragen';
+    return `<button type="button" class="${className}${decided ? '' : ' is-open'}" data-open-result="${m.id}" aria-label="${label}" title="${label}">${icon(decided ? 'pencil' : 'plus')}</button>`;
   }
 
   // Must match the CSS custom properties --bracket-match-h / --bracket-pair-gap
-  // in style.css exactly — buildBracketNode() below uses these as pure numbers
+  // in domains.css exactly — buildBracketNode() below uses these as pure numbers
   // to compute connector-line positions, so a mismatch would make the lines
   // land a few pixels off the boxes they're supposed to connect.
   const BRACKET_MATCH_H = 76;
@@ -113,57 +103,35 @@ export function createTournamentPresentation({ editingResultMatchId }) {
     return depth === 0 ? BRACKET_MATCH_H : 2 * bracketSubtreeHeight(depth - 1) + BRACKET_PAIR_GAP;
   }
 
-  // One match's contents, fixed at exactly BRACKET_MATCH_H tall regardless of
-  // state (bye / TBD / decided / awaiting a score) — see .bracket-match. Score
-  // tracking shows the number inline in each team's own row instead of on a
-  // separate line below, which is what keeps every box the same height.
+  // One match box, fixed at exactly BRACKET_MATCH_H tall regardless of state:
+  // two team rows plus a trailing action column inside the box, so the action
+  // never floats over the connector lines.
   function renderBracketMatchBox(m, t, teamsById) {
     if (m.isBye) {
       return `
-        <div class="bracket-match">
-          <div class="bracket-team-row is-winner"><span class="bracket-team-name">${teamLabel(teamsById, m.winnerTeamId)}</span></div>
-          <div class="bracket-team-row is-tbd"><span class="bracket-team-name">Freilos</span></div>
+        <div class="bracket-match is-bye">
+          <div class="bracket-rows">
+            <div class="bracket-team-row is-winner"><span class="bracket-team-name">${teamLabel(teamsById, m.winnerTeamId)}</span></div>
+            <div class="bracket-team-row is-tbd"><span class="bracket-team-name">Freilos</span></div>
+          </div>
+          <span class="bracket-side" aria-hidden="true"></span>
         </div>`;
     }
 
     const decided = m.winnerTeamId !== null || m.isDraw;
-    const editing = editingResultMatchId === m.id;
-    const canRecord = m.teamAId && m.teamBId && ((!decided && t.status === 'active') || (decided && editing));
-
     const teamRow = (teamId, score) => {
       const isWinner = m.winnerTeamId && m.winnerTeamId === teamId;
-      const label = teamId ? teamLabel(teamsById, teamId) : 'TBD';
-      const cls = `bracket-team-row${isWinner ? ' is-winner' : ''}${!teamId ? ' is-tbd' : ''}`;
-      if (canRecord && t.trackScore) {
-        const side = teamId === m.teamAId ? 'a' : 'b';
-        const value = editing && score !== null ? ` value="${score}"` : '';
-        return `
-          <div class="${cls}">
-            <span class="bracket-team-name">${label}</span>
-            <input type="number" min="0" inputmode="numeric" class="bracket-score-input" data-score-${side}="${m.id}"${value} placeholder="0" />
-          </div>`;
-      }
-      if (canRecord && teamId) {
-        return `<button type="button" class="${cls}" data-match="${m.id}" data-winner="${teamId}" ${editing ? 'data-update-result="true"' : ''}><span class="bracket-team-name">${label}</span></button>`;
-      }
+      const label = teamId ? teamLabel(teamsById, teamId) : 'offen';
+      const cls = `bracket-team-row${isWinner ? ' is-winner' : ''}${decided && !isWinner ? ' is-loser' : ''}${!teamId ? ' is-tbd' : ''}`;
       const scoreReadout = t.trackScore && score !== null ? `<span class="bracket-score">${score}</span>` : '';
-      return `<div class="${cls}"><span class="bracket-team-name">${label}</span>${scoreReadout}</div>`;
+      const winMark = !t.trackScore && isWinner ? `<span class="bracket-win-mark" aria-label="Sieger">${icon('check')}</span>` : '';
+      return `<div class="${cls}"><span class="bracket-team-name">${label}</span>${scoreReadout}${winMark}</div>`;
     };
 
-    // Floats in the connector gutter to the right of the box (see
-    // .bracket-score-submit) instead of taking up a 3rd row — keeps the box
-    // itself exactly 2 rows tall even while a score is being entered.
-    const submitBtn =
-      canRecord && t.trackScore
-        ? `<button type="button" class="bracket-score-submit btn" data-submit-score="${m.id}" ${editing ? 'data-update-result="true"' : ''} aria-label="${editing ? 'Änderung speichern' : 'Ergebnis speichern'}">${icon('check')}</button>`
-        : '';
-    const editBtn =
-      decided && !editing
-        ? `<button type="button" class="bracket-result-edit btn" data-edit-result="${m.id}" aria-label="Ergebnis bearbeiten">${icon('pencil')}</button>`
-        : '';
-
-    const actionClass = submitBtn || editBtn ? ' has-result-action' : '';
-    return `<div class="bracket-match${actionClass}">${teamRow(m.teamAId, m.scoreA)}${teamRow(m.teamBId, m.scoreB)}${submitBtn}${editBtn}</div>`;
+    return `<div class="bracket-match${decided ? '' : ' is-open'}">
+      <div class="bracket-rows">${teamRow(m.teamAId, m.scoreA)}${teamRow(m.teamBId, m.scoreB)}</div>
+      ${resultActionHtml(m, t, 'bracket-side')}
+    </div>`;
   }
 
   // Recursively renders the bracket as nested pairs instead of flat per-round
@@ -172,7 +140,7 @@ export function createTournamentPresentation({ editingResultMatchId }) {
   // match against the combined height of its two feeders — exactly, no matter
   // how many rounds deep the tree goes. The connector lines drawn in CSS ride
   // along on top of that same alignment (see .bracket-children::before/::after
-  // in style.css), using --conn-half computed here from the fixed match
+  // in domains.css), using --conn-half computed here from the fixed match
   // height/gap so they land precisely on both feeders' centers.
   function buildBracketNode(matchesByKey, round, slot, t, teamsById) {
     const m = matchesByKey.get(`${round}:${slot}`);
@@ -201,103 +169,123 @@ export function createTournamentPresentation({ editingResultMatchId }) {
     const teamsById = new Map(t.teams.map((team) => [team.id, team]));
     const totalRounds = Math.max(...matches.map((m) => m.round));
     const matchesByKey = new Map(matches.map((m) => [`${m.round}:${m.slot}`, m]));
+    const final = matchesByKey.get(`${totalRounds}:0`);
+    const champion = final?.winnerTeamId ? teamLabel(teamsById, final.winnerTeamId) : null;
 
-    const titles = Array.from(
-      { length: totalRounds },
-      (_, i) => `<div>${bracketRoundLabel(i + 1, totalRounds)}</div>`,
-    ).join('');
+    const titles = [
+      ...Array.from({ length: totalRounds }, (_, i) => `<div>${bracketRoundLabel(i + 1, totalRounds)}</div>`),
+      champion ? '<div class="bracket-champion-title">Sieger</div>' : '',
+    ].join('');
     const tree = buildBracketNode(matchesByKey, totalRounds, 0, t, teamsById);
+    const championHtml = champion
+      ? `<div class="bracket-champion" aria-label="Sieger: ${champion}"><span class="bracket-team-name">${champion}</span></div>`
+      : '';
 
     return `
       <div class="bracket-tree-wrap">
         <div class="bracket-tree-content">
           <div class="bracket-round-titles">${titles}</div>
-          ${tree}
+          <div class="bracket-final-row">${tree}${championHtml}</div>
         </div>
       </div>`;
   }
 
   // ---------- detail: round-robin (also reused for each group_knockout group) ----------
 
-  function renderRoundRobinBoard(t, teamsById, matches, standings, { accentRounds = false } = {}) {
+  function fixtureRowHtml(m, t, teamsById) {
+    const decided = m.winnerTeamId !== null || m.isDraw;
+    const aWon = m.winnerTeamId === m.teamAId;
+    const bWon = m.winnerTeamId === m.teamBId;
+    const nameCls = (won) => `tournament-fixture-team${decided ? (won ? ' is-winner' : m.isDraw ? '' : ' is-loser') : ''}`;
+    let center;
+    if (!decided) {
+      center = '<span class="tournament-fixture-score is-open">vs</span>';
+    } else if (t.trackScore && m.scoreA !== null && m.scoreB !== null) {
+      center = `<span class="tournament-fixture-score"><span class="${aWon ? 'is-win' : ''}">${m.scoreA}</span> : <span class="${bWon ? 'is-win' : ''}">${m.scoreB}</span></span>`;
+    } else if (m.isDraw) {
+      center = '<span class="tournament-fixture-score">Remis</span>';
+    } else {
+      center = `<span class="tournament-fixture-score is-pick">${aWon ? `${icon('chevronLeft')} Win` : `Win ${icon('chevronRight')}`}</span>`;
+    }
+    const nameA = teamLabel(teamsById, m.teamAId);
+    const nameB = teamLabel(teamsById, m.teamBId);
+    return `<div class="tournament-fixture" aria-label="${nameA} gegen ${nameB}">
+        <span class="${nameCls(aWon)} is-home">${nameA}</span>
+        ${center}
+        <span class="${nameCls(bWon)}">${nameB}</span>
+        ${resultActionHtml(m, t, 'tournament-fixture-action')}
+      </div>`;
+  }
+
+  function renderFixtures(t, teamsById, matches) {
     const byRound = new Map();
     for (const m of matches) byRound.set(m.round, [...(byRound.get(m.round) ?? []), m]);
-
-    const fixturesHtml = [...byRound.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([round, roundMatches]) => {
-        const rows = roundMatches
-          .map((m) => {
-            const decided = m.winnerTeamId !== null || m.isDraw;
-            const editing = editingResultMatchId === m.id;
-            const canRecord = (!decided && t.status === 'active') || (decided && editing);
-            const nameA = teamLabel(teamsById, m.teamAId);
-            const nameB = teamLabel(teamsById, m.teamBId);
-            const aWon = m.winnerTeamId === m.teamAId;
-            const bWon = m.winnerTeamId === m.teamBId;
-            if (!canRecord) {
-              const scoreText = t.trackScore && m.scoreA !== null ? ` (${m.scoreA}:${m.scoreB})` : '';
-              const resultText = m.isDraw
-                ? `Unentschieden${scoreText}`
-                : aWon
-                  ? `${nameA} gewinnt${scoreText}`
-                  : bWon
-                    ? `${nameB} gewinnt${scoreText}`
-                    : '–';
-              return `
-                <div class="lb-row">
-                  <span style="flex:1;">${nameA} <span class="muted">vs</span> ${nameB}</span>
-                  <span class="muted" style="font-size:var(--font-size-xs);">${resultText}</span>
-                  ${decided ? `<button type="button" class="btn tournament-result-edit" data-edit-result="${m.id}" aria-label="Ergebnis bearbeiten">${icon('pencil')}</button>` : ''}
-                </div>`;
-            }
-            if (t.trackScore) {
-              return `
-                <div class="lb-row" style="flex-wrap:wrap;gap:var(--space-2);">
-                  <span style="flex:1 1 100%;">${nameA} <span class="muted">vs</span> ${nameB}</span>
-                  ${renderScoreForm(m, { editing })}
-                </div>`;
-            }
-            return `
-              <div class="lb-row" style="flex-wrap:wrap;gap:var(--space-2);">
-                <span style="flex:1 1 100%;">${nameA} <span class="muted">vs</span> ${nameB}</span>
-                <button type="button" class="btn btn-sm" data-match="${m.id}" data-winner="${m.teamAId}" ${editing ? 'data-update-result="true"' : ''}>${nameA}</button>
-                <button type="button" class="btn btn-sm" data-match="${m.id}" data-winner="${m.teamBId}" ${editing ? 'data-update-result="true"' : ''}>${nameB}</button>
-                <button type="button" class="btn btn-sm" data-match="${m.id}" data-winner="" ${editing ? 'data-update-result="true"' : ''}>Unentschieden</button>
-              </div>`;
-          })
-          .join('');
-        return accentRounds
-          ? `<section class="tournament-section-panel tournament-round-panel stack">
-               <div class="section-title">Runde ${round}</div>
-               <div class="card">${rows}</div>
-             </section>`
-          : `<div class="section-title" style="margin-top:var(--space-4);">Runde ${round}</div><div class="card">${rows}</div>`;
-      })
-      .join('');
-
-    const standingsRows = (standings || [])
+    const rounds = [...byRound.entries()].sort((a, b) => a[0] - b[0]);
+    const currentRound =
+      t.status === 'active'
+        ? rounds.find(([, roundMatches]) => roundMatches.some((m) => m.winnerTeamId === null && !m.isDraw))?.[0]
+        : undefined;
+    return rounds
       .map(
-        (s, i) => `
-        <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-          <span class="lb-rank">${i + 1}</span>
-          <span style="flex:1;">${teamLabel(teamsById, s.teamId)}</span>
-          <span class="muted" style="font-size:var(--font-size-xs);" title="${s.wins} Siege, ${s.draws} Unentschieden, ${s.losses} Niederlagen">${s.wins}S/${s.draws}U/${s.losses}N</span>
-          <span class="lb-points" title="${s.points} Punkte">${s.points} P</span>
-        </div>`,
+        ([round, roundMatches]) => `
+          <div class="tournament-round">
+            <div class="tournament-round-head">Runde ${round}${round === currentRound ? ' <span class="badge badge-playing">Aktuell</span>' : ''}</div>
+            ${roundMatches.map((m) => fixtureRowHtml(m, t, teamsById)).join('')}
+          </div>`,
       )
       .join('');
+  }
 
-    return `
-      <div class="section-title">Tabelle</div>
-      <div class="card">${standingsRows}</div>
-      ${fixturesHtml}
-    `;
+  function renderStandings(t, teamsById, matches, standings, { advancers = 0 } = {}) {
+    const diff = new Map();
+    if (t.trackScore) {
+      for (const m of matches) {
+        if (m.scoreA === null || m.scoreB === null) continue;
+        diff.set(m.teamAId, (diff.get(m.teamAId) ?? 0) + m.scoreA - m.scoreB);
+        diff.set(m.teamBId, (diff.get(m.teamBId) ?? 0) + m.scoreB - m.scoreA);
+      }
+    }
+    const signed = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0');
+    const rows = (standings || [])
+      .map((s, i) => {
+        const advances = i < advancers;
+        return `<tr class="${i === 0 && s.played > 0 ? 'is-leader' : ''}${advances ? ' is-advancing' : ''}">
+          <td class="tournament-standings-rank">${i + 1}</td>
+          <td class="tournament-standings-team"><span class="tournament-standings-name">${teamLabel(teamsById, s.teamId)}</span>${advances ? '<span class="tournament-standings-advance">weiter</span>' : ''}</td>
+          <td>${s.played}</td>
+          <td>${s.wins}</td>
+          <td>${s.draws}</td>
+          <td>${s.losses}</td>
+          ${t.trackScore ? `<td>${signed(diff.get(s.teamId) ?? 0)}</td>` : ''}
+          <td class="tournament-standings-points">${s.points}</td>
+        </tr>`;
+      })
+      .join('');
+    return `<table class="tournament-standings">
+        <thead><tr>
+          <th scope="col" title="Platz"><span class="visually-hidden">Platz</span><span aria-hidden="true">#</span></th>
+          <th scope="col">Team</th>
+          <th scope="col" title="Spiele">Sp</th>
+          <th scope="col" title="Siege">S</th>
+          <th scope="col" title="Unentschieden">U</th>
+          <th scope="col" title="Niederlagen">N</th>
+          ${t.trackScore ? '<th scope="col" title="Punktedifferenz">+/−</th>' : ''}
+          <th scope="col" title="Punkte">Pkt</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
   }
 
   function renderRoundRobin(t) {
     const teamsById = new Map(t.teams.map((team) => [team.id, team]));
-    return renderRoundRobinBoard(t, teamsById, t.matches, t.standings, { accentRounds: true });
+    return `<section class="card stack grouped-page-section tournament-board-card">
+          <div class="grouped-page-section-title"><h2>Tabelle</h2></div>
+          ${renderStandings(t, teamsById, t.matches, t.standings)}
+        </section>
+        <section class="card stack grouped-page-section tournament-board-card">
+          <div class="grouped-page-section-title"><h2>Spielplan</h2></div>
+          ${renderFixtures(t, teamsById, t.matches)}
+        </section>`;
   }
 
   // ---------- detail: group stage + knockout ----------
@@ -309,31 +297,28 @@ export function createTournamentPresentation({ editingResultMatchId }) {
       .map((g) => {
         const groupMatches = t.matches.filter((m) => m.stage === 'group' && m.groupIndex === g.groupIndex);
         return `
-          <section class="tournament-section-panel tournament-group-panel stack" aria-labelledby="tournament-group-${g.groupIndex}">
-            <div class="tournament-create-step-title">
-              <h3 id="tournament-group-${g.groupIndex}">Gruppe ${g.groupIndex + 1}</h3>
-            </div>
-            ${renderRoundRobinBoard(t, teamsById, groupMatches, g.standings)}
+          <section class="card stack grouped-page-section tournament-board-card" aria-labelledby="tournament-group-${g.groupIndex}">
+            <div class="grouped-page-section-title"><h2 id="tournament-group-${g.groupIndex}">Gruppe ${g.groupIndex + 1}</h2></div>
+            ${renderStandings(t, teamsById, groupMatches, g.standings, { advancers: t.advancersPerGroup ?? 0 })}
+            <div class="tournament-group-fixtures">${renderFixtures(t, teamsById, groupMatches)}</div>
           </section>`;
       })
       .join('');
 
     const knockoutMatches = t.matches.filter((m) => m.stage === 'knockout');
-    const knockoutHtml =
-      knockoutMatches.length === 0
-        ? `<section class="tournament-section-panel tournament-group-panel stack">
-             <div class="tournament-create-step-title"><h3>K.O.-Runde</h3></div>
-             ${emptyStateHtml('Startet automatisch, sobald alle Gruppenspiele entschieden sind.')}
-           </section>`
-        : `<section class="tournament-section-panel tournament-group-panel stack">
-             <div class="tournament-create-step-title"><h3>K.O.-Runde</h3></div>
-             ${renderBracket(t, knockoutMatches)}
-           </section>`;
+    const knockoutHtml = `<section class="card stack grouped-page-section tournament-board-card">
+        <div class="grouped-page-section-title"><h2>K.O.-Runde</h2></div>
+        ${
+          knockoutMatches.length === 0
+            ? emptyStateHtml('Startet automatisch, sobald alle Gruppenspiele entschieden sind.')
+            : renderBracket(t, knockoutMatches)
+        }
+      </section>`;
 
     return `<div class="tournament-group-stage">${groupBlocks}${knockoutHtml}</div>`;
   }
 
-  function renderTournamentTeams(t) {
+  function renderTournamentTeams(t, { teamsOpen = false } = {}) {
     const cards = t.teams
       .map(
         (team) => `
@@ -363,10 +348,22 @@ export function createTournamentPresentation({ editingResultMatchId }) {
       )
       .join('');
 
-    return `<div class="section-title">Teams & Teilnehmer</div><div class="tournament-team-grid">${cards}</div>`;
+    // Teams are a lookup next to the live bracket, so they sit in the shared
+    // collapsible card that starts closed (open state lives in the view).
+    return `<details class="card grouped-page-section collapsible-section" data-tournament-teams ${teamsOpen ? 'open' : ''}>
+      <summary class="collapsible-section-header">
+        <h2>Teams</h2>
+        <span class="collapsible-section-summary-end">
+          <span class="badge badge-offline">${t.teams.length}</span>
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+        </span>
+      </summary>
+      <div class="collapsible-section-content"><div class="tournament-team-grid">${cards}</div></div>
+    </details>`;
   }
 
   return {
+    matchPhaseLabel: activeLobbyPhaseLabel,
     renderActiveLobbies,
     renderBracket,
     renderGroupKnockout,
