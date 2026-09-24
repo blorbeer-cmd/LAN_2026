@@ -203,12 +203,12 @@ columns without making names or avatars too cramped.
 around the physical seating plan the same size; the compact size preserves that equality on phones.
 `--assignment-select-width` (112px) keeps repeated player-to-team selectors aligned independently
 of player-name length.
-`--payment-marker-width` (96px, 88px only below 360px) keeps the food-order payment toggle stable
-beside its PayPal action while the label, position count and amount change. It is the toggle's
-width wherever the group box has room for it; on phones the action cluster fills whatever its row
-leaves rather than shrinking to its own contents, so the marker may only give up the few pixels a
-narrow box is short and never grows past the token. Its width therefore follows the layout and not
-the `Bezahlt?`/`Bezahlt` label.
+`--payment-marker-width` (96px, 88px only below 360px) keeps the checkbox-like payment toggle of
+food orders and Event participants stable while its state and the amount change. It is the toggle's
+width wherever the row has room for it; on phones the action cluster fills whatever its row leaves
+rather than shrinking to its own contents, so the marker may only give up the few pixels a narrow
+row is short and never grows past the token. Its label is always `Bezahlt`; the empty or checked
+box carries the state.
 `--notification-panel-width` (360px) caps the header notification center while it remains
 viewport-responsive on phones.
 `--search-panel-width` (640px) gives the global search palette enough room for titles and short

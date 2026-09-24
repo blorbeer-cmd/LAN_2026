@@ -39,6 +39,7 @@ import {
   parsePriceToCents,
 } from '../foodOrderModel.js';
 import { createDeferredInteractiveRender } from '../deferredInteractiveRender.js';
+import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 
 export { normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 export {
@@ -364,19 +365,14 @@ function sumLineTotals(items, tipPercent) {
 }
 
 // AP3.6 startup rule, applied at most once per order per session (AP3.7):
-// the current identity's own group starts open, the creator sees every
-// group open, and a fully paid group always starts collapsed regardless.
-function ensureGroupStartRule(order, myId, grouped) {
+// every orderer group starts collapsed, so an order reads as one compact list
+// of people and amounts. Adding an own position opens the own group (AP3.8).
+function ensureGroupStartRule(order) {
   if (groupStartRuleApplied.has(order.id)) return;
   groupStartRuleApplied.add(order.id);
-  const isCreator = Boolean(myId) && order.createdBy === myId;
-  const expanded = new Set();
-  for (const [playerId, items] of grouped) {
-    const allPaid = items.every((i) => i.paid);
-    if (allPaid) continue;
-    if (isCreator || playerId === myId) expanded.add(playerId);
-  }
-  expandedGroups.set(order.id, expanded);
+  // Keep a group opened before the order had several groups, e.g. the own
+  // group right after adding the position that created the second group.
+  expandedGroups.set(order.id, expandedGroups.get(order.id) ?? new Set());
 }
 
 function playerFor(item) {
@@ -387,52 +383,34 @@ function renderItemRow(order, item, myId, { locked = false } = {}) {
   const tipPercent = order.tipPercent || 0;
   const quantity = item.quantity ?? 1;
   const total = lineTotalCents(item, tipPercent);
-  const lineSubtotal = item.priceCents === null ? null : item.priceCents * quantity;
-  const basePriceLabel = quantity > 1 ? `${quantity} × ${formatCents(item.priceCents)}` : formatCents(lineSubtotal);
-  const showBasePrice = quantity > 1 || tipPercent > 0;
-  const priceBreakdownHtml =
-    total === null || !showBasePrice
-      ? ''
-      : `<span class="muted">${basePriceLabel}${tipPercent > 0 ? ` · inkl. ${tipPercent}% Trinkgeld` : ''}</span>`;
+  // The tip is named once beside the order total; a row only names the unit
+  // price when a quantity makes the line total differ from it. It stays with
+  // the description so every amount lines up in one column.
+  const unitPriceHtml =
+    total !== null && quantity > 1 ? ` <span class="muted food-order-item-unit">je ${formatCents(item.priceCents)}</span>` : '';
 
-  const descriptionHtml = `<span class="food-order-item-description"><strong>${quantity} ×</strong> ${escapeHtml(item.description)}</span>`;
+  const descriptionHtml = `<span class="food-order-item-description"><strong>${quantity} ×</strong> ${escapeHtml(item.description)}${unitPriceHtml}</span>`;
 
-  // Betrag ist Anzeige, kein Knopf — der einzige Bezahlweg liegt am
+  // Betrag ist Anzeige, kein Knopf; der einzige Bezahlweg liegt am
   // Gruppenkopf.
   const amountHtml =
     total === null
-      ? `<span class="food-order-item-amount muted">Betrag offen</span>`
-      : `<span class="food-order-item-amount"><strong>${formatCents(total)}</strong>${priceBreakdownHtml}</span>`;
+      ? `<span class="food-order-item-amount muted">Preis fehlt</span>`
+      : `<span class="food-order-item-amount"><strong>${formatCents(total)}</strong></span>`;
 
-  const copyHtml =
-    total === null
-      ? ''
-      : `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(total))}" title="Betrag dieser Position kopieren" aria-label="Betrag dieser Position kopieren">${icon('copy')}</button>`;
-
-  const actionClusterHtml = `<span class="food-order-item-action-cluster">${copyHtml || '<span class="food-order-item-action-spacer" aria-hidden="true"></span>'}</span>`;
-
-  const removeTitle = item.paid ? 'Als bezahlt bestätigt – erst die Marke der Person zurückdrehen' : 'Position entfernen';
+  const removeTitle = item.paid ? 'Als bezahlt bestätigt, erst die Marke der Person zurückdrehen' : 'Position entfernen';
+  // Removing an own position is a small inline action right after its name,
+  // so position rows keep a single amount column like an invoice.
   const removeHtml =
     !locked && order.open && item.playerId === myId
-      ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-remove-item="${item.id}" data-order="${order.id}" ${item.paid ? 'disabled' : ''} title="${removeTitle}" aria-label="${removeTitle}">${icon('trash')}</button>`
-      : '<span class="food-order-item-action-spacer" aria-hidden="true"></span>';
+      ? `<button type="button" class="icon-btn food-order-item-remove" data-remove-item="${item.id}" data-order="${order.id}" ${item.paid ? 'disabled' : ''} title="${removeTitle}" aria-label="${removeTitle}">${icon('trash')}</button>`
+      : '';
 
   return `
     <div class="row food-order-item${item.paid ? ' is-paid' : ''}">
-      ${descriptionHtml}
+      <span class="food-order-item-main">${descriptionHtml}${removeHtml}</span>
       ${amountHtml}
-      ${actionClusterHtml}
-      ${removeHtml}
     </div>`;
-}
-
-// One orderer group's meta line: quantity-weighted positions and a missing
-// price marker. Paid status is represented by the two-state group marker.
-function groupMetaLine(items) {
-  const totalQty = items.reduce((s, i) => s + (i.quantity ?? 1), 0);
-  const parts = [`${totalQty} ${totalQty === 1 ? 'Position' : 'Positionen'}`];
-  if (items.some((i) => i.priceCents === null)) parts.push('Preis fehlt');
-  return parts.join(' · ');
 }
 
 function groupPaidNames(items) {
@@ -474,16 +452,13 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
   const player = playerFor(items[0]);
   const tipPercent = order.tipPercent || 0;
   const allPaid = groupPaymentState(items) === 'paid';
-  const hasPaid = items.some((i) => i.paid);
   const allPriced = items.every((i) => i.priceCents !== null);
   const totalCents = sumLineTotals(items, tipPercent);
-  const meta = groupMetaLine(items);
 
   const headText = `
-    ${avatarHtml(player, 20)}
+    ${avatarHtml(player, 24)}
     <span class="food-order-group-headtext">
       <strong>${escapeHtml(items[0].playerName)}${playerId === myId ? ' <span class="muted food-order-group-self-label">(du)</span>' : ''}</strong>
-      <span class="muted food-order-group-meta">${meta}</span>
     </span>`;
 
   const leftHtml = collapsible
@@ -494,55 +469,46 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
     : `<div class="food-order-group-static">${headText}</div>`;
 
   const hasPriced = items.some((i) => i.priceCents !== null);
-  const partialTotal = hasPriced ? formatCents(totalCents) : null;
   const amountStateClass = allPaid ? ' is-paid' : '';
-  const amountHtml = allPriced
-    ? `<span class="food-order-group-amount-wrap"><span class="food-order-group-amount${amountStateClass}">${formatCents(totalCents)}</span>${tipPercent > 0 ? `<span class="muted food-order-group-tip">inkl. ${tipPercent} % Trinkgeld</span>` : ''}</span>`
-    : partialTotal
-      ? `<span class="food-order-group-amount-wrap"><span class="food-order-group-amount${amountStateClass} muted food-order-group-partial">${partialTotal}</span>${tipPercent > 0 ? `<span class="muted food-order-group-tip">inkl. ${tipPercent} % Trinkgeld</span>` : ''}</span>`
-      : `<span class="food-order-group-amount-wrap"><span class="food-order-group-amount${amountStateClass} muted">Betrag offen</span>${tipPercent > 0 ? `<span class="muted food-order-group-tip">inkl. ${tipPercent} % Trinkgeld</span>` : ''}</span>`;
+  const amountInner = allPriced
+    ? `<span class="food-order-group-amount${amountStateClass}">${formatCents(totalCents)}</span>`
+    : hasPriced
+      ? `<span class="food-order-group-amount${amountStateClass} muted" title="Preis fehlt">${formatCents(totalCents)}</span>`
+      : `<span class="food-order-group-amount${amountStateClass} muted">Preis fehlt</span>`;
 
   const paidNames = groupPaidNames(items);
   const paidTitle = allPaid
     ? paidNames.length
-      ? `Bezahlt, bestätigt von ${paidNames.join(', ')} – Markierung aufheben`
-      : 'Bezahlt – Markierung aufheben'
+      ? `Bezahlt, bestätigt von ${paidNames.join(', ')}. Markierung aufheben`
+      : 'Bezahlt. Markierung aufheben'
     : `${items[0].playerName} als bezahlt markieren`;
   const paidMarkerHtml = `<button type="button" class="payment-paid-marker food-order-paid-marker ${allPaid ? 'is-paid' : ''}" data-toggle-group-paid="${playerId}" data-order="${order.id}" ${locked ? 'disabled' : ''} aria-pressed="${allPaid ? 'true' : 'false'}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">
-    ${icon(allPaid ? 'check' : 'circleDashed')}<span>${allPaid ? 'Bezahlt' : 'Bezahlt?'}</span>
+    <span class="payment-paid-box" aria-hidden="true">${allPaid ? icon('check') : ''}</span><span>Bezahlt</span>
   </button>`;
 
   const payDisabledReason = locked
-    ? 'Bestellung geschlossen – keine Änderungen mehr möglich'
+    ? 'Bestellung geschlossen, keine Änderungen mehr möglich'
     : allPaid
       ? 'Bereits bezahlt'
       : !allPriced
-        ? 'Betrag unvollständig – erst alle Preise eintragen'
+        ? 'Betrag unvollständig, erst alle Preise eintragen'
         : null;
   const payTitle = payDisabledReason || `${formatCents(totalCents)} für ${items[0].playerName} über PayPal bezahlen`;
   const payButtonHtml = order.paypalLink
     ? `<button type="button" class="icon-btn payment-paypal-button food-order-item-action food-order-group-pay" data-group-pay="${playerId}" data-order="${order.id}" ${payDisabledReason ? 'disabled' : ''} title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">${icon('paypal')}</button>`
     : '';
 
-  const copyValue = allPriced || hasPriced ? formatCents(totalCents) : null;
-  const copyHtml = copyValue
-    ? `<button type="button" class="icon-btn food-order-item-action food-order-group-copy" data-copy-food-total="${escapeHtml(copyValue)}" title="Summe von ${escapeHtml(items[0].playerName)} kopieren" aria-label="Summe von ${escapeHtml(items[0].playerName)} kopieren">${icon('copy')}</button>`
-    : '<span class="food-order-item-action-spacer" aria-hidden="true"></span>';
-  const canDelete = order.open && playerId === myId;
-  const deleteReason = locked
-    ? 'Bestellung geschlossen – keine Änderungen mehr möglich'
-    : hasPaid
-      ? 'Enthält bezahlte Positionen – erst die Marke zurückdrehen'
-      : 'Alle eigenen Positionen entfernen';
-  const deleteHtml = canDelete
-    ? `<button type="button" class="icon-btn food-order-item-action food-order-group-remove" data-remove-group="${playerId}" data-order="${order.id}" ${hasPaid || locked ? 'disabled' : ''} title="${escapeHtml(deleteReason)}" aria-label="${escapeHtml(deleteReason)}">${icon('trash')}</button>`
-    : '<span class="food-order-item-action-spacer" aria-hidden="true"></span>';
+  // Every group row carries the same controls, so the columns never open
+  // gaps: copy is disabled rather than missing while no price is known.
+  const copyValue = hasPriced ? formatCents(totalCents) : null;
+  const copyLabel = copyValue ? `Summe von ${items[0].playerName} kopieren` : 'Noch kein Betrag zum Kopieren';
+  const copyHtml = `<button type="button" class="icon-btn food-order-item-action food-order-group-copy" ${copyValue ? `data-copy-food-total="${escapeHtml(copyValue)}"` : 'disabled'} title="${escapeHtml(copyLabel)}" aria-label="${escapeHtml(copyLabel)}">${icon('copy')}</button>`;
 
   return `
     <div class="row food-order-group-header">
       ${leftHtml}
-      ${amountHtml}
-      <span class="food-order-group-actions">${copyHtml}${payButtonHtml}${paidMarkerHtml}${deleteHtml}</span>
+      <span class="food-order-group-actions">${paidMarkerHtml}${payButtonHtml}</span>
+      <span class="food-order-group-amount-wrap">${copyHtml}${amountInner}</span>
     </div>`;
 }
 
@@ -553,7 +519,10 @@ function renderItems(order, myId, { locked = false } = {}) {
     });
   }
   const grouped = itemsGroupedByPlayer(order);
+  return renderGroups(order, myId, grouped, { locked });
+}
 
+function renderGroups(order, myId, grouped, { locked }) {
   // AP3.9: a single-group order gets no collapse chrome at all.
   if (grouped.size <= 1) {
     return [...grouped.entries()]
@@ -564,7 +533,7 @@ function renderItems(order, myId, { locked = false } = {}) {
         // phone layout drops the group's own sum (domains.css, --bp-md block).
         const singlePosition = items.length === 1;
         return `
-          <div class="stack food-order-group ${allPaid ? 'is-all-paid' : ''}${singlePosition ? ' is-single-position' : ''}">
+          <div class="stack food-order-group is-static ${allPaid ? 'is-all-paid' : ''}${singlePosition ? ' is-single-position' : ''}">
             ${renderGroupHeader(order, playerId, items, myId, { collapsible: false, locked })}
             <div class="food-order-group-items">${rows}</div>
           </div>`;
@@ -572,7 +541,7 @@ function renderItems(order, myId, { locked = false } = {}) {
       .join('');
   }
 
-  ensureGroupStartRule(order, myId, grouped);
+  ensureGroupStartRule(order);
   const expandedSet = expandedGroups.get(order.id) ?? new Set();
 
   return [...grouped.entries()]
@@ -592,31 +561,28 @@ function renderItems(order, myId, { locked = false } = {}) {
     .join('');
 }
 
-// Order-wide "auf einen Blick" summary, directly above the per-person Kästen
-// (`.food-order-items`): quantity-weighted positions, people, fully paid
-// people, and the tip-inclusive total/open amount.
-function renderOrderOverview(order) {
-  if (order.items.length === 0) return '';
+// "1 Preis fehlt" / "2 Preise fehlen": why a sum is still incomplete.
+function missingPriceLabel(items) {
+  const missing = items.filter((item) => item.priceCents === null).length;
+  if (missing === 0) return null;
+  return missing === 1 ? '1 Preis fehlt' : `${missing} Preise fehlen`;
+}
+
+// Order-wide summary for the card's meta line: people and what is still
+// open. The full total sits in the card's own "Gesamt" row.
+function orderSummaryParts(order) {
+  if (order.items.length === 0) return [];
   const tipPercent = order.tipPercent || 0;
-  const peopleCount = itemsGroupedByPlayer(order).size;
-  const totalQty = order.items.reduce((s, i) => s + (i.quantity ?? 1), 0);
-  const paidPeopleCount = [...itemsGroupedByPlayer(order).values()].filter((items) => items.every((i) => i.paid)).length;
-  const allPriced = order.items.every((i) => i.priceCents !== null);
-  const totalCents = sumLineTotals(order.items, tipPercent);
-  const totalLabel = formatCents(totalCents);
-  const openCents = [...itemsGroupedByPlayer(order).values()]
+  const groups = [...itemsGroupedByPlayer(order).values()];
+  const openCents = groups
     .filter((items) => !items.every((i) => i.paid))
     .reduce((sum, items) => sum + sumLineTotals(items, tipPercent), 0);
-
-  const parts = [
-    `${totalQty} ${totalQty === 1 ? 'Position' : 'Positionen'} von ${peopleCount} ${peopleCount === 1 ? 'Person' : 'Personen'}`,
-    `${paidPeopleCount} von ${peopleCount} bezahlt`,
-    `Gesamt ${totalLabel}`,
-  ];
-  if (openCents > 0) parts.push(`offen ${formatCents(openCents)}`);
-  if (!allPriced) parts.push('Preise unvollständig');
-
-  return `<div class="muted food-order-overview">${parts.join(' · ')}</div>`;
+  const parts = [`${groups.length} ${groups.length === 1 ? 'Person' : 'Personen'}`];
+  if (groups.every((items) => items.every((i) => i.paid))) parts.push('alle bezahlt');
+  else if (openCents > 0) parts.push(`offen ${formatCents(openCents)}`);
+  const missing = missingPriceLabel(order.items);
+  if (missing) parts.push(missing);
+  return parts;
 }
 
 // The order-wide total, styled as a real total (not a muted info line) with
@@ -627,14 +593,13 @@ function renderOrderSummaryTotal(order) {
   const tipPercent = order.tipPercent || 0;
   const totalCents = sumLineTotals(order.items, tipPercent);
   const incomplete = order.items.some((item) => item.priceCents === null);
-  const suffix = incomplete ? ' (unvollständig)' : '';
-  const label = tipPercent > 0 ? `Gesamtsumme inkl. ${tipPercent}% Trinkgeld${suffix}` : `Gesamtsumme${suffix}`;
+  const notes = [tipPercent > 0 ? `inkl. ${tipPercent} % Trinkgeld` : null, incomplete ? missingPriceLabel(order.items) : null].filter(Boolean);
   return `
     <div class="row-between food-order-total">
-      <span class="food-order-total-label">${label}</span>
+      <span class="food-order-total-label">Gesamt${notes.length ? ` <span class="muted food-order-total-note">${notes.join(' · ')}</span>` : ''}</span>
       <span class="food-order-total-value">
-        <strong>${formatCents(totalCents)}</strong>
         <button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(totalCents))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>
+        <strong>${formatCents(totalCents)}</strong>
       </span>
     </div>`;
 }
@@ -644,11 +609,6 @@ function renderOrderSummary(order) {
   return totalHtml ? `<div class="stack food-order-summary">${totalHtml}</div>` : '';
 }
 
-// Metadata block (send time / notes / menu / payment) shown on both open and closed
-// orders, with a single edit affordance — all three are things people
-// commonly get wrong or need to correct ("doch erst um 21 Uhr", "Speisekarte
-// war falsch"), so they stay editable even after the order closed, unlike the
-// items themselves.
 function formatFoodOrderTimestamp(timestamp) {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return '';
@@ -656,44 +616,29 @@ function formatFoodOrderTimestamp(timestamp) {
   return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}. ${pad(date.getHours())}:${pad(date.getMinutes())} Uhr`;
 }
 
-function renderDetails(order, { locked = false } = {}) {
-  const sendAtLabel = order.sendAt
-    ? formatFoodOrderTimestamp(order.sendAt)
-    : 'Kein Zeitpunkt festgelegt';
-  const sendAtHtml = order.sendAt
-    ? `<span class="food-order-send-at"><span class="food-order-detail-icon" aria-hidden="true">${icon('clock')}</span>${sendAtLabel}</span>`
-    : `<span class="food-order-send-at">${sendAtLabel}</span>`;
-  const hasDetails = Boolean(order.sendAt || order.notes || order.link || order.paypalLink || order.tipPercent);
-  return `
-    <div class="food-order-details">
-      <div class="food-order-details-head">
-        ${sendAtHtml}
-        ${locked ? '' : `<button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : 'Info'}</button>`}
-      </div>
-      ${order.notes ? `<div class="food-order-details-note">${escapeHtml(order.notes)}</div>` : ''}
-      <div class="food-order-detail-links">
-      ${order.link ? `<a class="btn btn-sm" href="${escapeHtml(order.link)}" target="_blank" rel="noopener">Speisekarte</a>` : ''}
-      ${
-        order.paypalLink
-          ? (() => {
-              const email = paypalEmailFromLink(order.paypalLink);
-              return `<a
-                class="btn btn-sm"
-                href="${escapeHtml(order.paypalLink)}"
-                target="_blank"
-                rel="noopener"
-                ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
-              >${icon('paypal')} PayPal öffnen</a>`;
-          })()
-          : ''
-      }
-      <button type="button" class="btn btn-sm" data-open-order-list="${order.id}">Bestellübersicht</button>
-      </div>
-    </div>`;
+// One compact meta line under the order title: state (only in Historie),
+// creator and the send time; without a send time the creation time stands in.
+function renderOrderMeta(order, stateLabel = null) {
+  const parts = [
+    stateLabel,
+    `von ${escapeHtml(order.createdByName)}`,
+    order.sendAt ? `Versand ${formatFoodOrderTimestamp(order.sendAt)}` : formatDateTime(order.createdAt),
+    ...orderSummaryParts(order),
+  ].filter(Boolean);
+  // Paying happens per person in the group rows, so only the menu link
+  // closes the meta line.
+  const links = order.link ? [`<a class="food-order-meta-link" href="${escapeHtml(order.link)}" target="_blank" rel="noopener">Speisekarte</a>`] : [];
+  return `<span class="muted food-order-meta">${[...parts, ...links].join(' · ')}</span>`;
 }
 
-// AP3.6: "Alle ausklappen/einklappen" toggle in the card header — only
-// meaningful when the order actually has more than one orderer group.
+// Free-text info as a plain gray line. The menu link sits at the end
+// of the meta line; editing and the Bestellübersicht live in "Aktion".
+function renderDetails(order) {
+  return order.notes ? `<div class="muted food-order-details-note">${escapeHtml(order.notes)}</div>` : '';
+}
+
+// AP3.6: one "Aktion" menu entry for all orderer groups, only meaningful
+// while the card is open and the order has more than one group.
 function renderGroupToggleAll(order) {
   const grouped = itemsGroupedByPlayer(order);
   if (grouped.size <= 1) return '';
@@ -701,11 +646,6 @@ function renderGroupToggleAll(order) {
   const allExpanded = [...grouped.keys()].every((playerId) => expandedSet.has(playerId));
   const label = allExpanded ? 'Alle einklappen' : 'Alle ausklappen';
   return `<button type="button" class="btn btn-sm" data-toggle-all-groups="${order.id}">${label}</button>`;
-}
-
-function renderCardToolbar(order) {
-  const groupToggle = renderGroupToggleAll(order);
-  return groupToggle ? `<div class="row food-order-card-toolbar">${groupToggle}</div>` : '';
 }
 
 // Description field with a suggestion dropdown of the order's own already
@@ -739,7 +679,7 @@ function renderDescField(order) {
   return `
     <div class="search-select food-order-desc-field" data-desc-suggest>
       <div class="search-select-control">
-        <input type="text" data-item-desc placeholder="Margherita groß" maxlength="120" required autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${listId}" aria-label="Artikelbezeichnung – bereits eingetragene Positionen vorschlagen" />
+        <input type="text" data-item-desc placeholder="Margherita groß" maxlength="120" required autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${listId}" aria-label="Artikelbezeichnung, bereits eingetragene Positionen vorschlagen" />
         <button type="button" class="search-select-toggle" data-desc-toggle aria-controls="${listId}" aria-expanded="false" aria-label="Vorhandene Bezeichnungen anzeigen" tabindex="-1">${icon('chevronDown')}</button>
       </div>
       <div id="${listId}" class="search-select-list" role="listbox" aria-label="Bereits eingetragene Positionen" hidden>${optionsHtml}</div>
@@ -900,113 +840,86 @@ function wireDescSuggest(wrapper) {
   document.addEventListener('pointerdown', closeFromOutsidePointer);
 }
 
-function renderOpenOrder(order, myId, { collapsible = false } = {}) {
-  // renderItems() has to run before renderCardToolbar(): it initializes the
-  // per-person expand state used by the group toolbar.
-  const itemsHtml = renderItems(order, myId);
-  const expanded = !collapsible || expandedOpenOrders.has(order.id);
-  const bodyHtml = `
-    <div class="muted food-order-meta">
-      von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
-    </div>
-    ${renderDetails(order)}
-    ${renderOrderOverview(order)}
-    <div class="food-order-card-body stack" ${expanded ? '' : 'hidden'}>
-      ${renderCardToolbar(order)}
-      <div class="food-order-items">${itemsHtml}</div>
-      ${renderOrderSummary(order)}
-      ${
-        myId
-          ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
-               ${renderDescField(order)}
-               <label class="food-order-quantity-field">
-                 <input type="number" class="food-order-quantity-input" data-item-quantity placeholder="Anzahl" min="1" max="99" inputmode="numeric" aria-label="Anzahl" />
-               </label>
-               <label class="food-order-price-field">
-                 <input type="text" class="food-order-price-input" data-item-price placeholder="Preis" inputmode="decimal" aria-label="Einzelpreis" />
-                 <span aria-hidden="true">€</span>
-               </label>
-               <button type="submit" class="btn food-order-add-button">Hinzufügen</button>
-             </form>`
-          : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
-      }
-      ${
-        order.createdBy === myId
-          ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
-               <button type="button" class="btn btn-primary btn-sm btn-block" data-close-order="${order.id}">Bestellung abschicken</button>
-               <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
-             </div>`
-          : ''
-      }
-    </div>`;
-
-  return `
-    <div class="card stack food-order-card" data-order-card="${order.id}">
-      <div class="row-between food-order-card-header">
-        ${collapsible
-          ? `<button type="button" class="food-order-card-header-toggle" data-order-toggle="${order.id}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="food-order-card-body-${order.id}" aria-label="Bestellung ${escapeHtml(order.title)} ${expanded ? 'einklappen' : 'ausklappen'}">
-               ${icon('chevronRight', { className: 'food-order-card-chevron' })}
-               <strong class="food-order-card-title">${escapeHtml(order.title)}</strong>
-             </button>`
-          : `<strong class="food-order-card-title">${escapeHtml(order.title)}</strong>`}
-        <span class="food-order-card-header-end">
-          <span class="badge badge-playing">Offen</span>
-        </span>
-      </div>
-      ${bodyHtml.replace('class="food-order-card-body stack"', `id="food-order-card-body-${order.id}" class="food-order-card-body stack"`)}
-    </div>`;
+// Header actions of one order card: the next lock step as a compact neutral
+// button, every further management action in the shared "Aktion" menu. Only
+// the creator or an admin may manage an order (routes/foodOrders.ts).
+function renderOrderActions(order, myId, { expanded = true } = {}) {
+  const groupToggle = expanded ? renderGroupToggleAll(order) : '';
+  if (!myId || (order.createdBy !== myId && !currentPlayerHasAdminRole())) {
+    return groupToggle ? actionMenuHtml(groupToggle, `Aktionen für ${order.title}`, { key: `food-order-${order.id}` }) : '';
+  }
+  const finalized = Boolean(order.finalizedAt);
+  const menuItem = (attr, label) => `<button type="button" class="btn btn-sm" ${attr}="${order.id}">${label}</button>`;
+  let primary = '';
+  const menu = [];
+  if (groupToggle) menu.push(groupToggle);
+  menu.push(menuItem('data-open-order-list', 'Bestellübersicht'));
+  if (order.open) {
+    primary = `<button type="button" class="btn btn-sm" data-close-order="${order.id}">Abschicken</button>`;
+    menu.push(menuItem('data-edit-details', 'Info bearbeiten'));
+  } else if (!finalized) {
+    primary = `<button type="button" class="btn btn-sm" data-finalize-order="${order.id}">Schließen</button>`;
+    menu.push(menuItem('data-reopen-order', 'Wieder öffnen'), menuItem('data-edit-details', 'Info bearbeiten'));
+  } else {
+    menu.push(menuItem('data-reopen-order', 'Wieder öffnen'));
+  }
+  menu.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-order="${order.id}">Löschen</button>`);
+  return `${primary}${actionMenuHtml(menu.join(''), `Aktionen für ${order.title}`, { key: `food-order-${order.id}` })}`;
 }
 
-// The "Abgeschickt" (submitted) state — items are frozen for others, but the
-// creator/an admin can still reopen it and edit metadata, and any group
-// member can still toggle paid status — is deliberately kept visually and
-// textually distinct from "Geschlossen" (finalized): a different badge color
-// (badge-paused vs badge-offline, matching the amber/gray
-// "pausiert"/"offline" state language used elsewhere) plus different
-// wording. Both states are reversible through the same "Wieder öffnen"
-// action (finalized -> abgeschickt -> offen, one step per tap), mirroring
-// renderOpenOrder's own collapsible-card pattern once more than one history
-// entry exists.
-function renderClosedOrder(order, myId, { collapsible = false } = {}) {
-  const finalized = Boolean(order.finalizedAt);
-  const itemsHtml = renderItems(order, myId, { locked: finalized });
-  const expanded = !collapsible || expandedClosedOrders.has(order.id);
-  const bodyHtml = `
-    <div class="muted food-order-meta">
-      von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
-    </div>
-    ${renderDetails(order, { locked: finalized })}
-    ${renderOrderOverview(order)}
-    <div class="food-order-card-body stack" ${expanded ? '' : 'hidden'}>
-      ${renderCardToolbar(order)}
-      <div class="food-order-items">${itemsHtml}</div>
-      ${renderOrderSummary(order)}
-      ${
-        order.createdBy === myId || currentPlayerHasAdminRole()
-          ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
-               <button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
-               ${finalized ? '' : `<button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>`}
-               <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
-             </div>`
-          : ''
-      }
-    </div>`;
+function renderAddItemForm(order, myId) {
+  if (!myId) return `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`;
+  return `<form class="food-order-item-form" data-add-item-form="${order.id}">
+      ${renderDescField(order)}
+      <label class="food-order-quantity-field">
+        <input type="number" class="food-order-quantity-input" data-item-quantity placeholder="Anzahl" min="1" max="99" inputmode="numeric" aria-label="Anzahl" />
+      </label>
+      <label class="food-order-price-field">
+        <input type="text" class="food-order-price-input" data-item-price placeholder="Preis" inputmode="decimal" aria-label="Einzelpreis" />
+        <span aria-hidden="true">€</span>
+      </label>
+      <button type="submit" class="btn btn-sm food-order-add-button">Hinzufügen</button>
+    </form>`;
+}
 
+// Open, "Abgeschickt" (submitted) and "Geschlossen" (finalized) orders share
+// one card. Submitted freezes the items for others but keeps paid status and
+// metadata editable; finalized locks everything until "Wieder öffnen" steps
+// back one level (Geschlossen -> Abgeschickt -> Offen). In Historie the state
+// leads the meta line as text. Once more than one card shares a list, each
+// card collapses to its header, meta and overview line.
+function renderOrderCard(order, myId, { collapsible = false } = {}) {
+  const finalized = Boolean(order.finalizedAt);
+  const locked = !order.open && finalized;
+  const itemsHtml = renderItems(order, myId, { locked });
+  const expanded = !collapsible || (order.open ? expandedOpenOrders : expandedClosedOrders).has(order.id);
+  const stateLabel = order.open ? null : finalized ? 'Geschlossen' : 'Abgeschickt';
+  const titleHtml = `<strong class="food-order-card-title">${escapeHtml(order.title)}</strong>`;
+  const headerLeft = collapsible
+    ? `<button type="button" class="food-order-card-header-toggle" data-order-toggle="${order.id}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="food-order-card-body-${order.id}" aria-label="Bestellung ${escapeHtml(order.title)} ${expanded ? 'einklappen' : 'ausklappen'}">
+         ${icon('chevronRight', { className: 'food-order-card-chevron' })}
+         ${titleHtml}
+       </button>`
+    : titleHtml;
+  const actionsHtml = renderOrderActions(order, myId, { expanded });
+  const tag = order.open ? 'div' : 'article';
+  const dataAttr = order.open ? 'data-order-card' : 'data-closed-order';
   return `
-    <article class="card stack food-order-card" data-closed-order="${order.id}">
-      <div class="row-between food-order-card-header">
-        ${collapsible
-          ? `<button type="button" class="food-order-card-header-toggle" data-order-toggle="${order.id}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="food-order-card-body-${order.id}" aria-label="Bestellung ${escapeHtml(order.title)} ${expanded ? 'einklappen' : 'ausklappen'}">
-               ${icon('chevronRight', { className: 'food-order-card-chevron' })}
-               <strong class="food-order-card-title">${escapeHtml(order.title)}</strong>
-             </button>`
-          : `<strong class="food-order-card-title">${escapeHtml(order.title)}</strong>`}
-        <span class="food-order-card-header-end">
-          <span class="badge ${finalized ? 'badge-offline' : 'badge-paused'}">${finalized ? 'Geschlossen' : 'Abgeschickt'}</span>
-        </span>
+    <${tag} class="card stack food-order-card${order.paypalLink ? ' has-paypal' : ''}" ${dataAttr}="${order.id}">
+      <div class="food-order-card-header">
+        ${headerLeft}
+        ${actionsHtml ? `<span class="food-order-card-header-end">${actionsHtml}</span>` : ''}
       </div>
-      ${bodyHtml.replace('class="food-order-card-body stack"', `id="food-order-card-body-${order.id}" class="food-order-card-body stack"`)}
-    </article>`;
+      <div class="food-order-card-lead">
+        ${renderOrderMeta(order, stateLabel)}
+        ${expanded ? renderDetails(order) : ''}
+      </div>
+      <div id="food-order-card-body-${order.id}" class="food-order-card-body stack" ${expanded ? '' : 'hidden'}>
+        ${order.open ? renderAddItemForm(order, myId) : ''}
+        <div class="food-order-items">${itemsHtml}</div>
+        ${renderOrderSummary(order)}
+      </div>
+    </${tag}>`;
 }
 
 // Reusable confirmation dialog for the payment and delete flows that need a
@@ -1031,7 +944,7 @@ function confirmWithList(
       ? `<ul class="food-order-confirm-list">${items
           .map(
             (i) =>
-              `<li>${i.quantity ?? 1} × ${escapeHtml(i.description)}${i.amount ? ` — ${escapeHtml(i.amount)}` : ''} <span class="muted">${escapeHtml(i.playerName)}</span></li>`,
+              `<li>${i.quantity ?? 1} × ${escapeHtml(i.description)}${i.amount ? `, ${escapeHtml(i.amount)}` : ''} <span class="muted">${escapeHtml(i.playerName)}</span></li>`,
           )
           .join('')}</ul>`
       : '';
@@ -1150,7 +1063,7 @@ async function handleGroupPay(order, playerId, ctx) {
   }
   if (freshOrder.finalizedAt) {
     popup?.close();
-    showToast('Bestellung geschlossen – keine Änderungen mehr möglich', { error: true });
+    showToast('Bestellung geschlossen, keine Änderungen mehr möglich.', { error: true });
     ctx.rerender();
     return;
   }
@@ -1181,7 +1094,7 @@ async function handleGroupPay(order, playerId, ctx) {
   }
   if (items.some((item) => item.priceCents === null)) {
     popup?.close();
-    showToast('Betrag unvollständig – erst alle Preise eintragen.', { error: true });
+    showToast('Betrag unvollständig, erst alle Preise eintragen.', { error: true });
     ctx.rerender();
     return;
   }
@@ -1236,65 +1149,6 @@ async function handleGroupPaid(orderId, playerId, paid, ctx) {
   }
 }
 
-async function handleRemoveGroup(order, playerId, myId, ctx) {
-  if (!order.open || playerId !== myId) return;
-  const items = order.items.filter((item) => item.playerId === playerId);
-  if (items.length === 0 || items.some((item) => item.paid)) {
-    showToast('Bezahlte Positionen können nicht entfernt werden.', { error: true });
-    return;
-  }
-  const confirmed = await confirmWithList(
-    `Deine ${items.length} ${items.length === 1 ? 'Position' : 'Positionen'} löschen?`,
-    'Lässt sich nicht rückgängig machen.',
-    items.map((item) => ({ ...item, amount: item.priceCents === null ? null : formatCents(lineTotalCents(item, order.tipPercent || 0)) })),
-    { confirmText: 'Alle löschen', cancelText: 'Abbrechen', danger: true },
-  );
-  if (!confirmed) return;
-  try {
-    if (!(await fetchFoodOrders(ctx))) return;
-    const freshOrder = cache?.find((candidate) => candidate.id === order.id);
-    const freshItems = freshOrder?.items.filter((item) => item.playerId === playerId) ?? [];
-    if (!freshOrder || freshItems.some((item) => item.paid)) {
-      showToast('Eine Position wurde inzwischen bezahlt und bleibt erhalten.', { error: true });
-      ctx.rerender();
-      return;
-    }
-    // The confirmation listed the snapshot from before the fresh GET. Any
-    // position added while the dialog was open is deliberately outside that
-    // snapshot and must survive this bulk action.
-    const initialItemIds = new Set(items.map((item) => item.id));
-    const itemsToRemove = freshItems.filter((item) => initialItemIds.has(item.id));
-    // Invalidate GETs that may have started while the DELETEs are in flight.
-    // Otherwise an older response could reintroduce the deleted positions.
-    const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
-    foodOrderScopeVersion += 1;
-    await Promise.all(itemsToRemove.map((item) => api.foodOrders.removeItem(order.id, item.id, myId)));
-    if (mutationWorkspaceVersion !== foodOrderWorkspaceVersion) {
-      showToast('Eigene Positionen entfernt.');
-      void refreshFoodOrders(ctx);
-      return;
-    }
-    const currentOrder = cache?.find((candidate) => candidate.id === order.id);
-    if (currentOrder) {
-      // Apply the successful deletes to whichever snapshot is current now.
-      // This preserves positions added during the confirmation dialog without
-      // writing through the stale `freshOrder` object used for validation.
-      currentOrder.items = currentOrder.items.filter((item) => !itemsToRemove.some((removed) => removed.id === item.id));
-    } else {
-      // A scope change removed the current snapshot while the individual
-      // deletes were in flight. Keep the validated order itself as a stable
-      // local bridge until the quiet authoritative refresh completes.
-      cache = [{ ...freshOrder, items: freshOrder.items.filter((item) => !itemsToRemove.some((removed) => removed.id === item.id)) }];
-    }
-    showToast('Eigene Positionen entfernt.');
-    ctx.rerender();
-    void refreshFoodOrders(ctx);
-  } catch (err) {
-    showToast(err.message, { error: true });
-    refreshFoodOrdersAfterMutationError(ctx);
-  }
-}
-
 // --- AP4: consolidated order list -----------------------------------------
 
 // Distinct descriptions already entered in this order, for the add-item
@@ -1319,29 +1173,35 @@ function renderConsolidatedListBody(order) {
   const rows = buildConsolidatedRows(order.items);
   const tipPercent = order.tipPercent || 0;
   const { incomplete, subtotalCents, totalCents } = consolidatedTotals(order.items, tipPercent);
-  const rowsHtml = rows.length
-    ? rows
-        .map(
-          (r) => `
-        <div class="row-between food-order-consolidated-row">
-          <span class="food-order-consolidated-row-desc">${r.quantity} × ${escapeHtml(r.description)}</span>
-          <span class="muted">${r.priceCents === null ? 'kein Preis' : formatCents(r.priceCents)}</span>
-          <span>${r.priceCents === null ? '—' : formatCents(r.priceCents * r.quantity)}</span>
-        </div>`
-        )
-        .join('')
+  const missing = incomplete ? missingPriceLabel(order.items) : null;
+  const rowsHtml = rows
+    .map(
+      (r) => `
+        <tr>
+          <td class="food-order-consolidated-row-desc">${r.quantity} × ${escapeHtml(r.description)}</td>
+          <td class="muted">${r.priceCents === null ? 'Preis fehlt' : formatCents(r.priceCents)}</td>
+          <td>${r.priceCents === null ? '' : formatCents(r.priceCents * r.quantity)}</td>
+        </tr>`
+    )
+    .join('');
+  const tableHtml = rows.length
+    ? `<div class="food-order-consolidated-rows">
+        <table class="food-order-consolidated-table">
+          <thead><tr><th scope="col">Gericht</th><th scope="col">Einzeln</th><th scope="col">Summe</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+          <tfoot>
+            <tr><th scope="row" colspan="2">Zwischensumme</th><td>${formatCents(subtotalCents)}</td></tr>
+            ${tipPercent > 0 ? `<tr class="muted"><th scope="row" colspan="2">${tipPercent} % Trinkgeld</th><td>${formatCents(totalCents - subtotalCents)}</td></tr>` : ''}
+            <tr class="food-order-consolidated-total"><th scope="row" colspan="2">Gesamt${missing ? ` <span class="muted food-order-total-note">${missing}</span>` : ''}</th><td>${formatCents(totalCents)}</td></tr>
+          </tfoot>
+        </table>
+      </div>`
     : emptyStateHtml('Noch keine Positionen.');
   return `
-    ${order.open ? `<div class="muted food-order-consolidated-open-note">Bestellung ist noch offen.</div>` : ''}
-    <div class="stack food-order-consolidated-rows">${rowsHtml}</div>
-    <div class="stack food-order-consolidated-totals">
-      <div class="row-between"><span>Zwischensumme${incomplete ? ' (unvollständig)' : ''}</span><strong>${formatCents(subtotalCents)}</strong></div>
-      ${tipPercent > 0 ? `<div class="row-between muted"><span>+ ${tipPercent}% Trinkgeld</span><span>${formatCents(totalCents - subtotalCents)}</span></div>` : ''}
-      <div class="row-between"><span>Gesamt${incomplete ? ' (unvollständig)' : ''}</span><strong>${formatCents(totalCents)}</strong></div>
-    </div>
+    ${tableHtml}
     ${
       order.open && order.createdByCurrentUser
-        ? `<div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
+        ? `<div class="food-order-form-footer">
              <button type="button" class="btn btn-primary btn-sm" data-close-order-from-list="${order.id}">Bestellung abschicken</button>
            </div>`
         : ''
@@ -1369,7 +1229,7 @@ function wireConsolidatedListActions(el, order) {
 function openConsolidatedListDialog(order, myId, ctx) {
   const orderWithFlag = { ...order, createdByCurrentUser: order.createdBy === myId };
   const { el, close } = openModal(
-    `Bestellübersicht – ${order.title}`,
+    `Bestellübersicht: ${order.title}`,
     `<div data-consolidated-body>${renderConsolidatedListBody(orderWithFlag)}</div>`,
     {
       onMount: (mountEl) => {
@@ -1406,15 +1266,17 @@ function openNewOrderForm(ctx, myId) {
     'Neue Sammelbestellung',
     `
       <form id="order-form" class="stack">
-        <label for="order-title" class="field-label is-required">Titel</label>
-        <input type="text" id="order-title" maxlength="80" required autofocus placeholder="Pizza bei Luigi's" />
+        <div>
+          <label for="order-title" class="field-label is-required">Titel</label>
+          <input type="text" id="order-title" maxlength="80" required autofocus placeholder="Pizza bei Luigi's" />
+        </div>
         <div>
           <label for="order-sendat-date" class="field-label">Versand</label>
           ${dateTimeFieldHtml('order-sendat', null, { clearable: true, label: 'Versand' })}
         </div>
         <div>
           <label for="order-notes" class="field-label">Info</label>
-          <textarea id="order-notes" rows="1" maxlength="500" placeholder="Mindestbestellwert 15 €, bar zahlen"></textarea>
+          <textarea id="order-notes" rows="1" maxlength="500" placeholder="Mindestbestellwert 15 €"></textarea>
         </div>
         <div>
           <label for="order-link" class="field-label">Speisekarte</label>
@@ -1429,13 +1291,13 @@ function openNewOrderForm(ctx, myId) {
               'E-Mail-Adresse oder vollständigen PayPal.me-Link einfügen. Bei einer E-Mail-Adresse wird sie beim Öffnen von PayPal kopiert; ein Betrag kann nur beim PayPal.me-Link vorausgefüllt werden.',
             )}
           </div>
-          <input type="text" id="order-paypal" maxlength="300" placeholder="E-Mail-Adresse oder https://paypal.me/name" />
+          <input type="text" id="order-paypal" maxlength="300" placeholder="https://paypal.me/luigi" />
         </div>
         <div>
           <label for="order-tip" class="field-label">Trinkgeld in %</label>
           <input type="number" id="order-tip" min="0" max="100" inputmode="numeric" placeholder="10" />
         </div>
-        <button type="submit" class="btn btn-primary btn-block">Bestellung öffnen</button>
+        <div class="food-order-form-footer"><button type="submit" class="btn btn-primary btn-sm">Bestellung öffnen</button></div>
       </form>
     `,
     {
@@ -1479,7 +1341,7 @@ function openNewOrderForm(ctx, myId) {
             const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
             const createdOrder = await api.foodOrders.create(myId, title, { sendAt, notes, link, paypalLink, tipPercent });
             close();
-            showToast('Bestellung geöffnet – alle wurden benachrichtigt.');
+            showToast('Bestellung geöffnet, alle wurden benachrichtigt.');
             reconcileLocalOrderMutation(createdOrder, ctx, mutationWorkspaceVersion);
           } catch (err) {
             showToast(err.message, { error: true });
@@ -1503,7 +1365,7 @@ function openDetailsForm(ctx, order) {
         </div>
         <div>
           <label for="notes-input" class="field-label">Info</label>
-          <textarea id="notes-input" rows="3" maxlength="500" placeholder="Mindestbestellwert 15 €, bar zahlen">${escapeHtml(order.notes ?? '')}</textarea>
+          <textarea id="notes-input" rows="1" maxlength="500" placeholder="Mindestbestellwert 15 €">${escapeHtml(order.notes ?? '')}</textarea>
         </div>
         <div>
           <label for="link-input" class="field-label">Speisekarte</label>
@@ -1518,13 +1380,13 @@ function openDetailsForm(ctx, order) {
               'E-Mail-Adresse oder vollständigen PayPal.me-Link einfügen. Bei einer E-Mail-Adresse wird sie beim Öffnen von PayPal kopiert; ein Betrag kann nur beim PayPal.me-Link vorausgefüllt werden.',
             )}
           </div>
-          <input type="text" id="paypal-input" maxlength="300" placeholder="E-Mail-Adresse oder https://paypal.me/name" value="${escapeHtml(paypalEmailFromLink(order.paypalLink) ?? order.paypalLink ?? '')}" />
+          <input type="text" id="paypal-input" maxlength="300" placeholder="https://paypal.me/luigi" value="${escapeHtml(paypalEmailFromLink(order.paypalLink) ?? order.paypalLink ?? '')}" />
         </div>
         <div>
           <label for="tip-input" class="field-label">Trinkgeld in %</label>
           <input type="number" id="tip-input" min="0" max="100" inputmode="numeric" placeholder="10" value="${order.tipPercent ?? ''}" />
         </div>
-        <button type="submit" class="btn btn-primary btn-block">Speichern</button>
+        <div class="food-order-form-footer"><button type="submit" class="btn btn-primary btn-sm">Speichern</button></div>
       </form>
     `,
     {
@@ -1627,7 +1489,7 @@ export function renderFoodOrders(container, ctx) {
       : openOrders.length === 0
         ? emptyStateHtml('Noch keine Bestellungen.')
         : `<div class="two-column-card-grid food-order-grid">${openOrders
-            .map((o) => renderOpenOrder(o, myId, { collapsible: openOrders.length > 1 }))
+            .map((o) => renderOrderCard(o, myId, { collapsible: openOrders.length > 1 }))
             .join('')}</div>`;
 
   // Replacing innerHTML momentarily drops all children, which clamps this
@@ -1637,7 +1499,7 @@ export function renderFoodOrders(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Essen</h1>
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section primary-collection-section" aria-labelledby="food-open-title">
+      <section class="card stack grouped-page-section primary-collection-section food-order-open-section" aria-labelledby="food-open-title">
         <div class="grouped-page-section-title">
           <h2 id="food-open-title">Offene Bestellungen</h2>
           <button type="button" class="btn btn-primary btn-sm" id="order-new-btn" ${myId ? '' : 'disabled'}>Bestellung öffnen</button>
@@ -1646,7 +1508,7 @@ export function renderFoodOrders(container, ctx) {
       </section>
       ${
         closedOrders.length
-          ? `<details class="card grouped-page-section collapsible-section" data-food-history ${historyOpen ? 'open' : ''}>
+          ? `<details class="card grouped-page-section collapsible-section" data-food-history="history" ${historyOpen ? 'open' : ''}>
                <summary class="collapsible-section-header">
                  <h2>Historie</h2>
                  <span class="collapsible-section-summary-end">
@@ -1655,7 +1517,7 @@ export function renderFoodOrders(container, ctx) {
                  </span>
                </summary>
                <div class="collapsible-section-content">
-                 <div class="two-column-card-grid food-order-grid">${closedOrders.map((o) => renderClosedOrder(o, myId, { collapsible: closedOrders.length > 1 })).join('')}</div>
+                 <div class="two-column-card-grid food-order-grid">${closedOrders.map((o) => renderOrderCard(o, myId, { collapsible: closedOrders.length > 1 })).join('')}</div>
                </div>
              </details>`
           : ''
@@ -1665,6 +1527,7 @@ export function renderFoodOrders(container, ctx) {
   restoreFoodOrderViewport(container, renderState);
 
   wireInfoTooltips(container);
+  wireActionMenus(container);
   restoreFoodOrderDrafts(container, renderState);
 
   container.querySelectorAll('[data-desc-suggest]').forEach((wrapper) => wireDescSuggest(wrapper));
@@ -1689,7 +1552,7 @@ export function renderFoodOrders(container, ctx) {
       }
       const priceCents = parsePriceToCents(priceInput.value);
       if (Number.isNaN(priceCents)) {
-        return showToast('Preis bitte als Betrag angeben, z.B. 4,50', { error: true });
+        return showToast('Preis bitte als Betrag angeben, etwa 4,50', { error: true });
       }
       const submitBtn = form.querySelector('button[type="submit"]');
       if (submitBtn.disabled) return;
@@ -1783,13 +1646,6 @@ export function renderFoodOrders(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-remove-group]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const order = cache?.find((candidate) => candidate.id === button.dataset.order);
-      if (order) handleRemoveGroup(order, button.dataset.removeGroup, myId, ctx);
-    });
-  });
-
   container.querySelectorAll('[data-order-toggle]').forEach((button) => {
     button.addEventListener('click', () => {
       const orderId = button.dataset.orderToggle;
@@ -1806,10 +1662,6 @@ export function renderFoodOrders(container, ctx) {
       const order = orders.find((o) => o.id === button.dataset.openOrderList);
       if (order) openConsolidatedListDialog(order, myId, ctx);
     });
-  });
-
-  container.querySelectorAll('[data-copy-paypal-email]').forEach((a) => {
-    a.addEventListener('click', () => copyPaypalEmailToClipboard(a.dataset.copyPaypalEmail));
   });
 
   container.querySelectorAll('[data-copy-food-total]').forEach((button) => {
