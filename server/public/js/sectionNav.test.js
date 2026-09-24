@@ -99,7 +99,6 @@ function stubContainer() {
   let html = '';
   let writes = 0;
   const sectionView = { name: 'section-view' };
-  const counts = new Map();
   return {
     dataset: {},
     get innerHTML() {
@@ -108,28 +107,23 @@ function stubContainer() {
     set innerHTML(value) {
       html = value;
       writes += 1;
-      counts.clear();
     },
     get writes() {
       return writes;
     },
-    counts,
     sectionView,
     querySelector(selector) {
       if (selector === ':scope > .section-view') {
         return html.includes('class="section-view"') ? sectionView : null;
       }
-      const tab = selector.match(/^\[data-section-tab="([^"]+)"\] \[data-section-tab-count\]$/);
-      if (!tab || !html.includes(`data-section-tab="${tab[1]}"`)) return null;
-      if (!counts.has(tab[1])) counts.set(tab[1], { textContent: null });
-      return counts.get(tab[1]);
+      return null;
     },
   };
 }
 
 test('the shell renders the area title, marks the active tab and returns the content slot', () => {
   const container = stubContainer();
-  const slot = renderSectionShell(container, 'matchmaking', { badges: { checklist: 3 } });
+  const slot = renderSectionShell(container, 'matchmaking');
   assert.equal(slot, container.sectionView);
   assert.match(container.innerHTML, /class="section-page-header"/);
   assert.match(container.innerHTML, /<h1 class="view-title">Match<\/h1>/);
@@ -141,13 +135,9 @@ test('the shell renders the area title, marks the active tab and returns the con
   assert.match(container.innerHTML, /data-section-tab="matchmaking" aria-current="page"/);
   assert.match(container.innerHTML, /data-section-tab="matchmaking"[^>]*>Teams</);
 
-  renderSectionShell(container, 'checklist', { badges: { checklist: 3 } });
-  assert.match(container.innerHTML, /data-section-tab="checklist"[^>]*>To-Do<span data-section-tab-count> \(3\)</);
-  // A zero count must not render an empty-looking badge.
-  const zero = stubContainer();
-  renderSectionShell(zero, 'checklist', { badges: { checklist: 0 } });
-  assert.match(zero.innerHTML, /data-section-tab="checklist"[^>]*>To-Do<span data-section-tab-count><\//);
-  assert.equal(zero.innerHTML.includes('To-Do (0)'), false);
+  // Tabs carry their plain label only, never a count.
+  renderSectionShell(container, 'checklist');
+  assert.match(container.innerHTML, /data-section-tab="checklist"[^>]*>To-Do<\/button>/);
 });
 
 test('re-rendering the same route keeps the shell and its content element alive', () => {
@@ -155,19 +145,15 @@ test('re-rendering the same route keeps the shell and its content element alive'
   // Packliste carries the half-typed add-item field and its focus that way), so
   // a background refresh must not hand it a freshly emptied container.
   const container = stubContainer();
-  const first = renderSectionShell(container, 'checklist', { badges: { checklist: 1 } });
+  const first = renderSectionShell(container, 'checklist');
   const writesAfterFirst = container.writes;
 
-  const second = renderSectionShell(container, 'checklist', { badges: { checklist: 2 } });
+  const second = renderSectionShell(container, 'checklist');
   assert.equal(second, first, 'the same route must keep its content element');
   assert.equal(container.writes, writesAfterFirst, 'the shell must not be rebuilt for the same route');
-  // Only the live count is patched, in place.
-  assert.equal(container.counts.get('checklist').textContent, ' (2)');
-  renderSectionShell(container, 'checklist', { badges: { checklist: 0 } });
-  assert.equal(container.counts.get('checklist').textContent, '');
 
   // A different tab of the same area is a different route and does rebuild.
-  const third = renderSectionShell(container, 'arrivals', { badges: { checklist: 2 } });
+  const third = renderSectionShell(container, 'arrivals');
   assert.equal(container.writes, writesAfterFirst + 1);
   assert.equal(third, container.sectionView);
   assert.match(container.innerHTML, /data-section-tab="arrivals" aria-current="page"/);

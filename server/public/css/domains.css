@@ -2177,6 +2177,9 @@ input.food-order-price-input {
 .checklist-table-who {
   gap: var(--space-2);
 }
+.checklist-table-who-me {
+  font-weight: var(--font-weight-bold);
+}
 .checklist-table-who-more {
   flex: none;
   color: var(--text-muted);
@@ -2194,8 +2197,11 @@ input.food-order-price-input {
 .checklist-table-row.is-done .checklist-table-due {
   color: var(--text-muted);
 }
+/* "Eintragen" and "Austragen" fill the fixed action column, so both share
+   one width and their edges line up from row to row. */
 .checklist-table-action > .btn {
   position: relative;
+  width: 100%;
 }
 /* The title opens the To-Do's details; it reads as text, not as a button,
    and its hit area covers the whole row. */

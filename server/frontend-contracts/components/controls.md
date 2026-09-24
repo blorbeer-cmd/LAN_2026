@@ -568,6 +568,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:poll-selected-answer`: The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.
 
+- `registry:checklist-table-action`: Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.
+
 - `registry:checklist-choice-selected`: The chosen To-Do kind is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base variant.
 
 - `registry:poll-note-field`: The poll description starts as one line and grows with its content up to four control heights.

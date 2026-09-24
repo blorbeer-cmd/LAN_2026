@@ -1449,6 +1449,17 @@ export const permanentVariants = [
     ]
   },
   {
+    "id": "checklist-table-action",
+    "role": "standard-control",
+    "selector": ".checklist-table-action > .btn",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.",
+    "properties": [
+      "width"
+    ]
+  },
+  {
     "id": "checklist-choice-selected",
     "role": "standard-control",
     "selector": ".checklist-choice-toolbar .btn.is-selected",

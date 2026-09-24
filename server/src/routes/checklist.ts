@@ -10,19 +10,20 @@
 //
 // "To-Dos" (checklist_tasks, docs/KONZEPT-PACKLISTE-TICKETS.md) is the
 // shared pool: any active group member - not just an admin/owner - can
-// distribute a to-do, either straight to one or several people or left open
-// for anyone to claim, and any member can likewise post an open "kann mir
-// jemand X mitnehmen"-style request. Both share one lifecycle - open
-// (unassigned, in the pool) -> taken (an assignee is set, either directly by
-// the creator or by someone claiming it) -> done, with cancelled as a
-// separate terminal state for withdrawing something no longer needed.
-// Claiming is immediate and binding (first request wins, same as a captain-
-// draft pick) - no confirmation step. A batch-assignment to several people at
-// once inserts one independent row per person sharing a batch_id, so each
-// person's own progress (and own push topic) stays separate even though they
-// were assigned together. Both creation routes accept an optional due_at
-// (epoch ms) surfaced to the frontend as dueAt, purely a display/sort hint -
-// nothing here enforces or reacts to it passing.
+// create a to-do or post an open "kann mir jemand X mitnehmen"-style request.
+// Both share one lifecycle - open (nobody took it over) -> taken (at least
+// one participant in checklist_task_assignees) -> done -> archived, with
+// cancelled as a separate terminal state for withdrawing something no longer
+// needed. Several people may take over the same To-Do; each sign-up is
+// immediate, carries its own optional comment and can be given back on its
+// own, and the To-Do returns to the pool once the last participant leaves.
+// assignee_id/claim_comment keep mirroring the first participant for older
+// readers. The creation routes still accept direct assignment for API
+// callers: several people at once insert one row per person sharing a
+// batch_id (the frontend shows such a batch as one To-Do). Both creation
+// routes accept an optional due_at (epoch ms) surfaced to the frontend as
+// dueAt, purely a display/sort hint - nothing here enforces or reacts to it
+// passing.
 //
 // event_id is null for "the group's room, no specific event" (resolved per
 // request via resolveGroupEventScope) rather than the global sentinel -
@@ -693,13 +694,13 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
     return 'ok';
   })();
   if (outcome === 'closed') return res.status(409).json({ error: 'Diese Aufgabe ist bereits abgeschlossen.' });
-  if (outcome === 'duplicate') return res.status(409).json({ error: 'Du bist bereits eingetragen.' });
+  if (outcome === 'duplicate') return res.status(409).json({ error: 'Du hast diese Aufgabe bereits übernommen.' });
 
   if (task.created_by !== playerId) {
     notifyPlayers(
       [task.created_by],
       {
-        title: 'Eingetragen',
+        title: 'Übernommen',
         body: trimmedComment
           ? `${player.name} übernimmt: ${task.title}: ${trimmedComment}`
           : `${player.name} übernimmt: ${task.title}`,
@@ -723,7 +724,7 @@ checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlay
   if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (!isTaskParticipant(task.id, playerId)) {
-    return res.status(403).json({ error: 'Nur eingetragene Personen können sich wieder austragen.' });
+    return res.status(403).json({ error: 'Nur wer die Aufgabe übernommen hat, kann sie wieder abgeben.' });
   }
   if (task.status !== 'taken') {
     return res.status(409).json({ error: 'Diese Aufgabe ist nicht übernommen.' });
@@ -751,7 +752,7 @@ checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayer
   if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (!isTaskParticipant(task.id, playerId) && playerId !== task.created_by && !isChecklistModerator(req)) {
-    return res.status(403).json({ error: 'Nur eingetragene Personen, der Ersteller oder ein Admin kann dies als erledigt markieren.' });
+    return res.status(403).json({ error: 'Nur wer die Aufgabe übernommen hat, der Ersteller oder ein Admin kann dies als erledigt markieren.' });
   }
   if (task.status !== 'taken') {
     return res.status(409).json({ error: 'Diese Aufgabe ist nicht übernommen.' });
@@ -774,7 +775,7 @@ checklistRouter.post('/tasks/:id/archive', resolveChecklistTask, ...withBodyPlay
   if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (!isTaskParticipant(task.id, playerId) && playerId !== task.created_by && !isChecklistModerator(req)) {
-    return res.status(403).json({ error: 'Nur eingetragene Personen, der Ersteller oder ein Admin kann dies archivieren.' });
+    return res.status(403).json({ error: 'Nur wer die Aufgabe übernommen hat, der Ersteller oder ein Admin kann dies archivieren.' });
   }
   const archivedAt = Date.now();
   const update = db

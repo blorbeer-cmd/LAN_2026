@@ -1,11 +1,10 @@
 // "Checkliste" view: a private per-event packing checklist (Grundstock plus
-// freely added/removable custom items) and a shared To-Do pool
+// freely added/removable custom items) and a shared To-Do table
 // (docs/KONZEPT-PACKLISTE-TICKETS.md). Any active member can create a To-Do
-// of either kind (Aufgabe/Mitbring-Anfrage), leave it open for anyone to
-// claim, or address it straight at themselves or one/several others; "Mir
-// zugewiesen" gives everyone a single place to see what's on their own
-// plate, sorted by due date. Claiming is immediate and binding - no
-// confirmation step, same as a captain-draft pick.
+// of either kind (Aufgabe/Mitbring-Anfrage); several people can take it over
+// straight from its row, and everything else (details, edit, delete, done,
+// archive) lives in the detail dialog behind the row. Taking over is
+// immediate - no confirmation step beyond the optional comment.
 
 import { api } from '../api.js';
 import { escapeHtml, formatDate, formatDateTime } from '../format.js';
@@ -15,7 +14,7 @@ import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField, parseDatetimeLocalMs } from '../dateTimeField.js';
-import { dueDiffDays } from '../checklistDue.js';
+import { dueDiffDays, dueText } from '../checklistDue.js';
 import { wireSelectionSearch } from '../selectionSearch.js';
 import { wireActionMenus } from '../actionMenu.js';
 
@@ -144,18 +143,10 @@ function removeTaskFromCache(taskId) {
   if (tasksCache) tasksCache = tasksCache.filter((task) => task.id !== taskId);
 }
 
-// How many To-Dos currently sit with the signed-in identity. The Orga area
-// shows this on its compact To-Do tab and desktop rail entry, so the count
-// stays visible across the app. Returns 0 while nothing is loaded yet — a
-// badge must never guess a number.
-export function openTaskCount() {
-  return assignedTasks()?.length ?? 0;
-}
-
 // How many unclaimed To-Dos sit in the shared pool, independent of the
 // signed-in identity. Home's "Meine To-Dos" tile treats these "free" To-Dos
 // as reason enough to show up even when nothing is assigned to this identity
-// yet. Returns 0 while nothing is loaded yet, same as openTaskCount().
+// yet. Returns 0 while nothing is loaded yet.
 export function freeTaskCount() {
   return tasksCache?.filter((task) => task.status === 'open').length ?? 0;
 }
@@ -178,9 +169,8 @@ export function assignedTasks() {
     });
 }
 
-// The count has to be right on every Orga tab and the desktop rail, not only
-// on the route that renders the list. Loading re-renders once it resolves,
-// and a filled cache makes this a no-op.
+// Home's "Meine To-Dos" tile needs the tasks without rendering the list.
+// Loading re-renders once it resolves, and a filled cache makes this a no-op.
 export function ensureTasksLoaded(ctx) {
   if ((tasksCache === null || tasksStale) && !loadingTasks) loadTasks(ctx);
 }
@@ -253,13 +243,7 @@ function taskTypeLabel(task) {
 // Self-explaining due text (the table has no column headers); an empty cell
 // means no due date.
 function dueCellHtml(task) {
-  if (!task.dueAt) return '';
-  const diff = dueDiffDays(task.dueAt);
-  if (diff < 0) return 'Überfällig';
-  if (diff === 0) return 'Fällig heute';
-  if (diff === 1) return 'Fällig morgen';
-  if (diff <= 3) return `Fällig in ${diff} Tagen`;
-  return `Fällig am ${escapeHtml(formatDate(task.dueAt))}`;
+  return escapeHtml(dueText(task.dueAt));
 }
 
 // Everyone signed up for these task rows (a legacy multi-assign batch is
@@ -281,12 +265,18 @@ function whoText(tasks) {
 }
 
 // At most two names in the row, the rest as "+N"; the tooltip and the
-// detail dialog list everyone.
+// detail dialog list everyone. The signed-in identity always comes first
+// and in bold, so one's own name never hides behind "+N".
 const WHO_PREVIEW_COUNT = 2;
-function whoCellHtml(tasks, who) {
-  const names = taskPeople(tasks).map((p) => p.name);
-  const rest = names.length - WHO_PREVIEW_COUNT;
-  return `<span title="${escapeHtml(who)}">${escapeHtml(names.slice(0, WHO_PREVIEW_COUNT).join(', '))}</span>${
+function whoCellHtml(tasks, who, myId) {
+  const people = taskPeople(tasks);
+  const ordered = [...people.filter((p) => p.id === myId), ...people.filter((p) => p.id !== myId)];
+  const shown = ordered
+    .slice(0, WHO_PREVIEW_COUNT)
+    .map((p) => (p.id === myId ? `<strong class="checklist-table-who-me">${escapeHtml(p.name)}</strong>` : escapeHtml(p.name)))
+    .join(', ');
+  const rest = ordered.length - WHO_PREVIEW_COUNT;
+  return `<span title="${escapeHtml(who)}">${shown}</span>${
     rest > 0 ? `<span class="checklist-table-who-more">+${rest}</span>` : ''
   }`;
 }
@@ -306,19 +296,20 @@ function renderTaskRow(tasks, myId, mode) {
   const task = tasks[0];
   const who = whoText(tasks);
   const isDone = mode === 'done' || mode === 'archived';
-  // Signing up is the one action in the row, in its own column so names and
-  // buttons stay flush; everything else lives in the detail dialog, which
+  // Signing up or out is the one action in the row, in its own column so
+  // names and buttons stay flush; everything else lives in the detail dialog, which
   // the whole row opens.
-  const action =
-    !isDone && myId && !isParticipant(tasks, myId)
-      ? `<button type="button" class="btn btn-sm" data-claim-task="${task.id}">Eintragen</button>`
-      : '';
+  const action = isDone || !myId
+    ? ''
+    : isParticipant(tasks, myId)
+      ? `<button type="button" class="btn btn-sm" data-release-task="${task.id}">Abgeben</button>`
+      : `<button type="button" class="btn btn-sm" data-claim-task="${task.id}">Übernehmen</button>`;
   return `
     <div class="checklist-table-row${isDone ? ' is-done' : ''}" role="row" data-checklist-task="${task.id}" data-checklist-task-item data-selection-search="${escapeHtml(`${task.title} ${who}`)}">
       <div class="checklist-table-task" role="cell">
         <button type="button" class="checklist-task-title" data-task-detail="${task.id}" title="${escapeHtml(task.title)}">${escapeHtml(shortTitle(task.title))}</button>
       </div>
-      <div class="checklist-table-who" role="cell">${who ? whoCellHtml(tasks, who) : '<span class="muted">offen</span>'}</div>
+      <div class="checklist-table-who" role="cell">${who ? whoCellHtml(tasks, who, myId) : '<span class="muted">offen</span>'}</div>
       <div class="checklist-table-due" role="cell">${
         isDone ? `Erledigt am ${escapeHtml(formatDate(task.doneAt))}` : dueCellHtml(task)
       }</div>
@@ -444,7 +435,7 @@ async function archiveTask(ctx, myId, taskId) {
 async function returnTask(ctx, myId, taskId) {
   try {
     reconcileTasks(await api.checklist.release(taskId, myId));
-    showToast('Ausgetragen.');
+    showToast('Abgegeben.');
     ctx.rerender();
     return true;
   } catch (err) {
@@ -477,7 +468,7 @@ function dueDetailText(dueAt) {
 }
 
 // Everything about one To-Do plus its rarer actions: signing out again
-// ("Austragen"), editing or deleting an own one and archiving a done one.
+// ("Abgeben"), editing or deleting an own one and archiving a done one.
 function openTaskDetail(ctx, myId, taskId) {
   const entry = taskEntriesById.get(taskId);
   if (!entry) return;
@@ -495,7 +486,7 @@ function openTaskDetail(ctx, myId, taskId) {
   const facts = [
     ['Art', escapeHtml(taskTypeLabel(task))],
     ['Erstellt von', `${escapeHtml(task.createdBy?.name ?? '?')} · ${escapeHtml(formatDate(task.createdAt))}`],
-    ['Eingetragen', people.length ? escapeHtml(people.map((p) => p.name).join(', ')) : '<span class="muted">offen</span>'],
+    ['Übernommen von', people.length ? escapeHtml(people.map((p) => p.name).join(', ')) : '<span class="muted">offen</span>'],
     commentLines.length ? ['Kommentare', commentLines.join('')] : null,
     !isDone && task.dueAt ? ['Fällig', dueDetailText(task.dueAt)] : null,
     isDone ? ['Erledigt', escapeHtml(formatDateTime(task.doneAt))] : null,
@@ -504,14 +495,14 @@ function openTaskDetail(ctx, myId, taskId) {
   const canArchive = mode === 'done' && (isOwn || joined);
   const secondary = [
     canManage ? '<button type="button" class="btn btn-sm" data-detail-delete>Löschen</button>' : '',
-    joined && !isDone ? '<button type="button" class="btn btn-sm" data-detail-return>Austragen</button>' : '',
+    joined && !isDone ? '<button type="button" class="btn btn-sm" data-detail-return>Abgeben</button>' : '',
     canManage ? '<button type="button" class="btn btn-sm" data-detail-edit>Bearbeiten</button>' : '',
   ].join('');
   const primary =
     joined && !isDone
       ? '<button type="button" class="btn btn-primary btn-sm" data-detail-done>Erledigt</button>'
       : !isDone && myId
-        ? '<button type="button" class="btn btn-primary btn-sm" data-detail-claim>Eintragen</button>'
+        ? '<button type="button" class="btn btn-primary btn-sm" data-detail-claim>Übernehmen</button>'
         : canArchive
           ? '<button type="button" class="btn btn-primary btn-sm" data-detail-archive>Archivieren</button>'
           : '';
@@ -554,7 +545,7 @@ function openTaskDetail(ctx, myId, taskId) {
 
 function openClaimForm(ctx, myId, taskId) {
   const { close } = openModal(
-    'Eintragen',
+    'To-Do übernehmen',
     `
       <form id="checklist-claim-form" class="stack">
         <div>
@@ -568,7 +559,7 @@ function openClaimForm(ctx, myId, taskId) {
           />
         </div>
         <div class="checklist-form-footer">
-          <button type="submit" class="btn btn-primary btn-sm">Eintragen</button>
+          <button type="submit" class="btn btn-primary btn-sm">Übernehmen</button>
         </div>
       </form>
     `,
@@ -581,7 +572,7 @@ function openClaimForm(ctx, myId, taskId) {
             const updated = await api.checklist.claim(taskId, myId, comment);
             reconcileTasks(updated);
             close();
-            showToast('Eingetragen.');
+            showToast('Übernommen.');
             ctx.rerender();
           } catch (err) {
             showToast(err.message, { error: true });
@@ -593,7 +584,7 @@ function openClaimForm(ctx, myId, taskId) {
 }
 
 // Single "To-Do erstellen" dialog: kind, title, description and due date.
-// Nobody is assigned on creation; people sign up themselves ("Eintragen").
+// Nobody is assigned on creation; people take it over themselves ("Übernehmen").
 // Switching the kind rebuilds the form, so already-typed fields are
 // snapshotted and written straight back into the regenerated markup - the
 // same pattern renderChecklist() uses to survive its own re-renders.
@@ -941,6 +932,10 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
 
   container.querySelectorAll('[data-claim-task]').forEach((btn) => {
     btn.addEventListener('click', () => openClaimForm(ctx, myId, btn.dataset.claimTask));
+  });
+
+  container.querySelectorAll('[data-release-task]').forEach((btn) => {
+    btn.addEventListener('click', () => returnTask(ctx, myId, btn.dataset.releaseTask));
   });
 
   container.querySelectorAll('[data-task-detail]').forEach((btn) => {

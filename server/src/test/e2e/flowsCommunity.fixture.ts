@@ -12,7 +12,6 @@ import {
   page,
   adminCookie,
   alice,
-  bob,
   openMatchmakingHistory,
   openTeams,
   openOrgaTab,
@@ -225,70 +224,6 @@ flowTest('An- & Abreise: carpool marks the driver, enforces seats, driver can on
   await page.click('[data-confirm]');
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
-
-flowTest(
-  'An- & Abreise: an unrelated Orga To-Do keeps the unsaved Ankunft/Abreise draft and focus',
-  async () => {
-    // Regression for the area shell: checklist:changed now re-renders every
-    // Orga tab (see app.js), not only the Checkliste's own, so that the
-    // To-Dos tab's live count stays correct everywhere. An unrelated To-Do
-    // assigned to Alice by someone else must not throw away what she is
-    // still typing into "Meine An-/Abreise" on a different Orga tab.
-    await switchIdentityAndOpenArrivals('E2E Alice Pro');
-
-    const note = page.locator('#arrival-note');
-    await note.click();
-    await note.fill('Bringe Verlängerungskabel mit');
-
-    const badge = page.locator('[data-section-tab="checklist"] [data-section-tab-count]');
-    const before = (await badge.textContent()) ?? '';
-
-    // Playwright's page.request shares the browser context's cookie jar. An
-    // authenticated response renews its session cookie, so using Bob's
-    // explicit Cookie header there can silently switch the page itself to
-    // Bob once a racing response settles. Node fetch is intentionally
-    // isolated from that jar while the open Alice page receives the socket
-    // update this scenario needs.
-    const created = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: bob.cookie },
-      body: JSON.stringify({ playerId: bob.id, title: 'Kabeltrommel besorgen', assigneePlayerIds: [alice.id] }),
-    });
-    assert.equal(created.status, 201, await created.text());
-    // The changed tab count is the visible proof that the unrelated event's
-    // re-render actually landed on this tab, not just that nothing happened.
-    await page.waitForFunction(
-      ({ selector, previous }) => document.querySelector(selector)?.textContent !== previous,
-      { selector: '[data-section-tab="checklist"] [data-section-tab-count]', previous: before }
-    );
-
-    assert.equal(await note.inputValue(), 'Bringe Verlängerungskabel mit');
-    assert.equal(
-      await page.evaluate(() => document.activeElement?.id === 'arrival-note'),
-      true,
-      'focus must stay in the Notiz field across a background Orga re-render'
-    );
-
-    // Saving afterwards still works, so the surviving node is the live one.
-    await page.click('#arrival-form button[type="submit"]');
-    await page.waitForSelector('text=An- & Abreise gespeichert.');
-
-    // The assignment above sent Alice a personal, still-unread push
-    // notification ("Dir wurde eine Aufgabe zugewiesen") - the same
-    // getCurrentPushLogEntryFor() query the header highlight banner uses
-    // would otherwise keep surfacing it as the *next* highlighted entry the
-    // moment a later test's own notification gets dismissed, since it
-    // orders by creation time and this one is now the oldest unseen. Clear
-    // it so it does not leak into the "Durchsage" test's
-    // #notification-highlight assertions right after this one.
-    const cleared = await fetch(`${BASE_URL}/api/push/seen-all`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: alice.cookie },
-      body: JSON.stringify({ playerId: alice.id }),
-    });
-    assert.equal(cleared.status, 200, await cleared.text());
-  }
-);
 
 flowTest('Durchsage: notification center can navigate, mark read and remove without duplicating Home', async () => {
   await openMoreViewEntry(page, '[data-navigate="broadcast"]');

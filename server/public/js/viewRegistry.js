@@ -4,7 +4,7 @@ import { renderEventPolls } from './views/eventPolls.js';
 import { renderMatchmaking } from './views/matchmaking.js';
 import { renderBroadcast } from './views/broadcast.js';
 import { renderFoodOrders } from './views/foodOrders.js';
-import { renderChecklist, ensureTasksLoaded } from './views/checklist.js';
+import { renderChecklist } from './views/checklist.js';
 import { renderGameCatalog } from './views/gameCatalog.js';
 import { renderArrivals } from './views/arrivals.js';
 import { renderVotes } from './views/votes.js';
@@ -22,18 +22,14 @@ import { renderAdminFeedback } from './views/adminFeedback.js';
 import { renderMusic } from './views/music.js';
 import { createViewRegistry } from './viewManifest.js';
 import { VIEW_LIFECYCLE_HANDLERS } from './viewLifecycle.js';
-import { renderSectionShell, sectionKeyForView } from './sectionNav.js';
+import { renderSectionShell } from './sectionNav.js';
 import { state } from './state.js';
 
 // A route inside a merged area (see sectionNav.js) draws that area's heading
 // and tab row first and then hands the remaining surface to its own renderer,
 // which stays unchanged apart from no longer owning the page title.
 function inSection(view, render) {
-  const inOrga = sectionKeyForView(view) === 'orga';
   return (container, ctx) => {
-    // Compact Orga tabs carry a live count, so every route in that area needs
-    // the underlying data — not just the one that renders the list.
-    if (inOrga) ensureTasksLoaded(ctx);
     const content = renderSectionShell(container, view, {
       event: state.activeEvent,
     });

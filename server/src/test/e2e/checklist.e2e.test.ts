@@ -1,7 +1,7 @@
-// Browser E2E test for the Checkliste To-Do flow
-// (docs/KONZEPT-PACKLISTE-TICKETS.md): any active member creates a To-Do,
-// picks its Art and an optional due date, another member claims it and sees
-// it under "Mir zugewiesen", then marks it done. Separate from the fast
+// Browser E2E test for the To-Do table (docs/KONZEPT-PACKLISTE-TICKETS.md):
+// any active member creates a To-Do, picks its Art and an optional due date,
+// several members take it over from the row, one marks it done in the detail
+// dialog and it stays struck through until archived. Separate from the fast
 // unit/integration suite (`npm test`) - run via `npm run test:e2e`.
 
 import { before, after } from 'node:test';
@@ -64,7 +64,7 @@ after(async () => {
   serverProcess?.kill();
 });
 
-test('create a To-Do as one member, claim and complete it as another, "Mir zugewiesen" reflects the assignee', async () => {
+test('create a To-Do as one member, take it over as another, finish it in the details and archive it', async () => {
   await addSessionCookie(page.context(), BASE_URL, alice.cookie);
   await page.goto(BASE_URL);
   await page.waitForSelector('#app:not([hidden])');
@@ -80,11 +80,11 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   await page.fill('#todo-title', 'Mehrfachsteckdosen mitbringen');
   await page.fill('#todo-description', 'Mindestens zwei Stück.');
 
-  // Toggling "Art" rebuilds the whole form (the assignee grid needs to
-  // appear/disappear for "Zuweisen an"), which also tears down and recreates
-  // every button in it - focus must land back on the equivalent new button,
-  // not fall through to <body>, or keyboard/screen-reader users have to
-  // re-tab through the entire modal after every toggle.
+  // Toggling "Art" rebuilds the whole form (its placeholders follow the
+  // kind), which also tears down and recreates every button in it - focus
+  // must land back on the equivalent new button, not fall through to
+  // <body>, or keyboard/screen-reader users have to re-tab through the
+  // entire modal after every toggle.
   await page.click('[data-todo-kind="item_request"]');
   assert.equal(
     await page.evaluate(() => document.activeElement?.getAttribute('data-todo-kind')),
@@ -162,30 +162,31 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   await page.click('#checklist-todo-form button[type="submit"]');
   await page.waitForSelector('.toast:has-text("To-Do erstellt")');
 
-  const openCard = page.locator('[data-checklist-task]', { hasText: 'Mehrfachsteckdosen mitbringen' });
-  await openCard.waitFor();
-  assert.equal(await openCard.locator('.badge-due-soon:has-text("Heute fällig")').count(), 1);
-  // Alice created it herself, so she gets "Zurückziehen", never "Übernehmen".
-  assert.equal(await openCard.locator('[data-claim-task]').count(), 0);
-  assert.equal(await openCard.locator('[data-cancel-task]').count(), 1);
+  const row = page.locator('[data-checklist-task]', { hasText: 'Mehrfachsteckdosen mitbringen' });
+  await row.waitFor();
+  assert.equal(await row.locator('.checklist-table-due').innerText(), 'Fällig heute');
+  assert.equal((await row.locator('.checklist-table-who').innerText()).trim(), 'offen');
+  // The creator may take it over too; managing it lives in the details.
+  assert.equal(await row.locator('[data-claim-task]').count(), 1);
+  await row.locator('[data-task-detail]').click();
+  await page.waitForSelector('.modal [data-detail-delete]');
+  assert.equal(await page.locator('.modal [data-detail-edit]').count(), 1);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.modal', { state: 'detached' });
 
   await switchAccount(bob);
   await openChecklist();
   await page.waitForSelector('#checklist-new-todo-btn:not([disabled])');
 
-  const openCardAsBob = page.locator('[data-checklist-task]', { hasText: 'Mehrfachsteckdosen mitbringen' });
-  await openCardAsBob.locator('[data-claim-task]').click();
+  await row.locator('[data-claim-task]').click();
   await page.waitForSelector('#checklist-claim-form');
+  await page.fill('#claim-comment', 'Bringe zwei mit');
   await page.click('#checklist-claim-form button[type="submit"]');
   await page.waitForSelector('.toast:has-text("Übernommen")');
 
-  // Now shows under "Mir zugewiesen" for Bob, with the due badge carried over.
-  const mineHeading = page.locator('.section-title:has-text("Mir zugewiesen")');
-  await mineHeading.waitFor();
-  const mineCard = page.locator('[data-checklist-task]', { hasText: 'Mehrfachsteckdosen mitbringen' });
-  await mineCard.waitFor();
-  assert.equal(await mineCard.locator('.badge-due-soon:has-text("Heute fällig")').count(), 1);
-  assert.equal(await mineCard.locator('[data-done-task]').count(), 1);
+  // Bob's row now offers "Abgeben" and names him first.
+  await row.locator('[data-release-task]').waitFor();
+  assert.match(await row.locator('.checklist-table-who').innerText(), /^E2E Checklist Bob/);
 
   // Personal work is a cross-event Home concern, not something hidden in
   // Orga. The default E2E event is a LAN, so this also guards the LAN path.
@@ -193,23 +194,27 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   await page.waitForSelector('[data-home-assigned-todos]');
   const homeTask = page.locator('[data-home-assigned-task]', { hasText: 'Mehrfachsteckdosen mitbringen' });
   await homeTask.waitFor();
-  assert.equal(await homeTask.locator('.badge-due-soon:has-text("Heute fällig")').count(), 1);
+  assert.match(await homeTask.innerText(), /Fällig heute/);
   await homeTask.click();
   await page.waitForSelector('.view-title:has-text("Orga")');
   await page.waitForSelector('[data-section-tab="checklist"][aria-current="page"]');
 
-  await mineCard.locator('[data-done-task]').click();
+  await row.locator('[data-task-detail]').click();
+  await page.waitForSelector('.modal:has-text("Bringe zwei mit")');
+  await page.click('.modal [data-detail-done]');
   await page.waitForSelector('.toast:has-text("erledigt")');
-  // Bob's only assigned To-Do just moved into Historie, so "Mir zugewiesen"
-  // falls back to its empty state.
-  await page.waitForSelector('.empty-state:has-text("Noch keine To-Dos.")');
 
+  // Done stays in the list, struck through, until someone archives it.
+  await page.waitForSelector('[data-checklist-task].is-done:has-text("Mehrfachsteckdosen mitbringen")');
+  await row.locator('[data-task-detail]').click();
+  await page.click('.modal [data-detail-archive]');
+  await page.waitForSelector('.toast:has-text("Archiviert")');
   await page.locator('details[data-checklist-history] summary').click();
-  const historyCard = page.locator('details[data-checklist-history] [data-checklist-task]', { hasText: 'Mehrfachsteckdosen mitbringen' });
-  await historyCard.waitFor();
+  const historyRow = page.locator('details[data-checklist-history] [data-checklist-task]', { hasText: 'Mehrfachsteckdosen mitbringen' });
+  await historyRow.waitFor();
 });
 
-test('any member (not just Owner/Admin) can create and directly self-assign a To-Do', async () => {
+test('several members take over the same To-Do and each gives it back on their own', async () => {
   await switchAccount(bob);
   await openChecklist();
   await page.waitForSelector('#checklist-new-todo-btn:not([disabled])');
@@ -217,15 +222,26 @@ test('any member (not just Owner/Admin) can create and directly self-assign a To
   await page.click('#checklist-new-todo-btn');
   await page.waitForSelector('#todo-title');
   await page.fill('#todo-title', 'Namensschilder drucken');
-  await page.click('[data-todo-assign-mode="self"]');
   await page.click('#checklist-todo-form button[type="submit"]');
   await page.waitForSelector('.toast:has-text("To-Do erstellt")');
 
-  // Assigned straight to self skips the open pool - it shows up under "Mir
-  // zugewiesen" immediately, no separate claim step.
-  const mineCard = page.locator('[data-checklist-task]', { hasText: 'Namensschilder drucken' });
-  await mineCard.waitFor();
-  assert.equal(await mineCard.locator('[data-release-task]').count(), 1);
+  const row = page.locator('[data-checklist-task]', { hasText: 'Namensschilder drucken' });
+  await row.locator('[data-claim-task]').click();
+  await page.click('#checklist-claim-form button[type="submit"]');
+  await row.locator('[data-release-task]').waitFor();
+
+  await switchAccount(alice);
+  await openChecklist();
+  await row.locator('[data-claim-task]').click();
+  await page.click('#checklist-claim-form button[type="submit"]');
+  await row.locator('[data-release-task]').waitFor();
+  // Alice's own name comes first, the other taker follows.
+  assert.equal(await row.locator('.checklist-table-who').innerText(), 'E2E Checklist Alice, E2E Checklist Bob');
+
+  await row.locator('[data-release-task]').click();
+  await page.waitForSelector('.toast:has-text("Abgegeben")');
+  await row.locator('[data-claim-task]').waitFor();
+  assert.equal(await row.locator('.checklist-table-who').innerText(), 'E2E Checklist Bob');
 });
 
 test('the Packliste draft and its focus survive a realtime re-render of the area', async () => {
@@ -242,19 +258,18 @@ test('the Packliste draft and its focus survive a realtime re-render of the area
   await draft.click();
   await draft.fill('Ersatzmaus');
 
-  // Bob assigns a To-Do to Alice: the server broadcasts checklist:changed, this
-  // tab re-renders, and the count on the neighbouring To-Dos tab is the visible
-  // proof that the re-render actually landed.
-  // Keep the alternate actor out of page.request: authenticated responses
-  // renew their cookie in the shared BrowserContext and can otherwise turn
-  // Alice's page into Bob's between two unrelated UI actions.
-  const created = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
+  // Alice adds an item from another device: the server broadcasts
+  // checklist:changed for her items, this tab re-renders, and the new entry
+  // in the list is the visible proof that the re-render actually landed.
+  // Kept out of page.request: authenticated responses renew their cookie in
+  // the shared BrowserContext.
+  const added = await fetch(`${BASE_URL}/api/checklist/items`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: bob.cookie },
-    body: JSON.stringify({ playerId: bob.id, title: 'Beamer mitbringen', assigneePlayerIds: [alice.id] }),
+    headers: { 'content-type': 'application/json', cookie: alice.cookie },
+    body: JSON.stringify({ playerId: alice.id, label: 'Ladekabel vom Zweitgerät' }),
   });
-  assert.equal(created.status, 201, await created.text());
-  await page.waitForSelector('[data-section-tab="checklist"] [data-section-tab-count]:text("(1)")');
+  assert.equal(added.status, 201, await added.text());
+  await page.waitForSelector('.checklist-item-list:has-text("Ladekabel vom Zweitgerät")');
 
   // The typed value and the caret stay where they were.
   assert.equal(await draft.inputValue(), 'Ersatzmaus');
@@ -279,37 +294,6 @@ test('the Packliste draft and its focus survive a realtime re-render of the area
   );
 });
 
-test('the To-Do count stays visible on compact Orga tabs and the desktop rail', async () => {
-  // Regression: openTaskCount() reads a cache that only the To-Dos list filled,
-  // so entering Orga through another tab left the badge permanently blank.
-  await switchAccount(bob);
-  // Bob still owns the self-assigned "Namensschilder drucken" To-Do, and the
-  // area is entered through a tab that never touches that list.
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'arrivals' })));
-  await page.waitForSelector('#view-container[data-view="arrivals"]');
-  await page.waitForSelector('[data-section-tab="checklist"] [data-section-tab-count]:text("(1)")');
-  assert.equal(await page.locator('[data-section-tab="checklist"][aria-current="page"]').count(), 0);
-
-  await page.setViewportSize({ width: 1280, height: 900 });
-  try {
-    await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
-    await page.waitForSelector('.desktop-nav-btn[data-view="checklist"] .desktop-nav-label:text-is("To-Do (1)")');
-    await page.click('.desktop-nav-btn[data-view="gameCatalog"]');
-    await page.waitForSelector('#view-container[data-view="gameCatalog"]');
-
-    const created = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: alice.cookie },
-      body: JSON.stringify({ playerId: alice.id, title: 'Namensschilder sortieren', assigneePlayerIds: [bob.id] }),
-    });
-    assert.equal(created.status, 201, await created.text());
-    await page.waitForSelector('.desktop-nav-btn[data-view="checklist"] .desktop-nav-label:text-is("To-Do (2)")');
-    assert.equal(await page.locator('.desktop-nav-btn[data-view="checklist"]').getAttribute('aria-label'), 'To-Do (2)');
-  } finally {
-    await page.setViewportSize({ width: 390, height: 844 });
-  }
-});
-
 test('an already-open Home re-renders when a free To-Do appears and disappears elsewhere', async () => {
   // Regression for the visibility contract in renderAssignedTodos() (home.js):
   // the tile's presence, not just its content, now depends on checklist
@@ -317,20 +301,19 @@ test('an already-open Home re-renders when a free To-Do appears and disappears e
   // same way it already does for foodOrders:changed - not only on the next
   // navigation.
 
-  // Earlier tests in this shared owner process leave To-Dos behind (e.g.
-  // Alice's self-assigned "Beamer mitbringen" from the realtime-re-render
-  // test above); clear anything still assigned to Alice, and anything still
-  // sitting open in the shared pool, so the tile's visibility gate (mine AND
-  // free) starts from a genuinely empty state instead of assuming a fixed
-  // prior history for either half of it.
+  // Earlier tests in this shared owner process leave To-Dos behind; clear
+  // anything Alice has taken over, and anything still sitting open in the
+  // shared pool, so the tile's visibility gate (mine AND free) starts from a
+  // genuinely empty state instead of assuming a fixed prior history for
+  // either half of it.
   const existing = await fetch(`${BASE_URL}/api/checklist/tasks`, { headers: { cookie: alice.cookie } });
   const existingBody = (await existing.json()) as {
-    tasks: Array<{ id: string; status: string; assignee: { id: string } | null; createdBy: { id: string } | null }>;
+    tasks: Array<{ id: string; status: string; assignees: Array<{ id: string }>; createdBy: { id: string } | null }>;
   };
   assert.equal(existing.status, 200, JSON.stringify(existingBody));
   const { tasks: existingTasks } = existingBody;
   for (const task of existingTasks) {
-    if (task.status === 'taken' && task.assignee?.id === alice.id) {
+    if (task.status === 'taken' && task.assignees.some((person) => person.id === alice.id)) {
       const done = await fetch(`${BASE_URL}/api/checklist/tasks/${task.id}/done`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json', cookie: alice.cookie },
