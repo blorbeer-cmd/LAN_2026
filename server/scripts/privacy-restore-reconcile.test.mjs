@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -87,9 +87,12 @@ test('restore preview uses the default ledger and refuses a missing ledger', asy
       `const { db } = require(${JSON.stringify(dbModule)}); db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(${JSON.stringify(playerId)}, 'Restore Person', 'restore-default-key', Date.now()); db.close();`,
     ], { env });
     assert.throws(() => run(['--preview'], env), /Command failed/);
-    await writeFile(path.join(directory, 'deletion-receipts.jsonl'),
-      `${JSON.stringify({ subjectHash, deletedAt: Date.now(), action: 'player_self_deleted' })}\n`);
+    const ledger = path.join(directory, 'deletion-receipts.jsonl');
+    await writeFile(ledger,
+      `${JSON.stringify({ subjectHash, deletedAt: Date.now(), action: 'player_self_deleted', attemptId: 'failed-attempt' })}\n`);
     assert.equal(run(['--preview'], env).restoredAccountsToDelete, 1);
+    await appendFile(ledger, `${JSON.stringify({ cancelledAttemptId: 'failed-attempt' })}\n`);
+    assert.equal(run(['--preview'], env).restoredAccountsToDelete, 0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

@@ -66,7 +66,9 @@ Der produktive Restore bleibt bewusst ein Operator-Vorgang. So bleibt die bisher
 Rückfall erhalten:
 
 Jede Kontolöschung schreibt vor der SQLite-Änderung einen hashbasierten Beleg synchron in das
-append-only Ledger aus `PRIVACY_DELETION_LEDGER_FILE`. Ohne gesetzten Pfad landet es neben der
+append-only Ledger aus `PRIVACY_DELETION_LEDGER_FILE`. Schlägt die Datenbanktransaktion fehl,
+folgt ein Stornierungseintrag; der Restore berücksichtigt diesen Beleg dann nicht. Ohne gesetzten
+Pfad landet das Ledger neben der
 SQLite-Datei und überlebt damit den unten beschriebenen Restore, aber nicht den Komplettverlust des
 `data`-Volumes; der Produktionsstart warnt in diesem Fall. Für den vollen Schutz gehört das Ziel auf
 ein unabhängig gesichertes Volume, im Docker-Betrieb als separater persistenter Mount im
