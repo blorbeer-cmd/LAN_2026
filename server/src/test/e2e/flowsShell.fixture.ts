@@ -1223,7 +1223,8 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     const header = page.locator('.more-subpage-header');
     assert.equal(await header.count(), 1);
     assert.equal(await header.locator('.more-subpage-title-row h1.view-title').innerText(), title);
-    assert.equal(await header.locator('[data-navigate="admin"]').count(), 1);
+    // Admin subpages carry no back button; the navigation leads back.
+    assert.equal(await header.locator('[data-navigate="admin"]').count(), 0);
     // #view-container is itself the scroll box (overflow-y: auto in
     // style.css), so comparing two viewport rects measures "inset minus
     // however far the view happens to be scrolled" rather than the layout
@@ -1364,27 +1365,19 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     feedbackId,
   );
 
-  // Desktop only hides back actions that return to the direct "Mehr" hub.
-  // Admin subpages keep their compact back button before the title instead
-  // of stretching it across the first grid column.
+  // On desktop the title starts the compact header row; no back button
+  // precedes it.
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   const feedbackHeaderLayout = await page.locator('.more-subpage-title-row').evaluate((row) => {
-    const button = row.querySelector('[data-navigate="admin"]')?.getBoundingClientRect();
     const title = row.querySelector('h1')?.getBoundingClientRect();
-    const rowRect = row.getBoundingClientRect();
-    if (!button || !title) throw new Error('Feedback header controls are missing');
+    if (!title) throw new Error('Feedback header title is missing');
     return {
-      buttonWidth: Math.round(button.width),
-      rowWidth: Math.round(rowRect.width),
-      buttonRight: Math.round(button.right),
-      titleLeft: Math.round(title.left),
-      centerDifference: Math.round(Math.abs(button.top + button.height / 2 - (title.top + title.height / 2))),
+      buttons: row.querySelectorAll('button').length,
+      titleInset: Math.round(title.left - row.getBoundingClientRect().left),
     };
   });
-  assert.ok(feedbackHeaderLayout.buttonWidth < feedbackHeaderLayout.rowWidth / 2, 'the back button must stay compact');
-  assert.ok(feedbackHeaderLayout.buttonRight < feedbackHeaderLayout.titleLeft, 'the title must follow the back button');
-  assert.ok(feedbackHeaderLayout.centerDifference <= 1, 'the back button and title must stay vertically aligned');
+  assert.deepEqual(feedbackHeaderLayout, { buttons: 0, titleInset: 0 });
   await page.setViewportSize({ width: 390, height: 844 });
   // The same role gate applies to the wide-viewport desktop rail, which
   // filters `.desktop-nav-btn` entries independently of the old bottom-nav
@@ -1430,12 +1423,12 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await page.click('[data-navigate="adminFeatureUsage"]');
   await page.waitForSelector('#admin-feature-usage-refresh');
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
   await page.click('[data-navigate="adminFeedback"]');
   await page.waitForSelector('#admin-feedback-title');
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
   let rejectFirstKioskPasswordRequest = true;
   const kioskPasswordUrl = '**/api/admin/kiosk-password';
@@ -1470,7 +1463,7 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     0,
   );
   assert.equal(await page.locator('#orga-kiosk-help').count(), 1);
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
@@ -1669,7 +1662,7 @@ flowTest('Mein Profil: rename with a uniqueness conflict, then succeed; Meine St
   await page.waitForSelector('#my-stats-event-search');
 
   // Back to the profile; the session remains bound to this account.
-  await page.click('[data-navigate="profile"]');
+  await openMoreViewEntry(page, '[data-navigate="profile"]');
   await page.waitForSelector('#profile-name');
   // Restore the identity — later tests (tournament) still act as her.
   assert.equal(await page.inputValue('#profile-name'), 'E2E Alice Pro');
