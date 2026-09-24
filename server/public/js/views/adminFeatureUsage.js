@@ -120,7 +120,7 @@ export function renderAdminFeatureUsage(container, ctx) {
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-label="Nutzungsauswertung">
         ${searchSelectHtml('admin-feature-usage-event', featureUsageEventOptions(), featureUsageFilters.eventId, {
-          placeholder: 'Event suchen…',
+          placeholder: 'Event suchen',
           ariaLabel: 'Event',
           label: 'Events',
         })}

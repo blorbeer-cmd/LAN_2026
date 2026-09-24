@@ -76,7 +76,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await openTeams();
   assert.equal(await page.inputValue('#mm-teamcount'), '2');
   // The roster search is an always-visible named field, not a magnifier toggle.
-  assert.equal(await page.getAttribute('#mm-player-search', 'placeholder'), 'Spieler suchen…');
+  assert.equal(await page.getAttribute('#mm-player-search', 'placeholder'), 'Spieler suchen');
   await page.fill('#mm-player-search', profileTitle);
   await page.waitForFunction(() => document.querySelectorAll('[data-mm-draw-search-item]:not([hidden])').length === 1);
   assert.equal(await page.locator('[data-mm-draw-search-item]:not([hidden])').getByText(profileTitle, { exact: true }).count(), 1);
@@ -585,7 +585,7 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
   const voteGameCheckboxes = page.locator('[data-vote-game-checkbox]');
   const voteGameCount = await voteGameCheckboxes.count();
   assert.ok(voteGameCount >= 2, 'test fixture must ship at least two games');
-  assert.equal(await page.getAttribute('#votes-game-search', 'placeholder'), 'Spiel suchen…');
+  assert.equal(await page.getAttribute('#votes-game-search', 'placeholder'), 'Spiel suchen');
   await page.fill('#votes-game-search', 'Counter-Strike 2');
   await page.waitForFunction(() => document.querySelectorAll('[data-vote-game-search-item]:not([hidden])').length === 1);
   // One bulk toggle acts on the visible result only; flip it until the lone

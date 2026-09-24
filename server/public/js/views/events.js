@@ -1125,7 +1125,7 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
       <form id="event-form" class="stack">
         <div>
           <label for="event-name" class="field-label is-required">Name</label>
-          <input type="text" id="event-name" maxlength="80" required autofocus value="${escapeHtml(existing?.name ?? '')}" placeholder="z.B. LAN Winter 2027" />
+          <input type="text" id="event-name" maxlength="80" required autofocus value="${escapeHtml(existing?.name ?? '')}" placeholder="LAN Winter 2027" />
         </div>
         <div>
           <label for="event-type" class="field-label is-required">Typ</label>
@@ -1148,17 +1148,17 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
         </div>
         <div>
           <label for="event-location" class="field-label">Ort oder Karten-Link</label>
-          <input type="text" id="event-location" maxlength="500" placeholder="z.B. https://maps.google.com/…" value="${escapeHtml(existing?.location ?? '')}" />
+          <input type="text" id="event-location" maxlength="500" placeholder="Jugendherberge Harz" value="${escapeHtml(existing?.location ?? '')}" />
         </div>
         <div>
           <label for="event-description" class="field-label">Notiz</label>
-          <textarea id="event-description" maxlength="500" rows="2" placeholder="z.B. Hinweise, Ablauf oder Treffpunkt">${escapeHtml(existing?.description ?? '')}</textarea>
+          <textarea id="event-description" maxlength="500" rows="2" placeholder="Treffpunkt um 16 Uhr am Bahnhof">${escapeHtml(existing?.description ?? '')}</textarea>
         </div>
         <div class="field-row event-payment-fields" data-event-payment-fields ${isGroup ? 'hidden' : ''}>
           <div>
             <label for="event-cost" class="field-label">Beitrag pro Person</label>
             <label class="food-order-price-field">
-              <input type="text" class="food-order-price-input" id="event-cost" inputmode="decimal" placeholder="z.B. 25,00" value="${existing?.costCents ? escapeHtml((existing.costCents / 100).toFixed(2).replace('.', ',')) : ''}" />
+              <input type="text" class="food-order-price-input" id="event-cost" inputmode="decimal" placeholder="25,00" value="${existing?.costCents ? escapeHtml((existing.costCents / 100).toFixed(2).replace('.', ',')) : ''}" />
               <span aria-hidden="true">€</span>
             </label>
           </div>
@@ -1168,7 +1168,7 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
               ${infoTooltipHtml('event-accommodation-cost-help', 'Gesamtpreis Unterkunft', 'Wird mit den bereits eingegangenen Beiträgen verglichen. Der rechnerische Preis pro Kopf verwendet nur aktuell zugesagte Personen.')}
             </div>
             <label class="food-order-price-field">
-              <input type="text" class="food-order-price-input" id="event-accommodation-cost" inputmode="decimal" placeholder="z.B. 1.200,00" value="${existing?.accommodationCostCents ? escapeHtml((existing.accommodationCostCents / 100).toFixed(2).replace('.', ',')) : ''}" />
+              <input type="text" class="food-order-price-input" id="event-accommodation-cost" inputmode="decimal" placeholder="1.200,00" value="${existing?.accommodationCostCents ? escapeHtml((existing.accommodationCostCents / 100).toFixed(2).replace('.', ',')) : ''}" />
               <span aria-hidden="true">€</span>
             </label>
           </div>

@@ -178,7 +178,7 @@ export function renderAnalytics(container, ctx) {
           <button type="button" class="btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}" data-an-tab="arcade">Arcade</button>
         </div>
         ${searchSelectHtml('an-event', eventFilterOptions(), filters.eventId, {
-          placeholder: 'Event suchen…',
+          placeholder: 'Event suchen',
           ariaLabel: 'Veranstaltung',
           label: 'Auswertbare Events',
         })}

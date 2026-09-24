@@ -127,7 +127,7 @@ export function renderBroadcast(container, ctx) {
         <form id="broadcast-form" class="stack">
           <div>
             <label for="broadcast-message" class="field-label">Nachricht</label>
-            <input type="text" id="broadcast-message" placeholder="z.B. Essen ist da!" maxlength="200" ${myId ? '' : 'disabled'} />
+            <input type="text" id="broadcast-message" placeholder="Essen ist da" maxlength="200" ${myId ? '' : 'disabled'} />
           </div>
           <div>
             <label for="broadcast-ends-at-date" class="field-label">Sichtbar bis</label>

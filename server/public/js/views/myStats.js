@@ -168,7 +168,7 @@ function renderStats() {
   return `
     <div class="card stack">
       ${searchSelectHtml('my-stats-event', eventFilterOptions(), statsEventId, {
-        placeholder: 'Event suchen…',
+        placeholder: 'Event suchen',
         ariaLabel: 'Veranstaltung',
         label: 'Auswertbare Events',
       })}

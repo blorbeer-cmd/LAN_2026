@@ -220,7 +220,7 @@ export function initGlobalSearch(onNavigate) {
       'Suchen',
       `<div class="global-search">
         <label class="global-search-label" for="global-search-input">Bereiche und Inhalte durchsuchen</label>
-        <input id="global-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Spieler, Bestellung, Spiel, WLAN …" aria-controls="global-search-results" />
+        <input id="global-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Spieler, Spiel, Bestellung suchen" aria-controls="global-search-results" />
         <div id="global-search-summary" class="global-search-summary" aria-live="polite"></div>
         <div id="global-search-results" class="global-search-results" role="listbox" aria-label="Suchergebnisse"></div>
       </div>`,

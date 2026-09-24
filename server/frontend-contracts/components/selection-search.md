@@ -6,7 +6,7 @@ Status: `umgesetzt`.
 
 SelectionSearch filtert bereits gerenderte Auswahlzeilen lokal und lässt deren Auswahlzustand
 unangetastet. Der Helper stellt ein ständig sichtbares, benanntes Toolbar-Suchfeld („Spieler
-suchen…“, „Spiel suchen…“) sowie die reine Verdrahtung eines bereits vorhandenen Suchfelds bereit. Er ist kein serverseitiges Suchsystem und
+suchen“, „Spiel suchen“) sowie die reine Verdrahtung eines bereits vorhandenen Suchfelds bereit. Er ist kein serverseitiges Suchsystem und
 besitzt weder Ergebnisnavigation noch fachliche Auswahlregeln.
 
 ## 2. Quelle
@@ -14,7 +14,7 @@ besitzt weder Ergebnisnavigation noch fachliche Auswahlregeln.
 - Helper: `public/js/selectionSearch.js`
 - Normalisierung: `public/js/searchText.js`
 - Markup:
-  `selectionSearchHtml(inputId, query, { placeholder = 'Spieler suchen…',
+  `selectionSearchHtml(inputId, query, { placeholder = 'Spieler suchen',
   label = 'Spieler suchen' })`
 - Vergleich: `matchesSelectionSearch(value, query)`
 - Verdrahtung:
@@ -86,7 +86,7 @@ Registry-Bezüge: `selection-toolbar`, `selection-icons`, `selection-search-acti
 ## 9. Repräsentative Aufrufer
 
 - `public/js/rosterPicker.js` für Matchmaking und Turniererstellung
-- `public/js/views/votes.js` für die Spielesuche („Spiel suchen…“) der neuen Abstimmung
+- `public/js/views/votes.js` für die Spielesuche („Spiel suchen“) der neuen Abstimmung
 - `public/js/views/gameCatalog.js` für das ständig sichtbare Suchfeld des Spielekatalogs
 
 ## 10. Prüfungen und Abnahmebeispiele

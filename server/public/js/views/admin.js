@@ -307,7 +307,7 @@ function openRegisterInviteDialog(ctx) {
       <div>
         <label for="admin-register-event-search" class="field-label">Direkte Event-Einladung</label>
         ${searchSelectHtml('admin-register-event', eventOptions, '', {
-          placeholder: 'Event auswählen…',
+          placeholder: 'Event auswählen',
           label: 'Events für die Einladung',
         })}
       </div>

@@ -577,15 +577,15 @@ export function renderVotes(container, ctx) {
         <div class="vote-start-row">
           <div>
             <label class="field-label" for="votes-title">Titel</label>
-            <input type="text" id="votes-title" maxlength="80" placeholder="z.B. Samstagabend" />
+            <input type="text" id="votes-title" maxlength="80" placeholder="Samstagabend" />
           </div>
           <div>
             <label class="field-label" for="votes-info">Info</label>
-            <textarea class="vote-info-input" id="votes-info" maxlength="500" rows="1" placeholder="z.B. Nur Spiele für 4 Leute"></textarea>
+            <textarea class="vote-info-input" id="votes-info" maxlength="500" rows="1" placeholder="Nur Spiele für 4 Leute"></textarea>
           </div>
           <div class="selection-toolbar vote-start-toolbar">
             ${voteSelectToggleHtml(allVisibleVoteGamesSelected())}
-            ${selectionSearchHtml('votes-game-search', voteGameSearchQuery, { placeholder: 'Spiel suchen…', label: 'Spiel suchen' })}
+            ${selectionSearchHtml('votes-game-search', voteGameSearchQuery, { placeholder: 'Spiel suchen', label: 'Spiel suchen' })}
           </div>
         </div>
         <div id="votes-game-select-wrap" class="stack vote-game-select-wrap">

@@ -642,7 +642,7 @@ export function renderMatchmaking(container, ctx) {
     <div class="card stack">
       <div>
         <label class="field-label is-required" for="mm-game-search">Spiel auswählen</label>
-        ${searchSelectHtml('mm-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
+        ${searchSelectHtml('mm-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen' })}
       </div>
       ${modeToggleHtml}
 

@@ -292,7 +292,10 @@ they are next changed, and new work follows them right away.
    unless the domain requires a more specific active/completed label.
 8. **Make states structural, not ornamental.** Empty states center one short, regular-weight text
    line in the available surface and stay free of decorative icons. Nearby headings and controls
-   provide the context, so the line does not repeat a section or explain the next action. The
+   provide the context, so the line does not repeat a section or explain the next action. A titled
+   card whose only content is its empty state collapses to one row as high as a closed collapsible
+   card: the line is centered over the card on the title's line (on phones it follows as one compact
+   line below the title), and an opened collapsible with nothing inside behaves the same way. The
    established mascot illustration on Home remains the explicit brand exception. Selection remains
    recognizable through its semantic
    control; winner, unread, running and error states use border/background plus text or accessible
@@ -318,7 +321,7 @@ they are next changed, and new work follows them right away.
     order itself carries meaning (rankings, results). A list offers one bulk toggle that selects
     all visible rows or, when all are selected, deselects them; there are no separate select/
     deselect buttons and no red bulk action. Search is a visible field whose placeholder names its
-    target („Spieler suchen…“, „Spiel suchen…“), not a magnifier that expands. One search field may
+    target („Spieler suchen“, „Spiel suchen“), not a magnifier that expands. One search field may
     filter several related lists. Dragging is a desktop affordance; touch layouts get an explicit
     alternative such as a native picker, never a tap-to-select mode that highlights other targets.
 13. **Keep metadata dense and honest.** Secondary facts about an entity share one compact meta line
@@ -344,8 +347,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   follow the [EmptyState contract](frontend-contracts/components/empty-state.md).
 - **Primary collection** — `.primary-collection-section` gives the current collection of Events,
   polls, food orders and tournaments one shared main-card treatment. The title and primary action
-  stay together in the card header. The card keeps the standard hairline border (no accent frame),
-  so empty-state height and spacing remain stable across these areas.
+  stay together in the card header. The card keeps the standard hairline border (no accent frame);
+  an empty collection collapses to the shared one-row empty card from rule 8.
 - **Area tabs** — use real route navigation, an active aria-current page state and
   the established responsive tab layout. Product-specific areas, routes and labels live in
   [Product rules](../docs/product/README.md).
@@ -371,6 +374,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Product-specific choices live in [Product rules](../docs/product/README.md).
 - **Input** — plain `<input>`/`<select>`/`<textarea>` are styled globally by
   type selector; no class needed.
+- **Placeholders** — a placeholder shows a concrete example or a format, never an instruction or a
+  repeated label: no „z. B.“, no end punctuation and no ellipsis („Samstagabend“, „Rocket League“,
+  `https://`, `TT.MM.JJJJ`). Searches read „<Objekt> suchen“ in the singular („Spiel suchen“). A
+  placeholder may name what an empty field means („Unbegrenzt“, „Leer lassen für automatische
+  Suche“). Fields without a visible label (compact value rows) use their short label instead.
+  Every `input`/`textarea` placeholder is set in italics so it never reads as a real value.
 - **Required fields** — mark required labels with `class="field-label is-required"`; the shared
   CSS adds the visual `*`. Optional fields remain unmarked, so `(optional)` is not used as a
   default label suffix. Keep the native `required` attribute on inputs where browser validation

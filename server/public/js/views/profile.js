@@ -365,11 +365,11 @@ export function renderProfile(container, ctx) {
             </div>
             <div class="profile-text-field">
               <label for="profile-name" class="field-label is-required">Gamertag</label>
-              <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" required />
+              <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" required placeholder="NightOwl" />
             </div>
             <div class="profile-text-field">
               <label for="profile-real-name" class="field-label">Name</label>
-              <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="z.B. Robert" />
+              <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Robert" />
             </div>
           </div>
           <button type="button" class="btn btn-primary btn-block" id="profile-save">Speichern</button>
