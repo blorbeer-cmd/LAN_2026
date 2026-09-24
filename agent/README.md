@@ -63,11 +63,29 @@ In der Weboberfläche gibt es vier Aktionen:
 - **Autostart an/aus** – entfernt bzw. erstellt die Verknüpfung im Windows-Autostart-Ordner. Nur
   mit der installierten `.exe` verfügbar (nicht beim manuellen `npm start`).
 - **Komplett deinstallieren** – entfernt den Autostart-Eintrag, beendet den Agent-Prozess und löscht
-  den gesamten Installationsordner (`%LOCALAPPDATA%\Respawn-Agent`) von diesem PC.
+  den gesamten Installationsordner (`%LOCALAPPDATA%\Respawn-Agent`) von diesem PC. Der erste Klick
+  blendet nur die Rückfrage „Abbrechen / Ja, deinstallieren" ein; entfernt wird erst nach der
+  Bestätigung.
 
 Ist der Port 47813 belegt (z. B. zwei Agenten auf demselben PC), probiert der Agent automatisch die
 nächsten Ports (47814, 47815, …). Tray und Desktop-Verknüpfung verwenden immer den tatsächlich
 gebundenen Port – auch nach einem Agent-Neustart.
+
+## Update-Hinweis
+
+Der Agent aktualisiert sich **nicht** selbst. Der Server teilt ihm in der Antwort auf jede Meldung
+mit, welche Version die Orga erwartet (`EXPECTED_AGENT_VERSION`); weicht sie von der eigenen ab,
+zeigt die Steuerung einen Hinweis mit Link auf das eigene Profil, wo die erwartete Version
+heruntergeladen wird. Der Hinweis nennt beide Versionen und behauptet nicht, die erwartete sei die
+neuere: verglichen wird nur auf Gleichheit. Mehr passiert bewusst nicht: Es wird nichts geladen und nichts ausgeführt,
+die Neuinstallation über `install.bat` bleibt eine bewusste Handlung des Spielers. Damit bleibt
+diese Antwort kein Weg, über den fremder Code auf den Spieler-PC gelangen könnte.
+
+Der Hinweis erscheint erst nach der ersten erfolgreichen Meldung – ein Agent ohne Serververbindung
+behauptet nichts über Updates. Ein Server, der keine oder eine leere Version meldet, schaltet den
+Hinweis ebenfalls ab. Die erwartete Version steht nur im Arbeitsspeicher und wird nach
+einem Neustart neu gelernt. Orga-seitig listet die Bereitschaftsprüfung unter „Agenten" jeden PC
+namentlich auf, der noch eine abweichende Version meldet.
 
 ## Manuelle Einrichtung
 

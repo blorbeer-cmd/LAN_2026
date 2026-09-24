@@ -124,7 +124,9 @@ Zusätzlich schreibt jede Kontolöschung einen hashbasierten Beleg in das append
 den Verlust des ganzen Datenverzeichnisses. Der Betreiber legt das Ziel deshalb auf unabhängig
 gesicherten Speicher; fehlt der Pfad, warnt der Produktionsstart deutlich, bricht aber eine
 laufende Installation nicht ab. Kann das Ledger nicht synchron geschrieben werden, wird die
-Kontolöschung ohne Datenänderung abgebrochen.
+Kontolöschung ohne Datenänderung abgebrochen. Im Docker-Betrieb sind dafür
+`PRIVACY_DELETION_LEDGER_DIR` und `PRIVACY_DELETION_LEDGER_FILE` gemeinsam zu setzen; die
+konkreten Pfade und Rechte stehen in [`server/OPERATIONS.md`](../server/OPERATIONS.md).
 
 ## Betreiberentscheidungen vor Produktion
 

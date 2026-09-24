@@ -2,9 +2,12 @@ import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
 
 // Callers provide trusted action markup; user content must already be escaped.
-export function actionMenuHtml(actions, label) {
+// An optional key gives the menu a stable identity, so a live re-render that
+// restores disclosure state (viewRenderState.js) never mistakes one menu, or
+// another details element, for a different one.
+export function actionMenuHtml(actions, label, { key = null } = {}) {
   if (!actions) return '';
-  return `<details class="action-menu">
+  return `<details class="action-menu"${key ? ` data-action-menu="${escapeHtml(key)}"` : ''}>
     <summary class="btn btn-sm" aria-label="${escapeHtml(label)}">Aktion ${icon('chevronDown')}</summary>
     <div class="action-menu-panel">${actions}</div>
   </details>`;

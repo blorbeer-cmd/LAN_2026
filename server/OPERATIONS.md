@@ -68,14 +68,27 @@ Rückfall erhalten:
 Jede Kontolöschung schreibt vor der SQLite-Änderung einen hashbasierten Beleg synchron in das
 append-only Ledger aus `PRIVACY_DELETION_LEDGER_FILE`. Schlägt die Datenbanktransaktion fehl,
 folgt ein Stornierungseintrag; der Restore berücksichtigt diesen Beleg dann nicht. Ohne gesetzten
-Pfad landet das Ledger neben der
-SQLite-Datei und überlebt damit den unten beschriebenen Restore, aber nicht den Komplettverlust des
+Pfad landet das Ledger neben der SQLite-Datei und überlebt damit den unten beschriebenen Restore,
+aber nicht den Komplettverlust des
 `data`-Volumes; der Produktionsstart warnt in diesem Fall. Für den vollen Schutz gehört das Ziel auf
 ein unabhängig gesichertes Volume, im Docker-Betrieb als separater persistenter Mount im
 App-Container, zum Beispiel vom Hostpfad `/opt/respawn-deletion-ledger` nach `/app/deletion-ledger`.
-Dafür den Mount dauerhaft unter `app.volumes` in `docker-compose.yml` ergänzen und
-`PRIVACY_DELETION_LEDGER_FILE=/app/deletion-ledger/deletion-receipts.jsonl` in
-`/opt/respawn/.env` setzen. Der Restore-Container übernimmt dann denselben Mount und Pfad.
+Der Mount ist in der versionierten `docker-compose.yml` enthalten und übersteht damit das nächste
+Deployment. Für ein separates Volume zuerst das Hostverzeichnis mit Schreibrechten für den
+Container-Benutzer (UID 1000) anlegen, zum Beispiel mit
+`sudo install -d -m 0700 -o 1000 -g 1000 /opt/respawn-deletion-ledger`. Danach in
+`/opt/respawn/.env` beide Werte setzen:
+
+```dotenv
+PRIVACY_DELETION_LEDGER_DIR=/opt/respawn-deletion-ledger
+PRIVACY_DELETION_LEDGER_FILE=/app/deletion-ledger/deletion-receipts.jsonl
+```
+
+Der Restore-Container übernimmt denselben Mount und Pfad. Ohne diese beiden Werte bleibt das
+Ledger wie bisher im `data`-Volume; der zusätzliche Compose-Mount zeigt dann ebenfalls dorthin.
+Wer bisher einen manuell ergänzten Mount verwendete, muss den Hostpfad vor dem nächsten Deployment
+als `PRIVACY_DELETION_LEDGER_DIR` in `.env` übernehmen. Bei einem externen Ledger-Pfad ohne diese
+Angabe verweigert der Produktionsstart den Betrieb, damit keine neue leere Belegdatei entsteht.
 Das Ledger enthält weder Konto-ID noch Name.
 Der zusätzliche Download über `GET /api/privacy/deletion-receipts` bleibt als manuelle
 Kontrollkopie möglich.

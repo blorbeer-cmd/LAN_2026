@@ -5,9 +5,12 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import request from 'supertest';
 import { createTestApp, enableTestTracking } from './testApp';
 import { db } from '../db';
+import { config } from '../config';
 
 const app = createTestApp();
 let apiKey: string;
@@ -60,6 +63,23 @@ test('POST /api/agent/report matches a known process to its game', async () => {
     .send({ processNames: ['explorer.exe', 'CS2.EXE'], agentVersion: '1.0.0' });
   assert.equal(res.status, 200);
   assert.deepEqual(res.body.gameIds, [cs2GameId]);
+  // The report is the only channel the agent has for learning which version
+  // the orga expects; without it the local control panel cannot tell a player
+  // that their install is stale, because the agent never updates itself.
+  assert.equal(res.body.expectedAgentVersion, config.expectedAgentVersion);
+});
+
+// Nothing in the code couples the version the server announces to the agent
+// build actually shipped by the download route, yet the whole hint only works
+// while the two agree: a forgotten bump on either side tells every up-to-date
+// player their install deviates, or leaves a stale one unwarned.
+test('the default expectedAgentVersion matches the shipped agent manifest', {
+  skip: process.env.EXPECTED_AGENT_VERSION ? 'EXPECTED_AGENT_VERSION overrides the default' : false,
+}, () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '..', '..', '..', 'agent', 'package.json'), 'utf8'),
+  ) as { version: string };
+  assert.equal(config.expectedAgentVersion, manifest.version);
 });
 
 test('GET /api/admin/agent-diagnostics exposes the latest agent heartbeat, filtered to configured game processes', async () => {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import fs, { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
@@ -481,6 +481,34 @@ test('self deletion fails closed when the durable ledger is unavailable', async 
     assert.equal(response.status, 503);
     assert.equal(response.body.code, 'deletion_receipt_unavailable');
     assert.ok(db.prepare('SELECT 1 FROM players WHERE id = ?').get(target.id));
+  } finally {
+    mutableConfig.deletionLedgerFile = previousLedger;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a failed ledger sync removes the unconfirmed receipt and keeps the account', (t) => {
+  createTestApp();
+  const target = createMember('Failed Sync');
+  const directory = mkdtempSync(path.join(tmpdir(), 'respawn-deletion-sync-'));
+  const ledger = path.join(directory, 'receipts.jsonl');
+  const previousReceipt = `${JSON.stringify({
+    subjectHash: deletionReceiptHash('already-deleted-account'),
+    deletedAt: 1,
+    action: 'player_deleted',
+  })}\n`;
+  writeFileSync(ledger, previousReceipt);
+  const mutableConfig = config as unknown as { deletionLedgerFile: string };
+  const previousLedger = mutableConfig.deletionLedgerFile;
+  mutableConfig.deletionLedgerFile = ledger;
+  t.mock.method(fs, 'fsyncSync', () => { throw new Error('simulated EIO'); });
+  try {
+    const result = deleteAccount(target.id, target.id);
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.code, 'deletion_receipt_unavailable');
+    assert.ok(db.prepare('SELECT 1 FROM players WHERE id = ?').get(target.id));
+    assert.equal(readFileSync(ledger, 'utf8'), previousReceipt, 'only the unconfirmed tail is removed');
+    assert.equal(listDeletionReceipts().some((receipt) => receipt.subjectHash === deletionReceiptHash(target.id)), false);
   } finally {
     mutableConfig.deletionLedgerFile = previousLedger;
     rmSync(directory, { recursive: true, force: true });

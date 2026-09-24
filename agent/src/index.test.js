@@ -23,7 +23,9 @@ const { setPaused } = require('./state');
 // failure case costs the full budget.
 async function waitFor(condition, message, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
-  while (!condition()) {
+  // Awaited so an async probe (an HTTP poll, say) is actually evaluated —
+  // a returned Promise is truthy, which would end the loop on the first turn.
+  while (!(await condition())) {
     if (Date.now() > deadline) throw new Error(`Timeout: ${message}`);
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
@@ -321,6 +323,98 @@ test('shutting the running agent down removes the local control runtime file', a
     );
   } finally {
     agent.kill('SIGKILL');
+    fs.rmSync(installDir, { recursive: true, force: true });
+  }
+});
+
+// Proves the whole hint chain in one go: the server's expectedAgentVersion
+// has to survive a tick and come back out of the control panel's status, or
+// the panel silently never mentions an update. Unit-testing the pieces would
+// miss exactly the wiring that broke before (a value computed but never
+// exposed), so this drives the real entry point and the real HTTP surface.
+test('the control panel reports the agent version the server expects', async () => {
+  const installDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-update-hint-'));
+  const configPath = path.join(installDir, 'agent.config.json');
+  const accessPath = path.join(installDir, '.respawn-control.json');
+
+  // Starts out blank: a server that names no version must not make the panel
+  // announce a mismatch against nothing.
+  let expectedAgentVersion = '   ';
+  let reports = 0;
+  const server = await startFakeServer((req, res, body) => {
+    if (req.url === '/api/agent/process-names') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ processNames: [] }));
+    }
+    reports += 1;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, gameIds: [], tracked: false, trackingPaused: false, expectedAgentVersion }));
+  });
+  const fakeServerUrl = serverUrl(server);
+  fs.writeFileSync(configPath, JSON.stringify({ serverUrl: fakeServerUrl, apiKey: 'hint-test-key', pollIntervalMs: 200 }));
+
+  const agent = spawn(process.execPath, [path.join(__dirname, 'index.js'), configPath], { stdio: 'ignore' });
+  const exited = once(agent, 'exit');
+
+  try {
+    await waitFor(() => fs.existsSync(accessPath), 'the agent never published its control runtime file');
+    const access = JSON.parse(fs.readFileSync(accessPath, 'utf8'));
+
+    // Same handshake the tray and the desktop launcher perform.
+    const launch = await fetch(`${access.origin}/api/launch`, {
+      method: 'POST',
+      headers: { 'X-Respawn-Control-Key': access.accessKey },
+    });
+    assert.equal(launch.status, 200);
+    const { ticket } = await launch.json();
+    const session = await fetch(`${access.origin}/api/session`, {
+      method: 'POST',
+      headers: { Origin: access.origin, 'Sec-Fetch-Site': 'same-origin', 'X-Respawn-Control-Ticket': ticket },
+    });
+    assert.equal(session.status, 204);
+    const cookie = session.headers.getSetCookie()[0].split(';', 1)[0];
+
+    const readStatus = async () => {
+      const res = await fetch(`${access.origin}/api/status`, {
+        headers: { Cookie: cookie, 'Sec-Fetch-Site': 'same-origin' },
+      });
+      return res.json();
+    };
+
+    // Wait on reports actually answered, not on elapsed time: after two of
+    // them the blank value has demonstrably been offered and discarded.
+    await waitFor(() => reports >= 2, 'the agent never reported to the fake server');
+    const blank = await readStatus();
+    assert.equal(blank.expectedAgentVersion, null);
+
+    expectedAgentVersion = '9.9.9';
+    // The value only appears once a report succeeded, so poll for the tick
+    // rather than guessing how long the first one takes.
+    let status;
+    await waitFor(
+      async () => {
+        status = await readStatus();
+        return status.expectedAgentVersion !== null;
+      },
+      'the control panel never picked up the expected version from a report',
+    );
+
+    assert.equal(status.expectedAgentVersion, '9.9.9');
+    assert.equal(status.agentVersion, require('../package.json').version);
+
+    // A successful report from an older server omits this field. It must
+    // clear the previously learned hint rather than leave a stale warning.
+    expectedAgentVersion = undefined;
+    const previousReports = reports;
+    await waitFor(() => reports >= previousReports + 2, 'the agent never reported after the version was omitted');
+    await waitFor(
+      async () => (await readStatus()).expectedAgentVersion === null,
+      'the control panel kept a stale expected version after the server omitted it',
+    );
+  } finally {
+    agent.kill('SIGKILL');
+    await exited.catch(() => {});
+    server.close();
     fs.rmSync(installDir, { recursive: true, force: true });
   }
 });

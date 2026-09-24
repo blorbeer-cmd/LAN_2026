@@ -3,6 +3,14 @@
 
 import path from 'path';
 
+// An empty or whitespace-only override names no version at all. Taking it at
+// face value would mark every installed agent as deviating in the readiness
+// check and make the agent's control panel announce a mismatch against
+// nothing, so a blank value is treated like an unset one.
+export function expectedAgentVersionFrom(raw: string | undefined, fallback: string): string {
+  return (raw ?? '').trim() || fallback;
+}
+
 function intFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -57,6 +65,7 @@ export const config = {
   // from the SQLite database and its backups.
   deletionLedgerFile: configuredDeletionLedgerFile,
   deletionLedgerFileExplicit: Boolean(process.env.PRIVACY_DELETION_LEDGER_FILE),
+  deletionLedgerDirExplicit: Boolean(process.env.PRIVACY_DELETION_LEDGER_DIR),
 
   // Public URL used inside downloaded agent configurations. This is preferred
   // over request-derived URL data when the app sits behind a reverse proxy.
@@ -69,7 +78,7 @@ export const config = {
 
   // Version currently shipped through the agent download. Diagnostics flag
   // clients on another version before a LAN starts.
-  expectedAgentVersion: (process.env.EXPECTED_AGENT_VERSION ?? '1.1.0').trim(),
+  expectedAgentVersion: expectedAgentVersionFrom(process.env.EXPECTED_AGENT_VERSION, '1.1.0'),
 
   // Dedicated shared-kiosk credential. It is read-only except for the narrow
   // same-device Jam recovery route documented in routes/index.ts.
@@ -109,10 +118,13 @@ export const config = {
 // Production needs the recovery secret that bootstraps and recovers the
 // first/last admin. Pure so index.ts can test this without starting.
 export function productionConfigError(
-  cfg: Pick<typeof config, 'adminRecoveryCode'> = config
+  cfg: Pick<typeof config, 'adminRecoveryCode'> & Partial<Pick<typeof config, 'deletionLedgerFile' | 'deletionLedgerDirExplicit'>> = config
 ): string | null {
   if (!cfg.adminRecoveryCode) {
     return 'NODE_ENV=production erfordert ADMIN_RECOVERY_CODE. Server wird nicht gestartet.';
+  }
+  if (cfg.deletionLedgerFile?.startsWith('/app/deletion-ledger/') && !cfg.deletionLedgerDirExplicit) {
+    return 'PRIVACY_DELETION_LEDGER_FILE liegt unter /app/deletion-ledger, aber PRIVACY_DELETION_LEDGER_DIR fehlt. Der dauerhafte Host-Mount muss in .env gesetzt sein.';
   }
   return null;
 }

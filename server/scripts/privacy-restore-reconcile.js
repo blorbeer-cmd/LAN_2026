@@ -41,7 +41,7 @@ try {
     try { document = JSON.parse(content); } catch { /* JSONL is parsed below. */ }
     if (document?.format === 'respawn-deletion-receipts' && document.version === 1 && Array.isArray(document.receipts)) {
       receipts = document.receipts;
-    } else if (document !== undefined) {
+    } else if (document?.format !== undefined) {
       throw new Error('Datei hat kein unterstütztes Respawn-Format.');
     } else {
       receipts = parseDeletionLedger(content);

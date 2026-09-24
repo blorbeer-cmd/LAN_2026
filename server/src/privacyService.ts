@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, fsyncSync, mkdirSync, openSync, readFileSync, truncateSync, writeSync } from 'node:fs';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { config } from './config';
@@ -76,11 +76,26 @@ function appendDeletionReceipt(receipt: DeletionReceipt | DeletionCancellation):
   if (!config.deletionLedgerFile) return;
   mkdirSync(path.dirname(config.deletionLedgerFile), { recursive: true, mode: 0o700 });
   const descriptor = openSync(config.deletionLedgerFile, 'a', 0o600);
+  let initialSize: number | undefined;
+  let failed = false;
+  let failure: unknown;
   try {
+    initialSize = fstatSync(descriptor).size;
     writeSync(descriptor, `${JSON.stringify(receipt)}\n`, undefined, 'utf8');
     fsyncSync(descriptor);
+  } catch (error) {
+    failed = true;
+    failure = error;
   } finally {
-    closeSync(descriptor);
+    try { closeSync(descriptor); } catch (error) {
+      if (!failed) { failed = true; failure = error; }
+    }
+  }
+  if (failed) {
+    // Windows does not allow truncation through an append-only descriptor.
+    // Close it first, then remove any line written before fsync failed.
+    if (initialSize !== undefined) truncateSync(config.deletionLedgerFile, initialSize);
+    throw failure;
   }
 }
 

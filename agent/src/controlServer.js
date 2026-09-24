@@ -89,6 +89,22 @@ function renderPage(scriptNonce = randomToken()) {
   input:checked + .slider { background: #34c759; }
   input:disabled + .slider { opacity: 0.4; cursor: not-allowed; }
   input:checked + .slider::before { transform: translateX(18px); }
+  .update-note {
+    background: rgba(255, 159, 10, 0.12); border: 1px solid rgba(255, 159, 10, 0.35);
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; font-size: 0.85rem;
+  }
+  .update-link { display: inline-block; margin-top: 6px; color: #ff9f0a; font-weight: 600; }
+  @media (prefers-color-scheme: light) {
+    .update-link { color: #8a4500; }
+  }
+  /* display: inline-block would otherwise beat the browser's own
+     [hidden] { display: none }, leaving a dead link visible. */
+  .update-link[hidden] { display: none; }
+  .confirm-row { display: flex; gap: 10px; margin-top: 10px; }
+  /* Same reason as above: a display rule on the element itself outranks
+     the browser's [hidden] { display: none }, so the confirmation would
+     stand there permanently instead of only after the first click. */
+  .confirm-row[hidden] { display: none; }
   .danger-zone { margin-top: 22px; padding-top: 16px; border-top: 1px solid rgba(255,69,58,0.25); }
   .hint { font-size: 0.78rem; opacity: 0.55; margin-top: 2px; }
   #msg { font-size: 0.82rem; margin-top: 14px; min-height: 1em; }
@@ -99,6 +115,11 @@ function renderPage(scriptNonce = randomToken()) {
     <h1>Respawn-Agent</h1>
     <p class="sub" id="serverUrl">wird geladen…</p>
     <div class="badge" id="statusBadge">…</div>
+
+    <div class="update-note" id="updateNote" hidden>
+      <div id="updateText"></div>
+      <a class="update-link" id="updateLink" rel="noreferrer">Passende Version im Profil herunterladen</a>
+    </div>
 
     <div class="row">
       <div>
@@ -132,7 +153,7 @@ function renderPage(scriptNonce = randomToken()) {
 
     <div class="danger-zone">
       <button class="btn-danger" id="uninstallBtn">🗑 Agent komplett deinstallieren</button>
-      <div id="uninstallConfirmRow" style="display:flex;gap:10px;margin-top:10px;" hidden>
+      <div class="confirm-row" id="uninstallConfirmRow" hidden>
         <button class="btn-cancel" id="uninstallCancelBtn" style="flex:1;">Abbrechen</button>
         <button class="btn-danger" id="uninstallConfirmBtn" style="width:auto;flex:1;">Ja, deinstallieren</button>
       </div>
@@ -166,11 +187,42 @@ async function controlFetch(path, options) {
   return fetch(path, options);
 }
 
+// Purely informational: the agent never updates itself, so this only tells
+// the player that a newer build exists and where to get it. Everything is set
+// via textContent and a validated href -- the version strings come from the
+// server, so they are treated as text, never as markup.
+function renderUpdateNote(s) {
+  const note = document.getElementById('updateNote');
+  const stale = typeof s.expectedAgentVersion === 'string'
+    && typeof s.agentVersion === 'string'
+    && s.expectedAgentVersion !== s.agentVersion;
+  if (!stale) { note.hidden = true; return; }
+
+  document.getElementById('updateText').textContent =
+    'Abweichende Agent-Version: die Orga erwartet ' + s.expectedAgentVersion
+    + ' (installiert: ' + s.agentVersion + '). Der Agent aktualisiert sich nicht selbst.';
+
+  const link = document.getElementById('updateLink');
+  // Only ever link somewhere the config actually points at, and only over
+  // http/https -- a javascript: URL in a hand-edited config must not become a
+  // clickable action inside this page.
+  let profileUrl = null;
+  try {
+    const parsed = new URL(s.serverUrl);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') profileUrl = parsed.origin + '/#profile';
+  } catch { profileUrl = null; }
+  if (profileUrl) { link.href = profileUrl; link.hidden = false; }
+  else link.hidden = true;
+
+  note.hidden = false;
+}
+
 async function loadStatus() {
   const res = await controlFetch('/api/status');
   if (!res.ok) throw new Error('Bitte die Steuerung über das Tray-Icon oder die Desktop-Verknüpfung öffnen.');
   const s = await res.json();
   document.getElementById('serverUrl').textContent = 'Server: ' + s.serverUrl;
+  renderUpdateNote(s);
   const badge = document.getElementById('statusBadge');
   badge.textContent = s.paused ? '⏸ Pausiert' : '▶ Aktiv – trackt';
   badge.className = 'badge ' + (s.paused ? 'paused' : 'playing');

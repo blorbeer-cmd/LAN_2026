@@ -75,6 +75,38 @@ test('restore reconciliation previews and reapplies hash-only account deletions 
   }
 });
 
+test('production Compose keeps the optional ledger mount across deployments', async () => {
+  const compose = await readFile(path.join(scriptDir, '..', '..', 'docker-compose.yml'), 'utf8');
+  assert.match(compose, /\$\{PRIVACY_DELETION_LEDGER_DIR:-\.\/data\}:\/app\/deletion-ledger/);
+});
+
+test('restore preview ignores a receipt whose sync failed before account deletion', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'respawn-privacy-sync-failure-'));
+  const database = path.join(directory, 'restore.sqlite');
+  const ledger = path.join(directory, 'deletion-receipts.jsonl');
+  const env = { ...process.env, DB_FILE: database, NODE_ENV: 'test', PRIVACY_DELETION_LEDGER_FILE: ledger };
+  try {
+    const outcome = JSON.parse(execFileSync(process.execPath, ['-e', `
+      const fs = require('node:fs');
+      const { db } = require(${JSON.stringify(dbModule)});
+      const { deleteAccount } = require(${JSON.stringify(privacyServiceModule)});
+      db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+        .run('sync-failed-player', 'Still Here', 'sync-failed-key', Date.now());
+      const originalSync = fs.fsyncSync;
+      fs.fsyncSync = () => { throw new Error('simulated EIO'); };
+      const result = deleteAccount('sync-failed-player');
+      fs.fsyncSync = originalSync;
+      console.log(JSON.stringify({ code: result.code, stillExists: Boolean(db.prepare('SELECT 1 FROM players WHERE id = ?').get('sync-failed-player')) }));
+      db.close();
+    `], { env, encoding: 'utf8' }));
+    assert.deepEqual(outcome, { code: 'deletion_receipt_unavailable', stillExists: true });
+    assert.equal(await readFile(ledger, 'utf8'), '');
+    assert.equal(run(['--preview'], env).restoredAccountsToDelete, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('restore preview uses the default ledger and refuses a missing ledger', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'respawn-privacy-default-ledger-'));
   const database = path.join(directory, 'restore.sqlite');
@@ -91,6 +123,8 @@ test('restore preview uses the default ledger and refuses a missing ledger', asy
     await writeFile(ledger,
       `${JSON.stringify({ subjectHash, deletedAt: Date.now(), action: 'player_self_deleted', attemptId: 'failed-attempt' })}\n`);
     assert.equal(run(['--preview'], env).restoredAccountsToDelete, 1);
+    assert.equal(run(['--preview', ledger], env).restoredAccountsToDelete, 1,
+      'a single JSONL receipt is accepted as an explicit restore source');
     await appendFile(ledger, `${JSON.stringify({ cancelledAttemptId: 'failed-attempt' })}\n`);
     assert.equal(run(['--preview'], env).restoredAccountsToDelete, 0);
   } finally {

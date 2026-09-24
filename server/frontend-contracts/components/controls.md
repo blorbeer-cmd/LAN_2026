@@ -403,7 +403,8 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `arrival-sort-mobile`, `interactive-chip`, `invite-link-controls`, `admin-test-fields` | Bestehende Formular-/Sortierkontexte behalten Platzierung und kurze eigene Labels bei 32 px. |
 | `team-move-picker`, `vote-start-field` | Der transparente Team-Picker füllt seinen Iconplatz; das Info-Feld hat im einzeiligen Startformular die Höhe des Titelfelds. |
 | `data-row-name`, `data-row-action-label` | Nur der Name ellipsiert; die vollständige kurze Aktion stapelt unter 320 px. |
-| `food-position-slots`, `food-payment-marker`, `food-header` | Passende Aktions-/Leerplätze, 32-px-Zahlungsaktion und permanenter 44-px-Kartenkopf. |
+| `food-position-slots`, `food-payment-marker`, `food-header` | Gleich breite Aktionsplätze der Personenzeile, 32-px-Zahlungsaktion und permanenter 44-px-Kartenkopf. |
+| `food-open-section-action`, `food-amount-copy`, `food-inline-remove` | Die Kopfaktion der offenen Bestellungen bricht nicht um; Kopieren steht als 32-px-Quadrat vor dem Betrag; Löschen einer eigenen Position ist ein zeilenhohes Symbol hinter dem Gericht. |
 | `vote-submitted-state` | Nichtinteraktive Bestätigung mit Statusinhalt. |
 | `arcade-toolbar-buttons`, `challenge-test-disclosure` | Standardhöhe mit echtem Textumbruch; Segment-/Erstellungsgeometrie bleibt beim Pilotvertrag. |
 | `topbar-title`, `desktop-navigation`, `page-heading`, `subpage-heading`, `tabbed-subpage-heading`, `section-heading`, `section-title` | Bestehende 44-px-Kopf-/Navigationszeilen und mehrzeilige Headerreservierungen. |
@@ -478,7 +479,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:payment-controls`: 32px payment/copy actions; icon actions inherit the shared minimum width.
 
-- `registry:food-action-slots`: Composite position row reserves matching 44 by 32px action and empty slots.
+- `registry:food-action-slots`: Group-row icon actions keep 44 by 32px slots; the position remove action is an inline icon after the dish.
 
 - `registry:food-disclosure`: Card/roster heading and person plus metadata form a composite, optionally multiline disclosure.
 
@@ -593,11 +594,17 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:data-row-action-label`: Short application action stays nowrap; below 320px the whole action moves to row two.
 
-- `registry:food-position-slots`: Matching action/spacer slots in a composite position row.
+- `registry:food-position-slots`: Group-row icon actions share one 44px slot width, so every row of an order card keeps the same controls column.
 
 - `registry:food-payment-marker`: Group paid marker keeps the same 32px action line.
 
 - `registry:food-header`: Permanent 44px card header row, including its disclosure and other actions.
+
+- `registry:food-open-section-action`: The primary header action stays on one line; the section title wraps on phones instead.
+
+- `registry:food-amount-copy`: The copy action directly before an amount is a 32px square, so person sums and the total share one right-aligned amount column.
+
+- `registry:food-inline-remove`: The own position remove action sits inline after the dish name, exactly one text line high with a 14px glyph, so position rows keep a single amount column.
 
 - `registry:vote-submitted-state`: Noninteractive confirmation is a status surface and may contain icon plus status copy.
 

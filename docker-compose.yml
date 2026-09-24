@@ -25,6 +25,9 @@ services:
       - "3000"
     volumes:
       - ./data:/app/data
+      # A configured host ledger directory survives deploys because this
+      # versioned mount is reapplied when docker-compose.yml is overwritten.
+      - ${PRIVACY_DELETION_LEDGER_DIR:-./data}:/app/deletion-ledger
     logging:
       driver: local
       options:
