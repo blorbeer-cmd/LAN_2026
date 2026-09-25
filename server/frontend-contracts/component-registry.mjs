@@ -292,7 +292,7 @@ export const components = [
   {
     "id": "row-icons",
     "role": "standard-control",
-    "selector": ".tournament-lobby-copy, .notification-center-seen, .notification-center-remove, .notification-highlight-dismiss",
+    "selector": ".tournament-lobby-copy, .notification-center-remove, .notification-highlight-dismiss",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "Copy, dismiss and detail actions retain their 44px icon slot."
@@ -314,6 +314,31 @@ export const components = [
     "purpose": "To-Do title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and struck through once done.",
     "properties": [
       "max-width",
+      "padding"
+    ]
+  },
+  {
+    "id": "broadcast-table-open",
+    "role": "composite-part",
+    "selector": ".broadcast-table-open",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Durchsage message opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and muted once past.",
+    "properties": [
+      "max-width",
+      "padding",
+      "white-space"
+    ]
+  },
+  {
+    "id": "notification-center-open",
+    "role": "composite-part",
+    "selector": ".notification-center-open",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "The whole notification text block is the link that opens its target and marks it read; it reads as text, not as a button.",
+    "properties": [
+      "min-width",
       "padding"
     ]
   },
@@ -1455,6 +1480,28 @@ export const permanentVariants = [
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "reason": "Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.",
+    "properties": [
+      "width"
+    ]
+  },
+  {
+    "id": "broadcast-table-action",
+    "role": "standard-control",
+    "selector": ".broadcast-table-action > .btn",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Beenden fills the fixed Durchsage action column, so it lines up from row to row.",
+    "properties": [
+      "width"
+    ]
+  },
+  {
+    "id": "broadcast-send",
+    "role": "standard-control",
+    "selector": ".broadcast-form-footer > .btn",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Senden is exactly as wide as the time field above it, so the form ends flush on one right edge.",
     "properties": [
       "width"
     ]

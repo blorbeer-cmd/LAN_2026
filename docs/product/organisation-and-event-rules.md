@@ -14,11 +14,18 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
 
 ## Durchsagen, Bestellungen und Orga
 
-- **Broadcasts** — „Neue Durchsage“ and the recent history are separate grouped sections. Delivery
-  channels live in the shared contextual tooltip directly beside „Neue Durchsage“ instead of a
-  persistent explanation below the form. Recent broadcasts live in one standard, initially
-  collapsed „Historie“ section whose open state survives live re-renders; its entries use the
-  responsive two-column row grid.
+- **Broadcasts** — The page holds three grouped sections: „Neue Durchsage“, „Aktuell“ and
+  „Historie“. The form puts „Nachricht“ (a one-line textarea that grows with line breaks;
+  Ctrl/Cmd+Enter sends) and „Sichtbar bis“ in one row, stacked on phones, and ends with a compact
+  „Senden“ as wide as the time field. „Aktuell“ always shows the running broadcasts and collapses
+  to the one-row empty card „Keine laufende Durchsage“. „Historie“ holds ended and expired
+  broadcasts, starts collapsed, keeps its open state across live re-renders and is omitted while
+  empty. Both use one calm table without column headers: the message cut at 40 characters (line
+  breaks shown as „ · “), the sender (one's own name bold), a short state text („Bis 07:43 Uhr“,
+  „Beendet …“, „Abgelaufen …“) and a fixed action column with a neutral „Beenden“ for one's own
+  running broadcasts. The whole row opens a detail dialog with the full message, its line breaks,
+  sender and times, where the creator can also end it. The Kiosk banner shows the message on up to
+  two lines.
 - **Food orders** — Open and historical orders use one full-width nested card per row with the
   standard hairline border and no accent rails or state badges. The card header holds the title and,
   for the creator or an admin, the next lock step as a compact neutral button (`Abschicken` for an
