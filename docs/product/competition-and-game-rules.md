@@ -79,7 +79,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   claims the draw in the same transaction that creates the tournament, so one lineup becomes either
   a single result or a tournament, never both (`409` for the loser of a race). Recording and editing share one compact result dialog: one
   button per team plus „Unentschieden“ saves immediately, or „Mit Werten eintragen“ takes one value
-  per team from which the winner (unique highest value) and the places follow. Editing updates the
+  per team from which the winner (unique highest value) and the places follow. An empty value field
+  counts as its „0“ placeholder; only a dialog without any entered value is rejected. Editing updates the
   existing match instead of creating a duplicate result, and „Rematch“ opens the same dialog. The
   free result form with game choice and „Frei-für-alle“ stays in Auswertung.
   A drawn lineup moves players by drag and drop on desktop; touch and phone layouts additionally
@@ -324,6 +325,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   Every identity can submit only once per round: the server enforces this atomically with `409`,
   empty points submissions are invalid, and the client replaces the submit action with a green
   „Bewertung/Stimme abgegeben“ state while locking that identity's controls.
+  A cancelled round is deleted together with its votes and the next round may reuse its number, so
+  the client tells rounds apart by number and start time and never carries a cancelled round's
+  picks over.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
   closed and retains its open state across live re-renders.
 - **Tournament overview** — the „Turniere“ tab in the „Match“ area, whose first/default tab is
@@ -350,9 +354,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   emphasized and losers muted, with a green winner score or a „‹ Win“/„Win ›“ chip without a score.
   Tables show #, Team, Sp, S, U, N, +/− (only with scores) and Pkt; advancing group teams carry a
   „weiter“ marker. Every result action sits in a fixed trailing slot („+“ open, pencil recorded)
-  and opens one shared result dialog: two score fields, or one button per team plus
+  and opens one shared result dialog: two score fields (an empty one counts as its „0“ placeholder,
+  but at least one must be filled), or one button per team plus
   „Unentschieden“ (not in knockout matches) that saves immediately. A decided final adds a
-  „Sieger“ box in the primary gradient beside the bracket. „Aktive Lobbys“ is one card with its
+  „Sieger“ box in the primary gradient beside the bracket. The last result completes the
+  tournament automatically (no separate „Beenden“ action): a toast names the winner and the
+  detail page then leads with a „Turnier beendet“ card showing the winning team (knockout final
+  winner, or the league leader) with its „Win“ chip and players. „Aktive Lobbys“ is one card with its
   heading inside; each currently playable pairing is a flat hairline row with the matchup, a muted
   line naming phase and hosting team („Halbfinale · Team 1 eröffnet“) and, on the right, the lobby
   name and password as non-wrapping code chips with equal-width labels. A stored lobby base name

@@ -16,6 +16,7 @@ import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { teamMoveControlHtml } from '../tournamentTeamDraft.js';
 import { filterRosterPicker, pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
+import { parseResultScores, resultScoreInputValue } from '../resultScores.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -305,12 +306,15 @@ function openDrawResultDialog(draw, ctx) {
   });
   valuesEl.addEventListener('submit', (event) => {
     event.preventDefault();
-    const scores = draw.teams.map((_, index) => {
-      const raw = el.querySelector(`[data-draw-score="${index}"]`).value;
-      return raw === '' ? null : Number(raw);
-    });
-    if (scores.some((score) => score === null || !Number.isFinite(score))) {
-      showToast('Bitte für jedes Team einen Wert eintragen.', { error: true });
+    const scores = parseResultScores(
+      draw.teams.map((_, index) => resultScoreInputValue(el.querySelector(`[data-draw-score="${index}"]`))),
+    );
+    if (!scores) {
+      showToast('Bitte mindestens einen Wert eintragen.', { error: true });
+      return;
+    }
+    if (scores.some((score) => !Number.isFinite(score))) {
+      showToast('Bitte nur Zahlen als Werte eintragen.', { error: true });
       return;
     }
     // Places follow the values (ties share a place); a unique top value wins.
