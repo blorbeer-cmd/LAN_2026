@@ -2968,3 +2968,174 @@ input.food-order-price-input {
     display: inline-flex;
   }
 }
+
+/* Durchsage: form with message and end time in one row, and the running
+   and past broadcasts as one calm table without column headers. */
+.broadcast-form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+@media (min-width: 640px) { /* --bp-md */
+  .broadcast-form-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+  }
+}
+/* Starts as one line like every other field and grows with line breaks. */
+#broadcast-message {
+  display: block;
+  field-sizing: content;
+  min-height: var(--control-height);
+  max-height: calc(var(--control-height) * 5);
+  resize: none;
+}
+.broadcast-form-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+/* As wide as the time field above it (.dt-time-input), so the button ends
+   the form flush with the field. */
+.broadcast-form-footer > .btn {
+  width: 88px;
+}
+.broadcast-table-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 10rem) 13rem 7rem;
+  align-items: center;
+  gap: var(--space-3);
+  position: relative;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.broadcast-table-row:last-child {
+  padding-bottom: 0;
+}
+/* Every cell keeps the button height, so rows with and without "Beenden"
+   are equally high and all texts share one center line. */
+.broadcast-table-row > [role='cell'] {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--control-height);
+}
+.broadcast-table-sender > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.broadcast-table-sender,
+.broadcast-table-when {
+  font-size: var(--font-size-sm);
+}
+.broadcast-table-when {
+  color: var(--text-muted);
+}
+.broadcast-table-me {
+  font-weight: var(--font-weight-bold);
+}
+.broadcast-table-action {
+  justify-content: flex-end;
+}
+.broadcast-table-action > .btn {
+  position: relative;
+  width: 100%;
+}
+/* The message opens the details; it reads as text, not as a button, and its
+   hit area covers the whole row. */
+.broadcast-table-open {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  cursor: pointer;
+}
+.broadcast-table-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.broadcast-table-row.is-past .broadcast-table-open {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-regular);
+}
+@media (hover: hover) {
+  .broadcast-table-row:hover .broadcast-table-open {
+    color: var(--accent);
+  }
+}
+@media (max-width: 639px) { /* --bp-md */
+  /* Message and action fill the first line; sender and time follow as one
+     compact line. */
+  .broadcast-table-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-2) 0;
+  }
+  .broadcast-table-message {
+    flex: 1 1 calc(100% - 7rem - var(--space-2));
+  }
+  .broadcast-table-action {
+    flex: 0 0 7rem;
+    order: 1;
+  }
+  .broadcast-table-sender,
+  .broadcast-table-when {
+    order: 2;
+  }
+  .broadcast-table-action:empty {
+    display: none !important;
+  }
+  .broadcast-table-row:has(> .broadcast-table-action:empty) > .broadcast-table-message {
+    flex-basis: 100%;
+  }
+  .broadcast-table-row > .broadcast-table-sender,
+  .broadcast-table-row > .broadcast-table-when {
+    min-height: 0;
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+  }
+  .broadcast-table-when::before {
+    content: '·';
+    margin-right: var(--space-2);
+  }
+}
+/* Detail dialog: the full message keeps its line breaks, the facts follow as
+   hairline rows with a muted label column. */
+.broadcast-detail-message {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.broadcast-detail-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+.broadcast-detail-facts dt,
+.broadcast-detail-facts dd {
+  margin: 0;
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--border);
+}
+.broadcast-detail-facts dt {
+  padding-right: var(--space-5);
+  color: var(--text-muted);
+}
+.modal.broadcast-detail-modal {
+  max-width: 400px;
+}
+.broadcast-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+}

@@ -454,6 +454,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:checklist-item-remove`: Packliste remove action keeps the 44px icon slot, muted, and only renders while the list is in editing mode.
 
 - `registry:checklist-task-title`: To-Do title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and struck through once done.
+- `registry:broadcast-table-open`: Durchsage message opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and muted once past.
+- `registry:notification-center-open`: The whole notification text block is the link that opens its target and marks it read; it reads as text, not as a button.
 
 - `registry:game-catalog-suggest`: Spiel vorschlagen closes the catalog tab row; below --bp-sm it collapses to a 32 by 32px plus with the same accessible name.
 
@@ -570,6 +572,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:poll-selected-answer`: The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.
 
 - `registry:checklist-table-action`: Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.
+- `registry:broadcast-table-action`: Beenden fills the fixed Durchsage action column, so it lines up from row to row.
+- `registry:broadcast-send`: Senden is exactly as wide as the time field above it, so the form ends flush on one right edge.
 
 - `registry:checklist-choice-selected`: The chosen To-Do kind is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base variant.
 

@@ -88,29 +88,28 @@ export function entryHtml(entry) {
   const target = feedLinkTarget(entry.url);
   const obsolete = isFeedEntryObsolete(entry);
   const unread = !entry.seen && !obsolete;
-  const directBadge = entry.audience === 'direct' ? '<span class="badge badge-paused">Für dich</span>' : '';
-  const eventBadge = entry.eventName
-    ? `<span class="badge badge-event">${escapeHtml(entry.eventName)}</span>`
-    : '';
-  const obsoleteBadge = obsolete
-    ? `<span class="badge badge-neutral">${entry.resolvedAt ? 'Obsolet' : 'Abgelaufen'}</span>`
-    : '';
+  // Event, audience and state share one muted meta line instead of pills.
+  const meta = [
+    entry.eventName ? escapeHtml(entry.eventName) : '',
+    `${formatDateTime(entry.createdAt)} Uhr`,
+    entry.audience === 'direct' ? 'Für dich' : '',
+    obsolete ? (entry.resolvedAt ? 'Beendet' : 'Abgelaufen') : '',
+  ].filter(Boolean).join(' · ');
+  // The whole entry is the link: opening it marks it read. Entries without a
+  // target view are only marked read.
+  const openAttrs = view
+    ? `data-notification-navigate="${view}" data-notification-target="${escapeHtml(target?.id ?? '')}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" aria-label="${escapeHtml(`${feedEntryTitle(entry)}: ${FEED_LINK_LABELS[view]}`)}"`
+    : 'data-notification-mark-seen';
   return `<article class="notification-center-entry${unread ? ' is-unread' : ''}${obsolete ? ' is-obsolete' : ''}" data-notification-entry="${entry.id}">
-    <div class="row-between notification-center-entry-head">
-      <span class="row notification-center-entry-title">
+    <button type="button" class="notification-center-open" ${openAttrs} data-notification-id="${entry.id}">
+      <span class="notification-center-entry-title">
         <span class="notification-center-entry-icon">${icon(feedEntryIcon(entry))}</span>
-        <strong>${escapeHtml(feedEntryTitle(entry))}</strong>${eventBadge}${directBadge}${obsoleteBadge}
+        <span class="notification-center-entry-name">${escapeHtml(feedEntryTitle(entry))}</span>${unread ? '<span class="visually-hidden">, ungelesen</span>' : ''}
       </span>
-      <time class="muted notification-center-time">${formatDateTime(entry.createdAt)}</time>
-    </div>
-    <div class="muted notification-center-body">${escapeHtml(entry.body)}</div>
-    <div class="notification-center-actions">
-      ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-target="${escapeHtml(target?.id ?? '')}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
-      <span class="notification-center-entry-tools">
-        ${unread ? `<button type="button" class="icon-btn notification-center-seen" data-notification-seen="${entry.id}" aria-label="Als gelesen markieren" title="Als gelesen markieren">${icon('circleCheck')}</button>` : ''}
-        <button type="button" class="icon-btn notification-center-remove" data-notification-hide="${entry.id}" aria-label="Mitteilung entfernen" title="Mitteilung entfernen">${icon('trash')}</button>
-      </span>
-    </div>
+      <span class="notification-center-body">${escapeHtml(entry.body)}</span>
+      <span class="notification-center-meta">${meta}</span>
+    </button>
+    <button type="button" class="icon-btn notification-center-remove" data-notification-hide="${entry.id}" aria-label="Mitteilung entfernen" title="Mitteilung entfernen">${icon('trash')}</button>
   </article>`;
 }
 
@@ -307,14 +306,11 @@ export function renderBanner() {
       </div>
     </div>
     ${panelContentHtml(myId)}
-    ${entries.length > 0 ? (() => {
-      const hasObsolete = entries.some((entry) => isFeedEntryObsolete(entry));
-      return `<div class="notification-center-toolbar${hasObsolete ? ' notification-center-toolbar--3' : ''}">
-      ${hasObsolete ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Obsolete aufräumen</button>' : ''}
+    ${entries.length > 0 ? `<div class="notification-center-toolbar">
+      ${entries.some((entry) => isFeedEntryObsolete(entry)) ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Aufräumen</button>' : ''}
       <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen || isFeedEntryObsolete(entry)) ? 'disabled' : ''}>Alle gelesen</button>
-      <button type="button" class="btn btn-sm btn-danger" data-notifications-hide-all>Alle löschen</button>
-    </div>`;
-    })() : ''}
+      <button type="button" class="btn btn-sm" data-notifications-hide-all>Alle löschen</button>
+    </div>` : ''}
   `;
 
   panel.querySelector('[data-notification-close]')?.addEventListener('click', () => {
@@ -324,8 +320,8 @@ export function renderBanner() {
   panel.querySelector('[data-notifications-hide-resolved]')?.addEventListener('click', hideResolvedEntries);
   panel.querySelector('[data-notifications-seen-all]')?.addEventListener('click', markAllSeen);
   panel.querySelector('[data-notifications-hide-all]')?.addEventListener('click', hideAllEntries);
-  panel.querySelectorAll('[data-notification-seen]').forEach((control) => {
-    control.addEventListener('click', () => markSeen(control.dataset.notificationSeen));
+  panel.querySelectorAll('[data-notification-mark-seen]').forEach((control) => {
+    control.addEventListener('click', () => markSeen(control.dataset.notificationId));
   });
   panel.querySelectorAll('[data-notification-hide]').forEach((control) => {
     control.addEventListener('click', () => hideEntry(control.dataset.notificationHide));

@@ -46,15 +46,21 @@ test('a resolved entry never reads as unread, even before it was opened', () => 
 
   assert.doesNotMatch(html, /is-unread/);
   assert.match(html, /is-obsolete/);
-  assert.match(html, /badge-neutral">Obsolet</);
-  assert.doesNotMatch(html, /notification-center-seen/, 'the redundant "mark as seen" action is hidden once obsolete');
+  assert.match(html, /notification-center-meta">[^<]*· Beendet</);
 });
 
 test('an expired-but-unresolved entry is labeled distinctly from a resolved one', () => {
   const html = entryHtml({ ...baseEntry, seen: false, resolvedAt: null, expiresAt: Date.now() - 1000 });
 
   assert.match(html, /is-obsolete/);
-  assert.match(html, /badge-neutral">Abgelaufen</);
+  assert.match(html, /notification-center-meta">[^<]*· Abgelaufen</);
+});
+
+test('an entry without a target view is only marked read when opened', () => {
+  const html = entryHtml({ ...baseEntry, url: null, seen: false });
+
+  assert.match(html, /data-notification-mark-seen/);
+  assert.doesNotMatch(html, /data-notification-navigate/);
 });
 
 test('an obsolete entry keeps its navigate action and remove button', () => {
@@ -69,5 +75,5 @@ test('a still-open entry with a future expiry is unaffected', () => {
 
   assert.match(html, /is-unread/);
   assert.doesNotMatch(html, /is-obsolete/);
-  assert.doesNotMatch(html, /badge-neutral/);
+  assert.doesNotMatch(html, /Beendet|Abgelaufen/);
 });

@@ -13,7 +13,7 @@ import {
 } from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { openModal } from '../modal.js';
 
 let historyCache = null;
 let historyLoading = false;
@@ -47,33 +47,108 @@ export function invalidateBroadcasts({ hard = false } = {}) {
   if (hard) historyCache = null;
 }
 
-function renderHistory(myId) {
-  if (historyCache === null) {
-    return emptyStateHtml('Lädt…', { className: 'empty-state-compact' });
-  }
-  if (historyCache.length === 0) {
-    return emptyStateHtml('Noch keine Durchsagen.');
-  }
-  const now = Date.now();
-  const rows = historyCache
-    .map((b) => {
-      const active = !b.endedAt && b.endsAt > now;
-      const status = b.endedAt
-        ? `Beendet am ${formatDateTime(b.endedAt)} Uhr`
-        : active
-          ? `Sichtbar bis ${formatDateTime(b.endsAt)} Uhr`
-          : `Abgelaufen am ${formatDateTime(b.endsAt)} Uhr`;
-      return `
-      <div class="lb-row" style="align-items:flex-start;" data-broadcast="${b.id}">
-        <div class="stack" style="gap:var(--space-1);flex:1;">
-          <div><strong>${escapeHtml(b.playerName)}</strong>: ${escapeHtml(b.message)}</div>
-          <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(b.createdAt)} Uhr · ${status}</span>
-        </div>
-        ${active && b.playerId === myId ? `<button type="button" class="btn btn-sm btn-danger" data-end-broadcast="${b.id}">Beenden</button>` : ''}
-      </div>`;
-    })
-    .join('');
-  return `<div class="leaderboard-list-grid">${rows}</div>`;
+function isActive(b, now = Date.now()) {
+  return !b.endedAt && b.endsAt > now;
+}
+
+function sameDay(a, b) {
+  const da = new Date(a);
+  const db = new Date(b);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+function clockTime(timestampMs) {
+  return new Date(timestampMs).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Short state text for the table row: a running broadcast names only its end
+// (the clock time alone while that is still today), a past one says how it ended.
+function whenText(b, now = Date.now()) {
+  if (b.endedAt) return `Beendet ${formatDateTime(b.endedAt)} Uhr`;
+  if (b.endsAt <= now) return `Abgelaufen ${formatDateTime(b.endsAt)} Uhr`;
+  return `Bis ${sameDay(b.endsAt, now) ? clockTime(b.endsAt) : formatDateTime(b.endsAt)} Uhr`;
+}
+
+// The row shows one calm line like the To-Do table: line breaks become
+// separators and long messages are cut at a fixed length. The detail dialog
+// shows the full text.
+const MESSAGE_PREVIEW_LENGTH = 40;
+function previewText(message) {
+  const line = message.replace(/\s*\n\s*/g, ' · ');
+  return line.length > MESSAGE_PREVIEW_LENGTH ? `${line.slice(0, MESSAGE_PREVIEW_LENGTH).trimEnd()}…` : line;
+}
+
+function canEnd(b, myId) {
+  return Boolean(myId) && b.playerId === myId && isActive(b);
+}
+
+// One table row per broadcast: message, sender, time and one fixed action
+// column. The whole row opens the detail dialog.
+function renderRow(b, myId) {
+  const past = !isActive(b);
+  const sender = b.playerId === myId
+    ? `<strong class="broadcast-table-me">${escapeHtml(b.playerName)}</strong>`
+    : escapeHtml(b.playerName);
+  const action = canEnd(b, myId)
+    ? `<button type="button" class="btn btn-sm" data-end-broadcast="${b.id}">Beenden</button>`
+    : '';
+  return `
+    <div class="broadcast-table-row${past ? ' is-past' : ''}" role="row" data-broadcast="${b.id}">
+      <div class="broadcast-table-message" role="cell">
+        <button type="button" class="broadcast-table-open" data-broadcast-detail="${b.id}" title="${escapeHtml(b.message)}">${escapeHtml(previewText(b.message))}</button>
+      </div>
+      <div class="broadcast-table-sender" role="cell"><span>${sender}</span></div>
+      <div class="broadcast-table-when" role="cell">${whenText(b)}</div>
+      <div class="broadcast-table-action" role="cell">${action}</div>
+    </div>`;
+}
+
+function tableHtml(entries, myId, label) {
+  return `<div class="broadcast-table" role="table" aria-label="${label}">${entries.map((b) => renderRow(b, myId)).join('')}</div>`;
+}
+
+async function endBroadcast(id, myId, ctx) {
+  await api.broadcasts.end(id, myId);
+  invalidateBroadcasts();
+  showToast('Durchsage beendet.');
+  ctx.rerender();
+}
+
+function openDetail(b, myId, ctx) {
+  const facts = [
+    ['Von', b.playerId === myId ? `<strong>${escapeHtml(b.playerName)}</strong>` : escapeHtml(b.playerName)],
+    ['Gesendet', `${formatDateTime(b.createdAt)} Uhr`],
+    b.endedAt
+      ? ['Beendet', `${formatDateTime(b.endedAt)} Uhr`]
+      : [isActive(b) ? 'Sichtbar bis' : 'Abgelaufen', `${formatDateTime(b.endsAt)} Uhr`],
+  ];
+  const { close } = openModal(
+    'Durchsage',
+    `<div class="stack">
+       <p class="broadcast-detail-message">${escapeHtml(b.message)}</p>
+       <dl class="broadcast-detail-facts">
+         ${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
+       </dl>
+       ${canEnd(b, myId) ? '<div class="broadcast-detail-footer"><button type="button" class="btn btn-sm" data-detail-end>Beenden</button></div>' : ''}
+     </div>`,
+    {
+      onMount: (el) => {
+        el.querySelector('.modal')?.classList.add('broadcast-detail-modal');
+        el.querySelector('[data-detail-end]')?.addEventListener('click', async (event) => {
+          const button = event.currentTarget;
+          if (button.disabled) return;
+          button.disabled = true;
+          try {
+            await endBroadcast(b.id, myId, ctx);
+            close();
+          } catch (err) {
+            button.disabled = false;
+            showToast(err.message, { error: true });
+          }
+        });
+      },
+    }
+  );
 }
 
 export function renderBroadcast(container, ctx) {
@@ -104,6 +179,15 @@ export function renderBroadcast(container, ctx) {
   const parsedEndsAt = prevEndsAtValue ? new Date(prevEndsAtValue).getTime() : NaN;
   const displayEndsAt = Number.isFinite(parsedEndsAt) ? parsedEndsAt : Date.now() + 60 * 60 * 1000;
 
+  const now = Date.now();
+  const active = historyCache?.filter((b) => isActive(b, now)) ?? [];
+  const past = historyCache?.filter((b) => !isActive(b, now)) ?? [];
+  const activeContent = historyCache === null
+    ? emptyStateHtml('Lädt…')
+    : active.length === 0
+      ? emptyStateHtml('Keine laufende Durchsage')
+      : tableHtml(active, myId, 'Aktuelle Durchsagen');
+
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
@@ -113,43 +197,46 @@ export function renderBroadcast(container, ctx) {
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="broadcast-new-title">
         <div class="grouped-page-section-title">
-          <span class="title-with-info">
-            <h2 id="broadcast-new-title">Neue Durchsage</h2>
-            ${infoTooltipHtml(
-              'broadcast-delivery-help',
-              'Neue Durchsage',
-              'Erreicht verbundene Geräte sofort, erscheint auf dem Kiosk und wird an Personen mit aktivierten Push-Mitteilungen gesendet.'
-            )}
-          </span>
+          <h2 id="broadcast-new-title">Neue Durchsage</h2>
         </div>
         <form id="broadcast-form" class="stack">
-          <div>
-            <label for="broadcast-message" class="field-label">Nachricht</label>
-            <input type="text" id="broadcast-message" placeholder="Essen ist da" maxlength="200" ${myId ? '' : 'disabled'} />
+          <div class="broadcast-form-row">
+            <div>
+              <label for="broadcast-message" class="field-label">Nachricht</label>
+              <textarea id="broadcast-message" rows="1" placeholder="Essen ist da" maxlength="200" ${myId ? '' : 'disabled'}></textarea>
+            </div>
+            <div>
+              <label for="broadcast-ends-at-date" class="field-label">Sichtbar bis</label>
+              ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId, label: 'Sichtbar bis' })}
+            </div>
           </div>
-          <div>
-            <label for="broadcast-ends-at-date" class="field-label">Sichtbar bis</label>
-            ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId, label: 'Sichtbar bis' })}
+          <div class="broadcast-form-footer">
+            <button type="submit" class="btn btn-primary btn-sm" ${myId ? '' : 'disabled'}>Senden</button>
           </div>
-          <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>
         </form>
       </section>
+      <section class="card stack grouped-page-section" aria-labelledby="broadcast-active-title">
+        <div class="grouped-page-section-title">
+          <h2 id="broadcast-active-title">Aktuell</h2>
+        </div>
+        ${activeContent}
+      </section>
+      ${past.length > 0 ? `
       <details class="card grouped-page-section collapsible-section" data-broadcast-history ${historyOpen ? 'open' : ''}>
         <summary class="collapsible-section-header">
           <h2>Historie</h2>
           <span class="collapsible-section-summary-end">
-            <span class="badge badge-offline">${historyCache?.length ?? 0}</span>
+            <span class="badge badge-offline">${past.length}</span>
             <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           </span>
         </summary>
-        <div class="collapsible-section-content">${renderHistory(myId)}</div>
-      </details>
+        <div class="collapsible-section-content">${tableHtml(past, myId, 'Historie')}</div>
+      </details>` : ''}
     </div>
   `;
 
   wireDateTimeField(container, 'broadcast-ends-at');
   restoreDateTimeFieldDraft(container, 'broadcast-ends-at', endsAtDraft);
-  wireInfoTooltips(container);
 
   container.querySelector('[data-broadcast-history]')?.addEventListener('toggle', (event) => {
     historyOpen = event.currentTarget.open;
@@ -192,15 +279,27 @@ export function renderBroadcast(container, ctx) {
     }
   });
 
+  // A textarea keeps Enter for line breaks; Ctrl/Cmd+Enter sends.
+  messageInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      container.querySelector('#broadcast-form').requestSubmit();
+    }
+  });
+
+  container.querySelectorAll('[data-broadcast-detail]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const entry = historyCache?.find((b) => b.id === button.dataset.broadcastDetail);
+      if (entry) openDetail(entry, myId, ctx);
+    });
+  });
+
   container.querySelectorAll('[data-end-broadcast]').forEach((button) => {
     button.addEventListener('click', async () => {
       if (!myId || button.disabled) return;
       button.disabled = true;
       try {
-        await api.broadcasts.end(button.dataset.endBroadcast, myId);
-        invalidateBroadcasts();
-        showToast('Durchsage beendet.');
-        ctx.rerender();
+        await endBroadcast(button.dataset.endBroadcast, myId, ctx);
       } catch (err) {
         button.disabled = false;
         showToast(err.message, { error: true });

@@ -233,11 +233,10 @@ flowTest('Durchsage: notification center can navigate, mark read and remove with
   assert.ok(defaultEndsAt <= Date.now() + 65 * 60 * 1000);
   await page.fill('#broadcast-message', 'Essen ist da!');
   await page.click('#broadcast-form button[type="submit"]');
-  // Wait for the durable signal (the entry in "Letzte Durchsagen"), not the
-  // 2.6s confirmation toast — too short-lived to assert on reliably.
+  // Wait for the durable signal (the row in "Aktuell"), not the 2.6s
+  // confirmation toast — too short-lived to assert on reliably.
   try {
-    await page.click('details[data-broadcast-history] summary');
-    await page.waitForSelector('.lb-row >> text=Essen ist da!', { timeout: 8000 });
+    await page.waitForSelector('.broadcast-table-row:has-text("Essen ist da!")', { timeout: 8000 });
   } catch (err) {
     console.error('[debug] view:', (await page.innerText('#view-container')).slice(0, 500));
     console.error('[debug] toasts:', await page.innerText('#toast-container'));
@@ -279,7 +278,7 @@ flowTest('Durchsage: notification center can navigate, mark read and remove with
   await foodNotification.locator('[data-notification-hide]').click();
   await foodNotification.waitFor({ state: 'detached' });
   await page.click('[data-notification-close]');
-  await page.waitForSelector('.lb-row >> text=Essen ist da!');
+  await page.waitForSelector('.broadcast-table-row:has-text("Essen ist da!")');
 
   // Home no longer renders a second notification history in a different
   // style; notifications live only under the bell.
@@ -291,10 +290,19 @@ flowTest('Durchsage: notification center can navigate, mark read and remove with
   await openMoreViewEntry(page, '[data-navigate="broadcast"]');
   await page.fill('#broadcast-message', 'Turnier startet gleich!');
   await page.click('#broadcast-form button[type="submit"]');
-  const activeRow = page.locator('.lb-row:has-text("Turnier startet gleich!")');
+  const activeRow = page.locator('.broadcast-table-row:has-text("Turnier startet gleich!")');
   await activeRow.waitFor();
+  // The whole row opens the details with the full message; the creator can
+  // end it there as well as from the row's fixed action column.
+  await activeRow.locator('[data-broadcast-detail]').click();
+  await page.waitForSelector('.broadcast-detail-message:has-text("Turnier startet gleich!")');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.broadcast-detail-modal', { state: 'detached' });
   await activeRow.locator('[data-end-broadcast]').click();
-  await activeRow.locator('text=Beendet am').waitFor();
+  // An ended broadcast leaves "Aktuell" for the collapsed history.
+  await page
+    .locator('details[data-broadcast-history] .broadcast-table-row:has-text("Turnier startet gleich!")', { hasText: 'Beendet' })
+    .waitFor({ state: 'attached' });
   await page.click('#notifications-btn');
   const endedNotification = page.locator('.notification-center-entry:has-text("Turnier startet gleich!")');
   await endedNotification.waitFor();
@@ -302,7 +310,7 @@ flowTest('Durchsage: notification center can navigate, mark read and remove with
   // server-side (resolvePushTopic in routes/broadcasts.ts): the center shows
   // it as already settled rather than as something still needing attention,
   // even though it was never explicitly marked read.
-  await endedNotification.locator('text=Obsolet').waitFor();
+  await endedNotification.locator('.notification-center-meta:has-text("Beendet")').waitFor();
   assert.ok(!((await endedNotification.getAttribute('class')) ?? '').includes('is-unread'));
   // "Alle gelesen" has nothing to do here either: every visible entry is
   // already obsolete, so it stays disabled instead of offering a click with
@@ -314,8 +322,8 @@ flowTest('Durchsage: notification center can navigate, mark read and remove with
   await endedNotification.waitFor({ state: 'detached' });
   // Earlier flows in this shared fixture may have left their own, unrelated
   // entries in this player's history — clear those the regular way so the
-  // panel is guaranteed empty for the next flow, regardless of what "Obsolete
-  // aufräumen" already removed above.
+  // panel is guaranteed empty for the next flow, regardless of what "Aufräumen"
+  // already removed above.
   if ((await page.locator('.notification-center-entry').count()) > 0) {
     await page.click('[data-notifications-hide-all]');
     // Confirming lands a pointerdown outside `.notification-center`, which the

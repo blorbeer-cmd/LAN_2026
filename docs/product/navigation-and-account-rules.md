@@ -66,12 +66,16 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 - **Notification center** — `.notification-highlight` exposes the newest active unread entry as a
   brand-gradient direct link below the topbar and follows its domain/expiry lifecycle;
   `.notification-center` with `.notification-center-panel`, `.notification-center-toolbar` and
-  `.notification-center-entry` keeps the full personal history plus single/bulk read/remove state;
-  unread entries use the accent edge and elevated background without an additional „Neu“ badge;
-  obsolete entries (their underlying workflow resolved, or their own expiry passed) show a quiet
-  `Obsolet`/`Abgelaufen` badge and never count as unread. The sticky footer holds two bulk actions
-  in equal columns, growing to three equal columns only while at least one obsolete entry is
-  present, which adds a targeted „Obsolete aufräumen“ action ahead of the other two.
+  `.notification-center-entry` keeps the full personal history plus read/remove state. Each entry
+  is one flat row: its whole text block (title, body capped at two lines, one muted meta line with
+  event, time, „Für dich“ and state) is the link that opens the target and marks it read; an entry
+  without a target is only marked read. The remove action keeps a fixed muted column on the right.
+  Unread entries read in full contrast with a bold title, without an accent edge, pill or „Neu“
+  badge; read and obsolete entries recede to muted text. Obsolete entries (their underlying
+  workflow resolved, or their own expiry passed) end their meta line with „Beendet“ or
+  „Abgelaufen“ and never count as unread. The sticky footer holds neutral bulk actions in equal
+  columns across the full width: „Alle gelesen“ and „Alle löschen“ (whose confirmation stays red),
+  preceded by „Aufräumen“ only while at least one obsolete entry is present.
 
 ## Eventauswahl
 
