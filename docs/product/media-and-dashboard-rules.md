@@ -37,31 +37,44 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
 
 ## Jam-Sessions und Analytics
 
-- **Jam sessions** — Jam is a grouped page below „Mehr“. Its page heading always exposes an info
-  tooltip explaining the shared title/playlist workflow, controller lifecycle and that only the
-  controller device needs Spotify. The setup card is shown whenever no controller is paired yet or
+- **Jam sessions** — Jam is a grouped page below „Mehr“. Its page heading carries no info tooltip.
+  The setup card is shown whenever no controller is paired yet or
   the paired one is offline, so the unconfigured state is not silently empty. It presents the complete
-  setup as four ordered steps: prepare the music PC, pair it with Respawn, connect Spotify, then choose
-  the audio output. The pairing step shows the loopback address as a clickable link for the music PC.
+  setup as four numbered hairline rows: start the package on the music PC, pair it with Respawn,
+  connect Spotify, then start the Jam. Step 1 carries „Paket herunterladen“ and step 2 „Code erzeugen“
+  in one fixed, right-aligned column of equally wide compact buttons; the gradient marks the next
+  step (the download for a new setup, the code for a known but offline controller). A generated code
+  replaces that button with the code in regular type plus a copy icon, the step's description adds
+  „10 Minuten gültig“, and the button returns once the code expires. The pairing step shows the
+  loopback address as a clickable link for the music PC. Members without controller rights see one
+  compact empty card instead of the steps.
   A dedicated local controller on the
   playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant
-  starts a session on an explicitly selected playback device; this player is the host. All active
+  starts a session on an explicitly selected playback device; this player is the host. Before a session the card „Jam starten“ names the controller in one meta
+  line, loads the Spotify devices on its own and offers one labeled „Musikausgabe“ select of limited
+  width with the „Starten“ button beside it. All active
   group members share pause, resume and skip controls and search the same catalog for tracks and
-  playlists. „Als Nächstes“ follows directly below „Jetzt läuft“ before the search workflow. Search
-  results stay inside one stable block and use a full-width two-button switch built from the shared
-  secondary and primary button treatments to switch between titles and playlists. Both choices get
-  equal space, and only the active result type receives primary emphasis. A playlist
+  playlists. „Jetzt läuft“ shows the track flat in its card with artist, requester and progress in
+  gray meta text; „Pausiert“ is text, not a badge. Its header carries a neutral „Beenden“ for the
+  host and admins with a red confirmation; compact, equally wide „Pausieren“/„Fortsetzen“ and
+  „Überspringen“ end the card on the right, and an idle device reads as the shared centered empty
+  state. „Als Nächstes“ follows directly below „Jetzt läuft“ before the search card „Musik
+  hinzufügen“. Search results stay inside one stable block: two compact „Titel“/„Playlists“ buttons
+  without counts switch the result type, the active one outlined in blue, and results form a quiet
+  table with one fixed „Hinzufügen“ or „Abspielen“ column. A playlist
   result starts its complete Spotify playback context and replaces the
   current playback plus pending requests after explicit confirmation. While that context is active,
   „Als Nächstes“ reads Spotify's live queue and names the actual next track. It then shows the
   remaining playlist-track count separately from additional song requests.
   Those requests follow Spotify's append-only queue in request order; reorder and remove
-  controls stay hidden because Spotify exposes neither operation for its live queue. Requests use stable full-width rows with artwork,
-  title, artist and requester instead of pills; their order is the shared queue order. The current
-  track is the most prominent nested surface, with progress and host controls directly attached.
-  Members can reorder two or more queued requests through native drag-and-drop or the equivalent
-  arrow controls. Respawn persists that order and replaces the active Spotify URI context at the
+  controls stay hidden because Spotify exposes neither operation for its live queue. Requests form a quiet table without column headers and
+  with equal row heights: position, small artwork, title (shortened after 40 characters) above the
+  artist, requester (the viewer's own name in bold) and duration; on phones the requester joins the
+  artist line. Their order is the shared queue order. Clicking a row opens a detail dialog with the
+  full title, album, requester, duration and position plus equally wide „Nach oben“, „Nach unten“
+  and „Entfernen“; every member may reorder or remove every request. On pointer devices two or more
+  queued requests can also be reordered through native drag-and-drop. Respawn persists that order and replaces the active Spotify URI context at the
   current playback position so the visible order also becomes the actual playback order.
   The kiosk reuses a single compact full-width music bar below the fixed dashboard and shows current
   track, progress and the actual next track without exposing controls or Spotify credentials. If
@@ -87,11 +100,16 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   The package needs neither repository nor `npm` instructions.
   It contains prefilled server/pairing data and platform launchers for macOS, Windows and Raspberry
   Pi/Linux; the first launch installs the controller and its isolated runtime once below the user's
-  `.respawn` directory. Its local status page can enable login autostart, retry immediately, renew
-  Spotify authorization independently and re-pair an existing installation with a fresh code.
+  `.respawn` directory. Its local status page mirrors the app's compact controls and shows states as
+  text without color. It can enable login autostart and retry immediately through two equally wide
+  buttons. Its collapsible „Verbindung verwalten“ re-pairs even a connected installation with a
+  fresh code and another Respawn address, renews Spotify authorization independently and resets the
+  controller only after a required confirmation checkbox, with both actions side by side.
   Respawn's offline state therefore offers reconnection first and a new download only as a fallback.
   Controller requests have bounded timeouts and retry automatically after transient network errors.
-  Every group owner and admin can end the active Jam and then explicitly disconnect the controller.
+  Every group owner and admin can end the active Jam and then explicitly disconnect the controller
+  through the collapsible „Verbindung verwalten“ card with a neutral „Entkoppeln“ and a red
+  confirmation.
   A controller without an active Jam is removed automatically after 24 hours without a heartbeat;
   reconnecting it only needs a fresh pairing code and retains its local Spotify authorization.
   The controller heartbeat remains online when Spotify is temporarily unavailable and omits the

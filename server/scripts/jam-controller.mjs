@@ -182,23 +182,44 @@ X-GNOME-Autostart-enabled=true
 }
 
 function setupFields({ includePairing }) {
-  const help = (text) => `<span class="field-help" tabindex="0" aria-label="Info"><span aria-hidden="true">i</span><span class="field-tooltip" role="tooltip">${htmlEscape(text)}</span></span>`;
   return `
-    <div class="guide">
-      <strong>Spotify vorbereiten</strong>
-      <ol>
-        <li><a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Spotify Developer Dashboard öffnen</a> und die vorhandene App öffnen oder einmalig eine App anlegen.</li>
-        <li>In den App-Einstellungen <strong>Web API</strong> und <strong>Web Playback SDK</strong> aktivieren.</li>
-        <li>Unter „Redirect URIs“ exakt <code>${REDIRECT_URI}</code> eintragen und speichern.</li>
-        <li>Die Client-ID aus „Basic Information“ unten eintragen.</li>
-      </ol>
-    </div>
-    <label><span class="field-label">Respawn-Adresse ${help('Ist vorausgefüllt. Nur ändern, wenn der Controller einen anderen Respawn-Server verwenden soll.')}</span><input name="respawnBaseUrl" type="url" required value="${htmlEscape(state.respawnBaseUrl || DEFAULT_RESPAWN_URL)}"></label>
-    ${includePairing ? `<div class="row"><label><span class="field-label">Kopplungscode ${help('Beim ersten Download ist der Code vorausgefüllt. Für eine vorhandene Installation auf der Jam-Seite „Vorhandene Installation koppeln“ oder „Kopplungscode erzeugen“ wählen und den neuen Code hier eintragen.')}</span><input name="pairingCode" required autocomplete="off" maxlength="12" value="${htmlEscape(state.pairingCode || '')}"></label><label><span class="field-label">Gerätename</span><input name="label" required value="${htmlEscape(state.label || 'LAN-Musik-PC')}"></label></div>` : ''}
-    <label><span class="field-label">Spotify Client-ID ${help('Im Spotify Developer Dashboard unter deiner App in „Basic Information“. Für Ton im Browser muss dort Web Playback SDK aktiviert sein. Dank PKCE wird kein Client-Secret benötigt oder gespeichert.')}</span><input name="clientId" required autocomplete="off" value="${htmlEscape(state.clientId || '')}"></label>
-    <label><span class="field-label">Redirect URI ${help('Diesen Wert im Spotify Developer Dashboard unter „Redirect URIs“ exakt hinzufügen. Er bleibt unabhängig von der Respawn-Adresse gleich.')}</span><code>${REDIRECT_URI}</code></label>
-    <details><summary>Erweitert</summary><label><span class="field-label">Respawn-Zugangstoken ${help('Nur für einen Respawn-Server mit altem gemeinsamen Zugangsschutz erforderlich.')}</span><input name="accessToken" type="password" value="${htmlEscape(state.accessToken || '')}"></label></details>`;
+    <ol class="steps">
+      <li><span class="num">1</span><span><a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Spotify Developer Dashboard</a> öffnen und eine App öffnen oder einmalig anlegen</span></li>
+      <li><span class="num">2</span><span>In der App <strong>Web API</strong> und <strong>Web Playback SDK</strong> aktivieren</span></li>
+      <li><span class="num">3</span><span>Unter „Redirect URIs“ exakt <code>${REDIRECT_URI}</code> eintragen</span></li>
+      <li><span class="num">4</span><span>Die Client-ID aus „Basic Information“ unten eintragen</span></li>
+    </ol>
+    <label><span class="field-label">Respawn-Adresse</span><input name="respawnBaseUrl" type="url" required placeholder="https://lan.example.de" value="${htmlEscape(state.respawnBaseUrl || DEFAULT_RESPAWN_URL)}"></label>
+    ${includePairing ? `<div class="row"><label><span class="field-label">Kopplungscode</span><input name="pairingCode" required autocomplete="off" maxlength="12" placeholder="WU8EV66L" value="${htmlEscape(state.pairingCode || '')}"></label><label><span class="field-label">Gerätename</span><input name="label" required placeholder="Kiosk-Pi Wohnzimmer" value="${htmlEscape(state.label || 'LAN-Musik-PC')}"></label></div>` : ''}
+    <label><span class="field-label">Spotify Client-ID</span><input name="clientId" required autocomplete="off" placeholder="35e006839ca741a28d63cbbd8f1d51b4" value="${htmlEscape(state.clientId || '')}"></label>
+    <details class="section"><summary>Erweitert<span class="chevron" aria-hidden="true">›</span></summary><div class="section-body"><label><span class="field-label">Respawn-Zugangstoken</span><input name="accessToken" type="password" value="${htmlEscape(state.accessToken || '')}"></label><p class="note">Nur für einen Respawn-Server mit altem gemeinsamen Zugangsschutz nötig.</p></div></details>`;
 }
+
+// Mirrors the Respawn design tokens (server/public/css/style.css). The page is
+// served standalone by the controller, so it cannot load the app stylesheet.
+const PAGE_CSS = `
+:root{color-scheme:dark;--bg:#0f1420;--bg-elevated:#171e2e;--bg-elevated-2:#1e2740;--border:rgba(122,141,195,.21);--text:#eef1f8;--text-muted:#8b93a7;--accent:#5b8cff;--accent-gradient:linear-gradient(135deg,#5b8cff 0%,#9163f5 55%,#ef5da8 100%);--danger:#ef4444}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:start center;padding:48px 16px;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.card{width:min(640px,100%);display:grid;gap:12px;padding:16px;border:1px solid var(--border);border-radius:14px;background:var(--bg-elevated)}
+h1,h2,p{margin:0}h1{font-size:1.3rem;font-weight:800}h2{font-size:1.15rem;font-weight:700}
+.meta,.note{color:var(--text-muted);font-size:.85rem}.error{color:var(--danger);font-size:.85rem}.ok{font-size:.85rem}
+a{color:var(--accent)}
+.status{display:grid}.status div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--border)}.status span{color:var(--text-muted)}.status div:last-child{padding-bottom:0}
+.steps{display:grid;margin:0;padding:0;list-style:none}.steps li{display:grid;grid-template-columns:20px minmax(0,1fr);gap:12px;padding:8px 0;border-top:1px solid var(--border);font-size:.85rem;color:var(--text-muted)}.steps .num{font-weight:700}.steps strong{color:var(--text)}
+form{display:grid;gap:12px}label{display:grid;gap:4px}.field-label{margin-left:2px;color:var(--text-muted);font-size:.78rem}
+input{min-height:32px;padding:5px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-elevated-2);color:var(--text);font:inherit}input::placeholder{font-style:italic;color:var(--text-muted)}input:focus-visible,button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.reset,.divided{padding-top:12px;border-top:1px solid var(--border)}.divided .steps li:first-child{border-top:0;padding-top:0}.check{display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:.85rem}.check input{min-height:0;width:16px;height:16px;accent-color:var(--accent)}
+.actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.actions form{display:contents}.actions.equal{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.actions.equal button{width:100%}
+button{min-height:32px;padding:6px 20px;border:0;border-radius:8px;background:var(--bg-elevated-2);color:var(--text);font:inherit;font-size:.85rem;font-weight:600;cursor:pointer;white-space:nowrap}
+button.primary{background:var(--accent-gradient);color:#fff}
+code{padding:1px 6px;border-radius:4px;background:var(--bg);font-size:.85em;word-break:break-all}
+details.section{border:1px solid var(--border);border-radius:14px;background:var(--bg-elevated)}details.section>summary{display:flex;justify-content:space-between;align-items:center;min-height:44px;padding:0 16px;font-weight:700;cursor:pointer;list-style:none}details.section>summary::-webkit-details-marker{display:none}.chevron{color:var(--text-muted);transition:transform .15s ease}details[open]>summary .chevron{transform:rotate(90deg)}.section-body{display:grid;gap:12px;padding:0 16px 16px}
+.card details.section{background:transparent;border-radius:8px}.card details.section>summary{font-weight:600;font-size:.85rem;padding:0 12px}.card .section-body{padding:0 12px 12px}
+@media(prefers-reduced-motion:reduce){.chevron{transition:none}}
+@media(max-width:600px){.row{grid-template-columns:1fr}.actions.equal button{white-space:normal}.actions>button,.actions form>button{flex:1 1 auto}}
+`;
 
 function page(message = '', isError = false) {
   const hasController = Boolean(state.controllerToken);
@@ -207,53 +228,62 @@ function page(message = '', isError = false) {
   const autostart = autostartEnabled();
   const browserPlaybackReady = webPlaybackAuthorized();
   const csrf = `<input type="hidden" name="_csrf" value="${LOCAL_FORM_TOKEN}">`;
-  const statusLabel = (value) => value === 'connected' ? 'Verbunden' : value === 'connecting' ? 'Verbindet…' : value === 'authorization_required' ? 'Anmeldung nötig' : value === 'setup' ? 'Einrichtung nötig' : 'Automatischer Neuversuch';
+  const statusLabel = (value) => value === 'connected' ? 'Verbunden' : value === 'connecting' ? 'Verbindet' : value === 'authorization_required' ? 'Anmeldung nötig' : value === 'setup' ? 'Einrichtung nötig' : 'Neuer Versuch läuft';
+  const spotifyForm = (label, primary) => `<form method="post" action="/setup">${csrf}<input type="hidden" name="intent" value="spotify">${setupFields({ includePairing: false })}<div class="actions"><button${primary ? ' class="primary"' : ''}>${label}</button></div></form>`;
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Respawn Jam-Controller</title><style>
-  :root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#0f1420;color:#eef1f8}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;box-sizing:border-box}.card{width:min(680px,100%);background:#171e30;border:1px solid #303b59;border-radius:18px;padding:24px;box-sizing:border-box}.stack{display:grid;gap:16px}h1,h2,p{margin:0}.muted{color:#9aa4bb}.ok{color:#2bd681}.error{color:#ff6b75}.warning{color:#f7c66a}.status{display:flex;justify-content:space-between;gap:12px;padding:12px;border:1px solid #303b59;border-radius:10px}.status strong:last-child{text-align:right}.guide{display:grid;gap:8px;padding:14px;border:1px solid #303b59;border-radius:10px;background:#101625}.guide ol{display:grid;gap:8px;margin:0;padding-left:22px}.guide a{color:#8fb2ff}label{display:grid;gap:7px;color:#9aa4bb;font-size:14px}.field-label{display:flex;align-items:center;gap:7px}.field-help{position:relative;display:inline-grid;place-items:center;width:17px;height:17px;border:1px solid #596783;border-radius:50%;color:#aab4c8;font-size:11px;font-weight:700;cursor:help}.field-tooltip{position:absolute;z-index:10;left:calc(100% + 8px);top:50%;width:min(280px,65vw);padding:9px 11px;border:1px solid #3b496b;border-radius:9px;background:#101625;color:#dce2ef;font-size:12px;font-weight:400;line-height:1.4;box-shadow:0 10px 30px rgba(0,0,0,.35);transform:translateY(-50%);visibility:hidden;opacity:0;pointer-events:none}.field-help:hover .field-tooltip,.field-help:focus .field-tooltip{visibility:visible;opacity:1}input{height:44px;border:1px solid #364363;border-radius:10px;background:#202a44;color:#eef1f8;padding:0 13px;font:inherit}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}button{min-height:44px;border:0;border-radius:10px;padding:0 14px;color:white;font-weight:700;background:linear-gradient(100deg,#5b8cff,#8467ef,#ea4da6);cursor:pointer}.secondary{background:#202a44}.danger{background:#71313b}code{background:#101625;border-radius:8px;padding:8px 10px;word-break:break-all}details{border:1px solid #303b59;border-radius:10px;padding:12px}summary{cursor:pointer;color:#9aa4bb}@media(max-width:600px){.row{grid-template-columns:1fr}.field-tooltip{left:auto;right:0;top:calc(100% + 8px);transform:none}}
-  </style></head><body><main class="card stack"><h1>Respawn Jam-Controller</h1>
-  <p class="muted">Dieser eine Controller verbindet Respawn mit Spotify. Alle Teilnehmenden bedienen Titel, Playlists, Songwünsche und Wiedergabe im Respawn-Browser; Spotify Client-ID und Tokens bleiben ausschließlich auf diesem Gerät.</p>
+  <title>Respawn Jam-Controller</title><style>${PAGE_CSS}</style></head><body><main class="card">
+  <h1>Jam-Controller</h1>
+  <p class="meta">${hasController && !needsPairing
+    ? `<strong>${htmlEscape(state.label)}</strong> · ${htmlEscape(state.spotifyDisplayName || 'Spotify')}`
+    : 'Spotify läuft auf diesem Gerät.'}</p>
   ${message ? `<p class="${isError ? 'error' : 'ok'}">${htmlEscape(message)}</p>` : ''}
-  ${needsPairing && hasSpotify ? `<div class="stack">
-    <h2>Vorhandenen Controller wieder verbinden</h2>
-    <p class="muted">Kein Download und keine neue Spotify-Anmeldung nötig. Auf der Respawn-Jam-Seite einen neuen Kopplungscode erzeugen und hier eintragen.</p>
-    <form method="post" action="/reconnect" class="stack">
+  ${needsPairing && hasSpotify ? `
+    <h2>Wieder verbinden</h2>
+    <p class="note">Auf der Jam-Seite in Respawn einen neuen Kopplungscode erzeugen und hier eintragen. Kein Download und keine neue Spotify-Anmeldung nötig.</p>
+    <form method="post" action="/reconnect">
       ${csrf}
-      <label>Respawn-Adresse<input name="respawnBaseUrl" type="url" required value="${htmlEscape(state.respawnBaseUrl || DEFAULT_RESPAWN_URL)}"></label>
-      <div class="row"><label>Kopplungscode<input name="pairingCode" required autocomplete="off" maxlength="12" value="${htmlEscape(state.pairingCode || '')}"></label><label>Gerätename<input name="label" required value="${htmlEscape(state.label || 'LAN-Musik-PC')}"></label></div>
-      <button>Wieder verbinden</button>
-    </form>
-  </div>` : needsPairing ? `<div class="stack">
-    <h2>Controller einmalig einrichten</h2>
-    <p class="muted">Respawn-Adresse und Kopplungscode stammen aus dem Downloadpaket. Nach dieser Einrichtung genügen Autostart oder dieselbe Startdatei; das Paket muss nicht erneut heruntergeladen werden.</p>
-    <form method="post" action="/setup" class="stack">${csrf}
+      <label><span class="field-label">Respawn-Adresse</span><input name="respawnBaseUrl" type="url" required placeholder="https://lan.example.de" value="${htmlEscape(state.respawnBaseUrl || DEFAULT_RESPAWN_URL)}"></label>
+      <div class="row"><label><span class="field-label">Kopplungscode</span><input name="pairingCode" required autocomplete="off" maxlength="12" placeholder="WU8EV66L" value="${htmlEscape(state.pairingCode || '')}"></label><label><span class="field-label">Gerätename</span><input name="label" required placeholder="Kiosk-Pi Wohnzimmer" value="${htmlEscape(state.label || 'LAN-Musik-PC')}"></label></div>
+      <div class="actions"><button class="primary">Wieder verbinden</button></div>
+    </form>` : needsPairing ? `
+    <h2>Einmalig einrichten</h2>
+    <p class="note">Respawn-Adresse und Kopplungscode stammen aus dem Paket. Danach genügen Autostart oder dieselbe Startdatei.</p>
+    <form method="post" action="/setup">${csrf}
       <input type="hidden" name="intent" value="initial">
       ${setupFields({ includePairing: true })}
-      <button>Einmalig mit Spotify verbinden</button>
-    </form>
-  </div>` : !hasSpotify ? `<div class="stack">
+      <div class="actions"><button class="primary">Mit Spotify verbinden</button></div>
+    </form>` : !hasSpotify ? `
     <h2>Spotify-Anmeldung erneuern</h2>
-    <p class="warning">Der Respawn-Controller ist erreichbar, aber Spotify benötigt eine neue Anmeldung.</p>
-    <form method="post" action="/setup" class="stack">${csrf}<input type="hidden" name="intent" value="spotify">${setupFields({ includePairing: false })}<button>Spotify neu verbinden</button></form>
-  </div>` : `<div class="stack">
-    <p><strong>${htmlEscape(state.label)}</strong> · ${htmlEscape(state.spotifyDisplayName || 'Spotify')}</p>
-    <div class="status"><span>Respawn</span><strong class="${runtime.respawn === 'connected' ? 'ok' : 'warning'}">${htmlEscape(statusLabel(runtime.respawn))}</strong></div>
-    <div class="status"><span>Spotify</span><strong class="${runtime.spotify === 'connected' ? 'ok' : 'warning'}">${htmlEscape(statusLabel(runtime.spotify))}</strong></div>
-    <div class="status"><span>Browser-/Kiosk-Ton</span><strong class="${browserPlaybackReady ? 'ok' : 'warning'}">${browserPlaybackReady ? 'Bereit' : 'Freigabe nötig'}</strong></div>
-    ${runtime.respawnMessage ? `<p class="muted">${htmlEscape(runtime.respawnMessage)}</p>` : ''}
-    ${runtime.spotifyMessage ? `<p class="muted">${htmlEscape(runtime.spotifyMessage)}</p>` : ''}
-    ${browserPlaybackReady ? '' : `<div class="stack">
-      <p class="warning">Damit der Musik-PC den Ton direkt über Browser, HDMI oder den TV ausgeben kann, Spotify bitte einmal neu freigeben.</p>
-      <form method="post" action="/setup" class="stack">${csrf}<input type="hidden" name="intent" value="spotify">${setupFields({ includePairing: false })}<button>Browser-Wiedergabe freigeben</button></form>
-    </div>`}
-    <p class="muted">Verbunden mit ${htmlEscape(state.respawnBaseUrl)}. Der Controller führt Titel-, Playlist- und Wiedergabebefehle aus. Netzwerkabbrüche werden automatisch erneut versucht; diese Browserseite muss nicht offen bleiben.</p>
-    <form method="post" action="/retry">${csrf}<button>Verbindung jetzt prüfen</button></form>
-    <form method="post" action="/autostart">${csrf}<input type="hidden" name="enabled" value="${autostart ? '0' : '1'}"><button class="secondary">${autostart ? 'Autostart deaktivieren' : 'Beim Anmelden automatisch starten'}</button></form>
-    <details><summary>Verbindung verwalten</summary><div class="stack">
-      <form method="post" action="/setup" class="stack">${csrf}<input type="hidden" name="intent" value="spotify">${setupFields({ includePairing: false })}<button class="secondary">Spotify-Anmeldung erneuern</button></form>
-      <form method="post" action="/disconnect">${csrf}<button class="danger">Controller vollständig zurücksetzen</button></form>
-    </div></details>
-  </div>`}
+    <p class="note">Respawn ist erreichbar, aber Spotify braucht eine neue Anmeldung.</p>
+    ${spotifyForm('Spotify neu verbinden', true)}` : `
+    <div class="status">
+      <div><span>Respawn</span><strong>${htmlEscape(statusLabel(runtime.respawn))}</strong></div>
+      <div><span>Spotify</span><strong>${htmlEscape(statusLabel(runtime.spotify))}</strong></div>
+      <div><span>Browser-/Kiosk-Ton</span><strong>${browserPlaybackReady ? 'Bereit' : 'Freigabe nötig'}</strong></div>
+    </div>
+    ${runtime.respawnMessage ? `<p class="note">${htmlEscape(runtime.respawnMessage)}</p>` : ''}
+    ${runtime.spotifyMessage ? `<p class="note">${htmlEscape(runtime.spotifyMessage)}</p>` : ''}
+    <p class="note">Verbunden mit ${htmlEscape(state.respawnBaseUrl)}. Abbrüche werden automatisch erneut versucht; diese Seite muss nicht offen bleiben.</p>
+    <div class="actions equal">
+      <form method="post" action="/autostart">${csrf}<input type="hidden" name="enabled" value="${autostart ? '0' : '1'}"><button>${autostart ? 'Autostart deaktivieren' : 'Autostart aktivieren'}</button></form>
+      <form method="post" action="/retry">${csrf}<button>Verbindung prüfen</button></form>
+    </div>
+    ${browserPlaybackReady ? '' : `<details class="section" open><summary>Browser-Wiedergabe freigeben<span class="chevron" aria-hidden="true">›</span></summary><div class="section-body">
+      <p class="note">Damit der Musik-PC den Ton über Browser, HDMI oder TV ausgibt, Spotify einmal neu freigeben.</p>
+      ${spotifyForm('Freigeben', true)}
+    </div></details>`}
+    <details class="section"><summary>Verbindung verwalten<span class="chevron" aria-hidden="true">›</span></summary><div class="section-body">
+      <form method="post" action="/reconnect">
+        ${csrf}
+        <p class="note">Mit einem neuen Kopplungscode von der Jam-Seite lässt sich dieser Controller an einen anderen Respawn-Server oder neu koppeln.</p>
+        <label><span class="field-label">Respawn-Adresse</span><input name="respawnBaseUrl" type="url" required placeholder="https://lan.example.de" value="${htmlEscape(state.respawnBaseUrl || DEFAULT_RESPAWN_URL)}"></label>
+        <div class="row"><label><span class="field-label">Kopplungscode</span><input name="pairingCode" required autocomplete="off" maxlength="12" placeholder="WU8EV66L"></label><label><span class="field-label">Gerätename</span><input name="label" required placeholder="Kiosk-Pi Wohnzimmer" value="${htmlEscape(state.label || 'LAN-Musik-PC')}"></label></div>
+        <div class="actions"><button>Neu koppeln</button></div>
+      </form>
+      <form method="post" action="/setup" id="renew-form" class="divided">${csrf}<input type="hidden" name="intent" value="spotify">${setupFields({ includePairing: false })}</form>
+      <form method="post" action="/disconnect" id="reset-form" class="reset">${csrf}<label class="check"><input type="checkbox" required><span>Zum Zurücksetzen bestätigen: Spotify-Anmeldung und Kopplung auf diesem Gerät löschen</span></label></form>
+      <div class="actions equal"><button form="renew-form">Spotify-Anmeldung erneuern</button><button form="reset-form">Zurücksetzen</button></div>
+    </div></details>`}
   </main></body></html>`;
 }
 

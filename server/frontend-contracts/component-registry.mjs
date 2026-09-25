@@ -1022,14 +1022,22 @@ export const components = [
     "dynamicUses": [
       {
         "file": "public/js/views/music.js",
-        "source": "class=\"btn music-result-type-button${activeType === 'tracks' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete music-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/music.js",
-        "source": "class=\"btn music-result-type-button${activeType === 'playlists' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete music-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+        "source": "class=\"btn btn-sm music-result-type-button${activeType === type ? ' is-selected' : ''}\"",
+        "reason": "Titel and Playlists share one compact button helper; only the chosen type gets the is-selected outline. Component geometry remains owned by this entry."
       }
+    ]
+  },
+  {
+    "id": "music-queue-open",
+    "role": "composite-part",
+    "selector": ".music-queue-open",
+    "owner": "public/css/overlays.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Jam request title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover.",
+    "properties": [
+      "max-width",
+      "padding",
+      "white-space"
     ]
   },
   {
@@ -1183,10 +1191,10 @@ export const components = [
   {
     "id": "empty-state-music",
     "role": "composite-part",
-    "selector": ".music-no-playback",
+    "selector": ".grouped-page-section .empty-state.music-idle",
     "owner": "public/css/overlays.css",
     "contract": "components/empty-state.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Centered current-playback placeholder.",
+    "purpose": "Idle Jam playback line stays compact between the card header and the playback controls.",
     "control": false
   },
   {
@@ -1507,6 +1515,40 @@ export const permanentVariants = [
     ]
   },
   {
+    "id": "music-row-action",
+    "role": "standard-control",
+    "selector": ".music-setup-step-action > .btn, .music-search-action > .btn",
+    "owner": "public/css/overlays.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Jam setup steps and search results keep one fixed right-hand action column, so their compact buttons share one width and line up from row to row.",
+    "properties": [
+      "width"
+    ],
+    "dynamicUses": [
+      {
+        "file": "public/js/views/music.js",
+        "source": "class=\"btn btn-sm${current === 0 ? ' btn-primary' : ''}\"",
+        "reason": "Paket herunterladen carries the gradient only while it is the next setup step."
+      },
+      {
+        "file": "public/js/views/music.js",
+        "source": "class=\"btn btn-sm${hasKnownController ? ' btn-primary' : ''}\"",
+        "reason": "Code erzeugen carries the gradient only for a known controller that just needs a fresh code."
+      }
+    ]
+  },
+  {
+    "id": "music-result-selected",
+    "role": "standard-control",
+    "selector": ".music-result-type-button.is-selected",
+    "owner": "public/css/overlays.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The chosen Jam result type is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base variant.",
+    "properties": [
+      "box-shadow"
+    ]
+  },
+  {
     "id": "checklist-choice-selected",
     "role": "standard-control",
     "selector": ".checklist-choice-toolbar .btn.is-selected",
@@ -1779,14 +1821,6 @@ export const permanentVariants = [
     "owner": "public/css/overlays.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "reason": "Permanent 44px seating player row."
-  },
-  {
-    "id": "music-copy-actions",
-    "role": "standard-control",
-    "selector": ".music-copy-row .icon-btn",
-    "owner": "public/css/overlays.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Shared 44 by 32px copy actions in music rows."
   },
   {
     "id": "music-cover",
