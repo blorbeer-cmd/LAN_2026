@@ -405,7 +405,6 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `data-row-name`, `data-row-action-label` | Nur der Name ellipsiert; die vollständige kurze Aktion stapelt unter 320 px. |
 | `food-position-slots`, `food-payment-marker`, `food-header` | Gleich breite Aktionsplätze der Personenzeile, 32-px-Zahlungsaktion und permanenter 44-px-Kartenkopf. |
 | `food-open-section-action`, `food-amount-copy`, `food-inline-remove` | Die Kopfaktion der offenen Bestellungen bricht nicht um; Kopieren steht als 32-px-Quadrat vor dem Betrag; Löschen einer eigenen Position ist ein zeilenhohes Symbol hinter dem Gericht. |
-| `vote-submitted-state` | Nichtinteraktive Bestätigung mit Statusinhalt. |
 | `arcade-toolbar-buttons`, `challenge-test-disclosure` | Standardhöhe mit echtem Textumbruch; Segment-/Erstellungsgeometrie bleibt beim Pilotvertrag. |
 | `topbar-title`, `desktop-navigation`, `page-heading`, `subpage-heading`, `tabbed-subpage-heading`, `section-heading`, `section-title` | Bestehende 44-px-Kopf-/Navigationszeilen und mehrzeilige Headerreservierungen. |
 | `seating-pool`, `seating-player` | Strukturelle Sitzplatz-Ablagefläche und 44-px-Spielerzeile. |
@@ -620,8 +619,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:food-amount-copy`: The copy action directly before an amount is a 32px square, so person sums and the total share one right-aligned amount column.
 
 - `registry:food-inline-remove`: The own position remove action sits inline after the dish name, exactly one text line high with a 14px glyph, so position rows keep a single amount column.
-
-- `registry:vote-submitted-state`: Noninteractive confirmation is a status surface and may contain icon plus status copy.
 
 - `registry:arcade-toolbar-buttons`: Wrapped toolbar labels grow; no creation-row or segment geometry changes.
 

@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 107);
+  assert.equal(migrations.length, 108);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 107 }, (_, index) => index + 1),
+    Array.from({ length: 108 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,8 +1342,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 107 }, (_, index) => index + 1),
-    'every version 1..107 runs exactly once',
+    Array.from({ length: 108 }, (_, index) => index + 1),
+    'every version 1..108 runs exactly once',
   );
 });
 
@@ -1381,6 +1381,81 @@ test('migration 105 adds the draw-to-tournament link to legacy draws and is rest
     { id: 'legacy-draw', tournamentId: null },
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 105').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 108 lets votes store a deliberate 0, keeps existing rows and rolls back on failure', () => {
+  const dbFile = makeTempDbPath('vote-zero-points');
+  runMigrations(dbFile);
+
+  // Rebuild the migration-34 shape (points 1-10) with one existing vote in it.
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  const now = Date.now();
+  fixture.exec(`
+    INSERT INTO players (id, name, api_key, created_at) VALUES ('zero-voter', 'Zero Voter', 'zero-voter-key', ${now});
+    INSERT INTO group_memberships (group_id, player_id, role, status, joined_at)
+      VALUES ('default-group', 'zero-voter', 'member', 'active', ${now});
+    INSERT INTO vote_rounds (group_id, round, event_id, started_at, mode) VALUES ('default-group', 1, NULL, ${now}, 'points');
+    DROP TABLE votes;
+    CREATE TABLE votes (
+      id                   TEXT PRIMARY KEY,
+      group_id             TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      player_id            TEXT NOT NULL,
+      player_name_snapshot TEXT NOT NULL,
+      game_id              TEXT NOT NULL,
+      event_id             TEXT,
+      round                INTEGER NOT NULL,
+      points               INTEGER CHECK (points IS NULL OR points BETWEEN 1 AND 10),
+      created_at           INTEGER NOT NULL,
+      UNIQUE (group_id, player_id, round, game_id)
+    );
+    DELETE FROM schema_migrations WHERE version = 108;
+  `);
+  const gameId = (fixture.prepare("SELECT id FROM games WHERE group_id = 'default-group' LIMIT 1").get() as { id: string }).id;
+  fixture
+    .prepare(
+      `INSERT INTO votes (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+       VALUES ('legacy-vote', 'default-group', 'zero-voter', 'Zero Voter', ?, NULL, 1, 7, ?)`,
+    )
+    .run(gameId, now);
+  // Blocks the rebuild's first statement, so the whole migration must roll back.
+  fixture.exec('CREATE TABLE votes_zero_points_108 (blocking INTEGER)');
+  fixture.close();
+
+  assert.throws(() => runMigrations(dbFile), /votes_zero_points_108/);
+  const afterFailure = new Database(dbFile, { readonly: true });
+  assert.equal(afterFailure.prepare('SELECT 1 FROM schema_migrations WHERE version = 108').get(), undefined);
+  assert.match(
+    (afterFailure.prepare("SELECT sql FROM sqlite_master WHERE name = 'votes'").get() as { sql: string }).sql,
+    /BETWEEN 1 AND 10/,
+    'a failed attempt leaves the old table in place',
+  );
+  afterFailure.close();
+
+  const retry = new Database(dbFile);
+  retry.exec('DROP TABLE votes_zero_points_108');
+  retry.close();
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');
+
+  const migrated = new Database(dbFile);
+  assert.deepEqual(migrated.prepare("SELECT points FROM votes WHERE id = 'legacy-vote'").get(), { points: 7 });
+  assert.doesNotThrow(() => migrated.prepare("UPDATE votes SET points = 0 WHERE id = 'legacy-vote'").run());
+  assert.throws(() => migrated.prepare("UPDATE votes SET points = 11 WHERE id = 'legacy-vote'").run(), /CHECK constraint failed/);
+  assert.throws(
+    () =>
+      migrated
+        .prepare(
+          `INSERT INTO votes (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+           VALUES ('stray-vote', 'default-group', 'zero-voter', 'Zero Voter', ?, NULL, 99, 3, ?)`,
+        )
+        .run(gameId, now),
+    /vote round group\/event mismatch|FOREIGN KEY/,
+    'the scope triggers and keys survive the rebuild',
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 108').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

@@ -213,60 +213,48 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   }
 
   // Voting: start a round (points mode, the only mode offered when starting
-  // fresh), rate a game, and submit. Alice's personal session already fixes
-  // the voter identity, so no extra identity form appears. Moving a slider only
-  // stages a local draft — it must not count as a vote until the submit
-  // button is pressed. While the round is open, no per-game distribution
-  // (bars/counts) may be visible anywhere — only total participation and the
-  // voter's own pick.
+  // fresh), rate every game, save, change the ballot and save again. Alice's
+  // personal session already fixes the voter identity, so no extra identity
+  // form appears. Moving a slider only stages a local draft — it must not
+  // count as a vote until "Speichern" is pressed. While the round is open, no
+  // per-game distribution (bars/counts) may be visible anywhere — only total
+  // participation and the voter's own ballot.
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
   assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once the round shows as open
-  await page.waitForSelector('.vote-open-title .badge[aria-label="Bewertungen abgegeben: 0 von 2"]:has-text("0/2 abgegeben")');
+  const roundCard = page.locator('.vote-round-card');
+  await roundCard.locator('[data-vote-participation]:text-is("0/2 abgegeben")').waitFor();
   // Opening the round also kicks off votes.js's own follow-up mine/history
-  // fetches, each of which rerenders (replacing this whole section) again
-  // once it resolves. Settling on network idle first, then reading all
-  // three boxes from one synchronous evaluate(), avoids one of those
-  // rerenders landing between three separate boundingBox() round trips and
-  // handing back a stale/zero-size box for whichever button it replaced.
+  // fetches, each of which rerenders the card once it resolves.
   await page.waitForLoadState('networkidle');
-  const { submitWidth, closeWidth, cancelWidth } = await page.evaluate(() => ({
-    submitWidth: document.querySelector('#votes-submit')?.getBoundingClientRect().width ?? 0,
-    closeWidth: document.querySelector('#votes-close')?.getBoundingClientRect().width ?? 0,
-    cancelWidth: document.querySelector('#votes-cancel')?.getBoundingClientRect().width ?? 0,
-  }));
-  // Beenden/Abbrechen are compact header actions; submitting is the one
-  // primary action at the card's end, sized to its label rather than the row.
-  assert.equal(await page.locator('.vote-open-admin #votes-close, .vote-open-admin #votes-cancel').count(), 2);
-  assert.ok(closeWidth > 0 && cancelWidth > 0);
-  const gridWidth = await page.locator('.vote-game-grid').evaluate((element) => element.getBoundingClientRect().width);
-  assert.ok(submitWidth > 0 && submitWidth < gridWidth, 'the submit button no longer spans the full card width');
-  assert.equal(await page.locator('.vote-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 1);
-  await page.setViewportSize({ width: 900, height: 844 });
-  assert.equal(await page.locator('.vote-game-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 2);
-  await page.setViewportSize({ width: 390, height: 844 });
-  assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars while the round is open');
-  await page.locator('[data-points-slider] >> nth=0').evaluate((el) => {
-    (el as HTMLInputElement).value = '5';
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await page.locator('[data-points-slider] >> nth=1').evaluate((el) => {
-    (el as HTMLInputElement).value = '5';
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await page.waitForSelector('.skill-value:text("5")'); // staged locally
+  await roundCard.locator('.event-poll-answer-inline:has-text("Deine Stimme fehlt")').waitFor();
+  // Same card shape as an Umfrage: Beenden beside the "Aktion" menu that
+  // holds Abbrechen, one row per game and the save action in the footer.
+  assert.equal(await roundCard.locator('.event-poll-card-side > #votes-close').count(), 1);
+  assert.equal(await roundCard.locator('.event-poll-card-side .action-menu #votes-cancel').count(), 1);
+  assert.equal(await roundCard.locator('.event-poll-footer #votes-submit').count(), 1);
+  assert.ok(await page.locator('#votes-submit').isDisabled(), 'an incomplete ballot cannot be saved');
+  assert.equal(await roundCard.locator('.event-poll-tag:text-is("Zwischenstand verborgen")').count(), 1);
+  assert.equal(await roundCard.locator('.event-poll-bar').count(), 0, 'no bars while the round is open');
+
+  const setSlider = (index: number, value: number) =>
+    page.locator(`[data-points-slider] >> nth=${index}`).evaluate((el, next) => {
+      (el as HTMLInputElement).value = String(next);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }, value);
+  const totalGames = await page.locator('[data-points-slider]').count();
+  await setSlider(0, 5);
+  await setSlider(1, 5);
+  await roundCard.locator('[data-vote-rated-progress]').filter({ hasText: `2 von ${totalGames} bewertet` }).waitFor();
   assert.equal(
-    await page.locator('.vote-open-title .badge:has-text("0/2 abgegeben")').count(),
+    await roundCard.locator('[data-vote-participation]:text-is("0/2 abgegeben")').count(),
     1,
     'moving a slider must not submit it by itself'
   );
 
-  // Own rating progress and the "Unbewertet" filter reflect the two just-
-  // staged (not yet submitted) picks against the round's full game count.
-  const totalGames = await page.locator('[data-points-slider]').count();
-  await page.waitForSelector(`.vote-workflow-section >> text=2 von ${totalGames} bewertet`);
+  // The "Unbewertet" filter narrows the list to the still-unrated games.
   await page.click('#votes-unrated-toggle');
   await page.waitForFunction(
     (expected) => document.querySelectorAll('[data-points-slider]').length === expected,
@@ -278,39 +266,63 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     totalGames
   );
 
+  // Every other game gets a deliberate 0, marked "Spiele ich nicht".
+  for (let index = 2; index < totalGames; index += 1) await setSlider(index, 0);
+  assert.equal(await roundCard.locator('[data-decline-tag]:visible').count(), totalGames - 2);
+  assert.ok(!(await page.locator('#votes-submit').isDisabled()), 'a complete ballot can be saved');
+
   await page.click('#votes-submit');
-  await page.waitForSelector('.vote-open-title .badge:has-text("1/2 abgegeben")');
-  await page.waitForSelector('.vote-submitted-state:has-text("Bewertung abgegeben")');
-  assert.equal(await page.locator('#votes-submit').count(), 0);
-  assert.ok(await page.locator('[data-points-slider]').first().isDisabled());
-  assert.equal(await page.locator('.vote-bar-track').count(), 0, 'still no bars after casting, before closing');
+  await roundCard.locator('[data-vote-participation]:text-is("1/2 abgegeben")').waitFor();
+  await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
+  assert.ok(!(await page.locator('[data-points-slider]').first().isDisabled()), 'a saved ballot stays editable');
+  assert.equal(await roundCard.locator('.event-poll-bar').count(), 0, 'still no bars after saving, before closing');
+
+  // Changing the ballot replaces it instead of adding a second one.
+  await setSlider(2, 1);
+  const [changed] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith('/api/votes/points') && response.request().method() === 'POST'),
+    page.click('#votes-submit'),
+  ]);
+  assert.equal(changed.status(), 200);
+  const mine = await (await page.request.get(`${BASE_URL}/api/votes/mine?playerId=${alice.id}`)).json();
+  assert.equal(mine.entries.length, totalGames, 'the change replaced the ballot instead of adding one');
+  assert.equal(mine.entries.filter((entry: { points: number }) => entry.points === 1).length, 1);
+  await roundCard.locator('[data-vote-participation]:text-is("1/2 abgegeben")').waitFor();
 
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
-  // Closing reveals only games that actually received points in the compact
-  // "Letzter Vote" group; the detail modal applies the same zero-score filter.
-  await page.waitForSelector('text=Letzter Vote');
-  await page.waitForFunction(() => document.querySelectorAll('section[aria-labelledby="vote-current-result-title"] .lb-row').length >= 2);
+  // Closing reveals the ended-Umfrage shape: every game of the round with its
+  // bar, how many voters would play it and the tied winners' "Win" chips.
   const currentVote = page.locator('section[aria-labelledby="vote-current-result-title"]');
-  assert.equal(await currentVote.locator('.lb-row').count(), 2);
-  // Tied winners share place 1 and each carry the "Win" chip.
-  assert.equal(await currentVote.locator('.lb-row .vote-win-chip').count(), 2);
-  assert.deepEqual(await currentVote.locator('.lb-row.rank-1 .lb-rank').allTextContents(), ['1', '1']);
+  await page.waitForFunction(
+    (expected) => document.querySelectorAll('section[aria-labelledby="vote-current-result-title"] .event-poll-option').length === expected,
+    totalGames
+  );
+  assert.equal(await currentVote.locator('.event-poll-option.is-winner .vote-win-chip').count(), 2);
+  assert.deepEqual(
+    await currentVote.locator('.event-poll-option.is-winner .event-poll-counts').allTextContents(),
+    ['5 Pkt. · 1/1 spielen mit', '5 Pkt. · 1/1 spielen mit']
+  );
+  assert.ok((await currentVote.locator('.event-poll-counts').allTextContents()).includes('0 Pkt. · 0/1 spielen mit'));
+  assert.equal(await currentVote.locator('.event-poll-option.is-winner .event-poll-voter-stack').count(), 2);
   assert.equal(await currentVote.getByText('Unentschieden', { exact: true }).count(), 0);
   assert.equal(await currentVote.locator('#votes-runoff').count(), 1, 'the runoff action belongs to the current Vote card');
   assert.equal(await page.locator('section[aria-labelledby="vote-runoff-title"]').count(), 0, 'no separate runoff card remains');
-  assert.equal(await page.locator('.vote-bar-track').count(), 0, 'no bars on the main page, even after closing');
   assert.equal(await page.locator('details.history-details:has(summary:has-text("Historie"))').getAttribute('open'), null);
 
   // Historie lists only older rounds, so the just-closed round is not
-  // repeated there; its full breakdown opens from "Letzter Vote" instead.
+  // repeated there; who voted how opens from "Letzter Vote" instead.
   await page.click('details.history-details:has(summary:has-text("Historie")) > summary');
   await page.waitForSelector('[data-vote-history] >> text=Noch keine älteren Abstimmungen.');
-  assert.equal(await page.locator('.vote-history-round').count(), 0);
-  await currentVote.locator('[data-open-history-round]').click();
-  await page.waitForSelector('text=Abstimmung Runde 1');
-  await page.waitForSelector('.modal .vote-bar-track');
-  assert.equal(await page.locator('.modal .vote-row').count(), 2);
+  assert.equal(await page.locator('[data-vote-history] .event-poll-history-round').count(), 0);
+  await currentVote.locator('.grouped-page-section-title [data-open-vote-round]:text-is("Stimmen ansehen")').click();
+  await page.waitForSelector('.modal h2:text-is("Stimmen · Abstimmung Runde 1")');
+  const breakdown = page.locator('.modal .event-poll-vote-table');
+  await breakdown.waitFor();
+  assert.equal(await breakdown.locator('tbody tr').count(), 1);
+  assert.equal(await breakdown.locator('tbody th:has-text("E2E Alice")').count(), 1);
+  assert.equal(await breakdown.locator('tbody .event-poll-vote-cell.is-cannot[aria-label="Spielt nicht"]').count(), totalGames - 3);
+  assert.equal(await page.locator('.modal .event-poll-vote-key:has-text("Spielt nicht")').count(), 1);
   await page.click('[data-close]');
 
   // Admin mode stays active from here for the rest of this shard's shared

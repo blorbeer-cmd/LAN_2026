@@ -5094,6 +5094,66 @@ registerMigration({
   up: migrateChecklistTaskAssignees,
 });
 
+// A points ballot now rates every game of its round, and 0 is a deliberate
+// answer ("I won't play this") instead of an omitted row. The CHECK from
+// migration 34 only allowed 1-10, so the table is rebuilt with the same
+// columns, keys and scope triggers and a 0-10 bound. votes is not referenced
+// by any other table, so the rebuild needs no foreign-key suspension.
+function allowZeroVotePoints(): void {
+  const tableSql = (
+    db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'votes'").get() as { sql: string }
+  ).sql;
+  if (/points\s+BETWEEN\s+0\s+AND\s+10/i.test(tableSql)) return;
+
+  db.exec(`
+    CREATE TABLE votes_zero_points_108 (
+      id                   TEXT PRIMARY KEY,
+      group_id             TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      player_id            TEXT NOT NULL,
+      player_name_snapshot TEXT NOT NULL,
+      game_id              TEXT NOT NULL,
+      event_id             TEXT,
+      round                INTEGER NOT NULL,
+      points               INTEGER CHECK (points IS NULL OR points BETWEEN 0 AND 10),
+      created_at           INTEGER NOT NULL,
+      UNIQUE (group_id, player_id, round, game_id),
+      FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE RESTRICT,
+      FOREIGN KEY (group_id, game_id) REFERENCES games(group_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id, round) REFERENCES vote_rounds(group_id, round) ON DELETE CASCADE
+    );
+    INSERT INTO votes_zero_points_108
+      (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+    SELECT id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at FROM votes;
+    DROP TABLE votes;
+    ALTER TABLE votes_zero_points_108 RENAME TO votes;
+
+    CREATE INDEX IF NOT EXISTS idx_votes_group_round ON votes(group_id, round);
+    CREATE INDEX IF NOT EXISTS idx_votes_group_event ON votes(group_id, event_id);
+
+    CREATE TRIGGER trg_votes_round_scope_insert
+    BEFORE INSERT ON votes
+    WHEN NOT EXISTS (
+      SELECT 1 FROM vote_rounds vr
+      WHERE vr.group_id = NEW.group_id AND vr.round = NEW.round AND vr.event_id IS NEW.event_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'vote round group/event mismatch');
+    END;
+
+    CREATE TRIGGER trg_votes_round_scope_update
+    BEFORE UPDATE OF group_id, round, event_id ON votes
+    WHEN NOT EXISTS (
+      SELECT 1 FROM vote_rounds vr
+      WHERE vr.group_id = NEW.group_id AND vr.round = NEW.round AND vr.event_id IS NEW.event_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'vote round group/event mismatch');
+    END;
+  `);
+}
+registerMigration({ version: 108, name: 'allow zero vote points', up: allowZeroVotePoints });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

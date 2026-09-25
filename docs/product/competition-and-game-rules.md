@@ -18,9 +18,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 
 - **In-card footer actions** — `.card-footer-actions` sets a card's primary action(s) off from a
   long preceding list (vote game rows, player-selection grids) with a hairline top border. It
-  scrolls with the rest of the card like any other content. Used for the open vote round's
-  compact, right-aligned submit action in Vote, and the „Teams auslosen“/„Draft starten“ actions
-  in Team formation and Tournament creation. This replaced an
+  scrolls with the rest of the card like any other content. Used for the „Teams auslosen“/„Draft
+  starten“ actions in Team formation and Tournament creation; Vote's open round uses the Umfrage
+  footer instead. This replaced an
   earlier `position: sticky` treatment (issue #557) that pinned the bar to the bottom of the
   viewport while its card scrolled through: the pinned bar briefly covered whatever list row
   scrolled past behind it, which read as more disruptive than just scrolling a little further to
@@ -284,29 +284,34 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   New/current-round controls come first. The new-round form keeps its searchable full game list
   directly visible and deliberately offers no additional genre filter. Draft selection, query,
   focus and scroll survive same-view renders. Separate full-width cards for „Letzter Vote“
-  and „Top 10 nach Bock-Level“; the Top 10 card is collapsible and starts closed. An open round
-  shows its participation as a badge („X/Y abgegeben“) beside the title, updated through the
-  existing realtime refresh, with the round info directly below the title. In points
-  mode, an open round that the current identity hasn't submitted yet also shows its own rating
-  progress („X von Y bewertet“) beside an „Unbewertet“ chip that narrows the game grid to
-  still-unrated rows. `.vote-game-grid` itself keeps two columns from `--bp-md` and gains a third from `--bp-xl`
-  (1280px) instead of stretching each 0-10 slider across half of a wide desktop's full content
-  width. Games are listed alphabetically in the new-round form and in an open round; each
-  open-round card shows name and points in one row, one compact meta line without empty values,
-  and the slider. A runoff lists its tied games one per full-width row. The latest result and
-  every older history card show up to ten scored games with rank, name and points; games with zero
-  votes or points are omitted. Winners carry the green „Win“ chip; equal top scores share the
-  visible rank and each carry the chip. „Letzter Vote“ offers „Details“ for the complete non-zero
-  bar view and, on a tie, a compact „Stichwahl starten“ in its header. History lists only the
-  rounds before the latest one, each with its own „Details“ action.
+  and „Top 10 nach Bock-Level“; the Top 10 card is collapsible and starts closed.
+  An open round and every closed result use the same presentation as an Umfrage with a hidden
+  interim result (see „Umfragen“ in [Organisation](organisation-and-event-rules.md)), minus the
+  poll-only parts: no response-mode tag, no „Neue Runde“ and no „Wieder öffnen“. The open round is
+  one `.event-poll-card` whose header names the round, the participation („X/Y abgegeben“, updated
+  through the existing realtime refresh) and the viewer's own state („Abgegeben“ or „Deine Stimme
+  fehlt“); admins get a compact „Beenden“ beside an „Aktion“ menu holding „Abbrechen“. A
+  „Zwischenstand verborgen“ tag and the round info follow. Games are listed alphabetically, one
+  Umfrage option row each: name and one compact meta line without empty values, the empty result
+  and voter columns of a hidden interim result, and the 0-10 slider as the answer control. An
+  unrated slider rests dimmed in the middle and shows „–“; the first touch, tap or arrow key rates
+  it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
+  own progress („X von Y bewertet“), the „Unbewertet“ chip that narrows the list to still-unrated
+  games, and „Speichern“, enabled once every game is rated. A runoff offers the Umfrage
+  „Wählen“/„Ausgewählt“ choice instead of sliders. The latest result lists every game of the round
+  sorted by score, each with its result bar, „N Pkt. · X/Y spielen mit“ (voters who gave at least
+  one point, out of everyone who voted) and the avatars of those voters; winners carry the green
+  „Win“ chip, tied winners each carry it. „Letzter Vote“ offers „Stimmen ansehen“ and, on a tie, a
+  compact „Stichwahl starten“ in its header. „Stimmen ansehen“, an avatar stack and every
+  history row's „Details“ open the Umfrage vote table: numbered legend with each game's summary,
+  one row per voter with their points, a 0 shown as „Spielt nicht“. History lists only the rounds
+  before the latest one as compact Umfrage history rows (title, date, participation, winner).
   The Top 10 form two ordered five-item columns from `--bp-md`, while phones keep one continuous
-  list. Game rows remain one
-  column on phones and two from `--bp-md`, with the same bordered card treatment at both sizes.
+  list. The new-round form's `.vote-game-grid` keeps one column on phones, two from `--bp-md` and
+  three from `--bp-xl`, with the same bordered card treatment at every size.
   Vote shows no info tooltips. Title, info and the game search („Spiel suchen“) with the bulk toggle
   share one row of equal-width parts from `--bp-md` and stack on phones; title and info have the
-  same control height. „Starten“ is a compact primary action in the new-round card header, an open
-  round offers compact neutral „Beenden“ and „Abbrechen“ in its header and a right-aligned submit
-  action at the card's end.
+  same control height. „Starten“ is a compact primary action in the new-round card header.
   Starting a round always shows its game selection grid — there is no separate checkbox gating it.
   It preselects the current Top 10 by Bock as a starting point, same as before; a round covering
   everything simply uses the bulk toggle or clears the remaining exclusions by hand. The grid
@@ -321,9 +326,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   stays votable for everyone else and can still win, and „Stichwahl starten“ still offers every
   tied winner of the closed round. Only a fresh selection is restricted.
   Vote-specific empty states center their copy vertically in both overview and history.
-  Every identity can submit only once per round: the server enforces this atomically with `409`,
-  empty points submissions are invalid, and the client replaces the submit action with a green
-  „Bewertung/Stimme abgegeben“ state while locking that identity's controls.
+  A points ballot rates every game of the round with 0 to 10 points; the server rejects empty or
+  incomplete ballots with `400`. Until the round ends, every identity can change and save its
+  ballot again: each submission atomically replaces that identity's earlier one, so double taps
+  and concurrent devices leave exactly one ballot. Who voted how stays hidden from everyone while
+  the round is open and becomes visible to the event's participants once it is closed.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
   closed and retains its open state across live re-renders.
 - **Tournament overview** — the „Turniere“ tab in the „Match“ area, whose first/default tab is

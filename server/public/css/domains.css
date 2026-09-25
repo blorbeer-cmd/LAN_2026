@@ -1061,20 +1061,16 @@ input[type='number'].tournament-result-score {
   accent-color: var(--accent);
 }
 
-/* ---------- Vote bars ---------- */
+/* ---------- Vote ---------- */
 
-.vote-row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3) 0;
-}
+/* The running round and every closed result reuse the Umfrage card, option
+   row, result bar and vote-table styles; only the 0-10 slider and the plain
+   (non-collapsible) card heading are Vote's own. */
 .vote-game-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
 }
-.vote-game-grid .vote-row,
 .vote-game-grid .check-row {
   min-width: 0;
   padding: var(--space-3);
@@ -1097,107 +1093,53 @@ input[type='number'].tournament-result-score {
 .vote-ranking-column:only-child {
   grid-column: 1 / -1;
 }
-.vote-ranking-name {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.vote-ranking-name .player-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .vote-win-chip {
   min-width: 0;
   flex-shrink: 0;
   padding-block: 0;
   line-height: var(--control-line-height);
 }
-.vote-open-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
+/* The running round has no collapse toggle, so its heading takes the
+   toggle's inset and height instead. */
+.vote-round-heading {
+  flex: 1 1 auto;
+  min-height: var(--control-height);
+  padding: var(--space-2);
 }
-.vote-open-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  min-width: 0;
-}
-.vote-open-title h2 {
+.vote-round-heading h2 {
   margin: 0;
   font-size: var(--font-size-lg);
 }
-.vote-open-admin {
-  display: flex;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-.vote-open-info {
-  margin: 0;
-  font-size: var(--font-size-sm);
-}
-.vote-progress-row {
+/* The 0-10 slider takes the answer column of an Umfrage row; the fixed width
+   keeps every slider the same length whatever the game is called. */
+.vote-points-control {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  width: calc(var(--space-8) * 5);
 }
-.vote-open-row {
-  gap: var(--space-1);
-}
-.vote-open-head {
+.vote-points-track {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  min-height: var(--control-height);
-}
-.vote-open-name {
+  flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vote-points-slider {
-  margin-top: var(--space-2);
 }
 .vote-points-value {
+  min-width: var(--space-6);
   font-size: var(--font-size-lg);
 }
-.vote-open-meta {
-  font-size: var(--font-size-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Sits in the voter column, which stays empty while the round runs. */
+.vote-decline-tag {
   white-space: nowrap;
+}
+.vote-footer-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 .vote-result-meta {
   font-size: var(--font-size-xs);
   overflow-wrap: anywhere;
-}
-.vote-history-round > .row-between {
-  align-items: flex-start;
-}
-.vote-history-round [data-open-history-round] {
-  flex-shrink: 0;
-}
-.vote-submitted-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  min-height: var(--control-height);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--state-playing);
-  border-radius: var(--radius-sm);
-  background: var(--state-playing-bg);
-  color: var(--state-playing);
-  font-weight: var(--font-weight-bold);
 }
 .vote-empty-state {
   display: flex;
@@ -1228,13 +1170,6 @@ input[type='number'].tournament-result-score {
 .vote-start-toolbar {
   flex-wrap: nowrap;
 }
-.vote-game-grid.is-runoff {
-  grid-template-columns: minmax(0, 1fr);
-}
-.vote-submit-row {
-  display: flex;
-  justify-content: flex-end;
-}
 .vote-start-row .vote-info-input {
   display: block;
   height: var(--control-height);
@@ -1250,37 +1185,20 @@ input[type='number'].tournament-result-score {
     column-gap: var(--space-6);
   }
 }
-/* A third column keeps each 0-10 slider at a sane width instead of stretching
-   it across half of --content-max-width's full 1320px on a wide desktop. */
+/* A third column keeps the game checkboxes of the start form compact instead
+   of stretching them across half of a wide desktop's content width. */
 @media (min-width: 1280px) { /* --bp-xl */
   .vote-game-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
-/* The gradient lives on the track itself (fixed left-to-right, full width)
-   rather than on the fill: a gradient set as the fill's own background would
-   get re-normalized to whatever narrow width that particular bar happens to
-   have, so short bars showed only the gradient's start color instead of a
-   consistent color scale across all rows. Instead, the "empty" remainder is
-   covered by an opaque mask growing in from the right, revealing more of the
-   same fixed gradient as the score grows. */
-.vote-bar-track {
-  position: relative;
-  height: 8px;
-  border-radius: var(--radius-full);
-  background: var(--accent-gradient);
-  overflow: hidden;
-}
-.vote-row.is-winner .vote-bar-track {
-  background: var(--state-playing);
-}
-.vote-bar-mask {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--bg-elevated-2);
-  transition: width 0.3s ease;
+/* Phone: like an Umfrage's answer buttons, the slider takes the full width
+   below the game name. */
+@media (max-width: 639px) { /* --bp-md */
+  .event-poll-option > .vote-points-control {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
 }
 
 /* ---------- Leaderboard ---------- */

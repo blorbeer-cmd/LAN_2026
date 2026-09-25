@@ -156,11 +156,6 @@ export const components = [
         "file": "public/js/views/matchmaking.js",
         "source": "class=\"btn btn-sm${teamsMode === 'draft' ? ' btn-primary' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/votes.js",
-        "source": "class=\"btn btn-sm ${isSelected ? 'btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
     ]
   },
@@ -610,6 +605,11 @@ export const components = [
         "file": "public/js/views/eventPolls.js",
         "source": "event-poll-choice-btn${selected ? ' is-selected' : ''}",
         "reason": "Literal class followed by the conditional selected-state marker; this exact template supplies the registered choice control."
+      },
+      {
+        "file": "public/js/views/votes.js",
+        "source": "event-poll-choice-btn${selected ? ' is-selected' : ''}",
+        "reason": "A Vote runoff offers the same Wählen/Ausgewählt choice as a single-choice Umfrage; this exact template supplies the registered choice control."
       }
     ]
   },
@@ -810,6 +810,11 @@ export const components = [
         "file": "public/js/views/gameCatalog.js",
         "source": "class=\"skill-row-slider ${accentClass}${isUnset ? ' skill-row-slider-unset' : ''}\"",
         "reason": "Concrete rating-slider caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/votes.js",
+        "source": "class=\"skill-row-slider${unset ? ' skill-row-slider-unset' : ''}\"",
+        "reason": "The 0-10 Vote slider reuses the rating slider and its dimmed unrated state; component geometry remains owned by this entry."
       }
     ]
   },
@@ -1725,14 +1730,6 @@ export const permanentVariants = [
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "reason": "The own position remove action sits inline after the dish name, exactly one text line high with a 14px glyph, so position rows keep a single amount column."
-  },
-  {
-    "id": "vote-submitted-state",
-    "role": "composite-part",
-    "selector": ".vote-submitted-state",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Noninteractive confirmation is a status surface and may contain icon plus status copy."
   },
   {
     "id": "arcade-toolbar-buttons",

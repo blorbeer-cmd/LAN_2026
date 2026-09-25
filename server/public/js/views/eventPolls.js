@@ -1,13 +1,14 @@
 import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { avatarHtml, escapeHtml } from '../format.js';
+import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { voteBreakdownHtml, voterNamesText, voterStackHtml, WIN_CHIP } from '../voteBreakdown.js';
 
 const RESPONSE_VALUES = ['can', 'if_needed', 'cannot'];
 const FEASIBILITY_VALUES = [...RESPONSE_VALUES, 'open'];
@@ -94,8 +95,6 @@ function formatShortDate(timestamp) {
   return new Date(timestamp).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 }
 
-const WIN_CHIP = '<span class="tournament-fixture-score is-pick vote-win-chip">Win</span>';
-
 // Running and ended polls are already told apart by their section, so only an
 // exceptional state earns a badge of its own.
 function pollStatusBadge(status) {
@@ -180,9 +179,6 @@ function optionUrl(option) {
   return typeof url === 'string' && /^https?:\/\/[^\s]+$/i.test(url) ? url : null;
 }
 
-// How many voter avatars an option row shows before the rest becomes a count.
-const VOTER_STACK_LIMIT = 4;
-
 // Which answer an option's avatar row stands for. Choice and feasibility
 // rounds show the people the option actually won over, because every other
 // answer is stored for every option and would make all rows look identical.
@@ -202,26 +198,13 @@ function optionVoters(poll, option) {
   };
 }
 
-function voterStackLabel(option, voters) {
-  const names = voters.people.slice(0, VOTER_STACK_LIMIT).map((person) => person.name);
-  const rest = voters.people.length - names.length;
-  return `Stimmen zu ${optionLabel(option)} ansehen · ${voters.label}: ${names.join(', ')}${rest > 0 ? ` und ${rest} weitere` : ''}`;
-}
-
 function renderVoterStack(poll, option) {
   const voters = optionVoters(poll, option);
-  if (!voters.people.length) return '';
-  const shown = voters.people.slice(0, VOTER_STACK_LIMIT);
-  const rest = voters.people.length - shown.length;
-  const label = voterStackLabel(option, voters);
-  return `
-    <button type="button" class="btn btn-sm event-poll-voter-stack" data-view-poll-votes="${escapeHtml(poll.id)}"
-      aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
-      <span class="event-poll-voter-stack-avatars" aria-hidden="true">${shown
-        .map((person) => avatarHtml(state.players?.find((entry) => entry.id === person.playerId) ?? person, 24))
-        .join('')}</span>
-      ${rest > 0 ? `<span class="event-poll-voter-stack-more" aria-hidden="true">+${rest}</span>` : ''}
-    </button>`;
+  return voterStackHtml({
+    people: voters.people,
+    label: `Stimmen zu ${optionLabel(option)} ansehen · ${voters.label}: ${voterNamesText(voters.people)}`,
+    attributes: `data-view-poll-votes="${escapeHtml(poll.id)}"`,
+  });
 }
 
 function resultSortValues(poll, option) {
@@ -312,44 +295,22 @@ function openVoteDetails(poll, { showRound = false } = {}) {
   const { people, answers } = poll.responseDetailsVisible ? voteDetailAnswers(poll, options) : { people: [], answers: new Map() };
   const hasResponses = people.length > 0 || options.some((option) => option.counts?.can || option.counts?.average != null);
   const title = `Stimmen · ${poll.title}${showRound ? ` · Runde ${poll.roundNumber}` : ''}`;
-  const number = (index, win) => `<span class="event-poll-vote-number${win ? ' is-win' : ''}">${index + 1}</span>`;
-  const legend = `
-    <ol class="event-poll-vote-legend">
-      ${options.map((option, index) => {
-        const win = option.isRecommended && decided;
-        return `<li class="event-poll-vote-legend-row">
-          ${number(index, win)}
-          <span class="event-poll-vote-legend-label">${escapeHtml(optionLabel(option))}</span>
-          ${win ? WIN_CHIP : ''}
-          <span class="muted event-poll-vote-legend-summary">${escapeHtml(voteDetailSummary(poll, option))}</span>
-        </li>`;
-      }).join('')}
-    </ol>
-    ${poll.responseMode === 'feasibility' && people.length
-      ? `<div class="muted event-poll-vote-key">
-           ${Object.values(VOTE_CELL_SYMBOLS).map((symbol) => `<span><span class="event-poll-vote-cell is-${symbol.state}" aria-hidden="true">${icon(symbol.icon)}</span>${symbol.label}</span>`).join('')}
-         </div>`
-      : ''}`;
-  const table = people.length
-    ? `<div class="event-poll-vote-table-wrap">
-         <table class="event-poll-vote-table">
-           <colgroup><col />${options.map(() => '<col class="event-poll-vote-col" />').join('')}</colgroup>
-           <thead><tr><th scope="col"><span class="visually-hidden">Person</span></th>${options
-             .map((option, index) => `<th scope="col" aria-label="${escapeHtml(optionLabel(option))}">${number(index, option.isRecommended && decided)}</th>`)
-             .join('')}</tr></thead>
-           <tbody>${people
-             .map((person) => {
-               const player = state.players?.find((entry) => entry.id === person.playerId) ?? person;
-               return `<tr>
-                 <th scope="row"><span class="player-name">${avatarHtml(player, 20)}<span class="event-poll-voter-name">${escapeHtml(person.name)}</span></span></th>
-                 ${options.map((option) => `<td>${voteDetailCell(poll, answers.get(person.playerId)?.get(option.id))}</td>`).join('')}
-               </tr>`;
-             })
-             .join('')}</tbody>
-         </table>
+  const keyHtml = poll.responseMode === 'feasibility' && people.length
+    ? `<div class="muted event-poll-vote-key">
+         ${Object.values(VOTE_CELL_SYMBOLS).map((symbol) => `<span><span class="event-poll-vote-cell is-${symbol.state}" aria-hidden="true">${icon(symbol.icon)}</span>${symbol.label}</span>`).join('')}
        </div>`
     : '';
-  openModal(title, hasResponses ? `<div class="stack event-poll-vote-details">${legend}${table}</div>` : '<p class="muted">Für diese Runde wurden keine Stimmen abgegeben.</p>');
+  const body = voteBreakdownHtml({
+    columns: options.map((option) => ({
+      label: optionLabel(option),
+      win: option.isRecommended && decided,
+      summary: voteDetailSummary(poll, option),
+    })),
+    people,
+    keyHtml,
+    cellHtml: (person, index) => voteDetailCell(poll, answers.get(person.playerId)?.get(options[index].id)),
+  });
+  openModal(title, hasResponses ? body : '<p class="muted">Für diese Runde wurden keine Stimmen abgegeben.</p>');
 }
 
 function renderResponseControl(poll, option) {
