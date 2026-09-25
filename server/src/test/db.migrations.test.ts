@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 105);
+  assert.equal(migrations.length, 107);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 105 }, (_, index) => index + 1),
+    Array.from({ length: 107 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,8 +1342,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 105 }, (_, index) => index + 1),
-    'every version 1..105 runs exactly once',
+    Array.from({ length: 107 }, (_, index) => index + 1),
+    'every version 1..107 runs exactly once',
   );
 });
 
@@ -1381,6 +1381,50 @@ test('migration 105 adds the draw-to-tournament link to legacy draws and is rest
     { id: 'legacy-draw', tournamentId: null },
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 105').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migrations 106 and 107 archive finished To-Dos and turn assignments into participants, restart-safe', () => {
+  const dbFile = makeTempDbPath('checklist-archive-participants');
+  runMigrations(dbFile);
+
+  // Rebuild the pre-106 shape: no archived_at, no participant table.
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`
+    DROP TABLE checklist_task_assignees;
+    ALTER TABLE checklist_tasks DROP COLUMN archived_at;
+    DELETE FROM schema_migrations WHERE version IN (106, 107);
+  `);
+  fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run('p-legacy', 'Legacy', 'key-legacy', 1);
+  const insertTask = fixture.prepare(
+    `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, created_by, assignee_id, status, created_at, taken_at, done_at, claim_comment)
+     VALUES (?, 'default-group', 'instance-base-event', 'todo', ?, 'p-legacy', ?, ?, 1, ?, ?, ?)`,
+  );
+  insertTask.run('t-open', 'Offen', null, 'open', null, null, null);
+  insertTask.run('t-taken', 'Übernommen', 'p-legacy', 'taken', 5, null, 'Bringe zwei mit');
+  insertTask.run('t-done', 'Erledigt', 'p-legacy', 'done', 5, 9, null);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the To-Do archive/participant migrations must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const archived = migrated.prepare('SELECT id, archived_at AS archivedAt FROM checklist_tasks WHERE id LIKE ? ORDER BY id').all('t-%');
+  assert.deepEqual(archived, [
+    { id: 't-done', archivedAt: 9 },
+    { id: 't-open', archivedAt: null },
+    { id: 't-taken', archivedAt: null },
+  ]);
+  const participants = migrated
+    .prepare('SELECT task_id AS taskId, player_id AS playerId, comment, joined_at AS joinedAt FROM checklist_task_assignees ORDER BY task_id')
+    .all();
+  assert.deepEqual(participants, [
+    { taskId: 't-done', playerId: 'p-legacy', comment: null, joinedAt: 5 },
+    { taskId: 't-taken', playerId: 'p-legacy', comment: 'Bringe zwei mit', joinedAt: 5 },
+  ]);
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 107').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

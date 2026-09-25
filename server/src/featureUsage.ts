@@ -167,9 +167,13 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
   {
     const row = db
       .prepare(
-        `SELECT COUNT(DISTINCT assignee_id) AS players, COUNT(*) AS total
-         FROM checklist_tasks WHERE group_id = ? AND type = 'todo' AND status = 'done'
-           AND assignee_id ${NOT_TEST_PLAYER}`,
+        // Several people can take over one To-Do; every one of them counts
+        // as a player, each finished To-Do once.
+        `SELECT COUNT(DISTINCT a.player_id) AS players, COUNT(DISTINCT t.id) AS total
+         FROM checklist_tasks t
+         JOIN checklist_task_assignees a ON a.task_id = t.id
+         WHERE t.group_id = ? AND t.type = 'todo' AND t.status = 'done'
+           AND a.player_id ${NOT_TEST_PLAYER}`,
       )
       .get(groupId) as { players: number; total: number };
     entries.push({

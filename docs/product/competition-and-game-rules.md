@@ -8,7 +8,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   `<select>` for three or more mutually exclusive named options (tournament format); the
   `.btn`/`.btn-primary` two-or-three-way toggle (`aria-pressed`, usually inside `.selection-toolbar`)
   for a plain either/or choice with no competing primary action nearby (Team formation's
-  Auslosung/Captain Draft, Checkliste's tabs, the To-Do dialog's Art/Zuweisen-an); the Arcade
+  Auslosung/Captain Draft, Checkliste's tabs, the To-Do dialog's Art); the Arcade
   section's `.arcade-mode-toggle` segmented pill only when the toggle sits directly beside a primary
   gradient CTA it must not visually compete with; a plain checkbox only for an independent on/off
   flag (Hin- & Rückrunde, Punktestand tracken, Sitznachbarn), never for a named exclusive
@@ -115,7 +115,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   lightbulb with an accessible name and native title, not the spelled-out word) since it repeats on
   every suggestion row in that mixed list; the „Vorschläge“ tab's own label and active state already
   say what the whole list is, so its rows carry no additional per-row marker.
-  The „Spiel vorschlagen“ form exposes the same game metadata that can later be edited: title,
+  „Spiel vorschlagen“ is the compact gradient action at the right end of the tab row; below
+  `--bp-sm` it collapses to a square „+“ with the same accessible name so it still fits beside the
+  three tabs. The „Spiel vorschlagen“ form exposes the same game metadata that can later be edited: title,
   platform and its link, YouTube gameplay link, genres, additional info and the seat-neighbor
   default. Process-name mappings remain an admin-only management action because they control
   automatic game detection on participant computers.

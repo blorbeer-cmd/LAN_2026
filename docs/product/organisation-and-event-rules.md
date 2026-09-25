@@ -98,8 +98,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   admin task, not something every member needs from Orga. „Mehr“ opens Orga on its first tab,
   „Umfragen“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
   top-left tab is the one actually selected on arrival; the already persisted push url `/#checklist`
-  is unaffected and still lands directly on To-Do. That tab label carries
-  the live count of the current identity's own open+taken items. The checklist's former in-view
+  is unaffected and still lands directly on To-Do. Tab labels carry no counts. The checklist's former in-view
   toggle is gone — its two halves are area tabs now, so no tab row nests inside another.
   In a general event the same routes keep their data and deep links but lose the Orga wrapper:
   An- & Abreise, Packliste and To-Do are direct bottom-nav pages. Each page owns its concise title
@@ -117,26 +116,28 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   into „Fertig“; ticking items works in both modes. An empty list shows „Noch keine Einträge.“ and
   no „Bearbeiten“ action.
   Any active member — not only Owner/Admin — can create a To-Do of either Art (Aufgabe/
-  Mitbring-Anfrage) through one unified „To-Do erstellen“ dialog: a `.selection-toolbar` Art toggle,
-  Titel/Beschreibung, a second `.selection-toolbar` for „Zuweisen an“ (Niemand/Ich/Personen wählen —
-  the last reveals the existing player-selection grid plus „Alle auswählen“/„Alle abwählen“), and an
-  optional „Fällig bis“ date using `dateTimeFieldHtml`'s `dateOnly` mode (no time-of-day picker, since
-  none is meaningful here). Switching Art or Zuweisen-an mid-form preserves already-typed field values
-  across the internal re-render, the same survives-its-own-rerender pattern the add-item field uses.
-  „Mir zugewiesen“ is a dedicated first subsection listing the current identity's own open+taken
-  To-Dos sorted by due date (undated ones last); an overdue card gets the `checklist-task-overdue`
-  border/background treatment and every card with a due date carries a `.badge-overdue`/
-  `.badge-due-soon`/`.badge-neutral` pill (never color alone — the badge text itself says „Überfällig“/
-  „Heute fällig“/„Morgen fällig“/„Fällig in N Tagen“/a plain date). „Offen“ (the shared pool) gets
-  `.chip` filter toggles for Art (Alle/Aufgaben/Mitbring-Anfragen) plus a „Von mir erstellt“ toggle,
-  each marked `.chip.is-active` when selected; the pool otherwise still uses one bare `.badge` to
-  distinguish the two types and the same nested-card layout as before. „Übernehmen“ replaces the claim
-  action once someone else already committed to it, and the creator sees „Zurückziehen“ on their own
-  open entry instead. To-Dos already taken by someone else move into the „Unterwegs“ subsection with
-  the current assignee's avatar/name and due badge; taken by the current identity, they show in „Mir
-  zugewiesen“ with „Freigeben“/„Erledigt“ actions instead. Completed To-Dos live in one standard,
-  initially collapsed „Historie“ section whose open state survives live re-renders, same as Food
-  orders.
+  Mitbring-Anfrage) through one „To-Do erstellen“ dialog: the Art choice (chosen option blue
+  outlined, no gradient), Titel, a one-line Beschreibung whose placeholder follows the Art, and an
+  optional „Fällig bis“ date using `dateTimeFieldHtml`'s `dateOnly` mode. Nobody is assigned on
+  creation; switching Art mid-form keeps already-typed values. The creator can later edit Art,
+  Titel, Beschreibung and Fälligkeit („To-Do bearbeiten“, `PATCH /api/checklist/tasks/:id`) or
+  delete the To-Do until it is done.
+  All To-Dos form one table in one card without a card heading: a toolbar with „To-Do suchen“,
+  a sort menu (Fälligkeit, Titel · A–Z, Wer · A–Z), a filter menu (Wer: Alle/Meine/Offen/Unterwegs/
+  Erledigt/Von mir erstellt; Art: Alle/Aufgaben/Mitbring-Anfragen) and the compact gradient
+  „To-Do erstellen“. The table has no column headers; every row is one line high with the title
+  (cut after 40 characters, full in the details), „Wer“ (at most two names plus a muted „+N“, the
+  current identity always first and bold, or a muted „offen“), a self-explaining due text
+  („Überfällig“, „Fällig heute“, „Fällig morgen“, „Fällig in N Tagen“, „Fällig am TT.MM.“, no
+  colour) and one fixed action column. Several people can take over the same To-Do: whoever has
+  not yet taken it sees „Übernehmen“ (an optional comment belongs to that person), whoever has
+  sees „Abgeben“; both share one width. Once the last person gives it back, it is open again.
+  Clicking a row opens a compact detail dialog with the description, Art, „Erstellt von“,
+  „Übernommen von“, comments and the due date, plus the actions „Löschen“, „Bearbeiten“,
+  „Abgeben“ and the one gradient next step („Übernehmen“, „Erledigt“ or „Archivieren“). A done
+  To-Do stays in the list, muted and struck through, until a participant, the creator or an admin
+  archives it; archived To-Dos live in the initially collapsed „Historie“ section whose open state
+  survives live re-renders, same as Food orders.
   The „Umfragen“ tab is the event-centric planning surface for free questions such as dates,
   locations, duration or budget. It always uses the active event from the existing top-right
   workspace switcher, including the permanently open „Allgemein“ base event: neither the tab nor
@@ -324,7 +325,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   appears on management cards, member cards and pending invitations alike, because deciding against
   a parallel obligation is a personal act, and disappears once an event has ended. The dialog is a
   shared `openModal()` instance with the standard `.chip`/`.chip.is-active` category filter (Alle
-  plus eight categories, the same filter pattern as Orga's To-Do Art chips), one nested result
+  plus eight categories, the same filter pattern as Admin's Feedback filter), one nested result
   surface with an `aria-live="polite"` region so „Neue Ausrede“ is announced without rebuilding the
   dialog, and the two equal-width actions „Neue Ausrede“ and „Kopieren“. It carries no explanatory
   copy above the filter: the title, the chips and the excuse itself already say what the dialog is,

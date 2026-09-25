@@ -21,7 +21,6 @@ import { openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
 import { focusGameCatalog } from './views/gameCatalog.js';
-import { ensureTasksLoaded, openTaskCount } from './views/checklist.js';
 import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from './searchSelect.js';
 import { icon, installIconReplacement } from './icons.js';
@@ -30,7 +29,7 @@ import { initGlobalSearch } from './searchPalette.js';
 import { domainIcon, installDomainIcons } from './domainIcons.js';
 import { initGroupContext, refreshGroupContext } from './groupContext.js';
 import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
-import { navGroupForView, sectionKeyForView } from './sectionNav.js';
+import { navGroupForView } from './sectionNav.js';
 import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
 import { captureViewRenderState, restoreViewRenderState } from './viewRenderState.js';
 import { realtimeEventAffectsView } from './realtimeRefreshPolicy.js';
@@ -214,30 +213,6 @@ function syncDesktopNavigationActiveState() {
     ?.classList.toggle('needs-setup', !getMyId());
 }
 
-function syncDesktopTaskCount() {
-  const button = document.querySelector('.desktop-nav-btn[data-view="checklist"]');
-  if (!button) return;
-  const count = openTaskCount();
-  const label = `${button.dataset.baseLabel}${count ? ` (${count})` : ''}`;
-  const labelElement = button.querySelector('.desktop-nav-label');
-  if (labelElement.textContent !== label) labelElement.textContent = label;
-  button.setAttribute('aria-label', label);
-}
-
-function refreshDesktopTaskCount() {
-  if (document.documentElement.dataset.layoutMode !== 'desktop'
-    || !window.matchMedia('(min-width: 1280px)').matches
-    || !startupData.ready
-    || !state.activeEvent
-    || !viewIsEnabledForEvent('checklist', state.activeEvent)) return;
-  ensureTasksLoaded({
-    rerender: () => {
-      syncDesktopTaskCount();
-      if (currentView === 'home' || sectionKeyForView(currentView) === 'orga') renderCurrent();
-    },
-  });
-  syncDesktopTaskCount();
-}
 
 function desktopNavKey(entry) {
   return entry.action ? `action:${entry.action}` : `view:${entry.view}`;
@@ -366,7 +341,6 @@ function renderDesktopNavigation() {
     root.dataset.signature = signature;
   }
   syncDesktopNavigationActiveState();
-  refreshDesktopTaskCount();
 }
 
 function queueSharedRefresh({ render = true } = {}) {
@@ -599,7 +573,6 @@ function renderCurrent({ preserveState = true } = {}) {
   const renderer = entry.render ?? resolvedLazyRenderers.get(view);
   if (renderer) {
     renderer(viewContainer, ctx);
-    refreshDesktopTaskCount();
     restoreViewRenderState(viewContainer, renderState);
     finishRenderedViewFocus();
     return;
@@ -611,7 +584,6 @@ function renderCurrent({ preserveState = true } = {}) {
       resolvedLazyRenderers.set(view, renderFn);
       if (revision !== renderRevision || view !== currentView) return;
       renderFn(viewContainer, ctx);
-      refreshDesktopTaskCount();
       restoreViewRenderState(viewContainer, renderState);
       finishRenderedViewFocus();
     })
@@ -834,7 +806,6 @@ function wireNav() {
       window.dispatchEvent(new Event('respawn:layout-mode-changed'));
     }
   });
-  window.addEventListener('respawn:layout-mode-changed', refreshDesktopTaskCount);
   // Info is reference material people look up mid-conversation, so it opens
   // over whatever they were doing instead of costing them their current view.
   document.getElementById('info-btn').addEventListener('click', () => openInfoBoard());
@@ -1165,9 +1136,9 @@ function wireSocket() {
     // keeps an unrelated half of the cache (and the Packliste draft it feeds)
     // from being thrown away.
     invalidateViewCaches(VIEW_REGISTRY, 'checklist:changed', { payload });
-    // Every Orga tab re-renders, not just the two checklist ones: the To-Dos
-    // tab count belongs to the area shell and is visible from all of them.
-    if (sectionKeyForView(currentView) === 'orga') renderCurrent();
+    // Only the two checklist views show this data; the other Orga tabs keep
+    // their drafts untouched.
+    if (currentView === 'checklist' || currentView === 'checklistPacking') renderCurrent();
     // Home's "Meine To-Dos" tile visibility itself now depends on this data
     // (see renderAssignedTodos() in home.js), not just its content, so a
     // stale cache on an already-open Home view has to trigger a re-render too.
@@ -1175,7 +1146,6 @@ function wireSocket() {
     // deliberately leaves the tasks cache untouched for, so it can't change
     // what the tile shows and doesn't need a Home rebuild either.
     else if (currentView === 'home' && payload?.scope !== 'items') renderCurrent();
-    else if (payload?.scope !== 'items') refreshDesktopTaskCount();
   });
 
   socket.on('music:changed', () => {

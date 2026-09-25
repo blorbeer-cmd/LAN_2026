@@ -3579,6 +3579,11 @@ button.card {
 .home-current--compact {
   padding-block: var(--space-3);
 }
+/* "Meine To-Dos" borrows the compact rows but keeps the standard card inset,
+   so its heading lines up with the first card of every other area. */
+.home-current--compact[data-home-assigned-todos] {
+  padding-block: var(--space-4);
+}
 .home-current--compact .home-current-row {
   min-height: var(--tap-target-size);
 }
@@ -4301,16 +4306,10 @@ input[type='text'].invite-link-field {
   background: var(--bg-elevated-2);
   color: var(--text-muted);
 }
-/* To-Do due-date badges (docs/KONZEPT-PACKLISTE-TICKETS.md): reuse the same
-   danger/paused semantics as everywhere else in the app rather than
-   inventing new colors - overdue is an error state, due-soon a caution one. */
+/* Error badge (admin log): the danger pair used everywhere else. */
 .badge-overdue {
   background: var(--danger-bg);
   color: var(--danger);
-}
-.badge-due-soon {
-  background: var(--state-paused-bg);
-  color: var(--state-paused);
 }
 
 .chip {

@@ -124,27 +124,7 @@ export const components = [
       },
       {
         "file": "public/js/views/checklist.js",
-        "source": "class=\"btn btn-sm${form.kind === 'todo' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"btn btn-sm${form.kind === 'item_request' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"btn btn-sm${form.assignMode === 'none' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"btn btn-sm${form.assignMode === 'self' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"btn btn-sm${form.assignMode === 'pick' ? ' btn-primary' : ''}\"",
+        "source": "class=\"btn btn-sm${current === value ? ' is-selected' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
@@ -326,6 +306,30 @@ export const components = [
     "purpose": "Packliste remove action keeps the 44px icon slot, muted, and only renders while the list is in editing mode."
   },
   {
+    "id": "checklist-task-title",
+    "role": "composite-part",
+    "selector": ".checklist-task-title",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "To-Do title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and struck through once done.",
+    "properties": [
+      "max-width",
+      "padding"
+    ]
+  },
+  {
+    "id": "game-catalog-suggest",
+    "role": "standard-control",
+    "selector": ".game-catalog-suggest",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Spiel vorschlagen closes the catalog tab row; below --bp-sm it collapses to a 32 by 32px plus with the same accessible name.",
+    "properties": [
+      "width",
+      "padding"
+    ]
+  },
+  {
     "id": "game-catalog-link-action",
     "role": "standard-control",
     "selector": ".game-icon-btn",
@@ -392,6 +396,13 @@ export const components = [
       "border-color",
       "background",
       "color"
+    ],
+    "dynamicUses": [
+      {
+        "file": "public/js/views/checklist.js",
+        "source": "class=\"btn btn-sm game-catalog-sort-option${value === current ? ' is-active' : ''}\"",
+        "reason": "The To-Do sorting and filter menus reuse the catalog menu rows; the static inventory does not infer the active branch. Geometry remains owned by this entry."
+      }
     ]
   },
   {
@@ -489,26 +500,6 @@ export const components = [
       {
         "file": "public/js/views/adminFeedback.js",
         "source": "class=\"chip${feedbackSentimentFilter === option.value ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"chip${typeFilter === 'all' ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"chip${typeFilter === 'todo' ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"chip${typeFilter === 'item_request' ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"chip${onlyMineFilter ? ' is-active' : ''}\"",
         "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
@@ -1453,6 +1444,28 @@ export const permanentVariants = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "reason": "The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.",
+    "properties": [
+      "box-shadow"
+    ]
+  },
+  {
+    "id": "checklist-table-action",
+    "role": "standard-control",
+    "selector": ".checklist-table-action > .btn",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.",
+    "properties": [
+      "width"
+    ]
+  },
+  {
+    "id": "checklist-choice-selected",
+    "role": "standard-control",
+    "selector": ".checklist-choice-toolbar .btn.is-selected",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The chosen To-Do kind is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base variant.",
     "properties": [
       "box-shadow"
     ]

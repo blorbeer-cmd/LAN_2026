@@ -63,10 +63,6 @@ export function navGroupForView(view, event) {
   return sectionKey ?? view;
 }
 
-function badgeText(count) {
-  return count ? ` (${count})` : '';
-}
-
 // Renders an area's title and tab row into `container` and returns the element
 // the active tab's own renderer should draw into. Sub-views keep rendering
 // exactly as before — they just no longer own the page heading.
@@ -76,8 +72,8 @@ function badgeText(count) {
 // read their own previous DOM before overwriting it — the Packliste carries the
 // half-typed add-item field and its focus that way — and replacing the node
 // first would silently hand them an empty container on every background
-// refresh. Only the live tab counts are patched in place.
-export function renderSectionShell(container, view, { badges = {}, event } = {}) {
+// refresh.
+export function renderSectionShell(container, view, { event } = {}) {
   const section = sectionForView(view);
   if (!section) throw new Error(`Kein Bereich für Ansicht ${view}`);
   const sectionKey = sectionKeyForView(view);
@@ -93,10 +89,6 @@ export function renderSectionShell(container, view, { badges = {}, event } = {})
     container.dataset.sectionView === view &&
     container.dataset.sectionTabs === visibleTabSignature
   ) {
-    for (const tab of visibleTabs) {
-      const count = container.querySelector(`[data-section-tab="${tab.view}"] [data-section-tab-count]`);
-      if (count) count.textContent = badgeText(badges[tab.view]);
-    }
     return existing;
   }
 
@@ -104,7 +96,7 @@ export function renderSectionShell(container, view, { badges = {}, event } = {})
     .map((tab) => {
       const active = tab.view === view;
       return `<button type="button" class="btn btn-sm section-tab${active ? ' btn-primary' : ''}"
-        data-section-tab="${tab.view}"${active ? ' aria-current="page"' : ''}>${tab.label}<span data-section-tab-count>${badgeText(badges[tab.view])}</span></button>`;
+        data-section-tab="${tab.view}"${active ? ' aria-current="page"' : ''}>${tab.label}</button>`;
     })
     .join('');
 

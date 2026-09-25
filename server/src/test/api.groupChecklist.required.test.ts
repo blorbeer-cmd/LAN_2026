@@ -130,12 +130,14 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       assert.equal((await scoped(app, 'post', '/api/checklist/tasks/does-not-exist/claim', dave, groupId).send({})).status, 404);
 
       // --- group admins (not just the creator/assignee) moderate their own group's tasks ---
-      const claimedA = await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.tasks[0].id + '/claim', bob, groupId).send({});
-      assert.equal(claimedA.status, 409, JSON.stringify(claimedA.body), 'Bob created taskA and cannot claim his own request');
       // Alice (owner, not creator/assignee of taskA which Bob created and
-      // nobody claimed yet) attempting done must also fail - a task has to
-      // be taken before it can be done regardless of role.
+      // nobody took over yet) attempting done must fail - a task has to be
+      // taken before it can be done regardless of role.
       assert.equal((await scoped(app, 'patch', '/api/checklist/tasks/' + taskA.body.tasks[0].id + '/done', alice, groupId).send({})).status, 409);
+      // The creator may take over their own request.
+      const claimedA = await scoped(app, 'post', '/api/checklist/tasks/' + taskA.body.tasks[0].id + '/claim', bob, groupId).send({});
+      assert.equal(claimedA.status, 200, JSON.stringify(claimedA.body));
+      assert.deepEqual(claimedA.body.assignees.map((p: { id: string }) => p.id), [bob.account.id]);
 
       // --- docs/KONZEPT-PACKLISTE-TICKETS.md: creating+directly-assigning a
       // to-do no longer requires Owner/Admin - Bob is a plain member and

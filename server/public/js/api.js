@@ -560,6 +560,10 @@ export const api = {
       apiFetch(`/api/checklist/tasks/${taskId}/done`, { method: 'PATCH', body: JSON.stringify({ playerId }) }),
     cancel: (taskId, playerId) =>
       apiFetch(`/api/checklist/tasks/${taskId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+    archive: (taskId, playerId) =>
+      apiFetch(`/api/checklist/tasks/${taskId}/archive`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    updateTask: (taskId, playerId, fields) =>
+      apiFetch(`/api/checklist/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify({ playerId, ...fields }) }),
   },
 
   arrivals: {

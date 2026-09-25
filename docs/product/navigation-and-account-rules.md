@@ -50,11 +50,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   hides the duplicate tabs and shows the opened page's title in the compact header. Every tab row
   remains outside any card, distinct from the in-card controls further down. Each tab is a real
   route, so the row is `<nav>` navigation rather than a toggle: the active tab carries
-  `aria-current="page"` plus `.btn-primary`, never `aria-pressed`. A tab may carry a live count
-  in parentheses (Orga's „To-Do“ shows the current identity's own open items); on wide desktop
-  screens its rail entry carries the same count. A zero count renders no parentheses. The count
-  loads on entering any compact Orga tab or any page with a visible desktop rail, then updates
-  the tab buttons or rail in place. Tabs share the full width on phones for a comfortable tap
+  `aria-current="page"` plus `.btn-primary`, never `aria-pressed`. Tabs and rail entries carry
+  their plain label, never a count. Tabs share the full width on phones for a comfortable tap
   target and size to their own label from `--bp-md`, because two tabs stretched across the wide
   content column would read as banners rather than navigation. A primary action belongs in the
   first relevant card header when that card exists (for example „Ergebnis eintragen“ beside
@@ -233,8 +230,7 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   `.selection-toolbar` toggle rather than a free-text category, plus a message field. Admin's
   Feedback section lists open submissions first and orders each state newest first. It filters them
   by the same four sentiments plus „Alle“ through the shared `.chip`/`.chip.is-active` pattern
-  (mirroring Spiele's genre chips and
-  Orga's To-Do Art filter). Open entries expose the compact primary action „Erledigt“ through
+  (mirroring Spiele's genre chips). Open entries expose the compact primary action „Erledigt“ through
   `.btn.btn-sm.btn-primary`. Completed entries move into a separate, initially collapsed
   „Erledigt“ section whose open state survives live re-renders; their secondary `.btn.btn-sm`
   action „Wieder öffnen“ moves them back without deleting the original message or its captured
@@ -275,8 +271,9 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
 - **Home overview** — Home follows the same full-width grouped-card hierarchy as Tournaments,
   Teams and Vote. „Aktuell“, „Live-Status“, „Rangliste“ and „Sitzplan“ are separate main cards with
   their heading inside the surface. „Meine To-Dos“ only renders once there is something to act on:
-  up to three tasks assigned to the signed-in identity, ordered by due date, or — while none are
-  assigned yet — a single row nudging toward the shared pool's still-open To-Dos; with neither, the
+  up to three To-Dos the signed-in identity has taken over, ordered by due date, each as a compact
+  row with the To-Do symbol, the title and the colour-free due text, or — while none are taken
+  yet — a single row nudging toward the shared pool's still-open To-Dos; with neither, the
   tile stays hidden rather than offering an empty link into the full list. Every current
   item is a single full-row action that navigates into its source view.
   Current items and To-Dos use the same compact, divided row treatment inside their main card.
