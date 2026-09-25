@@ -2714,6 +2714,7 @@ button.draft-pool-player {
 [data-checklist-history] > .collapsible-section-header,
 [data-food-history] > .collapsible-section-header,
 [data-broadcast-history] > .collapsible-section-header,
+[data-music-connection] > .collapsible-section-header,
 [data-completed-tournaments] > .collapsible-section-header,
 [data-tournament-teams] > .collapsible-section-header {
   align-items: center;

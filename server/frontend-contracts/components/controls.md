@@ -409,7 +409,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `arcade-toolbar-buttons`, `challenge-test-disclosure` | Standardhöhe mit echtem Textumbruch; Segment-/Erstellungsgeometrie bleibt beim Pilotvertrag. |
 | `topbar-title`, `desktop-navigation`, `page-heading`, `subpage-heading`, `tabbed-subpage-heading`, `section-heading`, `section-title` | Bestehende 44-px-Kopf-/Navigationszeilen und mehrzeilige Headerreservierungen. |
 | `seating-pool`, `seating-player` | Strukturelle Sitzplatz-Ablagefläche und 44-px-Spielerzeile. |
-| `music-copy-actions`, `music-cover` | Globale Kopieraktionen; unverändertes nichtinteraktives 76-px-Cover. |
+| `music-cover` | Unverändertes nichtinteraktives 76-px-Cover. |
 | `kiosk-header-action`, `kiosk-match-row` | Permanente 44-px-Ziele der eigenständigen TV-Geräteklasse. |
 
 Die Glyphenvarianten `registry:event-card-detail-glyph`, `registry:desktop-navigation-glyph`,
@@ -455,6 +455,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:checklist-task-title`: To-Do title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and struck through once done.
 - `registry:broadcast-table-open`: Durchsage message opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and muted once past.
+- `registry:music-queue-open`: Jam request title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover.
 - `registry:notification-center-open`: The whole notification text block is the link that opens its target and marks it read; it reads as text, not as a button.
 
 - `registry:game-catalog-suggest`: Spiel vorschlagen closes the catalog tab row; below --bp-sm it collapses to a 32 by 32px plus with the same accessible name.
@@ -574,8 +575,10 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:checklist-table-action`: Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.
 - `registry:broadcast-table-action`: Beenden fills the fixed Durchsage action column, so it lines up from row to row.
 - `registry:broadcast-send`: Senden is exactly as wide as the time field above it, so the form ends flush on one right edge.
+- `registry:music-row-action`: Jam setup steps and search results keep one fixed right-hand action column, so their compact buttons share one width and line up from row to row.
 
 - `registry:checklist-choice-selected`: The chosen To-Do kind is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base variant.
+- `registry:music-result-selected`: The chosen Jam result type is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base variant.
 
 - `registry:poll-note-field`: The poll description starts as one line and grows with its content up to four control heights.
 
@@ -642,7 +645,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:seating-player`: Permanent 44px seating player row.
 
-- `registry:music-copy-actions`: Shared 44 by 32px copy actions in music rows.
 
 - `registry:music-cover`: Noninteractive 76px artwork belongs to the music-card structure.
 

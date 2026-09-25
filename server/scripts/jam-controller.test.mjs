@@ -146,6 +146,7 @@ test('Jam controller can re-pair in place and stays online when Spotify needs a 
   const page = await (await fetch(localUrl)).text();
   assert.match(page, /Spotify-Anmeldung erneuern/);
   assert.doesNotMatch(page, /Controller-Paket erneut/);
+  assert.doesNotMatch(page, /\son(?:submit|click)=/, 'the page CSP forbids inline scripts');
 });
 
 test('Jam controller blocks foreign browser origins from its scoped Web Playback token', async (t) => {

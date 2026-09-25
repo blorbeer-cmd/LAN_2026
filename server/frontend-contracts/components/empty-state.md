@@ -128,6 +128,7 @@ steht im [Paket-5-Inventar](../evidence/package-5-baseline.tsv). Es gibt keine b
 
 - `registry:empty-state-food-items`: Preserves small copy and vertical spacing in the empty food-position list.
 
+- `registry:empty-state-music`: Idle Jam playback line stays compact between the card header and the playback controls.
 - `registry:empty-state-kiosk-loading`: Preserves the TV loading canvas inset.
 
 - `registry:empty-state-vote`: Centered result/history slot in Vote.
@@ -138,6 +139,5 @@ steht im [Paket-5-Inventar](../evidence/package-5-baseline.tsv). Es gibt keine b
 
 - `registry:empty-state-notifications`: Shared empty/loading/error slot inside the notification panel.
 
-- `registry:empty-state-music`: Centered current-playback placeholder.
 
 - `registry:empty-state-kiosk`: TV vote placeholders fill their existing dashboard region.

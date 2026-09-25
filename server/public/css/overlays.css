@@ -853,170 +853,24 @@
 .oauth-callback-card {
   width: min(100%, var(--search-panel-width));
 }
-.music-setup-card,
-.music-connect-card {
-  align-items: stretch;
-}
-.music-setup-steps {
-  display: grid;
-  gap: var(--space-2);
+/* Jam follows the flat table style: hairline rows, gray meta lines, compact
+   neutral actions and one gradient for the next step. */
+.music-note {
   margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.music-setup-steps li {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-elevated-2);
-}
-.music-setup-steps li.is-current {
-  border-color: var(--accent);
-}
-.music-setup-steps li.is-complete {
   color: var(--text-muted);
+  font-size: var(--font-size-sm);
 }
-.music-setup-step-number {
-  display: grid;
-  place-items: center;
-  width: var(--space-7);
-  height: var(--space-7);
-  border-radius: var(--radius-full);
-  background: var(--bg);
+.music-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.music-me {
   color: var(--text);
   font-weight: var(--font-weight-bold);
-}
-.music-setup-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.music-setup-actions .btn {
-  text-align: center;
-}
-@media (min-width: 640px) { /* --bp-md */
-  .music-setup-actions {
-    flex-direction: row;
-  }
-  .music-setup-actions > .btn {
-    flex: 1;
-  }
-}
-.music-config-list {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.music-pairing-panel {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-}
-.music-pairing-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-.music-pairing-title {
-  display: grid;
-  gap: var(--space-1);
-}
-.music-pairing-title small {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-}
-.music-pairing-validity {
-  background: var(--bg-elevated-2);
-  color: var(--text-muted);
-}
-.music-pairing-code {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: 64px;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-elevated);
-}
-.music-pairing-code strong {
-  min-width: 0;
-  font-size: clamp(var(--font-size-xl), 3vw, 1.65rem);
-  letter-spacing: 0.2em;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-.music-pairing-copy {
-  width: var(--tap-target-size);
-  min-height: var(--control-height);
-  border: 1px solid var(--border);
-  background: var(--bg-elevated-2);
-}
-.music-pairing-copy:hover,
-.music-pairing-copy:focus-visible {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.music-pairing-hint {
-  margin: 0;
-}
-.music-config-list code {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  overflow-wrap: anywhere;
-}
-.music-copy-row,
-.music-device-picker,
-.music-search-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
-}
-.music-copy-row .icon-btn {
-  min-width: var(--tap-target-size);
-  min-height: var(--control-height);
-}
-.music-account-row {
-  gap: var(--space-3);
-}
-.music-controller-management .collapsible-section-content {
-  padding-top: 0;
-}
-.music-device-area {
-  display: grid;
-  gap: var(--space-2);
-}
-.music-now-playing {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-3);
-}
-.music-cover {
-  width: calc(var(--tap-target-size) + var(--space-7));
-  height: calc(var(--tap-target-size) + var(--space-7));
-  flex: 0 0 auto;
-  border-radius: var(--radius-sm);
-  object-fit: cover;
-}
-.music-cover-placeholder {
-  display: grid;
-  place-items: center;
-  background: var(--bg);
-  color: var(--text-muted);
 }
 .music-track-main {
   min-width: 0;
@@ -1030,9 +884,88 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.music-cover {
+  width: calc(var(--tap-target-size) + var(--space-7));
+  height: calc(var(--tap-target-size) + var(--space-7));
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+.music-cover-placeholder {
+  display: grid;
+  place-items: center;
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+}
+
+/* Setup: numbered hairline rows instead of framed step cards. */
+.music-setup-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.music-setup-steps li {
+  display: grid;
+  grid-template-columns: var(--space-5) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.music-setup-steps li:last-child {
+  padding-bottom: 0;
+}
+.music-setup-steps .music-meta {
+  white-space: normal;
+}
+.music-setup-step-number {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.music-setup-steps li.is-current .music-setup-step-number {
+  color: var(--text);
+}
+.music-setup-steps li.is-complete strong {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-medium);
+}
+/* Step actions share one fixed, right-aligned column. */
+.music-setup-step-action {
+  display: flex;
+  justify-content: flex-end;
+  width: 11rem;
+}
+.music-setup-step-action > .btn {
+  width: 100%;
+}
+.music-pairing-code {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Idle playback keeps the card compact between header and controls. */
+.grouped-page-section .empty-state.music-idle {
+  min-height: 0;
+  padding: var(--space-2) 0;
+}
+/* Now playing: flat track row, progress with time, equal footer buttons. */
+.music-now-playing {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+}
+.music-progress-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}
 .music-progress {
+  flex: 1;
   height: var(--space-1);
-  margin-top: var(--space-2);
   overflow: hidden;
   border-radius: var(--radius-full);
   background: var(--border);
@@ -1046,115 +979,226 @@
   background: var(--accent-gradient);
   will-change: transform;
 }
-.music-duration {
+.music-duration-row {
+  flex: none;
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
-.music-no-playback {
-  grid-column: 1 / -1;
-}
+/* Playback controls are compact, equally wide and end the card on the right. */
 .music-host-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, 8rem);
+  justify-content: end;
   gap: var(--space-2);
 }
-.music-warning {
-  border-color: var(--state-paused);
-  color: var(--state-paused);
-}
-.music-search-results {
-  margin-top: var(--space-3);
-}
-.music-result-type-switch {
+
+/* Queue and search results: one quiet table with equal row heights. */
+.music-queue-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-  width: 100%;
-}
-.music-result-type-button {
-  display: inline-flex;
+  grid-template-columns: var(--space-5) var(--avatar-size-md) minmax(0, 1fr) minmax(0, 11rem) 3.5rem;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  width: 100%;
+  gap: var(--space-3);
+  position: relative;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
 }
-.music-search-result {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
+.music-queue-row:last-child {
+  padding-bottom: 0;
 }
-.music-search-cover,
+.music-queue-row.music-search-row {
+  grid-template-columns: var(--avatar-size-md) minmax(0, 1fr) 7rem;
+}
+.music-queue-row.music-queue-more > :last-child {
+  grid-column: 3 / -1;
+}
 .music-queue-cover {
-  width: var(--avatar-size-lg);
-  height: var(--avatar-size-lg);
-  flex: 0 0 auto;
+  display: block;
+  width: var(--avatar-size-md);
+  height: var(--avatar-size-md);
   border-radius: var(--radius-sm);
   object-fit: cover;
 }
-.music-queue-list {
-  display: grid;
-  gap: var(--space-2);
-}
-.music-queue-row {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--space-3);
-}
-.music-queue-list.is-sortable .music-queue-row {
-  grid-template-columns: auto auto auto minmax(0, 1fr) auto auto;
-}
-.music-queue-drag,
-.music-queue-order-actions {
-  display: flex;
-  align-items: center;
-}
-.music-queue-drag {
+.music-queue-position {
   color: var(--text-muted);
-  cursor: grab;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.music-queue-title,
+.music-queue-open {
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The title opens the details; its hit area covers the whole row. */
+.music-queue-open {
+  padding: 0;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+.music-queue-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.music-queue-who-inline {
+  display: none;
+}
+.music-queue-duration {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.music-search-action > .btn {
+  width: 100%;
 }
 .music-queue-row.is-dragging {
   opacity: 0.55;
 }
 .music-queue-row.is-drag-target {
-  border-color: var(--accent);
+  border-top-color: var(--accent);
 }
-.music-queue-order-actions {
+@media (hover: hover) {
+  .music-queue-row:hover .music-queue-open {
+    color: var(--accent);
+  }
+  .music-queue-list.is-sortable .music-queue-row[draggable] {
+    cursor: grab;
+  }
+}
+.music-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+}
+.music-search-results {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.music-search-status {
+  margin: var(--space-3) 0 0;
+}
+.music-result-type-switch {
+  display: flex;
+  gap: var(--space-2);
+}
+.music-result-type-button.is-selected {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
+
+/* Starting a Jam: a labeled output field with its button, not a full-width form. */
+/* The controller line belongs to the heading above it. */
+.music-account {
+  margin-top: calc(-1 * var(--space-2));
+}
+.music-device-area {
+  display: grid;
+  gap: var(--space-3);
+}
+.music-device-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 24rem) auto;
+  justify-content: start;
+  align-items: end;
+  gap: var(--space-2);
+}
+.music-device-field {
+  display: grid;
   gap: var(--space-1);
 }
-.music-queue-position {
-  width: var(--space-6);
+.music-management-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.music-management-row .music-meta {
+  white-space: normal;
+}
+.music-management-row > .btn {
+  flex: none;
+}
+.music-local-player {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+/* Request details: full title, facts as hairline rows, equal actions. */
+.modal.music-detail-modal {
+  max-width: 400px;
+}
+.music-detail-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+}
+.music-detail-title {
+  overflow-wrap: anywhere;
+}
+.music-detail-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+.music-detail-facts dt,
+.music-detail-facts dd {
+  margin: 0;
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--border);
+}
+.music-detail-facts dt {
+  padding-right: var(--space-5);
   color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  text-align: center;
+}
+.music-detail-footer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
 }
 
 @media (max-width: 639px) { /* --bp-md */
-  .music-device-picker,
-  .music-search-form,
-  .music-host-actions {
-    grid-template-columns: minmax(0, 1fr);
+  .music-cover {
+    width: calc(var(--tap-target-size) + var(--space-3));
+    height: calc(var(--tap-target-size) + var(--space-3));
   }
   .music-now-playing {
-    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-3);
   }
-  .music-duration {
-    grid-column: 2;
-  }
+  /* Requester moves into the artist line; the fixed columns stay. */
   .music-queue-row {
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-columns: var(--space-4) var(--avatar-size-md) minmax(0, 1fr) 2.75rem;
+    gap: var(--space-2);
   }
-  .music-queue-list.is-sortable .music-queue-row {
-    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+  .music-queue-row.music-search-row {
+    grid-template-columns: var(--avatar-size-md) minmax(0, 1fr) 6.5rem;
   }
-  .music-queue-duration {
+  .music-queue-who {
     display: none;
   }
-  .music-search-result {
-    grid-template-columns: auto minmax(0, 1fr);
+  .music-queue-who-inline {
+    display: inline;
   }
-  .music-search-result .btn {
-    grid-column: 1 / -1;
+  .music-device-picker {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .music-setup-steps li {
+    grid-template-columns: var(--space-5) minmax(0, 1fr);
+  }
+  .music-setup-step-action {
+    grid-column: 2;
+    justify-self: end;
+  }
+  .music-management-row {
+    align-items: flex-start;
   }
 }
