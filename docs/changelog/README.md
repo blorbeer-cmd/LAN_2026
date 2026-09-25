@@ -11,14 +11,15 @@ eigenen Eintrag. Beim früheren Vollabgleich fielen außerdem neun ältere, nich
 Lücken auf: #90, #93, #94, #96, #97, #99, #197, #204 und #205. Die Zusammenfassungen der am
 2026-08-05 nachgetragenen PRs #261–#351 stammen aus dem PR-Titel, nicht aus einer vollständigen
 Diff-Analyse. Zusätzlich lückenlos dokumentiert sind die am 2026-09-01 und 2026-09-02 gemergten
-PRs #529–#535 sowie die am 2026-09-16 gemergten PRs #636, #637 und #639; die Bereiche #353–#528
-und #536–#635 sind noch nicht erfasst. #638 wurde geschlossen, nicht gemergt, und erhält daher
+PRs #529–#535, die am 2026-09-16 gemergten PRs #636, #637 und #639 sowie der am 2026-09-17
+gemergte PR #645; die Bereiche #353–#528 und #536–#635 sind noch nicht erfasst, ebenso wenig die
+am 2026-09-17 gemergten PRs #643 und #646. #638 wurde geschlossen, nicht gemergt, und erhält daher
 keinen Eintrag.
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 239 (Dateien unter `pr/`)
-- Branch-Seiten dokumentiert: 198 (Dateien unter `branches/`)
+- Gemergte PRs dokumentiert: 240 (Dateien unter `pr/`)
+- Branch-Seiten dokumentiert: 199 (Dateien unter `branches/`)
 - Gemergte PRs #214–#352: 83 von 83 dokumentiert
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
@@ -26,6 +27,7 @@ keinen Eintrag.
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-09-17 | [#645](https://github.com/blorbeer-cmd/LAN_2026/pull/645) | [Gruppen als Eventtyp und Events-Bereich aus Orga herausgelöst](pr/pr-645-gruppen-als-eventtyp-und-events-bereich-aus-orga-herausgeloest.md) | `claude/gruppen-eventtyp` |
 | 2026-09-16 | [#639](https://github.com/blorbeer-cmd/LAN_2026/pull/639) | [Keep the help trigger beside what it explains in every layout](pr/pr-639-keep-the-help-trigger-beside-what-it-explains-in-every-layout.md) | `claude/tooltip-icon-placement-rules-yk18d5` |
 | 2026-09-16 | [#636](https://github.com/blorbeer-cmd/LAN_2026/pull/636) | [Move the info tooltip glyph closer to the text it explains](pr/pr-636-move-the-info-tooltip-glyph-closer-to-the-text-it-explains.md) | `claude/tooltip-icon-placement-rules-yk18d5` |
 | 2026-09-16 | [#637](https://github.com/blorbeer-cmd/LAN_2026/pull/637) | [Spiele: klickbare Namen und kompakte Aktionen](pr/pr-637-spiele-klickbare-namen-und-kompakte-aktionen.md) | `codex/game-card-clickable-details` |
