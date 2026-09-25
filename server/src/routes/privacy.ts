@@ -32,7 +32,7 @@ privacyRouter.get('/', (req, res) => {
        ORDER BY e.starts_at DESC`,
     )
     .all(TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION, req.player!.id);
-  // Consents kept unversioned by migration 106 no longer match the join
+  // Consents kept unversioned by migration 108 no longer match the join
   // above, so they render as "Nicht aktiviert" and stay unreachable while
   // still holding revoked_at IS NULL — which is what the personal export
   // shows. List them separately so they can be revoked, exactly like the

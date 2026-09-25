@@ -20,7 +20,7 @@ import { isAdmin } from '../admin.js';
 import { eventHasFeature, viewIsEnabledForEvent } from '../eventFeatures.js';
 import { eventTypeTitle } from '../eventTypes.js';
 import { formatEuroCents } from '../paypal.js';
-import { dueBadgeInfo } from '../checklistDue.js';
+import { dueText } from '../checklistDue.js';
 import { assignedTasks, ensureTasksLoaded, freeTaskCount } from './checklist.js';
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
@@ -233,32 +233,35 @@ function renderGroupMembers() {
     </section>`;
 }
 
-function homeTaskHtml(task) {
-  const due = dueBadgeInfo(task.dueAt);
+// Same compact single-line rows as "Aktuell": the To-Do symbol, the title
+// and the due date as plain text, without type labels or coloured badges.
+function homeTaskRowHtml({ title, sub, attrs = '' }) {
   return `
-    <button type="button" class="list-row home-current-navigate home-todo-navigate" data-navigate="checklist" data-home-assigned-task="${escapeHtml(task.id)}">
-      <span class="list-row-icon">${icon('check')}</span>
-      <span class="home-current-copy">
-        <span class="player-name">${escapeHtml(task.title)}</span>
-        <span class="muted list-row-desc">${task.type === 'item_request' ? 'Mitbring-Anfrage' : 'Aufgabe'}</span>
-      </span>
-      ${due ? `<span class="badge ${due.cls}">${escapeHtml(due.text)}</span>` : `<span class="muted">${icon('chevronRight')}</span>`}
-    </button>`;
+    <article class="list-row home-current-row">
+      <button type="button" class="home-current-navigate home-todo-navigate" data-navigate="checklist" ${attrs}>
+        <span class="list-row-icon">${icon('listChecks')}</span>
+        <span class="home-current-copy">
+          <span class="player-name">${title}</span>
+          ${sub ? `<span class="muted list-row-desc">${sub}</span>` : ''}
+        </span>
+        <span class="muted">${icon('chevronRight')}</span>
+      </button>
+    </article>`;
+}
+
+function homeTaskHtml(task) {
+  return homeTaskRowHtml({
+    title: escapeHtml(task.title),
+    sub: escapeHtml(dueText(task.dueAt)),
+    attrs: `data-home-assigned-task="${escapeHtml(task.id)}"`,
+  });
 }
 
 // A row nudging toward the shared pool when nothing is assigned to this
 // identity yet — the tile is only visible at all because these exist (see
 // renderAssignedTodos), so it still needs one clickable way into the list.
 function homeFreeTodosHtml(count) {
-  return `
-    <button type="button" class="list-row home-current-navigate home-todo-navigate" data-navigate="checklist">
-      <span class="list-row-icon">${icon('check')}</span>
-      <span class="home-current-copy">
-        <span class="player-name">${count === 1 ? 'Ein offenes To-Do' : `${count} offene To-Dos`}</span>
-        <span class="muted list-row-desc">Noch nicht übernommen</span>
-      </span>
-      <span class="muted">${icon('chevronRight')}</span>
-    </button>`;
+  return homeTaskRowHtml({ title: count === 1 ? 'Ein offenes To-Do' : `${count} offene To-Dos` });
 }
 
 // Only worth a tile when there is something to act on: To-Dos assigned to
@@ -279,17 +282,17 @@ function renderAssignedTodos() {
   // once freeCount > 0 (the gate above already hid the tile otherwise) — the
   // pool row keeps a navigable way in even before an identity is chosen.
   if (!myId) {
-    content = `<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p><div class="home-compact-items">${homeFreeTodosHtml(freeCount)}</div>`;
-  } else if (tasks.length === 0) content = `<div class="home-compact-items">${homeFreeTodosHtml(freeCount)}</div>`;
+    content = `<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p><div class="home-current-items">${homeFreeTodosHtml(freeCount)}</div>`;
+  } else if (tasks.length === 0) content = `<div class="home-current-items">${homeFreeTodosHtml(freeCount)}</div>`;
   else {
     const visibleTasks = tasks.slice(0, 3);
     const remaining = tasks.length - visibleTasks.length;
     content = `
-      <div class="home-compact-items">${visibleTasks.map(homeTaskHtml).join('')}</div>
+      <div class="home-current-items">${visibleTasks.map(homeTaskHtml).join('')}</div>
       ${remaining > 0 ? `<p class="muted">${remaining === 1 ? 'Ein weiteres To-Do' : `${remaining} weitere To-Dos`} findest du in der vollständigen Liste.</p>` : ''}`;
   }
   return `
-    <section class="card grouped-page-section stack" aria-labelledby="home-todos-title" data-home-assigned-todos>
+    <section class="card grouped-page-section stack home-current home-current--compact" aria-labelledby="home-todos-title" data-home-assigned-todos>
       <div class="grouped-page-section-title">
         <h2 id="home-todos-title">Meine To-Dos</h2>
       </div>

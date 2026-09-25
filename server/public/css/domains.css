@@ -2325,6 +2325,191 @@ input.food-order-price-input {
   color: var(--text-muted);
   text-decoration: line-through;
 }
+/* To-Dos: one table without column headers, one column of rows; the cells
+   explain themselves ("Fällig morgen"). Phones show "Wer" and "Fällig"
+   below the title. */
+.checklist-task-toolbar {
+  grid-template-columns: minmax(10rem, 1fr) repeat(2, 9.5rem) auto;
+}
+.checklist-table-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 16rem) 10rem 7rem;
+  align-items: center;
+  gap: var(--space-3);
+  position: relative;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+/* The card's own padding follows the last row. */
+.checklist-table-row:last-child {
+  padding-bottom: 0;
+}
+.checklist-table-row[hidden] {
+  display: none;
+}
+/* Every cell keeps the button height, so rows with and without
+   "Eintragen" are equally high and all texts share one center line. */
+.checklist-table-row > [role='cell'] {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--control-height);
+}
+.checklist-table-task > *,
+.checklist-table-who > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.checklist-table-who,
+.checklist-table-due {
+  font-size: var(--font-size-sm);
+}
+.checklist-table-who {
+  gap: var(--space-2);
+}
+.checklist-table-who-me {
+  font-weight: var(--font-weight-bold);
+}
+.checklist-table-who-more {
+  flex: none;
+  color: var(--text-muted);
+}
+.checklist-table-action {
+  justify-content: flex-end;
+}
+/* Done To-Dos stay in the list until archived: struck through and muted,
+   like a ticked Packliste entry. */
+.checklist-table-row.is-done .checklist-task-title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.checklist-table-row.is-done .checklist-table-who,
+.checklist-table-row.is-done .checklist-table-due {
+  color: var(--text-muted);
+}
+/* "Eintragen" and "Austragen" fill the fixed action column, so both share
+   one width and their edges line up from row to row. */
+.checklist-table-action > .btn {
+  position: relative;
+  width: 100%;
+}
+/* The title opens the To-Do's details; it reads as text, not as a button,
+   and its hit area covers the whole row. */
+.checklist-task-title::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.checklist-task-title {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .checklist-table-row:hover .checklist-task-title {
+    color: var(--accent);
+  }
+}
+/* Detail dialog: the description reads as the body, the facts follow as
+   hairline rows with a muted label column. */
+.checklist-detail-description {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.checklist-detail-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+.checklist-detail-facts dt,
+.checklist-detail-facts dd {
+  margin: 0;
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--border);
+}
+.checklist-detail-facts dt {
+  padding-right: var(--space-5);
+  color: var(--text-muted);
+}
+.checklist-detail-facts dd {
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+/* The detail dialog only holds a few short facts. */
+.modal.checklist-detail-modal {
+  max-width: 400px;
+}
+.checklist-filter-options {
+  display: grid;
+  gap: var(--space-1);
+}
+.checklist-filter-options > .btn {
+  justify-content: flex-start;
+}
+.checklist-form-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+/* The chosen option gets the blue outline; the gradient stays reserved for
+   the one submit at the end of the form. */
+.checklist-choice-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.checklist-choice-toolbar .btn.is-selected {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
+@media (max-width: 639px) { /* --bp-md */
+  /* Phones: search beside the create button, sort beside filter. */
+  .checklist-task-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .checklist-task-toolbar > input[type='search'] {
+    grid-column: auto;
+  }
+  .checklist-task-toolbar > .btn-primary {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  /* Title and the (possibly empty) action column fill the first line;
+     "Wer" and the due date follow as one compact line. */
+  .checklist-table-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--space-3);
+    padding: var(--space-2) 0;
+  }
+  .checklist-table-task {
+    flex: 1 1 calc(100% - 7rem - var(--space-3));
+  }
+  .checklist-table-action {
+    flex: 0 0 7rem;
+  }
+  .checklist-table-who,
+  .checklist-table-due {
+    order: 2;
+    min-height: 0;
+    color: var(--text-muted);
+  }
+  .checklist-table-due:not(:empty)::before {
+    content: '·';
+    margin-right: var(--space-3);
+  }
+}
 .hall-of-fame-event-range {
   font-size: var(--font-size-sm);
 }
@@ -2750,4 +2935,207 @@ input.food-order-price-input {
 }
 .player-detail-ratings tbody td {
   font-weight: var(--font-weight-bold);
+}
+
+/* Spiele: "Spiel vorschlagen" closes the tab row on the right. */
+.game-catalog-tab-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.game-catalog-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.game-catalog-tab-row > .btn {
+  flex: none;
+}
+.game-catalog-suggest-icon {
+  display: none;
+}
+@media (max-width: 479px) { /* --bp-sm */
+  .game-catalog-suggest {
+    width: var(--control-height);
+    padding: 0;
+  }
+  .game-catalog-suggest-label {
+    display: none;
+  }
+  .game-catalog-suggest-icon {
+    display: inline-flex;
+  }
+}
+
+/* Durchsage: form with message and end time in one row, and the running
+   and past broadcasts as one calm table without column headers. */
+.broadcast-form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+@media (min-width: 640px) { /* --bp-md */
+  .broadcast-form-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+  }
+}
+/* Starts as one line like every other field and grows with line breaks. */
+#broadcast-message {
+  display: block;
+  field-sizing: content;
+  min-height: var(--control-height);
+  max-height: calc(var(--control-height) * 5);
+  resize: none;
+}
+.broadcast-form-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+/* As wide as the time field above it (.dt-time-input), so the button ends
+   the form flush with the field. */
+.broadcast-form-footer > .btn {
+  width: 88px;
+}
+.broadcast-table-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 10rem) 13rem 7rem;
+  align-items: center;
+  gap: var(--space-3);
+  position: relative;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.broadcast-table-row:last-child {
+  padding-bottom: 0;
+}
+/* Every cell keeps the button height, so rows with and without "Beenden"
+   are equally high and all texts share one center line. */
+.broadcast-table-row > [role='cell'] {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--control-height);
+}
+.broadcast-table-sender > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.broadcast-table-sender,
+.broadcast-table-when {
+  font-size: var(--font-size-sm);
+}
+.broadcast-table-when {
+  color: var(--text-muted);
+}
+.broadcast-table-me {
+  font-weight: var(--font-weight-bold);
+}
+.broadcast-table-action {
+  justify-content: flex-end;
+}
+.broadcast-table-action > .btn {
+  position: relative;
+  width: 100%;
+}
+/* The message opens the details; it reads as text, not as a button, and its
+   hit area covers the whole row. */
+.broadcast-table-open {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  cursor: pointer;
+}
+.broadcast-table-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.broadcast-table-row.is-past .broadcast-table-open {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-regular);
+}
+@media (hover: hover) {
+  .broadcast-table-row:hover .broadcast-table-open {
+    color: var(--accent);
+  }
+}
+@media (max-width: 639px) { /* --bp-md */
+  /* Message and action fill the first line; sender and time follow as one
+     compact line. */
+  .broadcast-table-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-2) 0;
+  }
+  .broadcast-table-message {
+    flex: 1 1 calc(100% - 7rem - var(--space-2));
+  }
+  .broadcast-table-action {
+    flex: 0 0 7rem;
+    order: 1;
+  }
+  .broadcast-table-sender,
+  .broadcast-table-when {
+    order: 2;
+  }
+  .broadcast-table-action:empty {
+    display: none !important;
+  }
+  .broadcast-table-row:has(> .broadcast-table-action:empty) > .broadcast-table-message {
+    flex-basis: 100%;
+  }
+  .broadcast-table-row > .broadcast-table-sender,
+  .broadcast-table-row > .broadcast-table-when {
+    min-height: 0;
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+  }
+  .broadcast-table-when::before {
+    content: '·';
+    margin-right: var(--space-2);
+  }
+}
+/* Detail dialog: the full message keeps its line breaks, the facts follow as
+   hairline rows with a muted label column. */
+.broadcast-detail-message {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.broadcast-detail-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+.broadcast-detail-facts dt,
+.broadcast-detail-facts dd {
+  margin: 0;
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--border);
+}
+.broadcast-detail-facts dt {
+  padding-right: var(--space-5);
+  color: var(--text-muted);
+}
+.modal.broadcast-detail-modal {
+  max-width: 400px;
+}
+.broadcast-detail-footer {
+  display: flex;
+  justify-content: flex-end;
 }

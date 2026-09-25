@@ -87,10 +87,16 @@ test('GET /api/admin/feature-usage aggregates real rows across fachliche tables'
     JSON.stringify([idA, idB]),
   );
 
+  const featureTaskId = nanoid();
   db.prepare(
     `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, created_by, assignee_id, status, created_at, done_at)
      VALUES (?, ?, ?, 'todo', 'Feature Usage To-Do', ?, ?, 'done', ?, ?)`,
-  ).run(nanoid(), groupId, eventId, idA, idA, now, now);
+  ).run(featureTaskId, groupId, eventId, idA, idA, now, now);
+  db.prepare('INSERT INTO checklist_task_assignees (task_id, player_id, comment, joined_at) VALUES (?, ?, NULL, ?)').run(
+    featureTaskId,
+    idA,
+    now,
+  );
 
   const orderId = nanoid();
   db.prepare(
@@ -265,10 +271,16 @@ test('checklist_tasks stays unfiltered by ?eventId= like its eventScoped: false 
   const before = findEntry(unscoped.body, 'checklist_tasks');
   assert.equal(before.eventScoped, false);
 
+  const roomTaskId = nanoid();
   db.prepare(
     `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, created_by, assignee_id, status, created_at, done_at)
      VALUES (?, ?, NULL, 'todo', 'Feature Usage Permanent Room Task', ?, ?, 'done', ?, ?)`,
-  ).run(nanoid(), groupId, player.body.id, player.body.id, now, now);
+  ).run(roomTaskId, groupId, player.body.id, player.body.id, now, now);
+  db.prepare('INSERT INTO checklist_task_assignees (task_id, player_id, comment, joined_at) VALUES (?, ?, NULL, ?)').run(
+    roomTaskId,
+    player.body.id,
+    now,
+  );
 
   const scoped = await request(app).get(`/api/admin/feature-usage?eventId=${otherEventId}`);
   assert.equal(scoped.status, 200);

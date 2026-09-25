@@ -534,8 +534,8 @@
   /* Sized for reading across a room, not at arm's length like regular body
      text (--font-size-md) -- this is the one banner a kiosk view needs
      legible from a distance. Stops short of --font-size-2xl/3xl because
-     .notification-banner-body stays single-line with an ellipsis; a bigger
-     jump would truncate more announcements sooner. */
+     .notification-banner-body is capped at two lines; a bigger jump would
+     truncate more announcements sooner. */
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-medium);
   box-shadow: 0 4px 24px rgba(91, 140, 255, 0.45);
@@ -552,10 +552,12 @@
   gap: var(--space-1);
 }
 .notification-banner-body {
+  display: -webkit-box;
   overflow: hidden;
   font-weight: var(--font-weight-regular);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 @keyframes kiosk-broadcast-in {
   from {

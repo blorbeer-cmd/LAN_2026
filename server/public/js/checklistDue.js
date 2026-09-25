@@ -16,19 +16,14 @@ export function dueDiffDays(dueAtMs, nowMs = Date.now()) {
   return Math.round((startOfDay(dueAtMs) - startOfDay(nowMs)) / 86_400_000);
 }
 
-export function isOverdue(dueAtMs, nowMs = Date.now()) {
-  if (!dueAtMs) return false;
-  return dueDiffDays(dueAtMs, nowMs) < 0;
-}
-
-// null means "nothing to show" - the field is optional and most to-dos
-// won't have one.
-export function dueBadgeInfo(dueAtMs, nowMs = Date.now()) {
-  if (!dueAtMs) return null;
+// Short, colour-free due text shared by the To-Do table and Home: the
+// sentence carries the meaning, so no badge is needed. '' means no due date.
+export function dueText(dueAtMs, nowMs = Date.now()) {
+  if (!dueAtMs) return '';
   const diff = dueDiffDays(dueAtMs, nowMs);
-  if (diff < 0) return { cls: 'badge-overdue', text: 'Überfällig' };
-  if (diff === 0) return { cls: 'badge-due-soon', text: 'Heute fällig' };
-  if (diff === 1) return { cls: 'badge-due-soon', text: 'Morgen fällig' };
-  if (diff <= 3) return { cls: 'badge-due-soon', text: `Fällig in ${diff} Tagen` };
-  return { cls: 'badge-neutral', text: `Fällig: ${formatDate(dueAtMs)}` };
+  if (diff < 0) return 'Überfällig';
+  if (diff === 0) return 'Fällig heute';
+  if (diff === 1) return 'Fällig morgen';
+  if (diff <= 3) return `Fällig in ${diff} Tagen`;
+  return `Fällig am ${formatDate(dueAtMs)}`;
 }

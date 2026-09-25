@@ -1,43 +1,36 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dueBadgeInfo, isOverdue, dueDiffDays } from './checklistDue.js';
+import { dueText, dueDiffDays } from './checklistDue.js';
 
 const NOW = new Date(2026, 7, 12, 9, 0).getTime(); // 12 Aug 2026, 09:00
 
-test('no due date renders no badge and is never overdue', () => {
-  assert.equal(dueBadgeInfo(null, NOW), null);
-  assert.equal(dueBadgeInfo(undefined, NOW), null);
-  assert.equal(isOverdue(null, NOW), false);
+test('no due date renders no text', () => {
+  assert.equal(dueText(null, NOW), '');
+  assert.equal(dueText(undefined, NOW), '');
 });
 
 test('a past date is overdue', () => {
-  const dueAt = new Date(2026, 7, 11).getTime();
-  assert.equal(isOverdue(dueAt, NOW), true);
-  assert.deepEqual(dueBadgeInfo(dueAt, NOW), { cls: 'badge-overdue', text: 'Überfällig' });
+  assert.equal(dueText(new Date(2026, 7, 11).getTime(), NOW), 'Überfällig');
 });
 
-test('today is "Heute fällig", not overdue - comparison is day-granular, not exact-time', () => {
-  const laterToday = new Date(2026, 7, 12, 23, 0).getTime();
-  assert.equal(isOverdue(laterToday, NOW), false);
-  assert.deepEqual(dueBadgeInfo(laterToday, NOW), { cls: 'badge-due-soon', text: 'Heute fällig' });
+test('today is "Fällig heute", not overdue - comparison is day-granular, not exact-time', () => {
+  assert.equal(dueText(new Date(2026, 7, 12, 23, 0).getTime(), NOW), 'Fällig heute');
 });
 
-test('tomorrow is "Morgen fällig"', () => {
-  const dueAt = new Date(2026, 7, 13).getTime();
-  assert.deepEqual(dueBadgeInfo(dueAt, NOW), { cls: 'badge-due-soon', text: 'Morgen fällig' });
+test('tomorrow is "Fällig morgen"', () => {
+  assert.equal(dueText(new Date(2026, 7, 13).getTime(), NOW), 'Fällig morgen');
 });
 
 test('2-3 days out is "Fällig in N Tagen"', () => {
-  assert.deepEqual(dueBadgeInfo(new Date(2026, 7, 14).getTime(), NOW), { cls: 'badge-due-soon', text: 'Fällig in 2 Tagen' });
-  assert.deepEqual(dueBadgeInfo(new Date(2026, 7, 15).getTime(), NOW), { cls: 'badge-due-soon', text: 'Fällig in 3 Tagen' });
+  assert.equal(dueText(new Date(2026, 7, 14).getTime(), NOW), 'Fällig in 2 Tagen');
+  assert.equal(dueText(new Date(2026, 7, 15).getTime(), NOW), 'Fällig in 3 Tagen');
 });
 
-test('further out renders a neutral plain date instead of a relative count', () => {
-  const dueAt = new Date(2026, 7, 20).getTime();
-  assert.deepEqual(dueBadgeInfo(dueAt, NOW), { cls: 'badge-neutral', text: 'Fällig: 20.08.' });
+test('further out names the date instead of a relative count', () => {
+  assert.equal(dueText(new Date(2026, 7, 20).getTime(), NOW), 'Fällig am 20.08.');
 });
 
-test('dueDiffDays is exposed for sorting "Mir zugewiesen" by urgency', () => {
+test('dueDiffDays is exposed for the detail dialog and sorting', () => {
   assert.equal(dueDiffDays(new Date(2026, 7, 11).getTime(), NOW), -1);
   assert.equal(dueDiffDays(new Date(2026, 7, 12).getTime(), NOW), 0);
   assert.equal(dueDiffDays(new Date(2026, 7, 15).getTime(), NOW), 3);

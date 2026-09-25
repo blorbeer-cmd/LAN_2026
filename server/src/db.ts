@@ -5053,6 +5053,49 @@ registerMigration({
   up: migrateDrawTournamentLink,
 });
 
+// Migration: a finished To-Do stays visible in the list (marked as done)
+// until someone archives it; only archived ones move into the history.
+// To-Dos finished before this change were already in the history, so they
+// count as archived at their completion time.
+function migrateChecklistTaskArchive(): void {
+  const columns = db.prepare('PRAGMA table_info(checklist_tasks)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'archived_at')) {
+    db.exec('ALTER TABLE checklist_tasks ADD COLUMN archived_at INTEGER');
+  }
+  db.prepare("UPDATE checklist_tasks SET archived_at = done_at WHERE status = 'done' AND archived_at IS NULL").run();
+}
+registerMigration({
+  version: 106,
+  name: 'archive finished checklist tasks',
+  up: migrateChecklistTaskArchive,
+});
+
+// Migration: several people can sign up for one To-Do. The participants
+// live in their own table; checklist_tasks.assignee_id keeps mirroring the
+// first one for older readers. Existing assignments become participants.
+function migrateChecklistTaskAssignees(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS checklist_task_assignees (
+      task_id    TEXT NOT NULL REFERENCES checklist_tasks(id) ON DELETE CASCADE,
+      player_id  TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      comment    TEXT,
+      joined_at  INTEGER NOT NULL,
+      PRIMARY KEY (task_id, player_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_checklist_task_assignees_player ON checklist_task_assignees(player_id);
+  `);
+  db.prepare(
+    `INSERT OR IGNORE INTO checklist_task_assignees (task_id, player_id, comment, joined_at)
+     SELECT id, assignee_id, claim_comment, COALESCE(taken_at, created_at)
+     FROM checklist_tasks WHERE assignee_id IS NOT NULL`,
+  ).run();
+}
+registerMigration({
+  version: 107,
+  name: 'multiple participants per checklist task',
+  up: migrateChecklistTaskAssignees,
+});
+
 // Privacy package: consent records describe the exact optional purpose and
 // the version of the text that was shown. Existing rows intentionally remain
 // NULL instead of being relabelled as if an older decision had covered the
@@ -5071,7 +5114,7 @@ function addVersionedConsentMetadata(): void {
   db.prepare("UPDATE agent_diagnostics SET process_names = '[]' WHERE process_names != '[]'").run();
 }
 registerMigration({
-  version: 106,
+  version: 108,
   name: 'version privacy consents and clear legacy diagnostic process names',
   up: addVersionedConsentMetadata,
 });
@@ -5092,7 +5135,7 @@ function preserveEndedMusicSessionsAfterHostDeletion(): void {
   if (hostColumn?.notnull === 0 && hostForeignKey?.on_delete === 'SET NULL') return;
 
   db.exec(`
-    CREATE TABLE music_sessions_rebuilt_106 (
+    CREATE TABLE music_sessions_rebuilt_109 (
       id                    TEXT PRIMARY KEY,
       group_id              TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
       host_player_id        TEXT REFERENCES players(id) ON DELETE SET NULL,
@@ -5109,7 +5152,7 @@ function preserveEndedMusicSessionsAfterHostDeletion(): void {
       playback_context_json TEXT,
       event_id              TEXT REFERENCES events(id) ON DELETE RESTRICT
     );
-    INSERT INTO music_sessions_rebuilt_106
+    INSERT INTO music_sessions_rebuilt_109
       (id, group_id, host_player_id, device_id, device_name, status, current_track_uri,
        current_track_json, playback_is_playing, playback_progress_ms, playback_updated_at,
        started_at, ended_at, playback_context_json, event_id)
@@ -5118,7 +5161,7 @@ function preserveEndedMusicSessionsAfterHostDeletion(): void {
            started_at, ended_at, playback_context_json, event_id
     FROM music_sessions;
     DROP TABLE music_sessions;
-    ALTER TABLE music_sessions_rebuilt_106 RENAME TO music_sessions;
+    ALTER TABLE music_sessions_rebuilt_109 RENAME TO music_sessions;
     CREATE UNIQUE INDEX idx_music_sessions_one_active_group
       ON music_sessions(group_id) WHERE status = 'active';
     CREATE INDEX idx_music_sessions_event_status
@@ -5142,7 +5185,7 @@ function preserveEndedMusicSessionsAfterHostDeletion(): void {
   `);
 }
 registerMigration({
-  version: 107,
+  version: 109,
   name: 'preserve ended music sessions after host deletion',
   up: preserveEndedMusicSessionsAfterHostDeletion,
   disableForeignKeysForRebuild: true,
@@ -5153,9 +5196,13 @@ registerMigration({
 // The standing consent default lives next to tracking_paused.
 function excludeBaseWorkspaceFromTrackingAndAddConsentDefault(): void {
   // Draft PR installations may already have used versions 105-107 for the
-  // privacy migrations before main acquired the draw-link migration at 105.
-  // Repair that skipped draw link while this new version is applied.
+  // privacy migrations before main claimed 105 for the draw link and 106/107
+  // for the To-Do changes. Those versions then count as applied, so their
+  // main counterparts would be skipped forever; repair them here instead.
+  // Each one is guarded and stays a no-op wherever it already ran.
   migrateDrawTournamentLink();
+  migrateChecklistTaskArchive();
+  migrateChecklistTaskAssignees();
   const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
   if (!columns.some((column) => column.name === 'tracking_consent_default_version')) {
     db.exec('ALTER TABLE players ADD COLUMN tracking_consent_default_version TEXT');
@@ -5175,7 +5222,7 @@ function excludeBaseWorkspaceFromTrackingAndAddConsentDefault(): void {
   db.prepare("DELETE FROM tracking_live_games WHERE event_id IN (SELECT id FROM events WHERE id = ? OR event_type_key = 'general')").run(BASE_EVENT_ID);
 }
 registerMigration({
-  version: 108,
+  version: 110,
   name: 'exclude base and general events from tracking and add standing consent default',
   up: excludeBaseWorkspaceFromTrackingAndAddConsentDefault,
 });

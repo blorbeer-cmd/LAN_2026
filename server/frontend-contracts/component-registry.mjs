@@ -124,27 +124,7 @@ export const components = [
       },
       {
         "file": "public/js/views/checklist.js",
-        "source": "class=\"btn btn-sm${form.kind === 'todo' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"btn btn-sm${form.kind === 'item_request' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"btn btn-sm${form.assignMode === 'none' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"btn btn-sm${form.assignMode === 'self' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"btn btn-sm${form.assignMode === 'pick' ? ' btn-primary' : ''}\"",
+        "source": "class=\"btn btn-sm${current === value ? ' is-selected' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
@@ -312,7 +292,7 @@ export const components = [
   {
     "id": "row-icons",
     "role": "standard-control",
-    "selector": ".tournament-lobby-copy, .notification-center-seen, .notification-center-remove, .notification-highlight-dismiss",
+    "selector": ".tournament-lobby-copy, .notification-center-remove, .notification-highlight-dismiss",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "Copy, dismiss and detail actions retain their 44px icon slot."
@@ -324,6 +304,55 @@ export const components = [
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "Packliste remove action keeps the 44px icon slot, muted, and only renders while the list is in editing mode."
+  },
+  {
+    "id": "checklist-task-title",
+    "role": "composite-part",
+    "selector": ".checklist-task-title",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "To-Do title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and struck through once done.",
+    "properties": [
+      "max-width",
+      "padding"
+    ]
+  },
+  {
+    "id": "broadcast-table-open",
+    "role": "composite-part",
+    "selector": ".broadcast-table-open",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Durchsage message opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and muted once past.",
+    "properties": [
+      "max-width",
+      "padding",
+      "white-space"
+    ]
+  },
+  {
+    "id": "notification-center-open",
+    "role": "composite-part",
+    "selector": ".notification-center-open",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "The whole notification text block is the link that opens its target and marks it read; it reads as text, not as a button.",
+    "properties": [
+      "min-width",
+      "padding"
+    ]
+  },
+  {
+    "id": "game-catalog-suggest",
+    "role": "standard-control",
+    "selector": ".game-catalog-suggest",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Spiel vorschlagen closes the catalog tab row; below --bp-sm it collapses to a 32 by 32px plus with the same accessible name.",
+    "properties": [
+      "width",
+      "padding"
+    ]
   },
   {
     "id": "game-catalog-link-action",
@@ -392,6 +421,13 @@ export const components = [
       "border-color",
       "background",
       "color"
+    ],
+    "dynamicUses": [
+      {
+        "file": "public/js/views/checklist.js",
+        "source": "class=\"btn btn-sm game-catalog-sort-option${value === current ? ' is-active' : ''}\"",
+        "reason": "The To-Do sorting and filter menus reuse the catalog menu rows; the static inventory does not infer the active branch. Geometry remains owned by this entry."
+      }
     ]
   },
   {
@@ -489,26 +525,6 @@ export const components = [
       {
         "file": "public/js/views/adminFeedback.js",
         "source": "class=\"chip${feedbackSentimentFilter === option.value ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"chip${typeFilter === 'all' ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"chip${typeFilter === 'todo' ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"chip${typeFilter === 'item_request' ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/checklist.js",
-        "source": "class=\"chip${onlyMineFilter ? ' is-active' : ''}\"",
         "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
@@ -1006,14 +1022,22 @@ export const components = [
     "dynamicUses": [
       {
         "file": "public/js/views/music.js",
-        "source": "class=\"btn music-result-type-button${activeType === 'tracks' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete music-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/music.js",
-        "source": "class=\"btn music-result-type-button${activeType === 'playlists' ? ' btn-primary' : ''}\"",
-        "reason": "Concrete music-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+        "source": "class=\"btn btn-sm music-result-type-button${activeType === type ? ' is-selected' : ''}\"",
+        "reason": "Titel and Playlists share one compact button helper; only the chosen type gets the is-selected outline. Component geometry remains owned by this entry."
       }
+    ]
+  },
+  {
+    "id": "music-queue-open",
+    "role": "composite-part",
+    "selector": ".music-queue-open",
+    "owner": "public/css/overlays.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Jam request title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover.",
+    "properties": [
+      "max-width",
+      "padding",
+      "white-space"
     ]
   },
   {
@@ -1167,10 +1191,10 @@ export const components = [
   {
     "id": "empty-state-music",
     "role": "composite-part",
-    "selector": ".music-no-playback",
+    "selector": ".grouped-page-section .empty-state.music-idle",
     "owner": "public/css/overlays.css",
     "contract": "components/empty-state.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Centered current-playback placeholder.",
+    "purpose": "Idle Jam playback line stays compact between the card header and the playback controls.",
     "control": false
   },
   {
@@ -1458,6 +1482,84 @@ export const permanentVariants = [
     ]
   },
   {
+    "id": "checklist-table-action",
+    "role": "standard-control",
+    "selector": ".checklist-table-action > .btn",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.",
+    "properties": [
+      "width"
+    ]
+  },
+  {
+    "id": "broadcast-table-action",
+    "role": "standard-control",
+    "selector": ".broadcast-table-action > .btn",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Beenden fills the fixed Durchsage action column, so it lines up from row to row.",
+    "properties": [
+      "width"
+    ]
+  },
+  {
+    "id": "broadcast-send",
+    "role": "standard-control",
+    "selector": ".broadcast-form-footer > .btn",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Senden is exactly as wide as the time field above it, so the form ends flush on one right edge.",
+    "properties": [
+      "width"
+    ]
+  },
+  {
+    "id": "music-row-action",
+    "role": "standard-control",
+    "selector": ".music-setup-step-action > .btn, .music-search-action > .btn",
+    "owner": "public/css/overlays.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Jam setup steps and search results keep one fixed right-hand action column, so their compact buttons share one width and line up from row to row.",
+    "properties": [
+      "width"
+    ],
+    "dynamicUses": [
+      {
+        "file": "public/js/views/music.js",
+        "source": "class=\"btn btn-sm${current === 0 ? ' btn-primary' : ''}\"",
+        "reason": "Paket herunterladen carries the gradient only while it is the next setup step."
+      },
+      {
+        "file": "public/js/views/music.js",
+        "source": "class=\"btn btn-sm${hasKnownController ? ' btn-primary' : ''}\"",
+        "reason": "Code erzeugen carries the gradient only for a known controller that just needs a fresh code."
+      }
+    ]
+  },
+  {
+    "id": "music-result-selected",
+    "role": "standard-control",
+    "selector": ".music-result-type-button.is-selected",
+    "owner": "public/css/overlays.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The chosen Jam result type is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base variant.",
+    "properties": [
+      "box-shadow"
+    ]
+  },
+  {
+    "id": "checklist-choice-selected",
+    "role": "standard-control",
+    "selector": ".checklist-choice-toolbar .btn.is-selected",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The chosen To-Do kind is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base variant.",
+    "properties": [
+      "box-shadow"
+    ]
+  },
+  {
     "id": "poll-note-field",
     "role": "standard-control",
     "selector": ".event-poll-note-input",
@@ -1719,14 +1821,6 @@ export const permanentVariants = [
     "owner": "public/css/overlays.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "reason": "Permanent 44px seating player row."
-  },
-  {
-    "id": "music-copy-actions",
-    "role": "standard-control",
-    "selector": ".music-copy-row .icon-btn",
-    "owner": "public/css/overlays.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Shared 44 by 32px copy actions in music rows."
   },
   {
     "id": "music-cover",

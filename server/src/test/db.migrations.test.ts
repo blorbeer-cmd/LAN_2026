@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 108);
+  assert.equal(migrations.length, 110);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 108 }, (_, index) => index + 1),
+    Array.from({ length: 110 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1354,8 +1354,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 108 }, (_, index) => index + 1),
-    'every version 1..108 runs exactly once',
+    Array.from({ length: 110 }, (_, index) => index + 1),
+    'every version 1..110 runs exactly once',
   );
 });
 
@@ -1406,7 +1406,7 @@ test('migration 105 adds the draw-to-tournament link to legacy draws and is rest
     DROP TABLE matchmaking_draws;
     ALTER TABLE matchmaking_draws_draft RENAME TO matchmaking_draws;
     UPDATE schema_migrations SET name = 'version privacy consents and clear legacy diagnostic process names' WHERE version = 105;
-    DELETE FROM schema_migrations WHERE version = 108;
+    DELETE FROM schema_migrations WHERE version = 110;
   `);
   draftFixture.close();
   assert.doesNotThrow(() => runMigrations(dbFile));
@@ -1415,6 +1415,50 @@ test('migration 105 adds the draw-to-tournament link to legacy draws and is rest
     (column) => column.name === 'tournament_id',
   ));
   repaired.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migrations 106 and 107 archive finished To-Dos and turn assignments into participants, restart-safe', () => {
+  const dbFile = makeTempDbPath('checklist-archive-participants');
+  runMigrations(dbFile);
+
+  // Rebuild the pre-106 shape: no archived_at, no participant table.
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`
+    DROP TABLE checklist_task_assignees;
+    ALTER TABLE checklist_tasks DROP COLUMN archived_at;
+    DELETE FROM schema_migrations WHERE version IN (106, 107);
+  `);
+  fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run('p-legacy', 'Legacy', 'key-legacy', 1);
+  const insertTask = fixture.prepare(
+    `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, created_by, assignee_id, status, created_at, taken_at, done_at, claim_comment)
+     VALUES (?, 'default-group', 'instance-base-event', 'todo', ?, 'p-legacy', ?, ?, 1, ?, ?, ?)`,
+  );
+  insertTask.run('t-open', 'Offen', null, 'open', null, null, null);
+  insertTask.run('t-taken', 'Übernommen', 'p-legacy', 'taken', 5, null, 'Bringe zwei mit');
+  insertTask.run('t-done', 'Erledigt', 'p-legacy', 'done', 5, 9, null);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the To-Do archive/participant migrations must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const archived = migrated.prepare('SELECT id, archived_at AS archivedAt FROM checklist_tasks WHERE id LIKE ? ORDER BY id').all('t-%');
+  assert.deepEqual(archived, [
+    { id: 't-done', archivedAt: 9 },
+    { id: 't-open', archivedAt: null },
+    { id: 't-taken', archivedAt: null },
+  ]);
+  const participants = migrated
+    .prepare('SELECT task_id AS taskId, player_id AS playerId, comment, joined_at AS joinedAt FROM checklist_task_assignees ORDER BY task_id')
+    .all();
+  assert.deepEqual(participants, [
+    { taskId: 't-done', playerId: 'p-legacy', comment: null, joinedAt: 5 },
+    { taskId: 't-taken', playerId: 'p-legacy', comment: 'Bringe zwei mit', joinedAt: 5 },
+  ]);
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 107').get());
+  migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
@@ -3762,7 +3806,7 @@ test('migration 104 enables competition for existing groups only and is restart-
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 106 preserves legacy consent as unversioned and clears stored diagnostic processes', () => {
+test('migration 108 preserves legacy consent as unversioned and clears stored diagnostic processes', () => {
   const dbFile = makeTempDbPath('privacy-consent-version');
   runMigrations(dbFile);
 
@@ -3786,7 +3830,7 @@ test('migration 106 preserves legacy consent as unversioned and clears stored di
     `INSERT INTO agent_diagnostics (player_id, agent_version, last_report_at, process_names)
      VALUES ('privacy-legacy-player', '1.0.0', ?, '["legacy-game.exe"]')`,
   ).run(now);
-  fixture.prepare('DELETE FROM schema_migrations WHERE version = 106').run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 108').run();
   fixture.close();
 
   assert.doesNotThrow(() => runMigrations(dbFile));
@@ -3800,12 +3844,12 @@ test('migration 106 preserves legacy consent as unversioned and clears stored di
     migrated.prepare('SELECT process_names AS processNames FROM agent_diagnostics WHERE player_id = ?').get('privacy-legacy-player'),
     { processNames: '[]' },
   );
-  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 106').get());
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 108').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 108 stops tracking the base workspace and general events', () => {
+test('migration 110 stops tracking the base workspace and general events', () => {
   const dbFile = makeTempDbPath('privacy-base-workspace');
   runMigrations(dbFile);
 
@@ -3816,7 +3860,7 @@ test('migration 108 stops tracking the base workspace and general events', () =>
      VALUES ('base-track-player', 'Base Tracker', 'base-track-key', ?)`,
   ).run(now);
   // An older installation could reach this state through the former start
-  // path; migration 108 has to clear it along with the live rows it produced.
+  // path; migration 110 has to clear it along with the live rows it produced.
   fixture.prepare("UPDATE events SET tracking_enabled = 1 WHERE id = 'instance-base-event'").run();
   fixture.exec(`INSERT INTO events (id, name, group_id, event_type_key, status, tracking_enabled)
     VALUES ('legacy-general-track', 'General', 'default-group', 'general', 'published', 1)`);
@@ -3848,7 +3892,7 @@ test('migration 108 stops tracking the base workspace and general events', () =>
     `INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at)
      VALUES ('general-track-session', 'base-track-player', 'base-track-game', 'legacy-general-track', ?, NULL)`,
   ).run(now);
-  fixture.prepare('DELETE FROM schema_migrations WHERE version = 108').run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 110').run();
   fixture.close();
 
   assert.doesNotThrow(() => runMigrations(dbFile));
@@ -3888,7 +3932,60 @@ test('migration 108 stops tracking the base workspace and general events', () =>
       (column) => column.name === 'tracking_consent_default_version',
     ),
   );
-  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 108').get());
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 110').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+// A draft installation of this PR recorded 105-107 for the privacy migrations
+// before main claimed those numbers for the draw link and the two To-Do
+// changes. Those versions then count as applied, so main's own 105-107 never
+// run there. Migration 110 repairs all three.
+test('migration 110 repairs the main migrations a draft installation skipped', () => {
+  const dbFile = makeTempDbPath('draft-renumber-repair');
+  runMigrations(dbFile);
+
+  // The draft shape: 106 and 107 stay recorded — there they carried the
+  // privacy migrations — while main's To-Do changes never reached this
+  // database. Only the repairing version is replayed.
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`
+    DROP TABLE checklist_task_assignees;
+    ALTER TABLE checklist_tasks DROP COLUMN archived_at;
+    DELETE FROM schema_migrations WHERE version = 110;
+  `);
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('draft-repair-player', 'Draft Repair', 'draft-repair-key', 1);
+  fixture.prepare(
+    `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, created_by, assignee_id, status, created_at, taken_at, done_at, claim_comment)
+     VALUES ('draft-task', 'default-group', 'instance-base-event', 'todo', 'Getränke', 'draft-repair-player', 'draft-repair-player', 'done', 1, 5, 9, 'Bringe zwei mit')`,
+  ).run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the repair must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT archived_at AS archivedAt FROM checklist_tasks WHERE id = ?').get('draft-task'),
+    { archivedAt: 9 },
+    'the archive column and its backfill come back',
+  );
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT task_id AS taskId, player_id AS playerId, comment, joined_at AS joinedAt FROM checklist_task_assignees')
+      .all(),
+    [{ taskId: 'draft-task', playerId: 'draft-repair-player', comment: 'Bringe zwei mit', joinedAt: 5 }],
+    'the participant table comes back with the existing assignment',
+  );
+  assert.ok(
+    (migrated.prepare('PRAGMA table_info(matchmaking_draws)').all() as Array<{ name: string }>).some(
+      (column) => column.name === 'tournament_id',
+    ),
+    'the draw-to-tournament link stays repaired',
+  );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

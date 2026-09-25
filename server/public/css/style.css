@@ -385,10 +385,6 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-#broadcast-message {
-  width: 100%;
-}
-
 /* Current notification as a prominent direct link below the header. The
    bell beside it remains the full personal history. */
 .notification-highlight {
@@ -506,78 +502,87 @@ textarea {
   bottom: 0;
   z-index: 1;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
 }
-/* Added only while an "Erledigte aufräumen" cleanup action joins the two
-   standing bulk actions, so all three keep equal width instead of the
-   default two-up grid squeezing a third button into one column. */
-.notification-center-toolbar--3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
 .notification-center-list {
   display: flex;
   flex-direction: column;
 }
+/* One flat row per entry: the text block is the link, the remove action
+   keeps a fixed column on the right. */
 .notification-center-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2);
   padding: var(--space-3);
   border-bottom: 1px solid var(--border);
 }
 .notification-center-entry:last-child {
   border-bottom: 0;
 }
-.notification-center-entry.is-unread {
-  border-left: var(--space-1) solid var(--accent);
-  background: var(--bg-elevated-2);
+.notification-center-open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
 }
-/* A resolved/expired entry stays in the history and stays clickable (see
-   isFeedEntryObsolete) - it just recedes visually so a returning player's
-   eye lands on what still needs attention. Never combined with is-unread. */
-.notification-center-entry.is-obsolete {
-  opacity: 0.7;
+/* Unread entries read in full contrast with a bold title; read and obsolete
+   ones recede to muted text. No color rail, no pill. */
+.notification-center-entry.is-unread .notification-center-open {
+  color: var(--text);
 }
-.notification-center-entry-head,
-.notification-center-entry-title,
-.notification-center-actions {
-  gap: var(--space-2);
+.notification-center-entry.is-unread .notification-center-entry-name {
+  font-weight: var(--font-weight-bold);
+}
+@media (hover: hover) {
+  .notification-center-open:hover .notification-center-entry-name {
+    color: var(--accent);
+  }
 }
 .notification-center-entry-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
-  flex-wrap: wrap;
+}
+.notification-center-entry-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .notification-center-entry-icon {
   display: inline-flex;
   flex: 0 0 auto;
 }
-.notification-center-time {
-  flex-shrink: 0;
-  font-size: var(--font-size-xs);
-}
 .notification-center-body {
-  margin-top: var(--space-2);
+  display: -webkit-box;
+  overflow: hidden;
   font-size: var(--font-size-sm);
   overflow-wrap: anywhere;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
-.notification-center-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-top: var(--space-3);
-}
-.notification-center-entry-tools {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  margin-left: auto;
-}
-.notification-center-seen {
-  color: var(--state-playing);
+.notification-center-meta {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
 }
 .notification-center-remove {
-  color: var(--danger);
+  color: var(--text-muted);
 }
 .notification-center-empty {
   padding: var(--space-5);
@@ -2709,6 +2714,7 @@ button.draft-pool-player {
 [data-checklist-history] > .collapsible-section-header,
 [data-food-history] > .collapsible-section-header,
 [data-broadcast-history] > .collapsible-section-header,
+[data-music-connection] > .collapsible-section-header,
 [data-completed-tournaments] > .collapsible-section-header,
 [data-tournament-teams] > .collapsible-section-header {
   align-items: center;
@@ -3579,6 +3585,11 @@ button.card {
 .home-current--compact {
   padding-block: var(--space-3);
 }
+/* "Meine To-Dos" borrows the compact rows but keeps the standard card inset,
+   so its heading lines up with the first card of every other area. */
+.home-current--compact[data-home-assigned-todos] {
+  padding-block: var(--space-4);
+}
 .home-current--compact .home-current-row {
   min-height: var(--tap-target-size);
 }
@@ -4301,16 +4312,10 @@ input[type='text'].invite-link-field {
   background: var(--bg-elevated-2);
   color: var(--text-muted);
 }
-/* To-Do due-date badges (docs/KONZEPT-PACKLISTE-TICKETS.md): reuse the same
-   danger/paused semantics as everywhere else in the app rather than
-   inventing new colors - overdue is an error state, due-soon a caution one. */
+/* Error badge (admin log): the danger pair used everywhere else. */
 .badge-overdue {
   background: var(--danger-bg);
   color: var(--danger);
-}
-.badge-due-soon {
-  background: var(--state-paused-bg);
-  color: var(--state-paused);
 }
 
 .chip {

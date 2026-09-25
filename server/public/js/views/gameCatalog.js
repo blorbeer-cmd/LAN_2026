@@ -767,14 +767,19 @@ export function renderGameCatalog(container, ctx) {
         ? 'Alles bewertet – keine offenen Spiele mit diesem Filter.'
         : 'Keine Spiele für diese Filter.';
 
+  // Phones show only a "+" so the button still fits beside the three tabs.
+  const suggestButtonHtml = `<button type="button" class="btn btn-primary btn-sm game-catalog-suggest" id="suggest-new" aria-label="Spiel vorschlagen">
+      <span class="game-catalog-suggest-label" aria-hidden="true">Spiel vorschlagen</span>
+      <span class="game-catalog-suggest-icon" aria-hidden="true">${icon('plus')}</span>
+    </button>`;
+
   container.innerHTML = `
     <div class="row-between page-title-row">
       <h1 class="view-title">Spiele</h1>
-      <button type="button" class="btn btn-primary btn-sm" id="suggest-new">Spiel vorschlagen</button>
     </div>
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" ${ratingMode ? 'aria-labelledby="game-catalog-list-title"' : `aria-label="${sectionTitle}"`}>
-        ${ratingMode ? `<div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${sectionTitle}</h2></div>` : ''}
+        ${ratingMode ? `<div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${sectionTitle}</h2>${suggestButtonHtml}</div>` : ''}
         ${ratingMode ? `
           <div class="onboarding-rating-banner" aria-live="polite">
             <div class="onboarding-rating-banner-copy">
@@ -782,10 +787,13 @@ export function renderGameCatalog(container, ctx) {
               <span>${onboardingRatingProgress().completed} von ${onboardingRatingProgress().required} Spielen vollständig bewertet. Für jedes Spiel werden Bock und Skill benötigt.</span>
             </div>
           </div>` : ''}
-        ${ratingMode ? '' : `<div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Katalog</button>
-          <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
-          <button type="button" class="btn btn-sm ${activeTab === 'all' ? 'btn-primary' : ''}" data-tab="all">Alle</button>
+        ${ratingMode ? '' : `<div class="game-catalog-tab-row">
+          <div class="tabs game-catalog-tabs">
+            <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Katalog</button>
+            <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
+            <button type="button" class="btn btn-sm ${activeTab === 'all' ? 'btn-primary' : ''}" data-tab="all">Alle</button>
+          </div>
+          ${suggestButtonHtml}
         </div>`}
         ${ratingMode ? '' : `<section class="game-catalog-toolbar" aria-label="Spiele durchsuchen, sortieren und filtern">
           <input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiel suchen" aria-label="Spiele suchen" autocomplete="off" />

@@ -1,8 +1,9 @@
 // Packliste: personal checklist items (Grundstock materialization, custom
 // items, checked toggle, ownership) and the shared task/request pool (open
 // item_request creation, organizer todo creation with/without direct
-// multi-assign, claim/release/done/cancel lifecycle and ownership/role
-// guards). The claim race itself gets a dedicated parallel-request test per
+// multi-assign, take-over/give-back/done/archive/edit/cancel lifecycle and
+// ownership/role guards). Several people may take over one To-Do; the
+// parallel take-over paths get dedicated parallel-request tests per
 // DEVELOPMENT_GUIDELINES.md's race-guard rule.
 
 import { test } from 'node:test';
@@ -277,29 +278,46 @@ test('POST /api/checklist/tasks/todo accepts and validates an optional dueAt on 
   assert.equal(assigned.body.tasks[0].dueAt, dueAtValue);
 });
 
-test('claim: cannot claim your own task/request, unknown task 404, exactly one winner on a race', async () => {
+test('claim: several people take over one To-Do, the creator included, each only once, also in parallel', async () => {
   const missing = await request(app).post('/api/checklist/tasks/nope/claim').send({ playerId: bob.id });
   assert.equal(missing.status, 404);
-
-  const selfClaim = await request(app).post(`/api/checklist/tasks/${requestTaskId}/claim`).send({ playerId: alice.id });
-  assert.equal(selfClaim.status, 409);
 
   const ghost = await request(app).post(`/api/checklist/tasks/${requestTaskId}/claim`).send({ playerId: 'ghost' });
   assert.equal(ghost.status, 401);
 
+  // Two different people at once: both win, nobody is dropped.
   const results = await Promise.all([
     request(app).post(`/api/checklist/tasks/${requestTaskId}/claim`).send({ playerId: bob.id }),
     request(app).post(`/api/checklist/tasks/${requestTaskId}/claim`).send({ playerId: carol.id }),
   ]);
-  const statuses = results.map((r) => r.status).sort();
-  assert.deepEqual(statuses, [200, 409]);
+  assert.deepEqual(results.map((r) => r.status), [200, 200]);
 
-  const winner = results.find((r) => r.status === 200)!;
-  assert.equal(winner.body.status, 'taken');
-  assert.ok([bob.id, carol.id].includes(winner.body.assignee.id));
+  // The creator may take over too.
+  const creatorClaim = await request(app).post(`/api/checklist/tasks/${requestTaskId}/claim`).send({ playerId: alice.id });
+  assert.equal(creatorClaim.status, 200);
+  assert.equal(creatorClaim.body.status, 'taken');
+  assert.deepEqual(
+    creatorClaim.body.assignees.map((p: { id: string }) => p.id).sort(),
+    [alice.id, bob.id, carol.id].sort(),
+  );
+  // The legacy single assignee mirrors the first participant.
+  assert.equal(creatorClaim.body.assignee.id, creatorClaim.body.assignees[0].id);
 
-  const alreadyTaken = await request(app).post(`/api/checklist/tasks/${requestTaskId}/claim`).send({ playerId: alice.id });
-  assert.equal(alreadyTaken.status, 409);
+  const again = await request(app).post(`/api/checklist/tasks/${requestTaskId}/claim`).send({ playerId: alice.id });
+  assert.equal(again.status, 409);
+});
+
+test('claim: the same person taking over twice in parallel is recorded exactly once', async () => {
+  const created = await request(app).post('/api/checklist/tasks').send({ playerId: alice.id, title: 'Doppelklick' });
+  const taskId = created.body.tasks[0].id;
+  const results = await Promise.all([
+    request(app).post(`/api/checklist/tasks/${taskId}/claim`).send({ playerId: bob.id }),
+    request(app).post(`/api/checklist/tasks/${taskId}/claim`).send({ playerId: bob.id }),
+  ]);
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+  const listed = (await request(app).get('/api/checklist/tasks')).body.tasks.find((t: { id: string }) => t.id === taskId);
+  assert.deepEqual(listed.assignees.map((p: { id: string }) => p.id), [bob.id]);
+  await request(app).delete(`/api/checklist/tasks/${taskId}`).send({ playerId: alice.id });
 });
 
 test('claim: optional comment is validated, stored, echoed in the response and cleared on release', async () => {
@@ -328,21 +346,25 @@ test('claim: optional comment is validated, stored, echoed in the response and c
   assert.equal(released.body.claimComment, null);
 });
 
-test('release: only the assignee can release, back to the open pool', async () => {
-  const task = (await request(app).get('/api/checklist/tasks')).body.tasks.find((t: { id: string }) => t.id === requestTaskId);
-  const assigneeId = task.assignee.id;
-  const otherId = assigneeId === bob.id ? carol.id : bob.id;
+test('release: only participants give back, the To-Do stays taken until the last one leaves', async () => {
+  const outsider = (await request(app).post('/api/players').send({ name: 'Packender Dave' })).body;
+  const notParticipant = await request(app).post(`/api/checklist/tasks/${requestTaskId}/release`).send({ playerId: outsider.id });
+  assert.equal(notParticipant.status, 403);
 
-  const notAssignee = await request(app).post(`/api/checklist/tasks/${requestTaskId}/release`).send({ playerId: otherId });
-  assert.equal(notAssignee.status, 403);
+  const aliceLeaves = await request(app).post(`/api/checklist/tasks/${requestTaskId}/release`).send({ playerId: alice.id });
+  assert.equal(aliceLeaves.status, 200);
+  assert.equal(aliceLeaves.body.status, 'taken');
+  assert.equal(aliceLeaves.body.assignees.length, 2);
 
-  const released = await request(app).post(`/api/checklist/tasks/${requestTaskId}/release`).send({ playerId: assigneeId });
-  assert.equal(released.status, 200);
-  assert.equal(released.body.status, 'open');
-  assert.equal(released.body.assignee, null);
+  const aliceAgain = await request(app).post(`/api/checklist/tasks/${requestTaskId}/release`).send({ playerId: alice.id });
+  assert.equal(aliceAgain.status, 403);
 
-  const alreadyOpen = await request(app).post(`/api/checklist/tasks/${requestTaskId}/release`).send({ playerId: assigneeId });
-  assert.equal(alreadyOpen.status, 403);
+  await request(app).post(`/api/checklist/tasks/${requestTaskId}/release`).send({ playerId: bob.id });
+  const lastLeaves = await request(app).post(`/api/checklist/tasks/${requestTaskId}/release`).send({ playerId: carol.id });
+  assert.equal(lastLeaves.status, 200);
+  assert.equal(lastLeaves.body.status, 'open');
+  assert.equal(lastLeaves.body.assignee, null);
+  assert.deepEqual(lastLeaves.body.assignees, []);
 });
 
 test('done: only assignee/creator/admin, requires a taken task, then locks further changes', async () => {
@@ -365,6 +387,65 @@ test('done: only assignee/creator/admin, requires a taken task, then locks furth
 
   const releaseAfterDone = await request(app).post(`/api/checklist/tasks/${requestTaskId}/release`).send({ playerId: bob.id });
   assert.equal(releaseAfterDone.status, 409);
+
+  const claimAfterDone = await request(app).post(`/api/checklist/tasks/${requestTaskId}/claim`).send({ playerId: carol.id });
+  assert.equal(claimAfterDone.status, 409);
+});
+
+test('archive: done To-Dos stay listed until a participant, the creator or an admin archives them', async () => {
+  const open = await request(app).post('/api/checklist/tasks').send({ playerId: alice.id, title: 'Noch offen' });
+  const openArchive = await request(app).post(`/api/checklist/tasks/${open.body.tasks[0].id}/archive`).send({ playerId: alice.id });
+  assert.equal(openArchive.status, 409);
+  await request(app).delete(`/api/checklist/tasks/${open.body.tasks[0].id}`).send({ playerId: alice.id });
+
+  const listedDone = (await request(app).get('/api/checklist/tasks')).body.tasks.find((t: { id: string }) => t.id === requestTaskId);
+  assert.equal(listedDone.status, 'done');
+  assert.equal(listedDone.archivedAt, null);
+
+  const outsider = (await request(app).post('/api/players').send({ name: 'Packende Erin' })).body;
+  const notAllowed = await request(app).post(`/api/checklist/tasks/${requestTaskId}/archive`).send({ playerId: outsider.id });
+  assert.equal(notAllowed.status, 403);
+
+  const archived = await request(app).post(`/api/checklist/tasks/${requestTaskId}/archive`).send({ playerId: bob.id });
+  assert.equal(archived.status, 200);
+  assert.ok(archived.body.archivedAt);
+
+  const again = await request(app).post(`/api/checklist/tasks/${requestTaskId}/archive`).send({ playerId: bob.id });
+  assert.equal(again.status, 409);
+});
+
+test('edit (PATCH): creator only, validated, applies to a whole multi-assign batch, blocked once done', async () => {
+  const created = await request(app)
+    .post('/api/checklist/tasks/todo')
+    .send({ playerId: alice.id, title: 'Alter Titel', description: 'Alt', assigneePlayerIds: [bob.id, carol.id] });
+  assert.equal(created.status, 201);
+  const [first, second] = created.body.tasks;
+
+  const notCreator = await request(app).patch(`/api/checklist/tasks/${first.id}`).send({ playerId: bob.id, title: 'Neu' });
+  assert.equal(notCreator.status, 403);
+  const badType = await request(app).patch(`/api/checklist/tasks/${first.id}`).send({ playerId: alice.id, type: 'quest' });
+  assert.equal(badType.status, 400);
+  const emptyTitle = await request(app).patch(`/api/checklist/tasks/${first.id}`).send({ playerId: alice.id, title: '   ' });
+  assert.equal(emptyTitle.status, 400);
+  const badDue = await request(app).patch(`/api/checklist/tasks/${first.id}`).send({ playerId: alice.id, dueAt: 'morgen' });
+  assert.equal(badDue.status, 400);
+
+  const dueAt = Date.now() + 86_400_000;
+  const edited = await request(app)
+    .patch(`/api/checklist/tasks/${first.id}`)
+    .send({ playerId: alice.id, type: 'item_request', title: '  Neuer Titel  ', description: null, dueAt });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.tasks.length, 2);
+  const sibling = edited.body.tasks.find((t: { id: string }) => t.id === second.id);
+  assert.equal(sibling.title, 'Neuer Titel');
+  assert.equal(sibling.type, 'item_request');
+  assert.equal(sibling.description, null);
+  assert.equal(sibling.dueAt, dueAt);
+
+  await request(app).patch(`/api/checklist/tasks/${first.id}/done`).send({ playerId: bob.id });
+  await request(app).patch(`/api/checklist/tasks/${second.id}/done`).send({ playerId: carol.id });
+  const afterDone = await request(app).patch(`/api/checklist/tasks/${first.id}`).send({ playerId: alice.id, title: 'Zu spät' });
+  assert.equal(afterDone.status, 409);
 });
 
 test('cancel (DELETE): creator/admin only, blocked once done, not re-cancellable', async () => {

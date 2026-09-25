@@ -621,7 +621,7 @@ test('an outdated event consent stays revocable through the privacy view', async
     `INSERT OR REPLACE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')`,
   ).run(BASE_EVENT_ID, member.id);
   const consentId = nanoid();
-  // The shape migration 106 deliberately preserves: granted, never revoked,
+  // The shape migration 108 deliberately preserves: granted, never revoked,
   // without purpose or text version.
   db.prepare(
     `INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, source)
@@ -660,7 +660,7 @@ test('only a real event period can be tracked: base workspace and general events
   // The permanently open base workspace looks trackable on paper — published,
   // starts_at = 0, no end — so the guard must be explicit. A sibling fixture in
   // this file may already have flipped the flag through direct SQL, so assert
-  // the guard rather than the seeded value; migration 108 covers legacy rows.
+  // the guard rather than the seeded value; migration 110 covers legacy rows.
   const base = db
     .prepare('SELECT id, status, starts_at FROM events WHERE id = ?')
     .get(BASE_EVENT_ID) as { status: string; starts_at: number | null };
