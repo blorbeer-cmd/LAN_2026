@@ -152,7 +152,7 @@ db.exec(`
   );
 
   -- Skill rating per (player, game). One row per pair. Created as 1-10;
-  -- migration 109 moves it to 0-5.
+  -- migration 112 moves it to 0-5.
   CREATE TABLE IF NOT EXISTS skills (
     player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     game_id   TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -161,7 +161,7 @@ db.exec(`
   );
 
   -- "Bock"-Rating per (player, game), created as 1-10 and moved to 0-5 by
-  -- migration 109: how much a player currently feels
+  -- migration 112: how much a player currently feels
   -- like playing it, as opposed to skills.rating (how good they are). Kept
   -- as its own table rather than a column on skills since it's meant to be
   -- changed on a whim throughout the LAN (mood-of-the-moment), independent
