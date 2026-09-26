@@ -203,7 +203,7 @@ export function renderBroadcast(container, ctx) {
           <div class="broadcast-form-row">
             <div>
               <label for="broadcast-message" class="field-label">Nachricht</label>
-              <textarea id="broadcast-message" rows="1" placeholder="Essen ist da" maxlength="200" ${myId ? '' : 'disabled'}></textarea>
+              <textarea id="broadcast-message" rows="1" placeholder="Essen kommen!" maxlength="200" ${myId ? '' : 'disabled'}></textarea>
             </div>
             <div>
               <label for="broadcast-ends-at-date" class="field-label">Sichtbar bis</label>
