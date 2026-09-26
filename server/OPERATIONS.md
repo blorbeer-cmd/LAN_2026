@@ -65,14 +65,53 @@ docker compose run --rm --no-deps app npm run backup:verify -- /app/data/backups
 Der produktive Restore bleibt bewusst ein Operator-Vorgang. So bleibt die bisherige Datenbank als
 Rückfall erhalten:
 
+Jede Kontolöschung schreibt vor der SQLite-Änderung einen hashbasierten Beleg synchron in das
+append-only Ledger aus `PRIVACY_DELETION_LEDGER_FILE`. Schlägt die Datenbanktransaktion fehl,
+folgt ein Stornierungseintrag; der Restore berücksichtigt diesen Beleg dann nicht. Ohne gesetzten
+Pfad landet das Ledger neben der SQLite-Datei und überlebt damit den unten beschriebenen Restore,
+aber nicht den Komplettverlust des
+`data`-Volumes; der Produktionsstart warnt in diesem Fall. Für den vollen Schutz gehört das Ziel auf
+ein unabhängig gesichertes Volume, im Docker-Betrieb als separater persistenter Mount im
+App-Container, zum Beispiel vom Hostpfad `/opt/respawn-deletion-ledger` nach `/app/deletion-ledger`.
+Der Mount ist in der versionierten `docker-compose.yml` enthalten und übersteht damit das nächste
+Deployment. Für ein separates Volume zuerst das Hostverzeichnis mit Schreibrechten für den
+Container-Benutzer (UID 1000) anlegen, zum Beispiel mit
+`sudo install -d -m 0700 -o 1000 -g 1000 /opt/respawn-deletion-ledger`. Danach in
+`/opt/respawn/.env` beide Werte setzen:
+
+```dotenv
+PRIVACY_DELETION_LEDGER_DIR=/opt/respawn-deletion-ledger
+PRIVACY_DELETION_LEDGER_FILE=/app/deletion-ledger/deletion-receipts.jsonl
+```
+
+Der Restore-Container übernimmt denselben Mount und Pfad. Ohne diese beiden Werte bleibt das
+Ledger wie bisher im `data`-Volume; der zusätzliche Compose-Mount zeigt dann ebenfalls dorthin.
+Wer bisher einen manuell ergänzten Mount verwendete, muss den Hostpfad vor dem nächsten Deployment
+als `PRIVACY_DELETION_LEDGER_DIR` in `.env` übernehmen. Bei einem externen Ledger-Pfad ohne diese
+Angabe verweigert der Produktionsstart den Betrieb, damit keine neue leere Belegdatei entsteht.
+Das Ledger enthält weder Konto-ID noch Name.
+Der zusätzliche Download über `GET /api/privacy/deletion-receipts` bleibt als manuelle
+Kontrollkopie möglich.
+
 ```bash
 cd /opt/respawn
 docker compose stop app
 cp -- data/lan.db data/lan.db.before-restore.sqlite
 cp -- data/backups/<backup-datei>.sqlite data/lan.db
 rm -f -- data/lan.db-wal data/lan.db-shm
+docker compose run --rm --no-deps -e DB_FILE=/app/data/lan.db app npm run privacy:reconcile-restore -- --preview
+docker compose run --rm --no-deps -e DB_FILE=/app/data/lan.db -e PRIVACY_RESTORE_CONFIRMED_OFFLINE=1 app npm run privacy:reconcile-restore -- --apply
+docker compose run --rm --no-deps -e DB_FILE=/app/data/lan.db app npm run privacy:reconcile-restore -- --preview
 docker compose up -d --wait app
 ```
+
+Der letzte Preview-Lauf muss `restoredAccountsToDelete: 0` melden. Meldet `--apply` einen Blocker,
+bleibt die App gestoppt: Rolle oder offenen Fachvorgang in der isolierten Restore-Umgebung klären,
+den Abgleich wiederholen und erst dann freigeben. Das externe Ledger bleibt außerhalb der
+SQLite-Backups erhalten, bis alle Backups vor den enthaltenen Löschzeitpunkten abgelaufen sind.
+Ohne vollständige Löschbelege darf ein älteres Backup nicht als neue Produktion freigegeben werden.
+Als Notfallalternative akzeptiert der Befehl weiterhin einen zuvor heruntergeladenen JSON-Export
+oder eine JSONL-Ledgerdatei als optionalen letzten Parameter.
 
 Danach `/api/health` und die LAN-Bereitschaft im Admin-Bereich prüfen und stichprobenartig Event,
 Spieler und Historie öffnen. Schlägt die Prüfung fehl, den Container erneut stoppen, die gesicherte
@@ -84,6 +123,9 @@ Mindestens vor jeder LAN sollte der komplette Ablauf in einer separaten Testinst
 einer Kopie des `data`-Verzeichnisses geprobt werden. Ein erfolgreicher `backup:verify`-Lauf allein
 beweist die SQLite-Integrität; erst das Öffnen der wiederhergestellten App bestätigt auch den
 operativen Restore-Pfad.
+
+Das vollständige Dateninventar, die vorgeschlagenen Fristen und die vor Produktion offenen
+Betreiberentscheidungen stehen in [`docs/privacy-and-retention.md`](../docs/privacy-and-retention.md).
 
 ## Produktions-Deployment
 

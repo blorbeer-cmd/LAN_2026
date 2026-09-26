@@ -38,6 +38,10 @@ db.exec(`
     avatar          TEXT,
     api_key         TEXT NOT NULL UNIQUE,
     tracking_paused INTEGER NOT NULL DEFAULT 0, -- player-side opt-out; agent reports for this player are dropped
+    -- Standing pre-authorization for newly trackable events: holds the consent
+    -- text version it was set under, NULL when off. A changed text therefore
+    -- stops it from applying until the account agrees to the new wording.
+    tracking_consent_default_version TEXT,
     is_admin        INTEGER NOT NULL DEFAULT 0, -- moderation role; can be granted via PATCH /api/players/:id
     is_test         INTEGER NOT NULL DEFAULT 0, -- admin-seeded test player; hidden outside admin mode (see testUsers.ts)
     deactivated_at  INTEGER, -- former participant: kept for history, denied login/agent access and hidden from active rosters
@@ -2849,7 +2853,7 @@ function createMusicSessionTables(): void {
     CREATE TABLE IF NOT EXISTS music_sessions (
       id                    TEXT PRIMARY KEY,
       group_id              TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-      host_player_id        TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      host_player_id        TEXT REFERENCES players(id) ON DELETE SET NULL,
       device_id             TEXT NOT NULL,
       device_name           TEXT NOT NULL,
       status                TEXT NOT NULL CHECK (status IN ('active', 'ended')),
@@ -5038,9 +5042,7 @@ registerMigration({
   up: enableCompetitionForGroupEvents,
 });
 
-// Migration: a drawn lineup can become a tournament instead of a single
-// result. The link marks the draw as used, so the same teams cannot also be
-// recorded as a single match (and vice versa, see POST /api/matches).
+// A draw can become a tournament instead of a single recorded match.
 function migrateDrawTournamentLink(): void {
   const columns = db.prepare('PRAGMA table_info(matchmaking_draws)').all() as Array<{ name: string }>;
   if (!columns.some((c) => c.name === 'tournament_id')) {
@@ -5096,6 +5098,148 @@ registerMigration({
   up: migrateChecklistTaskAssignees,
 });
 
+// Privacy package: consent records describe the exact optional purpose and
+// the version of the text that was shown. Existing rows intentionally remain
+// NULL instead of being relabelled as if an older decision had covered the
+// current wording. Historical diagnostic process names are cleared once;
+// current code only stores them while a valid tracking context exists.
+function addVersionedConsentMetadata(): void {
+  for (const table of ['group_tracking_consents', 'event_tracking_consents']) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'purpose')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN purpose TEXT`);
+    }
+    if (!columns.some((column) => column.name === 'text_version')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN text_version TEXT`);
+    }
+  }
+  db.prepare("UPDATE agent_diagnostics SET process_names = '[]' WHERE process_names != '[]'").run();
+}
+registerMigration({
+  version: 108,
+  name: 'version privacy consents and clear legacy diagnostic process names',
+  up: addVersionedConsentMetadata,
+});
+
+// An ended Jam session is historical event data and can contain requests from
+// several accounts. Deleting its former host must therefore anonymize only
+// the host reference instead of cascading through the session and erasing
+// requests that belong to other players.
+function preserveEndedMusicSessionsAfterHostDeletion(): void {
+  const hostColumn = (db.prepare('PRAGMA table_info(music_sessions)').all() as Array<{
+    name: string;
+    notnull: number;
+  }>).find((column) => column.name === 'host_player_id');
+  const hostForeignKey = (db.prepare('PRAGMA foreign_key_list(music_sessions)').all() as Array<{
+    from: string;
+    on_delete: string;
+  }>).find((foreignKey) => foreignKey.from === 'host_player_id');
+  if (hostColumn?.notnull === 0 && hostForeignKey?.on_delete === 'SET NULL') return;
+
+  db.exec(`
+    CREATE TABLE music_sessions_rebuilt_109 (
+      id                    TEXT PRIMARY KEY,
+      group_id              TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      host_player_id        TEXT REFERENCES players(id) ON DELETE SET NULL,
+      device_id             TEXT NOT NULL,
+      device_name           TEXT NOT NULL,
+      status                TEXT NOT NULL CHECK (status IN ('active', 'ended')),
+      current_track_uri     TEXT,
+      current_track_json    TEXT,
+      playback_is_playing   INTEGER NOT NULL DEFAULT 0,
+      playback_progress_ms  INTEGER NOT NULL DEFAULT 0,
+      playback_updated_at   INTEGER,
+      started_at            INTEGER NOT NULL,
+      ended_at              INTEGER,
+      playback_context_json TEXT,
+      event_id              TEXT REFERENCES events(id) ON DELETE RESTRICT
+    );
+    INSERT INTO music_sessions_rebuilt_109
+      (id, group_id, host_player_id, device_id, device_name, status, current_track_uri,
+       current_track_json, playback_is_playing, playback_progress_ms, playback_updated_at,
+       started_at, ended_at, playback_context_json, event_id)
+    SELECT id, group_id, host_player_id, device_id, device_name, status, current_track_uri,
+           current_track_json, playback_is_playing, playback_progress_ms, playback_updated_at,
+           started_at, ended_at, playback_context_json, event_id
+    FROM music_sessions;
+    DROP TABLE music_sessions;
+    ALTER TABLE music_sessions_rebuilt_109 RENAME TO music_sessions;
+    CREATE UNIQUE INDEX idx_music_sessions_one_active_group
+      ON music_sessions(group_id) WHERE status = 'active';
+    CREATE INDEX idx_music_sessions_event_status
+      ON music_sessions(event_id, status, started_at);
+    CREATE TRIGGER trg_music_sessions_event_group_insert
+    BEFORE INSERT ON music_sessions
+    WHEN NEW.event_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM events e WHERE e.id = NEW.event_id AND e.group_id = NEW.group_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'music session event/group mismatch');
+    END;
+    CREATE TRIGGER trg_music_sessions_event_group_update
+    BEFORE UPDATE OF event_id, group_id ON music_sessions
+    WHEN NEW.event_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM events e WHERE e.id = NEW.event_id AND e.group_id = NEW.group_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'music session event/group mismatch');
+    END;
+  `);
+}
+registerMigration({
+  version: 109,
+  name: 'preserve ended music sessions after host deletion',
+  up: preserveEndedMusicSessionsAfterHostDeletion,
+  disableForeignKeysForRebuild: true,
+});
+
+// The base workspace and general events cannot be tracked. Older rows may
+// still carry the enabled flag and live sessions, so clear them during upgrade.
+// The standing consent default lives next to tracking_paused.
+function excludeBaseWorkspaceFromTrackingAndAddConsentDefault(): void {
+  // Draft PR installations may already have used versions 105-107 for the
+  // privacy migrations before main claimed 105 for the draw link and 106/107
+  // for the To-Do changes. Those versions then count as applied, so their
+  // main counterparts would be skipped forever; repair them here instead.
+  // Check the recorded name: 106 can be applied with either meaning, and
+  // re-running its data backfill would archive newly finished To-Dos.
+  migrateDrawTournamentLink();
+  const checklistArchiveMigration = db.prepare('SELECT name FROM schema_migrations WHERE version = 106').get() as
+    | { name: string }
+    | undefined;
+  if (checklistArchiveMigration?.name !== 'archive finished checklist tasks') {
+    migrateChecklistTaskArchive();
+  }
+  const checklistAssigneesMigration = db.prepare('SELECT name FROM schema_migrations WHERE version = 107').get() as
+    | { name: string }
+    | undefined;
+  if (checklistAssigneesMigration?.name !== 'multiple participants per checklist task') {
+    migrateChecklistTaskAssignees();
+  }
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'tracking_consent_default_version')) {
+    db.exec('ALTER TABLE players ADD COLUMN tracking_consent_default_version TEXT');
+  }
+  db.prepare("UPDATE events SET tracking_enabled = 0 WHERE (id = ? OR event_type_key = 'general') AND tracking_enabled = 1").run(BASE_EVENT_ID);
+  // Same order and scope as closeEventContexts: a still-open session has to be
+  // closed *before* its live rows go, because closeStaleSessions only ever
+  // finds an orphan by joining those two tables. Without this the row would
+  // stay open forever — inflating that game's playtime (FR-29) and staying
+  // outside the ended_play_sessions retention rule, which only takes rows that
+  // have an ended_at.
+  db.prepare("UPDATE play_sessions SET ended_at = ? WHERE event_id IN (SELECT id FROM events WHERE id = ? OR event_type_key = 'general') AND ended_at IS NULL").run(
+    Date.now(),
+    BASE_EVENT_ID,
+  );
+  db.prepare("DELETE FROM tracking_live_contexts WHERE event_id IN (SELECT id FROM events WHERE id = ? OR event_type_key = 'general')").run(BASE_EVENT_ID);
+  db.prepare("DELETE FROM tracking_live_games WHERE event_id IN (SELECT id FROM events WHERE id = ? OR event_type_key = 'general')").run(BASE_EVENT_ID);
+}
+registerMigration({
+  version: 110,
+  name: 'exclude base and general events from tracking and add standing consent default',
+  up: excludeBaseWorkspaceFromTrackingAndAddConsentDefault,
+});
+
 // A points ballot now rates every game of its round, and 0 is a deliberate
 // answer ("I won't play this") instead of an omitted row. The CHECK from
 // migration 34 only allowed 1-10, so the table is rebuilt with the same
@@ -5110,7 +5254,7 @@ function allowZeroVotePoints(): void {
   if (/points\s+BETWEEN\s+0\s+AND\s+10/i.test(tableSql)) return;
 
   db.exec(`
-    CREATE TABLE votes_zero_points_108 (
+    CREATE TABLE votes_zero_points_111 (
       id                   TEXT PRIMARY KEY,
       group_id             TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
       player_id            TEXT NOT NULL,
@@ -5126,11 +5270,11 @@ function allowZeroVotePoints(): void {
       FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
       FOREIGN KEY (group_id, round) REFERENCES vote_rounds(group_id, round) ON DELETE CASCADE
     );
-    INSERT INTO votes_zero_points_108
+    INSERT INTO votes_zero_points_111
       (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
     SELECT id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at FROM votes;
     DROP TABLE votes;
-    ALTER TABLE votes_zero_points_108 RENAME TO votes;
+    ALTER TABLE votes_zero_points_111 RENAME TO votes;
 
     CREATE INDEX IF NOT EXISTS idx_votes_group_round ON votes(group_id, round);
     CREATE INDEX IF NOT EXISTS idx_votes_group_event ON votes(group_id, event_id);
@@ -5156,7 +5300,7 @@ function allowZeroVotePoints(): void {
     END;
   `);
 }
-registerMigration({ version: 108, name: 'allow zero vote points', up: allowZeroVotePoints });
+registerMigration({ version: 111, name: 'allow zero vote points', up: allowZeroVotePoints });
 
 // Bock and Skill move from 1-10 to the same 0-5 number scale Vote and
 // Umfragen use, where 0 is a deliberate "no". Existing values are halved and
@@ -5171,17 +5315,17 @@ function moveRatingsToZeroToFive(): void {
   for (const table of ['skills', 'preferences']) {
     if (/rating\s+BETWEEN\s+0\s+AND\s+5/i.test(tableSql(table))) continue;
     db.exec(`
-      CREATE TABLE ${table}_zero_to_five_109 (
+      CREATE TABLE ${table}_zero_to_five_112 (
         player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
         game_id   TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
         rating    INTEGER NOT NULL CHECK (rating BETWEEN 0 AND 5),
         group_id  TEXT REFERENCES groups(id) ON DELETE RESTRICT,
         PRIMARY KEY (player_id, game_id)
       );
-      INSERT INTO ${table}_zero_to_five_109 (player_id, game_id, rating, group_id)
+      INSERT INTO ${table}_zero_to_five_112 (player_id, game_id, rating, group_id)
       SELECT player_id, game_id, (rating + 1) / 2, group_id FROM ${table};
       DROP TABLE ${table};
-      ALTER TABLE ${table}_zero_to_five_109 RENAME TO ${table};
+      ALTER TABLE ${table}_zero_to_five_112 RENAME TO ${table};
       CREATE INDEX IF NOT EXISTS idx_${table}_game ON ${table}(game_id);
       CREATE INDEX IF NOT EXISTS idx_${table}_group ON ${table}(group_id);
     `);
@@ -5189,7 +5333,7 @@ function moveRatingsToZeroToFive(): void {
 
   if (!tableSql('event_date_poll_responses').includes("'0'")) {
     db.exec(`
-      CREATE TABLE event_date_poll_responses_zero_109 (
+      CREATE TABLE event_date_poll_responses_zero_112 (
         poll_id    TEXT NOT NULL,
         option_id  TEXT NOT NULL,
         player_id  TEXT NOT NULL,
@@ -5199,15 +5343,15 @@ function moveRatingsToZeroToFive(): void {
         FOREIGN KEY (poll_id, option_id) REFERENCES event_date_poll_options(poll_id, id) ON DELETE CASCADE,
         FOREIGN KEY (poll_id, player_id) REFERENCES event_date_poll_invitees(poll_id, player_id) ON DELETE CASCADE
       );
-      INSERT INTO event_date_poll_responses_zero_109 (poll_id, option_id, player_id, response, updated_at)
+      INSERT INTO event_date_poll_responses_zero_112 (poll_id, option_id, player_id, response, updated_at)
       SELECT poll_id, option_id, player_id, response, updated_at FROM event_date_poll_responses;
       DROP TABLE event_date_poll_responses;
-      ALTER TABLE event_date_poll_responses_zero_109 RENAME TO event_date_poll_responses;
+      ALTER TABLE event_date_poll_responses_zero_112 RENAME TO event_date_poll_responses;
       CREATE INDEX IF NOT EXISTS idx_event_date_poll_responses_option ON event_date_poll_responses(option_id);
     `);
   }
 }
-registerMigration({ version: 109, name: 'move bock, skill and poll ratings to 0-5', up: moveRatingsToZeroToFive });
+registerMigration({ version: 112, name: 'move bock, skill and poll ratings to 0-5', up: moveRatingsToZeroToFive });
 
 runRegisteredMigrations();
 

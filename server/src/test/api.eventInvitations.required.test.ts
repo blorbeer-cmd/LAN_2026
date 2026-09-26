@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 const APP_JS_PATH = path.join(__dirname, '..', 'app.js');
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
+const PRIVACY_POLICY_JS_PATH = path.join(__dirname, '..', 'privacyPolicy.js');
 const RECOVERY_CODE = 'event-invitations-recovery-code';
 
 test('event invitation lifecycle enforces roles, identity, transitions and atomic races', () => {
@@ -12,6 +13,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
     const request = require('supertest');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
     const { db, DEFAULT_GROUP_ID, BASE_EVENT_ID } = require(${JSON.stringify(DB_JS_PATH)});
+    const { TRACKING_CONSENT_TEXT_VERSION } = require(${JSON.stringify(PRIVACY_POLICY_JS_PATH)});
 
     function cookie(response) {
       return response.headers['set-cookie'][0].split(';')[0];
@@ -130,7 +132,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       // because creating an event now accepts its creator.
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, carol)).status, 404);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, owner)).status, 200);
-      assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob)).status, 409);
+      assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob).send({ granted: true, textVersion: TRACKING_CONSENT_TEXT_VERSION })).status, 409);
 
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', carol)).status, 409);
       const firstAccept = await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob);
@@ -140,7 +142,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       // Answering the invitation retires its notification: it stays in the
       // history, but stops being an open item in banners.
       assert.notEqual(invitationPushRows()[0].resolvedAt, null, 'accepting must resolve the invitation notification');
-      assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob)).status, 200);
+      assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob).send({ granted: true, textVersion: TRACKING_CONSENT_TEXT_VERSION })).status, 200);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, bob)).status, 200);
       // This event already started, so the acceptance can no longer be
       // withdrawn: by then the participation is a fact, not an intention.

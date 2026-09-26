@@ -39,6 +39,9 @@ COPY --link --chown=1000:1000 agent-dist ./agent-dist
 COPY --link --chown=1000:1000 public ./public
 COPY --link --chown=1000:1000 scripts/jam-controller.mjs ./scripts/jam-controller.mjs
 COPY --link --chown=1000:1000 scripts/verify-backup.js ./scripts/verify-backup.js
+# OPERATIONS.md requires this reconcile run before a restored backup may go
+# back into production, so the operator script has to exist in the image.
+COPY --link --chown=1000:1000 scripts/privacy-restore-reconcile.js ./scripts/privacy-restore-reconcile.js
 
 # node:24-bookworm-slim ships a non-root "node" user out of the box. The data
 # directory remains writable even when the image is started without Compose's

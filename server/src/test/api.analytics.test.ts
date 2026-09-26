@@ -15,6 +15,7 @@ let playerA: string;
 let apiKeyA: string;
 let playerB: string;
 let apiKeyB: string;
+let trackingEventId: string;
 
 async function report(apiKey: string, processNames: string[]) {
   return request(app).post('/api/agent/report').set('x-api-key', apiKey).send({ processNames });
@@ -27,7 +28,7 @@ test('setup: two players and two seeded games', async () => {
   apiKeyA = a.body.api_key;
   playerB = b.body.id;
   apiKeyB = b.body.api_key;
-  enableTestTracking(playerA);
+  trackingEventId = enableTestTracking(playerA);
   enableTestTracking(playerB);
 
   const games = await request(app).get('/api/games');
@@ -135,14 +136,12 @@ test('GET /api/analytics/awards rejects from > to', async () => {
 });
 
 test('eventId filters analytics precisely, independent of session timestamps', async () => {
-  const firstEvent = await request(app).get('/api/events/active');
-
-  // A session recorded in the permanent base event.
+  // A session recorded in the first tracked event.
   await report(apiKeyA, ['cs2.exe']);
   await new Promise((r) => setTimeout(r, 30));
   await report(apiKeyA, []);
 
-  const beforeSwitch = await request(app).get(`/api/analytics/sessions?eventId=${firstEvent.body.id}`);
+  const beforeSwitch = await request(app).get(`/api/analytics/sessions?eventId=${trackingEventId}`);
   const countBeforeSwitch = beforeSwitch.body.length;
   assert.ok(countBeforeSwitch > 0);
 
@@ -166,7 +165,7 @@ test('eventId filters analytics precisely, independent of session timestamps', a
 
   // The first event's own sessions must be unaffected by what happened after
   // the switch (exact event_id filtering, not an approximate date range).
-  const afterSwitch = await request(app).get(`/api/analytics/sessions?eventId=${firstEvent.body.id}`);
+  const afterSwitch = await request(app).get(`/api/analytics/sessions?eventId=${trackingEventId}`);
   assert.equal(afterSwitch.body.length, countBeforeSwitch);
 
   const secondPlaytime = await request(app)
@@ -199,6 +198,7 @@ let statP2: string;
 let statP3: string;
 
 test('setup: players + skills + matches + a tournament + a draw for games-tournaments stats', async () => {
+  await request(app).put('/api/me/active-event').send({ eventId: BASE_EVENT_ID });
   const p1 = await request(app).post('/api/players').send({ name: 'Stat P1' });
   const p2 = await request(app).post('/api/players').send({ name: 'Stat P2' });
   const p3 = await request(app).post('/api/players').send({ name: 'Stat P3' });

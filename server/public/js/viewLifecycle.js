@@ -22,7 +22,7 @@ import { invalidateAdminFeatureUsage } from './views/adminFeatureUsage.js';
 import { invalidateMusic } from './views/music.js';
 import { invalidateAnalytics } from './views/analytics.js';
 import { invalidateMyStats } from './views/myStats.js';
-import { invalidateSeatNeighbors } from './views/profile.js';
+import { invalidatePrivacy, invalidateSeatNeighbors } from './views/profile.js';
 
 const EVENT_SCOPE_CHANGE = 'event-context:changed';
 const CONNECTION_RESTORED = 'connection:restored';
@@ -143,7 +143,11 @@ export const VIEW_LIFECYCLE_HANDLERS = Object.freeze({
     'groups:changed': invalidateAdminMemberships,
   }),
   adminFeatureUsage: Object.freeze({ [EVENT_SCOPE_CHANGE]: invalidateAdminFeatureUsage }),
-  profile: Object.freeze({ [EVENT_SCOPE_CHANGE]: invalidateSeatNeighbors }),
+  profile: Object.freeze({
+    [EVENT_SCOPE_CHANGE]: invalidateSeatNeighbors,
+    [CONNECTION_RESTORED]: invalidatePrivacy,
+    'events:changed': invalidatePrivacy,
+  }),
 });
 
 export const APP_LIFECYCLE_HANDLERS = Object.freeze({

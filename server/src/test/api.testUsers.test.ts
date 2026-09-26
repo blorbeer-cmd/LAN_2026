@@ -28,7 +28,23 @@ test('POST /api/admin/test-users validates count', async () => {
 });
 
 test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, and sessions', async () => {
-  assert.equal((await request(app).post(`/api/events/${BASE_EVENT_ID}/tracking/start`).send({})).status, 200);
+  // The permanently open base workspace can no longer be tracked (see
+  // events.ts), so the seeding admin selects a real LAN period first — which
+  // is also how an organizer reaches live status in production.
+  const trackedEvent = await request(app)
+    .post('/api/events')
+    .send({ name: 'Seed-LAN', startsAt: Date.now() - 1_000, endsAt: Date.now() + 3_600_000 });
+  assert.equal(trackedEvent.status, 201, JSON.stringify(trackedEvent.body));
+  db.prepare(
+    `INSERT INTO event_participants (event_id, player_id, status)
+     VALUES (?, ?, 'accepted')
+     ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
+  ).run(trackedEvent.body.id, TEST_ADMIN_ID);
+  assert.equal(
+    (await request(app).put('/api/me/active-event').send({ eventId: trackedEvent.body.id })).status,
+    200,
+  );
+  assert.equal((await request(app).post(`/api/events/${trackedEvent.body.id}/tracking/start`).send({})).status, 200);
   const statsBefore = await request(app).get('/api/stats/playtime');
   const votesBefore = await request(app).get('/api/votes');
   const res = await request(app).post('/api/admin/test-users').send({ count: 4 });
@@ -63,7 +79,7 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
   // ...and same-edge adjacency produced auto seat neighbors ("Sichtbare
   // Monitore"). With 4 players on empty default sides (2 seats each), at
   // least one adjacent pair must exist.
-  const eventId = BASE_EVENT_ID;
+  const eventId = trackedEvent.body.id;
   const autoRows = db
     .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id = ? AND source = 'auto'")
     .all(eventId) as Array<{ player_id: string; neighbor_id: string }>;

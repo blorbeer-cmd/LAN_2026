@@ -19,6 +19,10 @@ import { deleteAllTestData } from '../testData';
 import { getOrRepairActiveEvent } from '../eventContext';
 import { broadcastLiveBoards } from '../liveStatus';
 import { setGroupTrackingConsent } from '../trackingContexts';
+import {
+  GROUP_TRACKING_CONSENT_PURPOSE,
+  GROUP_TRACKING_CONSENT_TEXT_VERSION,
+} from '../privacyPolicy';
 import { issueKioskToken, listKioskTokens, revokeKioskToken } from '../kioskTokens';
 
 export const groupsRouter = Router();
@@ -98,9 +102,20 @@ groupsRouter.delete('/:groupId/kiosk-tokens/:tokenId', requireGroupMembership, r
 // The append-only history is the source of truth; the membership bit remains
 // as a compatibility projection for older clients.
 groupsRouter.post('/:groupId/tracking-consent', requireGroupMembership, (req, res) => {
-  const { granted } = req.body ?? {};
+  const { granted, textVersion } = req.body ?? {};
   if (typeof granted !== 'boolean') return res.status(400).json({ error: 'granted muss ein Boolean sein.' });
-  setGroupTrackingConsent(req.group!.id, req.player!.id, granted);
+  if (granted && textVersion !== GROUP_TRACKING_CONSENT_TEXT_VERSION) {
+    return res.status(409).json({
+      error: 'Der Einwilligungstext hat sich geändert. Bitte lade die Datenschutzangaben neu.',
+      code: 'consent_text_changed',
+    });
+  }
+  setGroupTrackingConsent(
+    req.group!.id,
+    req.player!.id,
+    granted,
+    granted ? { purpose: GROUP_TRACKING_CONSENT_PURPOSE, textVersion } : undefined,
+  );
   db.prepare('UPDATE group_memberships SET outside_tracking_enabled = ? WHERE group_id = ? AND player_id = ?')
     .run(granted ? 1 : 0, req.group!.id, req.player!.id);
   if (!granted) {

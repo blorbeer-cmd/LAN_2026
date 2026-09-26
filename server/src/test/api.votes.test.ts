@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createTestApp, enableTestTracking } from './testApp';
-import { db, DEFAULT_GROUP_ID } from '../db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
 import { KIOSK_RESULT_DURATION_MS, KIOSK_RESULT_REVEAL_DELAY_MS, voteNotificationPlayerIds } from '../routes/votes';
 
 const app = createTestApp();
@@ -480,6 +480,7 @@ test('each result row reports total all-time playtime, growing as sessions are t
   const after = await request(app).get('/api/votes');
   const cs2After = after.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
   assert.ok(cs2After.totalPlaytimeMs > 0, 'expected the tracked session to count towards total playtime');
+  await request(app).put('/api/me/active-event').send({ eventId: BASE_EVENT_ID });
 });
 
 test('vote notifications target only the active event roster', async () => {
