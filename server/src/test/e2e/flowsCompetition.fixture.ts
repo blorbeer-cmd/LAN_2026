@@ -315,18 +315,6 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     'picking a number must not submit it by itself'
   );
 
-  // The "Unbewertet" filter narrows the list to the still-unrated games.
-  await page.click('#votes-unrated-toggle');
-  await page.waitForFunction(
-    (expected) => document.querySelectorAll('.vote-round-card [data-points-row]').length === expected,
-    totalGames - 2
-  );
-  await page.click('#votes-unrated-toggle');
-  await page.waitForFunction(
-    (expected) => document.querySelectorAll('.vote-round-card [data-points-row]').length === expected,
-    totalGames
-  );
-
   // Every other game gets a deliberate 0, marked "Spiele ich nicht".
   for (let index = 2; index < totalGames; index += 1) await setPoints(index, 0);
   assert.equal(await roundCard.locator('[data-decline-tag]:visible').count(), totalGames - 2);

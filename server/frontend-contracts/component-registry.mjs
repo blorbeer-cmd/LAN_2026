@@ -541,11 +541,6 @@ export const components = [
         "file": "public/js/views/gameCatalog.js",
         "source": "class=\"chip${ratingFilter.has('skill') ? ' is-active' : ''}\"",
         "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/votes.js",
-        "source": "class=\"chip${voteUnratedOnly ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
     ]
   },

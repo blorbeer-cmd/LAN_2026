@@ -1061,12 +1061,6 @@ input[type='number'].tournament-result-score {
 .vote-decline-tag {
   white-space: nowrap;
 }
-.vote-footer-progress {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
 .vote-result-meta {
   font-size: var(--font-size-xs);
   overflow-wrap: anywhere;

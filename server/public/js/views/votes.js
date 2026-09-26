@@ -91,7 +91,6 @@ export function invalidateVoteEventScope() {
   draftSingleGameId = null;
   draftPoints = null;
   draftKey = null;
-  voteUnratedOnly = false;
   resetVoteGameSelection();
 }
 
@@ -131,9 +130,6 @@ async function loadMine(key, playerId, ctx) {
 let draftSingleGameId = null;
 let draftPoints = null; // Map<gameId, points>
 let draftKey = null; // mineKey() of the round/player the current draft belongs to
-// Points-mode-only toggle: hides already-rated rows so working through a
-// long game list doesn't mean scrolling past everything already done.
-let voteUnratedOnly = false;
 
 // "Neue Abstimmung" game selection. Persisted here (like matchmaking.js's
 // checkedIds) rather than left in the DOM, because a votes:changed/
@@ -369,14 +365,11 @@ function renderOpenRow(votes, r, draftReady, columnStart = false) {
 
 function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
   const isPoints = votes.mode === 'points';
-  const showUnratedOnly = isPoints && voteUnratedOnly && mineReady;
-  const games = ballotGames(votes).filter((r) => !showUnratedOnly || !draftPoints.has(r.gameId));
+  const games = ballotGames(votes);
   // Two columns on wide screens read down the left column first, then the
   // right one (see .event-poll-options.is-compact).
   const columnRows = Math.max(1, Math.ceil(games.length / 2));
-  const rows = showUnratedOnly && games.length === 0
-    ? emptyStateHtml('Alle Spiele bewertet.')
-    : games.map((r, index) => renderOpenRow(votes, r, mineReady, index === columnRows)).join('');
+  const rows = games.map((r, index) => renderOpenRow(votes, r, mineReady, index === columnRows)).join('');
   const tags = [];
   // Runoffs are titled "Stichwahl: …" already, so the tag only shows when
   // the title does not say it.
@@ -408,10 +401,7 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
           ${votes.info ? `<p class="event-poll-note">${escapeHtml(votes.info)}</p>` : ''}
           <div class="stack event-poll-options has-answers is-compact" style="--compact-rows: ${columnRows};">${rows}</div>
           <div class="event-poll-save-row event-poll-footer">
-            <span class="vote-footer-progress">
-              <span class="muted" data-vote-rated-progress>${mineReady ? draftProgressText(votes) : ''}</span>
-              ${isPoints && mineReady ? `<button type="button" class="chip${voteUnratedOnly ? ' is-active' : ''}" id="votes-unrated-toggle" aria-pressed="${voteUnratedOnly}">Unbewertet</button>` : ''}
-            </span>
+            <span class="muted" data-vote-rated-progress>${mineReady ? draftProgressText(votes) : ''}</span>
             <button type="button" class="btn btn-primary btn-sm" id="votes-submit" ${mineReady && ballotComplete(votes) ? '' : 'disabled'}>Speichern</button>
           </div>
         </section>
@@ -759,11 +749,6 @@ export function renderVotes(container, ctx) {
       draftSingleGameId = btn.dataset.voteSelect;
       ctx.rerender();
     });
-  });
-
-  container.querySelector('#votes-unrated-toggle')?.addEventListener('click', () => {
-    voteUnratedOnly = !voteUnratedOnly;
-    ctx.rerender();
   });
 
   // Like an Umfrage rating: pressing the chosen number again clears it.

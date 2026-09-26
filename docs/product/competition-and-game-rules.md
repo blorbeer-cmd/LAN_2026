@@ -306,8 +306,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   preselected for every game that has one; games without an own Bock start unrated. This
   preselection is only a local draft — nothing counts until „Speichern“. No selected number means unrated; pressing the chosen number again clears
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
-  own progress („X von Y bewertet“), the „Unbewertet“ chip that narrows the list to still-unrated
-  games, and „Speichern“, enabled once every game is rated. A runoff offers the Umfrage
+  own progress („X von Y bewertet“) and „Speichern“, enabled once every game is rated. A runoff offers the Umfrage
   „Wählen“/„Ausgewählt“ choice instead of numbers. „Letzter Vote“ is a collapsible Umfrage card
   that starts collapsed and keeps its open state across live re-renders; its header names the
   round, date, participation and winner and always offers „Stimmen ansehen“ and, on a tie, a

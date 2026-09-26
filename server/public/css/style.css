@@ -1310,9 +1310,6 @@ textarea {
     border-top: 0;
     padding-top: 0;
   }
-  .event-poll-options.is-compact > .empty-state {
-    grid-column: 1 / -1;
-  }
 }
 @media (max-width: 639px) { /* --bp-md */
   .event-poll-card-header {
