@@ -305,8 +305,14 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.match(liveStackLabel, new RegExp(MEMBER_NAME));
   assert.equal(await liveStack.locator('.avatar-dot, .avatar-img').count(), 2);
   assert.equal(await singleVoterStack.locator('.avatar-dot, .avatar-img').count(), 1);
-  const voterStackGeometry = (stack: typeof liveStack) => stack.evaluate((element) => {
-    const option = element.closest('.event-poll-option')!;
+  // Look the stack up and measure it inside one page task: a live refresh can
+  // replace the poll markup between a locator's element lookup and its
+  // evaluate, and a detached node measures as all zeros.
+  const voterStackGeometry = (optionIndex: number) => ownerPage.evaluate(({ title, index }) => {
+    const group = Array.from(document.querySelectorAll('[data-poll-group]')).find((candidate) => candidate.textContent?.includes(title));
+    const option = group?.querySelectorAll('.event-poll-option').item(index);
+    const element = option?.querySelector('.event-poll-voter-stack');
+    if (!option || !element) throw new Error(`voter stack of option ${index} is missing`);
     const avatars = element.querySelectorAll('.avatar-dot, .avatar-img');
     const first = avatars.item(0).getBoundingClientRect();
     const last = avatars.item(avatars.length - 1).getBoundingClientRect();
@@ -324,16 +330,16 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
       avatarToBarMiddle: Math.abs(middle(first) - middle(bar)),
       avatarToControlsMiddle: Math.abs(middle(first) - middle(controls)),
     };
-  });
+  }, { title: 'Welcher Zeitraum passt?', index: optionIndex });
   await ownerPage.setViewportSize({ width: 390, height: 844 });
-  const mobileStack = await voterStackGeometry(liveStack);
-  const mobileSingleStack = await voterStackGeometry(singleVoterStack);
+  const mobileStack = await voterStackGeometry(0);
+  const mobileSingleStack = await voterStackGeometry(1);
   assert.ok(mobileStack.stackWidth >= 44 && mobileStack.stackHeight >= 32, `the multi-voter stack keeps a comfortable tap target (${JSON.stringify(mobileStack)})`);
   assert.equal(mobileSingleStack.stackWidth, 44, `the single-voter stack keeps the minimum width (${JSON.stringify(mobileSingleStack)})`);
   assert.ok(mobileStack.stackContentRightInset <= 1 && mobileSingleStack.stackContentRightInset <= 1, `mobile avatars align to the right of the title line (${JSON.stringify({ mobileStack, mobileSingleStack })})`);
   await ownerPage.setViewportSize({ width: 1024, height: 800 });
-  const desktopStack = await voterStackGeometry(liveStack);
-  const desktopSingleStack = await voterStackGeometry(singleVoterStack);
+  const desktopStack = await voterStackGeometry(0);
+  const desktopSingleStack = await voterStackGeometry(1);
   assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
   assert.ok(desktopStack.stackContentLeftInset <= 1 && desktopSingleStack.stackContentLeftInset <= 1, `desktop avatars start at their column edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
   assert.ok(Math.abs(desktopStack.avatarLeft - desktopSingleStack.avatarLeft) <= 1, `avatars of different rows share one left edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
