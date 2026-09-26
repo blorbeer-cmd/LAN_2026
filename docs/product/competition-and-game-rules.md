@@ -150,11 +150,16 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   scheduling. Both meters are editable on every tab, suggestions included — how good the group
   already is at a game is part of deciding whether to accept it.
   Bock and Skill are rated with the shared 0–5 number scale (`ratingScale.js`) that Vote and
-  Umfragen use: six square buttons below the label, the chosen one outlined. No selected number
-  means "no rating yet"; 0 is a deliberate answer (for Bock „kein Bock“) and counts as rated. A
+  Umfragen use: six square buttons below the label. The chosen number is outlined in the former
+  slider's color (Bock violet, Skill blue) and a fill line below the numbers repeats the value with
+  that slider's gradient; the line is empty for a 0 and dashed while nothing is rated. No selected
+  number means "no rating yet"; 0 is a deliberate answer and counts as rated — for Bock „kein
+  Bock“, for Skill „kenne ich nicht“ — and that meaning is spelled out on the Ø note's line. A
   press saves immediately and keeps keyboard focus on the pressed number. Existing 1–10 ratings
   were halved and rounded up onto this scale. Unlike the team views, where a missing rating still
-  enters the draw as the parenthesized fallback, the own-rating scale shows no number at all. Two independent chip
+  enters the draw as the parenthesized fallback, the own-rating scale shows no number at all.
+  A Skill of 0 („kenne ich nicht“) enters a balanced draw as 0, the weakest value, so players new
+  to a game are spread across the teams; the team views label it „kennt das Spiel nicht“. Two independent chip
   filters, „Bock offen“ and „Skill offen“, narrow the list to games the current identity hasn't
   rated yet on that facet; both active at once is an AND, unlike the genre chips'
   OR-within-one-facet semantics.
@@ -293,9 +298,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   through the existing realtime refresh) and the viewer's own state („Abgegeben“ or „Deine Stimme
   fehlt“); admins get a compact „Beenden“ beside an „Aktion“ menu holding „Abbrechen“. A
   „Zwischenstand verborgen“ tag and the round info follow. Games are listed alphabetically, one
-  Umfrage option row each: name and one compact meta line without empty values, the empty result
-  and voter columns of a hidden interim result, and the same 0–5 number scale as an Umfrage rating
-  as the answer control. No selected number means unrated; pressing the chosen number again clears
+  Umfrage option row each: name and one compact meta line that starts with the viewer's own Bock
+  („Dein Bock: X“, „–“ without one) followed by the other values, and the same 0–5 number scale
+  as an Umfrage rating as the answer control. Like every Umfrage with a hidden interim result, the
+  empty result column is dropped so the numbers sit beside the name, and from `--bp-lg` two games
+  share a row. The number matching the own Bock carries a dashed violet pre-mark until another or
+  that number is chosen; „Mit meinem Bock vorbelegen“ beside the tags fills every still-unrated
+  game that has an own Bock, leaves chosen numbers untouched and saves nothing by itself. No selected number means unrated; pressing the chosen number again clears
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
   own progress („X von Y bewertet“), the „Unbewertet“ chip that narrows the list to still-unrated
   games, and „Speichern“, enabled once every game is rated. A runoff offers the Umfrage

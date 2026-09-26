@@ -398,6 +398,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `game-catalog-link-action` | Plattform- und Trailer-Links stehen als dichte 32×32-px-Gruppe direkt an den Spielinformationen. |
 | `selection-buttons`, `poll-secondary`, `poll-text-width`, `poll-choice-text` | Toolbarlayout und Bedeutung respektieren die gewählte Basis-/Quadratvariante. |
 | `poll-selected-answer`, `poll-option-extra-toggle` | Die gewählte Umfrageantwort und der geöffnete Notiz-/Link-Schalter zeigen ihren Zustand mit Akzentumriss bzw. Akzentfarbe, ohne eigene Geometrie. |
+| `scale-hint-answer`, `rating-scale-selected` | Ein vorgemerkter Bezugswert der Zahlenskala (eigener Bock im Vote) trägt einen gestrichelten Umriss; auf der Bock-/Skill-Skala nimmt der gewählte Umriss die Farbe der Skala an. Beides ohne eigene Geometrie. |
 | `poll-note-field`, `poll-flag-checkbox` | Die einzeilige Umfragebeschreibung wächst bis vier Controlhöhen; die 20-px-Checkbox ist Teil der beschrifteten Umfrageeinstellung. |
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
 | `profile-preview` | Nichtinteraktive Vorschau folgt der benachbarten Controlzeile. |
@@ -567,6 +568,10 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:poll-choice-text`: Compact text presentation keeps the standard 32px minimum.
 
 - `registry:poll-selected-answer`: The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.
+
+- `registry:scale-hint-answer`: A pre-marked reference value (the viewer's own Bock on a Vote ballot) gets a dashed inset outline only; geometry stays with the square variant.
+
+- `registry:rating-scale-selected`: On the Bock/Skill scale the chosen number's inset outline takes that scale's color; geometry stays with the square variant.
 
 - `registry:checklist-table-action`: Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.
 - `registry:broadcast-table-action`: Beenden fills the fixed Durchsage action column, so it lines up from row to row.

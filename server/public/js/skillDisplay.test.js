@@ -62,6 +62,11 @@ test('playerSkillHtml shows the parenthesized fallback for a player without an o
     assert.match(unrated, /class="rating rating-unrated"/);
     assert.match(unrated, /<span>\(3\)<\/span>/);
     assert.match(unrated, /Ohne eigene Bewertung, zählt mit Skill-Level 3 von 5/);
+
+    // A deliberate 0 ("kenne ich nicht") is a real rating, not the fallback.
+    const unknownGame = playerSkillHtml({ id: 'p1', rating: 0 }, 'g1', { stored: true });
+    assert.match(unknownGame, /class="rating"/);
+    assert.match(unknownGame, /aria-label="Skill-Level 0 von 5, kennt das Spiel nicht"/);
   });
 });
 

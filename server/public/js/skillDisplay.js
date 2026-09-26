@@ -36,7 +36,8 @@ export function skillLevelHtml(rating, { balanced = true } = {}) {
     const value = balanced ? `(${UNRATED_SKILL_VALUE})` : '–';
     return `<span class="rating rating-unrated" title="${title}" aria-label="${title}">${icon(domainIcon('skill'))}<span>${value}</span></span>`;
   }
-  const title = `Skill-Level ${rating} von 5`;
+  // 0 is the deliberate "kenne ich nicht"; it enters a balanced draw as 0.
+  const title = rating === 0 ? 'Skill-Level 0 von 5, kennt das Spiel nicht' : `Skill-Level ${rating} von 5`;
   return `<span class="rating" title="${title}" aria-label="${title}">${icon(domainIcon('skill'))}<span>${rating}</span></span>`;
 }
 

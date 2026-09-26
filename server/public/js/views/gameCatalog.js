@@ -210,11 +210,17 @@ function suggestionChipHtml(gameId, suggestion, mine) {
     >${icon('brain', { className: 'skill-suggestion-icon' })} ${suggestion.rating}</button>`;
 }
 
-// Bock and Skill share the 0-5 number scale of Vote and Umfragen. No number
-// selected means "not rated yet"; 0 is a deliberate answer (for Bock: kein
-// Bock).
+// Bock and Skill share the 0-5 number scale of Vote and Umfragen, colored
+// like the former sliders with a fill line below. No number selected means
+// "not rated yet"; 0 is a deliberate answer, spelled out beside the label
+// because a bare 0 would read like "not rated".
+const ZERO_MEANING = { bock: 'kein Bock', skill: 'kenne ich nicht' };
+
 function ratingRowHtml({ label, mine, avg, count, gameId, gameName, kind, disabled, suggestionHtml }) {
-  const avgText = avg === null ? '' : `Ø ${avg.toFixed(1)} (${count})`;
+  // The meaning shares the Ø note's reserved line, so rows keep one height.
+  const avgText = [avg === null ? '' : `Ø ${avg.toFixed(1)} (${count})`, mine === 0 ? ZERO_MEANING[kind] : '']
+    .filter(Boolean)
+    .join(' · ');
   const groupLabel = kind === 'bock' ? `Bock auf ${gameName}` : `Skill in ${gameName}`;
   return `
     <div class="skill-row" data-game="${gameId}" data-kind="${kind}">
@@ -224,9 +230,10 @@ function ratingRowHtml({ label, mine, avg, count, gameId, gameName, kind, disabl
       ${ratingScaleHtml({
         selected: mine,
         groupLabel: mine == null ? `${groupLabel} – noch nicht bewertet` : groupLabel,
-        valueLabel: (value) => (kind === 'bock' && value === 0 ? '0 von 5, kein Bock' : `${value} von 5`),
+        valueLabel: (value) => (value === 0 ? `0 von 5, ${ZERO_MEANING[kind]}` : `${value} von 5`),
         attributes: (value) => `data-rating-value="${value}"`,
         disabled,
+        tone: kind,
       })}
     </div>`;
 }

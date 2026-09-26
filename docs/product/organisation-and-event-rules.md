@@ -158,6 +158,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   a participant picker because the accepted event roster is the single source of truth.
   A rating round uses the shared 0–5 number scale of Vote and Bock/Skill; 0 rejects the option,
   lowers its average like any other value and is counted as „N lehnen ab“ beside it.
+  While the viewer cannot see the interim result, the empty result column is dropped: the answer
+  controls sit beside the option name and, from `--bp-lg`, two options share a row. Phones keep the
+  stacked layout.
   The tab adds no own page heading or explanatory subtitle below the Orga tabs because the active
   event is already visible in the top-right workspace switcher. Its compact „Umfrage starten“
   action has no decorative plus sign. The create dialog uses ordinary global text fields, one native

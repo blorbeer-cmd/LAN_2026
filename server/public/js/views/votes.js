@@ -314,7 +314,21 @@ function answerChipHtml(hasSubmitted) {
 // Same four columns as an Umfrage row (name, result, voters, answer); while
 // the round runs the result and voter columns stay empty, exactly like an
 // Umfrage with a hidden interim result.
+// The viewer's own Bock (0-5) for a game, or null. Vote points use the same
+// scale, so it serves as orientation and as the optional prefill.
+function ownBock(gameId) {
+  const myId = getMyId();
+  const entry = myId ? state.preferences?.find((pref) => pref.player_id === myId && pref.game_id === gameId) : null;
+  return entry ? entry.rating : null;
+}
+
+// Games still unrated in the draft that the viewer already has a Bock for.
+function prefillableGames(votes) {
+  return votes.results.filter((r) => !draftPoints.has(r.gameId) && ownBock(r.gameId) !== null);
+}
+
 function renderOpenRow(votes, r, draftReady) {
+  const bock = votes.mode === 'points' ? ownBock(r.gameId) : null;
   let control;
   if (!draftReady) {
     control = '<span class="muted vote-points-loading">Lädt…</span>';
@@ -335,13 +349,15 @@ function renderOpenRow(votes, r, draftReady) {
       groupLabel: `Punkte für ${r.gameName}`,
       valueLabel: pointsValueText,
       attributes: (value) => `data-vote-points="${r.gameId}" data-points-value="${value}"`,
+      hint: bock,
+      hintLabel: 'dein Bock',
     });
   }
   return `
     <div class="event-poll-option" data-points-row="${r.gameId}">
       <div class="event-poll-option-info">
         <span class="event-poll-option-title-row"><strong>${escapeHtml(r.gameName)}</strong></span>
-        <span class="muted event-poll-option-note">${gameMetaHtml(r)}</span>
+        <span class="muted event-poll-option-note">${votes.mode === 'points' ? `<span class="vote-own-bock${bock === null ? ' is-missing' : ''}">Dein Bock: ${bock ?? '–'}</span> · ` : ''}${gameMetaHtml(r)}</span>
       </div>
       <span class="event-poll-result"></span>
       <span class="event-poll-option-badges">
@@ -383,9 +399,12 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
       </header>
       <div class="stack event-poll-card-content">
         <section class="stack event-poll-round">
-          <div class="event-poll-tags">${tags.map((tag) => `<span class="event-poll-tag">${tag}</span>`).join('')}</div>
+          <div class="event-poll-tags vote-round-tags">
+            ${tags.map((tag) => `<span class="event-poll-tag">${tag}</span>`).join('')}
+            ${isPoints && mineReady && prefillableGames(votes).length ? '<span class="vote-bock-prefill"><button type="button" class="btn btn-sm" id="votes-bock-prefill">Mit meinem Bock vorbelegen</button></span>' : ''}
+          </div>
           ${votes.info ? `<p class="event-poll-note">${escapeHtml(votes.info)}</p>` : ''}
-          <div class="stack event-poll-options has-answers">${rows}</div>
+          <div class="stack event-poll-options has-answers is-compact">${rows}</div>
           <div class="event-poll-save-row event-poll-footer">
             <span class="vote-footer-progress">
               <span class="muted" data-vote-rated-progress>${mineReady ? draftProgressText(votes) : ''}</span>
@@ -739,6 +758,13 @@ export function renderVotes(container, ctx) {
   });
 
   // Like an Umfrage rating: pressing the chosen number again clears it.
+  // Fills only the games still unrated in the draft; nothing is saved until
+  // "Speichern", and choices already made stay untouched.
+  container.querySelector('#votes-bock-prefill')?.addEventListener('click', () => {
+    for (const r of prefillableGames(state.votes)) draftPoints.set(r.gameId, ownBock(r.gameId));
+    ctx.rerender();
+  });
+
   container.querySelectorAll('[data-vote-points]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const gameId = btn.dataset.votePoints;

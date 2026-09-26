@@ -246,6 +246,16 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.ok(await page.locator('#votes-submit').isDisabled(), 'an incomplete ballot cannot be saved');
   assert.equal(await roundCard.locator('.event-poll-tag:text-is("Zwischenstand verborgen")').count(), 1);
   assert.equal(await roundCard.locator('.event-poll-bar').count(), 0, 'no bars while the round is open');
+  // With the result hidden, the numbers sit beside the name: two games per
+  // row from --bp-lg, the regular stacked rows on a phone. Every row names
+  // the viewer's own Bock as orientation.
+  const ballotColumns = () => roundCard.locator('.event-poll-options').evaluate((element) =>
+    getComputedStyle(element).display === 'grid' ? getComputedStyle(element).gridTemplateColumns.split(' ').length : 1);
+  assert.equal(await ballotColumns(), 1);
+  await page.setViewportSize({ width: 900, height: 844 });
+  assert.equal(await ballotColumns(), 2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.match((await roundCard.locator('.vote-own-bock').first().textContent()) ?? '', /^Dein Bock: (d|–)$/);
 
   // Same 0-5 number scale as an Umfrage rating.
   const ballotRows = roundCard.locator('[data-points-row]');

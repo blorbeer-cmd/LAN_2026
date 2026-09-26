@@ -1066,6 +1066,51 @@ textarea {
   box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--accent);
 }
+/* A reference value (Vote: the viewer's own Bock) is only pre-marked, never
+   chosen: a dashed outline in the Bock violet. */
+.event-poll-response-toolbar .btn.is-hint {
+  outline: 1px dashed var(--accent-2);
+  outline-offset: -1px;
+}
+/* Bock/Skill scale: the chosen number takes the former slider's color and a
+   fill line below repeats the value with that slider's gradient. */
+.rating-scale {
+  --scale-track: #39415a; /* unfilled rest of the line, lighter than --bg-elevated-2 so it stays visible */
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 100%;
+}
+.rating-scale--bock {
+  --scale-low: #c08be6;
+  --scale-high: #c24bd8;
+}
+.rating-scale--skill {
+  --scale-low: #9bb7f5;
+  --scale-high: #536dff;
+}
+.rating-scale .event-poll-response-toolbar .btn.is-selected {
+  box-shadow: inset 0 0 0 1px var(--scale-high);
+  color: var(--scale-low);
+}
+.rating-scale-meter {
+  display: block;
+  height: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--scale-track);
+  overflow: hidden;
+}
+.rating-scale-meter.is-unrated {
+  background: transparent;
+  border-top: 1px dashed var(--scale-track);
+  border-radius: 0;
+}
+.rating-scale-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--scale-low), var(--scale-high));
+}
 .event-poll-response-toolbar .btn:not(.btn-square) {
   min-width: var(--tap-target-size);
 }
@@ -1239,6 +1284,32 @@ textarea {
 .poll-option-switch:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+/* While the result stays hidden from the viewer (a running Vote, an Umfrage
+   with a hidden interim result) the result and voter columns would stay
+   empty: the answers move up beside the title instead, and wide screens show
+   two options per row. Phones keep the regular stacked layout below. */
+@media (min-width: 640px) { /* --bp-md */
+  .event-poll-options.is-compact .event-poll-option {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .event-poll-options.is-compact .event-poll-result {
+    display: none;
+  }
+}
+@media (min-width: 860px) { /* --bp-lg */
+  .event-poll-options.is-compact {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-7);
+  }
+  .event-poll-options.is-compact .event-poll-option:nth-child(2) {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .event-poll-options.is-compact > .empty-state {
+    grid-column: 1 / -1;
+  }
 }
 @media (max-width: 639px) { /* --bp-md */
   .event-poll-card-header {

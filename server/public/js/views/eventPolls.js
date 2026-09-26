@@ -507,11 +507,13 @@ function renderRound(poll) {
     tags.push(poll.resultsVisible ? 'Zwischenstand nur für dich' : 'Zwischenstand verborgen');
   }
   const canAnswer = poll.isInvitee && poll.status === 'open';
+  // No interim result for this viewer: answers move up beside the title.
+  const compact = canAnswer && poll.options.every((option) => !option.counts);
   return `
     <section class="stack event-poll-round" data-poll-round="${escapeHtml(poll.id)}">
       <div class="event-poll-tags">${tags.map((tag) => `<span class="event-poll-tag">${escapeHtml(tag)}</span>`).join('')}</div>
       ${poll.note ? `<p class="event-poll-note">${escapeHtml(poll.note)}</p>` : ''}
-      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}">${(poll.status === 'open' ? poll.options : optionsByResult(poll)).map((option) => renderOption(poll, option)).join('')}</div>
+      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}${compact ? ' is-compact' : ''}">${(poll.status === 'open' ? poll.options : optionsByResult(poll)).map((option) => renderOption(poll, option)).join('')}</div>
       ${canAnswer
         ? `<div class="event-poll-save-row event-poll-footer"><span class="muted">${escapeHtml(draftProgress(poll))}</span><button type="button" class="btn btn-primary btn-sm" data-save-poll="${escapeHtml(poll.id)}" ${responseDraftIsValid(poll) ? '' : 'disabled'}>Speichern</button></div>`
         : ''}
