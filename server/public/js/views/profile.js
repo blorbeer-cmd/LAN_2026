@@ -62,7 +62,7 @@ const privacyLoader = createLatestValueLoader(async () => {
   }
 });
 
-function invalidatePrivacy() {
+export function invalidatePrivacy() {
   privacyState = null;
   privacyLoader.invalidate();
 }

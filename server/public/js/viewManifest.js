@@ -181,7 +181,7 @@ export const VIEW_MANIFEST = Object.freeze({
       more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general', 'group']), order: 1 }),
       desktop: desktopNavigation('utility', 2),
     }),
-    lifecycle: lifecycle('profile', { eventScoped: true }),
+    lifecycle: lifecycle('profile', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.events] }),
   }),
   tournaments: defineView({
     label: 'Turniere', section: 'competition', sectionOrder: 1, iconKey: 'swords', eventFeature: 'competition',
