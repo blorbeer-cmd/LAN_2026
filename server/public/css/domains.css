@@ -2760,14 +2760,25 @@ input.food-order-price-input {
 .event-poll-vote-table-wrap {
   overflow-x: auto;
 }
+/* Many options must not squeeze the person column to nothing: the table keeps
+   room for a name plus every answer column (--vote-columns is set by
+   voteBreakdown.js) and scrolls sideways instead, with the names pinned. */
 .event-poll-vote-table {
   width: 100%;
+  min-width: calc(var(--space-8) * 3 + var(--vote-columns, 0) * (var(--space-7) + var(--space-3)));
   table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
 }
 .event-poll-vote-col {
   width: calc(var(--space-7) + var(--space-3));
+}
+.event-poll-vote-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding-right: var(--space-2);
+  background: var(--bg-elevated);
 }
 .event-poll-vote-table th,
 .event-poll-vote-table td {

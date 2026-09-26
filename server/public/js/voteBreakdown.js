@@ -56,7 +56,7 @@ export function voteBreakdownHtml({ columns, people, cellHtml, keyHtml = '' }) {
     ${keyHtml}`;
   const table = people.length
     ? `<div class="event-poll-vote-table-wrap">
-         <table class="event-poll-vote-table">
+         <table class="event-poll-vote-table" style="--vote-columns:${columns.length};">
            <colgroup><col />${columns.map(() => '<col class="event-poll-vote-col" />').join('')}</colgroup>
            <thead><tr><th scope="col"><span class="visually-hidden">Person</span></th>${columns
              .map((column, index) => `<th scope="col" aria-label="${escapeHtml(column.label)}">${number(index, column.win)}</th>`)
