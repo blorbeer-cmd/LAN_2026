@@ -423,12 +423,15 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   assert.equal(await aliceGroup.locator('.food-order-group-amount').isVisible(), true);
   assert.equal(await bobGroup.locator('.food-order-item [data-copy-food-total]').count(), 0);
 
-  // "Alle ausklappen" is an entry of the card's "Aktion" menu, available to
-  // everyone once an order has several groups.
-  await clickOrderMenuAction(orderCard, '[data-toggle-all-groups]');
+  // "Alle ausklappen" is available to everyone once an order has several
+  // groups. For a plain participant it is the only header action, so it is a
+  // direct button instead of a one-entry "Aktion" menu.
+  const toggleAll = orderCard.locator('.food-order-card-header-end > [data-toggle-all-groups]');
+  assert.equal(await orderCard.locator('.food-order-card-header-end .action-menu').count(), 0);
+  await toggleAll.click();
   await aliceGroup.locator('.food-order-group-toggle[aria-expanded="true"]').waitFor();
-  assert.equal((await orderCard.locator('[data-toggle-all-groups]').textContent())?.trim(), 'Alle einklappen');
-  await clickOrderMenuAction(orderCard, '[data-toggle-all-groups]');
+  assert.equal((await toggleAll.textContent())?.trim(), 'Alle einklappen');
+  await toggleAll.click();
   assert.equal(await aliceGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'false');
 
   assert.equal(await bobGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'false');

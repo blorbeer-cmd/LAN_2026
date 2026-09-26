@@ -165,10 +165,11 @@ flowTest('An- & Abreise: carpool marks the driver, enforces seats, driver can on
   await page.click('#carpool-form button[type="submit"]');
   await page.waitForSelector('.arrivals-member-row:has-text("E2E Alice Pro"):has-text("Fahrer")');
   await page.waitForSelector('.arrivals-free-seat-row');
-  // The driver only ever gets Bearbeiten/Löschen in the "Aktion" menu, never
-  // Eintragen/Austragen, and no second carpool of the same direction.
-  await page.waitForSelector('[data-carpool] .action-menu [data-edit-carpool]', { state: 'attached' });
-  await page.waitForSelector('[data-carpool] .action-menu [data-remove-carpool]', { state: 'attached' });
+  // The driver only ever gets a direct "Bearbeiten" (deleting lives in its
+  // dialog), never Eintragen/Austragen, and no second carpool of the same
+  // direction.
+  await page.waitForSelector('[data-carpool] .arrivals-carpool-action > [data-edit-carpool]');
+  assert.equal(await page.locator('[data-carpool] .action-menu').count(), 0);
   assert.equal(await page.locator('[data-leave-carpool], [data-join-carpool]').count(), 0);
   assert.equal(await page.locator('[data-new-carpool="arrival"]').count(), 0);
 
@@ -198,8 +199,8 @@ flowTest('An- & Abreise: carpool marks the driver, enforces seats, driver can on
   assert.doesNotMatch((await bobTimesRow.textContent()) ?? '', /mit E2E Alice Pro/);
 
   await switchIdentityAndOpenArrivals('E2E Alice Pro');
-  await page.click('[data-carpool] .action-menu > summary');
-  await page.click('[data-remove-carpool]');
+  await page.click('[data-edit-carpool]');
+  await page.click('#carpool-form [data-carpool-delete]');
   await page.waitForSelector('[data-confirm]');
   // Destructive confirm dialogs must default focus to Cancel (not the danger
   // action) and use a concrete verb, so a stray Enter right after opening
@@ -214,15 +215,18 @@ flowTest('An- & Abreise: carpool marks the driver, enforces seats, driver can on
     true
   );
   await page.keyboard.press('Enter');
-  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
-  // The carpool must still exist - Enter cancelled instead of confirming.
-  await page.waitForSelector('[data-remove-carpool]', { state: 'attached' });
+  await page.waitForSelector('[data-confirm]', { state: 'detached' });
+  // The carpool must still exist - Enter cancelled instead of confirming, and
+  // only the confirmation closed while its edit dialog stays open.
+  await page.waitForSelector('#carpool-form');
+  await page.waitForSelector('[data-carpool]', { state: 'attached' });
 
-  // Deleting for real still works through an explicit confirm click.
-  await page.click('[data-carpool] .action-menu > summary');
-  await page.click('[data-remove-carpool]');
+  // Deleting for real still works through an explicit confirm click, which
+  // also closes the edit dialog.
+  await page.click('#carpool-form [data-carpool-delete]');
   await page.click('[data-confirm]');
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
 });
 
 flowTest('Durchsage: notification center can navigate, mark read and remove without duplicating Home', async () => {

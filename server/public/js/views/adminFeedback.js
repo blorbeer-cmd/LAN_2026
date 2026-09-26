@@ -30,7 +30,6 @@ let feedbackError = null;
 let feedbackSentimentFilter = 'all'; // 'all' | 'positive' | 'negative' | 'problem' | 'idea'
 let feedbackSort = 'newest';
 let feedbackQuery = '';
-let sortMenuOpen = false;
 let filterMenuOpen = false;
 let completedSectionOpen = false;
 const updatingFeedbackIds = new Set();
@@ -179,18 +178,21 @@ function menuOptionsHtml(options, current, attr) {
     .join('');
 }
 
+// Two directions are an either/or choice, so one button flips between them
+// instead of opening a menu with two entries.
+function sortToggleHtml() {
+  const current = SORTS.find(([key]) => key === feedbackSort)[1];
+  const next = SORTS.find(([key]) => key !== feedbackSort)[1];
+  return `<button type="button" class="btn btn-sm game-catalog-sort-trigger" data-feedback-sort-toggle aria-label="Sortierung: ${current} zuerst, umschalten auf ${next} zuerst">
+      ${current} ${icon('arrowDownUp')}
+    </button>`;
+}
+
 function toolbarHtml() {
   const activeFilters = feedbackSentimentFilter !== 'all' ? 1 : 0;
   return `<section class="game-catalog-toolbar" aria-label="Feedback durchsuchen, sortieren und filtern">
     <input type="search" id="admin-feedback-search" value="${escapeHtml(feedbackQuery)}" placeholder="Feedback suchen" aria-label="Feedback suchen" autocomplete="off" />
-    <details class="action-menu game-catalog-sort-menu admin-feedback-sort-menu" ${sortMenuOpen ? 'open' : ''}>
-      <summary class="btn btn-sm game-catalog-sort-trigger" aria-label="Feedback sortieren">
-        ${SORTS.find(([key]) => key === feedbackSort)[1]} ${icon('chevronDown')}
-      </summary>
-      <div class="action-menu-panel game-catalog-sort-panel" role="group" aria-label="Feedback sortieren">
-        ${menuOptionsHtml(SORTS, feedbackSort, 'data-feedback-sort')}
-      </div>
-    </details>
+    ${sortToggleHtml()}
     <details class="action-menu game-catalog-filter-menu admin-feedback-filter-menu" ${filterMenuOpen ? 'open' : ''}>
       <summary class="btn btn-sm game-catalog-filter-trigger" aria-label="Filter öffnen${activeFilters ? `, ${activeFilters} aktiv` : ''}">
         Filter${activeFilters ? ` (${activeFilters})` : ''} ${icon('chevronDown')}
@@ -285,10 +287,6 @@ export function renderAdminFeedback(container, ctx) {
   container.querySelector('#admin-feedback-retry')?.addEventListener('click', () => loadFeedbackEntries(ctx, true));
 
   wireActionMenus(container);
-  const sortMenu = container.querySelector('.admin-feedback-sort-menu');
-  sortMenu?.addEventListener('toggle', () => {
-    sortMenuOpen = sortMenu.open;
-  });
   const filterMenu = container.querySelector('.admin-feedback-filter-menu');
   filterMenu?.addEventListener('toggle', () => {
     filterMenuOpen = filterMenu.open;
@@ -301,12 +299,11 @@ export function renderAdminFeedback(container, ctx) {
       feedbackQuery = query;
     },
   });
-  container.querySelectorAll('[data-feedback-sort]').forEach((button) => {
-    button.addEventListener('click', () => {
-      feedbackSort = button.dataset.feedbackSort;
-      sortMenuOpen = false;
-      ctx.rerender();
-    });
+  container.querySelector('[data-feedback-sort-toggle]')?.addEventListener('click', () => {
+    feedbackSort = feedbackSort === 'newest' ? 'oldest' : 'newest';
+    ctx.rerender();
+    // Keep the toggle under the keyboard so it can be flipped back at once.
+    container.querySelector('[data-feedback-sort-toggle]')?.focus();
   });
   container.querySelectorAll('[data-feedback-sentiment-filter]').forEach((button) => {
     button.addEventListener('click', () => {

@@ -99,12 +99,7 @@ test('GET /api/export includes playtime-by-player/game and awards from recorded 
   );
 });
 
-test('GET /api/export/pdf 404s for an unknown eventId', async () => {
-  const res = await request(app).get('/api/export/pdf?eventId=ghost');
-  assert.equal(res.status, 404);
-});
-
-test('GET /api/export/pdf renders the empty-state notes for an event with no data at all', async () => {
+test('GET /api/export returns empty sections for an event with no data at all', async () => {
   const emptyEvent = await request(app)
     .post('/api/events')
     .send({ name: 'Untouched Export Event', startsAt: Date.now(), endsAt: Date.now() + 3_600_000 });
@@ -114,41 +109,11 @@ test('GET /api/export/pdf renders the empty-state notes for an event with no dat
     .send({ playerIds: [TEST_ADMIN_ID] });
   assert.equal(roster.status, 200, JSON.stringify(roster.body));
 
-  const res = await request(app)
-    .get(`/api/export/pdf?eventId=${emptyEvent.body.id}`)
-    .buffer(true)
-    .parse((response, callback) => {
-      const chunks: Buffer[] = [];
-      response.on('data', (chunk: Buffer) => chunks.push(chunk));
-      response.on('end', () => callback(null, Buffer.concat(chunks)));
-    });
-  assert.equal(res.status, 200);
-  const buf = res.body as Buffer;
-  assert.equal(buf.subarray(0, 5).toString('latin1'), '%PDF-');
-
   const json = await request(app).get(`/api/export?eventId=${emptyEvent.body.id}`);
+  assert.equal(json.status, 200);
   assert.deepEqual(json.body.leaderboard, []);
   assert.deepEqual(json.body.playtimeByPlayer, []);
   assert.deepEqual(json.body.playtimeByGame, []);
   assert.deepEqual(json.body.awards, []);
   assert.deepEqual(json.body.tournaments, []);
-});
-
-test('GET /api/export/pdf returns a PDF document', async () => {
-  // supertest/superagent doesn't know application/pdf, so it falls back to a
-  // raw Buffer in res.body rather than auto-parsing — same situation as the
-  // QR code SVG endpoint's test.
-  const res = await request(app)
-    .get('/api/export/pdf')
-    .buffer(true)
-    .parse((response, callback) => {
-      const chunks: Buffer[] = [];
-      response.on('data', (chunk: Buffer) => chunks.push(chunk));
-      response.on('end', () => callback(null, Buffer.concat(chunks)));
-    });
-  assert.equal(res.status, 200);
-  assert.match(res.headers['content-type'], /application\/pdf/);
-  assert.match(res.headers['content-disposition'], /attachment; filename="respawn-.+\.pdf"/);
-  const buf = res.body as Buffer;
-  assert.equal(buf.subarray(0, 5).toString('latin1'), '%PDF-');
 });

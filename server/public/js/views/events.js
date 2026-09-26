@@ -39,7 +39,6 @@ import { copyText } from '../clipboard.js';
 import {
   acceptedParticipantCount as countAcceptedParticipants,
   acceptedParticipants as selectAcceptedParticipants,
-  eventPdfExportAvailable,
   eventSettlement as calculateEventSettlement,
   parseEventAccommodationCostCents,
   parseEventCostCents,
@@ -48,7 +47,6 @@ import { eventDateRange, renderEventCalendarActions, renderEventLocation } from 
 
 export { eventDateRange, renderEventCalendarActions, renderEventLocation } from '../eventPresentation.js';
 export {
-  eventPdfExportAvailable,
   parseEventAccommodationCostCents,
   parseEventCostCents,
 } from '../eventModel.js';
@@ -265,8 +263,7 @@ function downloadEventCalendar(event) {
   const link = document.createElement('a');
   link.href = url;
   link.download = eventCalendarFilename(event);
-  // Same sequence as downloadExport(): the anchor has to be in the document
-  // for the synthetic click to start a download, and the object URL must
+  // The anchor has to be in the document for the synthetic click to start a download, and the object URL must
   // outlive that click — revoking it in the next statement can cancel the
   // download before the browser has read the blob.
   document.body.appendChild(link);
@@ -746,7 +743,7 @@ function renderInvitationPayment(event) {
 }
 
 export function renderEventCard(event, { collapsible = false } = {}) {
-  // Tracking and exports require a scheduled event; roster editing does not.
+  // Tracking requires a scheduled event; roster editing does not.
   const hasDate = event.startsAt != null;
   // The tooltip sits with the running/stopping pair only: "Event wieder
   // starten" is an event-lifecycle action whose confirmation already spells the
@@ -762,9 +759,15 @@ export function renderEventCard(event, { collapsible = false } = {}) {
   // Closing a workspace is a lifecycle step, not a scheduled one: an event
   // whose date is still being polled — or was removed again — is exactly the
   // kind that gets abandoned, so "Beenden" follows the ended state alone.
+  // Up to two actions sit directly in the header as compact neutral buttons;
+  // only the full Bearbeiten/Tracking/Beenden set is bundled in "Aktion",
+  // where "Beenden" keeps its danger styling behind the menu's hairline.
+  const actionsInline = 1 + (trackingBtn ? 1 : 0) + (event.isEnded ? 0 : 1) <= 2;
   const endBtn = event.isEnded
     ? ''
-    : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
+    : actionsInline
+      ? `<button type="button" class="btn btn-sm" data-end-event="${event.id}">Beenden</button>`
+      : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
   const expanded = !collapsible || expandedEventCards.has(event.id);
   const metaParts = eventHeaderMeta(event, { withDateRange: !expanded });
   const titleHtml = renderEventHeaderText(event, metaParts);
@@ -778,9 +781,11 @@ export function renderEventCard(event, { collapsible = false } = {}) {
           ${ownDeclinedBadge(event)}
           ${eventIsGroup(event) && !event.isEnded ? '' : eventStatusBadgeHtml(event)}
         </span>
-        ${actionMenuHtml(`<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>
-          ${trackingBtn}${endBtn}
-          ${hasDate && eventPdfExportAvailable(event) ? `<button type="button" class="btn btn-sm" data-export-event="${escapeHtml(event.id)}">PDF exportieren</button>` : ''}`, `Aktionen für ${eventIsGroup(event) ? 'Gruppe' : 'Event'} ${event.name}`)}
+        ${actionMenuHtml(
+          [`<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>`, trackingBtn, endBtn],
+          `Aktionen für ${eventIsGroup(event) ? 'Gruppe' : 'Event'} ${event.name}`,
+          { inlineMax: 2 },
+        )}
         </div>
       </div>
       <div class="food-order-card-body stack" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
@@ -1114,26 +1119,6 @@ export function wireParticipationAnswerActions(container, ctx) {
       }
     });
   });
-}
-
-// Triggers a browser download of the event's PDF "Andenken" — a designed
-// keepsake (Rangliste, Spielzeit, Awards, Turnier-Champions), not raw data.
-// Goes through api.export.pdf()'s Blob (a plain <a href="/api/export/pdf">
-// couldn't carry the access-token header).
-async function downloadExport(eventId) {
-  try {
-    const { blob, filename } = await api.export.pdf(eventId);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    showToast(err.message, { error: true });
-  }
 }
 
 // existing === null: create a new (not-yet-tracking) event. existing !==
@@ -1528,9 +1513,6 @@ export function renderOrgaEvents(container, ctx) {
   wireParticipantActions(container, ctx);
   wireParticipationAnswerActions(container, ctx);
 
-  container.querySelectorAll('[data-export-event]').forEach((btn) => {
-    btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
-  });
   wireEventExcuseActions(container);
   container.querySelectorAll('[data-download-event-calendar]').forEach((btn) => {
     btn.addEventListener('click', () => {
