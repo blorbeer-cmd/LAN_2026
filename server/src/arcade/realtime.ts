@@ -201,6 +201,10 @@ export function broadcastArcadeKiosk(io: Server, payload: unknown): void {
 
 export function registerArcadeSockets(server: Server): () => void {
   return registerSocketConnection(server, 'arcade-realtime', (socket) => {
+    // A browser socket is already scoped by its handshake (see
+    // registerScopedSockets), so its first watch list goes out right away,
+    // like every game's lobby snapshot.
+    emitArcadeWatchListToSocket(socket);
     socket.on('scope:subscribe', () => emitArcadeWatchListToSocket(socket));
     socket.on('room:subscribe', () => emitArcadeWatchListToSocket(socket));
     socket.on(
