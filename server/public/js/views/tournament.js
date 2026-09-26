@@ -15,6 +15,7 @@ import { withStepUp } from '../reauth.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { localRouteKey } from '../appRoute.js';
 import { copyText } from '../clipboard.js';
+import { parseResultScores, resultScoreInputValue } from '../resultScores.js';
 
 // Open state of the detail page's collapsible Teams card across re-renders.
 let tournamentTeamsOpen = false;
@@ -230,6 +231,7 @@ function renderDetail(container, ctx) {
     matchPhaseLabel,
     renderActiveLobbies,
     renderBracket,
+    renderChampion,
     renderGroupKnockout,
     renderRoundRobin,
     renderTournamentTeams,
@@ -271,6 +273,7 @@ function renderDetail(container, ctx) {
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
     </div>
     <div class="grouped-page-sections tournament-board">
+      ${renderChampion(t)}
       ${activeLobbies}
       ${board}
       ${renderTournamentTeams(t, { teamsOpen: tournamentTeamsOpen })}
@@ -335,9 +338,9 @@ function openResultDialog(t, match, phaseLabel, ctx) {
           <label for="result-score-b">${teamName(match.teamBId)}</label>
         </div>
         <div class="tournament-result-teams">
-          <input type="number" id="result-score-a" class="tournament-result-score" min="0" inputmode="numeric" placeholder="0" required value="${decided && match.scoreA != null ? match.scoreA : ''}" />
+          <input type="number" id="result-score-a" class="tournament-result-score" min="0" inputmode="numeric" placeholder="0" value="${decided && match.scoreA != null ? match.scoreA : ''}" />
           <span class="muted">:</span>
-          <input type="number" id="result-score-b" class="tournament-result-score" min="0" inputmode="numeric" placeholder="0" required value="${decided && match.scoreB != null ? match.scoreB : ''}" />
+          <input type="number" id="result-score-b" class="tournament-result-score" min="0" inputmode="numeric" placeholder="0" value="${decided && match.scoreB != null ? match.scoreB : ''}" />
         </div>
         <button type="submit" class="btn btn-primary btn-block">Speichern</button>
       </form>`
@@ -357,6 +360,8 @@ function openResultDialog(t, match, phaseLabel, ctx) {
         : await api.tournaments.recordResult(t.id, match.id, payload);
       close();
       ctx.rerender();
+      const champion = detailCache.teams.find((team) => team.id === detailCache.championTeamId);
+      if (t.status !== 'completed' && champion) showToast(`Turnier beendet – Sieger: ${champion.name}`);
     } catch (err) {
       showToast(err.message, { error: true });
     }
@@ -364,10 +369,16 @@ function openResultDialog(t, match, phaseLabel, ctx) {
 
   el.querySelector('[data-result-form]')?.addEventListener('submit', (event) => {
     event.preventDefault();
-    const scoreA = parseInt(el.querySelector('#result-score-a').value, 10);
-    const scoreB = parseInt(el.querySelector('#result-score-b').value, 10);
+    const scores = parseResultScores(
+      ['#result-score-a', '#result-score-b'].map((selector) => resultScoreInputValue(el.querySelector(selector))),
+    );
+    if (!scores) {
+      showToast('Bitte mindestens ein Ergebnis eintragen.', { error: true });
+      return;
+    }
+    const [scoreA, scoreB] = scores;
     if (!Number.isInteger(scoreA) || !Number.isInteger(scoreB) || scoreA < 0 || scoreB < 0) {
-      showToast('Bitte beide Ergebnisse eintragen.', { error: true });
+      showToast('Ergebnisse müssen ganze Zahlen ab 0 sein.', { error: true });
       return;
     }
     save({ scoreA, scoreB });

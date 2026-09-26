@@ -318,13 +318,13 @@ export function createTournamentPresentation() {
     return `<div class="tournament-group-stage">${groupBlocks}${knockoutHtml}</div>`;
   }
 
-  function renderTournamentTeams(t, { teamsOpen = false } = {}) {
-    const cards = t.teams
-      .map(
-        (team) => `
+  function teamCardHtml(t, team, { winner = false } = {}) {
+    return `
         <div class="team-card tournament-team-card">
           <div class="team-card-header">
-            <span>${escapeHtml(team.name)}</span>
+            ${winner
+              ? `<span class="row" style="gap:var(--space-2);">${escapeHtml(team.name)}<span class="tournament-fixture-score is-pick">Win</span></span>`
+              : `<span>${escapeHtml(team.name)}</span>`}
             <span class="row" style="gap:var(--space-2);">
               <span class="muted">${team.players.length} Spieler</span>
               ${teamSkillHtml(team.players, t.gameId)}
@@ -344,9 +344,22 @@ export function createTournamentPresentation() {
                   .join('')
               : '<div class="muted">Keine aktiven Spieler</div>'
           }
-        </div>`,
-      )
-      .join('');
+        </div>`;
+  }
+
+  // A finished tournament leads with its outcome, so the end is visible
+  // without reading the board: the winning team with its players.
+  function renderChampion(t) {
+    const champion = t.status === 'completed' ? t.teams.find((team) => team.id === t.championTeamId) : null;
+    if (!champion) return '';
+    return `<section class="card stack grouped-page-section" aria-labelledby="tournament-champion-title" data-tournament-champion>
+      <div class="grouped-page-section-title"><h2 id="tournament-champion-title">Turnier beendet</h2></div>
+      ${teamCardHtml(t, champion, { winner: true })}
+    </section>`;
+  }
+
+  function renderTournamentTeams(t, { teamsOpen = false } = {}) {
+    const cards = t.teams.map((team) => teamCardHtml(t, team)).join('');
 
     // Teams are a lookup next to the live bracket, so they sit in the shared
     // collapsible card that starts closed (open state lives in the view).
@@ -366,6 +379,7 @@ export function createTournamentPresentation() {
     matchPhaseLabel: activeLobbyPhaseLabel,
     renderActiveLobbies,
     renderBracket,
+    renderChampion,
     renderGroupKnockout,
     renderRoundRobin,
     renderTournamentTeams,

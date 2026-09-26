@@ -245,6 +245,19 @@ function buildDetail(tournamentId: string, groupId: string) {
     });
   }
 
+  // The winner of a completed tournament: the knockout final's winner, or the
+  // league leader for a pure round-robin. null while it is still running.
+  let championTeamId: string | null = null;
+  if (tournament.status === 'completed') {
+    if (standings) {
+      championTeamId = standings[0]?.teamId ?? null;
+    } else {
+      const knockout = matches.filter((m) => tournament.format === 'single_elimination' || m.stage === 'knockout');
+      const finalRound = Math.max(...knockout.map((m) => m.round));
+      championTeamId = knockout.find((m) => m.round === finalRound)?.winnerTeamId ?? null;
+    }
+  }
+
   return {
     id: tournament.id,
     eventId: tournament.event_id,
@@ -258,6 +271,7 @@ function buildDetail(tournamentId: string, groupId: string) {
     groupCount: tournament.group_count,
     advancersPerGroup: tournament.advancers_per_group,
     status: tournament.status,
+    championTeamId,
     createdAt: tournament.created_at,
     lobbyName: tournament.lobby_name,
     lobbyPassword: tournament.lobby_password,
@@ -302,20 +316,11 @@ tournamentsRouter.get('/', (req, res) => {
   );
 });
 
-// The winner shown on a completed tournament's list card: the knockout
-// final's winner, or the league leader for a pure round-robin.
+// The winner shown on a completed tournament's list card (see buildDetail).
 function championName(tournamentId: string, groupId: string): string | null {
   const detail = buildDetail(tournamentId, groupId);
   if (!detail) return null;
-  let championId: string | null = null;
-  if (detail.format === 'round_robin') {
-    championId = detail.standings?.[0]?.teamId ?? null;
-  } else {
-    const knockout = detail.matches.filter((m) => detail.format === 'single_elimination' || m.stage === 'knockout');
-    const finalRound = Math.max(...knockout.map((m) => m.round));
-    championId = knockout.find((m) => m.round === finalRound)?.winnerTeamId ?? null;
-  }
-  return detail.teams.find((team) => team.id === championId)?.name ?? null;
+  return detail.teams.find((team) => team.id === detail.championTeamId)?.name ?? null;
 }
 
 // GET /api/tournaments/:id - full board: teams, bracket/fixtures, standings.
