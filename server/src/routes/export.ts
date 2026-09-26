@@ -98,8 +98,8 @@ export interface ExportSnapshot {
   }>;
 }
 
-// Builds the full "Andenken" snapshot for one event — shared by the JSON
-// and PDF export endpoints so they can never drift apart.
+// Builds the full "Andenken" snapshot for one event, served as JSON by
+// GET /api/export.
 export function buildExportSnapshot(filterEventId: string, groupId: string): ExportSnapshot | undefined {
   const event = db.prepare('SELECT * FROM events WHERE id = ? AND group_id = ?').get(filterEventId, groupId) as
     EventRow | undefined;
