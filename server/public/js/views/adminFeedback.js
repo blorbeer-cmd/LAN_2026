@@ -2,18 +2,36 @@
 // the app shell; this view is only for reviewing submitted entries.
 
 import { api } from '../api.js';
-import { escapeHtml, formatDateTime } from '../format.js';
+import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { currentPlayerHasAdminRole } from '../adminAccess.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { openModal } from '../modal.js';
+import { getMyId } from '../whoami.js';
+import { viewDefinition } from '../viewManifest.js';
+import { wireSelectionSearch } from '../selectionSearch.js';
+import { wireActionMenus } from '../actionMenu.js';
 
 const SENTIMENT_LABEL = { positive: 'Positiv', negative: 'Negativ', problem: 'Problem', idea: 'Idee' };
+const DEVICE_LABEL = { mobile: 'Handy', tablet: 'Tablet', desktop: 'Desktop' };
+const SORTS = [
+  ['newest', 'Neueste'],
+  ['oldest', 'Älteste'],
+];
+const SENTIMENT_FILTERS = [['all', 'Alle'], ...Object.entries(SENTIMENT_LABEL)];
+// The row shows one calm line like the Durchsage and To-Do tables; the detail
+// dialog shows the full text.
+const MESSAGE_PREVIEW_LENGTH = 40;
 
 let feedbackEntries = null;
 let feedbackLoading = false;
 let feedbackError = null;
 let feedbackSentimentFilter = 'all'; // 'all' | 'positive' | 'negative' | 'problem' | 'idea'
+let feedbackSort = 'newest';
+let feedbackQuery = '';
+let sortMenuOpen = false;
+let filterMenuOpen = false;
 let completedSectionOpen = false;
 const updatingFeedbackIds = new Set();
 
@@ -33,92 +51,196 @@ async function loadFeedbackEntries(ctx, force = false) {
   }
 }
 
-function feedbackEntryHtml(entry) {
-  const sentiment = entry.sentiment ? ` <span class="badge">${escapeHtml(SENTIMENT_LABEL[entry.sentiment] ?? entry.sentiment)}</span>` : '';
+// Feedback stores the view key it was sent from; admins read the page name.
+// Match is the navigation name of the team view.
+function viewLabel(view) {
+  if (view === 'matchmaking') return 'Match';
+  return viewDefinition(view)?.label ?? view;
+}
+
+function sameDay(a, b) {
+  return new Date(a).toDateString() === new Date(b).toDateString();
+}
+
+function shortTime(timestampMs, now = Date.now()) {
+  if (!sameDay(timestampMs, now)) return formatDate(timestampMs);
+  return new Date(timestampMs).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+function previewText(message) {
+  const line = message.replace(/\s*\n\s*/g, ' · ');
+  return line.length > MESSAGE_PREVIEW_LENGTH ? `${line.slice(0, MESSAGE_PREVIEW_LENGTH).trimEnd()}…` : line;
+}
+
+function senderName(entry) {
+  return entry.playerName || 'Unbekannt';
+}
+
+function senderHtml(entry) {
+  const name = escapeHtml(senderName(entry));
+  return entry.playerId && entry.playerId === getMyId() ? `<strong class="broadcast-table-me">${name}</strong>` : name;
+}
+
+function metaText(entry) {
+  return [SENTIMENT_LABEL[entry.sentiment], viewLabel(entry.view), shortTime(entry.createdAt)].filter(Boolean).join(' · ');
+}
+
+function searchText(entry) {
+  return [entry.message, senderName(entry), SENTIMENT_LABEL[entry.sentiment], viewLabel(entry.view), entry.eventName].filter(Boolean).join(' ');
+}
+
+// One table row per entry: message, sender, meta and one fixed action column.
+// The whole row opens the detail dialog. Completed entries have no row
+// action; they reopen from the dialog.
+function feedbackRowHtml(entry) {
+  const done = Boolean(entry.resolvedAt);
   const updating = updatingFeedbackIds.has(entry.id);
-  const nextResolved = !entry.resolvedAt;
-  const actionLabel = nextResolved ? 'Erledigt' : 'Wieder öffnen';
-  const accessibleActionLabel = nextResolved
-    ? `Feedback von ${entry.playerName || 'Unbekannt'} erledigen`
-    : `Feedback von ${entry.playerName || 'Unbekannt'} wieder öffnen`;
+  const action = done
+    ? ''
+    : `<button type="button" class="btn btn-sm" data-feedback-resolution="${escapeHtml(entry.id)}" data-next-resolved="true"
+        aria-label="${escapeHtml(`Feedback von ${senderName(entry)} erledigen`)}" ${updating ? 'disabled' : ''}>Erledigt</button>`;
   return `
-    <div class="card stack" style="padding:var(--space-3);" data-feedback-entry="${escapeHtml(entry.id)}">
-      <div class="row-between" style="align-items:flex-start;flex-wrap:wrap;">
-        <span style="min-width:0;flex:1 1 auto;">
-          <strong>${escapeHtml(entry.playerName || 'Unbekannt')}</strong>${sentiment}
-          <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(entry.view)} · ${escapeHtml(entry.eventName || '')} · ${formatDateTime(entry.createdAt)} Uhr</div>
-        </span>
-        <button type="button" class="btn btn-sm${nextResolved ? ' btn-primary' : ''}" data-feedback-resolution="${escapeHtml(entry.id)}"
-          data-next-resolved="${nextResolved}" aria-label="${escapeHtml(accessibleActionLabel)}" ${updating ? 'disabled' : ''}>${actionLabel}</button>
+    <div class="broadcast-table-row${done ? ' is-past' : ''}" role="row" data-feedback-entry="${escapeHtml(entry.id)}"
+      data-selection-search="${escapeHtml(searchText(entry))}">
+      <div class="broadcast-table-message" role="cell">
+        <button type="button" class="broadcast-table-open" data-feedback-detail="${escapeHtml(entry.id)}" title="${escapeHtml(entry.message)}">${escapeHtml(previewText(entry.message))}</button>
       </div>
-      <p style="margin:0;">${escapeHtml(entry.message)}</p>
+      <div class="broadcast-table-sender" role="cell"><span>${senderHtml(entry)}</span></div>
+      <div class="broadcast-table-when" role="cell">${escapeHtml(metaText(entry))}</div>
+      <div class="broadcast-table-action" role="cell">${action}</div>
     </div>`;
 }
 
+function tableHtml(entries, label) {
+  return `<div class="broadcast-table" role="table" aria-label="${label}">${entries.map(feedbackRowHtml).join('')}</div>`;
+}
+
 async function setFeedbackResolved(id, resolved, ctx) {
-  if (updatingFeedbackIds.has(id)) return;
+  if (updatingFeedbackIds.has(id)) return false;
   updatingFeedbackIds.add(id);
   ctx.rerender();
   try {
     const updated = await api.feedback.setResolved(id, resolved);
     feedbackEntries = (feedbackEntries || []).map((entry) => (entry.id === id ? { ...entry, ...updated } : entry));
     showToast(resolved ? 'Feedback erledigt.' : 'Feedback wieder geöffnet.');
+    return true;
   } catch (error) {
     showToast(error.message, { error: true });
+    return false;
   } finally {
     updatingFeedbackIds.delete(id);
     ctx.rerender();
   }
 }
 
-function feedbackSentimentFilterHtml() {
-  const options = [{ value: 'all', label: 'Alle' }, ...Object.entries(SENTIMENT_LABEL).map(([value, label]) => ({ value, label }))];
-  return `
-    <div class="chip-list" role="group" aria-label="Nach Art filtern">
-      ${options
-        .map(
-          (option) => `<button type="button" class="chip${feedbackSentimentFilter === option.value ? ' is-active' : ''}"
-            aria-pressed="${feedbackSentimentFilter === option.value}" data-feedback-sentiment-filter="${option.value}">${escapeHtml(option.label)}</button>`,
-        )
-        .join('')}
-    </div>`;
+function openFeedbackDetail(entry, ctx) {
+  const done = Boolean(entry.resolvedAt);
+  const facts = [
+    ['Von', senderHtml(entry)],
+    ['Art', escapeHtml(SENTIMENT_LABEL[entry.sentiment] ?? '')],
+    ['Seite', escapeHtml(viewLabel(entry.view))],
+    ['Event', escapeHtml(entry.eventName ?? '')],
+    ['Gerät', escapeHtml(DEVICE_LABEL[entry.device] ?? '')],
+    ['Gesendet', `${formatDateTime(entry.createdAt)} Uhr`],
+    ['Erledigt', done ? `${formatDateTime(entry.resolvedAt)} Uhr` : ''],
+  ].filter(([, value]) => value);
+  const { close } = openModal(
+    'Feedback',
+    `<div class="stack">
+       <p class="broadcast-detail-message">${escapeHtml(entry.message)}</p>
+       <dl class="broadcast-detail-facts">
+         ${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
+       </dl>
+       <div class="broadcast-detail-footer">
+         <button type="button" class="btn btn-sm" data-detail-resolution>${done ? 'Wieder öffnen' : 'Erledigt'}</button>
+       </div>
+     </div>`,
+    {
+      onMount: (el) => {
+        el.querySelector('.modal')?.classList.add('broadcast-detail-modal');
+        el.querySelector('[data-detail-resolution]')?.addEventListener('click', async (event) => {
+          const button = event.currentTarget;
+          if (button.disabled) return;
+          button.disabled = true;
+          if (await setFeedbackResolved(entry.id, !done, ctx)) close();
+          else button.disabled = false;
+        });
+      },
+    },
+  );
+}
+
+function menuOptionsHtml(options, current, attr) {
+  return options
+    .map(
+      ([value, label]) =>
+        `<button type="button" class="btn btn-sm game-catalog-sort-option${value === current ? ' is-active' : ''}" ${attr}="${value}" aria-pressed="${value === current}">${label}</button>`,
+    )
+    .join('');
+}
+
+function toolbarHtml() {
+  const activeFilters = feedbackSentimentFilter !== 'all' ? 1 : 0;
+  return `<section class="game-catalog-toolbar" aria-label="Feedback durchsuchen, sortieren und filtern">
+    <input type="search" id="admin-feedback-search" value="${escapeHtml(feedbackQuery)}" placeholder="Feedback suchen" aria-label="Feedback suchen" autocomplete="off" />
+    <details class="action-menu game-catalog-sort-menu admin-feedback-sort-menu" ${sortMenuOpen ? 'open' : ''}>
+      <summary class="btn btn-sm game-catalog-sort-trigger" aria-label="Feedback sortieren">
+        ${SORTS.find(([key]) => key === feedbackSort)[1]} ${icon('chevronDown')}
+      </summary>
+      <div class="action-menu-panel game-catalog-sort-panel" role="group" aria-label="Feedback sortieren">
+        ${menuOptionsHtml(SORTS, feedbackSort, 'data-feedback-sort')}
+      </div>
+    </details>
+    <details class="action-menu game-catalog-filter-menu admin-feedback-filter-menu" ${filterMenuOpen ? 'open' : ''}>
+      <summary class="btn btn-sm game-catalog-filter-trigger" aria-label="Filter öffnen${activeFilters ? `, ${activeFilters} aktiv` : ''}">
+        Filter${activeFilters ? ` (${activeFilters})` : ''} ${icon('chevronDown')}
+      </summary>
+      <div class="action-menu-panel game-catalog-filter-panel">
+        <div class="stack game-catalog-filter-section" role="group" aria-label="Nach Art filtern">
+          <span class="game-catalog-filter-heading">Art</span>
+          <div class="checklist-filter-options">${menuOptionsHtml(SENTIMENT_FILTERS, feedbackSentimentFilter, 'data-feedback-sentiment-filter')}</div>
+        </div>
+      </div>
+    </details>
+  </section>`;
 }
 
 function filteredFeedbackEntries() {
-  return (feedbackEntries || []).filter(
-    (entry) => feedbackSentimentFilter === 'all' || entry.sentiment === feedbackSentimentFilter,
-  );
+  const direction = feedbackSort === 'oldest' ? 1 : -1;
+  return (feedbackEntries || [])
+    .filter((entry) => feedbackSentimentFilter === 'all' || entry.sentiment === feedbackSentimentFilter)
+    .sort((a, b) => direction * (a.createdAt - b.createdAt));
 }
 
 function openFeedbackBodyHtml(entries) {
   if (feedbackError) {
-    return `<div class="notice notice-warning row-between" style="gap:var(--space-2);">
-      <span>Feedback konnte nicht geladen werden.</span>
+    return `<div class="row-between" style="gap:var(--space-2);">
+      <span class="muted" style="flex:1;min-width:0;">Feedback konnte nicht geladen werden.</span>
       <button type="button" class="btn btn-sm" id="admin-feedback-retry">Erneut versuchen</button>
     </div>`;
   }
-  if (feedbackLoading && feedbackEntries === null) return '<div class="card muted">Feedback wird geladen…</div>';
-  if (entries.length === 0) {
-    if ((feedbackEntries || []).length === 0) return emptyStateHtml('Noch kein Feedback.');
-    return emptyStateHtml(feedbackSentimentFilter === 'all' ? 'Kein offenes Feedback.' : 'Kein offenes Feedback dieser Art.');
-  }
-  return `<div class="stack">${entries.map(feedbackEntryHtml).join('')}</div>`;
+  if (feedbackLoading && feedbackEntries === null) return emptyStateHtml('Feedback wird geladen');
+  if ((feedbackEntries || []).length === 0) return emptyStateHtml('Noch kein Feedback.');
+  const body = entries.length
+    ? tableHtml(entries, 'Offenes Feedback')
+    : emptyStateHtml(feedbackSentimentFilter === 'all' ? 'Kein offenes Feedback.' : 'Kein offenes Feedback dieser Art.');
+  return `${toolbarHtml()}
+    ${body}
+    <p class="muted" data-admin-feedback-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Kein passendes Feedback gefunden.</p>`;
 }
 
 function completedFeedbackSectionHtml(entries) {
   if (entries.length === 0) return '';
   return `
-    <details class="card grouped-page-section collapsible-section" data-admin-feedback-completed ${completedSectionOpen ? 'open' : ''}>
+    <details class="card grouped-page-section history-details collapsible-section" data-admin-feedback-completed ${completedSectionOpen ? 'open' : ''}>
       <summary class="collapsible-section-header">
-        <h2>Erledigt</h2>
+        <h2>Historie</h2>
         <span class="collapsible-section-summary-end">
-          <span class="badge">${entries.length}</span>
+          <span class="badge badge-offline">${entries.length}</span>
           <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         </span>
       </summary>
-      <div class="collapsible-section-content">
-        <div class="stack">${entries.map(feedbackEntryHtml).join('')}</div>
-      </div>
+      <div class="collapsible-section-content">${tableHtml(entries, 'Historie')}</div>
     </details>`;
 }
 
@@ -154,7 +276,6 @@ export function renderAdminFeedback(container, ctx) {
           <h2 id="admin-feedback-title">Offen</h2>
           <button type="button" class="btn btn-sm" id="admin-feedback-refresh" ${feedbackLoading ? 'disabled' : ''}>Aktualisieren</button>
         </div>
-        ${feedbackError || (feedbackEntries || []).length === 0 ? '' : feedbackSentimentFilterHtml()}
         ${openFeedbackBodyHtml(openEntries)}
       </section>
       ${feedbackError ? '' : completedFeedbackSectionHtml(completedEntries)}
@@ -162,15 +283,47 @@ export function renderAdminFeedback(container, ctx) {
 
   container.querySelector('#admin-feedback-refresh')?.addEventListener('click', () => loadFeedbackEntries(ctx, true));
   container.querySelector('#admin-feedback-retry')?.addEventListener('click', () => loadFeedbackEntries(ctx, true));
+
+  wireActionMenus(container);
+  const sortMenu = container.querySelector('.admin-feedback-sort-menu');
+  sortMenu?.addEventListener('toggle', () => {
+    sortMenuOpen = sortMenu.open;
+  });
+  const filterMenu = container.querySelector('.admin-feedback-filter-menu');
+  filterMenu?.addEventListener('toggle', () => {
+    filterMenuOpen = filterMenu.open;
+  });
+  wireSelectionSearch(container, {
+    inputId: 'admin-feedback-search',
+    itemSelector: '[data-feedback-entry]',
+    emptySelector: '[data-admin-feedback-search-empty]',
+    onQueryChange: (query) => {
+      feedbackQuery = query;
+    },
+  });
+  container.querySelectorAll('[data-feedback-sort]').forEach((button) => {
+    button.addEventListener('click', () => {
+      feedbackSort = button.dataset.feedbackSort;
+      sortMenuOpen = false;
+      ctx.rerender();
+    });
+  });
   container.querySelectorAll('[data-feedback-sentiment-filter]').forEach((button) => {
     button.addEventListener('click', () => {
       feedbackSentimentFilter = button.dataset.feedbackSentimentFilter;
       ctx.rerender();
     });
   });
+
   const completedSection = container.querySelector('[data-admin-feedback-completed]');
   completedSection?.addEventListener('toggle', () => {
     completedSectionOpen = completedSection.open;
+  });
+  container.querySelectorAll('[data-feedback-detail]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const entry = (feedbackEntries || []).find((candidate) => candidate.id === button.dataset.feedbackDetail);
+      if (entry) openFeedbackDetail(entry, ctx);
+    });
   });
   container.querySelectorAll('[data-feedback-resolution]').forEach((button) => {
     button.addEventListener('click', () => {
