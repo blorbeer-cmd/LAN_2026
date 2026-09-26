@@ -2262,6 +2262,12 @@ input[type='number']::-webkit-inner-spin-button {
   flex-basis: 100%;
   margin-bottom: 0;
 }
+/* A roster's own label sits the standard label distance (--space-1) above
+   its controls, like a labelled toolbar field (Anzahl Teams). Otherwise the
+   roster jumps when Match switches between Auslosung and Captain Draft. */
+.selection-toolbar .selection-toolbar-label:not(:last-child) {
+  margin-bottom: calc(var(--space-1) - var(--space-2));
+}
 .selection-toolbar input[type='number'] {
   width: calc(var(--space-8) * 2);
   flex: 0 0 auto;

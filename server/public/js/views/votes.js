@@ -97,10 +97,17 @@ export function invalidateVoteEventScope() {
 // Any entry means this identity has used its one submission for the round;
 // the values remain visible, but the controls and submit action are locked.
 let mineCache = null; // Map<gameId, points|null>
-let mineCacheKey = null; // `${round}:${playerId}`
+let mineCacheKey = null; // see mineKey()
 let mineLoading = false;
 
-async function loadMine(round, playerId, ctx) {
+// A cancelled round is deleted on the server, so the next round reuses its
+// number. The start time tells the two apart; without it, the cancelled
+// round's own picks would lock the new round as already submitted.
+function mineKey(votes, playerId) {
+  return `${votes.round}:${votes.startedAt}:${playerId}`;
+}
+
+async function loadMine(key, playerId, ctx) {
   mineLoading = true;
   try {
     const mine = await api.votes.mine(playerId);
@@ -108,7 +115,7 @@ async function loadMine(round, playerId, ctx) {
   } catch {
     mineCache = new Map();
   } finally {
-    mineCacheKey = `${round}:${playerId}`;
+    mineCacheKey = key;
     mineLoading = false;
     ctx.rerender();
   }
@@ -121,7 +128,7 @@ async function loadMine(round, playerId, ctx) {
 // rather than carrying over a stale draft).
 let draftSingleGameId = null;
 let draftPoints = null; // Map<gameId, points>
-let draftKey = null; // `${round}:${playerId}` the current draft belongs to
+let draftKey = null; // mineKey() of the round/player the current draft belongs to
 // Points-mode-only toggle: hides already-rated rows so working through a
 // long game list doesn't mean scrolling past everything already done.
 let voteUnratedOnly = false;
@@ -492,13 +499,11 @@ export function renderVotes(container, ctx) {
   }
 
   const myId = getMyId();
-  if (votes.open && myId) {
-    const key = `${votes.round}:${myId}`;
-    if (mineCacheKey !== key && !mineLoading) {
-      loadMine(votes.round, myId, ctx);
-    }
+  const currentMineKey = votes.open && myId ? mineKey(votes, myId) : null;
+  if (currentMineKey && mineCacheKey !== currentMineKey && !mineLoading) {
+    loadMine(currentMineKey, myId, ctx);
   }
-  const mineReady = votes.open && myId && mineCacheKey === `${votes.round}:${myId}` && mineCache;
+  const mineReady = currentMineKey && mineCacheKey === currentMineKey && mineCache;
   const hasSubmitted = Boolean(mineReady && mineCache.size > 0);
 
   if (mineReady && draftKey !== mineCacheKey) {

@@ -70,6 +70,11 @@ Es gibt keinen Disabled-Gesamtzustand und keine Variante für eine insgesamt lee
 
 - Die direkte Reihenfolge MUSS Toolbar → Raster → Suchtrefferstatus bleiben. Als `.stack`-Kinder
   besitzen Toolbar und Raster `gap: var(--space-3)`; das sind derzeit 12 px.
+- Ein `toolbarLabel` (`.selection-toolbar-label`) steht wie jedes Feldlabel `var(--space-1)` über
+  den Controls seiner Toolbar. Dadurch liegen Suche und Raster mit `toolbarLabel` und mit einem
+  beschrifteten `toolbarLeadingHtml`-Feld (Anzahl Teams) auf derselben Höhe; der Wechsel zwischen
+  Auslosung und Captain Draft verschiebt sie nicht. Ein Label ohne folgende Controls (Captains)
+  behält den normalen Toolbarabstand.
 - `.player-selection-grid` besitzt eine Spalte auf Phones und zwei Spalten ab `--bp-md`.
   Ausschließlich `#view-container[data-view='matchmaking']` im Desktop-Layoutmodus erhält drei
   gleich breite Spalten. Turnier- und andere Raster bleiben dort zweispaltig.
@@ -126,8 +131,8 @@ Registry-Bezüge: `selection-toolbar`, `selection-icons`, `selection-buttons`,
   Zustand des Sammel-Umschalters, die Variante ohne eigene Suche und das
   Markup-/Kompatibilitätsinterface.
 - `src/test/e2e/flowsCompetition.fixture.ts` prüft Matchmaking mit ungefiltertem und gefiltertem
-  Roster, keinem Treffer, Einzel-/Sammelauswahl, verborgener Auswahl, langem Namen und
-  1-/2-/3-Spaltenlayout.
+  Roster, keinem Treffer, Einzel-/Sammelauswahl, verborgener Auswahl, langem Namen,
+  1-/2-/3-Spaltenlayout und gleicher Such-/Rasterhöhe beim Wechsel Auslosung ↔ Captain Draft.
 - `src/test/e2e/flowsShell.fixture.ts` prüft denselben Helper in der Turniererstellung und bewahrt
   dort die 1-/2-Spaltenobergrenze.
 - Bei 320×568 und 390×844 gilt eine Spalte, ab 640 px zwei. Bei 1280 px im aktiv gewählten

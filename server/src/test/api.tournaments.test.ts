@@ -198,6 +198,8 @@ test('recording the final marks the tournament completed', async () => {
     .send({ winnerTeamId: final.teamAId });
   assert.equal(res.status, 200);
   assert.equal(res.body.status, 'completed');
+  assert.equal(detail.body.championTeamId, null, 'a running tournament has no champion yet');
+  assert.equal(res.body.championTeamId, final.teamAId);
 });
 
 test('correcting a bracket result reopens dependent matches without duplicating the leaderboard result', async () => {
@@ -312,6 +314,8 @@ test('recording round-robin results (including a draw) updates standings and com
     .send({ winnerTeamId: m3.teamAId });
   assert.equal(finalRes.status, 200);
   assert.equal(finalRes.body.status, 'completed');
+  // A finished league is won by its standings leader.
+  assert.equal(finalRes.body.championTeamId, finalRes.body.standings[0].teamId);
 
   // With 3 teams, each plays the other two, so a team's total points depend
   // on both of its fixtures — don't assume m1's loser ends up at exactly 0,
