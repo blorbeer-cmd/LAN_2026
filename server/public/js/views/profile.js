@@ -62,10 +62,13 @@ const privacyLoader = createLatestValueLoader(async () => {
   }
 });
 
-globalThis.window?.addEventListener('respawn:identity-changed', () => {
+function invalidatePrivacy() {
   privacyState = null;
   privacyLoader.invalidate();
-});
+}
+
+globalThis.window?.addEventListener('respawn:identity-changed', invalidatePrivacy);
+globalThis.window?.addEventListener('respawn:event-invitation-accepted', invalidatePrivacy);
 
 async function loadPrivacy(ctx, force = false) {
   privacyContext = ctx;

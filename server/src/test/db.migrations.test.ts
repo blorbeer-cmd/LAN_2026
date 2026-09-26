@@ -3859,6 +3859,12 @@ test('migration 110 stops tracking the base workspace and general events', () =>
     `INSERT INTO players (id, name, api_key, created_at)
      VALUES ('base-track-player', 'Base Tracker', 'base-track-key', ?)`,
   ).run(now);
+  fixture.prepare(
+    `INSERT INTO checklist_tasks
+       (id, group_id, event_id, type, title, created_by, status, created_at, done_at)
+     VALUES ('finished-not-archived', 'default-group', 'instance-base-event', 'todo',
+             'Still visible', 'base-track-player', 'done', ?, ?)`,
+  ).run(now, now);
   // An older installation could reach this state through the former start
   // path; migration 110 has to clear it along with the live rows it produced.
   fixture.prepare("UPDATE events SET tracking_enabled = 1 WHERE id = 'instance-base-event'").run();
@@ -3933,6 +3939,11 @@ test('migration 110 stops tracking the base workspace and general events', () =>
     ),
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 110').get());
+  assert.deepEqual(
+    migrated.prepare("SELECT archived_at AS archivedAt FROM checklist_tasks WHERE id = 'finished-not-archived'").get(),
+    { archivedAt: null },
+    'a completed task stays visible until someone explicitly archives it',
+  );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
@@ -3953,6 +3964,8 @@ test('migration 110 repairs the main migrations a draft installation skipped', (
   fixture.exec(`
     DROP TABLE checklist_task_assignees;
     ALTER TABLE checklist_tasks DROP COLUMN archived_at;
+    UPDATE schema_migrations SET name = 'draft privacy migration 106' WHERE version = 106;
+    UPDATE schema_migrations SET name = 'draft privacy migration 107' WHERE version = 107;
     DELETE FROM schema_migrations WHERE version = 110;
   `);
   fixture

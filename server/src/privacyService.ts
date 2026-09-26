@@ -442,11 +442,16 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
         playerId,
       ),
       checklistTasks: rows(
-        `SELECT id, event_id AS eventId, type, title, description, status, claim_comment AS claimComment,
-                due_at AS dueAt, created_at AS createdAt, taken_at AS takenAt, done_at AS doneAt,
-                CASE WHEN created_by = ? THEN 1 ELSE 0 END AS createdByMe,
-                CASE WHEN assignee_id = ? THEN 1 ELSE 0 END AS assignedToMe
-         FROM checklist_tasks WHERE created_by = ? OR assignee_id = ? ORDER BY created_at`,
+        `SELECT t.id, t.event_id AS eventId, t.type, t.title, t.description, t.status,
+                CASE WHEN a.player_id IS NOT NULL THEN a.comment ELSE t.claim_comment END AS claimComment,
+                t.due_at AS dueAt, t.created_at AS createdAt, t.taken_at AS takenAt, t.done_at AS doneAt,
+                CASE WHEN t.created_by = ? THEN 1 ELSE 0 END AS createdByMe,
+                CASE WHEN a.player_id IS NOT NULL OR t.assignee_id = ? THEN 1 ELSE 0 END AS assignedToMe
+         FROM checklist_tasks t
+         LEFT JOIN checklist_task_assignees a ON a.task_id = t.id AND a.player_id = ?
+         WHERE t.created_by = ? OR a.player_id IS NOT NULL OR t.assignee_id = ?
+         ORDER BY t.created_at`,
+        playerId,
         playerId,
         playerId,
         playerId,
@@ -733,7 +738,13 @@ function blocker(
   if (db.prepare('SELECT 1 FROM carpools WHERE created_by = ? LIMIT 1').get(playerId)) {
     return blocked('owned_carpools', selfService);
   }
-  if (db.prepare("SELECT 1 FROM checklist_tasks WHERE (created_by = ? OR assignee_id = ?) AND status NOT IN ('done', 'cancelled') LIMIT 1").get(playerId, playerId)) {
+  if (db.prepare(
+    `SELECT 1 FROM checklist_tasks t
+     WHERE t.status NOT IN ('done', 'cancelled')
+       AND (t.created_by = ? OR t.assignee_id = ? OR EXISTS (
+         SELECT 1 FROM checklist_task_assignees a WHERE a.task_id = t.id AND a.player_id = ?
+       )) LIMIT 1`,
+  ).get(playerId, playerId, playerId)) {
     return blocked('open_checklist_tasks', selfService);
   }
   if (db.prepare(

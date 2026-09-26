@@ -243,6 +243,8 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.match((await homeInvitationRow.textContent()) ?? '', /Einladung/);
   await homeInvitationRow.locator('.home-current-navigate').click();
   await memberPage.waitForSelector('#view-container[data-view="profile"]');
+  await memberPage.locator('#privacy-auto-consent').waitFor();
+  assert.equal(await memberPage.locator(`[data-consent-event="${eventId}"]`).count(), 0);
 
   const pending = memberPage.locator(`[data-pending-invitation="${eventId}"]`);
   await pending.waitFor();
@@ -286,6 +288,19 @@ test('manager invites a member who accepts and both open clients update', async 
   const openAcceptedEvent = memberPage.locator(`[data-open-accepted-event="${eventId}"]`);
   await openAcceptedEvent.waitFor();
   assert.equal(await openAcceptedEvent.textContent(), 'Event öffnen');
+  const eventConsent = memberPage.locator(`[data-consent-event="${eventId}"]`);
+  await eventConsent.waitFor();
+  assert.equal(await eventConsent.isEnabled(), true, 'the accepted event offers consent without reloading the page');
+  await eventConsent.check();
+  await memberPage.waitForFunction(
+    (acceptedEventId) => (document.querySelector(`[data-consent-event="${acceptedEventId}"]`) as HTMLInputElement | null)?.checked === true,
+    eventId,
+  );
+  await eventConsent.uncheck();
+  await memberPage.waitForFunction(
+    (acceptedEventId) => (document.querySelector(`[data-consent-event="${acceptedEventId}"]`) as HTMLInputElement | null)?.checked === false,
+    eventId,
+  );
   await memberPage.click('#notifications-btn');
   await invitationNotification.waitFor();
   assert.equal(

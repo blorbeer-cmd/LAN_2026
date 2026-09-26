@@ -543,8 +543,10 @@ test('self deletion clears the own claim comment on another account\'s task', as
   const app = createTestApp();
   const creator = createMember('Claim Creator');
   const claimer = createMember('Claim Author');
+  const secondClaimer = createMember('Second Claim Author');
   const taskId = nanoid();
   const claimComment = `beamer-${nanoid()}`;
+  const secondComment = `kabel-${nanoid()}`;
   // Completed, so no open-to-do blocker applies; created by someone else, so
   // the assignee_id cascade must not take the task with it.
   db.prepare(
@@ -553,6 +555,12 @@ test('self deletion clears the own claim comment on another account\'s task', as
         claim_comment, status, created_at, taken_at, done_at)
      VALUES (?, ?, ?, 'todo', 'Beamer holen', NULL, ?, ?, ?, 'done', ?, ?, ?)`,
   ).run(taskId, DEFAULT_GROUP_ID, BASE_EVENT_ID, creator.id, claimer.id, claimComment, Date.now(), Date.now(), Date.now());
+  db.prepare(
+    `INSERT INTO checklist_task_assignees (task_id, player_id, comment, joined_at) VALUES (?, ?, ?, ?)`,
+  ).run(taskId, claimer.id, claimComment, Date.now());
+  db.prepare(
+    `INSERT INTO checklist_task_assignees (task_id, player_id, comment, joined_at) VALUES (?, ?, ?, ?)`,
+  ).run(taskId, secondClaimer.id, secondComment, Date.now());
 
   const exported = await request(app).get('/api/privacy/export').set('Cookie', claimer.cookie);
   assert.equal(exported.status, 200);
@@ -560,6 +568,12 @@ test('self deletion clears the own claim comment on another account\'s task', as
     exported.text.includes(claimComment),
     'the export presents the claim comment as the account\'s own data',
   );
+  const secondExport = await request(app).get('/api/privacy/export').set('Cookie', secondClaimer.cookie);
+  assert.equal(secondExport.status, 200);
+  const secondTask = secondExport.body.organisation.checklistTasks.find((task: { id: string }) => task.id === taskId);
+  assert.equal(secondTask?.assignedToMe, 1);
+  assert.equal(secondTask?.claimComment, secondComment);
+  assert.equal(secondExport.text.includes(claimComment), false, 'the first assignee\'s comment is not exported as the second\'s');
 
   const response = await request(app).delete('/api/privacy/account').set('Cookie', claimer.cookie);
   assert.equal(response.status, 204, JSON.stringify(response.body));
@@ -571,6 +585,29 @@ test('self deletion clears the own claim comment on another account\'s task', as
   assert.equal(task!.created_by, creator.id);
   assert.equal(task!.assignee_id, null);
   assert.equal(task!.claim_comment, null, 'the deleted account\'s own free text is gone');
+});
+
+test('an open task blocks deletion of its second assignee', async () => {
+  const app = createTestApp();
+  const creator = createMember('Open Task Creator');
+  const first = createMember('Open Task First');
+  const second = createMember('Open Task Second');
+  const taskId = nanoid();
+  db.prepare(
+    `INSERT INTO checklist_tasks
+       (id, group_id, event_id, type, title, created_by, assignee_id, status, created_at)
+     VALUES (?, ?, ?, 'todo', 'Prepare room', ?, ?, 'taken', ?)`,
+  ).run(taskId, DEFAULT_GROUP_ID, BASE_EVENT_ID, creator.id, first.id, Date.now());
+  db.prepare('INSERT INTO checklist_task_assignees (task_id, player_id, joined_at) VALUES (?, ?, ?)')
+    .run(taskId, first.id, Date.now());
+  db.prepare('INSERT INTO checklist_task_assignees (task_id, player_id, joined_at) VALUES (?, ?, ?)')
+    .run(taskId, second.id, Date.now());
+
+  const response = await request(app).delete('/api/privacy/account').set('Cookie', second.cookie);
+  assert.equal(response.status, 409);
+  assert.equal(response.body.code, 'open_checklist_tasks');
+  assert.ok(db.prepare('SELECT 1 FROM players WHERE id = ?').get(second.id));
+  assert.ok(db.prepare('SELECT 1 FROM checklist_task_assignees WHERE task_id = ? AND player_id = ?').get(taskId, second.id));
 });
 
 test('revoking event consent clears the stored diagnostic process snapshot', async () => {

@@ -993,6 +993,7 @@ export function wirePendingInvitationActions(container, ctx) {
       try {
         if (accept) await api.events.acceptInvitation(eventId);
         else await api.events.declineInvitation(eventId);
+        if (accept) window.dispatchEvent(new CustomEvent('respawn:event-invitation-accepted'));
         await settleNotificationTarget(`event-invitation:${eventId}:${getMyId()}`);
         acceptedInvitationHandoff = accept
           ? { id: eventId, name: invitation?.name ?? 'diesem Event' }
@@ -1059,6 +1060,7 @@ export function wireParticipationAnswerActions(container, ctx) {
       btn.disabled = true;
       try {
         await api.events.acceptInvitation(eventId);
+        window.dispatchEvent(new CustomEvent('respawn:event-invitation-accepted'));
         await ctx.refresh();
         container.querySelector('#orga-events-title')?.focus();
         showToast('Teilnahme zugesagt.');

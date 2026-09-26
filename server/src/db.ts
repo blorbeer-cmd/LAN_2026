@@ -5199,10 +5199,21 @@ function excludeBaseWorkspaceFromTrackingAndAddConsentDefault(): void {
   // privacy migrations before main claimed 105 for the draw link and 106/107
   // for the To-Do changes. Those versions then count as applied, so their
   // main counterparts would be skipped forever; repair them here instead.
-  // Each one is guarded and stays a no-op wherever it already ran.
+  // Check the recorded name: 106 can be applied with either meaning, and
+  // re-running its data backfill would archive newly finished To-Dos.
   migrateDrawTournamentLink();
-  migrateChecklistTaskArchive();
-  migrateChecklistTaskAssignees();
+  const checklistArchiveMigration = db.prepare('SELECT name FROM schema_migrations WHERE version = 106').get() as
+    | { name: string }
+    | undefined;
+  if (checklistArchiveMigration?.name !== 'archive finished checklist tasks') {
+    migrateChecklistTaskArchive();
+  }
+  const checklistAssigneesMigration = db.prepare('SELECT name FROM schema_migrations WHERE version = 107').get() as
+    | { name: string }
+    | undefined;
+  if (checklistAssigneesMigration?.name !== 'multiple participants per checklist task') {
+    migrateChecklistTaskAssignees();
+  }
   const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
   if (!columns.some((column) => column.name === 'tracking_consent_default_version')) {
     db.exec('ALTER TABLE players ADD COLUMN tracking_consent_default_version TEXT');
