@@ -50,7 +50,15 @@ export function sectionEntryView(key, event) {
 // Direct event navigation wins, routes presented through "Mehr" keep that
 // parent highlighted, and a remaining route inside a tabbed area highlights
 // the shared area button.
+// Sub-pages without their own navigation entry borrow their parent's
+// highlight, so the bar still shows where the page lives ("Meine Statistiken"
+// is opened from "Mein Profil"). The desktop rail keeps its own map in
+// bottomNav.js (DESKTOP_PARENT_BY_VIEW).
+const NAV_PARENT_BY_VIEW = Object.freeze({ myStats: 'profile' });
+
 export function navGroupForView(view, event) {
+  const parent = NAV_PARENT_BY_VIEW[view];
+  if (parent) return navGroupForView(parent, event);
   const eventType = event?.eventType;
   const definition = viewDefinition(view);
   const sectionKey = sectionKeyForView(view);

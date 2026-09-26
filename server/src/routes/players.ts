@@ -21,10 +21,10 @@ import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
 import { includesTestPlayers } from '../testDataVisibility';
 import { getOrRepairActiveEvent } from '../eventContext';
 import { deleteAccount } from '../privacyService';
+import { initialPlayerColor } from '../playerColors';
 
 export const playersRouter = Router();
 
-const DEFAULT_COLOR = '#4f9dff';
 
 interface PlayerRow {
   id: string;
@@ -132,7 +132,7 @@ playersRouter.post('/', requireUser, (req, res) => {
     id: nanoid(),
     name: trimmedName,
     real_name: resolvedRealName,
-    color: color ?? DEFAULT_COLOR,
+    color: color ?? initialPlayerColor(),
     avatar: avatar ?? null,
     api_key: nanoid(24),
     tracking_paused: 0,

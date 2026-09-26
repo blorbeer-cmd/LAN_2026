@@ -350,12 +350,19 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
       return grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length === 3 : false;
     }, selector);
   await waitForThreeColumns('.home-live-grid');
+  // Like every list, the live board fills the left column first.
+  assert.equal(await page.locator('.home-live-grid').evaluate((grid) => getComputedStyle(grid).gridAutoFlow), 'column');
   if (homeSectionFlow.seatingGap !== null) {
     assert.ok(homeSectionFlow.seatingGap >= 8 && homeSectionFlow.seatingGap <= 32);
   }
   if (homeSectionFlow.leaderboardGap !== null) {
     assert.ok(homeSectionFlow.leaderboardGap >= 8 && homeSectionFlow.leaderboardGap <= 32);
-    await waitForThreeColumns('.home-leaderboard-grid');
+    // The top six are a RankedList: two columns, filled top to bottom.
+    const ranking = page.locator('[aria-labelledby="home-leaderboard-title"] .ranked-list');
+    assert.deepEqual(
+      await ranking.evaluate((list) => [getComputedStyle(list).gridTemplateColumns.split(' ').length, getComputedStyle(list).gridAutoFlow]),
+      [2, 'column'],
+    );
   }
 
   await page.click('.desktop-nav-btn[data-view="matchmaking"]');
@@ -376,25 +383,13 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.view),
     'profile',
   );
-  const profileColumns = await page.locator('.profile-dashboard-columns').evaluate((layout) => {
-    const account = layout.querySelector('.profile-dashboard-account')?.getBoundingClientRect();
-    const lan = layout.querySelector('.profile-dashboard-lan')?.getBoundingClientRect();
-    const agent = document.querySelector('[aria-labelledby="profile-agent-title"]')?.getBoundingClientRect();
-    return {
-      display: getComputedStyle(layout).display,
-      accountLeft: account ? Math.round(account.left) : null,
-      accountTop: account ? Math.round(account.top) : null,
-      lanLeft: lan ? Math.round(lan.left) : null,
-      lanTop: lan ? Math.round(lan.top) : null,
-      agentWidth: agent ? Math.round(agent.width) : null,
-      layoutWidth: Math.round(layout.getBoundingClientRect().width),
-    };
-  });
-  assert.equal(profileColumns.display, 'grid');
-  assert.ok(profileColumns.accountLeft !== null && profileColumns.lanLeft !== null);
-  assert.ok(profileColumns.lanLeft > profileColumns.accountLeft);
-  assert.equal(profileColumns.lanTop, profileColumns.accountTop);
-  assert.equal(profileColumns.agentWidth, profileColumns.layoutWidth);
+  // Profile is one column of full-width cards on every width: each row has
+  // its single action in the right column, so a second column adds nothing.
+  const profileCards = await page.locator('#view-container .grouped-page-sections > .grouped-page-section').evaluateAll((cards) =>
+    cards.map((card) => { const box = card.getBoundingClientRect(); return [Math.round(box.left), Math.round(box.width)]; }),
+  );
+  assert.ok(profileCards.length >= 3);
+  assert.equal(new Set(profileCards.map(([left, width]) => `${left}:${width}`)).size, 1);
 
   await page.goBack();
   await page.waitForSelector('#view-container h1:text-is("Home")');
@@ -465,30 +460,23 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   assert.equal(arcadeColumns.tileColumns, 3);
 
   await page.click('.desktop-nav-btn[data-view="profile"]');
-  await page.waitForSelector('button[data-layout-preference="laptop"]');
-  assert.equal(await page.locator('.profile-layout-hint').count(), 0);
-  assert.equal(await page.locator('#profile-layout-help').count(), 1);
-  await page.click('[aria-label="Mehr Informationen zu Ansicht"]');
-  await page.waitForSelector('#profile-layout-help:not([hidden])');
-  const layoutHelpTrigger = page.locator('[aria-controls="profile-layout-help"]');
-  await layoutHelpTrigger.press('Escape');
-  await page.waitForFunction(() => document.getElementById('profile-layout-help')?.hidden === true);
-  await layoutHelpTrigger.press('Enter');
-  await page.waitForSelector('#profile-layout-help:not([hidden])');
-  await page.click('button[data-layout-preference="laptop"]');
+  await page.waitForSelector('#profile-layout');
+  // The view is a native select with its rule as a muted meta line, no tooltip.
+  assert.equal(await page.locator('#profile-layout-help').count(), 0);
+  assert.equal(await page.locator('label[for="profile-layout"]').textContent(), 'Ansicht');
+  await page.selectOption('#profile-layout', 'laptop');
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
   assert.equal(await page.getAttribute('html', 'data-layout-preference'), 'laptop');
-  assert.equal(await page.locator('button[data-layout-preference="laptop"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.inputValue('#profile-layout'), 'laptop');
   assert.equal(await page.locator('.desktop-nav').isHidden(), true);
   assert.equal(await page.locator('.bottom-nav').isVisible(), true);
-  assert.equal(await page.locator('.profile-dashboard-columns').evaluate((layout) => getComputedStyle(layout).display), 'flex');
 
   // The choice survives a reload in the current session.
   await page.reload();
   await page.waitForSelector('#app:not([hidden])');
   assert.equal(await page.getAttribute('html', 'data-layout-mode'), 'laptop');
   assert.equal(await page.getAttribute('html', 'data-layout-preference'), 'laptop');
-  await page.click('button[data-layout-preference="desktop"]');
+  await page.selectOption('#profile-layout', 'desktop');
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   assert.equal(await page.locator('.desktop-nav').isVisible(), true);
   assert.equal(await page.locator('.bottom-nav').isHidden(), true);
@@ -509,8 +497,8 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
     await persistencePage.click('#auth-form button[type="submit"]');
     await persistencePage.waitForSelector('#app:not([hidden])');
     await persistencePage.goto(`${BASE_URL}/#profile`);
-    await persistencePage.waitForSelector('button[data-layout-preference="laptop"]');
-    await persistencePage.click('button[data-layout-preference="laptop"]');
+    await persistencePage.waitForSelector('#profile-layout');
+    await persistencePage.selectOption('#profile-layout', 'laptop');
     await persistencePage.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
     await persistencePage.click('#profile-logout');
     await persistencePage.waitForSelector('#auth-screen:not([hidden])');
@@ -539,7 +527,8 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   }
 
   await page.click('.desktop-nav-btn[data-view="profile"]');
-  await page.click('button[data-layout-preference="auto"]');
+  await page.waitForSelector('#profile-layout');
+  await page.selectOption('#profile-layout', 'auto');
   await page.waitForFunction(() => document.documentElement.dataset.layoutPreference === 'auto' && document.documentElement.dataset.layoutMode === 'desktop');
   await page.click('.desktop-nav-btn[data-view="arcade"]');
   await page.waitForSelector('.arcade-game-picker');
@@ -749,8 +738,12 @@ flowTest('icon-only controls keep the shared height and minimum width on phones'
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 
   await openProfile();
-  await page.waitForSelector('.profile-password-fields [data-password-toggle]');
-  await assertTouchTargets('.icon-btn', 'shared icon buttons in the profile');
+  // The password toggles live in the "Passwort ändern" dialog now.
+  await page.click('#profile-password-open');
+  await page.waitForSelector('.modal [data-password-toggle]');
+  await assertTouchTargets('.modal .icon-btn', 'shared icon buttons in the password dialog');
+  await page.click('.modal [data-password-cancel]');
+  await page.waitForSelector('.modal', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 
   await openOrgaTab('checklistPacking');
@@ -1120,40 +1113,27 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   await openProfile();
   await page.waitForSelector('#profile-name');
-  assert.equal(await page.locator('.profile-agent-step').count(), 3);
-  assert.equal(await page.locator('#push-toggle[type="checkbox"]').count(), 1);
-  assert.equal(await page.locator('label:has(#push-toggle) > span').getByText('Aktivieren', { exact: true }).count(), 1);
-  assert.equal(await page.locator('#profile-tracking-pause-help').count(), 1);
-  assert.equal(await page.locator('#profile-activity-tracking-help').count(), 1);
-  assert.equal(await page.locator('.profile-agent-step').first().locator('#tracking-paused').count(), 1);
+  // Settings are rows with one action each; no contextual-help tooltips.
+  const agentSection = page.locator('[data-profile-section="agent"]');
+  assert.equal(await agentSection.locator('.profile-row-number').count(), 3);
+  assert.equal(await page.locator('#push-toggle').evaluate((element) => element.tagName), 'BUTTON');
+  assert.match((await page.locator('#push-toggle').textContent()) ?? '', /^(Aktivieren|Deaktivieren)$/);
+  assert.equal(await page.locator('#profile-view-title ~ * .info-tooltip, [data-profile-section] .info-tooltip').count(), 0);
+  assert.equal(await agentSection.locator('#tracking-paused').count(), 1);
   assert.equal(await page.locator('label[for="profile-name"]').textContent(), 'Gamertag');
   assert.equal(await page.locator('label[for="profile-real-name"]').textContent(), 'Name');
-  assert.equal(await page.locator('.profile-avatar-editor .field-label').count(), 0);
-  assert.equal(await page.locator('label[for="profile-color-trigger"]').textContent(), 'Farbe');
-  assert.equal(await page.locator('.profile-color-trigger').count(), 1);
-  assert.equal(await page.locator('.profile-color-trigger').evaluate((element) => getComputedStyle(element).borderRadius), '8px');
+  // The color is a dot on the avatar, not a separate labelled field.
+  assert.equal(await page.locator('.profile-avatar-editor .profile-color-trigger').count(), 1);
+  assert.equal(await page.locator('label[for="profile-color-trigger"]').count(), 0);
   assert.equal(await page.locator('input[type="color"]').count(), 0);
-  assert.equal(await page.locator('.profile-identity-fields').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 4);
-  const identityFieldCenters = await page.locator('.profile-identity-fields').evaluate((editor) => {
-    const controls = [
-      editor.querySelector('.profile-avatar-control'),
-      editor.querySelector('.profile-color-trigger'),
-      editor.querySelector('#profile-name'),
-      editor.querySelector('#profile-real-name'),
-    ];
-    if (controls.some((control) => !control)) return [];
-    return controls.map((control) => {
-      const box = control!.getBoundingClientRect();
+  const identityFieldCenters = await page.locator('.profile-identity').evaluate((editor) =>
+    ['#profile-name', '#profile-real-name'].map((selector) => {
+      const box = editor.querySelector(selector)!.getBoundingClientRect();
       return box.top + box.height / 2;
-    });
-  });
-  assert.equal(identityFieldCenters.length, 4);
-  // Inline line-box rounding differs slightly across Windows font/rendering
-  // versions. A 2px center delta is visually aligned and must not make the
-  // otherwise unrelated end-to-end suite flaky.
+    }));
   assert.ok(
-    Math.round((Math.max(...identityFieldCenters) - Math.min(...identityFieldCenters)) * 10) / 10 <= 2,
-    `profile identity controls should remain vertically aligned: ${JSON.stringify(identityFieldCenters)}`,
+    Math.abs(identityFieldCenters[0] - identityFieldCenters[1]) <= 1,
+    `Gamertag and Name should share one row: ${JSON.stringify(identityFieldCenters)}`,
   );
   const originalProfileColor = await page.inputValue('#profile-color');
   await page.click('#profile-color-trigger');
@@ -1190,40 +1170,43 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   const appliedColor = (await page.inputValue('.profile-color-picker-value')).toLowerCase();
   await page.click('[data-profile-color-apply]');
   assert.equal(await page.inputValue('#profile-color'), appliedColor);
-  assert.equal(await page.getByText('Erweitertes Tracking', { exact: true }).count(), 1);
-  const profileSectionKeys = ['password', 'push', 'privacy', 'monitors', 'agent'];
+  assert.equal(await page.getByText('Erweitertes Tracking für diesen Download', { exact: true }).count(), 1);
+  const profileSectionKeys = ['agent', 'privacy', 'data'];
   assert.deepEqual(
     await page.locator('[data-profile-section]').evaluateAll((sections) =>
       sections.map((section) => ({ key: (section as HTMLElement).dataset.profileSection, open: (section as HTMLDetailsElement).open })),
     ),
-    profileSectionKeys.map((key) => ({ key, open: true })),
-    'profile groups should start expanded',
+    profileSectionKeys.map((key) => ({ key, open: false })),
+    'agent setup, privacy and personal data should start collapsed',
   );
-  assert.equal(await page.getByRole('heading', { name: 'Datenschutz & meine Daten' }).count(), 1);
+  assert.equal(await page.getByRole('heading', { name: 'Datenschutz', exact: true }).count(), 1);
   const privacySection = page.locator('[data-profile-section="privacy"]');
-  await privacySection.locator('#privacy-auto-consent').waitFor();
+  await privacySection.locator('#privacy-auto-consent').waitFor({ state: 'attached' });
+  await page.click('[data-profile-section="privacy"] > summary');
   assert.equal(await privacySection.getByText('Aufbewahrung', { exact: true }).count(), 0);
   assert.equal(await privacySection.locator('[data-consent-event="instance-base-event"]').count(), 0);
   assert.equal(await privacySection.getByText('RespawnHQ', { exact: true }).count(), 0);
-  assert.equal(await privacySection.getByText('Alte Zustimmung', { exact: true }).count(), 1);
-  assert.equal(await privacySection.locator('[data-revoke-legacy-group]').textContent(), 'Widerrufen');
-  assert.equal(await privacySection.locator('label[for="privacy-auto-consent"]').textContent(), 'Für neue trackbare Events und Gruppen vorab zustimmen');
-  const autoConsentHelp = privacySection.locator('[aria-controls="privacy-auto-consent-help"]');
-  await autoConsentHelp.focus();
-  assert.equal(await page.locator('#privacy-auto-consent-help').isVisible(), true);
-  assert.match((await page.locator('#privacy-auto-consent-help').textContent()) ?? '', /Gruppen haben kein Enddatum/);
-  await autoConsentHelp.press('Escape');
-  assert.equal(await page.locator('#privacy-auto-consent-help').isHidden(), true);
-  assert.equal(await page.locator('#privacy-export').count(), 1);
-  assert.equal(await page.locator('#privacy-delete-account').count(), 1);
-  await page.click('[data-profile-section="push"] > summary');
+  // The old group consent from before event-bound tracking is not listed.
+  assert.equal(await privacySection.locator('[data-revoke-legacy-group]').count(), 0);
+  assert.equal(await privacySection.getByText('Neue Events und Gruppen vorab erlauben', { exact: true }).count(), 1);
+  assert.match((await privacySection.locator('#privacy-auto-consent').textContent()) ?? '', /^(Aktivieren|Deaktivieren)$/);
+  // The full explanation moved from the tooltip into the "Mehr erfahren" dialog.
+  await privacySection.locator('#privacy-details').click();
+  await page.waitForSelector('.modal');
+  assert.match((await page.locator('.modal').textContent()) ?? '', /Gruppen haben kein Enddatum/);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.modal', { state: 'detached' });
+  const dataSection = page.locator('[data-profile-section="data"]');
+  assert.equal(await dataSection.locator('#privacy-export').count(), 1);
+  assert.equal(await dataSection.locator('#privacy-delete-account').count(), 1);
+  await page.click('[data-profile-section="agent"] > summary');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:rerender')));
   assert.equal(
-    await page.locator('[data-profile-section="push"]').getAttribute('open'),
-    null,
-    'a manually collapsed profile group should stay collapsed across a view re-render',
+    await page.locator('[data-profile-section="agent"]').getAttribute('open'),
+    '',
+    'a manually opened profile group should stay open across a view re-render',
   );
-  assert.equal(await page.locator('.profile-identity-editor').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  assert.equal(await page.locator('.profile-identity').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   assert.equal(await page.getByText('Auf diesem Gerät aus.', { exact: true }).count(), 0);
   assert.equal(await page.getByText('Auf diesem Gerät aktiv.', { exact: true }).count(), 0);
 });
@@ -1535,11 +1518,17 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok((await page.locator('.seating-seat:not(.is-occupied)').count()) > 0);
   assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().getByText('Frei', { exact: true }).count(), 1);
-  assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().evaluate((seat) => getComputedStyle(seat).borderStyle), 'dashed');
+  // A free seat is only its outline: a solid hairline without fill and a muted label.
+  assert.deepEqual(
+    await page.locator('.seating-seat:not(.is-occupied)').first().evaluate((seat) => [getComputedStyle(seat).borderStyle, getComputedStyle(seat).backgroundColor]),
+    ['solid', 'rgba(0, 0, 0, 0)'],
+  );
   assert.equal(await page.locator('.seating-seat-number').count(), 0);
+  // The table is an outline labelled „Tisch“; the editor's hint only shows once a player is picked.
+  assert.equal(await page.locator('.seating-table-center').first().textContent().then((text) => text?.trim()), 'Tisch');
   assert.equal(await page.locator('.seating-seat-free-label').first().evaluate((label) => {
     const probe = document.createElement('span');
-    probe.style.color = 'var(--text)';
+    probe.style.color = 'var(--text-muted)';
     document.body.appendChild(probe);
     const tokenColor = getComputedStyle(probe).color;
     probe.remove();
@@ -1681,7 +1670,7 @@ flowTest('Mein Profil: rename with a uniqueness conflict, then succeed; Meine St
   // Bock/Skill-Ratings live in the Spiele view now, reachable from here via
   // the onboarding nudge; the personal stats dashboard is one tap away too
   // (it moved to its own view, myStats).
-  await page.waitForSelector('text=Bock & Skill eintragen');
+  await page.waitForSelector('[data-navigate="gameCatalog"]:has-text("Bewerten")');
   await page.click('[data-navigate="myStats"]');
   await page.waitForSelector('text=Meine Statistiken');
   // `#my-stats-event` is the dropdown's hidden value input; its visible

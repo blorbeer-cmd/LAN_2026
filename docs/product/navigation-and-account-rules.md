@@ -119,36 +119,38 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   sorted by Bock, highest first, because that order carries meaning.
   Player creation stays in the authenticated Admin workflow. The desktop live board keeps exactly
   two equal-width cards per row; an odd final player does not stretch.
-  The self-service profile uses the shared
-  grouped-page hierarchy for profile data, Agent setup, Push, visible monitors and personal stats.
-  Agent setup is split into three stable nested cards for choosing tracking, downloading and
-  installing; tracking pause belongs to the first step beside foreground-activity tracking, and
-  both explanations live in contextual tooltips beside their checkboxes. The first step's own title
-  carries a third tooltip covering the feature as a whole — what the agent reads on the PC, what
-  reaches the server and what it is used for — so the naming („Tracking“) never stands without
-  that scope. Live status, playtime and derived evaluations apply only to the account's currently
-  selected, running event with accepted participation, enabled tracking and valid event consent;
-  without that context, the agent receives no process allowlist and no matched process names reach
-  storage or admin diagnostics. The event tracking tooltip and start confirmation explain the same
-  prerequisites. A separate „Datenschutz & meine Daten“ section shows purpose and visibility and
-  offers consent controls only for trackable events and groups; the base workspace and general
-  events have no selectable rows. Older consents never count as active and remain separately
-  revocable with plain-language labels instead of a legacy group name. Technical retention rules
-  and operator decisions remain in the documentation rather than the member profile. A standing
-  pre-authorization below the per-event rows lets an account agree in advance to events and groups
-  that only become trackable later; its longer explanation is in the adjacent help tooltip. The
-  consent is bound to the text version it was set under and never overrides a single event's own
-  decision. The section also provides a secret-free personal
-  JSON export and a reauthentication-protected
-  account deletion with concrete remedies for roles or open organisational work that must first be
-  transferred.
-  The profile header owns
-  its spacing to the first group. The unlabeled profile image, Farbe, Gamertag and optional name form one row from
-  `--bp-md`; the three controls align their own centers to the image while their labels sit above.
-  Phones wrap the two text fields below the visual controls. The shared save action stays
-  below that row. The foreground option uses the concise label „Erweitertes Tracking“. Push uses the same checkbox language with its
-  explanation in a tooltip instead of an action button and omits a redundant off-state sentence.
-  Visible-monitor choices form exactly two columns from `--bp-md`, with phones kept to one column.
+  The self-service profile is one column of full-width cards whose settings are hairline rows:
+  title, a muted meta line and one compact neutral action in a fixed right column. It carries no
+  contextual-help tooltips. The account card has no heading and holds the identity row (avatar
+  with its color dot, Gamertag, Name, „Speichern“; phones wrap Name below), the view preference as
+  a native select, push notifications and „Passwort ändern“, which opens a dialog. A card named
+  after the active event holds the rating nudge „Bock & Skill“ (only while nothing is rated),
+  „Meine Statistiken“ and „Sichtbare Monitore“, whose „Bearbeiten“ dialog lists chosen players
+  first, then the rest, with one search field for both; the split is taken when the dialog opens
+  so rows never jump while boxes are ticked. „Live-Status & Agent“, „Datenschutz“ and „Meine
+  Daten“ are collapsible cards that start collapsed and keep a manual open state across
+  re-renders.
+  „Live-Status & Agent“ shows tracking as a row with „Pausieren“/„Fortsetzen“ and a „Mehr
+  erfahren“ dialog that states what the agent reads on the PC, what reaches the server and what
+  it is used for, followed by three numbered steps: download (with „Erweitertes Tracking für
+  diesen Download“ as a per-download option), install and „Ohne Windows“ with „Key kopieren“ and
+  a quiet „Key erneuern“ whose confirmation stays red. Live status, playtime and derived
+  evaluations apply only to the account's currently selected, running event with accepted
+  participation, enabled tracking and valid event consent; without that context, the agent
+  receives no process allowlist and no matched process names reach storage or admin diagnostics.
+  The event tracking tooltip and start confirmation explain the same prerequisites.
+  „Datenschutz“ shows the consent text with „Mehr erfahren“ (purpose, visibility,
+  pre-authorization and export in one dialog), then one row per trackable event with
+  „Erlauben“/„Widerrufen“; the base workspace and general events have no rows. Older event
+  consents never count as active and remain revocable as rows; the base event's old consent and
+  the old group consent from before event-bound tracking are not listed. Set apart below the
+  changing event list, a standing pre-authorization („Neue Events und Gruppen vorab erlauben“)
+  lets an account agree in advance to events and groups that only become trackable later. It is
+  bound to the text version it was set under and never overrides a single event's own decision.
+  Technical retention rules and operator decisions remain in the documentation rather than the
+  member profile. „Meine Daten“ provides a secret-free personal JSON export and a
+  reauthentication-protected account deletion with concrete remedies for roles or open
+  organisational work that must first be transferred.
 - **Admin tools** — Account invitations and claim/reset links live in Admin's authenticated
   onboarding group; their QR codes open in the shared centered modal.
   Frequently used „Werkzeuge“ lead the authenticated content. A compact „LAN-Bereitschaft“ group
@@ -261,23 +263,27 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
 
 ## Mein Profil, Auswertung und Home
 
-- **Profile** — The profile row uses the original compact square color preview. Activating it opens
-  a centered Respawn modal instead of the browser's native color dialog. The modal combines a
-  keyboard-, pointer- and touch-operable hue/saturation wheel with a live preview, an editable and
-  copyable `#RRGGBB` field, and explicit cancel/apply actions; it has no competing preset palette.
-  Invalid hex input is visibly rejected and cannot be applied or copied. The chosen value remains a draft until the profile's
-  main save action persists it.
-  A leading „Einladungen“ section (present only while pending event invitations exist) shows the
-  same invitation cards Orga's Events tab used to render inline — cost/deadline disclosure plus
-  Annehmen/Ablehnen — via events.js's shared `renderInvitationCard`. Acceptance replaces the card
-  with „Event öffnen“; the invitation becomes read notification history and the action switches the
-  active event. Security, Agent, notifications and visible monitors are clearly named collapsible
-  groups below the always-visible identity editor. They start expanded; a user's manual collapse
-  survives same-view re-renders. In Desktop mode, identity/password/notifications form the account
-  column while ratings/visible monitors/statistics form the LAN-profile column. Pending invitations
-  remain above both columns; the three-step Agent setup remains full width below them. The account
-  column also contains the three-way view preference; changing it updates the shell without losing
-  the current profile state.
+- **Profile** — The avatar leads the identity row; tapping it picks a new picture, and a small
+  color dot on its lower right opens a centered Respawn modal instead of the browser's native
+  color dialog. The modal combines a keyboard-, pointer- and touch-operable hue/saturation wheel
+  with a live preview, an editable and copyable `#RRGGBB` field, and explicit cancel/apply
+  actions; it has no competing preset palette. Invalid hex input is visibly rejected and cannot be
+  applied or copied. The chosen value remains a draft until „Speichern“ persists it. A new account
+  starts with a random color whose hue lies as far as possible from the colors already in use.
+  A leading „Einladungen“ card (present only while pending event invitations exist) lists each
+  invitation as a row: the name shortened after 40 characters, a meta line with type, period and
+  location, and „Annehmen“. Tapping the row opens a dialog with the full facts including cost and
+  payment deadline and three equal buttons „Ausrede“, „Ablehnen“ and „Annehmen“. Acceptance shows
+  a card „Einladung angenommen“ with a compact „Event öffnen“; the invitation becomes read
+  notification history and the action switches the active event.
+- **Meine Statistiken** — reached through „Ansehen“ in the profile; the navigation keeps the
+  profile's highlight. The event filter sits in the title row with „Alle Events“ first. One card
+  shows the key figures centered in equal columns: play time with its active share, the number of
+  events (only for „Alle Events“, which names the data basis), sessions, games and parallel time.
+  „Erfolge“, „Spielzeit pro Spiel“, „Spielzeit pro Event“ and „Längste Sessions“ are collapsible
+  cards that start collapsed and use the shared RankedList: the rankings are sorted by value and
+  numbered, Erfolge alphabetically, and every list fills its left column first. A session period
+  reads „29.07., 04:10 bis 10:21“ and names the date only once.
 - **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, reached only
   through Admin's „Auswertung“ tool card (see „Admin tools“). The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
@@ -303,8 +309,12 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   The personal status and player entries remain nested cards on the secondary elevated background;
   „Gerade aktiv“ is a subsection of
   „Live-Status“ rather than a competing page-level group. A pending event invitation appears here as
-  a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); the full card with
-  Annehmen/Ablehnen lives only in Profile, not in this list. Main groups stay in one continuous column
+  a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); answering it happens only in
+  Profile, not in this list. The live board fills its left column first, grouped by state and
+  alphabetical within a state. The admin-only „Rangliste“ shows the top six as a RankedList with
+  „Alle ansehen“ in its header. The seating plan draws free seats and the table as plain outlines
+  labelled „Frei“ and „Tisch“, so occupied seats carry the plan; the editor's hint appears only
+  while a picked player waits for a target seat. Main groups stay in one continuous column
   at phone and laptop widths while their existing internal grids remain responsive. „Aktuell“ appears
   above „Meine To-Dos“ as its own full-width main card in every layout. A general event
   replaces the LAN-only live and ranking groups with a leading event overview containing its type,

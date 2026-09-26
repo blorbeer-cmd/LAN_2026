@@ -243,7 +243,7 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.match((await homeInvitationRow.textContent()) ?? '', /Einladung/);
   await homeInvitationRow.locator('.home-current-navigate').click();
   await memberPage.waitForSelector('#view-container[data-view="profile"]');
-  await memberPage.locator('#privacy-auto-consent').waitFor();
+  await memberPage.locator('#privacy-auto-consent').waitFor({ state: 'attached' });
   assert.equal(await memberPage.locator(`[data-consent-event="${eventId}"]`).count(), 0);
 
   const pending = memberPage.locator(`[data-pending-invitation="${eventId}"]`);
@@ -264,14 +264,19 @@ test('manager invites a member who accepts and both open clients update', async 
   );
   await memberPage.click('#notifications-btn');
   assert.match((await pending.textContent()) ?? '', new RegExp(EVENT_NAME));
-  assert.match((await pending.textContent()) ?? '', /Eingeladen/);
+  // The row stays short; cost and payment deadline are in its detail dialog.
+  await pending.locator(`[data-open-invitation="${eventId}"]`).click();
+  const invitationDialog = memberPage.locator('.modal');
+  await invitationDialog.waitFor();
   assert.match(
-    (await pending.textContent()) ?? '',
+    (await invitationDialog.textContent()) ?? '',
     /25,50/,
     'the invitation discloses the per-person cost before acceptance',
   );
-  assert.match((await pending.textContent()) ?? '', /Zahlungsziel/);
-  assert.equal(await pending.locator('.event-card-info.food-order-details .event-invitation-payment').count(), 1);
+  assert.match((await invitationDialog.textContent()) ?? '', /Zahlungsziel/);
+  assert.equal(await invitationDialog.locator(`[data-decline-invitation="${eventId}"]`).count(), 1);
+  await memberPage.keyboard.press('Escape');
+  await invitationDialog.waitFor({ state: 'detached' });
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,
@@ -289,18 +294,14 @@ test('manager invites a member who accepts and both open clients update', async 
   await openAcceptedEvent.waitFor();
   assert.equal(await openAcceptedEvent.textContent(), 'Event öffnen');
   const eventConsent = memberPage.locator(`[data-consent-event="${eventId}"]`);
-  await eventConsent.waitFor();
+  await eventConsent.waitFor({ state: 'attached' });
+  await memberPage.click('[data-profile-section="privacy"] > summary');
   assert.equal(await eventConsent.isEnabled(), true, 'the accepted event offers consent without reloading the page');
-  await eventConsent.check();
-  await memberPage.waitForFunction(
-    (acceptedEventId) => (document.querySelector(`[data-consent-event="${acceptedEventId}"]`) as HTMLInputElement | null)?.checked === true,
-    eventId,
-  );
-  await eventConsent.uncheck();
-  await memberPage.waitForFunction(
-    (acceptedEventId) => (document.querySelector(`[data-consent-event="${acceptedEventId}"]`) as HTMLInputElement | null)?.checked === false,
-    eventId,
-  );
+  await eventConsent.click();
+  await memberPage.waitForSelector(`[data-consent-event="${eventId}"][aria-pressed="true"]`);
+  assert.equal(await memberPage.locator(`[data-consent-event="${eventId}"]`).textContent(), 'Widerrufen');
+  await memberPage.locator(`[data-consent-event="${eventId}"]`).click();
+  await memberPage.waitForSelector(`[data-consent-event="${eventId}"][aria-pressed="false"]`);
   await memberPage.click('#notifications-btn');
   await invitationNotification.waitFor();
   assert.equal(
@@ -788,21 +789,16 @@ test('starting tracking refreshes a standing consent already shown in the profil
 
   await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'profile' })));
   await memberPage.waitForSelector('#view-container[data-view="profile"]');
-  const eventConsent = memberPage.locator(`[data-consent-event="${trackingEventId}"]`);
-  await eventConsent.waitFor();
-  assert.equal(await eventConsent.isChecked(), false);
-  const autoConsent = memberPage.locator('#privacy-auto-consent');
-  await autoConsent.check();
-  await memberPage.waitForFunction(
-    () => (document.querySelector('#privacy-auto-consent') as HTMLInputElement | null)?.checked === true,
-  );
-  assert.equal(await eventConsent.isChecked(), false, 'the event is not yet trackable');
+  const consentPressed = (id: string) => memberPage.locator(`[data-consent-event="${id}"]`).getAttribute('aria-pressed');
+  await memberPage.locator(`[data-consent-event="${trackingEventId}"]`).waitFor({ state: 'attached' });
+  await memberPage.click('[data-profile-section="privacy"] > summary');
+  assert.equal(await consentPressed(trackingEventId), 'false');
+  await memberPage.click('#privacy-auto-consent');
+  await memberPage.waitForSelector('#privacy-auto-consent[aria-pressed="true"]');
+  assert.equal(await consentPressed(trackingEventId), 'false', 'the event is not yet trackable');
 
   const started = await ownerPage.request.post(`${BASE_URL}/api/events/${trackingEventId}/tracking/start`);
   assert.equal(started.status(), 200, await started.text());
-  await memberPage.waitForFunction(
-    (id) => (document.querySelector(`[data-consent-event="${id}"]`) as HTMLInputElement | null)?.checked === true,
-    trackingEventId,
-  );
-  assert.equal(await eventConsent.isChecked(), true, 'server-created consent is visible without a page reload');
+  await memberPage.waitForSelector(`[data-consent-event="${trackingEventId}"][aria-pressed="true"]`);
+  assert.equal(await consentPressed(trackingEventId), 'true', 'server-created consent is visible without a page reload');
 });

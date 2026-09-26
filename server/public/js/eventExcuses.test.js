@@ -82,7 +82,7 @@ test('duration buckets follow the visible German day count', () => {
   const weekend = eventExcuseProfile(EVENTS.medium);
   assert.equal(weekend.duration, 'medium');
   assert.equal(weekend.days, 3);
-  assert.equal(weekend.range, '11.09. – 13.09.');
+  assert.equal(weekend.range, '11.09. bis 13.09.');
 
   assert.equal(eventExcuseProfile(EVENTS.long).duration, 'long');
   assert.equal(eventExcuseProfile(EVENTS.long).days, 6);
@@ -156,7 +156,7 @@ test('a day count is filled in and survives a missing period', () => {
   assert.match(fillExcuseText('Genau {tage} Tage.', eventExcuseProfile(EVENTS.medium)), /Genau 3 Tage\./);
   assert.match(
     fillExcuseText('Von {start} bis {ende}, also {zeitraum}.', eventExcuseProfile(EVENTS.long)),
-    /Von 07\.09\. bis 12\.09\., also 07\.09\. – 12\.09\.\./,
+    /Von 07\.09\. bis 12\.09\., also 07\.09\. bis 12\.09\.\./,
   );
   assert.doesNotMatch(fillExcuseText('{tage} {zeitraum} {start} {ende}', eventExcuseProfile(EVENTS.unknown)), /[{}]/);
 });

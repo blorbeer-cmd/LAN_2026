@@ -122,6 +122,7 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`claude/tournament-teams-consistency-lkkns1`](./claude-tournament-teams-consistency-lkkns1.md) — 1 gemergt, 0 offen
 - [`claude/tracking-tool-pause-feature-62phr2`](./claude-tracking-tool-pause-feature-62phr2.md) — 1 gemergt, 0 offen
 - [`claude/ui-polish-food-orders-0f1343`](./claude-ui-polish-food-orders-0f1343.md): 1 gemergt, 0 offen
+- [`claude/ui-polish-profile`](./claude-ui-polish-profile.md): 0 gemergt, 1 offen
 - [`claude/unbewertet-spieler-skill-anzeige-yn6zxv`](./claude-unbewertet-spieler-skill-anzeige-yn6zxv.md) — 1 gemergt, 0 offen
 - [`claude/user-management-concept-xbro77`](./claude-user-management-concept-xbro77.md) — 4 gemergt, 0 offen
 - [`claude/vote-history-sorting-gxnwr8`](./claude-vote-history-sorting-gxnwr8.md) — 1 gemergt, 0 offen

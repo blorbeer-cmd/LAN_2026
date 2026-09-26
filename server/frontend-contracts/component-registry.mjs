@@ -267,17 +267,10 @@ export const components = [
   {
     "id": "profile-controls",
     "role": "standard-control",
-    "selector": ".profile-color-trigger, .profile-color-picker-copy, .profile-color-picker-value, .profile-layout-option",
+    "selector": ".profile-color-trigger, .profile-color-picker-copy, .profile-color-picker-value",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Profile controls use the standard field/button/icon variants.",
-    "dynamicUses": [
-      {
-        "file": "public/js/views/profile.js",
-        "source": "class=\"btn profile-layout-option${layoutPreference === option.value ? ' btn-primary' : ''}\"",
-        "reason": "Concrete profile-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      }
-    ]
+    "purpose": "Profile controls use the standard field/button/icon variants; the color trigger is a small dot on the avatar with an enlarged invisible hit area."
   },
   {
     "id": "row-icons",
@@ -318,6 +311,30 @@ export const components = [
       "max-width",
       "padding",
       "white-space"
+    ]
+  },
+  {
+    "id": "profile-row-open",
+    "role": "composite-part",
+    "selector": ".profile-row-main, .profile-row-open",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "A profile invitation row's text opens its detail dialog: plain text without button chrome whose hit area covers the row's text column.",
+    "properties": [
+      "min-width",
+      "width",
+      "padding"
+    ]
+  },
+  {
+    "id": "profile-link-btn",
+    "role": "composite-part",
+    "selector": ".profile-link-btn",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Quiet inline text action inside a muted meta line („Mehr erfahren“, „Key erneuern“); underlined text, no button chrome.",
+    "properties": [
+      "padding"
     ]
   },
   {
@@ -517,11 +534,6 @@ export const components = [
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "Interactive filter chips use 32px; passive chip labels are outside this control variant.",
     "dynamicUses": [
-      {
-        "file": "public/js/views/events.js",
-        "source": "class=\"chip${entry.id === 'alle' ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
       {
         "file": "public/js/views/gameCatalog.js",
         "source": "class=\"chip${selectedGenres.has(g) ? ' is-active' : ''}\"",
@@ -1463,6 +1475,18 @@ export const permanentVariants = [
     ]
   },
   {
+    "id": "profile-row-action",
+    "role": "standard-control",
+    "selector": ".profile-row-action > .btn, .profile-row-action > select",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Mein Profil keeps one fixed right-hand action column across all cards, so compact buttons and the view select share one width; the select matches the compact buttons' type size.",
+    "properties": [
+      "width",
+      "font-size"
+    ]
+  },
+  {
     "id": "broadcast-table-action",
     "role": "standard-control",
     "selector": ".broadcast-table-action > .btn",
@@ -2123,17 +2147,6 @@ export const permanentVariants = [
       "border-radius"
     ],
     "reason": "Shared roster owns the checkbox-card inset, border radius and safe name reflow."
-  },
-  {
-    "id": "profile-agent-field",
-    "role": "composite-part",
-    "selector": ".profile-agent-key-row input",
-    "owner": "public/css/style.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "min-width"
-    ],
-    "reason": "Agent key field yields to its neighboring copy action."
   },
   {
     "id": "player-assignment-field",

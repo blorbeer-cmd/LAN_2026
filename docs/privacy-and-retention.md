@@ -38,7 +38,7 @@ Selbstlöschung und den Adminfall getrennt formuliert.
 
 | Datenkategorie | Zweck | Sichtbarkeit | Erhebung | Technische Aufbewahrung | Löschpfad |
 | --- | --- | --- | --- | --- | --- |
-| Konto, Profil, Community-Rolle | Anmeldung, Anzeige, Berechtigung | eigenes Konto; Profilfelder für Community-Mitglieder; Rollen für Admins | Registrierung und Profilpflege | bis Kontolöschung | Konto > Datenschutz; blockiert nur bei unübertragener Rolle oder offenem Fachvorgang |
+| Konto, Profil, Community-Rolle | Anmeldung, Anzeige, Berechtigung | eigenes Konto; Profilfelder für Community-Mitglieder; Rollen für Admins | Registrierung und Profilpflege | bis Kontolöschung | Profil > Meine Daten; blockiert nur bei unübertragener Rolle oder offenem Fachvorgang |
 | Event-Teilnahme und Zahlungsstatus | Planung und Abrechnung | betroffene Person und Orga | Einladung, Zu-/Absage, Orga-Bestätigung | bis Kontolöschung; bestätigte Zahlung muss zuvor fachlich geklärt werden | Teilnahme/Zahlung zurücksetzen, dann Konto löschen |
 | Tracking-Einwilligung | Nachweis der freiwilligen Aktivitätserfassung | betroffene Person und technisch berechtigte Orga | ausdrückliche Checkbox; Zeitpunkt, Quelle, Zweck und Textversion | Historie bis Kontolöschung | Widerruf sofort; Historie mit Kontolöschung |
 | Agent-Erreichbarkeit und Spielaktivität | Live-Status, Spielzeit, Auswertung, Fehlersuche | eigener Status; Event-/Adminansichten im jeweiligen Umfang | Windows-Agent nur bei gültigem Event-Kontext | Diagnose standardmäßig 7 Tage; beendete Rohsitzungen abgeschlossener Events 730 Tage, wenn Bereinigung aktiviert | Widerruf stoppt neue Erfassung und leert den zuletzt gespeicherten Prozess-Snapshot der Diagnose, sobald kein gültiger Kontext mehr besteht; Kontolöschung oder aktivierte Bereinigung entfernt die übrigen Rohdaten |
@@ -60,10 +60,14 @@ wenn Browser und Server dieselbe Version verwenden. Ändert sich der Text, muss 
 eingewilligt werden. Vorhandene Einwilligungen aus älteren Versionen bleiben als unveränderter,
 unversionierter Verlauf erhalten; sie werden nicht stillschweigend in eine aktuelle Einwilligung
 umgedeutet und aktivieren keine Erfassung. Ein Widerruf bleibt jederzeit ohne Textversionsprüfung
-möglich. Damit eine solche Altzeile nicht unwiderrufbar im Bestand liegt, führt die
-Datenschutzansicht sie getrennt unter „Frühere Event-Einwilligungen“ beziehungsweise „Alte
-Zustimmung“ auf; dort widerrufene Zeilen verschwinden aus der Liste und erscheinen im
-persönlichen Export mit gesetztem Widerrufszeitpunkt.
+möglich. Frühere Einwilligungen zu einem trackbaren Event führt die Datenschutzansicht als eigene
+Zeile „Frühere Einwilligung: <Event>“ mit „Widerrufen“; dort widerrufene Zeilen verschwinden aus
+der Liste und erscheinen im persönlichen Export mit gesetztem Widerrufszeitpunkt. Zwei Altbestände
+zeigt die Ansicht bewusst nicht mehr: eine Einwilligung zum Basis-Event „Allgemein“, das selbst
+nicht trackbar ist, und die alte Gruppen-Zustimmung aus der Zeit vor der eventgebundenen
+Erfassung. Beide aktivieren keine Erfassung, stehen weiter im persönlichen Export und werden mit
+der Kontolöschung entfernt; der Server akzeptiert ihren Widerruf weiterhin über die bestehenden
+Endpunkte.
 
 Wer nicht bei jedem neuen Event erneut entscheiden möchte, kann im Profil eine stehende
 Vorab-Einwilligung setzen. Sie merkt sich die Textversion, unter der sie erteilt wurde, und wirkt
@@ -76,8 +80,9 @@ eine reguläre Einwilligungszeile mit Zweck und Textversion, kein stillschweigen
 
 Sie gilt auch für eine freigeschaltete Gruppe. Das ist bewusst so, muss aber klar sein: Eine Gruppe
 ist der eine trackbare Bereich ohne Endzeitpunkt, die Erfassung läuft dort also bis zum Widerruf
-statt bis zum Eventende. Die Profilbeschriftung nennt Gruppen ausdrücklich; der benachbarte Tooltip
-erklärt diesen Unterschied. Wer das nicht will, lässt die Vorab-Einwilligung aus und entscheidet weiter je
+statt bis zum Eventende. Die Profilzeile „Neue Events und Gruppen vorab erlauben“ nennt Gruppen
+ausdrücklich, ihre Meta-Zeile sagt „Gruppen laufen bis zum Widerruf“, und der Dialog „Mehr
+erfahren“ erklärt diesen Unterschied. Wer das nicht will, lässt die Vorab-Einwilligung aus und entscheidet weiter je
 Bereich einzeln; ein Widerruf der einzelnen Gruppenzeile bleibt jederzeit möglich.
 
 ## Welche Bereiche überhaupt trackbar sind

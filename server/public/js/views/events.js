@@ -165,10 +165,7 @@ function renderExcuseResult(excuse) {
   }
   return `
     <blockquote class="excuse-text">${escapeHtml(excuse.text)}</blockquote>
-    <div class="excuse-meta">
-      <span class="badge">${escapeHtml(excuseCategoryLabel(excuse.category))}</span>
-      <span class="badge badge-online">Glaubwürdigkeit ${excuse.credibility}/5</span>
-    </div>`;
+    <div class="excuse-meta">${escapeHtml(excuseCategoryLabel(excuse.category))} · Glaubwürdigkeit ${excuse.credibility} von 5</div>`;
 }
 
 // Keeps "Neue Ausrede" from repeating itself while a decent alternative is
@@ -180,20 +177,20 @@ function openExcuseDialog(event) {
   let category = 'alle';
   let current = null;
 
-  const categoryChips = [{ id: 'alle', label: 'Alle' }, ...EXCUSE_CATEGORIES]
-    .map(
-      (entry) =>
-        `<button type="button" class="chip${entry.id === 'alle' ? ' is-active' : ''}" aria-pressed="${entry.id === 'alle'}" data-excuse-category="${escapeHtml(entry.id)}">${escapeHtml(entry.label)}</button>`,
-    )
+  const categoryOptions = [{ id: 'alle', label: 'Alle' }, ...EXCUSE_CATEGORIES]
+    .map((entry) => `<option value="${escapeHtml(entry.id)}">${escapeHtml(entry.label)}</option>`)
     .join('');
 
   openModal('Ausreden-Generator', `
     <div class="stack excuse-dialog">
-      <div class="chip-list excuse-category-filter" role="group" aria-label="Kategorie">${categoryChips}</div>
+      <div>
+        <label for="excuse-category" class="field-label">Kategorie</label>
+        <select id="excuse-category" data-excuse-category>${categoryOptions}</select>
+      </div>
       <div class="excuse-result" data-excuse-result aria-live="polite"></div>
       <div class="excuse-dialog-actions">
-        <button type="button" class="btn btn-primary" data-excuse-next>Neue Ausrede</button>
-        <button type="button" class="btn" data-excuse-copy>Kopieren</button>
+        <button type="button" class="btn btn-sm" data-excuse-next>Neue Ausrede</button>
+        <button type="button" class="btn btn-primary btn-sm" data-excuse-copy>Kopieren</button>
       </div>
     </div>
   `, {
@@ -210,20 +207,13 @@ function openExcuseDialog(event) {
         result.innerHTML = renderExcuseResult(current);
       };
 
-      backdrop.querySelectorAll('[data-excuse-category]').forEach((chip) => {
-        chip.addEventListener('click', () => {
-          category = chip.dataset.excuseCategory;
-          backdrop.querySelectorAll('[data-excuse-category]').forEach((candidate) => {
-            const active = candidate === chip;
-            candidate.classList.toggle('is-active', active);
-            candidate.setAttribute('aria-pressed', String(active));
-          });
-          // A category switch is a new request, not a continuation: the small
-          // repeat window would otherwise hide the first excuses of a narrow
-          // category that the previous draw happened to use up.
-          recentIds.length = 0;
-          draw();
-        });
+      backdrop.querySelector('[data-excuse-category]').addEventListener('change', (changeEvent) => {
+        category = changeEvent.currentTarget.value;
+        // A category switch is a new request, not a continuation: the small
+        // repeat window would otherwise hide the first excuses of a narrow
+        // category that the previous draw happened to use up.
+        recentIds.length = 0;
+        draw();
       });
       backdrop.querySelector('[data-excuse-next]').addEventListener('click', draw);
       copyBtn.addEventListener('click', async () => {
@@ -935,27 +925,75 @@ function renderEventSection() {
   return `${section(false)}${section(true)}`;
 }
 
-// Single invitation card: cost/deadline disclosure plus accept/decline.
-// Rendered from Profile's own "Einladungen" section rather than here — a
-// teaser sitting directly above the Events cards made it too easy to miss and
-// cluttered the tab (see DESIGN_SYSTEM.md's "Orga" entry). Home's "Aktuell"
-// list gets a lightweight linking nudge instead (see aktuellStatus.js).
-export function renderInvitationCard(event) {
+// Profile lists pending invitations as flat rows: name, one meta line and a
+// fixed "Annehmen" slot. Everything else (full name and place, note, cost,
+// the excuse generator and "Ablehnen") lives in the detail dialog the row
+// opens. Home's "Aktuell" list links here (see aktuellStatus.js).
+const INVITATION_TITLE_LIMIT = 40;
+
+function invitationMeta(event) {
+  return [
+    eventTypeTitle(event.eventType, state.eventTypeOptions),
+    // UI copy avoids dashes; the shared range helper joins with one.
+    eventIsGroup(event) ? '' : eventDateRange(event).replace(' – ', ' bis '),
+    event.location,
+  ].filter(Boolean).map((part) => escapeHtml(part)).join(' · ');
+}
+
+export function renderInvitationRow(event) {
+  const id = escapeHtml(event.id);
+  const title = event.name.length > INVITATION_TITLE_LIMIT
+    ? `${event.name.slice(0, INVITATION_TITLE_LIMIT - 1).trimEnd()}…`
+    : event.name;
   return `
-    <article class="card stack event-card event-card-invitation" data-pending-invitation="${event.id}">
-      <div class="row-between food-order-card-header event-card-header">
-        <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
-        <span class="event-card-header-badges">
-          <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
-          <span class="badge badge-paused">Eingeladen</span>
+    <div class="profile-row is-link" data-pending-invitation="${id}">
+      <button type="button" class="profile-row-main profile-row-open" data-open-invitation="${id}" aria-label="${escapeHtml(event.name)} anzeigen">
+        <span class="profile-row-text">
+          <span class="profile-row-title">${escapeHtml(title)}</span>
+          <span class="profile-row-meta">${invitationMeta(event)}</span>
         </span>
-      </div>
-      ${renderEventInfo(event, { invitation: true })}
-      <div class="event-card-actions">
-        <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Annehmen</button>
-        <button type="button" class="btn" data-decline-invitation="${event.id}">Ablehnen</button>
-      </div>
-    </article>`;
+      </button>
+      <span class="profile-row-action"><button type="button" class="btn btn-sm" data-accept-invitation="${id}">Annehmen</button></span>
+    </div>`;
+}
+
+export function openInvitationDialog(event, ctx) {
+  const facts = [
+    ['Art', escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))],
+    eventIsGroup(event) ? null : ['Zeitraum', escapeHtml(eventDateRange(event).replace(' – ', ' bis '))],
+    event.location ? ['Ort', escapeHtml(event.location)] : null,
+    event.description ? ['Notiz', escapeHtml(event.description)] : null,
+    event.costCents ? ['Kosten', escapeHtml(formatEuroCents(event.costCents))] : null,
+    event.paymentDueAt ? ['Zahlungsziel', escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))] : null,
+  ].filter(Boolean);
+  // An ended event or a group has nothing left to collide with.
+  const excuse = event.isEnded || eventIsGroup(event)
+    ? ''
+    : `<button type="button" class="btn btn-sm" data-event-excuse="${escapeHtml(event.id)}" title="Ausrede für einen Paralleltermin generieren">Ausrede</button>`;
+  const { close } = openModal(
+    event.name,
+    `<div class="stack">
+       <dl class="checklist-detail-facts">
+         ${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
+       </dl>
+       <div class="invitation-detail-footer${excuse ? ' has-excuse' : ''}">
+         ${excuse}
+         <button type="button" class="btn btn-sm" data-decline-invitation="${escapeHtml(event.id)}">Ablehnen</button>
+         <button type="button" class="btn btn-primary btn-sm" data-accept-invitation="${escapeHtml(event.id)}">Annehmen</button>
+       </div>
+     </div>`,
+    {
+      onMount: (el) => {
+        (el.closest('.modal') ?? el.querySelector('.modal'))?.classList.add('checklist-detail-modal');
+        wireEventExcuseActions(el);
+        el.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (await answerPendingInvitation(btn, ctx)) close();
+          });
+        });
+      },
+    },
+  );
 }
 
 // A teaser is all an invited account receives, so the invitation list comes
@@ -970,46 +1008,52 @@ export function acceptedInvitationHandoffHtml() {
     <section class="card stack grouped-page-section" aria-labelledby="profile-accepted-invitation-title">
       <div class="grouped-page-section-title">
         <h2 id="profile-accepted-invitation-title" tabindex="-1">Einladung angenommen</h2>
+        <button type="button" class="btn btn-sm" data-open-accepted-event="${escapeHtml(acceptedInvitationHandoff.id)}">Event öffnen</button>
       </div>
-      <p class="muted">Du nimmst an „${escapeHtml(acceptedInvitationHandoff.name)}“ teil.</p>
-      <button type="button" class="btn btn-primary btn-block" data-open-accepted-event="${escapeHtml(acceptedInvitationHandoff.id)}">Event öffnen</button>
+      <p class="profile-note">Du nimmst an „${escapeHtml(acceptedInvitationHandoff.name)}“ teil</p>
     </section>`;
 }
 
-// Reused only by Profile's "Einladungen" section today, so it targets that
-// page's own headings directly (the same direct-ID pattern the previous
-// Events-tab handler used for #orga-invitations-title/#orga-events-title):
-// the refresh below replaces the invitation button's own DOM, so focus needs
-// an explicit, still-present target instead of being left to fall back to
-// <body>.
+// Shared by the row's "Annehmen" and the detail dialog. The refresh replaces
+// the clicked button's own DOM, so focus moves to a still-present Profile
+// heading instead of falling back to <body>. Resolves true once answered.
+async function answerPendingInvitation(btn, ctx) {
+  const accept = Boolean(btn.dataset.acceptInvitation);
+  const eventId = btn.dataset.acceptInvitation || btn.dataset.declineInvitation;
+  const invitation = (state.eventInvitations || []).find((event) => event.id === eventId);
+  btn.disabled = true;
+  try {
+    if (accept) await api.events.acceptInvitation(eventId);
+    else await api.events.declineInvitation(eventId);
+    if (accept) window.dispatchEvent(new CustomEvent('respawn:event-invitation-accepted'));
+    await settleNotificationTarget(`event-invitation:${eventId}:${getMyId()}`);
+    acceptedInvitationHandoff = accept
+      ? { id: eventId, name: invitation?.name ?? 'diesem Event' }
+      : null;
+    await ctx.refresh();
+    window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
+    (
+      document.querySelector('#profile-accepted-invitation-title')
+      || document.querySelector('#profile-invitations-title')
+      || document.querySelector('#profile-view-title')
+    )?.focus();
+    showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
+    return true;
+  } catch (err) {
+    btn.disabled = false;
+    showToast(err.message, { error: true });
+    return false;
+  }
+}
+
 export function wirePendingInvitationActions(container, ctx) {
-  wireEventExcuseActions(container);
-  container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const accept = Boolean(btn.dataset.acceptInvitation);
-      const eventId = btn.dataset.acceptInvitation || btn.dataset.declineInvitation;
-      const invitation = (state.eventInvitations || []).find((event) => event.id === eventId);
-      btn.disabled = true;
-      try {
-        if (accept) await api.events.acceptInvitation(eventId);
-        else await api.events.declineInvitation(eventId);
-        if (accept) window.dispatchEvent(new CustomEvent('respawn:event-invitation-accepted'));
-        await settleNotificationTarget(`event-invitation:${eventId}:${getMyId()}`);
-        acceptedInvitationHandoff = accept
-          ? { id: eventId, name: invitation?.name ?? 'diesem Event' }
-          : null;
-        await ctx.refresh();
-        window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
-        (
-          container.querySelector('#profile-accepted-invitation-title')
-          || container.querySelector('#profile-invitations-title')
-          || container.querySelector('#profile-view-title')
-        )?.focus();
-        showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
-      } catch (err) {
-        btn.disabled = false;
-        showToast(err.message, { error: true });
-      }
+  container.querySelectorAll('[data-accept-invitation]').forEach((btn) => {
+    btn.addEventListener('click', () => answerPendingInvitation(btn, ctx));
+  });
+  container.querySelectorAll('[data-open-invitation]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const invitation = (state.eventInvitations || []).find((event) => event.id === btn.dataset.openInvitation);
+      if (invitation) openInvitationDialog(invitation, ctx);
     });
   });
   container.querySelector('[data-open-accepted-event]')?.addEventListener('click', async (event) => {
