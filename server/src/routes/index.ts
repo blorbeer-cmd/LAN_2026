@@ -58,7 +58,7 @@ import {
 import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { getEnabledEventFeatures, requireActiveEventFeatureMutation } from '../eventFeatures';
-import { isAdminTestMode } from '../testDataVisibility';
+import { includesTestEvents } from '../testDataVisibility';
 
 export const apiRouter = Router();
 
@@ -161,7 +161,7 @@ function serializeActiveEvent(event: EventContextEvent) {
 
 function visibleActiveEvent(req: Request): EventContextEvent {
   const activeEvent = getOrRepairActiveEvent(req.player!.id);
-  if (isAdminTestMode(req) || !activeEvent.is_test) return activeEvent;
+  if (includesTestEvents(req) || !activeEvent.is_test) return activeEvent;
   const baseEvent = getSelectableEvent(BASE_EVENT_ID);
   if (!baseEvent) throw new Error('Configured base event is missing or unavailable.');
   return baseEvent;
@@ -195,7 +195,7 @@ apiRouter.put('/me/active-event', requireUser, (req, res) => {
   const previousEvent = getOrRepairActiveEvent(req.player!.id);
   const event = setActiveEventForPlayer(req.player!.id, eventId);
   if (!event) return res.status(404).json({ error: 'Event nicht gefunden oder nicht freigegeben.' });
-  if (event.is_test && !isAdminTestMode(req)) {
+  if (event.is_test && !includesTestEvents(req)) {
     setActiveEventForPlayer(req.player!.id, previousEvent.id);
     return res.status(404).json({ error: 'Event nicht gefunden oder nicht freigegeben.' });
   }

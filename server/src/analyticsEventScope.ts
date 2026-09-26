@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 import { db } from './db';
 import { historicallyParticipatedEventIds } from './eventContext';
-import { isAdminTestMode } from './testDataVisibility';
+import { includesTestEvents } from './testDataVisibility';
 
 export type AnalyticsEventResolution =
   | { ok: true; eventIds: string[]; explicitEventId: string | null }
@@ -23,14 +23,14 @@ export function resolveAnalyticsEvents(req: Request, requestedEventId: unknown):
       return { ok: false, status: 404, error: 'Event nicht gefunden.' };
     }
     const event = db.prepare('SELECT is_test FROM events WHERE id = ?').get(eventId) as { is_test: number } | undefined;
-    if (!event || (event.is_test && !isAdminTestMode(req))) {
+    if (!event || (event.is_test && !includesTestEvents(req))) {
       return { ok: false, status: 404, error: 'Event nicht gefunden.' };
     }
     return { ok: true, eventIds: [eventId], explicitEventId: eventId };
   }
   if (!req.player) return { ok: false, status: 404, error: 'Event nicht gefunden.' };
   let eventIds = historicallyParticipatedEventIds(req.player.id);
-  if (!isAdminTestMode(req) && eventIds.length > 0) {
+  if (!includesTestEvents(req) && eventIds.length > 0) {
     const placeholders = eventIds.map(() => '?').join(',');
     eventIds = (
       db.prepare(`SELECT id FROM events WHERE is_test = 0 AND id IN (${placeholders})`).all(...eventIds) as Array<{

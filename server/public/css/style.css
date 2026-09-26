@@ -72,6 +72,10 @@
      regardless of how much subtext it happens to have. */
   --row-min-h: 68px;
   --row-icon-size: 36px;
+  /* Fixed value column of RankedList rows: wide enough for "134h 27m", so
+     values align across both columns and every section. */
+  --ranked-list-value-width: 96px;
+  --ranked-list-value-width-compact: 80px;
   --tap-target-size: 44px;
   /* Shared height for interactive controls: buttons, icon buttons, inputs and
      the searchable-select. One compact rhythm so every button is exactly as
@@ -316,28 +320,6 @@ textarea {
   opacity: 0.55;
 }
 
-/* Persistent "Admin-Modus aktiv" strip under the topbar (see app.js's
-   wireAdminMode) — reuses the paused/warn state colors so admin mode is
-   unmistakable without introducing a new hue. */
-.admin-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
-  background: var(--state-paused-bg);
-  color: var(--state-paused);
-  border-bottom: 1px solid var(--border);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-}
-
-.admin-banner-label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 /* Technical connection loss is a global app state, so it sits directly
    below the header until Socket.IO confirms a successful reconnect. */
 .connection-status {
@@ -358,27 +340,8 @@ textarea {
   flex: 0 0 auto;
 }
 
-.readiness-overview > span:first-child {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.readiness-check {
-  gap: var(--space-2);
-}
-
-.readiness-check-summary,
 .readiness-details {
   margin: 0;
-}
-
-.readiness-check-summary {
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
-}
-
-.readiness-details {
   padding-left: var(--space-5);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
@@ -600,6 +563,40 @@ textarea {
   cursor: pointer;
 }
 
+/* Admin mode (switched in Mein Profil) shows as a small shield on the logo
+   corner, in the paused/warn color the former banner used. */
+.topbar-logo-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.admin-indicator {
+  position: absolute;
+  right: calc(-1 * var(--space-2));
+  bottom: calc(-1 * var(--space-1));
+  display: grid;
+  place-items: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--state-paused);
+}
+.admin-indicator[hidden],
+.admin-indicator-label[hidden] {
+  display: none;
+}
+.admin-indicator-label {
+  flex: none;
+  margin-left: var(--space-1);
+  color: var(--state-paused);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.admin-indicator .ui-icon {
+  width: var(--font-size-sm);
+  height: var(--font-size-sm);
+}
 .topbar-logo {
   display: block;
   border-radius: var(--radius-sm);
@@ -639,6 +636,7 @@ textarea {
 
 @media (max-width: 639px) { /* --bp-md */
   .topbar-title .brand-title,
+  .topbar-title .admin-indicator-label,
   .github-icon-btn {
     display: none;
   }
@@ -1069,8 +1067,8 @@ textarea {
   box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--accent);
 }
-/* Bock/Skill scale: the chosen number takes the former slider's color and a
-   fill line below repeats the value with that slider's gradient. */
+/* Bock/Skill scale: the chosen number and its outline take the former
+   slider's saturated color and a fill line below repeats the value with that slider's gradient. */
 .rating-scale {
   --scale-track: #39415a; /* unfilled rest of the line, lighter than --bg-elevated-2 so it stays visible */
   display: inline-flex;
@@ -1090,7 +1088,7 @@ textarea {
 }
 .rating-scale .event-poll-response-toolbar .btn.is-selected {
   box-shadow: inset 0 0 0 1px var(--scale-high);
-  color: var(--scale-low);
+  color: var(--scale-high);
 }
 .rating-scale-meter {
   display: block;
@@ -1586,7 +1584,6 @@ textarea {
   }
   :root[data-layout-mode='desktop'] .notification-highlight,
   :root[data-layout-mode='desktop'] .connection-status,
-  :root[data-layout-mode='desktop'] .admin-banner,
   :root[data-layout-mode='desktop'] .view-container {
     margin-left: var(--desktop-nav-width);
   }
@@ -1915,6 +1912,15 @@ textarea {
    reads as a tidy group instead of a jumble of different widths. Wide enough
    that the longest current label ("Lobby öffnen") fits without growing past
    it, so every such button ends up the same size. */
+/* Two or more dialog footer buttons share the full width equally (cancel
+   left, the confirming action right). */
+.modal-actions {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--space-2);
+}
+
 .btn-equal {
   min-width: 7.5rem;
 }
@@ -2466,45 +2472,23 @@ input[type='number']::-webkit-inner-spin-button {
   gap: var(--space-2);
 }
 
-.profile-identity-editor {
-  display: grid;
-  gap: var(--space-4);
-}
-.profile-avatar-editor {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-.profile-avatar-control {
-  cursor: pointer;
-}
-.profile-identity-fields {
-  display: grid;
-  grid-template-columns: auto auto;
-  align-items: start;
-  gap: var(--space-3);
-}
-.profile-text-field {
-  grid-column: 1 / -1;
-  min-width: 0;
-  display: grid;
-  gap: var(--space-1);
-}
-.profile-color-field {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-}
 .profile-color-trigger {
-  width: var(--tap-target-size);
-  min-height: var(--control-height);
+  position: absolute;
+  right: calc(-1 * var(--space-1));
+  bottom: calc(-1 * var(--space-1));
+  width: var(--space-5);
+  height: var(--space-5);
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border: 3px solid var(--bg-elevated);
+  border-radius: var(--radius-full);
   background: var(--profile-color);
   cursor: pointer;
+}
+/* The dot is small; an invisible margin keeps a comfortable hit area. */
+.profile-color-trigger::after {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--space-2));
 }
 .profile-color-picker-modal {
   align-items: center;
@@ -2585,32 +2569,6 @@ input[type='number']::-webkit-inner-spin-button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
 }
-.profile-identity-fields .field-label {
-  margin: 0;
-}
-.profile-password-fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-}
-.profile-layout-hint {
-  margin: 0;
-}
-.profile-layout-options {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
-}
-.profile-layout-option {
-  min-width: 0;
-  padding-right: var(--space-2);
-  padding-left: var(--space-2);
-}
-@media (min-width: 640px) { /* --bp-md */
-  .profile-password-fields {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 .analytics-tournament-breakdowns {
   display: grid;
   gap: var(--space-3);
@@ -2633,54 +2591,376 @@ input[type='number']::-webkit-inner-spin-button {
 .analytics-tournament-breakdown > .section-title {
   margin-top: 0;
 }
-.profile-rating-nudge {
-  border-color: var(--accent);
+/* Mein Profil: settings as hairline rows, each with one action in a fixed
+   right column shared across the page (same slot width in every card). */
+.profile-rows {
+  display: flex;
+  flex-direction: column;
 }
-.profile-agent-steps {
+.profile-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 10rem;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.profile-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.profile-row:last-child {
+  padding-bottom: 0;
+}
+.profile-row.is-form {
+  align-items: end;
+}
+.profile-row-main {
+  display: flex;
+  align-items: center;
   gap: var(--space-3);
-}
-.profile-agent-step {
-  align-content: start;
-}
-.profile-agent-step-label {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-}
-.profile-agent-manual summary {
-  cursor: pointer;
-  font-weight: var(--font-weight-medium);
-}
-.profile-agent-key-row {
-  flex-wrap: wrap;
-  margin-top: var(--space-3);
-}
-.profile-agent-key-row input {
   min-width: 0;
 }
-.player-selection-grid.profile-monitor-grid {
-  grid-template-columns: minmax(0, 1fr);
+button.profile-row-main {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.profile-row-number {
+  flex: none;
+  width: var(--space-5);
+  color: var(--text-muted);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.profile-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.profile-row-title {
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+}
+.profile-row-meta {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+.profile-row-action {
+  display: flex;
+  justify-content: flex-end;
+}
+.profile-row-action > .btn,
+.profile-row-action > select {
+  width: 100%;
+}
+/* The select matches the neighbouring compact buttons' type size. */
+.profile-row-action > select {
+  font-size: var(--font-size-sm);
+}
+.profile-identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: var(--space-3) var(--space-4);
+}
+.profile-avatar-editor {
+  position: relative;
+  align-self: center;
+  width: var(--avatar-size-lg);
+  height: var(--avatar-size-lg);
+}
+.profile-identity .field-label {
+  display: block;
+}
+.profile-avatar-control {
+  display: block;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+.profile-avatar-control .avatar {
+  display: block;
+}
+.profile-text-field {
+  min-width: 0;
+}
+.profile-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.reauth-note {
+  margin-top: var(--space-2);
+}
+.profile-link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.profile-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  cursor: pointer;
+}
+.profile-monitor-group {
+  display: flex;
+  flex-direction: column;
+}
+.profile-monitor-group[hidden],
+.profile-monitor-row[hidden] {
+  display: none;
+}
+.profile-group-title {
+  margin: 0;
+  padding-bottom: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+}
+/* A standing option below a changing list (events come and go) is set
+   apart by a gap and a full hairline. */
+.profile-rows-separate {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+/* A lead row (a card's own action) above a list: the list starts below a
+   full hairline. */
+.profile-rows-divided {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+/* A longer list of short rows may use two columns on wide screens, filled
+   column by column; the caller marks each column's first and last row. */
+@media (min-width: 860px) { /* --bp-lg */
+  .profile-rows-columns {
+    display: grid;
+    grid-template-rows: repeat(var(--profile-rows-count, 1), auto);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: column;
+    column-gap: var(--space-7);
+  }
+  .profile-rows-columns > .profile-row.is-column-top {
+    padding-top: 0;
+    border-top: 0;
+  }
+  .profile-rows-columns > .profile-row.is-column-bottom {
+    padding-bottom: 0;
+  }
+  .profile-rows-columns > .profile-row:last-child:not(.is-column-bottom) {
+    padding-bottom: var(--space-3);
+  }
+}
+.profile-monitor-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+.profile-monitor-row .player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-tracking-details p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+}
+.invitation-detail-footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.invitation-detail-footer.has-excuse {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 639px) { /* --bp-md */
+  .profile-row {
+    grid-template-columns: minmax(0, 1fr) 8.5rem;
+    gap: var(--space-3);
+  }
+  .profile-row.is-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .profile-row.is-form .profile-row-action {
+    justify-self: end;
+    width: 8.5rem;
+  }
+  .profile-identity {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .profile-real-name {
+    grid-column: 1 / -1;
+  }
+  .profile-row-main {
+    gap: var(--space-2);
+  }
+  .profile-row-number {
+    width: var(--space-3);
+  }
+}
+/* Meine Statistiken: the event filter sits in the title row; key figures
+   share one card as hairline-separated columns; every list is a row table
+   with its value in a fixed right column. */
+.my-stats-filter {
+  width: 16rem;
+  min-width: 0;
+}
+.my-stats-kpis {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+}
+.my-stats-kpi {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  padding: 0 var(--space-4);
+  border-left: 1px solid var(--border);
+  text-align: center;
+}
+.my-stats-kpi:first-child {
+  border-left: 0;
+}
+.my-stats-kpi-value {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.my-stats-kpi-label {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+/* RankedList (frontend-contracts/components/ranked-list.md): flat hairline
+   rows, value in a fixed right column, two columns read top to bottom from
+   --bp-md. Rows side by side keep identical padding so they share one center
+   line; the list absorbs the last row's bottom padding. */
+.ranked-list {
+  display: flex;
+  flex-direction: column;
+}
+.ranked-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--ranked-list-value-width);
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+}
+.ranked-list-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.ranked-list-row:last-child {
+  padding-bottom: 0;
+}
+.ranked-list-row.is-ranked {
+  grid-template-columns: var(--space-6) minmax(0, 1fr) var(--ranked-list-value-width);
+}
+.ranked-list-row.has-lead {
+  grid-template-columns: auto minmax(0, 1fr) var(--ranked-list-value-width);
+}
+.ranked-list-row.is-ranked.has-lead {
+  grid-template-columns: var(--space-6) auto minmax(0, 1fr) var(--ranked-list-value-width);
+}
+.ranked-list-rank {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.ranked-list-lead {
+  display: flex;
+}
+.ranked-list-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ranked-list-title {
+  overflow: hidden;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ranked-list-meta {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.ranked-list-value {
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 @media (min-width: 640px) { /* --bp-md */
-  .profile-identity-fields {
-    grid-template-columns: auto auto repeat(2, minmax(0, 1fr));
-    align-items: center;
-  }
-  .profile-text-field {
-    grid-column: auto;
-  }
-  .profile-color-field,
-  .profile-text-field {
-    transform: translateY(calc(-1 * var(--space-2)));
-  }
-  .player-selection-grid.profile-monitor-grid {
+  .ranked-list {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(var(--ranked-list-rows, 1), auto);
+    grid-auto-flow: column;
+    column-gap: var(--space-7);
+    margin-bottom: calc(-1 * var(--space-2));
+  }
+  /* In two columns the right column starts at the break row, too. */
+  .ranked-list-row.is-column-top {
+    padding-top: 0;
+    border-top: 0;
+  }
+  .ranked-list-row:last-child {
+    padding-bottom: var(--space-2);
   }
 }
-@media (min-width: 860px) { /* --bp-lg */
-  .profile-agent-steps {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+@media (max-width: 639px) { /* --bp-md */
+  .ranked-list {
+    --ranked-list-value-width: var(--ranked-list-value-width-compact);
+  }
+  .ranked-list-row {
+    gap: var(--space-3);
+  }
+  .ranked-list-row.is-ranked {
+    grid-template-columns: var(--space-5) minmax(0, 1fr) var(--ranked-list-value-width);
+  }
+  .ranked-list-row.is-ranked.has-lead {
+    grid-template-columns: var(--space-5) auto minmax(0, 1fr) var(--ranked-list-value-width);
+  }
+}
+@media (max-width: 639px) { /* --bp-md */
+  .more-subpage-title-row.my-stats-title-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .my-stats-filter {
+    width: 100%;
+    margin-bottom: var(--space-3);
+  }
+  .my-stats-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: row;
+    row-gap: var(--space-4);
+  }
+  .my-stats-kpi:nth-child(odd) {
+    border-left: 0;
+  }
+  /* A lone last figure (five with "Alle Events") spans the row. */
+  .my-stats-kpi:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 }
 .player-assignment-row select {
@@ -2793,7 +3073,10 @@ button.draft-pool-player {
 [data-broadcast-history] > .collapsible-section-header,
 [data-music-connection] > .collapsible-section-header,
 [data-completed-tournaments] > .collapsible-section-header,
-[data-tournament-teams] > .collapsible-section-header {
+[data-tournament-teams] > .collapsible-section-header,
+[data-my-stats-section] > .collapsible-section-header,
+[data-profile-section] > .collapsible-section-header,
+[data-admin-section] > .collapsible-section-header {
   align-items: center;
 }
 .collapsible-section-header::-webkit-details-marker {
@@ -4019,6 +4302,7 @@ button.card {
 .arrivals-form-footer {
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-2);
 }
 .arrivals-member-list {
   display: grid;
@@ -4082,7 +4366,7 @@ button.card {
   display: inline-flex;
   flex-shrink: 0;
 }
-/* Eintragen/Austragen match the bordered "Aktion" menu trigger. */
+/* Bearbeiten/Eintragen/Austragen match the bordered "Aktion" menu trigger. */
 .arrivals-carpool-action > .btn {
   border: 1px solid var(--border);
 }
@@ -4176,6 +4460,12 @@ button.card {
        odd final card must not stretch across the full row. */
     grid-column: auto;
   }
+  /* The live board reads like every list: the left column fills top to
+     bottom before the next one starts (row counts set by home.js). */
+  .two-column-card-grid.home-live-grid {
+    grid-template-rows: repeat(var(--home-live-rows-2, 1), auto);
+    grid-auto-flow: column;
+  }
 }
 @media (max-width: 639px) { /* --bp-md */
   .arrivals-mobile-sort {
@@ -4223,27 +4513,27 @@ button.card {
   }
 }
 
-/* The QR code SVG already draws its own white background (needed for
-   scanability regardless of theme) — just round its corners and give it
-   some breathing room against the dark page behind it. */
-.invite-link-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--space-2);
+/* Invite dialog: the link field fills the row's text column, the QR code
+   opens as its own centered row below its toggle. The QR SVG draws its own
+   white background, needed for scanning regardless of theme. */
+.profile-row-main > .invite-link-field {
+  flex: 1;
+  min-width: 0;
+  font-family: monospace;
 }
-.invite-link-row > input,
-.invite-link-row .btn {
-  white-space: nowrap;
-}
-.admin-invite-event {
+.admin-invite-qr {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
+  justify-content: center;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.admin-invite-qr[hidden] {
+  display: none;
+}
+.admin-invite-qr svg {
+  width: min(100%, 240px); /* design-token-ok: QR size readable for phone cameras */
+  height: auto;
   border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
 }
 .admin-register-invite-note {
   margin: 0;

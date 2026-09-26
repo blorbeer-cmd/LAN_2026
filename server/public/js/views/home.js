@@ -7,6 +7,7 @@
 // the header bell (see notificationBanner.js), so Home does not duplicate
 // the same content in a second style.
 
+import { rankedListHtml } from '../rankedList.js';
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDateTime, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
@@ -333,8 +334,7 @@ function renderActiveGroups(players) {
   `;
 }
 
-// Leaderboard snapshot: the top six become a compact three-column overview
-// on wide desktops and stay a linear ranking on smaller screens.
+// Leaderboard snapshot: the top six as a RankedList, read top to bottom.
 function renderLeaderboardTop() {
   // The Auswertung area (leaderboard/analytics/hallOfFame) is only reachable
   // with the device-local Admin mode active (see app.js's switchView()) — a
@@ -343,23 +343,18 @@ function renderLeaderboardTop() {
   if (!isAdmin()) return '';
   const standings = state.leaderboard?.standings || [];
   if (standings.length === 0) return '';
-  const rows = standings.slice(0, 6)
-    .map((s, index) => {
-      const rank = index + 1;
-      return `
-      <div class="lb-row ${rank === 1 ? 'rank-1' : ''}">
-        <span class="lb-rank">${rank}</span>
-        ${avatarHtml(s, 28)}
-        <span class="player-name" style="flex:1;">${escapeHtml(s.name)}</span>
-        <span class="lb-points">${s.points} P</span>
-      </div>`;
-    })
-    .join('');
+  const items = standings.slice(0, 6).map((s) => ({
+    lead: avatarHtml(s, 28),
+    title: escapeHtml(s.name),
+    value: `${s.points} P`,
+  }));
   return `
     <section class="card grouped-page-section stack" aria-labelledby="home-leaderboard-title">
-      <div class="grouped-page-section-title"><h2 id="home-leaderboard-title">Rangliste</h2></div>
-      <div class="leaderboard-list-grid home-leaderboard-grid">${rows}</div>
-      <button type="button" class="btn btn-sm btn-block" data-navigate="leaderboard">Gesamte Rangliste ${icon('chevronRight')}</button>
+      <div class="grouped-page-section-title">
+        <h2 id="home-leaderboard-title">Rangliste</h2>
+        <button type="button" class="btn btn-sm" data-navigate="leaderboard">Alle ansehen</button>
+      </div>
+      ${rankedListHtml(items, { ranked: true, label: 'Rangliste' })}
     </section>
   `;
 }
@@ -471,7 +466,7 @@ export function renderHome(container, ctx) {
                <div class="grouped-page-section-title"><h2 id="home-live-title">Live-Status</h2></div>
                ${renderActiveGroups(players)}
                ${renderMyStatus(myId, players)}
-               <div class="two-column-card-grid home-live-grid">${cards}</div>
+               <div class="two-column-card-grid home-live-grid" style="--home-live-rows-2:${Math.ceil(players.length / 2)};--home-live-rows-3:${Math.ceil(players.length / 3)}">${cards}</div>
              </section>`
           : ''
       }

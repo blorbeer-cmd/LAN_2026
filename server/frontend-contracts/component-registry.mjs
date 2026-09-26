@@ -31,6 +31,13 @@ export const components = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "Color and state only; inherit the selected geometry.",
+    "dynamicUses": [
+      {
+        "file": "public/js/modal.js",
+        "source": "class=\"btn btn-sm ${danger ? 'btn-danger' : 'btn-primary'}\"",
+        "reason": "The shared confirmation picks its confirm meaning at runtime; both footer buttons keep the standard small geometry inside .modal-actions."
+      }
+    ],
     "properties": [
       "box-shadow"
     ]
@@ -43,11 +50,6 @@ export const components = [
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "Width only; inherit the selected geometry.",
     "dynamicUses": [
-      {
-        "file": "public/js/modal.js",
-        "source": "class=\"btn btn-sm btn-equal ${danger ? 'btn-danger' : 'btn-primary'}\"",
-        "reason": "Concrete button-width caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
       {
         "file": "public/js/views/foodOrders.js",
         "source": "class=\"btn btn-sm btn-equal ${danger ? 'btn-danger' : 'btn-primary'}\"",
@@ -267,17 +269,10 @@ export const components = [
   {
     "id": "profile-controls",
     "role": "standard-control",
-    "selector": ".profile-color-trigger, .profile-color-picker-copy, .profile-color-picker-value, .profile-layout-option",
+    "selector": ".profile-color-trigger, .profile-color-picker-copy, .profile-color-picker-value",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Profile controls use the standard field/button/icon variants.",
-    "dynamicUses": [
-      {
-        "file": "public/js/views/profile.js",
-        "source": "class=\"btn profile-layout-option${layoutPreference === option.value ? ' btn-primary' : ''}\"",
-        "reason": "Concrete profile-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      }
-    ]
+    "purpose": "Profile controls use the standard field/button/icon variants; the color trigger is a small dot on the avatar with an enlarged invisible hit area."
   },
   {
     "id": "row-icons",
@@ -318,6 +313,30 @@ export const components = [
       "max-width",
       "padding",
       "white-space"
+    ]
+  },
+  {
+    "id": "profile-row-open",
+    "role": "composite-part",
+    "selector": ".profile-row-main, .profile-row-open",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "A profile invitation row's text opens its detail dialog: plain text without button chrome whose hit area covers the row's text column.",
+    "properties": [
+      "min-width",
+      "width",
+      "padding"
+    ]
+  },
+  {
+    "id": "profile-link-btn",
+    "role": "composite-part",
+    "selector": ".profile-link-btn",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Quiet inline text action inside a muted meta line („Mehr erfahren“, „Key erneuern“); underlined text, no button chrome.",
+    "properties": [
+      "padding"
     ]
   },
   {
@@ -518,11 +537,6 @@ export const components = [
     "purpose": "Interactive filter chips use 32px; passive chip labels are outside this control variant.",
     "dynamicUses": [
       {
-        "file": "public/js/views/events.js",
-        "source": "class=\"chip${entry.id === 'alle' ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
         "file": "public/js/views/gameCatalog.js",
         "source": "class=\"chip${selectedGenres.has(g) ? ' is-active' : ''}\"",
         "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
@@ -610,23 +624,6 @@ export const components = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "purpose": "Composite card header: title plus round/deadline metadata are a documented multiline state."
-  },
-  {
-    "id": "data-row-action",
-    "role": "composite-part",
-    "selector": ".data-row-action",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Only the account-access row contains the 320px name/badge/action reflow query.",
-    "control": false
-  },
-  {
-    "id": "admin-controls",
-    "role": "standard-control",
-    "selector": ".admin-role-select",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Role field; its container handles reflow without changing standard field height."
   },
   {
     "id": "vote-fields",
@@ -1294,6 +1291,30 @@ export const components = [
 
 export const permanentVariants = [
   {
+    "id": "readiness-status-glyph",
+    "role": "composite-part",
+    "selector": ".readiness-status .ui-icon",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The Admin readiness status icon matches the size of its status text; the text keeps the meaning without color."
+  },
+  {
+    "id": "admin-indicator-glyph",
+    "role": "composite-part",
+    "selector": ".admin-indicator .ui-icon",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The admin-mode shield on the topbar logo sizes its glyph to the small round badge; it is not interactive."
+  },
+  {
+    "id": "invite-link-row-field",
+    "role": "standard-control",
+    "selector": ".profile-row-main > .invite-link-field",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The read-only invite URL fills the row's text column beside its copy action and may shrink below its intrinsic width."
+  },
+  {
     "id": "event-card-detail-glyph",
     "role": "composite-part",
     "selector": ".event-card-detail-icon .ui-icon",
@@ -1446,7 +1467,7 @@ export const permanentVariants = [
     "selector": ".rating-scale .event-poll-response-toolbar .btn.is-selected",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "On the Bock/Skill scale the chosen number's inset outline takes that scale's color; geometry stays with the square variant.",
+    "reason": "On the Bock/Skill scale the chosen number and its inset outline take that scale's saturated color; geometry stays with the square variant.",
     "properties": [
       "box-shadow"
     ]
@@ -1460,6 +1481,18 @@ export const permanentVariants = [
     "reason": "Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.",
     "properties": [
       "width"
+    ]
+  },
+  {
+    "id": "profile-row-action",
+    "role": "standard-control",
+    "selector": ".profile-row-action > .btn, .profile-row-action > select",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Mein Profil keeps one fixed right-hand action column across all cards, so compact buttons and the view select share one width; the select matches the compact buttons' type size.",
+    "properties": [
+      "width",
+      "font-size"
     ]
   },
   {
@@ -1615,38 +1648,6 @@ export const permanentVariants = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "reason": "32px filter control; passive chips keep their existing label geometry."
-  },
-  {
-    "id": "invite-link-controls",
-    "role": "standard-control",
-    "selector": ".invite-link-row > input, .invite-link-row .btn",
-    "owner": "public/css/style.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Short application-owned link actions remain nowrap; native field yields width."
-  },
-  {
-    "id": "admin-test-fields",
-    "role": "standard-control",
-    "selector": ".admin-test-controls input, .admin-test-controls .btn",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Dense test-data form keeps its existing font/columns while every one-line control is 32px."
-  },
-  {
-    "id": "data-row-name",
-    "role": "composite-part",
-    "selector": ".data-row-action > span > strong",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Only this name may visibly ellipsize; its full DOM/accessible text remains intact."
-  },
-  {
-    "id": "data-row-action-label",
-    "role": "standard-control",
-    "selector": ".data-row-action > .btn",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Short application action stays nowrap; below 320px the whole action moves to row two."
   },
   {
     "id": "food-position-slots",
@@ -2123,17 +2124,6 @@ export const permanentVariants = [
       "border-radius"
     ],
     "reason": "Shared roster owns the checkbox-card inset, border radius and safe name reflow."
-  },
-  {
-    "id": "profile-agent-field",
-    "role": "composite-part",
-    "selector": ".profile-agent-key-row input",
-    "owner": "public/css/style.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "min-width"
-    ],
-    "reason": "Agent key field yields to its neighboring copy action."
   },
   {
     "id": "player-assignment-field",

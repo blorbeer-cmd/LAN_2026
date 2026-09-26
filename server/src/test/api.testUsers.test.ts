@@ -188,30 +188,44 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
       testEvents[0].id,
     ) as { id: string }
   ).id;
+  // A test session never carries Admin mode, yet it must reach the seeded
+  // events its identity was invited to or accepted — otherwise nobody can
+  // walk through the member side of an invitation with test users.
   const testIdentityEvents = await request(app).get('/api/events').set('x-test-player-id', invitedTestPlayerId);
-  assert.ok(testIdentityEvents.body.invitations.every((event: { isTest: boolean }) => !event.isTest));
+  assert.ok(
+    testIdentityEvents.body.invitations.some((event: { id: string }) => event.id === testEvents[0].id),
+    'an invited test identity sees its test-event invitation',
+  );
 
   const acceptedTestPlayerId = (
     db.prepare("SELECT player_id AS id FROM event_participants WHERE event_id = ? AND status = 'accepted' LIMIT 1").get(
       testEvents[0].id,
     ) as { id: string }
   ).id;
-  assert.equal(
-    (
-      await request(app)
-        .get(`/api/live?eventId=${testEvents[0].id}`)
-        .set('x-test-player-id', acceptedTestPlayerId)
-    ).status,
-    404,
+  const acceptedIdentityEvents = await request(app).get('/api/events').set('x-test-player-id', acceptedTestPlayerId);
+  assert.ok(
+    acceptedIdentityEvents.body.availableEvents.some((event: { id: string }) => event.id === testEvents[0].id),
+    'an accepted test identity can switch into its test event',
   );
   assert.equal(
-    (
-      await request(app)
-        .get(`/api/live?eventId=${testEvents[0].id}`)
-        .set('x-test-player-id', acceptedTestPlayerId)
-        .set('x-admin-mode', '1')
-    ).status,
+    (await request(app).get(`/api/events/${testEvents[0].id}`).set('x-test-player-id', acceptedTestPlayerId)).status,
     200,
+  );
+  const switched = await request(app)
+    .put('/api/me/active-event')
+    .set('x-test-player-id', acceptedTestPlayerId)
+    .send({ eventId: testEvents[0].id });
+  assert.equal(switched.status, 200, switched.text);
+  assert.equal(
+    (await request(app).get(`/api/live?eventId=${testEvents[0].id}`).set('x-test-player-id', acceptedTestPlayerId))
+      .status,
+    200,
+  );
+  // Participation still decides: an invited-only identity gets no workspace data.
+  assert.equal(
+    (await request(app).get(`/api/live?eventId=${testEvents[0].id}`).set('x-test-player-id', invitedTestPlayerId))
+      .status,
+    404,
   );
 });
 

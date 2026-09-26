@@ -133,9 +133,9 @@ export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'O
         </div>
         <div class="modal-body">
           <p style="margin:0 0 var(--space-4);">${escapeHtml(message)}</p>
-          <div class="row" style="gap:var(--space-2);justify-content:flex-end;">
-            <button type="button" class="btn btn-sm btn-equal" data-cancel>${escapeHtml(cancelText)}</button>
-            <button type="button" class="btn btn-sm btn-equal ${danger ? 'btn-danger' : 'btn-primary'}" data-confirm>${escapeHtml(confirmText)}</button>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-sm" data-cancel>${escapeHtml(cancelText)}</button>
+            <button type="button" class="btn btn-sm ${danger ? 'btn-danger' : 'btn-primary'}" data-confirm>${escapeHtml(confirmText)}</button>
           </div>
         </div>
       </div>`;

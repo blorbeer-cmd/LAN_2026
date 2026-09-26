@@ -18,11 +18,12 @@ import {
   accountsByName,
   openAuswertungTab,
   ensureAdminMode,
+  openAdminSection,
   openEventsView,
   openOrgaTab,
   openProfile,
 } from './flowsShared.fixture';
-import { openMoreViewEntry } from './navHelpers';
+import { openMoreViewEntry, setAdminMode } from './navHelpers';
 import { assertControlHeights, assertInfoTooltipPlacement, assertNoOverflow } from './visualHelpers';
 
 registerFlowFixture('shell');
@@ -350,12 +351,19 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
       return grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length === 3 : false;
     }, selector);
   await waitForThreeColumns('.home-live-grid');
+  // Like every list, the live board fills the left column first.
+  assert.equal(await page.locator('.home-live-grid').evaluate((grid) => getComputedStyle(grid).gridAutoFlow), 'column');
   if (homeSectionFlow.seatingGap !== null) {
     assert.ok(homeSectionFlow.seatingGap >= 8 && homeSectionFlow.seatingGap <= 32);
   }
   if (homeSectionFlow.leaderboardGap !== null) {
     assert.ok(homeSectionFlow.leaderboardGap >= 8 && homeSectionFlow.leaderboardGap <= 32);
-    await waitForThreeColumns('.home-leaderboard-grid');
+    // The top six are a RankedList: two columns, filled top to bottom.
+    const ranking = page.locator('[aria-labelledby="home-leaderboard-title"] .ranked-list');
+    assert.deepEqual(
+      await ranking.evaluate((list) => [getComputedStyle(list).gridTemplateColumns.split(' ').length, getComputedStyle(list).gridAutoFlow]),
+      [2, 'column'],
+    );
   }
 
   await page.click('.desktop-nav-btn[data-view="matchmaking"]');
@@ -376,68 +384,36 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.view),
     'profile',
   );
-  const profileColumns = await page.locator('.profile-dashboard-columns').evaluate((layout) => {
-    const account = layout.querySelector('.profile-dashboard-account')?.getBoundingClientRect();
-    const lan = layout.querySelector('.profile-dashboard-lan')?.getBoundingClientRect();
-    const agent = document.querySelector('[aria-labelledby="profile-agent-title"]')?.getBoundingClientRect();
-    return {
-      display: getComputedStyle(layout).display,
-      accountLeft: account ? Math.round(account.left) : null,
-      accountTop: account ? Math.round(account.top) : null,
-      lanLeft: lan ? Math.round(lan.left) : null,
-      lanTop: lan ? Math.round(lan.top) : null,
-      agentWidth: agent ? Math.round(agent.width) : null,
-      layoutWidth: Math.round(layout.getBoundingClientRect().width),
-    };
-  });
-  assert.equal(profileColumns.display, 'grid');
-  assert.ok(profileColumns.accountLeft !== null && profileColumns.lanLeft !== null);
-  assert.ok(profileColumns.lanLeft > profileColumns.accountLeft);
-  assert.equal(profileColumns.lanTop, profileColumns.accountTop);
-  assert.equal(profileColumns.agentWidth, profileColumns.layoutWidth);
+  // Profile is one column of full-width cards on every width: each row has
+  // its single action in the right column, so a second column adds nothing.
+  const profileCards = await page.locator('#view-container .grouped-page-sections > .grouped-page-section').evaluateAll((cards) =>
+    cards.map((card) => { const box = card.getBoundingClientRect(); return [Math.round(box.left), Math.round(box.width)]; }),
+  );
+  assert.ok(profileCards.length >= 3);
+  assert.equal(new Set(profileCards.map(([left, width]) => `${left}:${width}`)).size, 1);
 
   await page.goBack();
   await page.waitForSelector('#view-container h1:text-is("Home")');
   assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), 'Home');
 
   await page.click('.desktop-nav-btn[data-view="admin"]');
-  await page.waitForSelector('#admin-tools-title');
+  await page.waitForSelector('[aria-label="Werkzeuge"]');
   assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), 'admin');
-  const adminColumnsHandle = await page.waitForFunction(() => {
-    const overview = document.querySelector('.admin-dashboard-overview');
-    const access = document.querySelector('.admin-dashboard-access');
-    const tools = overview?.querySelector('[aria-labelledby="admin-tools-title"]')?.getBoundingClientRect();
-    const readiness = overview?.querySelector('[aria-labelledby="admin-readiness-title"]')?.getBoundingClientRect();
-    const users = document.querySelector('[aria-labelledby="admin-players-title"]')?.getBoundingClientRect();
-    if (!overview?.isConnected || !access?.isConnected || getComputedStyle(overview).display !== 'grid' || !tools || !readiness || !users) return null;
-    return {
-      display: getComputedStyle(overview).display,
-      toolsLeft: Math.round(tools.left),
-      toolsTop: Math.round(tools.top),
-      readinessLeft: Math.round(readiness.left),
-      readinessTop: Math.round(readiness.top),
-      usersTop: Math.round(users.top),
-      accessBottom: Math.round(access.getBoundingClientRect().bottom),
-    };
+  // Admin, like Profile, is one column of full-width cards.
+  const adminCards = await page.locator('#view-container .grouped-page-sections > .grouped-page-section').evaluateAll((cards) =>
+    cards.map((card) => { const box = card.getBoundingClientRect(); return [Math.round(box.left), Math.round(box.width)]; }),
+  );
+  assert.ok(adminCards.length >= 3);
+  assert.equal(new Set(adminCards.map(([left, width]) => `${left}:${width}`)).size, 1);
+  // Its short tool rows fill two columns inside the card, the left one first.
+  const toolColumnsHandle = await page.waitForFunction(() => {
+    const rows = Array.from(document.querySelectorAll('[aria-label="Werkzeuge"] .profile-rows-columns > .profile-row'));
+    if (rows.length < 2) return null;
+    const lefts = rows.map((row) => Math.round(row.getBoundingClientRect().left));
+    const half = Math.ceil(rows.length / 2);
+    return { columns: new Set(lefts).size, leftFirst: lefts.slice(0, half).every((left) => left === Math.min(...lefts)) };
   });
-  const adminColumns = await adminColumnsHandle.jsonValue();
-  assert.ok(adminColumns);
-  assert.equal(adminColumns.display, 'grid');
-  assert.ok(adminColumns.readinessLeft > adminColumns.toolsLeft);
-  assert.equal(adminColumns.readinessTop, adminColumns.toolsTop);
-  assert.ok(adminColumns.usersTop - adminColumns.accessBottom >= 8);
-  assert.ok(adminColumns.usersTop - adminColumns.accessBottom <= 32);
-  // getComputedStyle reports `gridTemplateColumns: none` — a single token —
-  // until the admin view has actually been laid out, so a one-shot read here
-  // can see 1 instead of the real column count and did so under parallel load.
-  // Wait for a resolved template, then assert its width, so a genuinely wrong
-  // column count still fails with a readable difference instead of a timeout.
-  const adminPlayerColumns = await page.waitForFunction(() => {
-    const grid = document.querySelector('.admin-player-list');
-    const columns = grid ? getComputedStyle(grid).gridTemplateColumns : '';
-    return columns && columns !== 'none' ? columns.split(' ').length : null;
-  });
-  assert.equal(await adminPlayerColumns.jsonValue(), 3);
+  assert.deepEqual(await toolColumnsHandle.jsonValue(), { columns: 2, leftFirst: true });
 
   await page.click('.desktop-nav-btn[data-view="arcade"]');
   await page.waitForSelector('#arcade-games-title');
@@ -465,30 +441,23 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   assert.equal(arcadeColumns.tileColumns, 3);
 
   await page.click('.desktop-nav-btn[data-view="profile"]');
-  await page.waitForSelector('button[data-layout-preference="laptop"]');
-  assert.equal(await page.locator('.profile-layout-hint').count(), 0);
-  assert.equal(await page.locator('#profile-layout-help').count(), 1);
-  await page.click('[aria-label="Mehr Informationen zu Ansicht"]');
-  await page.waitForSelector('#profile-layout-help:not([hidden])');
-  const layoutHelpTrigger = page.locator('[aria-controls="profile-layout-help"]');
-  await layoutHelpTrigger.press('Escape');
-  await page.waitForFunction(() => document.getElementById('profile-layout-help')?.hidden === true);
-  await layoutHelpTrigger.press('Enter');
-  await page.waitForSelector('#profile-layout-help:not([hidden])');
-  await page.click('button[data-layout-preference="laptop"]');
+  await page.waitForSelector('#profile-layout');
+  // The view is a native select with its rule as a muted meta line, no tooltip.
+  assert.equal(await page.locator('#profile-layout-help').count(), 0);
+  assert.equal(await page.locator('label[for="profile-layout"]').textContent(), 'Ansicht');
+  await page.selectOption('#profile-layout', 'laptop');
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
   assert.equal(await page.getAttribute('html', 'data-layout-preference'), 'laptop');
-  assert.equal(await page.locator('button[data-layout-preference="laptop"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.inputValue('#profile-layout'), 'laptop');
   assert.equal(await page.locator('.desktop-nav').isHidden(), true);
   assert.equal(await page.locator('.bottom-nav').isVisible(), true);
-  assert.equal(await page.locator('.profile-dashboard-columns').evaluate((layout) => getComputedStyle(layout).display), 'flex');
 
   // The choice survives a reload in the current session.
   await page.reload();
   await page.waitForSelector('#app:not([hidden])');
   assert.equal(await page.getAttribute('html', 'data-layout-mode'), 'laptop');
   assert.equal(await page.getAttribute('html', 'data-layout-preference'), 'laptop');
-  await page.click('button[data-layout-preference="desktop"]');
+  await page.selectOption('#profile-layout', 'desktop');
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   assert.equal(await page.locator('.desktop-nav').isVisible(), true);
   assert.equal(await page.locator('.bottom-nav').isHidden(), true);
@@ -509,8 +478,8 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
     await persistencePage.click('#auth-form button[type="submit"]');
     await persistencePage.waitForSelector('#app:not([hidden])');
     await persistencePage.goto(`${BASE_URL}/#profile`);
-    await persistencePage.waitForSelector('button[data-layout-preference="laptop"]');
-    await persistencePage.click('button[data-layout-preference="laptop"]');
+    await persistencePage.waitForSelector('#profile-layout');
+    await persistencePage.selectOption('#profile-layout', 'laptop');
     await persistencePage.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
     await persistencePage.click('#profile-logout');
     await persistencePage.waitForSelector('#auth-screen:not([hidden])');
@@ -539,7 +508,8 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   }
 
   await page.click('.desktop-nav-btn[data-view="profile"]');
-  await page.click('button[data-layout-preference="auto"]');
+  await page.waitForSelector('#profile-layout');
+  await page.selectOption('#profile-layout', 'auto');
   await page.waitForFunction(() => document.documentElement.dataset.layoutPreference === 'auto' && document.documentElement.dataset.layoutMode === 'desktop');
   await page.click('.desktop-nav-btn[data-view="arcade"]');
   await page.waitForSelector('.arcade-game-picker');
@@ -749,8 +719,12 @@ flowTest('icon-only controls keep the shared height and minimum width on phones'
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 
   await openProfile();
-  await page.waitForSelector('.profile-password-fields [data-password-toggle]');
-  await assertTouchTargets('.icon-btn', 'shared icon buttons in the profile');
+  // The password toggles live in the "Passwort ändern" dialog now.
+  await page.click('#profile-password-open');
+  await page.waitForSelector('.modal [data-password-toggle]');
+  await assertTouchTargets('.modal .icon-btn', 'shared icon buttons in the password dialog');
+  await page.click('.modal [data-password-cancel]');
+  await page.waitForSelector('.modal', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 
   await openOrgaTab('checklistPacking');
@@ -838,7 +812,7 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
     for (const [view, title, readySelector] of [
       ['events', 'Events & Gruppen', '#orga-events-title'],
       ['profile', 'Mein Profil', '#profile-name'],
-      ['admin', 'Admin', '#admin-mode-title'],
+      ['admin', 'Admin', '[aria-label="Werkzeuge"]'],
       ['arcade', 'Arcade', '#arcade-games-title'],
       ['broadcast', 'Durchsage', '#broadcast-new-title'],
       ['music', 'Jam', '#music-setup-title'],
@@ -873,7 +847,7 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
     await page.click('.nav-btn[data-view="more"]');
     await page.waitForSelector('.more-grid');
     await page.click('[data-navigate="admin"]');
-    await page.waitForSelector('#admin-mode-title');
+    await page.waitForSelector('[aria-label="Werkzeuge"]');
     await page.click('[data-navigate="leaderboard"]');
     await page.waitForSelector('#view-container h1:text-is("Auswertung")');
     tabbedMetrics.push(['Auswertung', await firstCardMetrics('Auswertung')]);
@@ -961,8 +935,8 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
     0,
     'a group without location and note has nothing to show in the information box and renders none',
   );
-  await groupCard.locator('.action-menu > summary').click();
-  await groupCard.locator('[data-edit-event]').click();
+  // A group offers only Bearbeiten and Beenden, both directly in its header.
+  await groupCard.locator('.event-card-header-side > [data-edit-event]').click();
   const editGroupModal = page.locator('.modal-backdrop', { hasText: 'Gruppe bearbeiten' });
   await editGroupModal.waitFor();
   assert.equal(await editGroupModal.locator('#event-starts-date[required]').count(), 0);
@@ -1120,40 +1094,27 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   await openProfile();
   await page.waitForSelector('#profile-name');
-  assert.equal(await page.locator('.profile-agent-step').count(), 3);
-  assert.equal(await page.locator('#push-toggle[type="checkbox"]').count(), 1);
-  assert.equal(await page.locator('label:has(#push-toggle) > span').getByText('Aktivieren', { exact: true }).count(), 1);
-  assert.equal(await page.locator('#profile-tracking-pause-help').count(), 1);
-  assert.equal(await page.locator('#profile-activity-tracking-help').count(), 1);
-  assert.equal(await page.locator('.profile-agent-step').first().locator('#tracking-paused').count(), 1);
+  // Settings are rows with one action each; no contextual-help tooltips.
+  const agentSection = page.locator('[data-profile-section="agent"]');
+  assert.equal(await agentSection.locator('.profile-row-number').count(), 3);
+  assert.equal(await page.locator('#push-toggle').evaluate((element) => element.tagName), 'BUTTON');
+  assert.match((await page.locator('#push-toggle').textContent()) ?? '', /^(Aktivieren|Deaktivieren)$/);
+  assert.equal(await page.locator('#profile-view-title ~ * .info-tooltip, [data-profile-section] .info-tooltip').count(), 0);
+  assert.equal(await agentSection.locator('#tracking-paused').count(), 1);
   assert.equal(await page.locator('label[for="profile-name"]').textContent(), 'Gamertag');
   assert.equal(await page.locator('label[for="profile-real-name"]').textContent(), 'Name');
-  assert.equal(await page.locator('.profile-avatar-editor .field-label').count(), 0);
-  assert.equal(await page.locator('label[for="profile-color-trigger"]').textContent(), 'Farbe');
-  assert.equal(await page.locator('.profile-color-trigger').count(), 1);
-  assert.equal(await page.locator('.profile-color-trigger').evaluate((element) => getComputedStyle(element).borderRadius), '8px');
+  // The color is a dot on the avatar, not a separate labelled field.
+  assert.equal(await page.locator('.profile-avatar-editor .profile-color-trigger').count(), 1);
+  assert.equal(await page.locator('label[for="profile-color-trigger"]').count(), 0);
   assert.equal(await page.locator('input[type="color"]').count(), 0);
-  assert.equal(await page.locator('.profile-identity-fields').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 4);
-  const identityFieldCenters = await page.locator('.profile-identity-fields').evaluate((editor) => {
-    const controls = [
-      editor.querySelector('.profile-avatar-control'),
-      editor.querySelector('.profile-color-trigger'),
-      editor.querySelector('#profile-name'),
-      editor.querySelector('#profile-real-name'),
-    ];
-    if (controls.some((control) => !control)) return [];
-    return controls.map((control) => {
-      const box = control!.getBoundingClientRect();
+  const identityFieldCenters = await page.locator('.profile-identity').evaluate((editor) =>
+    ['#profile-name', '#profile-real-name'].map((selector) => {
+      const box = editor.querySelector(selector)!.getBoundingClientRect();
       return box.top + box.height / 2;
-    });
-  });
-  assert.equal(identityFieldCenters.length, 4);
-  // Inline line-box rounding differs slightly across Windows font/rendering
-  // versions. A 2px center delta is visually aligned and must not make the
-  // otherwise unrelated end-to-end suite flaky.
+    }));
   assert.ok(
-    Math.round((Math.max(...identityFieldCenters) - Math.min(...identityFieldCenters)) * 10) / 10 <= 2,
-    `profile identity controls should remain vertically aligned: ${JSON.stringify(identityFieldCenters)}`,
+    Math.abs(identityFieldCenters[0] - identityFieldCenters[1]) <= 1,
+    `Gamertag and Name should share one row: ${JSON.stringify(identityFieldCenters)}`,
   );
   const originalProfileColor = await page.inputValue('#profile-color');
   await page.click('#profile-color-trigger');
@@ -1190,40 +1151,43 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   const appliedColor = (await page.inputValue('.profile-color-picker-value')).toLowerCase();
   await page.click('[data-profile-color-apply]');
   assert.equal(await page.inputValue('#profile-color'), appliedColor);
-  assert.equal(await page.getByText('Erweitertes Tracking', { exact: true }).count(), 1);
-  const profileSectionKeys = ['password', 'push', 'privacy', 'monitors', 'agent'];
+  assert.equal(await page.getByText('Erweitertes Tracking für diesen Download', { exact: true }).count(), 1);
+  const profileSectionKeys = ['agent', 'privacy', 'data'];
   assert.deepEqual(
     await page.locator('[data-profile-section]').evaluateAll((sections) =>
       sections.map((section) => ({ key: (section as HTMLElement).dataset.profileSection, open: (section as HTMLDetailsElement).open })),
     ),
-    profileSectionKeys.map((key) => ({ key, open: true })),
-    'profile groups should start expanded',
+    profileSectionKeys.map((key) => ({ key, open: false })),
+    'agent setup, privacy and personal data should start collapsed',
   );
-  assert.equal(await page.getByRole('heading', { name: 'Datenschutz & meine Daten' }).count(), 1);
+  assert.equal(await page.getByRole('heading', { name: 'Datenschutz', exact: true }).count(), 1);
   const privacySection = page.locator('[data-profile-section="privacy"]');
-  await privacySection.locator('#privacy-auto-consent').waitFor();
+  await privacySection.locator('#privacy-auto-consent').waitFor({ state: 'attached' });
+  await page.click('[data-profile-section="privacy"] > summary');
   assert.equal(await privacySection.getByText('Aufbewahrung', { exact: true }).count(), 0);
   assert.equal(await privacySection.locator('[data-consent-event="instance-base-event"]').count(), 0);
   assert.equal(await privacySection.getByText('RespawnHQ', { exact: true }).count(), 0);
-  assert.equal(await privacySection.getByText('Alte Zustimmung', { exact: true }).count(), 1);
-  assert.equal(await privacySection.locator('[data-revoke-legacy-group]').textContent(), 'Widerrufen');
-  assert.equal(await privacySection.locator('label[for="privacy-auto-consent"]').textContent(), 'Für neue trackbare Events und Gruppen vorab zustimmen');
-  const autoConsentHelp = privacySection.locator('[aria-controls="privacy-auto-consent-help"]');
-  await autoConsentHelp.focus();
-  assert.equal(await page.locator('#privacy-auto-consent-help').isVisible(), true);
-  assert.match((await page.locator('#privacy-auto-consent-help').textContent()) ?? '', /Gruppen haben kein Enddatum/);
-  await autoConsentHelp.press('Escape');
-  assert.equal(await page.locator('#privacy-auto-consent-help').isHidden(), true);
-  assert.equal(await page.locator('#privacy-export').count(), 1);
-  assert.equal(await page.locator('#privacy-delete-account').count(), 1);
-  await page.click('[data-profile-section="push"] > summary');
+  // The old group consent from before event-bound tracking is not listed.
+  assert.equal(await privacySection.locator('[data-revoke-legacy-group]').count(), 0);
+  assert.equal(await privacySection.getByText('Neue Events und Gruppen vorab erlauben', { exact: true }).count(), 1);
+  assert.match((await privacySection.locator('#privacy-auto-consent').textContent()) ?? '', /^(Aktivieren|Deaktivieren)$/);
+  // The full explanation moved from the tooltip into the "Mehr erfahren" dialog.
+  await privacySection.locator('#privacy-details').click();
+  await page.waitForSelector('.modal');
+  assert.match((await page.locator('.modal').textContent()) ?? '', /Gruppen haben kein Enddatum/);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.modal', { state: 'detached' });
+  const dataSection = page.locator('[data-profile-section="data"]');
+  assert.equal(await dataSection.locator('#privacy-export').count(), 1);
+  assert.equal(await dataSection.locator('#privacy-delete-account').count(), 1);
+  await page.click('[data-profile-section="agent"] > summary');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:rerender')));
   assert.equal(
-    await page.locator('[data-profile-section="push"]').getAttribute('open'),
-    null,
-    'a manually collapsed profile group should stay collapsed across a view re-render',
+    await page.locator('[data-profile-section="agent"]').getAttribute('open'),
+    '',
+    'a manually opened profile group should stay open across a view re-render',
   );
-  assert.equal(await page.locator('.profile-identity-editor').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  assert.equal(await page.locator('.profile-identity').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   assert.equal(await page.getByText('Auf diesem Gerät aus.', { exact: true }).count(), 0);
   assert.equal(await page.getByText('Auf diesem Gerät aktiv.', { exact: true }).count(), 0);
 });
@@ -1423,19 +1387,19 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   }
   await openMoreViewEntry(page, '[data-navigate="admin"]');
   await ensureAdminMode();
-  await page.waitForSelector('#admin-tools-title');
+  await page.waitForSelector('[aria-label="Werkzeuge"]');
   assert.equal(await page.locator('#download-backup').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').textContent(), 'Öffnen');
-  assert.ok(await page.locator('[data-navigate="seating"]').evaluate((element) => element.classList.contains('btn-primary')));
+  // Tool rows share one neutral action; the gradient stays for real next steps.
+  assert.equal(await page.locator('[data-navigate="seating"]').evaluate((element) => element.classList.contains('btn-primary')), false);
   assert.equal(await page.locator('#admin-seating-help').count(), 0);
   assert.equal(await page.locator('#admin-backup-help').count(), 0);
-  assert.equal(await page.locator('[aria-label$="Test-Spieler vorhanden"]').count(), 1);
-  assert.equal(await page.locator('#admin-test-data-help').count(), 1);
-  // Global Event management is reachable from Admin's tool grid too, not
-  // only through Orga's own "Events" tab. Kiosk management, by contrast, is
-  // only reachable from here — it is not an Orga tab at all.
-  assert.equal(await page.locator('[data-navigate="events"]').count(), 1);
+  assert.equal(await page.locator('#admin-test-players-title').count(), 1);
+  assert.equal(await page.locator('#admin-test-data-help').count(), 0);
+  // Events & Gruppen has its own navigation entry, so Admin no longer repeats
+  // it. Kiosk management, by contrast, is only reachable from here.
+  assert.equal(await page.locator('[data-navigate="events"]').count(), 0);
   assert.equal(await page.locator('#admin-event-help').count(), 0);
   assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 1);
   assert.equal(await page.locator('#admin-kiosk-help').count(), 0);
@@ -1446,17 +1410,17 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.locator('[data-navigate="adminFeedback"]').count(), 1);
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
-  assert.equal(await page.locator('.admin-tool-row').count(), 7);
+  assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 5);
   await page.click('[data-navigate="adminFeatureUsage"]');
   await page.waitForSelector('#admin-feature-usage-refresh');
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
   await openMoreViewEntry(page, '[data-navigate="admin"]');
-  await page.waitForSelector('#admin-tools-title');
+  await page.waitForSelector('[aria-label="Werkzeuge"]');
   await page.click('[data-navigate="adminFeedback"]');
   await page.waitForSelector('#admin-feedback-title');
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   await openMoreViewEntry(page, '[data-navigate="admin"]');
-  await page.waitForSelector('#admin-tools-title');
+  await page.waitForSelector('[aria-label="Werkzeuge"]');
   let rejectFirstKioskPasswordRequest = true;
   const kioskPasswordUrl = '**/api/admin/kiosk-password';
   await page.route(kioskPasswordUrl, async (route) => {
@@ -1491,24 +1455,23 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   );
   assert.equal(await page.locator('#orga-kiosk-help').count(), 1);
   await openMoreViewEntry(page, '[data-navigate="admin"]');
-  await page.waitForSelector('#admin-tools-title');
-  assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
-  assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
-  // The count field's own id now sits one level down, inside the
-  // `.number-stepper` wrapper numberStepper.js adds around every
-  // `input[type="number"]` (see DESIGN_SYSTEM.md's "Number stepper" entry).
-  assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.querySelector('#admin-count') ? 'admin-count' : control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
+  await page.waitForSelector('[aria-label="Werkzeuge"]');
+  await openAdminSection('test');
+  assert.equal(await page.locator('#admin-cleanup').textContent(), 'Aufräumen');
+  await page.click('#admin-test-open');
+  const testDialog = page.locator('.modal-backdrop').last();
+  await testDialog.locator('#admin-count').waitFor();
   // Rounded: getBoundingClientRect() can return a sub-pixel value close to
   // the intended --control-height (32px) depending on the browser's layout
   // rounding, which a strict-equality assertion here would otherwise flake on.
   assert.equal(await page.locator('#admin-count').evaluate((input) => Math.round(input.getBoundingClientRect().height)), 32);
-  assert.equal(await page.locator('.admin-test-controls').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  await assertNoOverflow(testDialog.locator('.modal'));
   // The overlay stepper buttons adjust the value by click...
   await page.fill('#admin-count', '5');
-  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert erhöhen"]');
+  await testDialog.locator('.number-stepper-btn[aria-label="Wert erhöhen"]').click();
   assert.equal(await page.locator('#admin-count').inputValue(), '6');
-  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert verringern"]');
-  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert verringern"]');
+  await testDialog.locator('.number-stepper-btn[aria-label="Wert verringern"]').click();
+  await testDialog.locator('.number-stepper-btn[aria-label="Wert verringern"]').click();
   assert.equal(await page.locator('#admin-count').inputValue(), '4');
   // ...and mouse-wheel scrolling over the focused field no longer changes it
   // (the field blurs itself on wheel instead of applying the native step).
@@ -1517,6 +1480,8 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await page.locator('#admin-count').dispatchEvent('wheel', { deltaY: -100 });
   assert.equal(await page.locator('#admin-count').inputValue(), '4');
   assert.equal(await page.locator('#admin-count').evaluate((input) => document.activeElement === input), false);
+  await testDialog.locator('[data-test-cancel]').click();
+  await testDialog.waitFor({ state: 'detached' });
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
   await assertCompactAdminHeader('Sitzplan');
@@ -1535,11 +1500,17 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok((await page.locator('.seating-seat:not(.is-occupied)').count()) > 0);
   assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().getByText('Frei', { exact: true }).count(), 1);
-  assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().evaluate((seat) => getComputedStyle(seat).borderStyle), 'dashed');
+  // A free seat is only its outline: a solid hairline without fill and a muted label.
+  assert.deepEqual(
+    await page.locator('.seating-seat:not(.is-occupied)').first().evaluate((seat) => [getComputedStyle(seat).borderStyle, getComputedStyle(seat).backgroundColor]),
+    ['solid', 'rgba(0, 0, 0, 0)'],
+  );
   assert.equal(await page.locator('.seating-seat-number').count(), 0);
+  // The table is an outline labelled „Tisch“; the editor's hint only shows once a player is picked.
+  assert.equal(await page.locator('.seating-table-center').first().textContent().then((text) => text?.trim()), 'Tisch');
   assert.equal(await page.locator('.seating-seat-free-label').first().evaluate((label) => {
     const probe = document.createElement('span');
-    probe.style.color = 'var(--text)';
+    probe.style.color = 'var(--text-muted)';
     document.body.appendChild(probe);
     const tokenColor = getComputedStyle(probe).color;
     probe.remove();
@@ -1681,7 +1652,7 @@ flowTest('Mein Profil: rename with a uniqueness conflict, then succeed; Meine St
   // Bock/Skill-Ratings live in the Spiele view now, reachable from here via
   // the onboarding nudge; the personal stats dashboard is one tap away too
   // (it moved to its own view, myStats).
-  await page.waitForSelector('text=Bock & Skill eintragen');
+  await page.waitForSelector('[data-navigate="gameCatalog"]:has-text("Bewerten")');
   await page.click('[data-navigate="myStats"]');
   await page.waitForSelector('text=Meine Statistiken');
   // `#my-stats-event` is the dropdown's hidden value input; its visible
@@ -2175,18 +2146,19 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   await openMoreViewEntry(page, '[data-navigate="admin"]');
   await ensureAdminMode();
 
+  await openAdminSection('readiness');
   await page.waitForSelector('#admin-readiness-refresh:not([disabled])');
   assert.equal(await page.locator('#admin-readiness-status').getAttribute('role'), 'status');
   assert.equal(await page.locator('#admin-readiness-status').getAttribute('aria-live'), 'polite');
-  await page.click('[data-admin-readiness-details] > summary');
+  // The collapsed card already names the overall state next to its chevron.
+  assert.match(await page.locator('[data-admin-section="readiness"] > summary .readiness-status').innerText(), /^(Bereit|Prüfen|Fehler)$/);
   await page.click('#admin-readiness-refresh');
   await page.waitForSelector('#admin-readiness-refresh:not([disabled])');
   assert.equal(
-    await page.locator('[data-admin-readiness-details]').getAttribute('open'),
+    await page.locator('[data-admin-section="readiness"]').getAttribute('open'),
     '',
-    'readiness details should stay open across a successful refresh',
+    'the readiness card should stay open across a successful refresh',
   );
-  await page.click('[data-admin-readiness-details] > summary');
 
   let failNextReadiness = true;
   await page.route('**/api/admin/readiness', async (route) => {
@@ -2215,6 +2187,8 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
     data: { password: alice.password },
   });
   assert.equal(reauthenticated.status(), 204, await reauthenticated.text());
+  await openAdminSection('test');
+  await page.click('#admin-test-open');
   await page.fill('#admin-count', '4');
   const seedResponse = page.waitForResponse(
     (response) => response.url().includes('/test-users') && response.request().method() === 'POST'
@@ -2245,11 +2219,13 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   });
   assert.equal(pauseResponse.status, 200, await pauseResponse.text());
   await page.waitForFunction((minimum) => {
-    const badge = document.querySelector('[aria-label$="Test-Spieler vorhanden"]');
-    const match = badge?.getAttribute('aria-label')?.match(/(\d+)\s+Test-Spieler vorhanden/);
+    const meta = document.querySelector('[data-admin-section="test"] .profile-row-meta');
+    const match = meta?.textContent?.match(/^(\d+) vorhanden/);
     return match !== null && match !== undefined && Number(match[1]) >= minimum;
   }, seededBody.created.length);
-  await page.waitForSelector('.badge-paused >> text=Test');
+  // Seeded accounts are marked as test players in the account list.
+  await openAdminSection('accounts');
+  await page.waitForSelector('[data-admin-section="accounts"] .profile-row-meta >> text=Test-Spieler');
 
   const regularEventList = await (await page.request.get(`${BASE_URL}/api/events`)).json() as {
     managedEvents: Array<{ name: string; isTest: boolean }>;
@@ -2354,9 +2330,9 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   await page.click('.desktop-nav-btn[data-view="home"]');
   await page.waitForSelector('button[data-player]:has-text("Test Alex")');
 
-  // ...gone everywhere once admin mode is left via the banner.
-  await page.click('#admin-banner-leave');
-  await page.waitForSelector('#admin-banner', { state: 'hidden' });
+  // ...gone everywhere once admin mode is switched off in Mein Profil.
+  await setAdminMode(page, false);
+  await page.click('.desktop-nav-btn[data-view="home"]');
   await page.waitForFunction(() => !document.body.textContent?.includes('Test Alex'));
 
   // Reload leaves admin mode inactive until it is explicitly activated again.
@@ -2364,10 +2340,11 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   await page.waitForSelector('#app:not([hidden])');
   await page.click('.desktop-nav-btn[data-view="admin"]');
   await ensureAdminMode();
+  await openAdminSection('test');
   await page.click('#admin-cleanup');
   // confirmDialog is an in-app modal (not a native browser dialog).
   await page.click('[data-confirm]');
-  await page.waitForSelector('[aria-label="0 Test-Spieler vorhanden"]');
+  await page.waitForFunction(() => document.querySelector('[data-admin-section="test"] .profile-row-meta')?.textContent?.startsWith('0 vorhanden'));
   const cleanedHall = await (await page.request.get(`${BASE_URL}/api/hall-of-fame`)).json() as { events: Array<{ eventName: string }> };
   assert.equal(cleanedHall.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN')).length, 0);
 });

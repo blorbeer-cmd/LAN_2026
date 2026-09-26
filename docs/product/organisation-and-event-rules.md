@@ -32,7 +32,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   open order, `Schließen` for a sent one) plus the shared `Aktion` menu with `Bestellübersicht`,
   `Info bearbeiten`, `Wieder öffnen` and `Löschen` as the state allows. Once an order has several
   orderer groups, the menu starts with `Alle ausklappen`/`Alle einklappen`; members who do not manage
-  the order get a menu with only that entry. Below the header one compact meta line lists, in this
+  the order get that toggle as a direct button instead of a one-entry menu. Below the header one compact meta line lists, in this
   order and leaving out empty values: the state in Historie (`Abgeschickt`/`Geschlossen`), the
   creator, `Versand 20.08. 19:30 Uhr` or else the creation time, the number of people, `offen <Betrag>`
   or `alle bezahlt`, `1 Preis fehlt`/`<n> Preise fehlen`, and a `Speisekarte` link. Free-text info
@@ -183,7 +183,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   „Deine Antwort fehlt“ or „Beantwortet“; rounds still waiting for the viewer's answer come first
   and start expanded. The creator's compact „Beenden“ (open) or „Neue Runde“ (ended) is a header
   button, while „Stimmen ansehen“, „Bearbeiten“, „Erinnern (N)“, „Wieder öffnen“ and „Löschen“
-  remain in the card header while collapsed and share one „Aktion“ menu; opening one
+  remain in the card header while collapsed and share one „Aktion“ menu. A viewer with only one of
+  them — typically a member with „Stimmen ansehen“ — gets it as a direct button instead; opening one
   poll's menu closes every other poll menu, clicking outside or pressing Escape closes it, and its
   card is raised above later siblings while the menu is open. Earlier rounds live in a nested,
   initially collapsed history with one compact row per round (round, end date, answered count and
@@ -250,14 +251,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   What it shows depends on the role: owner/admin receive the full
   management surface — anlegen/bearbeiten, Tracking starten/stoppen (the running/stopping button
   carries a tooltip naming the collected data and its purpose; its confirmation repeats the same
-  scope sentence), Teilnehmende einladen/entfernen
-  and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
+  scope sentence) and Teilnehmende einladen/entfernen — while a member gets read-only cards for the events they take
   part in, without the create action or administrative invitation/decline controls; the card
   includes the type badge, event-status badge plus the count and names of accepted
   participants. Cards sort from the earliest start date to the latest; events without a fixed date
   follow the scheduled events.
   A group card drops what a group does not have rather than disabling it: no period line, no
-  calendar export, no cost or payment block, no „Tracking starten“ and no PDF export. „Beenden“
+  calendar export, no cost or payment block and no „Tracking starten“. „Beenden“
   stays, because it is the one lifecycle step a group shares with an event and the only way to
   retire one created by mistake; an ended group moves into the Gruppen section's „Historie“ and
   reports „Beendet“ instead of its own kind.
@@ -274,8 +274,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   easy to miss and cluttered the tab with the cards immediately following it. Instead, an
   invitation surfaces as a personal Home „Aktuell“ nudge (see [„Home overview“](navigation-and-account-rules.md#mein-profil-auswertung-und-home)) that links into „Mein
   Profil“, and Profile's own leading „Einladungen“ section is where it is actually answered
-  (`renderInvitationCard`/`pendingEventInvitations`/`wirePendingInvitationActions` in `events.js`,
-  reused by `profile.js` so the card markup and accept/decline wiring exist exactly once).
+  (`renderInvitationRow`/`openInvitationDialog`/`pendingEventInvitations`/`wirePendingInvitationActions`
+  in `events.js`, reused by `profile.js` so the row, dialog and accept/decline wiring exist exactly
+  once).
   An *answered* participation is different: it stays on this tab, because this is where the member
   already looks at the events they are part of. Every card variant therefore carries the account's
   own answer through `ownParticipationAction`: „Teilnahme absagen“ while the server reports
@@ -304,11 +305,14 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   identical range twice, and a lone uncollapsible card therefore shows the creator only. The collapse
   toggle repeats that header text in its accessible name instead of pointing an `aria-describedby` back
   into itself. Missing creators use „Unbekannt“, undated events keep „Termin wird noch abgestimmt“. Owner/admin cards expose
-  „Bearbeiten“, state-dependent Tracking/Beenden/Wieder-starten and the LAN PDF export in the shared
-  „Aktion“ menu beside the header badges; member Event cards have no such menu. „Beenden“ is not one
+  „Bearbeiten“ and the state-dependent Tracking/Beenden/Wieder-starten beside the header badges:
+  with all three they share the „Aktion“ menu, where „Beenden“ keeps its red danger text; with only
+  two (a group, an undated event, an event without Tracking or an ended one) both are compact neutral
+  header buttons, and an ended event without Tracking shows „Bearbeiten“ alone. There is no PDF
+  export. Member Event cards have no organizer actions. „Beenden“ is not one
   of the dated controls: an event whose date is still being polled — or whose period was removed
   again — is exactly the kind that gets abandoned, so it closes like any other workspace, while
-  Tracking, „Wieder starten“ and the PDF export stay bound to a fixed period. The period itself stays
+  Tracking and „Wieder starten“ stay bound to a fixed period. The period itself stays
   retractable in „Bearbeiten“: both boundaries are cleared together, never only one, and the event
   keeps the lifecycle state it had so the same period can be entered again and Tracking becomes
   available exactly as before. Without a period it cannot be tracked, and everyone invited or
@@ -336,13 +340,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   (`eventExcuses.js`, `renderEventExcuseActions`/`wireEventExcuseActions` in `events.js`). It writes
   an excuse for whatever *other* appointment collides with the event, so no entry ever names the
   event itself — the text is meant to be sent to the organizer of the competing date. The action
-  appears on management cards, member cards and pending invitations alike, because deciding against
-  a parallel obligation is a personal act, and disappears once an event has ended. The dialog is a
-  shared `openModal()` instance with the standard `.chip`/`.chip.is-active` category filter (Alle
-  plus eight categories), one nested result
-  surface with an `aria-live="polite"` region so „Neue Ausrede“ is announced without rebuilding the
-  dialog, and the two equal-width actions „Neue Ausrede“ and „Kopieren“. It carries no explanatory
-  copy above the filter: the title, the chips and the excuse itself already say what the dialog is,
+  appears on management cards and member cards, and in a pending invitation's detail dialog as the
+  button „Ausrede“ beside „Ablehnen“ and „Annehmen“, because deciding against a parallel
+  obligation is a personal act; it disappears once an event has ended. The dialog is a shared
+  `openModal()` instance with a native „Kategorie“ select (Alle plus eight categories), the excuse
+  as plain text below a hairline with its category and „Glaubwürdigkeit N von 5“ as one muted
+  line, an `aria-live="polite"` region so „Neue Ausrede“ is announced without rebuilding the
+  dialog, and the two equal-width actions „Neue Ausrede“ and „Kopieren“ (gradient). Periods inside
+  excuses read „11.09. bis 13.09.“. It carries no explanatory
+  copy above the filter: the title, the select and the excuse itself already say what the dialog is,
   and a sentence repeating the event name and a pool count only pushed the actual result down.
   Every excuse is tagged with
   the absence lengths it fits: a single evening, a two-to-three-day weekend or a longer trip, so a
@@ -350,7 +356,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   length — the pool is kept wide enough that no category collapses to a handful of entries for long
   events. An event whose date is still being
   polled receives the date-free subset instead, because its texts cannot fill a period honestly. The
-  „Glaubwürdigkeit N/5“ badge is part of the joke and derives from the rendered text itself — length
+  „Glaubwürdigkeit N von 5“ line is part of the joke and derives from the rendered text itself — length
   plus concrete numbers — since detail is what the whole feature trades on. Event creation and editing may
   add one optional per-person cost plus the same PayPal input as food orders: either an e-mail address
   or a complete HTTPS address on `paypal.me`/`paypal.com`. Cost and PayPal controls reuse the food-order price suffix
@@ -415,8 +421,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
 - **Carpool card**: the label with one muted meta line („ab Hamburg · Start 01.10., 08:21 ·
   Ankunft 10:21“) that leaves out unknown values and drops the arrival date when it matches the
   start day. One header action slot: „Eintragen“ for an eligible player while a seat is free,
-  „Austragen“ for a passenger (both compact neutral bordered buttons) and the „Aktion“ menu with
-  „Bearbeiten“ and „Löschen“ for the driver; deleting still asks for confirmation. The driver row
+  „Austragen“ for a passenger and „Bearbeiten“ for the driver (all compact neutral bordered
+  buttons). Deleting lives in the driver's edit dialog as a neutral „Löschen“ beside „Speichern“ and
+  still asks for confirmation; cancelling it keeps the edit dialog open. The driver row
   comes first with a muted „Fahrer“ label, passengers follow as flat hairline rows and every free
   seat is its own muted „Frei“ row aligned with the names.
 - **Alle Zeiten**: starts collapsed with the participant count and keeps its open state across

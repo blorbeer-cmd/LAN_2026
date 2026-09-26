@@ -57,6 +57,7 @@ import {
   getSelectableEvent,
   InvalidEventContextError,
 } from '../eventContext';
+import { initialPlayerColor } from '../playerColors';
 
 export const authRouter = Router();
 
@@ -70,7 +71,6 @@ const limitAnonymousAuthAttempts: RequestHandler = (_req, res, next) => {
   next();
 };
 
-const DEFAULT_COLOR = '#4f9dff';
 
 class InvalidInviteError extends Error {}
 
@@ -172,7 +172,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
   const player: PlayerRow = {
     id: nanoid(),
     name: trimmedName,
-    color: color ?? DEFAULT_COLOR,
+    color: color ?? initialPlayerColor(),
     avatar: avatar ?? null,
     password_hash: hashPassword(password),
     is_admin: isBootstrap ? 1 : 0,

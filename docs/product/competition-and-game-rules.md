@@ -150,8 +150,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   scheduling. Both meters are editable on every tab, suggestions included — how good the group
   already is at a game is part of deciding whether to accept it.
   Bock and Skill are rated with the shared 0–5 number scale (`ratingScale.js`) that Vote and
-  Umfragen use: six square buttons below the label. The chosen number is outlined in the former
-  slider's color (Bock violet, Skill blue) and a fill line below the numbers repeats the value with
+  Umfragen use: six square buttons below the label. The chosen number and its outline take the former
+  slider's saturated color (Bock violet, Skill blue), and a fill line below the numbers repeats the value with
   that slider's gradient; the line is empty for a 0 and dashed while nothing is rated. No selected
   number means "no rating yet"; 0 is a deliberate answer and counts as rated — for Bock „kein
   Bock“, for Skill „kenne ich nicht“ — and that meaning is spelled out on the Ø note's line. A
@@ -299,7 +299,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   one `.event-poll-card` whose header names the round, the participation („X/Y abgegeben“, updated
   through the existing realtime refresh) and the viewer's own state („Abgegeben“ or „Deine Stimme
   fehlt“); admins get a compact „Beenden“ and, directly beside it, a red „Abbrechen“ — no
-  „Aktion“ menu for a single action. A „Zwischenstand verborgen“ tag and the round info follow. Games are listed alphabetically, one
+  „Aktion“ menu for a single action (the shared menu never holds just one entry). A „Zwischenstand verborgen“ tag and the round info follow. Games are listed alphabetically, one
   Umfrage option row each: name and one compact meta line that starts with the viewer's own Skill
   („Mein Skill: X“, „–“ without one) followed by the other values, and the same 0–5 number scale
   as an Umfrage rating as the answer control. Like every Umfrage with a hidden interim result, the

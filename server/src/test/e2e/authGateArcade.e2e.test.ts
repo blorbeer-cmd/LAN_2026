@@ -6,7 +6,7 @@ import { addSessionCookie, authenticatedServerEnv, createE2EAccount, loginE2EAdm
 import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { selectArcadeGame } from './arcadeHelpers';
-import { openMoreViewEntry } from './navHelpers';
+import { activateAdminMode, openMoreViewEntry } from './navHelpers';
 
 let BASE_URL: string;
 
@@ -166,11 +166,9 @@ test('an admin sees test settings only after activation while Challenge Rush rem
     await adminPage.goto(BASE_URL);
     await adminPage.waitForSelector('#app:not([hidden])');
     await openMoreViewEntry(adminPage, '[data-navigate="admin"]');
-    await adminPage.waitForSelector('#admin-mode-activate');
-    await adminPage.waitForSelector('#admin-tools-title');
-    await adminPage.waitForSelector('#admin-register-link');
+    await adminPage.waitForSelector('#admin-register-link', { state: 'attached' });
     assert.equal(await adminPage.locator('#admin-test-players-title').count(), 0);
-    assert.equal(await adminPage.locator('#admin-banner').isHidden(), true);
+    assert.equal(await adminPage.locator('#admin-indicator').isHidden(), true);
 
     await openMoreViewEntry(adminPage, '[data-navigate="arcade"]');
     await adminPage.waitForSelector('.arcade-tiles');
@@ -182,9 +180,8 @@ test('an admin sees test settings only after activation while Challenge Rush rem
     assert.equal(await adminPage.locator('#cr-opponent').count(), 0);
     assert.equal(await adminPage.locator('.challenge-rush-test-selector').count(), 0);
 
+    await activateAdminMode(adminPage);
     await openMoreViewEntry(adminPage, '[data-navigate="admin"]');
-    await adminPage.click('#admin-mode-activate');
-    await adminPage.waitForSelector('#admin-banner:not([hidden])');
     await adminPage.waitForSelector('#admin-test-players-title');
     await openMoreViewEntry(adminPage, '[data-navigate="arcade"]');
     await selectArcadeGame(adminPage, 'tetris');
@@ -453,8 +450,10 @@ test('an admin sees test settings only after activation while Challenge Rush rem
     // normal multiplayer lobby action remains available.
     await selectArcadeGame(adminPage, 'challenge-rush');
     await adminPage.waitForSelector('#cr-create:not([disabled])');
-    await adminPage.click('#admin-banner-leave');
-    await adminPage.waitForSelector('#admin-banner', { state: 'hidden' });
+    // The switch itself lives in Mein Profil; flipping the device-local mode
+    // here proves the open Arcade view reacts in place to the change event.
+    await adminPage.evaluate(async () => (await globalThis.eval("import('/js/admin.js')")).setAdmin(false));
+    await adminPage.waitForSelector('#admin-indicator', { state: 'hidden' });
     await adminPage.waitForSelector('.challenge-rush-test-selector', { state: 'detached' });
     assert.equal(await adminPage.locator('#cr-opponent').count(), 0);
     await adminPage.waitForSelector('#cr-create:not([disabled])');

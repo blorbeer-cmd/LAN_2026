@@ -525,10 +525,12 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   const liveNameTypography = await readNameTypography('.player-card .player-name');
   assert.deepEqual(liveNameTypography, leaderboardNameTypography, 'player names should use one shared typography');
   await page.setViewportSize({ width: 900, height: 844 });
-  assert.equal(
-    await page.locator('.home-leaderboard-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
-    2,
-    'home leaderboard should use two columns when the card has enough width'
+  // Home's top six are a RankedList: two columns, left one filled first.
+  assert.deepEqual(
+    await page.locator('[aria-labelledby="home-leaderboard-title"] .ranked-list').evaluate((element) =>
+      [getComputedStyle(element).gridTemplateColumns.split(' ').length, getComputedStyle(element).gridAutoFlow]),
+    [2, 'column'],
+    'home leaderboard should read top to bottom in two columns when the card has enough width'
   );
   await page.setViewportSize({ width: 390, height: 844 });
 

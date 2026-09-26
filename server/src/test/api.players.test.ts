@@ -31,7 +31,8 @@ test('POST /api/players creates a player with a generated API key', async () => 
   const res = await request(app).post('/api/players').send({ name: 'Alex' });
   assert.equal(res.status, 201);
   assert.equal(res.body.name, 'Alex');
-  assert.equal(res.body.color, '#4f9dff');
+  // Without a chosen color a new account gets a random one (playerColors.ts).
+  assert.match(res.body.color, /^#[0-9a-f]{6}$/);
   assert.ok(res.body.api_key && res.body.api_key.length > 10);
   createdId = res.body.id;
 });

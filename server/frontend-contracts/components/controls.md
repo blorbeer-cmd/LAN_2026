@@ -8,14 +8,13 @@ Desktop und Mobile `--control-height`; eine automatische Größenumschaltung nac
 Eingabemodalität existiert nicht.
 
 Paket 1 (Arcade-Segmentpilot und Erstellungszeile) sowie Paket 2 (globale Basiscontrols,
-Pollbewertung und DataRowAction) sind umgesetzt. Folgepakete bleiben eigenständige Aufträge.
+Pollbewertung) sind umgesetzt. Folgepakete bleiben eigenständige Aufträge.
 
 ## 2. Quelle
 
 - Tokens und globale Controls: `public/css/style.css`
 - Arcade-Segment und Erstellungszeile: `public/css/arcade.css`
 - Segment-Markup: `public/js/arcade/lobbyReady.js`
-- DataRowAction: `public/css/domains.css`, Kontozugangszeilen in `public/js/views/admin.js`
 - Pollbewertung: `public/js/views/eventPolls.js`
 - Reine Registry-Daten: [component-registry.mjs](../component-registry.mjs)
 - Browserabdeckung: bestehende Owner `authGate.e2e.test.ts`, `flowsShell.fixture.ts`,
@@ -204,10 +203,10 @@ einen Zustandsmarker. Diese Grenzen gelten auch neben einer Basisklasse und in a
 
 Die Standardfamilien `date-fields`, `search-select`, `profile-controls`, `row-icons`,
 `game-catalog-link-action`, `arrival-controls`, `filter-chip`, `section-tab`, `poll-choice`,
-`admin-controls`, `vote-fields`, `food-fields`, `payment-controls`, `result-fields`, `arcade-mute`
+`vote-fields`, `food-fields`, `payment-controls`, `result-fields`, `arcade-mute`
 und `music-controls` verwenden die passende Basisvariante.
 
-Die internen Familien `selection-toolbar`, `number-stepper`, `data-row-action`, `food-action-slots`,
+Die internen Familien `selection-toolbar`, `number-stepper`, `food-action-slots`,
 `result-actions`, `result-pick`, `result-state`, `bracket-row`, `rating-suggestion`,
 `row-layout`, `selection-state`, `payment-state`, `scribble-tools` und `arcade-segment` behalten ihre
 dokumentierte Einbettung.
@@ -285,23 +284,6 @@ Quadratvariante; die konkurrierenden Höhen-/Mindestbreitenvorgaben und der frü
 30×30-Override sind ersetzt. Gemessen wird die verfügbare Elternbreite, nicht die fit-content-Breite
 der Toolbar; die Browserprüfung erzwingt zusätzlich 192 und 191 px Elternbreite.
 
-### DataRowAction
-
-Registry-ID `data-row-action` bezeichnet ausschließlich die Kontozugangszeile in `accountRows`
-(Name, Aktiv/Noch nicht übernommen, Reset-Link/Claim-Link). Nur ihr eigener Container besitzt die
-Inline-Size-Abfrage; allgemeine Zeilen und die separate Spieler-Verwaltung erhalten keine Regel.
-
-Ab 320 px Innenbreite stehen Name/Badge/Aktion in einer Zeile; darunter belegen Name/Badge
-Zeile 1 und die vollständige Aktion Zeile 2. Der Button folgt 31–33 px. Nur der Name erhält
-`min-width: 0` und sichtbare Ellipse, vollständiger DOM- und Accessible Name bleiben erhalten.
-Badge schrumpft nicht; Badge und kurzes anwendungseigenes Aktionslabel bleiben `nowrap`.
-
-Die Innenbreite wird als clientWidth abzüglich horizontalem Padding erfasst. Da clientWidth
-ganzzahlig rundet, wird der fraktionale Grenzfall zusätzlich über die Border-Box abzüglich
-Rahmen/Padding überprüft. Die CSS-Range-Abfrage auf die tatsächliche Containerbreite erfasst
-auch 319,75 px; 320 px bleibt einzeilig. Die rohe 320-px-Schwelle besitzt den Kommentar
-`design-token-ok: DataRowAction-Schwelle` auf derselben Zeile.
-
 ### Gruppen-Home und kompakte Aktuell-Liste
 
 Das Home einer Gruppe ohne Termin zeigt die Mitglieder als eigene Karten und verlinkt aus der
@@ -374,12 +356,7 @@ Die bestehenden Core-Owner prüfen zusätzlich bei 320×568, 390×844, 512×384,
 - Skalenwerte 0–5 gewählt/ungewählt exakt 32×32 px, 8 px Abstand, verfügbare Elternbreite,
   232/231-px-Grenze und unveränderte Tastaturreihenfolge in beiden Richtungen.
 - ActionMenu-Trigger 31–33 px und Einträge mindestens 44×44 px.
-- Echte Admin-Einladungszeilen bei 320/390 px: Anzeigen/Widerrufen einzeilig bei 31–33 px
-  vollständig innerhalb der Zeile; der tatsächliche View-Container darf nicht horizontal
-  überlaufen.
 - Infoboard-Aktionsgruppen bleiben bei 390 px neben einem langen Titel innerhalb ihrer Zeile.
-- DataRowAction bei 320/319/319,75 px Innenbreite: volle zweite Aktionszeile, unverkleinertes
-  Badge, vollständiger Name im DOM und Accessibility Tree, sichtbarer Tastaturfokus.
 - Kein horizontaler Seitenoverflow. Die Tests verwenden isolierte In-Memory-Daten.
 
 Die vollständige Verifikation umfasst außerdem `lint`, `build`, Unit-/Integrationstests,
@@ -398,13 +375,12 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `game-catalog-link-action` | Plattform- und Trailer-Links stehen als dichte 32×32-px-Gruppe direkt an den Spielinformationen. |
 | `selection-buttons`, `poll-secondary`, `poll-text-width`, `poll-choice-text` | Toolbarlayout und Bedeutung respektieren die gewählte Basis-/Quadratvariante. |
 | `poll-selected-answer`, `poll-option-extra-toggle` | Die gewählte Umfrageantwort und der geöffnete Notiz-/Link-Schalter zeigen ihren Zustand mit Akzentumriss bzw. Akzentfarbe, ohne eigene Geometrie. |
-| `rating-scale-selected` | Auf der Bock-/Skill-Skala nimmt der gewählte Umriss die Farbe der Skala an, ohne eigene Geometrie. |
+| `rating-scale-selected` | Auf der Bock-/Skill-Skala nehmen die gewählte Ziffer und ihr Umriss die kräftige Farbe der Skala an, ohne eigene Geometrie. |
 | `poll-note-field`, `poll-flag-checkbox` | Die einzeilige Umfragebeschreibung wächst bis vier Controlhöhen; die 20-px-Checkbox ist Teil der beschrifteten Umfrageeinstellung. |
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
 | `profile-preview` | Nichtinteraktive Vorschau folgt der benachbarten Controlzeile. |
-| `arrival-sort-mobile`, `interactive-chip`, `invite-link-controls`, `admin-test-fields` | Bestehende Formular-/Sortierkontexte behalten Platzierung und kurze eigene Labels bei 32 px. |
+| `arrival-sort-mobile`, `interactive-chip` | Bestehende Formular-/Sortierkontexte behalten Platzierung und kurze eigene Labels bei 32 px. |
 | `team-move-picker`, `vote-start-field` | Der transparente Team-Picker füllt seinen Iconplatz; das Info-Feld hat im einzeiligen Startformular die Höhe des Titelfelds. |
-| `data-row-name`, `data-row-action-label` | Nur der Name ellipsiert; die vollständige kurze Aktion stapelt unter 320 px. |
 | `food-position-slots`, `food-payment-marker`, `food-header` | Gleich breite Aktionsplätze der Personenzeile, 32-px-Zahlungsaktion und permanenter 44-px-Kartenkopf. |
 | `food-open-section-action`, `food-amount-copy`, `food-inline-remove` | Die Kopfaktion der offenen Bestellungen bricht nicht um; Kopieren steht als 32-px-Quadrat vor dem Betrag; Löschen einer eigenen Position ist ein zeilenhohes Symbol hinter dem Gericht. |
 | `arcade-toolbar-buttons`, `challenge-test-disclosure` | Standardhöhe mit echtem Textumbruch; Segment-/Erstellungsgeometrie bleibt beim Pilotvertrag. |
@@ -415,8 +391,10 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 
 Die Glyphenvarianten `registry:event-card-detail-glyph`, `registry:desktop-navigation-glyph`,
 `registry:list-row-glyph`, `registry:navigation-glyph`, `registry:badge-glyph`,
-`registry:more-card-glyph` und `registry:game-track-glyph` verändern nur die Symbolgröße innerhalb
-der bestehenden Komponenten.
+`registry:more-card-glyph`, `registry:game-track-glyph`, `registry:readiness-status-glyph` und
+`registry:admin-indicator-glyph` verändern nur die Symbolgröße innerhalb der bestehenden
+Komponenten. `registry:invite-link-row-field` lässt das schreibgeschützte Link-Feld im Einladungsdialog
+die Textspalte seiner Zeile füllen.
 
 Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: Der ungenutzte Modifier am Kiosk-Passwort-Retry wurde entfernt. Es bestehen keine offenen befristeten Ausnahmen.
 
@@ -448,7 +426,9 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:search-options`: Permanent listbox option rows and the pinned popup action, at least 44px.
 
-- `registry:profile-controls`: Profile controls use the standard field/button/icon variants.
+- `registry:profile-controls`: Profile controls use the standard field/button/icon variants; the color trigger is a small dot on the avatar with an enlarged invisible hit area.
+- `registry:profile-row-open`: A profile invitation row's text opens its detail dialog: plain text without button chrome whose hit area covers the row's text column.
+- `registry:profile-link-btn`: Quiet inline text action inside a muted meta line („Mehr erfahren“, „Key erneuern“); underlined text, no button chrome.
 
 - `registry:row-icons`: Copy, dismiss and detail actions retain their 44px icon slot.
 
@@ -477,9 +457,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:poll-disclosure`: Composite card header: title plus round/deadline metadata are a documented multiline state.
 
-- `registry:data-row-action`: Only the account-access row contains the 320px name/badge/action reflow query.
 
-- `registry:admin-controls`: Role field; its container handles reflow without changing standard field height.
 
 - `registry:vote-fields`: Textarea minimum; rows/content determine the multiline state.
 
@@ -569,7 +547,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:poll-selected-answer`: The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.
 
-- `registry:rating-scale-selected`: On the Bock/Skill scale the chosen number's inset outline takes that scale's color; geometry stays with the square variant.
+- `registry:profile-row-action`: Mein Profil keeps one fixed right-hand action column across all cards, so compact buttons and the view select share one width; the select matches the compact buttons' type size.
+- `registry:rating-scale-selected`: On the Bock/Skill scale the chosen number and its inset outline take that scale's saturated color; geometry stays with the square variant.
 
 - `registry:checklist-table-action`: Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.
 - `registry:broadcast-table-action`: Beenden fills the fixed Durchsage action column, so it lines up from row to row.
@@ -600,13 +579,9 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:interactive-chip`: 32px filter control; passive chips keep their existing label geometry.
 
-- `registry:invite-link-controls`: Short application-owned link actions remain nowrap; native field yields width.
 
-- `registry:admin-test-fields`: Dense test-data form keeps its existing font/columns while every one-line control is 32px.
 
-- `registry:data-row-name`: Only this name may visibly ellipsize; its full DOM/accessible text remains intact.
 
-- `registry:data-row-action-label`: Short application action stays nowrap; below 320px the whole action moves to row two.
 
 - `registry:food-position-slots`: Group-row icon actions share one 44px slot width, so every row of an order card keeps the same controls column.
 
@@ -697,7 +672,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:tournament-count-width`: Team count fills its labeled field column.
 
-- `registry:profile-agent-field`: Agent key field yields to its neighboring copy action.
 
 - `registry:player-assignment-field`: Player assignment select fills its row column.
 
@@ -750,3 +724,9 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:desktop-navigation-state`: app.js toggles the active desktop navigation entry; only colors, font weight and decorative indicator visibility change.
 
 - `registry:player-dragging-state`: The tournament and matchmaking drag callers lower the moving roster row opacity without resizing it.
+
+- `registry:readiness-status-glyph`: The Admin readiness status icon matches the size of its status text; the text keeps the meaning without color.
+
+- `registry:admin-indicator-glyph`: The admin-mode shield on the topbar logo sizes its glyph to the small round badge; it is not interactive.
+
+- `registry:invite-link-row-field`: The read-only invite URL fills the row's text column beside its copy action and may shrink below its intrinsic width.

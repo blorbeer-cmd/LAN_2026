@@ -267,12 +267,12 @@ test('the personal statistics event filter only offers accepted workspaces', asy
   // starts a load only while no other one is running (`!statsLoading`), so clicking
   // straight through the list would coalesce the middle options away: the first and
   // the last would be requested and the ones between them silently never covered.
-  // The dashboard renders "Lädt…" for exactly as long as its request is in flight,
+  // The dashboard renders "Lädt" for exactly as long as its request is in flight,
   // so its absence is the observable end of a pick — and for the already-selected
   // option, which changes nothing and therefore issues no request at all, it is
   // absent from the start instead of deadlocking on a response that never comes.
   const statsSettled = () =>
-    page.locator('#view-container').getByText('Lädt…', { exact: true }).waitFor({ state: 'detached' });
+    page.locator('#view-container').getByText('Lädt', { exact: true }).waitFor({ state: 'detached' });
 
   await statsSettled();
   for (const option of options) {
@@ -558,7 +558,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await openView('profile');
   const profile = await viewText();
-  assert.doesNotMatch(profile, /Live-Status-Agent|Sichtbare Monitore|Meine Statistiken|Bock & Skill eintragen/);
+  assert.doesNotMatch(profile, /Live-Status & Agent|Sichtbare Monitore|Meine Statistiken|Bock & Skill/);
   assert.match(profile, /Benachrichtigungen/);
 
   assert.equal(await page.locator('.desktop-nav-btn[data-view="arcade"]').isVisible(), true);
@@ -590,29 +590,21 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   const toggleLabel = (await eventToggle.getAttribute('aria-label')) ?? '';
   assert.match(toggleLabel, /Erstellt von E2E Bootstrap Admin/);
   assert.equal(await eventToggle.getAttribute('aria-describedby'), null);
-  const actionTrigger = generalEventCard.locator('.action-menu > summary');
-  assert.match((await actionTrigger.innerText()).trim(), /^Aktion/);
-  assert.match((await actionTrigger.getAttribute('aria-label')) ?? '', /^Aktion/);
-  await actionTrigger.focus();
-  await page.keyboard.press('Enter');
-  const editAction = generalEventCard.locator('[data-edit-event]');
+  // Without tracking a general event has only Bearbeiten and Beenden, so both
+  // sit directly in the collapsed header instead of behind "Aktion".
+  assert.equal(await generalEventCard.locator('.action-menu').count(), 0);
+  const editAction = generalEventCard.locator('.event-card-header-side > [data-edit-event]');
   await editAction.waitFor({ state: 'visible' });
   assert.equal(await editAction.evaluate((element) => {
     const rect = element.getBoundingClientRect();
-    return rect.height >= 44 && element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
-  }), true, 'collapsed-card actions keep a full touch target above sibling cards');
+    return element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  }), true, 'collapsed-card header actions stay reachable');
+  assert.equal(await generalEventCard.locator('.event-card-header-side > [data-end-event]:not(.btn-danger)').count(), 1);
   assert.equal(await generalEventCard.locator('[data-start-tracking], [data-stop-tracking]').count(), 0);
-  await page.keyboard.press('Escape');
-  assert.equal(await actionTrigger.evaluate((element) => element === document.activeElement), true);
   await eventToggle.click();
   assert.equal(await eventToggle.evaluate((element) => element === document.activeElement), true);
   await generalEventCard.locator('[data-event-participants] > summary').click();
   assert.match(await generalEventCard.innerText(), /Teilnehmende & Einladungen/);
-  assert.equal(
-    await generalEventCard.locator('[data-export-event]').count(),
-    0,
-    'general events must not offer the LAN keepsake PDF',
-  );
   await page.click('#new-event-btn');
   assert.deepEqual(
     await page.locator('#event-type option').allTextContents(),
@@ -625,10 +617,12 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await openView('admin');
   const admin = await viewText();
-  assert.doesNotMatch(admin, /LAN-Bereitschaft|Agent-Diagnose|Kioskverwaltung|Sitzplan/);
+  assert.doesNotMatch(admin, /LAN-Bereitschaft|TV-Kiosk|Sitzplan/);
   assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 0);
   assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 0);
-  assert.match(admin, /Eventverwaltung/);
+  // Without tracking there is no readiness card, so the backup is a tool row.
+  assert.match(admin, /Nutzungsauswertung/);
+  assert.equal(await page.locator('#download-backup').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 0);
 
   await page.evaluate(() => { location.hash = '#seating'; });

@@ -53,6 +53,14 @@ test('general-event planning routes each represent their own bottom-nav entry', 
   assert.equal(navGroupForView('arrivals', { eventType: 'lan' }), 'more');
 });
 
+test('a sub-page without its own entry keeps its parent highlighted', () => {
+  // "Meine Statistiken" is opened from "Mein Profil", which lives under "Mehr".
+  for (const eventType of ['lan', 'general', 'group']) {
+    assert.equal(navGroupForView('myStats', { eventType }), navGroupForView('profile', { eventType }));
+  }
+  assert.equal(navGroupForView('myStats', { eventType: 'lan' }), 'more');
+});
+
 test('a group keeps its planning routes together under the Orga navigation', () => {
   const group = { eventType: 'group' };
   assert.equal(navGroupForView('checklist', group), 'more');
