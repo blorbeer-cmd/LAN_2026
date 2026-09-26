@@ -12,7 +12,7 @@ import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { openFeedbackModal } from './feedback.js';
 import { getMyId } from './whoami.js';
-import { isAdmin, setAdmin } from './admin.js';
+import { isAdmin } from './admin.js';
 import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { filterTestUsers } from './testFilter.js';
 import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
@@ -749,20 +749,20 @@ function switchView(
   }
 }
 
-// Persistent "you are in admin mode" indicator: the banner under the topbar
-// plus a body class as a styling hook. Admin mode also changes which players
-// are visible (test users, see testFilter.js), so every toggle refetches.
+// Persistent "you are in admin mode" indicator: a small shield on the topbar
+// logo (switched in Mein Profil) plus a body class as a styling hook. Admin
+// mode also changes which players are visible (test users, see
+// testFilter.js), so every toggle refetches.
 function updateAdminIndicator() {
-  document.getElementById('admin-banner').hidden = !isAdmin();
-  document.body.classList.toggle('admin-mode', isAdmin());
+  const active = isAdmin();
+  document.getElementById('admin-indicator').hidden = !active;
+  document.getElementById('admin-indicator-label').hidden = !active;
+  document.querySelector('.topbar-title').setAttribute('aria-label', active ? 'Zur Landingpage, Admin-Modus an' : 'Zur Landingpage');
+  document.body.classList.toggle('admin-mode', active);
 }
 
 function wireAdminMode() {
   updateAdminIndicator();
-  document.getElementById('admin-banner-leave').addEventListener('click', () => {
-    setAdmin(false);
-    showToast('Admin-Modus verlassen.');
-  });
   // Views declare whether their cache depends on test-player visibility.
   const invalidateVisibilityCaches = () => invalidateViewCaches(VIEW_REGISTRY, 'visibility:changed');
   window.addEventListener('respawn:admin-changed', () => {
@@ -780,13 +780,13 @@ function wireAdminMode() {
 }
 
 function wireNav() {
-  // Topbar and admin-banner icons come from icons.js like everywhere else
+  // Topbar and admin-indicator icons come from icons.js like everywhere else
   // (index.html stays free of hand-copied SVG paths); the app shell is
   // hidden until this boot code runs, so nothing renders icon-less.
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
   document.getElementById('info-btn').innerHTML = icon(domainIcon('infoBoard'));
   document.getElementById('feedback-btn').innerHTML = icon(domainIcon('feedback'));
-  document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
+  document.getElementById('admin-indicator').innerHTML = icon('shield');
   renderDesktopNavigation();
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {

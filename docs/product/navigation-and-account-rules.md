@@ -151,43 +151,39 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   member profile. „Meine Daten“ provides a secret-free personal JSON export and a
   reauthentication-protected account deletion with concrete remedies for roles or open
   organisational work that must first be transferred.
-- **Admin tools** — Account invitations and claim/reset links live in Admin's authenticated
-  onboarding group; their QR codes open in the shared centered modal.
-  Frequently used „Werkzeuge“ lead the authenticated content. A compact „LAN-Bereitschaft“ group
-  follows: its overall badge stays directly visible, while the responsive check cards for
-  Server/SQLite, Event and participants, agent coverage/version, process mappings, Kiosk and the
-  latest persistent backup start inside „Prüfdetails“. Every card pairs its semantic badge with a
-  textual summary and actionable detail; loading and retry errors stay inside the group.
-  In Desktop mode, Werkzeuge/Bereitschaft and Kontozugang/Testdaten form two priority rows. Benutzer
-  and Agent-Diagnose then span the content width and lay out their repeated entries in three columns.
-  Long diagnostics remain below the frequent tools instead of narrowing the complete admin workflow.
-  Backup and seating-plan editing are absent from regular member views and live
-  together as nested tool cards in the role-protected Admin area. Admin settings and tools remain
-  visible to owners/admins without activating the device-local Admin mode; that mode only reveals
-  test players and test-data controls throughout the app and enables Arcade AI matches. The leading
-  tool card, „Auswertung“, is the sole entry point into the merged Rangliste/Statistiken/Hall-of-Fame
-  area: it used to be a conditional bottom-nav destination gated by the device-local Admin mode
-  (sharing that slot with Essen), but now lives only here, gated by the real admin role like the
-  rest of Admin — the same standalone, role-protected pattern as „Kioskverwaltung“ below, not a
-  shortcut into an otherwise generally-reachable tab. A further
-  tool card, „Eventverwaltung“, links into Orga's „Events“ tab — that global, non-personal
-  management surface is otherwise only reachable through „Mehr“ like any other Orga tab. „Kioskverwaltung“
-  is different: TV-Kiosk is not an Orga tab at all, so this card is its only entry point, a
-  standalone role-protected route of its own (the same pattern as „Sitzplan“) rather than a link
-  into a tab row. Each tool card keeps its
-  title, adjacent help tooltip and colorful primary action on one row; the seating and kiosk
-  editors both return to Admin and remain role-protected independently of that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
-  need no separate Admin action. Creating test players also maintains one Test-LAN and one general
-  test event with accepted and pending test identities; both events and every aggregate fixture contribution
-  stay hidden outside Admin mode. The test-data fixture explanation and the existing test-player count live in adjacent
-  tooltips; the compact count input, „Test-Daten aufräumen“ and create action share one control row
-  in that order. Cleanup removes every marked test player and test LAN
-  without touching real events. The single-instance access context is not shown as a separate group
-  control in the topbar. Owner/Admin/Member roles are managed directly in Admin's consolidated
-  „Benutzer“ list; test players keep a read-only member role there.
-  „Benutzer“ list; test players keep a read-only member role there. The underlying group detail,
-  update, removal and audit endpoints remain server-side compatibility interfaces and intentionally
-  have no separate frontend commands.
+- **Admin tools** — Admin follows Mein Profil: one column of full-width cards whose entries are
+  hairline rows with a title, a muted meta line and one action in a fixed right column. From
+  `--bp-lg` the short rows of a card fill two columns, the left column first.
+  The untitled first card lists the tools „Auswertung“, „Feedback“, „Nutzungsauswertung“,
+  „Sitzplan“ and „TV-Kiosk“, each with a neutral „Öffnen“; without event tracking it also offers
+  „Backup“. „Auswertung“ is the sole entry point into the merged Rangliste/Statistiken/Hall-of-Fame
+  area, and „TV-Kiosk“ the only entry into kiosk management; both stay role-protected routes of
+  their own like „Sitzplan“. „Events & Gruppen“ has its own navigation entry and is not repeated here.
+  The remaining cards start collapsed and keep their open state across live re-renders:
+  „LAN-Bereitschaft“ shows its overall status (icon plus „Bereit“, „Prüfen“ or „Fehler“) next to the
+  chevron, right-aligned with the status of every check row below (Server/SQLite, Event and
+  participants, agents, process mappings, Kiosk, backup). Long lists open behind „Details“, the
+  agent diagnostics behind „Diagnose“ and the backup download behind „Herunterladen“, all grey text
+  buttons in the meta line. „Einladungslinks“ leads with „Link erstellen“ and lists the active links
+  alphabetically; the link dialog holds copy, QR code and „Widerrufen“. „Konten“ groups accounts
+  under „Owner“, „Admins“ and „Mitglieder“ (members, test players, deactivated accounts), each
+  group alphabetical; a row's „Aktion“ menu offers role changes, claim/reset link or test session,
+  deactivation or reactivation and deletion. The own account never offers deactivation or deletion
+  there; that stays in Mein Profil. „Testdaten“ creates test players through a small dialog and
+  cleans up every marked test player and test event after a confirmation.
+  Admin settings and tools remain visible to owners/admins without the device-local Admin mode.
+  That mode is switched in Mein Profil (row „Admin-Modus“ below „Passwort“, admins only) and shown
+  as a small shield on the topbar logo, plus the word „Admin“ beside the wordmark from `--bp-md`.
+  It reveals test players and test-data controls throughout the app and enables Arcade AI matches.
+  Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and need no separate Admin
+  action. Creating test players also maintains one Test-LAN and one general test event with
+  accepted and pending test identities; both events and every aggregate fixture contribution stay
+  hidden outside Admin mode. The single-instance access context is not shown as a separate group
+  control in the topbar. The underlying group detail, update, removal and audit endpoints remain
+  server-side compatibility interfaces and intentionally have no separate frontend commands.
+  Protected actions ask for the password in a dialog named after the action („Backup
+  herunterladen“, „Rolle ändern“); every dialog with two footer buttons, including the shared
+  confirmation, shows them equally wide across the full width.
   The seating editor follows the same grouped-page hierarchy: the editable plan comes first, followed
   by „Teilnehmende“ and „Konfiguration“. Unassigned participants use the shared rectangular two-column player
   rows instead of pills; phones keep one column. Empty seats use an accent border and only the

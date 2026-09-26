@@ -10,16 +10,12 @@ import { showToast } from '../toast.js';
 import { isAdmin, setAdmin } from '../admin.js';
 import { withStepUp } from '../reauth.js';
 import { icon } from '../icons.js';
-import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { emptyStateHtml } from '../emptyState.js';
+import { profileRow } from '../profileRow.js';
+import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 import { getMyId } from '../whoami.js';
 import { currentGroup, refreshGroupContext } from '../groupContext.js';
 import { eventSelectOptions } from '../eventStatus.js';
-import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
-
-const ONBOARDING_HELP = 'Neue Person: Registrierungslink. Bestehendes Profil: Claim-Link. Vergessenes Passwort: Reset-Link.';
-const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit sowie ein Test-LAN und ein allgemeines Testevent an. Nur im Admin-Modus sichtbar.';
-const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
-const AGENT_DIAGNOSTICS_HELP = 'Der Agent fragt den PC gezielt nur nach den hier hinterlegten Spiele-Prozessen. Andere laufende Programme sieht er gar nicht erst und sie verlassen den PC nie.';
 
 export const REGISTER_INVITE_DURATION_OPTIONS = Object.freeze([
   { value: 24 * 60 * 60 * 1000, label: '24 Stunden' },
@@ -45,11 +41,12 @@ let activeInvitesLoading = false;
 let readiness = null;
 let readinessLoading = false;
 let readinessError = null;
+const adminSectionOpen = { readiness: false, invites: false, accounts: false, test: false };
 
 const READINESS_STATUS = {
-  ready: { label: 'Bereit', badge: 'badge-playing' },
-  warning: { label: 'Prüfen', badge: 'badge-paused' },
-  error: { label: 'Fehler', badge: 'badge-overdue' },
+  ready: { label: 'Bereit', icon: 'circleCheck' },
+  warning: { label: 'Prüfen', icon: 'info' },
+  error: { label: 'Fehler', icon: 'x' },
 };
 
 function inviteUrl(invite) {
@@ -81,54 +78,67 @@ export function inviteValidityLabel(expiresAt, now = Date.now()) {
   return `${formatInviteRemaining(expiresAt, now)} · bis ${formatDateTime(expiresAt)} Uhr`;
 }
 
-function openInviteModal(invite) {
+function openInviteModal(invite, ctx = null) {
   const url = inviteUrl(invite);
-  const target = invite.playerName ? ` für ${invite.playerName}` : '';
   const usageCount = Number.isInteger(invite.usageCount) ? invite.usageCount : 0;
   const reusable = invite.reusable || (invite.purpose === 'register' && invite.expiresAt == null);
-  const eventHint = invite.eventSelectable === false
-    ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName || 'Ziel-Event')}</strong><span class="muted">Ziel-Event beendet oder abgesagt – neue Konten starten in Allgemein.</span></div>`
-    : invite.eventName
-      ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName)}</strong></div>`
-      : '';
-  const validityHint = `${inviteValidityLabel(invite.expiresAt)}. ${reusable ? 'Mehrfach nutzbar.' : 'Der Link funktioniert nur einmal.'}`;
-  const { el } = openModal(
-    `${invitePurposeLabel(invite.purpose)}${target}`,
+  const note = [
+    invite.playerName ? invitePurposeLabel(invite.purpose) : '',
+    invite.eventSelectable === false
+      ? `${invite.eventName || 'Ziel-Event'} beendet, neue Konten starten in Allgemein`
+      : invite.eventName || '',
+    inviteValidityLabel(invite.expiresAt),
+    reusable ? 'mehrfach nutzbar' : 'einmal nutzbar',
+    usageCount > 0 ? `${usageCount}× genutzt` : '',
+  ].filter(Boolean).map(escapeHtml).join(' · ');
+  const { el, close } = openModal(
+    invite.playerName || invitePurposeLabel(invite.purpose),
     `<div class="stack">
-      <label for="admin-invite-link">Link</label>
-      ${eventHint}
-      <div class="invite-link-row">
-        <input type="text" id="admin-invite-link" class="invite-link-field" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;" />
-        <button type="button" class="btn btn-sm" id="admin-invite-copy">Kopieren</button>
+      <p class="profile-note muted">${note}</p>
+      <div class="profile-rows">
+        <div class="profile-row">
+          <div class="profile-row-main">
+            <input type="text" id="admin-invite-link" class="invite-link-field" readonly value="${escapeHtml(url)}" aria-label="Link" />
+          </div>
+          <div class="profile-row-action"><button type="button" class="btn btn-sm" id="admin-invite-copy">Kopieren</button></div>
+        </div>
+        ${profileRow({
+          title: 'QR-Code',
+          meta: 'Zum Scannen mit dem Handy',
+          action: '<button type="button" class="btn btn-sm" id="admin-invite-qr-toggle" aria-pressed="false" aria-controls="admin-invite-qr">Anzeigen</button>',
+        })}
+        <div id="admin-invite-qr" class="admin-invite-qr" hidden></div>
+        ${ctx ? profileRow({
+          title: 'Widerrufen',
+          meta: 'Der Link funktioniert danach nicht mehr',
+          action: '<button type="button" class="btn btn-sm" id="admin-invite-revoke">Widerrufen</button>',
+        }) : ''}
       </div>
-      <button type="button" class="btn btn-sm" id="admin-invite-qr-toggle">${icon('scanQrCode')} QR-Code anzeigen</button>
-      <div id="admin-invite-qr" style="text-align:center;" hidden></div>
-      <p class="muted" style="font-size:var(--font-size-xs);">${validityHint} ${usageCount}× genutzt.</p>
     </div>`
   );
+  el.querySelector('#admin-invite-revoke')?.addEventListener('click', async () => {
+    if (await revokeLoginInvite(invite, ctx)) close();
+  });
   el.querySelector('#admin-invite-copy').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(url);
       showToast('Link kopiert.');
     } catch {
-      showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+      showToast('Kopieren nicht möglich. Bitte manuell markieren.', { error: true });
     }
   });
   el.querySelector('#admin-invite-qr-toggle').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
     const qr = el.querySelector('#admin-invite-qr');
-    if (!qr.hidden) {
-      qr.hidden = true;
-      event.currentTarget.innerHTML = `${icon('scanQrCode')} QR-Code anzeigen`;
-      return;
-    }
-    qr.hidden = false;
-    event.currentTarget.innerHTML = `${icon('scanQrCode')} QR-Code ausblenden`;
-    if (qr.dataset.loaded) return;
+    qr.hidden = !qr.hidden;
+    button.textContent = qr.hidden ? 'Anzeigen' : 'Ausblenden';
+    button.setAttribute('aria-pressed', String(!qr.hidden));
+    if (qr.hidden || qr.dataset.loaded) return;
     try {
       qr.innerHTML = await api.qrcode.svg(url);
       qr.dataset.loaded = '1';
     } catch (error) {
-      qr.textContent = 'QR-Code konnte nicht geladen werden.';
+      qr.textContent = 'QR-Code konnte nicht geladen werden';
       showToast(error.message, { error: true });
     }
   });
@@ -227,22 +237,6 @@ function roleLabel(role) {
   return { owner: 'Owner', admin: 'Admin', member: 'Mitglied' }[role] ?? role;
 }
 
-function roleControl(player) {
-  const membership = adminMembers?.find((member) => member.playerId === player.id);
-  if (!membership || player.deactivated_at) return '';
-
-  const myRole = currentGroup()?.role;
-  const canChangeOwner = myRole === 'owner';
-  const canChangeMember = myRole === 'admin' && membership.role !== 'owner';
-  if (player.is_test || (!canChangeOwner && !canChangeMember)) {
-    return `<span class="badge">${escapeHtml(roleLabel(membership.role))}</span>`;
-  }
-
-  const roles = canChangeOwner ? ['member', 'admin', 'owner'] : ['member', 'admin'];
-  return `<select class="admin-role-select" data-player-role="${escapeHtml(player.id)}" aria-label="Rolle von ${escapeHtml(player.name)}" ${roleChangesInFlight.has(player.id) ? 'disabled' : ''}>
-    ${roles.map((role) => `<option value="${role}" ${membership.role === role ? 'selected' : ''}>${roleLabel(role)}</option>`).join('')}
-  </select>`;
-}
 
 async function changeRole(player, role, ctx) {
   if (roleChangesInFlight.has(player.id)) return;
@@ -254,7 +248,7 @@ async function changeRole(player, role, ctx) {
   }
   roleChangesInFlight.add(player.id);
   try {
-    const result = await withStepUp(() => api.groups.updateMember(group.id, player.id, role));
+    const result = await withStepUp(() => api.groups.updateMember(group.id, player.id, role), { title: 'Rolle ändern' });
     if (result === undefined) {
       await loadAdminMembers(ctx, true);
       return;
@@ -288,33 +282,43 @@ export function registerInviteEventOptions() {
   const events = (state.managedEvents || []).filter(
     (event) => !event.isOutsideEvents && !event.isBase && !event.isEnded && event.status === 'published',
   );
-  return eventSelectOptions(events, { allEntryLabel: 'Allgemein (kein zusätzliches Event)' });
+  return eventSelectOptions(events, { allEntryLabel: 'Kein Event' });
+}
+
+function registerValidityMeta(durationMs) {
+  return `Bis ${formatDateTime(Date.now() + durationMs)} Uhr · mehrfach nutzbar`;
 }
 
 function openRegisterInviteDialog(ctx) {
   const eventOptions = registerInviteEventOptions();
   const { el, close } = openModal(
-    'Registrierungslink erstellen',
+    'Registrierungslink',
     `<form id="admin-register-invite-form" class="stack">
-      <p class="muted admin-register-invite-note">Der Link kann innerhalb der gewählten Dauer von mehreren neuen Personen genutzt werden.</p>
-      <div>
-        <label for="admin-register-expires" class="field-label is-required">Gültig für</label>
-        <select id="admin-register-expires" required>
-          ${REGISTER_INVITE_DURATION_OPTIONS.map((option) => `<option value="${option.value}" ${option.value === DEFAULT_REGISTER_INVITE_DURATION_MS ? 'selected' : ''}>${option.label}</option>`).join('')}
-        </select>
-      </div>
-      <div>
-        <label for="admin-register-event-search" class="field-label">Direkte Event-Einladung</label>
-        ${searchSelectHtml('admin-register-event', eventOptions, '', {
-          placeholder: 'Event auswählen',
-          label: 'Events für die Einladung',
+      <div class="profile-rows">
+        ${profileRow({
+          title: '<label for="admin-register-expires">Gültig für</label>',
+          meta: `<span id="admin-register-validity">${escapeHtml(registerValidityMeta(DEFAULT_REGISTER_INVITE_DURATION_MS))}</span>`,
+          action: `<select id="admin-register-expires" required>
+            ${REGISTER_INVITE_DURATION_OPTIONS.map((option) => `<option value="${option.value}" ${option.value === DEFAULT_REGISTER_INVITE_DURATION_MS ? 'selected' : ''}>${option.label}</option>`).join('')}
+          </select>`,
+        })}
+        ${profileRow({
+          title: '<label for="admin-register-event">Event</label>',
+          meta: 'Neue Konten treten direkt bei',
+          action: `<select id="admin-register-event">
+            ${eventOptions.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join('')}
+          </select>`,
         })}
       </div>
-      <button type="submit" class="btn btn-primary btn-block">Registrierungslink erstellen</button>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-sm" data-register-cancel>Abbrechen</button>
+        <button type="submit" class="btn btn-primary btn-sm">Erstellen</button>
+      </div>
     </form>`,
   );
-  wireSearchSelect(el, 'admin-register-event', eventOptions, {
-    emptyText: 'Kein offenes Event gefunden.',
+  el.querySelector('[data-register-cancel]').addEventListener('click', () => el.querySelector('[data-close]')?.click());
+  el.querySelector('#admin-register-expires').addEventListener('change', (event) => {
+    el.querySelector('#admin-register-validity').textContent = registerValidityMeta(Number(event.currentTarget.value));
   });
   el.querySelector('#admin-register-invite-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -333,13 +337,14 @@ function openRegisterInviteDialog(ctx) {
 
 async function createLoginInvite(purpose, player, ctx, options = {}) {
   try {
-    const invite = await withStepUp(() =>
-      api.auth.createInvite({ purpose, ...(player ? { playerId: player.id } : {}), ...options }),
+    const invite = await withStepUp(
+      () => api.auth.createInvite({ purpose, ...(player ? { playerId: player.id } : {}), ...options }),
+      { title: 'Link erstellen' },
     );
     if (invite === undefined) return false;
     const enriched = { ...invite, playerName: player?.name || null };
     showToast(purpose === 'register' ? 'Registrierungslink erstellt.' : 'Link erstellt.');
-    openInviteModal(enriched);
+    openInviteModal(enriched, ctx);
     await loadActiveInvites(ctx, true);
     return true;
   } catch (error) {
@@ -353,14 +358,16 @@ async function revokeLoginInvite(invite, ctx) {
     title: 'Link widerrufen',
     confirmText: 'Widerrufen',
     danger: true,
-  }))) return;
+  }))) return false;
   try {
-    const result = await withStepUp(() => api.auth.revokeInvite(invite.code));
-    if (result === undefined) return;
-  showToast('Einladungslink widerrufen.');
+    const result = await withStepUp(() => api.auth.revokeInvite(invite.code), { title: 'Link widerrufen' });
+    if (result === undefined) return false;
+    showToast('Einladungslink widerrufen.');
     await loadActiveInvites(ctx, true);
+    return true;
   } catch (error) {
     showToast(error.message, { error: true });
+    return false;
   }
 }
 
@@ -393,9 +400,13 @@ async function createTestUsers(count, ctx) {
 }
 
 async function cleanupTestUsers(ctx) {
-  if (!(await confirmDialog('Alle markierten Testdaten löschen? Das entfernt Test-Spieler und Testevents mitsamt ihren Daten.', { confirmText: 'Löschen', danger: true }))) return;
+  if (!(await confirmDialog('Alle Test-Spieler und Testevents mit ihren Daten löschen?', {
+    title: 'Testdaten aufräumen',
+    confirmText: 'Aufräumen',
+    danger: true,
+  }))) return;
   try {
-    const res = await withStepUp(() => api.admin.cleanupTestUsers());
+    const res = await withStepUp(() => api.admin.cleanupTestUsers(), { title: 'Testdaten aufräumen' });
     if (res === undefined) return;
     const removed = (res.deletedPlayers ?? res.deleted ?? 0) + (res.deletedEvents ?? 0);
     showToast(
@@ -412,7 +423,7 @@ async function cleanupTestUsers(ctx) {
 async function deletePlayer(player, ctx) {
   if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen? Alle Tracking-Daten, Sitzungen und persönlichen Kontodaten werden unwiderruflich entfernt.`, { confirmText: 'Löschen', danger: true }))) return;
   try {
-    const removed = await withStepUp(() => api.players.remove(player.id));
+    const removed = await withStepUp(() => api.players.remove(player.id), { title: 'Konto löschen' });
     if (removed === undefined) return;
     showToast('Spieler gelöscht.');
     await refreshAdminData(ctx);
@@ -423,7 +434,7 @@ async function deletePlayer(player, ctx) {
 
 async function downloadBackup(ctx) {
   try {
-    const result = await withStepUp(() => api.backup.download());
+    const result = await withStepUp(() => api.backup.download(), { title: 'Backup herunterladen' });
     if (result === undefined) return;
     const { blob, filename } = result;
     const url = URL.createObjectURL(blob);
@@ -448,7 +459,7 @@ async function deactivatePlayer(player, ctx) {
     danger: true,
   }))) return;
   try {
-    const result = await withStepUp(() => api.players.deactivate(player.id));
+    const result = await withStepUp(() => api.players.deactivate(player.id), { title: 'Konto deaktivieren' });
     if (result === undefined) return;
     showToast('Konto deaktiviert.');
     await refreshAdminData(ctx);
@@ -459,13 +470,194 @@ async function deactivatePlayer(player, ctx) {
 
 async function reactivatePlayer(player, ctx) {
   try {
-    const result = await withStepUp(() => api.players.reactivate(player.id));
+    const result = await withStepUp(() => api.players.reactivate(player.id), { title: 'Konto reaktivieren' });
     if (result === undefined) return;
     showToast('Konto reaktiviert. Die Admin-Rolle bleibt aus Sicherheitsgründen entzogen.');
     await refreshAdminData(ctx);
   } catch (error) {
     showToast(error.message, { error: true });
   }
+}
+
+function inviteMeta(invite) {
+  const event = invite.eventSelectable === false
+    ? 'Ziel-Event beendet, Start in Allgemein'
+    : invite.eventName || '';
+  const usage = invite.usageCount > 0 ? `${invite.usageCount}× genutzt` : '';
+  return [
+    invite.playerName ? invitePurposeLabel(invite.purpose) : '',
+    event,
+    usage,
+    formatInviteRemaining(invite.expiresAt),
+  ].filter(Boolean).map(escapeHtml).join(' · ');
+}
+
+// Roles this admin may switch the account to (never the current one).
+function roleTargets(player) {
+  const membership = adminMembers?.find((member) => member.playerId === player.id);
+  if (!membership || player.deactivated_at || player.is_test) return [];
+  const myRole = currentGroup()?.role;
+  const roles = myRole === 'owner'
+    ? ['member', 'admin', 'owner']
+    : myRole === 'admin' && membership.role !== 'owner' ? ['member', 'admin'] : [];
+  return roles.filter((role) => role !== membership.role);
+}
+
+// One row per account: name, role and state on the left, every change in
+// the row's "Aktion" menu (role, login link, (re)activation, delete).
+function accountRowHtml(player, index, count) {
+  const id = escapeHtml(player.id);
+  // Your own account is deactivated or deleted from Mein Profil, never here.
+  const isSelf = player.id === getMyId();
+  const busy = roleChangesInFlight.has(player.id) ? ' disabled' : '';
+  const actions = [
+    ...roleTargets(player).map((role) =>
+      `<button type="button" class="btn btn-sm" data-set-role="${role}" data-player-id="${id}"${busy}>Zum ${roleLabel(role)} machen</button>`),
+    player.deactivated_at
+      ? ''
+      : player.is_test
+        ? `<button type="button" class="btn btn-sm" data-test-session="${id}">Testsitzung öffnen</button>`
+        : `<button type="button" class="btn btn-sm" data-create-login-link="${player.is_claimed ? 'reset' : 'claim'}" data-player-id="${id}">${player.is_claimed ? 'Reset-Link erstellen' : 'Claim-Link erstellen'}</button>`,
+    isSelf || player.is_test
+      ? ''
+      : player.deactivated_at
+        ? `<button type="button" class="btn btn-sm" data-reactivate-player="${id}">Reaktivieren</button>`
+        : `<button type="button" class="btn btn-sm" data-deactivate-player="${id}">Deaktivieren</button>`,
+    isSelf ? '' : `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${id}">Löschen</button>`,
+  ].filter(Boolean).join('');
+  const meta = [
+    isSelf ? 'Du' : '',
+    player.is_test ? 'Test-Spieler' : '',
+    player.deactivated_at ? 'Deaktiviert' : !player.is_test && !player.is_claimed ? 'Noch nicht übernommen' : '',
+  ].filter(Boolean).join(' · ');
+  return profileRow({
+    title: `<span class="player-name">${escapeHtml(player.name)}</span>`,
+    meta: escapeHtml(meta),
+    action: actionMenuHtml(actions, `Aktion für ${player.name}`, { key: `admin-account-${player.id}` }),
+    className: columnRowClass(index, count),
+  });
+}
+
+function openAgentDiagnosticsDialog(ctx) {
+  const rowsHtml = () => {
+    if (diagnosticsLoading && agentDiagnostics === null) return emptyStateHtml('Lädt');
+    if (!agentDiagnostics?.length) return emptyStateHtml('Noch keine Spieler');
+    return [...agentDiagnostics]
+      .sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name, 'de', { numeric: true }))
+      .map((entry) => profileRow({
+        title: `<span class="player-name">${escapeHtml(entry.name)}</span>`,
+        meta: [
+          entry.online ? 'Online' : 'Offline',
+          entry.agentVersion ? `v${entry.agentVersion}` : '',
+          entry.lastReportAt ? `Report ${formatDateTime(entry.lastReportAt)} Uhr` : 'Noch kein Report',
+          entry.processNames.length ? entry.processNames.join(', ') : '',
+        ].filter(Boolean).map(escapeHtml).join(' · '),
+      }))
+      .join('');
+  };
+  const { el } = openModal(
+    'Agent-Diagnose',
+    `<div class="stack">
+      <p class="profile-note">Der Agent meldet nur Prozesse der Spiele im Katalog · <button type="button" class="profile-link-btn" id="agent-diagnostics-refresh">Aktualisieren</button></p>
+      <div class="profile-rows" id="agent-diagnostics-rows">${rowsHtml()}</div>
+    </div>`,
+  );
+  el.querySelector('#agent-diagnostics-refresh').addEventListener('click', async () => {
+    await loadAgentDiagnostics(ctx, true);
+    const target = el.querySelector('#agent-diagnostics-rows');
+    if (target) target.innerHTML = rowsHtml();
+  });
+  if (agentDiagnostics === null) {
+    loadAgentDiagnostics(ctx).then(() => {
+      const target = el.querySelector('#agent-diagnostics-rows');
+      if (target) target.innerHTML = rowsHtml();
+    });
+  }
+}
+
+function openReadinessDetails(check) {
+  openModal(
+    check.label,
+    `<div class="stack"><p class="profile-note">${escapeHtml(check.summary)}</p>
+    <ul class="readiness-details">${check.details.map((detail) => `<li>${escapeHtml(detail)}</li>`).join('')}</ul></div>`,
+  );
+}
+
+function openTestPlayersDialog(ctx) {
+  const { el, close } = openModal(
+    'Test-Spieler anlegen',
+    `<form id="admin-test-form" class="stack">
+      <div class="profile-rows">
+        ${profileRow({
+          title: '<label for="admin-count">Anzahl</label>',
+          meta: '1 bis 20 · mit Sitzplatz, Bewertungen und Spielzeit',
+          action: '<input type="number" id="admin-count" value="5" min="1" max="20" required />',
+        })}
+        ${profileRow({
+          title: 'Testevents',
+          meta: 'Dazu ein Test-LAN und ein allgemeines Testevent',
+        })}
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-sm" data-test-cancel>Abbrechen</button>
+        <button type="submit" class="btn btn-primary btn-sm" id="admin-bulk">Anlegen</button>
+      </div>
+    </form>`,
+  );
+  el.querySelector('[data-test-cancel]').addEventListener('click', () => el.querySelector('[data-close]')?.click());
+  el.querySelector('#admin-test-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const count = Math.min(20, Math.max(1, parseInt(el.querySelector('#admin-count').value, 10) || 5));
+    close();
+    createTestUsers(count, ctx);
+  });
+}
+
+// Row classes for a .profile-rows-columns list filled column by column: the
+// first and last row of each column drop their outer hairline and padding.
+function columnRowClass(index, count) {
+  const columnRows = Math.ceil(count / 2);
+  return [
+    index === 0 || index === columnRows ? 'is-column-top' : '',
+    index === columnRows - 1 || index === 2 * columnRows - 1 ? 'is-column-bottom' : '',
+  ].filter(Boolean).join(' ');
+}
+
+// Status as icon plus text; the icon carries the state color, the text keeps
+// the meaning readable without color.
+function readinessStatusHtml(key) {
+  const status = READINESS_STATUS[key] || READINESS_STATUS.warning;
+  return `<span class="readiness-status" data-readiness-state="${escapeHtml(key)}">${icon(status.icon)}${status.label}</span>`;
+}
+
+function readinessRows() {
+  if (readinessError) {
+    return profileRow({
+      title: 'Bereitschaft',
+      meta: 'Konnte nicht geladen werden',
+      action: '<button type="button" class="btn btn-sm" id="admin-readiness-retry">Erneut versuchen</button>',
+    });
+  }
+  if (readiness === null) return emptyStateHtml('Lädt');
+  // Two columns on wide screens, filled column by column like the tools.
+  const columnRows = Math.ceil(readiness.checks.length / 2);
+  return `<div class="profile-rows profile-rows-columns" style="--profile-rows-count:${columnRows};">${readiness.checks
+    .map((check, index) => {
+      const links = [
+        check.details.length
+          ? `<button type="button" class="profile-link-btn" data-readiness-details="${escapeHtml(check.id)}">Details</button>`
+          : '',
+        check.id === 'agents' ? '<button type="button" class="profile-link-btn" id="agent-diagnostics-open">Diagnose</button>' : '',
+        check.id === 'backup' ? '<button type="button" class="profile-link-btn" id="download-backup">Herunterladen</button>' : '',
+      ].filter(Boolean);
+      return profileRow({
+        title: escapeHtml(check.label),
+        meta: [escapeHtml(check.summary.replace(/\.$/, '')), ...links].join(' · '),
+        action: readinessStatusHtml(check.status),
+        className: `is-status ${columnRowClass(index, readiness.checks.length)}`,
+      });
+    })
+    .join('')}</div>`;
 }
 
 function renderPanel(container, ctx) {
@@ -476,171 +668,83 @@ function renderPanel(container, ctx) {
   const trackingEnabled = eventHasFeature(state.activeEvent, 'tracking');
   const seatingEnabled = eventHasFeature(state.activeEvent, 'seating');
   const kioskEnabled = eventHasFeature(state.activeEvent, 'kiosk');
-  const arcadeEnabled = eventHasFeature(state.activeEvent, 'arcade');
   const allPlayers = adminPlayers || [];
-  const players = adminModeActive ? allPlayers : allPlayers.filter((player) => !player.is_test);
+  const players = (adminModeActive ? allPlayers : allPlayers.filter((player) => !player.is_test))
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name, 'de', { numeric: true, sensitivity: 'base' }));
   const testCount = allPlayers.filter((player) => player.is_test).length;
-  if (trackingEnabled && agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
   if (trackingEnabled && readiness === null && !readinessLoading && !readinessError) loadReadiness(ctx);
-  const rows = players
-    .map(
-      (p) => `
-      <div class="row-between admin-player-row" style="padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
-        <span class="row admin-player-identity" style="gap:var(--space-2);">
-          <span class="avatar-dot" style="background:${escapeHtml(p.color)};"></span>
-          <span class="player-name">${escapeHtml(p.name)}</span>
-          ${p.is_admin ? '<span class="badge badge-playing">Admin</span>' : ''}
-          ${p.is_test ? '<span class="badge badge-paused">Test</span>' : ''}
-          ${p.deactivated_at ? '<span class="badge badge-offline">Deaktiviert</span>' : ''}
-        </span>
-        <span class="row admin-player-actions" style="gap:var(--space-2);">
-          ${roleControl(p)}
-          ${!p.is_test || p.deactivated_at ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">${p.deactivated_at ? 'Dauerhaft löschen' : 'Löschen'}</button>` : ''}
-          ${p.is_test && !p.deactivated_at ? `<button type="button" class="btn btn-sm" data-test-session="${p.id}">Testsitzung öffnen</button>` : ''}
-          ${p.deactivated_at
-            ? `<button type="button" class="btn btn-sm" data-reactivate-player="${p.id}">Reaktivieren</button>`
-            : ''}
-          ${p.deactivated_at ? '' : p.is_test ? `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${p.id}">Löschen</button>` : `<button type="button" class="btn btn-sm btn-danger" data-deactivate-player="${p.id}">Deaktivieren</button>`}
-        </span>
-      </div>`
-    )
+
+  const openTool = (title, meta, view) => ({
+    title,
+    meta,
+    action: `<button type="button" class="btn btn-sm" data-navigate="${view}">Öffnen</button>`,
+  });
+  const tools = [
+    trackingEnabled ? openTool('Auswertung', 'Rangliste, Statistiken und Hall of Fame', 'leaderboard') : null,
+    openTool('Feedback', 'Rückmeldungen aus der App', 'adminFeedback'),
+    openTool('Nutzungsauswertung', 'Welche Bereiche genutzt werden', 'adminFeatureUsage'),
+    seatingEnabled ? openTool('Sitzplan', 'Plätze und sichtbare Monitore', 'seating') : null,
+    kioskEnabled ? openTool('TV-Kiosk', 'Kiosk-Zugänge und Anzeige', 'kiosk') : null,
+    trackingEnabled ? null : {
+      title: 'Backup',
+      meta: 'Datenbank als Datei',
+      action: '<button type="button" class="btn btn-sm" id="download-backup">Herunterladen</button>',
+    },
+  ].filter(Boolean);
+  // Two columns on wide screens, filled column by column like a RankedList.
+  const toolColumnRows = Math.ceil(tools.length / 2);
+  const toolRows = tools.map((tool, index) => profileRow({ ...tool, className: columnRowClass(index, tools.length) }));
+
+  // Owners first, then admins, then everyone else (members, test players,
+  // deactivated accounts); each group keeps the alphabetical order and gets
+  // its own two-column list below a full hairline.
+  const accountGroup = (player) => {
+    const role = player.deactivated_at ? null : adminMembers?.find((member) => member.playerId === player.id)?.role;
+    return role === 'owner' ? 0 : role === 'admin' ? 1 : 2;
+  };
+  const accountGroupTitles = ['Owner', 'Admins', 'Mitglieder'];
+  const accountRows = [0, 1, 2]
+    .map((group) => ({ group, members: players.filter((player) => accountGroup(player) === group) }))
+    .filter(({ members }) => members.length > 0)
+    .map(({ group, members }, groupIndex) => `<section class="admin-account-group${groupIndex > 0 ? ' profile-rows-separate' : ''}" aria-labelledby="admin-account-group-${group}">
+      <h3 class="profile-group-title" id="admin-account-group-${group}">${accountGroupTitles[group]}</h3>
+      <div class="profile-rows profile-rows-columns" style="--profile-rows-count:${Math.ceil(members.length / 2)};">${
+        members.map((player, index) => accountRowHtml(player, index, members.length)).join('')
+      }</div>
+    </section>`)
     .join('');
 
-  const accountRows = players
-    .filter((player) => !player.is_test && !player.deactivated_at)
-    .map(
-      (player) => `<div class="row-between data-row-action" style="gap:var(--space-2);">
-        <span>
-          <strong>${escapeHtml(player.name)}</strong>
-          <span class="badge ${player.is_claimed ? 'badge-playing' : 'badge-paused'}">${player.is_claimed ? 'Aktiv' : 'Noch nicht übernommen'}</span>
-        </span>
-        <button type="button" class="btn btn-sm" data-create-login-link="${player.is_claimed ? 'reset' : 'claim'}" data-player-id="${player.id}">
-          ${player.is_claimed ? 'Reset-Link' : 'Claim-Link'}
-        </button>
-      </div>`
-    )
-    .join('');
+  // Not a ranking: alphabetical by the shown title, then the one that
+  // expires first.
+  const inviteTitle = (invite) => invite.playerName || invitePurposeLabel(invite.purpose);
+  const invites = (activeInvites || []).slice().sort((a, b) =>
+    inviteTitle(a).localeCompare(inviteTitle(b), 'de', { numeric: true, sensitivity: 'base' })
+    || (a.expiresAt ?? Infinity) - (b.expiresAt ?? Infinity));
+  const inviteRows = invites.map((invite, index) => profileRow({
+    title: escapeHtml(inviteTitle(invite)),
+    meta: inviteMeta(invite),
+    action: `<button type="button" class="btn btn-sm" data-show-login-link="${escapeHtml(invite.code)}">Anzeigen</button>`,
+    className: columnRowClass(index, invites.length),
+  })).join('');
 
-  const inviteRows = (activeInvites || [])
-    .map(
-      (invite) => {
-        const eventLabel = invite.eventSelectable === false
-          ? 'Ziel-Event beendet oder abgesagt – Start in Allgemein'
-          : invite.eventName
-            ? escapeHtml(invite.eventName)
-            : '';
-        return `<div class="row-between" style="gap:var(--space-2);flex-wrap:wrap;">
-        <span style="min-width:0;overflow-wrap:anywhere;">
-          <strong>${escapeHtml(invite.playerName || invitePurposeLabel(invite.purpose))}</strong>
-          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${eventLabel ? ` · ${eventLabel}` : ''} · ${invite.usageCount ?? 0}× genutzt · ${escapeHtml(inviteValidityLabel(invite.expiresAt))}</span>
-        </span>
-        <span class="row" style="gap:var(--space-2);">
-          <button type="button" class="btn btn-sm" data-show-login-link="${invite.code}">Anzeigen</button>
-          <button type="button" class="btn btn-sm btn-danger" data-revoke-login-link="${invite.code}">Widerrufen</button>
-        </span>
-      </div>`;
-      },
-    )
-    .join('');
-
-  const diagnosticRows = (agentDiagnostics || [])
-    .map((entry) => {
-      const lastReport = entry.lastReportAt
-        ? new Date(entry.lastReportAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        : 'Noch nie';
-      const processes = entry.processNames.length
-        ? entry.processNames.map((name) => `<span class="chip">${escapeHtml(name)}</span>`).join('')
-        : '<span class="muted">Keine Prozesse gemeldet.</span>';
-      return `
-        <div class="agent-diagnostic-row">
-          <div class="row-between" style="gap:var(--space-2);">
-            <strong>${escapeHtml(entry.name)}</strong>
-            <span class="row" style="gap:var(--space-2);">
-              <span class="badge ${entry.online ? 'badge-playing' : 'badge-offline'}">${entry.online ? 'Agent online' : 'Agent offline'}</span>
-              <span class="badge">${entry.agentVersion ? `v${escapeHtml(entry.agentVersion)}` : 'Version unbekannt'}</span>
-            </span>
-          </div>
-          <div class="muted" style="font-size:var(--font-size-xs);">Letzter Report: ${escapeHtml(lastReport)}</div>
-          <div class="chip-list">${processes}</div>
-        </div>`;
-    })
-    .join('');
-
-  const readinessChecks = (readiness?.checks || [])
-    .map((check) => {
-      const status = READINESS_STATUS[check.status] || READINESS_STATUS.warning;
-      const details = check.details.length
-        ? `<ul class="readiness-details">${check.details.map((detail) => `<li>${escapeHtml(detail)}</li>`).join('')}</ul>`
-        : '';
-      return `<div class="card stack readiness-check">
-        <div class="row-between" style="gap:var(--space-2);">
-          <strong>${escapeHtml(check.label)}</strong>
-          <span class="badge ${status.badge}">${status.label}</span>
-        </div>
-        <p class="readiness-check-summary">${escapeHtml(check.summary)}</p>
-        ${details}
-      </div>`;
-    })
-    .join('');
-  const overallStatus = READINESS_STATUS[readiness?.overall] || READINESS_STATUS.warning;
-  const readinessBody = readinessError
-    ? `<div class="notice notice-warning row-between" style="gap:var(--space-2);">
-        <span>Bereitschaft konnte nicht geladen werden.</span>
-        <button type="button" class="btn btn-sm" id="admin-readiness-retry">Erneut versuchen</button>
-      </div>`
-    : readinessLoading && readiness === null
-      ? '<div class="card muted">Bereitschaft wird geprüft…</div>'
-      : `<div class="readiness-overview row-between">
-          <span>
-            <strong>Gesamtstatus</strong>
-            <span class="muted">Stand ${formatDateTime(readiness?.generatedAt)} Uhr</span>
-          </span>
-          <span class="badge ${overallStatus.badge}">${overallStatus.label}</span>
-        </div>
-        <details class="collapsible-section" data-admin-readiness-details>
-          <summary class="collapsible-section-header">
-            <span>Prüfdetails</span>
-            <span class="collapsible-section-summary-end">
-              <span class="badge badge-neutral">${readiness?.checks?.length ?? 0}</span>
-              <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
-            </span>
-          </summary>
-          <div class="collapsible-section-content two-column-card-grid">${readinessChecks}</div>
-        </details>`;
-
-  const toolsSectionHtml = `<section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
-    <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
-    <div class="two-column-card-grid">
-      ${trackingEnabled ? `<div class="card admin-tool-row">
-        <strong>Auswertung</strong>
-        <button type="button" class="btn btn-primary btn-sm" data-navigate="leaderboard">Öffnen</button>
-      </div>` : ''}
-      <div class="card admin-tool-row">
-        <strong>Nutzungsauswertung</strong>
-        <a href="#adminFeatureUsage" class="btn btn-primary btn-sm" data-navigate="adminFeatureUsage">Öffnen</a>
+  const testSectionHtml = adminModeActive ? `<details class="card grouped-page-section collapsible-section" data-admin-section="test" aria-labelledby="admin-test-players-title" ${adminSectionOpen.test ? 'open' : ''}>
+      <summary class="collapsible-section-header"><h2 id="admin-test-players-title">Testdaten</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+      <div class="collapsible-section-content profile-rows profile-rows-columns" style="--profile-rows-count:1;">
+        ${profileRow({
+          title: 'Test-Spieler',
+          meta: `${testCount} vorhanden · mit Sitzplatz, Bewertungen und Spielzeit`,
+          action: `<button type="button" class="btn btn-sm" id="admin-test-open" ${seedBusy ? 'disabled' : ''}>Anlegen</button>`,
+          className: columnRowClass(0, 2),
+        })}
+        ${profileRow({
+          title: 'Aufräumen',
+          meta: 'Entfernt Test-Spieler und Testevents mit ihren Daten',
+          action: '<button type="button" class="btn btn-sm" id="admin-cleanup">Aufräumen</button>',
+          className: columnRowClass(1, 2),
+        })}
       </div>
-      <div class="card admin-tool-row">
-        <strong>Feedback</strong>
-        <a href="#adminFeedback" class="btn btn-primary btn-sm" data-navigate="adminFeedback">Öffnen</a>
-      </div>
-      ${seatingEnabled ? `<div class="card admin-tool-row">
-        <strong>Sitzplan</strong>
-        <button type="button" class="btn btn-primary btn-sm" data-navigate="seating">Öffnen</button>
-      </div>` : ''}
-      <div class="card admin-tool-row">
-        <strong>Backup</strong>
-        <button type="button" class="btn btn-primary btn-sm" id="download-backup">Herunterladen</button>
-      </div>
-      <div class="card admin-tool-row">
-        <strong>Eventverwaltung</strong>
-        <button type="button" class="btn btn-primary btn-sm" data-navigate="events">Öffnen</button>
-      </div>
-      ${kioskEnabled ? `<div class="card admin-tool-row">
-        <strong>Kioskverwaltung</strong>
-        <button type="button" class="btn btn-primary btn-sm" data-navigate="kiosk">Öffnen</button>
-      </div>` : ''}
-    </div>
-  </section>`;
+    </details>` : '';
 
   container.innerHTML = `
     <div class="more-subpage-header">
@@ -648,188 +752,125 @@ function renderPanel(container, ctx) {
         <h1 class="view-title">Admin</h1>
       </div>
     </div>
-    <div class="grouped-page-sections admin-desktop-layout">
-      ${adminModeActive ? '' : `<section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
-        <div class="grouped-page-section-title"><h2 id="admin-mode-title">Admin-Modus</h2></div>
-        <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler in der App anzuzeigen${arcadeEnabled ? ' und im Arcade-Bereich gegen die KI zu spielen' : ''}.</p>
-        <button type="button" class="btn btn-primary btn-block" id="admin-mode-activate">Admin-Modus aktivieren</button>
-      </section>`}
-      ${toolsSectionHtml}
-      ${trackingEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="admin-readiness-title">
-        <div class="grouped-page-section-title">
+    <div class="grouped-page-sections">
+      <section class="card grouped-page-section" aria-label="Werkzeuge">
+        <div class="profile-rows profile-rows-columns" style="--profile-rows-count:${toolColumnRows};">${toolRows.join('')}</div>
+      </section>
+      ${trackingEnabled ? `<details class="card grouped-page-section collapsible-section" data-admin-section="readiness" aria-labelledby="admin-readiness-title" ${adminSectionOpen.readiness ? 'open' : ''}>
+        <summary class="collapsible-section-header">
           <h2 id="admin-readiness-title">LAN-Bereitschaft</h2>
-          <button type="button" class="btn btn-sm" id="admin-readiness-refresh" ${readinessLoading ? 'disabled' : ''}>Aktualisieren</button>
-        </div>
-        <div id="admin-readiness-status" class="stack" role="status" aria-live="polite" tabindex="-1">
-          ${readinessBody}
-        </div>
-      </section>` : ''}
-      <section class="card stack grouped-page-section" aria-labelledby="admin-onboarding-title">
-        <div class="grouped-page-section-title">
-          <h2 id="admin-onboarding-title" class="title-with-info">
-            <span>Onboarding &amp; Kontozugang</span>
-            ${infoTooltipHtml('admin-onboarding-help', 'Onboarding und Kontozugang', ONBOARDING_HELP)}
-          </h2>
-        </div>
-        <button type="button" class="btn btn-primary" id="admin-register-link">Link für neue Person erstellen</button>
-        <div class="stack">${accountRows || '<span class="muted">Keine aktiven echten Konten vorhanden.</span>'}</div>
-        <div class="section-title">Aktive Einladungslinks</div>
-        <div class="stack">${activeInvitesLoading && activeInvites === null ? '<span class="muted">Links werden geladen…</span>' : inviteRows || '<span class="muted">Keine aktiven Links.</span>'}</div>
-      </section>
-      ${adminModeActive ? `<section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
-        <div class="grouped-page-section-title">
-          <span class="title-with-info">
-            <h2 id="admin-test-players-title">Testdaten</h2>
-            ${infoTooltipHtml('admin-test-data-help', 'Testdaten', TEST_DATA_HELP)}
+          <span class="collapsible-section-summary-end">
+            ${readiness ? readinessStatusHtml(readiness.overall) : ''}
+            <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           </span>
+        </summary>
+        <div class="collapsible-section-content stack">
+          <p class="profile-note">${readiness ? `Stand ${formatDateTime(readiness.generatedAt)} Uhr · ` : ''}<button type="button" class="profile-link-btn" id="admin-readiness-refresh" ${readinessLoading ? 'disabled' : ''}>Aktualisieren</button></p>
+          <div id="admin-readiness-status" role="status" aria-live="polite" tabindex="-1">
+            ${readinessRows()}
+          </div>
         </div>
-        <div class="title-with-info">
-          <strong>Test-Spieler</strong>
-          <span class="badge badge-neutral" aria-label="${testCount} Test-Spieler vorhanden">${testCount}</span>
-        </div>
-        <div class="admin-test-controls">
-          <input type="number" id="admin-count" value="5" min="1" max="20" aria-label="Anzahl Test-Spieler" />
-          <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup">Test-Daten aufräumen</button>
-          <button type="button" class="btn btn-primary btn-sm" id="admin-bulk" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
-        </div>
-      </section>` : ''}
-      <section class="card stack grouped-page-section" aria-labelledby="admin-players-title">
-        <div class="grouped-page-section-title">
-          <span class="title-with-info">
-            <h2 id="admin-players-title">Benutzer (${players.length})</h2>
-            ${infoTooltipHtml('admin-role-help', 'Rollen', ADMIN_ROLE_HELP)}
+      </details>` : ''}
+      <details class="card grouped-page-section collapsible-section" data-admin-section="invites" aria-labelledby="admin-invites-title" ${adminSectionOpen.invites ? 'open' : ''}>
+        <summary class="collapsible-section-header">
+          <h2 id="admin-invites-title">Einladungslinks</h2>
+          <span class="collapsible-section-summary-end">
+            ${activeInvites?.length ? `<span class="badge badge-offline">${activeInvites.length}</span>` : ''}
+            <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           </span>
+        </summary>
+        <div class="collapsible-section-content">
+          <div class="profile-rows">${profileRow({
+            title: 'Neuer Link',
+            meta: 'Registrierung für neue Personen',
+            action: '<button type="button" class="btn btn-primary btn-sm" id="admin-register-link">Link erstellen</button>',
+          })}</div>
+          ${activeInvites === null
+            ? `<div class="profile-rows profile-rows-divided">${profileRow({ title: 'Aktive Links', meta: 'Lädt' })}</div>`
+            : inviteRows
+              ? `<div class="profile-rows profile-rows-columns profile-rows-divided" style="--profile-rows-count:${Math.ceil(invites.length / 2)};">${inviteRows}</div>`
+              : ''}
         </div>
-        ${
-          adminMembersError
-            ? `<div class="notice row-between" style="gap:var(--space-2);">
-                <span>Rollen konnten nicht geladen werden.</span>
-                <button type="button" class="btn btn-sm" id="admin-members-retry">Erneut versuchen</button>
-              </div>`
-            : adminMembersLoading
-              ? '<div class="muted">Rollen werden geladen…</div>'
-              : ''
-        }
-        <div class="card admin-player-list">${rows || '<span class="muted">Noch keine Spieler.</span>'}</div>
-      </section>
-      ${trackingEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="admin-agent-title">
-        <div class="grouped-page-section-title">
-          <h2 id="admin-agent-title" class="title-with-info">
-            <span>Agent-Diagnose</span>
-            ${infoTooltipHtml('admin-agent-diagnostics-help', 'Agent-Diagnose', AGENT_DIAGNOSTICS_HELP)}
-          </h2>
-          <button type="button" class="btn btn-sm" id="agent-diagnostics-refresh">Aktualisieren</button>
+      </details>
+      <details class="card grouped-page-section collapsible-section" data-admin-section="accounts" aria-labelledby="admin-players-title" ${adminSectionOpen.accounts ? 'open' : ''}>
+        <summary class="collapsible-section-header">
+          <h2 id="admin-players-title">Konten</h2>
+          <span class="collapsible-section-summary-end">
+            ${players.length ? `<span class="badge badge-offline">${players.length}</span>` : ''}
+            <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+          </span>
+        </summary>
+        <div class="collapsible-section-content stack">
+          ${adminMembersError ? profileRow({
+            title: 'Rollen',
+            meta: 'Konnten nicht geladen werden',
+            action: '<button type="button" class="btn btn-sm" id="admin-members-retry">Erneut versuchen</button>',
+          }) : ''}
+          ${adminPlayers === null ? emptyStateHtml('Lädt') : accountRows ? `<div class="admin-account-groups">${accountRows}</div>` : emptyStateHtml('Noch keine Spieler')}
         </div>
-        <div class="card stack admin-diagnostics-grid">
-          ${diagnosticsLoading && agentDiagnostics === null ? '<div class="muted">Diagnose laden…</div>' : diagnosticRows || '<span class="muted">Noch keine Spieler.</span>'}
-        </div>
-      </section>` : ''}
+      </details>
+      ${testSectionHtml}
     </div>
   `;
 
-  // Desktop uses full-width priority rows instead of a permanently narrow
-  // supporting rail. Closely related cards share a row; long user and
-  // diagnostic collections then get their own three-column grids below.
-  const adminLayout = container.querySelector('.admin-desktop-layout');
-  const overviewRow = document.createElement('div');
-  overviewRow.className = 'admin-dashboard-row admin-dashboard-overview';
-  const accessRow = document.createElement('div');
-  accessRow.className = 'admin-dashboard-row admin-dashboard-access';
-  ['[aria-labelledby="admin-tools-title"]', '[aria-labelledby="admin-readiness-title"]'].forEach((selector) => {
-    const section = adminLayout.querySelector(selector);
-    if (section) overviewRow.append(section);
-  });
-  ['[aria-labelledby="admin-onboarding-title"]', '[aria-labelledby="admin-test-players-title"]'].forEach((selector) => {
-    const section = adminLayout.querySelector(selector);
-    if (section) accessRow.append(section);
-  });
-  const usersSection = adminLayout.querySelector('[aria-labelledby="admin-players-title"]');
-  const diagnosticsSection = adminLayout.querySelector('[aria-labelledby="admin-agent-title"]');
-  adminLayout.append(overviewRow, accessRow);
-  if (usersSection) adminLayout.append(usersSection);
-  if (diagnosticsSection) adminLayout.append(diagnosticsSection);
-
-  container.querySelector('#admin-mode-activate')?.addEventListener('click', () => {
-    adminPlayers = null;
-    setAdmin(true);
-  });
-  container.querySelector('#admin-register-link')?.addEventListener('click', () => openRegisterInviteDialog(ctx));
-  container.querySelectorAll('[data-create-login-link]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const player = players.find((entry) => entry.id === button.dataset.playerId);
-      if (player) createLoginInvite(button.dataset.createLoginLink, player, ctx);
+  container.querySelectorAll('[data-admin-section]').forEach((section) => {
+    section.addEventListener('toggle', () => {
+      adminSectionOpen[section.dataset.adminSection] = section.open;
     });
   });
+  container.querySelector('#admin-register-link')?.addEventListener('click', () => openRegisterInviteDialog(ctx));
   container.querySelectorAll('[data-show-login-link]').forEach((button) => {
     button.addEventListener('click', () => {
       const invite = (activeInvites || []).find((entry) => entry.code === button.dataset.showLoginLink);
-      if (invite) openInviteModal(invite);
+      if (invite) openInviteModal(invite, ctx);
     });
   });
-  container.querySelectorAll('[data-revoke-login-link]').forEach((button) => {
+  const playerFor = (id) => players.find((entry) => entry.id === id);
+  const wireAccount = (selector, key, action) => container.querySelectorAll(selector).forEach((button) => {
     button.addEventListener('click', () => {
-      const invite = (activeInvites || []).find((entry) => entry.code === button.dataset.revokeLoginLink);
-      if (invite) revokeLoginInvite(invite, ctx);
+      const player = playerFor(button.dataset[key]);
+      if (player) action(player, button);
     });
   });
-
-  container.querySelector('#admin-bulk')?.addEventListener('click', () => {
-    const count = Math.min(20, Math.max(1, parseInt(container.querySelector('#admin-count').value, 10) || 5));
-    createTestUsers(count, ctx);
+  wireAccount('[data-test-session]', 'testSession', (player) => createLoginInvite('test_login', player, ctx));
+  wireAccount('[data-create-login-link]', 'playerId', (player, button) => createLoginInvite(button.dataset.createLoginLink, player, ctx));
+  wireAccount('[data-reactivate-player]', 'reactivatePlayer', (player) => reactivatePlayer(player, ctx));
+  wireAccount('[data-deactivate-player]', 'deactivatePlayer', (player) => deactivatePlayer(player, ctx));
+  wireAccount('[data-delete-player]', 'deletePlayer', (player) => deletePlayer(player, ctx));
+  wireAccount('[data-set-role]', 'playerId', (player, button) => changeRole(player, button.dataset.setRole, ctx));
+  wireActionMenus(container);
+  container.querySelectorAll('[data-readiness-details]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const check = readiness?.checks?.find((entry) => entry.id === button.dataset.readinessDetails);
+      if (check) openReadinessDetails(check);
+    });
   });
-
+  container.querySelector('#admin-test-open')?.addEventListener('click', () => openTestPlayersDialog(ctx));
   container.querySelector('#admin-cleanup')?.addEventListener('click', () => cleanupTestUsers(ctx));
-
-  container.querySelector('#download-backup').addEventListener('click', () => downloadBackup(ctx));
-  wireInfoTooltips(container);
-
+  container.querySelector('#download-backup')?.addEventListener('click', () => downloadBackup(ctx));
+  container.querySelector('#agent-diagnostics-open')?.addEventListener('click', () => openAgentDiagnosticsDialog(ctx));
   container.querySelector('#admin-readiness-refresh')?.addEventListener('click', (event) =>
     loadReadiness(ctx, true, event.currentTarget.id));
   container.querySelector('#admin-readiness-retry')?.addEventListener('click', (event) =>
     loadReadiness(ctx, true, event.currentTarget.id));
-  container.querySelector('#agent-diagnostics-refresh')?.addEventListener('click', () => loadAgentDiagnostics(ctx, true));
   container.querySelector('#admin-members-retry')?.addEventListener('click', () => loadAdminMembers(ctx, true));
-
-  container.querySelectorAll('[data-test-session]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const player = players.find((p) => p.id === btn.dataset.testSession);
-      if (player) createLoginInvite('test_login', player, ctx);
-    });
-  });
-
-  container.querySelectorAll('[data-player-role]').forEach((select) => {
-    select.addEventListener('change', () => {
-      const player = players.find((entry) => entry.id === select.dataset.playerRole);
-      if (player) {
-        select.disabled = true;
-        changeRole(player, select.value, ctx);
-      }
-    });
-  });
-
-  container.querySelectorAll('[data-delete-player]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const player = players.find((p) => p.id === btn.dataset.deletePlayer);
-      if (player) deletePlayer(player, ctx);
-    });
-  });
-  container.querySelectorAll('[data-deactivate-player]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const player = players.find((p) => p.id === btn.dataset.deactivatePlayer);
-      if (player) deactivatePlayer(player, ctx);
-    });
-  });
-  container.querySelectorAll('[data-reactivate-player]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const player = players.find((p) => p.id === btn.dataset.reactivatePlayer);
-      if (player) reactivatePlayer(player, ctx);
-    });
-  });
 }
 
 export function renderAdmin(container, ctx) {
   const current = (state.players || []).find((player) => player.id === getMyId());
-  if (!current?.is_admin) {
+  // Right after a reload the player list may not be loaded yet; only a loaded
+  // non-admin account may switch the device-local admin mode off.
+  if (!current) {
+    container.innerHTML = `
+      <div class="more-subpage-header">
+        <div class="more-subpage-title-row">
+          <h1 class="view-title">Admin</h1>
+        </div>
+      </div>
+      ${emptyStateHtml('Lädt')}`;
+    return;
+  }
+  if (!current.is_admin) {
     if (isAdmin()) setAdmin(false);
     container.innerHTML = `
       <div class="more-subpage-header">

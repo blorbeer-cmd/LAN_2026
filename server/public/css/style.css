@@ -320,28 +320,6 @@ textarea {
   opacity: 0.55;
 }
 
-/* Persistent "Admin-Modus aktiv" strip under the topbar (see app.js's
-   wireAdminMode) — reuses the paused/warn state colors so admin mode is
-   unmistakable without introducing a new hue. */
-.admin-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
-  background: var(--state-paused-bg);
-  color: var(--state-paused);
-  border-bottom: 1px solid var(--border);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-}
-
-.admin-banner-label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 /* Technical connection loss is a global app state, so it sits directly
    below the header until Socket.IO confirms a successful reconnect. */
 .connection-status {
@@ -362,27 +340,8 @@ textarea {
   flex: 0 0 auto;
 }
 
-.readiness-overview > span:first-child {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.readiness-check {
-  gap: var(--space-2);
-}
-
-.readiness-check-summary,
 .readiness-details {
   margin: 0;
-}
-
-.readiness-check-summary {
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
-}
-
-.readiness-details {
   padding-left: var(--space-5);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
@@ -604,6 +563,40 @@ textarea {
   cursor: pointer;
 }
 
+/* Admin mode (switched in Mein Profil) shows as a small shield on the logo
+   corner, in the paused/warn color the former banner used. */
+.topbar-logo-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.admin-indicator {
+  position: absolute;
+  right: calc(-1 * var(--space-2));
+  bottom: calc(-1 * var(--space-1));
+  display: grid;
+  place-items: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--state-paused);
+}
+.admin-indicator[hidden],
+.admin-indicator-label[hidden] {
+  display: none;
+}
+.admin-indicator-label {
+  flex: none;
+  margin-left: var(--space-1);
+  color: var(--state-paused);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.admin-indicator .ui-icon {
+  width: var(--font-size-sm);
+  height: var(--font-size-sm);
+}
 .topbar-logo {
   display: block;
   border-radius: var(--radius-sm);
@@ -643,6 +636,7 @@ textarea {
 
 @media (max-width: 639px) { /* --bp-md */
   .topbar-title .brand-title,
+  .topbar-title .admin-indicator-label,
   .github-icon-btn {
     display: none;
   }
@@ -1590,7 +1584,6 @@ textarea {
   }
   :root[data-layout-mode='desktop'] .notification-highlight,
   :root[data-layout-mode='desktop'] .connection-status,
-  :root[data-layout-mode='desktop'] .admin-banner,
   :root[data-layout-mode='desktop'] .view-container {
     margin-left: var(--desktop-nav-width);
   }
@@ -1919,6 +1912,15 @@ textarea {
    reads as a tidy group instead of a jumble of different widths. Wide enough
    that the longest current label ("Lobby öffnen") fits without growing past
    it, so every such button ends up the same size. */
+/* Two or more dialog footer buttons share the full width equally (cancel
+   left, the confirming action right). */
+.modal-actions {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--space-2);
+}
+
 .btn-equal {
   min-width: 7.5rem;
 }
@@ -2694,6 +2696,9 @@ button.profile-row-main {
   color: var(--text-muted);
   font-size: var(--font-size-sm);
 }
+.reauth-note {
+  margin-top: var(--space-2);
+}
 .profile-link-btn {
   padding: 0;
   border: 0;
@@ -2732,6 +2737,34 @@ button.profile-row-main {
   margin-top: var(--space-5);
   padding-top: var(--space-4);
   border-top: 1px solid var(--border);
+}
+/* A lead row (a card's own action) above a list: the list starts below a
+   full hairline. */
+.profile-rows-divided {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+/* A longer list of short rows may use two columns on wide screens, filled
+   column by column; the caller marks each column's first and last row. */
+@media (min-width: 860px) { /* --bp-lg */
+  .profile-rows-columns {
+    display: grid;
+    grid-template-rows: repeat(var(--profile-rows-count, 1), auto);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: column;
+    column-gap: var(--space-7);
+  }
+  .profile-rows-columns > .profile-row.is-column-top {
+    padding-top: 0;
+    border-top: 0;
+  }
+  .profile-rows-columns > .profile-row.is-column-bottom {
+    padding-bottom: 0;
+  }
+  .profile-rows-columns > .profile-row:last-child:not(.is-column-bottom) {
+    padding-bottom: var(--space-3);
+  }
 }
 .profile-monitor-row {
   display: flex;
@@ -3042,7 +3075,8 @@ button.draft-pool-player {
 [data-completed-tournaments] > .collapsible-section-header,
 [data-tournament-teams] > .collapsible-section-header,
 [data-my-stats-section] > .collapsible-section-header,
-[data-profile-section] > .collapsible-section-header {
+[data-profile-section] > .collapsible-section-header,
+[data-admin-section] > .collapsible-section-header {
   align-items: center;
 }
 .collapsible-section-header::-webkit-details-marker {
@@ -4479,27 +4513,27 @@ button.card {
   }
 }
 
-/* The QR code SVG already draws its own white background (needed for
-   scanability regardless of theme) — just round its corners and give it
-   some breathing room against the dark page behind it. */
-.invite-link-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--space-2);
+/* Invite dialog: the link field fills the row's text column, the QR code
+   opens as its own centered row below its toggle. The QR SVG draws its own
+   white background, needed for scanning regardless of theme. */
+.profile-row-main > .invite-link-field {
+  flex: 1;
+  min-width: 0;
+  font-family: monospace;
 }
-.invite-link-row > input,
-.invite-link-row .btn {
-  white-space: nowrap;
-}
-.admin-invite-event {
+.admin-invite-qr {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
+  justify-content: center;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.admin-invite-qr[hidden] {
+  display: none;
+}
+.admin-invite-qr svg {
+  width: min(100%, 240px); /* design-token-ok: QR size readable for phone cameras */
+  height: auto;
   border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
 }
 .admin-register-invite-note {
   margin: 0;

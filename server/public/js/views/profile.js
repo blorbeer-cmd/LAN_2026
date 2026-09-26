@@ -7,6 +7,8 @@
 // page doesn't turn into an ever-longer scroll mixing one-time setup with an
 // open-ended dashboard.
 
+import { profileRow } from '../profileRow.js';
+import { isAdmin, setAdmin } from '../admin.js';
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
@@ -376,22 +378,6 @@ async function loadNeighbors(playerId, ctx) {
   }
 }
 
-// One settings row: title and a muted meta line on the left, the row's single
-// action in the fixed right column shared by every row of the page.
-function profileRow({ title, meta = '', action = '', number = null, className = '' }) {
-  return `
-    <div class="profile-row${className ? ` ${className}` : ''}">
-      <div class="profile-row-main">
-        ${number == null ? '' : `<span class="profile-row-number">${number}</span>`}
-        <span class="profile-row-text">
-          <span class="profile-row-title">${title}</span>
-          ${meta ? `<span class="profile-row-meta">${meta}</span>` : ''}
-        </span>
-      </div>
-      <div class="profile-row-action">${action}</div>
-    </div>`;
-}
-
 function neighborSummary(myId) {
   if (neighborsLoading || neighborsCache === null) return 'Lädt';
   const names = state.players
@@ -480,7 +466,7 @@ function openPasswordDialog() {
     `<form class="stack" id="profile-password-form">
        ${passwordField('profile-current-password', 'Aktuelles Passwort', 'current-password')}
        ${passwordField('profile-new-password', 'Neues Passwort', 'new-password', 'minlength="1" maxlength="1024"')}
-       <div class="checklist-form-footer">
+       <div class="modal-actions">
          <button type="button" class="btn btn-sm" data-password-cancel>Abbrechen</button>
          <button type="submit" class="btn btn-primary btn-sm">Speichern</button>
        </div>
@@ -586,6 +572,7 @@ export function renderProfile(container, ctx) {
   // "Aktuell" list in aktuellStatus.js).
   const pendingInvitations = pendingEventInvitations();
   const layoutPreference = layoutModeForPlayer(myId);
+  const adminModeActive = isAdmin();
   const eventRows = [
     ratingNudge
       ? profileRow({
@@ -665,6 +652,11 @@ export function renderProfile(container, ctx) {
             meta: 'Meldet andere Geräte ab',
             action: '<button type="button" class="btn btn-sm" id="profile-password-open">Ändern</button>',
           })}
+          ${me.is_admin ? profileRow({
+            title: 'Admin-Modus',
+            meta: `${adminModeActive ? 'An' : 'Aus'} · zeigt Test-Spieler${eventHasFeature(state.activeEvent, 'arcade') ? ' und KI-Gegner im Arcade' : ''}`,
+            action: `<button type="button" class="btn btn-primary btn-sm" id="profile-admin-mode" aria-pressed="${adminModeActive}">${adminModeActive ? 'Deaktivieren' : 'Aktivieren'}</button>`,
+          }) : ''}
         </div>
       </section>
 
@@ -722,6 +714,10 @@ export function renderProfile(container, ctx) {
 
   container.querySelector('#profile-logout').addEventListener('click', () => logout());
   container.querySelector('#profile-password-open').addEventListener('click', () => openPasswordDialog());
+  container.querySelector('#profile-admin-mode')?.addEventListener('click', () => {
+    setAdmin(!isAdmin());
+    ctx.rerender();
+  });
   container.querySelector('#profile-monitors-edit')?.addEventListener('click', () => openNeighborsDialog(myId, ctx));
   container.querySelector('#profile-tracking-details')?.addEventListener('click', () => openTrackingDetails());
 

@@ -17,7 +17,7 @@ import {
 } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { CHALLENGES } from '../../arcade/challengeRushLogic';
-import { openMoreViewEntry } from './navHelpers';
+import { activateAdminMode, openMoreViewEntry } from './navHelpers';
 
 let BASE_URL: string;
 let serverProcess: ChildProcess;
@@ -69,9 +69,7 @@ async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminM
   await page.goto(baseUrl);
   await page.waitForSelector('.nav-btn[data-view="more"]');
   if (adminMode) {
-    await openMoreViewEntry(page, '[data-navigate="admin"]');
-    await page.click('#admin-mode-activate');
-    await page.waitForSelector('#admin-banner:not([hidden])');
+    await activateAdminMode(page);
   }
   // See arcade.fixture.ts: the retry loop that used to sit here hid a real
   // navigation race instead of reporting it. app.js now keeps the rail's nodes

@@ -4,7 +4,7 @@ import { chromium, type Browser } from 'playwright';
 import { addSessionCookie, authenticatedServerEnv, loginE2EAdmin, waitForPlayerData } from './authHelpers';
 import { createE2EDiagnosticTest, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
-import { openMoreViewEntry } from './navHelpers';
+import { activateAdminMode, openMoreViewEntry } from './navHelpers';
 import { selectArcadeGame } from './arcadeHelpers';
 import { VisualScenes, visualContext, assertControlHeights, assertNoOverflow } from './visualHelpers';
 
@@ -28,9 +28,7 @@ test('Arcade creation row visual references at desktop and both mobile layouts',
   try {
     await page.goto(server.baseUrl);
     await waitForPlayerData(page);
-    await openMoreViewEntry(page, '[data-navigate="admin"]');
-    await page.click('#admin-mode-activate');
-    await page.waitForSelector('#admin-test-players-title');
+    await activateAdminMode(page);
     await openMoreViewEntry(page, '[data-navigate="arcade"]');
     await selectArcadeGame(page, 'tetris');
     await page.waitForSelector('#tetris-opponent');

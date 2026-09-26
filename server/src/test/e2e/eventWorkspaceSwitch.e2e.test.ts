@@ -617,10 +617,12 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await openView('admin');
   const admin = await viewText();
-  assert.doesNotMatch(admin, /LAN-Bereitschaft|Agent-Diagnose|Kioskverwaltung|Sitzplan/);
+  assert.doesNotMatch(admin, /LAN-Bereitschaft|TV-Kiosk|Sitzplan/);
   assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 0);
   assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 0);
-  assert.match(admin, /Eventverwaltung/);
+  // Without tracking there is no readiness card, so the backup is a tool row.
+  assert.match(admin, /Nutzungsauswertung/);
+  assert.equal(await page.locator('#download-backup').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 0);
 
   await page.evaluate(() => { location.hash = '#seating'; });
