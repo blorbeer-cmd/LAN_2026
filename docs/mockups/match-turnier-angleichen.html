@@ -1,0 +1,943 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- Mockup zu docs/plans/match-turnier-angleichen-handover.md. App-Ebene nutzt die Tokens aus
+     server/public/css/style.css; die Annotationsebene ist nur Dokumentation. -->
+<title>Match und Turnier angleichen — Respawn, Mockup Version 7</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Respawn ist bewusst immer dunkel; diese Seite übernimmt das und setzt alle Farben explizit. */
+:root {
+  color-scheme: dark;
+  --bg: #0f1420;
+  --bg-elevated: #171e2e;
+  --bg-elevated-2: #1e2740;
+  --page: #0b0f18;
+  --border: rgba(122, 141, 195, 0.21);
+  --text: #eef1f8;
+  --text-muted: #8b93a7;
+  --accent: #5b8cff;
+  --accent-2: #9163f5;
+  --accent-3: #ef5da8;
+  --accent-gradient: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent-3) 100%);
+  --accent-bg: rgba(91, 140, 255, 0.16);
+  --gold: #ffd166;
+  --danger: #ef4444;
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --ok: #22c55e;
+  --ok-bg: rgba(34, 197, 94, 0.16);
+  --warn: #f59e0b;
+  --warn-bg: rgba(245, 158, 11, 0.16);
+  --app-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --doc-font: 'Instrument Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--doc-font);
+  font-size: 15px;
+  line-height: 1.55;
+  padding-inline: 16px;
+  padding-block: 32px 64px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 56px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.2; }
+h1 { font-size: clamp(1.7rem, 4vw, 2.4rem); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.45rem; font-weight: 700; }
+h3 { font-size: 1.05rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.lead { color: #c4cad8; font-size: 1.05rem; }
+code, .code { font-family: var(--mono); font-size: 0.85em; background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 5px; }
+header.top { display: flex; flex-direction: column; gap: 14px; border-bottom: 1px solid var(--border); padding-bottom: 28px; }
+.meta-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag { font-family: var(--mono); font-size: 0.72rem; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-muted); }
+.tag.ok { color: var(--ok); border-color: rgba(34,197,94,.4); }
+.tag.warn { color: var(--warn); border-color: rgba(245,158,11,.4); }
+section.block { display: flex; flex-direction: column; gap: 20px; }
+.block-head { display: flex; flex-direction: column; gap: 8px; }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; }
+.toc a { color: var(--text); text-decoration: none; font-size: 0.9rem; padding: 6px 12px; border-radius: 8px; background: var(--bg-elevated); border: 1px solid var(--border); }
+.toc a:hover, .toc a:focus-visible { border-color: var(--accent); outline: none; }
+
+/* ---------- Befund-Listen ---------- */
+.done-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.done { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; gap: 10px; }
+.done .mark { flex: 0 0 22px; height: 22px; border-radius: 50%; background: var(--ok-bg); color: var(--ok); display: grid; place-items: center; font-size: 0.8rem; font-weight: 700; }
+.done p { font-size: 0.92rem; color: #c4cad8; }
+.done strong { color: var(--text); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 0.9rem; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+thead th { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); background: var(--bg-elevated); font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+td .sev { display: inline-block; font-family: var(--mono); font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; margin-left: 6px; vertical-align: 1px; }
+.sev.hi { background: var(--danger-bg); color: #fca5a5; }
+.sev.mid { background: var(--warn-bg); color: var(--warn); }
+.sev.lo { background: var(--bg-elevated-2); color: var(--text-muted); }
+
+/* ---------- Vergleichsraster ---------- */
+.compare { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; }
+.compare.four { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.compare.three { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.compare.two { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.shot { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.shot-label { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; }
+.pill { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
+.pill.before { background: var(--bg-elevated-2); color: var(--text-muted); border: 1px solid var(--border); }
+.pill.after { background: var(--accent-gradient); color: #fff; }
+.notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 0.86rem; color: #c4cad8; }
+.notes li { display: flex; gap: 8px; }
+.notes li::before { content: ''; flex: 0 0 8px; height: 8px; border-radius: 50%; margin-top: 7px; background: var(--danger); }
+.notes li.good::before { background: var(--ok); }
+.notes li.info::before { background: var(--text-muted); }
+
+/* ---------- App-Mockups (Respawn-Tokens) ---------- */
+.phone {
+  font-family: var(--app-font);
+  font-size: 14px;
+  line-height: 1.4;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 14px 12px 16px;
+  width: 100%;
+  max-width: 340px;
+  box-shadow: 0 10px 40px rgba(0,0,0,.45);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.phone.dim { position: relative; }
+.phone.dim::before { content: ''; position: absolute; inset: 0; border-radius: 24px; background: rgba(5,8,14,.55); pointer-events: none; }
+.phone.dim > .modal { position: relative; z-index: 1; }
+.phone.dim > .behind { opacity: .9; }
+.m-title { font-size: 1.3rem; font-weight: 700; margin: 2px 2px 0; }
+.m-h2 { font-size: 0.95rem; font-weight: 700; }
+.muted { color: var(--text-muted); }
+.xs { font-size: 0.78rem; }
+.sm { font-size: 0.85rem; }
+.row { display: flex; align-items: center; gap: 8px; }
+.between { justify-content: space-between; }
+.stack { display: flex; flex-direction: column; gap: 8px; }
+.card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.tabs { display: flex; gap: 6px; }
+.btn { font: inherit; font-size: 0.8rem; font-weight: 600; color: var(--text); background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 8px; height: 30px; padding: 0 10px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.btn.primary { background: var(--accent-gradient); border-color: transparent; color: #fff; }
+.btn.block { width: 100%; justify-content: center; height: 40px; font-size: 0.9rem; }
+.btn.ghost { background: none; border-color: transparent; color: var(--text-muted); padding: 0 4px; }
+.act { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elevated-2); color: var(--text-muted); display: grid; place-items: center; flex-shrink: 0; }
+.act.open { border-color: var(--accent); color: var(--accent); }
+.act svg, .ic { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.badge { font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--bg-elevated-2); color: var(--text-muted); border: 1px solid var(--border); }
+.badge.live { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.chip-win { font-size: 0.7rem; font-weight: 600; color: var(--ok); background: var(--ok-bg); border-radius: 6px; padding: 1px 6px; display: inline-flex; align-items: center; gap: 2px; }
+.chip-score { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.9rem; background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 8px; padding: 2px 10px; }
+.chip-score .w { color: var(--ok); }
+.chip-remis { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); background: var(--bg-elevated-2); border-radius: 6px; padding: 1px 6px; }
+
+.modal { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+.modal-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.modal-head strong { font-size: 1rem; }
+.modal-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: -6px; }
+.x { color: var(--text-muted); font-size: 1.1rem; line-height: 1; }
+.pick { min-height: 44px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elevated-2); font-weight: 600; display: flex; flex-direction: column; gap: 2px; }
+.pick .pl { font-size: 0.78rem; font-weight: 400; color: var(--text-muted); }
+.pick.sel { border-color: var(--ok); background: var(--ok-bg); }
+.pick.draw { color: var(--text-muted); }
+.pick-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pick-row .pick.draw { grid-column: 1 / -1; align-items: center; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+.seg span { text-align: center; font-size: 0.8rem; font-weight: 600; padding: 6px 0; border-radius: 7px; color: var(--text-muted); }
+.seg span.on { background: var(--bg-elevated-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+.scoreboard { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 8px; align-items: center; text-align: center; }
+.scoreboard .nm { font-weight: 600; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scoreboard .nm small { display: block; font-weight: 400; font-size: 0.72rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+.num { height: 44px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); display: grid; place-items: center; font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.num.ph { color: #4b5470; }
+.vrow { display: grid; grid-template-columns: minmax(0,1fr) 96px; gap: 12px; align-items: center; }
+.vrow .nm { font-weight: 600; display: flex; flex-direction: column; min-width: 0; }
+.vrow .nm small { font-weight: 400; font-size: 0.72rem; color: var(--text-muted); }
+.radio-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.radio-chips span { font-size: 0.8rem; border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px; }
+.radio-chips i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--text-muted); display: inline-block; }
+.radio-chips i.on { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--bg-elevated), inset 0 0 0 6px var(--accent); }
+.field { height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: #4b5470; font-size: 0.8rem; display: flex; align-items: center; padding: 0 10px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; padding: 6px 2px; border-bottom: 1px solid var(--border); }
+.check b { width: 14px; height: 14px; border: 2px solid var(--text-muted); border-radius: 4px; display: inline-block; }
+
+.team { background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.team-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem; }
+.team.lose .team-head, .team.lose .pn { color: var(--text-muted); }
+.pn { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; }
+.av { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; }
+.skill { font-size: 0.72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-left: auto; }
+.teams2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fixture { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr) 30px; gap: 8px; align-items: center; min-height: 40px; font-size: 0.85rem; }
+.fixture .a { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fixture .b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fixture .win { font-weight: 600; }
+.fixture .lose { color: var(--text-muted); }
+.fixture + .fixture { border-top: 1px solid var(--border); }
+.list-card { background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.list-card .main { display: flex; flex-direction: column; min-width: 0; }
+.coll { display: flex; justify-content: space-between; align-items: center; }
+.bracket { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; }
+.bm { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elevated-2); font-size: 0.78rem; display: grid; grid-template-columns: 1fr 26px; overflow: hidden; }
+.bm .r { padding: 4px 8px; display: flex; justify-content: space-between; }
+.bm .r + .r { border-top: 1px solid var(--border); }
+.bm .r.w { font-weight: 600; }
+.bm .r.w span:last-child { color: var(--ok); }
+.bm .r.l { color: var(--text-muted); }
+.bm .side { border-left: 1px solid var(--border); display: grid; place-items: center; color: var(--text-muted); }
+.bm .side.open { color: var(--accent); }
+.back { display: inline-flex; align-items: center; gap: 4px; color: var(--text-muted); font-size: 0.85rem; font-weight: 600; }
+.dimmed { opacity: .5; }
+.hint { border: 1px dashed rgba(91,140,255,.55); border-radius: 10px; padding: 6px 8px; font-size: 0.72rem; color: #a9c0ff; background: rgba(91,140,255,.06); }
+.toast { align-self: center; background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 0.8rem; display: inline-flex; gap: 6px; align-items: center; }
+.toast .ic { color: var(--ok); }
+.nav { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px; font-size: 0.66rem; color: var(--text-muted); text-align: center; }
+.nav .on { color: var(--text); font-weight: 600; }
+
+/* ---------- Ergebnisliste (neu) ---------- */
+.rlist { display: flex; flex-direction: column; gap: 6px; }
+.rrow { display: grid; grid-template-columns: 26px minmax(0,1fr) auto; align-items: center; gap: 10px; min-height: 48px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elevated-2); }
+.rrow .nm { display: flex; flex-direction: column; min-width: 0; font-weight: 600; font-size: 0.88rem; }
+.rrow .nm small { font-weight: 400; font-size: 0.72rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rrow.sel { border-color: var(--ok); background: var(--ok-bg); }
+.rrow.draw { grid-template-columns: 1fr; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 0.88rem; }
+.rrow .num { width: 72px; height: 38px; font-size: 1.1rem; }
+.rk { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; font-variant-numeric: tabular-nums; border: 1.5px dashed #4b5470; color: #4b5470; }
+.rk.on { border: 1.5px solid var(--border); background: var(--bg-elevated); color: var(--text); }
+.rk.g { border-color: var(--gold); color: var(--gold); background: rgba(255,209,102,.12); }
+.rk.none { border-color: transparent; }
+.tap { font-size: 0.7rem; color: var(--text-muted); }
+.foot { display: grid; grid-template-columns: auto 1fr; gap: 8px; }
+.foot .btn { height: 40px; justify-content: center; }
+.hint-line { font-size: 0.75rem; color: var(--text-muted); }
+/* Historie (neu) */
+.hitem { border-top: 1px solid var(--border); padding: 8px 0; display: flex; flex-direction: column; gap: 8px; }
+.hitem:first-of-type { border-top: 0; }
+.hhead { display: grid; grid-template-columns: 16px minmax(0,1fr) auto; gap: 8px; align-items: center; }
+.hhead .chev { color: var(--text-muted); width: 14px; height: 14px; }
+.hhead.open .chev { transform: rotate(90deg); }
+.htitle { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.htitle .l1 { display: flex; gap: 6px; align-items: baseline; font-size: 0.85rem; font-weight: 600; }
+.htitle .l2 { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 0.78rem; color: var(--text-muted); }
+.htitle .l2 .res { color: var(--text); font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
+.badge.open { color: var(--accent); background: var(--accent-bg); border-color: transparent; }
+.hbody { display: flex; flex-direction: column; gap: 6px; padding-left: 24px; }
+.tline { display: grid; grid-template-columns: 24px minmax(0,1fr) auto; gap: 8px; align-items: center; font-size: 0.8rem; background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
+.tline .nm { display: flex; flex-direction: column; min-width: 0; font-weight: 600; }
+.tline .nm small { font-weight: 400; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tline .pts { font-variant-numeric: tabular-nums; font-weight: 700; }
+.tline.lose { color: var(--text-muted); }
+.hactions { display: flex; gap: 6px; flex-wrap: wrap; }
+.subgroup { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 8px; font-size: 0.82rem; color: var(--text-muted); }
+
+/* ---------- v3: nur bestehende App-Farben ---------- */
+.modes { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.modes .lbl { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-right: 2px; }
+.rn { width: 1.6em; text-align: center; font-weight: 800; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.rn.g { color: var(--gold); }
+.rn.none { color: #4b5470; font-weight: 600; }
+.grip { width: 16px; height: 16px; color: var(--text-muted); fill: currentColor; stroke: none; }
+.srow { display: grid; grid-template-columns: 1.6em minmax(0,1fr) auto; align-items: center; gap: 8px; min-height: 48px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elevated-2); }
+.srow .nm { display: flex; flex-direction: column; min-width: 0; font-weight: 600; font-size: 0.88rem; }
+.srow .nm small { font-weight: 400; font-size: 0.72rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow .num { width: 72px; height: 38px; font-size: 1.1rem; }
+.srow.is-dragging { opacity: 0.45; }
+.srow.is-drag-target { border-top: 2px solid var(--accent); }
+.srow.unranked .nm { color: var(--text-muted); }
+.srow.unranked .nm small { color: #6b7389; }
+.slist { display: flex; flex-direction: column; gap: 6px; }
+.sdiv { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.sdiv::before, .sdiv::after { content: ''; flex: 1; border-top: 1px dashed var(--border); }
+.pick.sel-existing { border-color: var(--ok); background: var(--ok-bg); }
+.pick.center { align-items: center; }
+.tline2 { display: grid; grid-template-columns: 1.6em minmax(0,1fr) auto; gap: 8px; align-items: center; font-size: 0.8rem; background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
+.tline2 .nm { display: flex; flex-direction: column; min-width: 0; font-weight: 600; }
+.tline2 .nm small { font-weight: 400; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tline2 .pts { font-variant-numeric: tabular-nums; font-weight: 700; }
+.tline2.lose .nm, .tline2.lose .pts { color: var(--text-muted); }
+.swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.sw { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 12px; font-size: 0.86rem; color: #c4cad8; }
+.sw i { width: 28px; height: 28px; border-radius: 8px; display: block; }
+.sw strong { color: var(--text); display: block; font-size: 0.88rem; }
+
+/* ---------- v4: Historie-Einträge ---------- */
+.hlist { display: flex; flex-direction: column; gap: 6px; }
+.hentry { background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+.hentry .hhead { grid-template-columns: 18px minmax(0,1fr) auto; }
+.hentry .hhead .chev { width: 16px; height: 16px; color: var(--text); }
+.hentry .hactions2 { display: flex; gap: 6px; align-items: center; }
+.hentry .hbody2 { display: flex; flex-direction: column; gap: 6px; padding-left: 26px; }
+.sk { color: var(--text-muted); font-weight: 400; }
+.tl3 { display: grid; grid-template-columns: 1.6em minmax(0,1fr) auto; gap: 8px; align-items: start; font-size: 0.8rem; padding: 4px 0; }
+.tl3 + .tl3 { border-top: 1px solid var(--border); padding-top: 6px; }
+.tl3 .rn { padding-top: 1px; }
+.tl3 .nm { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-weight: 600; }
+.tl3 .nm small { font-weight: 400; color: var(--text-muted); line-height: 1.35; }
+.tl3 .pts { font-variant-numeric: tabular-nums; font-weight: 700; }
+.tl3.lose .nm > span:first-child, .tl3.lose .pts { color: var(--text-muted); }
+.focus-hint { outline: 1.5px dashed rgba(91,140,255,.7); outline-offset: 2px; }
+
+.chev { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s ease; }
+.htitle .l1 { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skv { display: inline-flex; vertical-align: middle; align-items: center; gap: 2px; color: var(--text-muted); font-weight: 400; font-size: 0.72rem; font-variant-numeric: tabular-nums; margin-left: 2px; }
+.skic { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.skv.un, .skv .un { opacity: 0.7; }
+/* ---------- v7: Filter und K.-o.-Finale ---------- */
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.chipf { font-size: 0.78rem; font-weight: 600; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-elevated-2); color: var(--text); }
+.chipf.on { border-color: var(--accent); background: var(--accent-bg); }
+.champ { border-radius: 8px; background: var(--accent-gradient); color: #fff; font-weight: 700; font-size: 0.8rem; padding: 8px 10px; text-align: center; }
+/* ---------- Empfehlung ---------- */
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; counter-reset: s; }
+.step { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.step .n { font-family: var(--mono); font-size: 0.72rem; color: var(--text-muted); }
+.step p { font-size: 0.9rem; color: #c4cad8; }
+.step .effort { margin-top: auto; font-family: var(--mono); font-size: 0.72rem; color: var(--text-muted); }
+.callout { border-left: 3px solid var(--accent); background: var(--bg-elevated); border-radius: 0 12px 12px 0; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px; }
+.callout p { color: #c4cad8; }
+.two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+ul.plain { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: #c4cad8; font-size: 0.92rem; max-width: 68ch; }
+ul.plain strong { color: var(--text); }
+@media (max-width: 420px) {
+  .teams2 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+</svg>
+
+<div class="wrap">
+
+<header class="top">
+  <span class="eyebrow">Analyse · Stand main 156f039 · nichts umgesetzt · Version 7</span>
+  <h1>Match und Turnier angleichen</h1>
+  <p class="lead">Die letzte Prüfung ist teilweise überholt. Seit den PRs #662, #667 und #672 nutzen Match und Turnier bereits denselben Ergebnis-Dialogstil und dieselben Plus- und Stift-Aktionen. Übrig sind Abweichungen in Beschriftung, Punkte-Eingabe und Ergebnis-Anzeige, dazu ein dritter, ganz anders gebauter Ergebnis-Dialog in der Auswertung. Neu betrachtet: Ergebnisse mit mehreren Teams, die Modi Sieger und Punktestand, und die Match-Historie. Den Turnier-Tab kann man auflösen.</p>
+  <div class="meta-row">
+    <span class="tag ok">4 Punkte bereits erledigt</span>
+    <span class="tag warn">11 Abweichungen offen</span>
+    <span class="tag">Turnier-Tab: entbehrlich</span>
+  </div>
+  <nav class="toc" aria-label="Inhalt">
+    <a href="#erledigt">Schon erledigt</a>
+    <a href="#unterschiede">Offene Unterschiede</a>
+    <a href="#dialog">Mockup: Ergebnis-Dialog</a>
+    <a href="#farben">Farben</a>
+    <a href="#punkte">Mockup: Mehrere Teams</a>
+    <a href="#historie">Mockup: Historie</a>
+    <a href="#finale">Mockup: K.-o.-Finale</a>
+    <a href="#tab">Turnier-Tab auflösen</a>
+    <a href="#reihenfolge">Umsetzung</a>
+  </nav>
+</header>
+
+<!-- ============ ERLEDIGT ============ -->
+<section class="block" id="erledigt">
+  <div class="block-head">
+    <span class="eyebrow">Abgleich mit dem alten Befund</span>
+    <h2>Das ist schon angeglichen</h2>
+  </div>
+  <div class="done-grid">
+    <div class="done"><span class="mark">✓</span><p><strong>Match: Eintragen und Bearbeiten nutzen denselben Dialog.</strong> <code>openDrawResultDialog</code> öffnet sich für „+“, Stift und Rematch.</p></div>
+    <div class="done"><span class="mark">✓</span><p><strong>Turnier speichert nicht mehr per Tipp in der Liste.</strong> Auch dort öffnet „+“ oder der Stift einen Dialog. Ohne Punktestand speichert ein Tipp auf das Team sofort, genau wie im Match.</p></div>
+    <div class="done"><span class="mark">✓</span><p><strong>Gleiche Aktionen.</strong> Beide nutzen <code>tournament-fixture-action</code>: „+“ bei offenem Spiel, Stift bei eingetragenem Ergebnis.</p></div>
+    <div class="done"><span class="mark">✓</span><p><strong>Gleiche Siegerknöpfe und Anzeige.</strong> Beide nutzen <code>tournament-result-pick</code>, den grünen „Win“-Chip und „Remis“ für Unentschieden.</p></div>
+  </div>
+</section>
+
+<!-- ============ UNTERSCHIEDE ============ -->
+<section class="block" id="unterschiede">
+  <div class="block-head">
+    <span class="eyebrow">Neu geprüft</span>
+    <h2>Diese Unterschiede sind noch offen</h2>
+    <p class="muted">Die Spalte „Auswertung“ ist der freie Dialog „Ergebnis eintragen“ unter Rangliste (nur für Admins). Er ist heute der dritte Weg zu einem Ergebnis und weicht am stärksten ab.</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Thema</th><th>Match (Teams → Historie)</th><th>Turnier</th><th>Auswertung</th></tr></thead>
+      <tbody>
+        <tr><td>Punkte eingeben <span class="sev hi">hoch</span></td><td>Teams untereinander, je ein Feld „Team 1 [ ]“, Kommazahlen erlaubt</td><td>Nebeneinander „A [ ] : [ ] B“, nur ganze Zahlen</td><td>Je Team zwei Felder: „Wert“ und „Platz“</td></tr>
+        <tr><td>Umschalten Sieger ↔ Punkte <span class="sev hi">hoch</span></td><td>Textknopf „Mit Werten eintragen“ unter den Siegerknöpfen, zurück mit „Nur Sieger wählen“</td><td>Kein Umschalter. Die Turnier-Option „Punktestand“ legt es für alle Spiele fest.</td><td>Checkbox „Werte / Platzierung eintragen“</td></tr>
+        <tr><td>Siegerwahl <span class="sev mid">mittel</span></td><td>Knöpfe untereinander: „Team 1“ plus Spielernamen</td><td>Knöpfe untereinander: nur der Teamname, keine Spieler</td><td>Runde Auswahlchips, danach „Speichern“</td></tr>
+        <tr><td>Historie <span class="sev hi">hoch</span></td><td>Jeder Eintrag eine volle Karte, Teams in Losreihenfolge, Platz nur als graue Zeile. Jedes Neu-Losen legt einen Eintrag an.</td><td>Eigene Liste mit „Läuft“/„Beendet“</td><td>–</td></tr>
+        <tr><td>Punkte anzeigen <span class="sev mid">mittel</span></td><td>Kleine graue Zeile je Teamkarte: „Platz 1 · Wert 3“</td><td>Ergebnis-Chip „3 : 1“, Siegerzahl grün</td><td>–</td></tr>
+        <tr><td>Wortwahl <span class="sev mid">mittel</span></td><td>„Wert“, „Mit Werten eintragen“</td><td>„Punktestand“ (Turnier-Option)</td><td>„Wert“, „Platz“, bei Frei-für-alle „Kein Sieger“</td></tr>
+        <tr><td>Rückmeldung <span class="sev mid">mittel</span></td><td>Hinweis „Ergebnis gespeichert.“</td><td>Kein Hinweis. Nur beim letzten Spiel „Turnier beendet – Sieger: …“</td><td>Hinweis</td></tr>
+        <tr><td>Sieger im Turnierbaum <span class="sev lo">gering</span></td><td>„Win“-Chip im Teamkopf</td><td>Liga: „‹ Win“ bzw. „Win ›“. Baum: fett und grünes Häkchen, mit Punkten grüne Zahl.</td><td>–</td></tr>
+        <tr><td>Teamkarte <span class="sev lo">gering</span></td><td>Kopf: „Team 1“ und Skill-Summe. Avatare 18 px.</td><td>Kopf: Name, „4 Spieler“ und Skill-Summe. Avatare 24 px.</td><td>–</td></tr>
+        <tr><td>Dialogtitel <span class="sev lo">gering</span></td><td>„Ergebnis · Rocket League“</td><td>„Ergebnis · Halbfinale“ (ohne Paarung)</td><td>„Ergebnis eintragen“</td></tr>
+        <tr><td>Fehlertext bei leerer Eingabe <span class="sev lo">gering</span></td><td>„Bitte mindestens einen Wert eintragen.“</td><td>„Bitte mindestens ein Ergebnis eintragen.“</td><td>–</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout">
+    <strong>Ursache</strong>
+    <p>Die beiden Dialoge teilen nur CSS-Klassen. Der HTML-Aufbau ist in <code>views/matchmaking.js</code> und <code>views/tournament.js</code> jeweils von Hand geschrieben. Deshalb laufen Details wie Spielernamen, Hinweistext und Zahlenregeln auseinander, sobald nur eine Seite geändert wird.</p>
+  </div>
+</section>
+
+<!-- ============ FARBEN ============ -->
+<section class="block" id="farben">
+  <div class="block-head">
+    <span class="eyebrow">Farben</span>
+    <h2>Nur Farben, die die App schon nutzt</h2>
+    <p class="muted">Die Mockups nutzen keine neuen Markierungen mehr. Die goldenen Kreise und die grün hinterlegten Zeilen aus Version 2 sind entfernt. Jede Farbe hat die Bedeutung, die sie heute schon hat.</p>
+  </div>
+  <div class="swatches">
+    <div class="sw"><i style="background:var(--ok-bg);box-shadow:inset 0 0 0 1px var(--ok)"></i><div><strong>Grün = gewonnen</strong>Nur der „Win“-Chip und die grüne Siegerzahl, wie heute auf Teamkarten, Spielplan und Turnierbaum. Keine grünen Zeilen im Dialog.</div></div>
+    <div class="sw"><i style="background:transparent;display:grid;place-items:center;color:var(--gold);font-weight:800;font-style:normal">1</i><div><strong>Gold = Platz 1 als Zahl</strong>Nur die Platzzahl selbst, wie heute in der Rangliste (<code>.lb-rank</code>) und der Turniertabelle. Keine goldenen Rahmen oder Kreise.</div></div>
+    <div class="sw"><i style="background:var(--accent-gradient)"></i><div><strong>Verlauf = aktive Wahl</strong>Der aktive Modus („Sieger“ oder „Punktestand“) und „Speichern“, wie „Auslosung | Captain Draft“ im Match.</div></div>
+    <div class="sw"><i style="background:var(--accent-bg);box-shadow:inset 0 0 0 1px var(--accent);border-radius:999px"></i><div><strong>Blau umrandet = aktiver Filter</strong>Der gewählte Filter in der Historie, wie die Filterchips im Spielekatalog (<code>.chip.is-active</code>).</div></div>
+    <div class="sw"><i style="background:var(--bg-elevated-2);border:1px solid var(--border)"></i><div><strong>Grau = neutral</strong>Zeilen, „Unentschieden“, Badges wie „Offen“ oder „Turnier“ und Verlierer in grauer Schrift.</div></div>
+  </div>
+</section>
+
+<!-- ============ MOCKUP 1: DIALOG ============ -->
+<section class="block" id="dialog">
+  <div class="block-head">
+    <span class="eyebrow">Vorschlag A · gemeinsamer Ergebnis-Dialog</span>
+    <h2>Sieger oder Punktestand: ein Dialog für beide Bereiche</h2>
+    <p class="muted">Ein kleines Modul, z. B. <code>resultDialog.js</code>, baut den Dialog für Match und Turnier. Die Bereiche übergeben nur Teams, Regeln und die Speicherfunktion: Unentschieden erlaubt oder nicht, nur ganze Zahlen oder nicht, Punkte-Modus fest oder umschaltbar. Gespeichert wird immer ausdrücklich mit „Speichern“, auch bei zwei Teams. Heute speichert ein Tipp auf das Siegerteam sofort; das fällt weg.</p>
+  </div>
+  <div class="compare">
+    <div class="shot">
+      <div class="shot-label"><span class="pill before">Vorher</span> Match</div>
+      <div class="phone dim">
+        <div class="modal">
+          <div class="modal-head"><strong>Ergebnis · Rocket League</strong><span class="x">×</span></div>
+          <span class="muted sm">Wer hat gewonnen?</span>
+          <div class="pick">Team 1<span class="pl">Anna, Ben, Chris</span></div>
+          <div class="pick">Team 2<span class="pl">Dana, Emil, Finn</span></div>
+          <div class="pick draw">Unentschieden</div>
+          <span class="btn" style="align-self:flex-start">Mit Werten eintragen</span>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Umschalter auf Punkte liegt unten als unauffälliger Textknopf</li>
+        <li class="info">Spielernamen helfen, weil „Team 1“ nichts sagt</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill before">Vorher</span> Turnier</div>
+      <div class="phone dim">
+        <div class="modal">
+          <div class="modal-head"><strong>Ergebnis · Halbfinale</strong><span class="x">×</span></div>
+          <span class="muted sm">Wer hat gewonnen?</span>
+          <div class="pick">Team Anna</div>
+          <div class="pick">Team Dana</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Keine Spielernamen; Titel nennt nur die Phase</li>
+        <li class="info">Kein Unentschieden im K.-o.-Modus (Regel bleibt)</li>
+        <li>Kein Hinweis nach dem Speichern</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill after">Nachher</span> beide Bereiche, 2 Teams</div>
+      <div class="phone dim">
+        <div class="modal">
+          <div class="modal-head"><strong>Ergebnis</strong><span class="x">×</span></div>
+          <div class="modal-sub">Rocket League · Halbfinale</div>
+          <div class="modes"><span class="btn primary">Sieger</span><span class="btn">Punktestand</span></div>
+          <div class="pick">Team Anna<span class="pl">Anna, Ben, Chris</span></div>
+          <div class="pick sel-existing">Team Dana<span class="pl">Dana, Emil, Finn</span></div>
+          <div class="pick draw center">Unentschieden</div>
+          <span class="btn primary block">Speichern</span>
+        </div>
+      </div>
+      <ul class="notes">
+        <li class="good">Antippen wählt nur aus; erst „Speichern“ speichert</li>
+        <li class="good">Auswahl im heutigen Stil des Ergebnis-Dialogs (grüner Rahmen wie der schon gespeicherte Sieger)</li>
+        <li class="good">Modus-Knöpfe im Stil des Match-Modus („Auslosung | Captain Draft“); im Turnier ausgeblendet</li>
+                <li class="info">„Unentschieden“ nicht im K.-o.-Modus</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MOCKUP 2: PUNKTE & RANGFOLGE ============ -->
+<section class="block" id="punkte">
+  <div class="block-head">
+    <span class="eyebrow">Vorschlag A · mehrere Teams</span>
+    <h2>Zwei Modi für 2 bis 6 Teams</h2>
+    <p class="muted">Statt einer Tafel „A : B“ für zwei Teams und einer Liste für mehr Teams gibt es nur noch eine Liste. Es gibt zwei Modi: „Sieger“ (nur das Siegerteam) und „Punktestand“ (Punkte eintragen, die Rangfolge ergibt sich aus den Punkten). Beim Punktestand hat jede Zeile die Platzzahl, Team und Spieler und rechts das Punktefeld, bei 2 Teams genauso wie bei 6. Gespeichert wird immer mit „Speichern“, auch bei zwei Teams. Die kurze Anzeige „3 : 1“ auf Spielplan und Turnierbaum bleibt.</p>
+  </div>
+  <div class="compare four">
+    <div class="shot">
+      <div class="shot-label"><span class="pill before">Vorher</span> Match, 4 Teams</div>
+      <div class="phone dim">
+        <div class="modal">
+          <div class="modal-head"><strong>Ergebnis · Mario Kart</strong><span class="x">×</span></div>
+          <div class="vrow"><span class="nm">Team 1<small>Anna, Ben</small></span><span class="num ph">0</span></div>
+          <div class="vrow"><span class="nm">Team 2<small>Chris, Dana</small></span><span class="num ph">0</span></div>
+          <div class="vrow"><span class="nm">Team 3<small>Emil, Finn</small></span><span class="num ph">0</span></div>
+          <div class="vrow"><span class="nm">Team 4<small>Gina, Hugo</small></span><span class="num ph">0</span></div>
+          <span class="btn primary block">Speichern</span>
+          <span class="btn" style="align-self:flex-start">Nur Sieger wählen</span>
+        </div>
+      </div>
+      <ul class="notes">
+        <li class="info">Plätze ergeben sich nur aus Punkten; das bleibt so (das frühere Feld „Platz“ kommt nicht zurück)</li>
+        <li>Man sieht erst in der Historie, welcher Platz herauskommt</li>
+        <li>Höchster Wert gewinnt immer; für Zeiten oder Golf-Schläge ist das falsch herum</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill after">Nachher</span> Sieger, 4 Teams</div>
+      <div class="phone dim">
+        <div class="modal">
+          <div class="modal-head"><strong>Ergebnis</strong><span class="x">×</span></div>
+          <div class="modal-sub">Mario Kart · 4 Teams</div>
+          <div class="modes"><span class="btn primary">Sieger</span><span class="btn">Punktestand</span></div>
+          <div class="pick">Team 1<span class="pl">Anna, Ben</span></div>
+          <div class="pick sel-existing">Team 2<span class="pl">Chris, Dana</span></div>
+          <div class="pick">Team 3<span class="pl">Emil, Finn</span></div>
+          <div class="pick">Team 4<span class="pl">Gina, Hugo</span></div>
+          <div class="pick draw center">Unentschieden</div>
+          <span class="btn primary block">Speichern</span>
+        </div>
+      </div>
+      <ul class="notes">
+        <li class="good">Nur der Sieger zählt, die anderen Teams bekommen keinen Platz</li>
+        <li class="good">Wie heute, nur mit „Speichern“ statt sofortigem Speichern</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill after">Nachher</span> Punktestand, 4 Teams</div>
+      <div class="phone dim">
+        <div class="modal">
+          <div class="modal-head"><strong>Ergebnis</strong><span class="x">×</span></div>
+          <div class="modal-sub">Mario Kart · 4 Teams</div>
+          <div class="modes"><span class="btn">Sieger</span><span class="btn primary">Punktestand</span></div>
+          <div class="slist">
+            <div class="srow"><span class="rn">2</span><span class="nm">Team 1<small>Anna, Ben</small></span><span class="num">38</span></div>
+            <div class="srow"><span class="rn g">1</span><span class="nm">Team 2<small>Chris, Dana</small></span><span class="num">45</span></div>
+            <div class="srow"><span class="rn">3</span><span class="nm">Team 3<small>Emil, Finn</small></span><span class="num">21</span></div>
+            <div class="srow"><span class="rn">3</span><span class="nm">Team 4<small>Gina, Hugo</small></span><span class="num">21</span></div>
+          </div>
+          <span class="hint-line">Mehr Punkte = besser · <span style="color:var(--accent)">umdrehen</span></span>
+          <span class="btn primary block">Speichern</span>
+        </div>
+      </div>
+      <ul class="notes">
+        <li class="good">Die Platzzahl rechnet beim Tippen mit; gleiche Punkte teilen sich den Platz</li>
+        <li class="good">Die Punkte bestimmen die Rangfolge; Zeilen springen beim Tippen nicht um</li>
+        <li class="good">„umdrehen“ für Spiele, bei denen weniger besser ist; besser noch als Einstellung am Spiel</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill after">Nachher</span> Turnier, 2 Teams</div>
+      <div class="phone dim">
+        <div class="modal">
+          <div class="modal-head"><strong>Ergebnis</strong><span class="x">×</span></div>
+          <div class="modal-sub">Rocket League Cup · Halbfinale</div>
+          <div class="slist">
+            <div class="srow"><span class="rn g">1</span><span class="nm">Team Anna<small>Anna, Ben, Chris</small></span><span class="num">3</span></div>
+            <div class="srow"><span class="rn">2</span><span class="nm">Team Dana<small>Dana, Emil, Finn</small></span><span class="num">1</span></div>
+          </div>
+          <span class="btn primary block">Speichern</span>
+        </div>
+      </div>
+      <ul class="notes">
+        <li class="good">Genau dieselbe Liste; kein Umschalter, weil das Turnier den Punktestand festlegt</li>
+        <li class="info">Nur ganze Zahlen; im K.-o.-Modus ist ein Gleichstand weiter nicht erlaubt</li>
+      </ul>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="callout">
+      <strong>Server und Daten</strong>
+      <p>Der Server speichert je Team schon heute <code>score</code> und <code>rank</code>, gleiche Plätze sind erlaubt. Punkte in der Rangliste gibt es nur für den Sieger, der Platz ist reine Anzeige. Die Platzzahl live im Dialog ist deshalb reine Frontend-Arbeit. „Weniger ist besser“ als Einstellung am Spiel bräuchte ein neues Feld im Spielkatalog; als Schalter im Dialog genügt das Frontend.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MOCKUP 3: HISTORIE ============ -->
+<section class="block" id="historie">
+  <div class="block-head">
+    <span class="eyebrow">Vorschlag B · Historie</span>
+    <h2>Historie: einklappbare Einträge mit Ergebnis im Kopf</h2>
+    <p class="muted">Heute ist jeder Eintrag eine volle Karte mit allen Teams und Spielern. Schon zwei Einträge füllen einen Handybildschirm. Dazu kommt: Jedes „Teams auslosen“ legt einen neuen Eintrag an, auch wenn danach neu gelost wird. Die Historie füllt sich so mit Auslosungen, die nie gespielt wurden (der Server liefert höchstens 20).</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Bereich</th><th>Eintrag</th><th>Kopfzeile</th><th>Details</th></tr></thead>
+      <tbody>
+        <tr><td>Vote</td><td>Kompakte Zeile</td><td>Runde · Datum · Stimmen, „Win“-Chip mit Sieger</td><td>Knopf „Stimmen ansehen“ öffnet einen Dialog</td></tr>
+        <tr><td>Umfragen</td><td>Einklappbare Karte mit Pfeil</td><td>Titel; Ersteller · Runde · beantwortet; „Win“-Chip; Status-Badge; Aktionen rechts</td><td>Aufgeklappt in der Karte; frühere Runden als Zeilen „Frühere Runden (n)“</td></tr>
+        <tr><td>Essen</td><td>Einklappbare Bestellkarte, erst ab 2 Einträgen</td><td>Titel und Status</td><td>Aufgeklappt in der Karte</td></tr>
+        <tr><td>Durchsagen, Feedback</td><td>Tabellenzeile</td><td>–</td><td>–</td></tr>
+        <tr><td>Match</td><td>Immer volle Karte</td><td>Spiel, Datum, „Captain Draft“, „Remis“; Sieger nur als Chip im Teamkopf</td><td>Immer offen: alle Teams mit allen Spielern, in Losreihenfolge</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">Am nächsten liegt das Muster der Umfragen: ein Eintrag mit Ergebnis, Status und Aktionen, der sich aufklappen lässt. Die Match-Historie sollte es übernehmen.</p>
+  <div class="compare">
+    <div class="shot">
+      <div class="shot-label"><span class="pill before">Vorher</span> Historie im Match</div>
+      <div class="phone">
+        <div class="card">
+          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">9</span></span></div>
+          <div class="card" style="background:var(--bg-elevated-2)">
+            <div class="row between">
+              <div class="row" style="flex-wrap:wrap;gap:6px"><strong class="sm">Mario Kart</strong><span class="muted xs">Sa 21:14</span></div>
+              <div class="row"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></div>
+            </div>
+            <div class="teams2">
+              <div class="team lose"><div class="team-head"><span>Team 1</span></div><span class="muted xs">Platz 2 · Wert 38</span><span class="pn">Anna</span><span class="pn">Ben</span></div>
+              <div class="team"><div class="team-head"><span class="row" style="gap:6px">Team 2 <span class="chip-win">Win</span></span></div><span class="muted xs">Platz 1 · Wert 45</span><span class="pn">Chris</span><span class="pn">Dana</span></div>
+              <div class="team lose"><div class="team-head"><span>Team 3</span></div><span class="muted xs">Platz 3 · Wert 21</span><span class="pn">Emil</span><span class="pn">Finn</span></div>
+              <div class="team lose"><div class="team-head"><span>Team 4</span></div><span class="muted xs">Platz 3 · Wert 21</span><span class="pn">Gina</span><span class="pn">Hugo</span></div>
+            </div>
+          </div>
+          <div class="card" style="background:var(--bg-elevated-2)">
+            <div class="row between">
+              <div class="row" style="flex-wrap:wrap;gap:6px"><strong class="sm">Mario Kart</strong><span class="muted xs">Sa 21:02</span></div>
+              <div class="row"><span class="act open"><svg><use href="#i-plus"/></svg></span><span class="btn">Turnier erstellen</span></div>
+            </div>
+            <div class="teams2">
+              <div class="team"><div class="team-head"><span>Team 1</span></div><span class="pn">Anna</span><span class="pn">Chris</span></div>
+              <div class="team"><div class="team-head"><span>Team 2</span></div><span class="pn">Ben</span><span class="pn">Dana</span></div>
+            </div>
+          </div>
+          <span class="muted xs" style="text-align:center">… 7 weitere volle Karten</span>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Platzierung nur als kleine graue Zeile, Teams in Losreihenfolge statt nach Platz</li>
+        <li>Nicht gespielte Auslosungen stehen gleichwertig zwischen den Ergebnissen</li>
+        <li>Schon zwei Einträge füllen den Bildschirm</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill after">Nachher</span> Historie, alles zugeklappt</div>
+      <div class="phone">
+        <div class="card">
+          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">9</span></span></div>
+          <div class="chip-row"><span class="chipf on">Alle</span><span class="chipf">Matches</span><span class="chipf">Turniere</span></div>
+          <div class="hlist">
+            <div class="hentry focus-hint">
+              <div class="hhead"><svg class="chev"><use href="#i-chev"/></svg>
+                <span class="htitle"><span class="l1">Mario Kart</span><span class="l2"><span>Sa 21:14</span><span class="res"><span class="chip-win">Win</span>Team 2 · 45</span><span>4 Teams</span></span></span>
+                <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span>
+              </div>
+            </div>
+            <div class="hint">Die ganze Kopfzeile außer den Knöpfen ist die Klickfläche. Pfeil nach rechts = zugeklappt.</div>
+            <div class="hentry">
+              <div class="hhead"><svg class="chev"><use href="#i-chev"/></svg>
+                <span class="htitle"><span class="l1">Rocket League</span><span class="l2"><span>Sa 20:40</span><span class="res"><span class="chip-win">Win</span>Team 1</span><span class="chip-score" style="font-size:.75rem;padding:0 6px"><span class="w">3</span> : 1</span></span></span>
+                <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span>
+              </div>
+            </div>
+            <div class="hentry">
+              <div class="hhead"><svg class="chev"><use href="#i-chev"/></svg>
+                <span class="htitle"><span class="l1">Rocket League</span><span class="l2"><span>Fr 22:40</span><span class="badge">Turnier</span><span>Sieger: <b style="color:var(--text)">Team Anna</b></span></span></span>
+                <span class="hactions2"><span class="btn">LAN Cup</span></span>
+              </div>
+            </div>
+            <div class="hentry">
+              <div class="hhead"><svg class="chev"><use href="#i-chev"/></svg>
+                <span class="htitle"><span class="l1">Counter-Strike 2</span><span class="l2"><span>Fr 21:10</span><span class="chip-remis">Remis</span><span>2 Teams</span></span></span>
+                <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span>
+              </div>
+            </div>
+          </div>
+          <div class="subgroup"><span class="row" style="gap:6px"><svg class="ic"><use href="#i-chev"/></svg>Ohne Ergebnis (5)</span><span class="badge">Offen</span></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li class="good">Jeder Eintrag ist eine eigene Kachel mit Pfeil links, wie die Umfragen-Karten</li>
+        <li class="good">Zugeklappt: Spiel, Zeit, Sieger mit Punkten oder „3 : 1“, Teamanzahl</li>
+        <li class="good">„Rematch“ und Stift stehen im Kopf, also ohne Aufklappen erreichbar</li>
+        <li class="good">Nie gespielte Auslosungen gesammelt unter „Ohne Ergebnis (n)“</li>
+        <li class="good">Filter „Alle | Matches | Turniere“ oben, im Stil der Filterchips im Spielekatalog</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill after">Nachher</span> Historie, ein Eintrag aufgeklappt</div>
+      <div class="phone">
+        <div class="card">
+          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">9</span></span></div>
+          <div class="chip-row"><span class="chipf">Alle</span><span class="chipf on">Matches</span><span class="chipf">Turniere</span></div>
+          <div class="hlist">
+            <div class="hentry">
+              <div class="hhead open"><svg class="chev"><use href="#i-chev"/></svg>
+                <span class="htitle"><span class="l1">Mario Kart</span><span class="l2"><span>Sa 21:14</span><span class="res"><span class="chip-win">Win</span>Team 2 · 45</span><span>4 Teams</span></span></span>
+                <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span>
+              </div>
+              <div class="hbody2">
+                <div class="tl3"><span class="rn g">1</span><span class="nm"><span>Team 2 <span class="skv"><svg class="skic" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>9</span></span><small>Chris, Dana</small></span><span class="pts">45</span></div>
+                <div class="tl3 lose"><span class="rn">2</span><span class="nm"><span>Team 1 <span class="skv"><svg class="skic" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>8</span></span><small>Anna, Ben</small></span><span class="pts">38</span></div>
+                <div class="tl3 lose"><span class="rn">3</span><span class="nm"><span>Team 3 <span class="skv"><svg class="skic" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>8 <span class="un">(1)</span></span></span><small>Emil, Finn</small></span><span class="pts">21</span></div>
+                <div class="tl3 lose"><span class="rn">3</span><span class="nm"><span>Team 4 <span class="skv"><svg class="skic" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>5 <span class="un">(1)</span></span></span><small>Gina, Hugo</small></span><span class="pts">21</span></div>
+              </div>
+            </div>
+            <div class="hentry">
+              <div class="hhead"><svg class="chev"><use href="#i-chev"/></svg>
+                <span class="htitle"><span class="l1">Rocket League</span><span class="l2"><span>Sa 20:40</span><span class="res"><span class="chip-win">Win</span>Team 1</span><span class="chip-score" style="font-size:.75rem;padding:0 6px"><span class="w">3</span> : 1</span></span></span>
+                <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span>
+              </div>
+            </div>
+          </div>
+          <div class="subgroup"><span class="row" style="gap:6px"><svg class="ic"><use href="#i-chev"/></svg>Ohne Ergebnis (5)</span><span class="badge">Offen</span></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li class="good">Pfeil zeigt nach unten; darunter die Teams nach Platz sortiert</li>
+        <li class="good">Filter „Matches“ aktiv: Turniere sind ausgeblendet</li>
+        <li class="good">Nur die Skill-Summe des Teams hinter dem Teamnamen, mit dem bisherigen Skill-Symbol; Spieler ohne einzelne Werte</li>
+        <li class="good">Kein Knopf „Teams im Detail“ mehr nötig; alles steht direkt da</li>
+        <li class="info">Wie heute: „8 (1)“ = Summe, davon 1 Spieler ohne eigene Bewertung (zählt mit 3)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="callout">
+      <strong>Auf- und zuklappen</strong>
+      <p>Wie bei den Umfragen: Jeder Eintrag hat links den Pfeil (nach rechts = zu, nach unten = offen), die ganze Kopfzeile ist die Klickfläche. Alle Einträge starten zu, der Zustand bleibt beim Neuzeichnen erhalten. Ein gerade eingetragenes oder bearbeitetes Ergebnis klappt auf, so wie Essen es bei gerade geschlossenen Bestellungen macht. „Neue Auslosung“ steht weiter offen über der Historie.</p>
+    </div>
+    <div class="callout">
+      <strong>Skill nur fürs ganze Team</strong>
+      <p>Die Historie zeigt nur die Skill-Summe je Team, in derselben Anzeige wie heute auf den Teamkarten (<code>teamSkillHtml</code>): das Skill-Symbol (<code>activity</code>) mit der Zahl dahinter, in Grau. „8 (1)“ heißt wie heute: davon 1 Spieler ohne eigene Bewertung. Einzelne Skill-Level der Spieler entfallen in der Historie. Bei Captain Draft wurde nicht nach Skill gelost; dort zählt die Summe wie heute nur die eingetragenen Werte. Die Werte stammen aus dem Stand der Auslosung und ändern sich nicht nachträglich.</p>
+    </div>
+    <div class="callout">
+      <strong>Festgelegt: „Ohne Ergebnis (n)“</strong>
+      <p>Nie gespielte Auslosungen bleiben erhalten, stehen aber gesammelt in einer eigenen, eingeklappten Gruppe am Ende der Historie. Das ist reine Frontend-Arbeit; der Server verwirft beim erneuten Losen nichts. Die Produktregel zur gemischten Historie wird im selben PR angepasst.</p>
+    </div>
+    <div class="callout">
+      <strong>Gering: Sieger im Turnierbaum</strong>
+      <p>Im Turnierbaum ist wenig Platz, deshalb zeigt er ein grünes Häkchen statt „Win“. Das darf bleiben. Die Regel lautet dann überall: Sieger mit grünem „Win“-Chip oder grüner Zahl, Verlierer grau, in Listen die Platzzahl wie in der Rangliste (Platz 1 als goldene Zahl).</p>
+    </div>
+    <div class="callout">
+      <strong>Wortwahl festlegen</strong>
+      <p>Einheitlich „Punktestand“ statt „Wert“, „Unentschieden“ statt „Kein Sieger“. „Remis“ bleibt als kurze Anzeige, so wie in den Produktregeln festgehalten.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ K.-O.-FINALE ============ -->
+<section class="block" id="finale">
+  <div class="block-head">
+    <span class="eyebrow">Vorschlag C · Turnier mit Gruppenphase und K.-o.-Runde</span>
+    <h2>K.-o.-Runde mit nur 2 Teams: Spielzeile statt Turnierbaum</h2>
+    <p class="muted">Steigen aus der Gruppenphase insgesamt nur 2 Teams auf, besteht die K.-o.-Runde aus einem einzigen Spiel. Ein Turnierbaum mit einer Box und Verbindungslinien ist dafür zu viel. Das Spiel erscheint als normale 1:1-Zeile, wie im Spielplan der Gruppen. Dasselbe gilt für ein reines K.-o.-Turnier mit 2 Teams.</p>
+  </div>
+  <div class="compare">
+    <div class="shot">
+      <div class="shot-label"><span class="pill before">Vorher</span> K.-o.-Runde, 2 Teams</div>
+      <div class="phone">
+        <div class="card">
+          <span class="m-h2">K.O.-Runde</span>
+          <div class="muted xs">Finale</div>
+          <div class="bracket" style="grid-template-columns:1fr 90px">
+            <div class="bm"><div><div class="r w"><span>Team Anna</span><span>3</span></div><div class="r l"><span>Team Dana</span><span>1</span></div></div><span class="side"><svg class="ic"><use href="#i-pencil"/></svg></span></div>
+            <div class="champ">Team Anna</div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Turnierbaum mit einer einzigen Box und Siegerfeld daneben</li>
+        <li>Anders aufgebaut als die Spielzeilen der Gruppen direkt darüber</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill after">Nachher</span> offen</div>
+      <div class="phone">
+        <div class="card">
+          <span class="m-h2">Finale</span>
+          <div class="fixture"><span class="a">Team Anna</span><span class="chip-score" style="font-weight:600;color:var(--text-muted)">vs</span><span class="b">Team Dana</span><span class="act open"><svg><use href="#i-plus"/></svg></span></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li class="good">Dieselbe Spielzeile wie im Spielplan: Heimteam rechtsbündig, Ergebnis in der Mitte, Aktion rechts</li>
+        <li class="good">Überschrift „Finale“ statt „K.O.-Runde“</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill after">Nachher</span> entschieden</div>
+      <div class="phone">
+        <div class="card">
+          <span class="m-h2">Finale</span>
+          <div class="fixture"><span class="a win">Team Anna</span><span class="chip-score"><span class="w">3</span> : 1</span><span class="b lose">Team Dana</span><span class="act"><svg><use href="#i-pencil"/></svg></span></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li class="good">Sieger wie im Spielplan: grüne Zahl oder „‹ Win“, Verlierer grau</li>
+        <li class="good">Kein Siegerfeld daneben; den Sieger zeigt die Karte „Turnier beendet“ oben</li>
+        <li class="info">Ab 3 Teams in der K.-o.-Runde bleibt der Turnierbaum</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TURNIER-TAB ============ -->
+<section class="block" id="tab">
+  <div class="block-head">
+    <span class="eyebrow">Frage: Braucht es den Turnier-Tab?</span>
+    <h2>Den Turnier-Tab auflösen</h2>
+    <p class="lead">Du siehst es richtig. Nötig ist der Tab eigentlich nur, solange ein Turnier läuft. Ohne laufendes Turnier zeigt er „Noch keine Turniere.“ und einen Knopf „Turnier anlegen“, der nur zurück zu „Teams“ springt. Dazu kommt das eingeklappte Archiv der beendeten Turniere.</p>
+  </div>
+  <div class="two-col">
+    <div class="stack" style="gap:10px">
+      <h3>Was der Tab heute leistet</h3>
+      <ul class="plain">
+        <li><strong>Laufende Turniere finden.</strong> Das geht auch über Home („Aktuell“), die Push-Nachricht, die Suche und die Karte in der Match-Historie.</li>
+        <li><strong>Beendete Turniere nachschlagen.</strong> Die zugehörige Auslosung liegt schon in der Historie, mit einem Knopf, der das Turnier öffnet.</li>
+        <li><strong>Turnierbaum oder Tabelle zeigen.</strong> Diese Seite bleibt, sie braucht nur keinen eigenen Tab.</li>
+        <li><strong>Turnier anlegen:</strong> Der Knopf leitet heute schon zu „Teams“ weiter.</li>
+      </ul>
+    </div>
+    <div class="stack" style="gap:10px">
+      <h3>Vorschlag</h3>
+      <ul class="plain">
+        <li><strong>Match wird eine Seite ohne Tab-Leiste.</strong></li>
+        <li><strong>Karte „Laufende Turniere“</strong> ganz oben, nur wenn eines läuft. Eine Zeile je Turnier mit Fortschritt, ein Tipp öffnet den Turnierbaum.</li>
+        <li><strong>Beendete Turniere</strong> stehen in der Historie. Ihre Karte zeigt dazu „Sieger: …“.</li>
+        <li><strong>Die Turnierseite bleibt eine eigene Seite</strong> (<code>#tournaments/&lt;id&gt;</code>) mit „‹ Match“ als Rückweg. Deep Links und Push-Links funktionieren weiter.</li>
+        <li><strong>Home „Aktuell“</strong> öffnet das Turnier direkt statt der Liste. Heute kostet das einen Tipp mehr.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="compare four">
+    <div class="shot">
+      <div class="shot-label"><span class="pill before">Vorher</span> Match › Teams</div>
+      <div class="phone">
+        <div class="m-title">Match</div>
+        <div class="tabs"><span class="btn primary">Teams</span><span class="btn">Turniere</span></div>
+        <div class="card">
+          <span class="muted xs">Spiel auswählen</span>
+          <div class="field">Rocket League</div>
+          <div class="row"><span class="muted xs">Modus</span><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div>
+          <div class="check"><b></b>Anna</div><div class="check"><b></b>Ben</div>
+          <span class="btn primary" style="align-self:flex-start">Teams auslosen</span>
+        </div>
+        <div class="card"><div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">6</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div></div>
+        <div class="nav"><span>Home</span><span class="on">Match</span><span>Vote</span><span>Essen</span><span>Mehr</span></div>
+      </div>
+      <ul class="notes">
+        <li>Ein laufendes Turnier ist hier nicht zu sehen</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill before">Vorher</span> Match › Turniere</div>
+      <div class="phone">
+        <div class="m-title">Match</div>
+        <div class="tabs"><span class="btn">Teams</span><span class="btn primary">Turniere</span></div>
+        <div class="card">
+          <div class="row between"><span class="m-h2">Aktuelle Turniere</span><span class="btn primary">Turnier anlegen</span></div>
+          <div class="list-card"><span class="main"><strong class="sm">Rocket League Cup</strong><span class="muted xs">Rocket League</span><span class="muted xs">K.O.-Turnier · 4 Teams</span><span class="xs">1/3 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
+        </div>
+        <div class="card"><div class="coll"><span class="m-h2">Abgeschlossene Turniere</span><span class="row"><span class="badge">2</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div></div>
+        <div class="nav"><span>Home</span><span class="on">Match</span><span>Vote</span><span>Essen</span><span>Mehr</span></div>
+      </div>
+      <ul class="notes">
+        <li>Ohne laufendes Turnier nur leerer Zustand und Archiv</li>
+        <li>„Turnier anlegen“ springt zurück zu „Teams“</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill after">Nachher</span> Match, eine Seite</div>
+      <div class="phone">
+        <div class="m-title">Match</div>
+        <div class="card">
+          <span class="m-h2">Laufende Turniere</span>
+          <div class="list-card"><span class="main"><strong class="sm">Rocket League Cup</strong><span class="muted xs">K.O.-Turnier · 1/3 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
+        </div>
+        <div class="card">
+          <span class="muted xs">Spiel auswählen</span>
+          <div class="field">Rocket League</div>
+          <div class="row"><span class="muted xs">Modus</span><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div>
+          <span class="btn primary" style="align-self:flex-start">Teams auslosen</span>
+        </div>
+        <div class="card">
+          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">6</span></span></div>
+          <div class="hitem"><div class="hhead"><svg class="chev"><use href="#i-chev"/></svg><span class="htitle"><span class="l1">Rocket League</span><span class="l2"><span>Fr 22:40</span><span class="badge">Turnier</span><span>Sieger: <b style="color:var(--text)">Team Anna</b></span></span></span><span class="btn">LAN Cup</span></div></div>
+        </div>
+        <div class="nav"><span>Home</span><span class="on">Match</span><span>Vote</span><span>Essen</span><span>Mehr</span></div>
+      </div>
+      <ul class="notes">
+        <li class="good">Keine Tab-Leiste; laufendes Turnier steht oben</li>
+        <li class="good">Karte erscheint nur, wenn ein Turnier läuft</li>
+        <li class="good">Beendete Turniere in der Historie mit Sieger</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-label"><span class="pill after">Nachher</span> Turnierseite</div>
+      <div class="phone">
+        <span class="back"><svg class="ic"><use href="#i-back"/></svg>Match</span>
+        <div class="row between"><strong style="font-size:1.1rem">Rocket League Cup</strong><span class="btn">Löschen</span></div>
+        <span class="muted xs">K.O.-Turnier · Punktestand · 4 Teams · 12 Spieler · 1/3 entschieden</span>
+        <div class="card">
+          <span class="m-h2">Aktive Lobbys</span>
+          <div class="row between sm"><span><strong>Team Chris</strong> <span class="muted">vs</span> <strong>Team Emil</strong></span><span class="act"><svg><use href="#i-copy"/></svg></span></div>
+        </div>
+        <div class="card">
+          <span class="m-h2">Turnierbaum</span>
+          <div class="bracket">
+            <div class="stack" style="gap:6px">
+              <div class="bm"><div><div class="r w"><span>Team Anna</span><span>3</span></div><div class="r l"><span>Team Dana</span><span>1</span></div></div><span class="side"><svg class="ic"><use href="#i-pencil"/></svg></span></div>
+              <div class="bm"><div><div class="r"><span>Team Chris</span><span></span></div><div class="r"><span>Team Emil</span><span></span></div></div><span class="side open"><svg class="ic"><use href="#i-plus"/></svg></span></div>
+            </div>
+            <div class="bm"><div><div class="r"><span>Team Anna</span><span></span></div><div class="r l"><span><i>offen</i></span><span></span></div></div><span class="side"></span></div>
+          </div>
+        </div>
+        <div class="nav"><span>Home</span><span class="on">Match</span><span>Vote</span><span>Essen</span><span>Mehr</span></div>
+      </div>
+      <ul class="notes">
+        <li class="good">Eigene Seite wie bisher, „‹ Match“ statt Tab-Leiste</li>
+        <li class="good">Unten bleibt „Match“ markiert</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="callout">
+      <strong>Technisch klein</strong>
+      <p>In <code>viewManifest.js</code> verliert <code>tournaments</code> seine <code>section</code>. <code>NAV_PARENT_BY_VIEW</code> in <code>sectionNav.js</code> bekommt <code>tournaments → matchmaking</code>, so wie heute schon <code>myStats → profile</code>. Am Desktop steht das bereits in <code>DESKTOP_PARENT_BY_VIEW</code>. Die Liste unter <code>#tournaments</code> leitet auf <code>#matchmaking</code> um. Die Karte „Laufende Turniere“ kann <code>aktuellStatus.js</code> wiederverwenden, das die Turnierliste ohnehin lädt.</p>
+    </div>
+    <div class="callout">
+      <strong>Abzuwägen</strong>
+      <p>Die Historie zeigt nur das gewählte Spiel. Beendete Turniere anderer Spiele findet man dann über die Suche oder durch Wechsel des Spiels. Auf einer LAN mit wenigen Turnieren reicht das. Sonst unten auf der Match-Seite eine eingeklappte Karte „Beendete Turniere“ ergänzen. Anzupassen sind außerdem die Produktregel „Tournament overview“, die Tests zu Navigation und Suche sowie die E2E-Tests.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ REIHENFOLGE ============ -->
+<section class="block" id="reihenfolge">
+  <div class="block-head">
+    <span class="eyebrow">Empfehlung</span>
+    <h2>Umsetzung in einem PR</h2>
+  </div>
+  <div class="steps">
+    <div class="step"><span class="n">Teil 1</span><h3>Gemeinsamer Ergebnis-Dialog</h3><p>Ein Baustein für Match und Turnier: Modi „Sieger | Punktestand“, Punktestand als Liste mit Live-Platz, immer ausdrücklich „Speichern“, derselbe Hinweis, dieselben Fehlertexte, „umdrehen“ für weniger ist besser. Der Admin-Dialog in der Auswertung nutzt dieselben Bausteine.</p></div>
+    <div class="step"><span class="n">Teil 2</span><h3>Historie neu</h3><p>Einklappbare Einträge, Ergebnis im Kopf, Rematch und Stift im Kopf, Teams nach Platz mit Team-Skill, „Ohne Ergebnis (n)“, Filter „Alle | Matches | Turniere“.</p></div>
+    <div class="step"><span class="n">Teil 3</span><h3>Turniere</h3><p>K.-o.-Runde mit 2 Teams als Spielzeile. Turnier-Tab auflösen: Match ohne Tab-Leiste, „Laufende Turniere“, Rückweg „‹ Match“, „Aktuell“ öffnet das Turnier direkt.</p></div>
+    <div class="step"><span class="n">Teil 4</span><h3>Doku und Tests</h3><p>Produktregeln, Komponentenverträge, Unit- und E2E-Tests sowie visuelle Referenzen im selben PR nachziehen.</p></div>
+  </div>
+  <div class="callout">
+    <strong>Bewusst nicht angleichen</strong>
+    <p>Die fachlichen Regeln bleiben verschieden: Im K.-o.-Modus gibt es kein Unentschieden, das Turnier erlaubt nur ganze Zahlen, und der Punkte-Modus gilt fürs ganze Turnier. Angeglichen werden nur Aussehen, Wortwahl und Bedienung. Die Regeln übergibt jeder Bereich dem gemeinsamen Dialog als Optionen.</p>
+  </div>
+</section>
+
+</div>
+</body>
+</html>
