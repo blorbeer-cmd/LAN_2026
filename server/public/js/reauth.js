@@ -3,18 +3,24 @@ import { icon } from './icons.js';
 import { openModal } from './modal.js';
 import { showToast } from './toast.js';
 
-function requestReauthentication() {
+function requestReauthentication(title) {
   return new Promise((resolve) => {
     let submitted = false;
     const { close } = openModal(
-      'Passwort bestätigen',
+      title || 'Passwort bestätigen',
       `<form id="reauth-form" class="stack">
-        <p class="muted" style="margin:0;">Diese sicherheitskritische Aktion wird für fünf Minuten freigeschaltet.</p>
-        <div class="row">
-          <input id="reauth-password" type="password" autocomplete="current-password" required autofocus style="flex:1;" placeholder="Passwort" aria-label="Passwort" />
-          <button type="button" class="icon-btn" id="reauth-toggle" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+        <div>
+          <label for="reauth-password" class="field-label">Passwort</label>
+          <div class="row">
+            <input id="reauth-password" type="password" autocomplete="current-password" required autofocus style="flex:1;" />
+            <button type="button" class="icon-btn" id="reauth-toggle" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+          </div>
+          <p class="profile-note reauth-note">Die Freigabe gilt fünf Minuten</p>
         </div>
-        <button type="submit" class="btn btn-primary btn-block">Bestätigen</button>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-sm" data-reauth-cancel>Abbrechen</button>
+          <button type="submit" class="btn btn-primary btn-sm">Bestätigen</button>
+        </div>
       </form>`,
       {
         onClose: () => {
@@ -23,6 +29,7 @@ function requestReauthentication() {
         onMount: (el) => {
           const input = el.querySelector('#reauth-password');
           const toggle = el.querySelector('#reauth-toggle');
+          el.querySelector('[data-reauth-cancel]').addEventListener('click', () => el.querySelector('[data-close]')?.click());
           toggle.addEventListener('click', () => {
             const visible = input.type === 'password';
             input.type = visible ? 'text' : 'password';
@@ -48,12 +55,13 @@ function requestReauthentication() {
   });
 }
 
-export async function withStepUp(action) {
+// `title` names the protected action in the dialog header, e.g. "Backup herunterladen".
+export async function withStepUp(action, { title = '' } = {}) {
   try {
     return await action();
   } catch (error) {
     if (error.code !== 'reauth_required') throw error;
-    if (!(await requestReauthentication())) return undefined;
+    if (!(await requestReauthentication(title))) return undefined;
     return action();
   }
 }

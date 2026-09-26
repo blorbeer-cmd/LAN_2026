@@ -4,7 +4,7 @@ import { chromium, type Browser } from 'playwright';
 import { addSessionCookie, authenticatedServerEnv, createE2EAccount, loginE2EAdmin, waitForPlayerData } from './authHelpers';
 import { createE2EDiagnosticTest, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
-import { openMoreViewEntry } from './navHelpers';
+import { openMoreViewEntry, openAdminCard } from './navHelpers';
 import { VisualScenes, visualContext, assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 let browser: Browser;
@@ -118,23 +118,20 @@ for (const width of [390, 1024]) {
       await page.keyboard.press('Escape');
       await modal.waitFor({ state: 'hidden' });
       await openMoreViewEntry(page, '[data-navigate="admin"]');
-      const row = page.locator('.data-row-action').filter({ hasText: 'Alex Referenz' });
+      await openAdminCard(page, 'accounts');
+      const row = page.locator('[data-admin-section="accounts"] .profile-row').filter({ hasText: 'Alex Referenz' });
       await row.waitFor();
       await scenes.capture(`core-admin-row-${width}`, row, async () => {
-        assert.equal(await row.locator('strong').innerText(), 'Alex Referenz');
-        assert.equal(await row.locator('.badge').innerText(), 'Aktiv');
-        assert.equal((await row.locator('button').innerText()).trim(), 'Reset-Link');
-        await assertControlHeights(row.locator('button'));
-        const layout = await row.evaluate((element) => {
-          const label = element.querySelector('span')!.getBoundingClientRect();
-          const button = element.querySelector('button')!.getBoundingClientRect();
-          const style = getComputedStyle(element);
-          return { inner: element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-            labelTop: label.top, labelBottom: label.bottom, buttonTop: button.top,
-            centers: Math.abs(label.top + label.height / 2 - button.top - button.height / 2) };
+        assert.equal(await row.locator('.player-name').innerText(), 'Alex Referenz');
+        const trigger = row.locator('.action-menu > summary');
+        assert.equal((await trigger.innerText()).trim(), 'Aktion');
+        await assertControlHeights(trigger);
+        const centers = await row.evaluate((element) => {
+          const name = element.querySelector('.player-name')!.getBoundingClientRect();
+          const action = element.querySelector('.action-menu > summary')!.getBoundingClientRect();
+          return Math.abs(name.top + name.height / 2 - action.top - action.height / 2);
         });
-        if (layout.inner >= 320) assert.ok(layout.centers <= 1);
-        else assert.ok(layout.buttonTop >= layout.labelBottom);
+        assert.ok(centers <= 1);
         await assertNoOverflow(row);
       });
       scenes.finish();

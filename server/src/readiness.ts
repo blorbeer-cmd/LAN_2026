@@ -125,6 +125,11 @@ function processMappingsCheck(groupId: string): ReadinessCheck {
   };
 }
 
+function kioskSummary(configured: number): string {
+  if (configured === 0) return 'Kein aktiver Kiosk-Zugang.';
+  return configured === 1 ? '1 aktiver Kiosk-Zugang' : `${configured} aktive Kiosk-Zugänge`;
+}
+
 function kioskCheck(groupId: string): ReadinessCheck {
   // Every LAN event gets its kiosk account automatically, and the shared
   // login password is always available (explicitly configured or generated
@@ -146,8 +151,8 @@ function kioskCheck(groupId: string): ReadinessCheck {
     id: 'kiosk',
     label: 'Kiosk',
     status: configured > 0 ? 'ready' : 'warning',
-    summary: configured > 0 ? `${configured} aktiver Kiosk-Zugang` : 'Kein aktiver Kiosk-Zugang.',
-    details: configured > 0 ? [] : ['Vor dem TV-Aufbau ein LAN-Event anlegen – das Kiosk-Konto wird automatisch erstellt.'],
+    summary: kioskSummary(configured),
+    details: configured > 0 ? [] : ['Vor dem TV-Aufbau ein LAN-Event anlegen. Das Kiosk-Konto wird automatisch erstellt.'],
   };
 }
 

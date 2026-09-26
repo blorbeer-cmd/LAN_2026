@@ -18,11 +18,12 @@ import {
   accountsByName,
   openAuswertungTab,
   ensureAdminMode,
+  openAdminSection,
   openEventsView,
   openOrgaTab,
   openProfile,
 } from './flowsShared.fixture';
-import { openMoreViewEntry } from './navHelpers';
+import { openMoreViewEntry, setAdminMode } from './navHelpers';
 import { assertControlHeights, assertInfoTooltipPlacement, assertNoOverflow } from './visualHelpers';
 
 registerFlowFixture('shell');
@@ -396,43 +397,23 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), 'Home');
 
   await page.click('.desktop-nav-btn[data-view="admin"]');
-  await page.waitForSelector('#admin-tools-title');
+  await page.waitForSelector('[aria-label="Werkzeuge"]');
   assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), 'admin');
-  const adminColumnsHandle = await page.waitForFunction(() => {
-    const overview = document.querySelector('.admin-dashboard-overview');
-    const access = document.querySelector('.admin-dashboard-access');
-    const tools = overview?.querySelector('[aria-labelledby="admin-tools-title"]')?.getBoundingClientRect();
-    const readiness = overview?.querySelector('[aria-labelledby="admin-readiness-title"]')?.getBoundingClientRect();
-    const users = document.querySelector('[aria-labelledby="admin-players-title"]')?.getBoundingClientRect();
-    if (!overview?.isConnected || !access?.isConnected || getComputedStyle(overview).display !== 'grid' || !tools || !readiness || !users) return null;
-    return {
-      display: getComputedStyle(overview).display,
-      toolsLeft: Math.round(tools.left),
-      toolsTop: Math.round(tools.top),
-      readinessLeft: Math.round(readiness.left),
-      readinessTop: Math.round(readiness.top),
-      usersTop: Math.round(users.top),
-      accessBottom: Math.round(access.getBoundingClientRect().bottom),
-    };
+  // Admin, like Profile, is one column of full-width cards.
+  const adminCards = await page.locator('#view-container .grouped-page-sections > .grouped-page-section').evaluateAll((cards) =>
+    cards.map((card) => { const box = card.getBoundingClientRect(); return [Math.round(box.left), Math.round(box.width)]; }),
+  );
+  assert.ok(adminCards.length >= 3);
+  assert.equal(new Set(adminCards.map(([left, width]) => `${left}:${width}`)).size, 1);
+  // Its short tool rows fill two columns inside the card, the left one first.
+  const toolColumnsHandle = await page.waitForFunction(() => {
+    const rows = Array.from(document.querySelectorAll('[aria-label="Werkzeuge"] .profile-rows-columns > .profile-row'));
+    if (rows.length < 2) return null;
+    const lefts = rows.map((row) => Math.round(row.getBoundingClientRect().left));
+    const half = Math.ceil(rows.length / 2);
+    return { columns: new Set(lefts).size, leftFirst: lefts.slice(0, half).every((left) => left === Math.min(...lefts)) };
   });
-  const adminColumns = await adminColumnsHandle.jsonValue();
-  assert.ok(adminColumns);
-  assert.equal(adminColumns.display, 'grid');
-  assert.ok(adminColumns.readinessLeft > adminColumns.toolsLeft);
-  assert.equal(adminColumns.readinessTop, adminColumns.toolsTop);
-  assert.ok(adminColumns.usersTop - adminColumns.accessBottom >= 8);
-  assert.ok(adminColumns.usersTop - adminColumns.accessBottom <= 32);
-  // getComputedStyle reports `gridTemplateColumns: none` — a single token —
-  // until the admin view has actually been laid out, so a one-shot read here
-  // can see 1 instead of the real column count and did so under parallel load.
-  // Wait for a resolved template, then assert its width, so a genuinely wrong
-  // column count still fails with a readable difference instead of a timeout.
-  const adminPlayerColumns = await page.waitForFunction(() => {
-    const grid = document.querySelector('.admin-player-list');
-    const columns = grid ? getComputedStyle(grid).gridTemplateColumns : '';
-    return columns && columns !== 'none' ? columns.split(' ').length : null;
-  });
-  assert.equal(await adminPlayerColumns.jsonValue(), 3);
+  assert.deepEqual(await toolColumnsHandle.jsonValue(), { columns: 2, leftFirst: true });
 
   await page.click('.desktop-nav-btn[data-view="arcade"]');
   await page.waitForSelector('#arcade-games-title');
@@ -1406,19 +1387,19 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   }
   await openMoreViewEntry(page, '[data-navigate="admin"]');
   await ensureAdminMode();
-  await page.waitForSelector('#admin-tools-title');
+  await page.waitForSelector('[aria-label="Werkzeuge"]');
   assert.equal(await page.locator('#download-backup').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').textContent(), 'Öffnen');
-  assert.ok(await page.locator('[data-navigate="seating"]').evaluate((element) => element.classList.contains('btn-primary')));
+  // Tool rows share one neutral action; the gradient stays for real next steps.
+  assert.equal(await page.locator('[data-navigate="seating"]').evaluate((element) => element.classList.contains('btn-primary')), false);
   assert.equal(await page.locator('#admin-seating-help').count(), 0);
   assert.equal(await page.locator('#admin-backup-help').count(), 0);
-  assert.equal(await page.locator('[aria-label$="Test-Spieler vorhanden"]').count(), 1);
-  assert.equal(await page.locator('#admin-test-data-help').count(), 1);
-  // Global Event management is reachable from Admin's tool grid too, not
-  // only through Orga's own "Events" tab. Kiosk management, by contrast, is
-  // only reachable from here — it is not an Orga tab at all.
-  assert.equal(await page.locator('[data-navigate="events"]').count(), 1);
+  assert.equal(await page.locator('#admin-test-players-title').count(), 1);
+  assert.equal(await page.locator('#admin-test-data-help').count(), 0);
+  // Events & Gruppen has its own navigation entry, so Admin no longer repeats
+  // it. Kiosk management, by contrast, is only reachable from here.
+  assert.equal(await page.locator('[data-navigate="events"]').count(), 0);
   assert.equal(await page.locator('#admin-event-help').count(), 0);
   assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 1);
   assert.equal(await page.locator('#admin-kiosk-help').count(), 0);
@@ -1429,17 +1410,17 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.locator('[data-navigate="adminFeedback"]').count(), 1);
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
-  assert.equal(await page.locator('.admin-tool-row').count(), 7);
+  assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 5);
   await page.click('[data-navigate="adminFeatureUsage"]');
   await page.waitForSelector('#admin-feature-usage-refresh');
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
   await openMoreViewEntry(page, '[data-navigate="admin"]');
-  await page.waitForSelector('#admin-tools-title');
+  await page.waitForSelector('[aria-label="Werkzeuge"]');
   await page.click('[data-navigate="adminFeedback"]');
   await page.waitForSelector('#admin-feedback-title');
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   await openMoreViewEntry(page, '[data-navigate="admin"]');
-  await page.waitForSelector('#admin-tools-title');
+  await page.waitForSelector('[aria-label="Werkzeuge"]');
   let rejectFirstKioskPasswordRequest = true;
   const kioskPasswordUrl = '**/api/admin/kiosk-password';
   await page.route(kioskPasswordUrl, async (route) => {
@@ -1474,24 +1455,23 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   );
   assert.equal(await page.locator('#orga-kiosk-help').count(), 1);
   await openMoreViewEntry(page, '[data-navigate="admin"]');
-  await page.waitForSelector('#admin-tools-title');
-  assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
-  assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
-  // The count field's own id now sits one level down, inside the
-  // `.number-stepper` wrapper numberStepper.js adds around every
-  // `input[type="number"]` (see DESIGN_SYSTEM.md's "Number stepper" entry).
-  assert.deepEqual(await page.locator('.admin-test-controls > *').evaluateAll((controls) => controls.map((control) => control.querySelector('#admin-count') ? 'admin-count' : control.id)), ['admin-count', 'admin-cleanup', 'admin-bulk']);
+  await page.waitForSelector('[aria-label="Werkzeuge"]');
+  await openAdminSection('test');
+  assert.equal(await page.locator('#admin-cleanup').textContent(), 'Aufräumen');
+  await page.click('#admin-test-open');
+  const testDialog = page.locator('.modal-backdrop').last();
+  await testDialog.locator('#admin-count').waitFor();
   // Rounded: getBoundingClientRect() can return a sub-pixel value close to
   // the intended --control-height (32px) depending on the browser's layout
   // rounding, which a strict-equality assertion here would otherwise flake on.
   assert.equal(await page.locator('#admin-count').evaluate((input) => Math.round(input.getBoundingClientRect().height)), 32);
-  assert.equal(await page.locator('.admin-test-controls').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  await assertNoOverflow(testDialog.locator('.modal'));
   // The overlay stepper buttons adjust the value by click...
   await page.fill('#admin-count', '5');
-  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert erhöhen"]');
+  await testDialog.locator('.number-stepper-btn[aria-label="Wert erhöhen"]').click();
   assert.equal(await page.locator('#admin-count').inputValue(), '6');
-  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert verringern"]');
-  await page.click('.admin-test-controls .number-stepper-btn[aria-label="Wert verringern"]');
+  await testDialog.locator('.number-stepper-btn[aria-label="Wert verringern"]').click();
+  await testDialog.locator('.number-stepper-btn[aria-label="Wert verringern"]').click();
   assert.equal(await page.locator('#admin-count').inputValue(), '4');
   // ...and mouse-wheel scrolling over the focused field no longer changes it
   // (the field blurs itself on wheel instead of applying the native step).
@@ -1500,6 +1480,8 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await page.locator('#admin-count').dispatchEvent('wheel', { deltaY: -100 });
   assert.equal(await page.locator('#admin-count').inputValue(), '4');
   assert.equal(await page.locator('#admin-count').evaluate((input) => document.activeElement === input), false);
+  await testDialog.locator('[data-test-cancel]').click();
+  await testDialog.waitFor({ state: 'detached' });
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
   await assertCompactAdminHeader('Sitzplan');
@@ -2164,18 +2146,19 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   await openMoreViewEntry(page, '[data-navigate="admin"]');
   await ensureAdminMode();
 
+  await openAdminSection('readiness');
   await page.waitForSelector('#admin-readiness-refresh:not([disabled])');
   assert.equal(await page.locator('#admin-readiness-status').getAttribute('role'), 'status');
   assert.equal(await page.locator('#admin-readiness-status').getAttribute('aria-live'), 'polite');
-  await page.click('[data-admin-readiness-details] > summary');
+  // The collapsed card already names the overall state next to its chevron.
+  assert.match(await page.locator('[data-admin-section="readiness"] > summary .readiness-status').innerText(), /^(Bereit|Prüfen|Fehler)$/);
   await page.click('#admin-readiness-refresh');
   await page.waitForSelector('#admin-readiness-refresh:not([disabled])');
   assert.equal(
-    await page.locator('[data-admin-readiness-details]').getAttribute('open'),
+    await page.locator('[data-admin-section="readiness"]').getAttribute('open'),
     '',
-    'readiness details should stay open across a successful refresh',
+    'the readiness card should stay open across a successful refresh',
   );
-  await page.click('[data-admin-readiness-details] > summary');
 
   let failNextReadiness = true;
   await page.route('**/api/admin/readiness', async (route) => {
@@ -2204,6 +2187,8 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
     data: { password: alice.password },
   });
   assert.equal(reauthenticated.status(), 204, await reauthenticated.text());
+  await openAdminSection('test');
+  await page.click('#admin-test-open');
   await page.fill('#admin-count', '4');
   const seedResponse = page.waitForResponse(
     (response) => response.url().includes('/test-users') && response.request().method() === 'POST'
@@ -2234,8 +2219,8 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   });
   assert.equal(pauseResponse.status, 200, await pauseResponse.text());
   await page.waitForFunction((minimum) => {
-    const badge = document.querySelector('[aria-label$="Test-Spieler vorhanden"]');
-    const match = badge?.getAttribute('aria-label')?.match(/(\d+)\s+Test-Spieler vorhanden/);
+    const meta = document.querySelector('[data-admin-section="test"] .profile-row-meta');
+    const match = meta?.textContent?.match(/^(\d+) vorhanden/);
     return match !== null && match !== undefined && Number(match[1]) >= minimum;
   }, seededBody.created.length);
   await page.waitForSelector('.badge-paused >> text=Test');
@@ -2343,9 +2328,9 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   await page.click('.desktop-nav-btn[data-view="home"]');
   await page.waitForSelector('button[data-player]:has-text("Test Alex")');
 
-  // ...gone everywhere once admin mode is left via the banner.
-  await page.click('#admin-banner-leave');
-  await page.waitForSelector('#admin-banner', { state: 'hidden' });
+  // ...gone everywhere once admin mode is switched off in Mein Profil.
+  await setAdminMode(page, false);
+  await page.click('.desktop-nav-btn[data-view="home"]');
   await page.waitForFunction(() => !document.body.textContent?.includes('Test Alex'));
 
   // Reload leaves admin mode inactive until it is explicitly activated again.
@@ -2353,10 +2338,11 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   await page.waitForSelector('#app:not([hidden])');
   await page.click('.desktop-nav-btn[data-view="admin"]');
   await ensureAdminMode();
+  await openAdminSection('test');
   await page.click('#admin-cleanup');
   // confirmDialog is an in-app modal (not a native browser dialog).
   await page.click('[data-confirm]');
-  await page.waitForSelector('[aria-label="0 Test-Spieler vorhanden"]');
+  await page.waitForFunction(() => document.querySelector('[data-admin-section="test"] .profile-row-meta')?.textContent?.startsWith('0 vorhanden'));
   const cleanedHall = await (await page.request.get(`${BASE_URL}/api/hall-of-fame`)).json() as { events: Array<{ eventName: string }> };
   assert.equal(cleanedHall.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN')).length, 0);
 });

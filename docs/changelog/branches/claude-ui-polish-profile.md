@@ -6,7 +6,7 @@ Dieser Branch ist mit 1 PR in der GitHub-Historie vertreten.
 
 | PR | Status | Titel |
 |---:|---|---|
-| [#677](https://github.com/blorbeer-cmd/LAN_2026/pull/677) | offen (Draft) | Polish Mein Profil and Meine Statistiken as row cards with a shared RankedList |
+| [#677](https://github.com/blorbeer-cmd/LAN_2026/pull/677) | gemergt am 2026-09-26 | Polish Mein Profil and Meine Statistiken as row cards with a shared RankedList |
 
 ## Inhalt
 

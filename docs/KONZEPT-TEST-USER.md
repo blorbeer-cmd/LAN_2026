@@ -104,16 +104,17 @@ die Filterung auf den Server um.
 
 Solange der Admin-Modus aktiv ist:
 
-- schmale, dauerhafte **Leiste am oberen Rand** („Admin-Modus aktiv" + Button „Verlassen"),
-  über alle Views hinweg, Farbe über ein bestehendes Warn-/Akzent-Token aus dem
-  Design-System (kein neuer Hex-Wert);
+- ein kleines **Schild am Logo oben links**, ab `--bp-md` zusätzlich das Wort „Admin“ neben
+  dem Schriftzug, über alle Views hinweg, Farbe über das bestehende Warn-Token
+  `--state-paused` (kein neuer Hex-Wert). Geschaltet wird der Modus in Mein Profil
+  (Zeile „Admin-Modus“); die frühere Leiste mit „Verlassen“ ist entfallen;
 - zusätzlich `body.admin-mode`-Klasse als Styling-Hook (z. B. dezente Rahmenfarbe), damit
   auch Screenshots eindeutig sind.
 
 ### 5. PIN entfernt
 
 - `views/admin.js`: Ein Unlock-Screen oder lokaler Aktivierungsschalter entfällt komplett;
-  verifizierte Owner/Admins sehen die Werkzeuge direkt. Der sichtbare Banner kann die
+  verifizierte Owner/Admins sehen die Werkzeuge direkt. Der Schalter in Mein Profil kann die
   Testspieler-Darstellung auf einem Gerät vorübergehend ausblenden.
 - Server: `requireAdmin` prüft die echte Session-Rolle. `ADMIN_PIN`,
   `x-admin-pin` sowie `GET /api/admin/status` und `POST /api/admin/unlock` sind entfernt.
