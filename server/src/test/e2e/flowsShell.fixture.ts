@@ -812,7 +812,7 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
     for (const [view, title, readySelector] of [
       ['events', 'Events & Gruppen', '#orga-events-title'],
       ['profile', 'Mein Profil', '#profile-name'],
-      ['admin', 'Admin', '#admin-mode-title'],
+      ['admin', 'Admin', '[aria-label="Werkzeuge"]'],
       ['arcade', 'Arcade', '#arcade-games-title'],
       ['broadcast', 'Durchsage', '#broadcast-new-title'],
       ['music', 'Jam', '#music-setup-title'],
@@ -847,7 +847,7 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
     await page.click('.nav-btn[data-view="more"]');
     await page.waitForSelector('.more-grid');
     await page.click('[data-navigate="admin"]');
-    await page.waitForSelector('#admin-mode-title');
+    await page.waitForSelector('[aria-label="Werkzeuge"]');
     await page.click('[data-navigate="leaderboard"]');
     await page.waitForSelector('#view-container h1:text-is("Auswertung")');
     tabbedMetrics.push(['Auswertung', await firstCardMetrics('Auswertung')]);
@@ -2223,7 +2223,9 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
     const match = meta?.textContent?.match(/^(\d+) vorhanden/);
     return match !== null && match !== undefined && Number(match[1]) >= minimum;
   }, seededBody.created.length);
-  await page.waitForSelector('.badge-paused >> text=Test');
+  // Seeded accounts are marked as test players in the account list.
+  await openAdminSection('accounts');
+  await page.waitForSelector('[data-admin-section="accounts"] .profile-row-meta >> text=Test-Spieler');
 
   const regularEventList = await (await page.request.get(`${BASE_URL}/api/events`)).json() as {
     managedEvents: Array<{ name: string; isTest: boolean }>;
