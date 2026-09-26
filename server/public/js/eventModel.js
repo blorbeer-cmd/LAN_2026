@@ -75,10 +75,3 @@ export function parseEventCostCents(raw) {
 export function parseEventAccommodationCostCents(raw) {
   return parseEventEuroCents(raw, 100_000);
 }
-
-export function eventPdfExportAvailable(event) {
-  // The keepsake summarizes LAN-only competition and tracking data for one
-  // finished LAN. Older event payloads without a type stay LAN-compatible; a
-  // group has neither that data nor an end to look back on.
-  return event?.eventType !== 'general' && event?.eventType !== 'group';
-}

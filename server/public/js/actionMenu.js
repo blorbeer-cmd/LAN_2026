@@ -1,15 +1,19 @@
 import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
 
-// Callers provide trusted action markup; user content must already be escaped.
-// An optional key gives the menu a stable identity, so a live re-render that
-// restores disclosure state (viewRenderState.js) never mistakes one menu, or
-// another details element, for a different one.
-export function actionMenuHtml(actions, label, { key = null } = {}) {
-  if (!actions) return '';
+// Callers provide trusted action markup, one entry per array item; user
+// content must already be escaped. A menu only earns its extra click when it
+// bundles more than `inlineMax` entries (default one): below that the entries
+// render directly as the buttons they are. An optional key gives the menu a
+// stable identity, so a live re-render that restores disclosure state
+// (viewRenderState.js) never mistakes one menu, or another details element,
+// for a different one.
+export function actionMenuHtml(actions, label, { key = null, inlineMax = 1 } = {}) {
+  const entries = actions.filter(Boolean);
+  if (entries.length <= inlineMax) return entries.join('');
   return `<details class="action-menu"${key ? ` data-action-menu="${escapeHtml(key)}"` : ''}>
     <summary class="btn btn-sm" aria-label="${escapeHtml(label)}">Aktion ${icon('chevronDown')}</summary>
-    <div class="action-menu-panel">${actions}</div>
+    <div class="action-menu-panel">${entries.join('')}</div>
   </details>`;
 }
 

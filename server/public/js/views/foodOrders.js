@@ -637,8 +637,9 @@ function renderDetails(order) {
   return order.notes ? `<div class="muted food-order-details-note">${escapeHtml(order.notes)}</div>` : '';
 }
 
-// AP3.6: one "Aktion" menu entry for all orderer groups, only meaningful
-// while the card is open and the order has more than one group.
+// AP3.6: one toggle for all orderer groups, only meaningful while the card is
+// open and the order has more than one group. It joins the "Aktion" menu of
+// a manager and stands alone as a direct button for everybody else.
 function renderGroupToggleAll(order) {
   const grouped = itemsGroupedByPlayer(order);
   if (grouped.size <= 1) return '';
@@ -846,7 +847,7 @@ function wireDescSuggest(wrapper) {
 function renderOrderActions(order, myId, { expanded = true } = {}) {
   const groupToggle = expanded ? renderGroupToggleAll(order) : '';
   if (!myId || (order.createdBy !== myId && !currentPlayerHasAdminRole())) {
-    return groupToggle ? actionMenuHtml(groupToggle, `Aktionen für ${order.title}`, { key: `food-order-${order.id}` }) : '';
+    return groupToggle;
   }
   const finalized = Boolean(order.finalizedAt);
   const menuItem = (attr, label) => `<button type="button" class="btn btn-sm" ${attr}="${order.id}">${label}</button>`;
@@ -864,7 +865,7 @@ function renderOrderActions(order, myId, { expanded = true } = {}) {
     menu.push(menuItem('data-reopen-order', 'Wieder öffnen'));
   }
   menu.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-order="${order.id}">Löschen</button>`);
-  return `${primary}${actionMenuHtml(menu.join(''), `Aktionen für ${order.title}`, { key: `food-order-${order.id}` })}`;
+  return `${primary}${actionMenuHtml(menu, `Aktionen für ${order.title}`, { key: `food-order-${order.id}` })}`;
 }
 
 function renderAddItemForm(order, myId) {

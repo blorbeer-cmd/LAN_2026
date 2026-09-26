@@ -766,7 +766,9 @@ test('manager invites a member who accepts and both open clients update', async 
   const endedEventNote = ownerEventCard.locator('.event-participants-note');
   assert.equal(await endedEventNote.count(), 1);
   assert.match((await endedEventNote.textContent()) ?? '', /keine neuen Einladungen mehr möglich/);
-  await ownerEventCard.locator('.action-menu > summary').click();
+  // Ended, the card keeps only Bearbeiten and "Event wieder starten", which sit
+  // directly in its header instead of behind "Aktion".
+  assert.equal(await ownerEventCard.locator('.action-menu').count(), 0);
 
   await ownerPage.click(`[data-restart-event="${eventId}"]`);
   await ownerPage.click('[data-confirm]');

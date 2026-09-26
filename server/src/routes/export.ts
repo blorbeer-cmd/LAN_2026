@@ -10,8 +10,6 @@ import { computePlaytime, aggregateByGame, formatDurationMs, type PlaySession } 
 import { computeAwards } from '../awards';
 import { getOrRepairActiveEvent } from '../eventContext';
 import { getCompletedTournamentSummaries } from './tournamentChampion';
-import { renderExportPdf } from '../pdfExport';
-import PDFDocument from 'pdfkit';
 import { resolveAnalyticsEvents } from '../analyticsEventScope';
 
 export const exportRouter = Router();
@@ -383,28 +381,4 @@ exportRouter.get('/', (req, res) => {
   const snapshot = buildExportSnapshot(filterEventId, req.group!.id);
   if (!snapshot) return res.status(404).json({ error: 'Event nicht gefunden.' });
   res.json(snapshot);
-});
-
-function sanitizeForFilename(name: string): string {
-  return name.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]+/g, '_').slice(0, 40) || 'Event';
-}
-
-// GET /api/export/pdf - the same snapshot, rendered as a designed PDF
-// keepsake instead of raw JSON.
-exportRouter.get('/pdf', (req, res) => {
-  const { eventId } = req.query;
-  const filterEventId = exportEventId(req, eventId);
-  if (!filterEventId) return res.status(404).json({ error: 'Event nicht gefunden.' });
-  const snapshot = buildExportSnapshot(filterEventId, req.group!.id);
-  if (!snapshot) return res.status(404).json({ error: 'Event nicht gefunden.' });
-
-  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true });
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename="respawn-${sanitizeForFilename(snapshot.event.name)}.pdf"`,
-  );
-  doc.pipe(res);
-  renderExportPdf(doc, snapshot);
-  doc.end();
 });

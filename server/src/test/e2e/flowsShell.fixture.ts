@@ -954,8 +954,8 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
     0,
     'a group without location and note has nothing to show in the information box and renders none',
   );
-  await groupCard.locator('.action-menu > summary').click();
-  await groupCard.locator('[data-edit-event]').click();
+  // A group offers only Bearbeiten and Beenden, both directly in its header.
+  await groupCard.locator('.event-card-header-side > [data-edit-event]').click();
   const editGroupModal = page.locator('.modal-backdrop', { hasText: 'Gruppe bearbeiten' });
   await editGroupModal.waitFor();
   assert.equal(await editGroupModal.locator('#event-starts-date[required]').count(), 0);

@@ -134,8 +134,8 @@ async function createPoll(
 }
 
 async function choosePollAction(poll: Locator, selector: string): Promise<void> {
-  // „Beenden“ and „Neue Runde“ are compact header buttons; everything else
-  // lives in the card's „Aktion“ menu.
+  // „Beenden“ and „Neue Runde“ are compact header buttons, and so is a lone
+  // further action; two or more others share the card's „Aktion“ menu.
   const headerAction = poll.locator(`.event-poll-card-side > ${selector}`);
   if (await headerAction.count()) {
     await headerAction.click();
@@ -199,8 +199,9 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await eventCard.waitFor();
   const eventId = (await eventCard.getAttribute('data-event-card')) as string;
 
-  await eventCard.locator('.action-menu > summary').click();
-  await eventCard.locator('[data-edit-event]').click();
+  // Undated, the event offers only Bearbeiten and Beenden, both directly in
+  // its header.
+  await eventCard.locator('.event-card-header-side > [data-edit-event]').click();
   const editEventModal = ownerPage.locator('.modal-backdrop', { hasText: 'Event bearbeiten' });
   await editEventModal.waitFor();
   assert.equal(await editEventModal.locator('#event-starts-date:disabled').count(), 0, 'an undated event can receive its period later');

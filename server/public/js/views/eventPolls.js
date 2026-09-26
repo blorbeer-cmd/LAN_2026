@@ -499,8 +499,7 @@ function renderPollActions(poll) {
     }
     actions.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
   }
-  if (!actions.length) return '';
-  return actionMenuHtml(actions.join(''), `Aktionen für Umfrage ${poll.title}`);
+  return actionMenuHtml(actions, `Aktionen für Umfrage ${poll.title}`);
 }
 
 function renderRound(poll) {

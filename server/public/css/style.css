@@ -4268,6 +4268,7 @@ button.card {
 .arrivals-form-footer {
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-2);
 }
 .arrivals-member-list {
   display: grid;
@@ -4331,7 +4332,7 @@ button.card {
   display: inline-flex;
   flex-shrink: 0;
 }
-/* Eintragen/Austragen match the bordered "Aktion" menu trigger. */
+/* Bearbeiten/Eintragen/Austragen match the bordered "Aktion" menu trigger. */
 .arrivals-carpool-action > .btn {
   border: 1px solid var(--border);
 }

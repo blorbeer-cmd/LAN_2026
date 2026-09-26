@@ -255,7 +255,8 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   (own name bold), one muted meta line „Art · Seite · Zeit“ with the page name instead of its view
   key, and one fixed action column. Open rows carry the compact neutral „Erledigt“; completed rows
   have no row action. A toolbar like Spiele's offers „Feedback suchen“ (also matching the full
-  text), sorting by „Neueste“ or „Älteste“ and a filter menu by sentiment. Clicking a row opens a
+  text), one sort button that flips between „Neueste“ and „Älteste“ (two directions need no
+  menu) and a filter menu by sentiment. Clicking a row opens a
   detail dialog with the full message, sender, sentiment, page, Event, device, sent and completed
   time, and the single action „Erledigt“ or „Wieder öffnen“, which moves an entry back without
   deleting its message or captured context. There is no realtime push; „Aktualisieren“ reloads the
