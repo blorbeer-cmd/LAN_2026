@@ -590,29 +590,21 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   const toggleLabel = (await eventToggle.getAttribute('aria-label')) ?? '';
   assert.match(toggleLabel, /Erstellt von E2E Bootstrap Admin/);
   assert.equal(await eventToggle.getAttribute('aria-describedby'), null);
-  const actionTrigger = generalEventCard.locator('.action-menu > summary');
-  assert.match((await actionTrigger.innerText()).trim(), /^Aktion/);
-  assert.match((await actionTrigger.getAttribute('aria-label')) ?? '', /^Aktion/);
-  await actionTrigger.focus();
-  await page.keyboard.press('Enter');
-  const editAction = generalEventCard.locator('[data-edit-event]');
+  // Without tracking a general event has only Bearbeiten and Beenden, so both
+  // sit directly in the collapsed header instead of behind "Aktion".
+  assert.equal(await generalEventCard.locator('.action-menu').count(), 0);
+  const editAction = generalEventCard.locator('.event-card-header-side > [data-edit-event]');
   await editAction.waitFor({ state: 'visible' });
   assert.equal(await editAction.evaluate((element) => {
     const rect = element.getBoundingClientRect();
-    return rect.height >= 44 && element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
-  }), true, 'collapsed-card actions keep a full touch target above sibling cards');
+    return element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  }), true, 'collapsed-card header actions stay reachable');
+  assert.equal(await generalEventCard.locator('.event-card-header-side > [data-end-event]:not(.btn-danger)').count(), 1);
   assert.equal(await generalEventCard.locator('[data-start-tracking], [data-stop-tracking]').count(), 0);
-  await page.keyboard.press('Escape');
-  assert.equal(await actionTrigger.evaluate((element) => element === document.activeElement), true);
   await eventToggle.click();
   assert.equal(await eventToggle.evaluate((element) => element === document.activeElement), true);
   await generalEventCard.locator('[data-event-participants] > summary').click();
   assert.match(await generalEventCard.innerText(), /Teilnehmende & Einladungen/);
-  assert.equal(
-    await generalEventCard.locator('[data-export-event]').count(),
-    0,
-    'general events must not offer the LAN keepsake PDF',
-  );
   await page.click('#new-event-btn');
   assert.deepEqual(
     await page.locator('#event-type option').allTextContents(),

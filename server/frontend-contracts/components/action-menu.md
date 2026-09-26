@@ -4,22 +4,27 @@
 
 Status: `umgesetzt`.
 
-ActionMenu ist die gemeinsame kompakte Disclosure für Verwaltungsaktionen an Event- und
-Umfragekarten. Sie hält seltenere Aktionen aus dem Kartenkopf heraus, ohne deren Namen,
-Tastaturpfade oder Trefferflächen zu verkleinern. Persönliche Teilnahme-, Zahlungs- und
-Kalenderaktionen bleiben außerhalb dieses Menüs.
+ActionMenu ist die gemeinsame kompakte Disclosure für Verwaltungsaktionen an Event-, Umfrage- und
+Bestellkarten. Sie hält seltenere Aktionen aus dem Kartenkopf heraus, ohne deren Namen,
+Tastaturpfade oder Trefferflächen zu verkleinern. Ein Menü lohnt den zusätzlichen Klick erst ab
+mehreren Einträgen: Bis zur vom Aufrufer gewählten Grenze (Standard: ein Eintrag) rendert der Helper
+die Einträge direkt als Buttons. Persönliche Teilnahme-, Zahlungs- und Kalenderaktionen bleiben
+außerhalb dieses Menüs.
 
 ## 2. Quelle
 
 - Markup und Verhalten: `public/js/actionMenu.js`
 - Geometrie und offene Kartenlage: `public/css/style.css`
 - Ergänzende bestehende Kartenlage: `public/css/domains.css`
-- Markup-API: `actionMenuHtml(actions, label, { key })`; der optionale `key` setzt
+- Markup-API: `actionMenuHtml(actions, label, { key, inlineMax })`; `actions` ist ein Array mit
+  einem Eintrag je Aktion, leere Einträge fallen weg. Höchstens `inlineMax` Einträge (Standard `1`)
+  werden direkt aneinandergereiht zurückgegeben, erst darüber entsteht das Menü. Der optionale
+  `key` setzt
   `data-action-menu` als stabile Identität, damit die Zustandssicherung beim Live-Re-Render
   (`viewRenderState.js`) Menüs und andere `details`-Elemente nicht verwechselt.
 - Verdrahtung: `wireActionMenus(container)`
 
-`actions` ist vertrauenswürdiges, vom Aufrufer erzeugtes Button-Markup; Nutzerinhalte darin
+Jeder Eintrag in `actions` ist vertrauenswürdiges, vom Aufrufer erzeugtes Button-Markup; Nutzerinhalte darin
 MÜSSEN bereits escaped sein. `label` wird escaped und bezeichnet das Menü zugänglich.
 
 ## 3. CSS-Eigentümerschaft
@@ -39,7 +44,8 @@ Eintragsgröße erzeugen.
 | Standardtrigger | `summary.btn.btn-sm` | umgesetzt | sichtbarer Text „Aktion“ plus Chevron |
 | Standardpanel | `.action-menu-panel` | umgesetzt | vertikale Liste sekundärer/destruktiver Buttons |
 | Eintrag mit Zusatzcontrol | `.action-menu-row` | umgesetzt | bestehende Zeile, zum Beispiel Aktion plus Infohilfe |
-| Ohne Aktionen | `actionMenuHtml('', label)` | umgesetzt | rendert kein leeres Menü |
+| Ohne Aktionen | `actionMenuHtml([], label)` | umgesetzt | rendert kein leeres Menü |
+| Direkte Einträge | `actionMenuHtml(actions, label, { inlineMax })` | umgesetzt | bis `inlineMax` Einträge (Standard 1) stehen als normale Buttons im Kopf, ohne Trigger |
 
 Eine dauerhaft geöffnete, verschachtelte oder mehrspaltige Variante existiert nicht.
 
@@ -52,6 +58,11 @@ Eine dauerhaft geöffnete, verschachtelte oder mehrspaltige Variante existiert n
   `wireActionMenus(container)` verdrahten. Ein Re-Render verdrahtet den neuen Container erneut.
 - Aufrufer DÜRFEN persönliche, immer sichtbare Aktionen nicht in das Menü verschieben, nur um
   Platz zu sparen.
+- Ein Menü mit genau einem Eintrag entsteht nie. Aufrufer DÜRFEN `inlineMax: 2` wählen, wenn zwei
+  gleichrangige Verwaltungsaktionen im Kopf Platz haben; ein direkt stehender „Beenden“- oder
+  „Löschen“-Button ist dann neutral, die Gefahr trägt sein Bestätigungsdialog. Ein zweiter
+  direkter Button neben einer bereits vorhandenen Kopfaktion (etwa „Neue Runde“) bleibt im Menü,
+  damit der Kopf nicht drei Buttons trägt.
 
 ## 6. Komponenteneigene Invarianten
 
@@ -83,6 +94,7 @@ Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-
 ## 7. Erreichbare Zustände
 
 - kein Menü, weil keine Aktionen existieren;
+- direkte Buttons, weil höchstens `inlineMax` Aktionen existieren;
 - geschlossenes Menü;
 - genau ein geöffnetes Menü;
 - Wechsel vom offenen Menü zu einem Geschwistermenü;
@@ -106,14 +118,18 @@ Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-
 
 - `public/js/views/eventPolls.js` für offene und beendete Umfragen mit Re-Render
 - `public/js/views/events.js` für einklappbare Eventkarten und rollenabhängige Aktionen
+  (`inlineMax: 2`)
+- `public/js/views/foodOrders.js` für Bestellkarten mit stabilem `key`
 
 ## 10. Prüfungen und Abnahmebeispiele
 
 - `src/test/e2e/eventDatePoll.e2e.test.ts` prüft mehrere reale Umfragemenüs: 31–33-px-Trigger,
   mindestens 44×44-px-Einträge, genau ein offenes Menü, Kartenlage, Escape- und
   Aktionswahl-Fokusrückgabe, Außen-Pointer ohne Fokusverschiebung und erneutes Wiring nach Re-Render.
-- `src/test/e2e/eventWorkspaceSwitch.e2e.test.ts` prüft das reale Eventmenü per Enter/Escape,
-  Accessible Name, Fokus und Eintrags-Trefferfläche.
+- `public/js/actionMenu.test.js` prüft die Grenze zwischen direkten Einträgen und Menü samt
+  `inlineMax`, `key` und escaptem Label.
+- `src/test/e2e/eventWorkspaceSwitch.e2e.test.ts` prüft an einer allgemeinen Eventkarte ohne
+  Tracking, dass „Bearbeiten“ und ein neutrales „Beenden“ ohne Menü direkt im Kopf stehen.
 - Bei 320×568 und 390×844 bleibt das Panel innerhalb des Viewports; bei 512×384 und 720×450
   entsteht kein horizontaler Overflow im tatsächlich scrollenden View-Container. Desktop prüft
   dieselben Keyboard- und Pointerpfade.

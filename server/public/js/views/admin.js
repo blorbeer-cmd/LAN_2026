@@ -504,7 +504,8 @@ function roleTargets(player) {
 }
 
 // One row per account: name, role and state on the left, every change in
-// the row's "Aktion" menu (role, login link, (re)activation, delete).
+// the row's "Aktion" menu (role, login link, (re)activation, delete). A row
+// left with a single change shows it as a direct button instead.
 function accountRowHtml(player, index, count) {
   const id = escapeHtml(player.id);
   // Your own account is deactivated or deleted from Mein Profil, never here.
@@ -524,7 +525,7 @@ function accountRowHtml(player, index, count) {
         ? `<button type="button" class="btn btn-sm" data-reactivate-player="${id}">Reaktivieren</button>`
         : `<button type="button" class="btn btn-sm" data-deactivate-player="${id}">Deaktivieren</button>`,
     isSelf ? '' : `<button type="button" class="btn btn-sm btn-danger" data-delete-player="${id}">Löschen</button>`,
-  ].filter(Boolean).join('');
+  ];
   const meta = [
     isSelf ? 'Du' : '',
     player.is_test ? 'Test-Spieler' : '',

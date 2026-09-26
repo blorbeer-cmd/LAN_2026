@@ -28,7 +28,7 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 | 📊 **Spiele & Turniere** | Match-/Turnier-Statistiken abseits der reinen Punkte: Rivalitäten, erfolgreichste Duos, größte Underdog-Siege. |
 | 🏛️ **Hall of Fame** | Champions über alle LAN-Partys hinweg (mehrere `events` in der DB) – Gesamtsieger je Event plus eine All-Time-Rangliste „wer hat am häufigsten gewonnen". Liegt als Tab im Bereich „Auswertung“. |
 | 🪑 **Sitzplan** | Wer neben wem sitzt (jeder trägt seine Nachbarn selbst im Profil ein), zu „Sitzgruppen" zusammengefasst – hilft Neulingen, ihre Freunde im Raum zu finden. |
-| 📄 **Export als Andenken** | Ein Event per Knopfdruck als gestaltetes PDF exportieren (Rangliste, Spielzeit, Awards, Turnier-Champions). Dieselben Daten stehen auch roh als JSON über `GET /api/export` bereit, falls jemand eigenes Tooling anschließen will. |
+| 📄 **Export als Andenken** | Die Daten eines Events (Rangliste, Spielzeit, Awards, Turnier-Champions) stehen als JSON über `GET /api/export` bereit, falls jemand eigenes Tooling anschließen will. |
 
 ### Komfort & Betrieb
 
@@ -96,7 +96,7 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 ```
 Respawn/
 ├── server/            # Zentraler Server (Node.js + TypeScript)
-│   ├── src/           # Quellcode (API, DB, WebSocket, PDF-Export)
+│   ├── src/           # Quellcode (API, DB, WebSocket, Export)
 │   ├── public/        # Web-Oberfläche (HTML/CSS/JS) + Kiosk-Ansicht
 │   └── agent-dist/    # Gebaute agent.exe, die der Server personalisiert zum Download anbietet
 ├── agent/             # Windows-Client zum Prozess-Scannen + lokales Kontroll-Tool
@@ -349,7 +349,7 @@ Details zur Teststrategie: [`server/TESTING.md`](server/TESTING.md).
 ## Tech-Stack
 
 - **Server**: Node.js, TypeScript, Express, better-sqlite3, Socket.IO, `web-push` (Push-Benachrichtigungen),
-  `qrcode` + `pdfkit` (Einladungs-QR-Code, Event-Export als PDF), `archiver` (personalisierte Agent-ZIP)
+  `qrcode` (Einladungs-QR-Code), `archiver` (personalisierte Agent-ZIP)
 - **Frontend**: Vanilla HTML/CSS/JS (kein Build-Schritt, bewusst schlank gehalten), eigenes kleines
   Design-System mit Tokens, gruppierten Seitenflächen und wiederverwendeten Komponenten – siehe
   [`server/DESIGN_SYSTEM.md`](server/DESIGN_SYSTEM.md)
