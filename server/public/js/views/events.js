@@ -60,7 +60,7 @@ const GROUP_HELP =
 // Both the tooltip and confirmation explain the selected-event and consent
 // prerequisites from activeTrackingContexts. Share the sentence to avoid drift.
 const TRACKING_SCOPE_SENTENCE =
-  'Während dieses Event läuft und Tracking aktiviert ist, entstehen aus den Agent-Meldungen Live-Status, Spielzeit und Auswertungen nur für zugesagte Teilnehmende, die dieses Event aktuell in ihrem Konto ausgewählt haben und deren Einwilligung zum Event-Tracking gültig ist. Der Agent meldet nur laufende Spiele aus der Server-Liste, keine anderen Programme. Die Agent-Diagnose erhält erkannte Spielnamen auch unabhängig vom Event. Jede Person kann das Tracking im eigenen Profil pausieren.';
+  'Während dieses Event läuft und Tracking aktiviert ist, entstehen aus den Agent-Meldungen Live-Status, Spielzeit und Auswertungen nur für zugesagte Teilnehmende, die dieses Event aktuell in ihrem Konto ausgewählt haben und deren Einwilligung zum Event-Tracking gültig ist. Der Agent meldet nur laufende Spiele aus der Server-Liste, keine anderen Programme. Ohne gültigen Kontext werden keine erkannten Spiele übertragen, gespeichert oder in der Agent-Diagnose angezeigt. Jede Person kann die Einwilligung widerrufen oder das Tracking im eigenen Profil pausieren.';
 const TRACKING_BUTTON_HELP = `Schaltet die Erfassung für dieses Event ein und aus. ${TRACKING_SCOPE_SENTENCE}`;
 const TRACKING_START_CONFIRM = (name) => `Tracking für „${name}“ starten? ${TRACKING_SCOPE_SENTENCE}`;
 const TRACKING_STOP_CONFIRM = (name) =>
@@ -993,6 +993,7 @@ export function wirePendingInvitationActions(container, ctx) {
       try {
         if (accept) await api.events.acceptInvitation(eventId);
         else await api.events.declineInvitation(eventId);
+        if (accept) window.dispatchEvent(new CustomEvent('respawn:event-invitation-accepted'));
         await settleNotificationTarget(`event-invitation:${eventId}:${getMyId()}`);
         acceptedInvitationHandoff = accept
           ? { id: eventId, name: invitation?.name ?? 'diesem Event' }
@@ -1059,6 +1060,7 @@ export function wireParticipationAnswerActions(container, ctx) {
       btn.disabled = true;
       try {
         await api.events.acceptInvitation(eventId);
+        window.dispatchEvent(new CustomEvent('respawn:event-invitation-accepted'));
         await ctx.refresh();
         container.querySelector('#orga-events-title')?.focus();
         showToast('Teilnahme zugesagt.');

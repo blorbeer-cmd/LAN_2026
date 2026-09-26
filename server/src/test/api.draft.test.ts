@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp } from './testApp';
+import { createTestApp, sessionCookie } from './testApp';
 import { snakeCaptainIndex } from '../routes/draft';
 
 const app = createTestApp();
@@ -168,4 +168,35 @@ test('POST /api/draft/cancel abandons a running draft', async () => {
 
   const again = await request(app).post('/api/draft/cancel');
   assert.equal(again.status, 409);
+});
+
+test('an already-picked player cannot delete their account until the active draft finishes', async () => {
+  const [capA, capB, p1, p2, p3] = players;
+  const start = await request(app)
+    .post('/api/draft/start')
+    .send({ gameId, captainIds: [capA.id, capB.id], poolPlayerIds: [p1.id, p2.id, p3.id] });
+  assert.equal(start.status, 201);
+
+  const firstPick = await request(app)
+    .post('/api/draft/pick')
+    .send({ playerId: capA.id, pickPlayerId: p1.id });
+  assert.equal(firstPick.status, 200);
+
+  const deletion = await request(app)
+    .delete('/api/privacy/account')
+    .set('Cookie', sessionCookie(p1.id));
+  assert.equal(deletion.status, 409, JSON.stringify(deletion.body));
+  assert.equal(deletion.body.code, 'active_draft_participation');
+
+  const completed = await request(app)
+    .post('/api/draft/pick')
+    .send({ playerId: capB.id, pickPlayerId: p2.id });
+  assert.equal(completed.status, 200, JSON.stringify(completed.body));
+  assert.equal(completed.body.draft.status, 'completed');
+  assert.deepEqual(
+    completed.body.draft.teams.flatMap((team: { players: Array<{ id: string }> }) =>
+      team.players.map((player) => player.id),
+    ).sort(),
+    [capA.id, capB.id, p1.id, p2.id, p3.id].sort(),
+  );
 });

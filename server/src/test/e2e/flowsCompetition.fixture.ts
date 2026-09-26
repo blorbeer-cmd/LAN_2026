@@ -19,6 +19,7 @@ import {
   ensureAdminMode,
 } from './flowsShared.fixture';
 import { openMoreViewEntry } from './navHelpers';
+import { TRACKING_CONSENT_TEXT_VERSION } from '../../privacyPolicy';
 
 registerFlowFixture('competition');
 
@@ -740,17 +741,45 @@ flowTest('Auswertungen (via Mehr) shows a real award and keeps detail logs colla
   const playerRes = await page.request.get(`${BASE_URL}/api/players/${account.id}`);
   assert.equal(playerRes.status(), 200);
   const player = await playerRes.json() as { api_key: string };
-  const activeEventResponse = await fetch(`${BASE_URL}/api/events/active`, {
-    headers: { cookie: account.cookie },
+  // The permanently open base workspace is not trackable, so this needs a real
+  // LAN period the account is accepted to and has selected — the same sequence
+  // an organizer walks through in production.
+  const now = Date.now();
+  const createdEvent = await page.request.post(`${BASE_URL}/api/events`, {
+    data: { name: 'Auswertung E2E LAN', startsAt: now - 1_000, endsAt: now + 3_600_000 },
   });
-  assert.equal(activeEventResponse.status, 200);
-  const activeEvent = await activeEventResponse.json() as { id: string };
+  assert.equal(createdEvent.status(), 201, await createdEvent.text());
+  const activeEvent = await createdEvent.json() as { id: string };
+  // Both identities join the new period: the tracked account produces the
+  // session, and the admin browsing Auswertung needs access to its data. The
+  // admin keeps the base workspace selected — the analytics filter below is
+  // what widens the view.
+  const meResponse = await page.request.get(`${BASE_URL}/api/me`);
+  assert.equal(meResponse.status(), 200, await meResponse.text());
+  const admin = await meResponse.json() as { id: string };
+  const invited = await page.request.put(`${BASE_URL}/api/events/${activeEvent.id}/participants`, {
+    data: { playerIds: [account.id, admin.id] },
+  });
+  assert.equal(invited.status(), 200, await invited.text());
+  for (const cookie of [account.cookie, adminCookie]) {
+    const accepted = await fetch(`${BASE_URL}/api/events/${activeEvent.id}/invitation/accept`, {
+      method: 'POST',
+      headers: { cookie },
+    });
+    assert.equal(accepted.status, 200, await accepted.text());
+  }
+  const selected = await fetch(`${BASE_URL}/api/me/active-event`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: account.cookie },
+    body: JSON.stringify({ eventId: activeEvent.id }),
+  });
+  assert.equal(selected.status, 200, await selected.text());
   const trackingResponse = await page.request.post(`${BASE_URL}/api/events/${activeEvent.id}/tracking/start`);
   assert.equal(trackingResponse.status(), 200, await trackingResponse.text());
   const consentResponse = await fetch(`${BASE_URL}/api/events/${activeEvent.id}/tracking-consent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie: account.cookie },
-    body: JSON.stringify({ granted: true }),
+    body: JSON.stringify({ granted: true, textVersion: TRACKING_CONSENT_TEXT_VERSION }),
   });
   assert.equal(consentResponse.status, 200, await consentResponse.text());
   await page.request.post(`${BASE_URL}/api/agent/report`, {
@@ -767,6 +796,12 @@ flowTest('Auswertungen (via Mehr) shows a real award and keeps detail logs colla
   await page.waitForSelector('#app:not([hidden])');
   // Spielzeit-Statistiken are the second tab of the "Auswertung" area.
   await openAuswertungTab('analytics');
+  // Earlier tests in this suite recorded their 1v1 results in the permanently
+  // open base workspace, while the play session above belongs to the separate
+  // LAN period, because the base workspace is not trackable. "Gesamt (alle
+  // Events)" is the one selection that shows both at once.
+  await page.click('[data-search-select]:has(#an-event-search) .search-select-toggle');
+  await page.click('#an-event-list [data-search-select-value=""]');
   await page.waitForSelector('text=Marathon-Zocker', { timeout: 5000 });
   assert.ok((await page.textContent('.view-title'))?.includes('Auswertung'));
 

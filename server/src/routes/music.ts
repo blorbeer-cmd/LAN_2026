@@ -43,7 +43,7 @@ interface MusicSessionRow {
   id: string;
   group_id: string;
   event_id: string;
-  host_player_id: string;
+  host_player_id: string | null;
   device_id: string;
   device_name: string;
   status: 'active' | 'ended';

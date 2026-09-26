@@ -12,6 +12,7 @@ import { createSocketAuthGuard, Events, registerScopedSockets, setIo } from '../
 import { registerArcadeSockets } from '../arcade/realtime';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
 import { ensureAccountEventContext } from '../eventContext';
+import { TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION } from '../privacyPolicy';
 
 function connect(baseUrl: string, sessionToken: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
@@ -93,6 +94,19 @@ test('tracking consent is self-only, idempotent and revokes agent fan-out immedi
 
   const sessionToken = createSession(playerId);
   const cookie = `${SESSION_COOKIE_NAME}=${sessionToken}`;
+  const adminId = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, is_admin, created_at) VALUES (?, ?, ?, 1, ?)').run(
+    adminId,
+    `Consent Admin ${adminId}`,
+    nanoid(24),
+    now,
+  );
+  db.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES (?, ?, 'owner', 'active', ?, 0)`,
+  ).run(DEFAULT_GROUP_ID, adminId, now);
+  const adminCookie = `${SESSION_COOKIE_NAME}=${createSession(adminId)}`;
   const socket = await connect(baseUrl, sessionToken);
   await subscribe(socket);
 
@@ -111,14 +125,43 @@ test('tracking consent is self-only, idempotent and revokes agent fan-out immedi
       ).status,
       400,
     );
+    db.prepare(
+      `INSERT INTO event_tracking_consents
+         (id, event_id, group_id, player_id, accepted_at, source)
+       VALUES (?, ?, ?, ?, ?, 'migration')`,
+    ).run(nanoid(), eventId, DEFAULT_GROUP_ID, playerId, now);
+    const legacyPrivacy = await request(app).get('/api/privacy').set('Cookie', cookie);
+    assert.equal(legacyPrivacy.status, 200);
+    assert.equal(
+      legacyPrivacy.body.trackingConsent.events.find((event: { eventId: string }) => event.eventId === eventId).consentId,
+      null,
+      'an unversioned legacy row is shown as inactive until the current text is confirmed',
+    );
+    assert.deepEqual(
+      (await request(app).get('/api/agent/process-names').set('x-api-key', apiKey)).body.processNames,
+      [],
+      'an unversioned legacy consent never activates the process allow-list',
+    );
+    const staleText = await request(app)
+      .post(`/api/events/${eventId}/tracking-consent`)
+      .set('Cookie', cookie)
+      .send({ granted: true });
+    assert.equal(staleText.status, 409);
+    assert.equal(staleText.body.code, 'consent_text_changed');
 
     const grant = await request(app)
       .post(`/api/events/${eventId}/tracking-consent`)
       .set('Cookie', cookie)
-      .send({ granted: true });
+      .send({ granted: true, textVersion: TRACKING_CONSENT_TEXT_VERSION });
     assert.equal(grant.status, 200, JSON.stringify(grant.body));
+    assert.deepEqual(
+      db.prepare(
+        'SELECT purpose, text_version AS textVersion FROM event_tracking_consents WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL',
+      ).get(eventId, playerId),
+      { purpose: TRACKING_CONSENT_PURPOSE, textVersion: TRACKING_CONSENT_TEXT_VERSION },
+    );
     assert.equal(
-      (await request(app).post(`/api/events/${eventId}/tracking-consent`).set('Cookie', cookie).send({ granted: true }))
+      (await request(app).post(`/api/events/${eventId}/tracking-consent`).set('Cookie', cookie).send({ granted: true, textVersion: TRACKING_CONSENT_TEXT_VERSION }))
         .status,
       200,
     );
@@ -130,6 +173,24 @@ test('tracking consent is self-only, idempotent and revokes agent fan-out immedi
          (id, event_id, group_id, player_id, accepted_at, source)
        VALUES (?, ?, ?, ?, ?, 'migration')`,
     ).run(nanoid(), eventId, DEFAULT_GROUP_ID, playerId, now + 1);
+    assert.equal(
+      (
+        await request(app)
+          .post(`/api/events/${eventId}/tracking-consent`)
+          .set('Cookie', cookie)
+          .send({ granted: true, textVersion: TRACKING_CONSENT_TEXT_VERSION })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        db.prepare(
+          'SELECT COUNT(*) AS count FROM event_tracking_consents WHERE event_id = ? AND player_id = ? AND revoked_at IS NULL',
+        ).get(eventId, playerId) as { count: number }
+      ).count,
+      1,
+      'reconfirming one current text version closes duplicate legacy active rows',
+    );
 
     const firstReport = await request(app)
       .post('/api/agent/report')
@@ -197,7 +258,7 @@ test('tracking consent is self-only, idempotent and revokes agent fan-out immedi
     const invitedGrant = await request(app)
       .post(`/api/events/${eventId}/tracking-consent`)
       .set('Cookie', cookie)
-      .send({ granted: true });
+      .send({ granted: true, textVersion: TRACKING_CONSENT_TEXT_VERSION });
     assert.equal(invitedGrant.status, 409, JSON.stringify(invitedGrant.body));
     assert.equal(
       (
@@ -219,7 +280,7 @@ test('tracking consent is self-only, idempotent and revokes agent fan-out immedi
           await request(app)
             .post(`/api/events/${eventId}/tracking-consent`)
             .set('Cookie', cookie)
-            .send({ granted: true })
+            .send({ granted: true, textVersion: TRACKING_CONSENT_TEXT_VERSION })
         ).status,
         200,
       );
@@ -264,6 +325,13 @@ test('tracking consent is self-only, idempotent and revokes agent fan-out immedi
       .send({ processNames: [processName] });
     assert.equal(afterRevoke.body.tracked, false);
     assert.deepEqual(afterRevoke.body.gameIds, []);
+    assert.deepEqual(
+      JSON.parse((db.prepare('SELECT process_names FROM agent_diagnostics WHERE player_id = ?').get(playerId) as { process_names: string }).process_names),
+      [],
+    );
+    const diagnostics = await request(app).get('/api/admin/agent-diagnostics').set('Cookie', adminCookie);
+    assert.equal(diagnostics.status, 200);
+    assert.deepEqual(diagnostics.body.find((row: { playerId: string }) => row.playerId === playerId).processNames, []);
   } finally {
     socket.close();
     setIo(null);

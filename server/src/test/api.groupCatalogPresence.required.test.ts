@@ -7,6 +7,7 @@ import path from 'path';
 import { test } from 'node:test';
 
 const APP_JS_PATH = path.join(__dirname, '..', 'app.js');
+const PRIVACY_POLICY_JS_PATH = path.join(__dirname, '..', 'privacyPolicy.js');
 const RECOVERY_CODE = 'catalog-presence-recovery-code';
 
 test('game catalog, process names, skills/preferences and live status are roles-gated inside the one real group', () => {
@@ -14,6 +15,7 @@ test('game catalog, process names, skills/preferences and live status are roles-
     const assert = require('assert/strict');
     const request = require('supertest');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
+    const { TRACKING_CONSENT_TEXT_VERSION, GROUP_TRACKING_CONSENT_TEXT_VERSION } = require(${JSON.stringify(PRIVACY_POLICY_JS_PATH)});
 
     function cookie(response) {
       return response.headers['set-cookie'][0].split(';')[0];
@@ -98,8 +100,8 @@ test('game catalog, process names, skills/preferences and live status are roles-
       const eventA = await scoped(app, 'post', '/api/events', alice.cookie, groupId).send({ name: 'Tracking A', startsAt: now, endsAt: now + 5 * 60_000 });
       assert.equal(eventA.status, 201, JSON.stringify(eventA.body));
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice.cookie, groupId).send({ playerIds: [alice.account.id] })).status, 200);
-      assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/accept', alice.cookie, groupId).send({})).status, 200);
-      assert.equal((await scoped(app, 'post', '/api/groups/' + groupId + '/tracking-consent', alice.cookie, groupId).send({ granted: true })).status, 200);
+      assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/accept', alice.cookie, groupId).send({ textVersion: TRACKING_CONSENT_TEXT_VERSION })).status, 200);
+      assert.equal((await scoped(app, 'post', '/api/groups/' + groupId + '/tracking-consent', alice.cookie, groupId).send({ granted: true, textVersion: GROUP_TRACKING_CONSENT_TEXT_VERSION })).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice.cookie, groupId).send({})).status, 200);
       const selectEventA = await scoped(app, 'put', '/api/me/active-event', alice.cookie, groupId).send({ eventId: eventA.body.id });
       assert.equal(selectEventA.status, 200, JSON.stringify(selectEventA.body));

@@ -147,6 +147,16 @@ function normalizedPushScope(scope: PushScope): { groupId: string; eventId: stri
   return { groupId: scope.groupId, eventId, eventName: event.name };
 }
 
+// Marks a push whose own text is a system-generated sentence *about* one
+// account ("<Name> übernimmt: …") rather than merely being addressed to it.
+// Erasing that account removes such rows entirely instead of only clearing
+// the identifier — see scrubAccountCopies in privacyService.ts.
+export const SUBJECT_SCOPED_TARGET_PREFIX = 'about-account';
+
+export function subjectScopedTargetId(playerId: string, context: string): string {
+  return `${SUBJECT_SCOPED_TARGET_PREFIX}:${context}:${playerId}`;
+}
+
 function payloadType(payload: PushPayload, topic?: PushTopic): string {
   return payload.type ?? topic?.key.split(':', 1)[0] ?? 'message';
 }

@@ -15,6 +15,7 @@ import {
   createE2EAccount,
   E2EAccount,
   loginE2EAdmin,
+  waitForPlayerData,
 } from './authHelpers';
 import { createE2EDiagnosticTest } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
@@ -48,6 +49,7 @@ async function switchAccount(account: E2EAccount): Promise<void> {
   // the end of that phase as the history entry it replaces right before its
   // own switchView, so wait for that state instead of the shell alone.
   await page.waitForFunction(() => Boolean(window.history.state?.view));
+  await waitForPlayerData(page);
 }
 
 before(async () => {

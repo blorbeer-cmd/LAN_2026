@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { requireAdmin } from '../auth';
 import { db } from '../db';
 import { config } from '../config';
+import { activeTrackingContexts } from '../trackingContexts';
 import { broadcast, Events } from '../realtime';
 import { broadcastLiveBoards } from '../liveStatus';
 import { createTestUsers, countTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
@@ -140,7 +141,9 @@ adminRouter.get('/agent-diagnostics', requireAdmin, (_req, res) => {
       agentVersion: row.agent_version,
       lastReportAt: row.last_report_at,
       online: row.last_report_at !== null && now - row.last_report_at <= config.offlineTimeoutMs,
-      processNames,
+      // A row can outlive the event switch that made it valid. Never expose
+      // its process snapshot once the current tracking context is gone.
+      processNames: activeTrackingContexts(row.player_id, now).length > 0 ? processNames : [],
     };
   }));
 });
