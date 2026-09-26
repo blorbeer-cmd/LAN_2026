@@ -1447,7 +1447,7 @@ export const permanentVariants = [
     "selector": ".event-poll-response-toolbar .btn.is-selected",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "The chosen answer is marked by a 1px inset accent outline instead of the gradient; on the 0-5 number scale the digit stays in the regular text color; geometry stays with the base or square variant.",
+    "reason": "The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.",
     "properties": [
       "box-shadow"
     ]
@@ -1458,7 +1458,7 @@ export const permanentVariants = [
     "selector": ".rating-scale .event-poll-response-toolbar .btn.is-selected",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "On the Bock/Skill scale the chosen number's inset outline takes that scale's color; the number itself stays in the regular text color; geometry stays with the square variant.",
+    "reason": "On the Bock/Skill scale the chosen number's inset outline takes that scale's color; geometry stays with the square variant.",
     "properties": [
       "box-shadow"
     ]

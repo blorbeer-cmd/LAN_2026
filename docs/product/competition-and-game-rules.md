@@ -151,7 +151,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   already is at a game is part of deciding whether to accept it.
   Bock and Skill are rated with the shared 0–5 number scale (`ratingScale.js`) that Vote and
   Umfragen use: six square buttons below the label. The chosen number is outlined in the former
-  slider's color (Bock violet, Skill blue) while its digit stays white like the others, and a fill line below the numbers repeats the value with
+  slider's color (Bock violet, Skill blue) and a fill line below the numbers repeats the value with
   that slider's gradient; the line is empty for a 0 and dashed while nothing is rated. No selected
   number means "no rating yet"; 0 is a deliberate answer and counts as rated — for Bock „kein
   Bock“, for Skill „kenne ich nicht“ — and that meaning is spelled out on the Ø note's line. A

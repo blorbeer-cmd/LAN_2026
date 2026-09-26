@@ -15,8 +15,8 @@ function scaleValue(value) {
 // selected: the chosen value (number or numeric string) or null/undefined.
 // attributes(value) returns trusted, already escaped markup that identifies
 // the button for the caller's click handler.
-// tone ('bock' | 'skill'): colors the chosen number's outline and adds the fill
-// line below the numbers that picks up the former sliders' gradient.
+// tone ('bock' | 'skill'): colors the chosen number and adds the fill line
+// below the numbers that picks up the former sliders' gradient.
 export function ratingScaleHtml({
   selected,
   groupLabel,
