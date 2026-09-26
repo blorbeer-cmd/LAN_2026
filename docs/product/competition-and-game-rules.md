@@ -298,14 +298,16 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
   own progress („X von Y bewertet“), the „Unbewertet“ chip that narrows the list to still-unrated
   games, and „Speichern“, enabled once every game is rated. A runoff offers the Umfrage
-  „Wählen“/„Ausgewählt“ choice instead of sliders. The latest result lists every game of the round
-  sorted by score, each with its result bar, „N Pkt. · X/Y spielen mit“ (voters who gave at least
-  one point, out of everyone who voted) and the avatars of those voters; winners carry the green
-  „Win“ chip, tied winners each carry it. „Letzter Vote“ offers „Stimmen ansehen“ and, on a tie, a
-  compact „Stichwahl starten“ in its header. „Stimmen ansehen“, an avatar stack and every
-  history row's „Details“ open the Umfrage vote table: numbered legend with each game's summary,
-  one row per voter with their points, a 0 shown as „Spielt nicht“. History lists only the rounds
-  before the latest one as compact Umfrage history rows (title, date, participation, winner).
+  „Wählen“/„Ausgewählt“ choice instead of sliders. „Letzter Vote“ is a collapsible Umfrage card
+  that starts collapsed and keeps its open state across live re-renders; its header names the
+  round, date, participation and winner and always offers „Stimmen ansehen“ and, on a tie, a
+  compact „Stichwahl starten“. Opened, it lists every game of the round sorted by score, each with
+  its result bar, „N Pkt. · X/Y spielen mit“ (voters who gave at least one point, out of everyone
+  who voted) and the avatars of those voters; winners carry the green „Win“ chip, tied winners
+  each carry it. „Stimmen ansehen“ — in that header, on every history row and behind each avatar
+  stack — opens the Umfrage vote table: numbered legend with each game's summary, one row per
+  voter with their points, a 0 shown as „Spielt nicht“. History lists only the rounds before the
+  latest one as compact Umfrage history rows (title, date, participation, winner).
   The Top 10 form two ordered five-item columns from `--bp-md`, while phones keep one continuous
   list. The new-round form's `.vote-game-grid` keeps one column on phones, two from `--bp-md` and
   three from `--bp-xl`, with the same bordered card treatment at every size.

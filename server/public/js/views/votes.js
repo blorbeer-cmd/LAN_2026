@@ -6,8 +6,9 @@
 //    card in the same shape as an Umfrage whose interim result is hidden:
 //    header with participation and the viewer's answer state, one row per
 //    game, and a footer with the own progress and "Speichern".
-// 2. The latest closed result as "Letzter Vote", pulled from history, in the
-//    ended-Umfrage shape: result bar, "Win" chip and voter avatars per game.
+// 2. The latest closed result as "Letzter Vote", pulled from history, as a
+//    collapsed Umfrage card: the header names round and winner, the opened
+//    card shows result bar, "Win" chip and voter avatars per game.
 // 3. The current Top 10 by aggregate "Bock" rating, split into two compact
 //    five-item columns on wider screens.
 //
@@ -45,6 +46,7 @@ let historyLoading = false;
 let historyStale = false;
 let historyOpen = false;
 let top10Open = false;
+let latestVoteOpen = false;
 let historyRequestVersion = 0;
 
 async function loadHistory(ctx) {
@@ -485,23 +487,48 @@ function renderResultRows(h) {
 
 // ---------- current vote: the most recent closed round, straight from history ----------
 
-function renderCurrentVote() {
-  if (historyCache === null) {
-    return emptyStateHtml('Lädt…', { className: 'vote-empty-state empty-state-compact' });
+function winnerNames(h) {
+  return h.results.filter((r) => (h.winnerGameIds ?? []).includes(r.gameId)).map((r) => r.gameName);
+}
+
+// Collapsed like an Umfrage card: the header keeps the round, its winner and
+// the actions visible; the full result opens below it.
+function renderLatestVoteCard({ showRunoff }) {
+  const h = historyCache?.[0];
+  if (!h?.totalVoters) {
+    const empty = historyCache === null ? 'Lädt…' : historyCache.length === 0 ? 'Noch keine Abstimmung.' : 'Niemand hat abgestimmt.';
+    return `
+      <section class="card vote-page-section stack" aria-labelledby="vote-current-result-title">
+        <div class="grouped-page-section-title"><h2 id="vote-current-result-title">Letzter Vote</h2></div>
+        ${emptyStateHtml(empty, { className: 'vote-empty-state empty-state-compact' })}
+      </section>`;
   }
-  if (historyCache.length === 0) {
-    return emptyStateHtml('Noch keine Abstimmung.', {
-      className: 'vote-empty-state empty-state-compact',
-    });
-  }
-  const h = historyCache[0];
-  if (!h.totalVoters) {
-    return emptyStateHtml('Niemand hat abgestimmt.', { className: 'vote-empty-state empty-state-compact' });
-  }
+  const winners = winnerNames(h);
   return `
-    <div class="muted vote-result-meta">${escapeHtml(roundMetaText(h))}</div>
-    ${h.info ? `<p class="event-poll-note">${escapeHtml(h.info)}</p>` : ''}
-    <div class="stack event-poll-options">${renderResultRows(h)}</div>`;
+    <section class="card vote-page-section event-poll-card" aria-labelledby="vote-current-result-title" data-latest-vote>
+      <header class="event-poll-card-header">
+        <button type="button" class="event-poll-card-toggle" data-toggle-latest-vote aria-expanded="${latestVoteOpen}">
+          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
+          <span class="event-poll-card-title">
+            <strong id="vote-current-result-title">Letzter Vote</strong>
+            <span class="event-poll-card-meta-line">
+              <span class="muted">${escapeHtml(roundMetaText(h))}</span>
+              ${winners.length ? `<span class="event-poll-best-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : ''}
+            </span>
+          </span>
+        </button>
+        <div class="event-poll-card-side">
+          <button type="button" class="btn btn-sm" data-open-vote-round="${h.round}">Stimmen ansehen</button>
+          ${showRunoff ? '<button type="button" class="btn btn-primary btn-sm" id="votes-runoff">Stichwahl starten</button>' : ''}
+        </div>
+      </header>
+      <div class="stack event-poll-card-content" ${latestVoteOpen ? '' : 'hidden'}>
+        <section class="stack event-poll-round">
+          ${h.info ? `<p class="event-poll-note">${escapeHtml(h.info)}</p>` : ''}
+          <div class="stack event-poll-options">${renderResultRows(h)}</div>
+        </section>
+      </div>
+    </section>`;
 }
 
 // ---------- history: one compact row per older round ----------
@@ -520,7 +547,7 @@ function renderHistory() {
   }
   return `<div class="event-poll-history-list">${olderRounds
     .map((h) => {
-      const winners = h.results.filter((r) => (h.winnerGameIds ?? []).includes(r.gameId)).map((r) => r.gameName);
+      const winners = winnerNames(h);
       const meta = [roundTitle(h), formatDateTime(h.closedAt), submissionCountLabel(h.totalVoters)].join(' · ');
       return `
         <div class="event-poll-history-round">
@@ -528,7 +555,7 @@ function renderHistory() {
             <span class="event-poll-history-meta">${escapeHtml(meta)}</span>
             ${winners.length ? `<span class="event-poll-history-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : '<span class="muted">Keine Stimmen</span>'}
           </span>
-          <button type="button" class="btn btn-sm" data-open-vote-round="${h.round}">Details</button>
+          <button type="button" class="btn btn-sm" data-open-vote-round="${h.round}">Stimmen ansehen</button>
         </div>`;
     })
     .join('')}</div>`;
@@ -704,16 +731,7 @@ export function renderVotes(container, ctx) {
     <h1 class="view-title">Vote</h1>
     ${openSectionHtml}
 
-    <section class="card vote-page-section stack" aria-labelledby="vote-current-result-title">
-      <div class="grouped-page-section-title">
-        <h2 id="vote-current-result-title">Letzter Vote</h2>
-        <span class="row" style="gap:var(--space-2);">
-          ${latestRound?.totalVoters ? `<button type="button" class="btn btn-sm" data-open-vote-round="${latestRound.round}">Stimmen ansehen</button>` : ''}
-          ${showRunoff ? '<button type="button" class="btn btn-primary btn-sm" id="votes-runoff">Stichwahl starten</button>' : ''}
-        </span>
-      </div>
-      ${renderCurrentVote()}
-    </section>
+    ${renderLatestVoteCard({ showRunoff })}
 
     <details class="card history-details collapsible-section vote-page-section" data-vote-top10 ${top10Open ? 'open' : ''}>
       <summary class="collapsible-section-header">
@@ -751,6 +769,10 @@ export function renderVotes(container, ctx) {
   });
   container.querySelector('[data-vote-top10]')?.addEventListener('toggle', (event) => {
     top10Open = event.currentTarget.open;
+  });
+  container.querySelector('[data-toggle-latest-vote]')?.addEventListener('click', () => {
+    latestVoteOpen = !latestVoteOpen;
+    ctx.rerender();
   });
 
   container.querySelectorAll('[data-vote-select]').forEach((btn) => {

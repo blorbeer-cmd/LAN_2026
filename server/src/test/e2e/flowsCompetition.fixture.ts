@@ -291,9 +291,16 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
 
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
-  // Closing reveals the ended-Umfrage shape: every game of the round with its
-  // bar, how many voters would play it and the tied winners' "Win" chips.
+  // Closing reveals the result as a collapsed Umfrage card: the header names
+  // the winners and keeps its actions; opening it shows every game of the
+  // round with its bar, how many voters would play it and the "Win" chips.
   const currentVote = page.locator('section[aria-labelledby="vote-current-result-title"]');
+  const latestToggle = currentVote.locator('[data-toggle-latest-vote]');
+  await latestToggle.waitFor();
+  assert.equal(await latestToggle.getAttribute('aria-expanded'), 'false', 'the latest result starts collapsed');
+  assert.equal(await currentVote.locator('.event-poll-card-header .vote-win-chip').count(), 1);
+  assert.equal(await currentVote.locator('.event-poll-option:visible').count(), 0);
+  await latestToggle.click();
   await page.waitForFunction(
     (expected) => document.querySelectorAll('section[aria-labelledby="vote-current-result-title"] .event-poll-option').length === expected,
     totalGames
@@ -315,7 +322,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.click('details.history-details:has(summary:has-text("Historie")) > summary');
   await page.waitForSelector('[data-vote-history] >> text=Noch keine älteren Abstimmungen.');
   assert.equal(await page.locator('[data-vote-history] .event-poll-history-round').count(), 0);
-  await currentVote.locator('.grouped-page-section-title [data-open-vote-round]:text-is("Stimmen ansehen")').click();
+  await currentVote.locator('.event-poll-card-side [data-open-vote-round]:text-is("Stimmen ansehen")').click();
   await page.waitForSelector('.modal h2:text-is("Stimmen · Abstimmung Runde 1")');
   const breakdown = page.locator('.modal .event-poll-vote-table');
   await breakdown.waitFor();
