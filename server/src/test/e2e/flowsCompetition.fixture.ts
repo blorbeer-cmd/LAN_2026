@@ -248,14 +248,22 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.ok(await page.locator('#votes-submit').isDisabled(), 'an incomplete ballot cannot be saved');
   assert.equal(await roundCard.locator('.event-poll-tag:text-is("Zwischenstand verborgen")').count(), 1);
   assert.equal(await roundCard.locator('.event-poll-bar').count(), 0, 'no bars while the round is open');
-  // With the result hidden, the numbers sit beside the name: two games per
-  // row from --bp-lg, the regular stacked rows on a phone. Every row names
-  // the viewer's own Skill as orientation.
+  // With the result hidden, the numbers sit beside the name: two columns
+  // from --bp-lg that read down the left column first, the regular stacked
+  // rows on a phone. Every row names the viewer's own Skill as orientation.
   const ballotColumns = () => roundCard.locator('.event-poll-options').evaluate((element) =>
     getComputedStyle(element).display === 'grid' ? getComputedStyle(element).gridTemplateColumns.split(' ').length : 1);
   assert.equal(await ballotColumns(), 1);
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(await ballotColumns(), 2);
+  const ballotLefts = await roundCard.locator('[data-points-row]').evaluateAll((rows) =>
+    rows.map((row) => Math.round(row.getBoundingClientRect().left)));
+  const leftColumnCount = Math.ceil(ballotLefts.length / 2);
+  assert.deepEqual(
+    ballotLefts.map((left) => left === ballotLefts[0]),
+    ballotLefts.map((_, index) => index < leftColumnCount),
+    'the first half of the alphabetical list fills the left column, the rest the right one'
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   assert.match((await roundCard.locator('.vote-own-skill').first().textContent()) ?? '', /^Mein Skill: (\d|–)$/);
 

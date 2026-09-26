@@ -330,7 +330,7 @@ function ownSkillHtml(gameId) {
   return `<span class="vote-own-skill${skill === null ? ' is-missing' : ''}">Mein Skill: ${skill ?? '–'}</span>`;
 }
 
-function renderOpenRow(votes, r, draftReady) {
+function renderOpenRow(votes, r, draftReady, columnStart = false) {
   let control;
   if (!draftReady) {
     control = '<span class="muted vote-points-loading">Lädt…</span>';
@@ -354,7 +354,7 @@ function renderOpenRow(votes, r, draftReady) {
     });
   }
   return `
-    <div class="event-poll-option" data-points-row="${r.gameId}">
+    <div class="event-poll-option${columnStart ? ' is-column-start' : ''}" data-points-row="${r.gameId}">
       <div class="event-poll-option-info">
         <span class="event-poll-option-title-row"><strong>${escapeHtml(r.gameName)}</strong></span>
         <span class="muted event-poll-option-note">${ownSkillHtml(r.gameId)} · ${gameMetaHtml(r)}</span>
@@ -371,9 +371,12 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
   const isPoints = votes.mode === 'points';
   const showUnratedOnly = isPoints && voteUnratedOnly && mineReady;
   const games = ballotGames(votes).filter((r) => !showUnratedOnly || !draftPoints.has(r.gameId));
+  // Two columns on wide screens read down the left column first, then the
+  // right one (see .event-poll-options.is-compact).
+  const columnRows = Math.max(1, Math.ceil(games.length / 2));
   const rows = showUnratedOnly && games.length === 0
     ? emptyStateHtml('Alle Spiele bewertet.')
-    : games.map((r) => renderOpenRow(votes, r, mineReady)).join('');
+    : games.map((r, index) => renderOpenRow(votes, r, mineReady, index === columnRows)).join('');
   const tags = [];
   // Runoffs are titled "Stichwahl: …" already, so the tag only shows when
   // the title does not say it.
@@ -403,7 +406,7 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
             ${tags.map((tag) => `<span class="event-poll-tag">${tag}</span>`).join('')}
           </div>
           ${votes.info ? `<p class="event-poll-note">${escapeHtml(votes.info)}</p>` : ''}
-          <div class="stack event-poll-options has-answers is-compact">${rows}</div>
+          <div class="stack event-poll-options has-answers is-compact" style="--compact-rows: ${columnRows};">${rows}</div>
           <div class="event-poll-save-row event-poll-footer">
             <span class="vote-footer-progress">
               <span class="muted" data-vote-rated-progress>${mineReady ? draftProgressText(votes) : ''}</span>

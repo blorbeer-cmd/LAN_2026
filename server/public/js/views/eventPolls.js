@@ -455,14 +455,14 @@ function rejectTagHtml(poll, option) {
   return responseDraftFor(poll)[option.id] === '0' ? '<span class="event-poll-tag event-poll-reject-tag">Lehne ich ab</span>' : '';
 }
 
-function renderOption(poll, option) {
+function renderOption(poll, option, columnStart = false) {
   const link = optionUrl(option);
   const label = optionLabel(option);
   const win = option.isRecommended && poll.status !== 'open' && poll.status !== 'cancelled';
   const badges = `${renderVoterStack(poll, option)}${rejectTagHtml(poll, option)}${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}`;
   // Fixed columns: name and note, result bar, voter avatars, answer buttons.
   return `
-    <div class="event-poll-option${win ? ' is-winner' : ''}" data-poll-option="${escapeHtml(option.id)}">
+    <div class="event-poll-option${win ? ' is-winner' : ''}${columnStart ? ' is-column-start' : ''}" data-poll-option="${escapeHtml(option.id)}">
       <div class="event-poll-option-info">
         <span class="event-poll-option-title-row">
           <strong>${escapeHtml(label)}</strong>
@@ -515,11 +515,14 @@ function renderRound(poll) {
   const canAnswer = poll.isInvitee && poll.status === 'open';
   // No interim result for this viewer: answers move up beside the title.
   const compact = canAnswer && poll.options.every((option) => !option.counts);
+  const options = poll.status === 'open' ? poll.options : optionsByResult(poll);
+  // Two compact columns read down the left column first, then the right one.
+  const columnRows = Math.max(1, Math.ceil(options.length / 2));
   return `
     <section class="stack event-poll-round" data-poll-round="${escapeHtml(poll.id)}">
       <div class="event-poll-tags">${tags.map((tag) => `<span class="event-poll-tag">${escapeHtml(tag)}</span>`).join('')}</div>
       ${poll.note ? `<p class="event-poll-note">${escapeHtml(poll.note)}</p>` : ''}
-      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}${compact ? ' is-compact' : ''}">${(poll.status === 'open' ? poll.options : optionsByResult(poll)).map((option) => renderOption(poll, option)).join('')}</div>
+      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}${compact ? ' is-compact' : ''}"${compact ? ` style="--compact-rows: ${columnRows};"` : ''}>${options.map((option, index) => renderOption(poll, option, compact && index === columnRows)).join('')}</div>
       ${canAnswer
         ? `<div class="event-poll-save-row event-poll-footer"><span class="muted">${escapeHtml(draftProgress(poll))}</span><button type="button" class="btn btn-primary btn-sm" data-save-poll="${escapeHtml(poll.id)}" ${responseDraftIsValid(poll) ? '' : 'disabled'}>Speichern</button></div>`
         : ''}

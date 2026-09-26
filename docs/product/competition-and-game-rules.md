@@ -301,8 +301,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   Umfrage option row each: name and one compact meta line that starts with the viewer's own Skill
   („Mein Skill: X“, „–“ without one) followed by the other values, and the same 0–5 number scale
   as an Umfrage rating as the answer control. Like every Umfrage with a hidden interim result, the
-  empty result column is dropped so the numbers sit beside the name, and from `--bp-lg` two games
-  share a row. A ballot the viewer has not saved yet in this round starts with the own Bock
+  empty result column is dropped so the numbers sit beside the name, and from `--bp-lg` the games
+  fill two columns, read down the left column first, then the right one. A ballot the viewer has not saved yet in this round starts with the own Bock
   preselected for every game that has one; games without an own Bock start unrated. This
   preselection is only a local draft — nothing counts until „Speichern“. No selected number means unrated; pressing the chosen number again clears
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the

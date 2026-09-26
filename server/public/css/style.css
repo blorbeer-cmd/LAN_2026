@@ -1297,12 +1297,16 @@ textarea {
   }
 }
 @media (min-width: 860px) { /* --bp-lg */
+  /* Filled column by column (--compact-rows = half the options, rounded up),
+     so the list reads down the left column first, then the right one. */
   .event-poll-options.is-compact {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(var(--compact-rows, 1), auto);
+    grid-auto-flow: column;
     column-gap: var(--space-7);
   }
-  .event-poll-options.is-compact .event-poll-option:nth-child(2) {
+  .event-poll-options.is-compact .event-poll-option.is-column-start {
     border-top: 0;
     padding-top: 0;
   }
