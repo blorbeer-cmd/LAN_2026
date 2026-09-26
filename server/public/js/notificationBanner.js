@@ -92,7 +92,7 @@ export function entryHtml(entry) {
   // scannable at a glance; the time follows as muted text.
   const meta = [
     entry.eventName ? `<span class="badge badge-event">${escapeHtml(entry.eventName)}</span>` : '',
-    entry.audience === 'direct' ? '<span class="badge badge-paused">Für dich</span>' : '',
+    entry.audience === 'direct' ? '<span class="badge badge-online">Für dich</span>' : '',
     obsolete ? `<span class="badge badge-neutral">${entry.resolvedAt ? 'Obsolet' : 'Abgelaufen'}</span>` : '',
     `<span class="notification-center-time">${formatDateTime(entry.createdAt)} Uhr</span>`,
   ].join('');

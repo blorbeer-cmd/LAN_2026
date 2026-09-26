@@ -20,7 +20,7 @@ test('event and direct audience show as escaped pills', () => {
   const html = entryHtml({ ...baseEntry, eventName: 'LAN <2026>', audience: 'direct' });
 
   assert.match(html, /badge badge-event">LAN &lt;2026&gt;</);
-  assert.match(html, /badge badge-paused">Für dich</);
+  assert.match(html, /badge badge-online">Für dich</);
 });
 
 test('a food-order notification carries its order target', () => {
