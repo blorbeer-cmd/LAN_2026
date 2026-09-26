@@ -399,12 +399,14 @@ export function registerPongSockets(io: Server): () => void {
       snapshot(io, match);
       startLoop(io, match);
       ack?.({ ok: true, matchId: id });
+      // Anchored to the announced beginsAt, not to "now": the work above must
+      // not push the real start past the countdown the clients just showed.
       setTimeout(() => {
         if (matches.get(id) === match) {
           match.running = true;
           match.lastTick = Date.now();
         }
-      }, COUNTDOWN_MS);
+      }, Math.max(0, beginsAt - Date.now()));
     });
 
     socket.on('pong:input', (payload: { matchId?: string; playerId?: string; input?: Partial<PongInput> }, ack?: (result: unknown) => void) => {
