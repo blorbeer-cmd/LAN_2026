@@ -10,7 +10,7 @@ mehreren Abstimmungsrunden mit dem Nutzer und einer Konzeptprüfung durch Codex 
   Draft-PR #684 enthalten nur diese Übergabe und das Mockup.
 - **Die Umsetzung erfolgt vollständig in genau diesem einen PR** auf demselben Branch. Das hat der
   Nutzer ausdrücklich so festgelegt.
-- **Verbindlich ist das Mockup** `docs/mockups/match-turnier-angleichen.html` (Version 8). Im Browser
+- **Verbindlich ist das Mockup** `docs/mockups/match-turnier-angleichen.html` (Version 9). Im Browser
   öffnen. Die App-Ansichten darin nutzen die Tokens aus `server/public/css/style.css`, bauen die
   Komponenten aber nach. Es zeigt Aufbau, Reihenfolge, Texte und Farbbedeutungen, ist aber keine
   Pixelvorlage. Maßgeblich für Maße, Abstände und Komponenten bleiben `server/DESIGN_SYSTEM.md`, die
@@ -202,6 +202,23 @@ normale 1:1-Spielzeile wie im Spielplan (`fixtureRowHtml` in
    einzelne Turniere bleiben in der Suche.
 8. Kommentare, die den Tab erwähnen (`app.js`, `sectionNav.js`), anpassen.
 
+## Breite Ansichten (Laptop und Desktop)
+
+Das Mockup zeigt im Abschnitt „Laptop und Desktop“ die Match-Seite, den Ergebnis-Dialog, die
+Turnierseite und die Laptop-Variante. Inhalte und Regeln sind dieselben wie auf dem Handy; nur die
+Anordnung nutzt die Breite. Die bestehenden Layoutstufen bleiben (`--bp-lg` 1080 px Inhalt,
+Desktop-Modus ab `--bp-xl` mit linker Leiste und bis 1600 px Inhalt).
+
+- **Match-Seite:** „Laufende Turniere“ in zwei Spalten. Der Historie-Kopf steht in einer Zeile:
+  Pfeil, Spiel, Zeit, Ergebnis, Teamanzahl, Aktionen rechts. Aufgeklappt stehen die Teams
+  nebeneinander (bis zu vier Spalten), nach Platz sortiert. Die Spielerauswahl bleibt wie heute
+  dreispaltig.
+- **Ergebnis-Dialog:** derselbe Dialog wie auf dem Handy, mittig mit begrenzter Breite.
+- **Turnierseite:** Links bleibt „Match“ markiert. Gruppen einer Gruppenphase stehen nebeneinander,
+  darunter das Finale als 1:1-Spielzeile.
+- **Laptop:** wie Desktop ohne linke Leiste, mit der unteren Navigation („Match“ markiert) und
+  zentriertem, schmalerem Inhalt.
+
 ## Teil 4: Dokumentation und Prüfungen
 
 - **Dokumentation im selben PR:** `server/DESIGN_SYSTEM.md` (Regel 11: Auswahl, dann Speichern),
@@ -251,4 +268,6 @@ normale 1:1-Spielzeile wie im Spielplan (`fixtureRowHtml` in
 - Eine K.-o.-Runde mit einem Spiel erscheint als Spielzeile „Finale“.
 - Es gibt keinen Turnier-Tab und keinen Zurück-Knopf; laufende Turniere stehen oben auf der
   Match-Seite, auch während eines Drafts; alte Links und Home „Aktuell“ führen direkt zum Turnier.
+- Handy, Laptop und Desktop entsprechen den jeweiligen Mockups; die breiten Ansichten nutzen die
+  Breite wie beschrieben.
 - Es kommen keine neuen Farben hinzu; alle Pflichtprüfungen und der Arcade-Smoke-Test laufen grün.

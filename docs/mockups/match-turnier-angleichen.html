@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <!-- Mockup zu docs/plans/match-turnier-angleichen-handover.md. App-Ebene nutzt die Tokens aus
      server/public/css/style.css; die Annotationsebene ist nur Dokumentation. -->
-<title>Match und Turnier angleichen — Respawn, Mockup Version 8</title>
+<title>Match und Turnier angleichen — Respawn, Mockup Version 9</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -297,6 +297,50 @@ td .sev { display: inline-block; font-family: var(--mono); font-size: 0.68rem; p
 .chipf { font-size: 0.78rem; font-weight: 600; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-elevated-2); color: var(--text); }
 .chipf.on { border-color: var(--accent); background: var(--accent-bg); }
 .champ { border-radius: 8px; background: var(--accent-gradient); color: #fff; font-weight: 700; font-size: 0.8rem; padding: 8px 10px; text-align: center; }
+/* ---------- v9: Laptop und Desktop ---------- */
+.deskscroll { overflow-x: auto; padding-bottom: 6px; }
+.desk { min-width: 980px; font-family: var(--app-font); font-size: 13px; line-height: 1.4; background: var(--bg); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.45); position: relative; }
+.d-chrome { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #0a0e17; border-bottom: 1px solid var(--border); }
+.d-chrome i { width: 10px; height: 10px; border-radius: 50%; background: #2a3350; display: inline-block; }
+.d-chrome .url { margin-left: 12px; font-family: var(--mono); font-size: 0.72rem; color: var(--text-muted); background: var(--bg-elevated); border-radius: 6px; padding: 3px 10px; }
+.d-top { height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.d-top .brand { font-weight: 800; letter-spacing: .02em; }
+.d-top .ev { font-size: 0.8rem; color: var(--text-muted); border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; }
+.d-body { display: grid; grid-template-columns: 150px minmax(0,1fr); min-height: 420px; }
+.d-body.laptop { grid-template-columns: minmax(0,1fr); }
+.d-rail { background: var(--bg-elevated); border-right: 1px solid var(--border); padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; font-size: 0.8rem; }
+.d-rail .h { font-size: 0.62rem; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); font-weight: 700; padding: 8px 8px 2px; }
+.d-rail .it { padding: 6px 8px; border-radius: 8px; color: var(--text-muted); }
+.d-rail .it.on { background: var(--accent-bg); color: var(--text); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
+.d-main { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.d-main.center { max-width: 760px; margin: 0 auto; width: 100%; }
+.d-title { font-size: 1.35rem; font-weight: 700; }
+.d-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.d-grid4 { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
+.d-roster { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 0 16px; }
+.dhead { display: grid; grid-template-columns: 18px minmax(0,1fr) auto; gap: 10px; align-items: center; }
+.dhead .chev { width: 16px; height: 16px; color: var(--text); }
+.dhead.open .chev { transform: rotate(90deg); }
+.dline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.8rem; color: var(--text-muted); min-width: 0; }
+.dline b { color: var(--text); font-size: 0.85rem; }
+.dline .res { color: var(--text); font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
+.dteam { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dteam .top { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.82rem; }
+.dteam .top .pts { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 700; }
+.dteam small { color: var(--text-muted); font-size: 0.72rem; }
+.dteam.lose .top > span:not(.rn):not(.skv), .dteam.lose .pts { color: var(--text-muted); }
+.d-overlay { position: absolute; inset: 0; background: rgba(5,8,14,.6); display: grid; place-items: center; }
+.d-overlay .modal { width: 440px; }
+.stand { width: 100%; border-collapse: collapse; font-size: 0.75rem; min-width: 0; }
+.stand th, .stand td { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: right; font-weight: 400; }
+.stand th { color: var(--text-muted); font-family: var(--app-font); text-transform: none; letter-spacing: 0; background: none; font-size: 0.7rem; }
+.stand td:nth-child(2), .stand th:nth-child(2) { text-align: left; }
+.stand td:first-child { font-weight: 800; color: var(--text-muted); white-space: normal; }
+.stand tr.ld td:first-child { color: var(--gold); }
+.stand .adv { font-size: 0.62rem; color: var(--text-muted); margin-left: 4px; }
+.d-bottomnav { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--border); background: var(--bg-elevated); font-size: 0.72rem; color: var(--text-muted); text-align: center; padding: 8px 0; }
+.d-bottomnav .on { color: var(--text); font-weight: 600; }
+
 /* ---------- Empfehlung ---------- */
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; counter-reset: s; }
 .step { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
@@ -326,7 +370,7 @@ ul.plain strong { color: var(--text); }
 <div class="wrap">
 
 <header class="top">
-  <span class="eyebrow">Analyse · Stand main 156f039 · nichts umgesetzt · Version 8</span>
+  <span class="eyebrow">Analyse · Stand main 156f039 · nichts umgesetzt · Version 9</span>
   <h1>Match und Turnier angleichen</h1>
   <p class="lead">Die letzte Prüfung ist teilweise überholt. Seit den PRs #662, #667 und #672 nutzen Match und Turnier bereits denselben Ergebnis-Dialogstil und dieselben Plus- und Stift-Aktionen. Übrig sind Abweichungen in Beschriftung, Punkte-Eingabe und Ergebnis-Anzeige, dazu ein dritter, ganz anders gebauter Ergebnis-Dialog in der Auswertung. Neu betrachtet: Ergebnisse mit mehreren Teams, die Modi Sieger und Punktestand, und die Match-Historie. Den Turnier-Tab kann man auflösen.</p>
   <div class="meta-row">
@@ -343,6 +387,7 @@ ul.plain strong { color: var(--text); }
     <a href="#historie">Mockup: Historie</a>
     <a href="#finale">Mockup: K.-o.-Finale</a>
     <a href="#tab">Turnier-Tab auflösen</a>
+    <a href="#desktop">Laptop und Desktop</a>
     <a href="#reihenfolge">Umsetzung</a>
   </nav>
 </header>
@@ -919,6 +964,118 @@ ul.plain strong { color: var(--text); }
       <p>Die Karte „Laufende Turniere“ und der Filter „Turniere“ brauchen eigene, verlässliche Turnierdaten. Heute lädt <code>aktuellStatus.js</code> Turniere, Essen und Arcade gemeinsam; scheitert eine Anfrage, sind alle leer. Match muss bei <code>tournaments:changed</code>, Wiederverbinden und Eventwechsel neu laden und einen Ladefehler von „keine Turniere“ unterscheiden. Ein gelöschtes Turnier verschwindet aus Karte und Filter; ein Link darauf zeigt einen verständlichen Hinweis.</p>
     </div>
   </div>
+</section>
+
+<!-- ============ LAPTOP UND DESKTOP ============ -->
+<section class="block" id="desktop">
+  <div class="block-head">
+    <span class="eyebrow">Breite Ansichten</span>
+    <h2>Laptop und Desktop</h2>
+    <p class="muted">Ab 1280 px Breite zeigt die App im Desktop-Modus links die Navigationsleiste und nutzt bis zu 1600 px Inhaltsbreite. Im Laptop-Modus bleibt die untere Navigation, der Inhalt wird bis 1080 px breit. Die Mockups sind verkleinert, die Navigationsleiste ist vereinfacht. Inhalte und Regeln sind dieselben wie auf dem Handy; nur die Anordnung nutzt die Breite.</p>
+  </div>
+  <div class="stack" style="gap:12px"><div class="shot-label"><span class="pill after">Nachher</span> Desktop · Match-Seite mit Historie</div><div class="deskscroll"><div class="desk">
+      <div class="d-chrome"><i></i><i></i><i></i><span class="url">respawn.lan/#matchmaking</span></div>
+      <div class="d-top"><span class="brand">Respawn</span><span class="ev">LAN 2026 ▾</span></div>
+      <div class="d-body"><aside class="d-rail"><span class="it">Home</span><span class="h">LAN</span><span class="it on">Match</span><span class="it">Vote</span><span class="it">Spiele</span><span class="h">Orga</span><span class="it">Umfragen</span><span class="it">Packliste</span><span class="it">To-Do</span><span class="it">An- & Abreise</span><span class="it">Essen</span><span class="h">Sonstiges</span><span class="it">Durchsage</span><span class="it">Jam</span><span class="it">Arcade</span><span class="it">Events & Gruppen</span><span class="it">Mein Profil</span></aside><main class="d-main"><span class="d-title">Match</span><div class="card"><span class="m-h2">Laufende Turniere</span>
+  <div class="d-grid2">
+    <div class="list-card"><span class="main"><strong class="sm">Rocket League Cup</strong><span class="muted xs">K.O.-Turnier · 1/3 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
+    <div class="list-card"><span class="main"><strong class="sm">Mario Kart Liga</strong><span class="muted xs">Gruppenphase + K.O. · 6/7 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
+  </div></div><div class="card">
+  <div class="d-grid2" style="align-items:end"><div class="stack" style="gap:4px"><span class="muted xs">Spiel auswählen</span><div class="field">Mario Kart</div></div>
+  <div class="row"><span class="muted xs">Modus</span><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div></div>
+  <div class="d-roster"><div class="check"><b></b>Anna</div><div class="check"><b></b>Ben</div><div class="check"><b></b>Chris</div><div class="check"><b></b>Dana</div><div class="check"><b></b>Emil</div><div class="check"><b></b>Finn</div></div>
+  <span class="btn primary" style="align-self:flex-end">Teams auslosen</span></div><div class="card">
+  <div class="row between"><span class="m-h2">Historie</span><span class="badge">9</span></div>
+  <div class="chip-row"><span class="chipf on">Alle</span><span class="chipf">Matches</span><span class="chipf">Turniere</span></div>
+  <div class="hlist">
+    <div class="hentry"><div class="dhead open"><svg class="chev"><use href="#i-chev"/></svg>
+        <span class="dline"><b>Mario Kart</b><span>Sa 21:14</span><span class="res"><span class="chip-win">Win</span>Team 2 · 45</span><span>4 Teams</span></span>
+        <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span></div><div class="d-grid4" style="padding-left:28px"><div class="dteam"><span class="top"><span class="rn g">1</span><span>Team 2</span><span class="skv"><svg class="skic" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>9</span><span class="pts">45</span></span><small>Chris, Dana</small></div><div class="dteam lose"><span class="top"><span class="rn">2</span><span>Team 1</span><span class="skv"><svg class="skic" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>8</span><span class="pts">38</span></span><small>Anna, Ben</small></div><div class="dteam lose"><span class="top"><span class="rn">3</span><span>Team 3</span><span class="skv"><svg class="skic" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>8 <span class="un">(1)</span></span><span class="pts">21</span></span><small>Emil, Finn</small></div><div class="dteam lose"><span class="top"><span class="rn">3</span><span>Team 4</span><span class="skv"><svg class="skic" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>5 <span class="un">(1)</span></span><span class="pts">21</span></span><small>Gina, Hugo</small></div></div></div>
+    <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
+        <span class="dline"><b>Rocket League</b><span>Sa 20:40</span><span class="res"><span class="chip-win">Win</span>Team 1</span><span class="chip-score" style="font-size:.72rem;padding:0 6px"><span class="w">3</span> : 1</span><span>2 Teams</span></span>
+        <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span></div></div>
+    <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
+        <span class="dline"><b>Rocket League</b><span>Fr 22:40</span><span class="badge">Turnier</span><span>Sieger: <b>Team Anna</b></span></span>
+        <span class="hactions2"><span class="btn">LAN Cup</span></span></div></div>
+    <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
+        <span class="dline"><b>Counter-Strike 2</b><span>Fr 21:10</span><span class="chip-remis">Remis</span><span>2 Teams</span></span>
+        <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span></div></div>
+  </div>
+  <div class="subgroup"><span class="row" style="gap:6px"><svg class="ic"><use href="#i-chev"/></svg>Ohne Ergebnis (5)</span><span class="badge">Offen</span></div>
+  <span class="btn" style="align-self:center">Ältere laden</span>
+</div></main></div>
+      
+      
+    </div></div><ul class="notes"><li class="good">Keine Tab-Leiste mehr; „Match“ ist links markiert</li><li class="good">„Laufende Turniere“ nebeneinander in zwei Spalten</li><li class="good">Historie-Kopf in einer Zeile: Pfeil, Spiel, Zeit, Ergebnis, Teamanzahl, Aktionen rechts</li><li class="good">Aufgeklappt stehen die Teams nebeneinander statt untereinander, nach Platz sortiert</li><li class="info">Spielerauswahl wie heute auf dem Desktop in drei Spalten</li></ul></div>
+  <div class="stack" style="gap:12px"><div class="shot-label"><span class="pill after">Nachher</span> Desktop · Ergebnis-Dialog</div><div class="deskscroll"><div class="desk">
+      <div class="d-chrome"><i></i><i></i><i></i><span class="url">respawn.lan/#matchmaking</span></div>
+      <div class="d-top"><span class="brand">Respawn</span><span class="ev">LAN 2026 ▾</span></div>
+      <div class="d-body"><aside class="d-rail"><span class="it">Home</span><span class="h">LAN</span><span class="it on">Match</span><span class="it">Vote</span><span class="it">Spiele</span><span class="h">Orga</span><span class="it">Umfragen</span><span class="it">Packliste</span><span class="it">To-Do</span><span class="it">An- & Abreise</span><span class="it">Essen</span><span class="h">Sonstiges</span><span class="it">Durchsage</span><span class="it">Jam</span><span class="it">Arcade</span><span class="it">Events & Gruppen</span><span class="it">Mein Profil</span></aside><main class="d-main"><span class="d-title">Match</span><div class="card"><span class="m-h2">Laufende Turniere</span>
+  <div class="d-grid2">
+    <div class="list-card"><span class="main"><strong class="sm">Rocket League Cup</strong><span class="muted xs">K.O.-Turnier · 1/3 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
+    <div class="list-card"><span class="main"><strong class="sm">Mario Kart Liga</strong><span class="muted xs">Gruppenphase + K.O. · 6/7 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
+  </div></div><div class="card">
+  <div class="d-grid2" style="align-items:end"><div class="stack" style="gap:4px"><span class="muted xs">Spiel auswählen</span><div class="field">Mario Kart</div></div>
+  <div class="row"><span class="muted xs">Modus</span><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div></div>
+  <div class="d-roster"><div class="check"><b></b>Anna</div><div class="check"><b></b>Ben</div><div class="check"><b></b>Chris</div><div class="check"><b></b>Dana</div><div class="check"><b></b>Emil</div><div class="check"><b></b>Finn</div></div>
+  <span class="btn primary" style="align-self:flex-end">Teams auslosen</span></div></main></div>
+      
+      <div class="d-overlay"><div class="modal">
+  <div class="modal-head"><strong>Ergebnis</strong><span class="x">×</span></div>
+  <div class="modal-sub">Mario Kart · 4 Teams</div>
+  <div class="modes"><span class="btn">Sieger</span><span class="btn primary">Punktestand</span></div>
+  <div class="slist"><div class="srow"><span class="rn">2</span><span class="nm">Team 1<small>Anna, Ben</small></span><span class="num">38</span></div><div class="srow"><span class="rn g">1</span><span class="nm">Team 2<small>Chris, Dana</small></span><span class="num">45</span></div><div class="srow"><span class="rn">3</span><span class="nm">Team 3<small>Emil, Finn</small></span><span class="num">21</span></div><div class="srow"><span class="rn">3</span><span class="nm">Team 4<small>Gina, Hugo</small></span><span class="num">21</span></div></div>
+  <span class="btn primary" style="align-self:flex-end">Speichern</span></div></div>
+    </div></div><ul class="notes"><li class="good">Derselbe Dialog wie auf dem Handy, mittig mit begrenzter Breite</li><li class="good">„Speichern“ kompakt rechts</li><li class="info">Die Seite dahinter bleibt unverändert und abgedunkelt</li></ul></div>
+  <div class="stack" style="gap:12px"><div class="shot-label"><span class="pill after">Nachher</span> Desktop · Turnierseite mit Gruppenphase und Finale</div><div class="deskscroll"><div class="desk">
+      <div class="d-chrome"><i></i><i></i><i></i><span class="url">respawn.lan/#tournaments/liga</span></div>
+      <div class="d-top"><span class="brand">Respawn</span><span class="ev">LAN 2026 ▾</span></div>
+      <div class="d-body"><aside class="d-rail"><span class="it">Home</span><span class="h">LAN</span><span class="it on">Match</span><span class="it">Vote</span><span class="it">Spiele</span><span class="h">Orga</span><span class="it">Umfragen</span><span class="it">Packliste</span><span class="it">To-Do</span><span class="it">An- & Abreise</span><span class="it">Essen</span><span class="h">Sonstiges</span><span class="it">Durchsage</span><span class="it">Jam</span><span class="it">Arcade</span><span class="it">Events & Gruppen</span><span class="it">Mein Profil</span></aside><main class="d-main">
+  <div class="row between"><span class="d-title">Mario Kart Liga</span><span class="btn">Löschen</span></div>
+  <span class="muted xs">Gruppenphase + K.O. · 2 Gruppen · Top 1 steigt auf · 6 Teams · 12 Spieler · 6/7 entschieden <span class="badge live" style="margin-left:6px">Läuft</span></span>
+  <div class="card"><span class="m-h2">Aktive Lobbys</span>
+    <div class="row between sm"><span><strong>Team Anna</strong> <span class="muted">vs</span> <strong>Team Dana</strong> <span class="muted xs">· Finale · Team Anna eröffnet</span></span><span class="row"><span class="muted xs">Lobby</span><code>LAN26-F1</code><span class="act"><svg><use href="#i-copy"/></svg></span></span></div></div>
+  <div class="d-grid2">
+    <div class="card"><span class="m-h2">Gruppe 1</span><table class="stand"><thead><tr><th>#</th><th>Team</th><th>Sp</th><th>S</th><th>U</th><th>N</th><th>Pkt</th></tr></thead><tbody><tr class="ld"><td>1</td><td>Team Anna<span class="adv">weiter</span></td><td>2</td><td>2</td><td>0</td><td>0</td><td>6</td></tr><tr><td>2</td><td>Team Ben</td><td>2</td><td>1</td><td>0</td><td>1</td><td>3</td></tr><tr><td>3</td><td>Team Chris</td><td>2</td><td>0</td><td>0</td><td>2</td><td>0</td></tr></tbody></table></div>
+    <div class="card"><span class="m-h2">Gruppe 2</span><table class="stand"><thead><tr><th>#</th><th>Team</th><th>Sp</th><th>S</th><th>U</th><th>N</th><th>Pkt</th></tr></thead><tbody><tr class="ld"><td>1</td><td>Team Dana<span class="adv">weiter</span></td><td>2</td><td>1</td><td>1</td><td>0</td><td>4</td></tr><tr><td>2</td><td>Team Emil</td><td>2</td><td>1</td><td>0</td><td>1</td><td>3</td></tr><tr><td>3</td><td>Team Finn</td><td>2</td><td>0</td><td>1</td><td>1</td><td>1</td></tr></tbody></table></div>
+  </div>
+  <div class="card"><span class="m-h2">Finale</span>
+    <div class="fixture" style="max-width:520px;align-self:center;width:100%"><span class="a">Team Anna</span><span class="chip-score" style="font-weight:600;color:var(--text-muted)">vs</span><span class="b">Team Dana</span><span class="act open"><svg><use href="#i-plus"/></svg></span></div></div>
+  <div class="card"><div class="coll"><span class="m-h2">Teams</span><span class="row"><span class="badge">6</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div></div>
+</main></div>
+      
+      
+    </div></div><ul class="notes"><li class="good">„Match“ bleibt links markiert; kein Zurück-Knopf</li><li class="good">Gruppen nebeneinander, darunter das Finale als 1:1-Spielzeile</li><li class="good">Aktive Lobbys oben, Teams eingeklappt unten, wie heute</li></ul></div>
+  <div class="stack" style="gap:12px"><div class="shot-label"><span class="pill after">Nachher</span> Laptop · Match-Seite</div><div class="deskscroll"><div class="desk">
+      <div class="d-chrome"><i></i><i></i><i></i><span class="url">respawn.lan/#matchmaking</span></div>
+      <div class="d-top"><span class="brand">Respawn</span><span class="ev">LAN 2026 ▾</span></div>
+      <div class="d-body laptop"><main class="d-main center"><span class="d-title">Match</span><div class="card"><span class="m-h2">Laufende Turniere</span>
+  <div class="d-grid2">
+    <div class="list-card"><span class="main"><strong class="sm">Rocket League Cup</strong><span class="muted xs">K.O.-Turnier · 1/3 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
+    <div class="list-card"><span class="main"><strong class="sm">Mario Kart Liga</strong><span class="muted xs">Gruppenphase + K.O. · 6/7 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
+  </div></div><div class="card">
+  <div class="row between"><span class="m-h2">Historie</span><span class="badge">9</span></div>
+  <div class="chip-row"><span class="chipf on">Alle</span><span class="chipf">Matches</span><span class="chipf">Turniere</span></div>
+  <div class="hlist">
+    <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
+        <span class="dline"><b>Mario Kart</b><span>Sa 21:14</span><span class="res"><span class="chip-win">Win</span>Team 2 · 45</span><span>4 Teams</span></span>
+        <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span></div></div>
+    <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
+        <span class="dline"><b>Rocket League</b><span>Sa 20:40</span><span class="res"><span class="chip-win">Win</span>Team 1</span><span class="chip-score" style="font-size:.72rem;padding:0 6px"><span class="w">3</span> : 1</span><span>2 Teams</span></span>
+        <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span></div></div>
+    <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
+        <span class="dline"><b>Rocket League</b><span>Fr 22:40</span><span class="badge">Turnier</span><span>Sieger: <b>Team Anna</b></span></span>
+        <span class="hactions2"><span class="btn">LAN Cup</span></span></div></div>
+    <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
+        <span class="dline"><b>Counter-Strike 2</b><span>Fr 21:10</span><span class="chip-remis">Remis</span><span>2 Teams</span></span>
+        <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span></div></div>
+  </div>
+  <div class="subgroup"><span class="row" style="gap:6px"><svg class="ic"><use href="#i-chev"/></svg>Ohne Ergebnis (5)</span><span class="badge">Offen</span></div>
+  <span class="btn" style="align-self:center">Ältere laden</span>
+</div></main></div>
+      <div class="d-bottomnav"><span>Home</span><span class="on">Match</span><span>Vote</span><span>Essen</span><span>Mehr</span></div>
+      
+    </div></div><ul class="notes"><li class="good">Wie Desktop, aber ohne linke Leiste; unten die bekannte Navigation mit „Match“ markiert</li><li class="good">Inhalt zentriert und schmaler; der Historie-Kopf bleibt einzeilig</li><li class="info">Setup-Karte hier der Übersicht halber weggelassen</li></ul></div>
 </section>
 
 <!-- ============ REIHENFOLGE ============ -->
