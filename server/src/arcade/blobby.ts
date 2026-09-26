@@ -314,7 +314,9 @@ export function registerBlobbySockets(io: Server): () => void {
         matchId: id, mode: match.mode, host: match.host, players: match.players, beginsAt, targetScore,
       }, match);
       snapshot(io, match); startLoop(io, match); ack?.({ ok: true, matchId: id });
-      setTimeout(() => { if (matches.get(id) === match) { match.running = true; match.lastTick = Date.now(); } }, COUNTDOWN_MS);
+      // Anchored to the announced beginsAt, not to "now": the work above must
+      // not push the real start past the countdown the clients just showed.
+      setTimeout(() => { if (matches.get(id) === match) { match.running = true; match.lastTick = Date.now(); } }, Math.max(0, beginsAt - Date.now()));
     });
     socket.on('blobby:input', (payload: { matchId?: string; playerId?: string; input?: Partial<BlobbyInput> }, ack?: (r: unknown) => void) => {
       const match = typeof payload.matchId === 'string' ? matches.get(payload.matchId) : null;

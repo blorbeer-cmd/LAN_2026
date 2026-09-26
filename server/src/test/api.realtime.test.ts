@@ -11,6 +11,8 @@ import request from 'supertest';
 import { createTestApp } from './testApp';
 import { setIo, Events, createSocketAuthGuard, registerScopedSockets } from '../realtime';
 import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, registerArcadeSockets } from '../arcade/realtime';
+import { registerTetrisSockets } from '../arcade/tetris';
+import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
 import { ensureAccountEventContext } from '../eventContext';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
@@ -451,4 +453,45 @@ test('arcade watcher voting uses the authenticated spectator identity', async ()
     }
   });
   db.prepare('DELETE FROM players WHERE id IN (?, ?)').run(participantId, spectatorId);
+});
+
+// A game action pressed while the socket is still connecting is buffered by
+// the client and sent right after the handshake — before the client's own
+// 'connect' listener can emit scope:subscribe. The scope therefore has to come
+// with the handshake itself, or such an action is rejected as out of scope
+// (seen as a Tetris lobby that never opened in the six-player Arena E2E test).
+test('an action queued before the handshake already runs in the handshake scope', async () => {
+  clearLobbyMemberships();
+  const app = createTestApp();
+  const httpServer = http.createServer(app);
+  const io = new Server(httpServer);
+  io.use(createSocketAuthGuard(''));
+  registerScopedSockets(io);
+  registerTetrisSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  const player = await request(baseUrl).post('/api/players').send({ name: 'Realtime Queued Host' });
+  assert.equal(player.status, 201);
+  const socket = ioClient(baseUrl, {
+    transports: ['websocket'],
+    reconnection: false,
+    autoConnect: false,
+    auth: { groupId: DEFAULT_GROUP_ID },
+    extraHeaders: { Cookie: `${SESSION_COOKIE_NAME}=${createSession(player.body.id)}` },
+  });
+  try {
+    const created = socketAck<{ ok: boolean; error?: string }>(socket, 'tetris:lobby:create', {
+      playerId: player.body.id,
+      mode: 'arena',
+    });
+    socket.connect();
+    const result = await created;
+    assert.equal(result.error, undefined);
+    assert.equal(result.ok, true);
+  } finally {
+    socket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearLobbyMemberships();
+  }
 });
