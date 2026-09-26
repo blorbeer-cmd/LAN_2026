@@ -16,6 +16,14 @@ export function includesTestPlayers(req: Request): boolean {
   return isAdminTestMode(req) || req.player?.is_test === 1;
 }
 
+// Seeded test events follow the same rule: their participants are the test
+// identities, and a test session never carries Admin mode (that flag belongs
+// to a real admin's device). Participation checks still apply on top, so a
+// test identity only reaches the test events it was invited to or accepted.
+export function includesTestEvents(req: Request): boolean {
+  return includesTestPlayers(req);
+}
+
 export function testPlayerIds(): Set<string> {
   return new Set(
     (db.prepare('SELECT id FROM players WHERE is_test = 1').all() as Array<{ id: string }>).map((row) => row.id),

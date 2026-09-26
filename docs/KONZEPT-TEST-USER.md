@@ -146,6 +146,12 @@ Session**:
   (`respawn_test_identity`, gesetzt/gelöscht über `setTestIdentity()`), das wie das
   bestehende `isAdmin()`-Flag **keine Sicherheitsgrenze** ist — es steuert nur, ob Test-Spieler
   im UI dieses Geräts sichtbar bleiben.
+- **Sichtbarkeit der Test-Events:** Markierte Test-Events (`events.is_test`) blendet der Server
+  für echte Konten außerhalb des Admin-Modus aus (`x-admin-mode`). Eine Testsitzung sendet
+  diesen Header nie, gilt aber serverseitig wie der Admin-Modus (`includesTestEvents()` in
+  `testDataVisibility.ts`): Ein Test-Spieler sieht seine Einladungen zu Test-Events, kann sie
+  annehmen und nach der Zusage in das Test-Event wechseln. Die normalen Teilnahmeprüfungen
+  gelten unverändert — ohne Zusage gibt es keine Eventdaten.
 
 Bewusst **nicht** im Scope: ein serverseitiges „Act as" auf der Session des Admins selbst
 (einzige Identität pro Browser-Kontext bliebe bestehen, echtes Push und paralleles Arcade-

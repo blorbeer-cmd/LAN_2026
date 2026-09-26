@@ -18,7 +18,7 @@ import {
 import { isValidIsoDate } from '../localDate';
 import type { GroupRole } from '../groups';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
-import { isAdminTestMode } from '../testDataVisibility';
+import { includesTestEvents } from '../testDataVisibility';
 import {
   RESPONSE_VALUES,
   canManageDatePoll,
@@ -62,7 +62,7 @@ const resolveEventResourceForPolls = resolveGroupResource<EventRow>({
 const resolveEventForPolls: RequestHandler = (req, res, next) => {
   resolveEventResourceForPolls(req, res, () => {
     const event = req.groupResource as EventRow;
-    if (event.is_test && !isAdminTestMode(req)) {
+    if (event.is_test && !includesTestEvents(req)) {
       res.status(404).json({ error: 'Event nicht gefunden.' });
       return;
     }
