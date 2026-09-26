@@ -26,7 +26,6 @@
 // Either mode requires an explicit "Speichern" tap — picking a number only
 // stages a local draft. A saved ballot can be changed until the round ends.
 
-import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { state, catalogGames, eventPlayers } from '../state.js';
@@ -395,7 +394,7 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
         <div class="event-poll-card-side">
           <span class="event-poll-answer-side">${answer}</span>
           ${admin ? '<button type="button" class="btn btn-sm" id="votes-close">Beenden</button>' : ''}
-          ${admin ? actionMenuHtml('<button type="button" class="btn btn-sm btn-danger" id="votes-cancel">Abbrechen</button>', 'Aktionen für die Abstimmung') : ''}
+          ${admin ? '<button type="button" class="btn btn-sm btn-danger" id="votes-cancel">Abbrechen</button>' : ''}
         </div>
       </header>
       <div class="stack event-poll-card-content">
@@ -733,7 +732,6 @@ export function renderVotes(container, ctx) {
     </details>
   `;
 
-  wireActionMenus(container);
 
   for (const [id, value] of [['votes-title', previousDraft.title], ['votes-info', previousDraft.info]]) {
     if (!value) continue;

@@ -296,8 +296,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   poll-only parts: no response-mode tag, no „Neue Runde“ and no „Wieder öffnen“. The open round is
   one `.event-poll-card` whose header names the round, the participation („X/Y abgegeben“, updated
   through the existing realtime refresh) and the viewer's own state („Abgegeben“ or „Deine Stimme
-  fehlt“); admins get a compact „Beenden“ beside an „Aktion“ menu holding „Abbrechen“. A
-  „Zwischenstand verborgen“ tag and the round info follow. Games are listed alphabetically, one
+  fehlt“); admins get a compact „Beenden“ and, directly beside it, a red „Abbrechen“ — no
+  „Aktion“ menu for a single action. A „Zwischenstand verborgen“ tag and the round info follow. Games are listed alphabetically, one
   Umfrage option row each: name and one compact meta line that starts with the viewer's own Skill
   („Mein Skill: X“, „–“ without one) followed by the other values, and the same 0–5 number scale
   as an Umfrage rating as the answer control. Like every Umfrage with a hidden interim result, the

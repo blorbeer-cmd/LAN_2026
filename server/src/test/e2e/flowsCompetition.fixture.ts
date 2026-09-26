@@ -238,10 +238,12 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // fetches, each of which rerenders the card once it resolves.
   await page.waitForLoadState('networkidle');
   await roundCard.locator('.event-poll-answer-inline:has-text("Deine Stimme fehlt")').waitFor();
-  // Same card shape as an Umfrage: Beenden beside the "Aktion" menu that
-  // holds Abbrechen, one row per game and the save action in the footer.
+  // Same card shape as an Umfrage: Beenden and Abbrechen side by side in the
+  // header (no one-item "Aktion" menu), one row per game and the save action
+  // in the footer.
   assert.equal(await roundCard.locator('.event-poll-card-side > #votes-close').count(), 1);
-  assert.equal(await roundCard.locator('.event-poll-card-side .action-menu #votes-cancel').count(), 1);
+  assert.equal(await roundCard.locator('.event-poll-card-side > #votes-cancel').count(), 1);
+  assert.equal(await roundCard.locator('.action-menu').count(), 0);
   assert.equal(await roundCard.locator('.event-poll-footer #votes-submit').count(), 1);
   assert.ok(await page.locator('#votes-submit').isDisabled(), 'an incomplete ballot cannot be saved');
   assert.equal(await roundCard.locator('.event-poll-tag:text-is("Zwischenstand verborgen")').count(), 1);
@@ -279,7 +281,6 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     data: { playerId: alice.id, gameId: bockGameId, rating: 4 },
   });
   assert.equal(bockResponse.status(), 200, await bockResponse.text());
-  await roundCard.locator('.action-menu > summary').click();
   await page.click('#votes-cancel');
   await page.click('[data-confirm]');
   await page.waitForSelector('#votes-start');
