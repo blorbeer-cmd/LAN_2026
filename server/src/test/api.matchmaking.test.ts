@@ -239,6 +239,35 @@ test('GET /api/matchmaking/history does not leak draws from other games', async 
   assert.ok(res.body.history.every((h: { gameId: string }) => h.gameId === gameId));
 });
 
+test('history filters before paging and keeps every open draw available on the first page', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Paged History Game' });
+  const createDraw = () => request(app).post('/api/matchmaking').send({ gameId: game.body.id, playerIds: playerIds.slice(0, 2), teamCount: 2 });
+  const oldest = await createDraw();
+  const middle = await createDraw();
+  const newest = await createDraw();
+  for (const [draw, time] of [[oldest, 1000], [middle, 2000], [newest, 3000]] as const) {
+    assert.equal(draw.status, 200);
+    db.prepare('UPDATE matchmaking_draws SET generated_at = ? WHERE id = ?').run(time, draw.body.id);
+  }
+  const teams = newest.body.teams.map((team: { players: Array<{ id: string }> }, index: number) => ({
+    name: `Team ${index + 1}`, playerIds: team.players.map((player) => player.id),
+  }));
+  const tournament = await request(app).post('/api/tournaments').send({
+    gameId: game.body.id, format: 'single_elimination', teams, drawId: newest.body.id,
+  });
+  assert.equal(tournament.status, 201);
+
+  const first = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&limit=1`);
+  assert.equal(first.status, 200);
+  assert.deepEqual(first.body.history.map((draw: { id: string }) => draw.id), [middle.body.id]);
+  assert.deepEqual(first.body.openDraws.map((draw: { id: string }) => draw.id), [middle.body.id, oldest.body.id]);
+  assert.ok(first.body.nextCursor);
+  const second = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&limit=1&before=${first.body.nextCursor.before}&beforeId=${first.body.nextCursor.beforeId}`);
+  assert.deepEqual(second.body.history.map((draw: { id: string }) => draw.id), [oldest.body.id]);
+  assert.equal(second.body.nextCursor, null);
+  assert.equal(second.body.openDraws, undefined);
+});
+
 test('POST /api/matchmaking returns a draw id and null matchId', async () => {
   const res = await request(app).post('/api/matchmaking').send({ gameId, playerIds, teamCount: 2 });
   assert.equal(res.status, 200);

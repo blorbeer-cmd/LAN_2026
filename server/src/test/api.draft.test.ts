@@ -98,6 +98,8 @@ test('a full 2-captain draft: snake order, turn enforcement, auto-assigned last 
   // Snake: B picks again.
   assert.equal(pick2.body.draft.turnCaptainId, capB.id);
 
+  assert.equal((await request(app).put('/api/skills').send({ playerId: capA.id, gameId, rating: 4 })).status, 200);
+
   // B picks p3 — one player remains, so p4 is auto-assigned to A (whose turn
   // it would be) and the draft completes without a fourth request.
   const pick3 = await request(app).post('/api/draft/pick').send({ playerId: capB.id, pickPlayerId: p3.id });
@@ -136,15 +138,18 @@ test('a full 2-captain draft: snake order, turn enforcement, auto-assigned last 
     'a completed group-room draft must remain visible in Team-Historie',
   );
 
-  // A draft never balanced by rating, so its snapshot carries none — and
-  // moving a player inside it must not invent a balancing total either.
+  // Ratings are informational and frozen at completion, independent of the
+  // pick order. An unrated player contributes the neutral 3 to the team sum.
+  assert.equal((await request(app).put('/api/skills').send({ playerId: capA.id, gameId, rating: 1 })).status, 200);
   type DraftDraw = {
     id: string;
     source: string;
-    teams: Array<{ players: Array<{ id: string; rating: number | null }>; totalRating: number }>;
+    teams: Array<{ players: Array<{ id: string; rating: number | null }>; totalRating: number; skillSnapshot: boolean }>;
   };
   const drafted: DraftDraw = teamHistory.body.history.find((entry: DraftDraw) => entry.source === 'draft');
-  assert.ok(drafted.teams.every((t) => t.totalRating === 0 && t.players.every((p) => p.rating === null)));
+  assert.deepEqual(drafted.teams.map((team) => team.totalRating), [10, 9]);
+  assert.ok(drafted.teams.every((team) => team.skillSnapshot));
+  assert.equal(drafted.teams[0].players[0].rating, 4);
 
   const fromTeam = drafted.teams.findIndex((t) => t.players.length > 1);
   const toTeam = fromTeam === 0 ? 1 : 0;
@@ -152,7 +157,7 @@ test('a full 2-captain draft: snake order, turn enforcement, auto-assigned last 
     .patch(`/api/matchmaking/draws/${drafted.id}/move`)
     .send({ playerId: drafted.teams[fromTeam].players[0].id, toTeamIndex: toTeam });
   assert.equal(moved.status, 200);
-  assert.ok(moved.body.teams.every((t: { totalRating: number }) => t.totalRating === 0));
+  assert.deepEqual(moved.body.teams.map((team: { totalRating: number }) => team.totalRating), [6, 13]);
 });
 
 test('POST /api/draft/cancel abandons a running draft', async () => {

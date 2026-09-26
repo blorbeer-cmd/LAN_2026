@@ -407,12 +407,20 @@ function attachMatchResults(draws: ReturnType<typeof parseDrawRow>[]): void {
 // already entered for (Ergebnis-Historie, matchId set) — the frontend splits
 // them by matchId.
 matchmakingRouter.get('/history', (req, res) => {
-  const { eventId, gameId, limit } = req.query;
+  const { eventId, gameId, limit, kind, before, beforeId } = req.query;
   const scope = resolveRequestGroupEventScope(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const filterEventId = scope.eventId!;
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
+  if (kind !== undefined && kind !== 'all' && kind !== 'matches') {
+    return res.status(400).json({ error: 'kind ist ungültig.' });
+  }
+  if ((before !== undefined || beforeId !== undefined) &&
+    (typeof before !== 'string' || !/^\d+$/.test(before) || !Number.isSafeInteger(Number(before)) ||
+      typeof beforeId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(beforeId))) {
+    return res.status(400).json({ error: 'Historien-Cursor ist ungültig.' });
+  }
 
   const clauses = ['md.group_id = ?', 'md.event_id = ?'];
   const params: Array<string | number> = [req.group!.id, filterEventId];
@@ -420,26 +428,46 @@ matchmakingRouter.get('/history', (req, res) => {
     clauses.push('md.game_id = ?');
     params.push(gameId);
   }
+  if (kind === 'matches') clauses.push('md.tournament_id IS NULL');
+  const openClauses = [...clauses];
+  const openParams = [...params];
+  if (before !== undefined) {
+    clauses.push('(md.generated_at < ? OR (md.generated_at = ? AND md.id < ?))');
+    params.push(Number(before), Number(before), beforeId as string);
+  }
 
-  const rows = db
-    .prepare(
-      `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
+  const columns = `md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
               md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
               md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
               md.match_id AS matchId, md.source AS source,
-              md.tournament_id AS tournamentId, t.name AS tournamentName
-       FROM matchmaking_draws md
+              md.tournament_id AS tournamentId, t.name AS tournamentName`;
+  const joins = `FROM matchmaking_draws md
        JOIN games g ON g.id = md.game_id
-       LEFT JOIN tournaments t ON t.id = md.tournament_id
+       LEFT JOIN tournaments t ON t.id = md.tournament_id`;
+
+  const rows = db
+    .prepare(
+      `SELECT ${columns}
+       ${joins}
        WHERE ${clauses.join(' AND ')}
-       ORDER BY md.generated_at DESC
+       ORDER BY md.generated_at DESC, md.id DESC
        LIMIT ?`
     )
-    .all(...params, limitNum) as DrawRow[];
+    .all(...params, limitNum + 1) as DrawRow[];
 
-  const draws = rows.map(parseDrawRow);
+  const hasMore = rows.length > limitNum;
+  const pageRows = rows.slice(0, limitNum);
+  const draws = pageRows.map(parseDrawRow);
   attachMatchResults(draws);
-  res.json({ history: draws });
+  const last = pageRows.at(-1);
+  // Open rerolls are collected independently so even an old unused lineup is
+  // visible in the single "Ohne Ergebnis" tile before older pages are loaded.
+  const openDraws = before === undefined
+    ? (db.prepare(`SELECT ${columns} ${joins}
+        WHERE ${openClauses.join(' AND ')} AND md.match_id IS NULL AND md.tournament_id IS NULL
+        ORDER BY md.generated_at DESC, md.id DESC`).all(...openParams) as DrawRow[]).map(parseDrawRow)
+    : undefined;
+  res.json({ history: draws, openDraws, nextCursor: hasMore && last ? { before: last.generatedAt, beforeId: last.id } : null });
 });
 
 // PATCH /api/matchmaking/draws/:id/move - Feinschliff: move one player to a
@@ -482,6 +510,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   const teams = JSON.parse(row.teams) as Array<{
     players: Array<{ id: string; name: string; rating: number | null; seatConflict?: boolean; seatConflictNames?: string[] }>;
     totalRating: number;
+    skillSnapshot?: boolean;
   }>;
   if (toTeamIndex >= teams.length) {
     return res.status(400).json({ error: 'toTeamIndex ist ungültig.' });
@@ -501,11 +530,10 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
       1
     );
     teams[toTeamIndex].players.push(player);
-    // A captain draft is logged into the same history but never used ratings
-    // (see routes/draft.ts): its snapshot keeps every rating null and a total
-    // of 0, so moving a player must not invent a balancing total for it.
+    // New drafts carry an informational completion-time snapshot. Older ones
+    // have no marker and must not acquire a misleading skill total on move.
     for (const t of [teams[fromTeamIndex], teams[toTeamIndex]]) {
-      t.totalRating = row.source === 'draft' ? 0 : totalRatingOf(t.players);
+      t.totalRating = row.source === 'draft' && !t.skillSnapshot ? 0 : totalRatingOf(t.players);
     }
   }
 
