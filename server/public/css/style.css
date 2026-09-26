@@ -1073,9 +1073,8 @@ textarea {
   box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--accent);
 }
-/* Bock/Skill scale: the chosen number's outline takes the former slider's
-   color, the number itself stays in the regular text color, and a fill line
-   below repeats the value with that slider's gradient. */
+/* Bock/Skill scale: the chosen number and its outline take the former
+   slider's saturated color and a fill line below repeats the value with that slider's gradient. */
 .rating-scale {
   --scale-track: #39415a; /* unfilled rest of the line, lighter than --bg-elevated-2 so it stays visible */
   display: inline-flex;
@@ -1095,7 +1094,7 @@ textarea {
 }
 .rating-scale .event-poll-response-toolbar .btn.is-selected {
   box-shadow: inset 0 0 0 1px var(--scale-high);
-  color: var(--text);
+  color: var(--scale-high);
 }
 .rating-scale-meter {
   display: block;
