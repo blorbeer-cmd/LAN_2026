@@ -1200,6 +1200,20 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
     'profile groups should start expanded',
   );
   assert.equal(await page.getByRole('heading', { name: 'Datenschutz & meine Daten' }).count(), 1);
+  const privacySection = page.locator('[data-profile-section="privacy"]');
+  await privacySection.locator('#privacy-auto-consent').waitFor();
+  assert.equal(await privacySection.getByText('Aufbewahrung', { exact: true }).count(), 0);
+  assert.equal(await privacySection.locator('[data-consent-event="instance-base-event"]').count(), 0);
+  assert.equal(await privacySection.getByText('RespawnHQ', { exact: true }).count(), 0);
+  assert.equal(await privacySection.getByText('Alte Zustimmung', { exact: true }).count(), 1);
+  assert.equal(await privacySection.locator('[data-revoke-legacy-group]').textContent(), 'Widerrufen');
+  assert.equal(await privacySection.locator('label[for="privacy-auto-consent"]').textContent(), 'Für neue trackbare Events und Gruppen vorab zustimmen');
+  const autoConsentHelp = privacySection.locator('[aria-controls="privacy-auto-consent-help"]');
+  await autoConsentHelp.focus();
+  assert.equal(await page.locator('#privacy-auto-consent-help').isVisible(), true);
+  assert.match((await page.locator('#privacy-auto-consent-help').textContent()) ?? '', /Gruppen haben kein Enddatum/);
+  await autoConsentHelp.press('Escape');
+  assert.equal(await page.locator('#privacy-auto-consent-help').isHidden(), true);
   assert.equal(await page.locator('#privacy-export').count(), 1);
   assert.equal(await page.locator('#privacy-delete-account').count(), 1);
   await page.click('[data-profile-section="push"] > summary');

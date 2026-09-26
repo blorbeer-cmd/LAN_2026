@@ -61,8 +61,8 @@ eingewilligt werden. Vorhandene Einwilligungen aus älteren Versionen bleiben al
 unversionierter Verlauf erhalten; sie werden nicht stillschweigend in eine aktuelle Einwilligung
 umgedeutet und aktivieren keine Erfassung. Ein Widerruf bleibt jederzeit ohne Textversionsprüfung
 möglich. Damit eine solche Altzeile nicht unwiderrufbar im Bestand liegt, führt die
-Datenschutzansicht sie getrennt unter „Frühere Event-Einwilligungen“ beziehungsweise „Frühere
-Community-Einwilligungen“ auf; dort widerrufene Zeilen verschwinden aus der Liste und erscheinen im
+Datenschutzansicht sie getrennt unter „Frühere Event-Einwilligungen“ beziehungsweise „Alte
+Zustimmung“ auf; dort widerrufene Zeilen verschwinden aus der Liste und erscheinen im
 persönlichen Export mit gesetztem Widerrufszeitpunkt.
 
 Wer nicht bei jedem neuen Event erneut entscheiden möchte, kann im Profil eine stehende
@@ -76,8 +76,8 @@ eine reguläre Einwilligungszeile mit Zweck und Textversion, kein stillschweigen
 
 Sie gilt auch für eine freigeschaltete Gruppe. Das ist bewusst so, muss aber klar sein: Eine Gruppe
 ist der eine trackbare Bereich ohne Endzeitpunkt, die Erfassung läuft dort also bis zum Widerruf
-statt bis zum Eventende. Die Profilbeschriftung nennt Gruppen deshalb ausdrücklich und benennt
-diesen Unterschied. Wer das nicht will, lässt die Vorab-Einwilligung aus und entscheidet weiter je
+statt bis zum Eventende. Die Profilbeschriftung nennt Gruppen ausdrücklich; der benachbarte Tooltip
+erklärt diesen Unterschied. Wer das nicht will, lässt die Vorab-Einwilligung aus und entscheidet weiter je
 Bereich einzeln; ein Widerruf der einzelnen Gruppenzeile bleibt jederzeit möglich.
 
 ## Welche Bereiche überhaupt trackbar sind
@@ -93,7 +93,7 @@ Nicht jeder Arbeitsbereich kann Tracking erhalten:
   schaltet Tracking bei älteren allgemeinen Events ab und schließt noch offene Tracking-Sitzungen.
 - Eine Gruppe ist der eine dauerhafte Bereich, der Tracking erhalten kann. Sie ist bewusst
   permanent geöffnet statt zufällig ohne Datum, deshalb zählt ihr fehlender Startzeitpunkt als
-  „läuft“. Auch dort gilt die übliche Zweistufigkeit: Die Orga schaltet das Tracking für die Gruppe
+„läuft“. Auch dort gilt die übliche Zweistufigkeit: Die Orga schaltet das Tracking für die Gruppe
   frei, und danach entscheidet jedes Mitglied für sich per Einwilligung — entweder direkt oder über
   die oben beschriebene stehende Vorab-Einwilligung, die genau diese Entscheidung vorwegnimmt.
 - Eine LAN-Party mit festem Zeitraum bleibt der Regelfall.

@@ -50,7 +50,6 @@ privacyRouter.get('/', (req, res) => {
     )
     .all(req.player!.id, TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION);
   const defaultVersion = getTrackingConsentDefaultVersion(req.player!.id);
-  const retention = previewPrivacyRetention();
   const legacyGroupConsents = db.prepare(
     `SELECT g.id AS groupId, g.name AS groupName, c.granted_at AS grantedAt,
             c.purpose, c.text_version AS textVersion
@@ -80,21 +79,6 @@ privacyRouter.get('/', (req, res) => {
       text: GROUP_TRACKING_CONSENT_TEXT,
       groups: legacyGroupConsents,
     },
-    retention: {
-      enabled: retention.enabled,
-      policies: retention.policies.map(({ key, purpose, retentionDays, protection }) => ({
-        key,
-        purpose,
-        retentionDays,
-        protection,
-      })),
-    },
-    operatorDecisionsRequired: [
-      'Verantwortliche Stelle und Kontakt',
-      'Rechtsgrundlagen je notwendiger Verarbeitung',
-      'gesetzliche oder vertragliche Aufbewahrungspflichten',
-      'eingesetzte Hosting-, Push- und weitere Dienstleister',
-    ],
   });
 });
 

@@ -13,8 +13,8 @@ Dieser Branch ist mit 1 PR in der GitHub-Historie vertreten.
 Der Branch begrenzt Prozessdiagnosen auf gültige Tracking-Einwilligungen, dokumentiert deren
 Zweck und Textversion und ergänzt persönlichen Datenexport, vollständige Kontolöschung sowie
 optionale Aufbewahrungsregeln. Hashbasierte Löschbelege verhindern, dass ein Restore bereits
-gelöschte Konten unbemerkt wieder freigibt. Profil und Betriebsdokumentation erklären Datenarten,
-Fristen, Widerruf und noch notwendige Betreiberentscheidungen.
+gelöschte Konten unbemerkt wieder freigibt. Das Profil erklärt Datenarten und Widerruf; Fristen und
+noch notwendige Betreiberentscheidungen stehen in der Betriebsdokumentation.
 
 Die Review-Nacharbeit bindet aktive Erfassung strikt an die aktuelle Einwilligungsversion,
 schreibt Löschbelege atomar, anonymisiert auch Profilbilder und Scribble-Namenskopien in
@@ -52,6 +52,11 @@ vom Tracking ausgeschlossen, eine Gruppe kann von der Orga freigeschaltet werden
 wie ein Event einzeln eingewilligt, und im Profil lässt sich eine stehende, an die Textversion
 gebundene Vorab-Einwilligung für künftige trackbare Events setzen. Migration 110 setzt ein in
 Altbeständen gestartetes Tracking des Basisbereichs zurück und ergänzt die Profilspalte.
+
+Die Profilansicht zeigt keine Aufbewahrungsregeln mehr. Nicht trackbare allgemeine Bereiche fehlen
+in der Einwilligungsauswahl; alte Zustimmungen bleiben unter verständlichen Bezeichnungen
+widerrufbar, ohne den früheren Namen „RespawnHQ“ anzuzeigen. Die Erklärung der Vorab-Zustimmung
+steht neben der Checkbox in einem Tooltip.
 
 ## Offene Punkte
 

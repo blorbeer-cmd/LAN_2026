@@ -48,6 +48,8 @@ const ACTIVITY_TRACKING_HELP =
 const PUSH_HELP = 'Benachrichtigt dich auch, wenn Respawn nicht geöffnet ist.';
 const RATING_HELP = 'Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.';
 const AGENT_DOWNLOAD_HELP = 'Das ZIP enthält bereits Server-Adresse und deinen persönlichen Key.';
+const AUTO_CONSENT_HELP =
+  'Deine Zustimmung gilt automatisch, sobald ein neues LAN-Event oder eine Gruppe für die Spielerfassung freigeschaltet wird. Einzelne Zustimmungen kannst du jederzeit widerrufen. Gruppen haben kein Enddatum: Dort läuft die Erfassung bis zum Widerruf. Ändert sich der Einwilligungstext, wirst du erneut gefragt.';
 
 let privacyState = null;
 let privacyContext = null;
@@ -83,17 +85,16 @@ function renderPrivacySection() {
   if (privacyState.error) {
     return `<div class="stack"><p class="error-text">${escapeHtml(privacyState.error)}</p><button type="button" class="btn" id="privacy-retry">Erneut laden</button></div>`;
   }
-  const { trackingConsent, legacyGroupTracking, retention, operatorDecisionsRequired } = privacyState.data;
+  const { trackingConsent, legacyGroupTracking } = privacyState.data;
   // A row only counts as active when the server matched the current purpose
   // and text version, so an active row always carries that version.
-  const consentRows = trackingConsent.events.map((event) => {
+  const consentRows = trackingConsent.events.filter((event) =>
+    event.eventId !== 'instance-base-event' && event.eventType !== 'general'
+  ).map((event) => {
     const active = Boolean(event.consentId);
-    const unavailable = event.eventId === 'instance-base-event' || event.eventType === 'general';
-    const versionLabel = unavailable
-      ? 'Für diesen Bereich ist Tracking nicht verfügbar.'
-      : active ? `Bestätigt: Text ${event.textVersion}` : 'Nicht aktiviert';
+    const versionLabel = active ? `Bestätigt: Text ${event.textVersion}` : 'Nicht aktiviert';
     return `<label class="check-row">
-      <input type="checkbox" data-consent-event="${escapeHtml(event.eventId)}" ${active ? 'checked' : ''} ${unavailable && !active ? 'disabled' : ''} />
+      <input type="checkbox" data-consent-event="${escapeHtml(event.eventId)}" ${active ? 'checked' : ''} />
       <span style="flex:1;"><strong>${escapeHtml(event.eventName)}</strong><br><span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(versionLabel)}</span></span>
     </label>`;
   }).join('');
@@ -110,33 +111,28 @@ function renderPrivacySection() {
     trackingConsent.autoConsent?.agreedTextVersion && !trackingConsent.autoConsent.enabled
       ? `<p class="muted" style="margin:0;font-size:var(--font-size-xs);">Frühere Vorab-Einwilligung zu Text ${escapeHtml(trackingConsent.autoConsent.agreedTextVersion)} – gilt nicht mehr für den aktuellen Text. Setze das Häkchen neu, um sie zu erneuern.</p>`
       : '';
-  const retentionRows = retention.policies
-    .map((policy) => `<li>${escapeHtml(policy.purpose)}: ${policy.retentionDays === null ? 'bis zum Ablauf' : `${policy.retentionDays} Tage`}<br><span class="muted">${escapeHtml(policy.protection)}</span></li>`)
-    .join('');
   const legacyGroupRows = legacyGroupTracking.groups
-    .map((group) => `<label class="check-row">
-      <input type="checkbox" data-consent-group="${escapeHtml(group.groupId)}" checked />
-      <span style="flex:1;"><strong>${escapeHtml(group.groupName)}</strong><br><span class="muted" style="font-size:var(--font-size-xs);">${group.textVersion ? `Bestätigt: Text ${escapeHtml(group.textVersion)}` : 'Bestandseinwilligung ohne dokumentierte Textversion'}</span></span>
-    </label>`)
+    .map((group) => `<div class="check-row">
+      <span style="flex:1;"><strong>Spielerfassung ohne Event</strong><br><span class="muted" style="font-size:var(--font-size-xs);">Gilt nicht mehr</span></span>
+      <button type="button" class="btn btn-sm" data-revoke-legacy-group="${escapeHtml(group.groupId)}">Widerrufen</button>
+    </div>`)
     .join('');
   return `<div class="stack">
     <p class="muted" style="margin:0;">Respawn speichert Profil- und Kontodaten für Anmeldung und Teilnahme, Event- und Zahlungsstatus für die Organisation, freiwillige Spiel-/Aktivitätsdaten für Live-Status und Auswertung, Nachrichten und Push-Status für Kommunikation sowie begrenzte technische Protokolle für Betrieb und Sicherheit. Sichtbarkeit richtet sich nach Eventteilnahme und Rolle.</p>
     <div class="card stack">
-      <strong>Freiwilliges Event-Tracking</strong>
+      <strong>Freiwillige Spielerfassung</strong>
       <p class="muted" style="margin:0;">${escapeHtml(trackingConsent.text)}</p>
-      ${consentRows || '<p class="muted" style="margin:0;">Keine zugesagten Events.</p>'}
-      <label class="check-row">
+      ${consentRows || '<p class="muted" style="margin:0;">Keine trackbaren Events oder Gruppen.</p>'}
+      <div class="check-row">
         <input type="checkbox" id="privacy-auto-consent" ${trackingConsent.autoConsent?.enabled ? 'checked' : ''} />
-        <span style="flex:1;"><strong>Bei neuen trackbaren Events und Gruppen automatisch einwilligen</strong><br><span class="muted" style="font-size:var(--font-size-xs);">Gilt nur für diesen Einwilligungstext. Ändert er sich, wirst du erneut gefragt. Eine freigeschaltete Gruppe hat keinen Endzeitpunkt – dort läuft die Erfassung, bis du sie abwählst. Einzelne Einträge kannst du oben jederzeit wieder abwählen.</span></span>
-      </label>
+        <div class="title-with-info" style="flex:1;min-width:0;">
+          <label for="privacy-auto-consent" style="min-width:0;"><strong>Für neue trackbare Events und Gruppen vorab zustimmen</strong></label>
+          ${infoTooltipHtml('privacy-auto-consent-help', 'Vorab-Zustimmung', AUTO_CONSENT_HELP)}
+        </div>
+      </div>
       ${staleAutoConsent}
       ${legacyEventRows ? `<strong>Frühere Event-Einwilligungen</strong><p class="muted" style="margin:0;">Diese Einwilligungen gehören zu einer älteren Textversion und aktivieren keine Erfassung mehr. Du kannst sie hier endgültig widerrufen.</p>${legacyEventRows}` : ''}
-      ${legacyGroupRows ? `<strong>Frühere Community-Einwilligungen</strong><p class="muted" style="margin:0;">Diese Einwilligung für Aktivität außerhalb eigener Events wird aktuell nicht für Erfassung verwendet. Du kannst sie hier widerrufen.</p>${legacyGroupRows}` : ''}
-    </div>
-    <div class="card stack">
-      <strong>Aufbewahrung</strong>
-      <p class="muted" style="margin:0;">${retention.enabled ? 'Die technische Bereinigung ist aktiviert.' : 'Die automatische Bereinigung ist noch nicht aktiviert; die Administration muss zuerst die Vorschau und die Betreiberpflichten prüfen.'}</p>
-      <ul>${retentionRows}</ul>
+      ${legacyGroupRows ? `<strong>Alte Zustimmung</strong><p class="muted" style="margin:0;">Früher konntest du der Spielerfassung ohne Event zustimmen. Diese Zustimmung gilt nicht mehr; du kannst sie hier widerrufen.</p>${legacyGroupRows}` : ''}
     </div>
     <div class="card stack">
       <strong>Deine Rechte und Werkzeuge</strong>
@@ -144,8 +140,6 @@ function renderPrivacySection() {
       <button type="button" class="btn btn-primary btn-block" id="privacy-export">Meine Daten exportieren</button>
       <button type="button" class="btn btn-danger btn-block" id="privacy-delete-account">Konto dauerhaft löschen</button>
     </div>
-    <p class="muted" style="margin:0;">Noch vom Betreiber festzulegen: ${operatorDecisionsRequired.map(escapeHtml).join(', ')}. Diese technische Information ist keine Zusage allgemeiner „DSGVO-Konformität“.</p>
-    <p style="margin:0;"><a href="https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32016R0679" target="_blank" rel="noopener noreferrer">Amtlicher Text der Datenschutz-Grundverordnung</a></p>
   </div>`;
 }
 
@@ -702,17 +696,16 @@ export function renderProfile(container, ctx) {
       }
     });
   });
-  container.querySelectorAll('[data-consent-group]').forEach((checkbox) => {
-    checkbox.addEventListener('change', async () => {
-      checkbox.disabled = true;
+  container.querySelectorAll('[data-revoke-legacy-group]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
       try {
-        await api.groups.setTrackingConsent(checkbox.dataset.consentGroup, false);
+        await api.groups.setTrackingConsent(button.dataset.revokeLegacyGroup, false);
         privacyState = null;
         await loadPrivacy(ctx, true);
-        showToast('Frühere Community-Einwilligung widerrufen.');
+        showToast('Frühere Zustimmung widerrufen.');
       } catch (error) {
-        checkbox.checked = true;
-        checkbox.disabled = false;
+        button.disabled = false;
         showToast(error.message, { error: true });
       }
     });

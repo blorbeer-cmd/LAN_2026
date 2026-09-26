@@ -130,14 +130,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   selected, running event with accepted participation, enabled tracking and valid event consent;
   without that context, the agent receives no process allowlist and no matched process names reach
   storage or admin diagnostics. The event tracking tooltip and start confirmation explain the same
-  prerequisites. A separate collapsed „Datenschutz & meine Daten“ section shows purpose and
-  visibility, the versioned event-consent controls, proposed retention rules and unresolved operator
-  decisions. Consents from an older text version never count as active; they are listed below the
-  current ones as revocable „Frühere Event-Einwilligungen“ and „Frühere Community-Einwilligungen“
-  so no granted row stays without a way to withdraw it. A standing pre-authorization below the
-  per-event rows lets an account agree in advance to events that only become trackable later; it is
-  bound to the consent text version it was set under and never overrides a single event's own
-  decision. It also provides a secret-free personal
+  prerequisites. A separate „Datenschutz & meine Daten“ section shows purpose and visibility and
+  offers consent controls only for trackable events and groups; the base workspace and general
+  events have no selectable rows. Older consents never count as active and remain separately
+  revocable with plain-language labels instead of a legacy group name. Technical retention rules
+  and operator decisions remain in the documentation rather than the member profile. A standing
+  pre-authorization below the per-event rows lets an account agree in advance to events and groups
+  that only become trackable later; its longer explanation is in the adjacent help tooltip. The
+  consent is bound to the text version it was set under and never overrides a single event's own
+  decision. The section also provides a secret-free personal
   JSON export and a reauthentication-protected
   account deletion with concrete remedies for roles or open organisational work that must first be
   transferred.
