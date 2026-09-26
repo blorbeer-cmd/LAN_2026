@@ -29,8 +29,12 @@
   <div id="app" class="app" hidden>
     <header class="topbar">
       <a class="topbar-title" href="/" aria-label="Zur Landingpage">
-        <img class="topbar-logo" src="/img/logo.svg" alt="" width="30" height="30" />
+        <span class="topbar-logo-wrap">
+          <img class="topbar-logo" src="/img/logo.svg" alt="" width="30" height="30" />
+          <span id="admin-indicator" class="admin-indicator" title="Admin-Modus an" hidden></span>
+        </span>
         <span class="brand-title">Respawn</span>
+        <span id="admin-indicator-label" class="admin-indicator-label" hidden>Admin</span>
       </a>
       <div class="topbar-actions">
         <!-- app.js renders the shared searchable event dropdown in here. -->
@@ -50,13 +54,6 @@
     <aside id="notification-highlight" class="notification-highlight" aria-label="Aktuelle Mitteilung" hidden></aside>
 
     <aside id="connection-status" class="connection-status" role="status" aria-live="polite" hidden></aside>
-
-    <div id="admin-banner" class="admin-banner" hidden>
-      <span class="admin-banner-label">
-        Admin-Modus aktiv – Test-Spieler sichtbar
-      </span>
-      <button type="button" id="admin-banner-leave" class="btn btn-sm">Verlassen</button>
-    </div>
 
     <main id="view-container" class="view-container"></main>
 

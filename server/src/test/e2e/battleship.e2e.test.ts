@@ -13,6 +13,7 @@ import {
 import { createE2EDiagnosticTest, trackE2EContext, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { assertControlHeights, assertInfoTooltipPlacement, assertNoOverflow } from './visualHelpers';
+import { activateAdminMode } from './navHelpers';
 
 let BASE_URL: string;
 
@@ -50,9 +51,7 @@ async function openArcadeAs(playerId: string, { adminMode = false } = {}): Promi
   await page.waitForSelector('.nav-btn[data-view="more"]');
   await page.click('.nav-btn[data-view="more"]');
   if (adminMode) {
-    await page.click('[data-navigate="admin"]');
-    await page.click('#admin-mode-activate');
-    await page.waitForSelector('#admin-banner:not([hidden])');
+    await activateAdminMode(page);
     await page.click('.nav-btn[data-view="more"]');
   }
   await page.click('[data-navigate="arcade"]');

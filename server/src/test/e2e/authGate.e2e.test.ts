@@ -14,7 +14,7 @@ import { chromium, Browser, Page } from 'playwright';
 import { createE2EDiagnosticTest, trackE2EContext, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { waitForPlayerData } from './authHelpers';
-import { openMoreViewEntry } from './navHelpers';
+import { activateAdminMode, openAdminCard, openMoreViewEntry, openUtilityView } from './navHelpers';
 import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 let BASE_URL: string;
@@ -512,33 +512,30 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.waitForSelector('#app:not([hidden])');
 
     await openMoreViewEntry(adminPage, '[data-navigate="admin"]');
-    await adminPage.waitForSelector('#admin-mode-activate');
-    assert.equal(await adminPage.locator('#admin-banner').isHidden(), true);
-    await adminPage.waitForSelector('#admin-register-link');
-    await adminPage.waitForSelector('#admin-tools-title');
-    await adminPage.waitForSelector('.admin-role-select');
+    await adminPage.waitForSelector('[aria-label="Werkzeuge"]');
+    assert.equal(await adminPage.locator('#admin-indicator').isHidden(), true);
     assert.equal(await adminPage.locator('#admin-test-players-title').count(), 0);
     assert.equal(await adminPage.locator('#group-btn').count(), 0);
-    assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \(\d+\)$/);
-    assert.deepEqual(await adminPage.locator('.admin-role-select').first().locator('option').allTextContents(), [
-      'Mitglied',
-      'Admin',
-      'Owner',
-    ]);
+    await openAdminCard(adminPage, 'accounts');
+    assert.equal(await adminPage.locator('#admin-players-title').textContent(), 'Konten');
     assert.equal(
       await adminPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       true,
       'mobile onboarding must not introduce horizontal page scrolling',
     );
-    const dataRowSelector = `.data-row-action:has([data-player-id="${controlPlayerId}"])`;
-    const dataRow = adminPage.locator(dataRowSelector);
-    await dataRow.waitFor();
+    // Each account is one row: name plus state, every change in its "Aktion"
+    // menu. An owner may move an unclaimed member to either higher role.
+    const accountRowSelector = `.profile-row:has([data-delete-player="${controlPlayerId}"])`;
+    const accountRow = adminPage.locator(accountRowSelector);
+    await accountRow.waitFor();
+    assert.equal(await accountRow.locator('.player-name').textContent(), controlName);
+    assert.equal(await accountRow.locator('.profile-row-meta').textContent(), 'Noch nicht übernommen');
+    assert.deepEqual(await accountRow.locator('.action-menu-panel button').allTextContents(), [
+      'Zum Admin machen', 'Zum Owner machen', 'Claim-Link erstellen', 'Deaktivieren', 'Löschen',
+    ]);
     // The panel re-renders its whole container whenever an async load or a
-    // realtime signal lands. A locator evaluate resolves the element and runs
-    // its callback in two protocol steps, so a re-render in between hands a
-    // replaced, detached 0px node to the measurement. Every geometry check of
-    // the panel therefore looks its target up and measures it in one page task,
-    // once the preceding resize has applied and the target is visible.
+    // realtime signal lands, so every measurement looks its target up and
+    // measures it in one page task once the preceding resize has applied.
     for (const viewport of [
       { width: 320, height: 568 }, { width: 390, height: 844 },
       { width: 512, height: 384 }, { width: 720, height: 450 },
@@ -547,76 +544,24 @@ test('admin creates, displays and revokes a registration link in the UI', async 
       await adminPage.setViewportSize(viewport);
       const rowHandle = await adminPage.waitForFunction(({ selector, width }) => {
         const row = document.querySelector(selector);
-        if (window.innerWidth !== width || !row?.checkVisibility()) return null;
-        const style = getComputedStyle(row);
-        const identity = row.children[0].getBoundingClientRect();
-        const action = row.children[1].getBoundingClientRect();
+        const trigger = row?.querySelector('.action-menu > summary');
+        if (window.innerWidth !== width || !row?.checkVisibility() || !trigger) return null;
+        const rowBox = row.getBoundingClientRect();
+        const triggerBox = trigger.getBoundingClientRect();
         const view = document.getElementById('view-container')!;
-        return { innerWidth: row.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-          stacked: action.top >= identity.bottom, height: action.height,
-          actionOverflow: action.right - row.getBoundingClientRect().right,
+        return { height: triggerBox.height, triggerOverflow: triggerBox.right - rowBox.right,
           viewOverflow: view.scrollWidth - view.clientWidth,
           overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
-      }, { selector: dataRowSelector, width: viewport.width });
+      }, { selector: accountRowSelector, width: viewport.width });
       const rowState = await rowHandle.jsonValue();
       assert.ok(rowState);
-      assert.equal(rowState.stacked, rowState.innerWidth < 320, JSON.stringify({ viewport, rowState }));
-      assert.ok(rowState.height >= 31 && rowState.height <= 33);
-      assert.ok(rowState.actionOverflow <= 0.5, JSON.stringify({ viewport, rowState }));
+      assert.ok(rowState.height >= 31 && rowState.height <= 33, JSON.stringify({ viewport, rowState }));
+      assert.ok(rowState.triggerOverflow <= 0.5, JSON.stringify({ viewport, rowState }));
       assert.equal(rowState.viewOverflow, 0, `admin view overflow at ${viewport.width}`);
       assert.equal(rowState.overflow, false, `admin overflow at ${viewport.width}`);
     }
-    for (const innerWidth of [320, 319, 319.75]) {
-      const geometryHandle = await adminPage.waitForFunction(({ selector, width }) => {
-        const element = document.querySelector<HTMLElement>(selector);
-        if (!element?.checkVisibility()) return null;
-        const row = element;
-        // Padding participates in the measurement; the query uses the unrounded content box.
-        element.style.width = `${width + 24}px`;
-        element.style.paddingInline = '12px';
-        const style = getComputedStyle(element);
-        const name = row.querySelector('strong')!;
-        const badge = row.querySelector('.badge')!;
-        const button = row.querySelector('button')!;
-        const rect = (node: Element) => { const box = node.getBoundingClientRect(); return { top: box.top, bottom: box.bottom, center: box.top + box.height / 2, height: box.height }; };
-        return { clientInnerWidth: element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-          preciseInnerWidth: element.getBoundingClientRect().width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-          name: rect(name), badge: rect(badge), button: rect(button), identity: rect(row.children[0]),
-          fullName: name.textContent, ellipsis: getComputedStyle(name).textOverflow, nameClipped: name.scrollWidth > name.clientWidth,
-          badgeNowrap: getComputedStyle(badge).whiteSpace, badgeShrink: getComputedStyle(badge).flexShrink,
-          actionNowrap: getComputedStyle(button).whiteSpace };
-      }, { selector: dataRowSelector, width: innerWidth });
-      const geometry = await geometryHandle.jsonValue();
-      assert.ok(geometry);
-      assert.equal(geometry.preciseInnerWidth, innerWidth);
-      assert.equal(geometry.clientInnerWidth, Math.round(innerWidth));
-      assert.equal(geometry.fullName, controlName);
-      assert.equal(geometry.ellipsis, 'ellipsis');
-      assert.equal(geometry.badgeNowrap, 'nowrap');
-      assert.equal(geometry.badgeShrink, '0');
-      assert.equal(geometry.actionNowrap, 'nowrap');
-      assert.ok(geometry.button.height >= 31 && geometry.button.height <= 33);
-      assert.ok(Math.abs(geometry.name.center - geometry.badge.center) <= 1);
-      if (innerWidth < 320) assert.ok(geometry.button.top >= geometry.identity.bottom, JSON.stringify(geometry));
-      else {
-        assert.ok(Math.abs(geometry.button.center - geometry.name.center) <= 1);
-        assert.equal(geometry.nameClipped, true, 'only the full DOM name may visibly ellipsize');
-      }
-      assert.match(await dataRow.locator('strong').ariaSnapshot(), new RegExp(controlName));
-      await dataRow.locator('button').focus();
-      await adminPage.keyboard.press('Tab');
-      await adminPage.keyboard.press('Shift+Tab');
-      // A re-render restores focus onto the new button, so the check reads
-      // the currently rendered one; a truthy wrapper ends the wait at once.
-      const focusHandle = await adminPage.waitForFunction((selector) => {
-        const button = document.querySelector(`${selector} button`);
-        if (!button?.checkVisibility()) return null;
-        return { focusVisible: document.activeElement === button && getComputedStyle(button).outlineStyle !== 'none' };
-      }, dataRowSelector);
-      assert.equal((await focusHandle.jsonValue())?.focusVisible, true);
-    }
-    await dataRow.evaluate((row) => { (row as HTMLElement).style.removeProperty('width'); (row as HTMLElement).style.removeProperty('padding-inline'); });
     await adminPage.setViewportSize({ width: 390, height: 844 });
+    await openAdminCard(adminPage, 'invites');
     await adminPage.click('#admin-register-link');
 
     await adminPage.waitForSelector('#admin-register-invite-form');
@@ -625,48 +570,16 @@ test('admin creates, displays and revokes a registration link in the UI', async 
       (await adminPage.locator('#admin-register-expires option').allTextContents()).some((label) => /unbegrenzt/i.test(label)),
       false,
     );
-    await adminPage.setViewportSize({ width: 557, height: 406 });
-    await adminPage.click('#admin-register-event-search');
-    const dropdownGeometry = await adminPage.locator('#admin-register-event-list').evaluate((list) => {
-      const modal = list.closest('.modal');
-      const wrapper = list.closest('.search-select');
-      if (!modal || !wrapper) return null;
-      const listRect = list.getBoundingClientRect();
-      const modalRect = modal.getBoundingClientRect();
-      return {
-        opensUpward: wrapper.classList.contains('opens-upward'),
-        listTop: listRect.top,
-        listBottom: listRect.bottom,
-        modalTop: modalRect.top,
-        modalBottom: modalRect.bottom,
-      };
-    });
-    assert.ok(dropdownGeometry);
-    assert.equal(dropdownGeometry.opensUpward, true);
-    assert.ok(dropdownGeometry.listTop >= dropdownGeometry.modalTop);
-    assert.ok(dropdownGeometry.listBottom <= dropdownGeometry.modalBottom);
-    await adminPage.keyboard.press('Escape');
-
-    await adminPage.setViewportSize({ width: 1024, height: 800 });
-    await adminPage.click('#admin-register-event-search');
-    const laptopGeometry = await adminPage.locator('#admin-register-event-list').evaluate((list) => {
-      const modal = list.closest('.modal');
-      if (!modal) return null;
-      const listRect = list.getBoundingClientRect();
-      const modalRect = modal.getBoundingClientRect();
-      return {
-        listTop: listRect.top,
-        listBottom: listRect.bottom,
-        modalTop: modalRect.top,
-        modalBottom: modalRect.bottom,
-      };
-    });
-    assert.ok(laptopGeometry);
-    assert.ok(laptopGeometry.listTop >= laptopGeometry.modalTop);
-    assert.ok(laptopGeometry.listBottom <= laptopGeometry.modalBottom);
-    // The topbar switcher lists the same event now that creating one accepts
-    // its creator, so this has to name the picker it means.
-    await adminPage.locator(`#admin-register-event-list [data-search-select-value="${eventIds[0]}"]`).click();
+    // A plain select names the target event; its validity line follows the duration.
+    assert.equal(await adminPage.locator('#admin-register-event option').first().textContent(), 'Kein Event');
+    await adminPage.selectOption('#admin-register-expires', String(24 * 60 * 60 * 1000));
+    assert.match((await adminPage.locator('#admin-register-validity').textContent()) ?? '', /^Bis .* Uhr · mehrfach nutzbar$/);
+    await adminPage.selectOption('#admin-register-expires', String(7 * 24 * 60 * 60 * 1000));
+    for (const viewport of [{ width: 557, height: 406 }, { width: 1024, height: 800 }]) {
+      await adminPage.setViewportSize(viewport);
+      await assertNoOverflow(adminPage.locator('.modal-backdrop .modal').last());
+    }
+    await adminPage.selectOption('#admin-register-event', eventIds[0]);
     await adminPage.click('#admin-register-invite-form button[type="submit"]');
     await adminPage.waitForSelector('#reauth-form');
     await adminPage.fill('#reauth-password', 'e2e bootstrap password');
@@ -722,32 +635,30 @@ test('admin creates, displays and revokes a registration link in the UI', async 
       const geometryHandle = await adminPage.waitForFunction(({ selector, width }) => {
         const button = document.querySelector(selector);
         if (window.innerWidth !== width || !button?.checkVisibility()) return null;
-        const row = button.closest('.row-between')!.getBoundingClientRect();
+        const row = button.closest('.profile-row')!.getBoundingClientRect();
         const view = document.getElementById('view-container')!;
+        const range = document.createRange();
+        range.selectNodeContents(button);
+        const box = button.getBoundingClientRect();
         return { viewOverflow: view.scrollWidth - view.clientWidth,
           pageFits: document.documentElement.scrollWidth <= window.innerWidth,
-          actions: Array.from(button.parentElement!.querySelectorAll('button')).map((action) => {
-            const range = document.createRange();
-            range.selectNodeContents(action);
-            const box = action.getBoundingClientRect();
-            return { label: action.textContent, height: box.height, leftOverflow: row.left - box.left,
-              rightOverflow: box.right - row.right,
-              lines: range.getClientRects().length, clipped: action.scrollWidth > action.clientWidth };
-          }) };
+          actions: button.parentElement!.querySelectorAll('button').length,
+          height: box.height, rightOverflow: box.right - row.right,
+          lines: range.getClientRects().length, clipped: button.scrollWidth > button.clientWidth };
       }, { selector: activeLinkSelector, width: viewport.width });
       const geometry = await geometryHandle.jsonValue();
       assert.ok(geometry);
-      assert.equal(geometry.actions.length, 2);
-      for (const action of geometry.actions) {
-        assert.ok(action.height >= 31 && action.height <= 33, JSON.stringify({ viewport, action }));
-        assert.equal(action.lines, 1, `${action.label} must retain its word width beside invitation metadata`);
-        assert.equal(action.clipped, false);
-        assert.ok(action.leftOverflow <= 0.5 && action.rightOverflow <= 0.5, JSON.stringify({ viewport, action }));
-      }
+      // One action per row; revoking lives in the link dialog.
+      assert.equal(geometry.actions, 1);
+      assert.ok(geometry.height >= 31 && geometry.height <= 33, JSON.stringify({ viewport, geometry }));
+      assert.equal(geometry.lines, 1);
+      assert.equal(geometry.clipped, false);
+      assert.ok(geometry.rightOverflow <= 0.5, JSON.stringify({ viewport, geometry }));
       assert.equal(geometry.viewOverflow, 0, `invitation actions must not overflow the view at ${viewport.width}`);
       assert.equal(geometry.pageFits, true, `invitation actions must not overflow the page at ${viewport.width}`);
     }
-    await adminPage.locator(`[data-revoke-login-link="${inviteCode}"]`).click();
+    await activeLink.click();
+    await adminPage.click('#admin-invite-revoke');
     await adminPage.click('[data-confirm]');
     await activeLink.waitFor({ state: 'detached' });
   } finally {
@@ -778,9 +689,7 @@ test('switching from an admin to a new account clears the local admin mode', asy
     await switchPage.fill('#auth-password', 'e2e bootstrap password');
     await switchPage.click('#auth-form button[type="submit"]');
     await switchPage.waitForSelector('#app:not([hidden])');
-    await openMoreViewEntry(switchPage, '[data-navigate="admin"]');
-    await switchPage.click('#admin-mode-activate');
-    await switchPage.waitForSelector('#admin-banner:not([hidden])');
+    await activateAdminMode(switchPage);
 
     await switchPage.goto(`${BASE_URL}/?invite=${code}`);
     await switchPage.waitForSelector('#auth-screen:not([hidden])');
@@ -789,7 +698,7 @@ test('switching from an admin to a new account clears the local admin mode', asy
     await switchPage.click('#auth-form button[type="submit"]');
     await waitForPlayerData(switchPage);
 
-    assert.equal(await switchPage.locator('#admin-banner').isHidden(), true);
+    assert.equal(await switchPage.locator('#admin-indicator').isHidden(), true);
     assert.equal(
       await switchPage.evaluate(() => localStorage.getItem('respawn_admin')),
       null,
@@ -834,17 +743,12 @@ test('admin roster retries role loading, serializes changes and follows group ro
     await adminPage.fill('#auth-password', 'e2e bootstrap password');
     await adminPage.click('#auth-form button[type="submit"]');
     await adminPage.waitForSelector('#app:not([hidden])');
-    await openMoreViewEntry(adminPage, '[data-navigate="admin"]');
-    if (await adminPage.locator('#admin-mode-activate').count()) {
-      await adminPage.click('#admin-mode-activate');
-      // Activating admin mode drops the cached roster and refetches it with the
-      // test players included, but the panel only re-renders once that refresh
-      // resolves. Until then the pre-activation DOM is still on screen, so the
-      // roster waits below would settle on the stale markup and the assertion
-      // could then read the empty in-between render. The Testdaten section only
-      // exists in admin mode and is therefore the barrier for that re-render.
-      await adminPage.waitForSelector('#admin-test-players-title');
-    }
+    // Admin mode is switched in Mein Profil; the Testdaten card only exists
+    // once the Admin page has re-rendered in that mode.
+    await activateAdminMode(adminPage);
+    await openUtilityView(adminPage, 'admin');
+    await adminPage.waitForSelector('#admin-test-players-title');
+    await openAdminCard(adminPage, 'accounts');
 
     await adminPage.waitForSelector('#admin-members-retry');
     // This real error row makes the two-word retry label wrap on phones.
@@ -876,40 +780,39 @@ test('admin roster retries role loading, serializes changes and follows group ro
     }
     await adminPage.setViewportSize({ width: 390, height: 844 });
     await assertNoOverflow(adminPage.locator('#view-container'));
-    await adminPage.waitForSelector(`.admin-player-row:has-text("${NAME}")`);
-    await adminPage.waitForFunction(() => /^Benutzer \([1-9]\d*\)$/.test(document.querySelector('#admin-players-title')?.textContent ?? ''));
-    assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \([1-9]\d*\)$/);
+    // Accounts are grouped by role: owners, admins, then members.
+    const roleGroups = { owner: 0, admin: 1, member: 2 } as const;
+    const waitForRoleGroup = (role: keyof typeof roleGroups, width: number) =>
+      adminPage.waitForFunction(
+        ({ playerId, group, width }) => {
+          const row = document.querySelector(`.profile-row:has([data-delete-player="${playerId}"])`);
+          const section = row?.closest('.admin-account-group');
+          const trigger = row?.querySelector('.action-menu > summary');
+          return window.innerWidth === width && section?.getAttribute('aria-labelledby') === `admin-account-group-${group}`
+            && !row?.querySelector('[data-set-role]:disabled') && trigger?.checkVisibility();
+        },
+        { playerId: target.id, group: roleGroups[role], width },
+      );
+    const accountRow = () => adminPage.locator(`.profile-row:has([data-delete-player="${target.id}"])`);
+    await adminPage.waitForSelector(`[data-admin-section="accounts"] .profile-row:has-text("${NAME}")`);
+    assert.match((await adminPage.locator('[data-admin-section="accounts"] > summary .badge').textContent()) ?? '', /^[1-9]\d*$/);
     await adminPage.click('#admin-members-retry');
 
-    // Geometry is only meaningful once a preceding resize has applied and the
-    // select shows the expected role in its settled, unlocked state.
-    const waitForRoleSelect = (role: string, width: number) =>
-      adminPage.waitForFunction(
-        ({ playerId, role, width }) => {
-          const select = document.querySelector<HTMLSelectElement>(`[data-player-role="${playerId}"]`);
-          return window.innerWidth === width && select?.value === role && !select.disabled && select.checkVisibility();
-        },
-        { playerId: target.id, role, width },
-      );
-    let roleSelect = adminPage.locator(`[data-player-role="${target.id}"]`);
-    await waitForRoleSelect('member', 390);
-    await assertControlHeights(roleSelect);
-    await roleSelect.selectOption('admin');
-    assert.equal(await roleSelect.isDisabled(), true, 'the role control locks before reauthentication and mutation');
-    await assertControlHeights(roleSelect);
-    await roleSelect.evaluate((select) => {
-      (select as HTMLSelectElement).value = 'member';
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    await waitForRoleGroup('member', 390);
+    await assertControlHeights(accountRow().locator('.action-menu > summary'));
+    await accountRow().locator('.action-menu > summary').click();
+    await accountRow().locator('[data-set-role="admin"]').click();
+    await adminPage.waitForSelector('#reauth-form');
+    // While the change waits for reauthentication, a second role change for
+    // the same account is ignored instead of adding another request.
+    await adminPage.evaluate((playerId) => {
+      document.querySelector<HTMLButtonElement>(`[data-set-role][data-player-id="${playerId}"]`)?.click();
+    }, target.id);
     await adminPage.fill('#reauth-password', 'e2e bootstrap password');
     await adminPage.click('#reauth-form button[type="submit"]');
-    // The UI change has only settled once the select unlocks again: the admin
-    // value already shows while the change still runs its trailing roster
-    // reload. If that reload overlapped the external role changes below, it
-    // could render the restored member role before the newer groups:changed
-    // signal had cleared and refetched the roster, which then removed the
-    // select in the middle of the geometry checks.
-    await waitForRoleSelect('admin', 390);
+    // The UI change has only settled once the account has moved to its new
+    // group and its menu is unlocked again, after the trailing roster reload.
+    await waitForRoleGroup('admin', 390);
     assert.equal(
       rolePatchRequests,
       2,
@@ -928,11 +831,7 @@ test('admin roster retries role loading, serializes changes and follows group ro
       body: JSON.stringify({ role: 'owner' }),
     });
     assert.equal(promoteOwner.status, 200, JSON.stringify(await promoteOwner.clone().json()));
-    await adminPage.waitForFunction(
-      (playerId) =>
-        (document.querySelector(`[data-player-role="${playerId}"]`) as HTMLSelectElement | null)?.value === 'owner',
-      target.id,
-    );
+    await waitForRoleGroup('owner', 390);
 
     const restoreMember = await fetch(`${BASE_URL}/api/groups/${groupId}/members/${target.id}`, {
       method: 'PATCH',
@@ -940,13 +839,13 @@ test('admin roster retries role loading, serializes changes and follows group ro
       body: JSON.stringify({ role: 'member' }),
     });
     assert.equal(restoreMember.status, 200, JSON.stringify(await restoreMember.clone().json()));
-    await waitForRoleSelect('member', 390);
+    await waitForRoleGroup('member', 390);
     for (const viewport of [{ width: 320, height: 568 }, { width: 1024, height: 768 }]) {
       await adminPage.setViewportSize(viewport);
-      await waitForRoleSelect('member', viewport.width);
-      await assertControlHeights(adminPage.locator(`[data-player-role="${target.id}"]`));
+      await waitForRoleGroup('member', viewport.width);
+      await assertControlHeights(accountRow().locator('.action-menu > summary'));
       await assertNoOverflow(adminPage.locator('#view-container'));
-      await assertNoOverflow(adminPage.locator(`.admin-player-row:has([data-player-role="${target.id}"])`));
+      await assertNoOverflow(accountRow());
     }
   } finally {
     await deferE2EContextClose(adminPage.context());
@@ -979,11 +878,13 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
     await adminPage.click('#auth-form button[type="submit"]');
     await waitForPlayerData(adminPage);
 
-    await openMoreViewEntry(adminPage, '[data-navigate="admin"]');
-    if (await adminPage.locator('#admin-mode-activate').count()) await adminPage.click('#admin-mode-activate');
-    const testSessionButton = adminPage.locator(`[data-test-session="${testPlayer.id}"]`);
-    await testSessionButton.waitFor();
-    await testSessionButton.click();
+    // Test players are listed only in admin mode, which Mein Profil switches.
+    await activateAdminMode(adminPage);
+    await openUtilityView(adminPage, 'admin');
+    await openAdminCard(adminPage, 'accounts');
+    const testSessionRow = adminPage.locator(`.profile-row:has([data-test-session="${testPlayer.id}"])`);
+    await testSessionRow.locator('.action-menu > summary').click();
+    await testSessionRow.locator(`[data-test-session="${testPlayer.id}"]`).click();
 
     await adminPage.waitForSelector('#reauth-form');
     await adminPage.fill('#reauth-password', 'e2e bootstrap password');

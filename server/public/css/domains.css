@@ -1226,102 +1226,69 @@ input[type='number'].tournament-result-score {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
-.admin-player-row,
-.admin-player-identity,
-.admin-player-actions {
-  flex-wrap: wrap;
-}
-.admin-tool-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-.admin-tool-row .title-with-info {
-  min-width: 0;
-}
-.admin-test-controls {
-  display: grid;
-  grid-template-columns: calc(var(--space-8) + var(--space-3)) repeat(2, minmax(0, 1fr));
+/* LAN-Bereitschaft: each check ends in its status (icon plus text) in the
+   row's action column. The overall status sits right next to the header's
+   chevron like the counters of the other cards; the row statuses end on the
+   same edge (the chevron's width plus its gap before the card edge). */
+.readiness-status {
+  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
 }
-.admin-test-controls .btn {
-  min-width: 0;
-  padding-right: var(--space-2);
-  padding-left: var(--space-2);
-  font-size: var(--font-size-xs);
+.readiness-status .ui-icon {
+  width: var(--font-size-md);
+  height: var(--font-size-md);
 }
-.agent-diagnostic-row {
-  display: grid;
-  gap: var(--space-2);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border);
+.readiness-status[data-readiness-state='ready'] .ui-icon {
+  color: var(--state-playing);
 }
-.agent-diagnostic-row:last-child {
+.readiness-status[data-readiness-state='warning'] .ui-icon {
+  color: var(--state-paused);
+}
+.readiness-status[data-readiness-state='error'] .ui-icon {
+  color: var(--danger);
+}
+.profile-row.is-status .profile-row-action {
+  padding-right: calc(1.2 * var(--font-size-md) + var(--space-2)); /* design-token-ok: .ui-icon chevron is 1.2em */
+}
+/* Konten: the group title names the role, so most rows carry no meta line;
+   every row keeps the height of a row with one, so both columns stay even. */
+.admin-account-group .profile-row-text {
+  justify-content: center;
+  min-height: calc(var(--control-height) + var(--space-2));
+}
+.admin-account-group .profile-row-meta {
+  margin-top: 0;
+}
+/* Accounts are a long list of short rows, so they sit closer together. */
+.admin-account-group .profile-row {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+.admin-account-group .profile-row:first-child {
+  padding-top: 0;
+}
+.admin-account-group .profile-row:last-child {
   padding-bottom: 0;
-  border-bottom: 0;
 }
-.agent-diagnostic-row > .row-between {
-  flex-wrap: wrap;
-}
-.agent-diagnostic-row > .row-between > strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.admin-test-controls input,
-.admin-test-controls .btn {
-  min-height: var(--control-height);
-}
-.data-row-action {
-  container-type: inline-size;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-.data-row-action > span {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.data-row-action > span > strong {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.data-row-action .badge {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.data-row-action > .btn {
-  justify-self: end;
-  white-space: nowrap;
-}
-@container (width < 320px) { /* design-token-ok: DataRowAction-Schwelle */
-  .data-row-action > span,
-  .data-row-action > .btn {
-    grid-column: 1 / -1;
+@media (min-width: 860px) { /* --bp-lg */
+  .admin-account-group .profile-row.is-column-top {
+    padding-top: 0;
+  }
+  .admin-account-group .profile-row.is-column-bottom {
+    padding-bottom: 0;
+  }
+  .admin-account-group .profile-rows-columns > .profile-row:last-child:not(.is-column-bottom) {
+    padding-bottom: var(--space-2);
   }
 }
-.admin-player-row {
-  gap: var(--space-2);
-}
-.admin-player-identity {
-  min-width: 0;
-}
-.admin-player-actions {
+/* Admin dialogs: a lone submit sits right-aligned at the end. */
+.admin-dialog-footer {
+  display: flex;
   justify-content: flex-end;
-  margin-left: auto;
-}
-.admin-dashboard-row {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-4);
-}
-.admin-role-select {
-  width: auto;
-  min-width: var(--assignment-select-width);
 }
 @media (min-width: 640px) { /* --bp-md */
   .two-column-card-grid {
@@ -2467,36 +2434,6 @@ input.food-order-price-input {
   }
   :root[data-layout-mode='desktop'] .home-live-grid {
     grid-template-rows: repeat(var(--home-live-rows-3, 1), auto);
-  }
-  :root[data-layout-mode='desktop'] .admin-dashboard-overview,
-  :root[data-layout-mode='desktop'] .admin-dashboard-access {
-    grid-template-columns: minmax(0, 2fr) minmax(var(--desktop-supporting-pane-min-width), 1fr);
-    align-items: start;
-  }
-  :root[data-layout-mode='desktop'] .admin-dashboard-row > :only-child {
-    grid-column: 1 / -1;
-  }
-  :root[data-layout-mode='desktop'] .admin-player-list,
-  :root[data-layout-mode='desktop'] .admin-diagnostics-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    align-items: start;
-    gap: var(--space-3);
-    background: transparent;
-  }
-  :root[data-layout-mode='desktop'] .admin-player-row,
-  :root[data-layout-mode='desktop'] .agent-diagnostic-row {
-    height: 100%;
-    align-content: start;
-    padding: var(--space-3) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius-sm);
-    background: var(--bg-elevated-2);
-  }
-  :root[data-layout-mode='desktop'] .admin-player-actions {
-    width: 100%;
-    justify-content: flex-start;
-    margin-left: 0;
   }
 }
 
