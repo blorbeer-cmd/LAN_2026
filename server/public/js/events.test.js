@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {
   acceptedParticipantCount,
   eventDateRange,
-  eventPdfExportAvailable,
   eventSettlement,
   parseEventAccommodationCostCents,
   parseEventCostCents,
@@ -15,12 +14,6 @@ import {
   renderEventCard,
   renderOwnParticipationActions,
 } from './views/events.js';
-
-test('the LAN keepsake PDF stays available only for LAN-compatible events', () => {
-  assert.equal(eventPdfExportAvailable({ eventType: 'lan' }), true);
-  assert.equal(eventPdfExportAvailable({ eventType: 'general' }), false);
-  assert.equal(eventPdfExportAvailable({}), true);
-});
 
 test('event date ranges keep a regular midnight end on its selected calendar day', () => {
   const startsAt = new Date(2026, 8, 8, 18, 0).getTime();
@@ -285,7 +278,6 @@ test('a group card drops every dated and paid control instead of disabling it', 
   for (const absent of [
     /data-start-tracking/,
     /data-stop-tracking/,
-    /data-export-event/,
     /data-event-calendar=/,
     /Termin wird noch abgestimmt/,
     // An excuse answers a clashing appointment; a group has none.
@@ -293,8 +285,12 @@ test('a group card drops every dated and paid control instead of disabling it', 
   ]) {
     assert.doesNotMatch(html, absent, String(absent));
   }
-  // Editing name, location and note stays available.
+  // Editing name, location and note stays available. With only Bearbeiten and
+  // Beenden left, both sit directly in the header instead of behind "Aktion",
+  // and Beenden is a neutral header button whose confirmation carries the risk.
   assert.match(html, /data-edit-event="skatrunde"/);
+  assert.doesNotMatch(html, /class="action-menu"/);
+  assert.match(html, /<button type="button" class="btn btn-sm" data-end-event="skatrunde">/);
   // Period, calendar handoff, excuse and money are exactly what the shared
   // information box holds, so a group without a location and without a note
   // fills none of it and the box itself is dropped instead of framing nothing.
@@ -317,7 +313,8 @@ test('a group card drops every dated and paid control instead of disabling it', 
     enabledFeatures: ['tracking'],
   });
   assert.match(lan, /data-start-tracking/);
-  assert.match(lan, /data-end-event/);
+  // Bearbeiten, Tracking and Beenden are enough to bundle again.
+  assert.match(lan, /<details class="action-menu">[\s\S]*btn-danger" data-end-event/);
   assert.match(lan, /Teilnehmende/);
 
   // An ended group reports that state instead of repeating its own kind, and
@@ -325,6 +322,8 @@ test('a group card drops every dated and paid control instead of disabling it', 
   const endedGroup = renderEventCard({ ...group, isEnded: true });
   assert.match(endedGroup, /aria-label="Beendet"/);
   assert.doesNotMatch(endedGroup, /data-end-event/);
+  assert.match(endedGroup, /data-edit-event="skatrunde"/);
+  assert.doesNotMatch(endedGroup, /class="action-menu"/);
 
   // An event whose date is still open drops the same dated controls, but it is
   // abandoned the same way a group is, so "Beenden" is not a dated control.
@@ -337,11 +336,9 @@ test('a group card drops every dated and paid control instead of disabling it', 
   assert.match(undatedEvent, /data-end-event="termin-offen"/);
   assert.match(undatedEvent, /Termin wird noch abgestimmt/);
   assert.doesNotMatch(undatedEvent, /data-start-tracking/);
-  assert.doesNotMatch(undatedEvent, /data-export-event/);
 });
 
-test('a group has no keepsake PDF and no period text', () => {
-  assert.equal(eventPdfExportAvailable({ eventType: 'group' }), false);
+test('a group has no period text', () => {
   assert.equal(eventDateRange({ eventType: 'group', startsAt: null }), 'Dauerhaft geöffnet');
   // The permanent base workspace is not a group and keeps its own wording.
   assert.equal(eventDateRange({ eventType: 'group', isBase: true, startsAt: 1, endsAt: null }), 'Dauerhaft geöffnet');
