@@ -208,10 +208,10 @@ Die Standardfamilien `date-fields`, `search-select`, `profile-controls`, `row-ic
 und `music-controls` verwenden die passende Basisvariante.
 
 Die internen Familien `selection-toolbar`, `number-stepper`, `data-row-action`, `food-action-slots`,
-`result-actions`, `result-pick`, `result-state`, `bracket-row`, `rating-slider`, `rating-suggestion`,
+`result-actions`, `result-pick`, `result-state`, `bracket-row`, `rating-suggestion`,
 `row-layout`, `selection-state`, `payment-state`, `scribble-tools` und `arcade-segment` behalten ihre
 dokumentierte Einbettung.
-NumberStepper-Hälften ergänzen das native Zahlenfeld; Slider, Zeichenpalette und Bracketzeilen
+NumberStepper-Hälften ergänzen das native Zahlenfeld; Zeichenpalette und Bracketzeilen
 sind keine unabhängigen Standardbuttons. Zustands-/Layoutmarker besitzen keine eigene Controlhöhe.
 
 `poll-disclosure` und `food-disclosure` enthalten Überschrift plus Runden-/Frist- bzw.
@@ -276,10 +276,11 @@ seiner tatsächlichen Klassenvariante.
 
 ### Selection-Toolbar und Pollbewertung
 
-Selection-Toolbar-Textbuttons folgen 31–33 px; Iconbuttons messen mindestens 44×32 px. Pollwerte
-1–5 verwenden `.btn.btn-square`, messen gewählt wie ungewählt 32×32 px und behalten
-`gap: var(--space-2)`. Eine Reihe benötigt `5 × 32 + 4 × 8 = 192px`; unterhalb dieser verfügbaren
-Elternbreite bricht sie geordnet 1–5 um. Beide kollidierenden Kontextregeln berücksichtigen die
+Selection-Toolbar-Textbuttons folgen 31–33 px; Iconbuttons messen mindestens 44×32 px. Die
+gemeinsame Zahlenskala 0–5 (`ratingScale.js`: Vote, Umfragen, Bock/Skill) verwendet
+`.btn.btn-square`, misst gewählt wie ungewählt 32×32 px und behält `gap: var(--space-2)`. Eine
+Reihe benötigt `6 × 32 + 5 × 8 = 232px`; unterhalb dieser verfügbaren Elternbreite bricht sie
+geordnet 0–5 um. Beide kollidierenden Kontextregeln berücksichtigen die
 Quadratvariante; die konkurrierenden Höhen-/Mindestbreitenvorgaben und der frühere
 30×30-Override sind ersetzt. Gemessen wird die verfügbare Elternbreite, nicht die fit-content-Breite
 der Toolbar; die Browserprüfung erzwingt zusätzlich 192 und 191 px Elternbreite.
@@ -370,8 +371,8 @@ Die bestehenden Core-Owner prüfen zusätzlich bei 320×568, 390×844, 512×384,
   Reihenfolge Plattform, Trailer, Trackbar, kein Zwischenraum zwischen den Linkaktionen und kein
   Seitenoverflow.
 - Echten Textumbruch mit wachsender Border-Box ohne Clipping sowie Textarea mit rows 1 und 3.
-- Pollwerte 1–5 gewählt/ungewählt exakt 32×32 px, 8 px Abstand, verfügbare Elternbreite,
-  192/191-px-Grenze und unveränderte Tastaturreihenfolge in beiden Richtungen.
+- Skalenwerte 0–5 gewählt/ungewählt exakt 32×32 px, 8 px Abstand, verfügbare Elternbreite,
+  232/231-px-Grenze und unveränderte Tastaturreihenfolge in beiden Richtungen.
 - ActionMenu-Trigger 31–33 px und Einträge mindestens 44×44 px.
 - Echte Admin-Einladungszeilen bei 320/390 px: Anzeigen/Widerrufen einzeilig bei 31–33 px
   vollständig innerhalb der Zeile; der tatsächliche View-Container darf nicht horizontal
@@ -397,6 +398,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `game-catalog-link-action` | Plattform- und Trailer-Links stehen als dichte 32×32-px-Gruppe direkt an den Spielinformationen. |
 | `selection-buttons`, `poll-secondary`, `poll-text-width`, `poll-choice-text` | Toolbarlayout und Bedeutung respektieren die gewählte Basis-/Quadratvariante. |
 | `poll-selected-answer`, `poll-option-extra-toggle` | Die gewählte Umfrageantwort und der geöffnete Notiz-/Link-Schalter zeigen ihren Zustand mit Akzentumriss bzw. Akzentfarbe, ohne eigene Geometrie. |
+| `rating-scale-selected` | Auf der Bock-/Skill-Skala nimmt der gewählte Umriss die Farbe der Skala an, ohne eigene Geometrie. |
 | `poll-note-field`, `poll-flag-checkbox` | Die einzeilige Umfragebeschreibung wächst bis vier Controlhöhen; die 20-px-Checkbox ist Teil der beschrifteten Umfrageeinstellung. |
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
 | `profile-preview` | Nichtinteraktive Vorschau folgt der benachbarten Controlzeile. |
@@ -405,7 +407,6 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `data-row-name`, `data-row-action-label` | Nur der Name ellipsiert; die vollständige kurze Aktion stapelt unter 320 px. |
 | `food-position-slots`, `food-payment-marker`, `food-header` | Gleich breite Aktionsplätze der Personenzeile, 32-px-Zahlungsaktion und permanenter 44-px-Kartenkopf. |
 | `food-open-section-action`, `food-amount-copy`, `food-inline-remove` | Die Kopfaktion der offenen Bestellungen bricht nicht um; Kopieren steht als 32-px-Quadrat vor dem Betrag; Löschen einer eigenen Position ist ein zeilenhohes Symbol hinter dem Gericht. |
-| `vote-submitted-state` | Nichtinteraktive Bestätigung mit Statusinhalt. |
 | `arcade-toolbar-buttons`, `challenge-test-disclosure` | Standardhöhe mit echtem Textumbruch; Segment-/Erstellungsgeometrie bleibt beim Pilotvertrag. |
 | `topbar-title`, `desktop-navigation`, `page-heading`, `subpage-heading`, `tabbed-subpage-heading`, `section-heading`, `section-title` | Bestehende 44-px-Kopf-/Navigationszeilen und mehrzeilige Headerreservierungen. |
 | `seating-pool`, `seating-player` | Strukturelle Sitzplatz-Ablagefläche und 44-px-Spielerzeile. |
@@ -506,8 +507,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:bracket-row`: Each team is one half of the fixed composite bracket match; states own no separate height.
 
-- `registry:rating-slider`: Existing slider track/thumb geometry is internal to the rating control.
-
 - `registry:rating-suggestion`: Inline application shortcut belongs to the rating label, with its existing icon/value geometry.
 
 - `registry:structural-cards`: Whole navigation/result cards preserve their existing row or multiline card geometry.
@@ -548,8 +547,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:native-color`: Existing native color swatch is a structural picker surface, not a text field.
 
-- `registry:native-range`: Native range track fills its rating row; thumb geometry remains with the slider.
-
 - `registry:poll-option-link`: Link action composes icon-button; only nonshrinking placement belongs to this attachment. Its empty property allowance prevents independent protected interior values, including padding and target dimensions.
 
 - `registry:kiosk-open-link`: Literal event-card action hook inherits the base button; no independent interior geometry.
@@ -575,6 +572,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:poll-selected-answer`: The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.
 
 - `registry:profile-row-action`: Mein Profil keeps one fixed right-hand action column across all cards, so compact buttons and the view select share one width; the select matches the compact buttons' type size.
+- `registry:rating-scale-selected`: On the Bock/Skill scale the chosen number's inset outline takes that scale's color; geometry stays with the square variant.
+
 - `registry:checklist-table-action`: Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.
 - `registry:broadcast-table-action`: Beenden fills the fixed Durchsage action column, so it lines up from row to row.
 - `registry:broadcast-send`: Senden is exactly as wide as the time field above it, so the form ends flush on one right edge.
@@ -623,8 +622,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:food-amount-copy`: The copy action directly before an amount is a 32px square, so person sums and the total share one right-aligned amount column.
 
 - `registry:food-inline-remove`: The own position remove action sits inline after the dish name, exactly one text line high with a 14px glyph, so position rows keep a single amount column.
-
-- `registry:vote-submitted-state`: Noninteractive confirmation is a status surface and may contain icon plus status copy.
 
 - `registry:arcade-toolbar-buttons`: Wrapped toolbar labels grow; no creation-row or segment geometry changes.
 
@@ -727,8 +724,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:calendar-day-state`: Calendar selection/today colors and inset emphasis preserve the day target.
 
 - `registry:bracket-state`: Bracket availability, winner and loser emphasis preserve the host geometry; only winner elevation may differ.
-
-- `registry:rating-unset-state`: Unset rating only changes the slider color.
 
 - `registry:rating-divergence-state`: Divergent suggestion only changes emphasis colors.
 

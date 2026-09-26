@@ -151,7 +151,8 @@ db.exec(`
     process_name TEXT NOT NULL UNIQUE
   );
 
-  -- Skill rating 1-10 per (player, game). One row per pair.
+  -- Skill rating per (player, game). One row per pair. Created as 1-10;
+  -- migration 112 moves it to 0-5.
   CREATE TABLE IF NOT EXISTS skills (
     player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     game_id   TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -159,7 +160,8 @@ db.exec(`
     PRIMARY KEY (player_id, game_id)
   );
 
-  -- "Bock"-Rating 1-10 per (player, game): how much a player currently feels
+  -- "Bock"-Rating per (player, game), created as 1-10 and moved to 0-5 by
+  -- migration 112: how much a player currently feels
   -- like playing it, as opposed to skills.rating (how good they are). Kept
   -- as its own table rather than a column on skills since it's meant to be
   -- changed on a whim throughout the LAN (mood-of-the-moment), independent
@@ -5237,6 +5239,160 @@ registerMigration({
   name: 'exclude base and general events from tracking and add standing consent default',
   up: excludeBaseWorkspaceFromTrackingAndAddConsentDefault,
 });
+
+// A points ballot now rates every game of its round, and 0 is a deliberate
+// answer ("I won't play this") instead of an omitted row. The CHECK from
+// migration 34 only allowed 1-10, so the table is rebuilt with the same
+// columns, keys and scope triggers and a 0-10 bound: new ballots use 0-5
+// (see routes/votes.ts), older closed rounds keep their 1-10 points. votes is
+// not referenced by any other table, so the rebuild needs no foreign-key
+// suspension.
+function allowZeroVotePoints(): void {
+  const tableSql = (
+    db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'votes'").get() as { sql: string }
+  ).sql;
+  if (/points\s+BETWEEN\s+0\s+AND\s+10/i.test(tableSql)) return;
+
+  db.exec(`
+    CREATE TABLE votes_zero_points_111 (
+      id                   TEXT PRIMARY KEY,
+      group_id             TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      player_id            TEXT NOT NULL,
+      player_name_snapshot TEXT NOT NULL,
+      game_id              TEXT NOT NULL,
+      event_id             TEXT,
+      round                INTEGER NOT NULL,
+      points               INTEGER CHECK (points IS NULL OR points BETWEEN 0 AND 10),
+      created_at           INTEGER NOT NULL,
+      UNIQUE (group_id, player_id, round, game_id),
+      FOREIGN KEY (group_id, player_id) REFERENCES group_memberships(group_id, player_id) ON DELETE RESTRICT,
+      FOREIGN KEY (group_id, game_id) REFERENCES games(group_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id, round) REFERENCES vote_rounds(group_id, round) ON DELETE CASCADE
+    );
+    INSERT INTO votes_zero_points_111
+      (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+    SELECT id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at FROM votes;
+    DROP TABLE votes;
+    ALTER TABLE votes_zero_points_111 RENAME TO votes;
+
+    CREATE INDEX IF NOT EXISTS idx_votes_group_round ON votes(group_id, round);
+    CREATE INDEX IF NOT EXISTS idx_votes_group_event ON votes(group_id, event_id);
+
+    CREATE TRIGGER trg_votes_round_scope_insert
+    BEFORE INSERT ON votes
+    WHEN NOT EXISTS (
+      SELECT 1 FROM vote_rounds vr
+      WHERE vr.group_id = NEW.group_id AND vr.round = NEW.round AND vr.event_id IS NEW.event_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'vote round group/event mismatch');
+    END;
+
+    CREATE TRIGGER trg_votes_round_scope_update
+    BEFORE UPDATE OF group_id, round, event_id ON votes
+    WHEN NOT EXISTS (
+      SELECT 1 FROM vote_rounds vr
+      WHERE vr.group_id = NEW.group_id AND vr.round = NEW.round AND vr.event_id IS NEW.event_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'vote round group/event mismatch');
+    END;
+  `);
+}
+registerMigration({ version: 111, name: 'allow zero vote points', up: allowZeroVotePoints });
+
+// Bock and Skill move from 1-10 to the same 0-5 number scale Vote and
+// Umfragen use, where 0 is a deliberate "no". Existing values are halved and
+// rounded up (1-2 -> 1, ..., 9-10 -> 5), so nobody's earlier rating turns into
+// a 0 they never chose. A 1-5 Umfrage rating likewise gains 0 ("lehne ab").
+// None of the three tables is referenced by another one, so each is rebuilt
+// in place without foreign-key suspension.
+// Two stored copies of the old scale follow along, so nothing mixes both:
+// - points of a still open Vote round, whose further ballots only allow 0-5
+//   (closed rounds keep their historical 1-10 result untouched);
+// - the ratings inside saved team draws, whose team totals are re-derived with
+//   the new neutral fallback of 3 (captain drafts store no ratings).
+function halveRating(rating: number): number {
+  return Math.floor((rating + 1) / 2);
+}
+function moveStoredDrawRatingsToZeroToFive(): void {
+  const draws = db.prepare("SELECT id, teams FROM matchmaking_draws WHERE source IS NOT 'draft'").all() as Array<{ id: string; teams: string }>;
+  const update = db.prepare('UPDATE matchmaking_draws SET teams = ? WHERE id = ?');
+  for (const draw of draws) {
+    let teams: unknown;
+    try {
+      teams = JSON.parse(draw.teams);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(teams)) continue;
+    const migrated = teams.map((team) => {
+      if (!team || !Array.isArray(team.players)) return team;
+      const players = team.players.map((player: { rating?: unknown }) =>
+        typeof player?.rating === 'number' ? { ...player, rating: halveRating(player.rating) } : player);
+      const totalRating = players.reduce(
+        (sum: number, player: { rating?: unknown }) => sum + (typeof player?.rating === 'number' ? player.rating : 3),
+        0,
+      );
+      return { ...team, players, totalRating };
+    });
+    update.run(JSON.stringify(migrated), draw.id);
+  }
+}
+function moveRatingsToZeroToFive(): void {
+  const tableSql = (name: string): string =>
+    (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) as { sql: string }).sql;
+
+  for (const table of ['skills', 'preferences']) {
+    if (/rating\s+BETWEEN\s+0\s+AND\s+5/i.test(tableSql(table))) continue;
+    db.exec(`
+      CREATE TABLE ${table}_zero_to_five_112 (
+        player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+        game_id   TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        rating    INTEGER NOT NULL CHECK (rating BETWEEN 0 AND 5),
+        group_id  TEXT REFERENCES groups(id) ON DELETE RESTRICT,
+        PRIMARY KEY (player_id, game_id)
+      );
+      INSERT INTO ${table}_zero_to_five_112 (player_id, game_id, rating, group_id)
+      SELECT player_id, game_id, (rating + 1) / 2, group_id FROM ${table};
+      DROP TABLE ${table};
+      ALTER TABLE ${table}_zero_to_five_112 RENAME TO ${table};
+      CREATE INDEX IF NOT EXISTS idx_${table}_game ON ${table}(game_id);
+      CREATE INDEX IF NOT EXISTS idx_${table}_group ON ${table}(group_id);
+    `);
+  }
+
+  if (!tableSql('event_date_poll_responses').includes("'0'")) {
+    db.exec(`
+      CREATE TABLE event_date_poll_responses_zero_112 (
+        poll_id    TEXT NOT NULL,
+        option_id  TEXT NOT NULL,
+        player_id  TEXT NOT NULL,
+        response   TEXT NOT NULL CHECK (response IN ('can', 'if_needed', 'cannot', '0', '1', '2', '3', '4', '5')),
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (poll_id, option_id, player_id),
+        FOREIGN KEY (poll_id, option_id) REFERENCES event_date_poll_options(poll_id, id) ON DELETE CASCADE,
+        FOREIGN KEY (poll_id, player_id) REFERENCES event_date_poll_invitees(poll_id, player_id) ON DELETE CASCADE
+      );
+      INSERT INTO event_date_poll_responses_zero_112 (poll_id, option_id, player_id, response, updated_at)
+      SELECT poll_id, option_id, player_id, response, updated_at FROM event_date_poll_responses;
+      DROP TABLE event_date_poll_responses;
+      ALTER TABLE event_date_poll_responses_zero_112 RENAME TO event_date_poll_responses;
+      CREATE INDEX IF NOT EXISTS idx_event_date_poll_responses_option ON event_date_poll_responses(option_id);
+    `);
+  }
+
+  db.prepare(
+    `UPDATE votes SET points = (points + 1) / 2
+     WHERE points IS NOT NULL AND EXISTS (
+       SELECT 1 FROM vote_rounds vr
+       WHERE vr.group_id = votes.group_id AND vr.round = votes.round AND vr.closed_at IS NULL
+     )`,
+  ).run();
+  moveStoredDrawRatingsToZeroToFive();
+}
+registerMigration({ version: 112, name: 'move bock, skill and poll ratings to 0-5', up: moveRatingsToZeroToFive });
 
 runRegisteredMigrations();
 

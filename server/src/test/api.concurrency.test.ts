@@ -42,21 +42,20 @@ test('simultaneous vote starts: exactly one round opens', async () => {
   assert.equal(state.body.round, 1);
 });
 
-test('double-tapped and simultaneous votes: exactly one vote per player wins, repeats get 409', async () => {
+test('double-tapped and simultaneous votes: each player keeps exactly one vote', async () => {
   const results = await Promise.all(
     playerIds.flatMap((playerId) => [
       request(app).post('/api/votes').send({ playerId, gameId: gameIds[0] }),
       request(app).post('/api/votes').send({ playerId, gameId: gameIds[1] }),
     ])
   );
-  for (let index = 0; index < playerIds.length; index++) {
-    const pair = statusCounts([results[index * 2].status, results[index * 2 + 1].status]);
-    assert.equal(pair[200], 1, JSON.stringify(pair));
-    assert.equal(pair[409], 1, JSON.stringify(pair));
-  }
+  // A repeated vote replaces the earlier one while the round is open, so
+  // both requests succeed but never leave two votes behind.
+  assert.ok(results.every((r) => r.status === 200), JSON.stringify(results.map((r) => r.status)));
 
   const state = await request(app).get('/api/votes');
   assert.equal(state.body.totalVotes, playerIds.length);
+  assert.equal(state.body.totalVoters, playerIds.length);
 });
 
 test('simultaneous closes plus late casts: one close wins, stragglers are cleanly rejected', async () => {

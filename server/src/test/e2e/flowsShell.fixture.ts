@@ -1811,7 +1811,7 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   // A suggestion carries both meters, Bock *and* Skill — how good the group
   // already is at a game is part of deciding whether to accept it at all.
   const suggestionRow = page.locator('.game-table-row', { hasText: gameTitle });
-  await suggestionRow.locator('.skill-row[data-kind="skill"] input[type="range"]').waitFor();
+  await suggestionRow.locator('.skill-row[data-kind="skill"] [data-rating-value="0"]').waitFor();
 
   // "Katalog" holds the accepted games only, so the still-open suggestion is
   // not in it; "Alle" lists both and keeps the suggestion recognizable
@@ -1861,15 +1861,15 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   await page.waitForSelector('button[data-tab="catalog"].btn-primary');
   const partyspielRow = page.locator('.game-table-row', { hasText: gameTitle });
   await partyspielRow.waitFor();
-  const bockSlider = partyspielRow.locator('.skill-row[data-kind="bock"] input[type="range"]');
-  const skillSlider = partyspielRow.locator('.skill-row[data-kind="skill"] input[type="range"]');
+  const bockScale = partyspielRow.locator('.skill-row[data-kind="bock"] [data-rating-value]');
+  const skillScale = partyspielRow.locator('.skill-row[data-kind="skill"] [data-rating-value]');
 
-  // An unrated slider still has to sit at a plausible-looking position
-  // (Bock/Skill are stored 1-10, never 0) - it stays dimmed and shows an
-  // en dash instead of a blank label until touched.
-  assert.ok(await bockSlider.evaluate((el) => el.classList.contains('skill-row-slider-unset')));
-  assert.equal(await partyspielRow.locator('[data-kind="bock"] .skill-value').textContent(), '–');
-  assert.ok(await skillSlider.evaluate((el) => el.classList.contains('skill-row-slider-unset')));
+  // Bock and Skill use the shared 0-5 number scale; an unrated game simply
+  // has no number selected (0 is a deliberate answer, not "unrated").
+  assert.equal(await skillScale.count(), 6);
+  assert.deepEqual(await bockScale.allTextContents(), ['0', '1', '2', '3', '4', '5']);
+  assert.equal(await partyspielRow.locator('.skill-row [aria-pressed="true"]').count(), 0);
+  assert.equal(await bockScale.first().getAttribute('aria-label'), '0 von 5, kein Bock');
 
   // Rating filters live inside the collapsed filter menu now.
   await page.click('.game-catalog-filter-trigger');
@@ -1879,25 +1879,16 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   await page.click('[data-rating-filter="skill"]');
   await partyspielRow.waitFor();
 
-  await bockSlider.fill('8');
-  await page.waitForFunction((title) => {
-    const cards = Array.from(document.querySelectorAll('.game-table-row'));
-    const card = cards.find((c) => c.textContent?.includes(title));
-    return card?.querySelector('[data-kind="bock"] .skill-value')?.textContent === '8';
-  }, gameTitle);
-  assert.equal(await bockSlider.evaluate((el) => el.classList.contains('skill-row-slider-unset')), false);
+  // A dispatched click keeps the open filter menu open, like typing into
+  // the former slider did; a real pointer press outside would close it.
+  await partyspielRow.locator('.skill-row[data-kind="bock"] [data-rating-value="0"]').dispatchEvent('click');
   // Bock is rated now but Skill isn't - "Bock offen" alone already excludes
   // the row even though "Skill offen" is still active too (AND, not OR).
   await partyspielRow.waitFor({ state: 'detached' });
 
   await page.click('[data-rating-filter="bock"]');
   await partyspielRow.waitFor();
-  await skillSlider.fill('7');
-  await page.waitForFunction((title) => {
-    const cards = Array.from(document.querySelectorAll('.game-table-row'));
-    const card = cards.find((c) => c.textContent?.includes(title));
-    return card?.querySelector('[data-kind="skill"] .skill-value')?.textContent === '7';
-  }, gameTitle);
+  await partyspielRow.locator('.skill-row[data-kind="skill"] [data-rating-value="4"]').dispatchEvent('click');
   await partyspielRow.waitFor({ state: 'detached' });
 
   // Restore filter state for whatever runs next in this shared-page suite.
@@ -1932,8 +1923,8 @@ flowTest('Spiele: a skill suggestion chip appears after enough recorded results 
   await page.waitForFunction(() => {
     const cards = Array.from(document.querySelectorAll('.game-table-row'));
     const card = cards.find((c) => c.textContent?.includes('Counter-Strike 2'));
-    const value = card?.querySelector('[data-kind="skill"] .skill-value')?.textContent;
-    return value && value !== '–';
+    // The applied suggestion shows up as the selected number of the skill scale.
+    return Boolean(card?.querySelector('[data-kind="skill"] [data-rating-value][aria-pressed="true"]'));
   });
 });
 

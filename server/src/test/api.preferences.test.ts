@@ -19,8 +19,10 @@ test('setup: create a player and a game to rate', async () => {
 });
 
 test('PUT /api/preferences rejects an out-of-range rating', async () => {
-  const res = await request(app).put('/api/preferences').send({ playerId, gameId, rating: 0 });
+  const res = await request(app).put('/api/preferences').send({ playerId, gameId, rating: 6 });
   assert.equal(res.status, 400);
+  const negative = await request(app).put('/api/preferences').send({ playerId, gameId, rating: -1 });
+  assert.equal(negative.status, 400);
 });
 
 test('PUT /api/preferences rejects an unknown player', async () => {
@@ -33,10 +35,10 @@ test('PUT /api/preferences rejects an unknown game', async () => {
   assert.equal(res.status, 404);
 });
 
-test('PUT /api/preferences creates a rating', async () => {
-  const res = await request(app).put('/api/preferences').send({ playerId, gameId, rating: 8 });
+test('PUT /api/preferences creates a rating, including a deliberate 0 (kein Bock)', async () => {
+  const res = await request(app).put('/api/preferences').send({ playerId, gameId, rating: 0 });
   assert.equal(res.status, 200);
-  assert.equal(res.body.rating, 8);
+  assert.equal(res.body.rating, 0);
 });
 
 test('PUT /api/preferences upserts (updates) the same rating', async () => {

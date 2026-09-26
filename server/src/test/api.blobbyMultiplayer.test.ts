@@ -87,6 +87,9 @@ test('Blobby Doppel requires two full ready teams and awards the whole winning t
     assert.equal((await emitAck(sockets[4], 'blobby:match:finish', { matchId: match.matchId, playerId: hostId })).ok, false);
     assert.equal((await emitAck(sockets[4], 'blobby:match:leave', { matchId: match.matchId, playerId: pinkAId })).ok, false);
 
+    // Lets the real production countdown (beginsAt) elapse: input is only
+    // accepted once it has ended. The server's start timer is anchored to
+    // beginsAt and scheduled first, so it always fires before this one.
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, match.beginsAt - Date.now() + 20)));
     assert.equal((await emitAck(sockets[1], 'blobby:input', {
       matchId: match.matchId,

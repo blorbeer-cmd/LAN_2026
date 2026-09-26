@@ -79,9 +79,9 @@ test('game catalog, process names, skills/preferences and live status are roles-
       assert.equal(procClashSameGroup.status, 409);
 
       // Skills/preferences: writing a rating against an unknown game 404s.
-      const bobForeignSkill = await scoped(app, 'put', '/api/skills', bob.cookie, groupId).send({ playerId: bob.account.id, gameId: 'does-not-exist', rating: 7 });
+      const bobForeignSkill = await scoped(app, 'put', '/api/skills', bob.cookie, groupId).send({ playerId: bob.account.id, gameId: 'does-not-exist', rating: 4 });
       assert.equal(bobForeignSkill.status, 404);
-      const bobOwnSkill = await scoped(app, 'put', '/api/skills', bob.cookie, groupId).send({ playerId: bob.account.id, gameId: gameA.body.id, rating: 7 });
+      const bobOwnSkill = await scoped(app, 'put', '/api/skills', bob.cookie, groupId).send({ playerId: bob.account.id, gameId: gameA.body.id, rating: 4 });
       assert.equal(bobOwnSkill.status, 200, JSON.stringify(bobOwnSkill.body));
 
       // Live board reflects this group's own active members.

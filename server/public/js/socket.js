@@ -17,7 +17,12 @@ export function isPermanentConnectionFailure({ reason, error }) {
 }
 
 export function connectSocket({ kiosk = false, reportConnectionState = false } = {}) {
-  const socket = io({ auth: kiosk ? { token: getKioskToken(), kiosk: true } : {} });
+  // A browser socket names its group in every (re)connect handshake, so an
+  // action pressed while still connecting already runs in that scope and
+  // every feature's first snapshot arrives exactly once.
+  const socket = io({
+    auth: kiosk ? { token: getKioskToken(), kiosk: true } : (callback) => callback({ groupId: currentScope() }),
+  });
   if (reportConnectionState) {
     let hasConnected = false;
     let connectionGeneration = 0;
@@ -65,12 +70,13 @@ export function connectSocket({ kiosk = false, reportConnectionState = false } =
     });
   }
   if (!kiosk) {
+    // Every (re)connect is scoped by the handshake above; only a group switch
+    // on a live connection needs an explicit subscription.
     const subscribe = () => {
       const groupId = currentScope();
       if (groupId) socket.emit('scope:subscribe', { groupId });
       else socket.emit('scope:leave');
     };
-    socket.on('connect', subscribe);
     window.addEventListener('respawn:group-changed', subscribe);
   }
   return socket;

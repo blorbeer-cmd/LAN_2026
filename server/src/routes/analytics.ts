@@ -398,7 +398,7 @@ analyticsRouter.get('/games-tournaments', (req, res) => {
     rating: number;
   }>;
   const ratingByKey = new Map(skillRows.map((r) => [`${r.player_id}::${r.game_id}`, r.rating]));
-  const ratingOf = (playerId: string, gameId: string) => ratingByKey.get(`${playerId}::${gameId}`) ?? 5;
+  const ratingOf = (playerId: string, gameId: string) => ratingByKey.get(`${playerId}::${gameId}`) ?? 3;
   const underdog = biggestUnderdogWin(matches, ratingOf);
   const underdogMatch = underdog ? matches.find((m) => m.id === underdog.matchId) : undefined;
 

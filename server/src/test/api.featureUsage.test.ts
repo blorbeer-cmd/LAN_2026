@@ -119,7 +119,7 @@ test('GET /api/admin/feature-usage aggregates real rows across fachliche tables'
   ).run(carpoolId, eventId, idA, now);
   db.prepare('INSERT INTO carpool_members (carpool_id, player_id) VALUES (?, ?)').run(carpoolId, idB);
 
-  db.prepare('INSERT INTO preferences (player_id, game_id, rating, group_id) VALUES (?, ?, 7, ?)').run(idA, gameId, groupId);
+  db.prepare('INSERT INTO preferences (player_id, game_id, rating, group_id) VALUES (?, ?, 4, ?)').run(idA, gameId, groupId);
 
   db.prepare(
     `INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, source) VALUES (?, ?, ?, ?, ?, 'user')`,

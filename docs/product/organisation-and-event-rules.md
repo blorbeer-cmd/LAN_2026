@@ -156,18 +156,24 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   / Nein“ with unanswered options counted as „offen“, exactly one choice, multiple choices with an optional maximum, or a
   per-option rating from 1 to 5. It never exposes
   a participant picker because the accepted event roster is the single source of truth.
+  A rating round uses the shared 0–5 number scale of Vote and Bock/Skill; 0 rejects the option,
+  lowers its average like any other value and is counted as „N lehnen ab“ beside it. While
+  answering, a chosen 0 is marked „Lehne ich ab“ beside the numbers.
+  While the viewer cannot see the interim result, the empty result column is dropped: the answer
+  controls sit beside the option name and, from `--bp-lg`, the options fill two columns, read down the left column first, then the
+  right one. Phones keep the stacked layout.
   The tab adds no own page heading or explanatory subtitle below the Orga tabs because the active
   event is already visible in the top-right workspace switcher. Its compact „Umfrage starten“
   action has no decorative plus sign. The create dialog uses ordinary global text fields, one native
   select for the four response modes („Jede Option bewerten“, „Einzelauswahl“, „Mehrfachauswahl“,
-  „Bewertung 1 bis 5“) paired with the deadline in one row, and contextual info only beside the
+  „Bewertung 0 bis 5“) paired with the deadline in one row, and contextual info only beside the
   deadline and the two round settings. The description starts as one line and grows with its text.
   Each option is one compact row with its name, a link icon that opens the note and link fields, the
   active switch and a remove action; the submit sits right-aligned at the dialog's end. Every free option
   may additionally carry a short note and a validated HTTP-/HTTPS-link. A poll can be marked
   anonymous in the same dialog; this permanently suppresses voter-to-answer mappings. The same
   dialog also offers „Zwischenstand verbergen“, preselected for every response mode including the
-  1–5 rating: while such a round is open, only the people who manage it see counts, the leading
+  0–5 rating: while such a round is open, only the people who manage it see counts, the leading
   option and the voters, and everyone else sees their own answer alone. The setting belongs to the
   round and is restated, not edited, in „Umfrage bearbeiten“; a follow-up round starts from the
   previous round's choice.
@@ -204,7 +210,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   the title with an icon-only link and its note as a muted line below, a result bar with a legend of
   the counts, the voter avatars and the response controls. The bar is a soft brand gradient on a
   grey track (Passt blue, Notfalls violet and Nein pink for per-option ratings; blue to violet for
-  choices and the 1 to 5 average), and bar, avatars and controls share one middle line. The chosen
+  choices and the 0 to 5 average), and bar, avatars and controls share one middle line. The chosen
   answer is outlined in the accent color; single- and multiple-choice controls say „Wählen“ or
   „Ausgewählt“, and „Speichern“ sits in the round's footer beside the response progress. An ended
   round lists its options by result and marks the winner with the green „Win“ chip; running rounds
@@ -214,7 +220,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   the poll's own action. That dialog is one compact table: a legend numbers the options (with the
   „Win“ chip after a decided round and the average, „N× Passt“ or the vote count on the right), and
   one row per person (alphabetical, avatar and name) has one equally narrow numbered column per
-  option, however long the option labels are. Ratings show the number, availability rounds show a
+  option, however long the option labels are. Ratings show the number (a 0 as a faded cross named
+  „Lehnt ab“, explained once above the table), availability rounds show a
   neutral symbol per answer (bright check for Passt, grey dash for Notfalls, faded cross for Nein,
   explained once above the table and named for assistive technology), choice rounds a check for the
   chosen option. Response timestamps are not shown. The server decides who receives those identities: an anonymous

@@ -17,7 +17,7 @@ test('setup: create a game and 4 players with skill ratings', async () => {
   gameId = game.body.id;
 
   const names = ['A', 'B', 'C', 'D'];
-  const ratings = [10, 1, 8, 3];
+  const ratings = [5, 0, 4, 1];
   playerIds = [];
   for (let i = 0; i < names.length; i++) {
     const p = await request(app).post('/api/players').send({ name: names[i] });
@@ -94,8 +94,8 @@ test('POST /api/matchmaking balances an unrated player with the neutral default 
   const found = res.body.teams
     .flatMap((t: SnapshotTeam) => t.players)
     .find((p: { id: string }) => p.id === unrated.body.id);
-  // null instead of the substituted 5: a later reader must be able to tell an
-  // absent self-rating from someone who really rated the game a 5.
+  // null instead of the substituted 3: a later reader must be able to tell an
+  // absent self-rating from someone who really rated the game a 3.
   assert.equal(found.rating, null);
   // The total still counts that player with the fallback the draw balanced on.
   const teamOfUnrated = res.body.teams.find((t: SnapshotTeam) =>
@@ -103,7 +103,7 @@ test('POST /api/matchmaking balances an unrated player with the neutral default 
   );
   assert.equal(
     teamOfUnrated.totalRating,
-    teamOfUnrated.players.reduce((sum: number, p: { rating: number | null }) => sum + (p.rating ?? 5), 0)
+    teamOfUnrated.players.reduce((sum: number, p: { rating: number | null }) => sum + (p.rating ?? 3), 0)
   );
 });
 
@@ -111,7 +111,7 @@ test('POST /api/matchmaking ignores seat neighbors unless this draw asks for it'
   const game = await request(app).post('/api/games').send({ name: 'Seating Test Game A' });
 
   const names = ['E', 'F', 'G', 'H'];
-  const ratings = [8, 7, 6, 1];
+  const ratings = [5, 4, 3, 0];
   const ids: string[] = [];
   for (let i = 0; i < names.length; i++) {
     const p = await request(app).post('/api/players').send({ name: names[i] });
@@ -139,11 +139,11 @@ test('POST /api/matchmaking keeps seat neighbors together when this draw asks fo
   const game = await request(app).post('/api/games').send({ name: 'Seating Test Game B' });
 
   // Same ratings as the deterministic matchmaking.test.ts unit test: the
-  // plain skill-balanced draft splits the two highest-rated players (I, J)
+  // plain skill-balanced draft splits the seat neighbors I (5) and J (3)
   // across teams, and reuniting them only costs a small, affordable amount
   // of balance.
-  const names = ['I', 'J', 'K', 'L'];
-  const ratings = [8, 7, 6, 1];
+  const names = ['I', 'J', 'K', 'L', 'Seat5', 'Seat6'];
+  const ratings = [5, 3, 4, 2, 1, 0];
   const ids: string[] = [];
   for (let i = 0; i < names.length; i++) {
     const p = await request(app).post('/api/players').send({ name: names[i] });
@@ -170,7 +170,7 @@ test('POST /api/matchmaking flags the specific players left as opponents despite
   // test: a and b are by far the strongest, so forcing them together would
   // blow the skill balance apart and the conflict is left unresolved.
   const names = ['O', 'P', 'Q', 'R'];
-  const ratings = [10, 9, 1, 2];
+  const ratings = [5, 4, 0, 1];
   const ids: string[] = [];
   for (let i = 0; i < names.length; i++) {
     const p = await request(app).post('/api/players').send({ name: names[i] });
@@ -202,7 +202,7 @@ test('POST /api/matchmaking flags the specific players left as opponents despite
 test('GET /api/matchmaking/history lists past draws for this game, newest first, with team scores', async () => {
   const game = await request(app).post('/api/games').send({ name: 'History Test Game' });
   const names = ['M', 'N'];
-  const ratings = [9, 4];
+  const ratings = [5, 2];
   const ids: string[] = [];
   for (let i = 0; i < names.length; i++) {
     const p = await request(app).post('/api/players').send({ name: names[i] });
@@ -357,7 +357,7 @@ test('GET /api/matchmaking/history enriches a linked draw with the recorded scor
 test('PATCH /api/matchmaking/draws/:id/move moves a player and recomputes totals', async () => {
   const game = await request(app).post('/api/games').send({ name: 'Move Test Game' });
   const names = ['MoveA', 'MoveB', 'MoveC', 'MoveD'];
-  const ratings = [10, 1, 8, 3];
+  const ratings = [5, 0, 4, 1];
   const ids: string[] = [];
   for (let i = 0; i < names.length; i++) {
     const p = await request(app).post('/api/players').send({ name: names[i] });
@@ -432,8 +432,8 @@ test('PATCH /api/matchmaking/draws/:id/move refuses a draw from an event the acc
 
 test('PATCH /api/matchmaking/draws/:id/move recomputes seat-conflict flags after a manual reassignment', async () => {
   const game = await request(app).post('/api/games').send({ name: 'Move Seating Test Game' });
-  const names = ['MoveSeatA', 'MoveSeatB', 'MoveSeatC', 'MoveSeatD'];
-  const ratings = [8, 7, 6, 1];
+  const names = ['MoveSeatA', 'MoveSeatB', 'MoveSeatC', 'MoveSeatD', 'MoveSeatE', 'MoveSeatF'];
+  const ratings = [5, 3, 4, 2, 1, 0];
   const ids: string[] = [];
   for (let i = 0; i < names.length; i++) {
     const p = await request(app).post('/api/players').send({ name: names[i] });

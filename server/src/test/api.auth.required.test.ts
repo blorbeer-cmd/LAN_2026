@@ -82,7 +82,7 @@ test('personal auth binds APIs to the session and protects API keys', () => {
       const unauthenticated = await request(app).put('/api/skills').send({
         playerId: bob.account.id,
         gameId: game.body.id,
-        rating: 7,
+        rating: 4,
       });
       assert.equal(unauthenticated.status, 401);
       assert.equal(
@@ -95,7 +95,7 @@ test('personal auth binds APIs to the session and protects API keys', () => {
       const spoofedSkill = await request(app).put('/api/skills').set('Cookie', alice.cookie).send({
         playerId: bob.account.id,
         gameId: game.body.id,
-        rating: 7,
+        rating: 4,
       });
       assert.equal(spoofedSkill.status, 403, JSON.stringify(spoofedSkill.body));
       assert.equal(db.prepare('SELECT 1 FROM skills WHERE player_id = ? AND game_id = ?').get(alice.account.id, game.body.id), undefined);

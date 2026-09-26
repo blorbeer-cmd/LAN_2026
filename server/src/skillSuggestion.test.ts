@@ -25,14 +25,14 @@ test('a lone winner ends up rated above a lone loser after one match', () => {
   assert.equal(b.wins, 0);
 });
 
-test('a player who never wins converges toward the low end (clamped at 1, never below)', () => {
+test('a player who never wins converges toward the low end (clamped at 0, never below)', () => {
   const matches: SkillSuggestionMatch[] = [];
   for (let i = 0; i < 20; i++) matches.push(match([['loser'], ['winner']], 1, i));
   const suggestions = computeSkillSuggestionsForGame(matches);
   const loser = suggestions.find((s) => s.playerId === 'loser')!;
   const winner = suggestions.find((s) => s.playerId === 'winner')!;
-  assert.ok(loser.rating >= 1 && loser.rating <= 10);
-  assert.ok(winner.rating >= 1 && winner.rating <= 10);
+  assert.ok(loser.rating >= 0 && loser.rating <= 5);
+  assert.ok(winner.rating >= 0 && winner.rating <= 5);
   assert.ok(winner.rating > loser.rating);
   assert.equal(winner.wins, 20);
   assert.equal(loser.wins, 0);
@@ -60,12 +60,12 @@ test('matches with more than two teams are ignored (no clear 1v1 update)', () =>
   assert.deepEqual(suggestions, []);
 });
 
-test('every returned rating stays within the 1-10 range', () => {
+test('every returned rating stays within the 0-5 range', () => {
   const matches: SkillSuggestionMatch[] = [];
   for (let i = 0; i < 50; i++) matches.push(match([['champ'], ['punchingbag']], 0, i));
   const suggestions = computeSkillSuggestionsForGame(matches);
   for (const s of suggestions) {
     assert.ok(Number.isInteger(s.rating));
-    assert.ok(s.rating >= 1 && s.rating <= 10);
+    assert.ok(s.rating >= 0 && s.rating <= 5);
   }
 });

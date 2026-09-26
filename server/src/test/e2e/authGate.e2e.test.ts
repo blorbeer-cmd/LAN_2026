@@ -194,11 +194,11 @@ test('an invite link registers a new account and logs it straight in', async () 
     await page.click('[data-onboarding-next]');
     await page.waitForSelector('#onboarding-root [role="dialog"]');
   }
-  await page.waitForSelector('.game-table-row.onboarding-required input[type="range"]');
+  await page.waitForSelector('.game-table-row.onboarding-required .skill-row [data-rating-value]');
   assert.equal(
-    await page.evaluate(() => document.activeElement?.matches('.game-table-row.onboarding-required input[type="range"]')),
+    await page.evaluate(() => document.activeElement?.matches('.game-table-row.onboarding-required .skill-row [data-rating-value]')),
     true,
-    'rating mode should place initial focus on a required slider',
+    'rating mode should place initial focus on a required rating',
   );
   await page.click('[data-onboarding-later]');
   await page.waitForFunction(() => !document.querySelector('#onboarding-root [role="dialog"]'));
@@ -209,24 +209,19 @@ test('an invite link registers a new account and logs it straight in', async () 
   const requiredRows = page.locator('.game-table-row.onboarding-required');
   assert.equal(await requiredRows.count(), 10);
 
-  // Regression coverage: a rerender triggered by a required slider's own
-  // debounced save must not steal focus (and the page scroll with it) back
-  // to the very first required row - it only used to happen for a row other
-  // than the first, so rate a later one via real keyboard input. The save
-  // chain is a 250ms debounce plus a real network round-trip and rerender
-  // (see the 'input' listener in gameCatalog.js). The keypress alone leaves
-  // focus in place and only changes the slider's value property; the
-  // rerender after the save renders the saved rating as the value attribute
-  // and drops the unset class. Wait for exactly that rendered state and read
-  // the focus in the same page task: a separate locator evaluate could still
-  // resolve the replaced, detached slider.
-  await requiredRows.nth(5).locator('input[type="range"]').first().focus();
-  await page.keyboard.press('ArrowRight');
+  // Regression coverage: the rerender after a required rating's own save
+  // must not steal focus (and the page scroll with it) back to the very
+  // first required row - it only used to happen for a row other than the
+  // first, so rate a later one via real keyboard input. Wait for the saved
+  // number to render as selected and read the focus in the same page task: a
+  // separate locator evaluate could still resolve the replaced button.
+  await requiredRows.nth(5).locator('.skill-row [data-rating-value="3"]').first().focus();
+  await page.keyboard.press('Enter');
   const focusAfterSave = await page.waitForFunction(() => {
-    const input = document.querySelectorAll('.game-table-row.onboarding-required')[5]
-      ?.querySelector<HTMLInputElement>('input[type="range"]');
-    if (!input || input.classList.contains('skill-row-slider-unset') || input.getAttribute('value') !== input.value) return null;
-    return { focused: input === document.activeElement };
+    const button = document.querySelectorAll('.game-table-row.onboarding-required')[5]
+      ?.querySelector<HTMLButtonElement>('.skill-row [data-rating-value="3"]');
+    if (!button || button.getAttribute('aria-pressed') !== 'true') return null;
+    return { focused: button === document.activeElement };
   });
   assert.equal(
     (await focusAfterSave.jsonValue())?.focused,
@@ -236,18 +231,20 @@ test('an invite link registers a new account and logs it straight in', async () 
 
   const requiredCount = await requiredRows.count();
   for (let rowIndex = 0; rowIndex < requiredCount - 1; rowIndex += 1) {
-    const sliders = requiredRows.nth(rowIndex).locator('input[type="range"]');
-    for (let sliderIndex = 0; sliderIndex < await sliders.count(); sliderIndex += 1) {
-      await sliders.nth(sliderIndex).evaluate((element) => {
-        const slider = element as HTMLInputElement;
-        slider.value = '5';
-        slider.dispatchEvent(new Event('input', { bubbles: true }));
-      });
+    const ratingRows = requiredRows.nth(rowIndex).locator('.skill-row');
+    for (let ratingIndex = 0; ratingIndex < await ratingRows.count(); ratingIndex += 1) {
+      const five = ratingRows.nth(ratingIndex).locator('[data-rating-value="5"]');
+      await five.click();
+      await page.waitForFunction(
+        ([row, rating]) => document.querySelectorAll('.game-table-row.onboarding-required')[row]
+          ?.querySelectorAll('.skill-row')[rating]
+          ?.querySelector('[data-rating-value="5"]')?.getAttribute('aria-pressed') === 'true',
+        [rowIndex, ratingIndex],
+      );
     }
-    // Each slider saves through its own debounce (see views/gameCatalog.js),
-    // and the dialog counts a required game as done only once both of its
-    // sliders came back. Wait for that counter to include this row instead of
-    // guessing how long the round trip takes.
+    // The dialog counts a required game as done only once both of its
+    // ratings came back. Wait for that counter to include this row instead
+    // of guessing how long the round trip takes.
     await page.waitForFunction(
       (expected) => {
         const progress = document.querySelector('.onboarding-rating-progress')?.textContent ?? '';
@@ -256,8 +253,8 @@ test('an invite link registers a new account and logs it straight in', async () 
       rowIndex + 1,
     );
   }
-  // Regression: the last required game is rated outside the sliders, so no
-  // slider save refreshes the dialog. The realtime reload that brings the
+  // Regression: the last required game is rated outside the Spiele view, so
+  // no rating save there refreshes the dialog. The realtime reload that brings the
   // ratings in must still move the counter to its end and unlock finishing.
   const lastGameId = await requiredRows.nth(requiredCount - 1).locator('.skill-row').first().getAttribute('data-game');
   assert.ok(lastGameId);
@@ -378,7 +375,7 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
     }
     assert.equal(sawHeaderEvent, true);
     assert.equal(sawEventSelection, true);
-    await adminPage.waitForSelector('.game-table-row.onboarding-required input[type="range"]');
+    await adminPage.waitForSelector('.game-table-row.onboarding-required .skill-row [data-rating-value]');
     await adminPage.click('[data-onboarding-later]');
     await adminPage.waitForFunction(() => !document.querySelector('#onboarding-root [role="dialog"]'));
   } finally {

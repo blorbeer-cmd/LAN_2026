@@ -105,6 +105,14 @@ export function registerScopedSockets(server: Server): () => void {
       }
       ack?.({ ok: true, groupId, eventId: typeof eventId === 'string' && eventId ? eventId : null });
     };
+    // The browser also names its group in the handshake. An action pressed
+    // while the socket was still connecting is buffered and flushed right
+    // after the handshake, before the client's 'connect' listener can send
+    // scope:subscribe; subscribing here, before any client packet is read,
+    // gives that action its scope. This handler is registered first, so the
+    // feature handlers' own connection snapshots see the scope too.
+    const handshakeGroupId = socket.handshake.auth?.groupId;
+    if (typeof handshakeGroupId === 'string' && handshakeGroupId) subscribe({ groupId: handshakeGroupId });
     socket.on('scope:subscribe', subscribe);
     socket.on('room:subscribe', subscribe);
     socket.on('scope:leave', () => clearSocketScope(socket));

@@ -994,6 +994,9 @@ textarea {
   gap: var(--space-1);
   min-height: 24px;
 }
+.event-poll-reject-tag {
+  white-space: nowrap;
+}
 .event-poll-option-title-row {
   display: inline-flex;
   align-items: center;
@@ -1069,6 +1072,47 @@ textarea {
 .event-poll-response-toolbar .btn.is-selected {
   box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--accent);
+}
+/* Bock/Skill scale: the chosen number takes the former slider's color and a
+   fill line below repeats the value with that slider's gradient. */
+.rating-scale {
+  --scale-track: #39415a; /* unfilled rest of the line, lighter than --bg-elevated-2 so it stays visible */
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  /* Never stretched by its row: the fill line ends with the last number. */
+  width: fit-content;
+  max-width: 100%;
+}
+.rating-scale--bock {
+  --scale-low: #c08be6;
+  --scale-high: #c24bd8;
+}
+.rating-scale--skill {
+  --scale-low: #9bb7f5;
+  --scale-high: #536dff;
+}
+.rating-scale .event-poll-response-toolbar .btn.is-selected {
+  box-shadow: inset 0 0 0 1px var(--scale-high);
+  color: var(--scale-low);
+}
+.rating-scale-meter {
+  display: block;
+  height: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--scale-track);
+  overflow: hidden;
+}
+.rating-scale-meter.is-unrated {
+  background: transparent;
+  border-top: 1px dashed var(--scale-track);
+  border-radius: 0;
+}
+.rating-scale-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--scale-low), var(--scale-high));
 }
 .event-poll-response-toolbar .btn:not(.btn-square) {
   min-width: var(--tap-target-size);
@@ -1243,6 +1287,33 @@ textarea {
 .poll-option-switch:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+/* While the result stays hidden from the viewer (a running Vote, an Umfrage
+   with a hidden interim result) the result and voter columns would stay
+   empty: the answers move up beside the title instead, and wide screens show
+   two options per row. Phones keep the regular stacked layout below. */
+@media (min-width: 640px) { /* --bp-md */
+  .event-poll-options.is-compact .event-poll-option {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .event-poll-options.is-compact .event-poll-result {
+    display: none;
+  }
+}
+@media (min-width: 860px) { /* --bp-lg */
+  /* Filled column by column (--compact-rows = half the options, rounded up),
+     so the list reads down the left column first, then the right one. */
+  .event-poll-options.is-compact {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(var(--compact-rows, 1), auto);
+    grid-auto-flow: column;
+    column-gap: var(--space-7);
+  }
+  .event-poll-options.is-compact .event-poll-option.is-column-start {
+    border-top: 0;
+    padding-top: 0;
+  }
 }
 @media (max-width: 639px) { /* --bp-md */
   .event-poll-card-header {
@@ -3980,9 +4051,9 @@ button.card {
 /* Spiele view (gameCatalog.js): one compact table-like row per game. A real
    <table> would need horizontal scroll on a phone (the lesson from the old
    .catalog-table), so it's a CSS grid: name/Bock/Skill as columns on wide
-   screens, on a phone the two sliders wrap into a second line via
-   display:contents on the .game-row-sliders wrapper. Reuses .skill-row for
-   the Bock/Skill sliders so editing looks identical everywhere it appears. */
+   screens; on a phone Bock and Skill stack below the name, each with the full
+   width for its 0-5 number scale. .game-row-sliders becomes display:contents
+   on wide screens. */
 .game-table {
   display: flex;
   flex-direction: column;
@@ -4103,17 +4174,10 @@ button.card {
 .game-row-sliders {
   grid-area: sliders;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  column-gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
 }
-/* Extra breathing room between the two rating columns specifically (plain
-   column-gap above would space Bock from Skill exactly as tight as it
-   spaces Skill from whatever follows). */
-.game-row-skill {
-  padding-left: var(--space-3);
-}
-/* On a phone the Ø note gets its own always-reserved line inside each slider
+/* On a phone the Ø note gets its own always-reserved line inside each rating
    cell — inline it would wrap only when present, and rows in the same list
    must never end up with different heights (see CLAUDE.md list rules). */
 @media (max-width: 639px) { /* --bp-md */
