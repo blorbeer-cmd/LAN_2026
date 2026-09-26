@@ -73,7 +73,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   muted column on the right. Unread entries read in full contrast with a bold title, without an
   accent edge or „Neu“ badge; read and obsolete entries recede to muted text. Obsolete entries
   (their underlying workflow resolved, or their own expiry passed) carry a quiet „Obsolet“ or
-  „Abgelaufen“ pill and never count as unread. The sticky footer holds neutral bulk actions in equal
+  „Abgelaufen“ pill, show „Für dich“ as a neutral instead of an accent pill and never count as
+  unread. The sticky footer holds neutral bulk actions in equal
   columns across the full width: „Alle gelesen“ and „Alle löschen“ (whose confirmation stays red),
   preceded by „Aufräumen“ only while at least one obsolete entry is present.
 

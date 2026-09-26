@@ -89,10 +89,11 @@ export function entryHtml(entry) {
   const obsolete = isFeedEntryObsolete(entry);
   const unread = !entry.seen && !obsolete;
   // Event, audience and state are pills in the meta line so they stay
-  // scannable at a glance; the time follows as muted text.
+  // scannable at a glance; the time follows as muted text. "Für dich" only
+  // carries the accent while the entry is still relevant.
   const meta = [
     entry.eventName ? `<span class="badge badge-event">${escapeHtml(entry.eventName)}</span>` : '',
-    entry.audience === 'direct' ? '<span class="badge badge-online">Für dich</span>' : '',
+    entry.audience === 'direct' ? `<span class="badge ${obsolete ? 'badge-neutral' : 'badge-online'}">Für dich</span>` : '',
     obsolete ? `<span class="badge badge-neutral">${entry.resolvedAt ? 'Obsolet' : 'Abgelaufen'}</span>` : '',
     `<span class="notification-center-time">${formatDateTime(entry.createdAt)} Uhr</span>`,
   ].join('');

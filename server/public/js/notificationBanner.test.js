@@ -23,6 +23,14 @@ test('event and direct audience show as escaped pills', () => {
   assert.match(html, /badge badge-online">Für dich</);
 });
 
+test('the "Für dich" pill loses its accent once the entry is obsolete', () => {
+  const resolved = entryHtml({ ...baseEntry, audience: 'direct', resolvedAt: Date.now() - 1000 });
+  const expired = entryHtml({ ...baseEntry, audience: 'direct', expiresAt: Date.now() - 1000 });
+
+  assert.match(resolved, /badge badge-neutral">Für dich</);
+  assert.match(expired, /badge badge-neutral">Für dich</);
+});
+
 test('a food-order notification carries its order target', () => {
   const html = entryHtml({ ...baseEntry, url: '/#foodOrders/order-42' });
 
