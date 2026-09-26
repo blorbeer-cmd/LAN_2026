@@ -38,6 +38,7 @@ import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from
 import { emptyStateHtml } from '../emptyState.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { ratingScaleHtml } from '../ratingScale.js';
+import { skillRatingFor } from '../skillDisplay.js';
 import { voteBreakdownHtml, voterNamesText, voterStackHtml, WIN_CHIP } from '../voteBreakdown.js';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
@@ -315,20 +316,22 @@ function answerChipHtml(hasSubmitted) {
 // the round runs the result and voter columns stay empty, exactly like an
 // Umfrage with a hidden interim result.
 // The viewer's own Bock (0-5) for a game, or null. Vote points use the same
-// scale, so it serves as orientation and as the optional prefill.
+// scale, so an unanswered ballot starts from it.
 function ownBock(gameId) {
   const myId = getMyId();
   const entry = myId ? state.preferences?.find((pref) => pref.player_id === myId && pref.game_id === gameId) : null;
   return entry ? entry.rating : null;
 }
 
-// Games still unrated in the draft that the viewer already has a Bock for.
-function prefillableGames(votes) {
-  return votes.results.filter((r) => !draftPoints.has(r.gameId) && ownBock(r.gameId) !== null);
+// The viewer's own Skill beside each game as orientation; 0 means
+// "kenne ich nicht", – means not rated yet.
+function ownSkillHtml(gameId) {
+  const myId = getMyId();
+  const skill = myId ? skillRatingFor(myId, gameId) : null;
+  return `<span class="vote-own-skill${skill === null ? ' is-missing' : ''}">Mein Skill: ${skill ?? '–'}</span>`;
 }
 
 function renderOpenRow(votes, r, draftReady) {
-  const bock = votes.mode === 'points' ? ownBock(r.gameId) : null;
   let control;
   if (!draftReady) {
     control = '<span class="muted vote-points-loading">Lädt…</span>';
@@ -349,15 +352,13 @@ function renderOpenRow(votes, r, draftReady) {
       groupLabel: `Punkte für ${r.gameName}`,
       valueLabel: pointsValueText,
       attributes: (value) => `data-vote-points="${r.gameId}" data-points-value="${value}"`,
-      hint: bock,
-      hintLabel: 'dein Bock',
     });
   }
   return `
     <div class="event-poll-option" data-points-row="${r.gameId}">
       <div class="event-poll-option-info">
         <span class="event-poll-option-title-row"><strong>${escapeHtml(r.gameName)}</strong></span>
-        <span class="muted event-poll-option-note">${votes.mode === 'points' ? `<span class="vote-own-bock${bock === null ? ' is-missing' : ''}">Dein Bock: ${bock ?? '–'}</span> · ` : ''}${gameMetaHtml(r)}</span>
+        <span class="muted event-poll-option-note">${ownSkillHtml(r.gameId)} · ${gameMetaHtml(r)}</span>
       </div>
       <span class="event-poll-result"></span>
       <span class="event-poll-option-badges">
@@ -399,9 +400,8 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
       </header>
       <div class="stack event-poll-card-content">
         <section class="stack event-poll-round">
-          <div class="event-poll-tags vote-round-tags">
+          <div class="event-poll-tags">
             ${tags.map((tag) => `<span class="event-poll-tag">${tag}</span>`).join('')}
-            ${isPoints && mineReady && prefillableGames(votes).length ? '<span class="vote-bock-prefill"><button type="button" class="btn btn-sm" id="votes-bock-prefill">Mit meinem Bock vorbelegen</button></span>' : ''}
           </div>
           ${votes.info ? `<p class="event-poll-note">${escapeHtml(votes.info)}</p>` : ''}
           <div class="stack event-poll-options has-answers is-compact">${rows}</div>
@@ -631,6 +631,14 @@ export function renderVotes(container, ctx) {
   if (mineReady && draftKey !== mineCacheKey) {
     draftSingleGameId = votes.mode === 'single' ? [...mineCache.keys()][0] ?? null : null;
     draftPoints = new Map([...mineCache].filter(([, points]) => typeof points === 'number'));
+    // A ballot not yet answered starts from the viewer's own Bock per game;
+    // it is still only a local draft until "Speichern".
+    if (votes.mode === 'points' && mineCache.size === 0) {
+      for (const r of votes.results) {
+        const bock = ownBock(r.gameId);
+        if (bock !== null) draftPoints.set(r.gameId, bock);
+      }
+    }
     draftKey = mineCacheKey;
   }
 
@@ -758,12 +766,6 @@ export function renderVotes(container, ctx) {
   });
 
   // Like an Umfrage rating: pressing the chosen number again clears it.
-  // Fills only the games still unrated in the draft; nothing is saved until
-  // "Speichern", and choices already made stay untouched.
-  container.querySelector('#votes-bock-prefill')?.addEventListener('click', () => {
-    for (const r of prefillableGames(state.votes)) draftPoints.set(r.gameId, ownBock(r.gameId));
-    ctx.rerender();
-  });
 
   container.querySelectorAll('[data-vote-points]').forEach((btn) => {
     btn.addEventListener('click', () => {

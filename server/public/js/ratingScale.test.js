@@ -13,15 +13,6 @@ test('a plain scale renders six numbers with only the chosen one pressed', () =>
   assert.doesNotMatch(html, /rating-scale-meter/);
 });
 
-test('a reference value is pre-marked and named, but never pressed', () => {
-  const html = ratingScaleHtml({ selected: null, groupLabel: 'Punkte', attributes, hint: 4, hintLabel: 'dein Bock' });
-  assert.match(html, /class="btn btn-square is-hint" data-value="4"\s+aria-label="4 von 5, dein Bock" aria-pressed="false"/);
-  assert.doesNotMatch(html, /aria-pressed="true"/);
-
-  const chosenElsewhere = ratingScaleHtml({ selected: 2, groupLabel: 'Punkte', attributes, hint: 2 });
-  assert.doesNotMatch(chosenElsewhere, /is-hint/, 'the chosen number is not additionally pre-marked');
-});
-
 test('a toned scale adds a fill line: proportional, empty for 0 and dashed while unrated', () => {
   const four = ratingScaleHtml({ selected: 4, groupLabel: 'Bock', attributes, tone: 'bock' });
   assert.match(four, /^<div class="rating-scale rating-scale--bock">/);

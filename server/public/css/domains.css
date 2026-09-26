@@ -1050,19 +1050,12 @@ input[type='number'].tournament-result-score {
   margin: 0;
   font-size: var(--font-size-lg);
 }
-/* The viewer's own Bock beside each game, in the Bock violet; the matching
-   number of the scale carries the same color as a dashed pre-mark. */
-.vote-own-bock {
-  color: var(--accent-2);
+/* The viewer's own Skill beside each game, in the Skill blue. */
+.vote-own-skill {
+  color: var(--accent);
 }
-.vote-own-bock.is-missing {
+.vote-own-skill.is-missing {
   color: var(--text-muted);
-}
-.vote-round-tags {
-  align-items: center;
-}
-.vote-bock-prefill {
-  margin-left: auto;
 }
 /* Sits in the voter column, which stays empty while the round runs. */
 .vote-decline-tag {

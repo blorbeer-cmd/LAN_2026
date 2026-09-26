@@ -248,14 +248,14 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await roundCard.locator('.event-poll-bar').count(), 0, 'no bars while the round is open');
   // With the result hidden, the numbers sit beside the name: two games per
   // row from --bp-lg, the regular stacked rows on a phone. Every row names
-  // the viewer's own Bock as orientation.
+  // the viewer's own Skill as orientation.
   const ballotColumns = () => roundCard.locator('.event-poll-options').evaluate((element) =>
     getComputedStyle(element).display === 'grid' ? getComputedStyle(element).gridTemplateColumns.split(' ').length : 1);
   assert.equal(await ballotColumns(), 1);
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(await ballotColumns(), 2);
   await page.setViewportSize({ width: 390, height: 844 });
-  assert.match((await roundCard.locator('.vote-own-bock').first().textContent()) ?? '', /^Dein Bock: (d|–)$/);
+  assert.match((await roundCard.locator('.vote-own-skill').first().textContent()) ?? '', /^Mein Skill: (\d|–)$/);
 
   // Same 0-5 number scale as an Umfrage rating.
   const ballotRows = roundCard.locator('[data-points-row]');
@@ -269,10 +269,16 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
 
   // Regression: a cancelled round is deleted and the next round reuses its
   // number. Its saved ballot must neither prefill nor mark the new round as
-  // answered.
+  // answered; an unanswered ballot starts from the own Bock instead, here
+  // for the one game Alice has a Bock for.
   for (let index = 0; index < totalGames; index += 1) await setPoints(index, 2);
   await page.click('#votes-submit');
   await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
+  const bockGameId = (await ballotRows.first().getAttribute('data-points-row')) ?? '';
+  const bockResponse = await page.request.put(`${BASE_URL}/api/preferences`, {
+    data: { playerId: alice.id, gameId: bockGameId, rating: 4 },
+  });
+  assert.equal(bockResponse.status(), 200, await bockResponse.text());
   await roundCard.locator('.action-menu > summary').click();
   await page.click('#votes-cancel');
   await page.click('[data-confirm]');
@@ -281,8 +287,16 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await roundCard.locator('[data-vote-participation]:text-is("0/2 abgegeben")').waitFor();
   await roundCard.locator('.event-poll-answer-inline:has-text("Deine Stimme fehlt")').waitFor();
   await page.waitForLoadState('networkidle');
-  assert.equal(await roundCard.locator('[data-vote-points][aria-pressed="true"]').count(), 0);
+  assert.deepEqual(
+    await roundCard.locator('[data-vote-points][aria-pressed="true"]').evaluateAll((buttons) =>
+      buttons.map((button) => [(button as HTMLElement).dataset.votePoints, (button as HTMLElement).dataset.pointsValue])),
+    [[bockGameId, '4']],
+    'only the own Bock is preselected, never the cancelled ballot'
+  );
+  await roundCard.locator('[data-vote-rated-progress]').filter({ hasText: `1 von ${totalGames} bewertet` }).waitFor();
   assert.ok(await page.locator('#votes-submit').isDisabled());
+  const bockCleanup = await page.request.delete(`${BASE_URL}/api/preferences/${alice.id}/${bockGameId}`);
+  assert.equal(bockCleanup.status(), 204);
   await setPoints(0, 5);
   await setPoints(1, 5);
   await roundCard.locator('[data-vote-rated-progress]').filter({ hasText: `2 von ${totalGames} bewertet` }).waitFor();

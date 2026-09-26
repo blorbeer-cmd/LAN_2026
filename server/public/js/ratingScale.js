@@ -15,8 +15,6 @@ function scaleValue(value) {
 // selected: the chosen value (number or numeric string) or null/undefined.
 // attributes(value) returns trusted, already escaped markup that identifies
 // the button for the caller's click handler.
-// hint: an optional reference value (Vote: the viewer's own Bock) marked with
-// a dashed outline while another or no number is chosen.
 // tone ('bock' | 'skill'): colors the chosen number and adds the fill line
 // below the numbers that picks up the former sliders' gradient.
 export function ratingScaleHtml({
@@ -25,18 +23,14 @@ export function ratingScaleHtml({
   valueLabel = (value) => `${value} von ${RATING_SCALE_MAX}`,
   attributes,
   disabled = false,
-  hint = null,
-  hintLabel = '',
   tone = null,
 }) {
   const chosen = scaleValue(selected);
-  const hinted = scaleValue(hint);
-  const buttonClass = (value) => (chosen === value ? ' is-selected' : hinted === value ? ' is-hint' : '');
   const toolbar = `
     <div class="selection-toolbar event-poll-response-toolbar event-poll-rating-toolbar" role="group" aria-label="${escapeHtml(groupLabel)}">
       ${RATING_SCALE_VALUES.map((value) => `
-        <button type="button" class="btn btn-square${buttonClass(value)}" ${attributes(value)}
-          aria-label="${escapeHtml(`${valueLabel(value)}${hinted === value && hintLabel ? `, ${hintLabel}` : ''}`)}" aria-pressed="${chosen === value}" ${disabled ? 'disabled' : ''}>${value}</button>`).join('')}
+        <button type="button" class="btn btn-square${chosen === value ? ' is-selected' : ''}" ${attributes(value)}
+          aria-label="${escapeHtml(valueLabel(value))}" aria-pressed="${chosen === value}" ${disabled ? 'disabled' : ''}>${value}</button>`).join('')}
     </div>`;
   if (!tone) return toolbar;
   // The fill line repeats the chosen value visually; a dashed empty line means

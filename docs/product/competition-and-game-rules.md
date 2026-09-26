@@ -298,13 +298,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   through the existing realtime refresh) and the viewer's own state („Abgegeben“ or „Deine Stimme
   fehlt“); admins get a compact „Beenden“ beside an „Aktion“ menu holding „Abbrechen“. A
   „Zwischenstand verborgen“ tag and the round info follow. Games are listed alphabetically, one
-  Umfrage option row each: name and one compact meta line that starts with the viewer's own Bock
-  („Dein Bock: X“, „–“ without one) followed by the other values, and the same 0–5 number scale
+  Umfrage option row each: name and one compact meta line that starts with the viewer's own Skill
+  („Mein Skill: X“, „–“ without one) followed by the other values, and the same 0–5 number scale
   as an Umfrage rating as the answer control. Like every Umfrage with a hidden interim result, the
   empty result column is dropped so the numbers sit beside the name, and from `--bp-lg` two games
-  share a row. The number matching the own Bock carries a dashed violet pre-mark until another or
-  that number is chosen; „Mit meinem Bock vorbelegen“ beside the tags fills every still-unrated
-  game that has an own Bock, leaves chosen numbers untouched and saves nothing by itself. No selected number means unrated; pressing the chosen number again clears
+  share a row. A ballot the viewer has not saved yet in this round starts with the own Bock
+  preselected for every game that has one; games without an own Bock start unrated. This
+  preselection is only a local draft — nothing counts until „Speichern“. No selected number means unrated; pressing the chosen number again clears
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
   own progress („X von Y bewertet“), the „Unbewertet“ chip that narrows the list to still-unrated
   games, and „Speichern“, enabled once every game is rated. A runoff offers the Umfrage
