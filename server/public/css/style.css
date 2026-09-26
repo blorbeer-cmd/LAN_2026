@@ -503,7 +503,8 @@ textarea {
   cursor: pointer;
 }
 /* Unread entries read in full contrast with a bold title; read and obsolete
-   ones recede to muted text. No color rail, no pill. */
+   ones recede to muted text. No color rail; event, audience and state keep
+   their pills in the meta line. */
 .notification-center-entry.is-unread .notification-center-open {
   color: var(--text);
 }
@@ -541,6 +542,10 @@ textarea {
   -webkit-line-clamp: 2;
 }
 .notification-center-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
 }

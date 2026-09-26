@@ -310,7 +310,7 @@ flowTest('Durchsage: notification center can navigate, mark read and remove with
   // server-side (resolvePushTopic in routes/broadcasts.ts): the center shows
   // it as already settled rather than as something still needing attention,
   // even though it was never explicitly marked read.
-  await endedNotification.locator('.notification-center-meta:has-text("Beendet")').waitFor();
+  await endedNotification.locator('.notification-center-meta .badge:has-text("Obsolet")').waitFor();
   assert.ok(!((await endedNotification.getAttribute('class')) ?? '').includes('is-unread'));
   // "Alle gelesen" has nothing to do here either: every visible entry is
   // already obsolete, so it stays disabled instead of offering a click with
