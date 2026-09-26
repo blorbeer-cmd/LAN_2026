@@ -10,7 +10,7 @@ mehreren Abstimmungsrunden mit dem Nutzer und einer Konzeptprüfung durch Codex 
   Draft-PR #684 enthalten nur diese Übergabe und das Mockup.
 - **Die Umsetzung erfolgt vollständig in genau diesem einen PR** auf demselben Branch. Das hat der
   Nutzer ausdrücklich so festgelegt.
-- **Verbindlich ist das Mockup** `docs/mockups/match-turnier-angleichen.html` (Version 9). Im Browser
+- **Verbindlich ist das Mockup** `docs/mockups/match-turnier-angleichen.html` (Version 10). Im Browser
   öffnen. Die App-Ansichten darin nutzen die Tokens aus `server/public/css/style.css`, bauen die
   Komponenten aber nach. Es zeigt Aufbau, Reihenfolge, Texte und Farbbedeutungen, ist aber keine
   Pixelvorlage. Maßgeblich für Maße, Abstände und Komponenten bleiben `server/DESIGN_SYSTEM.md`, die
@@ -26,7 +26,7 @@ mehreren Abstimmungsrunden mit dem Nutzer und einer Konzeptprüfung durch Codex 
 - Historie: nur die **Skill-Summe des Teams**, keine Skill-Level einzelner Spieler.
 - **Captain Draft speichert künftig die Skill-Werte** beim Abschluss. Ältere Draft-Einträge ohne
   gespeicherte Werte zeigen keinen Skill statt einer falschen Zahl.
-- Nie gespielte Auslosungen bleiben erhalten und stehen gesammelt unter „Ohne Ergebnis (n)“.
+- Nie gespielte Auslosungen bleiben erhalten und stehen gesammelt in der letzten Kachel „Ohne Ergebnis“.
 - K.-o.-Runde mit nur einem Spiel als 1:1-Spielzeile „Finale“ statt Turnierbaum.
 - Der Turnier-Tab entfällt. **Kein Zurück-Knopf „‹ Match“** auf der Turnierseite (Designregel
   „No back buttons“); zurück geht es über „Match“ in der Navigation und die Zurück-Geste.
@@ -67,7 +67,8 @@ Konfliktschutz über `expectedPlayedAt`; im Match `teams[]` mit `score`/`rank` u
    „Nur Sieger wählen“.
 2. **Im Turnier keine Modus-Knöpfe.** `trackScore` legt den Modus fest.
 3. **Modus „Sieger“:** eine Auswahl je Team (Teamname, darunter Spielernamen), dazu
-   „Unentschieden“, wenn erlaubt. Kein einleitender Satz. Es ist eine echte Einfachauswahl
+   „Unentschieden“, wenn erlaubt. Alle Auswahlknöpfe sind gleich hoch und linksbündig, auch
+   „Unentschieden“. Kein einleitender Satz. Es ist eine echte Einfachauswahl
    (native Radios oder `role="radio"` mit `aria-checked` in einer benannten Gruppe); der grüne
    `.is-selected`-Rahmen ist nur die sichtbare Markierung. Nichts ist vorausgewählt, außer beim
    Bearbeiten das gespeicherte Ergebnis. Die übrigen Teams erhalten keinen Platz (`rank: null`).
@@ -106,6 +107,8 @@ Betroffen: `renderHistory` und `renderDrawCard` in `server/public/js/views/match
 `.matchmaking-draw-*` in `server/public/css/style.css`. Vorbild ist das Muster der Umfragen-Karten
 (`event-poll-card` in `server/public/js/views/eventPolls.js`).
 
+0. **Die Karte „Historie“ bleibt als Ganzes einklappbar** wie heute: Pfeil im Kopf, startet
+   zugeklappt, Zustand bleibt erhalten.
 1. **Jeder Eintrag ist eine einklappbare Kachel.** Links ein Pfeil (`chevronRight`, zeigt aufgeklappt
    nach unten). Der Umschalter ist ein eigener Button mit `aria-expanded` und `aria-controls` neben
    den Aktionsknöpfen, keine verschachtelten Buttons. Alle Einträge starten zugeklappt; der Zustand
@@ -117,7 +120,11 @@ Betroffen: `renderHistory` und `renderDrawCard` in `server/public/js/views/match
      (z. B. „Team 2 · 45“) oder bei 2 Teams mit Punkten der Chip „3 : 1“ zusätzlich. Bei
      Unentschieden der Chip „Remis“. Dazu die Teamanzahl. Das Badge „Captain Draft“ bleibt.
    - Rechts: bei eingetragenem Ergebnis „Rematch“ und der Stift; bei offener Auslosung „+“ und
-     „Turnier erstellen“; bei einem Turnier der Knopf mit dem Turniernamen. Auf dem Handy darf die
+     „Turnier erstellen“; bei einem Turnier der Knopf „Turnier“, der die Turnierseite öffnet. Der
+     Turniername steht dann in Zeile 2 („LAN Cup · Sieger: Team Anna“). Der Stift bleibt im festen
+     Aktionsplatz ganz rechts (Designregel 11); beim Turnier bleibt dieser Platz leer, damit
+     „Rematch“ und „Turnier“ untereinander stehen. Alle Knöpfe im Kopf sind gleich hoch
+     (`--control-height`). Auf dem Handy darf die
      Aktionsgruppe bei langen Namen vollständig in die nächste Zeile rücken.
 3. **Aufgeklappt:** Teams nach Platz sortiert, je Zeile Platzzahl (wie `.lb-rank`, Platz 1 gold),
    Teamname, dahinter **nur die Skill-Summe des Teams** mit dem bisherigen Skill-Symbol
@@ -132,8 +139,9 @@ Betroffen: `renderHistory` und `renderDrawCard` in `server/public/js/views/match
    (`server/src/routes/draft.ts`, heute `rating: null`, `totalRating: 0`) mit einer eindeutigen
    Kennung, dass ein Snapshot vorliegt. Draft-Einträge ohne diese Kennung (alte Drafts) zeigen keinen
    Skill. Die Draft-Wahl selbst bleibt unabhängig vom Skill.
-5. **Offene Auslosungen** stehen gesammelt in einer eigenen, eingeklappten Gruppe
-   **„Ohne Ergebnis (n)“** am Ende der Historie (Stil wie „Frühere Runden (n)“ bei Umfragen). Der
+5. **Offene Auslosungen** stehen gesammelt in der letzten Kachel der Historie. Sie ist genauso
+   aufgebaut wie die anderen Einträge (gleiche Größe, keine Einrückung): Pfeil, Titel
+   **„Ohne Ergebnis“**, darunter „N Auslosungen, noch nicht gespielt“, rechts das Badge „Offen“. Der
    Server verwirft nichts. Aufgeklappt bleiben sie so bearbeitbar wie heute (Spieler verschieben,
    Team-Auswahl auf Touch-Geräten, „+“, „Turnier erstellen“).
 6. **Filter „Alle | Matches | Turniere“** oben in der Historie, als Filterchips wie im
@@ -164,6 +172,8 @@ normale 1:1-Spielzeile wie im Spielplan (`fixtureRowHtml` in
 - Ab 3 Teams in der K.-o.-Runde (auch mit Freilos) bleibt der Turnierbaum unverändert. Solange die
   K.-o.-Phase noch nicht erzeugt ist, bleibt der heutige leere Zustand.
 - Aktionen wie überall: „+“ offen, Stift entschieden, derselbe Ergebnis-Dialog aus Teil 1.
+- Der Chip in der Mitte („vs“ bzw. „3 : 1“) hat dieselbe Höhe wie die Aktion daneben. Das gilt für
+  alle Spielzeilen im Turnier, auch im Liga-Spielplan.
 - Der TV-Kiosk bleibt unverändert.
 
 ### Turnier-Tab auflösen
@@ -209,7 +219,10 @@ Turnierseite und die Laptop-Variante. Inhalte und Regeln sind dieselben wie auf 
 Anordnung nutzt die Breite. Die bestehenden Layoutstufen bleiben (`--bp-lg` 1080 px Inhalt,
 Desktop-Modus ab `--bp-xl` mit linker Leiste und bis 1600 px Inhalt).
 
-- **Match-Seite:** „Laufende Turniere“ in zwei Spalten. Der Historie-Kopf steht in einer Zeile:
+- **Match-Seite:** „Laufende Turniere“ in zwei Spalten. In der Setup-Karte stehen „Spiel
+  auswählen“ (bestehende Auswahl mit Suche) links und „Modus“ rechts in einer Reihe, beide mit
+  Beschriftung darüber und bündig ausgerichtet; auf dem Handy bleibt die heutige Reihenfolge
+  untereinander. Der Historie-Kopf steht in einer Zeile:
   Pfeil, Spiel, Zeit, Ergebnis, Teamanzahl, Aktionen rechts. Aufgeklappt stehen die Teams
   nebeneinander (bis zu vier Spalten), nach Platz sortiert. Die Spielerauswahl bleibt wie heute
   dreispaltig.
@@ -231,7 +244,7 @@ Desktop-Modus ab `--bp-xl` mit linker Leiste und bis 1600 px Inhalt).
   (`server/src/test/api.tournaments.test.ts`) weiterverwenden. Zusätzlich abdecken:
   - Platz aus Punkten inkl. Gleichstand; Sieger-/Punkte-Validierung; K.-o. ohne Unentschieden
   - Siegerwahl ohne Punkte bei mehreren Teams; Frei-für-alle mit mehr als sechs Personen
-  - Historie: Filter serverseitig vor der Begrenzung, „Ältere laden“, „Ohne Ergebnis (n)“,
+  - Historie: Filter serverseitig vor der Begrenzung, „Ältere laden“, Kachel „Ohne Ergebnis“,
     Sortierung ohne Änderung der Indizes für Bearbeiten/Rematch
   - Draft-Snapshot der Skill-Werte; alte Drafts ohne Snapshot
   - Finale-Zeile bei einem K.-o.-Spiel; 3 K.-o.-Teams mit Freilos; noch nicht erzeugte K.-o.-Phase;
@@ -262,7 +275,7 @@ Desktop-Modus ab `--bp-xl` mit linker Leiste und bis 1600 px Inhalt).
 - Bei 2 bis 6 Teams sieht der Punktestand gleich aus; Plätze erscheinen live und stimmen nach dem
   Speichern mit der Historie überein.
 - Die Historie ist einklappbar, nennt im Kopf immer das Siegerteam, zeigt Rematch und Stift im Kopf,
-  nur Team-Skill, „Ohne Ergebnis (n)“, den Filter „Alle | Matches | Turniere“ und „Ältere laden“.
+  nur Team-Skill, die Kachel „Ohne Ergebnis“, den Filter „Alle | Matches | Turniere“ und „Ältere laden“.
   Alle Turniere eines Spiels sind über den Filter erreichbar.
 - Neue Captain Drafts zeigen ihren damaligen Team-Skill; alte zeigen keinen.
 - Eine K.-o.-Runde mit einem Spiel erscheint als Spielzeile „Finale“.

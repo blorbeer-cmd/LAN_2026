@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <!-- Mockup zu docs/plans/match-turnier-angleichen-handover.md. App-Ebene nutzt die Tokens aus
      server/public/css/style.css; die Annotationsebene ist nur Dokumentation. -->
-<title>Match und Turnier angleichen — Respawn, Mockup Version 9</title>
+<title>Match und Turnier angleichen — Respawn, Mockup Version 10</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -341,6 +341,18 @@ td .sev { display: inline-block; font-family: var(--mono); font-size: 0.68rem; p
 .d-bottomnav { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--border); background: var(--bg-elevated); font-size: 0.72rem; color: var(--text-muted); text-align: center; padding: 8px 0; }
 .d-bottomnav .on { color: var(--text); font-weight: 600; }
 
+/* ---------- v10: Kommentare Daniel ---------- */
+.modal:has(.modes) .pick { min-height: 52px; justify-content: center; }
+.pick.draw.center { align-items: flex-start; }
+.fixture .chip-score { min-height: 30px; display: inline-flex; align-items: center; }
+.hactions2 { display: flex; gap: 6px; align-items: center; }
+.hactions2 > .btn, .hactions2 > .act { height: 30px; min-height: 30px; }
+.hactions2 > .act { width: 30px; }
+.act-spacer { width: 30px; height: 30px; flex: 0 0 30px; }
+.chev-open { transform: rotate(90deg); color: var(--text-muted); }
+.field.dd { justify-content: space-between; color: var(--text); }
+.field.dd::after { content: '▾'; color: var(--text-muted); font-size: 0.75rem; }
+.lbl-xs { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; }
 /* ---------- Empfehlung ---------- */
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; counter-reset: s; }
 .step { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
@@ -370,7 +382,7 @@ ul.plain strong { color: var(--text); }
 <div class="wrap">
 
 <header class="top">
-  <span class="eyebrow">Analyse · Stand main 156f039 · nichts umgesetzt · Version 9</span>
+  <span class="eyebrow">Analyse · Stand main 156f039 · nichts umgesetzt · Version 10</span>
   <h1>Match und Turnier angleichen</h1>
   <p class="lead">Die letzte Prüfung ist teilweise überholt. Seit den PRs #662, #667 und #672 nutzen Match und Turnier bereits denselben Ergebnis-Dialogstil und dieselben Plus- und Stift-Aktionen. Übrig sind Abweichungen in Beschriftung, Punkte-Eingabe und Ergebnis-Anzeige, dazu ein dritter, ganz anders gebauter Ergebnis-Dialog in der Auswertung. Neu betrachtet: Ergebnisse mit mehreren Teams, die Modi Sieger und Punktestand, und die Match-Historie. Den Turnier-Tab kann man auflösen.</p>
   <div class="meta-row">
@@ -638,7 +650,7 @@ ul.plain strong { color: var(--text); }
       <div class="shot-label"><span class="pill before">Vorher</span> Historie im Match</div>
       <div class="phone">
         <div class="card">
-          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">9</span></span></div>
+          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">9</span><svg class="ic chev-open"><use href="#i-chev"/></svg></span></div>
           <div class="card" style="background:var(--bg-elevated-2)">
             <div class="row between">
               <div class="row" style="flex-wrap:wrap;gap:6px"><strong class="sm">Mario Kart</strong><span class="muted xs">Sa 21:14</span></div>
@@ -674,7 +686,7 @@ ul.plain strong { color: var(--text); }
       <div class="shot-label"><span class="pill after">Nachher</span> Historie, alles zugeklappt</div>
       <div class="phone">
         <div class="card">
-          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">9</span></span></div>
+          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">9</span><svg class="ic chev-open"><use href="#i-chev"/></svg></span></div>
           <div class="chip-row"><span class="chipf on">Alle</span><span class="chipf">Matches</span><span class="chipf">Turniere</span></div>
           <div class="hlist">
             <div class="hentry focus-hint">
@@ -692,8 +704,8 @@ ul.plain strong { color: var(--text); }
             </div>
             <div class="hentry">
               <div class="hhead"><svg class="chev"><use href="#i-chev"/></svg>
-                <span class="htitle"><span class="l1">Rocket League</span><span class="l2"><span>Fr 22:40</span><span class="badge">Turnier</span><span>Sieger: <b style="color:var(--text)">Team Anna</b></span></span></span>
-                <span class="hactions2"><span class="btn">LAN Cup</span></span>
+                <span class="htitle"><span class="l1">Rocket League</span><span class="l2"><span>Fr 22:40</span><span class="badge">Turnier</span><span>LAN Cup · Sieger: <b style="color:var(--text)">Team Anna</b></span></span></span>
+                <span class="hactions2"><span class="btn">Turnier</span><span class="act-spacer"></span></span>
               </div>
             </div>
             <div class="hentry">
@@ -703,7 +715,7 @@ ul.plain strong { color: var(--text); }
               </div>
             </div>
           </div>
-          <div class="subgroup"><span class="row" style="gap:6px"><svg class="ic"><use href="#i-chev"/></svg>Ohne Ergebnis (5)</span><span class="badge">Offen</span></div>
+          <div class="hentry"><div class="hhead"><svg class="chev"><use href="#i-chev"/></svg><span class="htitle"><span class="l1">Ohne Ergebnis</span><span class="l2"><span>5 Auslosungen, noch nicht gespielt</span></span></span><span class="badge">Offen</span></div></div>
         </div>
           <span class="btn" style="align-self:center">Ältere laden</span>
       </div>
@@ -711,7 +723,7 @@ ul.plain strong { color: var(--text); }
         <li class="good">Jeder Eintrag ist eine eigene Kachel mit Pfeil links, wie die Umfragen-Karten</li>
         <li class="good">Zugeklappt: Spiel, Zeit, immer das Siegerteam mit „Win“, dazu die Punkte oder „3 : 1“, Teamanzahl</li>
         <li class="good">„Rematch“ und Stift stehen im Kopf, also ohne Aufklappen erreichbar</li>
-        <li class="good">Nie gespielte Auslosungen gesammelt unter „Ohne Ergebnis (n)“</li>
+        <li class="good">Nie gespielte Auslosungen gesammelt in der letzten Kachel „Ohne Ergebnis“, gleich aufgebaut wie die anderen Einträge</li>
         <li class="good">Filter „Alle | Matches | Turniere“ oben, im Stil der Filterchips im Spielekatalog</li>
         <li class="good">„Ältere laden“ holt weitere Einträge nach; „Turniere“ zeigt alle Turniere des Spiels</li>
       </ul>
@@ -720,7 +732,7 @@ ul.plain strong { color: var(--text); }
       <div class="shot-label"><span class="pill after">Nachher</span> Historie, ein Eintrag aufgeklappt</div>
       <div class="phone">
         <div class="card">
-          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">9</span></span></div>
+          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">9</span><svg class="ic chev-open"><use href="#i-chev"/></svg></span></div>
           <div class="chip-row"><span class="chipf">Alle</span><span class="chipf on">Matches</span><span class="chipf">Turniere</span></div>
           <div class="hlist">
             <div class="hentry">
@@ -742,7 +754,7 @@ ul.plain strong { color: var(--text); }
               </div>
             </div>
           </div>
-          <div class="subgroup"><span class="row" style="gap:6px"><svg class="ic"><use href="#i-chev"/></svg>Ohne Ergebnis (5)</span><span class="badge">Offen</span></div>
+          <div class="hentry"><div class="hhead"><svg class="chev"><use href="#i-chev"/></svg><span class="htitle"><span class="l1">Ohne Ergebnis</span><span class="l2"><span>5 Auslosungen, noch nicht gespielt</span></span></span><span class="badge">Offen</span></div></div>
         </div>
       </div>
       <ul class="notes">
@@ -764,8 +776,8 @@ ul.plain strong { color: var(--text); }
       <p>Die Historie zeigt nur die Skill-Summe je Team, in derselben Anzeige wie heute auf den Teamkarten (<code>teamSkillHtml</code>): das Skill-Symbol (<code>activity</code>) mit der Zahl dahinter, in Grau. „8 (1)“ heißt wie heute: davon 1 Spieler ohne eigene Bewertung. Einzelne Skill-Level der Spieler entfallen in der Historie. Captain Draft speichert heute keine Skill-Werte. Neue Drafts speichern sie künftig beim Abschluss; ältere Draft-Einträge zeigen keinen Skill statt einer falschen Zahl. Die Werte stammen immer aus dem Stand der Auslosung und ändern sich nicht nachträglich.</p>
     </div>
     <div class="callout">
-      <strong>Festgelegt: „Ohne Ergebnis (n)“</strong>
-      <p>Nie gespielte Auslosungen bleiben erhalten, stehen aber gesammelt in einer eigenen, eingeklappten Gruppe am Ende der Historie. Das ist reine Frontend-Arbeit; der Server verwirft beim erneuten Losen nichts. Die Produktregel zur gemischten Historie wird im selben PR angepasst.</p>
+      <strong>Festgelegt: Kachel „Ohne Ergebnis“</strong>
+      <p>Nie gespielte Auslosungen bleiben erhalten, stehen aber gesammelt in der letzten Kachel „Ohne Ergebnis“, gleich aufgebaut wie die anderen Einträge. Das ist reine Frontend-Arbeit; der Server verwirft beim erneuten Losen nichts. Die Produktregel zur gemischten Historie wird im selben PR angepasst.</p>
     </div>
     <div class="callout">
       <strong>Gering: Sieger im Turnierbaum</strong>
@@ -870,9 +882,10 @@ ul.plain strong { color: var(--text); }
         <div class="m-title">Match</div>
         <div class="tabs"><span class="btn primary">Teams</span><span class="btn">Turniere</span></div>
         <div class="card">
-          <span class="muted xs">Spiel auswählen</span>
-          <div class="field">Rocket League</div>
-          <div class="row"><span class="muted xs">Modus</span><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div>
+          <span class="lbl-xs">Spiel auswählen</span>
+          <div class="field dd">Rocket League</div>
+          <span class="lbl-xs">Modus</span>
+          <div class="row"><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div>
           <div class="check"><b></b>Anna</div><div class="check"><b></b>Ben</div>
           <span class="btn primary" style="align-self:flex-start">Teams auslosen</span>
         </div>
@@ -909,14 +922,16 @@ ul.plain strong { color: var(--text); }
           <div class="list-card"><span class="main"><strong class="sm">Rocket League Cup</strong><span class="muted xs">K.O.-Turnier · 1/3 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
         </div>
         <div class="card">
-          <span class="muted xs">Spiel auswählen</span>
-          <div class="field">Rocket League</div>
-          <div class="row"><span class="muted xs">Modus</span><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div>
-          <span class="btn primary" style="align-self:flex-start">Teams auslosen</span>
+          <span class="lbl-xs">Spiel auswählen</span>
+          <div class="field dd">Rocket League</div>
+          <span class="lbl-xs">Modus</span>
+          <div class="row"><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div>
+          <span class="muted xs">8 Spieler ausgewählt · 2 Teams</span>
+          <span class="btn primary" style="align-self:flex-end">Teams auslosen</span>
         </div>
         <div class="card">
-          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">6</span></span></div>
-          <div class="hitem"><div class="hhead"><svg class="chev"><use href="#i-chev"/></svg><span class="htitle"><span class="l1">Rocket League</span><span class="l2"><span>Fr 22:40</span><span class="badge">Turnier</span><span>Sieger: <b style="color:var(--text)">Team Anna</b></span></span></span><span class="btn">LAN Cup</span></div></div>
+          <div class="coll"><span class="m-h2">Historie</span><span class="row"><span class="badge">6</span><svg class="ic chev-open"><use href="#i-chev"/></svg></span></div>
+          <div class="hitem"><div class="hhead"><svg class="chev"><use href="#i-chev"/></svg><span class="htitle"><span class="l1">Rocket League</span><span class="l2"><span>Fr 22:40</span><span class="badge">Turnier</span><span>LAN Cup · Sieger: <b style="color:var(--text)">Team Anna</b></span></span></span><span class="hactions2"><span class="btn">Turnier</span><span class="act-spacer"></span></span></div></div>
         </div>
         <div class="nav"><span>Home</span><span class="on">Match</span><span>Vote</span><span>Essen</span><span>Mehr</span></div>
       </div>
@@ -981,11 +996,11 @@ ul.plain strong { color: var(--text); }
     <div class="list-card"><span class="main"><strong class="sm">Rocket League Cup</strong><span class="muted xs">K.O.-Turnier · 1/3 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
     <div class="list-card"><span class="main"><strong class="sm">Mario Kart Liga</strong><span class="muted xs">Gruppenphase + K.O. · 6/7 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
   </div></div><div class="card">
-  <div class="d-grid2" style="align-items:end"><div class="stack" style="gap:4px"><span class="muted xs">Spiel auswählen</span><div class="field">Mario Kart</div></div>
-  <div class="row"><span class="muted xs">Modus</span><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div></div>
+  <div class="d-grid2" style="align-items:end"><div class="stack" style="gap:4px"><span class="lbl-xs">Spiel auswählen</span><div class="field dd">Mario Kart</div></div>
+  <div class="stack" style="gap:4px"><span class="lbl-xs">Modus</span><div class="row"><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div></div></div>
   <div class="d-roster"><div class="check"><b></b>Anna</div><div class="check"><b></b>Ben</div><div class="check"><b></b>Chris</div><div class="check"><b></b>Dana</div><div class="check"><b></b>Emil</div><div class="check"><b></b>Finn</div></div>
   <span class="btn primary" style="align-self:flex-end">Teams auslosen</span></div><div class="card">
-  <div class="row between"><span class="m-h2">Historie</span><span class="badge">9</span></div>
+  <div class="row between"><span class="m-h2">Historie</span><span class="row"><span class="badge">9</span><svg class="ic chev-open"><use href="#i-chev"/></svg></span></div>
   <div class="chip-row"><span class="chipf on">Alle</span><span class="chipf">Matches</span><span class="chipf">Turniere</span></div>
   <div class="hlist">
     <div class="hentry"><div class="dhead open"><svg class="chev"><use href="#i-chev"/></svg>
@@ -995,13 +1010,13 @@ ul.plain strong { color: var(--text); }
         <span class="dline"><b>Rocket League</b><span>Sa 20:40</span><span class="res"><span class="chip-win">Win</span>Team 1</span><span class="chip-score" style="font-size:.72rem;padding:0 6px"><span class="w">3</span> : 1</span><span>2 Teams</span></span>
         <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span></div></div>
     <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
-        <span class="dline"><b>Rocket League</b><span>Fr 22:40</span><span class="badge">Turnier</span><span>Sieger: <b>Team Anna</b></span></span>
-        <span class="hactions2"><span class="btn">LAN Cup</span></span></div></div>
+        <span class="dline"><b>Rocket League</b><span>Fr 22:40</span><span class="badge">Turnier</span><span>LAN Cup · Sieger: <b>Team Anna</b></span></span>
+        <span class="hactions2"><span class="btn">Turnier</span><span class="act-spacer"></span></span></div></div>
     <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
         <span class="dline"><b>Counter-Strike 2</b><span>Fr 21:10</span><span class="chip-remis">Remis</span><span>2 Teams</span></span>
         <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span></div></div>
   </div>
-  <div class="subgroup"><span class="row" style="gap:6px"><svg class="ic"><use href="#i-chev"/></svg>Ohne Ergebnis (5)</span><span class="badge">Offen</span></div>
+  <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg><span class="dline"><b>Ohne Ergebnis</b><span>5 Auslosungen, noch nicht gespielt</span></span><span class="badge">Offen</span></div></div>
   <span class="btn" style="align-self:center">Ältere laden</span>
 </div></main></div>
       
@@ -1015,8 +1030,8 @@ ul.plain strong { color: var(--text); }
     <div class="list-card"><span class="main"><strong class="sm">Rocket League Cup</strong><span class="muted xs">K.O.-Turnier · 1/3 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
     <div class="list-card"><span class="main"><strong class="sm">Mario Kart Liga</strong><span class="muted xs">Gruppenphase + K.O. · 6/7 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
   </div></div><div class="card">
-  <div class="d-grid2" style="align-items:end"><div class="stack" style="gap:4px"><span class="muted xs">Spiel auswählen</span><div class="field">Mario Kart</div></div>
-  <div class="row"><span class="muted xs">Modus</span><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div></div>
+  <div class="d-grid2" style="align-items:end"><div class="stack" style="gap:4px"><span class="lbl-xs">Spiel auswählen</span><div class="field dd">Mario Kart</div></div>
+  <div class="stack" style="gap:4px"><span class="lbl-xs">Modus</span><div class="row"><span class="btn primary">Auslosung</span><span class="btn">Captain Draft</span></div></div></div>
   <div class="d-roster"><div class="check"><b></b>Anna</div><div class="check"><b></b>Ben</div><div class="check"><b></b>Chris</div><div class="check"><b></b>Dana</div><div class="check"><b></b>Emil</div><div class="check"><b></b>Finn</div></div>
   <span class="btn primary" style="align-self:flex-end">Teams auslosen</span></div></main></div>
       
@@ -1054,7 +1069,7 @@ ul.plain strong { color: var(--text); }
     <div class="list-card"><span class="main"><strong class="sm">Rocket League Cup</strong><span class="muted xs">K.O.-Turnier · 1/3 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
     <div class="list-card"><span class="main"><strong class="sm">Mario Kart Liga</strong><span class="muted xs">Gruppenphase + K.O. · 6/7 Partien</span></span><span class="row"><span class="badge live">Läuft</span><svg class="ic" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span></div>
   </div></div><div class="card">
-  <div class="row between"><span class="m-h2">Historie</span><span class="badge">9</span></div>
+  <div class="row between"><span class="m-h2">Historie</span><span class="row"><span class="badge">9</span><svg class="ic chev-open"><use href="#i-chev"/></svg></span></div>
   <div class="chip-row"><span class="chipf on">Alle</span><span class="chipf">Matches</span><span class="chipf">Turniere</span></div>
   <div class="hlist">
     <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
@@ -1064,13 +1079,13 @@ ul.plain strong { color: var(--text); }
         <span class="dline"><b>Rocket League</b><span>Sa 20:40</span><span class="res"><span class="chip-win">Win</span>Team 1</span><span class="chip-score" style="font-size:.72rem;padding:0 6px"><span class="w">3</span> : 1</span><span>2 Teams</span></span>
         <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span></div></div>
     <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
-        <span class="dline"><b>Rocket League</b><span>Fr 22:40</span><span class="badge">Turnier</span><span>Sieger: <b>Team Anna</b></span></span>
-        <span class="hactions2"><span class="btn">LAN Cup</span></span></div></div>
+        <span class="dline"><b>Rocket League</b><span>Fr 22:40</span><span class="badge">Turnier</span><span>LAN Cup · Sieger: <b>Team Anna</b></span></span>
+        <span class="hactions2"><span class="btn">Turnier</span><span class="act-spacer"></span></span></div></div>
     <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg>
         <span class="dline"><b>Counter-Strike 2</b><span>Fr 21:10</span><span class="chip-remis">Remis</span><span>2 Teams</span></span>
         <span class="hactions2"><span class="btn">Rematch</span><span class="act"><svg><use href="#i-pencil"/></svg></span></span></div></div>
   </div>
-  <div class="subgroup"><span class="row" style="gap:6px"><svg class="ic"><use href="#i-chev"/></svg>Ohne Ergebnis (5)</span><span class="badge">Offen</span></div>
+  <div class="hentry"><div class="dhead"><svg class="chev"><use href="#i-chev"/></svg><span class="dline"><b>Ohne Ergebnis</b><span>5 Auslosungen, noch nicht gespielt</span></span><span class="badge">Offen</span></div></div>
   <span class="btn" style="align-self:center">Ältere laden</span>
 </div></main></div>
       <div class="d-bottomnav"><span>Home</span><span class="on">Match</span><span>Vote</span><span>Essen</span><span>Mehr</span></div>
