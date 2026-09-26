@@ -53,7 +53,7 @@ import {
   eventTypeIsUndated,
   isEventTypeKey,
 } from '../eventFeatureCatalog';
-import { isAdminTestMode } from '../testDataVisibility';
+import { includesTestEvents } from '../testDataVisibility';
 import { confirmEventCalendar, STEFAN_CALENDAR_GAG_USERNAME } from '../eventReminders';
 
 export const eventsRouter = Router();
@@ -245,7 +245,7 @@ const resolveEventResource = resolveGroupResource<EventRow>({
 const resolveEvent: RequestHandler = (req, res, next) => {
   resolveEventResource(req, res, () => {
     const event = req.groupResource as EventRow;
-    if (event.is_test && !isAdminTestMode(req)) {
+    if (event.is_test && !includesTestEvents(req)) {
       res.status(404).json({ error: 'Event nicht gefunden.' });
       return;
     }
@@ -515,7 +515,7 @@ function serializeTeaserEvent(event: EventRow, playerId: string) {
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   const playerId = req.player!.id;
   const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
-  const includeTestEvents = isAdminTestMode(req);
+  const includeTestEvents = includesTestEvents(req);
   const testEventClause = includeTestEvents ? '' : 'AND e.is_test = 0';
   const storedActiveEvent = getEvent(getOrRepairActiveEvent(playerId).id)!;
   const activeEvent = !includeTestEvents && storedActiveEvent.is_test
@@ -639,7 +639,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
 // GET /api/events/active - this account's persisted workspace.
 eventsRouter.get('/active', requireConfiguredGroupMembership, (req, res) => {
   const activeEvent = getEvent(getOrRepairActiveEvent(req.player!.id).id)!;
-  res.json(serializeEventSummary(!isAdminTestMode(req) && activeEvent.is_test ? getEvent(BASE_EVENT_ID)! : activeEvent));
+  res.json(serializeEventSummary(!includesTestEvents(req) && activeEvent.is_test ? getEvent(BASE_EVENT_ID)! : activeEvent));
 });
 
 eventsRouter.get('/:id', resolveEvent, (req, res) => {

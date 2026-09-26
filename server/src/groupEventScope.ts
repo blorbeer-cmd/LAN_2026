@@ -2,7 +2,7 @@ import { BASE_EVENT_ID, db, OUTSIDE_EVENTS_ID } from './db';
 import type { Request, Response } from 'express';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import { getOrRepairActiveEvent } from './eventContext';
-import { isAdminTestMode } from './testDataVisibility';
+import { includesTestEvents } from './testDataVisibility';
 
 export type GroupEventScope = string | null;
 
@@ -10,7 +10,7 @@ export type GroupEventResolution =
   { ok: true; eventId: GroupEventScope } | { ok: false; status: 400 | 404; error: string };
 
 function isHiddenTestEvent(req: Request, eventId: string): boolean {
-  if (isAdminTestMode(req)) return false;
+  if (includesTestEvents(req)) return false;
   const event = db.prepare('SELECT is_test FROM events WHERE id = ?').get(eventId) as
     | { is_test: number }
     | undefined;
@@ -64,7 +64,7 @@ export function resolveRequestGroupEventScope(req: Request, requestedEventId: un
   if (!req.player) return { ok: false, status: 404, error: 'Event nicht gefunden.' };
   const activeEvent = getOrRepairActiveEvent(req.player.id);
   if (activeEvent.group_id !== req.group!.id) return { ok: false, status: 404, error: 'Event nicht gefunden.' };
-  if (activeEvent.is_test && !isAdminTestMode(req)) return resolveGroupEventScope(req.group!.id, undefined);
+  if (activeEvent.is_test && !includesTestEvents(req)) return resolveGroupEventScope(req.group!.id, undefined);
   return { ok: true, eventId: activeEvent.id };
 }
 
@@ -92,7 +92,7 @@ export function requestCanUseEventWorkspace(req: Request, eventId: GroupEventSco
            AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
            AND (? = 1 OR e.is_test = 0)`,
       )
-      .get(eventId, req.player.id, req.group.id, isAdminTestMode(req) ? 1 : 0),
+      .get(eventId, req.player.id, req.group.id, includesTestEvents(req) ? 1 : 0),
   );
 }
 
