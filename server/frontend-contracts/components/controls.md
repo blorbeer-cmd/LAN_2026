@@ -398,7 +398,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `game-catalog-link-action` | Plattform- und Trailer-Links stehen als dichte 32×32-px-Gruppe direkt an den Spielinformationen. |
 | `selection-buttons`, `poll-secondary`, `poll-text-width`, `poll-choice-text` | Toolbarlayout und Bedeutung respektieren die gewählte Basis-/Quadratvariante. |
 | `poll-selected-answer`, `poll-option-extra-toggle` | Die gewählte Umfrageantwort und der geöffnete Notiz-/Link-Schalter zeigen ihren Zustand mit Akzentumriss bzw. Akzentfarbe, ohne eigene Geometrie. |
-| `rating-scale-selected` | Auf der Bock-/Skill-Skala nimmt der gewählte Umriss die Farbe der Skala an, ohne eigene Geometrie. |
+| `rating-scale-selected` | Auf der Bock-/Skill-Skala nimmt der Umriss der gewählten Zahl die Farbe der Skala an, die Ziffer bleibt in der normalen Textfarbe, ohne eigene Geometrie. |
 | `poll-note-field`, `poll-flag-checkbox` | Die einzeilige Umfragebeschreibung wächst bis vier Controlhöhen; die 20-px-Checkbox ist Teil der beschrifteten Umfrageeinstellung. |
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
 | `profile-preview` | Nichtinteraktive Vorschau folgt der benachbarten Controlzeile. |
@@ -572,7 +572,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:poll-selected-answer`: The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.
 
 - `registry:profile-row-action`: Mein Profil keeps one fixed right-hand action column across all cards, so compact buttons and the view select share one width; the select matches the compact buttons' type size.
-- `registry:rating-scale-selected`: On the Bock/Skill scale the chosen number's inset outline takes that scale's color; geometry stays with the square variant.
+- `registry:rating-scale-selected`: On the Bock/Skill scale the chosen number's inset outline takes that scale's color; the number itself stays in the regular text color; geometry stays with the square variant.
 
 - `registry:checklist-table-action`: Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.
 - `registry:broadcast-table-action`: Beenden fills the fixed Durchsage action column, so it lines up from row to row.
