@@ -423,76 +423,16 @@ button.player-card {
   opacity: 0.6;
 }
 
-/* ---------- Sliders (skill ratings) ---------- */
+/* ---------- Bock/Skill ratings ---------- */
 
-input[type='range'] {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
+/* Label and Ø note on the first line, the shared 0-5 number scale
+   (ratingScale.js) on its own full-width line below. */
 .skill-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   padding: var(--space-2) 0;
-}
-.skill-row-slider {
-  grid-column: 1 / -1;
-  /* Slider-local gradient endpoints; Bock (preference) sliders run purple,
-     the skill variant overrides them to blue below. */
-  --slider-low: #c08be6;
-  --slider-high: #c24bd8;
-  --slider-track: #39415a; /* unfilled rest of the track, lighter than --bg-elevated-2 so it stays visible */
-  appearance: none;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, var(--slider-low) 0%, var(--slider-high) var(--slider-pct, 50%), var(--slider-track) var(--slider-pct, 50%), var(--slider-track) 100%);
-}
-.skill-row-slider::-webkit-slider-thumb {
-  appearance: none;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid var(--accent-text);
-  background: var(--slider-high);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  cursor: pointer;
-}
-.skill-row-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 2px solid var(--accent-text);
-  background: var(--slider-high);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  cursor: pointer;
-}
-.skill-row-slider:not(.preference-row-slider) {
-  --slider-low: #9bb7f5;
-  --slider-high: #536dff;
-}
-/* An untouched Bock/Skill slider still renders at a plausible mid-value
-   (ratings are stored 1-10, never 0, so there's no true "empty" position) -
-   dimmed until the player's own input event fires, so it doesn't read as an
-   already-set rating at a glance. */
-.skill-row-slider-unset {
-  opacity: 0.5;
-}
-.skill-value {
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--font-weight-bold);
-  min-width: 1.6em;
-  text-align: right;
-}
-/* "Bock"-Level slider (how much a player wants to play something right now,
-   see profile.js) reuses .skill-row-slider's layout but gets its own accent
-   color so it reads as a distinct concept from the skill sliders above it.
-   Repeats the type selector to outrank the plain input[type='range'] rule
-   above (an attribute selector counts as a class for specificity purposes,
-   so a bare `.preference-row-slider` class alone would lose to it). */
-input[type='range'].preference-row-slider {
-  accent-color: var(--accent-3);
 }
 
 /* ---------- Team results ---------- */
@@ -1064,8 +1004,8 @@ input[type='number'].tournament-result-score {
 /* ---------- Vote ---------- */
 
 /* The running round and every closed result reuse the Umfrage card, option
-   row, result bar and vote-table styles; only the 0-10 slider and the plain
-   (non-collapsible) card heading are Vote's own. */
+   row, 0-5 number scale, result bar and vote-table styles; only the plain
+   (non-collapsible) running-round heading is Vote's own. */
 .vote-game-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1108,23 +1048,6 @@ input[type='number'].tournament-result-score {
 }
 .vote-round-heading h2 {
   margin: 0;
-  font-size: var(--font-size-lg);
-}
-/* The 0-10 slider takes the answer column of an Umfrage row; the fixed width
-   keeps every slider the same length whatever the game is called. */
-.vote-points-control {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: calc(var(--space-8) * 5);
-}
-.vote-points-track {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.vote-points-value {
-  min-width: var(--space-6);
   font-size: var(--font-size-lg);
 }
 /* Sits in the voter column, which stays empty while the round runs. */
@@ -1190,14 +1113,6 @@ input[type='number'].tournament-result-score {
 @media (min-width: 1280px) { /* --bp-xl */
   .vote-game-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-/* Phone: like an Umfrage's answer buttons, the slider takes the full width
-   below the game name. */
-@media (max-width: 639px) { /* --bp-md */
-  .event-poll-option > .vote-points-control {
-    grid-column: 1 / -1;
-    width: 100%;
   }
 }
 

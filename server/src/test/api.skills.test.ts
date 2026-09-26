@@ -19,7 +19,7 @@ test('setup: create a player and a game to rate', async () => {
 });
 
 test('PUT /api/skills rejects an out-of-range rating', async () => {
-  const res = await request(app).put('/api/skills').send({ playerId, gameId, rating: 11 });
+  const res = await request(app).put('/api/skills').send({ playerId, gameId, rating: 6 });
   assert.equal(res.status, 400);
 });
 
@@ -31,18 +31,18 @@ test('PUT /api/skills rejects an invalid session identity', async () => {
 });
 
 test('PUT /api/skills creates a rating', async () => {
-  const res = await request(app).put('/api/skills').send({ playerId, gameId, rating: 7 });
+  const res = await request(app).put('/api/skills').send({ playerId, gameId, rating: 0 });
   assert.equal(res.status, 200);
-  assert.equal(res.body.rating, 7);
+  assert.equal(res.body.rating, 0);
 });
 
 test('PUT /api/skills upserts (updates) the same rating', async () => {
-  const res = await request(app).put('/api/skills').send({ playerId, gameId, rating: 9 });
+  const res = await request(app).put('/api/skills').send({ playerId, gameId, rating: 4 });
   assert.equal(res.status, 200);
 
   const list = await request(app).get(`/api/skills?playerId=${playerId}`);
   assert.equal(list.body.length, 1);
-  assert.equal(list.body[0].rating, 9);
+  assert.equal(list.body[0].rating, 4);
 });
 
 test('GET /api/skills filters by gameId', async () => {

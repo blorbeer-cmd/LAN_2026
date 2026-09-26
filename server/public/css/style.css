@@ -3725,9 +3725,9 @@ button.card {
 /* Spiele view (gameCatalog.js): one compact table-like row per game. A real
    <table> would need horizontal scroll on a phone (the lesson from the old
    .catalog-table), so it's a CSS grid: name/Bock/Skill as columns on wide
-   screens, on a phone the two sliders wrap into a second line via
-   display:contents on the .game-row-sliders wrapper. Reuses .skill-row for
-   the Bock/Skill sliders so editing looks identical everywhere it appears. */
+   screens; on a phone Bock and Skill stack below the name, each with the full
+   width for its 0-5 number scale. .game-row-sliders becomes display:contents
+   on wide screens. */
 .game-table {
   display: flex;
   flex-direction: column;
@@ -3848,17 +3848,10 @@ button.card {
 .game-row-sliders {
   grid-area: sliders;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  column-gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
 }
-/* Extra breathing room between the two rating columns specifically (plain
-   column-gap above would space Bock from Skill exactly as tight as it
-   spaces Skill from whatever follows). */
-.game-row-skill {
-  padding-left: var(--space-3);
-}
-/* On a phone the Ø note gets its own always-reserved line inside each slider
+/* On a phone the Ø note gets its own always-reserved line inside each rating
    cell — inline it would wrap only when present, and rows in the same list
    must never end up with different heights (see CLAUDE.md list rules). */
 @media (max-width: 639px) { /* --bp-md */

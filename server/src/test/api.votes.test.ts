@@ -245,8 +245,8 @@ test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beli
   // reflect that instead of falling back to alphabetical order.
   await request(app).put('/api/preferences').send({ playerId: playerA, gameId: gameCs2, rating: 2 });
   await request(app).put('/api/preferences').send({ playerId: playerB, gameId: gameCs2, rating: 2 });
-  await request(app).put('/api/preferences').send({ playerId: playerA, gameId: gameRl, rating: 9 });
-  await request(app).put('/api/preferences').send({ playerId: playerB, gameId: gameRl, rating: 10 });
+  await request(app).put('/api/preferences').send({ playerId: playerA, gameId: gameRl, rating: 4 });
+  await request(app).put('/api/preferences').send({ playerId: playerB, gameId: gameRl, rating: 5 });
 
   const started = await request(app).post('/api/votes/start');
   assert.equal(started.body.open, true);
@@ -256,7 +256,7 @@ test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beli
   assert.ok(rlIndex < cs2Index, 'Rocket League (higher avg preference) should be sorted before CS2');
 
   const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
-  assert.equal(rlResult.avgPreference, 9.5);
+  assert.equal(rlResult.avgPreference, 4.5);
   assert.equal(rlResult.preferenceCount, 2);
 
   await request(app).post('/api/votes/cancel');
@@ -267,8 +267,8 @@ test('catalogResults keeps showing every rated game after a round restricted to 
   // ever covers CS2 and Rocket League — the "Top 10 nach Bock-Level" widget
   // (driven by catalogResults) must still surface it once that round closes,
   // unlike `results`, which stays scoped to the round's own selection.
-  await request(app).put('/api/preferences').send({ playerId: playerA, gameId: gameAoe2, rating: 10 });
-  await request(app).put('/api/preferences').send({ playerId: playerB, gameId: gameAoe2, rating: 10 });
+  await request(app).put('/api/preferences').send({ playerId: playerA, gameId: gameAoe2, rating: 5 });
+  await request(app).put('/api/preferences').send({ playerId: playerB, gameId: gameAoe2, rating: 5 });
 
   await request(app).post('/api/votes/start').send({ gameIds: [gameCs2, gameRl] });
   await request(app).post('/api/votes/close');
@@ -283,7 +283,7 @@ test('catalogResults keeps showing every rated game after a round restricted to 
   assert.ok(catalogIds.includes(gameAoe2), 'catalogResults should include every game regardless of the last round\'s selection');
 
   const aoe2 = res.body.catalogResults.find((r: { gameId: string }) => r.gameId === gameAoe2);
-  assert.equal(aoe2.avgPreference, 10);
+  assert.equal(aoe2.avgPreference, 5);
   assert.ok(catalogIds.indexOf(gameAoe2) < catalogIds.indexOf(gameCs2), 'higher-rated game should sort before a lower-rated one');
 });
 
@@ -312,7 +312,7 @@ test('points mode: start, cast, and close a round', async () => {
       playerId: playerA,
       entries: allGames.body.map((g: { id: string }) => ({
         gameId: g.id,
-        points: g.id === gameCs2 ? 10 : g.id === gameRl ? 4 : 1,
+        points: g.id === gameCs2 ? 5 : g.id === gameRl ? 2 : 1,
       })),
     });
   assert.equal(noCap.status, 200);
@@ -326,14 +326,14 @@ test('points mode: start, cast, and close a round', async () => {
       playerId: playerA,
       entries: [
         { gameId: gameCs2, points: 5 },
-        { gameId: gameCs2, points: 6 },
+        { gameId: gameCs2, points: 4 },
       ],
     });
   assert.equal(duplicateGame.status, 400);
 
   const outOfRange = await request(app)
     .post('/api/votes/points')
-    .send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 11 }] });
+    .send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 6 }] });
   assert.equal(outOfRange.status, 400);
 
   // Every game of the round needs an explicit 0-10 rating.
@@ -342,8 +342,8 @@ test('points mode: start, cast, and close a round', async () => {
     .send({
       playerId: playerA,
       entries: [
-        { gameId: gameCs2, points: 10 },
-        { gameId: gameRl, points: 4 },
+        { gameId: gameCs2, points: 5 },
+        { gameId: gameRl, points: 2 },
       ],
     });
   assert.equal(incomplete.status, 400);
@@ -353,13 +353,13 @@ test('points mode: start, cast, and close a round', async () => {
   // deliberate "won't play".
   const changedA = await request(app)
     .post('/api/votes/points')
-    .send({ playerId: playerA, entries: fullBallot(allGames.body, { [gameCs2]: 10, [gameRl]: 4 }) });
+    .send({ playerId: playerA, entries: fullBallot(allGames.body, { [gameCs2]: 5, [gameRl]: 2 }) });
   assert.equal(changedA.status, 200);
   assert.equal(changedA.body.totalVoters, 1);
 
   const castB = await request(app)
     .post('/api/votes/points')
-    .send({ playerId: playerB, entries: fullBallot(allGames.body, { [gameRl]: 8 }) });
+    .send({ playerId: playerB, entries: fullBallot(allGames.body, { [gameRl]: 4 }) });
   assert.equal(castB.status, 200);
 
   const mine = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
@@ -390,8 +390,8 @@ test('points mode: start, cast, and close a round', async () => {
   const cs2Result = closed.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
   const rlResult = closed.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
   const aoe2Result = closed.body.results.find((r: { gameId: string }) => r.gameId === gameAoe2);
-  assert.equal(cs2Result.points, 10);
-  assert.equal(rlResult.points, 12); // player A gave 4, player B gave 8
+  assert.equal(cs2Result.points, 5);
+  assert.equal(rlResult.points, 6); // player A gave 2, player B gave 4
   // "Spielen mit" counts: voters with at least 1 point vs. deliberate zeros.
   assert.deepEqual([cs2Result.votes, cs2Result.declines], [1, 1]);
   assert.deepEqual([rlResult.votes, rlResult.declines], [2, 0]);
@@ -410,7 +410,7 @@ test('points mode: start, cast, and close a round', async () => {
   );
   const ballotB = detail.body.ballots.find((ballot: { playerId: string }) => ballot.playerId === playerB);
   assert.equal(ballotB.entries.length, allGames.body.length);
-  assert.equal(ballotB.entries.find((e: { gameId: string }) => e.gameId === gameRl).points, 8);
+  assert.equal(ballotB.entries.find((e: { gameId: string }) => e.gameId === gameRl).points, 4);
   assert.equal(ballotB.entries.find((e: { gameId: string }) => e.gameId === gameCs2).points, 0);
   assert.ok(ballotB.submittedAt > 0);
   assert.deepEqual(entry.ballots, detail.body.ballots);
@@ -420,15 +420,15 @@ test('concurrent ballots from one player leave exactly one complete ballot', asy
   const started = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
   assert.equal(started.status, 201);
   const [first, second] = await Promise.all([
-    request(app).post('/api/votes/points').send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 9 }, { gameId: gameRl, points: 0 }] }),
-    request(app).post('/api/votes/points').send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 2 }, { gameId: gameRl, points: 7 }] }),
+    request(app).post('/api/votes/points').send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 5 }, { gameId: gameRl, points: 0 }] }),
+    request(app).post('/api/votes/points').send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 2 }, { gameId: gameRl, points: 4 }] }),
   ]);
   assert.deepEqual([first.status, second.status], [200, 200]);
 
   const mine = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
   const stored = Object.fromEntries(mine.body.entries.map((e: { gameId: string; points: number }) => [e.gameId, e.points]));
   assert.ok(
-    (stored[gameCs2] === 9 && stored[gameRl] === 0) || (stored[gameCs2] === 2 && stored[gameRl] === 7),
+    (stored[gameCs2] === 5 && stored[gameRl] === 0) || (stored[gameCs2] === 2 && stored[gameRl] === 4),
     'one submission wins entirely instead of mixing both',
   );
   assert.equal(mine.body.entries.length, 2);
@@ -572,16 +572,16 @@ test('closing with admin mode on never lets a test-only vote decide the persiste
   const ghost = await request(app).post('/api/players').send({ name: 'Ghost Voter' });
   db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(ghost.body.id);
 
-  // Real votes make CS2 the real winner (5 > 3)...
+  // Real votes make CS2 the real winner (4 > 3)...
   const realVote = await request(app)
     .post('/api/votes/points')
-    .send({ playerId: playerA, entries: fullBallot(started.body.results, { [gameCs2]: 5, [gameRl]: 3 }) });
+    .send({ playerId: playerA, entries: fullBallot(started.body.results, { [gameCs2]: 4, [gameRl]: 3 }) });
   assert.equal(realVote.status, 200);
   // ...only a test player votes for AoE2, with enough points to top the
   // score if (and only if) test votes were allowed to decide the winner.
   const testVote = await request(app)
     .post('/api/votes/points')
-    .send({ playerId: ghost.body.id, entries: fullBallot(started.body.results, { [gameAoe2]: 10 }) });
+    .send({ playerId: ghost.body.id, entries: fullBallot(started.body.results, { [gameAoe2]: 5 }) });
   assert.equal(testVote.status, 200);
 
   // Closing with admin mode on still shows the test player's points in the
@@ -590,7 +590,7 @@ test('closing with admin mode on never lets a test-only vote decide the persiste
   assert.equal(closed.status, 200);
   assert.deepEqual(closed.body.winnerGameIds, [gameCs2]);
   const aoe2Result = closed.body.results.find((r: { gameId: string }) => r.gameId === gameAoe2);
-  assert.equal(aoe2Result.points, 10);
+  assert.equal(aoe2Result.points, 5);
 
   // The same persisted winner is reported with admin mode off too.
   const history = await request(app).get(`/api/votes/history/${closed.body.round}`);

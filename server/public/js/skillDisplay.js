@@ -7,7 +7,7 @@
 //   the neutral fallback and that value is shown in parentheses. A captain
 //   draft picks by turn order and never touches ratings (routes/draft.ts), so
 //   there the values are pure information and a missing one stays an en dash —
-//   claiming it "counts as 5" would describe a calculation that never happened.
+//   claiming it "counts as 3" would describe a calculation that never happened.
 // - `stored`: whether the player objects come from a persisted draw snapshot.
 //   Those carry the rating the draw itself used (null when there was none) and
 //   must keep showing it, so a later self-rating cannot retroactively rewrite
@@ -17,7 +17,7 @@ import { domainIcon } from './domainIcons.js';
 import { icon } from './icons.js';
 import { state } from './state.js';
 
-export const UNRATED_SKILL_VALUE = 5;
+export const UNRATED_SKILL_VALUE = 3;
 
 export function skillRatingFor(playerId, gameId) {
   const entry = state.skills.find((skill) => skill.player_id === playerId && skill.game_id === gameId);
@@ -31,12 +31,12 @@ export function ratingForPlayer(player, gameId, { stored = false } = {}) {
 export function skillLevelHtml(rating, { balanced = true } = {}) {
   if (rating == null) {
     const title = balanced
-      ? `Ohne eigene Bewertung, zählt mit Skill-Level ${UNRATED_SKILL_VALUE} von 10`
+      ? `Ohne eigene Bewertung, zählt mit Skill-Level ${UNRATED_SKILL_VALUE} von 5`
       : 'Noch kein Skill-Level eingetragen';
     const value = balanced ? `(${UNRATED_SKILL_VALUE})` : '–';
     return `<span class="rating rating-unrated" title="${title}" aria-label="${title}">${icon(domainIcon('skill'))}<span>${value}</span></span>`;
   }
-  const title = `Skill-Level ${rating} von 10`;
+  const title = `Skill-Level ${rating} von 5`;
   return `<span class="rating" title="${title}" aria-label="${title}">${icon(domainIcon('skill'))}<span>${rating}</span></span>`;
 }
 

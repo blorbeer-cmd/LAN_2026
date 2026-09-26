@@ -60,7 +60,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   „Abbrechen“ beside its „Live“ badge in the card header; the confirmation dialog still names the
   destructive „Draft abbrechen“.
   Every player row in both setup flows, the live draft and the drawn teams shows the shared activity
-  icon followed by the selected game's `1–10` skill value; in the rating-balanced draw a missing
+  icon followed by the selected game's `0–5` skill value; in the rating-balanced draw a missing
   self-rating shows the matchmaking fallback in parentheses, so the visible value matches the one
   the draw balanced with, while the captain draft keeps the en dash because it never uses ratings.
   The title and accessible label retain the full term „Skill-Level“.
@@ -92,7 +92,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   retain the full „Skill-Level“ meaning. Two call-site options decide what an honest value is:
   - `balanced` (default `true`) — the shown teams really were built from these ratings. A player
     without an own rating then shows the neutral matchmaking fallback dimmed and in parentheses
-    (`.rating-unrated`, `5`, mirroring `DEFAULT_RATING` in `src/routes/matchmaking.ts`) instead of
+    (`.rating-unrated`, `3`, mirroring `DEFAULT_RATING` in `src/routes/matchmaking.ts`) instead of
     an en dash, because that is the value the draw balanced with; the team header's total includes
     those fallbacks and appends the dimmed parenthesized count of unrated players. Changing the
     server-side fallback requires updating `UNRATED_SKILL_VALUE` in the same work item so the shown
@@ -100,7 +100,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   - `balanced: false` — the captain draft, which picks by turn order and never reads ratings
     (`src/routes/draft.ts`). Its values are purely informational for the picking captain, so a
     missing rating stays an en dash („Noch kein Skill-Level eingetragen“) and neither the row nor
-    the total claims that anything counted with `5`. This covers the live draft board, the draft
+    the total claims that anything counted with `3`. This covers the live draft board, the draft
     participant/captain selections and drafted lineups in the history.
   - `stored: true` — the player objects come from a persisted draw snapshot
     (`matchmaking_draws.teams`, the `POST /api/matchmaking` response) and carry the rating that
@@ -148,18 +148,18 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   `drawId` is accepted, because recording what was actually played is history rather than
   scheduling. Both meters are editable on every tab, suggestions included — how good the group
   already is at a game is part of deciding whether to accept it.
-  Bock and Skill sliders in the game catalog are stored 1-10 and have no true
-  empty position, so an untouched slider still renders at a plausible mid-value; it stays dimmed
-  (`.skill-row-slider-unset`) and its number label shows an en dash for "no rating yet" until the
-  player's own input event fires. The dash belongs to this own-rating input, where no value has
-  been given at all — unlike the team views, where a missing rating still enters the draw as the
-  parenthesized fallback. Two independent chip
+  Bock and Skill are rated with the shared 0–5 number scale (`ratingScale.js`) that Vote and
+  Umfragen use: six square buttons below the label, the chosen one outlined. No selected number
+  means "no rating yet"; 0 is a deliberate answer (for Bock „kein Bock“) and counts as rated. A
+  press saves immediately and keeps keyboard focus on the pressed number. Existing 1–10 ratings
+  were halved and rounded up onto this scale. Unlike the team views, where a missing rating still
+  enters the draw as the parenthesized fallback, the own-rating scale shows no number at all. Two independent chip
   filters, „Bock offen“ and „Skill offen“, narrow the list to games the current identity hasn't
   rated yet on that facet; both active at once is an AND, unlike the genre chips'
   OR-within-one-facet semantics.
   The first-login onboarding uses the same catalog rows in a temporary rating mode. The first ten
   required games are marked with the textual `Pflicht` badge and an accent rail; the list can be
-  expanded to all catalog games, but completion still requires both sliders for the required set.
+  expanded to all catalog games, but completion still requires both ratings for the required set.
   If a required game is demoted or removed while the round is open, the server reconciles the
   candidate list against the current catalog and fills the vacancy from the next ranked game.
   Test-player ratings are excluded from this ranking because those players are hidden in normal
@@ -293,12 +293,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   fehlt“); admins get a compact „Beenden“ beside an „Aktion“ menu holding „Abbrechen“. A
   „Zwischenstand verborgen“ tag and the round info follow. Games are listed alphabetically, one
   Umfrage option row each: name and one compact meta line without empty values, the empty result
-  and voter columns of a hidden interim result, and the 0-10 slider as the answer control. An
-  unrated slider rests dimmed in the middle and shows „–“; the first touch, tap or arrow key rates
+  and voter columns of a hidden interim result, and the same 0–5 number scale as an Umfrage rating
+  as the answer control. No selected number means unrated; pressing the chosen number again clears
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
   own progress („X von Y bewertet“), the „Unbewertet“ chip that narrows the list to still-unrated
   games, and „Speichern“, enabled once every game is rated. A runoff offers the Umfrage
-  „Wählen“/„Ausgewählt“ choice instead of sliders. „Letzter Vote“ is a collapsible Umfrage card
+  „Wählen“/„Ausgewählt“ choice instead of numbers. „Letzter Vote“ is a collapsible Umfrage card
   that starts collapsed and keeps its open state across live re-renders; its header names the
   round, date, participation and winner and always offers „Stimmen ansehen“ and, on a tie, a
   compact „Stichwahl starten“. Opened, it lists every game of the round sorted by score, each with
@@ -328,7 +328,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   stays votable for everyone else and can still win, and „Stichwahl starten“ still offers every
   tied winner of the closed round. Only a fresh selection is restricted.
   Vote-specific empty states center their copy vertically in both overview and history.
-  A points ballot rates every game of the round with 0 to 10 points; the server rejects empty or
+  A points ballot rates every game of the round with 0 to 5 points; the server rejects empty or
   incomplete ballots with `400`. Until the round ends, every identity can change and save its
   ballot again: each submission atomically replaces that identity's earlier one, so double taps
   and concurrent devices leave exactly one ballot. Who voted how stays hidden from everyone while

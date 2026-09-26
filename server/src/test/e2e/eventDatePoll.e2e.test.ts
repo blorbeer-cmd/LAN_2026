@@ -562,6 +562,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   });
   const ratingPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Unterkünfte bewerten' });
   await ratingPoll.waitFor();
+  assert.equal(await ratingPoll.locator('[data-poll-response="0"]').count(), 2, '0 rejects an option');
   assert.equal(await ratingPoll.locator('[data-poll-response="1"]').count(), 2);
   assert.equal(await ratingPoll.locator('[data-poll-response="5"]').count(), 2);
   const linkedOption = ratingPoll.locator('.event-poll-option').first();
@@ -587,7 +588,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
         overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       };
     });
-    assert.deepEqual(geometry.buttons.map((button) => button.text), ['1', '2', '3', '4', '5']);
+    assert.deepEqual(geometry.buttons.map((button) => button.text), ['0', '1', '2', '3', '4', '5']);
     assert.equal(geometry.gap, 8);
     assert.equal(geometry.overflow, false);
     for (const button of geometry.buttons) {
@@ -595,9 +596,9 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
       assert.equal(button.height, 32, JSON.stringify(geometry));
       assert.equal(button.clipped, false);
     }
-    assert.equal(new Set(geometry.buttons.map((button) => button.top)).size === 1, geometry.availableWidth >= 192, JSON.stringify(geometry));
-    if (geometry.availableWidth >= 192) assert.equal(geometry.buttons[4].left + 32 - geometry.buttons[0].left, 192);
-    else for (let index = 1; index < 5; index += 1) {
+    assert.equal(new Set(geometry.buttons.map((button) => button.top)).size === 1, geometry.availableWidth >= 232, JSON.stringify(geometry));
+    if (geometry.availableWidth >= 232) assert.equal(geometry.buttons[5].left + 32 - geometry.buttons[0].left, 232);
+    else for (let index = 1; index < 6; index += 1) {
       const previous = geometry.buttons[index - 1];
       const current = geometry.buttons[index];
       assert.ok(current.top > previous.top || (current.top === previous.top && current.left > previous.left));
@@ -631,25 +632,25 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await optionLink.evaluate((element) => document.activeElement === element), true);
   assert.notEqual(await optionLink.evaluate((element) => getComputedStyle(element).outlineStyle), 'none', 'the option link shows its keyboard focus');
   // Every value is measured both unselected and selected through the real draft handler.
-  for (let value = 1; value <= 5; value += 1) {
-    await ratingButtons.nth(value - 1).click();
+  for (let value = 0; value <= 5; value += 1) {
+    await ratingButtons.nth(value).click();
     await ownerPage.waitForFunction(() => Array.from(document.querySelectorAll('.event-poll-rating-toolbar button'))
       .every((button) => getComputedStyle(button).transform === 'none'));
-    assert.equal(await ratingButtons.nth(value - 1).getAttribute('aria-pressed'), 'true');
+    assert.equal(await ratingButtons.nth(value).getAttribute('aria-pressed'), 'true');
     await assertRatingGeometry();
   }
   const ratingToolbar = linkedOption.locator('.event-poll-rating-toolbar');
-  for (const width of [192, 191]) {
+  for (const width of [232, 231]) {
     await ratingToolbar.evaluate((toolbar, available) => { (toolbar as HTMLElement).style.width = `${available}px`; }, width);
     await assertRatingGeometry();
     await ratingButtons.first().focus();
     await ownerPage.keyboard.press('Tab');
     await ownerPage.keyboard.press('Shift+Tab');
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 6; index += 1) {
       assert.equal(await ratingButtons.nth(index).evaluate((button) => document.activeElement === button && getComputedStyle(button).outlineStyle !== 'none'), true);
-      if (index < 4) await ownerPage.keyboard.press('Tab');
+      if (index < 5) await ownerPage.keyboard.press('Tab');
     }
-    for (let index = 3; index >= 0; index -= 1) {
+    for (let index = 4; index >= 0; index -= 1) {
       await ownerPage.keyboard.press('Shift+Tab');
       assert.equal(await ratingButtons.nth(index).evaluate((button) => document.activeElement === button), true);
     }

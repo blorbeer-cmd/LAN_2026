@@ -7,7 +7,7 @@
 //
 // Two modes, chosen when a round is started:
 // - 'single' (default): each player picks exactly one game.
-// - 'points': each player rates every game of the round with 0-10 points.
+// - 'points': each player rates every game of the round with 0-5 points.
 //   0 is a deliberate answer ("I won't play this"), stored like any other
 //   rating, so each game can report how many voters would play it.
 // A player may change their ballot as long as the round is open: every
@@ -670,7 +670,7 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 
 // POST /api/votes/points - cast or change a player's ballot in the current
 // round ('points' mode only). Body: { playerId, entries: [{ gameId, points }] }
-// with exactly one entry per game of the round, 0-10 points each. A later
+// with exactly one entry per game of the round, 0-5 points each. A later
 // submission replaces the earlier ballot while the round is open.
 votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
@@ -698,7 +698,7 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(400).json({ error: 'entries muss ein Array sein.' });
   }
   if (entries.length === 0) {
-    return res.status(400).json({ error: 'Bitte jedes Spiel mit 0 bis 10 Punkten bewerten.' });
+    return res.status(400).json({ error: 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.' });
   }
 
   const meta = getRoundMeta(groupId, state.round);
@@ -715,8 +715,8 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
       return res.status(400).json({ error: 'Jedes Spiel darf nur einmal bewertet werden.' });
     }
     seen.add(gameId);
-    if (!isIntInRange(points, 0, 10)) {
-      return res.status(400).json({ error: 'Punkte müssen eine Ganzzahl zwischen 0 und 10 sein.' });
+    if (!isIntInRange(points, 0, 5)) {
+      return res.status(400).json({ error: 'Punkte müssen eine Ganzzahl zwischen 0 und 5 sein.' });
     }
     const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
       | { id: string; status: string }
@@ -730,7 +730,7 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
     clean.push({ gameId, points });
   }
   if (seen.size !== ballot.size) {
-    return res.status(400).json({ error: 'Bitte jedes Spiel mit 0 bis 10 Punkten bewerten.' });
+    return res.status(400).json({ error: 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.' });
   }
 
   const now = Date.now();

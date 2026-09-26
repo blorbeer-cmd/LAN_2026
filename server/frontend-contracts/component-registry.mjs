@@ -165,12 +165,12 @@ export const components = [
     "selector": ".btn-square",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Numeric poll scale: exactly 32 by 32px, including selected values.",
+    "purpose": "Shared 0-5 number scale (Vote, Umfragen, Bock/Skill): exactly 32 by 32px, including selected values.",
     "dynamicUses": [
       {
-        "file": "public/js/views/eventPolls.js",
-        "source": "class=\"btn btn-square${draft[option.id] === value ? ' is-selected' : ''}\"",
-        "reason": "Concrete button-square caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+        "file": "public/js/ratingScale.js",
+        "source": "class=\"btn btn-square${chosen === value ? ' is-selected' : ''}\"",
+        "reason": "The shared 0-5 number scale of Vote, Umfragen and Bock/Skill composes the selected-state class; component geometry remains owned by this entry."
       }
     ]
   },
@@ -799,26 +799,6 @@ export const components = [
     ]
   },
   {
-    "id": "rating-slider",
-    "role": "composite-part",
-    "selector": ".skill-row-slider, .preference-row-slider",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Existing slider track/thumb geometry is internal to the rating control.",
-    "dynamicUses": [
-      {
-        "file": "public/js/views/gameCatalog.js",
-        "source": "class=\"skill-row-slider ${accentClass}${isUnset ? ' skill-row-slider-unset' : ''}\"",
-        "reason": "Concrete rating-slider caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/votes.js",
-        "source": "class=\"skill-row-slider${unset ? ' skill-row-slider-unset' : ''}\"",
-        "reason": "The 0-10 Vote slider reuses the rating slider and its dimmed unrated state; component geometry remains owned by this entry."
-      }
-    ]
-  },
-  {
     "id": "rating-suggestion",
     "role": "composite-part",
     "selector": ".skill-suggestion-chip",
@@ -1061,14 +1041,7 @@ export const components = [
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "purpose": "Existing native color swatch is a structural picker surface, not a text field."
   },
-  {
-    "id": "native-range",
-    "role": "composite-part",
-    "selector": "input[type='range']",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Native range track fills its rating row; thumb geometry remains with the slider."
-  },
+
   {
     "id": "poll-option-link",
     "role": "composite-part",
@@ -1256,16 +1229,7 @@ export const components = [
       "box-shadow"
     ]
   },
-  {
-    "id": "rating-unset-state",
-    "role": "composite-part",
-    "selector": ".skill-row-slider-unset",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Unset rating only changes the slider color.",
-    "control": false,
-    "properties": []
-  },
+
   {
     "id": "rating-divergence-state",
     "role": "composite-part",

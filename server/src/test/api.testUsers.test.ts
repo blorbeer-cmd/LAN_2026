@@ -44,7 +44,7 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
   assert.ok(testRows.every((p) => p.is_test === 1));
   assert.ok(testRows.every((p) => p.is_admin === 0));
 
-  // A skill and a Bock rating (1-10) for every game, per player.
+  // A skill and a Bock rating (0-5) for every game, per player.
   const games = (await request(app).get('/api/games')).body as Array<{ id: string }>;
   assert.ok(games.length > 0, 'expected seeded default games');
   for (const id of ids) {
@@ -52,7 +52,7 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
     const prefs = db.prepare('SELECT rating FROM preferences WHERE player_id = ?').all(id) as Array<{ rating: number }>;
     assert.equal(skills.length, games.length);
     assert.equal(prefs.length, games.length);
-    assert.ok([...skills, ...prefs].every((r) => r.rating >= 1 && r.rating <= 10));
+    assert.ok([...skills, ...prefs].every((r) => r.rating >= 0 && r.rating <= 5));
   }
 
   // Everyone got a seat in the tracking event's layout...

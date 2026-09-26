@@ -18,12 +18,12 @@
 // shows: the list of games to rate, your own local draft, and how many people
 // have already submitted. Once closed, everyone can see who voted how.
 //
-// Every regular round runs in 'points' mode: one slider per game, and every
-// game needs a rating from 0 to 10 before the ballot can be saved. 0 is a
+// Every regular round runs in 'points' mode: a 0-5 number scale per game, and every
+// game needs a rating from 0 to 5 before the ballot can be saved. 0 is a
 // deliberate "Spiele ich nicht", so each result names how many voters would
 // play the game. 'single' mode (pick exactly one game) only ever gets used
 // for a runoff between tied winners (see the "Stichwahl" button below).
-// Either mode requires an explicit "Speichern" tap — moving a slider only
+// Either mode requires an explicit "Speichern" tap — picking a number only
 // stages a local draft. A saved ballot can be changed until the round ends.
 
 import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
@@ -37,6 +37,7 @@ import { getMyId } from '../whoami.js';
 import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { isGroupAdmin } from '../groupContext.js';
+import { ratingScaleHtml } from '../ratingScale.js';
 import { voteBreakdownHtml, voterNamesText, voterStackHtml, WIN_CHIP } from '../voteBreakdown.js';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
@@ -122,7 +123,7 @@ async function loadMine(key, playerId, ctx) {
   }
 }
 
-// Local, not-yet-saved picks. Tapping a game or moving a slider only changes
+// Local, not-yet-saved picks. Tapping a game or a number only changes
 // this draft; nothing reaches the server until "Speichern" is pressed.
 // Reseeded from mineCache once per round/player (draftKey tracks that so a
 // fresh round starts blank rather than carrying over a stale draft).
@@ -209,31 +210,9 @@ function syncVoteSelectToggle(button) {
   button.innerHTML = icon(iconName);
 }
 
-// Guards the points sliders against a re-render landing mid-drag (another
-// player casting a vote, or a Bock rating changing elsewhere, both trigger a
-// renderCurrent() while this view is open) — see gameCatalog.js's identical
-// guard for why: replacing container.innerHTML destroys the exact <input>
-// the pointer is down on and silently drops the browser's native pointer
-// capture for that drag, so the thumb stops tracking the mouse until
-// released and re-grabbed. endDrag() catches up with a no-network re-render
-// once the drag actually ends.
-let sliderDragActive = false;
-let dragGuardInstalled = false;
-let lastCtx = null;
-
-function ensureDragGuardInstalled() {
-  if (dragGuardInstalled) return;
-  dragGuardInstalled = true;
-  const endDrag = () => {
-    if (!sliderDragActive) return;
-    sliderDragActive = false;
-    lastCtx?.rerender();
-  };
-  document.addEventListener('pointerup', endDrag);
-  document.addEventListener('pointercancel', endDrag);
-  document.addEventListener('mouseup', endDrag);
-  document.addEventListener('touchend', endDrag);
-}
+// The points button that was just pressed, so keyboard focus survives the
+// re-render that the press triggers.
+let focusAfterRender = null;
 
 // One compact meta line per game, shared by the open round and the result:
 // empty values ("0× gewonnen", "–") are left out instead of shown.
@@ -304,7 +283,6 @@ function renderTop10(results) {
 const DECLINE_LABEL = 'Spiele ich nicht';
 
 function pointsValueText(value) {
-  if (value === undefined) return 'Noch nicht bewertet';
   if (value === 0) return `0 Punkte, ${DECLINE_LABEL.toLowerCase()}`;
   return `${value} ${value === 1 ? 'Punkt' : 'Punkte'}`;
 }
@@ -350,17 +328,14 @@ function renderOpenRow(votes, r, draftReady) {
         </div>
       </div>`;
   } else {
-    const value = draftPoints.get(r.gameId);
-    const unset = value === undefined;
-    // An unrated slider still needs a thumb position, so it sits dimmed in
-    // the middle (like the Bock/Skill sliders) until the player touches it.
-    control = `
-      <div class="vote-points-control">
-        <span class="vote-points-track"><input type="range" class="skill-row-slider${unset ? ' skill-row-slider-unset' : ''}" min="0" max="10" step="1"
-          value="${unset ? 5 : value}" data-points-slider="${r.gameId}"
-          aria-label="${escapeHtml(`Punkte für ${r.gameName}`)}" aria-valuetext="${pointsValueText(value)}" /></span>
-        <span class="skill-value vote-points-value" data-points-value aria-hidden="true">${unset ? '–' : value}</span>
-      </div>`;
+    // The same 0-5 number scale as an Umfrage rating; no button selected
+    // means "not rated yet".
+    control = ratingScaleHtml({
+      selected: draftPoints.get(r.gameId),
+      groupLabel: `Punkte für ${r.gameName}`,
+      valueLabel: pointsValueText,
+      attributes: (value) => `data-vote-points="${r.gameId}" data-points-value="${value}"`,
+    });
   }
   return `
     <div class="event-poll-option" data-points-row="${r.gameId}">
@@ -611,31 +586,7 @@ async function openRoundBreakdown(round) {
   }
 }
 
-// Updates one slider row and the footer in place, without a re-render, so
-// keyboard input and taps keep the focused slider alive.
-function syncPointsRow(container, votes, gameId) {
-  const row = [...container.querySelectorAll('[data-points-row]')].find((element) => element.dataset.pointsRow === gameId);
-  if (row) {
-    const value = draftPoints.get(gameId);
-    const slider = row.querySelector('[data-points-slider]');
-    slider.classList.toggle('skill-row-slider-unset', value === undefined);
-    slider.setAttribute('aria-valuetext', pointsValueText(value));
-    slider.style.setProperty('--slider-pct', `${(Number(slider.value) / 10) * 100}%`);
-    row.querySelector('[data-points-value]').textContent = value === undefined ? '–' : String(value);
-    row.querySelector('[data-decline-tag]').hidden = value !== 0;
-  }
-  const progress = container.querySelector('[data-vote-rated-progress]');
-  if (progress) progress.textContent = draftProgressText(votes);
-  const submit = container.querySelector('#votes-submit');
-  if (submit) submit.disabled = !ballotComplete(votes);
-}
-
-const SLIDER_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
-
 export function renderVotes(container, ctx) {
-  lastCtx = ctx;
-  ensureDragGuardInstalled();
-  if (sliderDragActive) return;
 
   const votes = state.votes;
   if (!votes) {
@@ -787,25 +738,24 @@ export function renderVotes(container, ctx) {
     ctx.rerender();
   });
 
-  container.querySelectorAll('[data-points-slider]').forEach((slider) => {
-    const gameId = slider.dataset.pointsSlider;
-    slider.style.setProperty('--slider-pct', `${(Number(slider.value) / 10) * 100}%`);
-    const rate = () => {
-      draftPoints.set(gameId, parseInt(slider.value, 10));
-      syncPointsRow(container, state.votes, gameId);
-    };
-    // A tap or key press that leaves an unrated slider on its resting value
-    // fires no input event, but still means "this value". The tap is taken on
-    // pointer down: the drag guard re-renders on release, before any click.
-    slider.addEventListener('pointerdown', () => {
-      sliderDragActive = true;
-      if (!draftPoints.has(gameId)) rate();
-    });
-    slider.addEventListener('input', rate);
-    slider.addEventListener('keyup', (event) => {
-      if (SLIDER_KEYS.has(event.key) && !draftPoints.has(gameId)) rate();
+  // Like an Umfrage rating: pressing the chosen number again clears it.
+  container.querySelectorAll('[data-vote-points]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const gameId = btn.dataset.votePoints;
+      const value = Number(btn.dataset.pointsValue);
+      if (draftPoints.get(gameId) === value) draftPoints.delete(gameId);
+      else draftPoints.set(gameId, value);
+      focusAfterRender = { gameId, value };
+      ctx.rerender();
     });
   });
+  if (focusAfterRender) {
+    const { gameId, value } = focusAfterRender;
+    focusAfterRender = null;
+    [...container.querySelectorAll('[data-vote-points]')]
+      .find((btn) => btn.dataset.votePoints === gameId && Number(btn.dataset.pointsValue) === value)
+      ?.focus({ preventScroll: true });
+  }
 
   container.querySelectorAll('[data-open-vote-round]').forEach((btn) => {
     btn.addEventListener('click', () => openRoundBreakdown(btn.dataset.openVoteRound));
@@ -818,7 +768,7 @@ export function renderVotes(container, ctx) {
       const playerId = getMyId();
       if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
       if (!ballotComplete(votes)) {
-        return showToast(votes.mode === 'single' ? 'Bitte zuerst ein Spiel auswählen.' : 'Bitte jedes Spiel mit 0 bis 10 Punkten bewerten.', { error: true });
+        return showToast(votes.mode === 'single' ? 'Bitte zuerst ein Spiel auswählen.' : 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.', { error: true });
       }
       const entries = votes.mode === 'points'
         ? votes.results.map((r) => ({ gameId: r.gameId, points: draftPoints.get(r.gameId) }))

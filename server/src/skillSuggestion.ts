@@ -3,14 +3,14 @@
 // overwriting it — see routes/skills.ts and server/CLAUDE.md games reorg).
 // Deliberately simple (Elo-lite, not a full rating system): decided 2-team
 // matches for one game, processed chronologically, team rating = average of
-// its members, K-factor 32, mapped onto the shared 1-10 skill scale at the
+// its members, K-factor 32, mapped onto the shared 0-5 skill scale at the
 // end. Multi-team or undecided matches don't have a clear winner to update
 // from, so they're skipped here — but still count toward the "enough data"
 // gate the caller applies via MIN_RESULTS_FOR_SUGGESTION.
 
 const STARTING_ELO = 1500;
 const K_FACTOR = 32;
-// Anchors for the 1-10 mapping: 1200 elo -> skill 1, 1800 elo -> skill 10.
+// Anchors for the 0-5 mapping: 1200 elo -> skill 0, 1800 elo -> skill 5.
 const ELO_FLOOR = 1200;
 const ELO_CEIL = 1800;
 
@@ -24,15 +24,15 @@ export interface SkillSuggestionMatch {
 
 export interface PlayerSkillSuggestion {
   playerId: string;
-  rating: number; // 1-10, clamped
+  rating: number; // 0-5, clamped
   gamesPlayed: number;
   wins: number;
 }
 
 function eloToSkillRating(elo: number): number {
   const fraction = (elo - ELO_FLOOR) / (ELO_CEIL - ELO_FLOOR);
-  const rating = Math.round(1 + fraction * 9);
-  return Math.min(10, Math.max(1, rating));
+  const rating = Math.round(fraction * 5);
+  return Math.min(5, Math.max(0, rating));
 }
 
 // One game's worth of decided matches in, one suggested skill rating per

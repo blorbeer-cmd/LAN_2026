@@ -215,7 +215,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // Voting: start a round (points mode, the only mode offered when starting
   // fresh), rate every game, save, change the ballot and save again. Alice's
   // personal session already fixes the voter identity, so no extra identity
-  // form appears. Moving a slider only stages a local draft — it must not
+  // form appears. Picking a number only stages a local draft — it must not
   // count as a vote until "Speichern" is pressed. While the round is open, no
   // per-game distribution (bars/counts) may be visible anywhere — only total
   // participation and the voter's own ballot.
@@ -239,46 +239,49 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await roundCard.locator('.event-poll-tag:text-is("Zwischenstand verborgen")').count(), 1);
   assert.equal(await roundCard.locator('.event-poll-bar').count(), 0, 'no bars while the round is open');
 
-  const setSlider = (index: number, value: number) =>
-    page.locator(`[data-points-slider] >> nth=${index}`).evaluate((el, next) => {
-      (el as HTMLInputElement).value = String(next);
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    }, value);
-  const totalGames = await page.locator('[data-points-slider]').count();
-  await setSlider(0, 5);
-  await setSlider(1, 5);
+  // Same 0-5 number scale as an Umfrage rating.
+  const ballotRows = roundCard.locator('[data-points-row]');
+  const setPoints = async (index: number, value: number) => {
+    const button = ballotRows.nth(index).locator(`[data-points-value="${value}"]`);
+    await button.click();
+    await ballotRows.nth(index).locator(`[data-points-value="${value}"][aria-pressed="true"]`).waitFor();
+  };
+  const totalGames = await ballotRows.count();
+  assert.deepEqual(await ballotRows.first().locator('[data-vote-points]').allTextContents(), ['0', '1', '2', '3', '4', '5']);
+  await setPoints(0, 5);
+  await setPoints(1, 5);
   await roundCard.locator('[data-vote-rated-progress]').filter({ hasText: `2 von ${totalGames} bewertet` }).waitFor();
   assert.equal(
     await roundCard.locator('[data-vote-participation]:text-is("0/2 abgegeben")').count(),
     1,
-    'moving a slider must not submit it by itself'
+    'picking a number must not submit it by itself'
   );
 
   // The "Unbewertet" filter narrows the list to the still-unrated games.
   await page.click('#votes-unrated-toggle');
   await page.waitForFunction(
-    (expected) => document.querySelectorAll('[data-points-slider]').length === expected,
+    (expected) => document.querySelectorAll('.vote-round-card [data-points-row]').length === expected,
     totalGames - 2
   );
   await page.click('#votes-unrated-toggle');
   await page.waitForFunction(
-    (expected) => document.querySelectorAll('[data-points-slider]').length === expected,
+    (expected) => document.querySelectorAll('.vote-round-card [data-points-row]').length === expected,
     totalGames
   );
 
   // Every other game gets a deliberate 0, marked "Spiele ich nicht".
-  for (let index = 2; index < totalGames; index += 1) await setSlider(index, 0);
+  for (let index = 2; index < totalGames; index += 1) await setPoints(index, 0);
   assert.equal(await roundCard.locator('[data-decline-tag]:visible').count(), totalGames - 2);
   assert.ok(!(await page.locator('#votes-submit').isDisabled()), 'a complete ballot can be saved');
 
   await page.click('#votes-submit');
   await roundCard.locator('[data-vote-participation]:text-is("1/2 abgegeben")').waitFor();
   await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
-  assert.ok(!(await page.locator('[data-points-slider]').first().isDisabled()), 'a saved ballot stays editable');
+  assert.ok(!(await ballotRows.first().locator('[data-vote-points]').first().isDisabled()), 'a saved ballot stays editable');
   assert.equal(await roundCard.locator('.event-poll-bar').count(), 0, 'still no bars after saving, before closing');
 
   // Changing the ballot replaces it instead of adding a second one.
-  await setSlider(2, 1);
+  await setPoints(2, 1);
   const [changed] = await Promise.all([
     page.waitForResponse((response) => response.url().endsWith('/api/votes/points') && response.request().method() === 'POST'),
     page.click('#votes-submit'),
@@ -555,7 +558,7 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
     const previousPreferences = (await previousPreferenceResponse.json()) as Array<{ rating: number }>;
     const previousRating = previousPreferences[0]?.rating;
     const updatedPreference = await page.request.put(`${BASE_URL}/api/preferences`, {
-      data: { playerId: alice.id, gameId: liveBockTarget, rating: 10 },
+      data: { playerId: alice.id, gameId: liveBockTarget, rating: 5 },
     });
     assert.equal(updatedPreference.status(), 200, await updatedPreference.text());
     await page.waitForFunction((targetId) => {

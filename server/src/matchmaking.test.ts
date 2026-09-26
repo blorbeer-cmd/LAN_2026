@@ -96,20 +96,21 @@ test('countSeatConflicts ignores pairs where a player isn\'t actually in the dra
 });
 
 test('balanceTeams moves seat-neighbors onto the same team when that is affordable', () => {
-  // Distinct ratings only, so orderForDraft's shuffle never kicks in and the
-  // greedy draft is fully deterministic: a->team0, b->team1, c->team1,
-  // d->team0 (team1 fills up first, forcing d onto team0), i.e. a and b
-  // start out split. Swapping c<->a (both mid-pack ratings) reunites the
-  // seat pair for only a small skill-balance cost.
+  // Distinct 0-5 ratings only, so orderForDraft's shuffle never kicks in:
+  // the greedy draft puts a (5) and b (3) on different teams. Swapping a with
+  // c (4) reunites the seat pair while the team sums stay 1 point apart,
+  // which is cheaper than one conflict.
   const players: PlayerRating[] = [
-    { id: 'a', rating: 8 },
-    { id: 'b', rating: 7 },
-    { id: 'c', rating: 6 },
-    { id: 'd', rating: 1 },
+    { id: 'a', rating: 5 },
+    { id: 'b', rating: 3 },
+    { id: 'c', rating: 4 },
+    { id: 'd', rating: 2 },
+    { id: 'e', rating: 1 },
+    { id: 'f', rating: 0 },
   ];
   const teams = balanceTeams(players, 2, [['a', 'b']]);
-  assert.deepEqual(teams.map((t) => t.length).sort(), [2, 2]);
-  assert.deepEqual(teams.flat().sort(), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(teams.map((t) => t.length).sort(), [3, 3]);
+  assert.deepEqual(teams.flat().sort(), ['a', 'b', 'c', 'd', 'e', 'f']);
   assert.equal(countSeatConflicts(teams, [['a', 'b']]), 0, 'a and b should end up on the same team');
 });
 
@@ -118,10 +119,10 @@ test('balanceTeams leaves a seat conflict unresolved when fixing it would badly 
   // same team would blow the skill balance apart, so the conflict should be
   // left as-is rather than "fixed" at that cost.
   const players: PlayerRating[] = [
-    { id: 'a', rating: 10 },
-    { id: 'b', rating: 9 },
-    { id: 'c', rating: 1 },
-    { id: 'd', rating: 2 },
+    { id: 'a', rating: 5 },
+    { id: 'b', rating: 4 },
+    { id: 'c', rating: 0 },
+    { id: 'd', rating: 1 },
   ];
   const teams = balanceTeams(players, 2, [['a', 'b']]);
   assert.deepEqual(teams.map((t) => t.length).sort(), [2, 2]);

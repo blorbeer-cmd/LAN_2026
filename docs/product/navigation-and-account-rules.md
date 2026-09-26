@@ -303,7 +303,7 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
 
 - The first-login core tour is a true modal: `#app` is inert, focus cycles inside the dialog,
   Escape skips the explanatory steps into the required rating mode, and focus returns to the
-  previous control after completion. The rating panel is intentionally non-modal so its sliders
+  previous control after completion. The rating panel is intentionally non-modal so its rating buttons
   remain usable; it stays below the shared modal layer so game details and other forms remain
   operable.
 - Immediately after Home, the tour highlights the event switcher in the topbar for members and

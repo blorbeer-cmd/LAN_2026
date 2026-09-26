@@ -207,8 +207,8 @@ test('setup: players + skills + matches + a tournament + a draw for games-tourna
   statP3 = p3.body.id;
 
   // P1 is rated far below P2 for CS2, so P1 beating P2 is a clear underdog win.
-  await request(app).put('/api/skills').send({ playerId: statP1, gameId: cs2GameId, rating: 2 });
-  await request(app).put('/api/skills').send({ playerId: statP2, gameId: cs2GameId, rating: 9 });
+  await request(app).put('/api/skills').send({ playerId: statP1, gameId: cs2GameId, rating: 1 });
+  await request(app).put('/api/skills').send({ playerId: statP2, gameId: cs2GameId, rating: 5 });
 
   // P1 vs P2 twice (the rivalry), once each way so it's not just a repeat of
   // the underdog match.

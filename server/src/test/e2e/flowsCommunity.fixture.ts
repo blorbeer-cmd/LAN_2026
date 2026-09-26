@@ -466,7 +466,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     data: { mode: 'points', title: 'Kiosk Vote', gameIds: [games[0].id, games[1].id] },
   });
   await page.request.post(`${BASE_URL}/api/votes/points`, {
-    data: { playerId, entries: [{ gameId: games[0].id, points: 8 }, { gameId: games[1].id, points: 5 }] },
+    data: { playerId, entries: [{ gameId: games[0].id, points: 5 }, { gameId: games[1].id, points: 3 }] },
   });
   await page.request.post(`${BASE_URL}/api/votes/close`);
   await page.request.post(`${BASE_URL}/api/votes/start`, {
@@ -653,7 +653,8 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   await page.request.post(`${BASE_URL}/api/votes/points`, {
     data: {
       playerId,
-      entries: kioskGames.map((game, index) => ({ gameId: game.id, points: 10 - index })),
+      // 0-5 points: one clear winner, every game scored so all ten show.
+      entries: kioskGames.map((game, index) => ({ gameId: game.id, points: index === 0 ? 5 : Math.max(1, 4 - Math.floor((index - 1) / 2)) })),
     },
   });
   await page.waitForSelector('.kiosk-vote-result:nth-child(10)');

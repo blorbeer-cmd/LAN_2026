@@ -172,6 +172,7 @@ function serializeOption(
       ifNeeded: byResponse('if_needed'),
       cannot: byResponse('cannot'),
       ratings: {
+        '0': byResponse('0'),
         '1': byResponse('1'),
         '2': byResponse('2'),
         '3': byResponse('3'),
