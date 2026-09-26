@@ -89,6 +89,7 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`claude/pr278-agent-pipeline-review-q7se8d`](./claude-pr278-agent-pipeline-review-q7se8d.md) — 1 gemergt, 0 offen
 - [`claude/prio3-consistency-polish`](./claude-prio3-consistency-polish.md) — 1 gemergt, 0 offen
 - [`claude/push-notification-types-9djvav`](./claude-push-notification-types-9djvav.md) — 1 gemergt, 0 offen
+- [`claude/rating-scale-selected-color-150252`](./claude-rating-scale-selected-color-150252.md): 0 gemergt, 1 offen
 - [`claude/rematch-result-history-05t4qm`](./claude-rematch-result-history-05t4qm.md) — 1 gemergt, 0 offen
 - [`claude/rematch-results-winner-display-7qg5hr`](./claude-rematch-results-winner-display-7qg5hr.md) — 1 gemergt, 0 offen
 - [`claude/reset-phase-r2-multigroup-removal-u8s7j6`](./claude-reset-phase-r2-multigroup-removal-u8s7j6.md) — 1 gemergt, 0 offen
