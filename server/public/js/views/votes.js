@@ -2,31 +2,29 @@
 // voter, so casting a vote needs no extra identity form.
 //
 // Layout, top to bottom:
-// 1. Either "start a new round" controls (idle), or the full interactive
-//    game list plus a submit button (round open) — the rest of the catalog
-//    only appears once a round is actually running.
-// 2. The latest closed result as "Letzter Vote", pulled from history.
+// 1. Either "start a new round" controls (idle), or the running round as one
+//    card in the same shape as an Umfrage whose interim result is hidden:
+//    header with participation and the viewer's answer state, one row per
+//    game, and a footer with the own progress and "Speichern".
+// 2. The latest closed result as "Letzter Vote", pulled from history, as a
+//    collapsed Umfrage card: the header names round and winner, the opened
+//    card shows result bar, "Win" chip and voter avatars per game.
 // 3. The current Top 10 by aggregate "Bock" rating, split into two compact
 //    five-item columns on wider screens.
 //
 // While a round is open, nobody sees how votes/points are distributed across
 // games yet — only the server-side final tally, once closed, may influence
 // anyone (no watching a leader emerge and piling onto it). The view only
-// shows: the list of games to vote/rate, your own local (not-yet-submitted)
-// picks, and how many people have already submitted (momentum, not a
-// per-game breakdown). Full bars/rankings appear the moment the round
-// closes, and past rounds stay inspectable afterwards via the history list.
+// shows: the list of games to rate, your own local draft, and how many people
+// have already submitted. Once closed, everyone can see who voted how.
 //
-// Every regular round runs in 'points' mode: one slider per game, 0-10
-// points, 0 meaning "not rated" — as many games as you like. 'single' mode
-// (pick exactly one game) still exists server-side, but only ever gets used
-// for a runoff between tied winners (see the "Stichwahl" button below) — it
-// is not offered as a choice when starting a fresh round.
-// Either mode requires an explicit "Abstimmung abschicken" tap — selecting a
-// game or moving a slider only stages a local draft, it does not hit the
-// server until submitted. Closed-round results are sorted by each game's
-// aggregate "Bock" rating (state.preferences, maintained per-player in
-// profile.js) whenever the round's own score is tied.
+// Every regular round runs in 'points' mode: a 0-5 number scale per game, and every
+// game needs a rating from 0 to 5 before the ballot can be saved. 0 is a
+// deliberate "Spiele ich nicht", so each result names how many voters would
+// play the game. 'single' mode (pick exactly one game) only ever gets used
+// for a runoff between tied winners (see the "Stichwahl" button below).
+// Either mode requires an explicit "Speichern" tap — picking a number only
+// stages a local draft. A saved ballot can be changed until the round ends.
 
 import { api } from '../api.js';
 import { icon } from '../icons.js';
@@ -38,6 +36,9 @@ import { getMyId } from '../whoami.js';
 import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { isGroupAdmin } from '../groupContext.js';
+import { ratingScaleHtml } from '../ratingScale.js';
+import { skillRatingFor } from '../skillDisplay.js';
+import { voteBreakdownHtml, voterNamesText, voterStackHtml, WIN_CHIP } from '../voteBreakdown.js';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
 // from its own endpoint, not part of the main loadAll() round-trip.
@@ -46,6 +47,7 @@ let historyLoading = false;
 let historyStale = false;
 let historyOpen = false;
 let top10Open = false;
+let latestVoteOpen = false;
 let historyRequestVersion = 0;
 
 async function loadHistory(ctx) {
@@ -89,20 +91,19 @@ export function invalidateVoteEventScope() {
   draftSingleGameId = null;
   draftPoints = null;
   draftKey = null;
-  voteUnratedOnly = false;
   resetVoteGameSelection();
 }
 
-// The current player's own already-submitted entries in the running round.
-// Any entry means this identity has used its one submission for the round;
-// the values remain visible, but the controls and submit action are locked.
+// The current player's own saved ballot in the running round. Any entry
+// means this identity has answered; the draft below starts from it and can
+// still be changed and saved again until the round ends.
 let mineCache = null; // Map<gameId, points|null>
 let mineCacheKey = null; // see mineKey()
 let mineLoading = false;
 
 // A cancelled round is deleted on the server, so the next round reuses its
 // number. The start time tells the two apart; without it, the cancelled
-// round's own picks would lock the new round as already submitted.
+// round's own picks would be shown as this round's saved ballot.
 function mineKey(votes, playerId) {
   return `${votes.round}:${votes.startedAt}:${playerId}`;
 }
@@ -121,17 +122,14 @@ async function loadMine(key, playerId, ctx) {
   }
 }
 
-// Local, not-yet-submitted picks. Tapping a game or dragging a slider only
-// changes this draft; nothing reaches the server until the submit button is
-// pressed. Reseeded from mineCache once per round/player (draftKey tracks
-// that so a fresh round starts blank/fresh
-// rather than carrying over a stale draft).
+// Local, not-yet-saved picks. Tapping a game or a number only changes
+// this draft; nothing reaches the server until "Speichern" is pressed.
+// Reseeded from mineCache once per round/player (draftKey tracks that so a
+// fresh round starts blank rather than carrying over a stale draft).
+// A game missing from draftPoints is still unrated; 0 is a real rating.
 let draftSingleGameId = null;
 let draftPoints = null; // Map<gameId, points>
 let draftKey = null; // mineKey() of the round/player the current draft belongs to
-// Points-mode-only toggle: hides already-rated rows so working through a
-// long game list doesn't mean scrolling past everything already done.
-let voteUnratedOnly = false;
 
 // "Neue Abstimmung" game selection. Persisted here (like matchmaking.js's
 // checkedIds) rather than left in the DOM, because a votes:changed/
@@ -208,34 +206,12 @@ function syncVoteSelectToggle(button) {
   button.innerHTML = icon(iconName);
 }
 
-// Guards the points sliders against a re-render landing mid-drag (another
-// player casting a vote, or a Bock rating changing elsewhere, both trigger a
-// renderCurrent() while this view is open) — see gameCatalog.js's identical
-// guard for why: replacing container.innerHTML destroys the exact <input>
-// the pointer is down on and silently drops the browser's native pointer
-// capture for that drag, so the thumb stops tracking the mouse until
-// released and re-grabbed. endDrag() catches up with a no-network re-render
-// once the drag actually ends.
-let sliderDragActive = false;
-let dragGuardInstalled = false;
-let lastCtx = null;
+// The points button that was just pressed, so keyboard focus survives the
+// re-render that the press triggers.
+let focusAfterRender = null;
 
-function ensureDragGuardInstalled() {
-  if (dragGuardInstalled) return;
-  dragGuardInstalled = true;
-  const endDrag = () => {
-    if (!sliderDragActive) return;
-    sliderDragActive = false;
-    lastCtx?.rerender();
-  };
-  document.addEventListener('pointerup', endDrag);
-  document.addEventListener('pointercancel', endDrag);
-  document.addEventListener('mouseup', endDrag);
-  document.addEventListener('touchend', endDrag);
-}
-
-// One compact meta line per game, shared by the open round and the detail
-// dialog: empty values ("0× gewonnen", "–") are left out instead of shown.
+// One compact meta line per game, shared by the open round and the result:
+// empty values ("0× gewonnen", "–") are left out instead of shown.
 function gameMetaHtml(r) {
   return [
     r.playCount > 0 ? `zuletzt ${formatDate(r.lastPlayedAt)}` : 'noch nie gespielt',
@@ -278,15 +254,9 @@ function renderRankingColumns(items, rowHtml) {
     </div>`;
 }
 
-function submissionCountLabel(count, mode) {
-  if (mode === 'points') return `${count} ${count === 1 ? 'Bewertung' : 'Bewertungen'}`;
-  return `${count} ${count === 1 ? 'Stimme' : 'Stimmen'}`;
-}
-
 // Reuses the leaderboard's .lb-row (icon-led, single line, rank + a value
-// pinned right) instead of the old full .vote-row block — a "Bock" ranking
-// doesn't need its own two-line stats block per game to be useful at a
-// glance.
+// pinned right) — a "Bock" ranking doesn't need its own two-line stats block
+// per game to be useful at a glance.
 function renderTop10(results) {
   const top10 = topByPreference(results, 10);
   if (top10.length === 0) {
@@ -304,117 +274,250 @@ function renderTop10(results) {
   return renderRankingColumns(top10, rowHtml);
 }
 
-// ---------- open round: stage a local draft, submit explicitly ----------
+// ---------- open round: stage a local draft, save explicitly ----------
 
-function renderOpenRows(votes, draftReady, hasSubmitted) {
-  const showUnratedOnly = votes.mode === 'points' && voteUnratedOnly && draftReady && !hasSubmitted;
-  const results = (showUnratedOnly ? votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) === 0) : [...votes.results])
-    .sort((a, b) => a.gameName.localeCompare(b.gameName, 'de'));
-  if (showUnratedOnly && results.length === 0) {
-    return emptyStateHtml('Alle Spiele bewertet.');
-  }
-  return results
-    .map((r) => {
-      let trailing = '';
-      let sliderHtml = '';
-      if (!draftReady) {
-        sliderHtml = `<div class="muted" style="font-size:var(--font-size-xs);">Lädt deine Auswahl…</div>`;
-      } else if (votes.mode === 'single') {
-        const isSelected = draftSingleGameId === r.gameId;
-        trailing = `<button type="button" class="btn btn-sm ${isSelected ? 'btn-primary' : ''}" data-vote-select="${r.gameId}" ${hasSubmitted ? 'disabled' : ''}>${isSelected ? 'Ausgewählt' : 'Auswählen'}</button>`;
-      } else {
-        const pointsVal = draftPoints.get(r.gameId) ?? 0;
-        trailing = `<span class="skill-value vote-points-value" aria-hidden="true">${pointsVal}</span>`;
-        sliderHtml = `<div class="vote-points-slider"><input type="range" class="skill-row-slider" min="0" max="10" step="1"
-                 data-points-slider="${r.gameId}" value="${pointsVal}" aria-label="${escapeHtml(`Punkte für ${r.gameName}`)}" ${hasSubmitted ? 'disabled' : ''} /></div>`;
-      }
+const DECLINE_LABEL = 'Spiele ich nicht';
 
-      return `
-        <div class="vote-row vote-open-row" data-points-row="${r.gameId}">
-          <div class="vote-open-head">
-            <span class="player-name vote-open-name">${escapeHtml(r.gameName)}</span>
-            ${trailing}
-          </div>
-          <div class="muted vote-open-meta">${gameMetaHtml(r)}</div>
-          ${sliderHtml}
-        </div>`;
-    })
-    .join('');
+function pointsValueText(value) {
+  if (value === 0) return `0 Punkte, ${DECLINE_LABEL.toLowerCase()}`;
+  return `${value} ${value === 1 ? 'Punkt' : 'Punkte'}`;
 }
 
-// ---------- closed round (current or reopened from history): full bars ----------
-
-function renderClosedRows(results, mode, winnerGameIds) {
-  const scoredResults = results.filter((result) => result.score > 0);
-  const maxScore = Math.max(1, ...scoredResults.map((result) => result.score));
-  return scoredResults
-    .map((r) => {
-      const isWinner = winnerGameIds ? winnerGameIds.includes(r.gameId) : r.score > 0 && r.score === maxScore;
-      const scoreLabel =
-        mode === 'points' ? `${r.points} Punkt(e)${r.votes ? ` · ${r.votes} Spieler` : ''}` : `${r.votes} Stimme(n)`;
-      return `
-        <div class="vote-row ${isWinner ? 'is-winner' : ''}">
-          <div class="row-between">
-            <span class="row" style="gap:var(--space-2);">${escapeHtml(r.gameName)}${isWinner ? '<span class="tournament-fixture-score is-pick vote-win-chip">Win</span>' : ''}</span>
-            <span class="muted">${scoreLabel}</span>
-          </div>
-          <div class="vote-bar-track"><div class="vote-bar-mask" style="width:${100 - (r.score / maxScore) * 100}%"></div></div>
-          <div class="muted vote-open-meta">${gameMetaHtml(r)}</div>
-        </div>`;
-    })
-    .join('');
+function ballotGames(votes) {
+  return [...votes.results].sort((a, b) => a.gameName.localeCompare(b.gameName, 'de'));
 }
 
-function renderVoteRanking(results, mode, winnerGameIds) {
-  const winners = new Set(winnerGameIds ?? []);
-  let previousScore = null;
-  let currentRank = 0;
-  const rankedResults = results.filter((result) => result.score > 0).slice(0, 10).map((result, index) => {
-    if (previousScore === null || result.score !== previousScore) currentRank = index + 1;
-    previousScore = result.score;
-    return { result, rank: currentRank };
-  });
-  return renderRankingColumns(rankedResults, ({ result, rank }) => {
-    const score = mode === 'points' ? `${result.points} Pkt.` : submissionCountLabel(result.votes, 'single');
-    const isWinner = winners.has(result.gameId);
-    return `
-      <div class="lb-row ${isWinner ? 'rank-1' : ''}">
-        <span class="lb-rank">${rank}</span>
-        <span class="vote-ranking-name">
-          <span class="player-name">${escapeHtml(result.gameName)}</span>
-          ${isWinner ? '<span class="tournament-fixture-score is-pick vote-win-chip">Win</span>' : ''}
-        </span>
-        <span class="lb-points">${score}</span>
+function ratedDraftCount(votes) {
+  return votes.results.filter((r) => draftPoints.has(r.gameId)).length;
+}
+
+function ballotComplete(votes) {
+  if (votes.mode === 'single') return Boolean(draftSingleGameId);
+  return votes.results.length > 0 && ratedDraftCount(votes) === votes.results.length;
+}
+
+function draftProgressText(votes) {
+  if (votes.mode === 'single') return `${draftSingleGameId ? 1 : 0} gewählt`;
+  return `${ratedDraftCount(votes)} von ${votes.results.length} bewertet`;
+}
+
+function answerChipHtml(hasSubmitted) {
+  return hasSubmitted
+    ? `<span class="badge badge-playing event-poll-answer-chip">${icon('check')}Abgegeben</span>`
+    : '<span class="badge event-poll-answer-chip is-missing">Deine Stimme fehlt</span>';
+}
+
+// Same four columns as an Umfrage row (name, result, voters, answer); while
+// the round runs the result and voter columns stay empty, exactly like an
+// Umfrage with a hidden interim result.
+// The viewer's own Bock (0-5) for a game, or null. Vote points use the same
+// scale, so an unanswered ballot starts from it.
+function ownBock(gameId) {
+  const myId = getMyId();
+  const entry = myId ? state.preferences?.find((pref) => pref.player_id === myId && pref.game_id === gameId) : null;
+  return entry ? entry.rating : null;
+}
+
+// The viewer's own Skill beside each game as orientation; 0 means
+// "kenne ich nicht", – means not rated yet.
+function ownSkillHtml(gameId) {
+  const myId = getMyId();
+  const skill = myId ? skillRatingFor(myId, gameId) : null;
+  return `<span class="vote-own-skill${skill === null ? ' is-missing' : ''}">Mein Skill: ${skill ?? '–'}</span>`;
+}
+
+function renderOpenRow(votes, r, draftReady, columnStart = false) {
+  let control;
+  if (!draftReady) {
+    control = '<span class="muted vote-points-loading">Lädt…</span>';
+  } else if (votes.mode === 'single') {
+    const selected = draftSingleGameId === r.gameId;
+    control = `
+      <div class="event-poll-choice-control">
+        <div class="selection-toolbar event-poll-response-toolbar">
+          <button type="button" class="btn btn-sm event-poll-choice-btn${selected ? ' is-selected' : ''}" data-vote-select="${r.gameId}"
+            aria-pressed="${selected}" aria-label="${escapeHtml(`${r.gameName} wählen`)}">${selected ? 'Ausgewählt' : 'Wählen'}</button>
+        </div>
       </div>`;
-  });
+  } else {
+    // The same 0-5 number scale as an Umfrage rating; no button selected
+    // means "not rated yet".
+    control = ratingScaleHtml({
+      selected: draftPoints.get(r.gameId),
+      groupLabel: `Punkte für ${r.gameName}`,
+      valueLabel: pointsValueText,
+      attributes: (value) => `data-vote-points="${r.gameId}" data-points-value="${value}"`,
+    });
+  }
+  return `
+    <div class="event-poll-option${columnStart ? ' is-column-start' : ''}" data-points-row="${r.gameId}">
+      <div class="event-poll-option-info">
+        <span class="event-poll-option-title-row"><strong>${escapeHtml(r.gameName)}</strong></span>
+        <span class="muted event-poll-option-note">${ownSkillHtml(r.gameId)} · ${gameMetaHtml(r)}</span>
+      </div>
+      <span class="event-poll-result"></span>
+      <span class="event-poll-option-badges">
+        <span class="event-poll-tag vote-decline-tag" data-decline-tag ${draftReady && draftPoints?.get(r.gameId) === 0 ? '' : 'hidden'}>${DECLINE_LABEL}</span>
+      </span>
+      ${control}
+    </div>`;
+}
+
+function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
+  const isPoints = votes.mode === 'points';
+  const games = ballotGames(votes);
+  // Two columns on wide screens read down the left column first, then the
+  // right one (see .event-poll-options.is-compact).
+  const columnRows = Math.max(1, Math.ceil(games.length / 2));
+  const rows = games.map((r, index) => renderOpenRow(votes, r, mineReady, index === columnRows)).join('');
+  const tags = [];
+  // Runoffs are titled "Stichwahl: …" already, so the tag only shows when
+  // the title does not say it.
+  if (!isPoints && !(votes.title ?? '').includes('Stichwahl')) tags.push('Stichwahl');
+  tags.push('Zwischenstand verborgen');
+  const admin = isGroupAdmin();
+  const answer = mineReady ? answerChipHtml(hasSubmitted) : '';
+  return `
+    <section class="card vote-page-section event-poll-card vote-round-card" aria-labelledby="vote-current-title">
+      <header class="event-poll-card-header">
+        <div class="event-poll-card-title vote-round-heading">
+          <h2 id="vote-current-title">${votes.title ? escapeHtml(votes.title) : 'Abstimmung läuft'}</h2>
+          <span class="event-poll-card-meta-line">
+            <span class="muted" data-vote-participation>${votes.totalVoters}/${totalPlayers} abgegeben</span>
+            <span class="event-poll-answer-inline">${answer}</span>
+          </span>
+        </div>
+        <div class="event-poll-card-side">
+          <span class="event-poll-answer-side">${answer}</span>
+          ${admin ? '<button type="button" class="btn btn-sm" id="votes-close">Beenden</button>' : ''}
+          ${admin ? '<button type="button" class="btn btn-sm btn-danger" id="votes-cancel">Abbrechen</button>' : ''}
+        </div>
+      </header>
+      <div class="stack event-poll-card-content">
+        <section class="stack event-poll-round">
+          <div class="event-poll-tags">
+            ${tags.map((tag) => `<span class="event-poll-tag">${tag}</span>`).join('')}
+          </div>
+          ${votes.info ? `<p class="event-poll-note">${escapeHtml(votes.info)}</p>` : ''}
+          <div class="stack event-poll-options has-answers is-compact" style="--compact-rows: ${columnRows};">${rows}</div>
+          <div class="event-poll-save-row event-poll-footer">
+            <span class="muted" data-vote-rated-progress>${mineReady ? draftProgressText(votes) : ''}</span>
+            <button type="button" class="btn btn-primary btn-sm" id="votes-submit" ${mineReady && ballotComplete(votes) ? '' : 'disabled'}>Speichern</button>
+          </div>
+        </section>
+      </div>
+    </section>`;
+}
+
+// ---------- closed rounds: the ended-Umfrage shape ----------
+
+function roundTitle(h) {
+  return h.title || `Abstimmung Runde ${h.round}`;
+}
+
+function submissionCountLabel(count) {
+  return `${count} abgegeben`;
+}
+
+function roundMetaText(h) {
+  return [h.title, formatDateTime(h.closedAt), h.mode === 'single' && !(h.title ?? '').includes('Stichwahl') ? 'Stichwahl' : null, submissionCountLabel(h.totalVoters)]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function resultSummary(h, r) {
+  if (h.mode === 'single') return `${r.votes} ${r.votes === 1 ? 'Stimme' : 'Stimmen'}`;
+  return `${r.points} Pkt. · ${r.votes}/${h.totalVoters} spielen mit`;
+}
+
+// Everyone who picked the game, or gave it at least one point, highest first.
+function supportersOf(h, gameId) {
+  return (h.ballots ?? [])
+    .map((ballot) => ({ ballot, entry: ballot.entries.find((entry) => entry.gameId === gameId) }))
+    .filter(({ entry }) => entry && (h.mode === 'single' || entry.points > 0))
+    .sort((a, b) => (b.entry.points ?? 0) - (a.entry.points ?? 0) || a.ballot.name.localeCompare(b.ballot.name, 'de'))
+    .map(({ ballot }) => ({ playerId: ballot.playerId, name: ballot.name }));
+}
+
+function renderResultRows(h) {
+  const maxPoints = Math.max(1, ...h.results.map((r) => r.points));
+  const winners = new Set(h.winnerGameIds ?? []);
+  return h.results
+    .map((r) => {
+      const win = winners.has(r.gameId);
+      const share = h.mode === 'single' ? r.votes / Math.max(1, h.totalVoters) : r.points / maxPoints;
+      const supporters = supportersOf(h, r.gameId);
+      const stack = voterStackHtml({
+        people: supporters,
+        label: `Stimmen zu ${r.gameName} ansehen · ${h.mode === 'single' ? 'Gewählt von' : 'Spielen mit'}: ${voterNamesText(supporters)}`,
+        attributes: `data-open-vote-round="${h.round}"`,
+      });
+      return `
+        <div class="event-poll-option${win ? ' is-winner' : ''}">
+          <div class="event-poll-option-info">
+            <span class="event-poll-option-title-row">
+              <strong>${escapeHtml(r.gameName)}</strong>
+              ${win ? WIN_CHIP : ''}
+            </span>
+            <span class="muted event-poll-option-note">${gameMetaHtml(r)}</span>
+          </div>
+          <span class="event-poll-result">
+            <span class="event-poll-bar" aria-hidden="true">${share > 0 ? `<span class="event-poll-bar-fill is-choice" style="width:${Math.round(share * 1000) / 10}%;"></span>` : ''}</span>
+            <span class="event-poll-counts">${escapeHtml(resultSummary(h, r))}</span>
+          </span>
+          <span class="event-poll-option-badges">${stack}</span>
+        </div>`;
+    })
+    .join('');
 }
 
 // ---------- current vote: the most recent closed round, straight from history ----------
 
-function renderCurrentVote() {
-  if (historyCache === null) {
-    return emptyStateHtml('Lädt…', { className: 'vote-empty-state empty-state-compact' });
-  }
-  if (historyCache.length === 0) {
-    return emptyStateHtml('Noch keine Abstimmung.', {
-      className: 'vote-empty-state empty-state-compact',
-    });
-  }
-  const h = historyCache[0];
-  if (!h.totalVoters) {
-    return emptyStateHtml('Niemand hat abgestimmt.', { className: 'vote-empty-state empty-state-compact' });
-  }
-  const meta = [h.title, formatDateTime(h.closedAt), h.mode === 'single' ? 'Stichwahl' : null]
-    .filter(Boolean)
-    .map(escapeHtml)
-    .join(' · ');
-  return `
-    <div class="muted vote-result-meta">${meta} · ${submissionCountLabel(h.totalVoters, h.mode)}</div>
-    ${renderVoteRanking(h.results, h.mode, h.winnerGameIds)}
-`;
+function winnerNames(h) {
+  return h.results.filter((r) => (h.winnerGameIds ?? []).includes(r.gameId)).map((r) => r.gameName);
 }
 
-// ---------- history: list + reopen a past round's full detail ----------
+// Collapsed like an Umfrage card: the header keeps the round, its winner and
+// the actions visible; the full result opens below it.
+function renderLatestVoteCard({ showRunoff }) {
+  const h = historyCache?.[0];
+  if (!h?.totalVoters) {
+    const empty = historyCache === null ? 'Lädt…' : historyCache.length === 0 ? 'Noch keine Abstimmung.' : 'Niemand hat abgestimmt.';
+    return `
+      <section class="card vote-page-section stack" aria-labelledby="vote-current-result-title">
+        <div class="grouped-page-section-title"><h2 id="vote-current-result-title">Letzter Vote</h2></div>
+        ${emptyStateHtml(empty, { className: 'vote-empty-state empty-state-compact' })}
+      </section>`;
+  }
+  const winners = winnerNames(h);
+  return `
+    <section class="card vote-page-section event-poll-card" aria-labelledby="vote-current-result-title" data-latest-vote>
+      <header class="event-poll-card-header">
+        <button type="button" class="event-poll-card-toggle" data-toggle-latest-vote aria-expanded="${latestVoteOpen}">
+          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
+          <span class="event-poll-card-title">
+            <strong id="vote-current-result-title">Letzter Vote</strong>
+            <span class="event-poll-card-meta-line">
+              <span class="muted">${escapeHtml(roundMetaText(h))}</span>
+              ${winners.length ? `<span class="event-poll-best-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : ''}
+            </span>
+          </span>
+        </button>
+        <div class="event-poll-card-side">
+          <button type="button" class="btn btn-sm" data-open-vote-round="${h.round}">Stimmen ansehen</button>
+          ${showRunoff ? '<button type="button" class="btn btn-primary btn-sm" id="votes-runoff">Stichwahl starten</button>' : ''}
+        </div>
+      </header>
+      <div class="stack event-poll-card-content" ${latestVoteOpen ? '' : 'hidden'}>
+        <section class="stack event-poll-round">
+          ${h.info ? `<p class="event-poll-note">${escapeHtml(h.info)}</p>` : ''}
+          <div class="stack event-poll-options">${renderResultRows(h)}</div>
+        </section>
+      </div>
+    </section>`;
+}
+
+// ---------- history: one compact row per older round ----------
 
 function renderHistory() {
   if (historyCache === null) {
@@ -428,62 +531,73 @@ function renderHistory() {
       className: 'vote-empty-state empty-state-compact',
     });
   }
-  return olderRounds
+  return `<div class="event-poll-history-list">${olderRounds
     .map((h) => {
-      const title = h.title ? escapeHtml(h.title) : `Abstimmung Runde ${h.round}`;
-      const mode = h.mode === 'single' ? ' · Stichwahl' : '';
+      const winners = winnerNames(h);
+      const meta = [roundTitle(h), formatDateTime(h.closedAt), submissionCountLabel(h.totalVoters)].join(' · ');
       return `
-        <div class="card stack vote-history-round" style="margin-bottom:var(--space-3);">
-          <div class="row-between">
-            <div class="stack" style="gap:var(--space-1);min-width:0;">
-              <div class="player-name">${title}</div>
-              <span class="muted vote-result-meta">${formatDateTime(h.closedAt)}${mode} · ${submissionCountLabel(h.totalVoters, h.mode)}</span>
-            </div>
-            <button type="button" class="btn btn-sm" data-open-history-round="${h.round}">Details</button>
-          </div>
-          ${h.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(h.info)}</p>` : ''}
-          ${h.totalVoters ? renderVoteRanking(h.results, h.mode, h.winnerGameIds) : emptyStateHtml('Niemand hat abgestimmt.')}
+        <div class="event-poll-history-round">
+          <span class="event-poll-history-main">
+            <span class="event-poll-history-meta">${escapeHtml(meta)}</span>
+            ${winners.length ? `<span class="event-poll-history-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : '<span class="muted">Keine Stimmen</span>'}
+          </span>
+          <button type="button" class="btn btn-sm" data-open-vote-round="${h.round}">Stimmen ansehen</button>
         </div>`;
     })
-    .join('');
+    .join('')}</div>`;
 }
 
-async function openHistoryRoundDetail(round) {
+// ---------- "Stimmen": who voted how in one closed round ----------
+
+const DECLINE_CELL = `<span class="event-poll-vote-cell is-cannot" role="img" aria-label="Spielt nicht" title="Spielt nicht">${icon('x')}</span>`;
+
+function ballotCell(h, entry) {
+  if (h.mode === 'single') {
+    return entry
+      ? `<span class="event-poll-vote-cell is-can" role="img" aria-label="Gewählt" title="Gewählt">${icon('check')}</span>`
+      : '<span class="event-poll-vote-cell is-empty" aria-hidden="true"></span>';
+  }
+  if (!entry) return '<span class="event-poll-vote-cell is-empty" aria-label="Nicht bewertet">–</span>';
+  if (entry.points === 0) return DECLINE_CELL;
+  return `<span class="event-poll-vote-cell is-rating">${entry.points}</span>`;
+}
+
+function roundBreakdownHtml(h) {
+  if (!h.ballots?.length) return '<p class="muted">Für diese Runde wurden keine Stimmen abgegeben.</p>';
+  const winners = new Set(h.winnerGameIds ?? []);
+  const entriesByPlayer = new Map(
+    h.ballots.map((ballot) => [ballot.playerId, new Map(ballot.entries.map((entry) => [entry.gameId, entry]))]),
+  );
+  const hasDeclines = h.mode === 'points' && h.ballots.some((ballot) => ballot.entries.some((entry) => entry.points === 0));
+  const keyHtml = hasDeclines
+    ? `<div class="muted event-poll-vote-key"><span><span class="event-poll-vote-cell is-cannot" aria-hidden="true">${icon('x')}</span>Spielt nicht</span></div>`
+    : '';
+  return `
+    <div class="muted vote-result-meta">${escapeHtml(roundMetaText(h))}</div>
+    ${h.info ? `<p class="event-poll-note">${escapeHtml(h.info)}</p>` : ''}
+    ${voteBreakdownHtml({
+      columns: h.results.map((r) => ({ label: r.gameName, win: winners.has(r.gameId), summary: resultSummary(h, r) })),
+      people: h.ballots,
+      keyHtml,
+      cellHtml: (person, index) => ballotCell(h, entriesByPlayer.get(person.playerId)?.get(h.results[index].gameId)),
+    })}`;
+}
+
+async function openRoundBreakdown(round) {
   const { el } = openModal('Lädt…', emptyStateHtml('Lädt…'));
   try {
     const detail = await api.votes.historyRound(round);
     const titleEl = el.querySelector('.modal-header h2');
-    if (titleEl) titleEl.textContent = detail.title || `Abstimmung Runde ${detail.round}`;
+    if (titleEl) titleEl.textContent = `Stimmen · ${roundTitle(detail)}`;
     const bodyEl = el.querySelector('.modal-body');
-    if (bodyEl) {
-      bodyEl.innerHTML = `
-        <div class="muted" style="font-size:var(--font-size-xs);margin-bottom:var(--space-3);">
-          ${formatDateTime(detail.closedAt)}${detail.mode === 'single' ? ' · Stichwahl' : ''} ·
-          ${detail.mode === 'points' ? `${detail.totalPoints} Punkt(e)` : `${detail.totalVotes} Stimme(n)`}
-          von ${detail.totalVoters} Teilnehmer(n)
-        </div>
-        ${detail.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0 0 var(--space-3);">${escapeHtml(detail.info)}</p>` : ''}
-        ${renderClosedRows(detail.results, detail.mode, detail.winnerGameIds)}
-      `;
-    }
+    if (bodyEl) bodyEl.innerHTML = `<div class="stack">${roundBreakdownHtml(detail)}</div>`;
   } catch (err) {
     const bodyEl = el.querySelector('.modal-body');
     if (bodyEl) bodyEl.innerHTML = emptyStateHtml(err.message);
   }
 }
 
-function ratedDraftCount(votes) {
-  return votes.results.filter((r) => (draftPoints.get(r.gameId) ?? 0) > 0).length;
-}
-
-function ratedProgressText(ratedCount, votes) {
-  return `${ratedCount} von ${votes.results.length} bewertet`;
-}
-
 export function renderVotes(container, ctx) {
-  lastCtx = ctx;
-  ensureDragGuardInstalled();
-  if (sliderDragActive) return;
 
   const votes = state.votes;
   if (!votes) {
@@ -503,65 +617,31 @@ export function renderVotes(container, ctx) {
   if (currentMineKey && mineCacheKey !== currentMineKey && !mineLoading) {
     loadMine(currentMineKey, myId, ctx);
   }
-  const mineReady = currentMineKey && mineCacheKey === currentMineKey && mineCache;
+  const mineReady = Boolean(currentMineKey && mineCacheKey === currentMineKey && mineCache);
   const hasSubmitted = Boolean(mineReady && mineCache.size > 0);
 
   if (mineReady && draftKey !== mineCacheKey) {
     draftSingleGameId = votes.mode === 'single' ? [...mineCache.keys()][0] ?? null : null;
-    draftPoints = new Map(mineCache);
+    draftPoints = new Map([...mineCache].filter(([, points]) => typeof points === 'number'));
+    // A ballot not yet answered starts from the viewer's own Bock per game;
+    // it is still only a local draft until "Speichern".
+    if (votes.mode === 'points' && mineCache.size === 0) {
+      for (const r of votes.results) {
+        const bock = ownBock(r.gameId);
+        if (bock !== null) draftPoints.set(r.gameId, bock);
+      }
+    }
     draftKey = mineCacheKey;
   }
 
   // Eligible voters are the active event's accepted participants, not every
   // group member — an invited-but-not-yet-accepted person must not inflate
-  // the "X von Y" denominator (see eventPlayers()).
+  // the "X/Y" denominator (see eventPlayers()).
   const totalPlayers = eventPlayers().length;
 
   let openSectionHtml = '';
   if (votes.open) {
-    // Runoffs are titled "Stichwahl: …" already, so the mode badge only shows
-    // when the title does not say it.
-    const modeLabel = votes.mode === 'single' && !(votes.title ?? '').includes('Stichwahl') ? 'Stichwahl' : '';
-    // A runoff offers only the few tied games, so each option spans the full width.
-    const rows = `<div class="vote-game-grid${votes.mode === 'single' ? ' is-runoff' : ''}">${renderOpenRows(votes, mineReady, hasSubmitted)}</div>`;
-    const submitLabel = votes.mode === 'points' ? 'Bewertung abschicken' : 'Stimme abschicken';
-    const submittedLabel = votes.mode === 'points' ? 'Bewertung abgegeben' : 'Stimme abgegeben';
-    const participationLabel = votes.mode === 'points' ? 'Bewertungen abgegeben' : 'Stimmen abgegeben';
-    // Own rating progress through this round's game list - only meaningful in
-    // points mode (single mode's one pick is already reflected by the
-    // Auswählen/Ausgewählt button state) and only while still filling it in.
-    const ratedCount = votes.mode === 'points' && mineReady ? ratedDraftCount(votes) : 0;
-    const showProgress = votes.mode === 'points' && mineReady && !hasSubmitted;
-    const progressHtml = showProgress
-      ? `<div class="vote-progress-row">
-           <span class="muted" style="font-size:var(--font-size-xs);" data-vote-rated-progress>${ratedProgressText(ratedCount, votes)}</span>
-           <button type="button" class="chip${voteUnratedOnly ? ' is-active' : ''}" id="votes-unrated-toggle" aria-pressed="${voteUnratedOnly}">Unbewertet</button>
-         </div>`
-      : '';
-    openSectionHtml = `
-      <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-current-title">
-        <div class="vote-open-header">
-          <div class="vote-open-title">
-            <h2 id="vote-current-title">${votes.title ? escapeHtml(votes.title) : 'Abstimmung läuft'}</h2>
-            <span class="badge badge-playing" aria-label="${participationLabel}: ${votes.totalVoters} von ${totalPlayers}">${votes.totalVoters}/${totalPlayers} abgegeben</span>
-            ${modeLabel ? `<span class="badge">${modeLabel}</span>` : ''}
-          </div>
-          <div class="vote-open-admin">
-            <button type="button" class="btn btn-sm" id="votes-close">Beenden</button>
-            <button type="button" class="btn btn-sm" id="votes-cancel">Abbrechen</button>
-          </div>
-        </div>
-        ${votes.info ? `<p class="muted vote-open-info">${escapeHtml(votes.info)}</p>` : ''}
-        ${progressHtml}
-        ${rows}
-        <div class="card-footer-actions vote-submit-row">
-          ${
-            hasSubmitted
-              ? `<div class="vote-submitted-state">${icon('circleCheck')} ${submittedLabel}</div>`
-              : `<button type="button" class="btn btn-primary" id="votes-submit" ${mineReady ? '' : 'disabled'}>${submitLabel}</button>`
-          }
-        </div>
-      </section>`;
+    openSectionHtml = renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers });
   } else {
     initializeVoteGameSelection(votes);
     const gameCheckboxes = sortVoteGames(catalogGames())
@@ -621,16 +701,7 @@ export function renderVotes(container, ctx) {
     <h1 class="view-title">Vote</h1>
     ${openSectionHtml}
 
-    <section class="card vote-page-section stack" aria-labelledby="vote-current-result-title">
-      <div class="grouped-page-section-title">
-        <h2 id="vote-current-result-title">Letzter Vote</h2>
-        <span class="row" style="gap:var(--space-2);">
-          ${latestRound?.totalVoters ? `<button type="button" class="btn btn-sm" data-open-history-round="${latestRound.round}">Details</button>` : ''}
-          ${showRunoff ? '<button type="button" class="btn btn-primary btn-sm" id="votes-runoff">Stichwahl starten</button>' : ''}
-        </span>
-      </div>
-      ${renderCurrentVote()}
-    </section>
+    ${renderLatestVoteCard({ showRunoff })}
 
     <details class="card history-details collapsible-section vote-page-section" data-vote-top10 ${top10Open ? 'open' : ''}>
       <summary class="collapsible-section-header">
@@ -668,6 +739,10 @@ export function renderVotes(container, ctx) {
   container.querySelector('[data-vote-top10]')?.addEventListener('toggle', (event) => {
     top10Open = event.currentTarget.open;
   });
+  container.querySelector('[data-toggle-latest-vote]')?.addEventListener('click', () => {
+    latestVoteOpen = !latestVoteOpen;
+    ctx.rerender();
+  });
 
   container.querySelectorAll('[data-vote-select]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -676,35 +751,28 @@ export function renderVotes(container, ctx) {
     });
   });
 
-  container.querySelector('#votes-unrated-toggle')?.addEventListener('click', () => {
-    voteUnratedOnly = !voteUnratedOnly;
-    ctx.rerender();
-  });
+  // Like an Umfrage rating: pressing the chosen number again clears it.
 
-  container.querySelectorAll('[data-points-slider]').forEach((slider) => {
-    const gameId = slider.dataset.pointsSlider;
-    const valueEl = slider.closest('[data-points-row]').querySelector('.skill-value');
-    const updateSliderTone = () => {
-      slider.style.setProperty('--slider-pct', `${(Number(slider.value) / 10) * 100}%`);
-    };
-    updateSliderTone();
-    slider.addEventListener('pointerdown', () => {
-      sliderDragActive = true;
-    });
-    slider.addEventListener('input', () => {
-      valueEl.textContent = slider.value;
-      const value = parseInt(slider.value, 10);
-      if (value > 0) draftPoints.set(gameId, value);
-      else draftPoints.delete(gameId);
-      updateSliderTone();
-      // Keyboard input ends no pointer drag, so no re-render follows; keep the own progress current.
-      const progress = container.querySelector('[data-vote-rated-progress]');
-      if (progress) progress.textContent = ratedProgressText(ratedDraftCount(state.votes), state.votes);
+  container.querySelectorAll('[data-vote-points]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const gameId = btn.dataset.votePoints;
+      const value = Number(btn.dataset.pointsValue);
+      if (draftPoints.get(gameId) === value) draftPoints.delete(gameId);
+      else draftPoints.set(gameId, value);
+      focusAfterRender = { gameId, value };
+      ctx.rerender();
     });
   });
+  if (focusAfterRender) {
+    const { gameId, value } = focusAfterRender;
+    focusAfterRender = null;
+    [...container.querySelectorAll('[data-vote-points]')]
+      .find((btn) => btn.dataset.votePoints === gameId && Number(btn.dataset.pointsValue) === value)
+      ?.focus({ preventScroll: true });
+  }
 
-  container.querySelectorAll('[data-open-history-round]').forEach((btn) => {
-    btn.addEventListener('click', () => openHistoryRoundDetail(btn.dataset.openHistoryRound));
+  container.querySelectorAll('[data-open-vote-round]').forEach((btn) => {
+    btn.addEventListener('click', () => openRoundBreakdown(btn.dataset.openVoteRound));
   });
 
   const submitBtn = container.querySelector('#votes-submit');
@@ -713,15 +781,13 @@ export function renderVotes(container, ctx) {
       if (submitBtn.disabled) return;
       const playerId = getMyId();
       if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-      if (votes.mode === 'single' && !draftSingleGameId) {
-        return showToast('Bitte zuerst ein Spiel auswählen.', { error: true });
+      if (!ballotComplete(votes)) {
+        return showToast(votes.mode === 'single' ? 'Bitte zuerst ein Spiel auswählen.' : 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.', { error: true });
       }
       const entries = votes.mode === 'points'
-        ? [...draftPoints.entries()].map(([gameId, points]) => ({ gameId, points }))
+        ? votes.results.map((r) => ({ gameId: r.gameId, points: draftPoints.get(r.gameId) }))
         : [];
-      if (votes.mode === 'points' && entries.length === 0) {
-        return showToast('Bitte mindestens ein Spiel bewerten.', { error: true });
-      }
+      const key = mineKey(votes, playerId);
       submitBtn.disabled = true;
       try {
         // Every vote mutation route returns the same fresh payload it
@@ -730,18 +796,17 @@ export function renderVotes(container, ctx) {
         // rerender() is both cheaper than ctx.refresh()'s full loadAll() and
         // more reliable than depending solely on the broadcast: if this
         // client's own socket is disconnected/reconnecting right when the
-        // write lands, the broadcast never arrives, and nothing else would
-        // ever notice mineCacheKey went stale or reflect the new totalVoters
-        // count. Resetting mineCache/mineCacheKey and rendering in the same
-        // synchronous block also removes the race the previous ctx.refresh()
-        // fix here was papering over (that render vs. the broadcast's own,
-        // whichever ran first) — this is now the only render, run strictly
-        // after the reset, every time.
+        // write lands, the broadcast never arrives. The saved ballot is
+        // exactly what was just sent, so the own-entries cache is set from
+        // it directly instead of reloading and flashing the rows.
         state.votes = votes.mode === 'single' ? await api.votes.cast(playerId, draftSingleGameId) : await api.votes.castPoints(playerId, entries);
-        mineCache = null; // force a reload so the draft re-syncs with what the server now has
-        mineCacheKey = null;
+        mineCache = votes.mode === 'single'
+          ? new Map([[draftSingleGameId, null]])
+          : new Map(entries.map((entry) => [entry.gameId, entry.points]));
+        mineCacheKey = key;
+        draftKey = key;
         ctx.rerender();
-        showToast('Deine Stimme wurde gezählt.');
+        showToast(votes.mode === 'single' ? 'Deine Stimme wurde gespeichert.' : 'Deine Bewertung wurde gespeichert.');
       } catch (err) {
         submitBtn.disabled = false;
         showToast(err.message, { error: true });

@@ -2,8 +2,8 @@
 // who's how much "Bock" hat and how skilled the group rates itself, and (via
 // the "Verwaltung" section in the detail modal) the admin-side setup that
 // used to live in a separate Einstellungen page (process names, team size).
-// Bock/Skill are edited right in the row, same slider component profile.js
-// used to own — so "was ist mein Bock/Skill, was ist der Schnitt" is visible
+// Bock/Skill are edited right in the row with the shared 0-5 number scale
+// (ratingScale.js) — so "was ist mein Bock/Skill, was ist der Schnitt" is visible
 // without a detour through the profile. See server/CLAUDE.md games reorg.
 
 import { api } from '../api.js';
@@ -21,11 +21,12 @@ import { wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { wireActionMenus } from '../actionMenu.js';
+import { ratingScaleHtml } from '../ratingScale.js';
 import {
   isOnboardingRatingActive,
   onboardingRatingIds,
   onboardingRatingProgress,
-  focusOnboardingRatingSlider,
+  focusOnboardingRatingControl,
   refreshOnboardingRatingProgress,
   syncOnboardingRatingCandidates,
 } from '../onboarding.js';
@@ -78,45 +79,14 @@ let suggestionsLoading = false;
 // else would ever trigger a follow-up fetch.
 let suggestionsEpoch = 0;
 
-// Guards the Bock/Skill sliders against a socket-triggered re-render (e.g.
-// the very 'preferences:changed'/'skills:changed' broadcast a drag's own
-// debounced write causes) landing while the user is mid-drag:
-// renderGameCatalog replaces container.innerHTML wholesale, which destroys
-// the exact <input> the pointer is down on and silently drops the browser's
-// native pointer capture for that drag — the thumb then stops tracking the
-// mouse, even mid-screen, until released and re-grabbed. Skipping the render
-// while a drag is active keeps the live element intact; endDrag() below
-// catches up with a single no-network re-render once the drag actually ends.
-let sliderDragActive = false;
-// The value change is debounced (see the 'input' listener below) and then
-// written via an async API call, both of which outlive pointerup. Without
-// this, endDrag()'s catch-up render fires while that write is still
-// pending, repainting the row from not-yet-updated state — the slider
-// visibly snaps back to the old value for a moment before the debounced
-// write lands and a second render shows the new one. Keeping the render
-// guard up until the write actually settles avoids that stale repaint.
-let sliderSaving = false;
-let dragGuardInstalled = false;
+// A rating write is async; a socket-triggered re-render landing before it
+// settles would repaint the row from not-yet-updated state, so the pressed
+// number would flash back to the old one. Renders wait until the write is done
+// and then catch up once. focusAfterRender keeps keyboard focus on the
+// pressed number across that re-render.
+let ratingSaving = false;
+let focusAfterRender = null;
 let lastCtx = null;
-
-function ensureDragGuardInstalled() {
-  if (dragGuardInstalled) return;
-  dragGuardInstalled = true;
-  const endDrag = () => {
-    if (!sliderDragActive) return;
-    sliderDragActive = false;
-    if (!sliderSaving) lastCtx?.rerender();
-  };
-  // Listening on document (not the slider) is what catches a release outside
-  // the slider's own box — a range input's native drag keeps tracking the
-  // pointer anywhere on screen once grabbed. pointerup/pointercancel cover
-  // mouse, pen and touch; mouseup/touchend are a fallback for browsers/edge
-  // cases without full Pointer Events support.
-  document.addEventListener('pointerup', endDrag);
-  document.addEventListener('pointercancel', endDrag);
-  document.addEventListener('mouseup', endDrag);
-  document.addEventListener('touchend', endDrag);
-}
 
 // Called from app.js whenever a leaderboard:changed event reports a match
 // result was recorded/edited/deleted — the suggestion is derived from match
@@ -222,7 +192,7 @@ function sortOptionsHtml() {
 // The process suggestion chip: only rendered once there's actually a suggestion
 // for this player+game (see suggestionFor/loadSuggestions above). Deliberately
 // plain — no pill background/border — so it reads as part of the label line
-// next to the Ø note instead of another button competing with the sliders;
+// next to the Ø note instead of another button competing with the ratings;
 // see .skill-suggestion-chip. Highlighted when it diverges from the player's
 // own self-rating by 2+ points — a gentle nudge to reconsider, not a claim
 // that the derived number is "more right".
@@ -240,25 +210,31 @@ function suggestionChipHtml(gameId, suggestion, mine) {
     >${icon('brain', { className: 'skill-suggestion-icon' })} ${suggestion.rating}</button>`;
 }
 
-function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, gameName, kind, disabled, suggestionHtml }) {
-  const avgText = avg === null ? '' : `Ø ${avg.toFixed(1)} (${count})`;
-  const isUnset = mine == null;
-  const sliderValue = mine ?? 5;
-  const sliderLabelBase = kind === 'bock' ? `Bock auf ${gameName}` : `Skill in ${gameName}`;
-  // The slider itself can't sit at a visible "empty" position (Bock/Skill
-  // ratings are stored 1-10, never 0), so an untouched slider still starts
-  // at a plausible-looking mid-value. skill-row-slider-unset dims it until
-  // the player's own input event fires (see the pointerdown/input wiring
-  // below), and the value label shows the same en dash skillDisplay.js
-  // already uses elsewhere for "no rating yet" instead of going blank.
-  const sliderLabel = isUnset ? `${sliderLabelBase} – noch nicht bewertet` : sliderLabelBase;
+// Bock and Skill share the 0-5 number scale of Vote and Umfragen, colored
+// like the former sliders with a fill line below. No number selected means
+// "not rated yet"; 0 is a deliberate answer, spelled out beside the label
+// because a bare 0 would read like "not rated".
+const ZERO_MEANING = { bock: 'kein Bock', skill: 'kenne ich nicht' };
+
+function ratingRowHtml({ label, mine, avg, count, gameId, gameName, kind, disabled, suggestionHtml }) {
+  // The meaning shares the Ø note's reserved line, so rows keep one height.
+  const avgText = [avg === null ? '' : `Ø ${avg.toFixed(1)} (${count})`, mine === 0 ? ZERO_MEANING[kind] : '']
+    .filter(Boolean)
+    .join(' · ');
+  const groupLabel = kind === 'bock' ? `Bock auf ${gameName}` : `Skill in ${gameName}`;
   return `
     <div class="skill-row" data-game="${gameId}" data-kind="${kind}">
       <span class="row" style="gap:var(--space-2);flex-wrap:wrap;">
         ${label} <span class="muted game-avg-note">${avgText}</span> ${suggestionHtml || ''}
       </span>
-      <span class="skill-value">${mine ?? '–'}</span>
-      <input type="range" class="skill-row-slider ${accentClass}${isUnset ? ' skill-row-slider-unset' : ''}" min="1" max="10" step="1" value="${sliderValue}" aria-label="${escapeHtml(sliderLabel)}" ${disabled ? 'disabled' : ''} />
+      ${ratingScaleHtml({
+        selected: mine,
+        groupLabel: mine == null ? `${groupLabel} – noch nicht bewertet` : groupLabel,
+        valueLabel: (value) => (value === 0 ? `0 von 5, ${ZERO_MEANING[kind]}` : `${value} von 5`),
+        attributes: (value) => `data-rating-value="${value}"`,
+        disabled,
+        tone: kind,
+      })}
     </div>`;
 }
 
@@ -314,7 +290,6 @@ function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false
 
   const bockRow = ratingRowHtml({
     label: `${icon('flame')} Bock`,
-    accentClass: 'preference-row-slider',
     mine: myBock,
     avg: bockStats.avg,
     count: bockStats.count,
@@ -326,10 +301,9 @@ function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false
 
   // Suggestions carry both meters just like catalog games: how good the group
   // already is at a game is part of deciding whether to accept it at all, so
-  // the Skill slider stays available before the promotion too.
+  // the Skill rating stays available before the promotion too.
   const skillRow = ratingRowHtml({
     label: `${icon(domainIcon('skill'))} Skill`,
-    accentClass: '',
     mine: mySkill,
     avg: skillStats.avg,
     count: skillStats.count,
@@ -711,23 +685,17 @@ function openGameDetail(gameId, ctx) {
 
 export function renderGameCatalog(container, ctx) {
   lastCtx = ctx;
-  ensureDragGuardInstalled();
-  if (sliderDragActive || sliderSaving) return;
+  if (ratingSaving) return;
 
   if (suggestionsCache === null && !suggestionsLoading) loadSuggestions(ctx);
 
   const myId = getMyId();
   const ratingMode = isOnboardingRatingActive();
-  // Remembers which required slider (if any) currently holds focus so a
-  // rerender triggered by that same slider's own debounced save (see the
-  // 'input' listener below) can restore focus there instead of yanking it
-  // - and the page scroll with it - back to the first required row every
-  // time. focusOnboardingRatingSlider() below stays the fallback for the
-  // cases that actually need it: entering rating mode fresh, or the
-  // previously focused row no longer being part of the required set.
-  const focusedSkillRow = ratingMode ? document.activeElement?.closest?.('.skill-row') : null;
-  const focusedGameId = focusedSkillRow?.dataset.game;
-  const focusedKind = focusedSkillRow?.dataset.kind;
+  // A number that holds keyboard focus keeps it across a realtime re-render.
+  const focusedRating = document.activeElement?.closest?.('.skill-row [data-rating-value]');
+  const focusedRatingTarget = focusedRating
+    ? { gameId: focusedRating.closest('.skill-row').dataset.game, kind: focusedRating.closest('.skill-row').dataset.kind, rating: Number(focusedRating.dataset.ratingValue) }
+    : null;
   if (ratingMode) void syncOnboardingRatingCandidates();
   const ratingIds = onboardingRatingIds();
   const requiredRatingIds = new Set(ratingIds.slice(0, 10));
@@ -922,65 +890,42 @@ export function renderGameCatalog(container, ctx) {
     btn.addEventListener('click', () => openGameDetail(btn.dataset.detail, ctx));
   });
 
-  container.querySelectorAll('.skill-row').forEach((row) => {
-    const gameId = row.dataset.game;
-    const kind = row.dataset.kind;
-    const slider = row.querySelector('input[type="range"]');
-    const valueEl = row.querySelector('.skill-value');
-    const updateSliderTone = () => {
-      slider.style.setProperty('--slider-pct', `${((Number(slider.value) - 1) / 9) * 100}%`);
-    };
-    updateSliderTone();
-    slider.addEventListener('pointerdown', () => {
-      sliderDragActive = true;
-    });
-    let debounceTimer = null;
-    slider.addEventListener('input', () => {
-      valueEl.textContent = slider.value;
-      slider.classList.remove('skill-row-slider-unset');
-      updateSliderTone();
-      sliderSaving = true;
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(async () => {
-        try {
-          if (kind === 'bock') {
-            // No ctx.refresh(): the 'preferences:changed' broadcast this
-            // triggers (see app.js) already patches state for every
-            // connected client, including this one.
-            const saved = await api.preferences.set(myId, gameId, parseInt(slider.value, 10));
-            const existing = state.preferences.find((p) => p.player_id === saved.playerId && p.game_id === saved.gameId);
-            if (existing) existing.rating = saved.rating;
-            else state.preferences.push({ player_id: saved.playerId, game_id: saved.gameId, rating: saved.rating });
-          } else {
-            // Still no ctx.refresh() (a full loadAll() + render): PUT
-            // /api/skills broadcasts 'skills:changed', which app.js's
-            // fullReloadEvents handler already turns into one for every
-            // connected client, including this one — doing it again here
-            // too used to fire that reload twice plus the unconditional
-            // rerender() below on top, three full <div>.innerHTML rebuilds
-            // stacked right at pointerup, which is the jank users felt on
-            // mobile release. But relying solely on that broadcast left a
-            // gap: if this client's own socket is disconnected or
-            // reconnecting right when the write lands, nothing ever patches
-            // state.skills locally, and the rerender() below would repaint
-            // the slider back to the pre-save value — a save that silently
-            // "un-does" itself on screen. Patching state.skills directly
-            // from our own successful response closes that gap with a
-            // plain, free rerender (no network), independent of whether the
-            // broadcast ever arrives.
-            const saved = await api.skills.set(myId, gameId, parseInt(slider.value, 10));
-            const existing = state.skills.find((s) => s.player_id === saved.playerId && s.game_id === saved.gameId);
-            if (existing) existing.rating = saved.rating;
-            else state.skills.push({ player_id: saved.playerId, game_id: saved.gameId, rating: saved.rating });
-          }
-        } catch (err) {
-          showToast(err.message, { error: true });
-        } finally {
-          sliderSaving = false;
-          refreshOnboardingRatingProgress();
-          if (!sliderDragActive) lastCtx?.rerender();
+  container.querySelectorAll('.skill-row [data-rating-value]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const row = btn.closest('.skill-row');
+      const gameId = row.dataset.game;
+      const kind = row.dataset.kind;
+      const rating = Number(btn.dataset.ratingValue);
+      focusAfterRender = { gameId, kind, rating };
+      ratingSaving = true;
+      try {
+        if (kind === 'bock') {
+          // No ctx.refresh(): the 'preferences:changed' broadcast this
+          // triggers (see app.js) already patches state for every
+          // connected client, including this one.
+          const saved = await api.preferences.set(myId, gameId, rating);
+          const existing = state.preferences.find((p) => p.player_id === saved.playerId && p.game_id === saved.gameId);
+          if (existing) existing.rating = saved.rating;
+          else state.preferences.push({ player_id: saved.playerId, game_id: saved.gameId, rating: saved.rating });
+        } else {
+          // Still no ctx.refresh() (a full loadAll() + render): PUT
+          // /api/skills broadcasts 'skills:changed', which app.js's
+          // fullReloadEvents handler already turns into one for every
+          // connected client, including this one. Patching state.skills
+          // directly from our own successful response keeps the new value
+          // on screen even if this client's socket misses that broadcast.
+          const saved = await api.skills.set(myId, gameId, rating);
+          const existing = state.skills.find((s) => s.player_id === saved.playerId && s.game_id === saved.gameId);
+          if (existing) existing.rating = saved.rating;
+          else state.skills.push({ player_id: saved.playerId, game_id: saved.gameId, rating: saved.rating });
         }
-      }, 250);
+      } catch (err) {
+        showToast(err.message, { error: true });
+      } finally {
+        ratingSaving = false;
+        refreshOnboardingRatingProgress();
+        lastCtx?.rerender();
+      }
     });
   });
 
@@ -998,18 +943,25 @@ export function renderGameCatalog(container, ctx) {
     });
   });
 
+  // Keeps focus on the number just pressed instead of yanking it - and the
+  // page scroll with it - away with every save.
+  const pending = focusAfterRender ?? focusedRatingTarget;
+  focusAfterRender = null;
+  const restored = pending
+    ? [...container.querySelectorAll('.skill-row')]
+        .find((row) => row.dataset.game === pending.gameId && row.dataset.kind === pending.kind)
+        ?.querySelector(`[data-rating-value="${pending.rating}"]`)
+    : null;
+  if (restored) restored.focus({ preventScroll: true });
+
   if (ratingMode) {
     // The dialog's counter and finish button must follow the state this render
     // just drew: a realtime reload can bring in ratings after the last save's
     // own refresh ran, and would otherwise leave "x von 10" and a disabled
     // "Abschließen" behind although every required game shows as rated.
     refreshOnboardingRatingProgress();
-    const restored = focusedGameId
-      ? [...container.querySelectorAll('.skill-row')]
-          .find((row) => row.dataset.game === focusedGameId && row.dataset.kind === focusedKind)
-          ?.querySelector('input[type="range"]')
-      : null;
-    if (restored) restored.focus({ preventScroll: true });
-    else focusOnboardingRatingSlider();
+    // Entering rating mode fresh (nothing was just pressed) starts at the
+    // first required rating.
+    if (!restored) focusOnboardingRatingControl();
   }
 }

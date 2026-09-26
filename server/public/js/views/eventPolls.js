@@ -1,17 +1,19 @@
 import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { avatarHtml, escapeHtml } from '../format.js';
+import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { ratingScaleHtml } from '../ratingScale.js';
+import { voteBreakdownHtml, voterNamesText, voterStackHtml, WIN_CHIP } from '../voteBreakdown.js';
 
 const RESPONSE_VALUES = ['can', 'if_needed', 'cannot'];
 const FEASIBILITY_VALUES = [...RESPONSE_VALUES, 'open'];
-const RATING_VALUES = ['1', '2', '3', '4', '5'];
+const RATING_VALUES = ['0', '1', '2', '3', '4', '5'];
 const RESPONSE_LABELS = { can: 'Passt', if_needed: 'Notfalls', cannot: 'Nein', open: 'Offen' };
 const MODE_INFO = {
   feasibility: {
@@ -27,8 +29,8 @@ const MODE_INFO = {
     description: 'Jede Person kann mehrere passende Optionen auswählen.',
   },
   rating_1_5: {
-    label: 'Bewertung 1 bis 5',
-    description: 'Jede Person vergibt für jede Option eine Bewertung von 1 bis 5.',
+    label: 'Bewertung 0 bis 5',
+    description: 'Jede Person vergibt für jede Option eine Bewertung von 0 bis 5; 0 lehnt die Option ab.',
   },
 };
 
@@ -93,8 +95,6 @@ function optionLabel(option) {
 function formatShortDate(timestamp) {
   return new Date(timestamp).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 }
-
-const WIN_CHIP = '<span class="tournament-fixture-score is-pick vote-win-chip">Win</span>';
 
 // Running and ended polls are already told apart by their section, so only an
 // exceptional state earns a badge of its own.
@@ -180,9 +180,6 @@ function optionUrl(option) {
   return typeof url === 'string' && /^https?:\/\/[^\s]+$/i.test(url) ? url : null;
 }
 
-// How many voter avatars an option row shows before the rest becomes a count.
-const VOTER_STACK_LIMIT = 4;
-
 // Which answer an option's avatar row stands for. Choice and feasibility
 // rounds show the people the option actually won over, because every other
 // answer is stored for every option and would make all rows look identical.
@@ -202,26 +199,13 @@ function optionVoters(poll, option) {
   };
 }
 
-function voterStackLabel(option, voters) {
-  const names = voters.people.slice(0, VOTER_STACK_LIMIT).map((person) => person.name);
-  const rest = voters.people.length - names.length;
-  return `Stimmen zu ${optionLabel(option)} ansehen · ${voters.label}: ${names.join(', ')}${rest > 0 ? ` und ${rest} weitere` : ''}`;
-}
-
 function renderVoterStack(poll, option) {
   const voters = optionVoters(poll, option);
-  if (!voters.people.length) return '';
-  const shown = voters.people.slice(0, VOTER_STACK_LIMIT);
-  const rest = voters.people.length - shown.length;
-  const label = voterStackLabel(option, voters);
-  return `
-    <button type="button" class="btn btn-sm event-poll-voter-stack" data-view-poll-votes="${escapeHtml(poll.id)}"
-      aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
-      <span class="event-poll-voter-stack-avatars" aria-hidden="true">${shown
-        .map((person) => avatarHtml(state.players?.find((entry) => entry.id === person.playerId) ?? person, 24))
-        .join('')}</span>
-      ${rest > 0 ? `<span class="event-poll-voter-stack-more" aria-hidden="true">+${rest}</span>` : ''}
-    </button>`;
+  return voterStackHtml({
+    people: voters.people,
+    label: `Stimmen zu ${optionLabel(option)} ansehen · ${voters.label}: ${voterNamesText(voters.people)}`,
+    attributes: `data-view-poll-votes="${escapeHtml(poll.id)}"`,
+  });
 }
 
 function resultSortValues(poll, option) {
@@ -283,13 +267,18 @@ function voteDetailAnswers(poll, options) {
   return { people, answers };
 }
 
+// A 0 in a rating round rejects the option, shown like Vote's "Spielt nicht".
+const REJECT_CELL = `<span class="event-poll-vote-cell is-cannot" role="img" aria-label="Lehnt ab" title="Lehnt ab">${icon('x')}</span>`;
+
 function voteDetailCell(poll, value) {
   if (value === undefined) {
     return poll.responseMode === 'feasibility' || poll.responseMode === 'rating_1_5'
       ? '<span class="event-poll-vote-cell is-empty" aria-label="Offen">–</span>'
       : '<span class="event-poll-vote-cell is-empty" aria-hidden="true"></span>';
   }
-  if (poll.responseMode === 'rating_1_5') return `<span class="event-poll-vote-cell is-rating">${escapeHtml(value)}</span>`;
+  if (poll.responseMode === 'rating_1_5') {
+    return value === '0' ? REJECT_CELL : `<span class="event-poll-vote-cell is-rating">${escapeHtml(value)}</span>`;
+  }
   const symbol = VOTE_CELL_SYMBOLS[value];
   const label = poll.responseMode === 'feasibility' ? symbol.label : 'Gewählt';
   return `<span class="event-poll-vote-cell is-${symbol.state}" role="img" aria-label="${label}" title="${label}">${icon(symbol.icon)}</span>`;
@@ -312,57 +301,37 @@ function openVoteDetails(poll, { showRound = false } = {}) {
   const { people, answers } = poll.responseDetailsVisible ? voteDetailAnswers(poll, options) : { people: [], answers: new Map() };
   const hasResponses = people.length > 0 || options.some((option) => option.counts?.can || option.counts?.average != null);
   const title = `Stimmen · ${poll.title}${showRound ? ` · Runde ${poll.roundNumber}` : ''}`;
-  const number = (index, win) => `<span class="event-poll-vote-number${win ? ' is-win' : ''}">${index + 1}</span>`;
-  const legend = `
-    <ol class="event-poll-vote-legend">
-      ${options.map((option, index) => {
-        const win = option.isRecommended && decided;
-        return `<li class="event-poll-vote-legend-row">
-          ${number(index, win)}
-          <span class="event-poll-vote-legend-label">${escapeHtml(optionLabel(option))}</span>
-          ${win ? WIN_CHIP : ''}
-          <span class="muted event-poll-vote-legend-summary">${escapeHtml(voteDetailSummary(poll, option))}</span>
-        </li>`;
-      }).join('')}
-    </ol>
-    ${poll.responseMode === 'feasibility' && people.length
-      ? `<div class="muted event-poll-vote-key">
-           ${Object.values(VOTE_CELL_SYMBOLS).map((symbol) => `<span><span class="event-poll-vote-cell is-${symbol.state}" aria-hidden="true">${icon(symbol.icon)}</span>${symbol.label}</span>`).join('')}
-         </div>`
-      : ''}`;
-  const table = people.length
-    ? `<div class="event-poll-vote-table-wrap">
-         <table class="event-poll-vote-table">
-           <colgroup><col />${options.map(() => '<col class="event-poll-vote-col" />').join('')}</colgroup>
-           <thead><tr><th scope="col"><span class="visually-hidden">Person</span></th>${options
-             .map((option, index) => `<th scope="col" aria-label="${escapeHtml(optionLabel(option))}">${number(index, option.isRecommended && decided)}</th>`)
-             .join('')}</tr></thead>
-           <tbody>${people
-             .map((person) => {
-               const player = state.players?.find((entry) => entry.id === person.playerId) ?? person;
-               return `<tr>
-                 <th scope="row"><span class="player-name">${avatarHtml(player, 20)}<span class="event-poll-voter-name">${escapeHtml(person.name)}</span></span></th>
-                 ${options.map((option) => `<td>${voteDetailCell(poll, answers.get(person.playerId)?.get(option.id))}</td>`).join('')}
-               </tr>`;
-             })
-             .join('')}</tbody>
-         </table>
+  const hasRejections = poll.responseMode === 'rating_1_5' && people.some((person) => [...(answers.get(person.playerId)?.values() ?? [])].includes('0'));
+  const keyHtml = poll.responseMode === 'feasibility' && people.length
+    ? `<div class="muted event-poll-vote-key">
+         ${Object.values(VOTE_CELL_SYMBOLS).map((symbol) => `<span><span class="event-poll-vote-cell is-${symbol.state}" aria-hidden="true">${icon(symbol.icon)}</span>${symbol.label}</span>`).join('')}
        </div>`
-    : '';
-  openModal(title, hasResponses ? `<div class="stack event-poll-vote-details">${legend}${table}</div>` : '<p class="muted">Für diese Runde wurden keine Stimmen abgegeben.</p>');
+    : hasRejections
+      ? `<div class="muted event-poll-vote-key"><span><span class="event-poll-vote-cell is-cannot" aria-hidden="true">${icon('x')}</span>Lehnt ab</span></div>`
+      : '';
+  const body = voteBreakdownHtml({
+    columns: options.map((option) => ({
+      label: optionLabel(option),
+      win: option.isRecommended && decided,
+      summary: voteDetailSummary(poll, option),
+    })),
+    people,
+    keyHtml,
+    cellHtml: (person, index) => voteDetailCell(poll, answers.get(person.playerId)?.get(options[index].id)),
+  });
+  openModal(title, hasResponses ? body : '<p class="muted">Für diese Runde wurden keine Stimmen abgegeben.</p>');
 }
 
 function renderResponseControl(poll, option) {
   if (!poll.isInvitee || poll.status !== 'open' || !option.active) return '';
   const draft = responseDraftFor(poll);
   if (poll.responseMode === 'rating_1_5') {
-    return `
-      <div class="selection-toolbar event-poll-response-toolbar event-poll-rating-toolbar" role="group" aria-label="Bewertung für ${escapeHtml(optionLabel(option))}">
-        ${RATING_VALUES.map((value) => `
-          <button type="button" class="btn btn-square${draft[option.id] === value ? ' is-selected' : ''}"
-            data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"
-            aria-label="${value} von 5" aria-pressed="${draft[option.id] === value}">${value}</button>`).join('')}
-      </div>`;
+    return ratingScaleHtml({
+      selected: draft[option.id],
+      groupLabel: `Bewertung für ${optionLabel(option)}`,
+      valueLabel: (value) => (value === 0 ? '0 von 5, lehne ich ab' : `${value} von 5`),
+      attributes: (value) => `data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"`,
+    });
   }
   if (poll.responseMode === 'feasibility') {
     const fullLabels = { can: 'Passt', if_needed: 'Wenn nötig', cannot: 'Passt nicht' };
@@ -390,7 +359,8 @@ function renderCounts(poll, option) {
   if (poll.responseMode === 'rating_1_5') {
     const ratingCount = RATING_VALUES.reduce((sum, value) => sum + (option.counts.ratings?.[value] ?? 0), 0);
     const average = option.counts.average === null ? '–' : option.counts.average.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-    return `Ø ${average} · ${ratingCount} ${ratingCount === 1 ? 'Bewertung' : 'Bewertungen'}${option.active ? ` · ${option.counts.open} offen` : ''}`;
+    const rejected = option.counts.ratings?.['0'] ?? 0;
+    return `Ø ${average} · ${ratingCount} ${ratingCount === 1 ? 'Bewertung' : 'Bewertungen'}${rejected ? ` · ${rejected} ${rejected === 1 ? 'lehnt' : 'lehnen'} ab` : ''}${option.active ? ` · ${option.counts.open} offen` : ''}`;
   }
   if (poll.responseMode === 'feasibility') {
     return `${option.counts.can} Passt · ${option.counts.ifNeeded} Notfalls · ${option.counts.cannot} Nein${option.active ? ` · ${option.counts.open} offen` : ''}`;
@@ -479,14 +449,20 @@ function draftProgress(poll) {
   return `${selected} gewählt`;
 }
 
-function renderOption(poll, option) {
+// A chosen 0 is a deliberate rejection; the row says so beside the numbers.
+function rejectTagHtml(poll, option) {
+  if (poll.responseMode !== 'rating_1_5' || !poll.isInvitee || poll.status !== 'open' || !option.active) return '';
+  return responseDraftFor(poll)[option.id] === '0' ? '<span class="event-poll-tag event-poll-reject-tag">Lehne ich ab</span>' : '';
+}
+
+function renderOption(poll, option, columnStart = false) {
   const link = optionUrl(option);
   const label = optionLabel(option);
   const win = option.isRecommended && poll.status !== 'open' && poll.status !== 'cancelled';
-  const badges = `${renderVoterStack(poll, option)}${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}`;
+  const badges = `${renderVoterStack(poll, option)}${rejectTagHtml(poll, option)}${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}`;
   // Fixed columns: name and note, result bar, voter avatars, answer buttons.
   return `
-    <div class="event-poll-option${win ? ' is-winner' : ''}" data-poll-option="${escapeHtml(option.id)}">
+    <div class="event-poll-option${win ? ' is-winner' : ''}${columnStart ? ' is-column-start' : ''}" data-poll-option="${escapeHtml(option.id)}">
       <div class="event-poll-option-info">
         <span class="event-poll-option-title-row">
           <strong>${escapeHtml(label)}</strong>
@@ -537,11 +513,16 @@ function renderRound(poll) {
     tags.push(poll.resultsVisible ? 'Zwischenstand nur für dich' : 'Zwischenstand verborgen');
   }
   const canAnswer = poll.isInvitee && poll.status === 'open';
+  // No interim result for this viewer: answers move up beside the title.
+  const compact = canAnswer && poll.options.every((option) => !option.counts);
+  const options = poll.status === 'open' ? poll.options : optionsByResult(poll);
+  // Two compact columns read down the left column first, then the right one.
+  const columnRows = Math.max(1, Math.ceil(options.length / 2));
   return `
     <section class="stack event-poll-round" data-poll-round="${escapeHtml(poll.id)}">
       <div class="event-poll-tags">${tags.map((tag) => `<span class="event-poll-tag">${escapeHtml(tag)}</span>`).join('')}</div>
       ${poll.note ? `<p class="event-poll-note">${escapeHtml(poll.note)}</p>` : ''}
-      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}">${(poll.status === 'open' ? poll.options : optionsByResult(poll)).map((option) => renderOption(poll, option)).join('')}</div>
+      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}${compact ? ' is-compact' : ''}"${compact ? ` style="--compact-rows: ${columnRows};"` : ''}>${options.map((option, index) => renderOption(poll, option, compact && index === columnRows)).join('')}</div>
       ${canAnswer
         ? `<div class="event-poll-save-row event-poll-footer"><span class="muted">${escapeHtml(draftProgress(poll))}</span><button type="button" class="btn btn-primary btn-sm" data-save-poll="${escapeHtml(poll.id)}" ${responseDraftIsValid(poll) ? '' : 'disabled'}>Speichern</button></div>`
         : ''}

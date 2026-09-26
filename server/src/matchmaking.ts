@@ -102,10 +102,10 @@ export function seatConflictNeighbors(teamIdLists: string[][], avoidPairs: SeatP
 
 // How costly one unresolved seat conflict is allowed to be, in skill-sum
 // imbalance points, before a swap that would fix it stops being worthwhile.
-// Ratings run 1-10, so this comfortably covers fixing a conflict by trading
+// Ratings run 0-5, so this comfortably covers fixing a conflict by trading
 // two players a few points apart, but won't let a single seating preference
 // blow up an otherwise well-balanced draw.
-const CONFLICT_WEIGHT = 6;
+const CONFLICT_WEIGHT = 3;
 
 function draftScore(teams: TeamDraft[], avoidPairs: SeatPair[]): number {
   const sums = teams.map((t) => t.sum);

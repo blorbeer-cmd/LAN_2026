@@ -11,12 +11,13 @@ import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import { endOfIsoDateUtcMs } from './localDate';
 
 export type DatePollStatus = 'open' | 'closed' | 'scheduled' | 'superseded' | 'cancelled';
-export type DatePollResponseValue = 'can' | 'if_needed' | 'cannot' | '1' | '2' | '3' | '4' | '5';
+export type DatePollResponseValue = 'can' | 'if_needed' | 'cannot' | '0' | '1' | '2' | '3' | '4' | '5';
 export type EventPollTopic = 'date_range' | 'location' | 'duration' | 'budget' | 'custom';
 export type EventPollResponseMode = 'feasibility' | 'single_choice' | 'multiple_choice' | 'rating_1_5';
 
 export const FEASIBILITY_RESPONSE_VALUES: DatePollResponseValue[] = ['can', 'if_needed', 'cannot'];
-export const RATING_RESPONSE_VALUES: DatePollResponseValue[] = ['1', '2', '3', '4', '5'];
+// A rating round runs 0-5; 0 rejects the option and counts as 0 in its average.
+export const RATING_RESPONSE_VALUES: DatePollResponseValue[] = ['0', '1', '2', '3', '4', '5'];
 export const RESPONSE_VALUES: DatePollResponseValue[] = [...FEASIBILITY_RESPONSE_VALUES, ...RATING_RESPONSE_VALUES];
 export const REMINDER_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const REMINDER_48H_BEFORE_MS = 48 * 60 * 60 * 1000;
@@ -878,7 +879,7 @@ export interface OptionCounts {
   ifNeeded: number;
   cannot: number;
   open: number;
-  ratings: Record<'1' | '2' | '3' | '4' | '5', number>;
+  ratings: Record<'0' | '1' | '2' | '3' | '4' | '5', number>;
   average: number | null;
 }
 
@@ -888,6 +889,7 @@ export function optionCounts(option: DatePollOptionRow, responses: DatePollRespo
   const ifNeeded = forOption.filter((r) => r.response === 'if_needed').length;
   const cannot = forOption.filter((r) => r.response === 'cannot').length;
   const ratings = {
+    '0': forOption.filter((r) => r.response === '0').length,
     '1': forOption.filter((r) => r.response === '1').length,
     '2': forOption.filter((r) => r.response === '2').length,
     '3': forOption.filter((r) => r.response === '3').length,

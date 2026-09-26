@@ -148,9 +148,9 @@ export function onboardingRatingIds() {
   return runtime?.state?.ratingCandidateIds ?? [];
 }
 
-export function focusOnboardingRatingSlider() {
+export function focusOnboardingRatingControl() {
   if (runtime?.mode !== 'rating') return;
-  document.querySelector('.game-table-row.onboarding-required input[type="range"]')?.focus();
+  document.querySelector('.game-table-row.onboarding-required .skill-row [data-rating-value]')?.focus();
 }
 
 export async function syncOnboardingRatingCandidates() {
@@ -329,11 +329,11 @@ function wireDialogFocus() {
     });
   }
   const initialFocus = runtime?.mode === 'rating'
-    ? document.querySelector('.game-table-row.onboarding-required input[type="range"]')
+    ? document.querySelector('.game-table-row.onboarding-required .skill-row [data-rating-value]')
       ?? dialog.querySelector('button:not([disabled])')
     : focusableElements(dialog)[0];
   initialFocus?.focus();
-  if (runtime?.mode === 'rating') window.setTimeout(focusOnboardingRatingSlider, 0);
+  if (runtime?.mode === 'rating') window.setTimeout(focusOnboardingRatingControl, 0);
 }
 
 function renderCore() {

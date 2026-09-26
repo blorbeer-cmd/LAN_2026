@@ -423,76 +423,16 @@ button.player-card {
   opacity: 0.6;
 }
 
-/* ---------- Sliders (skill ratings) ---------- */
+/* ---------- Bock/Skill ratings ---------- */
 
-input[type='range'] {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
+/* Label and Ø note on the first line, the shared 0-5 number scale
+   (ratingScale.js) on its own full-width line below. */
 .skill-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   padding: var(--space-2) 0;
-}
-.skill-row-slider {
-  grid-column: 1 / -1;
-  /* Slider-local gradient endpoints; Bock (preference) sliders run purple,
-     the skill variant overrides them to blue below. */
-  --slider-low: #c08be6;
-  --slider-high: #c24bd8;
-  --slider-track: #39415a; /* unfilled rest of the track, lighter than --bg-elevated-2 so it stays visible */
-  appearance: none;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, var(--slider-low) 0%, var(--slider-high) var(--slider-pct, 50%), var(--slider-track) var(--slider-pct, 50%), var(--slider-track) 100%);
-}
-.skill-row-slider::-webkit-slider-thumb {
-  appearance: none;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid var(--accent-text);
-  background: var(--slider-high);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  cursor: pointer;
-}
-.skill-row-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 2px solid var(--accent-text);
-  background: var(--slider-high);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  cursor: pointer;
-}
-.skill-row-slider:not(.preference-row-slider) {
-  --slider-low: #9bb7f5;
-  --slider-high: #536dff;
-}
-/* An untouched Bock/Skill slider still renders at a plausible mid-value
-   (ratings are stored 1-10, never 0, so there's no true "empty" position) -
-   dimmed until the player's own input event fires, so it doesn't read as an
-   already-set rating at a glance. */
-.skill-row-slider-unset {
-  opacity: 0.5;
-}
-.skill-value {
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--font-weight-bold);
-  min-width: 1.6em;
-  text-align: right;
-}
-/* "Bock"-Level slider (how much a player wants to play something right now,
-   see profile.js) reuses .skill-row-slider's layout but gets its own accent
-   color so it reads as a distinct concept from the skill sliders above it.
-   Repeats the type selector to outrank the plain input[type='range'] rule
-   above (an attribute selector counts as a class for specificity purposes,
-   so a bare `.preference-row-slider` class alone would lose to it). */
-input[type='range'].preference-row-slider {
-  accent-color: var(--accent-3);
 }
 
 /* ---------- Team results ---------- */
@@ -1061,20 +1001,16 @@ input[type='number'].tournament-result-score {
   accent-color: var(--accent);
 }
 
-/* ---------- Vote bars ---------- */
+/* ---------- Vote ---------- */
 
-.vote-row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3) 0;
-}
+/* The running round and every closed result reuse the Umfrage card, option
+   row, 0-5 number scale, result bar and vote-table styles; only the plain
+   (non-collapsible) running-round heading is Vote's own. */
 .vote-game-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
 }
-.vote-game-grid .vote-row,
 .vote-game-grid .check-row {
   min-width: 0;
   padding: var(--space-3);
@@ -1097,107 +1033,37 @@ input[type='number'].tournament-result-score {
 .vote-ranking-column:only-child {
   grid-column: 1 / -1;
 }
-.vote-ranking-name {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.vote-ranking-name .player-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .vote-win-chip {
   min-width: 0;
   flex-shrink: 0;
   padding-block: 0;
   line-height: var(--control-line-height);
 }
-.vote-open-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.vote-open-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  min-width: 0;
-}
-.vote-open-title h2 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-}
-.vote-open-admin {
-  display: flex;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-.vote-open-info {
-  margin: 0;
-  font-size: var(--font-size-sm);
-}
-.vote-progress-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-.vote-open-row {
-  gap: var(--space-1);
-}
-.vote-open-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+/* The running round has no collapse toggle, so its heading takes the
+   toggle's inset and height instead. */
+.vote-round-heading {
+  flex: 1 1 auto;
   min-height: var(--control-height);
+  padding: var(--space-2);
 }
-.vote-open-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vote-points-slider {
-  margin-top: var(--space-2);
-}
-.vote-points-value {
+.vote-round-heading h2 {
+  margin: 0;
   font-size: var(--font-size-lg);
 }
-.vote-open-meta {
-  font-size: var(--font-size-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* The viewer's own Skill beside each game, in the Skill blue. */
+.vote-own-skill {
+  color: var(--accent);
+}
+.vote-own-skill.is-missing {
+  color: var(--text-muted);
+}
+/* Sits in the voter column, which stays empty while the round runs. */
+.vote-decline-tag {
   white-space: nowrap;
 }
 .vote-result-meta {
   font-size: var(--font-size-xs);
   overflow-wrap: anywhere;
-}
-.vote-history-round > .row-between {
-  align-items: flex-start;
-}
-.vote-history-round [data-open-history-round] {
-  flex-shrink: 0;
-}
-.vote-submitted-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  min-height: var(--control-height);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--state-playing);
-  border-radius: var(--radius-sm);
-  background: var(--state-playing-bg);
-  color: var(--state-playing);
-  font-weight: var(--font-weight-bold);
 }
 .vote-empty-state {
   display: flex;
@@ -1228,13 +1094,6 @@ input[type='number'].tournament-result-score {
 .vote-start-toolbar {
   flex-wrap: nowrap;
 }
-.vote-game-grid.is-runoff {
-  grid-template-columns: minmax(0, 1fr);
-}
-.vote-submit-row {
-  display: flex;
-  justify-content: flex-end;
-}
 .vote-start-row .vote-info-input {
   display: block;
   height: var(--control-height);
@@ -1250,37 +1109,12 @@ input[type='number'].tournament-result-score {
     column-gap: var(--space-6);
   }
 }
-/* A third column keeps each 0-10 slider at a sane width instead of stretching
-   it across half of --content-max-width's full 1320px on a wide desktop. */
+/* A third column keeps the game checkboxes of the start form compact instead
+   of stretching them across half of a wide desktop's content width. */
 @media (min-width: 1280px) { /* --bp-xl */
   .vote-game-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-}
-/* The gradient lives on the track itself (fixed left-to-right, full width)
-   rather than on the fill: a gradient set as the fill's own background would
-   get re-normalized to whatever narrow width that particular bar happens to
-   have, so short bars showed only the gradient's start color instead of a
-   consistent color scale across all rows. Instead, the "empty" remainder is
-   covered by an opaque mask growing in from the right, revealing more of the
-   same fixed gradient as the score grows. */
-.vote-bar-track {
-  position: relative;
-  height: 8px;
-  border-radius: var(--radius-full);
-  background: var(--accent-gradient);
-  overflow: hidden;
-}
-.vote-row.is-winner .vote-bar-track {
-  background: var(--state-playing);
-}
-.vote-bar-mask {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--bg-elevated-2);
-  transition: width 0.3s ease;
 }
 
 /* ---------- Leaderboard ---------- */
@@ -2842,14 +2676,25 @@ input.food-order-price-input {
 .event-poll-vote-table-wrap {
   overflow-x: auto;
 }
+/* Many options must not squeeze the person column to nothing: the table keeps
+   room for a name plus every answer column (--vote-columns is set by
+   voteBreakdown.js) and scrolls sideways instead, with the names pinned. */
 .event-poll-vote-table {
   width: 100%;
+  min-width: calc(var(--space-8) * 3 + var(--vote-columns, 0) * (var(--space-7) + var(--space-3)));
   table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
 }
 .event-poll-vote-col {
   width: calc(var(--space-7) + var(--space-3));
+}
+.event-poll-vote-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding-right: var(--space-2);
+  background: var(--bg-elevated);
 }
 .event-poll-vote-table th,
 .event-poll-vote-table td {

@@ -146,17 +146,18 @@ test('legacy game_catalog tables are merged into games and preferences', () => {
   const prefA = migrated
     .prepare('SELECT rating FROM preferences WHERE player_id = ? AND game_id = ?')
     .get('p-legacy-1', 'g-existing') as { rating: number };
-  assert.equal(prefA.rating, 8, 'a fresh preference should be the catalog rating doubled onto the 1-10 scale');
+  // Merged onto the former 1-10 scale (4 -> 8), then halved onto 0-5 by migration 112.
+  assert.equal(prefA.rating, 4, 'a fresh preference should end up as the catalog rating on the 0-5 scale');
 
   const prefB = migrated
     .prepare('SELECT rating FROM preferences WHERE player_id = ? AND game_id = ?')
     .get('p-legacy-2', 'g-existing') as { rating: number };
-  assert.equal(prefB.rating, 7, 'an existing preference must never be overwritten by the legacy catalog rating');
+  assert.equal(prefB.rating, 4, 'an existing preference (7) must never be overwritten, only rescaled by migration 112');
 
   const prefNewGame = migrated
     .prepare('SELECT rating FROM preferences WHERE player_id = ? AND game_id = ?')
     .get('p-legacy-1', newGame.id) as { rating: number };
-  assert.equal(prefNewGame.rating, 10, 'a doubled rating above 10 should be capped, not overflow the 1-10 scale');
+  assert.equal(prefNewGame.rating, 5, 'a doubled rating above 10 is capped at 10, which migration 112 maps to 5');
 
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
@@ -762,10 +763,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 110);
+  assert.equal(migrations.length, 112);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 110 }, (_, index) => index + 1),
+    Array.from({ length: 112 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1354,8 +1355,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 110 }, (_, index) => index + 1),
-    'every version 1..110 runs exactly once',
+    Array.from({ length: 112 }, (_, index) => index + 1),
+    'every version 1..112 runs exactly once',
   );
 });
 
@@ -1415,6 +1416,183 @@ test('migration 105 adds the draw-to-tournament link to legacy draws and is rest
     (column) => column.name === 'tournament_id',
   ));
   repaired.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 111 lets votes store a deliberate 0, keeps existing rows and rolls back on failure', () => {
+  const dbFile = makeTempDbPath('vote-zero-points');
+  runMigrations(dbFile);
+
+  // Rebuild the migration-34 shape (points 1-10) with one existing vote in it.
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  const now = Date.now();
+  fixture.exec(`
+    INSERT INTO players (id, name, api_key, created_at) VALUES ('zero-voter', 'Zero Voter', 'zero-voter-key', ${now});
+    INSERT INTO group_memberships (group_id, player_id, role, status, joined_at)
+      VALUES ('default-group', 'zero-voter', 'member', 'active', ${now});
+    INSERT INTO vote_rounds (group_id, round, event_id, started_at, mode) VALUES ('default-group', 1, NULL, ${now}, 'points');
+    DROP TABLE votes;
+    CREATE TABLE votes (
+      id                   TEXT PRIMARY KEY,
+      group_id             TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      player_id            TEXT NOT NULL,
+      player_name_snapshot TEXT NOT NULL,
+      game_id              TEXT NOT NULL,
+      event_id             TEXT,
+      round                INTEGER NOT NULL,
+      points               INTEGER CHECK (points IS NULL OR points BETWEEN 1 AND 10),
+      created_at           INTEGER NOT NULL,
+      UNIQUE (group_id, player_id, round, game_id)
+    );
+    DELETE FROM schema_migrations WHERE version = 111;
+  `);
+  const gameId = (fixture.prepare("SELECT id FROM games WHERE group_id = 'default-group' LIMIT 1").get() as { id: string }).id;
+  fixture
+    .prepare(
+      `INSERT INTO votes (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+       VALUES ('legacy-vote', 'default-group', 'zero-voter', 'Zero Voter', ?, NULL, 1, 7, ?)`,
+    )
+    .run(gameId, now);
+  // Blocks the rebuild's first statement, so the whole migration must roll back.
+  fixture.exec('CREATE TABLE votes_zero_points_111 (blocking INTEGER)');
+  fixture.close();
+
+  assert.throws(() => runMigrations(dbFile), /votes_zero_points_111/);
+  const afterFailure = new Database(dbFile, { readonly: true });
+  assert.equal(afterFailure.prepare('SELECT 1 FROM schema_migrations WHERE version = 111').get(), undefined);
+  assert.match(
+    (afterFailure.prepare("SELECT sql FROM sqlite_master WHERE name = 'votes'").get() as { sql: string }).sql,
+    /BETWEEN 1 AND 10/,
+    'a failed attempt leaves the old table in place',
+  );
+  afterFailure.close();
+
+  const retry = new Database(dbFile);
+  retry.exec('DROP TABLE votes_zero_points_111');
+  retry.close();
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');
+
+  const migrated = new Database(dbFile);
+  assert.deepEqual(migrated.prepare("SELECT points FROM votes WHERE id = 'legacy-vote'").get(), { points: 7 });
+  assert.doesNotThrow(() => migrated.prepare("UPDATE votes SET points = 0 WHERE id = 'legacy-vote'").run());
+  assert.throws(() => migrated.prepare("UPDATE votes SET points = 11 WHERE id = 'legacy-vote'").run(), /CHECK constraint failed/);
+  assert.throws(
+    () =>
+      migrated
+        .prepare(
+          `INSERT INTO votes (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+           VALUES ('stray-vote', 'default-group', 'zero-voter', 'Zero Voter', ?, NULL, 99, 3, ?)`,
+        )
+        .run(gameId, now),
+    /vote round group\/event mismatch|FOREIGN KEY/,
+    'the scope triggers and keys survive the rebuild',
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 111').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 112 halves Bock and Skill onto 0-5, allows a 0 Umfrage rating and rolls back on failure', () => {
+  const dbFile = makeTempDbPath('ratings-zero-to-five');
+  runMigrations(dbFile);
+
+  // Rebuild the pre-112 shapes (1-10 ratings, poll responses without '0').
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  const now = Date.now();
+  fixture.exec(`
+    INSERT INTO players (id, name, api_key, created_at) VALUES ('scale-player', 'Scale Player', 'scale-player-key', ${now});
+    DROP TABLE skills;
+    DROP TABLE preferences;
+    CREATE TABLE skills (
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      game_id   TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      rating    INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 10), group_id TEXT REFERENCES groups(id) ON DELETE RESTRICT,
+      PRIMARY KEY (player_id, game_id)
+    );
+    CREATE TABLE preferences (
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      game_id   TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      rating    INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 10), group_id TEXT REFERENCES groups(id) ON DELETE RESTRICT,
+      PRIMARY KEY (player_id, game_id)
+    );
+    DELETE FROM schema_migrations WHERE version = 112;
+  `);
+  const games = (fixture.prepare("SELECT id FROM games WHERE group_id = 'default-group' ORDER BY id LIMIT 3").all() as Array<{ id: string }>).map((g) => g.id);
+  const insertSkill = fixture.prepare("INSERT INTO skills (player_id, game_id, rating, group_id) VALUES ('scale-player', ?, ?, 'default-group')");
+  const insertPreference = fixture.prepare("INSERT INTO preferences (player_id, game_id, rating, group_id) VALUES ('scale-player', ?, ?, 'default-group')");
+  [1, 6, 10].forEach((rating, index) => insertSkill.run(games[index], rating));
+  [2, 5, 9].forEach((rating, index) => insertPreference.run(games[index], rating));
+  // An open and a closed points round on the old scale, and saved team draws.
+  const scaleEvent = (fixture.prepare("SELECT id FROM events WHERE group_id = 'default-group' LIMIT 1").get() as { id: string }).id;
+  const insertRound = fixture.prepare(
+    "INSERT INTO vote_rounds (group_id, round, event_id, started_at, closed_at, mode) VALUES ('default-group', ?, ?, ?, ?, 'points')",
+  );
+  insertRound.run(9001, scaleEvent, now, null);
+  insertRound.run(9002, scaleEvent, now, now);
+  const insertVote = fixture.prepare(
+    "INSERT INTO votes (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at) VALUES (?, 'default-group', 'scale-player', 'Scale Player', ?, ?, ?, 10, ?)",
+  );
+  insertVote.run('scale-open-vote', games[0], scaleEvent, 9001, now);
+  insertVote.run('scale-closed-vote', games[0], scaleEvent, 9002, now);
+  const insertDraw = fixture.prepare(
+    "INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, generated_at, source) VALUES (?, ?, ?, 'default-group', ?, ?, ?)",
+  );
+  const legacyTeams = [
+    { players: [{ id: 'scale-player', rating: 8 }, { id: 'unrated-player', rating: null }], totalRating: 13 },
+    { players: [{ id: 'other-player', rating: 3 }], totalRating: 3 },
+  ];
+  insertDraw.run('scale-draw', games[0], scaleEvent, JSON.stringify(legacyTeams), now, null);
+  const draftTeams = [{ players: [{ id: 'scale-player', rating: null }], totalRating: 0 }];
+  insertDraw.run('scale-captain-draft', games[0], scaleEvent, JSON.stringify(draftTeams), now, 'draft');
+  // Blocks the first rebuild, so the whole migration must roll back.
+  fixture.exec('CREATE TABLE skills_zero_to_five_112 (blocking INTEGER)');
+  fixture.close();
+
+  assert.throws(() => runMigrations(dbFile), /skills_zero_to_five_112/);
+  const afterFailure = new Database(dbFile, { readonly: true });
+  assert.equal(afterFailure.prepare('SELECT 1 FROM schema_migrations WHERE version = 112').get(), undefined);
+  assert.deepEqual(
+    afterFailure.prepare("SELECT rating FROM skills WHERE player_id = 'scale-player' ORDER BY rating").all(),
+    [{ rating: 1 }, { rating: 6 }, { rating: 10 }],
+    'a failed attempt keeps the old values untouched',
+  );
+  afterFailure.close();
+
+  const retry = new Database(dbFile);
+  retry.exec('DROP TABLE skills_zero_to_five_112');
+  retry.close();
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');
+
+  const migrated = new Database(dbFile);
+  const ratingsOf = (table: string) =>
+    games.map((gameId) => (migrated.prepare(`SELECT rating FROM ${table} WHERE player_id = 'scale-player' AND game_id = ?`).get(gameId) as { rating: number }).rating);
+  assert.deepEqual(ratingsOf('skills'), [1, 3, 5], 'skills are halved and rounded up');
+  assert.deepEqual(ratingsOf('preferences'), [1, 3, 5], 'Bock is halved and rounded up');
+  assert.doesNotThrow(() => migrated.prepare("UPDATE preferences SET rating = 0 WHERE player_id = 'scale-player'").run());
+  assert.throws(() => migrated.prepare("UPDATE skills SET rating = 6 WHERE player_id = 'scale-player'").run(), /CHECK constraint failed/);
+  assert.match(
+    (migrated.prepare("SELECT sql FROM sqlite_master WHERE name = 'event_date_poll_responses'").get() as { sql: string }).sql,
+    /'0', '1'/,
+    'an Umfrage rating accepts 0',
+  );
+  // Further ballots of the open round only allow 0-5, so its points follow;
+  // a closed round keeps its historical result.
+  const pointsOf = (id: string) => (migrated.prepare('SELECT points FROM votes WHERE id = ?').get(id) as { points: number }).points;
+  assert.equal(pointsOf('scale-open-vote'), 5);
+  assert.equal(pointsOf('scale-closed-vote'), 10);
+  // Saved draws show and sum the new scale, a missing rating with the new fallback 3.
+  const teamsOf = (id: string) => JSON.parse((migrated.prepare('SELECT teams FROM matchmaking_draws WHERE id = ?').get(id) as { teams: string }).teams);
+  assert.deepEqual(teamsOf('scale-draw'), [
+    { players: [{ id: 'scale-player', rating: 4 }, { id: 'unrated-player', rating: null }], totalRating: 7 },
+    { players: [{ id: 'other-player', rating: 2 }], totalRating: 2 },
+  ]);
+  assert.deepEqual(teamsOf('scale-captain-draft'), draftTeams, 'a captain draft stores no ratings and stays as it is');
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 112').get());
+  migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 

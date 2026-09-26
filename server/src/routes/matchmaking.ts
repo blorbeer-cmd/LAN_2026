@@ -26,11 +26,11 @@ export const matchmakingRouter = Router();
 // Neutral middle rating for players without one. It is what balanceTeams
 // works with, but a stored teams snapshot keeps `rating: null` for such a
 // player instead of the substituted number: only then can a later reader tell
-// "rated 5" from "had no rating and was drawn as a 5". The frontend shows the
+// "rated 3" from "had no rating and was drawn as a 3". The frontend shows the
 // same value in parentheses for a null and includes it in the team total
 // (UNRATED_SKILL_VALUE in public/js/skillDisplay.js) — change both together,
 // or the displayed totals stop matching the draw they came from.
-const DEFAULT_RATING = 5;
+const DEFAULT_RATING = 3;
 
 // Team total the way the draw itself saw it: a player without an own rating
 // contributes the neutral fallback, exactly as in the balancing input.

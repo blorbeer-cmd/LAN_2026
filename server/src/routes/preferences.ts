@@ -1,4 +1,5 @@
-// "Bock"-Ratings per (player, game), 1-10: how much a player currently feels
+// "Bock"-Ratings per (player, game), 0-5 (0 = no Bock at all): how much a
+// player currently feels
 // like playing it, kept separate from skills.rating (how good they are).
 // Meant to be changed on a whim throughout the LAN, aggregated across all
 // players into a game's "Beliebtheit" and used to pre-sort/display the
@@ -54,8 +55,8 @@ preferencesRouter.put('/', requireUser, (req, res) => {
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
   }
-  if (!isIntInRange(rating, 1, 10)) {
-    return res.status(400).json({ error: 'rating muss eine Ganzzahl zwischen 1 und 10 sein.' });
+  if (!isIntInRange(rating, 0, 5)) {
+    return res.status(400).json({ error: 'rating muss eine Ganzzahl zwischen 0 und 5 sein.' });
   }
 
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);

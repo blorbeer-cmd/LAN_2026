@@ -1,4 +1,4 @@
-// Skill ratings per (player, game), 1-10. This is the basis for balanced
+// Skill ratings per (player, game), 0-5. This is the basis for balanced
 // matchmaking (FR-15).
 
 import { Router } from 'express';
@@ -99,8 +99,8 @@ skillsRouter.put('/', requireUser, (req, res) => {
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
   }
-  if (!isIntInRange(rating, 1, 10)) {
-    return res.status(400).json({ error: 'rating muss eine Ganzzahl zwischen 1 und 10 sein.' });
+  if (!isIntInRange(rating, 0, 5)) {
+    return res.status(400).json({ error: 'rating muss eine Ganzzahl zwischen 0 und 5 sein.' });
   }
 
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(playerId);

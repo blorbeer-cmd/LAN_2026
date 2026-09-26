@@ -81,7 +81,7 @@ function randInt(min: number, max: number): number {
 }
 
 function clampRating(value: number): number {
-  return Math.min(10, Math.max(1, value));
+  return Math.min(5, Math.max(0, value));
 }
 
 interface GameRow {
@@ -237,8 +237,8 @@ export function createTestUsers(
       // they're good at) — pure noise reads fake in the voting view.
       const bockByGame = new Map<string, number>();
       for (const game of games) {
-        const skill = randInt(1, 10);
-        const bock = clampRating(skill + randInt(-3, 3));
+        const skill = randInt(0, 5);
+        const bock = clampRating(skill + randInt(-2, 2));
         insertSkill.run(id, game.id, ownerGroupId, skill);
         insertPreference.run(id, game.id, ownerGroupId, bock);
         bockByGame.set(game.id, bock);

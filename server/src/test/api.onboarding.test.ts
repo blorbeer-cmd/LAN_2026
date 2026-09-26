@@ -72,7 +72,7 @@ test('new accounts receive onboarding and must complete the first ten catalog ra
     const preference = await request(app)
       .put('/api/preferences')
       .set('Cookie', adminCookie)
-      .send({ playerId: adminId, gameId: created.body.id, rating: index < 10 ? 10 - index : 1 });
+      .send({ playerId: adminId, gameId: created.body.id, rating: index < 10 ? 5 : 0 }); // ties rank by name's number
     assert.equal(preference.status, 200, JSON.stringify(preference.body));
   }
 
@@ -88,7 +88,7 @@ test('new accounts receive onboarding and must complete the first ten catalog ra
     testPlayerId,
     games[11].id,
     defaultGroupId,
-    10,
+    5,
   );
 
   const started = await request(app)

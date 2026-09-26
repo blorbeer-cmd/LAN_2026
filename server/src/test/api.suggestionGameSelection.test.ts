@@ -16,6 +16,11 @@ let catalogGameId: string;
 let suggestionGameId: string;
 let players: string[];
 
+// A complete points ballot for the round's games, 0 unless named in `points`.
+function fullBallot(results: Array<{ gameId: string }>, points: Record<string, number>) {
+  return results.map(({ gameId }) => ({ gameId, points: points[gameId] ?? 0 }));
+}
+
 test('setup: one catalog game, one suggestion and enough players', async () => {
   catalogGameId = (await request(app).post('/api/games').send({ name: 'Selection Catalog Game' })).body.id;
   const suggester = await request(app).post('/api/players').send({ name: 'Selection Suggester' });
@@ -91,7 +96,7 @@ test('an unrestricted round covers the catalog only, and a suggestion vote is re
 
   const accepted = await request(app)
     .post('/api/votes/points')
-    .send({ playerId: players[0], entries: [{ gameId: catalogGameId, points: 5 }] });
+    .send({ playerId: players[0], entries: fullBallot(started.body.results, { [catalogGameId]: 5 }) });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
 
   await request(app).post('/api/votes/cancel').send();
@@ -181,13 +186,7 @@ test('a game demoted mid-round keeps this round votes, totals and winner chance'
 
   const submitted = await request(app)
     .post('/api/votes/points')
-    .send({
-      playerId: players[1],
-      entries: [
-        { gameId: catalogGameId, points: 4 },
-        { gameId: otherId, points: 9 },
-      ],
-    });
+    .send({ playerId: players[1], entries: fullBallot(started.body.results, { [catalogGameId]: 4, [otherId]: 5 }) });
   assert.equal(submitted.status, 200, JSON.stringify(submitted.body));
 
   const demoted = await request(app).post(`/api/games/${otherId}/demote`).send();
@@ -200,20 +199,20 @@ test('a game demoted mid-round keeps this round votes, totals and winner chance'
   const ballotIds = current.body.results.map((r: { gameId: string }) => r.gameId);
   assert.ok(ballotIds.includes(otherId), 'a demoted game with votes stays on this round');
   assert.ok(!ballotIds.includes(suggestionGameId), 'a suggestion without votes stays off the ballot');
-  assert.equal(current.body.totalPoints, 13);
+  assert.equal(current.body.totalPoints, 9);
 
   // A player who had not submitted yet can still rate it — everyone sees the
   // same ballot for the whole round.
   const late = await request(app)
     .post('/api/votes/points')
-    .send({ playerId: players[2], entries: [{ gameId: otherId, points: 2 }] });
+    .send({ playerId: players[2], entries: fullBallot(current.body.results, { [otherId]: 2 }) });
   assert.equal(late.status, 200, JSON.stringify(late.body));
 
   const closed = await request(app).post('/api/votes/close').send();
   assert.equal(closed.status, 200);
   assert.deepEqual(closed.body.winnerGameIds, [otherId], 'the demoted game can still win its own round');
   const closedRow = closed.body.results.find((r: { gameId: string }) => r.gameId === otherId);
-  assert.equal(closedRow.points, 11);
+  assert.equal(closedRow.points, 7);
 });
 
 test('a runoff still offers the tied winners after one of them was demoted', async () => {
