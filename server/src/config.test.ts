@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { expectedAgentVersionFrom, productionConfigError, startupAccessConfigError } from './config';
+import { expectedAgentVersionFrom, productionConfigError, productionConfigWarning, startupAccessConfigError } from './config';
 
 test('productionConfigError accepts a configured recovery code', () => {
   assert.equal(productionConfigError({ adminRecoveryCode: 'recovery-secret' }), null);
@@ -12,6 +12,27 @@ test('productionConfigError accepts a configured recovery code', () => {
 
 test('productionConfigError requires ADMIN_RECOVERY_CODE', () => {
   assert.match(productionConfigError({ adminRecoveryCode: '' }) ?? '', /ADMIN_RECOVERY_CODE/);
+});
+
+test('an external ledger path requires its persistent Compose source', () => {
+  assert.match(productionConfigError({
+    adminRecoveryCode: 'recovery-secret',
+    deletionLedgerFile: '/app/deletion-ledger/deletion-receipts.jsonl',
+    deletionLedgerDirExplicit: false,
+  }) ?? '', /PRIVACY_DELETION_LEDGER_DIR/);
+  assert.equal(productionConfigError({
+    adminRecoveryCode: 'recovery-secret',
+    deletionLedgerFile: '/app/deletion-ledger/deletion-receipts.jsonl',
+    deletionLedgerDirExplicit: true,
+  }), null);
+});
+
+// A default ledger still survives the documented restore path, so a missing
+// separate path warns instead of stopping an already running installation.
+test('an implicit deletion ledger warns instead of blocking startup', () => {
+  assert.equal(productionConfigError({ adminRecoveryCode: 'recovery-secret' }), null);
+  assert.match(productionConfigWarning({ deletionLedgerFileExplicit: false }) ?? '', /PRIVACY_DELETION_LEDGER_FILE/);
+  assert.equal(productionConfigWarning({ deletionLedgerFileExplicit: true }), null);
 });
 
 test('startupAccessConfigError accepts an existing claimed admin account', () => {

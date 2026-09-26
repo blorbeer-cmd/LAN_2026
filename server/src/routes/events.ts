@@ -40,7 +40,8 @@ import type { GroupRole } from '../groups';
 import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
-import { setEventTrackingConsent } from '../trackingContexts';
+import { applyTrackingConsentDefault, setEventTrackingConsent } from '../trackingContexts';
+import { TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION } from '../privacyPolicy';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
 import { eventAccessLevel, fallbackPlayerEventContext, getOrRepairActiveEvent } from '../eventContext';
@@ -672,13 +673,31 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
 function updateEventTrackingConsent(req: Request, res: Response, granted: boolean): void {
   const event = req.groupResource as EventRow;
   if (!event || event.id === OUTSIDE_EVENTS_ID) { res.status(404).json({ error: 'Event nicht gefunden.' }); return; }
+  if (granted && (event.id === BASE_EVENT_ID || event.event_type_key === 'general')) {
+    res.status(409).json({ error: 'Für diesen Bereich kann kein Tracking aktiviert werden.' });
+    return;
+  }
   const playerId = requestPlayerId(req);
   if (!playerId) { res.status(400).json({ error: 'Spieleridentität ist erforderlich.' }); return; }
   if (granted && !isParticipant(event.id, playerId)) {
     res.status(409).json({ error: 'Tracking kann erst nach Annahme der Event-Einladung aktiviert werden.' });
     return;
   }
-  setEventTrackingConsent(event.id, event.group_id!, playerId, granted);
+  const textVersion = req.body?.textVersion;
+  if (granted && textVersion !== TRACKING_CONSENT_TEXT_VERSION) {
+    res.status(409).json({
+      error: 'Der Einwilligungstext hat sich geändert. Bitte lade die Datenschutzangaben neu.',
+      code: 'consent_text_changed',
+    });
+    return;
+  }
+  setEventTrackingConsent(
+    event.id,
+    event.group_id!,
+    playerId,
+    granted,
+    granted ? { purpose: TRACKING_CONSENT_PURPOSE, textVersion } : undefined,
+  );
   if (!granted) {
     broadcast(Events.liveStatusChanged, getLiveBoard(event.group_id!, event.id), {
       groupId: event.group_id!,
@@ -794,6 +813,12 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
         changed: result.changed,
       },
     });
+    // Accepting an already tracking event is the other moment the standing
+    // pre-authorization has to take effect; startTracking covers the reverse
+    // order, where the event only becomes trackable later.
+    if (result.changed && response === 'accepted' && event.tracking_enabled && event.group_id) {
+      applyTrackingConsentDefault(event.id, event.group_id, playerId);
+    }
     // Withdrawing an acceptance leaves the same two loose ends an organizer's
     // removal does: a workspace the account may no longer select, and a live
     // status inside an event it just left.

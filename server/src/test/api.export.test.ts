@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid';
 import request from 'supertest';
 import { createTestApp } from './testApp';
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
+import { GROUP_TRACKING_CONSENT_TEXT_VERSION } from '../privacyPolicy';
 import { TEST_ADMIN_ID } from './testApp';
 
 const app = createTestApp();
@@ -71,7 +72,7 @@ test('GET /api/export includes a completed tournament champion', async () => {
 test('GET /api/export includes playtime-by-player/game and awards from recorded play sessions', async () => {
   await request(app)
     .post(`/api/groups/${DEFAULT_GROUP_ID}/tracking-consent`)
-    .send({ playerId: playerA, granted: true });
+    .send({ playerId: playerA, granted: true, textVersion: GROUP_TRACKING_CONSENT_TEXT_VERSION });
   const now = Date.now();
   const oneHourAgo = now - 3_600_000;
   db.prepare(

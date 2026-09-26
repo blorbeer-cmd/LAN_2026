@@ -1,7 +1,7 @@
 import express from 'express';
 import type { Server } from 'socket.io';
 import { createApp } from '../app';
-import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
+import { db, DEFAULT_GROUP_ID } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import {
   createSession,
@@ -11,6 +11,8 @@ import {
 } from '../sessions';
 import { ensureAccountEventContext, getOrRepairActiveEvent } from '../eventContext';
 import { setEventTrackingConsent } from '../trackingContexts';
+import { TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION } from '../privacyPolicy';
+import { createEvent } from '../events';
 
 const TEST_ADMIN_ID = '__integration-test-admin__';
 
@@ -77,14 +79,31 @@ export function sessionCookie(playerId: string): string {
 }
 
 /** Explicit opt-in for legacy integration suites that exercise Agent data. */
-export function enableTestTracking(playerId: string, eventId = BASE_EVENT_ID): void {
+let defaultTrackingEventId: string | undefined;
+
+export function enableTestTracking(playerId: string, eventId?: string): string {
+  const useDefaultEvent = !eventId;
+  if (!eventId) {
+    defaultTrackingEventId ??= createEvent('Integration Test LAN', {
+      groupId: DEFAULT_GROUP_ID,
+      startsAt: Date.now() - 86_400_000,
+      endsAt: Date.now() + 86_400_000,
+    }).id;
+    eventId = defaultTrackingEventId;
+  }
   const event = db.prepare('SELECT group_id AS groupId FROM events WHERE id = ?').get(eventId) as
     | { groupId: string }
     | undefined;
   if (!event) throw new Error(`Test event ${eventId} does not exist.`);
+  if (useDefaultEvent) ensureAccountEventContext(TEST_ADMIN_ID, eventId);
+  db.prepare("INSERT OR REPLACE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(eventId, playerId);
   ensureAccountEventContext(playerId, eventId);
   db.prepare('UPDATE events SET tracking_enabled = 1, starts_at = 0 WHERE id = ?').run(eventId);
-  setEventTrackingConsent(eventId, event.groupId, playerId, true);
+  setEventTrackingConsent(eventId, event.groupId, playerId, true, {
+    purpose: TRACKING_CONSENT_PURPOSE,
+    textVersion: TRACKING_CONSENT_TEXT_VERSION,
+  });
+  return eventId;
 }
 
 /**

@@ -4,7 +4,7 @@
 import http from 'http';
 import { Server } from 'socket.io';
 
-import { config, productionConfigError, startupAccessConfigError } from './config';
+import { config, productionConfigError, productionConfigWarning, startupAccessConfigError } from './config';
 import './db'; // side-effect: open DB, create schema, seed defaults
 import { hasClaimedAdmin } from './accounts';
 import { runBootstrapAdmins } from './bootstrapAdmins';
@@ -26,6 +26,7 @@ import { registerSnakeSockets } from './arcade/snake';
 import { registerBattleshipSockets } from './arcade/battleship';
 import { registerChallengeRushSockets } from './arcade/challengeRush';
 import { registerArcadeSockets as registerArcadeRealtimeSockets } from './arcade/realtime';
+import { startPrivacyRetention } from './privacyRetention';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -72,6 +73,11 @@ function start(): void {
       console.error(`FATAL: ${error}`);
       process.exit(1);
     }
+    const warning = productionConfigWarning();
+    if (warning) {
+      // eslint-disable-next-line no-console
+      console.warn(`WARN: ${warning}`);
+    }
   }
 
   // Seed any configured ready-to-use admin accounts (BOOTSTRAP_ADMIN_<n>_*)
@@ -99,6 +105,7 @@ function start(): void {
   startEventPaymentReminder();
   startEventDatePollReminderSweep();
   startEventReminderSweep();
+  startPrivacyRetention();
   // Arcade matches are process-local. A restart cannot resume them, so close
   // any persisted live rows before the heartbeat can keep them fresh.
   recoverInterruptedArcadeSessions();

@@ -526,6 +526,12 @@ test('push notifications: open creation broadcasts, direct assignment notifies j
   const aliceCurrentAfterClaim = await request(app).get(`/api/push/current?playerId=${alice.id}`);
   assert.equal(aliceCurrentAfterClaim.body.entry.title, 'Übernommen');
   assert.match(aliceCurrentAfterClaim.body.entry.body, /Tische aufbauen/);
+  // The body names the claiming account, so the row carries a structured
+  // reference that an account erasure can find (see privacyService.ts).
+  assert.equal(
+    aliceCurrentAfterClaim.body.entry.targetId,
+    `about-account:checklist-claim:${openTodo.body.tasks[0].id}:${bob.id}`,
+  );
 
   // done also resolves its own "assigned to you" topic.
   const bobAssignedRequestTaskId = assignedRequest.body.tasks[0].id;
