@@ -59,7 +59,20 @@ export function pickPlayerColor(existingColors: readonly string[], random: () =>
   return best.color;
 }
 
+// Tests must not depend on unseeded randomness (TESTING.md): under
+// NODE_ENV=test a fixed-seed generator makes a fresh server hand out the same
+// colors in the same order, so browser and visual tests stay reproducible.
+function seededRandom(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648;
+  };
+}
+
+const testRandom = process.env.NODE_ENV === 'test' ? seededRandom(1) : null;
+
 export function initialPlayerColor(): string {
   const rows = db.prepare('SELECT color FROM players WHERE deactivated_at IS NULL').all() as { color: string }[];
-  return pickPlayerColor(rows.map((row) => row.color));
+  return pickPlayerColor(rows.map((row) => row.color), testRandom ?? Math.random);
 }
