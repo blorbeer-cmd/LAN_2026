@@ -32,7 +32,7 @@ export function openFeedbackModal(view) {
 
   const sentimentButtonsHtml = () =>
     SENTIMENTS.map(
-      (s) => `<button type="button" class="btn btn-sm${selectedSentiment === s.value ? ' btn-primary' : ''}"
+      (s) => `<button type="button" class="btn btn-sm${selectedSentiment === s.value ? ' is-selected' : ''}"
         data-feedback-sentiment="${s.value}" aria-pressed="${selectedSentiment === s.value}">${s.label}</button>`,
     ).join('');
 
@@ -41,16 +41,18 @@ export function openFeedbackModal(view) {
     `<form id="feedback-form" class="stack">
       <div>
         <span class="field-label" id="feedback-sentiment-label">Art</span>
-        <div class="selection-toolbar" role="group" aria-labelledby="feedback-sentiment-label" id="feedback-sentiment-toggle">
+        <div class="checklist-choice-toolbar" role="group" aria-labelledby="feedback-sentiment-label" id="feedback-sentiment-toggle">
           ${sentimentButtonsHtml()}
         </div>
       </div>
       <div>
         <label for="feedback-message" class="field-label is-required">Nachricht</label>
-        <textarea id="feedback-message" rows="4" maxlength="${MAX_MESSAGE_LENGTH}" required
+        <textarea id="feedback-message" rows="1" maxlength="${MAX_MESSAGE_LENGTH}" required
           placeholder="Die Suche findet kein Spiel"></textarea>
       </div>
-      <button type="submit" class="btn btn-primary btn-block">Senden</button>
+      <div class="broadcast-detail-footer">
+        <button type="submit" class="btn btn-primary btn-sm">Senden</button>
+      </div>
     </form>`,
     {
       onMount: (el) => {
@@ -63,7 +65,7 @@ export function openFeedbackModal(view) {
           selectedSentiment = selectedSentiment === value ? null : value;
           toggle.querySelectorAll('[data-feedback-sentiment]').forEach((b) => {
             const active = b.dataset.feedbackSentiment === selectedSentiment;
-            b.classList.toggle('btn-primary', active);
+            b.classList.toggle('is-selected', active);
             b.setAttribute('aria-pressed', String(active));
           });
         });
