@@ -351,10 +351,11 @@ function deletePlayerBallot(groupId: string, playerId: string, round: number): v
   db.prepare('DELETE FROM votes WHERE group_id = ? AND player_id = ? AND round = ?').run(groupId, playerId, round);
 }
 
-// Every game a points ballot has to rate: the round's explicit selection, or
-// for an unrestricted round the same catalog list the voters are shown.
+// Every game a points ballot has to rate: exactly the games the voters are
+// shown — the round's selection or the catalog, minus a game deleted since the
+// round started, which would otherwise block every further ballot.
 function roundBallotGameIds(groupId: string, round: number, selectedGameIds: string[] | null): string[] {
-  return selectedGameIds ?? buildAllResults(groupId, round, 'points', true).map((result) => result.gameId);
+  return buildResults(groupId, round, 'points', true, selectedGameIds).map((result) => result.gameId);
 }
 
 interface Ballot {

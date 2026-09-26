@@ -5308,6 +5308,38 @@ registerMigration({ version: 111, name: 'allow zero vote points', up: allowZeroV
 // a 0 they never chose. A 1-5 Umfrage rating likewise gains 0 ("lehne ab").
 // None of the three tables is referenced by another one, so each is rebuilt
 // in place without foreign-key suspension.
+// Two stored copies of the old scale follow along, so nothing mixes both:
+// - points of a still open Vote round, whose further ballots only allow 0-5
+//   (closed rounds keep their historical 1-10 result untouched);
+// - the ratings inside saved team draws, whose team totals are re-derived with
+//   the new neutral fallback of 3 (captain drafts store no ratings).
+function halveRating(rating: number): number {
+  return Math.floor((rating + 1) / 2);
+}
+function moveStoredDrawRatingsToZeroToFive(): void {
+  const draws = db.prepare("SELECT id, teams FROM matchmaking_draws WHERE source IS NOT 'draft'").all() as Array<{ id: string; teams: string }>;
+  const update = db.prepare('UPDATE matchmaking_draws SET teams = ? WHERE id = ?');
+  for (const draw of draws) {
+    let teams: unknown;
+    try {
+      teams = JSON.parse(draw.teams);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(teams)) continue;
+    const migrated = teams.map((team) => {
+      if (!team || !Array.isArray(team.players)) return team;
+      const players = team.players.map((player: { rating?: unknown }) =>
+        typeof player?.rating === 'number' ? { ...player, rating: halveRating(player.rating) } : player);
+      const totalRating = players.reduce(
+        (sum: number, player: { rating?: unknown }) => sum + (typeof player?.rating === 'number' ? player.rating : 3),
+        0,
+      );
+      return { ...team, players, totalRating };
+    });
+    update.run(JSON.stringify(migrated), draw.id);
+  }
+}
 function moveRatingsToZeroToFive(): void {
   const tableSql = (name: string): string =>
     (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) as { sql: string }).sql;
@@ -5350,6 +5382,15 @@ function moveRatingsToZeroToFive(): void {
       CREATE INDEX IF NOT EXISTS idx_event_date_poll_responses_option ON event_date_poll_responses(option_id);
     `);
   }
+
+  db.prepare(
+    `UPDATE votes SET points = (points + 1) / 2
+     WHERE points IS NOT NULL AND EXISTS (
+       SELECT 1 FROM vote_rounds vr
+       WHERE vr.group_id = votes.group_id AND vr.round = votes.round AND vr.closed_at IS NULL
+     )`,
+  ).run();
+  moveStoredDrawRatingsToZeroToFive();
 }
 registerMigration({ version: 112, name: 'move bock, skill and poll ratings to 0-5', up: moveRatingsToZeroToFive });
 

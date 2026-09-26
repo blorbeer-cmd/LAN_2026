@@ -436,6 +436,20 @@ test('concurrent ballots from one player leave exactly one complete ballot', asy
   await request(app).post('/api/votes/cancel');
 });
 
+test('a game deleted during a points round leaves the remaining ballot savable', async () => {
+  const extra = await request(app).post('/api/games').send({ name: 'Vote Delete Probe' });
+  assert.equal(extra.status, 201, JSON.stringify(extra.body));
+  const started = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, extra.body.id] });
+  assert.equal(started.status, 201);
+  assert.equal((await request(app).delete(`/api/games/${extra.body.id}`)).status, 204);
+
+  const visible = await request(app).get('/api/votes');
+  assert.deepEqual(visible.body.results.map((r: { gameId: string }) => r.gameId), [gameCs2]);
+  const saved = await request(app).post('/api/votes/points').send({ playerId: playerA, entries: [{ gameId: gameCs2, points: 4 }] });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  await request(app).post('/api/votes/cancel');
+});
+
 test('points mode rejects an empty submission', async () => {
   await request(app).post('/api/votes/start').send({ mode: 'points' });
   const empty = await request(app).post('/api/votes/points').send({ playerId: playerA, entries: [] });

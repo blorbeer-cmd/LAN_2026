@@ -1525,6 +1525,28 @@ test('migration 112 halves Bock and Skill onto 0-5, allows a 0 Umfrage rating an
   const insertPreference = fixture.prepare("INSERT INTO preferences (player_id, game_id, rating, group_id) VALUES ('scale-player', ?, ?, 'default-group')");
   [1, 6, 10].forEach((rating, index) => insertSkill.run(games[index], rating));
   [2, 5, 9].forEach((rating, index) => insertPreference.run(games[index], rating));
+  // An open and a closed points round on the old scale, and saved team draws.
+  const scaleEvent = (fixture.prepare("SELECT id FROM events WHERE group_id = 'default-group' LIMIT 1").get() as { id: string }).id;
+  const insertRound = fixture.prepare(
+    "INSERT INTO vote_rounds (group_id, round, event_id, started_at, closed_at, mode) VALUES ('default-group', ?, ?, ?, ?, 'points')",
+  );
+  insertRound.run(9001, scaleEvent, now, null);
+  insertRound.run(9002, scaleEvent, now, now);
+  const insertVote = fixture.prepare(
+    "INSERT INTO votes (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at) VALUES (?, 'default-group', 'scale-player', 'Scale Player', ?, ?, ?, 10, ?)",
+  );
+  insertVote.run('scale-open-vote', games[0], scaleEvent, 9001, now);
+  insertVote.run('scale-closed-vote', games[0], scaleEvent, 9002, now);
+  const insertDraw = fixture.prepare(
+    "INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, generated_at, source) VALUES (?, ?, ?, 'default-group', ?, ?, ?)",
+  );
+  const legacyTeams = [
+    { players: [{ id: 'scale-player', rating: 8 }, { id: 'unrated-player', rating: null }], totalRating: 13 },
+    { players: [{ id: 'other-player', rating: 3 }], totalRating: 3 },
+  ];
+  insertDraw.run('scale-draw', games[0], scaleEvent, JSON.stringify(legacyTeams), now, null);
+  const draftTeams = [{ players: [{ id: 'scale-player', rating: null }], totalRating: 0 }];
+  insertDraw.run('scale-captain-draft', games[0], scaleEvent, JSON.stringify(draftTeams), now, 'draft');
   // Blocks the first rebuild, so the whole migration must roll back.
   fixture.exec('CREATE TABLE skills_zero_to_five_112 (blocking INTEGER)');
   fixture.close();
@@ -1557,6 +1579,18 @@ test('migration 112 halves Bock and Skill onto 0-5, allows a 0 Umfrage rating an
     /'0', '1'/,
     'an Umfrage rating accepts 0',
   );
+  // Further ballots of the open round only allow 0-5, so its points follow;
+  // a closed round keeps its historical result.
+  const pointsOf = (id: string) => (migrated.prepare('SELECT points FROM votes WHERE id = ?').get(id) as { points: number }).points;
+  assert.equal(pointsOf('scale-open-vote'), 5);
+  assert.equal(pointsOf('scale-closed-vote'), 10);
+  // Saved draws show and sum the new scale, a missing rating with the new fallback 3.
+  const teamsOf = (id: string) => JSON.parse((migrated.prepare('SELECT teams FROM matchmaking_draws WHERE id = ?').get(id) as { teams: string }).teams);
+  assert.deepEqual(teamsOf('scale-draw'), [
+    { players: [{ id: 'scale-player', rating: 4 }, { id: 'unrated-player', rating: null }], totalRating: 7 },
+    { players: [{ id: 'other-player', rating: 2 }], totalRating: 2 },
+  ]);
+  assert.deepEqual(teamsOf('scale-captain-draft'), draftTeams, 'a captain draft stores no ratings and stays as it is');
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 112').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });

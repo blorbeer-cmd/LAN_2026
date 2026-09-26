@@ -156,7 +156,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   number means "no rating yet"; 0 is a deliberate answer and counts as rated — for Bock „kein
   Bock“, for Skill „kenne ich nicht“ — and that meaning is spelled out on the Ø note's line. A
   press saves immediately and keeps keyboard focus on the pressed number. Existing 1–10 ratings
-  were halved and rounded up onto this scale. Unlike the team views, where a missing rating still
+  were halved and rounded up onto this scale, together with the ratings stored in saved team draws
+  (their team totals re-derived with the fallback 3) and the points of a Vote round still open at
+  the upgrade; closed Vote rounds keep their historical 1–10 points. Unlike the team views, where a missing rating still
   enters the draw as the parenthesized fallback, the own-rating scale shows no number at all.
   A Skill of 0 („kenne ich nicht“) enters a balanced draw as 0, the weakest value, so players new
   to a game are spread across the teams; the team views label it „kennt das Spiel nicht“. Two independent chip
