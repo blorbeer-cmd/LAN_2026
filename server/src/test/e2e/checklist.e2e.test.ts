@@ -112,6 +112,13 @@ test('create a To-Do as one member, take it over as another, finish it in the de
   await page.keyboard.press('Escape');
   for (const width of [390, 1024]) {
     await page.setViewportSize({ width, height: 844 });
+    // Crossing the 640px breakpoint swaps the modal's entry animation from
+    // sheet-in to dialog-in, which restarts it (scale + translateY, 0.18s).
+    // The popover is placed from the trigger's live, transformed rect. While
+    // the restarted animation is still pending on its first keyframe the
+    // trigger looks stable to click(), so on a slow runner the picker opened
+    // ~2px off and only later month switches saw the settled dialog.
+    await page.locator('.modal:has(#checklist-todo-form)').evaluate((modal) => Promise.all(modal.getAnimations().map((animation) => animation.finished)));
     // February 2027 has four weeks, March five and May six.
     await page.fill('#todo-due-date', '15022027');
     await page.locator('#todo-due-date').blur();
