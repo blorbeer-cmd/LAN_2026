@@ -72,7 +72,7 @@ export function rosterPickerHtml({
 
   return `<div class="stack" data-roster-picker="${escapeHtml(id)}">
     <div class="selection-toolbar">
-      ${toolbarLabel ? `<span class="field-label">${escapeHtml(toolbarLabel)}</span>` : ''}
+      ${toolbarLabel ? `<span class="field-label selection-toolbar-label">${escapeHtml(toolbarLabel)}</span>` : ''}
       ${toolbarLeadingHtml}
       ${showBulkActions ? `
         <button type="button" class="icon-btn selection-toolbar-icon"${selectAllIdAttribute} data-roster-select-toggle aria-label="${bulk.label}" data-tooltip="${bulk.tooltip}">${icon(bulk.iconName)}</button>

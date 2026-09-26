@@ -2141,6 +2141,13 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
     await page.waitForSelector('.modal', { state: 'detached' });
   }
   await page.waitForSelector('text=Beendet', { timeout: 5000 });
+  // The finished tournament leads with its winner, the same team the bracket names.
+  const championCard = page.locator('[data-tournament-champion]');
+  await championCard.waitFor();
+  assert.equal(await championCard.locator('h2').innerText(), 'Turnier beendet');
+  assert.equal(await championCard.locator('.tournament-fixture-score:has-text("Win")').count(), 1);
+  const bracketChampion = (await page.locator('.bracket-champion .bracket-team-name').innerText()).trim();
+  assert.ok((await championCard.locator('.team-card-header').innerText()).includes(bracketChampion));
 });
 
 flowTest('Admin: the verified role exposes tools and can temporarily hide seeded test users', async () => {

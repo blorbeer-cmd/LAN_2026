@@ -166,8 +166,16 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
 
   // Only the selected mode's section renders — switch to Captain Draft to
   // reach its tooltip, then back to Auslosung to reach "Teams auslosen".
+  // Switching keeps the search field and the roster at the same height.
+  const rosterEdges = () =>
+    page.evaluate(() => {
+      const top = (selector: string) => Math.round(document.querySelector(selector)!.getBoundingClientRect().top);
+      return { search: top('.match-mode-panel .selection-search'), grid: top('.match-mode-panel .player-selection-grid') };
+    });
+  const drawRosterEdges = await rosterEdges();
   await page.click('[data-mm-mode="draft"]');
   assert.equal(await page.locator('#draft-player-search').count(), 1);
+  assert.deepEqual(await rosterEdges(), drawRosterEdges);
   // The draft roster search is the only search field and narrows the captain list too.
   assert.equal(await page.locator('[data-roster-picker="mm-captain-roster"] input[type="search"]').count(), 0);
   await page.fill('#draft-player-search', 'E2E Alice');
@@ -248,6 +256,23 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   };
   const totalGames = await ballotRows.count();
   assert.deepEqual(await ballotRows.first().locator('[data-vote-points]').allTextContents(), ['0', '1', '2', '3', '4', '5']);
+
+  // Regression: a cancelled round is deleted and the next round reuses its
+  // number. Its saved ballot must neither prefill nor mark the new round as
+  // answered.
+  for (let index = 0; index < totalGames; index += 1) await setPoints(index, 2);
+  await page.click('#votes-submit');
+  await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
+  await roundCard.locator('.action-menu > summary').click();
+  await page.click('#votes-cancel');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('#votes-start');
+  await page.click('#votes-start');
+  await roundCard.locator('[data-vote-participation]:text-is("0/2 abgegeben")').waitFor();
+  await roundCard.locator('.event-poll-answer-inline:has-text("Deine Stimme fehlt")').waitFor();
+  await page.waitForLoadState('networkidle');
+  assert.equal(await roundCard.locator('[data-vote-points][aria-pressed="true"]').count(), 0);
+  assert.ok(await page.locator('#votes-submit').isDisabled());
   await setPoints(0, 5);
   await setPoints(1, 5);
   await roundCard.locator('[data-vote-rated-progress]').filter({ hasText: `2 von ${totalGames} bewertet` }).waitFor();
@@ -671,7 +696,8 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
 
 flowTest('matchmaking Historie derives the winner from values entered in the draw result dialog', async () => {
   // Values mode: the higher value wins, places follow the values, and the
-  // recorded draw shows its winner with the "Win" chip in Historie.
+  // recorded draw shows its winner with the "Win" chip in Historie. A field
+  // left empty counts as its "0" placeholder instead of blocking the save.
   await openTeams();
   await page.click('#mm-generate');
   await openMatchmakingHistory();
@@ -680,7 +706,7 @@ flowTest('matchmaking Historie derives the winner from values entered in the dra
 
   await page.click('[data-draw-result-mode="values"]');
   await page.fill('#draw-result-score-0', '3');
-  await page.fill('#draw-result-score-1', '1');
+  assert.equal(await page.inputValue('#draw-result-score-1'), '');
   await page.click('[data-draw-result-values] button[type="submit"]');
 
   await page.waitForFunction(() => !!document.querySelector('[data-edit-draw-result]'));
@@ -689,6 +715,8 @@ flowTest('matchmaking Historie derives the winner from values entered in the dra
   await winnerTeam.waitFor();
   assert.equal(await winnerTeam.locator('.tournament-fixture-score:has-text("Win")').count(), 1);
   assert.match(await winnerTeam.innerText(), /Platz 1 · Wert 3/);
+  const loserTeam = page.locator('[data-draw-card] .matchmaking-draw-team:not(.is-winner)').first();
+  assert.match(await loserTeam.innerText(), /Platz 2 · Wert 0/);
 });
 
 flowTest('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl Teams"', async () => {
