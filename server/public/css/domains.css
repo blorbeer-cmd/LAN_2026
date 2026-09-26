@@ -2827,12 +2827,19 @@ input.food-order-price-input {
   }
 }
 /* Starts as one line like every other field and grows with line breaks. */
-#broadcast-message {
+#broadcast-message,
+#feedback-message {
   display: block;
   field-sizing: content;
   min-height: var(--control-height);
   max-height: calc(var(--control-height) * 5);
   resize: none;
+}
+/* The four feedback kinds share the field width in equal columns, so the
+   choice ends flush with the message field below it. */
+#feedback-sentiment-toggle {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .broadcast-form-footer {
   display: flex;

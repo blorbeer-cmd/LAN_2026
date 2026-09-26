@@ -99,12 +99,7 @@ export const components = [
       },
       {
         "file": "public/js/feedback.js",
-        "source": "class=\"btn btn-sm${selectedSentiment === s.value ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/adminFeedback.js",
-        "source": "class=\"btn btn-sm${nextResolved ? ' btn-primary' : ''}\"",
+        "source": "class=\"btn btn-sm${selectedSentiment === s.value ? ' is-selected' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
@@ -422,6 +417,11 @@ export const components = [
         "file": "public/js/views/checklist.js",
         "source": "class=\"btn btn-sm game-catalog-sort-option${value === current ? ' is-active' : ''}\"",
         "reason": "The To-Do sorting and filter menus reuse the catalog menu rows; the static inventory does not infer the active branch. Geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/views/adminFeedback.js",
+        "source": "class=\"btn btn-sm game-catalog-sort-option${value === current ? ' is-active' : ''}\"",
+        "reason": "The Feedback sorting and filter menus reuse the catalog menu rows; the static inventory does not infer the active branch. Geometry remains owned by this entry."
       }
     ]
   },
@@ -517,11 +517,6 @@ export const components = [
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "Interactive filter chips use 32px; passive chip labels are outside this control variant.",
     "dynamicUses": [
-      {
-        "file": "public/js/views/adminFeedback.js",
-        "source": "class=\"chip${feedbackSentimentFilter === option.value ? ' is-active' : ''}\"",
-        "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
       {
         "file": "public/js/views/events.js",
         "source": "class=\"chip${entry.id === 'alle' ? ' is-active' : ''}\"",
