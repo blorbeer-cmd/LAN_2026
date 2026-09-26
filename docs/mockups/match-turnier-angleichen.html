@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <!-- Mockup zu docs/plans/match-turnier-angleichen-handover.md. App-Ebene nutzt die Tokens aus
      server/public/css/style.css; die Annotationsebene ist nur Dokumentation. -->
-<title>Match und Turnier angleichen — Respawn, Mockup Version 7</title>
+<title>Match und Turnier angleichen — Respawn, Mockup Version 8</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -326,7 +326,7 @@ ul.plain strong { color: var(--text); }
 <div class="wrap">
 
 <header class="top">
-  <span class="eyebrow">Analyse · Stand main 156f039 · nichts umgesetzt · Version 7</span>
+  <span class="eyebrow">Analyse · Stand main 156f039 · nichts umgesetzt · Version 8</span>
   <h1>Match und Turnier angleichen</h1>
   <p class="lead">Die letzte Prüfung ist teilweise überholt. Seit den PRs #662, #667 und #672 nutzen Match und Turnier bereits denselben Ergebnis-Dialogstil und dieselben Plus- und Stift-Aktionen. Übrig sind Abweichungen in Beschriftung, Punkte-Eingabe und Ergebnis-Anzeige, dazu ein dritter, ganz anders gebauter Ergebnis-Dialog in der Auswertung. Neu betrachtet: Ergebnisse mit mehreren Teams, die Modi Sieger und Punktestand, und die Match-Historie. Den Turnier-Tab kann man auflösen.</p>
   <div class="meta-row">
@@ -450,24 +450,24 @@ ul.plain strong { color: var(--text); }
       </ul>
     </div>
     <div class="shot">
-      <div class="shot-label"><span class="pill after">Nachher</span> beide Bereiche, 2 Teams</div>
+      <div class="shot-label"><span class="pill after">Nachher</span> Match, 2 Teams</div>
       <div class="phone dim">
         <div class="modal">
           <div class="modal-head"><strong>Ergebnis</strong><span class="x">×</span></div>
-          <div class="modal-sub">Rocket League · Halbfinale</div>
+          <div class="modal-sub">Rocket League · 2 Teams</div>
           <div class="modes"><span class="btn primary">Sieger</span><span class="btn">Punktestand</span></div>
           <div class="pick">Team Anna<span class="pl">Anna, Ben, Chris</span></div>
           <div class="pick sel-existing">Team Dana<span class="pl">Dana, Emil, Finn</span></div>
           <div class="pick draw center">Unentschieden</div>
-          <span class="btn primary block">Speichern</span>
+          <span class="btn primary" style="align-self:flex-end">Speichern</span>
         </div>
       </div>
       <ul class="notes">
         <li class="good">Antippen wählt nur aus; erst „Speichern“ speichert</li>
         <li class="good">Auswahl im heutigen Stil des Ergebnis-Dialogs (grüner Rahmen wie der schon gespeicherte Sieger)</li>
-        <li class="good">Modus-Knöpfe im Stil des Match-Modus („Auslosung | Captain Draft“); im Turnier ausgeblendet</li>
-                <li class="info">„Unentschieden“ nicht im K.-o.-Modus</li>
-      </ul>
+        <li class="good">Modus-Knöpfe im Stil des Match-Modus („Auslosung | Captain Draft“)</li>
+        <li class="info">Im Turnier: keine Modus-Knöpfe (das Turnier legt den Modus fest) und im K.-o.-Modus kein „Unentschieden“</li>
+                      </ul>
     </div>
   </div>
 </section>
@@ -496,7 +496,7 @@ ul.plain strong { color: var(--text); }
       <ul class="notes">
         <li class="info">Plätze ergeben sich nur aus Punkten; das bleibt so (das frühere Feld „Platz“ kommt nicht zurück)</li>
         <li>Man sieht erst in der Historie, welcher Platz herauskommt</li>
-        <li>Höchster Wert gewinnt immer; für Zeiten oder Golf-Schläge ist das falsch herum</li>
+        <li class="info">Höchster Wert gewinnt; das bleibt vorerst so</li>
       </ul>
     </div>
     <div class="shot">
@@ -511,7 +511,7 @@ ul.plain strong { color: var(--text); }
           <div class="pick">Team 3<span class="pl">Emil, Finn</span></div>
           <div class="pick">Team 4<span class="pl">Gina, Hugo</span></div>
           <div class="pick draw center">Unentschieden</div>
-          <span class="btn primary block">Speichern</span>
+          <span class="btn primary" style="align-self:flex-end">Speichern</span>
         </div>
       </div>
       <ul class="notes">
@@ -532,14 +532,13 @@ ul.plain strong { color: var(--text); }
             <div class="srow"><span class="rn">3</span><span class="nm">Team 3<small>Emil, Finn</small></span><span class="num">21</span></div>
             <div class="srow"><span class="rn">3</span><span class="nm">Team 4<small>Gina, Hugo</small></span><span class="num">21</span></div>
           </div>
-          <span class="hint-line">Mehr Punkte = besser · <span style="color:var(--accent)">umdrehen</span></span>
-          <span class="btn primary block">Speichern</span>
+          <span class="btn primary" style="align-self:flex-end">Speichern</span>
         </div>
       </div>
       <ul class="notes">
         <li class="good">Die Platzzahl rechnet beim Tippen mit; gleiche Punkte teilen sich den Platz</li>
         <li class="good">Die Punkte bestimmen die Rangfolge; Zeilen springen beim Tippen nicht um</li>
-        <li class="good">„umdrehen“ für Spiele, bei denen weniger besser ist; besser noch als Einstellung am Spiel</li>
+        <li class="info">Mehr Punkte = besser, wie heute; „weniger ist besser“ ist nicht Teil dieses Umbaus</li>
       </ul>
     </div>
     <div class="shot">
@@ -552,7 +551,7 @@ ul.plain strong { color: var(--text); }
             <div class="srow"><span class="rn g">1</span><span class="nm">Team Anna<small>Anna, Ben, Chris</small></span><span class="num">3</span></div>
             <div class="srow"><span class="rn">2</span><span class="nm">Team Dana<small>Dana, Emil, Finn</small></span><span class="num">1</span></div>
           </div>
-          <span class="btn primary block">Speichern</span>
+          <span class="btn primary" style="align-self:flex-end">Speichern</span>
         </div>
       </div>
       <ul class="notes">
@@ -564,7 +563,7 @@ ul.plain strong { color: var(--text); }
   <div class="two-col">
     <div class="callout">
       <strong>Server und Daten</strong>
-      <p>Der Server speichert je Team schon heute <code>score</code> und <code>rank</code>, gleiche Plätze sind erlaubt. Punkte in der Rangliste gibt es nur für den Sieger, der Platz ist reine Anzeige. Die Platzzahl live im Dialog ist deshalb reine Frontend-Arbeit. „Weniger ist besser“ als Einstellung am Spiel bräuchte ein neues Feld im Spielkatalog; als Schalter im Dialog genügt das Frontend.</p>
+      <p>Der Server speichert je Team schon heute <code>score</code> und <code>rank</code>, gleiche Plätze sind erlaubt. <code>score</code> und <code>rank</code> bestimmen die Ranglisten-Punkte nicht: Jeder Teilnehmer erhält 1 Punkt, der Sieger zusätzlich 3. Das bleibt unverändert. Die Platzzahl live im Dialog ist reine Frontend-Arbeit.</p>
     </div>
   </div>
 </section>
@@ -574,7 +573,7 @@ ul.plain strong { color: var(--text); }
   <div class="block-head">
     <span class="eyebrow">Vorschlag B · Historie</span>
     <h2>Historie: einklappbare Einträge mit Ergebnis im Kopf</h2>
-    <p class="muted">Heute ist jeder Eintrag eine volle Karte mit allen Teams und Spielern. Schon zwei Einträge füllen einen Handybildschirm. Dazu kommt: Jedes „Teams auslosen“ legt einen neuen Eintrag an, auch wenn danach neu gelost wird. Die Historie füllt sich so mit Auslosungen, die nie gespielt wurden (der Server liefert höchstens 20).</p>
+    <p class="muted">Heute ist jeder Eintrag eine volle Karte mit allen Teams und Spielern. Schon zwei Einträge füllen einen Handybildschirm. Dazu kommt: Jedes „Teams auslosen“ legt einen neuen Eintrag an, auch wenn danach neu gelost wird. Die Historie füllt sich so mit Auslosungen, die nie gespielt wurden. Die App lädt heute nur die neuesten 20 Auslosungen je Spiel; ältere Einträge sind nicht erreichbar.</p>
   </div>
   <div class="table-wrap">
     <table>
@@ -661,13 +660,15 @@ ul.plain strong { color: var(--text); }
           </div>
           <div class="subgroup"><span class="row" style="gap:6px"><svg class="ic"><use href="#i-chev"/></svg>Ohne Ergebnis (5)</span><span class="badge">Offen</span></div>
         </div>
+          <span class="btn" style="align-self:center">Ältere laden</span>
       </div>
       <ul class="notes">
         <li class="good">Jeder Eintrag ist eine eigene Kachel mit Pfeil links, wie die Umfragen-Karten</li>
-        <li class="good">Zugeklappt: Spiel, Zeit, Sieger mit Punkten oder „3 : 1“, Teamanzahl</li>
+        <li class="good">Zugeklappt: Spiel, Zeit, immer das Siegerteam mit „Win“, dazu die Punkte oder „3 : 1“, Teamanzahl</li>
         <li class="good">„Rematch“ und Stift stehen im Kopf, also ohne Aufklappen erreichbar</li>
         <li class="good">Nie gespielte Auslosungen gesammelt unter „Ohne Ergebnis (n)“</li>
         <li class="good">Filter „Alle | Matches | Turniere“ oben, im Stil der Filterchips im Spielekatalog</li>
+        <li class="good">„Ältere laden“ holt weitere Einträge nach; „Turniere“ zeigt alle Turniere des Spiels</li>
       </ul>
     </div>
     <div class="shot">
@@ -715,7 +716,7 @@ ul.plain strong { color: var(--text); }
     </div>
     <div class="callout">
       <strong>Skill nur fürs ganze Team</strong>
-      <p>Die Historie zeigt nur die Skill-Summe je Team, in derselben Anzeige wie heute auf den Teamkarten (<code>teamSkillHtml</code>): das Skill-Symbol (<code>activity</code>) mit der Zahl dahinter, in Grau. „8 (1)“ heißt wie heute: davon 1 Spieler ohne eigene Bewertung. Einzelne Skill-Level der Spieler entfallen in der Historie. Bei Captain Draft wurde nicht nach Skill gelost; dort zählt die Summe wie heute nur die eingetragenen Werte. Die Werte stammen aus dem Stand der Auslosung und ändern sich nicht nachträglich.</p>
+      <p>Die Historie zeigt nur die Skill-Summe je Team, in derselben Anzeige wie heute auf den Teamkarten (<code>teamSkillHtml</code>): das Skill-Symbol (<code>activity</code>) mit der Zahl dahinter, in Grau. „8 (1)“ heißt wie heute: davon 1 Spieler ohne eigene Bewertung. Einzelne Skill-Level der Spieler entfallen in der Historie. Captain Draft speichert heute keine Skill-Werte. Neue Drafts speichern sie künftig beim Abschluss; ältere Draft-Einträge zeigen keinen Skill statt einer falschen Zahl. Die Werte stammen immer aus dem Stand der Auslosung und ändern sich nicht nachträglich.</p>
     </div>
     <div class="callout">
       <strong>Festgelegt: „Ohne Ergebnis (n)“</strong>
@@ -809,8 +810,9 @@ ul.plain strong { color: var(--text); }
       <ul class="plain">
         <li><strong>Match wird eine Seite ohne Tab-Leiste.</strong></li>
         <li><strong>Karte „Laufende Turniere“</strong> ganz oben, nur wenn eines läuft. Eine Zeile je Turnier mit Fortschritt, ein Tipp öffnet den Turnierbaum.</li>
-        <li><strong>Beendete Turniere</strong> stehen in der Historie. Ihre Karte zeigt dazu „Sieger: …“.</li>
-        <li><strong>Die Turnierseite bleibt eine eigene Seite</strong> (<code>#tournaments/&lt;id&gt;</code>) mit „‹ Match“ als Rückweg. Deep Links und Push-Links funktionieren weiter.</li>
+        <li><strong>Beendete Turniere</strong> stehen in der Historie unter dem Filter „Turniere“, vollständig aus der Turnierliste, auch ältere Turniere ohne Auslosung.</li>
+        <li><strong>„Laufende Turniere“ bleibt auch während eines Captain Drafts sichtbar</strong>, oberhalb der Draft-Ansicht.</li>
+        <li><strong>Die Turnierseite bleibt eine eigene Seite</strong> (<code>#tournaments/&lt;id&gt;</code>) ohne Zurück-Knopf, wie es das Designsystem verlangt. Zurück geht es über „Match“ in der Navigation oder die Zurück-Geste. Deep Links und Push-Links funktionieren weiter.</li>
         <li><strong>Home „Aktuell“</strong> öffnet das Turnier direkt statt der Liste. Heute kostet das einen Tipp mehr.</li>
       </ul>
     </div>
@@ -882,8 +884,7 @@ ul.plain strong { color: var(--text); }
     <div class="shot">
       <div class="shot-label"><span class="pill after">Nachher</span> Turnierseite</div>
       <div class="phone">
-        <span class="back"><svg class="ic"><use href="#i-back"/></svg>Match</span>
-        <div class="row between"><strong style="font-size:1.1rem">Rocket League Cup</strong><span class="btn">Löschen</span></div>
+                <div class="row between"><strong style="font-size:1.1rem">Rocket League Cup</strong><span class="btn">Löschen</span></div>
         <span class="muted xs">K.O.-Turnier · Punktestand · 4 Teams · 12 Spieler · 1/3 entschieden</span>
         <div class="card">
           <span class="m-h2">Aktive Lobbys</span>
@@ -902,20 +903,20 @@ ul.plain strong { color: var(--text); }
         <div class="nav"><span>Home</span><span class="on">Match</span><span>Vote</span><span>Essen</span><span>Mehr</span></div>
       </div>
       <ul class="notes">
-        <li class="good">Eigene Seite wie bisher, „‹ Match“ statt Tab-Leiste</li>
-        <li class="good">Unten bleibt „Match“ markiert</li>
+        <li class="good">Eigene Seite wie bisher, ohne Tab-Leiste und ohne Zurück-Knopf</li>
+        <li class="good">Unten bleibt „Match“ markiert; ein Tipp darauf oder die Zurück-Geste führt zur Match-Seite</li>
       </ul>
     </div>
   </div>
 
   <div class="two-col">
     <div class="callout">
-      <strong>Technisch klein</strong>
-      <p>In <code>viewManifest.js</code> verliert <code>tournaments</code> seine <code>section</code>. <code>NAV_PARENT_BY_VIEW</code> in <code>sectionNav.js</code> bekommt <code>tournaments → matchmaking</code>, so wie heute schon <code>myStats → profile</code>. Am Desktop steht das bereits in <code>DESKTOP_PARENT_BY_VIEW</code>. Die Liste unter <code>#tournaments</code> leitet auf <code>#matchmaking</code> um. Die Karte „Laufende Turniere“ kann <code>aktuellStatus.js</code> wiederverwenden, das die Turnierliste ohnehin lädt.</p>
+      <strong>Technisch zu beachten</strong>
+      <p>In <code>viewManifest.js</code> verliert <code>tournaments</code> seine <code>section</code>; dann muss auch <code>viewRegistry.js</code> die Turnierseite ohne <code>inSection(...)</code> zeichnen, sonst wirft die Bereichshülle einen Fehler. Match verliert seinen einzelnen Tab und bekommt eine eigene Seitenüberschrift. <code>NAV_PARENT_BY_VIEW</code> in <code>sectionNav.js</code> bekommt <code>tournaments → matchmaking</code>. Home „Aktuell“ braucht für Turniere ein Ziel mit <code>localRoute</code>, nicht nur eine ID. <code>#tournaments</code> und <code>#tournaments/new</code> leiten ohne Zurück-Schleife auf Match um.</p>
     </div>
     <div class="callout">
-      <strong>Abzuwägen</strong>
-      <p>Die Historie zeigt nur das gewählte Spiel. Beendete Turniere anderer Spiele findet man dann über die Suche oder durch Wechsel des Spiels. Auf einer LAN mit wenigen Turnieren reicht das. Sonst unten auf der Match-Seite eine eingeklappte Karte „Beendete Turniere“ ergänzen. Anzupassen sind außerdem die Produktregel „Tournament overview“, die Tests zu Navigation und Suche sowie die E2E-Tests.</p>
+      <strong>Aktualisierung</strong>
+      <p>Die Karte „Laufende Turniere“ und der Filter „Turniere“ brauchen eigene, verlässliche Turnierdaten. Heute lädt <code>aktuellStatus.js</code> Turniere, Essen und Arcade gemeinsam; scheitert eine Anfrage, sind alle leer. Match muss bei <code>tournaments:changed</code>, Wiederverbinden und Eventwechsel neu laden und einen Ladefehler von „keine Turniere“ unterscheiden. Ein gelöschtes Turnier verschwindet aus Karte und Filter; ein Link darauf zeigt einen verständlichen Hinweis.</p>
     </div>
   </div>
 </section>
@@ -927,9 +928,9 @@ ul.plain strong { color: var(--text); }
     <h2>Umsetzung in einem PR</h2>
   </div>
   <div class="steps">
-    <div class="step"><span class="n">Teil 1</span><h3>Gemeinsamer Ergebnis-Dialog</h3><p>Ein Baustein für Match und Turnier: Modi „Sieger | Punktestand“, Punktestand als Liste mit Live-Platz, immer ausdrücklich „Speichern“, derselbe Hinweis, dieselben Fehlertexte, „umdrehen“ für weniger ist besser. Der Admin-Dialog in der Auswertung nutzt dieselben Bausteine.</p></div>
-    <div class="step"><span class="n">Teil 2</span><h3>Historie neu</h3><p>Einklappbare Einträge, Ergebnis im Kopf, Rematch und Stift im Kopf, Teams nach Platz mit Team-Skill, „Ohne Ergebnis (n)“, Filter „Alle | Matches | Turniere“.</p></div>
-    <div class="step"><span class="n">Teil 3</span><h3>Turniere</h3><p>K.-o.-Runde mit 2 Teams als Spielzeile. Turnier-Tab auflösen: Match ohne Tab-Leiste, „Laufende Turniere“, Rückweg „‹ Match“, „Aktuell“ öffnet das Turnier direkt.</p></div>
+    <div class="step"><span class="n">Teil 1</span><h3>Gemeinsamer Ergebnis-Dialog</h3><p>Ein Baustein für Match und Turnier: Modi „Sieger | Punktestand“, Punktestand als Liste mit Live-Platz, immer ausdrücklich „Speichern“, derselbe Hinweis, dieselben Fehlertexte, „Speichern“ kompakt rechts. Der Admin-Dialog in der Auswertung nutzt dieselben Bausteine.</p></div>
+    <div class="step"><span class="n">Teil 2</span><h3>Historie neu</h3><p>Einklappbare Einträge, Ergebnis im Kopf, Rematch und Stift im Kopf, Teams nach Platz mit Team-Skill, „Ohne Ergebnis (n)“, Filter „Alle | Matches | Turniere“, „Ältere laden“. Neue Drafts speichern Skill-Werte.</p></div>
+    <div class="step"><span class="n">Teil 3</span><h3>Turniere</h3><p>K.-o.-Runde mit 2 Teams als Spielzeile. Turnier-Tab auflösen: Match ohne Tab-Leiste, „Laufende Turniere“ (auch während eines Drafts), kein Zurück-Knopf, „Aktuell“ öffnet das Turnier direkt.</p></div>
     <div class="step"><span class="n">Teil 4</span><h3>Doku und Tests</h3><p>Produktregeln, Komponentenverträge, Unit- und E2E-Tests sowie visuelle Referenzen im selben PR nachziehen.</p></div>
   </div>
   <div class="callout">
