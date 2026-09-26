@@ -15,8 +15,8 @@ import { db } from './db';
 import { hashPassword, isValidPassword } from './accounts';
 import { isNonEmptyString } from './validation';
 import { ensureBootstrapAdminMembership } from './groups';
+import { initialPlayerColor } from './playerColors';
 
-const DEFAULT_COLOR = '#4f9dff';
 // How many BOOTSTRAP_ADMIN_<n>_* slots we look at. Far more than the handful a
 // friend-group instance ever needs, but cheap to scan.
 const MAX_SLOTS = 20;
@@ -104,7 +104,7 @@ function seedOne(entry: BootstrapAdminEntry): BootstrapAdminAction {
     ).run(
       id,
       name,
-      DEFAULT_COLOR,
+      initialPlayerColor(),
       nanoid(24),
       0,
       hashPassword(password),

@@ -267,12 +267,12 @@ test('the personal statistics event filter only offers accepted workspaces', asy
   // starts a load only while no other one is running (`!statsLoading`), so clicking
   // straight through the list would coalesce the middle options away: the first and
   // the last would be requested and the ones between them silently never covered.
-  // The dashboard renders "Lädt…" for exactly as long as its request is in flight,
+  // The dashboard renders "Lädt" for exactly as long as its request is in flight,
   // so its absence is the observable end of a pick — and for the already-selected
   // option, which changes nothing and therefore issues no request at all, it is
   // absent from the start instead of deadlocking on a response that never comes.
   const statsSettled = () =>
-    page.locator('#view-container').getByText('Lädt…', { exact: true }).waitFor({ state: 'detached' });
+    page.locator('#view-container').getByText('Lädt', { exact: true }).waitFor({ state: 'detached' });
 
   await statsSettled();
   for (const option of options) {
@@ -558,7 +558,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await openView('profile');
   const profile = await viewText();
-  assert.doesNotMatch(profile, /Live-Status-Agent|Sichtbare Monitore|Meine Statistiken|Bock & Skill eintragen/);
+  assert.doesNotMatch(profile, /Live-Status & Agent|Sichtbare Monitore|Meine Statistiken|Bock & Skill/);
   assert.match(profile, /Benachrichtigungen/);
 
   assert.equal(await page.locator('.desktop-nav-btn[data-view="arcade"]').isVisible(), true);

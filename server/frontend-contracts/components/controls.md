@@ -447,7 +447,9 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:search-options`: Permanent listbox option rows and the pinned popup action, at least 44px.
 
-- `registry:profile-controls`: Profile controls use the standard field/button/icon variants.
+- `registry:profile-controls`: Profile controls use the standard field/button/icon variants; the color trigger is a small dot on the avatar with an enlarged invisible hit area.
+- `registry:profile-row-open`: A profile invitation row's text opens its detail dialog: plain text without button chrome whose hit area covers the row's text column.
+- `registry:profile-link-btn`: Quiet inline text action inside a muted meta line („Mehr erfahren“, „Key erneuern“); underlined text, no button chrome.
 
 - `registry:row-icons`: Copy, dismiss and detail actions retain their 44px icon slot.
 
@@ -572,6 +574,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:poll-selected-answer`: The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.
 
+- `registry:profile-row-action`: Mein Profil keeps one fixed right-hand action column across all cards, so compact buttons and the view select share one width; the select matches the compact buttons' type size.
 - `registry:checklist-table-action`: Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.
 - `registry:broadcast-table-action`: Beenden fills the fixed Durchsage action column, so it lines up from row to row.
 - `registry:broadcast-send`: Senden is exactly as wide as the time field above it, so the form ends flush on one right edge.
@@ -700,7 +703,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:tournament-count-width`: Team count fills its labeled field column.
 
-- `registry:profile-agent-field`: Agent key field yields to its neighboring copy action.
 
 - `registry:player-assignment-field`: Player assignment select fills its row column.
 

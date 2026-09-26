@@ -10,7 +10,7 @@ import {
   renderEventCalendarActions,
   renderEventExcuseActions,
   renderEventLocation,
-  renderInvitationCard,
+  renderInvitationRow,
   renderDeclinedEventCard,
   renderEventCard,
   renderOwnParticipationActions,
@@ -170,15 +170,24 @@ test('every upcoming event card offers the excuse generator, ended ones do not',
   assert.equal(renderEventExcuseActions({ ...event, isEnded: true }), '');
 });
 
-test('a pending invitation carries the excuse action but no calendar handoff', () => {
-  const html = renderInvitationCard({
+test('a pending invitation is one row: shortened name, meta line and only "Annehmen"', () => {
+  const html = renderInvitationRow({
     id: 'invited-event',
-    name: 'Sommer LAN',
-    startsAt: Date.UTC(2026, 8, 8, 16, 0),
-    endsAt: Date.UTC(2026, 8, 10, 10, 0),
+    name: 'Silvester-LAN im Gemeindehaus Oberhausen mit Übernachtung',
+    eventType: 'lan',
+    startsAt: new Date(2026, 11, 29, 16, 0).getTime(),
+    endsAt: new Date(2027, 0, 1, 12, 0).getTime(),
+    location: 'Gemeindehaus Oberhausen',
   });
-  assert.match(html, /data-event-excuse="invited-event"/);
-  assert.doesNotMatch(html, /data-event-calendar=/);
+  // The full name stays reachable: it names the row's detail button.
+  assert.match(html, /aria-label="Silvester-LAN im Gemeindehaus Oberhausen mit Übernachtung anzeigen"/);
+  assert.match(html, /<span class="profile-row-title">Silvester-LAN im Gemeindehaus Oberhause…<\/span>/);
+  assert.match(html, /29\.12\.2026 bis 1\.1\.2027 · Gemeindehaus Oberhausen/);
+  assert.match(html, /data-open-invitation="invited-event"/);
+  assert.match(html, /data-accept-invitation="invited-event"/);
+  // Declining, the excuse generator and the calendar live in the dialog.
+  assert.doesNotMatch(html, /data-decline-invitation=|data-event-excuse=|data-event-calendar=/);
+  assert.doesNotMatch(html, / – /);
 });
 
 test('an accepted member card offers the withdrawal, or names why it is blocked', () => {

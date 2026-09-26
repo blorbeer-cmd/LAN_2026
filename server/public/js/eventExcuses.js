@@ -1316,10 +1316,11 @@ export function eventExcuseProfile(event) {
   const duration = endsAt - startsAt < DAY_MS ? 'short' : days <= 3 ? 'medium' : 'long';
   const start = shortDate(startsAt);
   const end = shortDate(endsAt);
-  // A single-day event would otherwise print "12.09. – 12.09.", which reads as
-  // a copy-paste mistake in the middle of an excuse that is supposed to sound
-  // like it was written by a person.
-  return { duration, days, start, end, range: start === end ? start : `${start} – ${end}` };
+  // A single-day event would otherwise print "12.09. bis 12.09.", which reads
+  // as a copy-paste mistake in the middle of an excuse that is supposed to
+  // sound like it was written by a person. UI copy avoids dashes, so the range
+  // reads "bis".
+  return { duration, days, start, end, range: start === end ? start : `${start} bis ${end}` };
 }
 
 export function excuseCategoryLabel(categoryId) {

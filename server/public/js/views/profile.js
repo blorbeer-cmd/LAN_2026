@@ -16,14 +16,13 @@ import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
 import { resizeImageFile } from '../imageUtils.js';
 import { icon } from '../icons.js';
-import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { createLatestValueLoader } from '../latestValueLoader.js';
 import {
   acceptedInvitationHandoffHtml,
   pendingEventInvitations,
-  renderInvitationCard,
+  renderInvitationRow,
   wirePendingInvitationActions,
 } from './events.js';
 import { eventHasFeature } from '../eventFeatures.js';
@@ -32,24 +31,30 @@ import { withStepUp } from '../reauth.js';
 
 // Tracking is the one feature that runs on a private PC, so its labels alone
 // ("Tracking pausieren") read like surveillance without saying what leaves the
-// machine. These tooltips therefore state the actual scope and purpose: the
-// agent asks the OS only about the mapped game processes and never reads
-// anything else (see agent/src/systemProbe.js), so this is a factual
-// description of the probe, not a reassurance.
+// machine. The "Mehr erfahren" dialog therefore states the actual scope and
+// purpose: the agent asks the OS only about the mapped game processes and
+// never reads anything else (see agent/src/systemProbe.js), so this is a
+// factual description of the probe, not a reassurance.
 // The allow-list is returned only while activeTrackingContexts resolves a
 // valid selected event. Technical reachability and version remain separate;
 // recognized game processes are neither stored nor shown without consent.
-const TRACKING_OVERVIEW_HELP =
-  'Der Agent fragt deinen PC nur während eines gültigen Tracking-Kontexts nach den Spielen aus der veröffentlichten Spieleliste – andere Programme, Fenstertitel oder Dateien liest er nicht aus. Das ausgewählte Event muss laufen, du musst zugesagt haben, die Orga muss Tracking aktiviert haben und deine Einwilligung muss gültig sein. Ohne diesen Kontext werden keine erkannten Spiele übertragen, gespeichert oder der Administration angezeigt; technische Erreichbarkeit und Agent-Version bleiben davon getrennt.';
-const TRACKING_PAUSE_HELP =
-  'Stoppt die Erfassung sofort: Der Agent meldet dann kein laufendes Spiel und keine Spielzeit mehr, und du erscheinst auf dem Board als „pausiert“. Bereits erfasste Spielzeit bleibt erhalten. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
-const ACTIVITY_TRACKING_HELP =
-  'Meldet zusätzlich, ob eines dieser Spiele gerade im Vordergrund ist und wie lange du keine Taste und keine Maus benutzt hast. Ab zwei Minuten ohne Eingabe zählt die Zeit nicht mehr als aktiv – so wird echte Spielzeit von einem nur nebenbei offenen Spiel unterschieden. Fenster außerhalb des Spielekatalogs bleiben auch hier ungelesen. Der Wert lässt sich später in der Agent-Steuerung ändern.';
-const PUSH_HELP = 'Benachrichtigt dich auch, wenn Respawn nicht geöffnet ist.';
-const RATING_HELP = 'Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.';
-const AGENT_DOWNLOAD_HELP = 'Das ZIP enthält bereits Server-Adresse und deinen persönlichen Key.';
+const TRACKING_DETAILS = [
+  ['Was der Agent liest', 'Der Agent fragt deinen PC nur während eines gültigen Tracking-Kontexts nach den Spielen aus der veröffentlichten Spieleliste. Andere Programme, Fenstertitel oder Dateien liest er nicht aus.'],
+  ['Wann daraus Daten entstehen', 'Das ausgewählte Event muss laufen, du musst zugesagt haben, die Orga muss Tracking aktiviert haben und deine Einwilligung muss gültig sein. Ohne diesen Kontext werden keine erkannten Spiele übertragen, gespeichert oder der Administration angezeigt. Technische Erreichbarkeit und Agent-Version bleiben davon getrennt.'],
+  ['Pausieren', 'Stoppt die Erfassung sofort: Der Agent meldet dann kein laufendes Spiel und keine Spielzeit mehr, und du erscheinst auf dem Board als „pausiert“. Bereits erfasste Spielzeit bleibt erhalten. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.'],
+  ['Erweitertes Tracking', 'Meldet zusätzlich, ob eines dieser Spiele gerade im Vordergrund ist und wie lange du keine Taste und keine Maus benutzt hast. Ab zwei Minuten ohne Eingabe zählt die Zeit nicht mehr als aktiv. So wird echte Spielzeit von einem nur nebenbei offenen Spiel unterschieden. Fenster außerhalb des Spielekatalogs bleiben auch hier ungelesen. Die Wahl gilt für den heruntergeladenen Agent und lässt sich später in der Agent-Steuerung ändern.'],
+];
+
 const AUTO_CONSENT_HELP =
   'Deine Zustimmung gilt automatisch, sobald ein neues LAN-Event oder eine Gruppe für die Spielerfassung freigeschaltet wird. Einzelne Zustimmungen kannst du jederzeit widerrufen. Gruppen haben kein Enddatum: Dort läuft die Erfassung bis zum Widerruf. Ändert sich der Einwilligungstext, wirst du erneut gefragt.';
+const PRIVACY_OVERVIEW =
+  'Respawn speichert Profil- und Kontodaten für Anmeldung und Teilnahme, Event- und Zahlungsstatus für die Organisation, freiwillige Spiel- und Aktivitätsdaten für Live-Status und Auswertung, Nachrichten und Push-Status für Kommunikation sowie begrenzte technische Protokolle für Betrieb und Sicherheit. Sichtbarkeit richtet sich nach Eventteilnahme und Rolle.';
+const PRIVACY_EXPORT_HELP =
+  'Der Export ist eine verständliche JSON-Datei mit deinen gespeicherten Daten. Passwörter, Schlüssel, Recovery-Codes und private Daten anderer Personen fehlen bewusst. Der Event-Andenkenexport bleibt davon getrennt.';
+
+// Agent setup and privacy start collapsed; their open state survives
+// live re-renders.
+const profileSectionOpen = { agent: false, privacy: false, data: false };
 
 let privacyState = null;
 let privacyContext = null;
@@ -78,69 +83,101 @@ async function loadPrivacy(ctx, force = false) {
   await privacyLoader.run(force);
 }
 
+function openPrivacyDetails(trackingConsent) {
+  openModal(
+    'Datenschutz',
+    `<div class="stack profile-tracking-details">
+       <div><strong>Was Respawn speichert</strong><p>${PRIVACY_OVERVIEW}</p></div>
+       <div><strong>Freiwillige Spielerfassung</strong><p>${escapeHtml(trackingConsent.text)}</p></div>
+       <div><strong>Vorab-Zustimmung</strong><p>${AUTO_CONSENT_HELP}</p></div>
+       <div><strong>Datenexport</strong><p>${PRIVACY_EXPORT_HELP}</p></div>
+     </div>`,
+  );
+}
+
+// "Datenschutz & meine Daten": consent per trackable event, the standing
+// pre-authorization, withdrawable legacy consents, export and deletion, all
+// as rows with one action each. The consent text stays visible above the
+// consent rows because granting refers to exactly that text.
 function renderPrivacySection() {
-  if (!privacyState) {
-    return '<p class="muted">Datenschutzangaben werden geladen…</p>';
-  }
+  const section = (body) => `
+    <details class="card grouped-page-section collapsible-section" data-profile-section="privacy" aria-labelledby="profile-privacy-title" ${profileSectionOpen.privacy ? 'open' : ''}>
+      <summary class="collapsible-section-header"><h2 id="profile-privacy-title">Datenschutz</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+      <div class="collapsible-section-content stack">${body}</div>
+    </details>`;
+  if (!privacyState) return section(emptyStateHtml('Lädt', { className: 'empty-state-compact' }));
   if (privacyState.error) {
-    return `<div class="stack"><p class="error-text">${escapeHtml(privacyState.error)}</p><button type="button" class="btn" id="privacy-retry">Erneut laden</button></div>`;
+    return section(`<div class="profile-rows">${profileRow({
+      title: 'Nicht geladen',
+      meta: escapeHtml(privacyState.error),
+      action: '<button type="button" class="btn btn-sm" id="privacy-retry">Erneut laden</button>',
+    })}</div>`);
   }
-  const { trackingConsent, legacyGroupTracking } = privacyState.data;
+  // The old group consent from before event-bound tracking no longer enables
+  // anything and is deliberately not listed.
+  const { trackingConsent } = privacyState.data;
+  const version = escapeHtml(trackingConsent.textVersion);
   // A row only counts as active when the server matched the current purpose
   // and text version, so an active row always carries that version.
-  const consentRows = trackingConsent.events.filter((event) =>
-    event.eventId !== 'instance-base-event' && event.eventType !== 'general'
-  ).map((event) => {
-    const active = Boolean(event.consentId);
-    const versionLabel = active ? `Bestätigt: Text ${event.textVersion}` : 'Nicht aktiviert';
-    return `<label class="check-row">
-      <input type="checkbox" data-consent-event="${escapeHtml(event.eventId)}" ${active ? 'checked' : ''} />
-      <span style="flex:1;"><strong>${escapeHtml(event.eventName)}</strong><br><span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(versionLabel)}</span></span>
-    </label>`;
-  }).join('');
-  const legacyEventRows = (trackingConsent.legacyEvents ?? [])
-    .map((event) => `<label class="check-row">
-      <input type="checkbox" data-consent-legacy-event="${escapeHtml(event.eventId)}" checked />
-      <span style="flex:1;"><strong>${escapeHtml(event.eventName)}</strong><br><span class="muted" style="font-size:var(--font-size-xs);">${event.textVersion ? `Bestätigt: Text ${escapeHtml(event.textVersion)}` : 'Bestandseinwilligung ohne dokumentierte Textversion'}</span></span>
-    </label>`)
-    .join('');
-  // A pre-authorization set under an older text stops applying, and the empty
-  // checkbox alone would read as "never set". Name it instead, the same way
-  // the legacy event consents below are named.
-  const staleAutoConsent =
-    trackingConsent.autoConsent?.agreedTextVersion && !trackingConsent.autoConsent.enabled
-      ? `<p class="muted" style="margin:0;font-size:var(--font-size-xs);">Frühere Vorab-Einwilligung zu Text ${escapeHtml(trackingConsent.autoConsent.agreedTextVersion)} – gilt nicht mehr für den aktuellen Text. Setze das Häkchen neu, um sie zu erneuern.</p>`
-      : '';
-  const legacyGroupRows = legacyGroupTracking.groups
-    .map((group) => `<div class="check-row">
-      <span style="flex:1;"><strong>Spielerfassung ohne Event</strong><br><span class="muted" style="font-size:var(--font-size-xs);">Gilt nicht mehr</span></span>
-      <button type="button" class="btn btn-sm" data-revoke-legacy-group="${escapeHtml(group.groupId)}">Widerrufen</button>
-    </div>`)
-    .join('');
-  return `<div class="stack">
-    <p class="muted" style="margin:0;">Respawn speichert Profil- und Kontodaten für Anmeldung und Teilnahme, Event- und Zahlungsstatus für die Organisation, freiwillige Spiel-/Aktivitätsdaten für Live-Status und Auswertung, Nachrichten und Push-Status für Kommunikation sowie begrenzte technische Protokolle für Betrieb und Sicherheit. Sichtbarkeit richtet sich nach Eventteilnahme und Rolle.</p>
-    <div class="card stack">
-      <strong>Freiwillige Spielerfassung</strong>
-      <p class="muted" style="margin:0;">${escapeHtml(trackingConsent.text)}</p>
-      ${consentRows || '<p class="muted" style="margin:0;">Keine trackbaren Events oder Gruppen.</p>'}
-      <div class="check-row">
-        <input type="checkbox" id="privacy-auto-consent" ${trackingConsent.autoConsent?.enabled ? 'checked' : ''} />
-        <div class="title-with-info" style="flex:1;min-width:0;">
-          <label for="privacy-auto-consent" style="min-width:0;"><strong>Für neue trackbare Events und Gruppen vorab zustimmen</strong></label>
-          ${infoTooltipHtml('privacy-auto-consent-help', 'Vorab-Zustimmung', AUTO_CONSENT_HELP)}
-        </div>
+  const consentRows = trackingConsent.events
+    .filter((event) => event.eventId !== 'instance-base-event' && event.eventType !== 'general')
+    .map((event) => {
+      const active = Boolean(event.consentId);
+      return profileRow({
+        title: escapeHtml(event.eventName),
+        meta: active ? `Spielerfassung erlaubt · Text ${escapeHtml(event.textVersion)}` : 'Spielerfassung nicht erlaubt',
+        action: `<button type="button" class="btn btn-sm" data-consent-event="${escapeHtml(event.eventId)}" aria-pressed="${active}">${active ? 'Widerrufen' : 'Erlauben'}</button>`,
+      });
+    });
+  const auto = trackingConsent.autoConsent ?? {};
+  // A pre-authorization set under an older text stops applying; name it
+  // instead of letting the button read as "never set".
+  const autoMeta = auto.enabled
+    ? `An · gilt für neue Events und Gruppen · Text ${version}`
+    : auto.agreedTextVersion
+      ? `Aus · frühere Zustimmung zu Text ${escapeHtml(auto.agreedTextVersion)} gilt nicht mehr`
+      : 'Aus · Gruppen laufen bis zum Widerruf';
+  // "Allgemein" is not trackable, so an old consent there is left out just
+  // like the event itself above.
+  const legacyRows = [
+    ...(trackingConsent.legacyEvents ?? []).filter((event) => event.eventId !== 'instance-base-event').map((event) => profileRow({
+      title: `Frühere Einwilligung: ${escapeHtml(event.eventName)}`,
+      meta: event.textVersion ? `Text ${escapeHtml(event.textVersion)} · aktiviert keine Erfassung` : 'Ohne Textversion · aktiviert keine Erfassung',
+      action: `<button type="button" class="btn btn-sm" data-consent-legacy-event="${escapeHtml(event.eventId)}">Widerrufen</button>`,
+    })),
+  ];
+  return section(`
+    <p class="profile-note">${escapeHtml(trackingConsent.text)} <button type="button" class="profile-link-btn" id="privacy-details">Mehr erfahren</button></p>
+    <div class="profile-rows" role="group" aria-label="Deine Events">${
+      consentRows.length || legacyRows.length
+        ? `${consentRows.join('')}${legacyRows.join('')}`
+        : '<p class="profile-note">Gerade kein Event mit Spielerfassung</p>'
+    }</div>
+    <div class="profile-rows profile-rows-separate">${profileRow({
+      title: 'Neue Events und Gruppen vorab erlauben',
+      meta: autoMeta,
+      action: `<button type="button" class="btn btn-sm" id="privacy-auto-consent" aria-pressed="${Boolean(auto.enabled)}">${auto.enabled ? 'Deaktivieren' : 'Aktivieren'}</button>`,
+    })}</div>`);
+}
+
+// Export and deletion need no privacy payload, so this card renders at once.
+function renderMyDataSection() {
+  return `
+    <details class="card grouped-page-section collapsible-section" data-profile-section="data" aria-labelledby="profile-data-title" ${profileSectionOpen.data ? 'open' : ''}>
+      <summary class="collapsible-section-header"><h2 id="profile-data-title">Meine Daten</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+      <div class="collapsible-section-content profile-rows">
+        ${profileRow({
+          title: 'Exportieren',
+          meta: 'JSON-Datei ohne Passwörter und Schlüssel',
+          action: '<button type="button" class="btn btn-sm" id="privacy-export">Exportieren</button>',
+        })}
+        ${profileRow({
+          title: 'Konto löschen',
+          meta: 'Dauerhaft · vorher erneut anmelden',
+          action: '<button type="button" class="btn btn-sm" id="privacy-delete-account">Löschen</button>',
+        })}
       </div>
-      ${staleAutoConsent}
-      ${legacyEventRows ? `<strong>Frühere Event-Einwilligungen</strong><p class="muted" style="margin:0;">Diese Einwilligungen gehören zu einer älteren Textversion und aktivieren keine Erfassung mehr. Du kannst sie hier endgültig widerrufen.</p>${legacyEventRows}` : ''}
-      ${legacyGroupRows ? `<strong>Alte Zustimmung</strong><p class="muted" style="margin:0;">Früher konntest du der Spielerfassung ohne Event zustimmen. Diese Zustimmung gilt nicht mehr; du kannst sie hier widerrufen.</p>${legacyGroupRows}` : ''}
-    </div>
-    <div class="card stack">
-      <strong>Deine Rechte und Werkzeuge</strong>
-      <p class="muted" style="margin:0;">Der Export ist eine verständliche JSON-Datei mit deinen gespeicherten Daten. Passwörter, Schlüssel, Recovery-Codes und private Daten anderer Personen fehlen bewusst. Der Event-Andenkenexport bleibt davon getrennt.</p>
-      <button type="button" class="btn btn-primary btn-block" id="privacy-export">Meine Daten exportieren</button>
-      <button type="button" class="btn btn-danger btn-block" id="privacy-delete-account">Konto dauerhaft löschen</button>
-    </div>
-  </div>`;
+    </details>`;
 }
 
 function normalizedProfileColor(value) {
@@ -275,7 +312,7 @@ function openProfileColorPicker(colorInput, colorTrigger) {
             await navigator.clipboard.writeText(selectedColor.toUpperCase());
             showToast('Farbwert kopiert.');
           } catch {
-            showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+            showToast('Kopieren nicht möglich.', { error: true });
           }
         });
         backdrop.querySelector('[data-profile-color-cancel]').addEventListener('click', close);
@@ -339,25 +376,158 @@ async function loadNeighbors(playerId, ctx) {
   }
 }
 
-function renderNeighbors(myId) {
-  const others = state.players.filter((p) => p.id !== myId);
-  if (others.length === 0) {
-    return emptyStateHtml('Noch keine weiteren Teilnehmenden.', { className: 'empty-state-compact' });
-  }
-  if (neighborsLoading || neighborsCache === null) {
-    return emptyStateHtml('Lädt…', { className: 'empty-state-compact' });
-  }
-  const checked = new Set(neighborsCache.neighborIds);
-  const rows = others
-    .map((p) => `
-      <label class="check-row">
-        <input type="checkbox" data-neighbor="${p.id}" ${checked.has(p.id) ? 'checked' : ''} />
-        ${avatarHtml(p, 20)}
-        <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-      </label>`
-    )
-    .join('');
-  return `<div class="player-selection-grid profile-monitor-grid">${rows}</div>`;
+// One settings row: title and a muted meta line on the left, the row's single
+// action in the fixed right column shared by every row of the page.
+function profileRow({ title, meta = '', action = '', number = null, className = '' }) {
+  return `
+    <div class="profile-row${className ? ` ${className}` : ''}">
+      <div class="profile-row-main">
+        ${number == null ? '' : `<span class="profile-row-number">${number}</span>`}
+        <span class="profile-row-text">
+          <span class="profile-row-title">${title}</span>
+          ${meta ? `<span class="profile-row-meta">${meta}</span>` : ''}
+        </span>
+      </div>
+      <div class="profile-row-action">${action}</div>
+    </div>`;
+}
+
+function neighborSummary(myId) {
+  if (neighborsLoading || neighborsCache === null) return 'Lädt';
+  const names = state.players
+    .filter((p) => p.id !== myId && neighborsCache.neighborIds.includes(p.id))
+    .map((p) => p.name)
+    .sort((a, b) => a.localeCompare(b, 'de'));
+  return names.length ? escapeHtml(names.join(', ')) : 'Niemand ausgewählt';
+}
+
+// Chosen neighbours lead the list, the rest follows alphabetically. The split
+// is taken when the dialog opens, so a row does not jump away under the
+// pointer while boxes are ticked; the search filters both groups.
+function openNeighborsDialog(myId, ctx) {
+  const others = state.players
+    .filter((p) => p.id !== myId)
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const checked = new Set(neighborsCache?.neighborIds ?? []);
+  const row = (p) => `
+    <label class="profile-monitor-row" data-monitor-name="${escapeHtml(p.name.toLocaleLowerCase('de'))}">
+      <input type="checkbox" data-neighbor="${p.id}" ${checked.has(p.id) ? 'checked' : ''} />
+      ${avatarHtml(p, 20)}
+      <span class="player-name">${escapeHtml(p.name)}</span>
+    </label>`;
+  const group = (title, players) => (players.length === 0
+    ? ''
+    : `<div class="profile-monitor-group">
+         <h3 class="profile-group-title">${title}</h3>
+         ${players.map(row).join('')}
+       </div>`);
+  openModal(
+    'Sichtbare Monitore',
+    others.length === 0
+      ? emptyStateHtml('Noch keine weiteren Teilnehmenden', { className: 'empty-state-compact' })
+      : `<div class="stack">
+           <input type="search" id="profile-monitor-search" placeholder="Spieler suchen" aria-label="Spieler suchen" autocomplete="off" />
+           ${group('Ausgewählt', others.filter((p) => checked.has(p.id)))}
+           ${group('Weitere', others.filter((p) => !checked.has(p.id)))}
+           <p class="profile-note profile-monitor-empty" hidden>Kein Spieler gefunden</p>
+         </div>`,
+    {
+      onMount(el) {
+        const search = el.querySelector('#profile-monitor-search');
+        search?.addEventListener('input', () => {
+          const query = search.value.trim().toLocaleLowerCase('de');
+          let visible = 0;
+          el.querySelectorAll('.profile-monitor-group').forEach((groupEl) => {
+            let groupVisible = 0;
+            groupEl.querySelectorAll('[data-monitor-name]').forEach((rowEl) => {
+              const match = !query || rowEl.dataset.monitorName.includes(query);
+              rowEl.hidden = !match;
+              if (match) groupVisible += 1;
+            });
+            groupEl.hidden = groupVisible === 0;
+            visible += groupVisible;
+          });
+          el.querySelector('.profile-monitor-empty').hidden = visible > 0;
+        });
+        el.querySelectorAll('[data-neighbor]').forEach((cb) => {
+          cb.addEventListener('change', async () => {
+            const ids = [...el.querySelectorAll('[data-neighbor]:checked')].map((box) => box.dataset.neighbor);
+            try {
+              neighborsCache = await api.players.setNeighbors(myId, ids);
+              ctx.rerender();
+            } catch (err) {
+              showToast(err.message, { error: true });
+              cb.checked = !cb.checked; // revert the click that failed to save
+            }
+          });
+        });
+      },
+    },
+  );
+}
+
+function openPasswordDialog() {
+  const passwordField = (id, label, autocomplete, extra = '') => `
+    <div>
+      <label for="${id}" class="field-label">${label}</label>
+      <div class="row">
+        <input type="password" id="${id}" autocomplete="${autocomplete}" required ${extra} style="flex:1;" />
+        <button type="button" class="icon-btn" data-password-toggle="${id}" data-password-toggle-label="${label}" aria-label="${label} anzeigen" title="${label} anzeigen">${icon('eye')}</button>
+      </div>
+    </div>`;
+  const { close } = openModal(
+    'Passwort ändern',
+    `<form class="stack" id="profile-password-form">
+       ${passwordField('profile-current-password', 'Aktuelles Passwort', 'current-password')}
+       ${passwordField('profile-new-password', 'Neues Passwort', 'new-password', 'minlength="1" maxlength="1024"')}
+       <div class="checklist-form-footer">
+         <button type="button" class="btn btn-sm" data-password-cancel>Abbrechen</button>
+         <button type="submit" class="btn btn-primary btn-sm">Speichern</button>
+       </div>
+     </form>`,
+    {
+      confirmClose: () => ([...document.querySelectorAll('#profile-password-form input')].some((input) => input.value)
+        ? 'Die eingegebenen Passwörter gehen verloren.'
+        : ''),
+      onMount(el) {
+        el.querySelectorAll('[data-password-toggle]').forEach((button) => {
+          button.addEventListener('click', () => {
+            const input = el.querySelector(`#${button.dataset.passwordToggle}`);
+            const visible = input.type === 'password';
+            const label = button.dataset.passwordToggleLabel || 'Passwort';
+            input.type = visible ? 'text' : 'password';
+            button.innerHTML = icon(visible ? 'eyeOff' : 'eye');
+            button.setAttribute('aria-label', `${label} ${visible ? 'verbergen' : 'anzeigen'}`);
+            button.title = button.getAttribute('aria-label');
+          });
+        });
+        el.querySelector('[data-password-cancel]').addEventListener('click', () => el.querySelector('[data-close]')?.click());
+        el.querySelector('#profile-password-form').addEventListener('submit', async (event) => {
+          event.preventDefault();
+          try {
+            await api.auth.changePassword({
+              currentPassword: el.querySelector('#profile-current-password').value,
+              newPassword: el.querySelector('#profile-new-password').value,
+            });
+            close();
+            showToast('Passwort geändert. Andere Geräte wurden abgemeldet.');
+          } catch (error) {
+            showToast(error.message, { error: true });
+          }
+        });
+        el.querySelector('#profile-current-password').focus();
+      },
+    },
+  );
+}
+
+function openTrackingDetails() {
+  openModal(
+    'Was der Agent erfasst',
+    `<div class="stack profile-tracking-details">
+       ${TRACKING_DETAILS.map(([title, text]) => `<div><strong>${title}</strong><p>${text}</p></div>`).join('')}
+     </div>`,
+  );
 }
 
 async function loadPushState(ctx) {
@@ -365,35 +535,31 @@ async function loadPushState(ctx) {
   ctx.rerender();
 }
 
-function renderPushSection() {
+function pushRow() {
   const subscribed = pushState === 'subscribed';
   const disabled = pushBusy || pushState === null || pushState === 'unsupported' || pushState === 'denied';
   const status =
     pushState === 'unsupported'
-      ? 'Dieser Browser unterstützt keine Push-Benachrichtigungen.'
+      ? 'Aus · von diesem Browser nicht unterstützt'
       : pushState === 'denied'
-        ? 'Im Browser blockiert – bitte in den Website-Einstellungen erlauben.'
+        ? 'Aus · im Browser blockiert'
         : pushState === null
-          ? 'Status wird geladen…'
-          : '';
-  return `
-    <div class="stack" style="gap:var(--space-2);">
-      <label class="check-row">
-        <input type="checkbox" id="push-toggle" ${subscribed ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
-        <span class="title-with-info" style="flex:1;">
-          <span>Aktivieren</span>
-          ${infoTooltipHtml('profile-push-help', 'Push-Benachrichtigungen aktivieren', PUSH_HELP)}
-        </span>
-      </label>
-      ${status ? `<span class="muted" style="font-size:var(--font-size-xs);">${status}</span>` : ''}
-    </div>`;
+          ? 'Lädt'
+          : subscribed
+            ? 'An · auch bei geschlossener App'
+            : 'Aus · meldet sich auch bei geschlossener App';
+  return profileRow({
+    title: 'Push-Benachrichtigungen',
+    meta: status,
+    action: `<button type="button" class="btn btn-sm" id="push-toggle" aria-pressed="${subscribed}" ${disabled ? 'disabled' : ''}>${subscribed ? 'Deaktivieren' : 'Aktivieren'}</button>`,
+  });
 }
 
 export function renderProfile(container, ctx) {
   const myId = getMyId();
   const me = state.players.find((p) => p.id === myId);
   if (!me) {
-    container.innerHTML = emptyStateHtml('Dein Profil konnte nicht geladen werden.');
+    container.innerHTML = emptyStateHtml('Dein Profil konnte nicht geladen werden');
     return;
   }
 
@@ -409,18 +575,40 @@ export function renderProfile(container, ctx) {
   }
   if (!privacyState) loadPrivacy(ctx);
 
-  // A brand-new player has rated nothing yet — nudge them to the Spiele
-  // view once, prominently. Once at least one rating exists, a plain link
-  // further down (next to "Meine Statistiken") is enough.
+  // A brand-new player has rated nothing yet: nudge them to the Spiele view
+  // until at least one rating exists.
   const hasAnyRating =
     state.skills.some((s) => s.player_id === myId) || state.preferences.some((p) => p.player_id === myId);
+  const ratingNudge = gamesEnabled && state.games.length > 0 && !hasAnyRating;
 
-  // Event invitations lead the page: they need a response and would
-  // otherwise sit unnoticed above Orga's Events cards (see events.js's
-  // renderInvitationCard/pendingEventInvitations, also linked from Home's
+  // Event invitations lead the page: they need a response (see events.js's
+  // renderInvitationRow/pendingEventInvitations, also linked from Home's
   // "Aktuell" list in aktuellStatus.js).
   const pendingInvitations = pendingEventInvitations();
   const layoutPreference = layoutModeForPlayer(myId);
+  const eventRows = [
+    ratingNudge
+      ? profileRow({
+          title: 'Bock &amp; Skill',
+          meta: 'Noch nichts bewertet',
+          action: '<button type="button" class="btn btn-sm" data-navigate="gameCatalog">Bewerten</button>',
+        })
+      : '',
+    trackingEnabled
+      ? profileRow({
+          title: 'Meine Statistiken',
+          meta: 'Spielzeit und Awards',
+          action: '<button type="button" class="btn btn-sm" data-navigate="myStats">Ansehen</button>',
+        })
+      : '',
+    monitorsEnabled
+      ? profileRow({
+          title: 'Sichtbare Monitore',
+          meta: neighborSummary(myId),
+          action: `<button type="button" class="btn btn-sm" id="profile-monitors-edit" ${neighborsCache === null ? 'disabled' : ''}>Bearbeiten</button>`,
+        })
+      : '',
+  ].filter(Boolean);
 
   container.innerHTML = `
     <div class="more-subpage-header">
@@ -429,392 +617,150 @@ export function renderProfile(container, ctx) {
         <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
       </div>
     </div>
-    <div class="grouped-page-sections profile-desktop-layout">
+    <div class="grouped-page-sections">
       ${acceptedInvitationHandoffHtml()}
       ${
         pendingInvitations.length > 0
           ? `<section class="card stack grouped-page-section" aria-labelledby="profile-invitations-title">
                <div class="grouped-page-section-title"><h2 id="profile-invitations-title" tabindex="-1">Einladungen</h2></div>
-               <div class="stack orga-event-grid">${pendingInvitations.map(renderInvitationCard).join('')}</div>
+               <div class="profile-rows">${pendingInvitations.map(renderInvitationRow).join('')}</div>
              </section>`
           : ''
       }
-      <section class="card stack grouped-page-section" aria-label="Profildaten">
-        <div class="profile-identity-editor">
-          <div class="profile-identity-fields">
-            <div class="profile-avatar-editor">
-              <label for="profile-avatar-input" class="profile-avatar-control" aria-label="Profilbild ändern">
-                ${avatarHtml(me, 64)}
-              </label>
-              <input type="file" id="profile-avatar-input" accept="image/*" hidden />
+      <section class="card grouped-page-section" aria-label="Profildaten">
+        <div class="profile-rows">
+          <div class="profile-row is-form">
+            <div class="profile-identity">
+              <div class="profile-avatar-editor">
+                <label for="profile-avatar-input" class="profile-avatar-control" aria-label="Profilbild ändern" title="Profilbild ändern">
+                  ${avatarHtml(me, 48)}
+                </label>
+                <input type="file" id="profile-avatar-input" accept="image/*" hidden />
+                <button type="button" id="profile-color-trigger" class="profile-color-trigger" style="--profile-color:${escapeHtml(me.color)};" aria-label="Profilfarbe wählen, aktuell ${escapeHtml(me.color)}" title="Profilfarbe wählen"></button>
+                <input type="hidden" id="profile-color" value="${escapeHtml(me.color)}" />
+              </div>
+              <div class="profile-text-field">
+                <label for="profile-name" class="field-label is-required">Gamertag</label>
+                <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" required placeholder="NightOwl" />
+              </div>
+              <div class="profile-text-field profile-real-name">
+                <label for="profile-real-name" class="field-label">Name</label>
+                <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Robert" />
+              </div>
             </div>
-            <div class="profile-color-field">
-              <label for="profile-color-trigger" class="field-label">Farbe</label>
-              <button type="button" id="profile-color-trigger" class="profile-color-trigger" style="--profile-color:${escapeHtml(me.color)};" aria-label="Profilfarbe wählen, aktuell ${escapeHtml(me.color)}"></button>
-              <input type="hidden" id="profile-color" value="${escapeHtml(me.color)}" />
-            </div>
-            <div class="profile-text-field">
-              <label for="profile-name" class="field-label is-required">Gamertag</label>
-              <input type="text" id="profile-name" value="${escapeHtml(me.name)}" maxlength="60" required placeholder="NightOwl" />
-            </div>
-            <div class="profile-text-field">
-              <label for="profile-real-name" class="field-label">Name</label>
-              <input type="text" id="profile-real-name" value="${escapeHtml(me.real_name || '')}" maxlength="60" placeholder="Robert" />
-            </div>
+            <div class="profile-row-action"><button type="button" class="btn btn-primary btn-sm" id="profile-save">Speichern</button></div>
           </div>
-          <button type="button" class="btn btn-primary btn-block" id="profile-save">Speichern</button>
+          ${profileRow({
+            title: '<label for="profile-layout">Ansicht</label>',
+            meta: 'Automatisch zeigt ab 1280 px die Desktop-Leiste',
+            action: `<select id="profile-layout">${[
+              { value: LAYOUT_MODES.auto, label: 'Automatisch' },
+              { value: LAYOUT_MODES.desktop, label: 'Desktop' },
+              { value: LAYOUT_MODES.laptop, label: 'Laptop' },
+            ].map((option) => `<option value="${option.value}" ${layoutPreference === option.value ? 'selected' : ''}>${option.label}</option>`).join('')}</select>`,
+          })}
+          ${pushRow()}
+          ${profileRow({
+            title: 'Passwort',
+            meta: 'Meldet andere Geräte ab',
+            action: '<button type="button" class="btn btn-sm" id="profile-password-open">Ändern</button>',
+          })}
         </div>
       </section>
 
-      <section class="card stack grouped-page-section" aria-labelledby="profile-layout-title">
-        <div class="grouped-page-section-title">
-          <h2 id="profile-layout-title" class="title-with-info">
-            <span>Ansicht</span>
-            ${infoTooltipHtml('profile-layout-help', 'Ansicht', 'Automatisch nutzt auf großen Bildschirmen die Desktop-Leiste und sonst die kompakte Laptop-Navigation.')}
-          </h2>
-        </div>
-        <div class="profile-layout-options" role="group" aria-label="Ansichtsmodus">
-          ${[
-            { value: LAYOUT_MODES.auto, label: 'Automatisch' },
-            { value: LAYOUT_MODES.desktop, label: 'Desktop' },
-            { value: LAYOUT_MODES.laptop, label: 'Laptop' },
-          ].map((option) => `<button type="button" class="btn profile-layout-option${layoutPreference === option.value ? ' btn-primary' : ''}" data-layout-preference="${option.value}" aria-pressed="${layoutPreference === option.value}">${option.label}</button>`).join('')}
-        </div>
-      </section>
-
-      <details class="card grouped-page-section collapsible-section" data-profile-section="password" aria-labelledby="profile-password-title" open>
-               <summary class="collapsible-section-header"><h2 id="profile-password-title">Sicherheit &amp; Passwort</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
-               <div class="collapsible-section-content">
-               <form class="stack" id="profile-password-form">
-                 <div class="profile-password-fields">
-                   <div>
-                     <label for="profile-current-password" class="field-label">Aktuelles Passwort</label>
-                     <div class="row">
-                       <input type="password" id="profile-current-password" autocomplete="current-password" required style="flex:1;" />
-                       <button type="button" class="icon-btn" data-password-toggle="profile-current-password" data-password-toggle-label="Aktuelles Passwort" aria-label="Aktuelles Passwort anzeigen" title="Aktuelles Passwort anzeigen">${icon('eye')}</button>
-                     </div>
-                   </div>
-                   <div>
-                     <label for="profile-new-password" class="field-label">Neues Passwort</label>
-                     <div class="row">
-                       <input type="password" id="profile-new-password" autocomplete="new-password" minlength="1" maxlength="1024" required style="flex:1;" />
-                       <button type="button" class="icon-btn" data-password-toggle="profile-new-password" data-password-toggle-label="Neues Passwort" aria-label="Neues Passwort anzeigen" title="Neues Passwort anzeigen">${icon('eye')}</button>
-                     </div>
-                   </div>
-                 </div>
-                 <button type="submit" class="btn btn-primary btn-block">Passwort speichern</button>
-               </form>
-               </div>
-      </details>
-
-      ${
-        !gamesEnabled || state.games.length === 0 || hasAnyRating
-          ? ''
-          : `<section class="card stack grouped-page-section profile-rating-nudge" aria-labelledby="profile-rating-title">
-               <div class="grouped-page-section-title">
-                 <h2 id="profile-rating-title" class="title-with-info">
-                   <span>Bock &amp; Skill eintragen</span>
-                   ${infoTooltipHtml('profile-rating-help', 'Bock und Skill', RATING_HELP)}
-                 </h2>
-               </div>
-               <button type="button" class="btn btn-primary btn-block" data-navigate="gameCatalog">Zu den Spielen</button>
-             </section>`
-      }
-
-      ${trackingEnabled ? `<details class="card grouped-page-section collapsible-section" data-profile-section="agent" aria-labelledby="profile-agent-title" open>
-        <summary class="collapsible-section-header"><h2 id="profile-agent-title">Live-Status &amp; Agent</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
-        <div class="collapsible-section-content stack">
-        <div class="profile-agent-steps">
-          <div class="card stack profile-agent-step">
-            <span class="muted profile-agent-step-label">Schritt 1</span>
-            <strong class="title-with-info">
-              <span>Tracking festlegen</span>
-              ${infoTooltipHtml('profile-tracking-overview-help', 'Tracking festlegen', TRACKING_OVERVIEW_HELP)}
-            </strong>
-            <label class="check-row">
-              <input type="checkbox" id="tracking-paused" ${me.tracking_paused ? 'checked' : ''} />
-              <span class="title-with-info" style="flex:1;">
-                <span>Tracking pausieren</span>
-                ${infoTooltipHtml('profile-tracking-pause-help', 'Tracking pausieren', TRACKING_PAUSE_HELP)}
-              </span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" id="agent-track-activity" />
-              <span class="title-with-info" style="flex:1;">
-                <span>Erweitertes Tracking</span>
-                ${infoTooltipHtml('profile-activity-tracking-help', 'Erweitertes Tracking', ACTIVITY_TRACKING_HELP)}
-              </span>
-            </label>
-          </div>
-          <div class="card stack profile-agent-step">
-            <span class="muted profile-agent-step-label">Schritt 2</span>
-            <strong class="title-with-info">
-              <span>Agent herunterladen</span>
-              ${infoTooltipHtml('profile-agent-download-help', 'Agent herunterladen', AGENT_DOWNLOAD_HELP)}
-            </strong>
-            <button type="button" class="btn btn-primary btn-block" id="agent-download">Für Windows herunterladen</button>
-          </div>
-          <div class="card stack profile-agent-step">
-            <span class="muted profile-agent-step-label">Schritt 3</span>
-            <strong>Installieren</strong>
-            <span class="muted">ZIP entpacken und <code>install.bat</code> starten. Danach läuft der Agent automatisch bei jedem Windows-Login.</span>
-          </div>
-        </div>
-        <details class="card profile-agent-manual">
-          <summary>Kein Windows / manuelle Einrichtung</summary>
-          <div class="row profile-agent-key-row">
-            <input type="text" id="profile-apikey" readonly value="Laden…" style="flex:1;font-family:monospace;" />
-            <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
-            <button type="button" class="btn btn-sm btn-danger" id="profile-rotate-key">Erneuern</button>
-          </div>
-          <p class="muted" style="font-size:var(--font-size-xs);margin-bottom:0;">Key in die Agent-Konfiguration eintragen.</p>
-        </details>
-        </div>
-      </details>` : ''}
-
-      <details class="card grouped-page-section collapsible-section" data-profile-section="push" aria-labelledby="profile-push-title" open>
-        <summary class="collapsible-section-header"><h2 id="profile-push-title">Benachrichtigungen</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
-        <div class="collapsible-section-content">${renderPushSection()}</div>
-      </details>
-
-      <details class="card grouped-page-section collapsible-section" data-profile-section="privacy" aria-labelledby="profile-privacy-title" open>
-        <summary class="collapsible-section-header"><h2 id="profile-privacy-title">Datenschutz &amp; meine Daten</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
-        <div class="collapsible-section-content">${renderPrivacySection()}</div>
-      </details>
-
-      ${monitorsEnabled ? `<details class="card grouped-page-section collapsible-section" data-profile-section="monitors" aria-labelledby="profile-monitors-title" open>
-        <summary class="collapsible-section-header"><h2 id="profile-monitors-title">Sichtbare Monitore</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
-        <div class="collapsible-section-content">${renderNeighbors(myId)}</div>
-      </details>` : ''}
-
-      ${trackingEnabled ? `<section class="card grouped-page-section" aria-labelledby="profile-stats-title">
-        <div class="grouped-page-section-title">
-          <h2 id="profile-stats-title">Meine Statistiken</h2>
-          <button type="button" class="btn btn-sm" data-navigate="myStats">Ansehen</button>
-        </div>
+      ${eventRows.length ? `<section class="card stack grouped-page-section" aria-labelledby="profile-event-title">
+        <div class="grouped-page-section-title"><h2 id="profile-event-title">${escapeHtml(state.activeEvent?.name ?? 'Event')}</h2></div>
+        <div class="profile-rows">${eventRows.join('')}</div>
       </section>` : ''}
+
+      ${trackingEnabled ? `<details class="card grouped-page-section collapsible-section" data-profile-section="agent" aria-labelledby="profile-agent-title" ${profileSectionOpen.agent ? 'open' : ''}>
+        <summary class="collapsible-section-header"><h2 id="profile-agent-title">Live-Status &amp; Agent</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+        <div class="collapsible-section-content profile-rows">
+          ${profileRow({
+            title: 'Tracking',
+            meta: `${me.tracking_paused ? 'Pausiert' : 'Läuft'} · prüft nur Spiele aus dem Katalog · <button type="button" class="profile-link-btn" id="profile-tracking-details">Mehr erfahren</button>`,
+            action: `<button type="button" class="btn btn-sm" id="tracking-paused" aria-pressed="${Boolean(me.tracking_paused)}">${me.tracking_paused ? 'Fortsetzen' : 'Pausieren'}</button>`,
+          })}
+          ${profileRow({
+            number: 1,
+            title: 'Agent herunterladen',
+            meta: `ZIP mit Server-Adresse und deinem Key
+              <label class="profile-check"><input type="checkbox" id="agent-track-activity" />Erweitertes Tracking für diesen Download</label>`,
+            action: '<button type="button" class="btn btn-primary btn-sm" id="agent-download">Herunterladen</button>',
+          })}
+          ${profileRow({
+            number: 2,
+            title: 'Installieren',
+            meta: 'ZIP entpacken und <code>install.bat</code> starten · startet danach bei jedem Windows-Login',
+          })}
+          ${profileRow({
+            number: 3,
+            title: 'Ohne Windows',
+            meta: 'Key in die Agent-Konfiguration eintragen · <button type="button" class="profile-link-btn" id="profile-rotate-key">Key erneuern</button>',
+            action: '<button type="button" class="btn btn-sm" id="profile-copy-key" disabled>Key kopieren</button>',
+          })}
+        </div>
+      </details>` : ''}
+
+      ${renderPrivacySection()}
+      ${renderMyDataSection()}
     </div>
   `;
 
-  // Keep account settings and LAN-specific preferences scannable in two
-  // independent desktop columns. The larger three-step agent setup remains a
-  // full-width sequence; invitation handoffs stay above everything because
-  // they require an immediate decision.
-  const profileLayout = container.querySelector('.profile-desktop-layout');
-  const dashboardColumns = document.createElement('div');
-  dashboardColumns.className = 'adaptive-dashboard-columns profile-dashboard-columns';
-  const accountColumn = document.createElement('div');
-  accountColumn.className = 'adaptive-dashboard-column profile-dashboard-account';
-  const lanColumn = document.createElement('div');
-  lanColumn.className = 'adaptive-dashboard-column profile-dashboard-lan';
-  [
-    'section[aria-label="Profildaten"]',
-    '[aria-labelledby="profile-layout-title"]',
-    '[aria-labelledby="profile-password-title"]',
-    '[aria-labelledby="profile-push-title"]',
-    '[aria-labelledby="profile-privacy-title"]',
-  ].forEach((selector) => {
-    const section = profileLayout.querySelector(selector);
-    if (section) accountColumn.append(section);
-  });
-  [
-    '[aria-labelledby="profile-rating-title"]',
-    '[aria-labelledby="profile-monitors-title"]',
-    '[aria-labelledby="profile-stats-title"]',
-  ].forEach((selector) => {
-    const section = profileLayout.querySelector(selector);
-    if (section) lanColumn.append(section);
-  });
-  dashboardColumns.append(accountColumn);
-  if (lanColumn.children.length > 0) dashboardColumns.append(lanColumn);
-  const agentSection = profileLayout.querySelector('[aria-labelledby="profile-agent-title"]');
-  profileLayout.insertBefore(dashboardColumns, agentSection);
-
-  wireInfoTooltips(container);
   wirePendingInvitationActions(container, ctx);
-
-  container.querySelector('#privacy-retry')?.addEventListener('click', () => {
-    privacyState = null;
-    loadPrivacy(ctx, true);
-  });
-  container.querySelectorAll('[data-consent-event]').forEach((checkbox) => {
-    checkbox.addEventListener('change', async () => {
-      checkbox.disabled = true;
-      const granted = checkbox.checked;
-      try {
-        await api.events.setTrackingConsent(
-          checkbox.dataset.consentEvent,
-          granted,
-          granted ? privacyState.data.trackingConsent.textVersion : undefined,
-        );
-        privacyState = null;
-        await loadPrivacy(ctx, true);
-        showToast(granted ? 'Tracking-Einwilligung gespeichert.' : 'Tracking-Einwilligung widerrufen. Weitere Erfassung ist gestoppt.');
-      } catch (error) {
-        checkbox.checked = !granted;
-        checkbox.disabled = false;
-        showToast(error.message, { error: true });
-      }
+  wirePrivacyActions(container, ctx);
+  container.querySelectorAll('[data-profile-section]').forEach((section) => {
+    section.addEventListener('toggle', () => {
+      profileSectionOpen[section.dataset.profileSection] = section.open;
     });
-  });
-  container.querySelector('#privacy-auto-consent')?.addEventListener('change', async (event) => {
-    const checkbox = event.currentTarget;
-    const enabled = checkbox.checked;
-    checkbox.disabled = true;
-    try {
-      await api.privacy.setTrackingDefault(
-        enabled,
-        enabled ? privacyState.data.trackingConsent.textVersion : undefined,
-      );
-      privacyState = null;
-      await loadPrivacy(ctx, true);
-      showToast(
-        enabled
-          ? 'Neue trackbare Events werden künftig automatisch eingewilligt.'
-          : 'Neue trackbare Events brauchen wieder deine ausdrückliche Einwilligung.',
-      );
-    } catch (error) {
-      checkbox.checked = !enabled;
-      checkbox.disabled = false;
-      showToast(error.message, { error: true });
-    }
-  });
-  // Revoking never carries a text version, so an outdated consent can always
-  // be withdrawn through the ordinary event endpoint.
-  container.querySelectorAll('[data-consent-legacy-event]').forEach((checkbox) => {
-    checkbox.addEventListener('change', async () => {
-      checkbox.disabled = true;
-      try {
-        await api.events.setTrackingConsent(checkbox.dataset.consentLegacyEvent, false);
-        privacyState = null;
-        await loadPrivacy(ctx, true);
-        showToast('Frühere Event-Einwilligung widerrufen.');
-      } catch (error) {
-        checkbox.checked = true;
-        checkbox.disabled = false;
-        showToast(error.message, { error: true });
-      }
-    });
-  });
-  container.querySelectorAll('[data-revoke-legacy-group]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      button.disabled = true;
-      try {
-        await api.groups.setTrackingConsent(button.dataset.revokeLegacyGroup, false);
-        privacyState = null;
-        await loadPrivacy(ctx, true);
-        showToast('Frühere Zustimmung widerrufen.');
-      } catch (error) {
-        button.disabled = false;
-        showToast(error.message, { error: true });
-      }
-    });
-  });
-  container.querySelector('#privacy-export')?.addEventListener('click', async (event) => {
-    const button = event.currentTarget;
-    button.disabled = true;
-    try {
-      const { blob, filename } = await api.privacy.export();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      showToast('Persönlicher Datenexport heruntergeladen.');
-    } catch (error) {
-      showToast(error.message, { error: true });
-    } finally {
-      button.disabled = false;
-    }
-  });
-  container.querySelector('#privacy-delete-account')?.addEventListener('click', async () => {
-    const confirmed = await confirmDialog(
-      'Dein Konto, persönliche Zugangsschlüssel, Sitzungen, Einwilligungen und zuordenbare Daten werden dauerhaft gelöscht. Historische Ergebnisse bleiben nur ohne deine Identität erhalten. Frei formulierte Erwähnungen durch andere können eine Prüfung der Orga erfordern. Offene Zahlungen, eigene Bestellungen, Fahrgemeinschaften, To-dos oder die letzte Admin-/Ownerrolle müssen vorher geklärt werden.',
-      { title: 'Konto dauerhaft löschen', confirmText: 'Dauerhaft löschen', danger: true },
-    );
-    if (!confirmed) return;
-    try {
-      const removed = await withStepUp(() => api.privacy.deleteAccount());
-      if (removed === undefined) return;
-      location.reload();
-    } catch (error) {
-      showToast(error.message, { error: true });
-    }
   });
 
-  container.querySelectorAll('[data-layout-preference]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const preference = setLayoutModeForPlayer(myId, button.dataset.layoutPreference);
-      container.querySelectorAll('[data-layout-preference]').forEach((candidate) => {
-        const active = candidate.dataset.layoutPreference === preference;
-        candidate.classList.toggle('btn-primary', active);
-        candidate.setAttribute('aria-pressed', String(active));
-      });
-      window.dispatchEvent(new Event('respawn:layout-mode-changed'));
-    });
+  container.querySelector('#profile-layout').addEventListener('change', (event) => {
+    setLayoutModeForPlayer(myId, event.currentTarget.value);
+    window.dispatchEvent(new Event('respawn:layout-mode-changed'));
   });
 
   container.querySelector('#profile-logout').addEventListener('click', () => logout());
-  container.querySelectorAll('[data-password-toggle]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const input = container.querySelector(`#${button.dataset.passwordToggle}`);
-      const visible = input.type === 'password';
-      const label = button.dataset.passwordToggleLabel || 'Passwort';
-      input.type = visible ? 'text' : 'password';
-      button.innerHTML = icon(visible ? 'eyeOff' : 'eye');
-      button.setAttribute('aria-label', `${label} ${visible ? 'verbergen' : 'anzeigen'}`);
-      button.title = button.getAttribute('aria-label');
-    });
-  });
-  container.querySelector('#profile-password-form').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const currentPassword = container.querySelector('#profile-current-password');
-    const newPassword = container.querySelector('#profile-new-password');
-    try {
-      await api.auth.changePassword({ currentPassword: currentPassword.value, newPassword: newPassword.value });
-      event.currentTarget.reset();
-      showToast('Passwort geändert. Andere Geräte wurden abgemeldet.');
-    } catch (error) {
-      showToast(error.message, { error: true });
-    }
-  });
+  container.querySelector('#profile-password-open').addEventListener('click', () => openPasswordDialog());
+  container.querySelector('#profile-monitors-edit')?.addEventListener('click', () => openNeighborsDialog(myId, ctx));
+  container.querySelector('#profile-tracking-details')?.addEventListener('click', () => openTrackingDetails());
 
   // Fetched lazily (the roster list intentionally omits API keys) and only
-  // ever for your own profile — see the players.js detail modal for the
+  // ever for your own profile; see the players.js detail modal for the
   // admin-side equivalent.
+  let apiKey = null;
+  const copyKeyButton = container.querySelector('#profile-copy-key');
   if (trackingEnabled) {
     api.players
       .get(myId)
       .then((full) => {
-        const input = container.querySelector('#profile-apikey');
-        if (input) input.value = full.api_key;
+        apiKey = full.api_key;
+        if (copyKeyButton) copyKeyButton.disabled = false;
       })
       .catch(() => {
-        const input = container.querySelector('#profile-apikey');
-        if (input) input.value = 'Fehler beim Laden';
+        if (copyKeyButton) copyKeyButton.title = 'Key konnte nicht geladen werden';
       });
   }
 
-  container.querySelector('#tracking-paused')?.addEventListener('change', async (e) => {
+  container.querySelector('#tracking-paused')?.addEventListener('click', async (e) => {
+    const pause = !me.tracking_paused;
+    e.currentTarget.disabled = true;
     try {
-      await api.players.update(myId, { trackingPaused: e.target.checked });
+      await api.players.update(myId, { trackingPaused: pause });
       await ctx.refresh();
-      showToast(e.target.checked ? 'Tracking pausiert.' : 'Tracking wieder aktiv.');
+      showToast(pause ? 'Tracking pausiert.' : 'Tracking wieder aktiv.');
     } catch (err) {
+      e.currentTarget.disabled = false;
       showToast(err.message, { error: true });
     }
   });
 
-  container.querySelector('#profile-copy-key')?.addEventListener('click', async () => {
-    const value = container.querySelector('#profile-apikey').value;
+  copyKeyButton?.addEventListener('click', async () => {
     try {
-      await navigator.clipboard.writeText(value);
-      showToast('API-Key kopiert.');
+      await navigator.clipboard.writeText(apiKey);
+      showToast('Agent-Key kopiert.');
     } catch {
-      showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+      showToast('Kopieren nicht möglich.', { error: true });
     }
   });
 
@@ -830,7 +776,8 @@ export function renderProfile(container, ctx) {
     }))) return;
     try {
       const result = await api.players.rotateApiKey(myId);
-      container.querySelector('#profile-apikey').value = result.apiKey;
+      apiKey = result.apiKey;
+      if (copyKeyButton) copyKeyButton.disabled = false;
       showToast('Agent-Key erneuert. Der alte Key ist sofort ungültig.');
     } catch (error) {
       showToast(error.message, { error: true });
@@ -841,7 +788,7 @@ export function renderProfile(container, ctx) {
     const btn = e.currentTarget;
     btn.disabled = true;
     const originalLabel = btn.innerHTML;
-    btn.textContent = 'Wird vorbereitet…';
+    btn.textContent = 'Wird vorbereitet';
     try {
       const trackActivity = container.querySelector('#agent-track-activity').checked;
       const { blob, filename } = await api.agent.download(myId, trackActivity);
@@ -886,39 +833,125 @@ export function renderProfile(container, ctx) {
     }
   });
 
-  container.querySelectorAll('[data-neighbor]').forEach((cb) => {
-    cb.addEventListener('change', async () => {
-      const ids = [...container.querySelectorAll('[data-neighbor]:checked')].map((el) => el.dataset.neighbor);
+  container.querySelector('#push-toggle')?.addEventListener('click', async () => {
+    const shouldEnable = pushState !== 'subscribed';
+    pushBusy = true;
+    ctx.rerender();
+    try {
+      if (shouldEnable) {
+        await enablePush(myId);
+        showToast('Push-Benachrichtigungen aktiviert.');
+      } else {
+        await disablePush();
+        showToast('Push-Benachrichtigungen deaktiviert.');
+      }
+    } catch (err) {
+      showToast(err.message, { error: true });
+    } finally {
+      pushBusy = false;
+      pushState = await getPushSubscriptionState();
+      ctx.rerender();
+    }
+  });
+}
+
+function wirePrivacyActions(container, ctx) {
+  const reload = async () => {
+    privacyState = null;
+    await loadPrivacy(ctx, true);
+  };
+  container.querySelector('#privacy-retry')?.addEventListener('click', () => {
+    privacyState = null;
+    loadPrivacy(ctx, true);
+  });
+  container.querySelector('#privacy-details')?.addEventListener('click', () => {
+    if (privacyState?.data) openPrivacyDetails(privacyState.data.trackingConsent);
+  });
+  container.querySelectorAll('[data-consent-event]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const granted = button.getAttribute('aria-pressed') !== 'true';
+      button.disabled = true;
       try {
-        neighborsCache = await api.players.setNeighbors(myId, ids);
-      } catch (err) {
-        showToast(err.message, { error: true });
-        cb.checked = !cb.checked; // revert the click that failed to save
+        await api.events.setTrackingConsent(
+          button.dataset.consentEvent,
+          granted,
+          granted ? privacyState.data.trackingConsent.textVersion : undefined,
+        );
+        await reload();
+        showToast(granted ? 'Tracking-Einwilligung gespeichert.' : 'Tracking-Einwilligung widerrufen. Weitere Erfassung ist gestoppt.');
+      } catch (error) {
+        button.disabled = false;
+        showToast(error.message, { error: true });
       }
     });
   });
-
-  const pushToggle = container.querySelector('#push-toggle');
-  if (pushToggle) {
-    pushToggle.addEventListener('change', async (event) => {
-      const shouldEnable = event.currentTarget.checked;
-      pushBusy = true;
-      ctx.rerender();
+  container.querySelector('#privacy-auto-consent')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const enabled = button.getAttribute('aria-pressed') !== 'true';
+    button.disabled = true;
+    try {
+      await api.privacy.setTrackingDefault(
+        enabled,
+        enabled ? privacyState.data.trackingConsent.textVersion : undefined,
+      );
+      await reload();
+      showToast(
+        enabled
+          ? 'Neue trackbare Events werden künftig automatisch eingewilligt.'
+          : 'Neue trackbare Events brauchen wieder deine ausdrückliche Einwilligung.',
+      );
+    } catch (error) {
+      button.disabled = false;
+      showToast(error.message, { error: true });
+    }
+  });
+  // Revoking never carries a text version, so an outdated consent can always
+  // be withdrawn through the ordinary event endpoint.
+  container.querySelectorAll('[data-consent-legacy-event]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
       try {
-        if (shouldEnable) {
-          await enablePush(myId);
-          showToast('Push-Benachrichtigungen aktiviert.');
-        } else {
-          await disablePush();
-          showToast('Push-Benachrichtigungen deaktiviert.');
-        }
-      } catch (err) {
-        showToast(err.message, { error: true });
-      } finally {
-        pushBusy = false;
-        pushState = await getPushSubscriptionState();
-        ctx.rerender();
+        await api.events.setTrackingConsent(button.dataset.consentLegacyEvent, false);
+        await reload();
+        showToast('Frühere Event-Einwilligung widerrufen.');
+      } catch (error) {
+        button.disabled = false;
+        showToast(error.message, { error: true });
       }
     });
-  }
+  });
+  container.querySelector('#privacy-export')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const { blob, filename } = await api.privacy.export();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showToast('Persönlicher Datenexport heruntergeladen.');
+    } catch (error) {
+      showToast(error.message, { error: true });
+    } finally {
+      button.disabled = false;
+    }
+  });
+  container.querySelector('#privacy-delete-account')?.addEventListener('click', async () => {
+    const confirmed = await confirmDialog(
+      'Dein Konto, persönliche Zugangsschlüssel, Sitzungen, Einwilligungen und zuordenbare Daten werden dauerhaft gelöscht. Historische Ergebnisse bleiben nur ohne deine Identität erhalten. Frei formulierte Erwähnungen durch andere können eine Prüfung der Orga erfordern. Offene Zahlungen, eigene Bestellungen, Fahrgemeinschaften, To-dos oder die letzte Admin- oder Ownerrolle müssen vorher geklärt werden.',
+      { title: 'Konto dauerhaft löschen', confirmText: 'Dauerhaft löschen', danger: true },
+    );
+    if (!confirmed) return;
+    try {
+      const removed = await withStepUp(() => api.privacy.deleteAccount());
+      if (removed === undefined) return;
+      location.reload();
+    } catch (error) {
+      showToast(error.message, { error: true });
+    }
+  });
 }

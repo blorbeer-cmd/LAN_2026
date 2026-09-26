@@ -246,7 +246,7 @@ layout needs, not a phone/laptop breakpoint that happens to be slightly off.
 
 These rules are the durable outcome of the general UI-polish pass. They apply to every existing
 view and to new views unless a documented domain constraint requires a different presentation. Rules 10 to 13 were
-established with the Match and Vote pass (PR #662); pages not reworked yet are brought in line when
+established with the Match and Vote pass (PR #662), rule 14 with the Profile and personal stats pass; pages not reworked yet are brought in line when
 they are next changed, and new work follows them right away.
 
 1. **Build pages from three visible levels.** A page consists of full-width main groups, nested
@@ -328,6 +328,12 @@ they are next changed, and new work follows them right away.
     and leave out empty or zero values („0× gewonnen“, „–“). Fields that share one form row have
     equal widths and aligned baselines; a row may use the full width for label/field pairs plus a
     search field instead of stacking them.
+14. **Rank lists read top to bottom.** A list of entries with one value each (play time, points,
+    counts) uses the shared RankedList: flat hairline rows, the value in a fixed right column, and
+    from `--bp-md` two columns filled column by column (left the first half, right the rest). A
+    ranking is sorted by its value, largest first, and carries its place number; a list without
+    rank meaning is sorted alphabetically (numbers in natural order) and carries none. Both fill
+    the left column first; multi-column card grids of like entries (Home's live status) do too. Details: [RankedList](frontend-contracts/components/ranked-list.md).
 
 ## Components
 
@@ -467,11 +473,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
-  `.adaptive-dashboard-columns` contains two semantic `.adaptive-dashboard-column` reading groups
-  for views such as Profile. They stack in DOM/focus order on compact layouts and flow independently
-  when Desktop is selected at `--bp-xl`; never recreate the former single grid where a tall card in
-  one column delayed the next card in the other. Home and Admin instead use explicit priority rows
-  whose repeated participant/user collections become three columns only in Desktop mode.
+  Profile and Meine Statistiken are one column of full-width cards on every width: their rows carry
+  one action or value each in a fixed right column, so a second page column adds nothing. Home and
+  Admin use explicit priority rows whose repeated participant/user collections become three columns
+  only in Desktop mode.
   Product-specific navigation, routes and layouts live in
   [Product rules](../docs/product/README.md).
 

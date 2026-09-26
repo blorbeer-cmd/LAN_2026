@@ -91,7 +91,8 @@ export function renderSeatingPlan(layout, players, { editable = false } = {}) {
     ${sideHtml(layout, players, 'top', editable)}
     ${sideHtml(layout, players, 'right', editable)}
     <div class="seating-table-center">
-      ${editable ? `<span class="muted">${selected ? 'Zielplatz antippen' : 'Person ziehen oder antippen'}</span>` : ''}
+      <span class="seating-side-label">Tisch</span>
+      ${editable && selected ? '<span class="muted">Zielplatz antippen</span>' : ''}
     </div>
     ${sideHtml(layout, players, 'bottom', editable)}
     ${sideHtml(layout, players, 'left', editable)}

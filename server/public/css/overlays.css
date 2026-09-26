@@ -619,9 +619,10 @@
   justify-content: center;
   align-items: center;
   gap: var(--space-2);
-  border: 2px solid rgba(145, 99, 245, .45);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, rgba(145, 99, 245, .2), rgba(91, 140, 255, .12));
+  /* Like a free seat: only its outline, so occupied seats carry the plan. */
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
   color: var(--text-muted);
 }
 .seating-seat {
@@ -636,7 +637,7 @@
   justify-content: center;
   gap: var(--space-1);
   padding: var(--space-1);
-  border: 1px dashed var(--border);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
   color: var(--text-muted);
@@ -644,10 +645,12 @@
   text-align: center;
   transition: border-color .15s ease, background .15s ease, transform .15s ease;
 }
+/* A free seat is only its outline: a hairline without fill, so occupied
+   seats carry the plan. Drag and tap-to-place still tint targets blue. */
 .seating-seat:not(.is-occupied) {
-  border-color: var(--accent);
-  background: var(--bg-elevated-2);
-  color: var(--text);
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-muted);
 }
 .seating-seat.is-occupied {
   border: 1px solid var(--border);
@@ -750,8 +753,8 @@
   background: rgba(91, 140, 255, .12);
 }
 .seating-seat-free-label {
-  color: var(--text);
-  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  font-weight: var(--font-weight-regular);
 }
 .seating-plan.is-editable .seating-seat.is-occupied,
 .seating-pool-player {

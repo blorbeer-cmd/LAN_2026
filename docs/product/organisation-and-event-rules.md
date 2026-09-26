@@ -267,8 +267,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   easy to miss and cluttered the tab with the cards immediately following it. Instead, an
   invitation surfaces as a personal Home „Aktuell“ nudge (see [„Home overview“](navigation-and-account-rules.md#mein-profil-auswertung-und-home)) that links into „Mein
   Profil“, and Profile's own leading „Einladungen“ section is where it is actually answered
-  (`renderInvitationCard`/`pendingEventInvitations`/`wirePendingInvitationActions` in `events.js`,
-  reused by `profile.js` so the card markup and accept/decline wiring exist exactly once).
+  (`renderInvitationRow`/`openInvitationDialog`/`pendingEventInvitations`/`wirePendingInvitationActions`
+  in `events.js`, reused by `profile.js` so the row, dialog and accept/decline wiring exist exactly
+  once).
   An *answered* participation is different: it stays on this tab, because this is where the member
   already looks at the events they are part of. Every card variant therefore carries the account's
   own answer through `ownParticipationAction`: „Teilnahme absagen“ while the server reports
@@ -329,13 +330,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   (`eventExcuses.js`, `renderEventExcuseActions`/`wireEventExcuseActions` in `events.js`). It writes
   an excuse for whatever *other* appointment collides with the event, so no entry ever names the
   event itself — the text is meant to be sent to the organizer of the competing date. The action
-  appears on management cards, member cards and pending invitations alike, because deciding against
-  a parallel obligation is a personal act, and disappears once an event has ended. The dialog is a
-  shared `openModal()` instance with the standard `.chip`/`.chip.is-active` category filter (Alle
-  plus eight categories), one nested result
-  surface with an `aria-live="polite"` region so „Neue Ausrede“ is announced without rebuilding the
-  dialog, and the two equal-width actions „Neue Ausrede“ and „Kopieren“. It carries no explanatory
-  copy above the filter: the title, the chips and the excuse itself already say what the dialog is,
+  appears on management cards and member cards, and in a pending invitation's detail dialog as the
+  button „Ausrede“ beside „Ablehnen“ and „Annehmen“, because deciding against a parallel
+  obligation is a personal act; it disappears once an event has ended. The dialog is a shared
+  `openModal()` instance with a native „Kategorie“ select (Alle plus eight categories), the excuse
+  as plain text below a hairline with its category and „Glaubwürdigkeit N von 5“ as one muted
+  line, an `aria-live="polite"` region so „Neue Ausrede“ is announced without rebuilding the
+  dialog, and the two equal-width actions „Neue Ausrede“ and „Kopieren“ (gradient). Periods inside
+  excuses read „11.09. bis 13.09.“. It carries no explanatory
+  copy above the filter: the title, the select and the excuse itself already say what the dialog is,
   and a sentence repeating the event name and a pool count only pushed the actual result down.
   Every excuse is tagged with
   the absence lengths it fits: a single evening, a two-to-three-day weekend or a longer trip, so a
@@ -343,7 +346,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   length — the pool is kept wide enough that no category collapses to a handful of entries for long
   events. An event whose date is still being
   polled receives the date-free subset instead, because its texts cannot fill a period honestly. The
-  „Glaubwürdigkeit N/5“ badge is part of the joke and derives from the rendered text itself — length
+  „Glaubwürdigkeit N von 5“ line is part of the joke and derives from the rendered text itself — length
   plus concrete numbers — since detail is what the whole feature trades on. Event creation and editing may
   add one optional per-person cost plus the same PayPal input as food orders: either an e-mail address
   or a complete HTTPS address on `paypal.me`/`paypal.com`. Cost and PayPal controls reuse the food-order price suffix
