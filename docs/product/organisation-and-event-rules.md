@@ -332,7 +332,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   appears on management cards, member cards and pending invitations alike, because deciding against
   a parallel obligation is a personal act, and disappears once an event has ended. The dialog is a
   shared `openModal()` instance with the standard `.chip`/`.chip.is-active` category filter (Alle
-  plus eight categories, the same filter pattern as Admin's Feedback filter), one nested result
+  plus eight categories), one nested result
   surface with an `aria-live="polite"` region so „Neue Ausrede“ is announced without rebuilding the
   dialog, and the two equal-width actions „Neue Ausrede“ and „Kopieren“. It carries no explanatory
   copy above the filter: the title, the chips and the excuse itself already say what the dialog is,
