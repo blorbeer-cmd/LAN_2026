@@ -13,12 +13,14 @@ Lücken auf: #90, #93, #94, #96, #97, #99, #197, #204 und #205. Die Zusammenfass
 Diff-Analyse. Zusätzlich lückenlos dokumentiert sind die am 2026-09-01 und 2026-09-02 gemergten
 PRs #529–#535 sowie die am 2026-09-16 gemergten PRs #636, #637 und #639; die Bereiche #353–#528
 und #536–#635 sind noch nicht erfasst. #638 wurde geschlossen, nicht gemergt, und erhält daher
-keinen Eintrag.
+keinen Eintrag. Am 2026-09-26 nachgetragen sind die UI-Polish-PRs #657, #662 bis #664 und #666 bis
+#671; ihre Zusammenfassungen stammen aus der PR-Beschreibung. Die PRs #640 bis #656, #658 bis #661
+und #665 sind noch nicht erfasst.
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 239 (Dateien unter `pr/`)
-- Branch-Seiten dokumentiert: 199 (Dateien unter `branches/`)
+- Gemergte PRs dokumentiert: 249 (Dateien unter `pr/`)
+- Branch-Seiten dokumentiert: 208 (Dateien unter `branches/`)
 - Gemergte PRs #214–#352: 83 von 83 dokumentiert
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
@@ -26,6 +28,16 @@ keinen Eintrag.
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-09-25 | [#671](https://github.com/blorbeer-cmd/LAN_2026/pull/671) | [Polish Jam as flat queue table with inline setup actions and a compact controller page](pr/pr-671-polish-jam-as-flat-queue-table-with-inline-setup-actions-and-a-compact-controller-page.md) | `claude/jam-ui-polish-cff061` |
+| 2026-09-25 | [#670](https://github.com/blorbeer-cmd/LAN_2026/pull/670) | [Polish Durchsage as Aktuell/Historie tables and flatten the notification center](pr/pr-670-polish-durchsage-as-aktuell-historie-tables-and-flatten-the-notification-center.md) | `claude/durchsage-ui-polish-dda219` |
+| 2026-09-25 | [#669](https://github.com/blorbeer-cmd/LAN_2026/pull/669) | [Polish To-Do as one table with multi take-over and archiving; move game suggestion into catalog tabs](pr/pr-669-polish-to-do-as-one-table-with-multi-take-over-and-archiving-move-game-suggestion-into-catalog-tabs.md) | `claude/todo-ui-polish-37b1f5` |
+| 2026-09-24 | [#668](https://github.com/blorbeer-cmd/LAN_2026/pull/668) | [Polish Essen page: invoice-style food order cards](pr/pr-668-polish-essen-page-invoice-style-food-order-cards.md) | `claude/ui-polish-food-orders-0f1343` |
+| 2026-09-24 | [#667](https://github.com/blorbeer-cmd/LAN_2026/pull/667) | [Polish Packliste, Match, tournaments, vote details and player details; create tournaments from draws](pr/pr-667-polish-packliste-match-tournaments-vote-details-and-player-details-create-tournaments-from-draws.md) | `claude/packliste-ui-polish-9039c2` |
+| 2026-09-24 | [#666](https://github.com/blorbeer-cmd/LAN_2026/pull/666) | [Polish arrivals page and remove back buttons app-wide](pr/pr-666-polish-arrivals-page-and-remove-back-buttons-app-wide.md) | `claude/arrivals-departures-ui-polish-ebd09d` |
+| 2026-09-24 | [#664](https://github.com/blorbeer-cmd/LAN_2026/pull/664) | [Polish event polls, placeholders and empty cards](pr/pr-664-polish-event-polls-placeholders-and-empty-cards.md) | `claude/match-page-ui-improvements-0e9371-23f877` |
+| 2026-09-24 | [#663](https://github.com/blorbeer-cmd/LAN_2026/pull/663) | [Document the established UI polish rules in the design system](pr/pr-663-document-the-established-ui-polish-rules-in-the-design-system.md) | `claude/design-system-polish-rules` |
+| 2026-09-24 | [#662](https://github.com/blorbeer-cmd/LAN_2026/pull/662) | [Polish Match, Vote and tournament result UI](pr/pr-662-polish-match-vote-and-tournament-result-ui.md) | `claude/match-page-ui-improvements-0e9371` |
+| 2026-09-21 | [#657](https://github.com/blorbeer-cmd/LAN_2026/pull/657) | [Compact Home current items and group member overview](pr/pr-657-compact-home-current-items-and-group-member-overview.md) | `codex/home-current-variants` |
 | 2026-09-16 | [#639](https://github.com/blorbeer-cmd/LAN_2026/pull/639) | [Keep the help trigger beside what it explains in every layout](pr/pr-639-keep-the-help-trigger-beside-what-it-explains-in-every-layout.md) | `claude/tooltip-icon-placement-rules-yk18d5` |
 | 2026-09-16 | [#636](https://github.com/blorbeer-cmd/LAN_2026/pull/636) | [Move the info tooltip glyph closer to the text it explains](pr/pr-636-move-the-info-tooltip-glyph-closer-to-the-text-it-explains.md) | `claude/tooltip-icon-placement-rules-yk18d5` |
 | 2026-09-16 | [#637](https://github.com/blorbeer-cmd/LAN_2026/pull/637) | [Spiele: klickbare Namen und kompakte Aktionen](pr/pr-637-spiele-klickbare-namen-und-kompakte-aktionen.md) | `codex/game-card-clickable-details` |

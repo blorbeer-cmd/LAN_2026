@@ -28,6 +28,7 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`claude/arcade-pause-exit-options-d9kd54`](./claude-arcade-pause-exit-options-d9kd54.md) — 2 gemergt, 0 offen
 - [`claude/arcade-ready-button-cw1cth`](./claude-arcade-ready-button-cw1cth.md) — 1 gemergt, 0 offen
 - [`claude/arcade-sounds-music-y8m5uw`](./claude-arcade-sounds-music-y8m5uw.md) — 1 gemergt, 0 offen
+- [`claude/arrivals-departures-ui-polish-ebd09d`](./claude-arrivals-departures-ui-polish-ebd09d.md): 1 gemergt, 0 offen
 - [`claude/arrow-keys-result-entry-0xe57y`](./claude-arrow-keys-result-entry-0xe57y.md) — 1 gemergt, 0 offen
 - [`claude/auto-resume-token-reset-0jl2dt`](./claude-auto-resume-token-reset-0jl2dt.md) — 2 gemergt, 0 offen
 - [`claude/automated-deployment-pipeline-jw2zf1`](./claude-automated-deployment-pipeline-jw2zf1.md) — 1 gemergt, 1 offen
@@ -43,7 +44,9 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`claude/codex-uix-analysis-review-4dfjup`](./claude-codex-uix-analysis-review-4dfjup.md) — 1 gemergt, 0 offen
 - [`claude/deactivated-users-sitzplan-tdz8dv`](./claude-deactivated-users-sitzplan-tdz8dv.md) — 1 gemergt, 0 offen
 - [`claude/delete-confirmation-dialogs-n55op3`](./claude-delete-confirmation-dialogs-n55op3.md) — 1 gemergt, 0 offen
+- [`claude/design-system-polish-rules`](./claude-design-system-polish-rules.md): 1 gemergt, 0 offen
 - [`claude/design-system-setup-7m45xk`](./claude-design-system-setup-7m45xk.md) — 2 gemergt, 0 offen
+- [`claude/durchsage-ui-polish-dda219`](./claude-durchsage-ui-polish-dda219.md): 1 gemergt, 0 offen
 - [`claude/food-order-metadata-links-tupa5b`](./claude-food-order-metadata-links-tupa5b.md) — 2 gemergt, 0 offen
 - [`claude/funny-mayer-8ib4li`](./claude-funny-mayer-8ib4li.md) — 7 gemergt, 0 offen
 - [`claude/game-genre-multiselect-filters-64yfjb`](./claude-game-genre-multiselect-filters-64yfjb.md) — 1 gemergt, 0 offen
@@ -56,6 +59,7 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`claude/group-scoping-catalog-presence`](./claude-group-scoping-catalog-presence.md) — 1 gemergt, 0 offen
 - [`claude/home-pause-button-bug-xhapiv`](./claude-home-pause-button-bug-xhapiv.md) — 1 gemergt, 0 offen
 - [`claude/home-tiles-games-display-c6uua7`](./claude-home-tiles-games-display-c6uua7.md) — 2 gemergt, 0 offen
+- [`claude/jam-ui-polish-cff061`](./claude-jam-ui-polish-cff061.md): 1 gemergt, 0 offen
 - [`claude/ki-gegner-spiele-r5oqcd`](./claude-ki-gegner-spiele-r5oqcd.md) — 1 gemergt, 0 offen
 - [`claude/kiosk-push-notification-sound-oaiiy9`](./claude-kiosk-push-notification-sound-oaiiy9.md) — 1 gemergt, 0 offen
 - [`claude/konzept-rev5-single-group-k78eou`](./claude-konzept-rev5-single-group-k78eou.md) — 2 gemergt, 0 offen
@@ -63,6 +67,8 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`claude/lan-party-tools-6jqu4g`](./claude-lan-party-tools-6jqu4g.md) — 1 gemergt, 0 offen
 - [`claude/lan-tools-quality-e2e-x6k61w`](./claude-lan-tools-quality-e2e-x6k61w.md) — 6 gemergt, 0 offen
 - [`claude/live-page-home-redesign-ailuxo`](./claude-live-page-home-redesign-ailuxo.md) — 4 gemergt, 0 offen
+- [`claude/match-page-ui-improvements-0e9371`](./claude-match-page-ui-improvements-0e9371.md): 1 gemergt, 0 offen
+- [`claude/match-page-ui-improvements-0e9371-23f877`](./claude-match-page-ui-improvements-0e9371-23f877.md): 1 gemergt, 0 offen
 - [`claude/matchmaking-genre-filter-fix`](./claude-matchmaking-genre-filter-fix.md) — 1 gemergt, 0 offen
 - [`claude/merge-conflicts-ui-symbols-0b61av`](./claude-merge-conflicts-ui-symbols-0b61av.md) — 2 gemergt, 0 offen
 - [`claude/missing-game-genres-3z64jy`](./claude-missing-game-genres-3z64jy.md) — 1 gemergt, 0 offen
@@ -76,6 +82,7 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`claude/packliste-abhaken-ruckler-44nl8m`](./claude-packliste-abhaken-ruckler-44nl8m.md) — 1 gemergt, 0 offen
 - [`claude/packliste-push-notifications-ri4b3u`](./claude-packliste-push-notifications-ri4b3u.md) — 1 gemergt, 0 offen
 - [`claude/packliste-ticket-concept-40kaqe`](./claude-packliste-ticket-concept-40kaqe.md) — 1 gemergt, 0 offen
+- [`claude/packliste-ui-polish-9039c2`](./claude-packliste-ui-polish-9039c2.md): 1 gemergt, 0 offen
 - [`claude/pause-live-tracking-bug-uilj46`](./claude-pause-live-tracking-bug-uilj46.md) — 2 gemergt, 0 offen
 - [`claude/paypal-link-eingabe-vereinfachen-9yilwk`](./claude-paypal-link-eingabe-vereinfachen-9yilwk.md) — 2 gemergt, 0 offen
 - [`claude/pr-merge-order-p67vj8`](./claude-pr-merge-order-p67vj8.md) — 1 gemergt, 0 offen
@@ -109,10 +116,12 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`claude/test-coverage-analysis-ragd8i`](./claude-test-coverage-analysis-ragd8i.md) — 1 gemergt, 0 offen
 - [`claude/test-user-admin-setup-4ntv3z`](./claude-test-user-admin-setup-4ntv3z.md) — 3 gemergt, 0 offen
 - [`claude/tetris-arena-display-bugs-6kbxll`](./claude-tetris-arena-display-bugs-6kbxll.md) — 1 gemergt, 0 offen
+- [`claude/todo-ui-polish-37b1f5`](./claude-todo-ui-polish-37b1f5.md): 1 gemergt, 0 offen
 - [`claude/tool-spacing-buttons-i853pj`](./claude-tool-spacing-buttons-i853pj.md) — 2 gemergt, 0 offen
 - [`claude/tournament-lobby-features-yt5cgp`](./claude-tournament-lobby-features-yt5cgp.md) — 2 gemergt, 0 offen
 - [`claude/tournament-teams-consistency-lkkns1`](./claude-tournament-teams-consistency-lkkns1.md) — 1 gemergt, 0 offen
 - [`claude/tracking-tool-pause-feature-62phr2`](./claude-tracking-tool-pause-feature-62phr2.md) — 1 gemergt, 0 offen
+- [`claude/ui-polish-food-orders-0f1343`](./claude-ui-polish-food-orders-0f1343.md): 1 gemergt, 0 offen
 - [`claude/unbewertet-spieler-skill-anzeige-yn6zxv`](./claude-unbewertet-spieler-skill-anzeige-yn6zxv.md) — 1 gemergt, 0 offen
 - [`claude/user-management-concept-xbro77`](./claude-user-management-concept-xbro77.md) — 4 gemergt, 0 offen
 - [`claude/vote-history-sorting-gxnwr8`](./claude-vote-history-sorting-gxnwr8.md) — 1 gemergt, 0 offen
@@ -141,6 +150,7 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`codex/fix-game-combobox`](./codex-fix-game-combobox.md) — 1 gemergt, 0 offen
 - [`codex/fix-scribble-watch-rerender`](./codex-fix-scribble-watch-rerender.md) — 2 gemergt, 0 offen
 - [`codex/group-management`](./codex-group-management.md) — 1 gemergt, 0 offen
+- [`codex/home-current-variants`](./codex-home-current-variants.md): 1 gemergt, 0 offen
 - [`codex/p0-reliability`](./codex-p0-reliability.md) — 1 gemergt, 0 offen
 - [`codex/phase5c-seating-pings`](./codex-phase5c-seating-pings.md) — 1 gemergt, 0 offen
 - [`codex/pong-2v2-blobby-rules`](./codex-pong-2v2-blobby-rules.md) — 1 gemergt, 0 offen

@@ -241,15 +241,22 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   the canonical `feedback` icon from `domainIcons.js`) open the same feedback dialog over whatever
   view is open. It automatically captures the view that was open when the action was used, so a
   report never needs to explain where it happened. A submission picks one
-  of four distinct sentiments — Positiv, Negativ, Problem, Idee — through the shared
-  `.selection-toolbar` toggle rather than a free-text category, plus a message field. Admin's
-  Feedback section lists open submissions first and orders each state newest first. It filters them
-  by the same four sentiments plus „Alle“ through the shared `.chip`/`.chip.is-active` pattern
-  (mirroring Spiele's genre chips). Open entries expose the compact primary action „Erledigt“ through
-  `.btn.btn-sm.btn-primary`. Completed entries move into a separate, initially collapsed
-  „Erledigt“ section whose open state survives live re-renders; their secondary `.btn.btn-sm`
-  action „Wieder öffnen“ moves them back without deleting the original message or its captured
-  context.
+  of four distinct sentiments (Positiv, Negativ, Problem, Idee) through four equal-width toggle
+  buttons spanning the message field; the chosen one carries the blue outline and a second click
+  clears it. The message field starts as one line and grows with its text; „Senden“ is a compact
+  gradient button at the bottom right. Besides the sender, the entry stores the active Event and a
+  width bucket (Handy, Tablet, Desktop), never a user agent. Admin's Feedback page shows the open
+  entries in the always-open card „Offen“ and completed ones in the collapsed „Historie“ with a
+  counter, which disappears when empty and keeps its open state across live re-renders. Both use
+  the calm Durchsage table without column headers: the message cut at 40 characters, the sender
+  (own name bold), one muted meta line „Art · Seite · Zeit“ with the page name instead of its view
+  key, and one fixed action column. Open rows carry the compact neutral „Erledigt“; completed rows
+  have no row action. A toolbar like Spiele's offers „Feedback suchen“ (also matching the full
+  text), sorting by „Neueste“ or „Älteste“ and a filter menu by sentiment. Clicking a row opens a
+  detail dialog with the full message, sender, sentiment, page, Event, device, sent and completed
+  time, and the single action „Erledigt“ or „Wieder öffnen“, which moves an entry back without
+  deleting its message or captured context. There is no realtime push; „Aktualisieren“ reloads the
+  inbox.
 
 ## Mein Profil, Auswertung und Home
 

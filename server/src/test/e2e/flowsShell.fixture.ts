@@ -1333,15 +1333,15 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await feedbackAction.waitFor();
   assert.equal(await feedbackAction.evaluate((element) => element.tagName), 'BUTTON');
   assert.equal(await feedbackAction.textContent(), 'Erledigt');
-  assert.equal(
-    await feedbackAction.evaluate(
-      (element) =>
-        element.classList.contains('btn') &&
-        element.classList.contains('btn-sm') &&
-        element.classList.contains('btn-primary'),
-    ),
-    true,
+  // The row action is a compact neutral button; the gradient stays reserved
+  // for a page's one next step.
+  assert.deepEqual(
+    await feedbackAction.evaluate((element) => Array.from(element.classList).filter((name) => name.startsWith('btn'))),
+    ['btn', 'btn-sm'],
   );
+  // The meta line names the page, not its technical view key.
+  const feedbackRow = page.locator(`[data-feedback-entry="${feedbackId}"]`);
+  assert.match((await feedbackRow.locator('.broadcast-table-when').textContent()) ?? '', /^Problem · Home · /);
   assert.equal(await page.locator(`[data-admin-feedback-completed] [data-feedback-entry="${feedbackId}"]`).count(), 0);
   await feedbackAction.click();
   await page.waitForFunction(
@@ -1355,17 +1355,25 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await completedFeedback.evaluate((section) => (section as HTMLDetailsElement).open), false);
   await completedFeedback.locator('summary').click();
   await page.click('#admin-feedback-refresh');
-  await page.waitForFunction(() => {
-    const section = document.querySelector('[data-admin-feedback-completed]') as HTMLDetailsElement | null;
-    return Boolean(section?.open && section.querySelector('[data-feedback-resolution]'));
-  });
-  const reopenFeedbackAction = page.locator(`[data-feedback-resolution="${feedbackId}"]`);
+  await page.waitForFunction(
+    (id) => {
+      const section = document.querySelector('[data-admin-feedback-completed]') as HTMLDetailsElement | null;
+      return Boolean(section?.open && section.querySelector(`[data-feedback-detail="${id}"]`));
+    },
+    feedbackId,
+  );
+  // Completed rows carry no action; reopening is a rare step in the detail dialog.
+  assert.equal(await completedFeedback.locator('[data-feedback-resolution]').count(), 0);
+  await completedFeedback.locator(`[data-feedback-detail="${feedbackId}"]`).click();
+  const reopenFeedbackAction = page.locator('.modal [data-detail-resolution]');
+  await reopenFeedbackAction.waitFor();
+  assert.equal(await page.locator('.modal .broadcast-detail-message').textContent(), 'E2E Feedback zum Abhaken');
   assert.equal(await reopenFeedbackAction.textContent(), 'Wieder öffnen');
   await reopenFeedbackAction.click();
   await page.waitForFunction(
     (id) => {
       const entry = document.querySelector(`[data-feedback-entry="${id}"]`);
-      return Boolean(entry && !entry.closest('[data-admin-feedback-completed]'));
+      return Boolean(entry && !entry.closest('[data-admin-feedback-completed]') && !document.querySelector('.modal-backdrop'));
     },
     feedbackId,
   );
