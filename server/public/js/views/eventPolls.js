@@ -329,7 +329,7 @@ function renderResponseControl(poll, option) {
     return ratingScaleHtml({
       selected: draft[option.id],
       groupLabel: `Bewertung für ${optionLabel(option)}`,
-      valueLabel: (value) => (value === 0 ? '0 von 5, lehne ab' : `${value} von 5`),
+      valueLabel: (value) => (value === 0 ? '0 von 5, lehne ich ab' : `${value} von 5`),
       attributes: (value) => `data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"`,
     });
   }
@@ -449,11 +449,17 @@ function draftProgress(poll) {
   return `${selected} gewählt`;
 }
 
+// A chosen 0 is a deliberate rejection; the row says so beside the numbers.
+function rejectTagHtml(poll, option) {
+  if (poll.responseMode !== 'rating_1_5' || !poll.isInvitee || poll.status !== 'open' || !option.active) return '';
+  return responseDraftFor(poll)[option.id] === '0' ? '<span class="event-poll-tag event-poll-reject-tag">Lehne ich ab</span>' : '';
+}
+
 function renderOption(poll, option) {
   const link = optionUrl(option);
   const label = optionLabel(option);
   const win = option.isRecommended && poll.status !== 'open' && poll.status !== 'cancelled';
-  const badges = `${renderVoterStack(poll, option)}${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}`;
+  const badges = `${renderVoterStack(poll, option)}${rejectTagHtml(poll, option)}${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}`;
   // Fixed columns: name and note, result bar, voter avatars, answer buttons.
   return `
     <div class="event-poll-option${win ? ' is-winner' : ''}" data-poll-option="${escapeHtml(option.id)}">

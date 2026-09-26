@@ -157,7 +157,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   per-option rating from 1 to 5. It never exposes
   a participant picker because the accepted event roster is the single source of truth.
   A rating round uses the shared 0–5 number scale of Vote and Bock/Skill; 0 rejects the option,
-  lowers its average like any other value and is counted as „N lehnen ab“ beside it.
+  lowers its average like any other value and is counted as „N lehnen ab“ beside it. While
+  answering, a chosen 0 is marked „Lehne ich ab“ beside the numbers.
   While the viewer cannot see the interim result, the empty result column is dropped: the answer
   controls sit beside the option name and, from `--bp-lg`, two options share a row. Phones keep the
   stacked layout.

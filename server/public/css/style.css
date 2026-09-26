@@ -990,6 +990,9 @@ textarea {
   gap: var(--space-1);
   min-height: 24px;
 }
+.event-poll-reject-tag {
+  white-space: nowrap;
+}
 .event-poll-option-title-row {
   display: inline-flex;
   align-items: center;
