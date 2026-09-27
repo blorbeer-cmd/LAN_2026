@@ -18,7 +18,6 @@ import {
 } from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 
 let cache = null;
 let loading = false;
@@ -158,15 +157,12 @@ function carpoolMetaLine(c) {
 // server/src/routes/arrivals.ts) - otherwise, which carpool would their own
 // Ankunft/Abreise above sync with? `elsewhere` marks that they're already
 // committed to a *different* carpool of this direction, so the card offers
-// no "Eintragen" then. Joining and leaving share the same header slot.
+// no "Eintragen" then. Joining and leaving share the same header slot; the
+// driver gets "Bearbeiten" there, and deleting lives in that edit dialog.
 function carpoolHeaderAction(c, myId, elsewhere) {
   if (!myId) return '';
   if (c.driverId === myId) {
-    return actionMenuHtml(
-      `<button type="button" class="btn btn-sm" data-edit-carpool="${c.id}">Bearbeiten</button>
-       <button type="button" class="btn btn-sm btn-danger" data-remove-carpool="${c.id}">Löschen</button>`,
-      `Aktionen für ${c.label}`
-    );
+    return `<button type="button" class="btn btn-sm" data-edit-carpool="${c.id}">Bearbeiten</button>`;
   }
   if (c.members.some((m) => m.id === myId)) {
     return `<button type="button" class="btn btn-sm" data-leave-carpool="${c.id}">Austragen</button>`;
@@ -387,6 +383,7 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
           <input type="number" id="carpool-seats" min="1" max="8" value="${existing?.seatsTotal ?? 3}" />
         </div>
         <div class="arrivals-form-footer">
+          ${isEdit ? '<button type="button" class="btn btn-sm" data-carpool-delete>Löschen</button>' : ''}
           <button type="submit" class="btn btn-primary btn-sm">${isEdit ? 'Speichern' : 'Anlegen'}</button>
         </div>
       </form>
@@ -406,6 +403,19 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
         wireDateTimeField(el, 'carpool-start-at');
         wireDateTimeField(el, 'carpool-eta-at');
         wireDateTimeRange(el, 'carpool-start-at', 'carpool-eta-at');
+
+        el.querySelector('[data-carpool-delete]')?.addEventListener('click', async () => {
+          if (!(await confirmDialog('Fahrgemeinschaft löschen?', { confirmText: 'Löschen', danger: true }))) return;
+          try {
+            await api.arrivals.removeCarpool(existing.id, myId);
+            close();
+            dirty = true;
+            showToast('Fahrgemeinschaft gelöscht.');
+            ctx.rerender();
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
 
         el.querySelector('#carpool-form').addEventListener('submit', async (e) => {
           e.preventDefault();
@@ -479,7 +489,6 @@ export function renderArrivals(container, ctx) {
 
   if (!loaded) return;
 
-  wireActionMenus(container);
   container.querySelector('[data-arrivals-times]')?.addEventListener('toggle', (e) => {
     peopleListOpen = e.currentTarget.open;
   });
@@ -565,17 +574,4 @@ export function renderArrivals(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-remove-carpool]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Fahrgemeinschaft löschen?', { confirmText: 'Löschen', danger: true }))) return;
-      try {
-        await api.arrivals.removeCarpool(btn.dataset.removeCarpool, myId);
-        dirty = true;
-        showToast('Fahrgemeinschaft gelöscht.');
-        ctx.rerender();
-      } catch (err) {
-        showToast(err.message, { error: true });
-      }
-    });
-  });
 }

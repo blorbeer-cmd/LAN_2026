@@ -23,7 +23,7 @@ import {
 } from './authHelpers';
 import { StatefulE2EDiagnosticGuard } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
-import { openMoreViewEntry } from './navHelpers';
+import { activateAdminMode, openAdminCard, openMoreViewEntry, openUtilityView } from './navHelpers';
 
 export let BASE_URL: string;
 
@@ -146,14 +146,15 @@ export async function openAuswertungTab(tab: string): Promise<void> {
 }
 
 export async function ensureAdminMode(): Promise<void> {
-  await page.waitForSelector('#admin-mode-activate, #admin-tools-title');
-  const activateButton = page.locator('#admin-mode-activate');
-  if (await activateButton.count()) await activateButton.click();
-  await page.waitForSelector('#admin-banner:not([hidden])');
-  // setAdmin(true) exposes the persistent banner synchronously, while the
-  // admin view itself is rebuilt only after ctx.refresh() has finished. Wait
-  // for that second state as well so callers never inspect the old panel.
+  await activateAdminMode(page);
+  // The mode is switched in Mein Profil; callers continue on the Admin page,
+  // whose test-data card only exists once the mode is active.
+  await openUtilityView(page, 'admin');
   await page.waitForSelector('#admin-test-players-title');
+}
+
+export async function openAdminSection(section: string): Promise<void> {
+  await openAdminCard(page, section);
 }
 
 // Desktop exposes every Orga destination directly. Compact layouts retain

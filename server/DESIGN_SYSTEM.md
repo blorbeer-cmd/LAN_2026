@@ -472,10 +472,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
-  Profile and Meine Statistiken are one column of full-width cards on every width: their rows carry
-  one action or value each in a fixed right column, so a second page column adds nothing. Home and
-  Admin use explicit priority rows whose repeated participant/user collections become three columns
-  only in Desktop mode.
+  Profile, Meine Statistiken and Admin are one column of full-width cards on every width: their rows
+  carry one action or value each in a fixed right column, so a second page column adds nothing.
+  Inside a card, a longer list of short rows (Admin's tools, readiness checks, invitation links and
+  accounts) may fill two columns from `--bp-lg` with `.profile-rows-columns`, left column first like
+  a RankedList. Home uses explicit priority rows whose repeated participant collection becomes three
+  columns only in Desktop mode.
   Product-specific navigation, routes and layouts live in
   [Product rules](../docs/product/README.md).
 

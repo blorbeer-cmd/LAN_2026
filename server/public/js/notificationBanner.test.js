@@ -16,6 +16,21 @@ test('a notification link carries its event id so the deep link can switch works
   assert.match(html, /data-notification-event-id="lan-2026"/);
 });
 
+test('event and direct audience show as escaped pills', () => {
+  const html = entryHtml({ ...baseEntry, eventName: 'LAN <2026>', audience: 'direct' });
+
+  assert.match(html, /badge badge-event">LAN &lt;2026&gt;</);
+  assert.match(html, /badge badge-online">Für dich</);
+});
+
+test('the "Für dich" pill loses its accent once the entry is obsolete', () => {
+  const resolved = entryHtml({ ...baseEntry, audience: 'direct', resolvedAt: Date.now() - 1000 });
+  const expired = entryHtml({ ...baseEntry, audience: 'direct', expiresAt: Date.now() - 1000 });
+
+  assert.match(resolved, /badge badge-neutral">Für dich</);
+  assert.match(expired, /badge badge-neutral">Für dich</);
+});
+
 test('a food-order notification carries its order target', () => {
   const html = entryHtml({ ...baseEntry, url: '/#foodOrders/order-42' });
 
@@ -55,14 +70,14 @@ test('a resolved entry never reads as unread, even before it was opened', () => 
 
   assert.doesNotMatch(html, /is-unread/);
   assert.match(html, /is-obsolete/);
-  assert.match(html, /notification-center-meta">[^<]*· Beendet</);
+  assert.match(html, /badge badge-neutral">Obsolet</);
 });
 
 test('an expired-but-unresolved entry is labeled distinctly from a resolved one', () => {
   const html = entryHtml({ ...baseEntry, seen: false, resolvedAt: null, expiresAt: Date.now() - 1000 });
 
   assert.match(html, /is-obsolete/);
-  assert.match(html, /notification-center-meta">[^<]*· Abgelaufen</);
+  assert.match(html, /badge badge-neutral">Abgelaufen</);
 });
 
 test('an entry without a target view is only marked read when opened', () => {
@@ -84,5 +99,5 @@ test('a still-open entry with a future expiry is unaffected', () => {
 
   assert.match(html, /is-unread/);
   assert.doesNotMatch(html, /is-obsolete/);
-  assert.doesNotMatch(html, /Beendet|Abgelaufen/);
+  assert.doesNotMatch(html, /Obsolet|Abgelaufen/);
 });

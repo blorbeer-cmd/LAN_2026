@@ -24,7 +24,6 @@ Control-Selektoren und ihre Zuordnung stehen in der reinen
 | `arcade-segment` | [Controls](components/controls.md) | `public/css/arcade.css` |
 | `action-menu-trigger`, `action-menu-entry` | [Controls](components/controls.md) | `public/css/style.css` |
 | `number-stepper` | [Controls](components/controls.md) | `public/css/style.css` |
-| `data-row-action` | [Controls](components/controls.md) | `public/css/domains.css` |
 | `rosterPicker.js` | [RosterPicker](components/roster-picker.md) | `public/css/style.css`, `public/css/domains.css` |
 | `selectionSearch.js` | [SelectionSearch](components/selection-search.md) | `public/css/style.css` |
 | `modal.js` | [Modal](components/modal.md) | `public/css/overlays.css`; etablierte Präsentationsmodifier in `public/css/style.css` |

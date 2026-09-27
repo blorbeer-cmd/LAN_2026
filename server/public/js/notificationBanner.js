@@ -88,13 +88,15 @@ export function entryHtml(entry) {
   const target = feedLinkTarget(entry.url);
   const obsolete = isFeedEntryObsolete(entry);
   const unread = !entry.seen && !obsolete;
-  // Event, audience and state share one muted meta line instead of pills.
+  // Event, audience and state are pills in the meta line so they stay
+  // scannable at a glance; the time follows as muted text. "Für dich" only
+  // carries the accent while the entry is still relevant.
   const meta = [
-    entry.eventName ? escapeHtml(entry.eventName) : '',
-    `${formatDateTime(entry.createdAt)} Uhr`,
-    entry.audience === 'direct' ? 'Für dich' : '',
-    obsolete ? (entry.resolvedAt ? 'Beendet' : 'Abgelaufen') : '',
-  ].filter(Boolean).join(' · ');
+    entry.eventName ? `<span class="badge badge-event">${escapeHtml(entry.eventName)}</span>` : '',
+    entry.audience === 'direct' ? `<span class="badge ${obsolete ? 'badge-neutral' : 'badge-online'}">Für dich</span>` : '',
+    obsolete ? `<span class="badge badge-neutral">${entry.resolvedAt ? 'Obsolet' : 'Abgelaufen'}</span>` : '',
+    `<span class="notification-center-time">${formatDateTime(entry.createdAt)} Uhr</span>`,
+  ].join('');
   // The whole entry is the link: opening it marks it read. Entries without a
   // target view are only marked read.
   const openAttrs = view

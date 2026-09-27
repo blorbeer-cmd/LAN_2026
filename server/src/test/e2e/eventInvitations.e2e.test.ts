@@ -766,7 +766,22 @@ test('manager invites a member who accepts and both open clients update', async 
   const endedEventNote = ownerEventCard.locator('.event-participants-note');
   assert.equal(await endedEventNote.count(), 1);
   assert.match((await endedEventNote.textContent()) ?? '', /keine neuen Einladungen mehr möglich/);
-  await ownerEventCard.locator('.action-menu > summary').click();
+  // Ended, the card keeps only Bearbeiten and "Event wieder starten", which sit
+  // directly in its header instead of behind "Aktion".
+  assert.equal(await ownerEventCard.locator('.action-menu').count(), 0);
+  // On the narrowest phone the pair wraps below the badges as a whole instead
+  // of squeezing "Event wieder starten" into several lines or stacking badges.
+  await ownerPage.setViewportSize({ width: 320, height: 700 });
+  const narrowHeader = await ownerEventCard.locator('.event-card-header-side').evaluate((side) => ({
+    buttons: Array.from(side.querySelectorAll(':scope > .btn')).map((button) => Math.round(button.getBoundingClientRect().height)),
+    badgeRows: new Set(Array.from(side.querySelectorAll('.event-card-header-badges > .badge')).map((badge) => Math.round(badge.getBoundingClientRect().top))).size,
+    overflow: side.scrollWidth > side.clientWidth,
+  }));
+  await ownerPage.setViewportSize({ width: 1024, height: 800 });
+  assert.equal(narrowHeader.buttons.length, 2, JSON.stringify(narrowHeader));
+  assert.ok(narrowHeader.buttons.every((height) => height >= 31 && height <= 33), JSON.stringify(narrowHeader));
+  assert.equal(narrowHeader.badgeRows, 1, JSON.stringify(narrowHeader));
+  assert.equal(narrowHeader.overflow, false, JSON.stringify(narrowHeader));
 
   await ownerPage.click(`[data-restart-event="${eventId}"]`);
   await ownerPage.click('[data-confirm]');
