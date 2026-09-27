@@ -403,9 +403,8 @@ function attachMatchResults(draws: ReturnType<typeof parseDrawRow>[]): void {
 
 // GET /api/matchmaking/history - past draws for the active event (or an
 // explicit ?eventId=), newest first, optionally narrowed to one ?gameId=.
-// Includes both still-unrecorded draws (Team-Historie) and draws a result was
-// already entered for (Ergebnis-Historie, matchId set) — the frontend splits
-// them by matchId.
+// The full history includes still-unrecorded draws; kind=matches pages only
+// recorded results. Open draws are returned separately on the first page.
 matchmakingRouter.get('/history', (req, res) => {
   const { eventId, gameId, limit, kind, before, beforeId } = req.query;
   const scope = resolveRequestGroupEventScope(req, eventId);
@@ -431,6 +430,7 @@ matchmakingRouter.get('/history', (req, res) => {
   if (kind === 'matches') clauses.push('md.tournament_id IS NULL');
   const openClauses = [...clauses];
   const openParams = [...params];
+  if (kind === 'matches') clauses.push('md.match_id IS NOT NULL');
   if (before !== undefined) {
     clauses.push('(md.generated_at < ? OR (md.generated_at = ? AND md.id < ?))');
     params.push(Number(before), Number(before), beforeId as string);

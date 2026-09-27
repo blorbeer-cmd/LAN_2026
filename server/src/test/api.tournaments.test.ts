@@ -389,9 +389,9 @@ test('a Match draw becomes a tournament exactly once and is then frozen for sing
 
   assert.equal((await request(app).delete(`/api/tournaments/${created.body.id}`)).status, 204);
   const afterDelete = await request(app).get(`/api/matchmaking/history?gameId=${gameId}&kind=matches`);
-  const restored = afterDelete.body.history.find((entry: { id: string }) => entry.id === draw.body.id);
+  const restored = afterDelete.body.openDraws.find((entry: { id: string }) => entry.id === draw.body.id);
   assert.equal(restored.tournamentId, null);
-  assert.ok(afterDelete.body.openDraws.some((entry: { id: string }) => entry.id === draw.body.id));
+  assert.equal(afterDelete.body.history.some((entry: { id: string }) => entry.id === draw.body.id), false);
 });
 
 test('a draw with a recorded result cannot become a tournament', async () => {

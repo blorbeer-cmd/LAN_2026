@@ -773,6 +773,25 @@ flowTest('match history reports failed tournament and older-match requests', asy
     await page.unroute(tournamentsUrl);
   }
 
+  // A reload can select another catalog game than the previous flow used.
+  // Give this exact game one recorded result so the mocked next page remains
+  // meaningful now that open rerolls no longer occupy the match cursor.
+  const gameId = await page.inputValue('#mm-game');
+  const draw = await page.request.post(`${BASE_URL}/api/matchmaking`, {
+    data: { gameId, playerIds: [alice.id, bob.id], teamCount: 2 },
+  });
+  assert.equal(draw.status(), 200, await draw.text());
+  const drawn = await draw.json() as { id: string; teams: Array<{ players: Array<{ id: string }> }> };
+  const recorded = await page.request.post(`${BASE_URL}/api/matches`, {
+    data: {
+      gameId,
+      teams: drawn.teams.map((team) => ({ playerIds: team.players.map((player) => player.id) })),
+      winnerTeamIndex: 0,
+      drawId: drawn.id,
+    },
+  });
+  assert.equal(recorded.status(), 201, await recorded.text());
+
   const historyUrl = '**/api/matchmaking/history?*';
   await page.route(historyUrl, async (route) => {
     if (new URL(route.request().url()).searchParams.has('before')) {
