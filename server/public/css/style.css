@@ -3337,17 +3337,6 @@ button.draft-pool-player {
   font-size: var(--font-size-lg);
   line-height: var(--line-height-tight);
 }
-.kiosk-password-credential {
-  flex: 0 0 auto;
-}
-.kiosk-password-credential strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: var(--font-size-md);
-}
-.kiosk-open-link {
-  text-align: center;
-}
 .tournament-lobby-copy {
   width: var(--tap-target-size);
   min-height: var(--control-height);

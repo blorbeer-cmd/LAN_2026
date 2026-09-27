@@ -1794,12 +1794,16 @@ export const permanentVariants = [
     "reason": "Noninteractive 76px artwork belongs to the music-card structure."
   },
   {
-    "id": "kiosk-header-action",
+    "id": "kiosk-live-dot",
     "role": "structural-target",
-    "selector": ".kiosk-header-actions .btn",
+    "selector": ".kiosk-live-dot, .kiosk-live-dot.is-active",
     "owner": "public/css/kiosk.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Permanent 44px fullscreen action on the dedicated TV canvas."
+    "properties": [
+      "width",
+      "height"
+    ],
+    "reason": "Noninteractive 8px pagination indicator for the TV Live-Status roster rotation, not a control."
   },
   {
     "id": "kiosk-match-row",
@@ -1936,30 +1940,6 @@ export const permanentVariants = [
       "border-radius"
     ],
     "reason": "Existing game-selection card frame and inset; native checkbox owns its glyph."
-  },
-  {
-    "id": "kiosk-player-card",
-    "role": "composite-part",
-    "selector": ".kiosk-card .player-card, .kiosk-live-grid .player-card",
-    "owner": "public/css/kiosk.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "font-size",
-      "min-width",
-      "padding"
-    ],
-    "reason": "Read-only TV player surface retains the separate device-class text scale and inset."
-  },
-  {
-    "id": "kiosk-title",
-    "role": "composite-part",
-    "selector": ".kiosk-header .topbar-title",
-    "owner": "public/css/kiosk.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "font-size"
-    ],
-    "reason": "TV header keeps its documented title scale."
   },
   {
     "id": "kiosk-login-field",

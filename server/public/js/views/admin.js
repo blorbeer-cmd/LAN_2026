@@ -11,7 +11,7 @@ import { isAdmin, setAdmin } from '../admin.js';
 import { withStepUp } from '../reauth.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { profileRow } from '../profileRow.js';
+import { columnRowClass, profileRow } from '../profileRow.js';
 import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 import { getMyId } from '../whoami.js';
 import { currentGroup, refreshGroupContext } from '../groupContext.js';
@@ -612,16 +612,6 @@ function openTestPlayersDialog(ctx) {
     close();
     createTestUsers(count, ctx);
   });
-}
-
-// Row classes for a .profile-rows-columns list filled column by column: the
-// first and last row of each column drop their outer hairline and padding.
-function columnRowClass(index, count) {
-  const columnRows = Math.ceil(count / 2);
-  return [
-    index === 0 || index === columnRows ? 'is-column-top' : '',
-    index === columnRows - 1 || index === 2 * columnRows - 1 ? 'is-column-bottom' : '',
-  ].filter(Boolean).join(' ');
 }
 
 // Status as icon plus text; the icon carries the state color, the text keeps

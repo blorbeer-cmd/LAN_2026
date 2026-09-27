@@ -18,6 +18,7 @@ import { api } from '../api.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { state } from '../state.js';
 import { icon } from '../icons.js';
+import { columnRowClass, profileRow } from '../profileRow.js';
 import { avatarHtml, escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, normalizeDatetimeLocalMs, wireDateTimeField, wireDateTimeRange } from '../dateTimeField.js';
@@ -63,7 +64,7 @@ const TRACKING_BUTTON_HELP = `Schaltet die Erfassung für dieses Event ein und a
 const TRACKING_START_CONFIRM = (name) => `Tracking für „${name}“ starten? ${TRACKING_SCOPE_SENTENCE}`;
 const TRACKING_STOP_CONFIRM = (name) =>
   `Tracking für „${name}“ stoppen? Laufende Spielzeiten werden abgeschlossen und der Live-Status geleert; bereits erfasste Spielzeit und der Event-Workspace bleiben erhalten.`;
-const KIOSK_HELP = 'Jedes LAN-Event besitzt ein eigenes Kiosk-Konto. Alle Konten verwenden dasselbe gemeinsame Kiosk-Passwort und können ausschließlich die TV-Ansicht öffnen.';
+const KIOSK_HELP = 'Jedes LAN-Event hat ein eigenes Kiosk-Konto mit gemeinsamem Passwort. „Kiosk öffnen“ meldet es automatisch an.';
 const expandedEventParticipants = new Set();
 // Mirrors foodOrders.js's card-header-toggle pattern: an event card becomes
 // collapsible only once its list holds more than one card (a lone card gets
@@ -104,43 +105,46 @@ async function loadKioskPassword(ctx) {
 
 function renderKioskPasswordRow() {
   if (kioskPasswordState.status === 'loaded') {
-    return `<div class="tournament-lobby-credential kiosk-password-credential">
-      <span>Passwort</span><strong>${escapeHtml(kioskPasswordState.value)}</strong>
-      <button type="button" class="icon-btn tournament-lobby-copy" data-copy-kiosk-password title="Kiosk-Passwort kopieren" aria-label="Kiosk-Passwort kopieren">${icon('copy')}</button>
-    </div>`;
+    return profileRow({
+      title: 'Passwort',
+      meta: `<code>${escapeHtml(kioskPasswordState.value)}</code>`,
+      action: `<button type="button" class="icon-btn" data-copy-kiosk-password title="Kiosk-Passwort kopieren" aria-label="Kiosk-Passwort kopieren">${icon('copy')}</button>`,
+    });
   }
   if (kioskPasswordState.status === 'error') {
-    return `<div class="row-between">
-      <span class="muted" style="font-size:var(--font-size-xs);">Passwort konnte nicht geladen werden: ${escapeHtml(kioskPasswordState.error)}</span>
-      <button type="button" class="btn" data-retry-kiosk-password>Erneut versuchen</button>
-    </div>`;
+    return profileRow({
+      title: 'Passwort',
+      meta: `Konnte nicht geladen werden: ${escapeHtml(kioskPasswordState.error)}`,
+      action: `<button type="button" class="btn btn-sm" data-retry-kiosk-password>Erneut versuchen</button>`,
+    });
   }
-  return `<p class="muted" style="font-size:var(--font-size-xs);">Lädt…</p>`;
+  return profileRow({ title: 'Passwort', meta: 'Lädt' });
 }
 
 function renderKioskSection() {
-  const accounts = (state.managedEvents || [])
-    .filter((event) => event.eventType === 'lan' && !event.isBase && !event.isOutsideEvents)
-    .map((event) => {
+  const events = (state.managedEvents || []).filter(
+    (event) => event.eventType === 'lan' && !event.isBase && !event.isOutsideEvents,
+  );
+  const rows = events
+    .map((event, index) => {
       const username = `kiosk-${event.id}`;
-      return `
-        <div class="card stack">
-          <div class="row-between">
-            <strong>${escapeHtml(event.name)}</strong>
-            ${eventStatusBadgeHtml(event)}
-          </div>
-          <div>
-            <span class="field-label">Kiosk-Konto</span>
-            <code>${escapeHtml(username)}</code>
-          </div>
-          <a href="/kiosk.html?account=${encodeURIComponent(username)}" target="_blank" rel="noopener" class="btn btn-primary btn-block kiosk-open-link">Kiosk öffnen</a>
-        </div>`;
+      return profileRow({
+        title: escapeHtml(event.name),
+        meta: eventStatusBadgeHtml(event),
+        action: `<a href="/kiosk.html?account=${encodeURIComponent(username)}" target="_blank" rel="noopener" class="btn btn-sm kiosk-open-link">Kiosk öffnen</a>`,
+        className: columnRowClass(index, events.length),
+      });
     })
     .join('');
+  const columnRows = Math.ceil(events.length / 2);
   return `
     <section class="card stack grouped-page-section">
-      ${renderKioskPasswordRow()}
-      ${accounts || emptyStateHtml('Noch keine LAN-Events.')}
+      <div class="profile-rows">${renderKioskPasswordRow()}</div>
+      ${
+        events.length
+          ? `<div class="profile-rows profile-rows-columns profile-rows-divided" style="--profile-rows-count:${columnRows};">${rows}</div>`
+          : `<div class="profile-rows-divided">${emptyStateHtml('Noch keine LAN-Events.')}</div>`
+      }
     </section>
   `;
 }
@@ -1440,17 +1444,14 @@ export function renderOrgaKiosk(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        <h1 class="view-title title-with-info">
-          <span>TV-Kiosk</span>
-          ${infoTooltipHtml('orga-kiosk-help', 'TV-Kiosk', KIOSK_HELP)}
-        </h1>
+        <h1 class="view-title">TV-Kiosk</h1>
       </div>
+      <p class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(KIOSK_HELP)}</p>
     </div>
     <div class="grouped-page-sections">
       ${renderKioskSection()}
     </div>
   `;
-  wireInfoTooltips(container);
   container.querySelector('[data-retry-kiosk-password]')?.addEventListener('click', () => {
     loadKioskPassword(ctx);
   });
