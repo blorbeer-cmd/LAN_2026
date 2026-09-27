@@ -4,7 +4,7 @@
 // Sibling tests here intentionally share that state and run in order.
 
 import assert from 'node:assert/strict';
-import { createE2EAccount } from './authHelpers';
+import { createE2EAccount, waitForPlayerData } from './authHelpers';
 import {
   flowTest,
   registerFlowFixture,
@@ -194,16 +194,16 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.click('[data-mm-mode="draw"]');
   await page.waitForSelector('#mm-generate');
   await page.click('#mm-generate');
-  await page.waitForSelector('.team-card');
-  const teamCards = await page.locator('.team-card').count();
+  await page.waitForSelector('.matchmaking-new-draw .team-card');
+  const teamCards = await page.locator('.matchmaking-new-draw .team-card').count();
   assert.ok(teamCards >= 2, 'expected at least 2 team cards');
 
   // Neither of these two players rated the game, so both enter the draw with
   // the server's neutral fallback. That has to stay visible: each row shows
   // the parenthesized fallback, and every team header's total is the sum of
   // its own visible rows plus the count of unrated players.
-  assert.ok((await page.locator('.team-card .team-player .rating-unrated').count()) > 0);
-  const drawnTeams = await page.locator('.team-card').evaluateAll((cards) =>
+  assert.ok((await page.locator('.matchmaking-new-draw .team-card .team-player .rating-unrated').count()) > 0);
+  const drawnTeams = await page.locator('.matchmaking-new-draw .team-card').evaluateAll((cards) =>
     cards.map((card) => ({
       header: card.querySelector('.team-skill-total')?.textContent?.trim() ?? '',
       players: Array.from(card.querySelectorAll('.team-player .rating')).map(
@@ -464,27 +464,21 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     true,
     'the result form should not overflow at phone width'
   );
-  await page.check('#match-advanced');
-  assert.equal(await page.locator('.match-result-row').count(), 2);
+  await page.click('#match-form [data-result-mode="score"]');
+  assert.equal(await page.locator('#match-form .result-score-row').count(), 2);
   assert.equal(
     await page.locator('#match-form').evaluate((element) => element.scrollWidth <= element.clientWidth),
     true,
-    'advanced result fields should remain inside the result group'
+    'score rows should remain inside the result group'
   );
-  // The "Wert" field uses step="any" (arbitrary decimal scores) while "Platz"
-  // uses the default whole-number step — native stepUp()/stepDown() throws on
-  // a step="any" field, so the shared numberStepper.js click handler needs
-  // its own fallback there instead of silently doing nothing.
-  await page.click('[data-team-score="0"] + .number-stepper-steps .number-stepper-btn[aria-label="Wert erhöhen"]');
-  assert.equal(await page.locator('[data-team-score="0"]').inputValue(), '1');
-  await page.click('[data-team-rank="0"] + .number-stepper-steps .number-stepper-btn[aria-label="Wert erhöhen"]');
-  assert.equal(await page.locator('[data-team-rank="0"]').inputValue(), '1');
-  await page.uncheck('#match-advanced');
+  await page.fill('#admin-result-score-0', '1.5');
+  assert.equal(await page.locator('[data-result-rank="0"]').innerText(), '1');
+  await page.click('#match-form [data-result-mode="winner"]');
   const teamSelects = page.locator('[data-team-for]');
   await teamSelects.nth(0).selectOption('0');
   await teamSelects.nth(1).selectOption('1');
-  await page.check('input[name="winner"][value="0"]');
-  await page.click('#match-form button[type="submit"]');
+  await page.locator('#match-form label.tournament-result-pick:has(input[value="0"])').click();
+  await page.click('#match-form [data-result-save]');
   await page.waitForSelector('.lb-row');
   assert.ok((await page.locator('.lb-row').count()) >= 2);
   // The app can render its first data view before the stylesheet request has
@@ -706,16 +700,18 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   await openTeams();
   await page.click('#mm-generate');
   await openMatchmakingHistory();
-  await page.waitForSelector('[data-record-draw]');
-  await page.click('[data-record-draw]');
+  const openTile = page.locator('[data-history-toggle="open"]');
+  if (await openTile.getAttribute('aria-expanded') === 'false') await openTile.click();
+  assert.equal(await page.locator('.matchmaking-history-details .team-player .rating').count(), 0);
+  assert.ok(await page.locator('.matchmaking-history-details .team-skill-total').count() >= 2);
+  await page.click('.matchmaking-history-details [data-record-draw]');
 
-  // The draw's own result dialog saves "Unentschieden" with one click.
-  await page.waitForSelector('[data-draw-winner=""]');
-  await page.click('[data-draw-winner=""]');
+  await page.locator('.modal label.tournament-result-pick:has(input[value="-1"])').click();
+  await page.click('.modal [data-result-save]');
 
   await page.waitForFunction(() => !!document.querySelector('[data-edit-draw-result]'));
   await openMatchmakingHistory();
-  await page.waitForSelector('[data-draw-card] .tournament-fixture-score:has-text("Remis")');
+  await page.waitForSelector('.matchmaking-history-item .matchmaking-history-meta .tournament-fixture-score:has-text("Remis")');
 });
 
 flowTest('matchmaking Historie derives the winner from values entered in the draw result dialog', async () => {
@@ -725,22 +721,30 @@ flowTest('matchmaking Historie derives the winner from values entered in the dra
   await openTeams();
   await page.click('#mm-generate');
   await openMatchmakingHistory();
-  await page.waitForSelector('[data-record-draw]');
-  await page.click('[data-record-draw]');
+  const openTile = page.locator('[data-history-toggle="open"]');
+  if (await openTile.getAttribute('aria-expanded') === 'false') await openTile.click();
+  await page.click('.matchmaking-history-details [data-record-draw]');
 
-  await page.click('[data-draw-result-mode="values"]');
+  await page.click('[data-result-mode="score"]');
   await page.fill('#draw-result-score-0', '3');
   assert.equal(await page.inputValue('#draw-result-score-1'), '');
-  await page.click('[data-draw-result-values] button[type="submit"]');
+  await page.click('.modal [data-result-save]');
 
   await page.waitForFunction(() => !!document.querySelector('[data-edit-draw-result]'));
   await openMatchmakingHistory();
-  const winnerTeam = page.locator('[data-draw-card] .matchmaking-draw-team.is-winner').first();
+  const winnerTeam = page.locator('.matchmaking-history-team:not(.is-loser)').first();
   await winnerTeam.waitFor();
-  assert.equal(await winnerTeam.locator('.tournament-fixture-score:has-text("Win")').count(), 1);
-  assert.match(await winnerTeam.innerText(), /Platz 1 · Wert 3/);
-  const loserTeam = page.locator('[data-draw-card] .matchmaking-draw-team:not(.is-winner)').first();
-  assert.match(await loserTeam.innerText(), /Platz 2 · Wert 0/);
+  assert.equal(await winnerTeam.locator('.lb-rank.is-first').innerText(), '1');
+  assert.equal(await winnerTeam.locator('.matchmaking-history-team-score').innerText(), '3');
+  const loserTeam = page.locator('.matchmaking-history-team.is-loser').first();
+  assert.equal(await loserTeam.locator('.lb-rank').innerText(), '2');
+  assert.equal(await loserTeam.locator('.matchmaking-history-team-score').innerText(), '0');
+  await page.click('[data-history-filter="tournaments"]');
+  assert.equal(await page.getAttribute('[data-history-filter="tournaments"]', 'aria-pressed'), 'true');
+  assert.equal(await page.locator('.matchmaking-history-team').count(), 0);
+  await page.click('[data-history-filter="matches"]');
+  await page.waitForSelector('.matchmaking-history-item [data-edit-draw-result]');
+  assert.equal(await page.getAttribute('[data-history-filter="matches"]', 'aria-pressed'), 'true');
 });
 
 flowTest('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl Teams"', async () => {
@@ -775,6 +779,26 @@ flowTest('Ergebnis eintragen keeps a manual team reassignment after changing "An
   await page.waitForSelector('[data-team-for]');
   const reselected = page.locator(`[data-team-for="${firstPlayerId}"]`);
   assert.equal(await reselected.inputValue(), otherValue);
+});
+
+flowTest('Ergebnis eintragen keeps Frei-für-alle usable with more than six people', async () => {
+  for (let index = 1; index <= 7; index++) {
+    const created = await page.request.post(`${BASE_URL}/api/players`, { data: { name: `FFA Probe ${index}` } });
+    assert.equal(created.status(), 201);
+  }
+  await page.reload();
+  await waitForPlayerData(page);
+  await openAuswertungTab('leaderboard');
+  await page.click('#add-match-btn');
+  await page.check('#match-ffa');
+  const participants = page.locator('[data-ffa-player]');
+  assert.ok(await participants.count() > 6);
+  await page.locator('.modal label.tournament-result-pick:has(input[value="-1"])').click();
+  assert.equal(await page.locator('input[name="admin-result-winner"][value="-1"]').isChecked(), true);
+  await page.click('#match-form [data-result-mode="score"]');
+  assert.equal(await page.locator('#match-form .result-score-row').count(), await participants.count());
+  assert.equal(await page.locator('#match-form').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  await page.click('[data-close]');
 });
 
 flowTest('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed', async () => {

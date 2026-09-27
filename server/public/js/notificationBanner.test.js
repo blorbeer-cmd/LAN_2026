@@ -21,6 +21,15 @@ test('a food-order notification carries its order target', () => {
 
   assert.match(html, /data-notification-navigate="foodOrders"/);
   assert.match(html, /data-notification-target="order-42"/);
+  assert.match(html, /data-notification-target-type="order"/);
+});
+
+test('a tournament notification opens its exact detail route', () => {
+  const html = entryHtml({ ...baseEntry, url: '/#tournaments/cup-42' });
+
+  assert.match(html, /data-notification-navigate="tournaments"/);
+  assert.match(html, /data-notification-target="cup-42"/);
+  assert.match(html, /data-notification-target-type="tournament"/);
 });
 
 test('a notification without an event id yields an empty attribute, never the string "undefined"', () => {

@@ -378,7 +378,7 @@ test('GET /api/push/log hides entries the player was not a recipient of, and mar
   const matchReady = involved.body.entries.find((e: { title: string }) => /Match ist bereit/.test(e.title));
   assert.ok(matchReady, 'match-ready push must appear for a recipient');
   assert.equal(matchReady.audience, 'direct');
-  assert.equal(matchReady.url, '/#tournaments');
+  assert.equal(matchReady.url, `/#tournaments/${created.body.id}`);
 });
 
 test('a subscription that comes back as gone (410) is pruned', async (t) => {

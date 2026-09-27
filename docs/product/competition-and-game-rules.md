@@ -28,12 +28,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 
 ## Teams, Skill und Spielkatalog
 
-- **Team formation** — the „Teams“ tab of the „Match“ area. The view first asks for game and mode: one shared `<select>` picks the
+- **Team formation** — the direct „Match“ page. Running tournaments appear first, including during a live Captain Draft. The setup asks for game and mode: one shared `<select>` picks the
   game, followed by a `Modus` toggle (two `.btn`/`.btn-sm` buttons, `.btn-primary` marking the active
   one, `aria-pressed` conveying state beyond color) choosing between „Auslosung“ and „Captain Draft“.
   Only the chosen mode's form renders below, flat inside the same card (no nested panel and no
   accent rail, because only one mode is ever visible) — the two workflows never compete for space —
-  while the shared game picker and the loaded history stay visible regardless of mode. The mode
+  while the shared game picker and the loaded history stay visible regardless of mode. On wide views, game and mode share a row; the running-tournament cards use two columns. The mode
   toggle already names the open mode, so the form carries no visible repeated heading.
   Draw participants and draft participants are independent `.tournament-player-grid` checkbox
   selections; captains are then chosen only from the prepared draft roster. In Desktop mode these
@@ -64,23 +64,27 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   self-rating shows the matchmaking fallback in parentheses, so the visible value matches the one
   the draw balanced with, while the captain draft keeps the en dash because it never uses ratings.
   The title and accessible label retain the full term „Skill-Level“.
-  Open draws and recorded results share one newest-first „Historie“ because they are two states of
-  the same lineup. It starts collapsed through the shared collapsible-section component. Every
-  history card repeats its game name. A fresh draw appears under the heading „Neue Auslosung“; a
+  Open draws, recorded matches and tournaments share one „Historie“ for the selected game. It starts
+  collapsed and offers „Alle | Matches | Turniere“ filters. Match pages can load older entries;
+  tournament entries come from the complete tournament list. Every entry is a collapsed tile with
+  game, time, result and actions in its header; the last tile „Ohne Ergebnis“ groups all unplayed
+  draws without discarding them. Expanding a match shows teams by place without changing their
+  stored indices, and only each team's stored skill sum, never individual player skills. A fresh draw appears under the heading „Neue Auslosung“; a
   finished Captain Draft becomes the fresh draw on every device the same way.
   The winning team carries the green „Win“ chip and an accessible group label, the losing teams
   are muted and a drawn result shows „Remis“. Card actions sit in the card header: an open draw
   offers a neutral „+“ for a single result and, rightmost, „Turnier erstellen“ (the primary
   gradient on the fresh draw, neutral in Historie); a recorded draw offers „Rematch“ and a pencil;
-  a draw that became a tournament offers only a button named after its tournament that opens it.
+  a tournament tile offers „Turnier“ and opens its detail page.
   „Turnier erstellen“ opens one compact dialog: Turnierformat, the group fields for „Gruppenphase +
   K.O.“, one name field per team (a drafted team is prefilled as „Team <Captain>“, a drawn one as
   „Team 1“ …), the options side by side and the optional lobby base name and password. The server
   claims the draw in the same transaction that creates the tournament, so one lineup becomes either
   a single result or a tournament, never both (`409` for the loser of a race). Recording and editing share one compact result dialog: one
-  button per team plus „Unentschieden“ saves immediately, or „Mit Werten eintragen“ takes one value
-  per team from which the winner (unique highest value) and the places follow. An empty value field
-  counts as its „0“ placeholder; only a dialog without any entered value is rejected. Editing updates the
+  „Sieger“ and „Punktestand“ modes share one form with tournaments and the free Admin result. A native
+  single choice selects a team or „Unentschieden“; score rows show live places, with ties sharing a
+  place. The unique highest score wins. Empty score fields count as 0, but a completely empty score
+  form is rejected. Both modes save only after „Speichern“. Editing opens the saved mode and updates the
   existing match instead of creating a duplicate result, and „Rematch“ opens the same dialog. The
   free result form with game choice and „Frei-für-alle“ stays in Auswertung.
   A drawn lineup moves players by drag and drop on desktop; touch and phone layouts additionally
@@ -89,7 +93,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   still had to be placed in opposing teams.
 - **Player skill display** — `skillDisplay.js` renders the shared activity icon plus the selected
   game's skill value. Teams and Tournaments reuse it in participant selection, drawn-team previews,
-  live drafts, histories and tournament detail teams; the icon's tooltip and accessible label
+  live drafts and tournament detail teams; history shows only the team sum. The icon's tooltip and accessible label
   retain the full „Skill-Level“ meaning. Two call-site options decide what an honest value is:
   - `balanced` (default `true`) — the shown teams really were built from these ratings. A player
     without an own rating then shows the neutral matchmaking fallback dimmed and in parentheses
@@ -101,8 +105,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   - `balanced: false` — the captain draft, which picks by turn order and never reads ratings
     (`src/routes/draft.ts`). Its values are purely informational for the picking captain, so a
     missing rating stays an en dash („Noch kein Skill-Level eingetragen“) and neither the row nor
-    the total claims that anything counted with `3`. This covers the live draft board, the draft
-    participant/captain selections and drafted lineups in the history.
+    the total claims that anything counted with `3`. This covers the live draft board and the draft
+    participant/captain selections. Completion stores the then-current player ratings and team sum;
+    older draft entries without that snapshot show no skill in history.
   - `stored: true` — the player objects come from a persisted draw snapshot
     (`matchmaking_draws.teams`, the `POST /api/matchmaking` response) and carry the rating that
     draw used, `null` where there was none. Those values are shown as-is, so a self-rating entered
@@ -349,34 +354,29 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   ballot over.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
   closed and retains its open state across live re-renders.
-- **Tournament overview** — the „Turniere“ tab in the „Match“ area, whose first/default tab is
-  „Teams“; switching back to „Turniere“ from the tab row always returns to the
-  list rather than the tournament board that was last open. Tournaments have no creation form of
-  their own: every tournament starts from a draw or Captain Draft on „Teams“ (see „Team
-  formation“), so the list's „Turnier anlegen“ action leads there and a legacy `#tournaments/new`
-  link opens the list. A tournament's own detail page keeps
-  the area tabs above it, titles itself with an `h2` and needs no „Zurück“ action; a compact neutral
-  „Löschen“ sits beside the title while its confirmation dialog keeps the danger meaning. The page never carries two `h1` headings. `.tournament-list-grid` shows at most two tournament cards per row;
-  a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
-  active and completed tournaments as two prominent status rows without separate summary-stat
-  cards and with the standard gap between them. Tournament cards show the progress of a running
-  tournament („X/Y Partien“) and the winner of a completed one („Sieger: …“). The completed row
-  uses the shared collapsible-section presentation with a vertically centered header, starts
-  collapsed and retains its open state across view re-renders.
+- **Tournament overview** — Match lists running tournaments above its setup and all tournaments
+  of the selected game in the history filter. Every tournament starts from a Match draw or Captain
+  Draft; there is no separate creation page or tournament tab. Legacy `#tournaments` and
+  `#tournaments/new` routes replace themselves with `#matchmaking`. A tournament detail link keeps
+  its own `#tournaments/<id>` route, including search, Home and browser history navigation. The
+  detail page has no „Zurück“ action; a compact neutral „Löschen“ sits beside its title. A deleted
+  tournament link explains that the tournament is gone. The page never carries two `h1` headings.
   The detail page's meta line carries format, options, team and player counts and the decided
   matches („4 Teams · 15 Spieler · 0/3 entschieden“) instead of separate counter tiles. Below it
   follow „Aktive Lobbys“, the results and a collapsible „Teams“ card with its team count that
   starts closed and keeps its open state; team cards use at most two columns. Tournament results use plain cards without
   accent rails: a knockout bracket card, stacked „Tabelle“ and „Spielplan“ cards for a league, and
-  one card per group with its table and rounds plus a „K.O.-Runde“ card. Fixtures read like a
+  one card per group with its table and rounds plus a „K.O.-Runde“ card. A knockout phase with
+  exactly one fixture is a 1:1 row under „Finale“, including pure two-team knockout tournaments;
+  larger phases keep the bracket and a phase not yet created keeps its empty state. Fixtures read like a
   scoreboard (home team right-aligned, result chip centered, away team left-aligned); winners are
   emphasized and losers muted, with a green winner score or a „‹ Win“/„Win ›“ chip without a score.
   Tables show #, Team, Sp, S, U, N, +/− (only with scores) and Pkt; advancing group teams carry a
   „weiter“ marker. Every result action sits in a fixed trailing slot („+“ open, pencil recorded)
-  and opens one shared result dialog: two score fields (an empty one counts as its „0“ placeholder,
-  but at least one must be filled), or one button per team plus
-  „Unentschieden“ (not in knockout matches) that saves immediately. A decided final adds a
-  „Sieger“ box in the primary gradient beside the bracket. The last result completes the
+  and opens the common result form. The tournament's score setting fixes the mode: score rows
+  accept whole numbers from 0 and require at least one entry, while winner choices include
+  „Unentschieden“ except in knockout matches. Saving is always explicit. A decided final shows
+  its champion in the existing „Turnier beendet“ card. The last result completes the
   tournament automatically (no separate „Beenden“ action): a toast names the winner and the
   detail page then leads with a „Turnier beendet“ card showing the winning team (knockout final
   winner, or the league leader) with its „Win“ chip and players. „Aktive Lobbys“ is one card with its

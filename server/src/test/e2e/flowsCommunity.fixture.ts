@@ -396,7 +396,9 @@ flowTest('Captain-Draft: pick captains, run the live draft to completion', async
   // page top) with the usual "Ergebnis eintragen" follow-up available there.
   await page.waitForSelector('details.history-details:has(summary:has-text("Historie"))');
   await openMatchmakingHistory();
-  await page.waitForSelector('[data-record-draw]');
+  const openTile = page.locator('[data-history-toggle="open"]');
+  if (await openTile.getAttribute('aria-expanded') === 'false') await openTile.click();
+  await page.waitForSelector('.matchmaking-history-details [data-record-draw]');
 });
 
 flowTest('the device back button steps back through in-app views instead of leaving the tool', async () => {
