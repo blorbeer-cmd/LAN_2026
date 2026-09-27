@@ -70,14 +70,14 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   collapsed and offers „Alle | Matches | Turniere“ filters. Match pages can load older entries;
   tournament entries come from the complete tournament list. Every entry is a collapsed tile with
   game, time, result and actions in its header. Expanding a match shows teams by place without changing their
-  stored indices, and only each team's stored skill sum, never individual player skills. A fresh draw appears under the heading „Neue Auslosung“; a
+  stored indices, and each team's skill sum beside its name, never individual player skills. A fresh draw appears under the heading „Neue Auslosung“; a
   finished Captain Draft becomes the fresh draw on every device the same way.
   The winning team carries the green „Win“ chip and an accessible group label, the losing teams
   are muted and a drawn result shows „Remis“. Card actions sit in the card header: an open draw
   offers a neutral „+“ for a single result and, rightmost, „Turnier erstellen“ (the primary
   gradient on the fresh draw, neutral in the open section); a recorded draw offers a pencil before „Rematch“;
   every open or recorded game card also offers a trash action with confirmation. Removing a recorded draw removes its linked result from the ranking. A tournament tile offers „Turnier“ and a trash action using the existing tournament delete behavior; already recorded tournament matches remain in the ranking, and the confirmation explains this. Its expanded state shows tournament teams,
-  players and available standings or match totals. The result pencil precedes „Rematch“; tournament actions
+  players and available standings or match totals. A participating player's game title is bold in a collapsed Match tile; only their name is bold in expanded teams. Open draws show every player's skill. Completed tournament headers show the winning team with „Win“ and the tournament name; team details name places explicitly, including the finalist's second place, and put table points beside the team name. The result pencil precedes „Rematch“; tournament actions
   need no empty action slot.
   „Turnier erstellen“ opens one compact dialog: Turnierformat, the group fields for „Gruppenphase +
   K.O.“, one name field per team (a drafted team is prefilled as „Team <Captain>“, a drawn one as
@@ -97,7 +97,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   still had to be placed in opposing teams.
 - **Player skill display** — `skillDisplay.js` renders the shared activity icon plus the selected
   game's skill value. Teams and Tournaments reuse it in participant selection, drawn-team previews,
-  live drafts and tournament detail teams; history shows only the team sum. The icon's tooltip and accessible label
+  live drafts and tournament detail teams; history shows the team sum (current for tournaments and old drafts without a snapshot). The icon's tooltip and accessible label
   retain the full „Skill-Level“ meaning. Two call-site options decide what an honest value is:
   - `balanced` (default `true`) — the shown teams really were built from these ratings. A player
     without an own rating then shows the neutral matchmaking fallback dimmed and in parentheses
@@ -375,8 +375,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   scoreboard (home team right-aligned, result chip centered, away team left-aligned); winners are
   emphasized and losers muted, with a green winner score or a „‹ Win“/„Win ›“ chip without a score.
   League and group round fixtures use the same grouping and divider treatment. On wider views, fixture
-  pairings and table team cells place player names and the current team skill beside the team name, using the space toward the result or table figures. No historical tournament skill snapshot exists; missing ratings are identified instead of counted as a balancing fallback. Phones keep the compact names and skill.
-  The signed-in player's team is marked throughout fixtures, group and league tables, knockout bracket, champion and team cards; winner and loser states keep their own meaning.
+  pairings and table team cells place the current team skill directly beside the team name and player names on a new line. No historical tournament skill snapshot exists; missing ratings are identified instead of counted as a balancing fallback. Phones keep the compact names and skill.
+  The signed-in player's name alone is bold in fixtures, group and league tables, knockout bracket, champion and team cards; winner and loser states keep their own meaning.
   Tables show #, Team, Sp, S, U, N, +/− (only with scores) and Pkt; advancing group teams carry a
   „weiter“ marker. Every result action sits in a fixed trailing slot („+“ open, pencil recorded)
   and opens the common result form. Changing an earlier winner warns before later knockout pairings or results are reset; changing a group winner warns if the knockout phase already exists. Canceling keeps the result form usable. The tournament's score setting fixes the mode: score rows

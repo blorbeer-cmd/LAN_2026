@@ -1218,10 +1218,10 @@ export const components = [
   {
     "id": "bracket-state",
     "role": "composite-part",
-    "selector": ".is-tbd, .is-winner, .is-loser, .is-my-team",
+    "selector": ".is-tbd, .is-winner, .is-loser",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Bracket availability, outcome and own-team emphasis preserve the host geometry; only winner elevation may differ.",
+    "purpose": "Bracket availability and outcome preserve the host geometry; only winner elevation may differ.",
     "control": false,
     "properties": [
       "box-shadow"

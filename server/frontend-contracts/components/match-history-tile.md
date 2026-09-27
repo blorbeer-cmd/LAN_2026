@@ -30,13 +30,18 @@ eigenständiger Button neben den Aktionen; Aktionen werden nie darin verschachte
 
 ## 6. Komponenteneigene Invarianten
 
-Alle Kacheln beginnen geschlossen und behalten ihren Zustand bei einem Neuzeichnen. Ein gerade
+Alle Kacheln beginnen geschlossen und behalten ihren Zustand bei einem Neuzeichnen. Ist der
+angemeldete Spieler beteiligt, steht der Spielname im geschlossenen Kopf fett; im Detail wird
+nur sein Spielername fett. Ein gerade
 gespeichertes Ergebnis öffnet seine Kachel. Spielnamen kürzen nur visuell; der vollständige
 DOM-Text bleibt. Die Aktionsgruppe ist gleich hoch und darf auf schmalen Ansichten als Ganzes
-unter den Titel rücken. Teams stehen breit nebeneinander, bis zu vier Spalten. Matchteams
-zeigen nur ihre gespeicherte Skill-Summe; Turnierteams zeigen keine erfundene Skillsumme.
+unter den Titel rücken. Teams stehen breit nebeneinander, bis zu vier Spalten, auch in der neuen
+Auslosung. Matchteams zeigen ihre gespeicherte Skill-Summe; alte Drafts ohne Snapshot und
+Turnierteams zeigen ausdrücklich den aktuellen Team-Skill. Die Summe steht direkt am Teamnamen,
+Ergebnispunkte stehen in derselben Kopfzeile, Spielernamen darunter.
 Turnierkacheln laden beim Öffnen Teams, Spieler und verfügbare Ergebnisdaten nach; Fehler bieten
 einen erneuten Ladeversuch. „Ohne Ergebnis“ steht über der Historie und ist zu Beginn geschlossen.
+Beendete Turniere nennen Sieger und Platz zwei ausdrücklich; Ligateams zeigen ihre Tabellenplätze.
 Seine bearbeitbaren Auslosungen werden erst beim Aufklappen aufgebaut und beim Schließen
 wieder aus dem DOM entfernt; die Anzahl und Erreichbarkeit aller offenen Auslosungen bleiben erhalten.
 Laufende Turniere stehen dort ebenfalls; erst nach Abschluss wechseln sie in die Historie.

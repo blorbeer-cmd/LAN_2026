@@ -695,7 +695,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:calendar-day-state`: Calendar selection/today colors and inset emphasis preserve the day target.
 
-- `registry:bracket-state`: Bracket availability, outcome and own-team emphasis preserve the host geometry; only winner elevation may differ.
+- `registry:bracket-state`: Bracket availability and outcome preserve the host geometry; only winner elevation may differ.
 
 - `registry:rating-divergence-state`: Divergent suggestion only changes emphasis colors.
 
