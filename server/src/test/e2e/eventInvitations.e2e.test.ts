@@ -146,8 +146,11 @@ test('manager invites a member who accepts and both open clients update', async 
   // Info is a topbar dialog rather than a view, but loads the same event-scoped
   // data and therefore belongs in this check.
   await memberPage.click('#info-btn');
-  await memberPage.waitForSelector('#info-new-btn');
-  await memberPage.click('.info-board-modal [data-close]');
+  await memberPage.waitForSelector('.info-board-modal .info-board-dialog');
+  // Only group admins and owners maintain the entries.
+  assert.equal(await memberPage.locator('#info-new-btn').count(), 0);
+  await memberPage.keyboard.press('Escape');
+  await memberPage.waitForSelector('.info-board-modal', { state: 'detached' });
   await memberPage.waitForTimeout(300);
   assert.deepEqual(memberEventNotFoundResponses, []);
   assert.equal(await memberPage.locator('.toast-error', { hasText: 'Event nicht gefunden.' }).count(), 0);
