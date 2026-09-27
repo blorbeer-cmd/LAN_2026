@@ -1444,14 +1444,17 @@ export function renderOrgaKiosk(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        <h1 class="view-title">TV-Kiosk</h1>
+        <h1 class="view-title title-with-info">
+          <span>TV-Kiosk</span>
+          ${infoTooltipHtml('orga-kiosk-help', 'TV-Kiosk', KIOSK_HELP)}
+        </h1>
       </div>
-      <p class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(KIOSK_HELP)}</p>
     </div>
     <div class="grouped-page-sections">
       ${renderKioskSection()}
     </div>
   `;
+  wireInfoTooltips(container);
   container.querySelector('[data-retry-kiosk-password]')?.addEventListener('click', () => {
     loadKioskPassword(ctx);
   });
