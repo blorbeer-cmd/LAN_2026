@@ -18,6 +18,7 @@
 }
 
 #kiosk-root {
+  position: relative;
   height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -53,31 +54,43 @@
   color: var(--danger);
 }
 
-.kiosk-header {
+/* No header bar: nobody at the party operates this screen day to day, so
+   the dashboard gets that height back. Entering fullscreen still needs one
+   deliberate click (Esc only ever leaves it), so that control stays as a
+   plain white icon sitting where the broadcast banner's own date reads —
+   never a boxed button chrome-ing up the corner. */
+.kiosk-corner {
+  position: fixed;
+  /* Lines up with .kiosk-broadcast-time: that text sits inset by the
+     alerts margin (--space-5) plus the banner's own padding (--space-4),
+     vertically centered in the banner's line height. Both offsets are
+     computed from those same tokens so they track any future change to
+     either one instead of a re-measured magic number. */
+  top: calc(var(--space-7) + var(--space-1));
+  right: calc(var(--space-8) * 3);
+  z-index: 2;
+  opacity: 1;
+  transition: opacity var(--motion-fast);
+}
+/* Fullscreen only (see wireFullscreenControl in kiosk.js): idle out of
+   sight, back on the first mouse movement. Outside fullscreen this class
+   is never applied, so the corner stays put like any other page. */
+.kiosk-corner.is-idle-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kiosk-corner {
+    transition: none;
+  }
+}
+.kiosk-fullscreen-btn {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-5) var(--space-7);
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
-}
-.kiosk-header .topbar-title {
-  font-size: var(--font-size-xl);
-}
-.kiosk-header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-.kiosk-header-actions .btn {
-  min-height: var(--tap-target-size);
-}
-.kiosk-clock {
-  font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-xl);
-  color: var(--text-muted);
+  padding: var(--space-1);
+  border: none;
+  background: none;
+  color: var(--accent-text);
+  cursor: pointer;
 }
 .kiosk-grid {
   flex: 1;
@@ -219,10 +232,13 @@
   min-height: 0;
 }
 
-.kiosk-card .player-card,
-.kiosk-card .lb-row,
-.kiosk-card .vote-row {
+.kiosk-card .lb-row {
   font-size: var(--font-size-lg);
+}
+#kiosk-live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 /* 900px is intentionally its own value, not --bp-lg (860px): even a compact
@@ -240,37 +256,81 @@
 .kiosk-live-grid,
 .kiosk-ranking-grid,
 .kiosk-tournament-standings-grid,
-.kiosk-tournament-group-grid,
-.kiosk-match-grid {
+.kiosk-tournament-group-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
   gap: var(--space-2);
 }
-.kiosk-live-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.kiosk-live-grid .player-card {
-  min-width: 0;
-  padding: var(--space-2);
-}
-.kiosk-live-grid .player-card .row-between {
-  align-items: flex-start;
+/* Stacked, not side by side: a round with only one or two matches used to
+   leave the card looking mostly empty at only half its width in use. A
+   capped width keeps a lone match from stretching edge to edge. */
+.kiosk-match-grid {
+  display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
 }
-.kiosk-live-grid .player-name,
-.kiosk-standing-row strong,
-.kiosk-match-team strong {
+.kiosk-match-grid > .kiosk-match-card {
+  width: min(100%, calc(var(--selection-card-min-width) * 2));
+}
+.kiosk-live-grid {
+  /* Column count is a JS decision (settleLiveLayout in kiosk.js), not a CSS
+     width breakpoint: it picks the fewest columns that show the whole
+     roster without clipping, so it reacts to how many players there
+     actually are, not just how wide this card happens to be. */
+  grid-template-columns: repeat(var(--live-columns, 1), minmax(0, 1fr));
+  flex: 1;
+  min-height: 0;
+  /* No overflow:hidden here on purpose: it would clip its own content
+     against ITS box and hide that overflow from the parent's scrollHeight,
+     which is exactly what kiosk.js measures to decide whether to page. The
+     parent #kiosk-live already clips visually; this only controls what the
+     fit check can see. */
+  align-content: start;
+}
+.kiosk-live-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
-  /* In the live grid the name sits in a column flex with align-items:
-     flex-start, so it shrink-wraps to its own content width and grows past
-     the card instead of triggering the ellipsis. Capping it at the parent's
-     width keeps every name inside its card and lets the ellipsis work. */
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-elevated-2);
+  border-radius: var(--radius-sm);
+}
+.kiosk-live-row .player-name {
+  flex: 1;
+}
+.kiosk-live-row .badge {
+  flex-shrink: 0;
+}
+.kiosk-standing-row strong,
+.kiosk-match-team strong,
+.kiosk-live-row .player-name {
+  min-width: 0;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* One page's worth of players rotates in when the roster doesn't fit at
+   once (see renderLivePage in kiosk.js); a single page needs no dots. */
+.kiosk-live-dots {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding-top: var(--space-1);
+}
+.kiosk-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--border);
+}
+.kiosk-live-dot.is-active {
+  background: var(--accent);
 }
 .kiosk-ranking-grid .lb-row {
   padding: var(--space-2);
@@ -318,18 +378,15 @@
 .kiosk-vote-section-title {
   margin: 0;
 }
+/* A fixed Top 5 (see VOTE_ROWS_VISIBLE in kiosk.js): a flex stack rather
+   than a grid so rows keep their natural height instead of stretching to
+   fill — there's no fixed row count to divide the space by. */
 .kiosk-vote-results {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   flex: 1;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
   gap: var(--space-2);
-}
-.kiosk-vote-results.is-compact {
-  flex: 0 0 auto;
-  grid-auto-rows: auto;
-  align-content: start;
 }
 .kiosk-vote-result {
   display: grid;
@@ -413,12 +470,22 @@
   white-space: nowrap;
 }
 @media (max-height: 800px) { /* design-token-ok: short kiosk viewport keeps all four panels visible */
+  .kiosk-vote-overview {
+    gap: var(--space-1);
+  }
+  .kiosk-vote-header {
+    padding: var(--space-1) var(--space-3);
+  }
   .kiosk-vote-results {
-    gap: 0 var(--space-1);
+    gap: 0;
   }
   .kiosk-vote-result {
     padding: 0 var(--space-2);
+    border-width: 0;
     line-height: var(--line-height-tight);
+  }
+  .kiosk-vote-result + .kiosk-vote-result {
+    border-top-width: 1px;
   }
 }
 .kiosk-tournament-overview {
@@ -440,8 +507,14 @@
   display: flex;
   min-height: 0;
   flex: 1;
-  align-items: center;
+  /* flex-start, not center: stacked match cards (see .kiosk-match-grid) can
+     now be taller than this area on a short kiosk screen, and a centered
+     child that overflows its container spills equally in both directions —
+     up into the round header above it, not just down. Starting from the
+     top keeps any overflow clipped cleanly at the bottom instead. */
+  align-items: flex-start;
   justify-content: center;
+  overflow: hidden;
 }
 .kiosk-tournament-bracket-body .kiosk-match-grid {
   width: 100%;
@@ -509,12 +582,6 @@
 .kiosk-match-team.is-winner {
   box-shadow: inset var(--space-1) 0 0 var(--state-playing);
 }
-.kiosk-match-grid > :only-child {
-  grid-column: 1 / -1;
-  width: min(100%, calc(var(--selection-card-min-width) * 2));
-  justify-self: center;
-}
-
 /* Durchsage banner: full-width, impossible to miss — the whole point of a
    kiosk announcement is that people look up from their own screens. Uses
    the brand gradient so it reads as "the system speaks", pulses briefly. */
@@ -632,4 +699,19 @@
 
 .empty-state-kiosk-loading {
   padding: var(--space-8);
+}
+
+/* Same idea as the vote-results tightening above (a short 720p-class screen
+   leaves little vertical room): Rangliste and Turnier both draw a fixed row
+   count instead of rotating like Live-Status, so they need the same squeeze
+   to stay on-screen without clipping the last row or two. */
+@media (max-height: 800px) { /* design-token-ok: fixed kiosk dashboard breakpoint, same reasoning as the 900px width one above */
+  .kiosk-ranking-grid .lb-row,
+  .kiosk-tournament-standings-grid .kiosk-standing-row {
+    padding: var(--space-1) var(--space-2);
+  }
+  .kiosk-match-team {
+    min-height: 0;
+    padding: var(--space-1) var(--space-3);
+  }
 }

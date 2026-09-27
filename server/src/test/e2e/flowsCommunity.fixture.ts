@@ -521,7 +521,11 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   assert.equal(await page.inputValue('[data-kiosk-login] input[name="username"]'), `kiosk-${loginEvent.id}`);
   await page.fill('[data-kiosk-login] input[name="password"]', E2E_KIOSK_TOKEN);
   await page.click('[data-kiosk-login] button[type="submit"]');
-  await page.waitForSelector('.kiosk-header .brand-title');
+  // The dashboard carries no header/brand chrome any more (a clean TV
+  // display); the fullscreen corner control is the stable post-login anchor
+  // instead — it only exists once ensureAccess() kept the real dashboard
+  // markup rather than replacing it with the login form.
+  await page.waitForSelector('#kiosk-fullscreen');
 
   // Regression test for the review finding on ensureAccess(): this kiosk is
   // set up once with ?token=... and then left running unattended for the
@@ -565,7 +569,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   assert.equal((await page.request.delete(`${BASE_URL}/api/events/${loginEvent.id}`)).status(), 200);
 
   await page.goto(`${BASE_URL}/kiosk.html?token=${E2E_KIOSK_TOKEN}`);
-  assert.equal((await page.locator('.kiosk-header .brand-title').textContent())?.trim(), 'Respawn');
+  await page.waitForSelector('#kiosk-fullscreen');
   assert.deepEqual(
     await page.locator('#kiosk-dashboard > .kiosk-card > div').evaluateAll((contents) => contents.map((content) => content.id)),
     ['kiosk-live', 'kiosk-leaderboard', 'kiosk-votes', 'kiosk-tournament'],
@@ -598,8 +602,6 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     const text = document.querySelector('.kiosk-vote-header .badge')?.textContent ?? '';
     return /^1 \/ \d+ abgestimmt$/.test(text.trim());
   });
-  assert.equal(await page.locator('.kiosk-vote-results.is-compact').count(), 1);
-  assert.equal(await page.locator('.kiosk-vote-results.is-compact').evaluate((element) => getComputedStyle(element).flexGrow), '0');
   assert.equal(await page.locator('.kiosk-vote-header').evaluate((element) => getComputedStyle(element).alignItems), 'center');
   await page.waitForSelector('.kiosk-vote-result.is-concealed >> text=1 Stimme');
   assert.equal(await page.locator(`.kiosk-vote-result:has-text("${games[1].name}")`).count(), 0);
@@ -626,9 +628,12 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     tournamentBox && metaBox && Math.abs(tournamentBox.y - metaBox.y) < 4,
     'tournament game and round should remain at the top of the card content area'
   );
+  // Top-aligned, not centered: a bracket body that overflows (many stacked
+  // matches on a short kiosk screen) must clip at the bottom instead of
+  // spilling upward into the round metadata above it.
   assert.ok(
-    bracketBodyBox && matchGridBox && Math.abs(bracketBodyBox.y + bracketBodyBox.height / 2 - (matchGridBox.y + matchGridBox.height / 2)) < 4,
-    'tournament bracket should be vertically centered below its metadata'
+    bracketBodyBox && matchGridBox && Math.abs(bracketBodyBox.y - matchGridBox.y) < 4,
+    'tournament bracket should sit at the top of its bracket body'
   );
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight && document.body.scrollHeight <= window.innerHeight),
@@ -666,13 +671,15 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   await page.request.post(`${BASE_URL}/api/votes/points`, {
     data: {
       playerId,
-      // 0-5 points: one clear winner, every game scored so all ten show.
+      // 0-5 points: one clear winner, every game scored — the kiosk caps
+      // display at a fixed Top 5 (VOTE_ROWS_VISIBLE), so only the strongest
+      // five of these ten should ever render.
       entries: kioskGames.map((game, index) => ({ gameId: game.id, points: index === 0 ? 5 : Math.max(1, 4 - Math.floor((index - 1) / 2)) })),
     },
   });
-  await page.waitForSelector('.kiosk-vote-result:nth-child(10)');
-  assert.equal(await page.locator('.kiosk-vote-result').count(), 10);
-  assert.equal(await page.locator('.kiosk-vote-result.is-concealed').count(), 10);
+  await page.waitForSelector('.kiosk-vote-result:nth-child(5)');
+  assert.equal(await page.locator('.kiosk-vote-result').count(), 5, 'the kiosk shows a fixed Top 5, never all ten scored games');
+  assert.equal(await page.locator('.kiosk-vote-result.is-concealed').count(), 5);
   assert.ok(await page.locator('.kiosk-vote-result.is-concealed strong').evaluateAll((names) => {
     const lengths = names.map((name) => name.textContent?.length ?? 0);
     return new Set(lengths).size > 1;
@@ -689,16 +696,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       allVisible: resultBoxes.every((result) => result.top >= contentBox.top && result.bottom <= contentBox.bottom),
     };
   });
-  assert.equal(voteBounds.allVisible, true, `ten live vote results should remain visible inside the kiosk card: ${JSON.stringify(voteBounds)}`);
-  assert.ok(await page.locator('.kiosk-vote-results').evaluate((results) => {
-    const resultBox = results.getBoundingClientRect();
-    const parentBox = results.parentElement!.getBoundingClientRect();
-    return Math.abs(resultBox.bottom - parentBox.bottom) < 2;
-  }), 'live vote results should use the remaining card height');
-  const compactVoteRowHeight = (await page.locator('.kiosk-vote-result').first().boundingBox())!.height;
-  await page.setViewportSize({ width: 1280, height: 1080 });
-  const tallVoteRowHeight = (await page.locator('.kiosk-vote-result').first().boundingBox())!.height;
-  assert.ok(tallVoteRowHeight > compactVoteRowHeight * 2, 'tall kiosk cards should distribute their free height across vote rows');
+  assert.equal(voteBounds.allVisible, true, `the fixed Top 5 vote results should remain visible inside the kiosk card: ${JSON.stringify(voteBounds)}`);
   await page.request.post(`${BASE_URL}/api/votes/close`);
   await page.waitForSelector('.kiosk-vote-countdown >> text=Ergebnis in');
   assert.equal(await page.locator('.kiosk-vote-countdown .countdown-num-fill').textContent(), '5');
@@ -706,7 +704,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   assert.equal(await page.locator('.kiosk-vote-countdown .countdown-pop').count(), 1);
   assert.equal(await page.locator('.kiosk-vote-result').count(), 0);
   await page.waitForSelector('.kiosk-vote-final >> text=Ergebnis im Detail', { timeout: 7_000 });
-  assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result').count(), 10);
+  assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result').count(), 5, 'the revealed result also caps display at the fixed Top 5');
   assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result.is-concealed').count(), 0);
   assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result.is-leading').count(), 0);
   assert.deepEqual(await page.locator('.kiosk-vote-final-title').allTextContents(), ['Gewinner', 'Ergebnis im Detail']);
@@ -730,7 +728,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       const box = element.getBoundingClientRect();
       return box.top >= contentBox.top && box.bottom <= contentBox.bottom;
     });
-  }), true, 'winner and ten detailed results should remain visible at 720p');
+  }), true, 'winner and the fixed Top 5 detailed results should remain visible at 720p');
   await page.request.post(`${BASE_URL}/api/votes/start`, {
     data: { mode: 'single', title: 'Kiosk Ergebnis ausblenden', gameIds: [games[0].id] },
   });

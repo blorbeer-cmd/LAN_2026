@@ -15,3 +15,13 @@ export function profileRow({ title, meta = '', action = '', number = null, lead 
       <div class="profile-row-action">${action}</div>
     </div>`;
 }
+
+// Row classes for a .profile-rows-columns list filled column by column: the
+// first and last row of each column drop their outer hairline and padding.
+export function columnRowClass(index, count) {
+  const columnRows = Math.ceil(count / 2);
+  return [
+    index === 0 || index === columnRows ? 'is-column-top' : '',
+    index === columnRows - 1 || index === 2 * columnRows - 1 ? 'is-column-bottom' : '',
+  ].filter(Boolean).join(' ');
+}
