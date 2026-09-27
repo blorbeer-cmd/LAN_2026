@@ -658,7 +658,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:info-board-content-field`: The info entry content starts on one line and grows with its text up to eight control heights.
 
-- `registry:event-context-toggle`: On phones the topbar event switcher narrows its toggle to the chevron so the event name keeps its room and ends in an ellipsis.
+- `registry:event-context-toggle`: On phones the topbar event switcher keeps its toggle's tap target but sits the chevron at the right edge, so the event name keeps its room and ends in an ellipsis before it.
 
 - `registry:desktop-nav-indicator`: Internal active navigation indicator preserves the whole navigation target.
 

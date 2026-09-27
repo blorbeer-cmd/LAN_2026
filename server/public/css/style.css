@@ -651,15 +651,16 @@ textarea {
     max-width: 164px;
   }
   /* The phone topbar has no room for the chevron's full tap-target inset next
-     to the status icon: the toggle narrows to the chevron itself (the field
-     stays tappable as a whole), and a long event name ends in an ellipsis
-     before it instead of running underneath. */
+     to the status icon. The toggle keeps its tap target but drops the divider
+     and sits its chevron at the right edge; a long event name ends in an
+     ellipsis just before the chevron instead of running underneath it. */
   .event-context .search-select-control > input {
     padding-right: calc(var(--space-6) + var(--space-1));
     text-overflow: ellipsis;
   }
   .event-context .search-select-toggle {
-    width: var(--space-6);
+    justify-items: end;
+    padding-right: var(--space-1);
     border-left: 0;
   }
   /* The switcher only gets ~120px between the logo and the icon buttons, which

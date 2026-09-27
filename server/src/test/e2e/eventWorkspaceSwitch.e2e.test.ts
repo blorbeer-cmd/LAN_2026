@@ -215,7 +215,8 @@ test('an info board entry stays inside the event it was written in', async () =>
       return body !== null && !body.textContent?.includes('Lädt');
     });
     const text = await page.$eval('.modal-body', (el) => (el as HTMLElement).innerText);
-    await page.click('.modal [data-close]');
+    // Info is a reference dialog without a close button; Escape closes it.
+    await page.keyboard.press('Escape');
     await page.waitForSelector('.modal-body', { state: 'detached' });
     return text;
   }
@@ -627,7 +628,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await page.evaluate(() => { location.hash = '#seating'; });
   await page.waitForSelector('[data-home-event-overview]');
-  assert.equal(await page.locator('#seating-players-title').count(), 0);
+  assert.equal(await page.locator('#seating-pool-title').count(), 0);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await openView('home');
@@ -682,9 +683,9 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   // The seating editor exists for a LAN only, so its participant vocabulary is
   // asserted here — the general-event part above no longer reaches that view.
   await page.click('[data-navigate="seating"]');
-  await page.waitForSelector('#seating-players-title');
+  await page.waitForSelector('#seating-pool-title');
   const seating = await viewText();
-  assert.match(seating, /Teilnehmende/);
+  assert.match(seating, /Ohne Platz/);
   assert.doesNotMatch(seating, /Spieler/);
   await openView('eventPolls');
   await page.waitForSelector('#view-container[data-view="eventPolls"]');

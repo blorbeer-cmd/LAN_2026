@@ -2040,9 +2040,9 @@ export const permanentVariants = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
-      "width"
+      "padding-right"
     ],
-    "reason": "On phones the topbar event switcher narrows its toggle to the chevron so the event name keeps its room and ends in an ellipsis."
+    "reason": "On phones the topbar event switcher keeps its toggle's tap target but sits the chevron at the right edge, so the event name keeps its room and ends in an ellipsis before it."
   },
   {
     "id": "seating-count-field",
