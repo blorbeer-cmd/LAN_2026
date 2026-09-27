@@ -561,3 +561,50 @@ test('PATCH /api/matchmaking/draws/:id/move rejects once a result was recorded f
     .send({ playerId: ids[0], toTeamIndex: 1 });
   assert.equal(moved.status, 409);
 });
+
+test('DELETE /api/matchmaking/draws/:id removes open draws and recorded matches from history and ranking', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Delete Draw Card Game' });
+  const p1 = await request(app).post('/api/players').send({ name: 'DeleteDrawA' });
+  const p2 = await request(app).post('/api/players').send({ name: 'DeleteDrawB' });
+  const ids = [p1.body.id, p2.body.id];
+  const makeDraw = () => request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+
+  const open = await makeDraw();
+  assert.equal((await request(app).delete(`/api/matchmaking/draws/${open.body.id}`)).status, 204);
+  const afterOpen = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches`);
+  assert.equal(afterOpen.body.openDraws.some((draw: { id: string }) => draw.id === open.body.id), false);
+
+  const played = await makeDraw();
+  const recorded = await request(app).post('/api/matches').send({
+    gameId: game.body.id,
+    teams: played.body.teams.map((team: { players: Array<{ id: string }> }) =>
+      ({ playerIds: team.players.map((player) => player.id) })),
+    winnerTeamIndex: 0,
+    drawId: played.body.id,
+  });
+  assert.equal(recorded.status, 201);
+  assert.equal((await request(app).delete(`/api/matchmaking/draws/${played.body.id}`)).status, 204);
+  const afterPlayed = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches`);
+  assert.equal(afterPlayed.body.history.some((draw: { id: string }) => draw.id === played.body.id), false);
+  assert.equal(afterPlayed.body.openDraws.some((draw: { id: string }) => draw.id === played.body.id), false);
+  assert.equal(db.prepare('SELECT id FROM matches WHERE id = ?').get(recorded.body.id), undefined);
+  assert.deepEqual((await request(app).get(`/api/leaderboard?gameId=${game.body.id}`)).body.standings, []);
+});
+
+test('DELETE /api/matchmaking/draws/:id protects tournament-owned draws', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Delete Tournament Draw Guard' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 2), teamCount: 2 });
+  const tournament = await request(app).post('/api/tournaments').send({
+    gameId: game.body.id,
+    format: 'single_elimination',
+    drawId: draw.body.id,
+    teams: draw.body.teams.map((team: { players: Array<{ id: string }> }) =>
+      ({ playerIds: team.players.map((player) => player.id) })),
+  });
+  assert.equal(tournament.status, 201);
+  const deleted = await request(app).delete(`/api/matchmaking/draws/${draw.body.id}`);
+  assert.equal(deleted.status, 409);
+  assert.ok(db.prepare('SELECT id FROM tournaments WHERE id = ?').get(tournament.body.id));
+});

@@ -1023,7 +1023,7 @@ function wireSocket() {
     // A result was just recorded for this draw elsewhere — the "gerade
     // ausgelost" panel (if still showing that same draw) disappears too,
     // not just the history entry.
-    if (payload?.matchId && state.lastMatchmaking?.id === payload.id) {
+    if ((payload?.matchId || payload?.deleted) && state.lastMatchmaking?.id === payload.id) {
       state.lastMatchmaking = null;
     }
     if (currentView === 'matchmaking') renderCurrent();

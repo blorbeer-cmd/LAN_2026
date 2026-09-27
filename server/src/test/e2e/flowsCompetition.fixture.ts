@@ -757,8 +757,9 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   await openMatchmakingHistory();
   await page.waitForSelector('.matchmaking-history-item .matchmaking-history-meta .tournament-fixture-score:has-text("Remis")');
   const historyActions = await page.locator('.matchmaking-history-item:has([data-edit-draw-result]) .matchmaking-draw-actions').first()
-    .locator('button').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('data-edit-draw-result') !== null ? 'edit' : button.textContent?.trim()));
-  assert.deepEqual(historyActions, ['edit', 'Rematch']);
+    .locator('button').evaluateAll((buttons) => buttons.map((button) =>
+      button.hasAttribute('data-edit-draw-result') ? 'edit' : button.hasAttribute('data-delete-draw') ? 'delete' : button.textContent?.trim()));
+  assert.deepEqual(historyActions, ['edit', 'Rematch', 'delete']);
 });
 
 flowTest('matchmaking Historie derives the winner from values entered in the draw result dialog', async () => {
@@ -850,6 +851,109 @@ flowTest('match history reports failed tournament and older-match requests', asy
   } finally {
     await page.unroute(historyUrl);
   }
+});
+
+flowTest('match history keeps loaded older games after a realtime refresh', async (t) => {
+  await openTeams();
+  const gameId = await page.inputValue('#mm-game');
+  const draw = await page.request.post(`${BASE_URL}/api/matchmaking`, {
+    data: { gameId, playerIds: [alice.id, bob.id], teamCount: 2 },
+  });
+  assert.equal(draw.status(), 200, await draw.text());
+  const drawn = await draw.json() as { id: string; teams: Array<{ players: Array<{ id: string }> }> };
+  const result = await page.request.post(`${BASE_URL}/api/matches`, {
+    data: {
+      gameId,
+      teams: drawn.teams.map((team) => ({ playerIds: team.players.map((player) => player.id) })),
+      winnerTeamIndex: 0,
+      drawId: drawn.id,
+    },
+  });
+  assert.equal(result.status(), 201, await result.text());
+
+  const historyUrl = '**/api/matchmaking/history?*';
+  const baseTime = Date.now();
+  let addedNewMatch = false;
+  let template: Record<string, unknown> | null = null;
+  await page.route(historyUrl, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('gameId') !== gameId) return route.continue();
+    if (!template) {
+      const response = await route.fetch();
+      const payload = await response.json();
+      template = payload.history[0];
+      assert.ok(template, 'the selected game needs a real recorded match as a template');
+    }
+    const entries = Array.from({ length: 45 }, (_, index) => ({
+      ...template, id: `history-refresh-${index}`, generatedAt: baseTime - index * 1000,
+    }));
+    if (addedNewMatch) entries.unshift({ ...template, id: 'history-refresh-new', generatedAt: baseTime + 1000 });
+    const cursorId = url.searchParams.get('beforeId');
+    const start = cursorId ? entries.findIndex((entry) => entry.id === cursorId) + 1 : 0;
+    const limit = Number(url.searchParams.get('limit') || 20);
+    const history = entries.slice(start, start + limit);
+    const last = history.at(-1);
+    const nextCursor = start + limit < entries.length && last
+      ? { before: last.generatedAt, beforeId: last.id } : null;
+    await route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ history, nextCursor, openDraws: [] }) });
+  });
+  t.after(async () => {
+    await page.unroute(historyUrl);
+    await page.reload();
+  });
+
+  await page.reload();
+  await page.waitForSelector('#mm-generate');
+  await openMatchmakingHistory();
+  await page.locator('[data-history-more]').click();
+  await page.waitForFunction(() => document.querySelectorAll('.history-details .matchmaking-history-item:has([data-edit-draw-result])').length === 40);
+  await page.locator('[data-history-more]').click();
+  await page.waitForFunction(() => document.querySelectorAll('.history-details .matchmaking-history-item:has([data-edit-draw-result])').length === 45);
+  const oldest = await page.locator('.history-details .matchmaking-history-item:has([data-edit-draw-result]) [data-history-toggle]').last().getAttribute('data-history-toggle');
+  addedNewMatch = true;
+  const nextDraw = await page.request.post(`${BASE_URL}/api/matchmaking`, {
+    data: { gameId, playerIds: [alice.id, bob.id], teamCount: 2 },
+  });
+  assert.equal(nextDraw.status(), 200, await nextDraw.text());
+  const nextTeams = (await nextDraw.json() as { id: string; teams: Array<{ players: Array<{ id: string }> }> });
+  const nextResult = await page.request.post(`${BASE_URL}/api/matches`, {
+    data: {
+      gameId,
+      teams: nextTeams.teams.map((team) => ({ playerIds: team.players.map((player) => player.id) })),
+      winnerTeamIndex: 0,
+      drawId: nextTeams.id,
+    },
+  });
+  assert.equal(nextResult.status(), 201, await nextResult.text());
+  await page.waitForFunction(() => document.querySelectorAll('.history-details .matchmaking-history-item:has([data-edit-draw-result])').length === 46);
+  assert.equal(await page.locator('.history-details .matchmaking-history-item:has([data-edit-draw-result]) [data-history-toggle]').last().getAttribute('data-history-toggle'), oldest);
+  assert.equal(await page.locator('[data-history-more]').count(), 0);
+});
+
+flowTest('an open game can be deleted from its own card after confirmation', async () => {
+  await openTeams();
+  const gameId = await page.inputValue('#mm-game');
+  const response = await page.request.post(`${BASE_URL}/api/matchmaking`, {
+    data: { gameId, playerIds: [alice.id, bob.id], teamCount: 2 },
+  });
+  assert.equal(response.status(), 200, await response.text());
+  const draw = await response.json() as { id: string };
+  const openSection = page.locator('.matchmaking-open-draws');
+  await openSection.waitFor();
+  if (!(await openSection.evaluate((element) => (element as HTMLDetailsElement).open))) {
+    await openSection.locator('summary').click();
+  }
+  const deleteButton = openSection.locator(`[data-delete-draw="${draw.id}"]`);
+  await deleteButton.click();
+  await page.getByRole('alertdialog', { name: 'Spiel löschen' }).getByRole('button', { name: 'Löschen' }).click();
+  if (await page.locator('#reauth-form').isVisible()) {
+    await page.fill('#reauth-password', alice.password);
+    await page.locator('#reauth-form button[type="submit"]').click();
+  }
+  await deleteButton.waitFor({ state: 'detached' });
+  const history = await page.request.get(`${BASE_URL}/api/matchmaking/history?gameId=${gameId}&kind=matches`);
+  assert.equal((await history.json()).openDraws.some((entry: { id: string }) => entry.id === draw.id), false);
 });
 
 flowTest('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl Teams"', async () => {

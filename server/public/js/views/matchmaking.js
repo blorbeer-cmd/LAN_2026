@@ -17,6 +17,7 @@ import { emptyStateHtml } from '../emptyState.js';
 import { teamMoveControlHtml } from '../tournamentTeamDraft.js';
 import { filterRosterPicker, pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
 import { resultFormHtml, wireResultForm } from '../resultDialog.js';
+import { withStepUp } from '../reauth.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -145,14 +146,39 @@ async function loadHistory(gameId, ctx, { append = false } = {}) {
   historyLoading = true;
   historyStale = false;
   try {
-    const res = await api.matchmaking.history(gameId, {
-      kind: 'matches',
-      cursor: append ? historyCursor : null,
-    });
+    // Keep the oldest visible match as an anchor when a realtime event refreshes
+    // the list. A fresh first page alone would discard every page the user loaded.
+    const oldestId = !append && historyForGameId === gameId && historyCache?.length > 20
+      ? historyCache.at(-1).id : null;
+    const maxRows = oldestId ? historyCache.length + 50 : 20;
+    const loaded = [];
+    let cursor = append ? historyCursor : null;
+    let nextCursor = null;
+    let openDraws = null;
+    do {
+      const res = await api.matchmaking.history(gameId, {
+        kind: 'matches',
+        cursor,
+        limit: oldestId ? Math.min(50, maxRows - loaded.length) : 20,
+      });
+      if (version !== historyRequestVersion) return;
+      loaded.push(...res.history);
+      if (!cursor) openDraws = res.openDraws ?? [];
+      nextCursor = res.nextCursor;
+      const anchorIndex = oldestId ? loaded.findIndex((draw) => draw.id === oldestId) : -1;
+      if (anchorIndex !== -1) {
+        const last = loaded[anchorIndex];
+        const hasOlder = anchorIndex < loaded.length - 1 || nextCursor !== null;
+        loaded.length = anchorIndex + 1;
+        nextCursor = hasOlder ? { before: last.generatedAt, beforeId: last.id } : null;
+        break;
+      }
+      cursor = nextCursor;
+    } while (oldestId && cursor && loaded.length < maxRows);
     if (version === historyRequestVersion) {
-      historyCache = append ? [...(historyCache ?? []), ...res.history] : res.history;
-      if (!append) openDrawsCache = res.openDraws ?? [];
-      historyCursor = res.nextCursor;
+      historyCache = append ? [...(historyCache ?? []), ...loaded] : loaded;
+      if (!append) openDrawsCache = openDraws ?? [];
+      historyCursor = nextCursor;
       historyForGameId = gameId;
       historyError = false;
     }
@@ -284,7 +310,8 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
   if (collapsible) {
     const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span>
       <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
-    return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, actions,
+    const cardActions = `${actions}<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>`;
+    return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, cardActions,
       `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item');
   }
 
@@ -456,6 +483,49 @@ function openDrawTournamentDialog(draw) {
 }
 
 function wireDrawCards(container, ctx) {
+  container.querySelectorAll('[data-delete-draw]').forEach((btn) => btn.addEventListener('click', async () => {
+    const draw = findDrawById(btn.dataset.deleteDraw);
+    if (!draw) return;
+    const message = draw.matchId
+      ? 'Dieses Match-Ergebnis und seine Auslosung löschen? Das Ergebnis verschwindet auch aus der Rangliste.'
+      : 'Diese Auslosung löschen?';
+    if (!(await confirmDialog(message, { title: 'Spiel löschen', confirmText: 'Löschen', danger: true }))) return;
+    try {
+      const removed = await withStepUp(() => api.matchmaking.removeDraw(draw.id));
+      if (removed === undefined) return;
+      if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
+      openDrawsCache = openDrawsCache.filter((entry) => entry.id !== draw.id);
+      if (historyCache) historyCache = historyCache.filter((entry) => entry.id !== draw.id);
+      expandedHistoryIds.delete(draw.id);
+      expandedHistoryIds.delete(`o-${draw.id}`);
+      invalidateMatchmakingHistory();
+      ctx.rerender();
+      showToast('Spiel gelöscht.');
+    } catch (err) {
+      showToast(err.message, { error: true });
+    }
+  }));
+  container.querySelectorAll('[data-delete-tournament]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.dataset.deleteTournament;
+    const tournament = (tournamentCache ?? []).find((entry) => entry.id === id);
+    if (!tournament) return;
+    if (!(await confirmDialog(`Turnier „${tournament.name}“ löschen? Bereits gespeicherte Match-Ergebnisse bleiben in der Rangliste.`, {
+      title: 'Turnier löschen', confirmText: 'Löschen', danger: true,
+    }))) return;
+    try {
+      const removed = await withStepUp(() => api.tournaments.remove(id));
+      if (removed === undefined) return;
+      tournamentCache = (tournamentCache ?? []).filter((entry) => entry.id !== id);
+      tournamentDetailCache.delete(id);
+      expandedHistoryIds.delete(`t-${id}`);
+      invalidateMatchTournaments();
+      invalidateMatchmakingHistory();
+      ctx.rerender();
+      showToast('Turnier gelöscht.');
+    } catch (err) {
+      showToast(err.message, { error: true });
+    }
+  }));
   container.querySelectorAll('[data-draw-tournament]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const draw = findDrawById(btn.dataset.drawTournament);
@@ -635,7 +705,8 @@ function historyMatchHtml(draw) {
     : '<span class="tournament-fixture-score">Remis</span>';
   const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span> ${result} <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
   const actions = `<button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>
-    <button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>`;
+    <button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>
+    <button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Match löschen" title="Match löschen">${icon('trash')}</button>`;
   const order = draw.teams.map((team, index) => ({ team, index })).sort((a, b) => {
     if (a.team.rank != null || b.team.rank != null) return (a.team.rank ?? Infinity) - (b.team.rank ?? Infinity) || a.index - b.index;
     return Number(b.index === draw.winnerTeamIndex) - Number(a.index === draw.winnerTeamIndex) || a.index - b.index;
@@ -697,19 +768,26 @@ function historyTournamentDetailHtml(tournament) {
 function historyTournamentHtml(tournament) {
   const meta = `<span class="muted">${formatDateTime(tournament.createdAt)}</span> <span class="badge">Turnier</span>
     <span class="muted">${escapeHtml(tournament.name)} · ${tournament.championName ? `Sieger: ${escapeHtml(tournament.championName)}` : 'Läuft'}</span>`;
-  const actions = `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(tournament.id)}">Turnier</button>`;
+  const actions = `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(tournament.id)}">Turnier</button>
+    <button type="button" class="tournament-fixture-action" data-delete-tournament="${escapeHtml(tournament.id)}" aria-label="Turnier löschen" title="Turnier löschen">${icon('trash')}</button>`;
   return historyItemHtml(`t-${tournament.id}`, tournament.gameName, meta, actions,
     historyTournamentDetailHtml(tournament), 'is-tournament');
 }
 
 function renderOpenDraws(selectedGameId) {
   const draws = historyForGameId === selectedGameId ? openDrawsCache : [];
-  if (!draws.length) return '';
+  const tournaments = (tournamentCache ?? []).filter((tournament) =>
+    tournament.gameId === selectedGameId && tournament.status !== 'completed');
+  if (!draws.length && !tournaments.length) return '';
+  const summary = [
+    draws.length ? `${draws.length} Auslosungen` : null,
+    tournaments.length ? `${tournaments.length} laufende Turniere` : null,
+  ].filter(Boolean).join(' · ');
   return `<details class="card matchmaking-open-draws collapsible-section" ${openDrawsSectionOpen ? 'open' : ''}>
     <summary class="collapsible-section-header">
       <h2>Ohne Ergebnis</h2>
       <span class="collapsible-section-summary-end">
-        <span class="muted">${draws.length} Auslosungen, noch nicht gespielt</span>
+        <span class="muted">${summary}</span>
         <span class="badge badge-offline">Offen</span>
         <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
       </span>
@@ -719,7 +797,8 @@ function renderOpenDraws(selectedGameId) {
 }
 
 function renderHistory(selectedGameId) {
-  const tournaments = (tournamentCache ?? []).filter((tournament) => tournament.gameId === selectedGameId);
+  const tournaments = (tournamentCache ?? []).filter((tournament) =>
+    tournament.gameId === selectedGameId && tournament.status === 'completed');
   const matches = (historyForGameId === selectedGameId ? historyCache ?? [] : []).filter((draw) => draw.matchId);
   const items = [
     ...(historyFilter === 'tournaments' ? [] : matches.map((draw) => ({ time: draw.generatedAt, html: historyMatchHtml(draw) }))),
@@ -737,7 +816,7 @@ function renderHistory(selectedGameId) {
   return renderHistoryDetails('Historie', items.length, content);
 }
 
-function wireOpenDraws(container, ctx) {
+function wireOpenDraws(container, selectedGameId, ctx) {
   const section = container.querySelector('.matchmaking-open-draws');
   const openPanel = container.querySelector('#match-history-open');
   section?.querySelector('summary')?.addEventListener('click', () => {
@@ -750,10 +829,22 @@ function wireOpenDraws(container, ctx) {
   }
   function populateOpenDraws() {
     if (!openPanel || !section?.open || openPanel.dataset.rendered) return;
-    openPanel.innerHTML = openDrawsCache.map((draw) => renderDrawCard(draw, { editable: true, showGame: true, collapsible: true })).join('');
+    const tournaments = (tournamentCache ?? []).filter((tournament) =>
+      tournament.gameId === selectedGameId && tournament.status !== 'completed');
+    openPanel.innerHTML = [
+      ...openDrawsCache.map((draw) => renderDrawCard(draw, { editable: true, showGame: true, collapsible: true })),
+      ...tournaments.map(historyTournamentHtml),
+    ].join('');
     openPanel.dataset.rendered = 'true';
     wireHistoryItemToggles(openPanel, ctx);
     wireDrawCards(openPanel, ctx);
+    openPanel.querySelectorAll('[data-history-toggle^="t-"][aria-expanded="true"]').forEach((button) =>
+      loadHistoryTournamentDetail(button.dataset.historyToggle.slice(2), ctx));
+    openPanel.querySelectorAll('[data-retry-tournament-detail]').forEach((button) => button.addEventListener('click', () => {
+      const id = button.dataset.retryTournamentDetail;
+      tournamentDetailErrors.delete(id);
+      loadHistoryTournamentDetail(id, ctx);
+    }));
   }
   section?.addEventListener('toggle', () => {
     if (section.open) populateOpenDraws();
@@ -1082,7 +1173,7 @@ export function renderMatchmaking(container, ctx) {
 
   wireInfoTooltips(container);
   wireDrawCards(container, ctx);
-  wireOpenDraws(container, ctx);
+  wireOpenDraws(container, selectedGameId, ctx);
   wireHistory(container, selectedGameId, ctx);
   wireRosterPicker(container, {
     id: 'mm-draw-roster',

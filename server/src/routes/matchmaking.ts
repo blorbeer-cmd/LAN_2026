@@ -20,6 +20,9 @@ import {
 import { isIntInRange } from '../validation';
 import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
+import { requireGroupRole } from '../groupAuthorization';
+import { requireRecentReauthentication } from '../sessions';
+import { writeAdminAudit } from '../adminAudit';
 
 export const matchmakingRouter = Router();
 
@@ -468,6 +471,37 @@ matchmakingRouter.get('/history', (req, res) => {
         ORDER BY md.generated_at DESC, md.id DESC`).all(...openParams) as DrawRow[]).map(parseDrawRow)
     : undefined;
   res.json({ history: draws, openDraws, nextCursor: hasMore && last ? { before: last.generatedAt, beforeId: last.id } : null });
+});
+
+// Removing a card also removes its linked standalone leaderboard result.
+// A tournament-owned draw must go through the tournament delete flow instead.
+matchmakingRouter.delete('/draws/:id', requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
+  const draw = db.prepare(
+    'SELECT id, event_id, match_id, tournament_id FROM matchmaking_draws WHERE id = ? AND group_id = ?'
+  ).get(req.params.id, req.group!.id) as {
+    id: string; event_id: string; match_id: string | null; tournament_id: string | null;
+  } | undefined;
+  if (!draw) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, draw.event_id)) return;
+  if (draw.tournament_id) {
+    return res.status(409).json({ error: 'Diese Auslosung gehört zu einem Turnier. Bitte das Turnier separat löschen.' });
+  }
+
+  db.transaction(() => {
+    if (draw.match_id) db.prepare('DELETE FROM matches WHERE id = ? AND group_id = ?').run(draw.match_id, req.group!.id);
+    db.prepare('DELETE FROM matchmaking_draws WHERE id = ? AND group_id = ?').run(draw.id, req.group!.id);
+    writeAdminAudit({
+      actorPlayerId: req.player?.id,
+      groupId: req.group!.id,
+      action: 'matchmaking_draw_deleted',
+      targetType: 'matchmaking_draw',
+      targetId: draw.id,
+      details: { hadResult: Boolean(draw.match_id) },
+    });
+  })();
+  broadcast(Events.matchmakingDrawsChanged, { id: draw.id, deleted: true }, { groupId: req.group!.id, eventId: draw.event_id });
+  if (draw.match_id) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: draw.event_id });
+  res.status(204).end();
 });
 
 // PATCH /api/matchmaking/draws/:id/move - Feinschliff: move one player to a
