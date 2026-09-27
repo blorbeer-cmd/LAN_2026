@@ -23,6 +23,11 @@ export function createTournamentPresentation() {
     return t ? escapeHtml(t.name) : 'TBD';
   }
 
+  function teamMembers(teamsById, teamId) {
+    const players = teamsById.get(teamId)?.players ?? [];
+    return players.length ? escapeHtml(players.map((player) => player.name).join(', ')) : '';
+  }
+
   function activeLobbyPhaseLabel(tournament, match) {
     if (tournament.format === 'round_robin') return `Runde ${match.round}`;
     if (tournament.format === 'group_knockout' && match.stage === 'group') {
@@ -209,10 +214,17 @@ export function createTournamentPresentation() {
     }
     const nameA = teamLabel(teamsById, m.teamAId);
     const nameB = teamLabel(teamsById, m.teamBId);
+    const teamHtml = (teamId, won, home) => {
+      const members = teamMembers(teamsById, teamId);
+      return `<span class="${nameCls(won)}${home ? ' is-home' : ''}">
+        <span class="tournament-fixture-team-name">${teamLabel(teamsById, teamId)}</span>
+        ${members ? `<span class="tournament-fixture-team-players">${members}</span>` : ''}
+      </span>`;
+    };
     return `<div class="tournament-fixture" aria-label="${nameA} gegen ${nameB}">
-        <span class="${nameCls(aWon)} is-home">${nameA}</span>
+        ${teamHtml(m.teamAId, aWon, true)}
         ${center}
-        <span class="${nameCls(bWon)}">${nameB}</span>
+        ${teamHtml(m.teamBId, bWon, false)}
         ${resultActionHtml(m, t, 'tournament-fixture-action')}
       </div>`;
   }
@@ -254,9 +266,11 @@ export function createTournamentPresentation() {
     const rows = (standings || [])
       .map((s, i) => {
         const advances = i < advancers;
+        const members = teamMembers(teamsById, s.teamId);
         return `<tr class="${i === 0 && s.played > 0 ? 'is-leader' : ''}${advances ? ' is-advancing' : ''}">
           <td class="tournament-standings-rank">${i + 1}</td>
-          <td class="tournament-standings-team"><span class="tournament-standings-name">${teamLabel(teamsById, s.teamId)}</span>${advances ? '<span class="tournament-standings-advance">weiter</span>' : ''}</td>
+          <td class="tournament-standings-team"><span class="tournament-standings-name">${teamLabel(teamsById, s.teamId)}</span>${advances ? '<span class="tournament-standings-advance">weiter</span>' : ''}
+            ${members ? `<span class="tournament-standings-players">${members}</span>` : ''}</td>
           <td>${s.played}</td>
           <td>${s.wins}</td>
           <td>${s.draws}</td>
@@ -304,8 +318,12 @@ export function createTournamentPresentation() {
         return `
           <section class="card stack grouped-page-section tournament-board-card" aria-labelledby="tournament-group-${g.groupIndex}">
             <div class="grouped-page-section-title"><h2 id="tournament-group-${g.groupIndex}">Gruppe ${g.groupIndex + 1}</h2></div>
+            <h3 class="tournament-group-subtitle">Tabelle</h3>
             ${renderStandings(t, teamsById, groupMatches, g.standings, { advancers: t.advancersPerGroup ?? 0 })}
-            <div class="tournament-group-fixtures">${renderFixtures(t, teamsById, groupMatches)}</div>
+            <div class="tournament-group-fixtures">
+              <h3 class="tournament-group-subtitle">Spielplan</h3>
+              ${renderFixtures(t, teamsById, groupMatches)}
+            </div>
           </section>`;
       })
       .join('');

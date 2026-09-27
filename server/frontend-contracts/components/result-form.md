@@ -33,8 +33,11 @@ nicht ändern.
 
 Die beiden Modusknöpfe verwenden `btn btn-sm`, der aktive `btn-primary` und `aria-pressed`.
 Ein Ergebnis wird ausschließlich durch den kompakten, rechtsbündigen Knopf „Speichern“
-gesichert. Auswahllabels sind mindestens `--tap-target-size` hoch; Zahlenfelder nutzen die
-registrierte `result-fields`-Höhe. Gleiche Punkte teilen sich den Platz, Platz 1 nutzt nur
+gesichert. Auswahllabels sind mindestens `--tap-target-size` hoch und innerhalb einer Radiogruppe
+gleich hoch, auch „Unentschieden“. Die Auswahl markiert nur ein dezenter Akzentrahmen ohne
+Erfolgsfüllung. Beide Modusflächen belegen dieselbe Layoutfläche; die gerade inaktive ist nicht
+sichtbar, nicht fokussierbar und für Screenreader verborgen. So bleibt die Dialoghöhe beim Umschalten
+stabil. Zahlenfelder nutzen die registrierte `result-fields`-Höhe. Gleiche Punkte teilen sich den Platz, Platz 1 nutzt nur
 die goldene Rangzahl. Ein eindeutiger Höchstwert gewinnt. Leere Felder zählen als null;
 alle Felder leer sperrt das Speichern mit einer verständlichen Meldung. Während der Anfrage
 ist „Speichern“ gesperrt; ein Fehler erhält den Formularzustand.
@@ -58,7 +61,8 @@ sechs Personen als Frei-für-alle erfassen.
 
 ## 10. Prüfungen und Abnahmebeispiele
 
-E2E bei 390 und 1024 px: Radiowahl erst nach „Speichern“ wirksam, Punktestand und Rang live,
+E2E bei 390 und 1024 px: Radiowahl erst nach „Speichern“ wirksam, gleiche Höhe aller
+Radiokarten und stabile Dialoghöhe beim Moduswechsel, Punktestand und Rang live,
 Gleichstand, ungültige Punkte, K.-o. ohne Remis, Admin mit vielen Personen, Tastatur und
 kein horizontaler Überlauf. `resultRanks` prüft Gleichstände mit mindestens drei Teams.
 

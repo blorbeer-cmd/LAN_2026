@@ -22,14 +22,15 @@ export function resultFormHtml({ teams, prefix, mode = 'winner', fixedMode = fal
       <button type="button" class="btn btn-sm${scoreMode ? '' : ' btn-primary'}" data-result-mode="winner" aria-pressed="${!scoreMode}">Sieger</button>
       <button type="button" class="btn btn-sm${scoreMode ? ' btn-primary' : ''}" data-result-mode="score" aria-pressed="${scoreMode}">Punktestand</button>
     </div>`}
-    <div class="stack result-winner-list" role="radiogroup" aria-label="Sieger" data-result-winners ${scoreMode ? 'hidden' : ''}>
+    <div class="result-mode-panels">
+    <div class="stack result-winner-list" role="radiogroup" aria-label="Sieger" data-result-winners ${scoreMode ? 'inert aria-hidden="true" data-inactive' : ''}>
       ${choices.map((team) => `<label class="tournament-result-pick${team.index === -1 ? ' is-draw' : ''}${winnerIndex === team.index ? ' is-selected' : ''}">
         <input type="radio" class="visually-hidden" name="${escapeHtml(prefix)}-winner" value="${team.index}" ${winnerIndex === team.index ? 'checked' : ''} />
         <span>${escapeHtml(team.name)}</span>
         ${team.players?.length ? `<span class="tournament-result-pick-players">${escapeHtml(team.players.join(', '))}</span>` : ''}
       </label>`).join('')}
     </div>
-    <div class="stack result-score-list" data-result-scores ${scoreMode ? '' : 'hidden'}>
+    <div class="stack result-score-list" data-result-scores ${scoreMode ? '' : 'inert aria-hidden="true" data-inactive'}>
       ${teams.map((team, index) => `<div class="result-score-row">
         <span class="result-rank lb-rank" data-result-rank="${index}"></span>
         <label class="result-team-label" for="${escapeHtml(prefix)}-score-${index}">
@@ -38,6 +39,7 @@ export function resultFormHtml({ teams, prefix, mode = 'winner', fixedMode = fal
         </label>
         <input type="number" id="${escapeHtml(prefix)}-score-${index}" class="tournament-result-score" data-result-score="${index}" aria-label="Punktestand ${escapeHtml(team.name)}" ${integerScores ? 'min="0" step="1" inputmode="numeric"' : 'step="any" inputmode="decimal"'} placeholder="0" value="${scores[index] ?? ''}" />
       </div>`).join('')}
+    </div>
     </div>
     <div class="result-save-row"><button type="button" class="btn btn-primary btn-sm" data-result-save>Speichern</button></div>
   </div>`;
@@ -60,8 +62,13 @@ export function wireResultForm(root, { teams, mode = 'winner', allowDraw = true,
   function setMode(nextMode) {
     currentMode = nextMode;
     onModeChange?.(nextMode);
-    entry.querySelector('[data-result-winners]').hidden = nextMode === 'score';
-    entry.querySelector('[data-result-scores]').hidden = nextMode !== 'score';
+    for (const [selector, inactive] of [['[data-result-winners]', nextMode === 'score'], ['[data-result-scores]', nextMode !== 'score']]) {
+      const panel = entry.querySelector(selector);
+      panel.inert = inactive;
+      panel.toggleAttribute('data-inactive', inactive);
+      if (inactive) panel.setAttribute('aria-hidden', 'true');
+      else panel.removeAttribute('aria-hidden');
+    }
     entry.querySelectorAll('[data-result-mode]').forEach((button) => {
       const active = button.dataset.resultMode === nextMode;
       button.classList.toggle('btn-primary', active);
