@@ -166,8 +166,8 @@ export const VIEW_MANIFEST = Object.freeze({
     lifecycle: lifecycle('eventPolls', { eventScoped: true, invalidateOn: [CORE_REALTIME_EVENTS.events] }),
   }),
   kiosk: defineView({
-    label: 'TV-Kiosk', iconKey: 'monitor', requiresRole: 'admin', eventFeature: 'kiosk',
-    search: search('Bereich', 'TV-/Kiosk-Ansicht öffnen', 'admin einstellungen tv bildschirm dashboard kiosk-ansicht', 62),
+    label: 'Broadcast', iconKey: 'monitor', requiresRole: 'admin', eventFeature: 'kiosk',
+    search: search('Bereich', 'Broadcast-Ansicht öffnen', 'admin einstellungen tv bildschirm dashboard broadcast-ansicht', 62),
   }),
   analytics: defineView({
     label: 'Statistiken', section: 'insights', sectionOrder: 1, iconKey: 'chart', requiresRole: 'admin', deniedView: 'foodOrders', eventFeature: 'tracking',

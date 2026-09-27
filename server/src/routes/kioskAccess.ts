@@ -25,7 +25,7 @@ kioskAccessRouter.post('/login', (req, res) => {
 
   const { username, password } = req.body ?? {};
   if (!isNonEmptyString(username, 100) || typeof password !== 'string' || password.length < 1 || password.length > 200) {
-    return res.status(400).json({ error: 'Kiosk-Konto und Passwort sind erforderlich.' });
+    return res.status(400).json({ error: 'Broadcast-Konto und Passwort sind erforderlich.' });
   }
 
   const trimmedUsername = username.trim();
@@ -42,11 +42,11 @@ kioskAccessRouter.post('/login', (req, res) => {
   if (!account || !passwordValid) {
     recordLoginFailure(limiterKey);
     writeAdminAudit({ action: 'kiosk_login_failed', targetType: 'kiosk_account', targetId: trimmedUsername });
-    return res.status(401).json({ error: 'Kiosk-Konto oder Passwort ist falsch.' });
+    return res.status(401).json({ error: 'Broadcast-Konto oder Passwort ist falsch.' });
   }
 
   recordLoginSuccess(limiterKey);
-  const issued = issueKioskToken(account.groupId, account.eventId, null, `Kiosk-Konto ${account.username}`);
+  const issued = issueKioskToken(account.groupId, account.eventId, null, `Broadcast-Konto ${account.username}`);
   recordKioskLogin(account.eventId);
   writeAdminAudit({
     action: 'kiosk_login_succeeded',

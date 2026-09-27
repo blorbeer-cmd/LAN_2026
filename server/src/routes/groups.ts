@@ -91,7 +91,7 @@ groupsRouter.post('/:groupId/kiosk-tokens', requireGroupMembership, requireGroup
 });
 
 groupsRouter.delete('/:groupId/kiosk-tokens/:tokenId', requireGroupMembership, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
-  if (!revokeKioskToken(req.group!.id, req.params.tokenId)) return res.status(404).json({ error: 'Kiosk-Token nicht gefunden.' });
+  if (!revokeKioskToken(req.group!.id, req.params.tokenId)) return res.status(404).json({ error: 'Broadcast-Token nicht gefunden.' });
   // Delivery re-checks the token anyway; ending the sockets eagerly makes the
   // revocation visible on the shared screen immediately.
   disconnectKioskTokenSockets(req.params.tokenId);

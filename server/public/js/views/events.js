@@ -9,8 +9,8 @@
 // management actions stay owner/admin — a member gets read-only cards, since
 // only owner/admin receive `state.managedEvents` at all.
 //
-// TV-/Kiosk-Ansicht is a separate, standalone route (not an Orga tab): it is
-// reached only from Admin's "Kioskverwaltung" tool card, the same pattern
+// Broadcast is a separate, standalone route (not an Orga tab): it is
+// reached only from Admin's "Broadcast" tool card, the same pattern
 // Sitzplan uses (see seating.js).
 
 import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
@@ -64,7 +64,7 @@ const TRACKING_BUTTON_HELP = `Schaltet die Erfassung für dieses Event ein und a
 const TRACKING_START_CONFIRM = (name) => `Tracking für „${name}“ starten? ${TRACKING_SCOPE_SENTENCE}`;
 const TRACKING_STOP_CONFIRM = (name) =>
   `Tracking für „${name}“ stoppen? Laufende Spielzeiten werden abgeschlossen und der Live-Status geleert; bereits erfasste Spielzeit und der Event-Workspace bleiben erhalten.`;
-const KIOSK_HELP = 'Jedes LAN-Event hat ein eigenes Kiosk-Konto mit gemeinsamem Passwort. „Kiosk öffnen“ meldet es automatisch an.';
+const KIOSK_HELP = 'Jedes LAN-Event hat ein eigenes Broadcast-Konto mit gemeinsamem Passwort. „Broadcast öffnen“ meldet es automatisch an.';
 const expandedEventParticipants = new Set();
 // Mirrors foodOrders.js's card-header-toggle pattern: an event card becomes
 // collapsible only once its list holds more than one card (a lone card gets
@@ -84,7 +84,7 @@ const declinedOpen = { event: false, group: false };
 let acceptedInvitationHandoff = null;
 // Fetched once per session (the shared kiosk password is stable once
 // generated — see server/src/kioskAccounts.ts) and cached across successful
-// re-renders of the Kioskverwaltung tool. Transient failures remain retryable.
+// re-renders of the Broadcast tool. Transient failures remain retryable.
 let kioskPasswordState = { status: 'idle', value: '', error: null };
 
 globalThis.window?.addEventListener('respawn:identity-changed', () => {
@@ -108,7 +108,7 @@ function renderKioskPasswordRow() {
     return profileRow({
       title: 'Passwort',
       meta: `<code>${escapeHtml(kioskPasswordState.value)}</code>`,
-      action: `<button type="button" class="icon-btn" data-copy-kiosk-password title="Kiosk-Passwort kopieren" aria-label="Kiosk-Passwort kopieren">${icon('copy')}</button>`,
+      action: `<button type="button" class="icon-btn" data-copy-kiosk-password title="Broadcast-Passwort kopieren" aria-label="Broadcast-Passwort kopieren">${icon('copy')}</button>`,
     });
   }
   if (kioskPasswordState.status === 'error') {
@@ -122,16 +122,16 @@ function renderKioskPasswordRow() {
 }
 
 function renderKioskSection() {
-  const events = (state.managedEvents || []).filter(
-    (event) => event.eventType === 'lan' && !event.isBase && !event.isOutsideEvents,
-  );
+  const events = (state.managedEvents || [])
+    .filter((event) => event.eventType === 'lan' && !event.isBase && !event.isOutsideEvents)
+    .sort((a, b) => a.name.localeCompare(b.name, 'de', { numeric: true, sensitivity: 'base' }));
   const rows = events
     .map((event, index) => {
       const username = `kiosk-${event.id}`;
       return profileRow({
         title: escapeHtml(event.name),
         meta: eventStatusBadgeHtml(event),
-        action: `<a href="/kiosk.html?account=${encodeURIComponent(username)}" target="_blank" rel="noopener" class="btn btn-sm kiosk-open-link">Kiosk öffnen</a>`,
+        action: `<a href="/kiosk.html?account=${encodeURIComponent(username)}" target="_blank" rel="noopener" class="btn btn-sm kiosk-open-link">Broadcast öffnen</a>`,
         className: columnRowClass(index, events.length),
       });
     })
@@ -1430,12 +1430,12 @@ export function renderOrgaKiosk(container, ctx) {
     container.innerHTML = `
       <div class="more-subpage-header">
         <div class="more-subpage-title-row">
-          <h1 class="view-title">TV-Kiosk</h1>
+          <h1 class="view-title">Broadcast</h1>
         </div>
       </div>
       <div class="card stack">
         <strong>Nur für Admins verfügbar</strong>
-        <span class="muted">Dieses Konto hat keine Admin-Rechte für die Kioskverwaltung.</span>
+        <span class="muted">Dieses Konto hat keine Admin-Rechte für Broadcast.</span>
         <button type="button" class="btn btn-primary btn-block" data-navigate="more">Zu Mehr</button>
       </div>`;
     return;
@@ -1444,17 +1444,14 @@ export function renderOrgaKiosk(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        <h1 class="view-title title-with-info">
-          <span>TV-Kiosk</span>
-          ${infoTooltipHtml('orga-kiosk-help', 'TV-Kiosk', KIOSK_HELP)}
-        </h1>
+        <h1 class="view-title">Broadcast</h1>
       </div>
+      <p class="muted">${KIOSK_HELP}</p>
     </div>
     <div class="grouped-page-sections">
       ${renderKioskSection()}
     </div>
   `;
-  wireInfoTooltips(container);
   container.querySelector('[data-retry-kiosk-password]')?.addEventListener('click', () => {
     loadKioskPassword(ctx);
   });

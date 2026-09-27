@@ -27,7 +27,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   breaks shown as „ · “), the sender (one's own name bold), a short state text („Bis 07:43 Uhr“,
   „Beendet …“, „Abgelaufen …“) and a fixed action column with a neutral „Beenden“ for one's own
   running broadcasts. The whole row opens a detail dialog with the full message, its line breaks,
-  sender and times, where the creator can also end it. The Kiosk banner shows the message on up to
+  sender and times, where the creator can also end it. The Broadcast banner shows the message on up to
   two lines.
 - **Food orders** — Open and historical orders use one full-width nested card per row with the
   standard hairline border and no accent rails or state badges. The card header holds the title and,
@@ -103,8 +103,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   the selected workspace, while that view picks and creates the workspaces themselves, which is one
   level up (see [„Bereichsseiten und Mehr-Navigation“](navigation-and-account-rules.md#bereichsseiten-und-mehr-navigation)).
   Packliste is its own switchable area rather than part of „Aufgaben & Mitbringen“, so a workspace
-  can keep the shared To-Do board without a packing list. TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
-  „Kioskverwaltung“ tool card (see [„Admin tools“](navigation-and-account-rules.md#profile-und-admin)) since opening the shared-screen dashboard is an
+  can keep the shared To-Do board without a packing list. Broadcast is deliberately not an Orga tab — it lives only behind Admin's
+  „Broadcast“ tool card (see [„Admin tools“](navigation-and-account-rules.md#profile-und-admin)) since opening the shared-screen dashboard is an
   admin task, not something every member needs from Orga. „Mehr“ opens Orga on its first tab,
   „Umfragen“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
   top-left tab is the one actually selected on arrival; the already persisted push url `/#checklist`
@@ -401,13 +401,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   to reset the payment first.
   An optional date-only payment deadline starts reminders on that day; without one, contributions
   become eligible two hours after acceptance. Further reminders run at most once per rolling two-hour
-  window, using durable reminder state independent of push history. TV-Kiosk (Admin's „Kioskverwaltung“
+  window, using durable reminder state independent of push history. Broadcast (Admin's „Broadcast“
   card, not an Orga tab) stays one grouped section but lists one automatic account for every LAN
   event, including its stable `kiosk-<eventId>` username and a prefilled link to `/kiosk.html`.
+  Event rows sort alphabetically and fill the left column before the right column.
   The section leads directly with the shared login password itself (configured or generated once
   on first use — see server/OPERATIONS.md) as one compact label/value/copy-icon row, so admins never
-  need server/.env access just to read out a working kiosk login. It has no repeated explanation or
-  unscoped login action above the event cards. Each event card provides one primary `Kiosk öffnen`
+  need server/.env access just to read out a working broadcast login. The page explains the shared
+  password in one visible line below its title and has no unscoped login action above the event cards.
+  Each event card provides one primary `Broadcast öffnen`
   action with its account already selected. The standalone page shows a centered
   account/password card until its event-scoped credential is established; this identity never
   becomes a player or a regular app session.

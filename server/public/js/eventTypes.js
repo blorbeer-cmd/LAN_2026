@@ -2,7 +2,7 @@ const FALLBACK_EVENT_TYPE_OPTIONS = Object.freeze([
   Object.freeze({
     key: 'lan',
     title: 'LAN-Party',
-    description: 'Vollständiger LAN-Funktionsumfang mit Spielen, Wettkampf, Arcade, Tracking und Kiosk.',
+    description: 'Vollständiger LAN-Funktionsumfang mit Spielen, Wettkampf, Arcade, Tracking und Broadcast.',
   }),
   Object.freeze({
     key: 'general',

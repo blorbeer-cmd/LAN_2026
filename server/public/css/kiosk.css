@@ -61,12 +61,9 @@
    never a boxed button chrome-ing up the corner. */
 .kiosk-corner {
   position: fixed;
-  /* Lines up with .kiosk-broadcast-time: that text sits inset by the
-     alerts margin (--space-5) plus the banner's own padding (--space-4),
-     vertically centered in the banner's line height. Both offsets are
-     computed from those same tokens so they track any future change to
-     either one instead of a re-measured magic number. */
-  top: calc(var(--space-7) + var(--space-1));
+  /* The browser-measured icon and timestamp centers align at 1280x720.
+     The token-based offset also follows the banner's vertical spacing. */
+  top: calc(var(--space-5) + var(--space-3) / 2);
   right: calc(var(--space-8) * 3);
   z-index: 2;
   opacity: 1;
@@ -262,18 +259,18 @@
   align-content: start;
   gap: var(--space-2);
 }
-/* Stacked, not side by side: a round with only one or two matches used to
-   leave the card looking mostly empty at only half its width in use. A
-   capped width keeps a lone match from stretching edge to edge. */
+/* Match cards share each row when space allows and wrap on narrow screens. */
 .kiosk-match-grid {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: flex-start;
   gap: var(--space-2);
   width: 100%;
 }
 .kiosk-match-grid > .kiosk-match-card {
-  width: min(100%, calc(var(--selection-card-min-width) * 2));
+  flex: 1 1 var(--selection-card-min-width);
+  max-width: calc(var(--selection-card-min-width) * 2);
 }
 .kiosk-live-grid {
   /* Column count is a JS decision (settleLiveLayout in kiosk.js), not a CSS
@@ -288,7 +285,7 @@
      which is exactly what kiosk.js measures to decide whether to page. The
      parent #kiosk-live already clips visually; this only controls what the
      fit check can see. */
-  align-content: start;
+  align-content: stretch;
 }
 .kiosk-live-row {
   display: flex;
@@ -298,6 +295,11 @@
   padding: var(--space-2) var(--space-3);
   background: var(--bg-elevated-2);
   border-radius: var(--radius-sm);
+}
+#kiosk-live.is-compact .kiosk-live-row {
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
 }
 .kiosk-live-row .player-name {
   flex: 1;
@@ -507,7 +509,7 @@
   display: flex;
   min-height: 0;
   flex: 1;
-  /* flex-start, not center: stacked match cards (see .kiosk-match-grid) can
+  /* flex-start, not center: wrapped match cards (see .kiosk-match-grid) can
      now be taller than this area on a short kiosk screen, and a centered
      child that overflows its container spills equally in both directions —
      up into the round header above it, not just down. Starting from the

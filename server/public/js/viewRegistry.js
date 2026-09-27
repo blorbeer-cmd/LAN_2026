@@ -59,7 +59,7 @@ export const VIEW_REGISTRY = createViewRegistry({
   // organise work inside, so it owns its own header (see renderOrgaEvents).
   events: renderOrgaEvents,
   eventPolls: inSection('eventPolls', renderEventPolls),
-  // Not an Orga tab — reached only from Admin's "Kioskverwaltung" tool card,
+  // Not an Orga tab — reached only from Admin's "Broadcast" tool card,
   // like Sitzplan (see renderOrgaKiosk).
   kiosk: renderOrgaKiosk,
   admin: renderAdmin,

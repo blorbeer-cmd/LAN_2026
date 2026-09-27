@@ -86,7 +86,7 @@ export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
     },
     {
       title: 'Jam',
-      text: 'Hier sucht ihr Spotify-Titel und Playlists und fügt Songwünsche hinzu. Mehrere Wünsche könnt ihr außerhalb einer laufenden Playlist sortieren. Ein Musik-PC oder Kiosk steuert Spotify; nur dort ist ein Spotify-Premium-Konto nötig.',
+      text: 'Hier sucht ihr Spotify-Titel und Playlists und fügt Songwünsche hinzu. Mehrere Wünsche könnt ihr außerhalb einer laufenden Playlist sortieren. Ein Musik-PC oder Broadcast steuert Spotify; nur dort ist ein Spotify-Premium-Konto nötig.',
       view: 'music',
       target: navigationTarget('music', { compactFallback: 'more' }),
     },

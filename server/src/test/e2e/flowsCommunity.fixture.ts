@@ -9,6 +9,7 @@ import {
   flowTest,
   registerFlowFixture,
   BASE_URL,
+  browser,
   page,
   adminCookie,
   alice,
@@ -463,7 +464,7 @@ flowTest('Aktuell: an open vote appears as a compact navigation row on Home', as
   await page.waitForSelector('#votes-start');
 });
 
-flowTest('Kiosk: centers tournament content and shows only the latest feature push across the full width', async () => {
+flowTest('Broadcast: fits live players and tournament matches while showing the latest feature push', async () => {
   const playerId = alice.id;
 
   // Send a Durchsage first, then trigger a different feature's push (opening
@@ -474,6 +475,9 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   });
   const opponent = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'Kiosk Gegner' } });
   const opponentId = (await opponent.json()).id;
+  const otherPlayers = await Promise.all(['Kiosk Gegner 2', 'Kiosk Gegner 3'].map((name) =>
+    page.request.post(`${BASE_URL}/api/players`, { data: { name } })));
+  const otherPlayerIds = await Promise.all(otherPlayers.map(async (response) => (await response.json()).id));
   const games = await (await page.request.get(`${BASE_URL}/api/games`)).json();
   await page.request.post(`${BASE_URL}/api/votes/start`, {
     data: { mode: 'points', title: 'Kiosk Vote', gameIds: [games[0].id, games[1].id] },
@@ -493,6 +497,8 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       teams: [
         { name: 'Kiosk Team Blau', playerIds: [playerId] },
         { name: 'Kiosk Team Pink', playerIds: [opponentId] },
+        { name: 'Kiosk Team Grün', playerIds: [otherPlayerIds[0]] },
+        { name: 'Kiosk Team Gelb', playerIds: [otherPlayerIds[1]] },
       ],
     },
   });
@@ -581,6 +587,14 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   await page.waitForSelector('#kiosk-broadcast:not([hidden]) >> text=Neue Sammelbestellung');
   await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('.kiosk-broadcast-time');
+  const alignment = await page.evaluate(() => {
+    const button = document.querySelector('#kiosk-fullscreen')!.getBoundingClientRect();
+    const icon = document.querySelector('#kiosk-fullscreen .ui-icon')!.getBoundingClientRect();
+    const time = document.querySelector('.kiosk-broadcast-time')!.getBoundingClientRect();
+    return { buttonCenter: button.y + button.height / 2, iconCenter: icon.y + icon.height / 2, timeCenter: time.y + time.height / 2 };
+  });
+  assert.ok(Math.abs(alignment.buttonCenter - alignment.timeCenter) <= 1 && Math.abs(alignment.iconCenter - alignment.timeCenter) <= 1,
+    `fullscreen button and icon should align with the broadcast timestamp: ${JSON.stringify(alignment)}`);
   await page.waitForSelector('.notification-banner-body');
   await page.click('#kiosk-fullscreen');
   await page.waitForSelector('#kiosk-fullscreen[aria-pressed="true"]');
@@ -628,13 +642,20 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     tournamentBox && metaBox && Math.abs(tournamentBox.y - metaBox.y) < 4,
     'tournament game and round should remain at the top of the card content area'
   );
-  // Top-aligned, not centered: a bracket body that overflows (many stacked
-  // matches on a short kiosk screen) must clip at the bottom instead of
+  // Top-aligned: a bracket body that overflows on a short kiosk screen
+  // must clip at the bottom instead of
   // spilling upward into the round metadata above it.
   assert.ok(
     bracketBodyBox && matchGridBox && Math.abs(bracketBodyBox.y - matchGridBox.y) < 4,
     'tournament bracket should sit at the top of its bracket body'
   );
+  const matchBoxes = await page.locator('.kiosk-match-grid .kiosk-match-card').evaluateAll((matches) =>
+    matches.map((match) => {
+      const box = match.getBoundingClientRect();
+      return { x: box.x, y: box.y, right: box.right };
+    }));
+  assert.ok(matchBoxes.length >= 2 && Math.abs(matchBoxes[0].y - matchBoxes[1].y) < 2 && matchBoxes[0].right <= matchBoxes[1].x,
+    `current matches should sit side by side without overlap: ${JSON.stringify(matchBoxes)}`);
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight && document.body.scrollHeight <= window.innerHeight),
     true,
@@ -741,5 +762,76 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     const contentBox = emptyState.parentElement!.getBoundingClientRect();
     return Math.abs(emptyBox.y + emptyBox.height / 2 - (contentBox.y + contentBox.height / 2)) < 2;
   }));
+  const livePlayers = Array.from({ length: 30 }, (_, index) => ({
+    id: `broadcast-${index}`,
+    name: `Spieler mit langem Namen ${index + 1}`,
+    state: index < 2 ? 'offline' : 'online',
+    color: 'var(--accent)',
+  }));
+  let shownPlayers = livePlayers.slice(0, 5);
+  await page.route('**/api/live', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(shownPlayers),
+  }));
+  await page.reload();
+  await page.waitForFunction(() => document.querySelectorAll('.kiosk-live-row').length === 3);
+  assert.equal(await page.locator('.kiosk-live-dots').count(), 0);
+  assert.equal(await page.locator('#kiosk-live >> text=Spieler mit langem Namen 1').count(), 0);
+  const fullCard = await page.locator('#kiosk-live').evaluate((container) => {
+    const bounds = container.getBoundingClientRect();
+    const rows = Array.from(container.querySelectorAll('.kiosk-live-row')).map((row) => row.getBoundingClientRect());
+    return { topGap: rows[0].top - bounds.top, bottomGap: bounds.bottom - rows.at(-1)!.bottom };
+  });
+  assert.ok(fullCard.topGap <= 1 && fullCard.bottomGap <= 1, `a short live roster should fill the card: ${JSON.stringify(fullCard)}`);
+
+  shownPlayers = livePlayers;
+  await page.reload();
+  for (const size of [
+    { width: 900, height: 720 },
+    { width: 1100, height: 720 },
+    { width: 1280, height: 720 },
+    { width: 1920, height: 1080 },
+    { width: 3840, height: 2160 },
+  ]) {
+    await page.setViewportSize(size);
+    await page.reload();
+    await page.waitForFunction(() => {
+      const container = document.querySelector('#kiosk-live');
+      return container && container.querySelector('.kiosk-live-row') && container.scrollHeight <= container.clientHeight + 1;
+    });
+    const layout = await page.locator('#kiosk-live').evaluate((container) => {
+      const bounds = container.getBoundingClientRect();
+      const rows = Array.from(container.querySelectorAll('.kiosk-live-row')).map((row) => {
+        const rowBox = row.getBoundingClientRect();
+        const badgeBox = row.querySelector('.badge')!.getBoundingClientRect();
+        return { top: rowBox.top, bottom: rowBox.bottom, left: rowBox.left, right: rowBox.right,
+          badgeLeft: badgeBox.left, badgeRight: badgeBox.right };
+      });
+      return { bounds: { top: bounds.top, bottom: bounds.bottom }, rows, scrollHeight: container.scrollHeight, clientHeight: container.clientHeight };
+    });
+    assert.ok(layout.rows.every((row) => row.top >= layout.bounds.top - 1 && row.bottom <= layout.bounds.bottom + 1
+      && row.badgeRight <= row.right && row.badgeLeft >= row.left),
+    `live rows and badges should fit at ${size.width}×${size.height}: ${JSON.stringify(layout)}`);
+  }
+  const highDpiPage = await browser.newPage({ viewport: { width: 3840, height: 2160 }, deviceScaleFactor: 2 });
+  try {
+    await highDpiPage.route('**/api/live', (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(livePlayers),
+    }));
+    await highDpiPage.goto(`${BASE_URL}/kiosk.html?token=${E2E_KIOSK_TOKEN}`);
+    await highDpiPage.waitForFunction(() => {
+      const container = document.querySelector('#kiosk-live');
+      return container && container.querySelectorAll('.kiosk-live-row').length === 28
+        && container.scrollHeight <= container.clientHeight + 1;
+    });
+    assert.equal(await highDpiPage.locator('#kiosk-live').evaluate((container) =>
+      container.scrollHeight <= container.clientHeight + 1), true, 'all active players should fit at 3840×2160 @DPR2');
+  } finally {
+    await highDpiPage.close();
+  }
+  await page.unroute('**/api/live');
   await page.setViewportSize({ width: 390, height: 844 });
 });

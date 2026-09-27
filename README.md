@@ -34,18 +34,18 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 
 | Feature | Beschreibung |
 |---|---|
-| 📢 **Durchsage** | Eine Nachricht an alle auf einmal („Essen ist da!"): Toast auf jedem offenen Gerät, großes Banner auf dem Kiosk-Bildschirm, Push-Benachrichtigung an alle Opt-ins – immer mit Absender-Name. |
+| 📢 **Durchsage** | Eine Nachricht an alle auf einmal („Essen ist da!"): Toast auf jedem offenen Gerät, großes Banner auf dem Broadcast-Bildschirm, Push-Benachrichtigung an alle Opt-ins – immer mit Absender-Name. |
 | 📌 **Info** | WLAN-Passwort, Discord-Link, Gameserver-IPs und Hausregeln als alphabetisch sortierte Einträge mit Kopieren-Knopf. |
 | 🍕 **Essen bestellen** | Sammelbestellung öffnen („Pizza bei Luigi's"), optional mit Zeitpunkt „geht raus um …" (später jederzeit änderbar, auch nach dem Schließen), jeder trägt seine Positionen (mit optionalem Preis) vom eigenen Handy ein, Schließen friert die Liste ein – gruppiert pro Person mit Summen, bereit zum Vorlesen am Telefon. |
 | 👤 **Selbst-Onboarding** | Neue Geräte landen automatisch auf der Profil-Seite statt auf Home: Name (eindeutig), Profilbild, Skill-Ratings und der eigene Agent-Download richten sich alle selbst ein. |
 | 🎪 **Events** | Mehrere LAN-Termine können nebeneinander in derselben Installation existieren; nur eines „trackt" gleichzeitig (Live-Status/Spielzeit). Was außerhalb eines getrackten Events passiert, läuft normal unter „Außerhalb von Events". |
 | 🔗 **Einladungslink & QR-Code** | Ein Link (trägt bei Bedarf das Zugangs-Token) führt neue Leute direkt zur Profil-Erstellung – auch als QR-Code zum Aushängen, serverseitig gerendert statt über einen Drittanbieter. |
-| 🖥️ **TV-/Kiosk-Ansicht** | Scrollfreies Read-only-Dashboard (`/kiosk.html`) im 2×2-Aufbau: Live-Status und Rangliste oben, Live-Vote und Turnier unten. Offene Votes maskieren die Spiele, zeigen nach dem Ende einen Countdown und halten das Ergebnis anschließend zeitlich begrenzt sichtbar. |
-| 🎵 **Jam** | Gemeinsame Spotify-Wiedergabe mit Titel- und Playlist-Suche, sichtbarem Playlist-Restbestand, Songwünschen, Wiedergabesteuerung und Kiosk-Anzeige. Ein einmalig installierter Musik-PC oder Raspberry Pi hält die Spotify-Anmeldung lokal und kann den Browser selbst als Audioausgabe für HDMI, TV oder Soundbar bereitstellen. [Einrichtung und Bedienung](docs/JAM.md) |
+| 🖥️ **Broadcast** | Scrollfreies Read-only-Dashboard (`/kiosk.html`) im 2×2-Aufbau: Live-Status und Rangliste oben, Live-Vote und Turnier unten. Offene Votes maskieren die Spiele, zeigen nach dem Ende einen Countdown und halten das Ergebnis anschließend zeitlich begrenzt sichtbar. |
+| 🎵 **Jam** | Gemeinsame Spotify-Wiedergabe mit Titel- und Playlist-Suche, sichtbarem Playlist-Restbestand, Songwünschen, Wiedergabesteuerung und Broadcast-Anzeige. Ein einmalig installierter Musik-PC oder Raspberry Pi hält die Spotify-Anmeldung lokal und kann den Browser selbst als Audioausgabe für HDMI, TV oder Soundbar bereitstellen. [Einrichtung und Bedienung](docs/JAM.md) |
 | 🔔 **Push-Benachrichtigungen** | Optionaler Web-Push-Opt-in fürs Handy: neue Abstimmung, neue Durchsage, anstehendes Turnier-Match – auch wenn die Seite gerade nicht offen ist. Ein Tipp springt direkt in den passenden Bereich; verpasste Nachrichten stehen in der Glocke der Kopfzeile. |
 | ⚙️ **Spiele & Events verwalten** | Spiele, Icons/eigene Logos, Teamgrößen und Prozessname-Zuordnungen (für die Live-Erkennung) zentral pflegen; Events anlegen und Tracking gezielt starten/stoppen. |
 | 📡 **Verbindungsstatus** | Wird die Live-Verbindung unterbrochen oder ist das Gerät offline, erscheint global ein Hinweis. Nach erfolgreichem Reconnect verschwindet er automatisch und die Gruppe wird neu abonniert. |
-| 🛡️ **LAN-Bereitschaft** | Der Admin-Bereich bündelt Event, Agent-Abdeckung und -Versionen, Prozess-Zuordnungen, Kiosk-Zugang, Server/SQLite und den letzten Backup-Status in einer kompakten Ampelübersicht. |
+| 🛡️ **LAN-Bereitschaft** | Der Admin-Bereich bündelt Event, Agent-Abdeckung und -Versionen, Prozess-Zuordnungen, Broadcast-Zugang, Server/SQLite und den letzten Backup-Status in einer kompakten Ampelübersicht. |
 | 💾 **Backup-Kette** | Vor jedem Aktivieren des Event-Trackings wird ein verifizierter SQLite-Snapshot angelegt; schlägt er fehl, bleibt das Event aus. Manuelle Downloads erzeugen weitere persistente Restore-Punkte, alte Snapshots werden automatisch rotiert. |
 | 🔒 **Zugangsschutz** | Leichtes, geteiltes Zugangs-Token schützt die Web-Oberfläche, falls der Server im Internet erreichbar ist. |
 | 🛡️ **Race-sicher** | Gleichzeitige Aktionen mehrerer Geräte (zwei Leute starten dieselbe Abstimmung, zwei melden dasselbe Turnier-Match) werden serverseitig sauber aufgelöst statt Daten zu duplizieren/korrumpieren – siehe `CLAUDE.md` → „Race-Sicherheit". |
@@ -97,7 +97,7 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 Respawn/
 ├── server/            # Zentraler Server (Node.js + TypeScript)
 │   ├── src/           # Quellcode (API, DB, WebSocket, Export)
-│   ├── public/        # Web-Oberfläche (HTML/CSS/JS) + Kiosk-Ansicht
+│   ├── public/        # Web-Oberfläche (HTML/CSS/JS) + Broadcast-Ansicht
 │   └── agent-dist/    # Gebaute agent.exe, die der Server personalisiert zum Download anbietet
 ├── agent/             # Windows-Client zum Prozess-Scannen + lokales Kontroll-Tool
 │   └── src/
@@ -202,7 +202,7 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    | `SSH_PRIVATE_KEY` | Inhalt von `respawn-deploy` (**ohne** `.pub`) |
    | `CF_TUNNEL_TOKEN` | Token aus Schritt 2 |
    | `APP_ADMIN_RECOVERY_CODE` | starkes, einmaliges Bootstrap-/Recovery-Secret, z. B. `openssl rand -hex 32`; nicht an Teilnehmende verteilen |
-   | `APP_KIOSK_TOKEN` | optionaler kompatibler Read-only-Direkt-Token; zugleich gemeinsames Passwort der LAN-Kiosk-Konten. Bleibt das Secret leer, generiert der Server das Kontopasswort selbst. Ein separates `KIOSK_PASSWORD` kann später direkt in der Server-Umgebung gesetzt werden. |
+   | `APP_KIOSK_TOKEN` | optionaler kompatibler Read-only-Direkt-Token; zugleich gemeinsames Passwort der LAN-Broadcast-Konten. Bleibt das Secret leer, generiert der Server das Kontopasswort selbst. Ein separates `KIOSK_PASSWORD` kann später direkt in der Server-Umgebung gesetzt werden. |
    | `GHCR_PULL_TOKEN` | GitHub → Settings → Developer settings → **Tokens (classic)** (fine-grained Tokens haben **kein** Packages-Permission – GitHub-seitige Lücke, nicht behebbar; und da das Repo nicht dir gehört, tauchte es dort im Repo-Auswahldialog ohnehin nicht auf). Scopes: `read:packages` + `repo` (`repo` sorgt dafür, dass GitHub deine bestehenden Collaborator-Rechte auf dem privaten Repo für das Package durchreicht). Ablaufdatum setzen und dir merken, das Secret + `.env` auf dem Server (siehe "Alltag" unten) danach zu erneuern. **Bewusst kein Fix "Package auf public stellen"** – das Image bleibt privat, der Server authentifiziert sich stattdessen selbst beim Pullen. |
 
 4. **`Provision Hetzner Server`-Workflow manuell starten** (Actions-Tab → Workflow auswählen →
@@ -231,7 +231,7 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
 - **Rollback:** auf dem Server (`ssh deploy@<HETZNER_HOST>`) `/opt/respawn/rollback.sh <git-sha>`
   ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand. Frisch
   provisionierte Hosts behalten dafür eine nur vom Rollback-Skript verwendete Kopie des
-  Kiosk-Secrets; bei Images vor der Umstellung auf persönliche Logins setzt das Skript daraus die
+  Broadcast-Secrets; bei Images vor der Umstellung auf persönliche Logins setzt das Skript daraus die
   damaligen `AUTH_MODE=required`-/`ACCESS_TOKEN`-Werte. Aktuelle Images ignorieren diese Altwerte.
 - **Bestehenden Server auf persönliche Logins vorbereiten:** Vor dem Deploy in
   `/opt/lan2026/.env` ein starkes `ADMIN_RECOVERY_CODE` ergänzen. `KIOSK_TOKEN` ist nur nötig,
@@ -270,8 +270,8 @@ Recovery-Code oder ein bereits beanspruchtes Admin-Konto.
 | `PRIVACY_DELETION_LEDGER_DIR` | `./data` | Hostverzeichnis, das Docker Compose dauerhaft nach `/app/deletion-ledger` mountet. Für ein separates Ledger zusammen mit `PRIVACY_DELETION_LEDGER_FILE=/app/deletion-ledger/deletion-receipts.jsonl` setzen; siehe [`server/OPERATIONS.md`](server/OPERATIONS.md). |
 | `ADMIN_RECOVERY_CODE` | *(leer)* | Starkes Bootstrap-/Recovery-Secret für den ersten beziehungsweise letzten Admin. In Produktion Pflicht. |
 | `BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD` | *(leer)* | Optionale, beim Start angelegte fertige Admin-Konten (Slot `n` = 1…20), damit du nicht den Recovery-Weg gehen musst. Idempotent, überschreibt kein bestehendes Passwort. Details in [`docs/BOOTSTRAP-ADMINS.md`](docs/BOOTSTRAP-ADMINS.md). |
-| `KIOSK_PASSWORD` | *(fällt auf `KIOSK_TOKEN` zurück, sonst automatisch generiert)* | Gemeinsames Passwort der automatisch für alle LAN-Events angelegten Konten `kiosk-<eventId>`. Ohne beide Variablen erzeugt der Server beim ersten Bedarf ein zufälliges Passwort und speichert es dauerhaft in der DB; Admins sehen es in der Kioskverwaltung. Die Anmeldung auf `/kiosk.html` erzeugt nur einen eventgebundenen Read-only-Token. |
-| `KIOSK_TOKEN` | *(leer = installationsweiter Direktzugriff gesperrt)* | Optionaler kompatibler Read-only-Token für Kiosk-GET-Endpunkte und `kiosk:subscribe`; dient ohne separates `KIOSK_PASSWORD` zugleich als gemeinsames Kiosk-Passwort. Die eventgebundene Kontoanmeldung bleibt ohne ihn nutzbar. |
+| `KIOSK_PASSWORD` | *(fällt auf `KIOSK_TOKEN` zurück, sonst automatisch generiert)* | Gemeinsames Passwort der automatisch für alle LAN-Events angelegten Konten `kiosk-<eventId>`. Ohne beide Variablen erzeugt der Server beim ersten Bedarf ein zufälliges Passwort und speichert es dauerhaft in der DB; Admins sehen es unter Broadcast. Die Anmeldung auf `/kiosk.html` erzeugt nur einen eventgebundenen Read-only-Token. |
+| `KIOSK_TOKEN` | *(leer = installationsweiter Direktzugriff gesperrt)* | Optionaler kompatibler Read-only-Token für Broadcast-GET-Endpunkte und `kiosk:subscribe`; dient ohne separates `KIOSK_PASSWORD` zugleich als gemeinsames Broadcast-Passwort. Die eventgebundene Kontoanmeldung bleibt ohne ihn nutzbar. |
 | `COOKIE_SECURE` | `1` | Sichere Session-Cookies; nur für bewusstes lokales HTTP-Hosting mit `0` abschalten. |
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |
 | `EXPECTED_AGENT_VERSION` | `1.1.0` | Version, die die LAN-Bereitschaft als aktuell bewertet. Abweichende oder unbekannte Agent-Versionen werden vor dem Event hervorgehoben. Muss der Version in `agent/package.json` folgen, sonst meldet die Bereitschaft dauerhaft „Abweichende Version". |

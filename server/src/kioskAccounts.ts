@@ -15,7 +15,7 @@ const GENERATED_KIOSK_PASSWORD_KEY = 'generated_kiosk_password';
 // either, a strong password is generated once and persisted in app_state (the
 // gitignored DB file, not the repo — same pattern as push.ts's VAPID keys),
 // so every installation gets a working shared kiosk login without manual
-// .env setup. Admins can read it back in Kioskverwaltung (routes/admin.ts).
+// .env setup. Admins can read it back in Broadcast (routes/admin.ts).
 function ensureKioskPassword(): string {
   if (config.kioskPassword) return config.kioskPassword;
   const existing = getState(GENERATED_KIOSK_PASSWORD_KEY);

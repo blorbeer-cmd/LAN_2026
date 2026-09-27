@@ -32,7 +32,7 @@ Die Zeilenbereiche beziehen sich auf `server/DESIGN_SYSTEM.md` vor dieser Paket-
 | Components: Seating status (481–487) | [Sitzstatus](organisation-and-event-rules.md#sitzstatus) |
 | Components: Team formation, Player skill display, Game catalog (488–599) | [Teams, Skill und Spielkatalog](competition-and-game-rules.md#teams-skill-und-spielkatalog) |
 | Components: Player profiles, Admin tools (600–678) | [Profile und Admin](navigation-and-account-rules.md#profile-und-admin) |
-| Components: Kiosk dashboard (679–708) | [TV-Kiosk](media-and-dashboard-rules.md#tv-kiosk) |
+| Components: Kiosk dashboard (679–708) | [Broadcast](media-and-dashboard-rules.md#broadcast) |
 | Components: Grouped page sections, Produktteil (722–744) | [Bereichsseiten und Mehr-Navigation](navigation-and-account-rules.md#bereichsseiten-und-mehr-navigation) |
 | Components: Broadcasts, Food orders, Orga (745–1045) | [Durchsagen, Bestellungen und Orga](organisation-and-event-rules.md#durchsagen-bestellungen-und-orga) |
 | Components: Hall of Fame and Info, Feedback (1046–1072) | [Hall of Fame, Info und Feedback](navigation-and-account-rules.md#hall-of-fame-info-und-feedback) |

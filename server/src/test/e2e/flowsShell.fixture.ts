@@ -1440,20 +1440,21 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await page.click('[data-retry-kiosk-password]');
   await page.waitForSelector('[data-copy-kiosk-password]');
   await page.unroute(kioskPasswordUrl);
-  await assertCompactAdminHeader('TV-Kiosk');
-  assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);
+  await assertCompactAdminHeader('Broadcast', 152);
+  assert.equal(await page.getByRole('heading', { name: 'Broadcast' }).count(), 1);
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
   assert.equal(await page.locator('a[href="/kiosk.html"]').count(), 0);
   assert.equal(await page.locator('.profile-row-meta code').count(), 1);
   assert.deepEqual(
     await page.locator('a[href^="/kiosk.html?account="]').allTextContents(),
-    await page.locator('a[href^="/kiosk.html?account="]').evaluateAll((links) => links.map(() => 'Kiosk öffnen')),
+    await page.locator('a[href^="/kiosk.html?account="]').evaluateAll((links) => links.map(() => 'Broadcast öffnen')),
   );
   assert.equal(
     await page.locator('a[href^="/kiosk.html?account="]:not(.btn-primary):not(.kiosk-open-link)').count(),
     0,
   );
-  assert.equal(await page.locator('#orga-kiosk-help').count(), 1);
+  assert.equal(await page.locator('#orga-kiosk-help').count(), 0);
+  assert.match(await page.locator('.more-subpage-header > p.muted').innerText(), /Broadcast-Konto/);
   await openMoreViewEntry(page, '[data-navigate="admin"]');
   await page.waitForSelector('[aria-label="Werkzeuge"]');
   await openAdminSection('test');

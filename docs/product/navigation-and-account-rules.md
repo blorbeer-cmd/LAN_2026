@@ -158,14 +158,14 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   hairline rows with a title, a muted meta line and one action in a fixed right column. From
   `--bp-lg` the short rows of a card fill two columns, the left column first.
   The untitled first card lists the tools „Auswertung“, „Feedback“, „Nutzungsauswertung“,
-  „Sitzplan“ and „TV-Kiosk“, each with a neutral „Öffnen“; without event tracking it also offers
+  „Sitzplan“ and „Broadcast“, each with a neutral „Öffnen“; without event tracking it also offers
   „Backup“. „Auswertung“ is the sole entry point into the merged Rangliste/Statistiken/Hall-of-Fame
-  area, and „TV-Kiosk“ the only entry into kiosk management; both stay role-protected routes of
+  area, and „Broadcast“ the only entry into broadcast management; both stay role-protected routes of
   their own like „Sitzplan“. „Events & Gruppen“ has its own navigation entry and is not repeated here.
   The remaining cards start collapsed and keep their open state across live re-renders:
   „LAN-Bereitschaft“ shows its overall status (icon plus „Bereit“, „Prüfen“ or „Fehler“) next to the
   chevron, right-aligned with the status of every check row below (Server/SQLite, Event and
-  participants, agents, process mappings, Kiosk, backup). Long lists open behind „Details“, the
+  participants, agents, process mappings, Broadcast, backup). Long lists open behind „Details“, the
   agent diagnostics behind „Diagnose“ and the backup download behind „Herunterladen“, all grey text
   buttons in the meta line. „Einladungslinks“ leads with „Link erstellen“ and lists the active links
   alphabetically; the link dialog holds copy, QR code and „Widerrufen“. „Konten“ groups accounts

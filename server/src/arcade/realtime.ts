@@ -220,7 +220,7 @@ export function registerArcadeSockets(server: Server): () => void {
               ? requestedEvent === null
               : requestedEvent === socket.data.kioskEventId;
         if (!socket.data.kioskReadOnly || !groupMatches || !eventMatches || !kioskDeliveryAllowed(socket)) {
-          ack?.({ ok: false, error: 'Kiosk-Scope stimmt nicht mit dem Token überein.' });
+          ack?.({ ok: false, error: 'Broadcast-Scope stimmt nicht mit dem Token überein.' });
           return;
         }
         const replay = latestArcadeKioskGames.get(

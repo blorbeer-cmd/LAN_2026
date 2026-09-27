@@ -1,14 +1,14 @@
 # Jam mit Spotify
 
 Jam macht ein einziges Spotify-Premium-Konto zur gemeinsamen Musikwiedergabe für die LAN. Nur der
-feste Musik-PC oder Kiosk-Raspberry-Pi wird als Controller eingerichtet. Alle Teilnehmenden bedienen
+feste Musik-PC oder Broadcast-Raspberry-Pi wird als Controller eingerichtet. Alle Teilnehmenden bedienen
 Jam anschließend im normalen Respawn-Browser und benötigen weder Spotify noch eine lokale
 Installation.
 
 ## So funktioniert Jam
 
 - Ein Teilnehmer wählt ein erreichbares Spotify-Connect-Gerät aus und startet die Session. Auf dem
-  Musik-PC oder Kiosk kann stattdessen **Diesen Browser als Musikgerät starten** gewählt werden:
+  Musik-PC oder Broadcast kann stattdessen **Diesen Browser als Musikgerät starten** gewählt werden:
   Dann läuft der Ton direkt über dessen HDMI-, TV- oder Soundkarten-Ausgang. Der Teilnehmer wird
   zum Host; Host und Gruppen-Admins können die Session beenden.
 - Alle aktiven Gruppenmitglieder können pausieren, fortsetzen und überspringen sowie Spotify nach
@@ -22,14 +22,14 @@ Installation.
   separat angezeigt und in Eingangsreihenfolge an Spotifys Live-Warteschlange angehängt.
   Währenddessen sind Sortieren und Entfernen ausgeblendet, weil Spotify seine Live-Warteschlange
   dafür nicht veränderbar bereitstellt.
-- Der Kiosk bietet vor dem Sessionstart einmalig **Kiosk-Ton aktivieren** an, wenn der lokale
-  Controller auf demselben Gerät läuft. Danach erscheint der Kiosk-Browser als Spotify-Gerät. In
+- Broadcast bietet vor dem Sessionstart einmalig **Broadcast-Ton aktivieren** an, wenn der lokale
+  Controller auf demselben Gerät läuft. Danach erscheint der Broadcast-Browser als Spotify-Gerät. In
   der laufenden Session zeigt er Titel, Fortschritt und nächsten Songwunsch, aber keine gemeinsame
   Bedienung oder Spotify-Zugangsdaten.
-- Wird der Browser oder Kiosk während einer laufenden Browser-Session neu geladen, erscheint
-  **Browser-Ton wiederherstellen** beziehungsweise **Kiosk-Ton wiederherstellen**. Die bestehende
+- Wird der Browser oder Broadcast während einer laufenden Browser-Session neu geladen, erscheint
+  **Browser-Ton wiederherstellen** beziehungsweise **Broadcast-Ton wiederherstellen**. Die bestehende
   Jam-Session und ihre Warteschlange bleiben dabei erhalten; Respawn akzeptiert nur das neu
-  registrierte Spotify-Gerät mit demselben bisherigen Gerätenamen. Der Kiosk-Token darf nur diesen
+  registrierte Spotify-Gerät mit demselben bisherigen Gerätenamen. Der Broadcast-Token darf nur diesen
   eng begrenzten Wiederherstellungsaufruf zusätzlich zu seinen Lesezugriffen ausführen; Start,
   Wiedergabesteuerung und alle anderen Änderungen bleiben gesperrt.
 
@@ -38,7 +38,7 @@ Installation.
 - Ein [Spotify-Premium-Konto](https://www.spotify.com/premium/).
 - Eine eigene App im [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). Aus
   deren **Basic Information** wird nur die Client-ID benötigt; dank PKCE gibt es kein Client-Secret.
-  Für die lokale Browser-/Kiosk-Ausgabe muss bei der App **Web Playback SDK** aktiviert sein.
+  Für die lokale Browser-/Broadcast-Ausgabe muss bei der App **Web Playback SDK** aktiviert sein.
 - In dieser Spotify-App muss unter **Redirect URIs** exakt
   `http://127.0.0.1:43821/callback` eingetragen sein. Die lokale Adresse bleibt auch bei einer
   anderen Respawn-Serveradresse gleich.
@@ -62,7 +62,7 @@ Installation.
    bleiben.
 6. Für Ton über den Musik-PC, dessen HDMI-Fernseher oder eine daran angeschlossene Soundbar Respawn
    direkt auf diesem Computer öffnen, unter **Gerät auswählen** den Browser starten und die Session
-   beginnen. Auf `/kiosk.html` zuerst **Kiosk-Ton aktivieren** wählen und die anschließend sichtbare
+   beginnen. Auf `/kiosk.html` zuerst **Broadcast-Ton aktivieren** wählen und die anschließend sichtbare
    Geräteoption von einem angemeldeten Respawn-Tab oder Handy aus starten. Alternativ Spotify auf
    einem eigenständigen Connect-Gerät öffnen und dieses auswählen.
 
@@ -85,7 +85,7 @@ Musik-PCs an TV oder Soundbar weiter.
   vorhandene Spotify-Anmeldung bleibt erhalten.
 - Ist nur die Spotify-Anmeldung abgelaufen oder widerrufen, den lokalen Controller öffnen und
   **Spotify-Anmeldung erneuern** wählen. Controller-Paket und Respawn-Kopplung bleiben dabei
-  unverändert. Der ursprüngliche Jam-Tab und der Kiosk prüfen die Freigabe danach automatisch erneut;
+  unverändert. Der ursprüngliche Jam-Tab und Broadcast prüfen die Freigabe danach automatisch erneut;
   ein manueller Reload ist nicht nötig.
 - Die lokale Seite zeigt beide Verbindungszustände getrennt, kann sofort einen neuen Versuch
   auslösen und bietet unter **Verbindung verwalten** als letzte Option einen vollständigen Reset.

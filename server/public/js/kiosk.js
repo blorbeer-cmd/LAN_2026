@@ -199,12 +199,12 @@ function renderKioskLogin() {
         <div class="kiosk-login-brand">
           <img src="/img/logo.svg" alt="" width="48" height="48" />
           <div>
-            <h1>TV-Kiosk</h1>
+            <h1>Broadcast</h1>
             <p class="muted">Mit dem Konto dieses LAN-Events anmelden.</p>
           </div>
         </div>
         <label>
-          <span class="field-label is-required">Kiosk-Konto</span>
+          <span class="field-label is-required">Broadcast-Konto</span>
           <input name="username" type="text" autocomplete="username" maxlength="100" required value="${escapeHtml(account)}" />
         </label>
         <label>
@@ -212,7 +212,7 @@ function renderKioskLogin() {
           <input name="password" type="password" autocomplete="current-password" maxlength="200" required />
         </label>
         <p class="form-error" data-kiosk-login-error role="alert" hidden></p>
-        <button type="submit" class="btn btn-primary btn-block">Kiosk öffnen</button>
+        <button type="submit" class="btn btn-primary btn-block">Broadcast öffnen</button>
       </form>
     </main>`;
 
@@ -249,7 +249,7 @@ function renderKioskLogin() {
 // left there: a roster that shrinks later (people going offline, the event
 // ending) should loosen back up instead of keeping empty space reserved for
 // a bigger crowd that isn't there any more.
-const LIVE_MAX_COLUMNS = 2;
+const LIVE_MAX_COLUMNS = 3;
 const LIVE_MIN_COLUMN_WIDTH = 240;
 const LIVE_MIN_PAGE_SIZE = 6;
 const LIVE_ROTATE_INTERVAL_MS = 6_000;
@@ -258,6 +258,7 @@ let liveColumns = 1;
 let livePageSize = null; // null = everyone fits at liveColumns, no paging
 let livePageIndex = 0;
 let liveRotationTimer = null;
+let liveCompact = false;
 
 function stopLiveRotation() {
   if (liveRotationTimer !== null) clearInterval(liveRotationTimer);
@@ -265,7 +266,7 @@ function stopLiveRotation() {
 }
 
 function liveRowHtml(p) {
-  return `<div class="kiosk-live-row">${avatarHtml(p, 24)}<span class="player-name">${escapeHtml(p.name)}</span><span class="badge badge-${p.state}">${stateLabel(p.state)}</span></div>`;
+  return `<div class="kiosk-live-row">${avatarHtml(p, liveCompact ? 20 : 24)}<span class="player-name">${escapeHtml(p.name)}</span><span class="badge badge-${p.state}">${stateLabel(p.state)}</span></div>`;
 }
 
 // A fresh innerHTML's scrollHeight/clientHeight can still reflect a layout
@@ -322,19 +323,25 @@ async function settleLiveLayout() {
   // trying a column count that would collide name against badge.
   const maxColumns = Math.max(1, Math.min(LIVE_MAX_COLUMNS, Math.floor(container.clientWidth / LIVE_MIN_COLUMN_WIDTH)));
 
-  for (let columns = 1; columns <= maxColumns; columns += 1) {
-    container.style.setProperty('--live-columns', String(columns));
-    container.innerHTML = `<div class="kiosk-live-grid">${liveAllPlayers.map(liveRowHtml).join('')}</div>`;
-    await nextFrame();
-    if (myToken !== liveSettleToken) return false;
-    if (liveFits(container)) {
-      liveColumns = columns;
-      livePageSize = null;
-      return true;
+  for (const compact of [false, true]) {
+    liveCompact = compact;
+    container.classList.toggle('is-compact', compact);
+    for (let columns = 1; columns <= maxColumns; columns += 1) {
+      container.style.setProperty('--live-columns', String(columns));
+      container.innerHTML = `<div class="kiosk-live-grid">${liveAllPlayers.map(liveRowHtml).join('')}</div>`;
+      await nextFrame();
+      if (myToken !== liveSettleToken) return false;
+      if (liveFits(container)) {
+        liveColumns = columns;
+        liveCompact = compact;
+        livePageSize = null;
+        return true;
+      }
     }
   }
 
   liveColumns = maxColumns;
+  liveCompact = true;
   let pageSize = Math.max(LIVE_MIN_PAGE_SIZE, total - 3);
   for (;;) {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -356,6 +363,7 @@ async function settleLiveLayout() {
 function renderLivePageContent() {
   const container = document.getElementById('kiosk-live');
   container.style.setProperty('--live-columns', String(liveColumns));
+  container.classList.toggle('is-compact', liveCompact);
   if (livePageSize === null) {
     container.innerHTML = `<div class="kiosk-live-grid">${liveAllPlayers.map(liveRowHtml).join('')}</div>`;
     stopLiveRotation();
@@ -378,23 +386,23 @@ function renderLivePageContent() {
 }
 
 async function renderLive(players) {
-  if (players.length === 0) {
-    stopLiveRotation();
-    updateHtml('kiosk-live', emptyStateHtml('Noch keine Spieler.'));
-    return;
-  }
-  liveAllPlayers = [...players].sort((a, b) => {
+  liveAllPlayers = players.filter((player) => player.state !== 'offline').sort((a, b) => {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
     return rankDiff !== 0 ? rankDiff : a.name.localeCompare(b.name, 'de');
   });
+  if (liveAllPlayers.length === 0) {
+    ++liveSettleToken;
+    stopLiveRotation();
+    updateHtml('kiosk-live', emptyStateHtml('Keine aktiven Spieler.'));
+    return;
+  }
   livePageIndex = 0;
   const settled = await settleLiveLayout();
   if (!settled) return; // superseded by a fresher call; that one will paint
   renderLivePageContent();
 }
 
-const LEADERBOARD_MAX_ROWS = 8;
-const LEADERBOARD_MIN_ROWS = 4;
+const LEADERBOARD_ROWS_VISIBLE = 5;
 
 function leaderboardRowHtml(s, i) {
   return `
@@ -406,31 +414,14 @@ function leaderboardRowHtml(s, i) {
       </div>`;
 }
 
-// Top 8 is the target, but a shorter kiosk screen may not fit even that
-// already-capped list (see the 800px-height media query in kiosk.css). Rather
-// than clip the last row or two, this settles for whatever count this screen
-// actually has room for, same idea as Live-Status's own settling page size.
-// Same overlap risk as settleLiveLayout above (e.g. the initial refreshAll
-// and a 'leaderboard:changed' socket event landing close together), same
-// token guard.
-let leaderboardSettleToken = 0;
-
-async function renderLeaderboard(standings) {
-  const myToken = ++leaderboardSettleToken;
+function renderLeaderboard(standings) {
   const container = document.getElementById('kiosk-leaderboard');
   if (!standings || standings.length === 0) {
     container.innerHTML = emptyStateHtml('Noch keine Ergebnisse.');
     return;
   }
-  let count = Math.min(LEADERBOARD_MAX_ROWS, standings.length);
-  for (;;) {
-    const rows = standings.slice(0, count).map(leaderboardRowHtml).join('');
-    container.innerHTML = `<div class="kiosk-ranking-grid">${rows}</div>`;
-    await nextFrame();
-    if (myToken !== leaderboardSettleToken) return;
-    if (container.scrollHeight <= container.clientHeight + 1 || count <= LEADERBOARD_MIN_ROWS) break;
-    count -= 2;
-  }
+  const rows = standings.slice(0, LEADERBOARD_ROWS_VISIBLE).map(leaderboardRowHtml).join('');
+  container.innerHTML = `<div class="kiosk-ranking-grid">${rows}</div>`;
 }
 
 function concealedGameLabel(gameId, round) {
@@ -708,7 +699,7 @@ function renderKioskLocalPlayback(element) {
   const action = connectedPlayer
     ? '<strong>Als Spotify-Gerät bereit</strong><span class="muted">Jam jetzt auf einem Handy oder im Respawn-Tab starten.</span>'
     : kioskLocalPlayback.ready
-      ? '<strong>Ton über diesen Kiosk/TV</strong><span class="muted">Aktiviert den Browser als Spotify-Gerät; der Ton läuft über HDMI oder den gewählten Computer-Ausgang.</span><button type="button" class="btn btn-primary" id="kiosk-enable-local-playback">Kiosk-Ton aktivieren</button>'
+      ? '<strong>Ton über Broadcast</strong><span class="muted">Aktiviert den Browser als Spotify-Gerät; der Ton läuft über HDMI oder den gewählten Computer-Ausgang.</span><button type="button" class="btn btn-primary" id="kiosk-enable-local-playback">Broadcast-Ton aktivieren</button>'
       : `<strong>Browser-Wiedergabe freigeben</strong><span class="muted">${escapeHtml(kioskLocalPlayback.message || 'Spotify im lokalen Controller neu freigeben.')}</span><a class="btn btn-primary" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Lokalen Controller öffnen</a>`;
   const renderKey = connectedPlayer
     ? `local:${connectedPlayer.deviceId}`
@@ -833,8 +824,8 @@ function renderMusicBar(payload) {
   const recoveryHtml = needsBrowserRecovery ? `
     <span class="kiosk-music-local">
       <strong>Browser-Ton getrennt</strong>
-      <span class="muted">Nach dem Neuladen muss der Kiosk einmal wieder mit dem laufenden Jam verbunden werden.</span>
-      <button type="button" class="btn btn-primary" id="kiosk-recover-local-playback">Kiosk-Ton wiederherstellen</button>
+      <span class="muted">Nach dem Neuladen muss Broadcast einmal wieder mit dem laufenden Jam verbunden werden.</span>
+      <button type="button" class="btn btn-primary" id="kiosk-recover-local-playback">Broadcast-Ton wiederherstellen</button>
     </span>` : '';
   const html = `${playbackHtml}${recoveryHtml}`;
   if (element.dataset.renderKey !== renderKey) {
@@ -955,17 +946,8 @@ async function refreshTournament() {
   }
 }
 
-// Sequential, not Promise.all: Live-Status and Rangliste share a grid row
-// (see .kiosk-grid), and both settle their own layout by temporarily
-// rendering an oversized candidate before measuring and shrinking back down
-// (settleLiveLayout / renderLeaderboard). Running them concurrently let one
-// card's temporarily oversized render inflate the shared row's height right
-// as the other card sampled its own clientHeight, leaving it settled on a
-// row count that no longer fit once the row height dropped back down.
-// The banner and music bar go first for the same reason: both sit above or
-// below the grid and shrink how much height it actually gets, so the cards
-// that measure against that height must not settle before those two have
-// already claimed their share of it.
+// The banner and music bar go first because they change the grid's available
+// height. Live-Status measures only after both have claimed their space.
 async function refreshAll() {
   await refreshPushBanner();
   await refreshMusic();
@@ -1097,6 +1079,16 @@ async function main() {
   }
 
   wireFullscreenControl();
+  // The screen size, fullscreen state and banner can change the card height
+  // without a new live-status payload. Re-measure the current roster then.
+  const liveContainer = document.getElementById('kiosk-live');
+  const liveResizeObserver = new ResizeObserver(() => {
+    if (!liveAllPlayers.length) return;
+    void settleLiveLayout().then((settled) => {
+      if (settled) renderLivePageContent();
+    });
+  });
+  liveResizeObserver.observe(liveContainer);
   setInterval(refreshMusic, 5_000);
   setInterval(refreshAll, KIOSK_REFRESH_INTERVAL_MS);
   const socket = connectSocket({ kiosk: true });

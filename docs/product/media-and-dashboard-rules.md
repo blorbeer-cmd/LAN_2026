@@ -1,16 +1,18 @@
 # Produktregeln: Medien und Dashboards
 
-Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam-Sessions und Auswertungen.
+Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Broadcast, Jam-Sessions und Auswertungen.
 
-## TV-Kiosk
+## Broadcast
 
-- **Kiosk dashboard** — Kiosk is a fixed, read-only TV canvas with no page or card scrollbars. Its
+- **Broadcast dashboard** — Broadcast is a fixed, read-only TV canvas with no page or card scrollbars. Its
   header offers a keyboard-accessible „Vollbild“ toggle and reflects whether browser fullscreen is
   currently active. Browsers without Fullscreen API support omit the unavailable control.
   Its
   four primary cards remain a 2×2 grid and distribute live players, rankings, tournament standings,
   groups and matches across internal columns, ordered Live-Status and Rangliste above Abstimmung
-  and Turnier. Vote status is a centered icon/text stack. Only the
+  and Turnier. Live-Status omits offline players, spreads visible rows across the full card height,
+  and uses a compact row layout before rotating pages when a large roster does not fit. Rangliste
+  shows a fixed Top 5. Current tournament matches share a row and wrap as needed. Vote status is a centered icon/text stack. Only the
   newest active system notification appears above the dashboard as one full-width brand-gradient
   banner; separate food-order summary cards are omitted because order pushes already use that banner.
   Tournament standings and group phases start directly below their metadata. In a
@@ -49,7 +51,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   loopback address as a clickable link for the music PC. Members without controller rights see one
   compact empty card instead of the steps.
   A dedicated local controller on the
-  playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
+  playback PC or Broadcast Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant
   starts a session on an explicitly selected playback device; this player is the host. Before a session the card „Jam starten“ names the controller in one meta
   line, loads the Spotify devices on its own and offers one labeled „Musikausgabe“ select of limited
@@ -76,17 +78,17 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   and „Entfernen“; every member may reorder or remove every request. On pointer devices two or more
   queued requests can also be reordered through native drag-and-drop. Respawn persists that order and replaces the active Spotify URI context at the
   current playback position so the visible order also becomes the actual playback order.
-  The kiosk reuses a single compact full-width music bar below the fixed dashboard and shows current
+  Broadcast reuses a single compact full-width music bar below the fixed dashboard and shows current
   track, progress and the actual next track without exposing controls or Spotify credentials. If
   Spotify has not exposed a next track yet, it shows the playlist's shuffle state, remaining count
   and waiting song requests instead of an empty request message. The fixed
   music bar offers one local setup action before a session when the Jam controller runs on that
-  kiosk device. It registers the kiosk browser as a Spotify Connect player, so its audio follows the
-  computer's HDMI/TV output; after activation the kiosk returns to its read-only display role. A
+  Broadcast device. It registers the Broadcast browser as a Spotify Connect player, so its audio follows the
+  computer's HDMI/TV output; after activation Broadcast returns to its read-only display role. A
   reloaded local browser exposes a recovery action for the still-running Jam. Recovery preserves
   session and queue state, and the server only retargets playback to a newly registered Spotify
-  device whose name exactly matches the session's previous device. The otherwise read-only kiosk
-  credential is accepted only for this exact recovery PATCH; every other kiosk mutation remains
+  device whose name exactly matches the session's previous device. The otherwise read-only Broadcast
+  credential is accepted only for this exact recovery PATCH; every other Broadcast mutation remains
   behind participant authentication. The
   regular Jam device picker exposes the same local-browser path only on the controller computer and
   explains that a Bluetooth-only soundbar is an audio output rather than its own Spotify device. The fixed
