@@ -304,8 +304,8 @@ they are next changed, and new work follows them right away.
 9. **Keep product rules separate.** Routes, roles, business flows, product copy and
    domain-state details live in [Product rules](../docs/product/README.md).
 10. **Place actions compactly and predictably.** A card's primary action is a compact gradient
-    button (`.btn-primary.btn-sm`) at the right of the card heading, like „Turnier anlegen“,
-    „Starten“ or „Spiel vorschlagen“. A form's final submit sits right-aligned at the card's end at
+    button (`.btn-primary.btn-sm`) at the right of the card heading, like „Starten“ or
+    „Spiel vorschlagen“. A form's final submit sits right-aligned at the card's end at
     its natural width. Buttons spanning the full card width are avoided. Management actions such as
     „Beenden“ or „Abbrechen“ are compact neutral buttons in the card header; a destructive action
     keeps its danger meaning in the confirmation dialog instead of a large red button in the page.
@@ -314,8 +314,7 @@ they are next changed, and new work follows them right away.
     winning score), the losers are muted and a draw reads „Remis“; gold frames or result badges are
     not used. Each result row or card has one fixed trailing action slot: „+“ for an open result,
     a pencil for a recorded one. The „+“ itself stays neutral; on a fresh Match draw the
-    highlighted next step is the rightmost „Turnier erstellen“ in the primary gradient. Recording and editing open one compact dialog: one button per outcome that
-    saves immediately, or large value fields with a single „Speichern“. Standings are real tables
+    highlighted next step is the rightmost „Turnier erstellen“ in the primary gradient. Recording and editing open one compact dialog: choose a winner or enter point totals, then use the compact, right-aligned „Speichern“ action in either mode. Standings are real tables
     with column headers, not packed strings.
 12. **Make selection lists quick to scan.** Selection lists are sorted alphabetically unless the
     order itself carries meaning (rankings, results). A list offers one bulk toggle that selects

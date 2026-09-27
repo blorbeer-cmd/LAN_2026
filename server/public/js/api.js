@@ -241,7 +241,15 @@ export const api = {
   matchmaking: {
     generate: (data) => apiFetch('/api/matchmaking', { method: 'POST', body: JSON.stringify(data) }),
     rematch: (data) => apiFetch('/api/matchmaking/rematch', { method: 'POST', body: JSON.stringify(data) }),
-    history: (gameId) => apiFetch(`/api/matchmaking/history${gameId ? `?gameId=${gameId}` : ''}`),
+    history: (gameId, { kind = 'all', cursor = null } = {}) => {
+      const query = new URLSearchParams({ kind });
+      if (gameId) query.set('gameId', gameId);
+      if (cursor) {
+        query.set('before', String(cursor.before));
+        query.set('beforeId', cursor.beforeId);
+      }
+      return apiFetch(`/api/matchmaking/history?${query}`);
+    },
     moveDrawPlayer: (drawId, playerId, toTeamIndex) =>
       apiFetch(`/api/matchmaking/draws/${drawId}/move`, {
         method: 'PATCH',

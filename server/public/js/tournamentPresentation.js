@@ -217,6 +217,11 @@ export function createTournamentPresentation() {
       </div>`;
   }
 
+  function renderSingleFinal(t, match) {
+    const teamsById = new Map(t.teams.map((team) => [team.id, team]));
+    return fixtureRowHtml(match, t, teamsById);
+  }
+
   function renderFixtures(t, teamsById, matches) {
     const byRound = new Map();
     for (const m of matches) byRound.set(m.round, [...(byRound.get(m.round) ?? []), m]);
@@ -307,15 +312,15 @@ export function createTournamentPresentation() {
 
     const knockoutMatches = t.matches.filter((m) => m.stage === 'knockout');
     const knockoutHtml = `<section class="card stack grouped-page-section tournament-board-card">
-        <div class="grouped-page-section-title"><h2>K.O.-Runde</h2></div>
+        <div class="grouped-page-section-title"><h2>${knockoutMatches.length === 1 ? 'Finale' : 'K.O.-Runde'}</h2></div>
         ${
           knockoutMatches.length === 0
             ? emptyStateHtml('Startet automatisch, sobald alle Gruppenspiele entschieden sind.')
-            : renderBracket(t, knockoutMatches)
+            : knockoutMatches.length === 1 ? renderSingleFinal(t, knockoutMatches[0]) : renderBracket(t, knockoutMatches)
         }
       </section>`;
 
-    return `<div class="tournament-group-stage">${groupBlocks}${knockoutHtml}</div>`;
+    return `<div class="tournament-group-stage"><div class="tournament-groups-grid">${groupBlocks}</div>${knockoutHtml}</div>`;
   }
 
   function teamCardHtml(t, team, { winner = false } = {}) {
@@ -381,6 +386,7 @@ export function createTournamentPresentation() {
     renderBracket,
     renderChampion,
     renderGroupKnockout,
+    renderSingleFinal,
     renderRoundRobin,
     renderTournamentTeams,
   };

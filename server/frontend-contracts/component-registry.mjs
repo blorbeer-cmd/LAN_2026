@@ -68,6 +68,16 @@ export const components = [
     "purpose": "Compact text at the same 32px minimum height.",
     "dynamicUses": [
       {
+        "file": "public/js/resultDialog.js",
+        "source": "class=\"btn btn-sm${scoreMode ? '' : ' btn-primary'}\"",
+        "reason": "The shared result mode marks the selected standard button without changing its geometry."
+      },
+      {
+        "file": "public/js/resultDialog.js",
+        "source": "class=\"btn btn-sm${scoreMode ? ' btn-primary' : ''}\"",
+        "reason": "The shared result mode marks the selected standard button without changing its geometry."
+      },
+      {
         "file": "public/js/arcade/views/arcadeScribble.js",
         "source": "class=\"btn btn-sm ${tool.mode === 'erase' ? 'btn-primary' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
@@ -184,6 +194,15 @@ export const components = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "32px single-line fields; textarea rows/content may grow."
+  },
+  {
+    "id": "visually-hidden-control",
+    "role": "composite-part",
+    "selector": ".visually-hidden",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Native input remains in the accessibility tree while its label supplies the visible target.",
+    "properties": ["width", "height", "padding", "white-space"]
   },
   {
     "id": "selection-icons",
@@ -535,6 +554,11 @@ export const components = [
     "purpose": "Interactive filter chips use 32px; passive chip labels are outside this control variant.",
     "dynamicUses": [
       {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"chip${historyFilter === key ? ' is-active' : ''}\"",
+        "reason": "Match history uses the established active filter chip without changing its geometry."
+      },
+      {
         "file": "public/js/views/gameCatalog.js",
         "source": "class=\"chip${selectedGenres.has(g) ? ' is-active' : ''}\"",
         "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
@@ -702,7 +726,7 @@ export const components = [
     "role": "standard-control",
     "selector": ".tournament-result-score",
     "owner": "public/css/domains.css",
-    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "contract": "components/result-form.md#6-komponenteneigene-invarianten",
     "purpose": "Large score fields of the shared result dialog keep one tap-target height."
   },
   {
@@ -725,35 +749,31 @@ export const components = [
     "role": "composite-part",
     "selector": ".tournament-result-pick",
     "owner": "public/css/domains.css",
-    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "contract": "components/result-form.md#6-komponenteneigene-invarianten",
     "purpose": "Whole-row outcome choice in the shared result dialog: team name plus players at tap-target height.",
     "dynamicUses": [
       {
-        "file": "public/js/views/matchmaking.js",
-        "source": "class=\"tournament-result-pick${recorded && draw.winnerTeamIndex === index ? ' is-selected' : ''}\"",
-        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/matchmaking.js",
-        "source": "class=\"tournament-result-pick is-draw${recorded && draw.winnerTeamIndex === null ? ' is-selected' : ''}\"",
-        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/tournament.js",
-        "source": "class=\"tournament-result-pick${match.winnerTeamId === match.teamAId ? ' is-selected' : ''}\"",
-        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/tournament.js",
-        "source": "class=\"tournament-result-pick${match.winnerTeamId === match.teamBId ? ' is-selected' : ''}\"",
-        "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/tournament.js",
-        "source": "class=\"tournament-result-pick is-draw${match.isDraw ? ' is-selected' : ''}\"",
+        "file": "public/js/resultDialog.js",
+        "source": "class=\"tournament-result-pick${team.index === -1 ? ' is-draw' : ''}${winnerIndex === team.index ? ' is-selected' : ''}\"",
         "reason": "Concrete result-pick caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
     ]
+  },
+  {
+    "id": "result-score-row",
+    "role": "composite-part",
+    "selector": ".result-score-row",
+    "owner": "public/css/domains.css",
+    "contract": "components/result-form.md#6-komponenteneigene-invarianten",
+    "purpose": "Stable rank, team and score columns shared by Match, tournament and Admin."
+  },
+  {
+    "id": "match-history-disclosure",
+    "role": "composite-part",
+    "selector": ".matchmaking-history-toggle",
+    "owner": "public/css/style.css",
+    "contract": "components/match-history-tile.md#6-komponenteneigene-invarianten",
+    "purpose": "Own disclosure target with a chevron, game and result, separate from header actions."
   },
   {
     "id": "result-state",
@@ -1138,15 +1158,6 @@ export const components = [
     "owner": "public/css/domains.css",
     "contract": "components/empty-state.md#11-permanente-varianten-und-befristete-ausnahmen",
     "purpose": "Centered result/history slot in Vote.",
-    "control": false
-  },
-  {
-    "id": "empty-state-tournament",
-    "role": "composite-part",
-    "selector": ".tournament-list-empty",
-    "owner": "public/css/style.css",
-    "contract": "components/empty-state.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Stable tournament collection empty slot.",
     "control": false
   },
   {

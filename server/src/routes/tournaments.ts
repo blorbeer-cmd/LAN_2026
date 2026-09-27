@@ -587,8 +587,7 @@ tournamentsRouter.post('/', (req, res) => {
   }
 
   // Every participant gets nudged that they've been entered into a new
-  // tournament — otherwise the only way to notice is to happen to open the
-  // Turniere tab.
+  // tournament — its notification opens this tournament's detail directly.
   broadcast(Events.tournamentsChanged, {
     type: 'created',
     tournamentId,
@@ -602,7 +601,7 @@ tournamentsRouter.post('/', (req, res) => {
   }, { groupId: req.group!.id, eventId: communicationEventId(eventId) });
   notifyPlayers(
     allPlayerIds,
-    { title: 'Neues Turnier', body: tournamentName, url: '/#tournaments' },
+    { title: 'Neues Turnier', body: tournamentName, url: `/#tournaments/${tournamentId}` },
     'all',
     { key: `tournament:${tournamentId}` },
     { groupId: req.group!.id, eventId: communicationEventId(eventId) },
@@ -905,7 +904,7 @@ function saveTournamentResult(req: Request, res: Response) {
     };
     notifyPlayers(
       matchNotify.playerIds,
-      { title: 'Dein Match ist bereit', body: matchNotify.message, url: '/#tournaments' },
+      { title: 'Dein Match ist bereit', body: matchNotify.message, url: `/#tournaments/${tournament!.id}` },
       'direct',
       { key: `tournament:${tournament!.id}:match:${matchId}` },
       notificationScope,
@@ -929,7 +928,7 @@ function saveTournamentResult(req: Request, res: Response) {
     };
     notifyPlayers(
       playerIds,
-      { title: 'K.O.-Runde steht', body: knockoutNotify.message, url: '/#tournaments' },
+      { title: 'K.O.-Runde steht', body: knockoutNotify.message, url: `/#tournaments/${tournament!.id}` },
       'direct',
       { key: `tournament:${tournament!.id}:stage:knockout` },
       notificationScope,

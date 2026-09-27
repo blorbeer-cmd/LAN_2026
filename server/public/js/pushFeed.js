@@ -31,8 +31,8 @@ export const FEED_LINK_LABELS = {
 // history entries look the same as newly-created notifications.
 const LEGACY_FEED_PREFIX = /^(?:🍕|🏆|🗳️?|⚔️?|👑|📢|🕹️?|✏️?)\s*/u;
 
-// A push url like "/#votes" deep-links into a view; food order links also
-// carry the order id so the target card can be expanded on arrival.
+// A push url like "/#votes" deep-links into a view; food orders and tournaments
+// also carry an id so the target opens directly on arrival.
 export function feedLinkView(url) {
   const hashIndex = (url || '').indexOf('#');
   if (hashIndex === -1) return null;
@@ -44,9 +44,9 @@ export function feedLinkTarget(url) {
   const hashIndex = (url || '').indexOf('#');
   if (hashIndex === -1) return null;
   const [view, encodedId] = url.slice(hashIndex + 1).split('/');
-  if (view !== 'foodOrders' || !encodedId) return null;
+  if (!['foodOrders', 'tournaments'].includes(view) || !encodedId) return null;
   try {
-    return { type: 'order', id: decodeURIComponent(encodedId) };
+    return { type: view === 'tournaments' ? 'tournament' : 'order', id: decodeURIComponent(encodedId) };
   } catch {
     return null;
   }

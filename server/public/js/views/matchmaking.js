@@ -16,7 +16,7 @@ import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { teamMoveControlHtml } from '../tournamentTeamDraft.js';
 import { filterRosterPicker, pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
-import { parseResultScores, resultScoreInputValue } from '../resultScores.js';
+import { resultFormHtml, wireResultForm } from '../resultDialog.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -74,21 +74,67 @@ let historyLoading = false;
 let historyForGameId = null;
 let historyStale = false;
 let historyRequestVersion = 0;
+let historyCursor = null;
+let openDrawsCache = [];
+let historyFilter = 'all';
+let historySectionOpen = false;
+const expandedHistoryIds = new Set();
+let historyError = false;
 
-async function loadHistory(gameId, ctx) {
+let tournamentCache = null;
+let tournamentLoading = false;
+let tournamentStale = false;
+let tournamentRequestVersion = 0;
+let tournamentError = false;
+
+async function loadMatchTournaments(ctx) {
+  const version = ++tournamentRequestVersion;
+  tournamentLoading = true;
+  tournamentStale = false;
+  try {
+    const list = await api.tournaments.list();
+    if (version === tournamentRequestVersion) {
+      tournamentCache = list;
+      tournamentError = false;
+    }
+  } catch {
+    if (version === tournamentRequestVersion) tournamentError = true;
+  } finally {
+    if (version === tournamentRequestVersion) {
+      tournamentLoading = false;
+      ctx.rerender();
+    }
+  }
+}
+
+export function invalidateMatchTournaments({ hard = false } = {}) {
+  tournamentRequestVersion += 1;
+  tournamentLoading = false;
+  tournamentStale = true;
+  if (hard) tournamentCache = null;
+}
+
+async function loadHistory(gameId, ctx, { append = false } = {}) {
   const version = ++historyRequestVersion;
   historyLoading = true;
   historyStale = false;
   try {
-    const res = await api.matchmaking.history(gameId);
+    const res = await api.matchmaking.history(gameId, {
+      kind: 'matches',
+      cursor: append ? historyCursor : null,
+    });
     if (version === historyRequestVersion) {
-      historyCache = res.history;
+      historyCache = append ? [...(historyCache ?? []), ...res.history] : res.history;
+      if (!append) openDrawsCache = res.openDraws ?? [];
+      historyCursor = res.nextCursor;
       historyForGameId = gameId;
+      historyError = false;
     }
   } catch {
     if (version === historyRequestVersion) {
       if (historyForGameId !== gameId) historyCache = [];
       historyForGameId = gameId;
+      historyError = true;
     }
   } finally {
     if (version === historyRequestVersion) {
@@ -108,6 +154,8 @@ export function invalidateMatchmakingHistory({ hard = false } = {}) {
   if (hard) {
     historyCache = null;
     historyForGameId = null;
+    historyCursor = null;
+    openDrawsCache = [];
   }
 }
 
@@ -125,7 +173,7 @@ export function invalidateMatchmakingDraft() {
 // shape (see parseDrawRow on the server), so lookups/updates work uniformly.
 function findDrawById(id) {
   if (state.lastMatchmaking?.id === id) return state.lastMatchmaking;
-  return historyCache?.find((d) => d.id === id) ?? null;
+  return historyCache?.find((d) => d.id === id) ?? openDrawsCache.find((draw) => draw.id === id) ?? null;
 }
 
 // One drawn/recorded lineup: team cards plus, for a still-unrecorded draw,
@@ -141,7 +189,8 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
   // showing those instead of drifting when someone rates the game later. A
   // drafted lineup was never balanced by rating and stores none, so its rows
   // stay informational and read from the current state.
-  const skillOptions = draw.source === 'draft' ? { balanced: false } : { stored: true };
+  const hasSkillSnapshot = draw.source !== 'draft' || draw.teams.some((team) => team.skillSnapshot === true);
+  const skillOptions = { stored: true };
   const teamsHtml = draw.teams
     .map((t, i) => {
       // Only meaningful once a result is actually recorded (read-only cards)
@@ -149,7 +198,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       // rating total), so this is labeled distinctly to avoid confusion.
       const resultParts = [];
       if (t.rank != null) resultParts.push(`Platz ${t.rank}`);
-      if (t.score != null) resultParts.push(`Wert ${t.score}`);
+      if (t.score != null) resultParts.push(`Punktestand ${t.score}`);
       const resultLine = resultParts.length
         ? `<div class="muted" style="font-size:var(--font-size-xs);">${resultParts.join(' · ')}</div>`
         : '';
@@ -161,7 +210,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${isLoser ? ' is-loser' : ''}" role="group" aria-label="Team ${i + 1}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
         <div class="team-card-header">
           <span class="row" style="gap:var(--space-2);">Team ${i + 1}${isWinner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}</span>
-          ${teamSkillHtml(t.players, draw.gameId, skillOptions)}
+          ${hasSkillSnapshot ? teamSkillHtml(t.players, draw.gameId, skillOptions) : ''}
         </div>
         ${resultLine}
         ${t.players
@@ -171,7 +220,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
             ${avatarHtml(p, 18)}
             <span class="team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
             ${seatConflictIconHtml(p)}
-            ${playerSkillHtml(p, draw.gameId, skillOptions)}
+            ${primaryTournament && hasSkillSnapshot ? playerSkillHtml(p, draw.gameId, skillOptions) : ''}
           ${
             editable
               ? `</button>${teamMoveControlHtml({
@@ -222,110 +271,36 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
     </div>`;
 }
 
-// Records or edits a draw's result in the same dialog style as tournament
-// results: one button per team (plus Unentschieden) that saves immediately,
-// or, via "Mit Werten eintragen", one value per team from which the winner
-// and the places are derived. A draw that already has values opens there.
+// Draw results keep the Match API shape; only the form is shared.
 function openDrawResultDialog(draw, ctx) {
   const recorded = Boolean(draw.matchId);
   const hasValues = recorded && draw.teams.some((team) => team.score != null);
-  const teamLabel = (index) => `Team ${index + 1}`;
-  const playerNames = (team) => team.players.map((player) => escapeHtml(player.name)).join(', ');
-
-  const pickHtml = `
-    <div class="stack tournament-result-form" data-draw-result-pick>
-      <span class="muted">Wer hat gewonnen?</span>
-      ${draw.teams
-        .map(
-          (team, index) => `<button type="button" class="tournament-result-pick${recorded && draw.winnerTeamIndex === index ? ' is-selected' : ''}" data-draw-winner="${index}">
-            <span>${teamLabel(index)}</span>
-            <span class="tournament-result-pick-players">${playerNames(team)}</span>
-          </button>`,
-        )
-        .join('')}
-      <button type="button" class="tournament-result-pick is-draw${recorded && draw.winnerTeamIndex === null ? ' is-selected' : ''}" data-draw-winner="">Unentschieden</button>
-      <button type="button" class="btn btn-sm" data-draw-result-mode="values">Mit Werten eintragen</button>
-    </div>`;
-
-  const valuesHtml = `
-    <form class="stack tournament-result-form" data-draw-result-values hidden>
-      ${draw.teams
-        .map(
-          (team, index) => `<div class="draw-result-value-row">
-            <label for="draw-result-score-${index}">
-              <span>${teamLabel(index)}</span>
-              <span class="tournament-result-pick-players">${playerNames(team)}</span>
-            </label>
-            <input type="number" id="draw-result-score-${index}" class="tournament-result-score" data-draw-score="${index}" step="any" placeholder="0" value="${team.score ?? ''}" />
-          </div>`,
-        )
-        .join('')}
-      <button type="submit" class="btn btn-primary btn-block">Speichern</button>
-      <button type="button" class="btn btn-sm" data-draw-result-mode="pick">Nur Sieger wählen</button>
-    </form>`;
-
-  const { close, el } = openModal(`Ergebnis · ${draw.gameName}`, `${pickHtml}${valuesHtml}`);
-  const pickEl = el.querySelector('[data-draw-result-pick]');
-  const valuesEl = el.querySelector('[data-draw-result-values]');
-  const showValues = (show) => {
-    pickEl.hidden = show;
-    valuesEl.hidden = !show;
-  };
-  showValues(hasValues);
-
-  async function save(teams, winnerTeamIndex) {
-    try {
+  const teams = draw.teams.map((team, index) => ({ name: `Team ${index + 1}`, players: team.players.map((player) => player.name) }));
+  const { close, el } = openModal('Ergebnis', `
+    <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
+    ${resultFormHtml({ teams, prefix: 'draw-result', mode: hasValues ? 'score' : 'winner', winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? -1 : undefined, scores: draw.teams.map((team) => team.score) })}`);
+  wireResultForm(el, {
+    teams,
+    mode: hasValues ? 'score' : 'winner',
+    onSave: async ({ mode, scores, ranks, winnerIndex }) => {
+      const payloadTeams = draw.teams.map((team, index) => ({
+        playerIds: team.players.map((player) => player.id),
+        score: mode === 'score' ? scores[index] : null,
+        rank: mode === 'score' ? ranks[index] : null,
+      }));
       if (recorded) {
-        await api.matches.update(draw.matchId, { teams, winnerTeamIndex });
+        await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex });
       } else {
-        await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams, winnerTeamIndex });
+        await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams: payloadTeams, winnerTeamIndex: winnerIndex });
         if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
       }
+      expandedHistoryIds.add(draw.id);
+      historySectionOpen = true;
       invalidateMatchmakingHistory();
       close();
       await ctx.refresh();
       showToast('Ergebnis gespeichert.');
-    } catch (err) {
-      showToast(err.message, { error: true });
-    }
-  }
-
-  el.querySelectorAll('[data-draw-result-mode]').forEach((btn) => {
-    btn.addEventListener('click', () => showValues(btn.dataset.drawResultMode === 'values'));
-  });
-  el.querySelectorAll('[data-draw-winner]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const winnerTeamIndex = btn.dataset.drawWinner === '' ? null : Number(btn.dataset.drawWinner);
-      const teams = draw.teams.map((team) => ({
-        playerIds: team.players.map((player) => player.id),
-        score: null,
-        rank: null,
-      }));
-      save(teams, winnerTeamIndex);
-    });
-  });
-  valuesEl.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const scores = parseResultScores(
-      draw.teams.map((_, index) => resultScoreInputValue(el.querySelector(`[data-draw-score="${index}"]`))),
-    );
-    if (!scores) {
-      showToast('Bitte mindestens einen Wert eintragen.', { error: true });
-      return;
-    }
-    if (scores.some((score) => !Number.isFinite(score))) {
-      showToast('Bitte nur Zahlen als Werte eintragen.', { error: true });
-      return;
-    }
-    // Places follow the values (ties share a place); a unique top value wins.
-    const teams = draw.teams.map((team, index) => ({
-      playerIds: team.players.map((player) => player.id),
-      score: scores[index],
-      rank: 1 + scores.filter((other) => other > scores[index]).length,
-    }));
-    const max = Math.max(...scores);
-    const winnerTeamIndex = scores.filter((score) => score === max).length === 1 ? scores.indexOf(max) : null;
-    save(teams, winnerTeamIndex);
+    },
   });
 }
 
@@ -469,6 +444,8 @@ function wireDrawCards(container, ctx) {
         const idx = historyCache.findIndex((draw) => draw.id === drawId);
         if (idx !== -1) historyCache[idx] = updated;
       }
+      const openIndex = openDrawsCache.findIndex((draw) => draw.id === drawId);
+      if (openIndex !== -1) openDrawsCache[openIndex] = updated;
       ctx.rerender();
     } catch (err) {
       showToast(err.message, { error: true });
@@ -574,7 +551,7 @@ function wireDrawCards(container, ctx) {
 }
 
 function renderHistoryDetails(title, count, content) {
-  return `<details class="card history-details collapsible-section">
+  return `<details class="card history-details collapsible-section" ${historySectionOpen ? 'open' : ''}>
     <summary class="collapsible-section-header">
       <h2>${title}</h2>
       <span class="collapsible-section-summary-end">
@@ -586,31 +563,121 @@ function renderHistoryDetails(title, count, content) {
   </details>`;
 }
 
-function renderHistory(selectedGameId) {
-  if (historyForGameId !== selectedGameId || historyCache === null) {
-    return renderHistoryDetails(
-      'Historie',
-      0,
-      emptyStateHtml('Lädt…', { className: 'empty-state-compact' })
-    );
-  }
-  if (historyCache.length === 0) {
-    return renderHistoryDetails(
-      'Historie',
-      0,
-      emptyStateHtml('Noch keine Auslosungen.', { className: 'empty-state-compact' })
-    );
-  }
+function historyItemHtml(id, title, meta, actions, details, extraClass = '') {
+  const open = expandedHistoryIds.has(id);
+  const panelId = `match-history-${id}`;
+  return `<div class="card matchmaking-history-item ${extraClass}">
+    <div class="matchmaking-history-head">
+      <button type="button" class="matchmaking-history-toggle" data-history-toggle="${escapeHtml(id)}" aria-expanded="${open}" aria-controls="${escapeHtml(panelId)}">
+        <span class="matchmaking-history-chevron">${icon('chevronRight')}</span>
+        <span class="matchmaking-history-title player-name">${escapeHtml(title)}</span>
+        <span class="matchmaking-history-meta">${meta}</span>
+      </button>
+      <div class="matchmaking-draw-actions">${actions}</div>
+    </div>
+    <div id="${escapeHtml(panelId)}" class="matchmaking-history-details" ${open ? '' : 'hidden'}>${details}</div>
+  </div>`;
+}
 
-  // Open draws and recorded results are two states of the same lineup, so
-  // keep them in the server's newest-first order inside one shared history.
-  return renderHistoryDetails(
-    'Historie',
-    historyCache.length,
-    historyCache
-      .map((draw) => renderDrawCard(draw, { editable: !draw.matchId, showGame: true }))
-      .join('')
-  );
+function historyMatchHtml(draw) {
+  const winner = draw.winnerTeamIndex == null ? null : draw.teams[draw.winnerTeamIndex];
+  const winnerName = winner ? defaultDrawTeamName(draw, winner, draw.winnerTeamIndex) : '';
+  const scoreChip = draw.teams.length === 2 && draw.teams.every((team) => team.score != null)
+    ? `<span class="tournament-fixture-score"><span class="${draw.winnerTeamIndex === 0 ? 'is-win' : ''}">${draw.teams[0].score}</span> : <span class="${draw.winnerTeamIndex === 1 ? 'is-win' : ''}">${draw.teams[1].score}</span></span>`
+    : '';
+  const result = winner
+    ? `<span class="tournament-fixture-score is-pick">Win</span> <strong>${escapeHtml(winnerName)}${winner.score != null && draw.teams.length !== 2 ? ` · <span class="is-win">${winner.score}</span>` : ''}</strong> ${scoreChip}`
+    : '<span class="tournament-fixture-score">Remis</span>';
+  const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span> ${result} <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
+  const actions = `<button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>
+    <button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>`;
+  const order = draw.teams.map((team, index) => ({ team, index })).sort((a, b) => {
+    if (a.team.rank != null || b.team.rank != null) return (a.team.rank ?? Infinity) - (b.team.rank ?? Infinity) || a.index - b.index;
+    return Number(b.index === draw.winnerTeamIndex) - Number(a.index === draw.winnerTeamIndex) || a.index - b.index;
+  });
+  const teams = order.map(({ team, index }) => {
+    const won = index === draw.winnerTeamIndex;
+    const hasSkill = draw.source !== 'draft' || team.skillSnapshot === true;
+    return `<div class="matchmaking-history-team${!won && draw.winnerTeamIndex != null ? ' is-loser' : ''}">
+      <div class="matchmaking-history-team-head">
+        ${team.rank != null ? `<span class="lb-rank${team.rank === 1 ? ' is-first' : ''}">${team.rank}</span>` : ''}
+        <strong>${escapeHtml(defaultDrawTeamName(draw, team, index))}</strong>
+        ${won && team.rank == null ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}
+        ${hasSkill ? teamSkillHtml(team.players, draw.gameId, { stored: true }) : ''}
+        ${team.score != null ? `<span class="matchmaking-history-team-score${won ? ' is-win' : ''}">${team.score}</span>` : ''}
+      </div>
+      <div class="muted matchmaking-history-players">${escapeHtml(team.players.map((player) => player.name).join(', '))}</div>
+    </div>`;
+  }).join('');
+  const seating = draw.seatConflicts > 0
+    ? `<div class="muted">${icon('armchair')} ${draw.seatConflicts} von ${draw.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten.</div>` : '';
+  return historyItemHtml(draw.id, draw.gameName, meta, actions, `<div class="matchmaking-history-teams">${teams}</div>${seating}`);
+}
+
+function historyTournamentHtml(tournament) {
+  const meta = `<span class="muted">${formatDateTime(tournament.createdAt)}</span> <span class="badge">Turnier</span>
+    <span class="muted">${escapeHtml(tournament.name)} · ${tournament.championName ? `Sieger: ${escapeHtml(tournament.championName)}` : 'Läuft'}</span>`;
+  const actions = `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(tournament.id)}">Turnier</button><span class="matchmaking-history-action-placeholder"></span>`;
+  return historyItemHtml(`t-${tournament.id}`, tournament.gameName, meta, actions,
+    `<div class="muted">${escapeHtml(tournament.name)} · ${tournament.decidedMatchCount}/${tournament.matchCount} Partien</div>`, 'is-tournament');
+}
+
+function renderHistory(selectedGameId) {
+  const tournaments = (tournamentCache ?? []).filter((tournament) => tournament.gameId === selectedGameId);
+  const matches = (historyForGameId === selectedGameId ? historyCache ?? [] : []).filter((draw) => draw.matchId);
+  const items = [
+    ...(historyFilter === 'tournaments' ? [] : matches.map((draw) => ({ time: draw.generatedAt, html: historyMatchHtml(draw) }))),
+    ...(historyFilter === 'matches' ? [] : tournaments.map((tournament) => ({ time: tournament.createdAt, html: historyTournamentHtml(tournament) }))),
+  ].sort((a, b) => b.time - a.time).map((entry) => entry.html);
+  if (historyFilter !== 'tournaments' && historyForGameId === selectedGameId && openDrawsCache.length) {
+    const openDetails = openDrawsCache.map((draw) => renderDrawCard(draw, { editable: true, showGame: true })).join('');
+    items.push(historyItemHtml('open', 'Ohne Ergebnis', `<span class="muted">${openDrawsCache.length} Auslosungen, noch nicht gespielt</span>`, '<span class="badge badge-offline">Offen</span>', openDetails));
+  }
+  const filter = `<div class="matchmaking-history-filters" role="group" aria-label="Historie filtern">
+    ${[['all', 'Alle'], ['matches', 'Matches'], ['tournaments', 'Turniere']].map(([key, label]) => `<button type="button" class="chip${historyFilter === key ? ' is-active' : ''}" data-history-filter="${key}" aria-pressed="${historyFilter === key}">${label}</button>`).join('')}
+  </div>`;
+  const loading = (historyFilter !== 'tournaments' && historyForGameId !== selectedGameId) || (historyFilter === 'tournaments' && tournamentCache === null);
+  const emptyText = historyError || tournamentError ? 'Historie konnte nicht geladen werden.' : historyFilter === 'tournaments' ? 'Keine Turniere gefunden.' : 'Noch keine Matches.';
+  const content = `${filter}${items.length ? items.join('') : emptyStateHtml(loading ? 'Lädt…' : emptyText, { className: 'empty-state-compact' })}
+    ${historyFilter !== 'tournaments' && historyCursor ? '<div class="matchmaking-history-more"><button type="button" class="btn btn-sm" data-history-more>Ältere laden</button></div>' : ''}`;
+  return renderHistoryDetails('Historie', items.length, content);
+}
+
+function wireHistory(container, selectedGameId, ctx) {
+  const section = container.querySelector('.history-details');
+  section?.addEventListener('toggle', () => { historySectionOpen = section.open; });
+  container.querySelectorAll('[data-history-toggle]').forEach((button) => button.addEventListener('click', () => {
+    const id = button.dataset.historyToggle;
+    if (expandedHistoryIds.has(id)) expandedHistoryIds.delete(id);
+    else expandedHistoryIds.add(id);
+    const expanded = expandedHistoryIds.has(id);
+    button.setAttribute('aria-expanded', String(expanded));
+    button.closest('.matchmaking-history-item').querySelector('.matchmaking-history-details').hidden = !expanded;
+  }));
+  container.querySelectorAll('[data-history-filter]').forEach((button) => button.addEventListener('click', () => {
+    if (historyFilter === button.dataset.historyFilter) return;
+    historyFilter = button.dataset.historyFilter;
+    invalidateMatchmakingHistory({ hard: true });
+    ctx.rerender();
+  }));
+  container.querySelector('[data-history-more]')?.addEventListener('click', () => {
+    if (!historyLoading && historyCursor) loadHistory(selectedGameId, ctx, { append: true });
+  });
+}
+
+function renderActiveTournaments() {
+  const active = (tournamentCache ?? []).filter((tournament) => tournament.status !== 'completed');
+  if (!active.length && !tournamentError) return '';
+  return `<section class="card stack grouped-page-section matchmaking-active-tournaments" aria-labelledby="match-active-tournaments-title">
+    <div class="grouped-page-section-title"><h2 id="match-active-tournaments-title">Laufende Turniere</h2></div>
+    ${active.length ? `<div class="matchmaking-active-tournament-grid">${active.map((tournament) => `
+      <button type="button" class="card tournament-list-card" data-open-draw-tournament="${escapeHtml(tournament.id)}">
+        <span class="tournament-list-card-main"><span class="player-name">${escapeHtml(tournament.name)}</span>
+          <span class="muted">${escapeHtml(TOURNAMENT_FORMAT_LABELS[tournament.format])} · ${tournament.decidedMatchCount}/${tournament.matchCount} Partien</span></span>
+        <span class="tournament-list-card-end"><span class="badge badge-playing">Läuft</span>${icon('chevronRight')}</span>
+      </button>`).join('')}</div>` : ''}
+    ${tournamentError ? '<div class="muted">Turniere konnten nicht aktualisiert werden.</div>' : ''}
+  </section>`;
 }
 
 // ---------- captain draft: live board ----------
@@ -691,6 +758,8 @@ function wireDraftBoard(container, ctx) {
 }
 
 export function renderMatchmaking(container, ctx) {
+  if (((tournamentCache === null && !tournamentError) || tournamentStale) && !tournamentLoading) loadMatchTournaments(ctx);
+  const leading = `<h2 class="view-title">Match</h2>${renderActiveTournaments()}`;
   // Only accepted games can be drawn/drafted for — an open suggestion is not
   // something to build teams for yet (see catalogGames()). The picker still
   // lists a game that was moved back to the suggestions *after* it was drawn
@@ -699,7 +768,8 @@ export function renderMatchmaking(container, ctx) {
   // Drawing and drafting stay blocked for such a game (see drawDisabledReason).
   const pickableGames = gamesWithHistory([state.lastMatchmaking?.gameId]);
   if (catalogGames().length === 0 || eventPlayers().length === 0) {
-    container.innerHTML = emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.');
+    container.innerHTML = `${leading}${emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.')}`;
+    wireDrawCards(container, ctx);
     return;
   }
 
@@ -713,8 +783,9 @@ export function renderMatchmaking(container, ctx) {
   // Historie below (see draft.ts), same as any other draw.
   const draft = draftCache?.draft;
   if (draft && draft.status === 'active') {
-    container.innerHTML = renderDraftBoard(draft);
+    container.innerHTML = `${leading}${renderDraftBoard(draft)}`;
     wireDraftBoard(container, ctx);
+    wireDrawCards(container, ctx);
     return;
   }
 
@@ -739,7 +810,7 @@ export function renderMatchmaking(container, ctx) {
     avoidAdjacentOpponents = Boolean(gameById(selectedGameId)?.considerSeatNeighborsDefault);
   }
 
-  if ((historyForGameId !== selectedGameId || historyStale) && !historyLoading) {
+  if (historyFilter !== 'tournaments' && (historyForGameId !== selectedGameId || historyStale) && !historyLoading) {
     loadHistory(selectedGameId, ctx);
   }
 
@@ -785,12 +856,15 @@ export function renderMatchmaking(container, ctx) {
       </div>`;
 
   container.innerHTML = `
+    ${leading}
     <div class="card stack">
-      <div>
-        <label class="field-label is-required" for="mm-game-search">Spiel auswählen</label>
-        ${searchSelectHtml('mm-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen' })}
+      <div class="matchmaking-setup-head">
+        <div>
+          <label class="field-label is-required" for="mm-game-search">Spiel auswählen</label>
+          ${searchSelectHtml('mm-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen' })}
+        </div>
+        ${modeToggleHtml}
       </div>
-      ${modeToggleHtml}
 
       ${teamsMode === 'draw' ? `
       <section class="match-mode-panel stack" aria-labelledby="matchmaking-draw-title">
@@ -886,6 +960,7 @@ export function renderMatchmaking(container, ctx) {
 
   wireInfoTooltips(container);
   wireDrawCards(container, ctx);
+  wireHistory(container, selectedGameId, ctx);
   wireRosterPicker(container, {
     id: 'mm-draw-roster',
     players: eventPlayers(),
