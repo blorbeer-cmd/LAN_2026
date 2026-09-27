@@ -1770,20 +1770,19 @@ export const permanentVariants = [
     "reason": "Permanent 44px heading line inside a section header."
   },
   {
-    "id": "seating-pool",
+    "id": "seating-seat",
     "role": "structural-target",
-    "selector": ".seating-player-pool",
+    "selector": "button.seating-seat",
     "owner": "public/css/overlays.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Permanent seating drop area includes the row and its surrounding padding."
-  },
-  {
-    "id": "seating-player",
-    "role": "structural-target",
-    "selector": ".seating-pool-player",
-    "owner": "public/css/overlays.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Permanent 44px seating player row."
+    "reason": "A seat of the physical table plan keeps the token-sized seat tile (--seating-seat-width/-height) with avatar, name and status instead of button chrome; it opens the seat dialog.",
+    "dynamicUses": [
+      {
+        "file": "public/js/views/seating.js",
+        "source": "class=\"seating-seat${player ? ' is-occupied' : ''}\"",
+        "reason": "The editable seat marks an occupied seat at runtime; its geometry stays owned by this entry."
+      }
+    ]
   },
   {
     "id": "music-cover",
@@ -1998,17 +1997,6 @@ export const permanentVariants = [
     "reason": "Existing rating-panel composite action row keeps its short application labels and horizontal density at the shared minimum height."
   },
   {
-    "id": "seating-field-width",
-    "role": "composite-part",
-    "selector": ".seating-control-grid input",
-    "owner": "public/css/overlays.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "min-width"
-    ],
-    "reason": "Seating editor fields yield within their configuration grid."
-  },
-  {
     "id": "desktop-nav-indicator",
     "role": "composite-part",
     "selector": ":root[data-layout-mode='desktop'] .desktop-nav-btn::before",
@@ -2044,6 +2032,39 @@ export const permanentVariants = [
       "font-size"
     ],
     "reason": "Month/year selectors are internal calendar parts at the shared control height."
+  },
+  {
+    "id": "event-context-toggle",
+    "role": "composite-part",
+    "selector": ".event-context .search-select-toggle",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width"
+    ],
+    "reason": "On phones the topbar event switcher narrows its toggle to the chevron so the event name keeps its room and ends in an ellipsis."
+  },
+  {
+    "id": "seating-count-field",
+    "role": "composite-part",
+    "selector": ".seating-count-input",
+    "owner": "public/css/overlays.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width"
+    ],
+    "reason": "Seat counts per side in the \"Tisch ändern\" dialog hold two digits; the field is only as wide as its content."
+  },
+  {
+    "id": "info-board-content-field",
+    "role": "composite-part",
+    "selector": ".info-board-content-field",
+    "owner": "public/css/overlays.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "max-height"
+    ],
+    "reason": "The info entry content starts on one line and grows with its text up to eight control heights."
   },
   {
     "id": "event-context-search-field",

@@ -385,7 +385,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `food-open-section-action`, `food-amount-copy`, `food-inline-remove` | Die Kopfaktion der offenen Bestellungen bricht nicht um; Kopieren steht als 32-px-Quadrat vor dem Betrag; Löschen einer eigenen Position ist ein zeilenhohes Symbol hinter dem Gericht. |
 | `arcade-toolbar-buttons`, `challenge-test-disclosure` | Standardhöhe mit echtem Textumbruch; Segment-/Erstellungsgeometrie bleibt beim Pilotvertrag. |
 | `topbar-title`, `desktop-navigation`, `page-heading`, `subpage-heading`, `tabbed-subpage-heading`, `section-heading`, `section-title` | Bestehende 44-px-Kopf-/Navigationszeilen und mehrzeilige Headerreservierungen. |
-| `seating-pool`, `seating-player` | Strukturelle Sitzplatz-Ablagefläche und 44-px-Spielerzeile. |
+| `seating-seat` | Sitzplatz-Kachel des Tischplans in Token-Größe mit Avatar, Name und Status; öffnet den Platz-Dialog. |
 | `music-cover` | Unverändertes nichtinteraktives 76-px-Cover. |
 | `kiosk-header-action`, `kiosk-match-row` | Permanente 44-px-Ziele der eigenständigen TV-Geräteklasse. |
 
@@ -613,9 +613,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:section-title`: Permanent 44px heading line inside a section header.
 
-- `registry:seating-pool`: Permanent seating drop area includes the row and its surrounding padding.
-
-- `registry:seating-player`: Permanent 44px seating player row.
+- `registry:seating-seat`: A seat of the physical table plan keeps the token-sized seat tile with avatar, name and status instead of button chrome; it opens the seat dialog.
 
 
 - `registry:music-cover`: Noninteractive 76px artwork belongs to the music-card structure.
@@ -656,7 +654,11 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:onboarding-rating-actions`: Existing rating-panel composite action row keeps its short application labels and horizontal density at the shared minimum height.
 
-- `registry:seating-field-width`: Seating editor fields yield within their configuration grid.
+- `registry:seating-count-field`: Seat counts per side in the „Tisch ändern“ dialog hold two digits; the field is only as wide as its content.
+
+- `registry:info-board-content-field`: The info entry content starts on one line and grows with its text up to eight control heights.
+
+- `registry:event-context-toggle`: On phones the topbar event switcher narrows its toggle to the chevron so the event name keeps its room and ends in an ellipsis.
 
 - `registry:desktop-nav-indicator`: Internal active navigation indicator preserves the whole navigation target.
 
