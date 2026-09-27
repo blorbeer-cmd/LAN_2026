@@ -671,6 +671,18 @@ button.player-card {
   color: var(--text-muted);
   font-style: italic;
 }
+.bracket-team-row.is-my-team {
+  background: var(--accent-bg);
+}
+.tournament-own-team-marker {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-bold);
+}
+.bracket-champion .tournament-own-team-marker {
+  color: var(--accent-text);
+}
 .bracket-score {
   font-variant-numeric: tabular-nums;
   font-weight: var(--font-weight-bold);
@@ -774,8 +786,24 @@ button.bracket-side {
 }
 .tournament-fixture-team {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
+}
+.tournament-fixture-team-identity,
+.tournament-fixture-team-info {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.tournament-fixture-team-identity {
+  flex-shrink: 0;
+  max-width: 55%;
+}
+.tournament-fixture-team-info {
+  flex: 1;
+  justify-content: center;
 }
 .tournament-fixture-team-name,
 .tournament-fixture-team-players {
@@ -784,12 +812,20 @@ button.bracket-side {
   white-space: nowrap;
 }
 .tournament-fixture-team-players {
+  min-width: 0;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-regular);
 }
+.tournament-fixture-team-info .rating {
+  flex-shrink: 0;
+}
 .tournament-fixture-team.is-home {
   text-align: right;
+}
+.tournament-fixture-team.is-my-team {
+  background: var(--accent-bg);
+  border-radius: var(--radius-sm);
 }
 .tournament-fixture-team.is-winner {
   font-weight: var(--font-weight-medium);
@@ -919,12 +955,35 @@ span.tournament-fixture-action {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.tournament-standings-line,
+.tournament-standings-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.tournament-standings-identity {
+  flex-shrink: 0;
+  max-width: 50%;
+}
+.tournament-standings-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tournament-standings-players {
-  display: block;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
+  text-align: center;
+}
+.tournament-standings-line .rating {
+  flex-shrink: 0;
+}
+.tournament-standings tr.is-my-team {
+  background: var(--accent-bg);
 }
 .tournament-standings tr.is-leader .tournament-standings-rank {
   color: var(--rank-1-gold);

@@ -2154,6 +2154,9 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   // A two-team K.O. tournament shows one Finale fixture, not a bracket.
   await page.waitForSelector('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture');
   assert.equal(await page.locator('.bracket-match').count(), 0);
+  assert.equal(await page.locator('.tournament-fixture-team.is-my-team').count(), 1, 'the signed-in player sees their team');
+  assert.equal(await page.locator('.tournament-fixture-team-info .team-skill-total').count(), 2);
+  assert.equal(await page.locator('.tournament-fixture-team.is-my-team .tournament-own-team-marker').innerText(), 'Du');
   assert.match(new URL(page.url()).hash, /^#tournaments\/.+/);
   const tournamentDetailHash = new URL(page.url()).hash;
   const tournamentId = tournamentDetailHash.slice('#tournaments/'.length);
@@ -2161,6 +2164,14 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await page.locator(`[data-current-item="tournament:${tournamentId}"] [data-navigate="tournaments"]`).click();
   assert.equal(new URL(page.url()).hash, tournamentDetailHash, 'Home Aktuell should open the tournament itself');
   await page.click('.nav-btn[data-view="matchmaking"]');
+  const openTournamentSection = page.locator('.matchmaking-open-draws');
+  await openTournamentSection.waitFor();
+  if (!(await openTournamentSection.evaluate((section) => (section as HTMLDetailsElement).open))) {
+    await openTournamentSection.locator('summary').click();
+  }
+  await openTournamentSection.locator(`[data-open-draw-tournament="${tournamentId}"]`).waitFor();
+  assert.equal(await page.locator(`.history-details [data-open-draw-tournament="${tournamentId}"]`).count(), 0,
+    'a running tournament belongs in Ohne Ergebnis, not Historie');
   await page.locator(`.matchmaking-active-tournaments [data-open-draw-tournament="${tournamentId}"]`).click();
   assert.equal(new URL(page.url()).hash, tournamentDetailHash, 'the running card should open the detail');
   await page.reload();
@@ -2181,7 +2192,7 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await championCard.waitFor();
   assert.equal(await championCard.locator('h2').innerText(), 'Turnier beendet');
   assert.equal(await championCard.locator('.tournament-fixture-score:has-text("Win")').count(), 1);
-  const finalWinner = (await page.locator('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture-team.is-winner').innerText()).trim();
+  const finalWinner = (await page.locator('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture-team.is-winner .tournament-fixture-team-name').innerText()).trim();
   assert.ok((await championCard.locator('.team-card-header').innerText()).includes(finalWinner));
 
   await page.goto(`${BASE_URL}/#tournaments`);
@@ -2196,6 +2207,8 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await page.locator(`#mm-game-list [data-search-select-value="${otherTournamentGame.id}"]`).click();
   await openMatchmakingHistory();
   await page.click('[data-history-filter="tournaments"]');
+  assert.equal(await page.locator(`.matchmaking-open-draws [data-open-draw-tournament="${tournamentId}"]`).count(), 0,
+    'the completed tournament has left Ohne Ergebnis');
   const historyTournament = page.locator(`.matchmaking-history-item:has([data-open-draw-tournament="${tournamentId}"])`);
   assert.equal(await historyTournament.locator('.matchmaking-history-toggle').getAttribute('aria-expanded'), 'false');
   await historyTournament.locator('.matchmaking-history-toggle').click();
@@ -2207,6 +2220,57 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   assert.equal(new URL(page.url()).hash, tournamentDetailHash, 'the history filter should link to the detail');
   await page.goto(`${BASE_URL}/#tournaments/deleted-example`);
   await page.waitForSelector('text=Dieses Turnier ist nicht mehr verfügbar.');
+});
+
+flowTest('correcting an early K.O. winner warns before later results are reset', async (t) => {
+  const gamesResponse = await page.request.get(`${BASE_URL}/api/games`);
+  const gameId = ((await gamesResponse.json()) as Array<{ id: string }>)[0].id;
+  const extraIds: string[] = [];
+  for (const name of ['K.O. Warnung 1', 'K.O. Warnung 2']) {
+    const response = await page.request.post(`${BASE_URL}/api/players`, { data: { name } });
+    assert.equal(response.status(), 201, await response.text());
+    extraIds.push((await response.json()).id);
+  }
+  const created = await page.request.post(`${BASE_URL}/api/tournaments`, {
+    data: {
+      gameId,
+      format: 'single_elimination',
+      teams: [alice.id, bob.id, ...extraIds].map((id) => ({ playerIds: [id] })),
+    },
+  });
+  assert.equal(created.status(), 201, await created.text());
+  const tournament = await created.json() as { id: string; matches: Array<{ id: string; round: number; slot: number; teamAId: string; teamBId: string }> };
+  t.after(async () => { await page.request.delete(`${BASE_URL}/api/tournaments/${tournament.id}`); });
+  const semiFinals = tournament.matches.filter((match) => match.round === 1 && match.teamAId && match.teamBId);
+  assert.equal(semiFinals.length, 2);
+  for (const match of semiFinals) {
+    const result = await page.request.post(`${BASE_URL}/api/tournaments/${tournament.id}/matches/${match.id}/result`, {
+      data: { winnerTeamId: match.teamAId },
+    });
+    assert.equal(result.status(), 200, await result.text());
+  }
+  const ready = await (await page.request.get(`${BASE_URL}/api/tournaments/${tournament.id}`)).json() as { matches: Array<{ id: string; round: number; teamAId: string }> };
+  const final = ready.matches.find((match) => match.round === 2)!;
+  const finalResult = await page.request.post(`${BASE_URL}/api/tournaments/${tournament.id}/matches/${final.id}/result`, {
+    data: { winnerTeamId: final.teamAId },
+  });
+  assert.equal(finalResult.status(), 200, await finalResult.text());
+
+  await page.goto(`${BASE_URL}/#tournaments/${tournament.id}`);
+  await page.locator(`[data-open-result="${semiFinals[0].id}"]`).click();
+  await page.locator('.modal label.tournament-result-pick:has(input[value="1"])').click();
+  await page.locator('.modal [data-result-save]').click();
+  await page.getByRole('alertdialog', { name: 'Folgende Partien betroffen' }).waitFor();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Abbrechen' }).click();
+  assert.equal(await page.locator('.modal [data-result-save]').isEnabled(), true,
+    'canceling the warning keeps the result form usable');
+  await page.locator('.modal [data-result-save]').click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Trotzdem speichern' }).click();
+  await page.locator('.modal').waitFor({ state: 'detached' });
+  assert.equal(await page.locator(`[data-open-result="${final.id}"].is-open`).count(), 1,
+    'the downstream final is reopened only after confirmation');
+  assert.equal(await page.locator('.bracket-team-row.is-my-team').count() > 0, true);
+  assert.equal(await page.locator('.tournament-team-card.is-my-team').count(), 1);
 });
 
 flowTest('Admin: the verified role exposes tools and can temporarily hide seeded test users', async () => {

@@ -102,7 +102,7 @@ export function wireResultForm(root, { teams, mode = 'winner', allowDraw = true,
     }
     saveButton.disabled = true;
     try {
-      await onSave(result);
+      if (await onSave(result) === false) saveButton.disabled = false;
     } catch (error) {
       showToast(error.message, { error: true });
       saveButton.disabled = false;

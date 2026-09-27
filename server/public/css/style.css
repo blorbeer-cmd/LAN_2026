@@ -3547,6 +3547,9 @@ button.draft-pool-player {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-regular);
 }
+.tournament-team-card.is-my-team {
+  background: var(--accent-bg);
+}
 .tournament-board-panel {
   overflow: hidden;
 }

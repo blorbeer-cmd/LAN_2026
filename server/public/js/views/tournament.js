@@ -15,6 +15,7 @@ import { emptyStateHtml } from '../emptyState.js';
 import { localRouteKey } from '../appRoute.js';
 import { copyText } from '../clipboard.js';
 import { resultFormHtml, wireResultForm } from '../resultDialog.js';
+import { getMyId } from '../whoami.js';
 
 // Open state of the detail page's collapsible Teams card across re-renders.
 let tournamentTeamsOpen = false;
@@ -103,7 +104,7 @@ function renderDetail(container, ctx) {
     renderSingleFinal,
     renderRoundRobin,
     renderTournamentTeams,
-  } = createTournamentPresentation();
+  } = createTournamentPresentation(getMyId());
   const boardContent =
     t.format === 'single_elimination'
       ? t.matches.filter((match) => !match.isBye).length === 1
@@ -192,6 +193,21 @@ function renderDetail(container, ctx) {
 
 // Tournament persistence keeps scoreA/scoreB and expectedPlayedAt; the form
 // itself is shared with Match and Admin.
+function affectedFollowup(t, match, nextWinnerId) {
+  if (nextWinnerId === match.winnerTeamId) return null;
+  if (t.format === 'group_knockout' && match.stage === 'group' &&
+      t.matches.some((candidate) => candidate.stage === 'knockout')) {
+    return 'Wenn du den Sieger änderst, wird die K.-o.-Phase neu erstellt. Dort bereits eingetragene Ergebnisse gehen verloren. Trotzdem speichern?';
+  }
+  if (t.format !== 'single_elimination' && match.stage !== 'knockout') return null;
+  const hasDescendant = t.matches.some((candidate) =>
+    candidate.stage === match.stage && candidate.round > match.round &&
+    Math.floor(match.slot / (2 ** (candidate.round - match.round))) === candidate.slot);
+  return hasDescendant
+    ? 'Wenn du den Sieger änderst, werden nachfolgende K.-o.-Partien neu besetzt. Bereits eingetragene Ergebnisse dort gehen verloren. Trotzdem speichern?'
+    : null;
+}
+
 function openResultDialog(t, match, phaseLabel, ctx) {
   const team = (id) => t.teams.find((candidate) => candidate.id === id);
   const teams = [match.teamAId, match.teamBId].map((id) => ({
@@ -206,9 +222,14 @@ function openResultDialog(t, match, phaseLabel, ctx) {
   wireResultForm(el, {
     teams, mode: t.trackScore ? 'score' : 'winner', allowDraw: !knockout, integerScores: true,
     onSave: async ({ mode, winnerIndex, scores }) => {
+      const nextWinnerId = winnerIndex === null ? null : winnerIndex === 0 ? match.teamAId : match.teamBId;
       const payload = mode === 'score'
         ? { scoreA: scores[0], scoreB: scores[1] }
-        : { winnerTeamId: winnerIndex === null ? null : winnerIndex === 0 ? match.teamAId : match.teamBId };
+        : { winnerTeamId: nextWinnerId };
+      const warning = decided ? affectedFollowup(t, match, nextWinnerId) : null;
+      if (warning && !(await confirmDialog(warning, { title: 'Folgende Partien betroffen', confirmText: 'Trotzdem speichern', danger: true }))) {
+        return false;
+      }
       detailCache = decided
         ? await api.tournaments.updateResult(t.id, match.id, { ...payload, expectedPlayedAt: match.playedAt })
         : await api.tournaments.recordResult(t.id, match.id, payload);
