@@ -89,8 +89,6 @@
   --selection-card-min-width: 160px;
   --seating-seat-width: var(--selection-card-min-width);
   --seating-seat-height: calc(var(--avatar-size-lg) + var(--space-2));
-  --seating-seat-width-compact: calc(var(--avatar-size-lg) + var(--space-4));
-  --seating-seat-height-compact: calc(var(--row-min-h) + var(--space-5));
   --assignment-select-width: 112px;
   /* Fixed width keeps the food-order payment toggle stable beside the PayPal
      action while its label, position count and amount change. */
@@ -107,12 +105,13 @@
   --challenge-rush-trial-grid-max-width: 420px;
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
+  /* Info dialog with two columns of entries from --bp-lg. */
+  --info-board-panel-width: 880px;
   --search-select-results-max-height: 320px;
   /* Caps a single Info entry's content so a long entry scrolls internally
      instead of stretching every card in its two-column grid row to match it.
      ~4 lines at --font-size-lg/1.5 line-height, matching the line-count half
      of isLongContent()'s own threshold in infoBoard.js. */
-  --info-board-content-max-height: 120px;
   /* Set from JS to the first-login onboarding rating dialog's own rendered
      height so the required game rows can scroll fully clear of it instead
      of the last rows staying pinned behind a fixed panel; 0 outside rating
@@ -652,9 +651,17 @@ textarea {
     max-width: 164px;
   }
   /* The phone topbar has no room for the chevron's full tap-target inset next
-     to the status icon; the toggle stays tappable via the field itself. */
+     to the status icon. The toggle keeps its tap target but drops the divider
+     and sits its chevron at the right edge; a long event name ends in an
+     ellipsis just before the chevron instead of running underneath it. */
   .event-context .search-select-control > input {
-    padding-right: var(--space-6);
+    padding-right: calc(var(--space-6) + var(--space-1));
+    text-overflow: ellipsis;
+  }
+  .event-context .search-select-toggle {
+    justify-items: end;
+    padding-right: var(--space-1);
+    border-left: 0;
   }
   /* The switcher only gets ~120px between the logo and the icon buttons, which
      would truncate every LAN name in its own popup. The topbar is sticky at
@@ -4049,23 +4056,6 @@ button.card {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-.info-board-title {
-  font-size: var(--font-size-lg);
-}
-.info-board-content {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: var(--font-size-lg);
-  line-height: 1.5;
-}
-/* A long entry (well past the 1000-character server cap, but already
-   overwhelming next to a short one-line entry) scrolls within a bounded box
-   instead of stretching every card in its grid row to match it. */
-.info-board-content-scroll {
-  max-height: var(--info-board-content-max-height);
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 .award-card {
   display: flex;

@@ -5,12 +5,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
 ## Sitzstatus
 
 - **Seating status** — `.seating-status-indicator` sits directly after the gamer name and mirrors
-  the shared live state as green „Spielt“, blue „Online“, yellow „Pause“ or red „Offline“. Its German title and
-  accessible label preserve the meaning beyond color. Playing, online and pause indicators pulse gently,
-  while offline stays static; the global reduced-motion rule disables that motion when requested.
+  the shared live state as green „Spielt“, blue „Online“, yellow „Pause“ or grey „Offline“
+  (`--state-offline`, never the danger red). Its German title and accessible label preserve the
+  meaning beyond color. All indicators are small static dots without motion.
   Every `.seating-seat` uses the same width and height on all four table sides, so vertical sides
-  no longer stretch into wide rows. Phones switch all four sides to one shared compact size and
-  keep exceptionally narrow layouts locally scrollable instead of widening the page.
+  no longer stretch into wide rows. The long sides share their row: once they hold more seats than
+  fit, every seat shrinks evenly instead of scrolling, and past eight seats a side shows the name
+  below the avatar without the real name. On phones the table stands upright, turned a quarter
+  clockwise: the long sides become two columns of full-width seats and the short sides the rows
+  above and below, so every seat keeps its real neighbours and nothing scrolls sideways.
 
 ## Durchsagen, Bestellungen und Orga
 

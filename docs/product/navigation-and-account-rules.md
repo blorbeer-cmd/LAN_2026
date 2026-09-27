@@ -98,7 +98,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   immediately afterwards, so the entry never becomes the visible selection. A group carries its own
   state icon there while it runs, because it has no other state to report: it never tracks and has
   no period. It can still be ended like any other workspace, and an ended one reports „Beendet"
-  instead of its own kind.
+  instead of its own kind. On phones the topbar switcher keeps its toggle's tap target without the
+  divider, sits the chevron at the right edge and ends a long workspace name in an ellipsis before
+  it, so the name never runs underneath the chevron.
 
 ## Profile und Admin
 
@@ -185,13 +187,19 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   Protected actions ask for the password in a dialog named after the action („Backup
   herunterladen“, „Rolle ändern“); every dialog with two footer buttons, including the shared
   confirmation, shows them equally wide across the full width.
-  The seating editor follows the same grouped-page hierarchy: the editable plan comes first, followed
-  by „Teilnehmende“ and „Konfiguration“. Unassigned participants use the shared rectangular two-column player
-  rows instead of pills; phones keep one column. Empty seats use an accent border and only the
-  centered white label „Frei“, without a redundant seat number. Players without a real name omit that empty second line so their
-  gamertag remains vertically centered with the avatar. The automatic monitor-neighbor and save
-  behavior use adjacent info tooltips; the monitor explanation sits directly beside „Sitzplan“
-  instead of occupying a separate row below the plan.
+  The seating editor follows the same grouped-page hierarchy: one untitled card with the plan lying
+  flat inside it (no side labels, the table an outline labelled „Tisch“), followed by „Ohne Platz“.
+  Below the plan one muted line reads „11 von 15 Plätzen belegt · Nachbarn am Tisch gelten als
+  sichtbare Monitore“; the page carries no info tooltip. „Ohne Platz“ lists unseated participants
+  alphabetically as flat hairline rows with avatar, name, status dot and real name, two columns
+  from `--bp-lg`, without an action; with everyone seated it collapses to the one-row empty card
+  „Alle haben einen Platz“. A seat is a button: it opens a dialog named after its side („Oben“)
+  with one native picker, „Frei“ first and then every participant alphabetically; picking someone
+  who already sits elsewhere swaps the two. Drag and drop remains the desktop shortcut; there is
+  no tap-to-select mode. „Tisch ändern“ in the page header opens one dialog with a two-digit field
+  per side (0 to 12) and saves all four together without a further question; seats that disappear
+  send their players to „Ohne Platz“. A plan without seats shows „Noch keine Plätze“, and an
+  account without the admin role sees only the empty card „Nur für Admins“.
 
 ## Bereichsseiten und Mehr-Navigation
 
@@ -233,8 +241,17 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   Info is not an area at all: the topbar's „i“ (`#info-btn`, the canonical `info` icon from
   `domainIcons.js`) opens it as a dialog over whatever view is open, because it is reference
   material — WLAN, Discord, server IPs, house rules — that people look up mid-conversation and must
-  not cost them their current workflow. Entries remain alphabetically sorted responsive two-column
-  nested cards; „Eintrag anlegen“ is the dialog's leading full-width primary action, and an open
+  not cost them their current workflow. Entries are alphabetically sorted flat hairline rows: the
+  title on one line and a muted two-line preview of the content, so a WLAN password or an IP stays
+  readable without opening the entry, and one square copy icon (named „<Titel> kopieren“) in the
+  fixed right column. From `--bp-lg` the dialog widens to `--info-board-panel-width` and lists the
+  rows in two columns, left column first. A row opens the entry's detail dialog with the full text
+  and clickable links, its last change and „Kopieren“; group admins and owners additionally get
+  „Bearbeiten“ and a muted „Löschen“ text button whose confirmation stays red. Only group admins
+  and owners see the small primary „Eintrag anlegen“ at the right of the dialog header, matching
+  the server, which accepts writes from those roles only. As pure reference material the dialog
+  has no close button; Escape and a tap outside close it. The entry form stacks „Titel“ and a
+  one-line „Inhalt“ that grows with its text above equally wide „Abbrechen“ and „Anlegen“. An open
   dialog refreshes itself on `info:changed` instead of stacking a second copy. Its nested forms and
   confirmations follow the [Modal contract](../../server/frontend-contracts/components/modal.md).
 - **Feedback** — the compact topbar's `#feedback-btn` and the wide desktop rail utility (both using
@@ -311,8 +328,8 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   Profile, not in this list. The live board fills its left column first, grouped by state and
   alphabetical within a state. The admin-only „Rangliste“ shows the top six as a RankedList with
   „Alle ansehen“ in its header. The seating plan draws free seats and the table as plain outlines
-  labelled „Frei“ and „Tisch“, so occupied seats carry the plan; the editor's hint appears only
-  while a picked player waits for a target seat. Main groups stay in one continuous column
+  labelled „Frei“ and „Tisch“, so occupied seats carry the plan; a layout without seats shows
+  „Noch keine Plätze“. Main groups stay in one continuous column
   at phone and laptop widths while their existing internal grids remain responsive. „Aktuell“ appears
   above „Meine To-Dos“ as its own full-width main card in every layout. A general event
   replaces the LAN-only live and ranking groups with a leading event overview containing its type,

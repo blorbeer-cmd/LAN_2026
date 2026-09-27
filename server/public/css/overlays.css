@@ -469,16 +469,79 @@
   margin: 0;
   font-size: var(--font-size-lg);
 }
+/* A dialog's one primary action sits right in the header, next to the
+   close button. */
+.modal-header-action {
+  margin-left: auto;
+  margin-right: var(--space-2);
+}
+.modal-header-action:last-child {
+  margin-right: 0;
+}
 
 /* Info dialog (topbar "i"): reference material — WLAN, Discord, server IPs,
    house rules — that people look up mid-conversation, so it opens over the
    current view instead of replacing it. Same width cap as the search palette,
-   since both hold a list of short titles plus one line of content. */
+   since both hold a list of short titles plus a short preview. */
 .info-board-modal .modal {
   max-width: var(--search-panel-width);
 }
-.info-board-dialog .two-column-card-grid {
-  margin-top: var(--space-2);
+@media (min-width: 860px) { /* --bp-lg */
+  /* Two columns of entries need the wider panel. */
+  .info-board-modal .modal {
+    max-width: var(--info-board-panel-width);
+  }
+}
+/* Same header height with or without "Eintrag anlegen", so the list starts
+   at the same place for admins and members. */
+.info-board-modal .modal-header {
+  min-height: var(--control-height);
+}
+/* Title and preview take the row; copying is one square icon button. Side
+   by side rows share a height, so titles and buttons start at the top and
+   neighbouring titles stay on one line. */
+.info-board-list .profile-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+}
+.info-board-list .btn-square {
+  color: var(--text-muted);
+}
+.info-board-dialog > .empty-state {
+  min-height: 0;
+  padding: var(--space-4) 0;
+}
+.info-board-list .profile-row-text {
+  width: 100%;
+}
+.info-board-list .profile-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Two lines of the content are enough to read a WLAN password or an IP
+   without opening the entry; the rest lives in its detail dialog. */
+.info-board-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  white-space: pre-line;
+}
+.info-board-content {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.info-board-meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.info-board-content-field {
+  field-sizing: content;
+  max-height: calc(var(--control-height) * 8);
 }
 
 /* Global command palette: fast navigation across every area without adding
@@ -551,11 +614,8 @@
 }
 
 /* ---------- Shared physical seating plan ---------- */
-.seating-editor {
-  display: grid;
-  gap: var(--space-4);
-}
-
+/* The plan lies flat inside its card (no second frame): seats around an
+   outlined table. Home and the Admin editor render the same markup. */
 .seating-plan {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(150px, 1.35fr) minmax(0, 1fr);
@@ -566,11 +626,6 @@
     "bottom bottom bottom";
   gap: var(--space-3);
   align-items: stretch;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: radial-gradient(circle at center, rgba(91, 140, 255, 0.1), transparent 58%), var(--bg);
-  overflow: hidden;
 }
 
 .seating-side-top { grid-area: top; }
@@ -582,93 +637,100 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-}
-.seating-side-right,
-.seating-side-left {
   justify-content: center;
-}
-.seating-side-label {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: .08em;
 }
 .seating-side-seats {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  /* "safe" falls back to flex-start once the row overflows its scroll
-     container, so every seat stays reachable by scrolling — plain "center"
-     splits the overflow evenly left/right, and the left half sits outside
-     the scrollable range and can never be reached (see .seating-plan's
-     overflow-x on phones). */
   justify-content: safe center;
   gap: var(--space-2);
 }
-.seating-side-right .seating-side-seats,
-.seating-side-left .seating-side-seats {
-  flex-direction: column;
+/* The long sides share the row: every seat keeps the same width and shrinks
+   evenly once the side holds more seats than fit, so the plan never scrolls
+   sideways. seating.js sets --seating-side-count per side. */
+.seating-side-top .seating-side-seats,
+.seating-side-bottom .seating-side-seats {
+  display: grid;
+  grid-template-columns: repeat(var(--seating-side-count, 1), minmax(0, var(--seating-seat-width)));
+  justify-content: center;
+}
+.seating-side-top .seating-seat,
+.seating-side-bottom .seating-seat {
+  width: auto;
 }
 .seating-table-center {
   grid-area: center;
   min-height: 150px;
   display: flex;
-  flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: var(--space-2);
   /* Like a free seat: only its outline, so occupied seats carry the plan. */
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: transparent;
   color: var(--text-muted);
+  font-size: var(--font-size-xs);
 }
 .seating-seat {
   flex: 0 0 auto;
   box-sizing: border-box;
   width: var(--seating-seat-width);
   height: var(--seating-seat-height); /* fits the gamer name plus the small real-name line below it */
-  min-width: var(--seating-seat-width);
-  min-height: var(--seating-seat-height);
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
-  padding: var(--space-1);
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  text-align: center;
-  transition: border-color .15s ease, background .15s ease, transform .15s ease;
-}
-/* A free seat is only its outline: a hairline without fill, so occupied
-   seats carry the plan. Drag and tap-to-place still tint targets blue. */
-.seating-seat:not(.is-occupied) {
-  border-color: var(--border);
   background: transparent;
   color: var(--text-muted);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  text-align: left;
+  transition: border-color var(--motion-fast), background var(--motion-fast);
 }
+/* A free seat is only its outline, an occupied one carries the fill. */
 .seating-seat.is-occupied {
-  border: 1px solid var(--border);
   background: var(--bg-elevated-2);
   color: var(--text);
-  gap: var(--space-2);
 }
-/* Gamer name + small real-name line beneath it (see seatNamesHtml in
-   seating.js) — the real-name span is always rendered, just visibility:
-   hidden when unset, so every seat reserves the same two-line height. */
+.seating-seat-free-label {
+  color: var(--text-muted);
+}
+button.seating-seat {
+  cursor: pointer;
+}
+.seating-plan.is-editable .seating-seat.is-occupied {
+  cursor: grab;
+}
+.seating-plan.is-editable .seating-seat.is-occupied:active {
+  cursor: grabbing;
+}
+@media (hover: hover) {
+  button.seating-seat:hover {
+    border-color: var(--accent);
+  }
+}
+/* While dragging, every seat a player could land on is framed blue and the
+   target under the pointer is tinted. */
+.seating-plan.is-moving .seating-seat:not(.is-occupied) {
+  border-color: var(--accent);
+}
+.seating-seat.is-drag-target,
+.seating-pool.is-drag-target {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+/* Gamer name with the live status dot, and the real name in small muted text
+   below it when set. */
 .seating-seat-names {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   justify-content: center;
   min-width: 0;
   max-width: 100%;
-  text-align: left;
 }
 .seating-seat-name,
 .seating-seat-realname {
@@ -693,148 +755,135 @@
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
 }
+/* Live status: a small static dot next to the name; its aria-label carries
+   the state in words, so the colour is never the only signal. */
 .seating-status-indicator {
   flex: 0 0 var(--space-2);
   width: var(--space-2);
   height: var(--space-2);
   border-radius: var(--radius-full);
-  background: var(--danger);
+  background: var(--state-offline);
 }
-.seating-status-indicator.is-playing,
-.seating-status-indicator.is-online,
-.seating-status-indicator.is-paused {
-  animation: seating-status-pulse 1.8s ease-in-out infinite;
-  will-change: transform, box-shadow;
-}
-.seating-status-indicator.is-playing {
-  --seating-status-halo: var(--state-playing-bg);
-  background: var(--state-playing);
-}
-.seating-status-indicator.is-online {
-  --seating-status-halo: var(--accent-bg);
-  background: var(--accent);
-}
-.seating-status-indicator.is-paused {
-  --seating-status-halo: var(--state-paused-bg);
-  background: var(--state-paused);
-  animation-duration: 2.4s;
-}
-@keyframes seating-status-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 var(--seating-status-halo);
-  }
-  50% {
-    transform: scale(1.12);
-    box-shadow: 0 0 0 var(--space-1) var(--seating-status-halo);
-  }
-}
-.seating-seat-realname.is-empty {
-  display: none;
-}
-.seating-seat.is-drag-target {
-  border-color: var(--accent);
-  background: rgba(91, 140, 255, .2);
-  transform: scale(1.04);
-}
-/* Tap-to-place: the picked-up player… */
-.seating-seat.is-selected,
-.seating-pool-player.is-selected {
-  border-color: var(--accent);
-  background: rgba(91, 140, 255, .2);
-}
-/* …and every seat they could land on (also used while dragging). */
-.seating-plan.is-moving .seating-seat:not(.is-occupied) {
-  border-color: var(--accent);
-}
-.seating-player-pool.is-drag-target {
-  border-color: var(--accent);
-  background: rgba(91, 140, 255, .12);
-}
-.seating-seat-free-label {
+.seating-status-indicator.is-playing { background: var(--state-playing); }
+.seating-status-indicator.is-online { background: var(--accent); }
+.seating-status-indicator.is-paused { background: var(--state-paused); }
+
+.seating-plan-note {
+  margin: 0;
   color: var(--text-muted);
-  font-weight: var(--font-weight-regular);
-}
-.seating-plan.is-editable .seating-seat.is-occupied,
-.seating-pool-player {
-  cursor: grab;
-}
-.seating-plan.is-editable .seating-seat.is-occupied:active,
-.seating-pool-player:active { cursor: grabbing; }
-.seating-plan.is-editable.is-moving .seating-seat { cursor: pointer; }
-@media (hover: hover) {
-  .seating-plan.is-editable .seating-seat.is-occupied:hover,
-  .seating-pool-player:hover {
-    border-color: var(--accent);
-  }
-}
-.seating-controls,
-.seating-pool { display: grid; gap: var(--space-3); }
-.seating-control-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-2);
-}
-.seating-control-grid label {
-  display: grid;
-  gap: var(--space-1);
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-}
-.seating-control-grid input { min-width: 0; }
-.seating-save-status {
-  display: flex;
-  align-items: center;
-  font-size: var(--font-size-xs);
-}
-.seating-player-pool {
-  min-height: calc(var(--tap-target-size) + var(--space-3));
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: stretch;
-  gap: var(--space-2);
-}
-.seating-pool-player {
-  min-width: 0;
-  min-height: var(--tap-target-size);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
-  color: var(--text);
   font-size: var(--font-size-sm);
 }
+/* Below the plan the note keeps clear of the last row of seats. */
+.seating-plan + .seating-plan-note {
+  margin-top: var(--space-3);
+}
+/* "Ohne Platz": avatar, name and status dot share the title line; the rows
+   carry no action (a seat is filled from the seat itself). */
+.seating-pool .profile-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+.seating-pool .profile-row-action {
+  display: none;
+}
+/* Rows with and without a real name keep one height, so both columns stay
+   even. */
+.seating-pool .profile-row-text {
+  justify-content: center;
+  min-height: calc(var(--control-height) + var(--space-2));
+}
+.seating-pool .profile-row-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.seating-pool-name,
+.seating-pool .profile-row-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.seating-pool .avatar,
+.seating-pool .avatar-img,
+.seating-pool .seating-status-indicator {
+  flex: none;
+}
+.seating-pool .profile-row[draggable='true'] {
+  cursor: grab;
+}
+/* Seat-count fields in "Tisch ändern" only need two digits. */
+.seating-count-input {
+  width: 5.5rem;
+}
+
+@media (min-width: 640px) { /* --bp-md */
+  /* Many seats on a long side: the name moves below the avatar so it keeps
+     a readable width. seating.js marks the plan once a long side exceeds
+     eight seats. */
+  .seating-plan.is-dense .seating-side-top .seating-seat,
+  .seating-plan.is-dense .seating-side-bottom .seating-seat {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .seating-plan.is-dense .seating-side-top .seating-seat-names,
+  .seating-plan.is-dense .seating-side-bottom .seating-seat-names {
+    align-items: center;
+  }
+  .seating-plan.is-dense .seating-side-top .seating-seat-realname,
+  .seating-plan.is-dense .seating-side-bottom .seating-seat-realname {
+    display: none;
+  }
+}
+
 @media (max-width: 859px) { /* --bp-lg */
   .seating-plan {
     --seating-seat-width: calc(var(--selection-card-min-width) - var(--space-8));
   }
 }
 
+/* Phones: the table stands upright, turned a quarter clockwise. The long
+   sides become the two columns and the short sides the rows above and below,
+   so no seat shrinks to an unreadable width and nothing scrolls sideways.
+   The reversed directions keep every seat next to its real neighbours. */
 @media (max-width: 639px) { /* --bp-md */
   .seating-plan {
-    --seating-seat-width: var(--seating-seat-width-compact);
-    --seating-seat-height: var(--seating-seat-height-compact);
-    grid-template-columns: var(--seating-seat-width) minmax(130px, 1.5fr) var(--seating-seat-width);
-    padding: var(--space-2);
-    overflow-x: auto;
-    overflow-y: hidden;
+    grid-template-columns: minmax(0, 1fr) var(--space-7) minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    gap: var(--space-2);
+    --seating-seat-height: calc(var(--avatar-size-lg) + var(--space-1));
   }
-  .seating-seat { flex-direction: column; }
-  .seating-seat-names {
-    max-width: calc(var(--seating-seat-width) - var(--space-2));
-    align-items: center;
-    text-align: center;
+  .seating-side-top { grid-area: right; }
+  .seating-side-right { grid-area: bottom; }
+  .seating-side-bottom { grid-area: left; }
+  .seating-side-left { grid-area: top; }
+  .seating-side-seats,
+  .seating-side-top .seating-side-seats,
+  .seating-side-bottom .seating-side-seats {
+    display: flex;
+    align-items: stretch;
   }
-  .seating-control-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (min-width: 640px) { /* --bp-md */
-  .seating-player-pool {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .seating-side-top .seating-side-seats { flex-direction: column; }
+  .seating-side-bottom .seating-side-seats { flex-direction: column-reverse; }
+  .seating-side-right .seating-side-seats,
+  .seating-side-left .seating-side-seats {
+    flex-direction: row-reverse;
+  }
+  .seating-seat {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .seating-side-right .seating-seat,
+  .seating-side-left .seating-seat {
+    flex: 1 1 0;
+    width: auto;
+  }
+  .seating-seat:not(.is-occupied) {
+    justify-content: center;
+  }
+  .seating-table-center {
+    min-height: 0;
+    writing-mode: vertical-rl;
   }
 }
 

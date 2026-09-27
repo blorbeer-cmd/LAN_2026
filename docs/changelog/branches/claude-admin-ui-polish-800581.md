@@ -6,7 +6,7 @@ Dieser Branch ist mit 1 PR in der GitHub-Historie vertreten.
 
 | PR | Status | Titel |
 |---:|---|---|
-| [#685](https://github.com/blorbeer-cmd/LAN_2026/pull/685) | offen (Draft) | Polish Admin as row cards and move the admin mode switch into Mein Profil |
+| [#685](https://github.com/blorbeer-cmd/LAN_2026/pull/685) | gemergt | [Polish Admin as row cards and move the admin mode switch into Mein Profil](../pr/pr-685-polish-admin-as-row-cards-and-move-the-admin-mode-switch-into-mein-profil.md) |
 
 ## Inhalt
 

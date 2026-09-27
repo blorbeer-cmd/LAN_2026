@@ -43,11 +43,17 @@ flowTest('Info: create an entry, see it rendered', async () => {
   );
 
   // Modals stack now that Info is one itself: Escape must dismiss only the
-  // topmost dialog, not the whole stack underneath it.
-  await page.click('[data-delete-entry]');
+  // topmost dialog, not the whole stack underneath it. Delete lives in the
+  // entry's detail dialog.
+  await page.click('[data-open-entry]');
+  await page.waitForSelector('[data-detail-delete]');
+  await page.click('[data-detail-delete]');
   await page.waitForSelector('[data-confirm]');
   await page.keyboard.press('Escape');
   await page.waitForSelector('[data-confirm]', { state: 'detached' });
+  assert.equal(await page.locator('[data-detail-delete]').count(), 1, 'Escape must not close the detail dialog underneath');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-detail-delete]', { state: 'detached' });
   assert.equal(await page.locator('.info-board-modal').count(), 1, 'Escape must not close the Info dialog underneath');
   await page.waitForSelector('text=kartoffel');
 
@@ -66,9 +72,11 @@ flowTest('Info: create an entry, see it rendered', async () => {
   await page.click('[data-confirm]');
   await page.waitForSelector('#info-title', { state: 'detached' });
 
-  // The dialog stays open over the current view until it is dismissed.
+  // The dialog stays open over the current view until it is dismissed; as a
+  // pure reference dialog it has no close button, Escape closes it.
   assert.equal(await page.locator('.info-board-modal').count(), 1);
-  await page.click('.info-board-modal [data-close]');
+  assert.equal(await page.locator('.info-board-modal [data-close]').count(), 0);
+  await page.keyboard.press('Escape');
   await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });
 
@@ -101,50 +109,51 @@ flowTest('Modal: a pointer interaction started inside the dialog does not close 
   await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });
 
-flowTest('Info: a long entry scrolls within a bounded box instead of collapsing', async () => {
+flowTest('Info: entries are rows with a short preview; the detail dialog holds the full text', async () => {
   await page.click('#info-btn');
   await page.waitForSelector('#info-new-btn');
 
-  // A short entry (well under the scroll threshold) renders in full, with no
-  // bounded scroll box at all.
   await page.click('#info-new-btn');
   await page.fill('#info-title', 'Discord');
   await page.fill('#info-content', 'discord.gg/example');
   await page.click('#info-form button[type="submit"]');
   await page.waitForSelector('text=discord.gg/example');
-  const discordEntry = page.locator('[data-info-entry]', { hasText: 'Discord' });
-  assert.equal(await discordEntry.locator('.info-board-content-scroll').count(), 0);
 
-  // A long entry stays fully visible - no toggle, nothing hidden - but
-  // scrolls within a bounded box instead of stretching its card (and its
-  // short neighbor) to match its full height.
+  // A long entry shows only a two-line preview in the list; the rest is in
+  // its detail dialog instead of stretching the row.
   const longContent = Array.from({ length: 6 }, (_, i) => `Regel ${i + 1}: Sei nett zueinander.`).join('\n');
   await page.click('#info-new-btn');
   await page.fill('#info-title', 'Hausregeln für unsere gemeinsame LAN im September');
   await page.fill('#info-content', longContent);
   await page.click('#info-form button[type="submit"]');
   const rulesEntry = page.locator('[data-info-entry]', { hasText: 'Hausregeln' });
-  const scrollBox = rulesEntry.locator('.info-board-content-scroll');
-  await scrollBox.waitFor();
-  assert.equal(await rulesEntry.getByText('Regel 6: Sei nett zueinander.').isVisible(), true);
-  // The box is actually bounded rather than merely tall enough to fit
-  // everything - otherwise the scroll container would be pointless.
-  const isBounded = await scrollBox.evaluate((el) => el.scrollHeight > el.clientHeight);
-  assert.equal(isBounded, true);
+  await rulesEntry.waitFor();
+  const preview = rulesEntry.locator('.info-board-preview');
+  assert.equal(await preview.evaluate((el) => el.scrollHeight > el.clientHeight), true, 'a long preview is clamped');
 
+  // Wide screens list the entries in two columns, filled left first.
   const originalViewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 1100, height: 844 });
+  const lefts = await page.locator('.info-board-list > .profile-row').evaluateAll((rows) => rows.map((row) => Math.round(row.getBoundingClientRect().left)));
+  assert.equal(new Set(lefts).size, 2);
+  assert.equal(lefts[0] < lefts[lefts.length - 1], true);
+
+  // On a phone the one copy action stays inside its row beside a long title.
   await page.setViewportSize({ width: 390, height: 844 });
-  const actionsFit = await rulesEntry.locator('.row-between').evaluate((row) => {
+  const actionFits = await rulesEntry.evaluate((row) => {
     const bounds = row.getBoundingClientRect();
-    return Array.from(row.querySelectorAll('button')).every((button) => {
-      const action = button.getBoundingClientRect();
-      return action.left >= bounds.left - 0.5 && action.right <= bounds.right + 0.5;
-    });
+    const action = row.querySelector('[data-copy-entry]')!.getBoundingClientRect();
+    return action.left >= bounds.left - 0.5 && action.right <= bounds.right + 0.5;
   });
-  assert.equal(actionsFit, true, 'info actions must stay inside the row beside a long title');
+  assert.equal(actionFits, true, 'the copy action must stay inside the row beside a long title');
   await page.setViewportSize(originalViewport);
 
-  await page.click('.info-board-modal [data-close]');
+  await rulesEntry.locator('[data-open-entry]').click();
+  await page.waitForSelector('.info-board-content');
+  assert.equal(await page.locator('.info-board-content').getByText('Regel 6: Sei nett zueinander.').isVisible(), true);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.info-board-content', { state: 'detached' });
+  await page.keyboard.press('Escape');
   await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });
 

@@ -24,7 +24,7 @@ import {
   openProfile,
 } from './flowsShared.fixture';
 import { openMoreViewEntry, setAdminMode } from './navHelpers';
-import { assertControlHeights, assertInfoTooltipPlacement, assertNoOverflow } from './visualHelpers';
+import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 registerFlowFixture('shell');
 
@@ -1485,18 +1485,21 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
   await assertCompactAdminHeader('Sitzplan');
-  assert.equal(await page.locator('.seating-editor > .grouped-page-section').count(), 3);
-  // The plan card leads the page without repeating the „Sitzplan“ page title;
-  // only the two supporting cards carry their own headings.
-  assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2 > span:first-child, .seating-editor > .grouped-page-section h2:not(:has(> span:first-child))').allTextContents(), ['Teilnehmende', 'Konfiguration']);
-  assert.equal(await page.locator('.seating-pool-player').evaluateAll((players) => players.every((player) => getComputedStyle(player).borderRadius !== '999px')), true);
-  // The unassigned-player pool is one column on phones and two from --bp-md
-  // (DESIGN_SYSTEM.md: "phones keep one column"). The old bare 2-column
-  // assertion only ever passed while a desktop viewport leaked in from the
-  // Orga Events test; check both documented layouts explicitly instead.
-  assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 1);
+  // The plan card leads the page without repeating the „Sitzplan“ page title,
+  // „Ohne Platz“ follows; the table size lives behind the header action.
+  assert.equal(await page.locator('.seating-editor > .grouped-page-section').count(), 2);
+  assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2').allTextContents(), ['Ohne Platz']);
+  assert.equal((await page.locator('.more-subpage-title-row #seating-table-edit').textContent())?.trim(), 'Tisch ändern');
+  // Phones: the table stands upright instead of scrolling sideways, so the
+  // long top side becomes a column of full-width seats.
+  assert.equal(await page.locator('.seating-plan').evaluate((plan) => plan.scrollWidth <= plan.clientWidth + 1), true);
+  assert.equal(await page.locator('.seating-side-top .seating-side-seats').evaluate((seats) => getComputedStyle(seats).flexDirection), 'column');
+  // Unseated players are flat rows: one column on phones, two from --bp-lg.
+  const unseated = page.locator('.seating-pool .profile-rows');
+  assert.equal(await unseated.evaluate((rows) => getComputedStyle(rows).display), 'flex');
   await page.setViewportSize({ width: 900, height: 844 });
-  assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 2);
+  assert.equal(await unseated.evaluate((rows) => getComputedStyle(rows).gridTemplateColumns.split(' ').length), 2);
+  assert.equal(await page.locator('.seating-side-top .seating-side-seats').evaluate((seats) => getComputedStyle(seats).display), 'grid');
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok((await page.locator('.seating-seat:not(.is-occupied)').count()) > 0);
   assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().getByText('Frei', { exact: true }).count(), 1);
@@ -1506,32 +1509,70 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     ['solid', 'rgba(0, 0, 0, 0)'],
   );
   assert.equal(await page.locator('.seating-seat-number').count(), 0);
-  // The table is an outline labelled „Tisch“; the editor's hint only shows once a player is picked.
+  // The table is an outline labelled „Tisch“, without side labels around it.
   assert.equal(await page.locator('.seating-table-center').first().textContent().then((text) => text?.trim()), 'Tisch');
-  assert.equal(await page.locator('.seating-seat-free-label').first().evaluate((label) => {
+  assert.equal(await page.locator('.seating-side-label').count(), 0);
+  const tokenColor = (token: string) => page.evaluate((name) => {
     const probe = document.createElement('span');
-    probe.style.color = 'var(--text-muted)';
+    probe.style.color = `var(${name})`;
     document.body.appendChild(probe);
-    const tokenColor = getComputedStyle(probe).color;
+    const color = getComputedStyle(probe).color;
     probe.remove();
-    return getComputedStyle(label).color === tokenColor;
-  }), true);
-  assert.equal(await page.locator('.seating-pool-player').first().evaluate((player) => {
-    const avatar = player.querySelector('.avatar-dot, .avatar-img')!.getBoundingClientRect();
-    const name = player.querySelector('.seating-seat-name-line')!.getBoundingClientRect();
+    return color;
+  }, token);
+  assert.equal(await page.locator('.seating-seat-free-label').first().evaluate((label) => getComputedStyle(label).color), await tokenColor('--text-muted'));
+  // Offline reads grey (never the danger red) and no status dot pulses. The
+  // fixture's accounts are all online, so the offline dot is probed directly.
+  const offlineColor = await page.evaluate(() => {
+    const dot = document.createElement('span');
+    dot.className = 'seating-status-indicator is-offline';
+    document.querySelector('.seating-plan')!.appendChild(dot);
+    const color = getComputedStyle(dot).backgroundColor;
+    dot.remove();
+    return color;
+  });
+  const offlineToken = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = 'var(--state-offline)';
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  assert.equal(offlineColor, offlineToken);
+  assert.equal(await page.locator('.seating-status-indicator').evaluateAll((dots) => dots.every((dot) => getComputedStyle(dot).animationName === 'none')), true);
+  assert.equal(await page.locator('.seating-pool .profile-row').first().evaluate((row) => {
+    const avatar = row.querySelector('.avatar-dot, .avatar-img')!.getBoundingClientRect();
+    const name = row.querySelector('.seating-pool-name')!.getBoundingClientRect();
     return Math.abs(avatar.top + avatar.height / 2 - (name.top + name.height / 2)) < 2;
   }), true);
-  assert.equal(await page.locator('.seating-seat-realname.is-empty').first().evaluate((element) => getComputedStyle(element).display), 'none');
-  assert.equal(await page.getByText('Sichtbare Monitore', { exact: true }).count(), 0);
+  // Without a real name no empty placeholder line is rendered.
+  assert.equal(await page.locator('.seating-seat-realname:empty').count(), 0);
   assert.equal(await page.getByText('Automatisch gespeichert', { exact: true }).count(), 0);
-  assert.equal(await page.locator('#seating-monitors-help').count(), 1);
-  assert.equal(await page.locator('#seating-save-help').count(), 0);
-  assert.equal(await page.locator('.more-subpage-title-row .view-title [data-info-tooltip-trigger]').count(), 1);
-  // Largest type on the page: the view title. The help glyph keeps the same
-  // distance to it as to a small field label elsewhere.
-  await assertInfoTooltipPlacement(page, 1);
-  await page.click('[aria-label="Mehr Informationen zu Sitzplan"]');
-  await page.waitForSelector('#seating-monitors-help:not([hidden])');
+  // No help tooltip: the neighbour rule is one short muted line under the plan.
+  assert.equal(await page.locator('#view-container [data-info-tooltip-trigger]').count(), 0);
+  assert.match((await page.locator('.seating-plan-note').textContent()) ?? '', /^\d+ von \d+ Plätzen belegt · Nachbarn am Tisch gelten als sichtbare Monitore$/);
+
+  // A seat opens one alphabetical picker with „Frei“ first.
+  await page.locator('.seating-seat:not(.is-occupied)').first().click();
+  const seatDialog = page.locator('.modal:has(#seating-seat-player)');
+  await seatDialog.waitFor();
+  const seatOptions = await seatDialog.locator('#seating-seat-player option').allTextContents();
+  assert.equal(seatOptions[0], 'Frei');
+  assert.deepEqual(seatOptions.slice(1), [...seatOptions.slice(1)].sort((a, b) => a.localeCompare(b, 'de', { numeric: true, sensitivity: 'base' })));
+  await seatDialog.locator('[data-dialog-cancel]').click();
+  await seatDialog.waitFor({ state: 'detached' });
+
+  // „Tisch ändern“ saves all four sides together from one dialog.
+  const rightSeats = await page.locator('.seating-side-right .seating-seat').count();
+  await page.click('#seating-table-edit');
+  const tableDialog = page.locator('.modal:has(#seating-table-form)');
+  await tableDialog.waitFor();
+  assert.equal(await tableDialog.locator('.seating-count-input').count(), 4);
+  await tableDialog.locator('#seating-count-right').fill(String(rightSeats + 1));
+  await tableDialog.locator('button[type="submit"]').click();
+  await tableDialog.waitFor({ state: 'detached' });
+  await page.waitForFunction((count) => document.querySelectorAll('.seating-side-right .seating-seat').length === count, rightSeats + 1);
 });
 
 flowTest('global search filters areas, supports keyboard navigation and restores focus', async (t) => {
@@ -1673,16 +1714,16 @@ flowTest('Sitzplan: the real name set in Mein Profil shows in small everywhere t
   await page.click('#profile-save');
   await page.waitForSelector('.toast:has-text("Gespeichert")');
 
-  // Seat her via the editor's tap-to-place path (select the pool chip, then
-  // tap an empty seat) rather than HTML5 drag & drop, which Playwright can't
-  // simulate reliably.
+  // Seat her through the seat dialog's picker rather than HTML5 drag & drop,
+  // which Playwright can't simulate reliably.
   await openMoreViewEntry(page, '[data-navigate="admin"]');
   await ensureAdminMode();
   await openMoreViewEntry(page, '[data-navigate="admin"]');
   await page.click('[data-navigate="seating"]');
-  await page.waitForSelector('[data-seat-pool] [data-player-id]');
-  await page.locator('[data-seat-pool] [data-player-id]', { hasText: 'E2E Alice Pro' }).click();
+  await page.waitForSelector('[data-seat-side="top"][data-seat-index="0"]');
   await page.locator('[data-seat-side="top"][data-seat-index="0"]').click();
+  await page.selectOption('#seating-seat-player', { label: 'E2E Alice Pro' });
+  await page.click('#seating-seat-form button[type="submit"]');
   await page.waitForSelector('.seating-seat.is-occupied .seating-seat-realname:has-text("Alice Musterfrau")');
 
   // Same shared renderSeatingPlan() component also feeds Home's read-only

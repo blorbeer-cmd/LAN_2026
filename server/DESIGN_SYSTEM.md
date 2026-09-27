@@ -199,8 +199,9 @@ responsive on smaller screens.
 laptop-sized layouts while the popover remains viewport-responsive on phones.
 `--selection-card-min-width` (160px) controls when player checkbox cards reflow into additional
 columns without making names or avatars too cramped.
-`--seating-seat-width` / `--seating-seat-height` and their compact counterparts keep every place
-around the physical seating plan the same size; the compact size preserves that equality on phones.
+`--seating-seat-width` / `--seating-seat-height` keep every place around the physical seating plan
+the same size. The long sides shrink all their seats evenly instead of scrolling, and on phones the
+plan turns upright so the long sides become two columns of full-width seats.
 `--assignment-select-width` (112px) keeps repeated player-to-team selectors aligned independently
 of player-name length.
 `--payment-marker-width` (96px, 88px only below 360px) keeps the checkbox-like payment toggle of
@@ -213,6 +214,8 @@ box carries the state.
 viewport-responsive on phones.
 `--search-panel-width` (640px) gives the global search palette enough room for titles and short
 descriptions while the shared modal remains full-width on phones.
+`--info-board-panel-width` (880px) widens the Info dialog from `--bp-lg` so its entries fit in two
+columns; below that it keeps the shared modal width.
 `--search-select-results-max-height` (320px) keeps a long searchable option list usable without
 letting it cover the full page; additional results scroll inside the dark listbox.
 `--shell-bottom-inset` reserves the phone/laptop bottom navigation plus safe area and becomes zero
