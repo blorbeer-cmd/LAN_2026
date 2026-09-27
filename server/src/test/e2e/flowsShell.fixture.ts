@@ -1445,7 +1445,7 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
   assert.equal(await page.locator('a[href="/kiosk.html"]').count(), 0);
-  assert.equal(await page.locator('.kiosk-password-credential').count(), 1);
+  assert.equal(await page.locator('.profile-row-meta code').count(), 1);
   assert.deepEqual(
     await page.locator('a[href^="/kiosk.html?account="]').allTextContents(),
     await page.locator('a[href^="/kiosk.html?account="]').evaluateAll((links) => links.map(() => 'Kiosk öffnen')),

@@ -387,7 +387,8 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `topbar-title`, `desktop-navigation`, `page-heading`, `subpage-heading`, `tabbed-subpage-heading`, `section-heading`, `section-title` | Bestehende 44-px-Kopf-/Navigationszeilen und mehrzeilige Headerreservierungen. |
 | `seating-seat` | Sitzplatz-Kachel des Tischplans in Token-Größe mit Avatar, Name und Status; öffnet den Platz-Dialog. |
 | `music-cover` | Unverändertes nichtinteraktives 76-px-Cover. |
-| `kiosk-header-action`, `kiosk-match-row` | Permanente 44-px-Ziele der eigenständigen TV-Geräteklasse. |
+| `kiosk-match-row` | Permanente 44-px-Ziele der eigenständigen TV-Geräteklasse. |
+| `kiosk-live-dot` | Nichtinteraktiver 8-px-Seitenpunkt der Live-Status-Rotation. |
 
 Die Glyphenvarianten `registry:event-card-detail-glyph`, `registry:desktop-navigation-glyph`,
 `registry:list-row-glyph`, `registry:navigation-glyph`, `registry:badge-glyph`,
@@ -616,9 +617,9 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:music-cover`: Noninteractive 76px artwork belongs to the music-card structure.
 
-- `registry:kiosk-header-action`: Permanent 44px fullscreen action on the dedicated TV canvas.
-
 - `registry:kiosk-match-row`: Permanent 44px team row on the dedicated TV canvas.
+
+- `registry:kiosk-live-dot`: Noninteractive 8px pagination indicator for the TV Live-Status roster rotation, not a control.
 
 - `registry:arcade-create-width`: Creation-row container controls available width and stacking; no CTA interior dimensions.
 
@@ -641,10 +642,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:tournament-skill-field`: Team skill field fits the header alongside the team label.
 
 - `registry:vote-selection-row`: Existing game-selection card frame and inset; native checkbox owns its glyph.
-
-- `registry:kiosk-player-card`: Read-only TV player surface retains the separate device-class text scale and inset.
-
-- `registry:kiosk-title`: TV header keeps its documented title scale.
 
 - `registry:kiosk-login-field`: Native login field fills the centered TV login card.
 

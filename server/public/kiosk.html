@@ -12,17 +12,13 @@
   <link rel="stylesheet" href="/css/domains.css?v=8" />
   <link rel="stylesheet" href="/css/overlays.css?v=2" />
   <link rel="stylesheet" href="/css/arcade.css?v=7" />
-  <link rel="stylesheet" href="/css/kiosk.css?v=8" />
+  <link rel="stylesheet" href="/css/kiosk.css?v=19" />
 </head>
 <body class="kiosk-body">
   <div id="kiosk-root">
-    <header class="kiosk-header">
-      <div class="topbar-title"><img class="topbar-logo" src="/img/logo.svg" alt="" width="32" height="32" /> <span class="brand-title">Respawn</span></div>
-      <div class="kiosk-header-actions">
-        <button id="kiosk-fullscreen" class="btn btn-sm" type="button" aria-pressed="false">Vollbild</button>
-        <span id="kiosk-clock" class="kiosk-clock"></span>
-      </div>
-    </header>
+    <div class="kiosk-corner">
+      <button id="kiosk-fullscreen" class="kiosk-fullscreen-btn" type="button" aria-pressed="false" aria-label="Vollbild" title="Vollbild"></button>
+    </div>
 
     <div id="kiosk-alerts" class="kiosk-alerts" hidden>
       <div id="kiosk-broadcast" class="kiosk-broadcast" hidden></div>
@@ -57,6 +53,6 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/js/kiosk.js?v=5"></script>
+  <script type="module" src="/js/kiosk.js?v=21"></script>
 </body>
 </html>
