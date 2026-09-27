@@ -66,13 +66,17 @@ async function loadSeating(ctx) {
   }
 }
 
+const hasSeats = (layout) => layout.topSeats + layout.rightSeats + layout.bottomSeats + layout.leftSeats > 0;
+
 function renderHomeSeating(ctx) {
   if ((seatingCache === null || seatingStale) && !seatingLoading && !seatingLoadError) loadSeating(ctx);
   return `<section class="card grouped-page-section live-seating stack" aria-labelledby="home-seating-title">
     <div class="grouped-page-section-title"><h2 id="home-seating-title">Sitzplan</h2></div>
     ${seatingCache === null
-      ? emptyStateHtml(seatingLoadError ? 'Sitzplan konnte nicht geladen werden.' : 'Lädt…', { className: 'empty-state-compact' })
-      : renderSeatingPlan(seatingCache.layout, seatingCache.players)}
+      ? emptyStateHtml(seatingLoadError ? 'Sitzplan konnte nicht geladen werden' : 'Lädt', { className: 'empty-state-compact' })
+      : hasSeats(seatingCache.layout)
+        ? renderSeatingPlan(seatingCache.layout, seatingCache.players)
+        : emptyStateHtml('Noch keine Plätze')}
   </section>`;
 }
 

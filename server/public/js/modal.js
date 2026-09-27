@@ -45,7 +45,11 @@ function trapTabFocus(event, backdrop) {
 // successful save). It should return a warning message describing what
 // would be lost, or a falsy value to close immediately (e.g. because the
 // form is still empty/unchanged).
-export function openModal(title, bodyHtml, { onMount, onClose, confirmClose } = {}) {
+// headerAction: optional HTML for one compact action at the right of the
+// title (a dialog's primary action, e.g. "Eintrag anlegen").
+// closeButton: false drops the header's X for a pure reference dialog;
+// Escape and a tap outside still close it.
+export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, headerAction = '', closeButton = true } = {}) {
   const previousFocus = document.activeElement;
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -53,7 +57,8 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose } = 
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-header">
         <h2></h2>
-        <button type="button" class="icon-btn" data-close aria-label="Schließen">${icon('x')}</button>
+        ${headerAction ? `<div class="modal-header-action">${headerAction}</div>` : ''}
+        ${closeButton ? `<button type="button" class="icon-btn" data-close aria-label="Schließen">${icon('x')}</button>` : ''}
       </div>
       <div class="modal-body">${bodyHtml}</div>
     </div>
@@ -106,7 +111,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose } = 
   backdrop.addEventListener('click', (e) => {
     if (e.target === backdrop && pointerDownOnBackdrop) requestClose();
   });
-  backdrop.querySelector('[data-close]').addEventListener('click', requestClose);
+  backdrop.querySelector('[data-close]')?.addEventListener('click', requestClose);
   document.addEventListener('keydown', onKeydown);
 
   if (onMount) onMount(backdrop, close);
