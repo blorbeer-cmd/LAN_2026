@@ -65,7 +65,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   the draw balanced with, while the captain draft keeps the en dash because it never uses ratings.
   The title and accessible label retain the full term „Skill-Level“.
   Unplayed draws have their own „Ohne Ergebnis“ section above „Historie“. It starts collapsed and builds
-  its editable cards only when opened. Recorded matches and tournaments share the „Historie“ for the selected game. It starts
+  its editable cards only when opened. Each unplayed game is also a collapsed tile that can be opened
+  independently to show its teams and player moves. Recorded matches and tournaments share the „Historie“ for the selected game. It starts
   collapsed and offers „Alle | Matches | Turniere“ filters. Match pages can load older entries;
   tournament entries come from the complete tournament list. Every entry is a collapsed tile with
   game, time, result and actions in its header. Expanding a match shows teams by place without changing their

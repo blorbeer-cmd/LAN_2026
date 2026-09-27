@@ -206,7 +206,7 @@ function findDrawById(id) {
 // draggable player rows and the button to record a result — which is what
 // changes its actions inside the shared Historie. Arrow keys provide the
 // keyboard path for moving a player between teams.
-function renderDrawCard(draw, { editable: editableInput, showGame = false, primaryTournament = false }) {
+function renderDrawCard(draw, { editable: editableInput, showGame = false, primaryTournament = false, collapsible = false }) {
   // A draw that became a tournament is frozen like a recorded one, but it has
   // no result of its own: no winner, no "Remis", just the link to its bracket.
   const inTournament = Boolean(draw.tournamentId);
@@ -280,6 +280,13 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
        <button type="button" class="btn btn-sm${primaryTournament ? ' btn-primary' : ''}" data-draw-tournament="${draw.id}">Turnier erstellen</button>`
     : `<button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>
        <button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>`;
+
+  if (collapsible) {
+    const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span>
+      <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
+    return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, actions,
+      `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item');
+  }
 
   return `
     <div class="card stack matchmaking-draw-card" data-draw-card="${draw.id}">
@@ -605,6 +612,18 @@ function historyItemHtml(id, title, meta, actions, details, extraClass = '') {
   </div>`;
 }
 
+function wireHistoryItemToggles(container, ctx) {
+  container.querySelectorAll('[data-history-toggle]').forEach((button) => button.addEventListener('click', () => {
+    const id = button.dataset.historyToggle;
+    if (expandedHistoryIds.has(id)) expandedHistoryIds.delete(id);
+    else expandedHistoryIds.add(id);
+    const expanded = expandedHistoryIds.has(id);
+    button.setAttribute('aria-expanded', String(expanded));
+    button.closest('.matchmaking-history-item').querySelector('.matchmaking-history-details').hidden = !expanded;
+    if (expanded && id.startsWith('t-')) loadHistoryTournamentDetail(id.slice(2), ctx);
+  }));
+}
+
 function historyMatchHtml(draw) {
   const winner = draw.winnerTeamIndex == null ? null : draw.teams[draw.winnerTeamIndex];
   const winnerName = winner ? defaultDrawTeamName(draw, winner, draw.winnerTeamIndex) : '';
@@ -731,8 +750,9 @@ function wireOpenDraws(container, ctx) {
   }
   function populateOpenDraws() {
     if (!openPanel || !section?.open || openPanel.dataset.rendered) return;
-    openPanel.innerHTML = openDrawsCache.map((draw) => renderDrawCard(draw, { editable: true, showGame: true })).join('');
+    openPanel.innerHTML = openDrawsCache.map((draw) => renderDrawCard(draw, { editable: true, showGame: true, collapsible: true })).join('');
     openPanel.dataset.rendered = 'true';
+    wireHistoryItemToggles(openPanel, ctx);
     wireDrawCards(openPanel, ctx);
   }
   section?.addEventListener('toggle', () => {
@@ -747,16 +767,8 @@ function wireHistory(container, selectedGameId, ctx) {
   section?.querySelector('summary')?.addEventListener('click', () => {
     historySectionOpen = !section.open;
   });
-  container.querySelectorAll('[data-history-toggle]').forEach((button) => button.addEventListener('click', () => {
-    const id = button.dataset.historyToggle;
-    if (expandedHistoryIds.has(id)) expandedHistoryIds.delete(id);
-    else expandedHistoryIds.add(id);
-    const expanded = expandedHistoryIds.has(id);
-    button.setAttribute('aria-expanded', String(expanded));
-    button.closest('.matchmaking-history-item').querySelector('.matchmaking-history-details').hidden = !expanded;
-    if (expanded && id.startsWith('t-')) loadHistoryTournamentDetail(id.slice(2), ctx);
-  }));
-  container.querySelectorAll('[data-history-toggle^="t-"][aria-expanded="true"]').forEach((button) =>
+  if (section) wireHistoryItemToggles(section, ctx);
+  section?.querySelectorAll('[data-history-toggle^="t-"][aria-expanded="true"]').forEach((button) =>
     loadHistoryTournamentDetail(button.dataset.historyToggle.slice(2), ctx));
   container.querySelectorAll('[data-retry-tournament-detail]').forEach((button) => button.addEventListener('click', () => {
     const id = button.dataset.retryTournamentDetail;

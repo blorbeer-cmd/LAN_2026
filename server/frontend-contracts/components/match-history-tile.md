@@ -20,6 +20,7 @@ separaten, zunächst geschlossenen Abschnitt darüber.
 
 Erfasstes Match mit Ergebnis und Stift/Rematch, Turnier mit direktem Detail-Link und
 nachladbaren Teamdetails; „Ohne Ergebnis“ als separater Abschnitt mit bearbeitbaren Auslosungen.
+Jede Auslosung in diesem Abschnitt ist selbst eine einklappbare Kachel mit Aktionen im Kopf.
 
 ## 5. Erlaubte Anpassungen
 
@@ -37,6 +38,9 @@ Turnierkacheln laden beim Öffnen Teams, Spieler und verfügbare Ergebnisdaten n
 einen erneuten Ladeversuch. „Ohne Ergebnis“ steht über der Historie und ist zu Beginn geschlossen.
 Seine bearbeitbaren Auslosungen werden erst beim Aufklappen aufgebaut und beim Schließen
 wieder aus dem DOM entfernt; die Anzahl und Erreichbarkeit aller offenen Auslosungen bleiben erhalten.
+Nach dem Öffnen des Abschnitts beginnen die einzelnen Auslosungen geschlossen. Ihre Teamdetails
+lassen sich unabhängig voneinander öffnen und wieder schließen; dieser Zustand bleibt beim
+Neuzeichnen erhalten.
 
 ## 7. Erreichbare Zustände
 
