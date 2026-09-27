@@ -664,6 +664,7 @@ function renderBroadcastBanner(entry) {
   if (!entry) {
     el.hidden = true;
     updateAlertLayout();
+    alignFullscreenWithBroadcast();
     return;
   }
   if (entry.expiresAt) {
@@ -674,6 +675,22 @@ function renderBroadcastBanner(entry) {
   if (el.innerHTML !== html) el.innerHTML = html;
   el.hidden = false;
   updateAlertLayout();
+  requestAnimationFrame(alignFullscreenWithBroadcast);
+}
+
+function alignFullscreenWithBroadcast() {
+  const corner = document.querySelector('.kiosk-corner');
+  const banner = document.getElementById('kiosk-broadcast');
+  const time = banner?.querySelector('.kiosk-broadcast-time');
+  const button = document.getElementById('kiosk-fullscreen');
+  if (!corner || !button) return;
+  if (banner?.hidden || !time) {
+    corner.style.removeProperty('top');
+    return;
+  }
+  const timeRect = time.getBoundingClientRect();
+  const buttonRect = button.getBoundingClientRect();
+  corner.style.top = `${timeRect.top + (timeRect.height - buttonRect.height) / 2}px`;
 }
 
 function updateAlertLayout() {
@@ -1079,6 +1096,10 @@ async function main() {
   }
 
   wireFullscreenControl();
+  const broadcast = document.getElementById('kiosk-broadcast');
+  broadcast.addEventListener('animationend', alignFullscreenWithBroadcast);
+  new ResizeObserver(alignFullscreenWithBroadcast).observe(broadcast);
+  window.addEventListener('resize', alignFullscreenWithBroadcast);
   // The screen size, fullscreen state and banner can change the card height
   // without a new live-status payload. Re-measure the current roster then.
   const liveContainer = document.getElementById('kiosk-live');

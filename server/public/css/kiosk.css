@@ -61,8 +61,8 @@
    never a boxed button chrome-ing up the corner. */
 .kiosk-corner {
   position: fixed;
-  /* The browser-measured icon and timestamp centers align at 1280x720.
-     The token-based offset also follows the banner's vertical spacing. */
+  /* Fallback without a banner. With a banner, kiosk.js measures the actual
+     timestamp because wrapped messages change the banner's height. */
   top: calc(var(--space-5) + var(--space-3) / 2);
   right: calc(var(--space-8) * 3);
   z-index: 2;

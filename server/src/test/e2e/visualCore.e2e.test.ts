@@ -121,6 +121,9 @@ for (const width of [390, 1024]) {
       await openAdminCard(page, 'accounts');
       const row = page.locator('[data-admin-section="accounts"] .profile-row').filter({ hasText: 'Alex Referenz' });
       await row.waitFor();
+      // The fixed bottom navigation can cover the row after the alphabetic
+      // admin tool order pushes the account section farther down.
+      await row.evaluate((element) => element.scrollIntoView({ block: 'center' }));
       await scenes.capture(`core-admin-row-${width}`, row, async () => {
         assert.equal(await row.locator('.player-name').innerText(), 'Alex Referenz');
         const trigger = row.locator('.action-menu > summary');

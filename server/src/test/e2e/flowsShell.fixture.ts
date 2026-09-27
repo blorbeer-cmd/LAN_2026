@@ -1201,7 +1201,7 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   });
   const assertCompactAdminHeader = async (
     title: string,
-    expectedCardInset: number | { minimum: number } = 68,
+    expectedCardInset: number | { minimum: number } | 'below-header' = 68,
   ) => {
     const header = page.locator('.more-subpage-header');
     assert.equal(await header.count(), 1);
@@ -1222,17 +1222,25 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     // depends on an unrelated variable the test never controlled. Querying
     // the card inside the same evaluation additionally keeps resolution and
     // measurement in one task, so an async re-render cannot land between them.
-    const cardInset = await page.evaluate(() => {
+    const { cardInset, headerHeight } = await page.evaluate(() => {
       const container = document.querySelector('#view-container');
       if (!container) throw new Error('View container missing');
       const card = container.querySelector('.card');
       if (!card) throw new Error('No card rendered inside the view container');
-      return Math.round(
-        card.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop,
-      );
+      const currentHeader = container.querySelector('.more-subpage-header');
+      if (!currentHeader) throw new Error('Admin header missing');
+      return {
+        cardInset: Math.round(card.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop),
+        headerHeight: Math.round(currentHeader.getBoundingClientRect().height),
+      };
     });
     if (typeof expectedCardInset === 'number') {
       assert.equal(cardInset, expectedCardInset, `${title} should use the expected first-card inset`);
+    } else if (expectedCardInset === 'below-header') {
+      // The visible help text wraps differently with Linux and macOS fonts.
+      // The card must remain exactly one 24px header gap below that text.
+      assert.equal(cardInset, headerHeight + 24, `${title} should follow its full header`);
+      assert.ok(cardInset > 68, `${title} should reserve space for its help text`);
     } else {
       assert.ok(cardInset >= expectedCardInset.minimum, `${title} should reserve the stacked action row`);
     }
@@ -1440,7 +1448,7 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await page.click('[data-retry-kiosk-password]');
   await page.waitForSelector('[data-copy-kiosk-password]');
   await page.unroute(kioskPasswordUrl);
-  await assertCompactAdminHeader('Broadcast', 152);
+  await assertCompactAdminHeader('Broadcast', 'below-header');
   assert.equal(await page.getByRole('heading', { name: 'Broadcast' }).count(), 1);
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
   assert.equal(await page.locator('a[href="/kiosk.html"]').count(), 0);

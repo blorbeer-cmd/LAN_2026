@@ -587,6 +587,9 @@ flowTest('Broadcast: fits live players and tournament matches while showing the 
   await page.waitForSelector('#kiosk-broadcast:not([hidden]) >> text=Neue Sammelbestellung');
   await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('.kiosk-broadcast-time');
+  await page.locator('#kiosk-broadcast').evaluate(async (banner) => {
+    await Promise.all(banner.getAnimations().map((animation) => animation.finished));
+  });
   const alignment = await page.evaluate(() => {
     const button = document.querySelector('#kiosk-fullscreen')!.getBoundingClientRect();
     const icon = document.querySelector('#kiosk-fullscreen .ui-icon')!.getBoundingClientRect();
