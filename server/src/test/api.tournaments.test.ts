@@ -333,6 +333,9 @@ test('GET /api/tournaments lists tournaments for the active event, newest first'
   assert.equal(res.status, 200);
   assert.ok(res.body.length >= 4);
   assert.ok(res.body.every((t: { gameId: string }) => typeof t.gameId === 'string'));
+  const bracket = res.body.find((t: { id: string }) => t.id === bracketId);
+  assert.deepEqual(new Set(bracket.participantIds), new Set(playerIds),
+    'collapsed tournament cards can identify participants without loading the board');
 });
 
 test('DELETE /api/tournaments/:id removes it but keeps its leaderboard matches', async () => {

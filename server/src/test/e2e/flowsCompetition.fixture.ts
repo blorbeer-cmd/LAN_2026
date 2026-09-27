@@ -201,6 +201,12 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.waitForSelector('.matchmaking-new-draw .team-card');
   const teamCards = await page.locator('.matchmaking-new-draw .team-card').count();
   assert.ok(teamCards >= 2, 'expected at least 2 team cards');
+  assert.equal(await page.locator('.matchmaking-new-draw .matchmaking-draw-head .player-name strong').count(), 1);
+  assert.equal(await page.locator('.matchmaking-new-draw .team-player-name strong').innerText(), alice.name);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  assert.equal(await page.locator('.matchmaking-new-draw .tournament-team-preview-grid').evaluate((element) =>
+    getComputedStyle(element).gridTemplateColumns.split(' ').length), 4);
+  await page.setViewportSize({ width: 390, height: 844 });
 
   // Neither of these two players rated the game, so both enter the draw with
   // the server's neutral fallback. That has to stay visible: each row shows
@@ -724,6 +730,8 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   const drawToggle = openDraw.locator('[data-history-toggle]');
   const drawDetails = openDraw.locator('.matchmaking-history-details');
   assert.equal(await drawToggle.getAttribute('aria-expanded'), 'false', 'each unplayed game starts collapsed');
+  assert.equal(await drawToggle.locator('.matchmaking-history-title strong').count(), 1,
+    'the collapsed game identifies a participant');
   assert.equal(await drawDetails.isVisible(), false);
   await drawToggle.click();
   assert.equal(await drawToggle.getAttribute('aria-expanded'), 'true');
@@ -734,7 +742,8 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   await drawToggle.click();
   assert.equal(await drawDetails.isVisible(), false, 'an individual unplayed game can be collapsed again');
   await drawToggle.click();
-  assert.equal(await page.locator('#match-history-open .team-player .rating').count(), 0);
+  assert.ok(await page.locator('#match-history-open .team-player .rating').count() >= 2);
+  assert.equal(await page.locator('#match-history-open .team-player-name strong').first().innerText(), alice.name);
   assert.ok(await page.locator('#match-history-open .team-skill-total').count() >= 2);
   await page.click('#match-history-open [data-record-draw]');
 
@@ -756,6 +765,17 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   await page.waitForFunction(() => !!document.querySelector('[data-edit-draw-result]'));
   await openMatchmakingHistory();
   await page.waitForSelector('.matchmaking-history-item .matchmaking-history-meta .tournament-fixture-score:has-text("Remis")');
+  const recordedMatch = page.locator('.matchmaking-history-item:has([data-edit-draw-result])').first();
+  assert.equal(await recordedMatch.locator('.matchmaking-history-title strong').count(), 1);
+  if (await recordedMatch.locator('.matchmaking-history-toggle').getAttribute('aria-expanded') === 'false') {
+    await recordedMatch.locator('.matchmaking-history-toggle').click();
+  }
+  assert.equal(await recordedMatch.locator('.matchmaking-history-players strong').innerText(), alice.name);
+  assert.equal(await recordedMatch.locator('.matchmaking-history-team .team-skill-total').count(), 2);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  assert.equal(await recordedMatch.locator('.matchmaking-history-teams').evaluate((element) =>
+    getComputedStyle(element).gridTemplateColumns.split(' ').length), 4);
+  await page.setViewportSize({ width: 390, height: 844 });
   const historyActions = await page.locator('.matchmaking-history-item:has([data-edit-draw-result]) .matchmaking-draw-actions').first()
     .locator('button').evaluateAll((buttons) => buttons.map((button) =>
       button.hasAttribute('data-edit-draw-result') ? 'edit' : button.hasAttribute('data-delete-draw') ? 'delete' : button.textContent?.trim()));

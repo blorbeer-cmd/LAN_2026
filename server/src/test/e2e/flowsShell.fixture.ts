@@ -2154,9 +2154,10 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   // A two-team K.O. tournament shows one Finale fixture, not a bracket.
   await page.waitForSelector('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture');
   assert.equal(await page.locator('.bracket-match').count(), 0);
-  assert.equal(await page.locator('.tournament-fixture-team.is-my-team').count(), 1, 'the signed-in player sees their team');
-  assert.equal(await page.locator('.tournament-fixture-team-info .team-skill-total').count(), 2);
-  assert.equal(await page.locator('.tournament-fixture-team.is-my-team .tournament-own-team-marker').innerText(), 'Du');
+  assert.equal(await page.locator('.tournament-fixture-team-players strong').innerText(), alice.name,
+    'only the signed-in player name is emphasized in the fixture');
+  assert.equal(await page.locator('.tournament-fixture-team-identity .team-skill-total').count(), 2);
+  assert.equal(await page.locator('.is-my-team, .tournament-own-team-marker').count(), 0);
   assert.match(new URL(page.url()).hash, /^#tournaments\/.+/);
   const tournamentDetailHash = new URL(page.url()).hash;
   const tournamentId = tournamentDetailHash.slice('#tournaments/'.length);
@@ -2211,15 +2212,61 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
     'the completed tournament has left Ohne Ergebnis');
   const historyTournament = page.locator(`.matchmaking-history-item:has([data-open-draw-tournament="${tournamentId}"])`);
   assert.equal(await historyTournament.locator('.matchmaking-history-toggle').getAttribute('aria-expanded'), 'false');
+  assert.equal(await historyTournament.locator('.matchmaking-history-title strong').count(), 1);
+  assert.match(await historyTournament.locator('.matchmaking-history-meta').innerText(), /Win[\s\S]*1\. Platz/);
   await historyTournament.locator('.matchmaking-history-toggle').click();
   await historyTournament.locator('.matchmaking-history-team').first().waitFor();
   assert.equal(await historyTournament.locator('.matchmaking-history-team').count(), 2);
   assert.ok((await historyTournament.locator('.matchmaking-history-players').first().innerText()).length > 0);
-  assert.equal(await historyTournament.locator('.tournament-fixture-score.is-pick:has-text("Win")').count(), 1);
+  assert.equal(await historyTournament.locator('.matchmaking-history-details .tournament-fixture-score.is-pick:has-text("Win")').count(), 1);
+  assert.equal(await historyTournament.locator('.matchmaking-history-placement:has-text("1. Platz")').count(), 1);
+  assert.equal(await historyTournament.locator('.matchmaking-history-placement:has-text("2. Platz")').count(), 1);
+  assert.equal(await historyTournament.locator('.matchmaking-history-team .team-skill-total').count(), 2);
+  assert.equal(await historyTournament.locator('.matchmaking-history-players strong').innerText(), alice.name);
   await page.locator(`.matchmaking-history-item [data-open-draw-tournament="${tournamentId}"]`).click();
   assert.equal(new URL(page.url()).hash, tournamentDetailHash, 'the history filter should link to the detail');
   await page.goto(`${BASE_URL}/#tournaments/deleted-example`);
   await page.waitForSelector('text=Dieses Turnier ist nicht mehr verfügbar.');
+});
+
+flowTest('completed league history shows placements and points beside team names', async (t) => {
+  await page.goto(`${BASE_URL}/#matchmaking`);
+  await page.locator('#mm-game').waitFor({ state: 'attached' });
+  const gameId = await page.locator('#mm-game').inputValue();
+  const created = await page.request.post(`${BASE_URL}/api/tournaments`, {
+    data: { gameId, format: 'round_robin', teams: [{ playerIds: [alice.id] }, { playerIds: [bob.id] }] },
+  });
+  assert.equal(created.status(), 201, await created.text());
+  const tournament = await created.json() as {
+    id: string;
+    matches: Array<{ id: string; teamAId: string; teamBId: string }>;
+  };
+  t.after(async () => { await page.request.delete(`${BASE_URL}/api/tournaments/${tournament.id}`); });
+  const match = tournament.matches.find((entry) => entry.teamAId && entry.teamBId)!;
+  const saved = await page.request.post(`${BASE_URL}/api/tournaments/${tournament.id}/matches/${match.id}/result`, {
+    data: { winnerTeamId: match.teamAId },
+  });
+  assert.equal(saved.status(), 200, await saved.text());
+
+  await page.reload();
+  await page.locator('#mm-game-search').click();
+  await page.locator(`#mm-game-list [data-search-select-value="${gameId}"]`).click();
+  await openMatchmakingHistory();
+  await page.locator('[data-history-filter="tournaments"]').click();
+  const tile = page.locator(`.history-details .matchmaking-history-item:has([data-open-draw-tournament="${tournament.id}"])`);
+  await tile.waitFor();
+  assert.equal(await tile.locator('.matchmaking-history-title strong').count(), 1);
+  await tile.locator('.matchmaking-history-toggle').click();
+  await tile.locator('.matchmaking-history-team').first().waitFor();
+  assert.deepEqual(await tile.locator('.matchmaking-history-placement').allTextContents(), ['1. Platz', '2. Platz']);
+  assert.deepEqual(await tile.locator('.matchmaking-history-team-score').allTextContents(), ['3 Pkt', '0 Pkt']);
+  assert.equal(await tile.locator('.matchmaking-history-team-context:has-text("Pkt")').count(), 0);
+  const scoreAlignment = await tile.locator('.matchmaking-history-team').first().evaluate((team) => {
+    const name = team.querySelector('.matchmaking-history-team-head strong')!;
+    const points = team.querySelector('.matchmaking-history-team-score')!;
+    return Math.abs(name.getBoundingClientRect().top - points.getBoundingClientRect().top);
+  });
+  assert.ok(scoreAlignment < 8, 'table points stay in the team-name line');
 });
 
 flowTest('correcting an early K.O. winner warns before later results are reset', async (t) => {
@@ -2269,8 +2316,9 @@ flowTest('correcting an early K.O. winner warns before later results are reset',
   await page.locator('.modal').waitFor({ state: 'detached' });
   assert.equal(await page.locator(`[data-open-result="${final.id}"].is-open`).count(), 1,
     'the downstream final is reopened only after confirmation');
-  assert.equal(await page.locator('.bracket-team-row.is-my-team').count() > 0, true);
-  assert.equal(await page.locator('.tournament-team-card.is-my-team').count(), 1);
+  assert.ok(await page.locator('.bracket-team-players strong').count() > 0);
+  assert.equal(await page.locator('.tournament-team-card .team-player-name strong').count(), 1);
+  assert.equal(await page.locator('.is-my-team, .tournament-own-team-marker').count(), 0);
 });
 
 flowTest('Admin: the verified role exposes tools and can temporarily hide seeded test users', async () => {

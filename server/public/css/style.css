@@ -3081,6 +3081,22 @@ button.profile-row-main {
   gap: var(--space-2);
   min-width: 0;
 }
+.matchmaking-history-team-head > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.matchmaking-history-team-head .team-skill-total,
+.matchmaking-history-placement {
+  flex-shrink: 0;
+}
+.matchmaking-history-placement {
+  color: var(--text-muted);
+  font-size: var(--font-size-2xs);
+  margin-bottom: var(--space-1);
+  white-space: nowrap;
+}
 .matchmaking-history-team-head .lb-rank.is-first {
   color: var(--rank-1-gold);
 }
@@ -3128,7 +3144,8 @@ button.profile-row-main {
   }
 }
 @media (min-width: 640px) { /* --bp-md */
-  .matchmaking-active-tournament-grid {
+  .matchmaking-active-tournament-grid,
+  .matchmaking-history-teams {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -3547,8 +3564,14 @@ button.draft-pool-player {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-regular);
 }
-.tournament-team-card.is-my-team {
-  background: var(--accent-bg);
+.tournament-team-card-heading {
+  min-width: 0;
+}
+.tournament-team-card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tournament-board-panel {
   overflow: hidden;
@@ -3563,6 +3586,11 @@ button.draft-pool-player {
   .tournament-team-grid,
   .tournament-team-preview-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 860px) { /* --bp-lg */
+  .tournament-team-preview-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

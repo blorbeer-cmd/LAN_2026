@@ -307,11 +307,24 @@ tournamentsRouter.get('/', (req, res) => {
     )
     .all(req.group!.id, filterEventId) as Array<Record<string, unknown>>;
 
+  // The list backs collapsed Match tiles. Include roster IDs so a viewer can
+  // recognize their tournament without fetching every full board first.
+  const participantIdsByTournament = new Map<string, string[]>();
+  const teamRosters = db.prepare(`SELECT tt.tournament_id AS tournamentId, tt.player_ids AS playerIds
+    FROM tournament_teams tt JOIN tournaments t ON t.id = tt.tournament_id
+    WHERE t.group_id = ? AND t.event_id = ?`).all(req.group!.id, filterEventId) as
+    Array<{ tournamentId: string; playerIds: string }>;
+  for (const roster of teamRosters) {
+    participantIdsByTournament.set(roster.tournamentId,
+      [...(participantIdsByTournament.get(roster.tournamentId) ?? []), ...JSON.parse(roster.playerIds) as string[]]);
+  }
+
   res.json(
     rows.map((r) => ({
       ...r,
       twoLegged: Boolean(r.twoLegged),
       championName: r.status === 'completed' ? championName(r.id as string, req.group!.id) : null,
+      participantIds: participantIdsByTournament.get(r.id as string) ?? [],
     })),
   );
 });

@@ -661,6 +661,38 @@ button.player-card {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.bracket-team-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.bracket-team-primary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.bracket-team-primary .bracket-team-name {
+  flex: 0 1 auto;
+}
+.bracket-team-primary .rating {
+  flex-shrink: 0;
+}
+.bracket-team-players {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bracket-champion .bracket-team-players {
+  color: var(--accent-text);
+}
+.bracket-champion .rating {
+  color: var(--accent-text);
+}
 .bracket-team-row.is-winner {
   font-weight: var(--font-weight-medium);
 }
@@ -670,18 +702,6 @@ button.player-card {
 .bracket-team-row.is-tbd {
   color: var(--text-muted);
   font-style: italic;
-}
-.bracket-team-row.is-my-team {
-  background: var(--accent-bg);
-}
-.tournament-own-team-marker {
-  flex-shrink: 0;
-  color: var(--accent);
-  font-size: var(--font-size-2xs);
-  font-weight: var(--font-weight-bold);
-}
-.bracket-champion .tournament-own-team-marker {
-  color: var(--accent-text);
 }
 .bracket-score {
   font-variant-numeric: tabular-nums;
@@ -786,46 +806,38 @@ button.bracket-side {
 }
 .tournament-fixture-team {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-.tournament-fixture-team-identity,
-.tournament-fixture-team-info {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
   min-width: 0;
 }
 .tournament-fixture-team-identity {
-  flex-shrink: 0;
-  max-width: 55%;
-}
-.tournament-fixture-team-info {
-  flex: 1;
-  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
 }
 .tournament-fixture-team-name,
 .tournament-fixture-team-players {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .tournament-fixture-team-players {
-  min-width: 0;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-regular);
 }
-.tournament-fixture-team-info .rating {
+.tournament-fixture-team-identity .rating {
   flex-shrink: 0;
 }
 .tournament-fixture-team.is-home {
   text-align: right;
+  align-items: flex-end;
 }
-.tournament-fixture-team.is-my-team {
-  background: var(--accent-bg);
-  border-radius: var(--radius-sm);
+.tournament-fixture-team:not(.is-home) {
+  align-items: flex-start;
 }
 .tournament-fixture-team.is-winner {
   font-weight: var(--font-weight-medium);
@@ -900,10 +912,6 @@ span.tournament-fixture-action {
     gap: var(--space-2);
     font-size: var(--font-size-sm);
   }
-  .tournament-fixture-team-players,
-  .tournament-standings .tournament-standings-players {
-    display: none;
-  }
 }
 .tournament-group-fixtures {
   padding-top: var(--space-3);
@@ -953,37 +961,33 @@ span.tournament-fixture-action {
   max-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.tournament-standings-line,
-.tournament-standings-identity {
+.tournament-standings-line {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
   min-width: 0;
 }
 .tournament-standings-identity {
-  flex-shrink: 0;
-  max-width: 50%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
 }
 .tournament-standings-name {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tournament-standings-players {
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
-  text-align: center;
+  white-space: nowrap;
 }
-.tournament-standings-line .rating {
+.tournament-standings-identity .rating {
   flex-shrink: 0;
-}
-.tournament-standings tr.is-my-team {
-  background: var(--accent-bg);
 }
 .tournament-standings tr.is-leader .tournament-standings-rank {
   color: var(--rank-1-gold);

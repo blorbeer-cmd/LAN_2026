@@ -228,6 +228,21 @@ function findDrawById(id) {
   return historyCache?.find((d) => d.id === id) ?? openDrawsCache.find((draw) => draw.id === id) ?? null;
 }
 
+function includesMe(players) {
+  const myId = getMyId();
+  return Boolean(myId && players.some((player) => player.id === myId));
+}
+
+function playerNamesHtml(players) {
+  const myId = getMyId();
+  return players.map((player) => player.id === myId
+    ? `<strong>${escapeHtml(player.name)}</strong>` : escapeHtml(player.name)).join(', ');
+}
+
+function drawIncludesMe(draw) {
+  return draw.teams.some((team) => includesMe(team.players));
+}
+
 // One drawn/recorded lineup: team cards plus, for a still-unrecorded draw,
 // draggable player rows and the button to record a result — which is what
 // changes its actions inside the shared Historie. Arrow keys provide the
@@ -242,7 +257,9 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
   // drafted lineup was never balanced by rating and stores none, so its rows
   // stay informational and read from the current state.
   const hasSkillSnapshot = draw.source !== 'draft' || draw.teams.some((team) => team.skillSnapshot === true);
-  const skillOptions = { stored: true };
+  const skillOptions = hasSkillSnapshot
+    ? { stored: true, balanced: draw.source !== 'draft' }
+    : { balanced: false, current: true };
   const teamsHtml = draw.teams
     .map((t, i) => {
       // Only meaningful once a result is actually recorded (read-only cards)
@@ -262,7 +279,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${isLoser ? ' is-loser' : ''}" role="group" aria-label="Team ${i + 1}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
         <div class="team-card-header">
           <span class="row" style="gap:var(--space-2);">Team ${i + 1}${isWinner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}</span>
-          ${hasSkillSnapshot ? teamSkillHtml(t.players, draw.gameId, skillOptions) : ''}
+          ${teamSkillHtml(t.players, draw.gameId, skillOptions)}
         </div>
         ${resultLine}
         ${t.players
@@ -270,9 +287,9 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
             (p) => `
           ${editable ? `<div class="team-player-move-row"><button type="button" class="team-player tournament-drag-player" draggable="true" data-move-draw="${draw.id}" data-move-player="${p.id}" data-team-index="${i}" aria-label="${escapeHtml(p.name)} verschieben">` : '<div class="team-player">'}
             ${avatarHtml(p, 18)}
-            <span class="team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
+            <span class="team-player-name" style="flex:1;">${p.id === getMyId() ? `<strong>${escapeHtml(p.name)}</strong>` : escapeHtml(p.name)}</span>
             ${seatConflictIconHtml(p)}
-            ${primaryTournament && hasSkillSnapshot ? playerSkillHtml(p, draw.gameId, skillOptions) : ''}
+            ${playerSkillHtml(p, draw.gameId, skillOptions)}
           ${
             editable
               ? `</button>${teamMoveControlHtml({
@@ -312,14 +329,14 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
     const cardActions = `${actions}<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>`;
     return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, cardActions,
-      `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item');
+      `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
   }
 
   return `
     <div class="card stack matchmaking-draw-card" data-draw-card="${draw.id}">
       <div class="matchmaking-draw-head">
         <div class="row" style="gap:var(--space-2);flex-wrap:wrap;min-width:0;">
-          ${showGame ? `<span class="player-name">${escapeHtml(draw.gameName)}</span>` : ''}
+          ${showGame ? `<span class="player-name">${drawIncludesMe(draw) ? `<strong>${escapeHtml(draw.gameName)}</strong>` : escapeHtml(draw.gameName)}</span>` : ''}
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</span>
           ${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}
           ${draw.matchId && draw.winnerTeamIndex === null ? '<span class="tournament-fixture-score">Remis</span>' : ''}
@@ -666,14 +683,14 @@ function renderHistoryDetails(title, count, content) {
   </details>`;
 }
 
-function historyItemHtml(id, title, meta, actions, details, extraClass = '') {
+function historyItemHtml(id, title, meta, actions, details, extraClass = '', isMine = false) {
   const open = expandedHistoryIds.has(id);
   const panelId = `match-history-${id}`;
   return `<div class="card matchmaking-history-item ${extraClass}">
     <div class="matchmaking-history-head">
       <button type="button" class="matchmaking-history-toggle" data-history-toggle="${escapeHtml(id)}" aria-expanded="${open}" aria-controls="${escapeHtml(panelId)}">
         <span class="matchmaking-history-chevron">${icon('chevronRight')}</span>
-        <span class="matchmaking-history-title player-name">${escapeHtml(title)}</span>
+        <span class="matchmaking-history-title player-name">${isMine ? `<strong>${escapeHtml(title)}</strong>` : escapeHtml(title)}</span>
         <span class="matchmaking-history-meta">${meta}</span>
       </button>
       <div class="matchmaking-draw-actions">${actions}</div>
@@ -719,15 +736,18 @@ function historyMatchHtml(draw) {
         ${team.rank != null ? `<span class="lb-rank${team.rank === 1 ? ' is-first' : ''}">${team.rank}</span>` : ''}
         <strong>${escapeHtml(defaultDrawTeamName(draw, team, index))}</strong>
         ${won && team.rank == null ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}
-        ${hasSkill ? teamSkillHtml(team.players, draw.gameId, { stored: true }) : ''}
+        ${teamSkillHtml(team.players, draw.gameId, hasSkill
+          ? { stored: true, balanced: draw.source !== 'draft' }
+          : { balanced: false, current: true })}
         ${team.score != null ? `<span class="matchmaking-history-team-score${won ? ' is-win' : ''}">${team.score}</span>` : ''}
       </div>
-      <div class="muted matchmaking-history-players">${escapeHtml(team.players.map((player) => player.name).join(', '))}</div>
+      <div class="muted matchmaking-history-players">${playerNamesHtml(team.players)}</div>
     </div>`;
   }).join('');
   const seating = draw.seatConflicts > 0
     ? `<div class="muted">${icon('armchair')} ${draw.seatConflicts} von ${draw.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten.</div>` : '';
-  return historyItemHtml(draw.id, draw.gameName, meta, actions, `<div class="matchmaking-history-teams">${teams}</div>${seating}`);
+  return historyItemHtml(draw.id, draw.gameName, meta, actions,
+    `<div class="matchmaking-history-teams">${teams}</div>${seating}`, '', drawIncludesMe(draw));
 }
 
 function historyTournamentDetailHtml(tournament) {
@@ -738,26 +758,52 @@ function historyTournamentDetailHtml(tournament) {
   const detail = tournamentDetailCache.get(tournament.id);
   if (!detail) return '<div class="muted">Lädt…</div>';
 
-  const ranks = new Map();
-  (detail.standings ?? []).forEach((entry, index) => ranks.set(entry.teamId, { rank: index + 1, ...entry }));
+  const standings = new Map();
+  (detail.standings ?? []).forEach((entry, index) => standings.set(entry.teamId, { rank: index + 1, ...entry }));
   (detail.groups ?? []).forEach((group) => group.standings.forEach((entry, index) =>
-    ranks.set(entry.teamId, { rank: index + 1, ...entry })));
-  const cards = detail.teams.map((team) => {
-    const standing = ranks.get(team.id);
+    standings.set(entry.teamId, { rank: index + 1, groupIndex: group.groupIndex, ...entry })));
+  const knockout = detail.matches.filter((match) => detail.format === 'single_elimination' || match.stage === 'knockout');
+  const final = knockout.reduce((latest, match) => !latest || match.round > latest.round ? match : latest, null);
+  const runnerUpId = detail.status === 'completed' && final?.winnerTeamId
+    ? final.teamAId === final.winnerTeamId ? final.teamBId : final.teamAId : null;
+  const placement = (teamId) => {
+    if (detail.format === 'round_robin') return standings.get(teamId)?.rank ?? Infinity;
+    if (teamId === detail.championTeamId) return 1;
+    if (teamId === runnerUpId) return 2;
+    return Infinity;
+  };
+  const knockoutRound = (teamId) => Math.max(0, ...knockout.filter((match) =>
+    match.teamAId === teamId || match.teamBId === teamId).map((match) => match.round));
+  const orderedTeams = [...detail.teams].sort((a, b) => placement(a.id) - placement(b.id)
+    || knockoutRound(b.id) - knockoutRound(a.id)
+    || (standings.get(a.id)?.rank ?? Infinity) - (standings.get(b.id)?.rank ?? Infinity)
+    || a.name.localeCompare(b.name));
+  const cards = orderedTeams.map((team) => {
+    const standing = standings.get(team.id);
+    const place = placement(team.id);
     const playedMatches = detail.matches.filter((match) => !match.isBye &&
       (match.winnerTeamId !== null || match.isDraw) && (match.teamAId === team.id || match.teamBId === team.id));
     const wins = playedMatches.filter((match) => match.winnerTeamId === team.id).length;
+    const lastKnockout = knockout.filter((match) => (match.teamAId === team.id || match.teamBId === team.id)
+      && match.winnerTeamId && match.winnerTeamId !== team.id).sort((a, b) => b.round - a.round)[0];
+    const stage = lastKnockout && final ? lastKnockout.round === final.round - 1 ? 'Halbfinale'
+      : lastKnockout.round === final.round - 2 ? 'Viertelfinale' : `Runde ${lastKnockout.round}` : null;
+    const placeLabel = Number.isFinite(place) ? `${place}. Platz`
+      : stage ? `${stage} ausgeschieden`
+        : standing && detail.format === 'group_knockout' ? `Gruppe ${standing.groupIndex + 1} · Platz ${standing.rank}` : '';
     const context = [
       detail.format === 'group_knockout' ? `Gruppe ${(team.groupIndex ?? 0) + 1}` : null,
-      standing ? `${standing.points} Pkt · ${standing.played} Sp` : `${wins} Siege · ${playedMatches.length} Sp`,
+      standing ? `${standing.played} Sp` : `${wins} Siege · ${playedMatches.length} Sp`,
     ].filter(Boolean).join(' · ');
     return `<div class="matchmaking-history-team">
+      ${placeLabel ? `<div class="matchmaking-history-placement">${escapeHtml(placeLabel)}</div>` : ''}
       <div class="matchmaking-history-team-head">
-        ${standing ? `<span class="lb-rank${standing.rank === 1 ? ' is-first' : ''}">${standing.rank}</span>` : ''}
         <strong>${escapeHtml(team.name)}</strong>
         ${detail.championTeamId === team.id ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}
+        ${teamSkillHtml(team.players, detail.gameId, { balanced: false, current: true })}
+        ${standing ? `<span class="matchmaking-history-team-score" title="Tabellenpunkte">${standing.points} Pkt</span>` : ''}
       </div>
-      <div class="muted matchmaking-history-players">${escapeHtml(team.players.map((player) => player.name).join(', ') || 'Spieler nicht verfügbar')}</div>
+      <div class="muted matchmaking-history-players">${team.players.length ? playerNamesHtml(team.players) : 'Spieler nicht verfügbar'}</div>
       <div class="muted matchmaking-history-team-context">${escapeHtml(context)}</div>
     </div>`;
   }).join('');
@@ -766,12 +812,15 @@ function historyTournamentDetailHtml(tournament) {
 }
 
 function historyTournamentHtml(tournament) {
-  const meta = `<span class="muted">${formatDateTime(tournament.createdAt)}</span> <span class="badge">Turnier</span>
-    <span class="muted">${escapeHtml(tournament.name)} · ${tournament.championName ? `Sieger: ${escapeHtml(tournament.championName)}` : 'Läuft'}</span>`;
+  const outcome = tournament.championName
+    ? `<span class="tournament-fixture-score is-pick">Win</span> <strong>${escapeHtml(tournament.championName)}</strong> <span class="muted">1. Platz</span>`
+    : '<span class="badge">Turnier läuft</span>';
+  const meta = `<span class="muted">${formatDateTime(tournament.createdAt)}</span> ${outcome}
+    <span class="muted">${escapeHtml(tournament.name)}</span>`;
   const actions = `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(tournament.id)}">Turnier</button>
     <button type="button" class="tournament-fixture-action" data-delete-tournament="${escapeHtml(tournament.id)}" aria-label="Turnier löschen" title="Turnier löschen">${icon('trash')}</button>`;
   return historyItemHtml(`t-${tournament.id}`, tournament.gameName, meta, actions,
-    historyTournamentDetailHtml(tournament), 'is-tournament');
+    historyTournamentDetailHtml(tournament), 'is-tournament', Boolean(getMyId() && tournament.participantIds?.includes(getMyId())));
 }
 
 function renderOpenDraws(selectedGameId) {
