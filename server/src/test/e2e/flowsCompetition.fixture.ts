@@ -471,12 +471,22 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     true,
     'score rows should remain inside the result group'
   );
-  await page.fill('#admin-result-score-0', '1.5');
+  await page.locator('#admin-result-score-0 + .number-stepper-steps .number-stepper-btn[aria-label="Wert erhöhen"]').click();
+  assert.equal(await page.inputValue('#admin-result-score-0'), '1', 'step="any" keeps the number-stepper fallback');
   assert.equal(await page.locator('[data-result-rank="0"]').innerText(), '1');
-  await page.click('#match-form [data-result-mode="winner"]');
   const teamSelects = page.locator('[data-team-for]');
+  const firstTeamPlayerId = await teamSelects.nth(0).getAttribute('data-team-for');
+  await teamSelects.nth(0).focus();
   await teamSelects.nth(0).selectOption('0');
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-team-for')), firstTeamPlayerId);
+  assert.equal(await page.inputValue('#admin-result-score-0'), '1', 'assigning a player must keep the entered score');
   await teamSelects.nth(1).selectOption('1');
+  assert.equal(await page.inputValue('#admin-result-score-0'), '1');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.modal[aria-label="Änderungen verwerfen?"]');
+  await page.click('.modal[aria-label="Änderungen verwerfen?"] [data-cancel]');
+  assert.equal(await page.inputValue('#admin-result-score-0'), '1', 'canceling close keeps the result');
+  await page.click('#match-form [data-result-mode="winner"]');
   await page.locator('#match-form label.tournament-result-pick:has(input[value="0"])').click();
   await page.click('#match-form [data-result-save]');
   await page.waitForSelector('.lb-row');
@@ -701,7 +711,9 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   await page.click('#mm-generate');
   await openMatchmakingHistory();
   const openTile = page.locator('[data-history-toggle="open"]');
+  assert.equal(await page.locator('#match-history-open .matchmaking-draw-card').count(), 0, 'closed open draws should not build every editable card');
   if (await openTile.getAttribute('aria-expanded') === 'false') await openTile.click();
+  assert.ok(await page.locator('#match-history-open .matchmaking-draw-card').count() >= 1);
   assert.equal(await page.locator('.matchmaking-history-details .team-player .rating').count(), 0);
   assert.ok(await page.locator('.matchmaking-history-details .team-skill-total').count() >= 2);
   await page.click('.matchmaking-history-details [data-record-draw]');
@@ -745,6 +757,44 @@ flowTest('matchmaking Historie derives the winner from values entered in the dra
   await page.click('[data-history-filter="matches"]');
   await page.waitForSelector('.matchmaking-history-item [data-edit-draw-result]');
   assert.equal(await page.getAttribute('[data-history-filter="matches"]', 'aria-pressed'), 'true');
+});
+
+flowTest('match history reports failed tournament and older-match requests', async () => {
+  const tournamentsUrl = '**/api/tournaments';
+  await page.route(tournamentsUrl, (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"offline"}' }));
+  try {
+    await page.reload();
+    await page.waitForSelector('#mm-generate');
+    await openMatchmakingHistory();
+    await page.click('[data-history-filter="tournaments"]');
+    await page.getByText('Historie konnte nicht geladen werden.', { exact: true }).waitFor();
+    assert.equal(await page.getByText('Lädt…', { exact: true }).count(), 0);
+  } finally {
+    await page.unroute(tournamentsUrl);
+  }
+
+  const historyUrl = '**/api/matchmaking/history?*';
+  await page.route(historyUrl, async (route) => {
+    if (new URL(route.request().url()).searchParams.has('before')) {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"offline"}' });
+      return;
+    }
+    const response = await route.fetch();
+    const payload = await response.json();
+    assert.ok(payload.history.length > 0);
+    const last = payload.history.at(-1);
+    payload.nextCursor = { before: last.generatedAt, beforeId: last.id };
+    await route.fulfill({ response, body: JSON.stringify(payload) });
+  });
+  try {
+    await page.reload();
+    await page.waitForSelector('#mm-generate');
+    await openMatchmakingHistory();
+    await page.locator('[data-history-more]').click();
+    await page.getByText('Historie konnte nicht vollständig geladen werden.', { exact: true }).waitFor();
+  } finally {
+    await page.unroute(historyUrl);
+  }
 });
 
 flowTest('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl Teams"', async () => {
@@ -798,7 +848,16 @@ flowTest('Ergebnis eintragen keeps Frei-für-alle usable with more than six peop
   await page.click('#match-form [data-result-mode="score"]');
   assert.equal(await page.locator('#match-form .result-score-row').count(), await participants.count());
   assert.equal(await page.locator('#match-form').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
-  await page.click('[data-close]');
+  await page.fill('#admin-result-score-0', '7');
+  const firstFfaPlayerId = await participants.first().getAttribute('data-ffa-player');
+  await participants.first().focus();
+  await participants.first().uncheck();
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-ffa-player')), firstFfaPlayerId);
+  await participants.first().check();
+  assert.equal(await page.inputValue('#admin-result-score-0'), '7', 're-adding a participant restores their score');
+  assert.equal(await page.locator('input[name="admin-result-winner"][value="-1"]').isChecked(), true);
+  await page.click('.modal[aria-label="Ergebnis eintragen"] [data-close]');
+  await page.click('.modal[aria-label="Änderungen verwerfen?"] [data-confirm]');
 });
 
 flowTest('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed', async () => {

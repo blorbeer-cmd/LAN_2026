@@ -630,22 +630,41 @@ function renderHistory(selectedGameId) {
     ...(historyFilter === 'matches' ? [] : tournaments.map((tournament) => ({ time: tournament.createdAt, html: historyTournamentHtml(tournament) }))),
   ].sort((a, b) => b.time - a.time).map((entry) => entry.html);
   if (historyFilter !== 'tournaments' && historyForGameId === selectedGameId && openDrawsCache.length) {
-    const openDetails = openDrawsCache.map((draw) => renderDrawCard(draw, { editable: true, showGame: true })).join('');
-    items.push(historyItemHtml('open', 'Ohne Ergebnis', `<span class="muted">${openDrawsCache.length} Auslosungen, noch nicht gespielt</span>`, '<span class="badge badge-offline">Offen</span>', openDetails));
+    // Keep every open draw reachable, but build its editable cards only while
+    // the group is expanded. A busy event can accumulate hundreds of rerolls.
+    items.push(historyItemHtml('open', 'Ohne Ergebnis', `<span class="muted">${openDrawsCache.length} Auslosungen, noch nicht gespielt</span>`, '<span class="badge badge-offline">Offen</span>', ''));
   }
   const filter = `<div class="matchmaking-history-filters" role="group" aria-label="Historie filtern">
     ${[['all', 'Alle'], ['matches', 'Matches'], ['tournaments', 'Turniere']].map(([key, label]) => `<button type="button" class="chip${historyFilter === key ? ' is-active' : ''}" data-history-filter="${key}" aria-pressed="${historyFilter === key}">${label}</button>`).join('')}
   </div>`;
-  const loading = (historyFilter !== 'tournaments' && historyForGameId !== selectedGameId) || (historyFilter === 'tournaments' && tournamentCache === null);
+  const loading = (historyFilter !== 'tournaments' && historyForGameId !== selectedGameId) ||
+    (historyFilter === 'tournaments' && tournamentCache === null && !tournamentError);
   const emptyText = historyError || tournamentError ? 'Historie konnte nicht geladen werden.' : historyFilter === 'tournaments' ? 'Keine Turniere gefunden.' : 'Noch keine Matches.';
   const content = `${filter}${items.length ? items.join('') : emptyStateHtml(loading ? 'Lädt…' : emptyText, { className: 'empty-state-compact' })}
+    ${(historyError || tournamentError) && items.length ? '<p class="muted" role="alert">Historie konnte nicht vollständig geladen werden.</p>' : ''}
     ${historyFilter !== 'tournaments' && historyCursor ? '<div class="matchmaking-history-more"><button type="button" class="btn btn-sm" data-history-more>Ältere laden</button></div>' : ''}`;
   return renderHistoryDetails('Historie', items.length, content);
 }
 
 function wireHistory(container, selectedGameId, ctx) {
   const section = container.querySelector('.history-details');
-  section?.addEventListener('toggle', () => { historySectionOpen = section.open; });
+  const openPanel = container.querySelector('#match-history-open');
+  function releaseOpenDraws() {
+    if (!openPanel) return;
+    openPanel.replaceChildren();
+    delete openPanel.dataset.rendered;
+  }
+  function populateOpenDraws() {
+    if (!openPanel || !section?.open || !expandedHistoryIds.has('open') || openPanel.dataset.rendered) return;
+    openPanel.innerHTML = openDrawsCache.map((draw) => renderDrawCard(draw, { editable: true, showGame: true })).join('');
+    openPanel.dataset.rendered = 'true';
+    wireDrawCards(openPanel, ctx);
+  }
+  section?.addEventListener('toggle', () => {
+    historySectionOpen = section.open;
+    if (section.open) populateOpenDraws();
+    else releaseOpenDraws();
+  });
   container.querySelectorAll('[data-history-toggle]').forEach((button) => button.addEventListener('click', () => {
     const id = button.dataset.historyToggle;
     if (expandedHistoryIds.has(id)) expandedHistoryIds.delete(id);
@@ -653,6 +672,10 @@ function wireHistory(container, selectedGameId, ctx) {
     const expanded = expandedHistoryIds.has(id);
     button.setAttribute('aria-expanded', String(expanded));
     button.closest('.matchmaking-history-item').querySelector('.matchmaking-history-details').hidden = !expanded;
+    if (id === 'open') {
+      if (expanded) populateOpenDraws();
+      else releaseOpenDraws();
+    }
   }));
   container.querySelectorAll('[data-history-filter]').forEach((button) => button.addEventListener('click', () => {
     if (historyFilter === button.dataset.historyFilter) return;
@@ -663,6 +686,7 @@ function wireHistory(container, selectedGameId, ctx) {
   container.querySelector('[data-history-more]')?.addEventListener('click', () => {
     if (!historyLoading && historyCursor) loadHistory(selectedGameId, ctx, { append: true });
   });
+  populateOpenDraws();
 }
 
 function renderActiveTournaments() {

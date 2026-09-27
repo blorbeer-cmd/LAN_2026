@@ -31,6 +31,8 @@ gespeichertes Ergebnis öffnet seine Kachel. Spielnamen kürzen nur visuell; der
 DOM-Text bleibt. Die Aktionsgruppe ist gleich hoch und darf auf schmalen Ansichten als Ganzes
 unter den Titel rücken. Teams stehen breit nebeneinander, bis zu vier Spalten, und zeigen
 nur ihre gespeicherte Skill-Summe. „Ohne Ergebnis“ bleibt die letzte Kachel.
+Ihre bearbeitbaren Auslosungen werden erst beim Aufklappen aufgebaut und beim Schließen
+wieder aus dem DOM entfernt; die Anzahl und Erreichbarkeit aller offenen Auslosungen bleiben erhalten.
 
 ## 7. Erreichbare Zustände
 
