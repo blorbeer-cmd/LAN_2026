@@ -28,9 +28,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 
 ## Teams, Skill und Spielkatalog
 
-- **Team formation** — the direct „Match“ page. Running tournaments appear first, including during a live Captain Draft. The setup asks for game and mode: one shared `<select>` picks the
-  game, followed by a `Modus` toggle (two `.btn`/`.btn-sm` buttons, `.btn-primary` marking the active
+- **Team formation** — the direct „Match“ page. Running tournaments appear first with a clear gap before setup, including during a live Captain Draft. The setup asks for mode and game: a `Modus` toggle (two `.btn`/`.btn-sm` buttons, `.btn-primary` marking the active
   one, `aria-pressed` conveying state beyond color) choosing between „Auslosung“ and „Captain Draft“.
+  One shared `<select>` picks the game to its right from tablet width onward; phones stack the two controls.
   Only the chosen mode's form renders below, flat inside the same card (no nested panel and no
   accent rail, because only one mode is ever visible) — the two workflows never compete for space —
   while the shared game picker and the loaded history stay visible regardless of mode. On wide views, game and mode share a row; the running-tournament cards use two columns. The mode
@@ -64,25 +64,28 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   self-rating shows the matchmaking fallback in parentheses, so the visible value matches the one
   the draw balanced with, while the captain draft keeps the en dash because it never uses ratings.
   The title and accessible label retain the full term „Skill-Level“.
-  Open draws, recorded matches and tournaments share one „Historie“ for the selected game. It starts
+  Unplayed draws have their own „Ohne Ergebnis“ section above „Historie“. It starts collapsed and builds
+  its editable cards only when opened. Recorded matches and tournaments share the „Historie“ for the selected game. It starts
   collapsed and offers „Alle | Matches | Turniere“ filters. Match pages can load older entries;
   tournament entries come from the complete tournament list. Every entry is a collapsed tile with
-  game, time, result and actions in its header; the last tile „Ohne Ergebnis“ groups all unplayed
-  draws without discarding them. Expanding a match shows teams by place without changing their
+  game, time, result and actions in its header. Expanding a match shows teams by place without changing their
   stored indices, and only each team's stored skill sum, never individual player skills. A fresh draw appears under the heading „Neue Auslosung“; a
   finished Captain Draft becomes the fresh draw on every device the same way.
   The winning team carries the green „Win“ chip and an accessible group label, the losing teams
   are muted and a drawn result shows „Remis“. Card actions sit in the card header: an open draw
   offers a neutral „+“ for a single result and, rightmost, „Turnier erstellen“ (the primary
   gradient on the fresh draw, neutral in Historie); a recorded draw offers „Rematch“ and a pencil;
-  a tournament tile offers „Turnier“ and opens its detail page.
+  a tournament tile offers „Turnier“ and opens its detail page. Its expanded state shows tournament teams,
+  players and available standings or match totals. The result pencil precedes „Rematch“; tournament actions
+  need no empty action slot.
   „Turnier erstellen“ opens one compact dialog: Turnierformat, the group fields for „Gruppenphase +
   K.O.“, one name field per team (a drafted team is prefilled as „Team <Captain>“, a drawn one as
   „Team 1“ …), the options side by side and the optional lobby base name and password. The server
   claims the draw in the same transaction that creates the tournament, so one lineup becomes either
   a single result or a tournament, never both (`409` for the loser of a race). Recording and editing share one compact result dialog: one
   „Sieger“ and „Punktestand“ modes share one form with tournaments and the free Admin result. A native
-  single choice selects a team or „Unentschieden“; score rows show live places, with ties sharing a
+  single choice selects a team or „Unentschieden“ in equal-height cards with a subtle accent outline;
+  switching modes keeps the dialog body height stable. Score rows show live places, with ties sharing a
   place. The unique highest score wins. Empty score fields count as 0, but a completely empty score
   form is rejected. Both modes save only after „Speichern“. Editing opens the saved mode and updates the
   existing match instead of creating a duplicate result, and „Rematch“ opens the same dialog. The
@@ -371,6 +374,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   larger phases keep the bracket and a phase not yet created keeps its empty state. Fixtures read like a
   scoreboard (home team right-aligned, result chip centered, away team left-aligned); winners are
   emphasized and losers muted, with a green winner score or a „‹ Win“/„Win ›“ chip without a score.
+  League and group round fixtures use the same grouping and divider treatment. On wider views, fixture
+  pairings and table team cells show the players beneath team names; phones keep the compact names.
   Tables show #, Team, Sp, S, U, N, +/− (only with scores) and Pkt; advancing group teams carry a
   „weiter“ marker. Every result action sits in a fixed trailing slot („+“ open, pencil recorded)
   and opens the common result form. The tournament's score setting fixes the mode: score rows
@@ -385,7 +390,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   name and password as non-wrapping code chips with equal-width labels. A stored lobby base name
   receives a deterministic phase/round/match suffix, so parallel pairings always have distinct
   lobby names without mutable lobby assignments. League and group modes show only the earliest
-  unfinished round; knockout modes show every open match whose two teams are known. Each credential
+  unfinished round; knockout modes show every open match whose two teams are known. Once a league
+  round or one group's round is fully decided, players in that round's next pairings receive their
+  match-ready push. Each credential
   provides Lucide's `copy` action with a full touch target. Tournament details show no info
   tooltips.
   Bracket matches keep a fixed height with an internal trailing action column. Tournament details

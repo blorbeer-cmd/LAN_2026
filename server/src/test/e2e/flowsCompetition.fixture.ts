@@ -150,6 +150,10 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.setViewportSize({ width: 720, height: 450 });
   assert.equal(await drawPlayerGrid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 2);
   assert.equal(await page.locator('#view-container').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  const modeAtLaptop = await page.locator('.matchmaking-setup-head .selection-toolbar').boundingBox();
+  const gameAtLaptop = await page.locator('#mm-game-search').boundingBox();
+  assert.ok(modeAtLaptop && gameAtLaptop && modeAtLaptop.x + modeAtLaptop.width < gameAtLaptop.x,
+    'mode selection sits left of the game selection on laptop');
   await page.setViewportSize({ width: 900, height: 844 });
   const desktopSelectionColumns = await drawPlayerGrid.evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length
@@ -710,20 +714,38 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   await openTeams();
   await page.click('#mm-generate');
   await openMatchmakingHistory();
-  const openTile = page.locator('[data-history-toggle="open"]');
+  const openTile = page.locator('.matchmaking-open-draws');
+  assert.equal(await openTile.getAttribute('open'), null, 'unplayed games start collapsed');
+  assert.equal(await openTile.evaluate((element) => Boolean(element.compareDocumentPosition(document.querySelector('.history-details')!) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
   assert.equal(await page.locator('#match-history-open .matchmaking-draw-card').count(), 0, 'closed open draws should not build every editable card');
-  if (await openTile.getAttribute('aria-expanded') === 'false') await openTile.click();
+  if ((await openTile.getAttribute('open')) === null) await openTile.locator('summary').click();
+  await page.waitForSelector('#match-history-open .matchmaking-draw-card');
   assert.ok(await page.locator('#match-history-open .matchmaking-draw-card').count() >= 1);
-  assert.equal(await page.locator('.matchmaking-history-details .team-player .rating').count(), 0);
-  assert.ok(await page.locator('.matchmaking-history-details .team-skill-total').count() >= 2);
-  await page.click('.matchmaking-history-details [data-record-draw]');
+  assert.equal(await page.locator('#match-history-open .team-player .rating').count(), 0);
+  assert.ok(await page.locator('#match-history-open .team-skill-total').count() >= 2);
+  await page.click('#match-history-open [data-record-draw]');
+
+  const panelHeight = await page.locator('.modal .result-mode-panels').evaluate((element) => element.getBoundingClientRect().height);
+  const pickHeights = await page.locator('.modal .tournament-result-pick').evaluateAll((picks) =>
+    picks.map((pick) => Math.round(pick.getBoundingClientRect().height)));
+  assert.ok(pickHeights.every((height) => height === pickHeights[0]), 'draw choice has the same height as team choices');
+  await page.click('.modal [data-result-mode="score"]');
+  assert.equal(await page.locator('.modal .result-mode-panels').evaluate((element) => element.getBoundingClientRect().height), panelHeight,
+    'switching result modes keeps the dialog content height');
+  await page.click('.modal [data-result-mode="winner"]');
 
   await page.locator('.modal label.tournament-result-pick:has(input[value="-1"])').click();
+  const selectedBackground = await page.locator('.modal .tournament-result-pick.is-selected').evaluate((element) => getComputedStyle(element).backgroundColor);
+  const unselectedBackground = await page.locator('.modal .tournament-result-pick:not(.is-selected)').first().evaluate((element) => getComputedStyle(element).backgroundColor);
+  assert.equal(selectedBackground, unselectedBackground, 'winner selection uses an outline without a filled success background');
   await page.click('.modal [data-result-save]');
 
   await page.waitForFunction(() => !!document.querySelector('[data-edit-draw-result]'));
   await openMatchmakingHistory();
   await page.waitForSelector('.matchmaking-history-item .matchmaking-history-meta .tournament-fixture-score:has-text("Remis")');
+  const historyActions = await page.locator('.matchmaking-history-item:has([data-edit-draw-result]) .matchmaking-draw-actions').first()
+    .locator('button').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('data-edit-draw-result') !== null ? 'edit' : button.textContent?.trim()));
+  assert.deepEqual(historyActions, ['edit', 'Rematch']);
 });
 
 flowTest('matchmaking Historie derives the winner from values entered in the draw result dialog', async () => {
@@ -733,9 +755,10 @@ flowTest('matchmaking Historie derives the winner from values entered in the dra
   await openTeams();
   await page.click('#mm-generate');
   await openMatchmakingHistory();
-  const openTile = page.locator('[data-history-toggle="open"]');
-  if (await openTile.getAttribute('aria-expanded') === 'false') await openTile.click();
-  await page.click('.matchmaking-history-details [data-record-draw]');
+  const openTile = page.locator('.matchmaking-open-draws');
+  if ((await openTile.getAttribute('open')) === null) await openTile.locator('summary').click();
+  await page.waitForSelector('#match-history-open [data-record-draw]');
+  await page.click('#match-history-open [data-record-draw]');
 
   await page.click('[data-result-mode="score"]');
   await page.fill('#draw-result-score-0', '3');

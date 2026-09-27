@@ -76,6 +76,7 @@ let historyStale = false;
 let historyRequestVersion = 0;
 let historyCursor = null;
 let openDrawsCache = [];
+let openDrawsSectionOpen = false;
 let historyFilter = 'all';
 let historySectionOpen = false;
 const expandedHistoryIds = new Set();
@@ -86,6 +87,27 @@ let tournamentLoading = false;
 let tournamentStale = false;
 let tournamentRequestVersion = 0;
 let tournamentError = false;
+const tournamentDetailCache = new Map();
+const tournamentDetailLoading = new Set();
+const tournamentDetailErrors = new Set();
+let tournamentDetailVersion = 0;
+
+async function loadHistoryTournamentDetail(id, ctx) {
+  if (tournamentDetailCache.has(id) || tournamentDetailLoading.has(id) || tournamentDetailErrors.has(id)) return;
+  const version = tournamentDetailVersion;
+  tournamentDetailLoading.add(id);
+  try {
+    const detail = await api.tournaments.get(id);
+    if (version === tournamentDetailVersion) tournamentDetailCache.set(id, detail);
+  } catch {
+    if (version === tournamentDetailVersion) tournamentDetailErrors.add(id);
+  } finally {
+    if (version === tournamentDetailVersion) {
+      tournamentDetailLoading.delete(id);
+      ctx.rerender();
+    }
+  }
+}
 
 async function loadMatchTournaments(ctx) {
   const version = ++tournamentRequestVersion;
@@ -111,6 +133,10 @@ export function invalidateMatchTournaments({ hard = false } = {}) {
   tournamentRequestVersion += 1;
   tournamentLoading = false;
   tournamentStale = true;
+  tournamentDetailVersion += 1;
+  tournamentDetailCache.clear();
+  tournamentDetailLoading.clear();
+  tournamentDetailErrors.clear();
   if (hard) tournamentCache = null;
 }
 
@@ -252,8 +278,8 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
     : editable
     ? `<button type="button" class="tournament-fixture-action is-open" data-record-draw="${draw.id}" aria-label="Ergebnis eintragen" title="Ergebnis eintragen">${icon('plus')}</button>
        <button type="button" class="btn btn-sm${primaryTournament ? ' btn-primary' : ''}" data-draw-tournament="${draw.id}">Turnier erstellen</button>`
-    : `<button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>
-       <button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>`;
+    : `<button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>
+       <button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>`;
 
   return `
     <div class="card stack matchmaking-draw-card" data-draw-card="${draw.id}">
@@ -589,8 +615,8 @@ function historyMatchHtml(draw) {
     ? `<span class="tournament-fixture-score is-pick">Win</span> <strong>${escapeHtml(winnerName)}${winner.score != null && draw.teams.length !== 2 ? ` · <span class="is-win">${winner.score}</span>` : ''}</strong> ${scoreChip}`
     : '<span class="tournament-fixture-score">Remis</span>';
   const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span> ${result} <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
-  const actions = `<button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>
-    <button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>`;
+  const actions = `<button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>
+    <button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>`;
   const order = draw.teams.map((team, index) => ({ team, index })).sort((a, b) => {
     if (a.team.rank != null || b.team.rank != null) return (a.team.rank ?? Infinity) - (b.team.rank ?? Infinity) || a.index - b.index;
     return Number(b.index === draw.winnerTeamIndex) - Number(a.index === draw.winnerTeamIndex) || a.index - b.index;
@@ -614,12 +640,63 @@ function historyMatchHtml(draw) {
   return historyItemHtml(draw.id, draw.gameName, meta, actions, `<div class="matchmaking-history-teams">${teams}</div>${seating}`);
 }
 
+function historyTournamentDetailHtml(tournament) {
+  if (tournamentDetailErrors.has(tournament.id)) {
+    return `<div class="muted" role="alert">Turnierdaten konnten nicht geladen werden.
+      <button type="button" class="btn btn-sm" data-retry-tournament-detail="${escapeHtml(tournament.id)}">Erneut laden</button></div>`;
+  }
+  const detail = tournamentDetailCache.get(tournament.id);
+  if (!detail) return '<div class="muted">Lädt…</div>';
+
+  const ranks = new Map();
+  (detail.standings ?? []).forEach((entry, index) => ranks.set(entry.teamId, { rank: index + 1, ...entry }));
+  (detail.groups ?? []).forEach((group) => group.standings.forEach((entry, index) =>
+    ranks.set(entry.teamId, { rank: index + 1, ...entry })));
+  const cards = detail.teams.map((team) => {
+    const standing = ranks.get(team.id);
+    const playedMatches = detail.matches.filter((match) => !match.isBye &&
+      (match.winnerTeamId !== null || match.isDraw) && (match.teamAId === team.id || match.teamBId === team.id));
+    const wins = playedMatches.filter((match) => match.winnerTeamId === team.id).length;
+    const context = [
+      detail.format === 'group_knockout' ? `Gruppe ${(team.groupIndex ?? 0) + 1}` : null,
+      standing ? `${standing.points} Pkt · ${standing.played} Sp` : `${wins} Siege · ${playedMatches.length} Sp`,
+    ].filter(Boolean).join(' · ');
+    return `<div class="matchmaking-history-team">
+      <div class="matchmaking-history-team-head">
+        ${standing ? `<span class="lb-rank${standing.rank === 1 ? ' is-first' : ''}">${standing.rank}</span>` : ''}
+        <strong>${escapeHtml(team.name)}</strong>
+        ${detail.championTeamId === team.id ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}
+      </div>
+      <div class="muted matchmaking-history-players">${escapeHtml(team.players.map((player) => player.name).join(', ') || 'Spieler nicht verfügbar')}</div>
+      <div class="muted matchmaking-history-team-context">${escapeHtml(context)}</div>
+    </div>`;
+  }).join('');
+  return `<div class="muted matchmaking-history-tournament-summary">${escapeHtml(TOURNAMENT_FORMAT_LABELS[detail.format])} · ${detail.teams.length} Teams · ${tournament.decidedMatchCount}/${tournament.matchCount} Partien</div>
+    <div class="matchmaking-history-teams">${cards}</div>`;
+}
+
 function historyTournamentHtml(tournament) {
   const meta = `<span class="muted">${formatDateTime(tournament.createdAt)}</span> <span class="badge">Turnier</span>
     <span class="muted">${escapeHtml(tournament.name)} · ${tournament.championName ? `Sieger: ${escapeHtml(tournament.championName)}` : 'Läuft'}</span>`;
-  const actions = `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(tournament.id)}">Turnier</button><span class="matchmaking-history-action-placeholder"></span>`;
+  const actions = `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(tournament.id)}">Turnier</button>`;
   return historyItemHtml(`t-${tournament.id}`, tournament.gameName, meta, actions,
-    `<div class="muted">${escapeHtml(tournament.name)} · ${tournament.decidedMatchCount}/${tournament.matchCount} Partien</div>`, 'is-tournament');
+    historyTournamentDetailHtml(tournament), 'is-tournament');
+}
+
+function renderOpenDraws(selectedGameId) {
+  const draws = historyForGameId === selectedGameId ? openDrawsCache : [];
+  if (!draws.length) return '';
+  return `<details class="card matchmaking-open-draws collapsible-section" ${openDrawsSectionOpen ? 'open' : ''}>
+    <summary class="collapsible-section-header">
+      <h2>Ohne Ergebnis</h2>
+      <span class="collapsible-section-summary-end">
+        <span class="muted">${draws.length} Auslosungen, noch nicht gespielt</span>
+        <span class="badge badge-offline">Offen</span>
+        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+      </span>
+    </summary>
+    <div class="collapsible-section-content"><div id="match-history-open"></div></div>
+  </details>`;
 }
 
 function renderHistory(selectedGameId) {
@@ -629,11 +706,6 @@ function renderHistory(selectedGameId) {
     ...(historyFilter === 'tournaments' ? [] : matches.map((draw) => ({ time: draw.generatedAt, html: historyMatchHtml(draw) }))),
     ...(historyFilter === 'matches' ? [] : tournaments.map((tournament) => ({ time: tournament.createdAt, html: historyTournamentHtml(tournament) }))),
   ].sort((a, b) => b.time - a.time).map((entry) => entry.html);
-  if (historyFilter !== 'tournaments' && historyForGameId === selectedGameId && openDrawsCache.length) {
-    // Keep every open draw reachable, but build its editable cards only while
-    // the group is expanded. A busy event can accumulate hundreds of rerolls.
-    items.push(historyItemHtml('open', 'Ohne Ergebnis', `<span class="muted">${openDrawsCache.length} Auslosungen, noch nicht gespielt</span>`, '<span class="badge badge-offline">Offen</span>', ''));
-  }
   const filter = `<div class="matchmaking-history-filters" role="group" aria-label="Historie filtern">
     ${[['all', 'Alle'], ['matches', 'Matches'], ['tournaments', 'Turniere']].map(([key, label]) => `<button type="button" class="chip${historyFilter === key ? ' is-active' : ''}" data-history-filter="${key}" aria-pressed="${historyFilter === key}">${label}</button>`).join('')}
   </div>`;
@@ -646,24 +718,34 @@ function renderHistory(selectedGameId) {
   return renderHistoryDetails('Historie', items.length, content);
 }
 
-function wireHistory(container, selectedGameId, ctx) {
-  const section = container.querySelector('.history-details');
+function wireOpenDraws(container, ctx) {
+  const section = container.querySelector('.matchmaking-open-draws');
   const openPanel = container.querySelector('#match-history-open');
+  section?.querySelector('summary')?.addEventListener('click', () => {
+    openDrawsSectionOpen = !section.open;
+  });
   function releaseOpenDraws() {
     if (!openPanel) return;
     openPanel.replaceChildren();
     delete openPanel.dataset.rendered;
   }
   function populateOpenDraws() {
-    if (!openPanel || !section?.open || !expandedHistoryIds.has('open') || openPanel.dataset.rendered) return;
+    if (!openPanel || !section?.open || openPanel.dataset.rendered) return;
     openPanel.innerHTML = openDrawsCache.map((draw) => renderDrawCard(draw, { editable: true, showGame: true })).join('');
     openPanel.dataset.rendered = 'true';
     wireDrawCards(openPanel, ctx);
   }
   section?.addEventListener('toggle', () => {
-    historySectionOpen = section.open;
     if (section.open) populateOpenDraws();
     else releaseOpenDraws();
+  });
+  populateOpenDraws();
+}
+
+function wireHistory(container, selectedGameId, ctx) {
+  const section = container.querySelector('.history-details');
+  section?.querySelector('summary')?.addEventListener('click', () => {
+    historySectionOpen = !section.open;
   });
   container.querySelectorAll('[data-history-toggle]').forEach((button) => button.addEventListener('click', () => {
     const id = button.dataset.historyToggle;
@@ -672,10 +754,14 @@ function wireHistory(container, selectedGameId, ctx) {
     const expanded = expandedHistoryIds.has(id);
     button.setAttribute('aria-expanded', String(expanded));
     button.closest('.matchmaking-history-item').querySelector('.matchmaking-history-details').hidden = !expanded;
-    if (id === 'open') {
-      if (expanded) populateOpenDraws();
-      else releaseOpenDraws();
-    }
+    if (expanded && id.startsWith('t-')) loadHistoryTournamentDetail(id.slice(2), ctx);
+  }));
+  container.querySelectorAll('[data-history-toggle^="t-"][aria-expanded="true"]').forEach((button) =>
+    loadHistoryTournamentDetail(button.dataset.historyToggle.slice(2), ctx));
+  container.querySelectorAll('[data-retry-tournament-detail]').forEach((button) => button.addEventListener('click', () => {
+    const id = button.dataset.retryTournamentDetail;
+    tournamentDetailErrors.delete(id);
+    loadHistoryTournamentDetail(id, ctx);
   }));
   container.querySelectorAll('[data-history-filter]').forEach((button) => button.addEventListener('click', () => {
     if (historyFilter === button.dataset.historyFilter) return;
@@ -686,7 +772,6 @@ function wireHistory(container, selectedGameId, ctx) {
   container.querySelector('[data-history-more]')?.addEventListener('click', () => {
     if (!historyLoading && historyCursor) loadHistory(selectedGameId, ctx, { append: true });
   });
-  populateOpenDraws();
 }
 
 function renderActiveTournaments() {
@@ -834,7 +919,7 @@ export function renderMatchmaking(container, ctx) {
     avoidAdjacentOpponents = Boolean(gameById(selectedGameId)?.considerSeatNeighborsDefault);
   }
 
-  if (historyFilter !== 'tournaments' && (historyForGameId !== selectedGameId || historyStale) && !historyLoading) {
+  if ((historyForGameId !== selectedGameId || historyStale) && !historyLoading) {
     loadHistory(selectedGameId, ctx);
   }
 
@@ -883,11 +968,11 @@ export function renderMatchmaking(container, ctx) {
     ${leading}
     <div class="card stack">
       <div class="matchmaking-setup-head">
+        ${modeToggleHtml}
         <div>
           <label class="field-label is-required" for="mm-game-search">Spiel auswählen</label>
           ${searchSelectHtml('mm-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen' })}
         </div>
-        ${modeToggleHtml}
       </div>
 
       ${teamsMode === 'draw' ? `
@@ -979,11 +1064,13 @@ export function renderMatchmaking(container, ctx) {
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
 
+    ${renderOpenDraws(selectedGameId)}
     ${renderHistory(selectedGameId)}
   `;
 
   wireInfoTooltips(container);
   wireDrawCards(container, ctx);
+  wireOpenDraws(container, ctx);
   wireHistory(container, selectedGameId, ctx);
   wireRosterPicker(container, {
     id: 'mm-draw-roster',

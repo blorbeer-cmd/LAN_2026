@@ -2987,6 +2987,12 @@ button.profile-row-main {
 .matchmaking-draw-card {
   margin-bottom: var(--space-3);
 }
+.matchmaking-active-tournaments {
+  margin-bottom: var(--space-4);
+}
+.matchmaking-open-draws {
+  margin-top: var(--space-4);
+}
 .matchmaking-setup-head {
   display: grid;
   gap: var(--space-4);
@@ -3091,8 +3097,13 @@ button.profile-row-main {
   margin-top: var(--space-1);
   font-size: var(--font-size-xs);
 }
-.matchmaking-history-action-placeholder {
-  width: var(--control-height);
+.matchmaking-history-team-context {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+}
+.matchmaking-history-tournament-summary {
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-xs);
 }
 .matchmaking-history-more {
   display: flex;
@@ -3121,11 +3132,13 @@ button.profile-row-main {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-@media (min-width: 860px) { /* --bp-lg */
+@media (min-width: 640px) { /* --bp-md */
   .matchmaking-setup-head {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: end;
   }
+}
+@media (min-width: 860px) { /* --bp-lg */
   .matchmaking-setup-head .selection-toolbar {
     display: grid;
     grid-template-columns: auto auto auto;

@@ -1997,9 +1997,9 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await page.keyboard.press('Tab');
   await tournamentGameList.waitFor({ state: 'hidden' });
   assert.equal(
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.mmMode),
-    'draw',
-    'Tab should leave the combobox for the mode choice instead of moving through every listbox option',
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.id),
+    'mm-teamcount',
+    'Tab should leave the combobox for the next setup control instead of moving through every listbox option',
   );
   await page.click('#mm-game-search');
   await tournamentGameList.waitFor({ state: 'visible' });
@@ -2196,6 +2196,13 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await page.locator(`#mm-game-list [data-search-select-value="${otherTournamentGame.id}"]`).click();
   await openMatchmakingHistory();
   await page.click('[data-history-filter="tournaments"]');
+  const historyTournament = page.locator(`.matchmaking-history-item:has([data-open-draw-tournament="${tournamentId}"])`);
+  assert.equal(await historyTournament.locator('.matchmaking-history-toggle').getAttribute('aria-expanded'), 'false');
+  await historyTournament.locator('.matchmaking-history-toggle').click();
+  await historyTournament.locator('.matchmaking-history-team').first().waitFor();
+  assert.equal(await historyTournament.locator('.matchmaking-history-team').count(), 2);
+  assert.ok((await historyTournament.locator('.matchmaking-history-players').first().innerText()).length > 0);
+  assert.equal(await historyTournament.locator('.tournament-fixture-score.is-pick:has-text("Win")').count(), 1);
   await page.locator(`.matchmaking-history-item [data-open-draw-tournament="${tournamentId}"]`).click();
   assert.equal(new URL(page.url()).hash, tournamentDetailHash, 'the history filter should link to the detail');
   await page.goto(`${BASE_URL}/#tournaments/deleted-example`);

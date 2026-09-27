@@ -2,12 +2,14 @@
 
 ## 1. Status und Zweck
 
-Status: umgesetzt. Eine Kachel zeigt den Ergebnisüberblick und klappt Teams oder offene
-Auslosungen auf. Die ganze Historie besitzt zusätzlich ihren eigenen einklappbaren Rahmen.
+Status: umgesetzt. Eine Kachel zeigt den Ergebnisüberblick und klappt Match- oder Turnierteams
+auf. Die Historie besitzt einen eigenen einklappbaren Rahmen; offene Auslosungen stehen in einem
+separaten, zunächst geschlossenen Abschnitt darüber.
 
 ## 2. Quelle
 
-`public/js/views/matchmaking.js`: `historyItemHtml`, `renderHistory` und `wireHistory`.
+`public/js/views/matchmaking.js`: `historyItemHtml`, `renderHistory`, `renderOpenDraws`,
+`wireHistory` und `wireOpenDraws`.
 
 ## 3. CSS-Eigentümerschaft
 
@@ -16,8 +18,8 @@ Auslosungen auf. Die ganze Historie besitzt zusätzlich ihren eigenen einklappba
 
 ## 4. Varianten
 
-Erfasstes Match mit Ergebnis und Rematch/Stift, Turnier mit direktem Detail-Link sowie die
-letzte Sammelkachel „Ohne Ergebnis“ mit ihren bearbeitbaren Auslosungen.
+Erfasstes Match mit Ergebnis und Stift/Rematch, Turnier mit direktem Detail-Link und
+nachladbaren Teamdetails; „Ohne Ergebnis“ als separater Abschnitt mit bearbeitbaren Auslosungen.
 
 ## 5. Erlaubte Anpassungen
 
@@ -29,9 +31,11 @@ eigenständiger Button neben den Aktionen; Aktionen werden nie darin verschachte
 Alle Kacheln beginnen geschlossen und behalten ihren Zustand bei einem Neuzeichnen. Ein gerade
 gespeichertes Ergebnis öffnet seine Kachel. Spielnamen kürzen nur visuell; der vollständige
 DOM-Text bleibt. Die Aktionsgruppe ist gleich hoch und darf auf schmalen Ansichten als Ganzes
-unter den Titel rücken. Teams stehen breit nebeneinander, bis zu vier Spalten, und zeigen
-nur ihre gespeicherte Skill-Summe. „Ohne Ergebnis“ bleibt die letzte Kachel.
-Ihre bearbeitbaren Auslosungen werden erst beim Aufklappen aufgebaut und beim Schließen
+unter den Titel rücken. Teams stehen breit nebeneinander, bis zu vier Spalten. Matchteams
+zeigen nur ihre gespeicherte Skill-Summe; Turnierteams zeigen keine erfundene Skillsumme.
+Turnierkacheln laden beim Öffnen Teams, Spieler und verfügbare Ergebnisdaten nach; Fehler bieten
+einen erneuten Ladeversuch. „Ohne Ergebnis“ steht über der Historie und ist zu Beginn geschlossen.
+Seine bearbeitbaren Auslosungen werden erst beim Aufklappen aufgebaut und beim Schließen
 wieder aus dem DOM entfernt; die Anzahl und Erreichbarkeit aller offenen Auslosungen bleiben erhalten.
 
 ## 7. Erreichbare Zustände
@@ -52,7 +56,7 @@ nebeneinanderliegenden Teams.
 
 ## 10. Prüfungen und Abnahmebeispiele
 
-E2E prüft Aufklappen, Ergebnis/Rematch, Filter und Nachladen. Auf 390 und 1024 px gibt es
+E2E prüft Aufklappen, Ergebnis/Rematch, Turnierdetails, Filter und Nachladen. Auf 390 und 1024 px gibt es
 keinen horizontalen Überlauf; ein langer Spielname schneidet keine Aktion ab.
 
 ## 11. Permanente Varianten und befristete Ausnahmen

@@ -63,6 +63,11 @@ for (const width of [390, 1024]) {
         assert.equal(await page.locator('[data-section-tab="matchmaking"]').count(), 0);
         assert.equal(await setup.locator('label[for="mm-game-search"]').innerText(), 'Spiel auswählen');
         assert.equal(await setup.locator('[data-mm-mode][aria-pressed="true"]').count(), 1);
+        if (width >= 640) {
+          const mode = await setup.locator('.selection-toolbar').boundingBox();
+          const game = await setup.locator('#mm-game-search').boundingBox();
+          assert.ok(mode && game && mode.x + mode.width < game.x, 'mode choice should sit left of game choice');
+        }
         await assertControlHeights(setup.locator('#mm-game-search, [data-mm-mode]'));
         await assertNoOverflow(setup);
       });
