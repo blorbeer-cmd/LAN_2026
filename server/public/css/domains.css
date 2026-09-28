@@ -2609,6 +2609,18 @@ input.food-order-price-input {
   padding-inline: var(--space-2);
   border-radius: var(--radius-sm);
 }
+/* The tinted, rounded row is its own separator: the hairline above it would
+   frame only its top edge (and bend into the rounded corners), and the one
+   below would stop short of its stepped-out edges, so the marker looked cut
+   off at the bottom. Dropping its own line also keeps the content centered. */
+.tournament-fixture.is-mine,
+.tournament-lobby-row.is-mine {
+  border-top: 0;
+}
+.tournament-fixture.is-mine + .tournament-fixture,
+.tournament-lobby-row.is-mine + .tournament-lobby-row {
+  border-top-color: transparent;
+}
 .tournament-lobby-row.is-mine {
   padding-block: var(--space-2);
 }
