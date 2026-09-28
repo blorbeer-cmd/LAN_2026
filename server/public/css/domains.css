@@ -1299,9 +1299,21 @@ input[type='number'].tournament-result-score {
 .card > .title-with-info > h2 {
   margin: 0;
 }
-.grouped-page-section .card {
+/* Card surfaces alternate by actual nesting, whether or not a card can
+   collapse. Event participants use the same surface without a .card class.
+   Flat person/item rows and menus are controls, not another card level. */
+:is(.card, .event-card-participants) :is(.card, .event-card-participants) {
   background: var(--bg-elevated-2);
   box-shadow: none;
+}
+:is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) {
+  background: var(--bg-elevated);
+}
+:is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) {
+  background: var(--bg-elevated-2);
+}
+:is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) {
+  background: var(--bg-elevated);
 }
 .two-column-card-grid {
   display: grid;

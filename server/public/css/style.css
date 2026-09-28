@@ -1143,9 +1143,6 @@ textarea {
 .event-poll-save-row {
   justify-content: flex-end;
 }
-.event-poll-history > .collapsible-section-header {
-  align-items: center;
-}
 .event-poll-history-round {
   display: flex;
   align-items: center;
@@ -3000,7 +2997,6 @@ button.profile-row-main {
 }
 .matchmaking-history-item {
   margin-bottom: var(--space-2);
-  background: var(--bg-elevated-2);
 }
 .matchmaking-history-head {
   display: flex;
@@ -3235,7 +3231,7 @@ button.draft-pool-player {
 }
 .collapsible-section-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
   min-height: var(--tap-target-size);
@@ -3246,20 +3242,6 @@ button.draft-pool-player {
 .collapsible-section-header h2 {
   margin: 0;
   font-size: var(--font-size-lg);
-}
-/* History cards use the compact Home header alignment. */
-.history-details > .collapsible-section-header,
-.matchmaking-open-draws > .collapsible-section-header,
-[data-checklist-history] > .collapsible-section-header,
-[data-food-history] > .collapsible-section-header,
-[data-broadcast-history] > .collapsible-section-header,
-[data-music-connection] > .collapsible-section-header,
-[data-completed-tournaments] > .collapsible-section-header,
-[data-tournament-teams] > .collapsible-section-header,
-[data-my-stats-section] > .collapsible-section-header,
-[data-profile-section] > .collapsible-section-header,
-[data-admin-section] > .collapsible-section-header {
-  align-items: center;
 }
 .collapsible-section-header::-webkit-details-marker {
   display: none;

@@ -372,9 +372,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   target-height row plus the standard section gap. This keeps the first content surface on the
   same top edge at phone and laptop widths; a trailing page action may share `.page-title-row`.
 - **Card headings** — headings inside cards use `--font-size-lg`, bold weight and the card's
-  standard top/left inset. `.grouped-page-section-title` and `.collapsible-section-header` align
-  heading text and trailing actions to the same top edge. A contextual-help trigger keeps its full
-  touch target through negative outer margin, so adding help never shifts only that heading
+  standard top/left inset. `.grouped-page-section-title` aligns heading text and trailing actions
+  to the same top edge; collapsible headers use the shared vertical centering described below.
+  A contextual-help trigger keeps its full touch target through negative outer margin, so adding
+  help never shifts only that heading
   downward.
 - **Mode / setting choice** — choose controls by the decision shape: a native select for
   three or more mutually exclusive named options, a toggle for an either/or choice, a segmented
@@ -469,12 +470,23 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   standard presentation for collapsed histories, completed tournament lists and closed order
   cards: a full bordered card whose chevron rotates when opened. Section-specific content lives in
   `.collapsible-section-content`; decorative heading icons are omitted.
+  Every collapsible header vertically centers its title or title/metadata block, count/status and
+  chevron, both closed and open, on phones and laptops. Text stays left-aligned. The shared
+  `.collapsible-section-header` owns this alignment without view-specific selector lists; its
+  `--tap-target-size` minimum height may grow for wrapped content. Button-based card and person
+  disclosures follow the same centering rule within their registered geometry.
+  Card surfaces alternate by nesting depth, independent of open state: the outer card uses
+  `--bg-elevated`, its child card uses `--bg-elevated-2`, the next card uses `--bg-elevated`,
+  and so on. This includes native sections, participant disclosures and button-based Match,
+  Event, food-order and poll cards. A lone entity card follows its nesting depth even when it
+  needs no collapse toggle. Flat person/item rows and informational inset boxes retain their
+  own presentation.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
   shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible
   heading lives inside the surface through `.grouped-page-section-title`, while filters and
   subordinate rows remain part of that same group. This is the default hierarchy for overview
   pages with several related datasets instead of headings that float between unrelated cards.
-  Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
+  Nested `.card` surfaces alternate the two elevated backgrounds with each additional card level.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
   Profile, Meine Statistiken and Admin are one column of full-width cards on every width: their rows
