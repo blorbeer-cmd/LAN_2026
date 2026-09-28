@@ -36,8 +36,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   keep an identical line out for two hours, a sentence form for 15 lines and the same person out
   of two consecutive lines. The newest line leads as „Eilmeldung“ with a gradient icon, a slightly
   heavier weight at the banner's text size and its game or tournament as meta line; older lines sit below it on one vertical rail,
-  each with its icon and age. A new line fades in on top while the others slide down; lines that
-  no longer fit are dropped, and reduced motion shows the new state without movement. The tone
+  each with its icon and age. The card shows at most five lines; the lead line takes the remaining
+  height, so its rail simply runs longer down to the second line. A new line fades in on top while
+  the others slide down; lines that no longer fit on a short screen are dropped, and reduced motion shows the new state without movement. The tone
   stays friendly: no remarks about looks, weak skill, health or private life. Accounts that opted
   out in Mein Profil are never named, and a line naming them disappears with the next refresh.
 - **Abstimmung**: Vote is a live room display. Open rounds vertically center their participant
