@@ -817,7 +817,7 @@ flowTest('matchmaking Historie derives the winner from values entered in the dra
   assert.equal(await page.getAttribute('[data-history-filter="matches"]', 'aria-pressed'), 'true');
 });
 
-flowTest('shared filters narrow open games, tournament overview and history by participation', async (t) => {
+flowTest('shared filters narrow open games and history while keeping running tournaments visible', async (t) => {
   await openTeams();
   const gameId = await page.inputValue('#mm-game');
   const drawIds: string[] = [];
@@ -899,7 +899,8 @@ flowTest('shared filters narrow open games, tournament overview and history by p
   assert.equal(await drawTile(otherPlayed).count(), 0);
   assert.equal(await tournamentTile(otherRunning).count(), 0);
   assert.equal(await tournamentTile(otherFinished).count(), 0);
-  assert.equal(await page.locator(`.matchmaking-active-tournaments [data-open-draw-tournament="${otherRunning}"]`).count(), 0);
+  assert.equal(await page.locator(`.matchmaking-active-tournaments [data-open-draw-tournament="${otherRunning}"]`).count(), 1,
+    'the running-tournament overview remains independent of the participation filter');
   assert.equal(await drawTile(minePlayed).count(), 1);
   assert.equal(await tournamentTile(mineRunning).count(), 1);
   assert.equal(await tournamentTile(mineFinished).count(), 1);
@@ -908,7 +909,9 @@ flowTest('shared filters narrow open games, tournament overview and history by p
   await drawTile(mineOpen).waitFor();
   assert.equal(await tournamentTile(mineRunning).count(), 0);
   assert.equal(await tournamentTile(mineFinished).count(), 0);
-  assert.equal(await page.locator('.matchmaking-active-tournaments').count(), 0);
+  assert.equal(await page.locator(`.matchmaking-active-tournaments [data-open-draw-tournament="${mineRunning}"]`).count(), 1);
+  assert.equal(await page.locator(`.matchmaking-active-tournaments [data-open-draw-tournament="${otherRunning}"]`).count(), 1,
+    'the running-tournament overview remains visible when only matches are requested');
   await filters.getByRole('button', { name: 'Turniere', exact: true }).click();
   await tournamentTile(mineRunning).waitFor();
   assert.equal(await drawTile(mineOpen).count(), 0);

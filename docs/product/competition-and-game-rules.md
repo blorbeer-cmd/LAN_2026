@@ -68,7 +68,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   its cards only when opened. Each unplayed game is also a collapsed tile that can be opened
   independently to show its teams and player moves. Recorded matches and completed tournaments share the „Historie“ for the selected game. It starts
   collapsed. The shared „Alle | Matches | Turniere“ filter row sits above „Ohne Ergebnis“ and applies
-  to open draws, running tournaments and completed history, including the running overview above setup.
+  to open draws, running tournaments and completed history. The running overview above setup is
+  independent of these filters and always shows every running tournament.
   The independent „Meine“ toggle combines with each type and shows only entries whose teams include
   the signed-in player, regardless of who created them. It also scopes older Match pages before
   pagination. The filters remain visible when sections are collapsed or have no matching entries.
