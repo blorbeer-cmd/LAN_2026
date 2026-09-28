@@ -34,7 +34,7 @@ const FEED_LENGTH = 10;
 const INITIAL_ITEMS = FEED_LENGTH;
 // Slots missed while no screen asked are not back-filled beyond this.
 const MAX_CATCH_UP = 4;
-const RECENT_TEMPLATE_WINDOW = 15;
+const RECENT_TEMPLATE_WINDOW = 20;
 // Two hours of ticker: no identical line comes back within that time.
 const RECENT_TEXT_WINDOW = 240;
 // Longer lines read badly from across the room and crowd a small tile, so
