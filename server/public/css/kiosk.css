@@ -329,11 +329,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Same size as the banner text: the lead stands out through its gradient
+   icon, kicker, weight and meta line, not through a larger type step. */
 .kiosk-news-item.is-first .kiosk-news-line {
   display: -webkit-box;
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  line-height: 1.3;
+  font-weight: var(--font-weight-medium);
+  line-height: 1.35;
   white-space: normal;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -356,13 +357,6 @@
   border-radius: var(--radius-full);
   background: var(--accent-3);
   box-shadow: 0 0 var(--space-2) var(--accent-3);
-}
-/* Compact dashboard (see the 900px rule above): the lead line keeps its
-   weight but drops one size so three lines hold a whole headline. */
-@media (max-width: 900px) { /* design-token-ok: fixed kiosk dashboard breakpoint */
-  .kiosk-news-item.is-first .kiosk-news-line {
-    font-size: var(--font-size-xl);
-  }
 }
 .kiosk-news-meta,
 .kiosk-news-age {
