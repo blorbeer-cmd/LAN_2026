@@ -40,6 +40,8 @@ test('arcade game routes and existing targeted hashes stay distinct', () => {
     appHash('foodOrders', null, { type: 'order', id: 'order 1' }),
     '#foodOrders/order%201',
   );
+  assert.deepEqual(parseAppHash('#events/lan%201').searchTarget, { type: 'event', id: 'lan 1' });
+  assert.equal(appHash('events', null, { type: 'event', id: 'lan 1' }), '#events/lan%201');
 });
 
 test('invalid encoded segments fall back to their parent view', () => {

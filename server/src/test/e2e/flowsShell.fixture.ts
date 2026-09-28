@@ -2299,7 +2299,7 @@ flowTest('the tournament start link opens the own team and renames it in place',
     data: { gameId, format: 'round_robin', teams: [{ playerIds: [alice.id] }, { playerIds: [bob.id] }] },
   });
   assert.equal(created.status(), 201, await created.text());
-  const tournament = await created.json() as { id: string; teams: Array<{ id: string; players: Array<{ id: string }> }> };
+  const tournament = await created.json() as { id: string; name: string; teams: Array<{ id: string; players: Array<{ id: string }> }> };
   const aliceTeamId = tournament.teams.find((team) => team.players.some((player) => player.id === alice.id))!.id;
   // A cold start as the member Bob, as when the push opens a fresh app
   // window: its first live refreshes re-render the detail and must keep the
@@ -2335,6 +2335,14 @@ flowTest('the tournament start link opens the own team and renames it in place',
 
   await ownCard.locator('[data-rename-team]').click();
   const dialog = coldPage.getByRole('dialog', { name: 'Teamnamen ändern' });
+  assert.equal((await dialog.locator('.result-dialog-subtitle').textContent())?.trim(), tournament.name);
+  assert.equal(await dialog.locator('.notice, [data-rename-team-count], [data-rename-team-reset]').count(), 0);
+  await dialog.locator('#rename-team-name').fill('Toastbrot Esports');
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await coldPage.getByText('Diesen Namen hat schon ein anderes Team.').waitFor();
+  await dialog.locator('#rename-team-name').fill('Ein Teamname mit mehr als dreißig Zeichen');
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await coldPage.getByText('Teamname muss 1-30 Zeichen lang sein.').waitFor();
   await dialog.locator('#rename-team-name').fill('Boost Brothers');
   await dialog.getByRole('button', { name: 'Speichern' }).click();
   await dialog.waitFor({ state: 'detached' });

@@ -714,7 +714,7 @@ textarea {
 }
 .event-poll-card-toggle {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-3);
   flex: 1 1 auto;
@@ -732,10 +732,14 @@ textarea {
 .event-poll-card-toggle[aria-expanded='true'] .collapsible-section-chevron {
   transform: rotate(90deg);
 }
-@media (hover: hover) {
-  .event-poll-card-toggle:hover {
-    background: var(--bg-elevated-2);
-  }
+.event-poll-card[data-latest-vote] .event-poll-card-header {
+  min-height: calc(var(--tap-target-size) + var(--space-7));
+}
+.event-poll-card[data-latest-vote] .event-poll-card-title {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
 }
 .event-poll-card-title {
   display: flex;
@@ -1331,7 +1335,7 @@ textarea {
   }
   .event-poll-card-toggle {
     flex-basis: 100%;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
   }
   /* The compact header actions move below the title on a phone, aligned
      right, instead of squeezing the title into a narrow column. */
@@ -3048,6 +3052,7 @@ button.profile-row-main {
 .matchmaking-history-chevron {
   display: inline-flex;
   flex: 0 0 auto;
+  margin-left: auto;
   color: var(--text-muted);
 }
 .matchmaking-history-toggle[aria-expanded='true'] .matchmaking-history-chevron {
@@ -3293,7 +3298,7 @@ button.draft-pool-player {
 .collapsible-section-chevron {
   display: inline-flex;
   color: var(--text-muted);
-  transition: transform 0.15s ease;
+  transition: transform var(--motion-fast);
 }
 .collapsible-section[open] .collapsible-section-chevron {
   transform: rotate(90deg);
@@ -4155,6 +4160,9 @@ button.card {
 .home-current--compact .home-current-items {
   gap: 0;
 }
+.home-live-grid {
+  grid-auto-rows: minmax(calc(var(--tap-target-size) + var(--space-8)), auto);
+}
 .home-current--compact {
   padding-block: var(--space-3);
 }
@@ -4659,7 +4667,7 @@ button.card {
   /* The live board reads like every list: the left column fills top to
      bottom before the next one starts (row counts set by home.js). */
   .two-column-card-grid.home-live-grid {
-    grid-template-rows: repeat(var(--home-live-rows-2, 1), auto);
+    grid-template-rows: repeat(var(--home-live-rows-2, 1), minmax(calc(var(--tap-target-size) + var(--space-8)), auto));
     grid-auto-flow: column;
   }
 }

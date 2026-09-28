@@ -330,7 +330,8 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   „Live-Status“ rather than a competing page-level group. A pending event invitation appears here as
   a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); answering it happens only in
   Profile, not in this list. The live board fills its left column first, grouped by state and
-  alphabetical within a state. The admin-only „Rangliste“ shows the top six as a RankedList with
+  alphabetical within a state. Playing and online player cards reserve the same height so a tracked
+  game does not resize a row. The admin-only „Rangliste“ shows the top six as a RankedList with
   „Alle ansehen“ in its header. The seating plan draws free seats and the table as plain outlines
   labelled „Frei“ and „Tisch“, so occupied seats carry the plan; a layout without seats shows
   „Noch keine Plätze“. Main groups stay in one continuous column

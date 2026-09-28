@@ -229,7 +229,7 @@ function renderDetail(container, ctx) {
   container.querySelectorAll('[data-rename-team]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const index = t.teams.findIndex((team) => team.id === btn.dataset.renameTeam);
-      if (index !== -1) openRenameTeamDialog(t, t.teams[index], index, ctx);
+      if (index !== -1) openRenameTeamDialog(t, t.teams[index], ctx);
     });
   });
 
@@ -249,34 +249,20 @@ function canRenameTeam(t, team) {
   return isGroupAdmin() || Boolean(myId && team.players.some((player) => player.id === myId));
 }
 
-const TEAM_NAME_MAX_LENGTH = 30;
-
-function openRenameTeamDialog(t, team, index, ctx) {
-  const defaultName = `Team ${index + 1}`;
-  const players = team.players.map((player) => player.name).join(', ');
+function openRenameTeamDialog(t, team, ctx) {
   const { close, el } = openModal('Teamnamen ändern', `
-    <div class="muted result-dialog-subtitle">${escapeHtml(t.name)}${players ? ` · ${escapeHtml(players)}` : ''}</div>
+    <div class="muted result-dialog-subtitle">${escapeHtml(t.name)}</div>
     <form class="stack" data-rename-team-form novalidate>
       <div>
         <label class="field-label is-required" for="rename-team-name">Teamname</label>
-        <input type="text" id="rename-team-name" maxlength="${TEAM_NAME_MAX_LENGTH}" required autocomplete="off" value="${escapeHtml(team.name)}" />
-        <div class="row-between muted" style="font-size:var(--font-size-xs);margin-top:var(--space-1);">
-          <span>Im Turnier eindeutig</span><span data-rename-team-count aria-hidden="true"></span>
-        </div>
+        <input type="text" id="rename-team-name" required autocomplete="off" value="${escapeHtml(team.name)}" />
       </div>
-      <p class="notice">Alle sehen den neuen Namen sofort – im Turnierbaum, bei den Lobbys und auf dem Broadcast.</p>
       <div class="row-between">
-        ${team.name === defaultName ? '<span></span>' : `<button type="button" class="btn btn-sm" data-rename-team-reset>Auf „${escapeHtml(defaultName)}“ zurücksetzen</button>`}
+        <span></span>
         <button type="submit" class="btn btn-primary btn-sm">Speichern</button>
       </div>
     </form>`);
   const input = el.querySelector('#rename-team-name');
-  const count = el.querySelector('[data-rename-team-count]');
-  const updateCount = () => {
-    count.textContent = `${input.value.trim().length}/${TEAM_NAME_MAX_LENGTH}`;
-  };
-  updateCount();
-  input.addEventListener('input', updateCount);
   input.select();
 
   let saving = false;
@@ -296,6 +282,7 @@ function openRenameTeamDialog(t, team, index, ctx) {
       showToast('Teamname gespeichert.');
     } catch (err) {
       showToast(err.message, { error: true });
+      input.focus();
     } finally {
       saving = false;
     }
@@ -304,7 +291,6 @@ function openRenameTeamDialog(t, team, index, ctx) {
     event.preventDefault();
     save(input.value.trim());
   });
-  el.querySelector('[data-rename-team-reset]')?.addEventListener('click', () => save(defaultName));
 }
 
 // Tournament persistence keeps scoreA/scoreB and expectedPlayedAt; the form

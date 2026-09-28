@@ -550,7 +550,7 @@ function renderHistory(group) {
   return `
     <details class="collapsible-section event-poll-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
       <summary class="collapsible-section-header">
-        <span class="row"><span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span><span>Frühere Runden (${history.length})</span></span>
+        <span>Frühere Runden (${history.length})</span><span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
       </summary>
       <div class="collapsible-section-content event-poll-history-list">${history.map(renderHistoryRound).join('')}</div>
     </details>`;
@@ -587,11 +587,11 @@ function renderPollGroup(group) {
     <article class="card event-poll-card" data-poll-group="${escapeHtml(group.key)}" data-poll-card="${escapeHtml(latest.id)}">
       <header class="event-poll-card-header">
         <button type="button" class="event-poll-card-toggle" data-toggle-poll="${escapeHtml(group.key)}" aria-expanded="${expanded}">
-          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
           <span class="event-poll-card-title">
             <strong>${escapeHtml(latest.title)}</strong>
             <span class="event-poll-card-meta-line"><span class="muted">${meta}</span>${bestResult ? `<span class="event-poll-best-result">${WIN_CHIP}<span>${escapeHtml(bestResult)}</span></span>` : ''}${pollStatusBadge(latest.status)}<span class="event-poll-answer-inline">${answerStatusChip(latest)}</span></span>
           </span>
+          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
         </button>
         <div class="event-poll-card-side">
           <span class="event-poll-answer-side">${answerStatusChip(latest)}</span>

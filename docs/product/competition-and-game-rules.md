@@ -333,7 +333,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   „Wählen“/„Ausgewählt“ choice instead of numbers. „Letzter Vote“ is a collapsible Umfrage card
   that starts collapsed and keeps its open state across live re-renders; its header names the
   round, date, participation and winner and always offers „Stimmen ansehen“ and, on a tie, a
-  compact „Stichwahl starten“. Opened, it lists every game of the round sorted by score, each with
+  compact „Stichwahl starten“. Its closed header has the same compact height as the neighboring
+  closed cards and no hover fill. Opened, it lists every game of the round sorted by score, each with
   its result bar, „N Pkt. · X/Y spielen mit“ (voters who gave at least one point, out of everyone
   who voted) and the avatars of those voters; winners carry the green „Win“ chip, tied winners
   each carry it. „Stimmen ansehen“ — in that header, on every history row and behind each avatar
@@ -370,7 +371,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   ballot over.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
   closed and retains its open state across live re-renders.
-- **Tournament overview** — Match lists running tournaments above its setup and in the selected game's „Ohne Ergebnis“ section; completed tournaments belong in the history filter. Every tournament starts from a Match draw or Captain
+- **Tournament overview** — Match lists running tournaments as compact „Aktuell“ style rows above its setup and in the selected game's „Ohne Ergebnis“ section; completed tournaments belong in the history filter. The rows say „Öffnen“ instead of showing a disclosure chevron. Every tournament starts from a Match draw or Captain
   Draft; there is no separate creation page or tournament tab. Legacy `#tournaments` and
   `#tournaments/new` routes replace themselves with `#matchmaking`. A tournament detail link keeps
   its own `#tournaments/<id>` route, including search, Home and browser history navigation. The
@@ -383,8 +384,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   one column on phones, two from 640 px and up to four from 860 px. The signed-in player's team leads
   that grid. While the tournament runs, every member of a team and every admin or owner sees a neutral
   pencil in the team card's trailing slot instead of the player count; it opens the compact dialog
-  „Teamnamen ändern“ (1–30 characters, unique within the tournament ignoring case, optionally reset
-  to „Team N“). The new name replaces the old one everywhere at once, and the other participants get
+  „Teamnamen ändern“ with only the tournament name, one team-name field and „Speichern“.
+  An empty, overlong or non-unique name produces an error when saved (1–30 characters, unique
+  within the tournament ignoring case). The new name replaces the old one everywhere at once, and the other participants get
   the toast „<old> heißt jetzt „<new>““. A completed tournament keeps its names (`409`); of two teams
   claiming the same name at once exactly one succeeds. Creating a tournament sends every participant
   a personal push „<Turnier> startet“ that names their teammates and asks them to choose a team name;

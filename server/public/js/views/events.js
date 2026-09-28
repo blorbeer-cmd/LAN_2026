@@ -73,6 +73,12 @@ const expandedEventParticipants = new Set();
 // as one flat set across active and ended events so an event's expand state
 // survives its move into Historie.
 const expandedEventCards = new Set();
+
+export function prepareEventTarget(eventId) {
+  if (!eventId) return;
+  expandedEventCards.add(eventId);
+  expandedEventParticipants.add(eventId);
+}
 // Mirrors foodOrders.js's Historie collapse: ended workspaces start collapsed
 // and this survives the section's own live re-renders. Events and groups are
 // two lists with two disclosures, so each keeps its own state — a shared flag
@@ -352,12 +358,12 @@ function renderAcceptedParticipants(event, { includeInvitationStatuses = false }
     <details class="collapsible-section food-order-group event-card-participants" data-event-participants="${escapeHtml(event.id)}" ${isExpanded ? 'open' : ''}>
       <summary class="collapsible-section-header">
         <span class="event-participant-toggle">
-          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
           <span class="food-order-group-headtext">
             <strong>${rosterTitle}</strong>
             <span class="muted food-order-group-meta">${participantCountLabel}</span>
           </span>
         </span>
+        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
       </summary>
       <div class="collapsible-section-content">
         ${includeInvitationStatuses && event.isEnded ? '<p class="muted event-participants-note">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}
@@ -679,8 +685,8 @@ function renderEventCardToggle(event, expanded, titleHtml, metaParts) {
   const kind = eventIsGroup(event) ? 'Gruppe' : 'Event';
   const label = `${kind} ${event.name}, ${metaParts.join(', ')}, ${expanded ? 'einklappen' : 'ausklappen'}`;
   return `<button type="button" class="food-order-card-header-toggle" data-event-card-toggle="${escapeHtml(event.id)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="event-card-body-${escapeHtml(event.id)}" aria-label="${escapeHtml(label)}">
-    ${icon('chevronRight', { className: 'food-order-card-chevron' })}
     ${titleHtml}
+    ${icon('chevronRight', { className: 'food-order-card-chevron' })}
   </button>`;
 }
 
@@ -1387,19 +1393,16 @@ function renderParticipantActions(event, participant) {
   const playerId = escapeHtml(participant.playerId);
   const eventId = escapeHtml(event.id);
   const paymentLocked = Boolean(participant.paymentLocked ?? participant.paid);
-  const reasonId = `event-remove-reason-${eventId}-${playerId}`;
   return `<span class="event-roster-actions">
     ${!event.isEnded && (!participant.status || participant.status === 'declined')
       ? `<button type="button" class="btn btn-sm" data-invite-participant="${playerId}" data-roster-event="${eventId}">${participant.status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
-    ${participant.status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${playerId}" data-roster-event="${eventId}" ${paymentLocked ? `aria-disabled="true" aria-describedby="${reasonId}"` : ''}>Entfernen</button>` : ''}
-    ${participant.status && paymentLocked ? `<small class="muted" id="${reasonId}">Zahlung zuerst zurücksetzen.</small>` : ''}
+    ${participant.status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${playerId}" data-roster-event="${eventId}" ${paymentLocked ? 'disabled' : ''}>Entfernen</button>` : ''}
   </span>`;
 }
 
 function wireParticipantActions(container, ctx) {
   container.querySelectorAll('[data-roster-event]').forEach((button) => {
     button.addEventListener('click', async () => {
-      if (button.getAttribute('aria-disabled') === 'true') return;
       const eventId = button.dataset.rosterEvent;
       const event = (state.managedEvents || []).find((candidate) => candidate.id === eventId);
       if (!event) return;

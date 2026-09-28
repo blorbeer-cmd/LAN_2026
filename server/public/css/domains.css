@@ -292,6 +292,9 @@
   gap: var(--space-2);
   min-width: 0;
 }
+.event-card-participants > .collapsible-section-header > .collapsible-section-chevron {
+  margin-left: auto;
+}
 .event-card-participants .collapsible-section-content {
   padding-top: 0;
 }
@@ -347,10 +350,6 @@
   justify-content: flex-end;
   gap: var(--space-2);
   min-width: 0;
-}
-.event-roster-actions small {
-  flex-basis: 100%;
-  text-align: right;
 }
 
 @media (max-width: 639px) { /* --bp-md */
@@ -1533,6 +1532,9 @@ input[type='number'].tournament-result-score {
   font: inherit;
   text-align: left;
 }
+.food-order-card-header-toggle .food-order-card-chevron {
+  margin-left: auto;
+}
 .food-order-card-header-end {
   display: inline-flex;
   align-items: center;
@@ -1723,6 +1725,7 @@ input[type='number'].tournament-result-score {
 }
 .food-order-group-chevron {
   flex-shrink: 0;
+  margin-left: auto;
   transition: transform var(--motion-fast);
 }
 .food-order-group-toggle[aria-expanded='true'] .food-order-group-chevron {
@@ -2516,7 +2519,7 @@ input.food-order-price-input {
     grid-column: auto;
   }
   :root[data-layout-mode='desktop'] .home-live-grid {
-    grid-template-rows: repeat(var(--home-live-rows-3, 1), auto);
+    grid-template-rows: repeat(var(--home-live-rows-3, 1), minmax(calc(var(--tap-target-size) + var(--space-8)), auto));
   }
 }
 

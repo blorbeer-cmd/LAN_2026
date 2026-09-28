@@ -1,4 +1,6 @@
-const TARGET_VIEWS = new Set(['foodOrders', 'eventPolls']);
+const TARGET_VIEWS = new Set(['foodOrders', 'eventPolls', 'events']);
+
+const TARGET_TYPES = { foodOrders: 'order', eventPolls: 'poll', events: 'event' };
 
 function decodeSegment(value) {
   try {
@@ -43,7 +45,7 @@ export function parseAppHash(hash) {
       view,
       localRoute: null,
       searchTarget: segment
-        ? { type: view === 'foodOrders' ? 'order' : 'poll', id: segment }
+        ? { type: TARGET_TYPES[view], id: segment }
         : null,
     };
   }
@@ -62,7 +64,7 @@ export function appHash(view, localRoute = null, searchTarget = null) {
   if (
     TARGET_VIEWS.has(view) &&
     searchTarget?.id &&
-    searchTarget.type === (view === 'foodOrders' ? 'order' : 'poll')
+    searchTarget.type === TARGET_TYPES[view]
   ) {
     return `#${encodeURIComponent(view)}/${encodeURIComponent(searchTarget.id)}`;
   }

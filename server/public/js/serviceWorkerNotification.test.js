@@ -49,6 +49,9 @@ test('order pushes keep their target and a cold start keeps the tournament hash'
   const order = await clickNotification('/#foodOrders/order-123');
   assert.deepEqual(order.messages[0].target, { type: 'order', id: 'order-123' });
 
+  const event = await clickNotification('/#events/lan-123');
+  assert.deepEqual(event.messages[0].target, { type: 'event', id: 'lan-123' });
+
   const coldStart = await clickNotification('/#tournaments/cup-123', { openClient: false });
   assert.deepEqual(coldStart.messages, []);
   assert.deepEqual(coldStart.openedUrls, ['https://respawn.example/?eventId=lan-1#tournaments/cup-123']);

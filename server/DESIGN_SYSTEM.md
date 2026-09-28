@@ -467,7 +467,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Collapsible section** — `.collapsible-section` uses a native `details` element with
   `.collapsible-section-header`, a count/status badge and `.collapsible-section-chevron`. It is the
   standard presentation for collapsed histories, completed tournament lists and closed order
-  cards: a full bordered card whose chevron rotates when opened. Section-specific content lives in
+  cards: a full bordered card whose chevron rotates when opened. Disclosure chevrons sit after the
+  title and metadata on the right; navigation rows use a separate link affordance. Section-specific content lives in
   `.collapsible-section-content`; decorative heading icons are omitted.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
   shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible

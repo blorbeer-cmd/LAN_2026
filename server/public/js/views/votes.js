@@ -494,7 +494,6 @@ function renderLatestVoteCard({ showRunoff }) {
     <section class="card vote-page-section event-poll-card" aria-labelledby="vote-current-result-title" data-latest-vote>
       <header class="event-poll-card-header">
         <button type="button" class="event-poll-card-toggle" data-toggle-latest-vote aria-expanded="${latestVoteOpen}">
-          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
           <span class="event-poll-card-title">
             <strong id="vote-current-result-title">Letzter Vote</strong>
             <span class="event-poll-card-meta-line">
@@ -502,6 +501,7 @@ function renderLatestVoteCard({ showRunoff }) {
               ${winners.length ? `<span class="event-poll-best-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : ''}
             </span>
           </span>
+          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
         </button>
         <div class="event-poll-card-side">
           <button type="button" class="btn btn-sm" data-open-vote-round="${h.round}">Stimmen ansehen</button>

@@ -410,13 +410,8 @@ test('manager invites a member who accepts and both open clients update', async 
   // The member reads the accepted roster: themselves and the manager, who is
   // on it as the event's creator.
   assert.match((await participantList.locator('.food-order-group-meta').textContent()) ?? '', /2 Personen/);
-  assert.equal(
-    await participantList.locator('.event-participant-toggle').evaluate((toggle) => {
-      return toggle.firstElementChild?.classList.contains('collapsible-section-chevron') ?? false;
-    }),
-    true,
-    'the participant disclosure follows the food-order pattern with a leading chevron',
-  );
+  assert.equal(await participantList.locator('summary > .collapsible-section-chevron').count(), 1,
+    'the participant disclosure places its chevron after the title');
   assert.equal(
     await participantList.locator('[data-toggle-event-paid]').count(),
     0,
@@ -443,6 +438,12 @@ test('manager invites a member who accepts and both open clients update', async 
     true,
     'the combined information box and participant list fit the phone card',
   );
+  await participantList.locator('summary').click();
+  await memberPage.evaluate(({ id }) => window.dispatchEvent(new CustomEvent('respawn:event-navigate', {
+    detail: { eventId: id, view: 'events', target: { type: 'event', id } },
+  })), { id: eventId });
+  await participantList.locator('.event-participant-list').waitFor({ state: 'visible' });
+  await memberPage.locator(`[data-event-card="${eventId}"].search-target-highlight`).waitFor();
   await memberPage.evaluate(() => {
     window.open = (() => {
       const fake = {
@@ -579,17 +580,16 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.equal(await creatorPaymentButton.getAttribute('aria-pressed'), 'true');
   assert.equal(await creatorPaymentButton.textContent(), 'Bezahlt');
   assert.ok(((await memberRow.textContent()) ?? '').includes(`Bezahlt von ${MEMBER_NAME}`));
-  assert.match((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
+  assert.doesNotMatch((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
   const lockedRemoveButton = memberRow.locator('[data-remove-participant]');
-  assert.equal(await lockedRemoveButton.getAttribute('disabled'), null);
+  assert.notEqual(await lockedRemoveButton.getAttribute('disabled'), null);
   assert.equal(await lockedRemoveButton.isDisabled(), true);
-  assert.equal(await lockedRemoveButton.getAttribute('aria-disabled'), 'true');
-  assert.ok(await lockedRemoveButton.getAttribute('aria-describedby'));
+  assert.equal(await lockedRemoveButton.getAttribute('aria-disabled'), null);
   await lockedRemoveButton.evaluate((button) => (button as HTMLButtonElement).click());
   assert.equal(
     await ownerPage.locator('.modal-backdrop', { hasText: 'Teilnehmer entfernen' }).count(),
     0,
-    'the aria-disabled removal action does not open its destructive confirmation',
+    'the disabled removal action does not open its destructive confirmation',
   );
   await creatorPaymentButton.click();
   await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]`).waitFor();

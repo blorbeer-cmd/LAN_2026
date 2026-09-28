@@ -81,7 +81,7 @@ export function runEventPaymentReminderOnce(now = Date.now()): number {
       {
         title: 'Offener Event-Beitrag',
         body: `Für „${row.eventName}“ sind noch ${formatEuro(row.costCents)} offen. Bitte bezahle deinen Beitrag.`,
-        url: '/#events',
+        url: `/#events/${encodeURIComponent(row.eventId)}`,
         type: 'event-payment',
         targetId: row.eventId,
       },

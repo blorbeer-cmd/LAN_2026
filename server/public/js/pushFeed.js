@@ -17,7 +17,7 @@ export const FEED_LINK_LABELS = {
   // Still used by the payment-reminder notification for an already-accepted
   // event (see eventPaymentReminders.ts) — that one keeps its payment
   // controls on the Events tab, unlike an invitation (see `profile` below).
-  events: 'Zu den Events',
+  events: 'Zum Event',
   // Event invitations deep-link here: „Einladungen“ in Mein Profil is where a
   // pending invitation is actually answered (Orga's Events tab no longer
   // shows it at all, see events.js). No DOMAIN_ICONS lookup is needed for the
@@ -31,8 +31,8 @@ export const FEED_LINK_LABELS = {
 // history entries look the same as newly-created notifications.
 const LEGACY_FEED_PREFIX = /^(?:🍕|🏆|🗳️?|⚔️?|👑|📢|🕹️?|✏️?)\s*/u;
 
-// A push url like "/#votes" deep-links into a view; food orders and tournaments
-// also carry an id so the target opens directly on arrival.
+// A push url like "/#votes" deep-links into a view; food orders, events and
+// tournaments also carry an id so the target opens directly on arrival.
 export function feedLinkView(url) {
   const hashIndex = (url || '').indexOf('#');
   if (hashIndex === -1) return null;
@@ -44,8 +44,8 @@ export function feedLinkTarget(url) {
   const hashIndex = (url || '').indexOf('#');
   if (hashIndex === -1) return null;
   const [view, encodedId, focus] = url.slice(hashIndex + 1).split('/');
-  if (!['foodOrders', 'tournaments'].includes(view) || !encodedId) return null;
-  const type = view === 'foodOrders' ? 'order' : focus === 'teams' ? 'tournament-team' : 'tournament';
+  if (!['foodOrders', 'tournaments', 'events'].includes(view) || !encodedId) return null;
+  const type = view === 'foodOrders' ? 'order' : view === 'events' ? 'event' : focus === 'teams' ? 'tournament-team' : 'tournament';
   try {
     return { type, id: decodeURIComponent(encodedId) };
   } catch {
