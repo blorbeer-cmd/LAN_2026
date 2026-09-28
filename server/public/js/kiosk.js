@@ -402,6 +402,9 @@ const NEWS_RETRY_MS = 15_000;
 // Never wait longer than one slot, even if the reported delay looks odd.
 const NEWS_MAX_DELAY_MS = 30_000;
 const NEWS_SHIFT_MS = 450;
+// At most five lines: the lead stretches to fill the rest of the tile, so a
+// tall screen shows a longer rail below it instead of more small lines.
+const NEWS_LINES_VISIBLE = 5;
 let newsTimer = null;
 let newsIds = '';
 let lastNewsHtml = '';
@@ -448,7 +451,8 @@ function animateNewsShift(container, previousTops) {
   });
 }
 
-function renderNewsticker(items) {
+function renderNewsticker(allItems) {
+  const items = allItems.slice(0, NEWS_LINES_VISIBLE);
   const container = document.getElementById('kiosk-newsticker');
   if (!container) return;
   const ids = items.map((item) => item.id).join('|');
