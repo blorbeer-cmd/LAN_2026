@@ -57,9 +57,11 @@ test('GET /api/export includes a completed tournament champion', async () => {
       teams: [{ name: 'Alice Squad', playerIds: [playerA] }, { name: 'Bob Squad', playerIds: [playerB] }],
     });
   const final = created.body.matches[0];
+  // Bracket sides are drawn at random, so pick Alice's team by name.
+  const aliceTeamId = created.body.teams.find((team: { name: string }) => team.name === 'Alice Squad').id;
   await request(app)
     .post(`/api/tournaments/${created.body.id}/matches/${final.id}/result`)
-    .send({ winnerTeamId: final.teamAId });
+    .send({ winnerTeamId: aliceTeamId });
 
   const res = await request(app).get('/api/export');
   assert.equal(res.status, 200);

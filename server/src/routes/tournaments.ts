@@ -16,6 +16,7 @@ import { notifyPlayers, resolvePushTopic } from '../push';
 import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupRole } from '../groupAuthorization';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
+import { shuffle } from '../matchmaking';
 import {
   generateBracket,
   applyBracketResult,
@@ -481,6 +482,10 @@ tournamentsRouter.post('/', (req, res) => {
   const now = Date.now();
 
   const teamIds = teamsInput.map(() => nanoid());
+  // Groups and bracket slots derive from team order, and the submitted order
+  // is not random (a Match draw always puts its top-rated player in team 1),
+  // so draw them from a shuffled order. Team numbering stays as submitted.
+  const drawnTeamIds = shuffle(teamIds);
   const tournamentName = isNonEmptyString(name, 80) ? (name as string).trim() : `${game.name}-Turnier`;
   const resolvedLobbyName = isNonEmptyString(lobbyName, 60) ? (lobbyName as string).trim() : null;
   const resolvedLobbyPassword = isNonEmptyString(lobbyPassword, 60) ? (lobbyPassword as string).trim() : null;
@@ -510,7 +515,7 @@ tournamentsRouter.post('/', (req, res) => {
     // insert since group_index is stored per team.
     const groupIndexByTeamId = new Map<string, number>();
     if (resolvedFormat === 'group_knockout' && resolvedGroupCount) {
-      assignGroups(teamIds, resolvedGroupCount).forEach((group, groupIndex) => {
+      assignGroups(drawnTeamIds, resolvedGroupCount).forEach((group, groupIndex) => {
         group.forEach((teamId) => groupIndexByTeamId.set(teamId, groupIndex));
       });
     }
@@ -535,7 +540,7 @@ tournamentsRouter.post('/', (req, res) => {
     );
 
     if (resolvedFormat === 'single_elimination') {
-      const bracket = generateBracket(teamIds);
+      const bracket = generateBracket(drawnTeamIds);
       for (const m of bracket) {
         insertMatch.run(
           nanoid(),

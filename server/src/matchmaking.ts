@@ -22,7 +22,7 @@ export function computeTeamCount(
   return Math.max(DEFAULT_TEAM_COUNT, byMaxSize);
 }
 
-function shuffle<T>(arr: T[]): T[] {
+export function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
