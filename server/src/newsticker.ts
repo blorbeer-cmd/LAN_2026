@@ -30,7 +30,8 @@ export const NEWSTICKER_FRESH_MS = 90 * 60_000;
 const PLAYING_MIN_MS = 20 * 60_000;
 const PLAYTIME_MIN_HOURS = 2;
 const FEED_LENGTH = 10;
-const INITIAL_ITEMS = 4;
+// A new feed starts full, so the tile never waits minutes to fill up.
+const INITIAL_ITEMS = FEED_LENGTH;
 // Slots missed while no screen asked are not back-filled beyond this.
 const MAX_CATCH_UP = 4;
 const RECENT_TEMPLATE_WINDOW = 15;
@@ -524,7 +525,8 @@ export function getNewstickerFeed(groupId: string, eventId: string, now = Date.n
   state.touchedAt = now;
 
   if (slot > state.lastSlot) {
-    const firstSlot = Math.max(state.lastSlot + 1, slot - MAX_CATCH_UP + 1);
+    const catchUp = state.items.length === 0 ? INITIAL_ITEMS : MAX_CATCH_UP;
+    const firstSlot = Math.max(state.lastSlot + 1, slot - catchUp + 1);
     const input = loadNewsInput(groupId, eventId, now);
     for (let current = firstSlot; current <= slot; current += 1) {
       const rng = seededRandom(hashSeed(`${key}:${current}`));

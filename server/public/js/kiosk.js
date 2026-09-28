@@ -1031,6 +1031,12 @@ async function refreshNewsticker() {
     delay = Math.min(Math.max(Number(feed.nextInMs) + 250, 1_000), NEWS_MAX_DELAY_MS);
   } catch (error) {
     logRefreshFailure('newsticker', error);
+    // Lines already on screen stay; only a tile that never loaded says so
+    // instead of showing "Lädt…" forever. The next retry replaces it.
+    const container = document.getElementById('kiosk-newsticker');
+    if (container && !lastNewsHtml) {
+      container.innerHTML = emptyStateHtml('Newsticker gerade nicht erreichbar.', { className: 'kiosk-empty-state' });
+    }
   }
   newsTimer = setTimeout(refreshNewsticker, delay);
 }
