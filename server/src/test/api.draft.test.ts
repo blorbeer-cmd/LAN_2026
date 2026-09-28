@@ -158,6 +158,31 @@ test('a full 2-captain draft: snake order, turn enforcement, auto-assigned last 
     .send({ playerId: drafted.teams[fromTeam].players[0].id, toTeamIndex: toTeam });
   assert.equal(moved.status, 200);
   assert.deepEqual(moved.body.teams.map((team: { totalRating: number }) => team.totalRating), [6, 13]);
+
+  // Recording may regroup the teams and add a participant. Existing players
+  // keep even an unrated completion-time value; only newcomers use today's.
+  const newcomer = await request(app).post('/api/players').send({ name: 'Draft result newcomer' });
+  assert.equal(newcomer.status, 201);
+  assert.equal((await request(app).put('/api/skills').send({ playerId: newcomer.body.id, gameId, rating: 5 })).status, 200);
+  assert.equal((await request(app).put('/api/skills').send({ playerId: p1.id, gameId, rating: 5 })).status, 200);
+  const recorded = await request(app).post('/api/matches').send({
+    gameId, drawId: drafted.id, winnerTeamIndex: 1,
+    teams: [
+      { playerIds: [p1.id, newcomer.body.id] },
+      { playerIds: [capB.id, p2.id, p3.id, capA.id] },
+    ],
+  });
+  assert.equal(recorded.status, 201);
+  assert.equal((await request(app).put('/api/skills').send({ playerId: capA.id, gameId, rating: 2 })).status, 200);
+  assert.equal((await request(app).put('/api/skills').send({ playerId: newcomer.body.id, gameId, rating: 1 })).status, 200);
+  const afterResult = await request(app).get(`/api/matchmaking/history?gameId=${gameId}&kind=matches`);
+  assert.equal(afterResult.status, 200);
+  const saved: DraftDraw = afterResult.body.history.find((entry: DraftDraw) => entry.id === drafted.id);
+  assert.ok(saved.teams.every((team) => team.skillSnapshot));
+  assert.deepEqual(saved.teams.map((team) => team.totalRating), [8, 13]);
+  assert.equal(saved.teams[0].players[0].rating, null);
+  assert.equal(saved.teams[0].players[1].rating, 5);
+  assert.equal(saved.teams[1].players[3].rating, 4);
 });
 
 test('POST /api/draft/cancel abandons a running draft', async () => {

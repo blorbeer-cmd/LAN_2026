@@ -16,6 +16,7 @@ import { localRouteKey } from '../appRoute.js';
 import { copyText } from '../clipboard.js';
 import { resultFormHtml, wireResultForm } from '../resultDialog.js';
 import { getMyId } from '../whoami.js';
+import { isGroupAdmin } from '../groupContext.js';
 
 // Open state of the detail page's collapsible Teams card across re-renders.
 let tournamentTeamsOpen = false;
@@ -137,7 +138,7 @@ function renderDetail(container, ctx) {
   container.innerHTML = `
     <div class="row-between page-title-row">
       <h2 class="view-title">${escapeHtml(t.name)}</h2>
-      <button type="button" class="btn btn-sm" id="tourn-delete">Löschen</button>
+      ${isGroupAdmin() ? '<button type="button" class="btn btn-sm" id="tourn-delete">Löschen</button>' : ''}
     </div>
     <div class="muted tournament-detail-meta">
       <span>${formatExplanation} · ${t.teams.length} Teams · ${participantCount} Spieler · ${decidedMatches}/${t.matches.length} entschieden</span>
@@ -170,7 +171,7 @@ function renderDetail(container, ctx) {
     });
   });
 
-  container.querySelector('#tourn-delete').addEventListener('click', async () => {
+  container.querySelector('#tourn-delete')?.addEventListener('click', async () => {
     if (!(await confirmDialog(`Turnier "${t.name}" wirklich löschen?`, { confirmText: 'Löschen', danger: true }))) return;
     try {
       const removed = await withStepUp(() => api.tournaments.remove(t.id));

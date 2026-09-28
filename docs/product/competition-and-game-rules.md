@@ -81,7 +81,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   are muted and a drawn result shows „Remis“. Card actions sit in the card header: an open draw
   offers a neutral „+“ for a single result and, rightmost, „Turnier erstellen“ (the primary
   gradient on the fresh draw, neutral in the open section); a recorded draw offers a pencil before „Rematch“;
-  every open or recorded game card also offers a trash action with confirmation. Removing a recorded draw removes its linked result from the ranking. A tournament tile offers „Turnier“ and a trash action using the existing tournament delete behavior; already recorded tournament matches remain in the ranking, and the confirmation explains this. Its expanded state shows tournament teams,
+  every open or recorded game card offers admins and owners a trash action with confirmation; regular members see no delete controls, including on the tournament detail page. Removing a recorded draw removes its linked result from the ranking. A tournament tile offers „Turnier“ and, for admins and owners, a trash action using the existing tournament delete behavior; already recorded tournament matches remain in the ranking, and the confirmation explains this. Its expanded state shows tournament teams,
   players and available standings or match totals. A participating player's game title is bold in a collapsed Match tile; only their name is bold in expanded teams. Open draws show every player's skill. Completed tournament headers show the winning team with „Win“ and the tournament name; team details use the same compact place numbers as Match teams in the team-name line, including the finalist's second place, with an explicit place label in the title and accessible name. The number replaces the extra Win chip inside the team card; table points stay beside the team name. Knockout exits without a distinct place appear in the context line below the players. The result pencil precedes „Rematch“; tournament actions
   need no empty action slot.
   „Turnier erstellen“ opens one compact dialog: Turnierformat, the group fields for „Gruppenphase +
@@ -116,7 +116,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
     missing rating stays an en dash („Noch kein Skill-Level eingetragen“) and neither the row nor
     the total claims that anything counted with `3`. This covers the live draft board and the draft
     participant/captain selections. Completion stores the then-current player ratings and team sum;
-    older draft entries without that snapshot show no skill in history.
+    recording a result preserves those ratings by player ID, including after regrouping or removal.
+    Added participants use their rating at result entry. A result recorded for another game uses
+    that game's ratings instead, without the original draft marker. Older draft entries without
+    a snapshot show the current team sum in history, labelled as current rather than historical.
   - `stored: true` — the player objects come from a persisted draw snapshot
     (`matchmaking_draws.teams`, the `POST /api/matchmaking` response) and carry the rating that
     draw used, `null` where there was none. Those values are shown as-is, so a self-rating entered

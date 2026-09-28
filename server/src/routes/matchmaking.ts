@@ -59,8 +59,13 @@ interface PlayerRow {
 // from plain player-id lists — used wherever a fresh matchmaking_draws.teams
 // value needs to be built from scratch: the rematch endpoint, and POST
 // /api/matches re-snapshotting a linked draw to whatever was actually
-// submitted (see the comment on that call site).
-export function buildTeamsSnapshot(gameId: string, teamPlayerIdLists: string[][]) {
+// submitted (see the comment on that call site). A draft can supply its
+// completion-time ratings by player ID; only new IDs read current ratings.
+export function buildTeamsSnapshot(
+  gameId: string,
+  teamPlayerIdLists: string[][],
+  storedRatings?: ReadonlyMap<string, number | null>,
+) {
   const allIds = [...new Set(teamPlayerIdLists.flat())];
   const playerById = new Map<string, PlayerRow>();
   const ratingByPlayer = new Map<string, number>();
@@ -83,7 +88,7 @@ export function buildTeamsSnapshot(gameId: string, teamPlayerIdLists: string[][]
         name: p?.name ?? '?',
         color: p?.color ?? '#888888',
         avatar: p?.avatar ?? null,
-        rating: ratingByPlayer.get(id) ?? null,
+        rating: storedRatings?.has(id) ? storedRatings.get(id)! : ratingByPlayer.get(id) ?? null,
       };
     });
     return { players: teamPlayers, totalRating: totalRatingOf(teamPlayers) };

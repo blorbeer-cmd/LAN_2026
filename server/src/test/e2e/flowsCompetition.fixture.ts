@@ -4,12 +4,13 @@
 // Sibling tests here intentionally share that state and run in order.
 
 import assert from 'node:assert/strict';
-import { createE2EAccount, waitForPlayerData } from './authHelpers';
+import { addSessionCookie, createE2EAccount, waitForPlayerData } from './authHelpers';
 import {
   flowTest,
   registerFlowFixture,
   BASE_URL,
   page,
+  browser,
   adminCookie,
   alice,
   bob,
@@ -917,6 +918,29 @@ flowTest('shared filters narrow open games, tournament overview and history by p
   await filters.getByRole('button', { name: 'Meine', exact: true }).click();
   await drawTile(otherOpen).waitFor();
   assert.equal(await tournamentTile(otherFinished).count(), 1);
+
+  // Members can view all four card types, but only admins can delete them.
+  const memberContext = await browser.newContext();
+  try {
+    await addSessionCookie(memberContext, BASE_URL, bob.cookie);
+    const memberPage = await memberContext.newPage();
+    await memberPage.goto(`${BASE_URL}/#matchmaking`);
+    await memberPage.locator('#mm-game-search').click();
+    await memberPage.locator(`#mm-game-list [data-search-select-value="${gameId}"]`).click();
+    await memberPage.locator('.matchmaking-open-draws > summary').click();
+    await memberPage.locator('details.history-details:has(summary:has-text("Historie")) > summary').click();
+    await memberPage.locator(`[data-history-toggle="o-${mineOpen}"]`).waitFor();
+    await memberPage.locator(`[data-history-toggle="${minePlayed}"]`).waitFor();
+    await memberPage.locator(`[data-history-toggle="t-${mineRunning}"]`).waitFor();
+    await memberPage.locator(`[data-history-toggle="t-${mineFinished}"]`).waitFor();
+    assert.equal(await memberPage.locator('[data-delete-draw], [data-delete-tournament]').count(), 0,
+      'a member never sees delete actions on open or completed game and tournament cards');
+    await memberPage.locator(`[data-open-draw-tournament="${mineFinished}"]`).click();
+    await memberPage.locator('.tournament-board').waitFor();
+    assert.equal(await memberPage.locator('#tourn-delete').count(), 0);
+  } finally {
+    await memberContext.close();
+  }
 });
 
 flowTest('match history reports failed tournament and older-match requests', async () => {

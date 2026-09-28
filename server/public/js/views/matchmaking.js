@@ -18,6 +18,7 @@ import { teamMoveControlHtml } from '../tournamentTeamDraft.js';
 import { filterRosterPicker, pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
 import { resultFormHtml, wireResultForm } from '../resultDialog.js';
 import { withStepUp } from '../reauth.js';
+import { isGroupAdmin } from '../groupContext.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -329,7 +330,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
   if (collapsible) {
     const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span>
       <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
-    const cardActions = `${actions}<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>`;
+    const cardActions = `${actions}${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>` : ''}`;
     return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, cardActions,
       `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
   }
@@ -725,7 +726,7 @@ function historyMatchHtml(draw) {
   const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span> ${result} <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
   const actions = `<button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>
     <button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>
-    <button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Match löschen" title="Match löschen">${icon('trash')}</button>`;
+    ${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Match löschen" title="Match löschen">${icon('trash')}</button>` : ''}`;
   const order = draw.teams.map((team, index) => ({ team, index })).sort((a, b) => {
     if (a.team.rank != null || b.team.rank != null) return (a.team.rank ?? Infinity) - (b.team.rank ?? Infinity) || a.index - b.index;
     return Number(b.index === draw.winnerTeamIndex) - Number(a.index === draw.winnerTeamIndex) || a.index - b.index;
@@ -821,7 +822,7 @@ function historyTournamentHtml(tournament) {
   const meta = `<span class="muted">${formatDateTime(tournament.createdAt)}</span> ${outcome}
     <span class="muted">${escapeHtml(tournament.name)}</span>`;
   const actions = `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(tournament.id)}">Turnier</button>
-    <button type="button" class="tournament-fixture-action" data-delete-tournament="${escapeHtml(tournament.id)}" aria-label="Turnier löschen" title="Turnier löschen">${icon('trash')}</button>`;
+    ${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-tournament="${escapeHtml(tournament.id)}" aria-label="Turnier löschen" title="Turnier löschen">${icon('trash')}</button>` : ''}`;
   return historyItemHtml(`t-${tournament.id}`, tournament.gameName, meta, actions,
     historyTournamentDetailHtml(tournament), 'is-tournament', Boolean(getMyId() && tournament.participantIds?.includes(getMyId())));
 }
