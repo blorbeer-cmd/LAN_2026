@@ -54,21 +54,41 @@
   color: var(--danger);
 }
 
-/* No header bar: nobody at the party operates this screen day to day, so
-   the dashboard gets that height back. Entering fullscreen still needs one
-   deliberate click (Esc only ever leaves it), so that control stays as a
-   plain white icon sitting where the broadcast banner's own date reads —
-   never a boxed button chrome-ing up the corner. */
+/* A slim, always-present header: brand on the left, a running clock and
+   the fullscreen control on the right. It stays calm (no surface of its
+   own), so the colorful broadcast banner below it only appears when there
+   is an active announcement and then stands out. Horizontal padding matches
+   the dashboard grid inset, so logo and clock line up with the outer edges
+   of the banner and the cards below. */
+.kiosk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5) 0;
+}
+.kiosk-header-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-lg);
+}
+.kiosk-header-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.kiosk-clock {
+  color: var(--text-muted);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+/* Entering fullscreen needs one deliberate click (Esc only ever leaves it),
+   so the control stays as a plain icon beside the clock, never a boxed
+   button. */
 .kiosk-corner {
-  position: fixed;
-  /* Lines up with .kiosk-broadcast-time: that text sits inset by the
-     alerts margin (--space-5) plus the banner's own padding (--space-4),
-     vertically centered in the banner's line height. Both offsets are
-     computed from those same tokens so they track any future change to
-     either one instead of a re-measured magic number. */
-  top: calc(var(--space-7) + var(--space-1));
-  right: calc(var(--space-8) * 3);
-  z-index: 2;
+  display: flex;
   opacity: 1;
   transition: opacity var(--motion-fast);
 }
@@ -108,7 +128,9 @@
   align-items: start;
   gap: 0;
   margin: 0 var(--space-5) var(--space-5);
-  padding: var(--space-3) var(--space-4);
+  /* Same horizontal inset as a card, so the music content starts on the
+     same line as the card contents above it. */
+  padding: var(--space-3) var(--space-5);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-elevated);
@@ -235,6 +257,18 @@
 .kiosk-card .lb-row {
   font-size: var(--font-size-lg);
 }
+/* A tile without data centers its one line in the whole tile body, at the
+   dashboard's content size so it still reads from across the room. The
+   shared empty-state padding would push the line toward the top of a short
+   tile, so the tile body's own padding is the only inset here. */
+.kiosk-empty-state {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 0;
+  font-size: var(--font-size-lg);
+}
 #kiosk-live {
   display: flex;
   flex-direction: column;
@@ -244,6 +278,13 @@
 /* 900px is intentionally its own value, not --bp-lg (860px): even a compact
    kiosk stays a fixed 2x2 dashboard instead of introducing page scroll. */
 @media (max-width: 900px) { /* design-token-ok: fixed kiosk dashboard breakpoint explained above */
+  .kiosk-header {
+    padding: var(--space-2) var(--space-2) 0;
+  }
+  .kiosk-music {
+    margin: 0 var(--space-2) var(--space-2);
+    padding: var(--space-3);
+  }
   .kiosk-grid {
     gap: var(--space-2);
     padding: var(--space-2);
@@ -382,12 +423,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.kiosk-vote-section-title {
-  margin: 0;
-}
-/* A fixed Top 5 (see VOTE_ROWS_VISIBLE in kiosk.js): a flex stack rather
-   than a grid so rows keep their natural height instead of stretching to
-   fill — there's no fixed row count to divide the space by. */
+/* A flex stack rather than a grid so rows keep their natural height; rows
+   that would overflow the card are removed by fitVoteRows in kiosk.js. */
 .kiosk-vote-results {
   display: flex;
   flex-direction: column;
@@ -475,25 +512,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-@media (max-height: 800px) { /* design-token-ok: short kiosk viewport keeps all four panels visible */
-  .kiosk-vote-overview {
-    gap: var(--space-1);
-  }
-  .kiosk-vote-header {
-    padding: var(--space-1) var(--space-3);
-  }
-  .kiosk-vote-results {
-    gap: 0;
-  }
-  .kiosk-vote-result {
-    padding: 0 var(--space-2);
-    border-width: 0;
-    line-height: var(--line-height-tight);
-  }
-  .kiosk-vote-result + .kiosk-vote-result {
-    border-top-width: 1px;
-  }
 }
 .kiosk-tournament-overview {
   display: flex;
@@ -595,13 +613,21 @@
 .kiosk-alerts {
   margin: var(--space-3) var(--space-5) 0;
 }
+/* Same inset as the compact dashboard grid (see the 900px rule above). */
+@media (max-width: 900px) { /* design-token-ok: fixed kiosk dashboard breakpoint */
+  .kiosk-alerts {
+    margin: var(--space-2) var(--space-2) 0;
+  }
+}
 .kiosk-broadcast {
   display: flex;
   width: 100%;
   min-width: 0;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  /* Same horizontal inset as a card, so icon and age line up with the card
+     contents and the header clock. */
+  padding: var(--space-3) var(--space-5);
   border-radius: var(--radius);
   background: var(--accent-gradient);
   color: var(--accent-text);
@@ -611,26 +637,40 @@
      wide at a bigger size read as oversized next to everything below it. */
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-medium);
-  box-shadow: 0 4px 24px rgba(91, 140, 255, 0.45);
+  /* The glow falls below the banner only: the negative spread keeps it from
+     spilling past the left and right edges, where it made the banner look
+     wider than the cards below it. */
+  box-shadow: 0 8px 24px -10px rgba(91, 140, 255, 0.6);
   animation: kiosk-broadcast-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 .kiosk-broadcast > .ui-icon {
   flex: 0 0 auto;
 }
-.notification-banner-text {
-  display: flex;
+/* Compact dashboard: the card inset shrinks to --space-3 (see the 900px
+   rule above), so the banner content follows it. */
+@media (max-width: 900px) { /* design-token-ok: fixed kiosk dashboard breakpoint */
+  .kiosk-broadcast {
+    padding: var(--space-3);
+  }
+}
+/* Title and body share one running line, separated by a dash, instead of a
+   bold line with the body stacked below: the banner costs one text line of
+   height. A long announcement still wraps to a second line before it is
+   cut off, so nothing important disappears behind an ellipsis early. */
+.kiosk-broadcast .notification-banner-text {
+  display: -webkit-box;
   min-width: 0;
   flex: 1;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.notification-banner-body {
-  display: -webkit-box;
   overflow: hidden;
-  font-weight: var(--font-weight-regular);
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+.kiosk-broadcast .notification-banner-body {
+  font-weight: var(--font-weight-regular);
+}
+.kiosk-broadcast .notification-banner-body::before {
+  content: ' – ';
 }
 @keyframes kiosk-broadcast-in {
   from {
@@ -642,7 +682,9 @@
   flex: 0 0 auto;
   font-weight: var(--font-weight-regular);
   opacity: 0.85;
-  font-size: var(--font-size-xs);
+  /* Same size as the banner text: at --font-size-xs the date read as a
+     footnote from across the room. */
+  font-size: var(--font-size-lg);
 }
 
 .kiosk-game {
@@ -707,10 +749,10 @@
   padding: var(--space-8);
 }
 
-/* Same idea as the vote-results tightening above (a short 720p-class screen
-   leaves little vertical room): Rangliste and Turnier both draw a fixed row
-   count instead of rotating like Live-Status, so they need the same squeeze
-   to stay on-screen without clipping the last row or two. */
+/* A short 720p-class screen leaves little vertical room: Rangliste and
+   Turnier both draw a fixed row count instead of rotating like Live-Status
+   or fitting like Abstimmung, so they squeeze their rows to stay on-screen
+   without clipping the last row or two. */
 @media (max-height: 800px) { /* design-token-ok: fixed kiosk dashboard breakpoint, same reasoning as the 900px width one above */
   .kiosk-ranking-grid .lb-row,
   .kiosk-tournament-standings-grid .kiosk-standing-row {

@@ -6,7 +6,7 @@
 
 import { api, getKioskToken, setKioskMode, setKioskToken } from './api.js';
 import { connectSocket } from './socket.js';
-import { escapeHtml, stateLabel, avatarHtml, formatDateTime } from './format.js';
+import { escapeHtml, stateLabel, avatarHtml } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcade/shared/arcadeStreamRenderer.js';
@@ -249,7 +249,7 @@ function renderKioskLogin() {
 // left there: a roster that shrinks later (people going offline, the event
 // ending) should loosen back up instead of keeping empty space reserved for
 // a bigger crowd that isn't there any more.
-const LIVE_MAX_COLUMNS = 2;
+const LIVE_MAX_COLUMNS = 3;
 const LIVE_MIN_COLUMN_WIDTH = 240;
 const LIVE_MIN_PAGE_SIZE = 6;
 const LIVE_ROTATE_INTERVAL_MS = 6_000;
@@ -378,16 +378,12 @@ function renderLivePageContent() {
 }
 
 async function renderLive(players) {
-  // Offline players add nothing to a "who's active right now" board — showing
-  // only online/paused/playing keeps the roster shorter and the tile useful
-  // even at events with many registered but currently inactive players.
-  const active = players.filter((p) => p.state !== 'offline');
-  if (active.length === 0) {
+  if (players.length === 0) {
     stopLiveRotation();
-    updateHtml('kiosk-live', emptyStateHtml('Noch keine Spieler.'));
+    updateHtml('kiosk-live', emptyStateHtml('Noch keine Spieler.', { className: 'kiosk-empty-state' }));
     return;
   }
-  liveAllPlayers = [...active].sort((a, b) => {
+  liveAllPlayers = [...players].sort((a, b) => {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
     return rankDiff !== 0 ? rankDiff : a.name.localeCompare(b.name, 'de');
   });
@@ -397,8 +393,7 @@ async function renderLive(players) {
   renderLivePageContent();
 }
 
-// Fixed Top 5, same idea as the Abstimmung card's VOTE_ROWS_VISIBLE: an
-// interim simplification, no longer settled/adaptive.
+// Fixed Top 5 as an interim simplification, no longer settled/adaptive.
 const LEADERBOARD_ROWS_VISIBLE = 5;
 
 function leaderboardRowHtml(s, i) {
@@ -414,7 +409,7 @@ function leaderboardRowHtml(s, i) {
 function renderLeaderboard(standings) {
   const container = document.getElementById('kiosk-leaderboard');
   if (!standings || standings.length === 0) {
-    container.innerHTML = emptyStateHtml('Noch keine Ergebnisse.');
+    container.innerHTML = emptyStateHtml('Noch keine Ergebnisse.', { className: 'kiosk-empty-state' });
     return;
   }
   const rows = standings.slice(0, LEADERBOARD_ROWS_VISIBLE).map(leaderboardRowHtml).join('');
@@ -439,19 +434,13 @@ function kioskVoteScore(vote, result) {
   return vote.mode === 'points' ? `${result.points} P` : `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
 }
 
-// A fixed Top 5, one column, read straight down — unlike Live-Status this
-// doesn't need to adapt further: five rows always fit even the shortest
-// supported kiosk screen, so there is nothing left to settle at render time.
-const VOTE_ROWS_VISIBLE = 5;
-
 function renderKioskVoteRows(vote, { concealed = false, highlightLeading = true } = {}) {
   const scored = vote.results.filter((result) => result.score > 0);
-  if (scored.length === 0) return emptyStateHtml('Noch keine Stimmen.', { className: 'kiosk-vote-empty' });
+  if (scored.length === 0) return emptyStateHtml('Noch keine Stimmen.', { className: 'kiosk-vote-empty kiosk-empty-state' });
   const maxScore = Math.max(...scored.map((result) => result.score));
-  const visibleResults = scored.slice(0, VOTE_ROWS_VISIBLE);
   let previousScore = null;
   let rank = 0;
-  const rows = visibleResults.map((result, index) => {
+  const rows = scored.map((result, index) => {
     if (previousScore === null || result.score !== previousScore) rank = index + 1;
     previousScore = result.score;
     const highlighted = result.score === maxScore;
@@ -482,6 +471,51 @@ function renderKioskVoteWinners(vote) {
       </div>
     </div>`;
 }
+
+// One column, read straight down, rows at their normal size: every scored
+// result is rendered and fitVoteRows then drops the ones below the card's
+// bottom edge. A taller screen shows more of the ranking instead of more
+// empty space, and a shorter one never squeezes the row geometry or font.
+let lastVotesHtml = '';
+
+// Synchronous on purpose: the card height comes from the dashboard grid, not
+// from these rows, so a forced layout read is already final and the
+// overflowing rows never paint. The ResizeObserver below re-fits once the
+// first real layout (or any later size change) settles.
+function fitVoteRows() {
+  const list = document.querySelector('#kiosk-votes .kiosk-vote-results');
+  if (!list) return;
+  const limit = list.getBoundingClientRect().bottom + 0.5;
+  for (const row of [...list.children]) {
+    if (row.getBoundingClientRect().bottom > limit) row.remove();
+  }
+}
+
+function paintVotes(html) {
+  lastVotesHtml = html;
+  updateHtml('kiosk-votes', html);
+  fitVoteRows();
+}
+
+// Fullscreen, a window resize or a TV switching resolution changes the card
+// height without a new vote payload. Watching the card itself (not the
+// window) re-fits the rows for every such change: the full list is painted
+// again and fitVoteRows keeps as many as the new height holds.
+let voteResizeTimer = null;
+let voteCardHeight = 0;
+const kioskVotesElement = document.getElementById('kiosk-votes');
+const voteResizeObserver = new ResizeObserver(([entry]) => {
+  const height = Math.round(entry.contentRect.height);
+  if (height === voteCardHeight) return;
+  voteCardHeight = height;
+  clearTimeout(voteResizeTimer);
+  voteResizeTimer = setTimeout(() => {
+    if (!lastVotesHtml) return;
+    document.getElementById('kiosk-votes').innerHTML = lastVotesHtml;
+    fitVoteRows();
+  }, 150);
+});
+if (kioskVotesElement) voteResizeObserver.observe(kioskVotesElement);
 
 let voteDisplayTimer = null;
 
@@ -531,7 +565,7 @@ function renderVotes(votes) {
     clearVoteDisplayTimer();
   }
   if (!vote) {
-    return emptyStateHtml('Noch keine Abstimmung.', { className: 'kiosk-vote-state' });
+    return emptyStateHtml('Noch keine Abstimmung.', { className: 'kiosk-vote-state kiosk-empty-state' });
   }
   const heading = vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft';
   const eligibleVoters = Number.isFinite(vote.eligibleVoters) ? vote.eligibleVoters : vote.totalVoters;
@@ -544,7 +578,6 @@ function renderVotes(votes) {
         </span>
         <span class="badge badge-playing">${vote.totalVoters} / ${eligibleVoters} abgestimmt</span>
       </div>
-      <div class="section-title kiosk-vote-section-title">Zwischenstand</div>
       ${renderKioskVoteRows(vote, { concealed: true })}
     </div>`;
 }
@@ -561,7 +594,7 @@ function tournamentStandingRow(name, standing, index, { compact = false } = {}) 
 }
 
 function renderTournament(t) {
-  if (!t) return emptyStateHtml('Noch kein Turnier.');
+  if (!t) return emptyStateHtml('Noch kein Turnier.', { className: 'kiosk-empty-state' });
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
   const teamName = (id) => (id ? escapeHtml(teamsById.get(id)?.name ?? 'TBD') : 'TBD');
 
@@ -667,7 +700,8 @@ function renderBroadcastBanner(entry) {
     const delay = Math.max(0, Math.min(entry.expiresAt - Date.now() + 50, 2_147_483_647));
     pushBannerExpiryTimer = setTimeout(refreshPushBanner, delay);
   }
-  const html = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">${formatDateTime(entry.createdAt)} Uhr</span>`;
+  const createdAt = Number(entry.createdAt);
+  const html = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time" data-created-at="${createdAt}">${broadcastAgeText(createdAt)}</span>`;
   if (el.innerHTML !== html) el.innerHTML = html;
   el.hidden = false;
   updateAlertLayout();
@@ -907,7 +941,7 @@ async function refreshVotes() {
   try {
     const votes = await api.votes.kiosk();
     if (!isLatestRefresh('vote', requestVersion)) return;
-    updateHtml('kiosk-votes', renderVotes(votes));
+    paintVotes(renderVotes(votes));
   } catch (error) {
     logRefreshFailure('vote', error);
   }
@@ -936,7 +970,7 @@ async function refreshTournament() {
       if (!isLatestRefresh('tournament', requestVersion)) return;
       updateHtml('kiosk-tournament', renderTournament(detail));
     } else {
-      updateHtml('kiosk-tournament', emptyStateHtml('Noch kein Turnier.'));
+      updateHtml('kiosk-tournament', emptyStateHtml('Noch kein Turnier.', { className: 'kiosk-empty-state' }));
     }
   } catch (err) {
     logRefreshFailure('tournament', err);
@@ -1000,6 +1034,44 @@ function playPushSound() {
   } catch {
     // see comment above — never let this take the kiosk down
   }
+}
+
+// Weekday plus time: a LAN runs over several days, so "Samstag 13:19"
+// answers the glance better than the time alone. Built from two parts
+// because the combined de-DE format inserts a comma after the weekday.
+// Ticking every few seconds keeps the minute change prompt without tying the
+// update to the second boundary. The same tick ages the banner's
+// "vor 5 Min." so it never shows a second, competing clock time.
+const CLOCK_TICK_MS = 5_000;
+
+function updateClock() {
+  const clock = document.getElementById('kiosk-clock');
+  if (!clock) return;
+  const now = new Date();
+  const weekday = now.toLocaleDateString('de-DE', { weekday: 'long' });
+  const time = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  clock.textContent = `${weekday} ${time}`;
+  updateBroadcastAge();
+}
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+function broadcastAgeText(createdAt, now = Date.now()) {
+  const age = Math.max(0, now - createdAt);
+  if (age < MINUTE_MS) return 'gerade eben';
+  if (age < HOUR_MS) return `vor ${Math.floor(age / MINUTE_MS)} Min.`;
+  if (age < DAY_MS) return `vor ${Math.floor(age / HOUR_MS)} Std.`;
+  return `seit ${new Date(createdAt).toLocaleDateString('de-DE', { weekday: 'long' })}`;
+}
+
+function updateBroadcastAge() {
+  const age = document.querySelector('#kiosk-broadcast .kiosk-broadcast-time');
+  const createdAt = Number(age?.dataset.createdAt);
+  if (!age || !Number.isFinite(createdAt)) return;
+  const text = broadcastAgeText(createdAt);
+  if (age.textContent !== text) age.textContent = text;
 }
 
 const CORNER_IDLE_HIDE_MS = 2000;
@@ -1083,6 +1155,8 @@ async function main() {
   }
 
   wireFullscreenControl();
+  updateClock();
+  setInterval(updateClock, CLOCK_TICK_MS);
   setInterval(refreshMusic, 5_000);
   setInterval(refreshAll, KIOSK_REFRESH_INTERVAL_MS);
   const socket = connectSocket({ kiosk: true });
