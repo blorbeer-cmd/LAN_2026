@@ -76,10 +76,12 @@ Pfeil vertikal in geschlossenem und geöffnetem Zustand. Text bleibt linksbündi
 `.collapsible-section-header` besitzt diese Ausrichtung ohne ansichtsbezogene Selektorlisten;
 ihre Mindesthöhe `--tap-target-size` darf bei Textumbruch wachsen. Zusammengesetzte Button-Auslöser
 für Karten und Personen folgen derselben Ausrichtung innerhalb ihrer registrierten Geometrie.
-Aufklappbare Inhaltsflächen verwenden unabhängig von Verschachtelung und geöffnetem Zustand
-`--bg-elevated-2`: native Bereiche, Teilnehmendenlisten und Karten für Match, Events, Bestellungen
-und Umfragen. Eine einzelne Karte ohne Einklappauslöser behält dieselbe Fläche. Flache Personen-/
-Positionszeilen und reine Infoboxen folgen weiterhin ihrer eigenen Darstellung.
+Kartenflächen wechseln unabhängig vom geöffneten Zustand mit der Verschachtelungstiefe:
+äußerste Karte `--bg-elevated`, Kindkarte `--bg-elevated-2`, Enkelkarte wieder
+`--bg-elevated`. Das gilt auch für native einklappbare Bereiche, Teilnehmendenlisten und
+Karten für Match, Events, Bestellungen und Umfragen. Eine einzelne Karte ohne
+Einklappauslöser folgt derselben Ebenenregel. Flache Personen-/Positionszeilen und reine
+Infoboxen behalten ihre eigene Darstellung.
 
 ## 5. Erlaubte Anpassungen
 
@@ -647,7 +649,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:event-card-action-width`: Event card actions yield width to whole-group reflow.
 
-- `registry:grouped-card-surface`: Nested card surface removes redundant elevation.
+- `registry:nested-card-surface`: Nested card and participant surfaces alternate colors by depth and omit redundant elevation.
 
 - `registry:tournament-skill-field`: Team skill field fits the header alongside the team label.
 

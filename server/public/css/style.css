@@ -4062,17 +4062,6 @@ button.draft-pool-player {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-/* Disclosure surfaces keep one color regardless of nesting or open state.
-   Button-based entity cards share it even when a lone card needs no toggle. */
-.collapsible-section,
-.collapsible-section.food-order-group,
-.matchmaking-history-item,
-.food-order-card,
-.event-card,
-.event-poll-card {
-  background: var(--bg-elevated-2);
-}
-
 /* A card's primary action(s), set off from a long preceding list (vote game
    rows, player-selection grids, ...) with a hairline divider. Scrolls with
    the page like any other card content — no longer pinned to the viewport

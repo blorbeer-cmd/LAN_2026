@@ -1935,15 +1935,15 @@ export const permanentVariants = [
     "reason": "Event card actions yield width to whole-group reflow."
   },
   {
-    "id": "grouped-card-surface",
+    "id": "nested-card-surface",
     "role": "composite-part",
-    "selector": ".grouped-page-section .card",
+    "selector": ":is(.card, .event-card-participants) :is(.card, .event-card-participants), :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants), :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants), :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants)",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
       "box-shadow"
     ],
-    "reason": "Nested card surface removes redundant elevation."
+    "reason": "Nested card and participant surfaces alternate colors by depth and omit redundant elevation."
   },
   {
     "id": "tournament-skill-field",

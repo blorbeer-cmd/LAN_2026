@@ -596,6 +596,13 @@ flowTest('standard control variants center single lines and grow for wrapped con
       </details>
       <div data-disclosure-background style="background:var(--bg-elevated-2)"></div>
       ${['matchmaking-history-item', 'food-order-card', 'event-card', 'event-poll-card'].map((className) => `<div class="card ${className}" data-disclosure-card>Aufklappbare Karte</div>`).join('')}
+      <div class="card" data-nested-surface>
+        <div class="card event-card" data-nested-surface>
+          <div class="event-card-participants" data-nested-surface>
+            <div class="card" data-nested-surface>Vierte Kartenebene</div>
+          </div>
+        </div>
+      </div>
       ${emptyStateHtml({ text: 'Laden fehlgeschlagen.', action: { id: 'empty-recovery', label: 'Erneut laden' } })}
       <div class="grouped-page-section" data-empty-migration>
         ${emptyStateHtml('Noch keine Spiele.', { className: 'vote-empty-state', style: 'padding:var(--space-4);' })}
@@ -685,13 +692,23 @@ flowTest('standard control variants center single lines and grow for wrapped con
         assert.equal(header.clipped, false,
           `disclosure headings remain visible at ${viewport.width}px, open=${open}: ${JSON.stringify(header)}`);
       }
-      const backgrounds = await page.locator('#control-contract-probe').evaluate((probe) => ({
-        expected: getComputedStyle(probe.querySelector('[data-disclosure-background]')!).backgroundColor,
-        actual: Array.from(probe.querySelectorAll('details, [data-disclosure-card]'))
-          .map((element) => getComputedStyle(element).backgroundColor),
-      }));
-      assert.ok(backgrounds.actual.every((color) => color === backgrounds.expected),
-        `disclosure surfaces share one background at ${viewport.width}px, open=${open}: ${JSON.stringify(backgrounds)}`);
+      const backgrounds = await page.locator('#control-contract-probe').evaluate((probe) => {
+        const colors = [
+          getComputedStyle(probe).backgroundColor,
+          getComputedStyle(probe.querySelector('[data-disclosure-background]')!).backgroundColor,
+        ];
+        return Array.from(probe.querySelectorAll('details, [data-disclosure-card], [data-nested-surface]'))
+          .map((element) => {
+            let depth = 0;
+            for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+              if (parent.matches('.card, .event-card-participants')) depth += 1;
+              if (parent === probe) break;
+            }
+            return { depth, expected: colors[depth % 2], actual: getComputedStyle(element).backgroundColor };
+          });
+      });
+      assert.ok(backgrounds.every(({ expected, actual }) => actual === expected),
+        `card surfaces alternate by nesting at ${viewport.width}px, open=${open}: ${JSON.stringify(backgrounds)}`);
     }
   }
   const disclosure = page.locator('#control-contract-probe details').first();

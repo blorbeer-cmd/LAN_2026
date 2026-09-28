@@ -475,16 +475,18 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.collapsible-section-header` owns this alignment without view-specific selector lists; its
   `--tap-target-size` minimum height may grow for wrapped content. Button-based card and person
   disclosures follow the same centering rule within their registered geometry.
-  Disclosure surfaces always use `--bg-elevated-2`, independent of nesting and open state. This
-  includes native sections, participant disclosures and button-based Match, Event, food-order and
-  poll cards. A lone entity card keeps the same surface when it needs no collapse toggle. Flat
-  person/item rows and informational inset boxes retain their own presentation.
+  Card surfaces alternate by nesting depth, independent of open state: the outer card uses
+  `--bg-elevated`, its child card uses `--bg-elevated-2`, the next card uses `--bg-elevated`,
+  and so on. This includes native sections, participant disclosures and button-based Match,
+  Event, food-order and poll cards. A lone entity card follows its nesting depth even when it
+  needs no collapse toggle. Flat person/item rows and informational inset boxes retain their
+  own presentation.
 - **Grouped page sections** — `.grouped-page-sections` stacks the page's major areas with the
   shared vertical rhythm. Every `.grouped-page-section` is a full-width `.card`; its visible
   heading lives inside the surface through `.grouped-page-section-title`, while filters and
   subordinate rows remain part of that same group. This is the default hierarchy for overview
   pages with several related datasets instead of headings that float between unrelated cards.
-  Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
+  Nested `.card` surfaces alternate the two elevated backgrounds with each additional card level.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
   Profile, Meine Statistiken and Admin are one column of full-width cards on every width: their rows
