@@ -465,7 +465,7 @@ function renderResultRows(h) {
           </div>
           <span class="event-poll-result">
             <span class="event-poll-bar" aria-hidden="true">${share > 0 ? `<span class="event-poll-bar-fill is-choice" style="width:${Math.round(share * 1000) / 10}%;"></span>` : ''}</span>
-            <span class="event-poll-counts">${escapeHtml(resultSummary(h, r))}</span>
+            <span class="event-poll-counts"><span class="event-poll-count-text">${escapeHtml(resultSummary(h, r))}</span></span>
           </span>
           <span class="event-poll-option-badges">${stack}</span>
         </div>`;

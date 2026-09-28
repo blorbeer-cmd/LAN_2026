@@ -1025,6 +1025,12 @@ textarea {
   font-size: var(--font-size-xs);
   line-height: var(--control-line-height);
 }
+.event-poll-count-text {
+  /* Center against capitals/baseline, not empty font leading. Descenders stay visible. */
+  display: block;
+  text-box-trim: trim-both;
+  text-box-edge: cap alphabetic;
+}
 /* Voter avatars beside their option. They carry the same identities the vote
    dialog lists, compressed into the option's existing title row so a visible
    interim result never costs the round an extra line. */

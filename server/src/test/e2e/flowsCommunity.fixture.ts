@@ -700,9 +700,10 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       entries: kioskGames.map((game, index) => ({ gameId: game.id, points: index === 0 ? 5 : Math.max(1, 4 - Math.floor((index - 1) / 2)) })),
     },
   });
-  // Rows are fitted synchronously in the same task that paints them, so the
-  // first visible row already belongs to the final, fitted list.
-  await page.waitForSelector('.kiosk-vote-result');
+  // API writes can finish before the socket update replaces the previous
+  // runoff's rows. Wait for this round and its submitted points first.
+  await page.waitForSelector('.kiosk-vote-overview >> text=Großer Kiosk Vote');
+  await page.waitForSelector('.kiosk-vote-result.is-concealed >> text=5 P');
   const shownVoteRows = await page.locator('.kiosk-vote-result').count();
   assert.equal(await page.locator('.kiosk-vote-result.is-concealed').count(), shownVoteRows);
   assert.ok(await page.locator('.kiosk-vote-result.is-concealed strong').evaluateAll((names) => {

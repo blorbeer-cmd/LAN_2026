@@ -21,6 +21,7 @@ import {
 } from './flowsShared.fixture';
 import { openMoreViewEntry } from './navHelpers';
 import { TRACKING_CONSENT_TEXT_VERSION } from '../../privacyPolicy';
+import { assertPaintedPollResultCentered } from './pollResultGeometry';
 
 registerFlowFixture('competition');
 
@@ -405,6 +406,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
       .map((selector) => Math.abs(center(selector) - middle));
   }));
   assert.ok(resultAlignment.flat().every((offset) => offset <= 1), 'complete result blocks center between the separating lines');
+  await assertPaintedPollResultCentered(currentVote.locator('.event-poll-option.is-winner').first());
   await page.setViewportSize({ width: 390, height: 844 });
   assert.deepEqual(
     await currentVote.locator('.event-poll-option.is-winner .event-poll-counts').allTextContents(),

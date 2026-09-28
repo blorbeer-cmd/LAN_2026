@@ -340,6 +340,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   each carry it. The complete name/metadata block, bar/count block, voter avatars and answer
   controls are centered between the row separators.
   Rows have equal top and bottom padding and no extra gap between them.
+  Count text removes outer font leading against the capital height and baseline where supported;
+  descenders remain visible. The bar/count block uses those text metrics for its optical center.
   „Stimmen ansehen“ — in that header, on every history row and behind each avatar
   stack — opens the Umfrage vote table: numbered legend with each game's summary, one row per
   voter with their points, a 0 shown as „Spielt nicht“. History lists only the rounds before the

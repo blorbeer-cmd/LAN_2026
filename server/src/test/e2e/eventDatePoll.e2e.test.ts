@@ -5,6 +5,7 @@ import { chromium, Browser, Locator, Page } from 'playwright';
 import { finishE2EOnboarding } from './authHelpers';
 import { createE2EDiagnosticTest } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
+import { assertPaintedPollResultCentered } from './pollResultGeometry';
 
 let BASE_URL: string;
 const RECOVERY_CODE = 'event-polls-e2e-recovery';
@@ -352,6 +353,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
       && geometry.infoToRowMiddle <= 1 && geometry.resultToRowMiddle <= 1,
     `complete text/results, avatars and answers center in the row (${JSON.stringify(geometry)})`);
   }
+  await assertPaintedPollResultCentered(refreshed.locator('.event-poll-option').first());
   await liveStack.click();
   const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await liveVoteDialog.waitFor();
@@ -702,6 +704,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ratingSavedToast.waitFor({ state: 'detached' });
   await ownerPage.setViewportSize({ width: 1024, height: 768 });
   const ratingPollId = await ratingPoll.getAttribute('data-poll-card');
+  await assertPaintedPollResultCentered(ratingPoll.locator('.event-poll-option').first());
   await navigate(ownerPage, 'home');
   await ownerPage.click('#global-search-btn');
   await ownerPage.fill('#global-search-input', 'Haus am See');

@@ -409,8 +409,8 @@ function renderResultBar(poll, option) {
 }
 
 function renderLegend(poll, option) {
-  if (poll.responseMode !== 'feasibility') return escapeHtml(renderCounts(poll, option));
-  const item = (key, count, label) => `<span class="event-poll-legend-item"><span class="event-poll-legend-dot is-${key}" aria-hidden="true"></span>${count} ${label}</span>`;
+  if (poll.responseMode !== 'feasibility') return `<span class="event-poll-count-text">${escapeHtml(renderCounts(poll, option))}</span>`;
+  const item = (key, count, label) => `<span class="event-poll-legend-item"><span class="event-poll-legend-dot is-${key}" aria-hidden="true"></span><span class="event-poll-count-text">${count} ${label}</span></span>`;
   return [
     item('can', option.counts.can, 'Passt'),
     item('if-needed', option.counts.ifNeeded, 'Notfalls'),
