@@ -33,7 +33,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   first and each only once; where the event records play time, long ongoing sessions and daily
   play-time milestones are used as well. Otherwise a line combines a real participant with a game
   from the group's catalog (a few well-known games when the catalog is empty). Anti-repeat rules
-  keep an identical line out for two hours, a sentence form for 15 lines and the same person out
+  keep an identical line out for two hours, a sentence form for 20 lines and the same person out
   of two consecutive lines. The newest line leads as „Eilmeldung“ with a gradient icon, one text
   size above the other lines at a medium weight and its game or tournament as meta line; older lines sit below it on one vertical rail,
   each with its icon and age. The card shows at most seven lines; the remaining height is shared out
