@@ -370,12 +370,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   Draft; there is no separate creation page or tournament tab. Legacy `#tournaments` and
   `#tournaments/new` routes replace themselves with `#matchmaking`. A tournament detail link keeps
   its own `#tournaments/<id>` route, including search, Home and browser history navigation. The
-  detail page has no „Zurück“ action; a compact neutral „Löschen“ sits beside its title. A deleted
+  detail page has no „Zurück“ action; admins and owners see a compact neutral „Löschen“ beside its title. A deleted
   tournament link explains that the tournament is gone. The page never carries two `h1` headings.
   The detail page's meta line carries format, options, team and player counts and the decided
   matches („4 Teams · 15 Spieler · 0/3 entschieden“) instead of separate counter tiles. Below it
   follow „Aktive Lobbys“, the results and a collapsible „Teams“ card with its team count that
-  starts closed and keeps its open state; team cards use at most two columns. Tournament results use plain cards without
+  starts closed and keeps its open state; team cards share the draw preview's responsive grid:
+  one column on phones, two from 640 px and up to four from 860 px. Tournament results use plain cards without
   accent rails: a knockout bracket card, stacked „Tabelle“ and „Spielplan“ cards for a league, and
   one card per group with its table and rounds plus a „K.O.-Runde“ card. A knockout phase with
   exactly one fixture is a 1:1 row under „Finale“, including pure two-team knockout tournaments;

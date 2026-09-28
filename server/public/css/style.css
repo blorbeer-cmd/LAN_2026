@@ -3578,6 +3578,7 @@ button.draft-pool-player {
   }
 }
 @media (min-width: 860px) { /* --bp-lg */
+  .tournament-team-grid,
   .tournament-team-preview-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
