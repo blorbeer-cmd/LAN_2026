@@ -62,6 +62,8 @@ accessibility issues, responsive regressions, shadows and breakpoint decisions.
 | `--accent-3` | `#ef5da8` | Brand gradient end (pink) |
 | `--accent-gradient` | gradient of the three above | Primary buttons, wordmark, progress bars, brand touches |
 | `--accent-text` | `#ffffff` | Text/icon color on top of `--accent-gradient` |
+| `--accent-bg` | `rgba(91, 140, 255, 0.16)` | Tinted accent fill for selected/active chip-style controls |
+| `--accent-bg-subtle` | `rgba(91, 140, 255, 0.07)` | Faint tint marking the signed-in player's own rows among equal siblings (tournament boards) |
 | `--rank-1-gold` | `#ffd166` | #1 leaderboard rank only |
 | `--danger` | `#ef4444` | Destructive actions, error text |
 | `--danger-bg` | `rgba(239, 68, 68, 0.15)` | Background for danger badges/buttons |

@@ -23,6 +23,18 @@ export function createTournamentPresentation(myPlayerId = null) {
     return t ? escapeHtml(t.name) : 'TBD';
   }
 
+  // The signed-in player's team, so every board can mark where they play. The
+  // marking itself is a thin accent edge; the hidden text carries the same
+  // meaning for screen readers, so it never relies on colour alone. It sits
+  // beside the name element, never inside it, so a name stays just the name.
+  function myTeamIdOf(tournament) {
+    if (!myPlayerId) return null;
+    return tournament.teams.find((team) => team.players.some((player) => player.id === myPlayerId))?.id ?? null;
+  }
+
+  const MY_TEAM_HINT = '<span class="visually-hidden"> (dein Team)</span>';
+  const isMyMatch = (match, myTeamId) => Boolean(myTeamId) && (match.teamAId === myTeamId || match.teamBId === myTeamId);
+
   function activeLobbyPhaseLabel(tournament, match) {
     if (tournament.format === 'round_robin') return `Runde ${match.round}`;
     if (tournament.format === 'group_knockout' && match.stage === 'group') {
@@ -41,18 +53,25 @@ export function createTournamentPresentation(myPlayerId = null) {
     if (matches.length === 0) return '';
 
     const teamsById = new Map(tournament.teams.map((team) => [team.id, team]));
+    const myTeamId = myTeamIdOf(tournament);
+    // The own lobby leads the list; the others keep their schedule order.
+    const ordered = [...matches.filter((m) => isMyMatch(m, myTeamId)), ...matches.filter((m) => !isMyMatch(m, myTeamId))];
     const credential = (label, value, match, kind, teamA, teamB) => `
       <span class="tournament-lobby-credential">
         <span class="tournament-lobby-credential-label">${label}</span>
         <code class="tournament-lobby-credential-value">${escapeHtml(value)}</code>
         <button type="button" class="icon-btn tournament-lobby-copy" data-copy-lobby-match="${escapeHtml(match.id)}" data-copy-lobby-kind="${kind}" title="${label === 'Lobby' ? 'Lobbyname' : 'Passwort'} kopieren" aria-label="${label === 'Lobby' ? 'Lobbyname' : 'Passwort'} für ${teamA} gegen ${teamB} kopieren">${icon('copy')}</button>
       </span>`;
-    const rows = matches
+    const rows = ordered
       .map((match) => {
         const teamA = teamLabel(teamsById, match.teamAId);
         const teamB = teamLabel(teamsById, match.teamBId);
-        return `<div class="tournament-lobby-row" aria-label="Lobby für ${teamA} gegen ${teamB}">
+        const mine = isMyMatch(match, myTeamId);
+        // The row is a generic container, so its aria-label is not reliably
+        // announced; the own-lobby hint therefore is real (hidden) text.
+        return `<div class="tournament-lobby-row${mine ? ' is-mine' : ''}" aria-label="Lobby für ${teamA} gegen ${teamB}">
           <div class="tournament-lobby-matchup">
+            ${mine ? '<span class="visually-hidden">Deine Lobby: </span>' : ''}
             <strong>${teamA} <span class="muted">vs</span> ${teamB}</strong>
             <span class="muted">${escapeHtml(activeLobbyPhaseLabel(tournament, match))} · ${teamA} eröffnet</span>
           </div>
@@ -106,13 +125,14 @@ export function createTournamentPresentation(myPlayerId = null) {
   // One match box, fixed at exactly BRACKET_MATCH_H tall regardless of state:
   // two team rows plus a trailing action column inside the box, so the action
   // never floats over the connector lines.
-  function renderBracketMatchBox(m, t, teamsById) {
-    const teamContent = (teamId) => `<span class="bracket-team-name">${teamLabel(teamsById, teamId)}</span>`;
+  function renderBracketMatchBox(m, t, teamsById, myTeamId) {
+    const mine = (teamId) => Boolean(teamId) && teamId === myTeamId;
+    const teamContent = (teamId) => `<span class="bracket-team-name">${teamLabel(teamsById, teamId)}</span>${mine(teamId) ? MY_TEAM_HINT : ''}`;
     if (m.isBye) {
       return `
         <div class="bracket-match is-bye">
           <div class="bracket-rows">
-            <div class="bracket-team-row is-winner">${teamContent(m.winnerTeamId)}</div>
+            <div class="bracket-team-row is-winner${mine(m.winnerTeamId) ? ' is-mine' : ''}">${teamContent(m.winnerTeamId)}</div>
             <div class="bracket-team-row is-tbd"><span class="bracket-team-name">Freilos</span></div>
           </div>
           <span class="bracket-side" aria-hidden="true"></span>
@@ -122,7 +142,7 @@ export function createTournamentPresentation(myPlayerId = null) {
     const decided = m.winnerTeamId !== null || m.isDraw;
     const teamRow = (teamId, score) => {
       const isWinner = m.winnerTeamId && m.winnerTeamId === teamId;
-      const cls = `bracket-team-row${isWinner ? ' is-winner' : ''}${decided && !isWinner ? ' is-loser' : ''}${!teamId ? ' is-tbd' : ''}`;
+      const cls = `bracket-team-row${isWinner ? ' is-winner' : ''}${decided && !isWinner ? ' is-loser' : ''}${!teamId ? ' is-tbd' : ''}${mine(teamId) ? ' is-mine' : ''}`;
       const scoreReadout = t.trackScore && score !== null ? `<span class="bracket-score">${score}</span>` : '';
       const winMark = !t.trackScore && isWinner ? `<span class="bracket-win-mark" aria-label="Sieger">${icon('check')}</span>` : '';
       return `<div class="${cls}">${teamId ? teamContent(teamId) : '<span class="bracket-team-name">offen</span>'}${scoreReadout}${winMark}</div>`;
@@ -142,16 +162,16 @@ export function createTournamentPresentation(myPlayerId = null) {
   // along on top of that same alignment (see .bracket-children::before/::after
   // in domains.css), using --conn-half computed here from the fixed match
   // height/gap so they land precisely on both feeders' centers.
-  function buildBracketNode(matchesByKey, round, slot, t, teamsById) {
+  function buildBracketNode(matchesByKey, round, slot, t, teamsById, myTeamId) {
     const m = matchesByKey.get(`${round}:${slot}`);
-    const matchHtml = renderBracketMatchBox(m, t, teamsById);
+    const matchHtml = renderBracketMatchBox(m, t, teamsById, myTeamId);
     if (round === 1) {
       return matchHtml;
     }
     const feederDepth = round - 2; // depth (rounds above a leaf) of this node's two children
     const connHalf = bracketSubtreeHeight(feederDepth) / 2;
-    const left = buildBracketNode(matchesByKey, round - 1, slot * 2, t, teamsById);
-    const right = buildBracketNode(matchesByKey, round - 1, slot * 2 + 1, t, teamsById);
+    const left = buildBracketNode(matchesByKey, round - 1, slot * 2, t, teamsById, myTeamId);
+    const right = buildBracketNode(matchesByKey, round - 1, slot * 2 + 1, t, teamsById, myTeamId);
     return `
       <div class="bracket-node">
         <div class="bracket-children" style="--conn-half:${connHalf}px;">
@@ -176,7 +196,7 @@ export function createTournamentPresentation(myPlayerId = null) {
       ...Array.from({ length: totalRounds }, (_, i) => `<div>${bracketRoundLabel(i + 1, totalRounds)}</div>`),
       champion ? '<div class="bracket-champion-title">Sieger</div>' : '',
     ].join('');
-    const tree = buildBracketNode(matchesByKey, totalRounds, 0, t, teamsById);
+    const tree = buildBracketNode(matchesByKey, totalRounds, 0, t, teamsById, myTeamIdOf(t));
     const championHtml = champion
       ? `<div class="bracket-champion" aria-label="Sieger: ${champion}"><span class="bracket-team-name">${champion}</span></div>`
       : '';
@@ -192,7 +212,7 @@ export function createTournamentPresentation(myPlayerId = null) {
 
   // ---------- detail: round-robin (also reused for each group_knockout group) ----------
 
-  function fixtureRowHtml(m, t, teamsById) {
+  function fixtureRowHtml(m, t, teamsById, myTeamId = myTeamIdOf(t)) {
     const decided = m.winnerTeamId !== null || m.isDraw;
     const aWon = m.winnerTeamId === m.teamAId;
     const bWon = m.winnerTeamId === m.teamBId;
@@ -210,7 +230,9 @@ export function createTournamentPresentation(myPlayerId = null) {
     const nameA = teamLabel(teamsById, m.teamAId);
     const nameB = teamLabel(teamsById, m.teamBId);
     const teamHtml = (teamId, won, home) => `<span class="${nameCls(won)}${home ? ' is-home' : ''}">${teamLabel(teamsById, teamId)}</span>`;
-    return `<div class="tournament-fixture" aria-label="${nameA} gegen ${nameB}">
+    const mine = isMyMatch(m, myTeamId);
+    return `<div class="tournament-fixture${mine ? ' is-mine' : ''}" aria-label="${mine ? 'Dein Spiel: ' : ''}${nameA} gegen ${nameB}">
+        ${mine ? '<span class="visually-hidden">Dein Spiel: </span>' : ''}
         ${teamHtml(m.teamAId, aWon, true)}
         ${center}
         ${teamHtml(m.teamBId, bWon, false)}
@@ -224,6 +246,7 @@ export function createTournamentPresentation(myPlayerId = null) {
   }
 
   function renderFixtures(t, teamsById, matches) {
+    const myTeamId = myTeamIdOf(t);
     const byRound = new Map();
     for (const m of matches) byRound.set(m.round, [...(byRound.get(m.round) ?? []), m]);
     const rounds = [...byRound.entries()].sort((a, b) => a[0] - b[0]);
@@ -236,7 +259,7 @@ export function createTournamentPresentation(myPlayerId = null) {
         ([round, roundMatches]) => `
           <div class="tournament-round">
             <div class="tournament-round-head">Runde ${round}${round === currentRound ? ' <span class="badge badge-playing">Aktuell</span>' : ''}</div>
-            ${roundMatches.map((m) => fixtureRowHtml(m, t, teamsById)).join('')}
+            ${roundMatches.map((m) => fixtureRowHtml(m, t, teamsById, myTeamId)).join('')}
           </div>`,
       )
       .join('');
@@ -252,12 +275,14 @@ export function createTournamentPresentation(myPlayerId = null) {
       }
     }
     const signed = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0');
+    const myTeamId = myTeamIdOf(t);
     const rows = (standings || [])
       .map((s, i) => {
         const advances = i < advancers;
-        return `<tr class="${i === 0 && s.played > 0 ? 'is-leader' : ''}${advances ? ' is-advancing' : ''}">
+        const mine = Boolean(myTeamId) && s.teamId === myTeamId;
+        return `<tr class="${i === 0 && s.played > 0 ? 'is-leader' : ''}${advances ? ' is-advancing' : ''}${mine ? ' is-mine' : ''}">
           <td class="tournament-standings-rank">${i + 1}</td>
-          <td class="tournament-standings-team"><span class="tournament-standings-identity"><span class="tournament-standings-name">${teamLabel(teamsById, s.teamId)}</span>${advances ? '<span class="tournament-standings-advance">weiter</span>' : ''}</span></td>
+          <td class="tournament-standings-team"><span class="tournament-standings-identity"><span class="tournament-standings-name">${teamLabel(teamsById, s.teamId)}</span>${mine ? MY_TEAM_HINT : ''}${advances ? '<span class="tournament-standings-advance">weiter</span>' : ''}</span></td>
           <td>${s.played}</td>
           <td>${s.wins}</td>
           <td>${s.draws}</td>
@@ -331,14 +356,15 @@ export function createTournamentPresentation(myPlayerId = null) {
   const isOwnTeam = (team) => Boolean(myPlayerId) && team.players.some((player) => player.id === myPlayerId);
 
   function teamCardHtml(t, team, { winner = false, renamable = false, highlight = false } = {}) {
+    const mine = isOwnTeam(team);
     // The own card carries a marker so a "wählt euren Teamnamen" deep link
     // can open the Teams card and highlight exactly this team.
-    const ownMarker = isOwnTeam(team) ? ` data-own-tournament-team="${escapeHtml(t.id)}"` : '';
+    const ownMarker = mine ? ` data-own-tournament-team="${escapeHtml(t.id)}"` : '';
     return `
-        <div class="team-card tournament-team-card${highlight ? ' search-target-highlight' : ''}"${ownMarker}>
+        <div class="team-card tournament-team-card${mine ? ' is-mine' : ''}${highlight ? ' search-target-highlight' : ''}"${ownMarker}>
           <div class="team-card-header">
             <span class="row tournament-team-card-heading" style="gap:var(--space-2);">
-              <span class="tournament-team-card-name">${escapeHtml(team.name)}</span>
+              <span class="tournament-team-card-name">${escapeHtml(team.name)}</span>${mine ? MY_TEAM_HINT : ''}
               ${teamSkillHtml(team.players, t.gameId, { balanced: false, current: true })}
               ${winner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}
             </span>

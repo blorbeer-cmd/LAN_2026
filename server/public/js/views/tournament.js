@@ -37,6 +37,31 @@ export function clearTournamentTeamTarget() {
   ownTeamFocusFor = null;
 }
 
+// Horizontal position of the bracket across re-renders. A live update rebuilds
+// the board, so without this the bracket would jump back to its first round.
+let bracketScroll = { tournamentId: null, left: 0 };
+
+// On a phone the bracket scrolls sideways. The first view of a tournament
+// brings the reader's own open match into view; later re-renders keep wherever
+// the reader scrolled to.
+function restoreBracketScroll(container, tournamentId) {
+  const wrap = container.querySelector('.bracket-tree-wrap');
+  if (!wrap) return;
+  if (bracketScroll.tournamentId === tournamentId) {
+    wrap.scrollLeft = bracketScroll.left;
+  } else {
+    const ownOpenMatch = wrap.querySelector('.bracket-match.is-open .bracket-team-row.is-mine')?.closest('.bracket-match');
+    if (ownOpenMatch && wrap.scrollWidth > wrap.clientWidth) {
+      const offset = ownOpenMatch.getBoundingClientRect().left - wrap.getBoundingClientRect().left + wrap.scrollLeft;
+      wrap.scrollLeft = offset - (wrap.clientWidth - ownOpenMatch.offsetWidth) / 2;
+    }
+    bracketScroll = { tournamentId, left: wrap.scrollLeft };
+  }
+  wrap.addEventListener('scroll', () => {
+    bracketScroll = { tournamentId, left: wrap.scrollLeft };
+  }, { passive: true });
+}
+
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
   round_robin: 'Liga (jeder gegen jeden)',
@@ -171,6 +196,7 @@ function renderDetail(container, ctx) {
   container.querySelector('[data-tournament-teams]')?.addEventListener('toggle', (event) => {
     tournamentTeamsOpen = event.currentTarget.open;
   });
+  restoreBracketScroll(container, t.id);
 
   container.querySelectorAll('[data-copy-lobby-match]').forEach((btn) => {
     btn.addEventListener('click', async () => {
