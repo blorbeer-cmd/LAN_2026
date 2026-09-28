@@ -558,7 +558,12 @@ export const components = [
       {
         "file": "public/js/views/matchmaking.js",
         "source": "class=\"chip${historyFilter === key ? ' is-active' : ''}\"",
-        "reason": "Match history uses the established active filter chip without changing its geometry."
+        "reason": "Open games and history share the established active type filter chip without changing its geometry."
+      },
+      {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"chip${mineOnly ? ' is-active' : ''}\"",
+        "reason": "The participation toggle uses the same active filter chip as the shared type filters."
       },
       {
         "file": "public/js/views/gameCatalog.js",

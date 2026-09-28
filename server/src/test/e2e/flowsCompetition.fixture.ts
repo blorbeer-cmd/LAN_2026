@@ -816,14 +816,120 @@ flowTest('matchmaking Historie derives the winner from values entered in the dra
   assert.equal(await page.getAttribute('[data-history-filter="matches"]', 'aria-pressed'), 'true');
 });
 
+flowTest('shared filters narrow open games, tournament overview and history by participation', async (t) => {
+  await openTeams();
+  const gameId = await page.inputValue('#mm-game');
+  const drawIds: string[] = [];
+  const tournamentIds: string[] = [];
+  let extraId = '';
+  t.after(async () => {
+    for (const id of tournamentIds) await page.request.delete(`${BASE_URL}/api/tournaments/${id}`);
+    for (const id of drawIds) await page.request.delete(`${BASE_URL}/api/matchmaking/draws/${id}`);
+    if (extraId) await page.request.delete(`${BASE_URL}/api/players/${extraId}`);
+    await page.reload();
+  });
+  const extra = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'Filter Teilnehmer' } });
+  assert.equal(extra.status(), 201, await extra.text());
+  extraId = (await extra.json()).id;
+  const createDraw = async (playerIds: string[], recorded: boolean) => {
+    const response = await page.request.post(`${BASE_URL}/api/matchmaking`, {
+      data: { gameId, playerIds, teamCount: 2 },
+    });
+    assert.equal(response.status(), 200, await response.text());
+    const draw = await response.json() as { id: string; teams: Array<{ players: Array<{ id: string }> }> };
+    drawIds.push(draw.id);
+    if (recorded) {
+      const result = await page.request.post(`${BASE_URL}/api/matches`, {
+        data: { gameId, drawId: draw.id, winnerTeamIndex: 0,
+          teams: draw.teams.map((team) => ({ playerIds: team.players.map((player) => player.id) })) },
+      });
+      assert.equal(result.status(), 201, await result.text());
+    }
+    return draw.id;
+  };
+  const createTournament = async (playerIds: string[], completed: boolean) => {
+    const response = await page.request.post(`${BASE_URL}/api/tournaments`, {
+      data: { gameId, format: 'single_elimination', teams: playerIds.map((id) => ({ playerIds: [id] })) },
+    });
+    assert.equal(response.status(), 201, await response.text());
+    const tournament = await response.json() as { id: string; matches: Array<{ id: string; teamAId: string }> };
+    tournamentIds.push(tournament.id);
+    if (completed) {
+      const match = tournament.matches[0];
+      const result = await page.request.post(`${BASE_URL}/api/tournaments/${tournament.id}/matches/${match.id}/result`, {
+        data: { winnerTeamId: match.teamAId },
+      });
+      assert.equal(result.status(), 200, await result.text());
+    }
+    return tournament.id;
+  };
+  const mineOpen = await createDraw([alice.id, bob.id], false);
+  const otherOpen = await createDraw([bob.id, extraId], false);
+  const minePlayed = await createDraw([alice.id, bob.id], true);
+  const otherPlayed = await createDraw([bob.id, extraId], true);
+  const mineRunning = await createTournament([alice.id, bob.id], false);
+  const otherRunning = await createTournament([bob.id, extraId], false);
+  const mineFinished = await createTournament([alice.id, bob.id], true);
+  const otherFinished = await createTournament([bob.id, extraId], true);
+  const drawTile = (id: string) => page.locator(`.matchmaking-history-item:has([data-history-toggle="${id}"]), .matchmaking-history-item:has([data-history-toggle="o-${id}"])`);
+  const tournamentTile = (id: string) => page.locator(`.matchmaking-history-item:has([data-history-toggle="t-${id}"])`);
+
+  await page.reload();
+  await page.locator('#mm-game-search').click();
+  await page.locator(`#mm-game-list [data-search-select-value="${gameId}"]`).click();
+  const filters = page.getByRole('group', { name: 'Spiele und Turniere filtern' });
+  await filters.waitFor();
+  assert.equal(await filters.isVisible(), true, 'filters remain reachable with both sections closed');
+  await page.locator('.matchmaking-open-draws > summary').click();
+  await openMatchmakingHistory();
+  await drawTile(otherOpen).waitFor();
+  await tournamentTile(otherFinished).waitFor();
+  assert.equal(await filters.evaluate((element) => Boolean(element.compareDocumentPosition(
+    document.querySelector('.matchmaking-open-draws')!) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
+
+  const ownResponse = page.waitForResponse((response) => response.url().includes('/api/matchmaking/history?')
+    && new URL(response.url()).searchParams.get('mine') === '1' && response.status() === 200);
+  await filters.getByRole('button', { name: 'Meine', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await ownResponse;
+  await drawTile(mineOpen).waitFor();
+  assert.equal(await filters.getByRole('button', { name: 'Meine', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.equal(await drawTile(otherOpen).count(), 0);
+  assert.equal(await drawTile(otherPlayed).count(), 0);
+  assert.equal(await tournamentTile(otherRunning).count(), 0);
+  assert.equal(await tournamentTile(otherFinished).count(), 0);
+  assert.equal(await page.locator(`.matchmaking-active-tournaments [data-open-draw-tournament="${otherRunning}"]`).count(), 0);
+  assert.equal(await drawTile(minePlayed).count(), 1);
+  assert.equal(await tournamentTile(mineRunning).count(), 1);
+  assert.equal(await tournamentTile(mineFinished).count(), 1);
+
+  await filters.getByRole('button', { name: 'Matches', exact: true }).click();
+  await drawTile(mineOpen).waitFor();
+  assert.equal(await tournamentTile(mineRunning).count(), 0);
+  assert.equal(await tournamentTile(mineFinished).count(), 0);
+  assert.equal(await page.locator('.matchmaking-active-tournaments').count(), 0);
+  await filters.getByRole('button', { name: 'Turniere', exact: true }).click();
+  await tournamentTile(mineRunning).waitFor();
+  assert.equal(await drawTile(mineOpen).count(), 0);
+  assert.equal(await drawTile(minePlayed).count(), 0);
+  assert.equal(await tournamentTile(mineFinished).count(), 1);
+  await filters.getByRole('button', { name: 'Alle', exact: true }).click();
+  await filters.getByRole('button', { name: 'Meine', exact: true }).click();
+  await drawTile(otherOpen).waitFor();
+  assert.equal(await tournamentTile(otherFinished).count(), 1);
+});
+
 flowTest('match history reports failed tournament and older-match requests', async () => {
   const tournamentsUrl = '**/api/tournaments';
   await page.route(tournamentsUrl, (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"offline"}' }));
   try {
     await page.reload();
     await page.waitForSelector('#mm-generate');
-    await openMatchmakingHistory();
     await page.click('[data-history-filter="tournaments"]');
+    // The filters are now outside the disclosure. Open the error detail
+    // after the failed request has settled so this checks its visible message.
+    await page.getByText('Historie konnte nicht geladen werden.', { exact: true }).waitFor({ state: 'attached' });
+    await openMatchmakingHistory();
     await page.getByText('Historie konnte nicht geladen werden.', { exact: true }).waitFor();
     assert.equal(await page.getByText('Lädt…', { exact: true }).count(), 0);
   } finally {

@@ -409,7 +409,7 @@ function attachMatchResults(draws: ReturnType<typeof parseDrawRow>[]): void {
 // The full history includes still-unrecorded draws; kind=matches pages only
 // recorded results. Open draws are returned separately on the first page.
 matchmakingRouter.get('/history', (req, res) => {
-  const { eventId, gameId, limit, kind, before, beforeId } = req.query;
+  const { eventId, gameId, limit, kind, mine, before, beforeId } = req.query;
   const scope = resolveRequestGroupEventScope(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
@@ -417,6 +417,9 @@ matchmakingRouter.get('/history', (req, res) => {
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
   if (kind !== undefined && kind !== 'all' && kind !== 'matches') {
     return res.status(400).json({ error: 'kind ist ungültig.' });
+  }
+  if (mine !== undefined && mine !== '0' && mine !== '1') {
+    return res.status(400).json({ error: 'mine ist ungültig.' });
   }
   if ((before !== undefined || beforeId !== undefined) &&
     (typeof before !== 'string' || !/^\d+$/.test(before) || !Number.isSafeInteger(Number(before)) ||
@@ -429,6 +432,13 @@ matchmakingRouter.get('/history', (req, res) => {
   if (typeof gameId === 'string' && gameId) {
     clauses.push('md.game_id = ?');
     params.push(gameId);
+  }
+  // Scope participation before LIMIT/cursor paging, using the authenticated
+  // player and the persisted lineup rather than the draw creator.
+  if (mine === '1') {
+    clauses.push(`EXISTS (SELECT 1 FROM json_each(md.teams) team,
+      json_each(team.value, '$.players') player WHERE json_extract(player.value, '$.id') = ?)`);
+    params.push(req.player!.id);
   }
   if (kind === 'matches') clauses.push('md.tournament_id IS NULL');
   const openClauses = [...clauses];

@@ -241,8 +241,9 @@ export const api = {
   matchmaking: {
     generate: (data) => apiFetch('/api/matchmaking', { method: 'POST', body: JSON.stringify(data) }),
     rematch: (data) => apiFetch('/api/matchmaking/rematch', { method: 'POST', body: JSON.stringify(data) }),
-    history: (gameId, { kind = 'all', cursor = null, limit = null } = {}) => {
+    history: (gameId, { kind = 'all', mine = false, cursor = null, limit = null } = {}) => {
       const query = new URLSearchParams({ kind });
+      if (mine) query.set('mine', '1');
       if (gameId) query.set('gameId', gameId);
       if (limit != null) query.set('limit', String(limit));
       if (cursor) {

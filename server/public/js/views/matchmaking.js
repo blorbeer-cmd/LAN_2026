@@ -79,6 +79,7 @@ let historyCursor = null;
 let openDrawsCache = [];
 let openDrawsSectionOpen = false;
 let historyFilter = 'all';
+let mineOnly = false;
 let historySectionOpen = false;
 const expandedHistoryIds = new Set();
 let historyError = false;
@@ -158,6 +159,7 @@ async function loadHistory(gameId, ctx, { append = false } = {}) {
     do {
       const res = await api.matchmaking.history(gameId, {
         kind: 'matches',
+        mine: mineOnly,
         cursor,
         limit: oldestId ? Math.min(50, maxRows - loaded.length) : 20,
       });
@@ -824,10 +826,29 @@ function historyTournamentHtml(tournament) {
     historyTournamentDetailHtml(tournament), 'is-tournament', Boolean(getMyId() && tournament.participantIds?.includes(getMyId())));
 }
 
+function filteredOpenDraws(selectedGameId) {
+  return historyFilter === 'tournaments' || historyForGameId !== selectedGameId ? []
+    : openDrawsCache.filter((draw) => !mineOnly || drawIncludesMe(draw));
+}
+
+function filteredTournaments(selectedGameId, completed) {
+  const myId = getMyId();
+  return historyFilter === 'matches' ? [] : (tournamentCache ?? []).filter((tournament) =>
+    (selectedGameId === undefined || tournament.gameId === selectedGameId)
+    && (tournament.status === 'completed') === completed
+    && (!mineOnly || Boolean(myId && tournament.participantIds?.includes(myId))));
+}
+
+function renderMatchFilters() {
+  return `<div class="matchmaking-history-filters" role="group" aria-label="Spiele und Turniere filtern">
+    ${[['all', 'Alle'], ['matches', 'Matches'], ['tournaments', 'Turniere']].map(([key, label]) => `<button type="button" class="chip${historyFilter === key ? ' is-active' : ''}" data-history-filter="${key}" aria-pressed="${historyFilter === key}">${label}</button>`).join('')}
+    <button type="button" class="chip${mineOnly ? ' is-active' : ''}" data-match-mine aria-pressed="${mineOnly}">Meine</button>
+  </div>`;
+}
+
 function renderOpenDraws(selectedGameId) {
-  const draws = historyForGameId === selectedGameId ? openDrawsCache : [];
-  const tournaments = (tournamentCache ?? []).filter((tournament) =>
-    tournament.gameId === selectedGameId && tournament.status !== 'completed');
+  const draws = filteredOpenDraws(selectedGameId);
+  const tournaments = filteredTournaments(selectedGameId, false);
   if (!draws.length && !tournaments.length) return '';
   const summary = [
     draws.length ? `${draws.length} Auslosungen` : null,
@@ -847,20 +868,17 @@ function renderOpenDraws(selectedGameId) {
 }
 
 function renderHistory(selectedGameId) {
-  const tournaments = (tournamentCache ?? []).filter((tournament) =>
-    tournament.gameId === selectedGameId && tournament.status === 'completed');
-  const matches = (historyForGameId === selectedGameId ? historyCache ?? [] : []).filter((draw) => draw.matchId);
+  const tournaments = filteredTournaments(selectedGameId, true);
+  const matches = (historyForGameId === selectedGameId ? historyCache ?? [] : [])
+    .filter((draw) => draw.matchId && (!mineOnly || drawIncludesMe(draw)));
   const items = [
     ...(historyFilter === 'tournaments' ? [] : matches.map((draw) => ({ time: draw.generatedAt, html: historyMatchHtml(draw) }))),
     ...(historyFilter === 'matches' ? [] : tournaments.map((tournament) => ({ time: tournament.createdAt, html: historyTournamentHtml(tournament) }))),
   ].sort((a, b) => b.time - a.time).map((entry) => entry.html);
-  const filter = `<div class="matchmaking-history-filters" role="group" aria-label="Historie filtern">
-    ${[['all', 'Alle'], ['matches', 'Matches'], ['tournaments', 'Turniere']].map(([key, label]) => `<button type="button" class="chip${historyFilter === key ? ' is-active' : ''}" data-history-filter="${key}" aria-pressed="${historyFilter === key}">${label}</button>`).join('')}
-  </div>`;
   const loading = (historyFilter !== 'tournaments' && historyForGameId !== selectedGameId) ||
     (historyFilter === 'tournaments' && tournamentCache === null && !tournamentError);
-  const emptyText = historyError || tournamentError ? 'Historie konnte nicht geladen werden.' : historyFilter === 'tournaments' ? 'Keine Turniere gefunden.' : 'Noch keine Matches.';
-  const content = `${filter}${items.length ? items.join('') : emptyStateHtml(loading ? 'Lädt…' : emptyText, { className: 'empty-state-compact' })}
+  const emptyText = historyError || tournamentError ? 'Historie konnte nicht geladen werden.' : mineOnly ? 'Keine eigenen Ergebnisse.' : historyFilter === 'tournaments' ? 'Keine Turniere gefunden.' : 'Noch keine Matches.';
+  const content = `${items.length ? items.join('') : emptyStateHtml(loading ? 'Lädt…' : emptyText, { className: 'empty-state-compact' })}
     ${(historyError || tournamentError) && items.length ? '<p class="muted" role="alert">Historie konnte nicht vollständig geladen werden.</p>' : ''}
     ${historyFilter !== 'tournaments' && historyCursor ? '<div class="matchmaking-history-more"><button type="button" class="btn btn-sm" data-history-more>Ältere laden</button></div>' : ''}`;
   return renderHistoryDetails('Historie', items.length, content);
@@ -879,10 +897,9 @@ function wireOpenDraws(container, selectedGameId, ctx) {
   }
   function populateOpenDraws() {
     if (!openPanel || !section?.open || openPanel.dataset.rendered) return;
-    const tournaments = (tournamentCache ?? []).filter((tournament) =>
-      tournament.gameId === selectedGameId && tournament.status !== 'completed');
+    const tournaments = filteredTournaments(selectedGameId, false);
     openPanel.innerHTML = [
-      ...openDrawsCache.map((draw) => renderDrawCard(draw, { editable: true, showGame: true, collapsible: true })),
+      ...filteredOpenDraws(selectedGameId).map((draw) => renderDrawCard(draw, { editable: true, showGame: true, collapsible: true })),
       ...tournaments.map(historyTournamentHtml),
     ].join('');
     openPanel.dataset.rendered = 'true';
@@ -919,16 +936,20 @@ function wireHistory(container, selectedGameId, ctx) {
   container.querySelectorAll('[data-history-filter]').forEach((button) => button.addEventListener('click', () => {
     if (historyFilter === button.dataset.historyFilter) return;
     historyFilter = button.dataset.historyFilter;
-    invalidateMatchmakingHistory({ hard: true });
     ctx.rerender();
   }));
+  container.querySelector('[data-match-mine]')?.addEventListener('click', () => {
+    mineOnly = !mineOnly;
+    invalidateMatchmakingHistory({ hard: true });
+    ctx.rerender();
+  });
   container.querySelector('[data-history-more]')?.addEventListener('click', () => {
     if (!historyLoading && historyCursor) loadHistory(selectedGameId, ctx, { append: true });
   });
 }
 
 function renderActiveTournaments() {
-  const active = (tournamentCache ?? []).filter((tournament) => tournament.status !== 'completed');
+  const active = filteredTournaments(undefined, false);
   if (!active.length && !tournamentError) return '';
   return `<section class="card stack grouped-page-section matchmaking-active-tournaments" aria-labelledby="match-active-tournaments-title">
     <div class="grouped-page-section-title"><h2 id="match-active-tournaments-title">Laufende Turniere</h2></div>
@@ -1217,6 +1238,7 @@ export function renderMatchmaking(container, ctx) {
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
 
+    ${renderMatchFilters()}
     ${renderOpenDraws(selectedGameId)}
     ${renderHistory(selectedGameId)}
   `;

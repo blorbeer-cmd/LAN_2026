@@ -67,7 +67,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   Unplayed draws and running tournaments of the selected game have their own „Ohne Ergebnis“ section above „Historie“. It starts collapsed and builds
   its cards only when opened. Each unplayed game is also a collapsed tile that can be opened
   independently to show its teams and player moves. Recorded matches and completed tournaments share the „Historie“ for the selected game. It starts
-  collapsed and offers „Alle | Matches | Turniere“ filters. Match pages can load older entries;
+  collapsed. The shared „Alle | Matches | Turniere“ filter row sits above „Ohne Ergebnis“ and applies
+  to open draws, running tournaments and completed history, including the running overview above setup.
+  The independent „Meine“ toggle combines with each type and shows only entries whose teams include
+  the signed-in player, regardless of who created them. It also scopes older Match pages before
+  pagination. The filters remain visible when sections are collapsed or have no matching entries.
+  Filter changes keep disclosure state. Match pages can load older entries;
   tournament entries come from the complete tournament list. Every entry is a collapsed tile with
   game, time, result and actions in its header. Expanding a match shows teams by place without changing their
   stored indices, and each team's skill sum beside its name, never individual player skills. A fresh draw appears under the heading „Neue Auslosung“; a

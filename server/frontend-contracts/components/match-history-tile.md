@@ -49,6 +49,11 @@ Platz steht die Ausscheidungsrunde in der Kontextzeile unter den Spielernamen.
 Seine bearbeitbaren Auslosungen werden erst beim Aufklappen aufgebaut und beim Schließen
 wieder aus dem DOM entfernt; die Anzahl und Erreichbarkeit aller offenen Auslosungen bleiben erhalten.
 Laufende Turniere stehen dort ebenfalls; erst nach Abschluss wechseln sie in die Historie.
+Eine gemeinsame, stets sichtbare Filterzeile steht vor „Ohne Ergebnis“ und „Historie“.
+„Alle“, „Matches“ und „Turniere“ gelten für beide Abschnitte und die laufende Turnierübersicht.
+Der zusätzliche Schalter „Meine“ lässt sich mit jeder Art kombinieren und berücksichtigt die
+Teamteilnahme des angemeldeten Spielers, auch bei älteren nachgeladenen Ergebnissen. Filterwechsel
+erhalten die geöffneten Abschnitte und Kacheln; ein leerer Treffer entfernt nie die Filterzeile.
 Ein gelöschter Match-Datensatz verschwindet auch aus der Rangliste. Turniere nutzen den bestehenden
 Löschweg, der bereits gespeicherte Match-Ergebnisse in der Rangliste belässt; die Rückfrage nennt dies.
 Nach dem Öffnen des Abschnitts beginnen die einzelnen Auslosungen geschlossen. Ihre Teamdetails
@@ -63,7 +68,7 @@ Turnier, Ladefehler und leerer Filter.
 ## 8. Accessibility
 
 Der Pfeil-Button verwendet `aria-expanded` und `aria-controls`, ist über die Tastatur bedienbar
-und zeigt Fokus sichtbar. Sein Ziel ist mindestens `--tap-target-size` hoch. Die drei Filterchips benutzen `aria-pressed`. Aktionsknöpfe haben
+und zeigt Fokus sichtbar. Sein Ziel ist mindestens `--tap-target-size` hoch. Die Filterchips benutzen `aria-pressed`. Aktionsknöpfe haben
 einen eigenen Namen und Fokus; der Stift heißt „Ergebnis bearbeiten“.
 
 ## 9. Repräsentative Aufrufer

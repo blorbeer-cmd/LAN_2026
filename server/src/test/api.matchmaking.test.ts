@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { nanoid } from 'nanoid';
-import { createTestApp } from './testApp';
+import { createTestApp, TEST_ADMIN_ID } from './testApp';
 import { db, DEFAULT_GROUP_ID } from '../db';
 
 const app = createTestApp();
@@ -241,10 +241,10 @@ test('GET /api/matchmaking/history does not leak draws from other games', async 
 
 test('history pages recorded matches before the limit and keeps open draws separate', async () => {
   const game = await request(app).post('/api/games').send({ name: 'Paged History Game' });
-  const createDraw = () => request(app).post('/api/matchmaking').send({ gameId: game.body.id, playerIds: playerIds.slice(0, 2), teamCount: 2 });
-  const oldest = await createDraw();
+  const createDraw = (ids = playerIds.slice(0, 2)) => request(app).post('/api/matchmaking').send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+  const oldest = await createDraw([TEST_ADMIN_ID, playerIds[0]]);
   const middle = await createDraw();
-  const reroll = await createDraw();
+  const reroll = await createDraw([TEST_ADMIN_ID, playerIds[0]]);
   const newest = await createDraw();
   for (const [draw, time] of [[oldest, 1000], [middle, 2000], [reroll, 3000], [newest, 4000]] as const) {
     assert.equal(draw.status, 200);
@@ -278,6 +278,19 @@ test('history pages recorded matches before the limit and keeps open draws separ
   assert.deepEqual(second.body.history.map((draw: { id: string }) => draw.id), [oldest.body.id]);
   assert.equal(second.body.nextCursor, null);
   assert.equal(second.body.openDraws, undefined);
+
+  // Both newer records were created by this admin but do not include them.
+  // Participation must filter before LIMIT and also scope the open lineup.
+  const mine = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&mine=1&limit=1`);
+  assert.equal(mine.status, 200);
+  assert.deepEqual(mine.body.history.map((draw: { id: string }) => draw.id), [oldest.body.id]);
+  assert.deepEqual(mine.body.openDraws.map((draw: { id: string }) => draw.id), [reroll.body.id]);
+  assert.equal(mine.body.nextCursor, null);
+  const unfiltered = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&mine=0&limit=1`);
+  assert.deepEqual(unfiltered.body.history.map((draw: { id: string }) => draw.id), [middle.body.id]);
+  for (const value of ['yes', '1&mine=0']) {
+    assert.equal((await request(app).get(`/api/matchmaking/history?mine=${value}`)).status, 400);
+  }
 });
 
 test('POST /api/matchmaking returns a draw id and null matchId', async () => {

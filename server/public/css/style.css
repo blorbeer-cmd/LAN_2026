@@ -3010,6 +3010,7 @@ button.profile-row-main {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+  margin-top: var(--space-4);
   margin-bottom: var(--space-3);
 }
 .matchmaking-history-item {
