@@ -429,7 +429,7 @@ function openDrawTournamentDialog(draw) {
         <div>
           <span class="field-label">Teamnamen</span>
           <div class="draw-tournament-team-names">
-            ${names.map((name, index) => `<input type="text" data-draw-team-name="${index}" maxlength="60" value="${escapeHtml(name)}" aria-label="Name Team ${index + 1}" />`).join('')}
+            ${names.map((name, index) => `<input type="text" data-draw-team-name="${index}" maxlength="30" value="${escapeHtml(name)}" aria-label="Name Team ${index + 1}" />`).join('')}
           </div>
         </div>
         <div class="draw-tournament-options">

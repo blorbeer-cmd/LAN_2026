@@ -363,7 +363,7 @@ test('GET /api/push/log hides entries the player was not a recipient of, and mar
     !uninvolved.body.entries.some((e: { title: string }) => /Match ist bereit/.test(e.title)),
     'match-ready push must not appear for a player who was not a recipient'
   );
-  assert.ok(!uninvolved.body.entries.some((e: { body: string }) => /Feed Filter Turnier/.test(e.body)));
+  assert.ok(!uninvolved.body.entries.some((e: { title: string; body: string }) => /Feed Filter Turnier/.test(`${e.title} ${e.body}`)));
 
   const round2 = matches.filter((m: { round: number }) => m.round === 2);
   const readyTeamIds = [round2[0].teamAId, round2[0].teamBId];
@@ -372,8 +372,11 @@ test('GET /api/push/log hides entries the player was not a recipient of, and mar
     .flatMap((team: { players: Array<{ id: string }> }) => team.players.map((p) => p.id));
   const involved = await request(app).get(`/api/push/log?playerId=${teamPlayers[0]}`);
   // Positive check that participant-scoped entries do land in a recipient's
-  // feed: the created-push (audience 'all' within its recipient list) ...
-  assert.ok(involved.body.entries.some((e: { body: string }) => /Feed Filter Turnier/.test(e.body)));
+  // feed: the personal start push ...
+  const started = involved.body.entries.find((e: { title: string }) => e.title === 'Feed Filter Turnier startet');
+  assert.ok(started, 'the start push must appear for a participant');
+  assert.equal(started.audience, 'direct');
+  assert.equal(started.url, `/#tournaments/${created.body.id}/teams`);
   // ... and the personally-targeted match-ready push, marked 'direct'.
   const matchReady = involved.body.entries.find((e: { title: string }) => /Match ist bereit/.test(e.title));
   assert.ok(matchReady, 'match-ready push must appear for a recipient');
@@ -452,6 +455,42 @@ test('finishing a round-robin round pushes the next round\'s teams', async (t) =
   await request(app)
     .post('/api/push/unsubscribe')
     .send({ playerId, endpoint: 'https://push.example.com/sub-rr' });
+});
+
+test('a tournament start pushes each player their teammates and a link to the Teams section', async (t) => {
+  const sendMock = t.mock.method(pushTransport, 'send', async () => {});
+  const endpoint = 'https://push.example.com/sub-start';
+  await request(app).post('/api/push/subscribe').send({ playerId, subscription: { endpoint, keys: { p256dh: 'p', auth: 'a' } } });
+  const game = await request(app).post('/api/games').send({ name: 'Start Push Test Game' });
+  const mates: string[] = [];
+  for (const name of ['Start Mate', 'Start Rival']) {
+    mates.push((await request(app).post('/api/players').send({ name })).body.id);
+  }
+
+  const created = await request(app)
+    .post('/api/tournaments')
+    .send({
+      gameId: game.body.id,
+      name: 'Start Cup',
+      format: 'single_elimination',
+      teams: [{ playerIds: [playerId, mates[0]] }, { playerIds: [mates[1]] }],
+    });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const mine = sendMock.mock.calls
+    .filter((call) => (call.arguments[0] as { endpoint: string }).endpoint === endpoint)
+    .map((call) => JSON.parse(call.arguments[1] as string));
+  assert.equal(mine.length, 1, 'exactly one personal start push per device');
+  assert.equal(mine[0].title, 'Start Cup startet');
+  assert.equal(mine[0].body, 'Du spielst mit Start Mate in „Team 1“. Tippe hier und wählt euren Teamnamen.');
+  assert.equal(mine[0].url, `/#tournaments/${created.body.id}/teams`);
+
+  // The shared Kiosk banner keeps the neutral announcement, not a personal line.
+  const last = await request(app).get('/api/push/last');
+  assert.equal(last.body.entry.title, 'Neues Turnier');
+  assert.equal(last.body.entry.body, 'Start Cup');
+
+  await request(app).post('/api/push/unsubscribe').send({ playerId, endpoint });
 });
 
 test('finishing one group round pushes that group\'s next pairings', async (t) => {

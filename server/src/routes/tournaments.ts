@@ -33,6 +33,8 @@ import {
 export const tournamentsRouter = Router();
 
 const FORMATS: TournamentFormat[] = ['single_elimination', 'round_robin', 'group_knockout'];
+// Short enough for a bracket box and a phone-width team card.
+const TEAM_NAME_MAX_LENGTH = 30;
 const communicationEventId = (eventId: string): string => eventId;
 
 interface TournamentRow {
@@ -365,8 +367,8 @@ function validateTeamsInput(teams: unknown): TeamInput[] | { error: string } {
     if (!Array.isArray(t.playerIds) || t.playerIds.length === 0 || !t.playerIds.every((p) => typeof p === 'string')) {
       return { error: 'Jedes Team braucht mindestens einen Spieler (playerIds).' };
     }
-    if (t.name !== undefined && !isNonEmptyString(t.name, 60)) {
-      return { error: 'Team-Name muss 1-60 Zeichen lang sein.' };
+    if (t.name !== undefined && !isNonEmptyString(t.name, TEAM_NAME_MAX_LENGTH)) {
+      return { error: `Teamname muss 1-${TEAM_NAME_MAX_LENGTH} Zeichen lang sein.` };
     }
     for (const id of t.playerIds as string[]) {
       if (seen.has(id)) return { error: 'Ein Spieler kann nicht in mehreren Teams gleichzeitig stehen.' };
@@ -378,6 +380,57 @@ function validateTeamsInput(teams: unknown): TeamInput[] | { error: string } {
 }
 
 class DrawAlreadyUsedError extends Error {}
+class TeamNameTakenError extends Error {}
+
+// "Alex", "Alex und Kim", "Alex, Kim und Sam".
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} und ${names[names.length - 1]}`;
+}
+
+// The start of a tournament is when a team is most likely to want its own
+// name, so every participant gets a personal push that names their teammates
+// and deep-links into the Teams section (#tournaments/<id>/teams). The shared
+// Kiosk screen keeps the neutral "Neues Turnier" entry: a personal line would
+// read as addressed to everyone looking at it.
+function notifyTournamentStart(
+  tournamentId: string,
+  tournamentName: string,
+  teams: TeamInput[],
+  scope: { groupId: string; eventId: string },
+): void {
+  notifyPlayers(
+    [],
+    { title: 'Neues Turnier', body: tournamentName, url: `/#tournaments/${tournamentId}` },
+    'all',
+    { key: `tournament:${tournamentId}` },
+    scope,
+  );
+  const allPlayerIds = teams.flatMap((team) => team.playerIds);
+  const placeholders = allPlayerIds.map(() => '?').join(',');
+  const nameById = new Map(
+    (db.prepare(`SELECT id, name FROM players WHERE id IN (${placeholders})`).all(...allPlayerIds) as Array<{
+      id: string;
+      name: string;
+    }>).map((player) => [player.id, player.name]),
+  );
+  teams.forEach((team, index) => {
+    const teamName = team.name?.trim() || `Team ${index + 1}`;
+    for (const playerId of team.playerIds) {
+      const teammates = team.playerIds.filter((id) => id !== playerId).map((id) => nameById.get(id) ?? '?');
+      const body = teammates.length
+        ? `Du spielst mit ${joinNames(teammates)} in „${teamName}“. Tippe hier und wählt euren Teamnamen.`
+        : `Du spielst als „${teamName}“. Tippe hier und wähle deinen Teamnamen.`;
+      notifyPlayers(
+        [playerId],
+        { title: `${tournamentName} startet`, body, url: `/#tournaments/${tournamentId}/teams` },
+        'direct',
+        { key: `tournament:${tournamentId}:player:${playerId}` },
+        scope,
+      );
+    }
+  });
+}
 
 // POST /api/tournaments - create a tournament and generate its full
 // starting schedule immediately (the knockout bracket of group_knockout is
@@ -617,13 +670,10 @@ tournamentsRouter.post('/', (req, res) => {
       message: `Neues Turnier: ${tournamentName}`,
     },
   }, { groupId: req.group!.id, eventId: communicationEventId(eventId) });
-  notifyPlayers(
-    allPlayerIds,
-    { title: 'Neues Turnier', body: tournamentName, url: `/#tournaments/${tournamentId}` },
-    'all',
-    { key: `tournament:${tournamentId}` },
-    { groupId: req.group!.id, eventId: communicationEventId(eventId) },
-  );
+  notifyTournamentStart(tournamentId, tournamentName, teamsInput, {
+    groupId: req.group!.id,
+    eventId: communicationEventId(eventId),
+  });
   res.status(201).json(buildDetail(tournamentId, req.group!.id));
 });
 
@@ -1034,6 +1084,78 @@ function saveTournamentResult(req: Request, res: Response) {
 
 tournamentsRouter.post('/:id/matches/:matchId/result', saveTournamentResult);
 tournamentsRouter.put('/:id/matches/:matchId/result', saveTournamentResult);
+
+// PUT /api/tournaments/:id/teams/:teamId - renames a team while its
+// tournament runs. Members rename their own team; group admins may rename or
+// reset any team. Names are unique within a tournament (ignoring case); the
+// check and the update share one transaction so two teams racing for the
+// same name cannot both get it. Body: { name }
+tournamentsRouter.put('/:id/teams/:teamId', (req, res) => {
+  const { name } = req.body ?? {};
+  if (!isNonEmptyString(name, TEAM_NAME_MAX_LENGTH)) {
+    return res.status(400).json({ error: `Teamname muss 1-${TEAM_NAME_MAX_LENGTH} Zeichen lang sein.` });
+  }
+  const nextName = name.trim();
+  const tournament = db
+    .prepare('SELECT id, event_id, status FROM tournaments WHERE id = ? AND group_id = ?')
+    .get(req.params.id, req.group!.id) as { id: string; event_id: string; status: string } | undefined;
+  if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, tournament.event_id)) return;
+  const team = db
+    .prepare('SELECT id, name, player_ids FROM tournament_teams WHERE id = ? AND tournament_id = ?')
+    .get(req.params.teamId, tournament.id) as { id: string; name: string; player_ids: string } | undefined;
+  if (!team) return res.status(404).json({ error: 'Team nicht gefunden.' });
+
+  const isMember = (JSON.parse(team.player_ids) as string[]).includes(req.player!.id);
+  const isAdmin = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
+  if (!isMember && !isAdmin) {
+    return res.status(403).json({ error: 'Nur Mitglieder dieses Teams können den Namen ändern.' });
+  }
+  if (tournament.status !== 'active') {
+    return res.status(409).json({ error: 'Das Turnier ist beendet. Teamnamen lassen sich nicht mehr ändern.' });
+  }
+  if (nextName === team.name) return res.json(buildDetail(tournament.id, req.group!.id));
+
+  const rename = db.transaction(() => {
+    // Compared in JS: SQLite's lower() only folds ASCII, so "Ärger" and
+    // "ärger" would otherwise count as different names.
+    const nameKey = nextName.toLocaleLowerCase('de');
+    const otherNames = db
+      .prepare('SELECT name FROM tournament_teams WHERE tournament_id = ? AND id != ?')
+      .all(tournament.id, team.id) as Array<{ name: string }>;
+    if (otherNames.some((other) => other.name.toLocaleLowerCase('de') === nameKey)) throw new TeamNameTakenError();
+    db.prepare('UPDATE tournament_teams SET name = ? WHERE id = ?').run(nextName, team.id);
+  });
+  try {
+    rename();
+  } catch (error) {
+    if (error instanceof TeamNameTakenError) {
+      return res.status(409).json({ error: 'Diesen Namen hat schon ein anderes Team.' });
+    }
+    throw error;
+  }
+
+  const participantIds = (
+    db.prepare('SELECT player_ids FROM tournament_teams WHERE tournament_id = ?').all(tournament.id) as Array<{
+      player_ids: string;
+    }>
+  ).flatMap((row) => JSON.parse(row.player_ids) as string[]);
+  broadcast(
+    Events.tournamentsChanged,
+    {
+      type: 'team_renamed',
+      tournamentId: tournament.id,
+      teamId: team.id,
+      notify: {
+        playerIds: participantIds,
+        excludePlayerId: req.player!.id,
+        message: `${team.name} heißt jetzt „${nextName}“.`,
+      },
+    },
+    { groupId: req.group!.id, eventId: communicationEventId(tournament.event_id) },
+  );
+  res.json(buildDetail(tournament.id, req.group!.id));
+});
 
 // DELETE /api/tournaments/:id - removes the tournament and its teams/
 // matches (cascade); the `matches` rows already created for the leaderboard

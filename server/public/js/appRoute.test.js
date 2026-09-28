@@ -14,6 +14,12 @@ test('tournament detail routes survive hash round trips and a legacy create link
     searchTarget: null,
   });
   assert.equal(appHash('tournaments', { kind: 'detail', id: 'turnier 1' }), '#tournaments/turnier%201');
+  // The start push's Teams link targets the own team once; the stored hash
+  // drops the suffix so a reload does not replay the highlight.
+  const teamsLink = parseAppHash('#tournaments/cup/teams');
+  assert.deepEqual(teamsLink.localRoute, { kind: 'detail', id: 'cup' });
+  assert.deepEqual(teamsLink.searchTarget, { type: 'tournament-team', id: 'cup' });
+  assert.equal(appHash('tournaments', teamsLink.localRoute, teamsLink.searchTarget), '#tournaments/cup');
 });
 
 test('arcade game routes and existing targeted hashes stay distinct', () => {

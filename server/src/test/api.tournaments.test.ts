@@ -642,3 +642,63 @@ test('trackScore rejects a tied score for a knockout-shaped match', async () => 
   assert.equal(decisive.status, 200);
   assert.equal(decisive.body.status, 'completed');
 });
+
+test('PUT .../teams/:teamId lets members rename their own team and keeps names unique', async () => {
+  const created = await request(app)
+    .post('/api/tournaments')
+    .send({
+      gameId,
+      format: 'round_robin',
+      teams: [{ playerIds: [playerIds[0], playerIds[1]] }, { playerIds: [playerIds[2]] }, { playerIds: [playerIds[3]] }],
+    });
+  const [own, other] = created.body.teams as Array<{ id: string }>;
+  const url = (teamId: string) => `/api/tournaments/${created.body.id}/teams/${teamId}`;
+  const asMember = (teamId: string, name: unknown) =>
+    request(app).put(url(teamId)).set('x-test-player-id', playerIds[0]).send({ name });
+
+  const renamed = await asMember(own.id, '  Boost Brothers  ');
+  assert.equal(renamed.status, 200, JSON.stringify(renamed.body));
+  assert.equal(renamed.body.teams.find((t: { id: string }) => t.id === own.id).name, 'Boost Brothers');
+
+  assert.equal((await asMember(other.id, 'Fremd')).status, 403, 'members cannot rename another team');
+  assert.equal((await asMember(own.id, '   ')).status, 400);
+  assert.equal((await asMember(own.id, 42)).status, 400);
+  assert.equal((await asMember(own.id, 'x'.repeat(31))).status, 400);
+  assert.equal((await asMember(own.id, 'x'.repeat(30))).status, 200);
+
+  // The default test identity is a group admin and may rename any team;
+  // uniqueness ignores case, umlauts included.
+  assert.equal((await request(app).put(url(other.id)).send({ name: 'Ärger' })).status, 200);
+  assert.equal((await asMember(own.id, 'ärger')).status, 409);
+  assert.equal((await request(app).put(url('ghost')).send({ name: 'Geist' })).status, 404);
+});
+
+test('two teams racing for the same name: exactly one gets it', async () => {
+  const created = await request(app)
+    .post('/api/tournaments')
+    .send({ gameId, format: 'round_robin', teams: soloTeams(playerIds.slice(0, 2)) });
+  const [first, second] = created.body.teams as Array<{ id: string }>;
+  const results = await Promise.all([
+    request(app).put(`/api/tournaments/${created.body.id}/teams/${first.id}`).send({ name: 'Gleichstand' }),
+    request(app).put(`/api/tournaments/${created.body.id}/teams/${second.id}`).send({ name: 'gleichstand' }),
+  ]);
+  assert.deepEqual(results.map((res) => res.status).sort(), [200, 409]);
+  const detail = await request(app).get(`/api/tournaments/${created.body.id}`);
+  const names = detail.body.teams.map((team: { name: string }) => team.name.toLowerCase());
+  assert.equal(names.filter((name: string) => name === 'gleichstand').length, 1);
+});
+
+test('a completed tournament keeps its team names', async () => {
+  const created = await request(app)
+    .post('/api/tournaments')
+    .send({ gameId, format: 'single_elimination', teams: soloTeams(playerIds.slice(0, 2)) });
+  const final = created.body.matches[0];
+  const decided = await request(app)
+    .post(`/api/tournaments/${created.body.id}/matches/${final.id}/result`)
+    .send({ winnerTeamId: final.teamAId });
+  assert.equal(decided.body.status, 'completed');
+  const res = await request(app)
+    .put(`/api/tournaments/${created.body.id}/teams/${final.teamAId}`)
+    .send({ name: 'Zu spät' });
+  assert.equal(res.status, 409);
+});

@@ -353,17 +353,26 @@ export function createTournamentPresentation(myPlayerId = null) {
     return `<div class="tournament-group-stage"><div class="tournament-groups-grid">${groupBlocks}</div>${knockoutHtml}</div>`;
   }
 
-  function teamCardHtml(t, team, { winner = false } = {}) {
-    const mine = team.id === myTeamIdOf(t);
+  const isOwnTeam = (team) => Boolean(myPlayerId) && team.players.some((player) => player.id === myPlayerId);
+
+  function teamCardHtml(t, team, { winner = false, renamable = false, highlight = false } = {}) {
+    const mine = isOwnTeam(team);
+    // The own card carries a marker so a "wählt euren Teamnamen" deep link
+    // can open the Teams card and highlight exactly this team.
+    const ownMarker = mine ? ` data-own-tournament-team="${escapeHtml(t.id)}"` : '';
     return `
-        <div class="team-card tournament-team-card${mine ? ' is-mine' : ''}">
+        <div class="team-card tournament-team-card${mine ? ' is-mine' : ''}${highlight ? ' search-target-highlight' : ''}"${ownMarker}>
           <div class="team-card-header">
             <span class="row tournament-team-card-heading" style="gap:var(--space-2);">
               <span class="tournament-team-card-name">${escapeHtml(team.name)}</span>${mine ? MY_TEAM_HINT : ''}
               ${teamSkillHtml(team.players, t.gameId, { balanced: false, current: true })}
               ${winner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}
             </span>
-            <span class="muted">${team.players.length} Spieler</span>
+            ${
+              renamable
+                ? `<button type="button" class="tournament-fixture-action" data-rename-team="${escapeHtml(team.id)}" aria-label="${escapeHtml(`Teamnamen ändern: ${team.name}`)}" title="Teamnamen ändern">${icon('pencil')}</button>`
+                : `<span class="muted">${team.players.length} Spieler</span>`
+            }
           </div>
           ${
             team.players.length
@@ -393,8 +402,14 @@ export function createTournamentPresentation(myPlayerId = null) {
     </section>`;
   }
 
-  function renderTournamentTeams(t, { teamsOpen = false } = {}) {
-    const cards = t.teams.map((team) => teamCardHtml(t, team)).join('');
+  // canRename(team) decides per team whether the pencil appears (own team
+  // or a group admin, while the tournament runs). The own team leads the
+  // grid so it is found without scanning.
+  function renderTournamentTeams(t, { teamsOpen = false, canRename = () => false, highlightOwn = false } = {}) {
+    const ordered = [...t.teams.filter(isOwnTeam), ...t.teams.filter((team) => !isOwnTeam(team))];
+    const cards = ordered
+      .map((team) => teamCardHtml(t, team, { renamable: canRename(team), highlight: highlightOwn && isOwnTeam(team) }))
+      .join('');
 
     // Teams are a lookup next to the live bracket, so they sit in the shared
     // collapsible card that starts closed (open state lives in the view).

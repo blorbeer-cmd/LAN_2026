@@ -20,6 +20,22 @@ import { isGroupAdmin } from '../groupContext.js';
 
 // Open state of the detail page's collapsible Teams card across re-renders.
 let tournamentTeamsOpen = false;
+// Tournament whose own team card stays highlighted after arriving through the
+// start push (#tournaments/<id>/teams). Kept here rather than as a one-off DOM
+// class so the live re-renders right after startup do not drop it.
+let ownTeamFocusFor = null;
+
+// Called by app.js before rendering a "tournament-team" target.
+export function prepareTournamentTeamTarget(tournamentId) {
+  ownTeamFocusFor = tournamentId;
+  tournamentTeamsOpen = true;
+}
+
+// Called by app.js when navigating away, so a later ordinary visit of the
+// same tournament does not replay the highlight.
+export function clearTournamentTeamTarget() {
+  ownTeamFocusFor = null;
+}
 
 // Horizontal position of the bracket across re-renders. A live update rebuilds
 // the board, so without this the bracket would jump back to its first round.
@@ -173,7 +189,7 @@ function renderDetail(container, ctx) {
       ${renderChampion(t)}
       ${activeLobbies}
       ${board}
-      ${renderTournamentTeams(t, { teamsOpen: tournamentTeamsOpen })}
+      ${renderTournamentTeams(t, { teamsOpen: tournamentTeamsOpen, canRename: (team) => canRenameTeam(t, team), highlightOwn: ownTeamFocusFor === t.id })}
     </div>
   `;
 
@@ -210,12 +226,85 @@ function renderDetail(container, ctx) {
     }
   });
 
+  container.querySelectorAll('[data-rename-team]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const index = t.teams.findIndex((team) => team.id === btn.dataset.renameTeam);
+      if (index !== -1) openRenameTeamDialog(t, t.teams[index], index, ctx);
+    });
+  });
+
   container.querySelectorAll('[data-open-result]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const match = t.matches.find((candidate) => candidate.id === btn.dataset.openResult);
       if (match) openResultDialog(t, match, matchPhaseLabel(t, match), ctx);
     });
   });
+}
+
+// Mirrors the server rule: a member renames their own team, a group admin
+// any team, and only while the tournament is still running.
+function canRenameTeam(t, team) {
+  if (t.status === 'completed') return false;
+  const myId = getMyId();
+  return isGroupAdmin() || Boolean(myId && team.players.some((player) => player.id === myId));
+}
+
+const TEAM_NAME_MAX_LENGTH = 30;
+
+function openRenameTeamDialog(t, team, index, ctx) {
+  const defaultName = `Team ${index + 1}`;
+  const players = team.players.map((player) => player.name).join(', ');
+  const { close, el } = openModal('Teamnamen ändern', `
+    <div class="muted result-dialog-subtitle">${escapeHtml(t.name)}${players ? ` · ${escapeHtml(players)}` : ''}</div>
+    <form class="stack" data-rename-team-form novalidate>
+      <div>
+        <label class="field-label is-required" for="rename-team-name">Teamname</label>
+        <input type="text" id="rename-team-name" maxlength="${TEAM_NAME_MAX_LENGTH}" required autocomplete="off" value="${escapeHtml(team.name)}" />
+        <div class="row-between muted" style="font-size:var(--font-size-xs);margin-top:var(--space-1);">
+          <span>Im Turnier eindeutig</span><span data-rename-team-count aria-hidden="true"></span>
+        </div>
+      </div>
+      <p class="notice">Alle sehen den neuen Namen sofort – im Turnierbaum, bei den Lobbys und auf dem Broadcast.</p>
+      <div class="row-between">
+        ${team.name === defaultName ? '<span></span>' : `<button type="button" class="btn btn-sm" data-rename-team-reset>Auf „${escapeHtml(defaultName)}“ zurücksetzen</button>`}
+        <button type="submit" class="btn btn-primary btn-sm">Speichern</button>
+      </div>
+    </form>`);
+  const input = el.querySelector('#rename-team-name');
+  const count = el.querySelector('[data-rename-team-count]');
+  const updateCount = () => {
+    count.textContent = `${input.value.trim().length}/${TEAM_NAME_MAX_LENGTH}`;
+  };
+  updateCount();
+  input.addEventListener('input', updateCount);
+  input.select();
+
+  let saving = false;
+  async function save(name) {
+    if (saving) return;
+    if (!name) {
+      showToast('Bitte einen Teamnamen eintragen.', { error: true });
+      input.focus();
+      return;
+    }
+    saving = true;
+    try {
+      detailCache = await api.tournaments.renameTeam(t.id, team.id, name);
+      ownTeamFocusFor = null;
+      close();
+      ctx.rerender();
+      showToast('Teamname gespeichert.');
+    } catch (err) {
+      showToast(err.message, { error: true });
+    } finally {
+      saving = false;
+    }
+  }
+  el.querySelector('[data-rename-team-form]').addEventListener('submit', (event) => {
+    event.preventDefault();
+    save(input.value.trim());
+  });
+  el.querySelector('[data-rename-team-reset]')?.addEventListener('click', () => save(defaultName));
 }
 
 // Tournament persistence keeps scoreA/scoreB and expectedPlayedAt; the form
