@@ -17,7 +17,7 @@ function sessionCookie(res: request.Response): string {
   return cookie!.split(';')[0];
 }
 
-test('new accounts receive onboarding and must complete the first ten catalog ratings', async () => {
+test('new accounts can complete onboarding without catalog ratings', async () => {
   const adminId = nanoid();
   db.prepare('INSERT INTO players (id, name, api_key, is_admin, created_at) VALUES (?, ?, ?, 1, ?)').run(
     adminId,
@@ -60,6 +60,22 @@ test('new accounts receive onboarding and must complete the first ten catalog ra
     .set('Cookie', memberCookie)
     .send({ status: 'completed', ratingStatus: 'completed' });
   assert.equal(bypassAttempt.status, 400);
+
+  const completedWithoutRatings = await request(app)
+    .post('/api/me/onboarding/complete')
+    .set('Cookie', memberCookie)
+    .send();
+  assert.equal(completedWithoutRatings.status, 200, JSON.stringify(completedWithoutRatings.body));
+  assert.equal(completedWithoutRatings.body.status, 'completed');
+  assert.equal(completedWithoutRatings.body.lastCoreStep, 7);
+  assert.equal(completedWithoutRatings.body.ratingStatus, 'completed');
+  assert.deepEqual(completedWithoutRatings.body.ratingCandidateIds, []);
+
+  const resetForLegacyRatingCoverage = await request(app)
+    .put('/api/me/onboarding')
+    .set('Cookie', memberCookie)
+    .send({ status: 'pending', lastCoreStep: 0, ratingStatus: 'pending' });
+  assert.equal(resetForLegacyRatingCoverage.status, 200, JSON.stringify(resetForLegacyRatingCoverage.body));
 
   const games: Array<{ id: string; name: string }> = [];
   for (let index = 0; index < 12; index += 1) {

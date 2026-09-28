@@ -1,23 +1,17 @@
-// First-login orientation and the mandatory first ten catalog ratings.
-// The tour owns only its progress; games, skills and preferences remain in
-// the existing shared state and APIs.
+// First-login orientation. The tour owns only its progress; the product
+// areas it introduces keep their existing state and APIs.
 
 import { api } from './api.js';
 import { state } from './state.js';
 import { getMyId } from './whoami.js';
 import { escapeHtml } from './format.js';
 import { showToast } from './toast.js';
-import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { sectionEntryView } from './sectionNav.js';
 import { eventHasFeature, viewIsEnabledForEvent } from './eventFeatures.js';
 
-// Start with Home and its event context, follow the bottom nav (Match, Vote, Essen), then the
-// individual areas under "Mehr" (which itself sits after Essen in the nav),
-// and finally the game catalog last since its own step is what hands off
-// into the mandatory rating mode below (see nextCoreStep()). Admin-only
-// insights are appended only for admins, after the Admin step has introduced
-// their entry point.
-const MEHR_TARGET = '.desktop-nav, .nav-btn[data-view="more"]';
+// Start with personal orientation, then explain the shared event context and
+// the main LAN flows. The game catalog stays last so the tour ends on the
+// page where players can optionally add their first ratings.
 
 function navigationTarget(view, { compactFallback = view } = {}) {
   return `.desktop-nav-btn[data-view="${view}"], .nav-btn[data-view="${compactFallback}"]`;
@@ -28,7 +22,7 @@ export function visibleOnboardingTarget(selector, queryRoot = document) {
     .find((element) => element.getClientRects().length > 0) ?? null;
 }
 
-export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
+export function buildOnboardingSteps() {
   const steps = [
     {
       title: 'Home',
@@ -37,8 +31,20 @@ export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
       target: navigationTarget('home'),
     },
     {
+      title: 'Mein Profil',
+      text: 'Im Profil verwaltest du Gamertag, Avatar-Farbe und deine Ansicht: Automatisch, Desktop oder Laptop. Hier richtest du bei Bedarf den Tracking-Agent für deinen PC und Push-Mitteilungen ein.',
+      view: 'profile',
+      target: navigationTarget('profile', { compactFallback: 'more' }),
+    },
+    {
+      title: 'Orga',
+      text: 'Hier plant ihr die LAN: Über Umfragen klärt ihr Termine und andere Fragen. Weitere Reiter zeigen An- und Abreise, Events, Packliste und To-Dos.',
+      view: sectionEntryView('orga'),
+      target: navigationTarget(sectionEntryView('orga'), { compactFallback: 'more' }),
+    },
+    {
       title: 'Aktives Event',
-      text: 'Wähle oben im Header über den Eventnamen aus, in welchem Event du gerade arbeitest. Die Auswahl steuert, welche Bereiche verfügbar sind und zu welchem Event Home, Vote, Essen, Orga und Live-Status Daten zeigen und speichern. Unter Orga → Events findest du die Eventübersicht; Admins legen dort neue Events an und verwalten Einladungen.',
+      text: 'Wähle oben im Header über den Eventnamen aus, in welchem Event du gerade bist.',
       view: 'home',
       target: '#event-context .search-select-control',
     },
@@ -56,66 +62,16 @@ export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
     },
     {
       title: 'Essen',
-      text: 'Hier organisiert ihr Sammelbestellungen und seht pro Person Positionen, Gesamtbetrag und Bezahlstatus. Ist ein PayPal-Link hinterlegt, kannst du damit zahlen; mit „Bezahlt?“ markierst du deinen Block als bezahlt.',
+      text: 'Hier organisiert ihr Sammelbestellungen und seht pro Person Positionen, Gesamtbetrag und Bezahlstatus. Ist ein PayPal-Link hinterlegt, kannst du damit zahlen.',
       view: 'foodOrders',
       target: navigationTarget('foodOrders'),
     },
     {
-      title: 'Weitere Bereiche',
-      text: 'Am Laptop findest du weitere Bereiche unter Mehr. Auf dem Desktop stehen sie links in LAN, Orga und Sonstiges. Info ist oben im Header, Feedback oben oder links in der Desktop-Ansicht. Die Suche oben führt direkt zu Bereichen und Inhalten.',
-      view: 'more',
-      target: MEHR_TARGET,
-    },
-    {
-      title: 'Mein Profil',
-      text: 'Im Profil verwaltest du Gamertag, Avatar-Farbe und deine Ansicht: Automatisch, Desktop oder Laptop. Hier richtest du bei Bedarf den Tracking-Agent für deinen PC und Push-Mitteilungen ein.',
-      view: 'profile',
-      target: navigationTarget('profile', { compactFallback: 'more' }),
-    },
-    {
-      title: 'Arcade',
-      text: 'Hier spielt ihr Zwischendurch-Games wie Tetris, Snake oder Pong gegeneinander in eigenen Lobbys. Unter Statistiken seht ihr eure persönliche Bilanz für jedes Arcade-Spiel.',
-      view: 'arcade',
-      target: navigationTarget('arcade', { compactFallback: 'more' }),
-    },
-    {
-      title: 'Durchsage',
-      text: 'Hier verschickst du Durchsagen an die bestätigten Teilnehmenden des aktiven Events, zum Beispiel wenn das Essen da ist. Sie erscheinen auf verbundenen Geräten und bleiben in der Historie nachlesbar.',
-      view: 'broadcast',
-      target: navigationTarget('broadcast', { compactFallback: 'more' }),
-    },
-    {
-      title: 'Jam',
-      text: 'Hier sucht ihr Spotify-Titel und Playlists und fügt Songwünsche hinzu. Mehrere Wünsche könnt ihr außerhalb einer laufenden Playlist sortieren. Ein Musik-PC oder Broadcast steuert Spotify; nur dort ist ein Spotify-Premium-Konto nötig.',
-      view: 'music',
-      target: navigationTarget('music', { compactFallback: 'more' }),
-    },
-    {
-      title: 'Orga',
-      text: 'Hier plant ihr die LAN: Über Umfragen klärt ihr Termine und andere Fragen. Weitere Reiter zeigen An- und Abreise, Events, Packliste und To-Dos. Unter „Mir zugewiesen“ findest du deine offenen Aufgaben mit Fälligkeit.',
-      view: sectionEntryView('orga'),
-      target: navigationTarget(sectionEntryView('orga'), { compactFallback: 'more' }),
+      title: 'Spielekatalog',
+      text: 'Bewerte die ersten zehn Spiele mit Bock und Skill. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.',
+      view: 'gameCatalog',
     },
   ];
-  if (isAdmin) {
-    steps.push({
-      title: 'Admin',
-      text: 'Hier behältst du als Admin die LAN-Bereitschaft im Blick und verwaltest Nutzer, Sitzplan und Backups. Über den Werkzeug-Eintrag „Auswertung“ erreichst du außerdem Rangliste, Statistiken und Hall of Fame, die sonst nirgends verlinkt sind.',
-      view: 'admin',
-      target: navigationTarget('admin', { compactFallback: 'more' }),
-    });
-    steps.push({
-      title: 'Event-Auswahl',
-      text: 'In den Auswertungen kannst du Spielzeit, Matches, Turniere und Arcade-Ergebnisse nach Event filtern. Achte vor jeder Auswertung darauf, welches Event im Dropdown ausgewählt ist – sonst siehst du möglicherweise die Daten einer anderen LAN oder aller Events.',
-      view: 'analytics',
-      target: 'section[aria-label="Ansicht"] .search-select-control',
-    });
-  }
-  steps.push({
-    title: 'Spielekatalog',
-    text: 'Bewerte die ersten zehn Spiele mit Bock und Skill. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung; die Chips „Bock offen“ und „Skill offen“ helfen dir später, schnell noch unbewertete Spiele zu finden.',
-    view: 'gameCatalog',
-  });
   return steps.filter((step) => viewIsEnabledForEvent(step.view, state.activeEvent));
 }
 
@@ -125,7 +81,6 @@ function buildSteps() {
 
 let runtime = null;
 let candidateSyncPending = false;
-let ratingResumePending = false;
 let targetPositioningInstalled = false;
 
 function root() {
@@ -133,7 +88,7 @@ function root() {
 }
 
 function isRatingActive() {
-  return Boolean(runtime?.state?.ratingStatus === 'active' && runtime.state.ratingCandidateIds.length > 0);
+  return Boolean(runtime?.mode === 'rating' && runtime.state.ratingStatus === 'active' && runtime.state.ratingCandidateIds.length > 0);
 }
 
 function requiredRatingIds() {
@@ -213,22 +168,12 @@ function positionTargetRing() {
   ring.style.top = `${rect.top}px`;
   ring.style.width = `${rect.width}px`;
   ring.style.height = `${rect.height}px`;
-  // The dialog defaults to a bottom anchor, which sits directly above a
-  // target in the bottom nav - too close on short viewports for the ring
-  // and the explanation text to stay visually separate. Flip the dialog to
-  // the top for any target in the lower half of the viewport (currently:
-  // every bottom-nav step) so the highlighted icon and the text never
-  // compete for the same screen area.
-  root()?.querySelector('.onboarding-dialog')?.classList.toggle('onboarding-dialog--top', rect.top > window.innerHeight / 2);
 }
 
 function syncTarget() {
   clearTargetHighlight();
   const step = runtime?.mode === 'core' ? runtime.steps[runtime.step] : null;
-  if (!step?.target) {
-    root()?.querySelector('.onboarding-dialog')?.classList.remove('onboarding-dialog--top');
-    return;
-  }
+  if (!step?.target) return;
   const target = visibleOnboardingTarget(step.target);
   if (!target) return;
   runtime.targetElement = target;
@@ -354,7 +299,7 @@ function renderCore() {
         <button type="button" class="btn" data-onboarding-skip>Tour überspringen</button>
         <span class="onboarding-actions-spacer"></span>
         <button type="button" class="btn" data-onboarding-back ${runtime.step === 0 ? 'disabled' : ''}>Zurück</button>
-        <button type="button" class="btn btn-primary" data-onboarding-next>${runtime.step === runtime.steps.length - 1 ? 'Bewertungen öffnen' : 'Weiter'}</button>
+        <button type="button" class="btn btn-primary" data-onboarding-next>${runtime.step === runtime.steps.length - 1 ? 'Abschließen' : 'Weiter'}</button>
       </div>
     </section>`;
   root().querySelector('[data-onboarding-next]').addEventListener('click', () => void nextCoreStep().catch(handleOnboardingError));
@@ -401,16 +346,9 @@ async function saveCore(patch) {
 
 async function nextCoreStep() {
   if (runtime.step === runtime.steps.length - 1) {
-    runtime.state = await api.onboarding.rating.start({ includeAll: false });
-    clearTargetHighlight();
-    if (runtime.state.ratingStatus === 'completed') {
-      closeOverlay();
-      runtime.rerender();
-      return;
-    }
-    runtime.mode = 'rating';
-    runtime.navigate('gameCatalog');
-    renderOverlay();
+    runtime.state = await api.onboarding.complete();
+    closeOverlay();
+    runtime.rerender();
     return;
   }
   runtime.step += 1;
@@ -428,16 +366,9 @@ async function previousCoreStep() {
 }
 
 async function skipTour() {
-  runtime.state = await api.onboarding.rating.start({ includeAll: false });
-  clearTargetHighlight();
-  if (runtime.state.ratingStatus === 'completed') {
-    closeOverlay();
-    runtime.rerender();
-    return;
-  }
-  runtime.mode = 'rating';
-  runtime.navigate('gameCatalog');
-  renderOverlay();
+  runtime.state = await api.onboarding.complete();
+  closeOverlay();
+  runtime.rerender();
 }
 
 async function includeAllGames() {
@@ -459,24 +390,6 @@ async function deferRating() {
   runtime.deferredThisSession = true;
   closeOverlay();
   runtime.rerender();
-}
-
-async function resumeDeferredRating() {
-  if (ratingResumePending || !runtime) return;
-  ratingResumePending = true;
-  try {
-    runtime.state = await api.onboarding.rating.start({ includeAll: runtime.state.ratingCandidateIds.length > 10 });
-    if (runtime.state.ratingStatus === 'completed') {
-      closeOverlay();
-      runtime.rerender();
-      return;
-    }
-    runtime.mode = 'rating';
-    runtime.navigate('gameCatalog');
-    renderOverlay();
-  } finally {
-    ratingResumePending = false;
-  }
 }
 
 export function refreshOnboardingRatingProgress() {
@@ -518,34 +431,16 @@ export async function initOnboarding({ navigate, rerender, getCurrentView }) {
 
 export function maybeStartOnboarding() {
   if (!runtime || runtime.mode || runtime.deferredThisSession) return;
-  // The current onboarding culminates in mandatory Bock/Skill ratings and is
-  // therefore a LAN/game-area flow. A general event must not force people
-  // through hidden gaming screens; the pending state remains available when
-  // they later enter a LAN workspace.
+  // The tour ends in the game catalog and is therefore a LAN/game-area flow.
+  // A general event must not force people through hidden gaming screens; the
+  // pending state remains available when they later enter a LAN workspace.
   if (!eventHasFeature(state.activeEvent, 'games')) return;
-  const shouldResumeCore = (runtime.state.status === 'pending' || runtime.state.status === 'active')
-    && runtime.state.ratingStatus !== 'deferred'
-    && runtime.state.ratingStatus !== 'completed';
-  const shouldResumeRating = ['active', 'deferred'].includes(runtime.state.ratingStatus)
-    && runtime.state.ratingCandidateIds.length > 0;
-  if (!shouldResumeCore && !shouldResumeRating) return;
+  const shouldResumeCore = runtime.state.status === 'pending' || runtime.state.status === 'active';
+  if (!shouldResumeCore) return;
   runtime.previousFocus = document.activeElement;
-  if (runtime.state.ratingStatus === 'deferred') {
-    void resumeDeferredRating().catch(handleOnboardingError);
-    return;
-  }
-  if (shouldResumeRating) {
-    runtime.mode = 'rating';
-    runtime.navigate('gameCatalog');
-  } else {
-    // Player data (and with it the admin role the step list depends on) may
-    // still be loading when initOnboarding() first builds runtime.steps -
-    // refresh it here, right before the tour actually becomes visible, and
-    // re-clamp the saved step index against the now-current step count.
-    runtime.steps = buildSteps();
-    runtime.step = Math.min(Math.max(runtime.step, 0), runtime.steps.length - 1);
-    runtime.mode = 'core';
-    runtime.navigate(runtime.steps[runtime.step].view);
-  }
+  runtime.steps = buildSteps();
+  runtime.step = Math.min(Math.max(runtime.step, 0), runtime.steps.length - 1);
+  runtime.mode = 'core';
+  runtime.navigate(runtime.steps[runtime.step].view);
   renderOverlay();
 }

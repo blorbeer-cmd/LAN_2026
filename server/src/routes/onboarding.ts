@@ -6,10 +6,8 @@ export const onboardingRouter = Router();
 
 export const ONBOARDING_VERSION = 1;
 // Upper bound for the persisted step index (see buildOnboardingSteps() in
-// onboarding.js): 14 steps for admins (including both event-selection steps),
-// two fewer for everyone else — index 13 is the highest either variant can
-// reach.
-export const CORE_STEP_COUNT = 13;
+// onboarding.js): eight shared steps make index 7 the highest value.
+export const CORE_STEP_COUNT = 7;
 const MAX_SEEN_VIEWS = 20;
 
 type OnboardingStatus = 'pending' | 'active' | 'completed' | 'skipped';
@@ -230,15 +228,26 @@ onboardingRouter.put('/', requireUser, (req, res) => {
   return res.json(updateState(req.player!.id, patch));
 });
 
+onboardingRouter.post('/complete', requireUser, (req, res) => {
+  return res.json(updateState(req.player!.id, {
+    status: 'completed',
+    lastCoreStep: CORE_STEP_COUNT,
+    ratingStatus: 'completed',
+    ratingCandidateIds: [],
+    completedAt: Date.now(),
+  }));
+});
+
 // Test fixtures need a deterministic way to keep unrelated browser flows out
 // of the first-login tour. This route is deliberately unavailable outside the
-// test process; production clients must use rating/complete instead.
+// test process; production clients use /complete instead.
 onboardingRouter.post('/test-complete', requireUser, (req, res) => {
   if (process.env.NODE_ENV !== 'test') return res.sendStatus(404);
   return res.json(updateState(req.player!.id, {
     status: 'completed',
     lastCoreStep: CORE_STEP_COUNT,
     ratingStatus: 'completed',
+    ratingCandidateIds: [],
     completedAt: Date.now(),
   }));
 });
