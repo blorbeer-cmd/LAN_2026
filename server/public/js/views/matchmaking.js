@@ -950,7 +950,10 @@ function wireHistory(container, selectedGameId, ctx) {
 }
 
 function renderActiveTournaments() {
-  const active = filteredTournaments(undefined, false);
+  // This overview is the live status of Match, not part of the filterable
+  // history. It must therefore retain every running tournament while the
+  // filters below narrow open draws and historical entries.
+  const active = (tournamentCache ?? []).filter((tournament) => tournament.status !== 'completed');
   if (!active.length && !tournamentError) return '';
   return `<section class="card stack grouped-page-section matchmaking-active-tournaments" aria-labelledby="match-active-tournaments-title">
     <div class="grouped-page-section-title"><h2 id="match-active-tournaments-title">Laufende Turniere</h2></div>
