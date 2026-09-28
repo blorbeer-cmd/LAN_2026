@@ -162,7 +162,7 @@ export function renderEventExcuseActions(event) {
   if (!event || event.isEnded || eventIsGroup(event)) return '';
   return `
     <div class="event-excuse-actions">
-      <span class="event-card-detail-label">Paralleltermin?</span>
+      <span class="event-card-detail-label">Keine Zeit?</span>
       <button type="button" class="btn btn-sm" data-event-excuse="${escapeHtml(event.id)}">Ausrede generieren</button>
     </div>`;
 }

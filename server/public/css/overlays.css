@@ -269,15 +269,6 @@
   pointer-events: auto;
 }
 
-/* Used instead of the default bottom anchor when the step's highlighted
-   target sits in the lower half of the viewport (the bottom nav) - keeps
-   the explanation text from sitting directly over the icon it's pointing
-   at. Set by onboarding.js after measuring the target. */
-.onboarding-dialog--top {
-  top: calc(var(--topbar-height) + var(--space-4));
-  bottom: auto;
-}
-
 .onboarding-progress {
   margin: 0 0 var(--space-2);
   color: var(--text-muted);
@@ -407,10 +398,6 @@
 @media (min-width: 640px) { /* --bp-md */
   .onboarding-dialog {
     bottom: var(--space-6);
-  }
-
-  .onboarding-dialog--top {
-    bottom: auto;
   }
 }
 

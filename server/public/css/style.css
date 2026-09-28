@@ -1709,28 +1709,10 @@ textarea {
     border-radius: var(--radius-sm);
     transition: color 0.15s ease, background 0.15s ease;
   }
-  :root[data-layout-mode='desktop'] .desktop-nav-btn::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 0;
-    width: var(--space-1);
-    height: calc(100% - var(--space-2));
-    border-radius: var(--radius-full);
-    background: var(--accent-gradient);
-    opacity: 0;
-    transform: translateY(-50%) scaleY(0.55);
-    transition: opacity 0.18s ease, transform 0.18s ease;
-    pointer-events: none;
-  }
   :root[data-layout-mode='desktop'] .desktop-nav-btn.active {
     color: var(--accent);
     font-weight: var(--font-weight-bold);
     background: var(--accent-bg);
-  }
-  :root[data-layout-mode='desktop'] .desktop-nav-btn.active::before {
-    opacity: 1;
-    transform: translateY(-50%) scaleY(1);
   }
   :root[data-layout-mode='desktop'] .desktop-nav-icon {
     position: relative;

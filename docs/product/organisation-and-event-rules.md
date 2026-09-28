@@ -342,7 +342,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   safety question, and one week after confirmation it receives one final direct calendar check while
   the event is still upcoming.
   Directly below the calendar group, the same information box carries the second deliberate gag of
-  this area: „Paralleltermin?“ plus „Ausrede generieren“ opens the Ausreden-Generator
+  this area: „Keine Zeit?“ plus „Ausrede generieren“ opens the Ausreden-Generator
   (`eventExcuses.js`, `renderEventExcuseActions`/`wireEventExcuseActions` in `events.js`). It writes
   an excuse for whatever *other* appointment collides with the event, so no entry ever names the
   event itself — the text is meant to be sent to the organizer of the competing date. The action
