@@ -13,7 +13,7 @@ import { icon } from './icons.js';
 function step(input, direction) {
   const before = input.value;
   // `stepUp()`/`stepDown()` throw InvalidStateError on a `step="any"` field
-  // (e.g. the free-form "Wert" score input) since the browser has no fixed
+  // (e.g. a free-form "Punktestand" input) since the browser has no fixed
   // step size to apply there — fall back to whole-number steps, the same
   // default the browser uses when no step attribute is present at all.
   if (input.step === 'any') {

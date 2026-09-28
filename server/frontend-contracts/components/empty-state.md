@@ -133,8 +133,6 @@ steht im [Paket-5-Inventar](../evidence/package-5-baseline.tsv). Es gibt keine b
 
 - `registry:empty-state-vote`: Centered result/history slot in Vote.
 
-- `registry:empty-state-tournament`: Stable tournament collection empty slot.
-
 - `registry:empty-state-hall-of-fame`: Hall-of-Fame result slot spans the result layout.
 
 - `registry:empty-state-notifications`: Shared empty/loading/error slot inside the notification panel.

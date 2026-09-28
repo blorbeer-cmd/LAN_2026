@@ -333,6 +333,9 @@ test('GET /api/tournaments lists tournaments for the active event, newest first'
   assert.equal(res.status, 200);
   assert.ok(res.body.length >= 4);
   assert.ok(res.body.every((t: { gameId: string }) => typeof t.gameId === 'string'));
+  const bracket = res.body.find((t: { id: string }) => t.id === bracketId);
+  assert.deepEqual(new Set(bracket.participantIds), new Set(playerIds),
+    'collapsed tournament cards can identify participants without loading the board');
 });
 
 test('DELETE /api/tournaments/:id removes it but keeps its leaderboard matches', async () => {
@@ -386,6 +389,12 @@ test('a Match draw becomes a tournament exactly once and is then frozen for sing
     .patch(`/api/matchmaking/draws/${draw.body.id}/move`)
     .send({ playerId: teams[0].playerIds[0], toTeamIndex: 1 });
   assert.equal(moved.status, 409);
+
+  assert.equal((await request(app).delete(`/api/tournaments/${created.body.id}`)).status, 204);
+  const afterDelete = await request(app).get(`/api/matchmaking/history?gameId=${gameId}&kind=matches`);
+  const restored = afterDelete.body.openDraws.find((entry: { id: string }) => entry.id === draw.body.id);
+  assert.equal(restored.tournamentId, null);
+  assert.equal(afterDelete.body.history.some((entry: { id: string }) => entry.id === draw.body.id), false);
 });
 
 test('a draw with a recorded result cannot become a tournament', async () => {

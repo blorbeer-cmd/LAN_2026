@@ -82,7 +82,6 @@ function lifecycle(view, options = {}) {
 }
 
 export const SECTION_MANIFEST = Object.freeze({
-  competition: Object.freeze({ label: 'Match', iconKey: 'swords' }),
   insights: Object.freeze({ label: 'Auswertung', iconKey: 'trophy' }),
   orga: Object.freeze({
     label: 'Orga',
@@ -110,18 +109,18 @@ export const VIEW_MANIFEST = Object.freeze({
     ] }),
   }),
   matchmaking: defineView({
-    label: 'Teams', section: 'competition', sectionOrder: 0, iconKey: 'scale', eventFeature: 'competition',
+    label: 'Match', iconKey: 'scale', eventFeature: 'competition',
     search: search('Match', 'Auslosen, Captain Draft und Historie', 'match wettkampf teams auslosen matchmaking captain draft kraft team-historie ergebnis-historie', 98),
     navigation: Object.freeze({
       bottom: Object.freeze({
-        lan: Object.freeze({ order: 1, label: 'Match', ariaLabel: 'Match: Teams und Turniere', iconKey: 'competition' }),
-        group: Object.freeze({ order: 1, label: 'Match', ariaLabel: 'Match: Teams und Turniere', iconKey: 'competition' }),
+        lan: Object.freeze({ order: 1, label: 'Match', ariaLabel: 'Match: Teams und Turniere', iconKey: 'tournaments' }),
+        group: Object.freeze({ order: 1, label: 'Match', ariaLabel: 'Match: Teams und Turniere', iconKey: 'tournaments' }),
       }),
-      desktop: desktopNavigation('lan', 0, { eventTypes: ['lan', 'group'], label: 'Match', iconKey: 'competition' }),
+      desktop: desktopNavigation('lan', 0, { eventTypes: ['lan', 'group'], label: 'Match', iconKey: 'tournaments' }),
     }),
     lifecycle: lifecycle('matchmaking', { eventScoped: true, reconnect: true, invalidateOn: [
       CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard,
-      'matchmaking:generated', 'matchmaking:draws-changed', 'draft:changed',
+      'matchmaking:generated', 'matchmaking:draws-changed', 'draft:changed', 'tournaments:changed',
     ] }),
   }),
   votes: defineView({
@@ -184,8 +183,7 @@ export const VIEW_MANIFEST = Object.freeze({
     lifecycle: lifecycle('profile', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.events] }),
   }),
   tournaments: defineView({
-    label: 'Turniere', section: 'competition', sectionOrder: 1, iconKey: 'swords', eventFeature: 'competition',
-    search: search('Match', 'Turniere anlegen und Ergebnisse verwalten', 'match wettkampf tournament ko runde bracket', 99),
+    label: 'Turniere', iconKey: 'swords', eventFeature: 'competition',
     lifecycle: lifecycle('tournaments', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard, 'tournaments:changed'] }),
   }),
   hallOfFame: defineView({

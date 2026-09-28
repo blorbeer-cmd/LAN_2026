@@ -41,10 +41,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 ## Bereich-Tabs
 
 - **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
-  (Match, Auswertung and compact LAN/group Orga; defined in `sectionNav.js`). General events present
+  (Auswertung and compact LAN/group Orga; defined in `sectionNav.js`). Match opens directly without tabs;
+  running tournaments and history are inside Match, while a tournament has its own detail route. General events present
   every Orga route as a standalone page with its own title because those routes are their primary
   navigation, not a secondary Orga collection. A group instead keeps Umfragen and To-Do as the two
-  tabs of its secondary Orga area. Match and Auswertung use `.section-page-header`; LAN/group Orga
+  tabs of its secondary Orga area. Auswertung uses `.section-page-header`; LAN/group Orga
   uses `.more-subpage-header--tabs` on phone and laptop layouts. Those headers place tabs
   on a dedicated second row and share the intentional lower first-card edge. Desktop LAN/group Orga
   hides the duplicate tabs and shows the opened page's title in the compact header. Every tab row

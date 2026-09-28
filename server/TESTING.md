@@ -255,7 +255,7 @@ Wiederholungsfall ab.
 ## Visuelle Referenzen
 
 `visualCore.e2e.test.ts` gehört zu Core/`flows` und zeigt das ausgefüllte Spielvorschlagsformular
-aus `views/gameCatalog.js`, Roster, Tabs/Filter,
+aus `views/gameCatalog.js`, Match-Setup, Roster, Filter,
 Kartenfooter, Modal und Admin-Datenzeile bei 390 und 1024 px. `visualArcade.e2e.test.ts`
 zeigt die Erstellungszeile bei 320, 390 und 1024 px und gehört auch zu Arcade-Smoke.
 Die Szenen benutzen echte UI-Pfade, feste Browserzeit, `de-DE`, `Europe/Berlin`,

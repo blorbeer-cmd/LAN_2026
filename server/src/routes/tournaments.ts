@@ -307,11 +307,24 @@ tournamentsRouter.get('/', (req, res) => {
     )
     .all(req.group!.id, filterEventId) as Array<Record<string, unknown>>;
 
+  // The list backs collapsed Match tiles. Include roster IDs so a viewer can
+  // recognize their tournament without fetching every full board first.
+  const participantIdsByTournament = new Map<string, string[]>();
+  const teamRosters = db.prepare(`SELECT tt.tournament_id AS tournamentId, tt.player_ids AS playerIds
+    FROM tournament_teams tt JOIN tournaments t ON t.id = tt.tournament_id
+    WHERE t.group_id = ? AND t.event_id = ?`).all(req.group!.id, filterEventId) as
+    Array<{ tournamentId: string; playerIds: string }>;
+  for (const roster of teamRosters) {
+    participantIdsByTournament.set(roster.tournamentId,
+      [...(participantIdsByTournament.get(roster.tournamentId) ?? []), ...JSON.parse(roster.playerIds) as string[]]);
+  }
+
   res.json(
     rows.map((r) => ({
       ...r,
       twoLegged: Boolean(r.twoLegged),
       championName: r.status === 'completed' ? championName(r.id as string, req.group!.id) : null,
+      participantIds: participantIdsByTournament.get(r.id as string) ?? [],
     })),
   );
 });
@@ -587,8 +600,7 @@ tournamentsRouter.post('/', (req, res) => {
   }
 
   // Every participant gets nudged that they've been entered into a new
-  // tournament — otherwise the only way to notice is to happen to open the
-  // Turniere tab.
+  // tournament — its notification opens this tournament's detail directly.
   broadcast(Events.tournamentsChanged, {
     type: 'created',
     tournamentId,
@@ -602,7 +614,7 @@ tournamentsRouter.post('/', (req, res) => {
   }, { groupId: req.group!.id, eventId: communicationEventId(eventId) });
   notifyPlayers(
     allPlayerIds,
-    { title: 'Neues Turnier', body: tournamentName, url: '/#tournaments' },
+    { title: 'Neues Turnier', body: tournamentName, url: `/#tournaments/${tournamentId}` },
     'all',
     { key: `tournament:${tournamentId}` },
     { groupId: req.group!.id, eventId: communicationEventId(eventId) },
@@ -731,7 +743,7 @@ function saveTournamentResult(req: Request, res: Response) {
   // once every match in a round is decided, the next round's matches are
   // "up", so their teams get notified. Populated inside the transaction
   // below with the ids of any matches that just became ready this way.
-  let readyRoundRobinMatchIds: string[] = [];
+  let readyNextRoundMatchIds: string[] = [];
 
   const record = db.transaction(() => {
     const leaderboardResult = JSON.stringify({
@@ -792,7 +804,7 @@ function saveTournamentResult(req: Request, res: Response) {
         )
         .get(tournament.id, match.round) as { n: number };
       if (!isCorrection && roundRemaining.n === 0) {
-        readyRoundRobinMatchIds = (
+        readyNextRoundMatchIds = (
           db
             .prepare('SELECT id FROM tournament_matches WHERE tournament_id = ? AND round = ? ORDER BY slot')
             .all(tournament.id, match.round + 1) as Array<{ id: string }>
@@ -809,6 +821,26 @@ function saveTournamentResult(req: Request, res: Response) {
           db.prepare("UPDATE tournaments SET status = 'completed' WHERE id = ?").run(tournament.id);
         }
       } else if (match.stage === 'group') {
+        // Each group advances its own round independently. Its next pairings
+        // are known from the start, but become playable when this group's
+        // current round is complete, just like a pure league round.
+        const groupRoundRemaining = db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM tournament_matches
+             WHERE tournament_id = ? AND stage = 'group' AND group_index = ? AND round = ?
+               AND is_bye = 0 AND winner_team_id IS NULL AND is_draw = 0`
+          )
+          .get(tournament.id, match.group_index, match.round) as { n: number };
+        if (!isCorrection && groupRoundRemaining.n === 0) {
+          readyNextRoundMatchIds = (
+            db
+              .prepare(
+                `SELECT id FROM tournament_matches
+                 WHERE tournament_id = ? AND stage = 'group' AND group_index = ? AND round = ? ORDER BY slot`
+              )
+              .all(tournament.id, match.group_index, match.round + 1) as Array<{ id: string }>
+          ).map((row) => row.id);
+        }
         const remaining = db
           .prepare(
             `SELECT COUNT(*) AS n FROM tournament_matches
@@ -905,7 +937,7 @@ function saveTournamentResult(req: Request, res: Response) {
     };
     notifyPlayers(
       matchNotify.playerIds,
-      { title: 'Dein Match ist bereit', body: matchNotify.message, url: '/#tournaments' },
+      { title: 'Dein Match ist bereit', body: matchNotify.message, url: `/#tournaments/${tournament!.id}` },
       'direct',
       { key: `tournament:${tournament!.id}:match:${matchId}` },
       notificationScope,
@@ -929,7 +961,7 @@ function saveTournamentResult(req: Request, res: Response) {
     };
     notifyPlayers(
       playerIds,
-      { title: 'K.O.-Runde steht', body: knockoutNotify.message, url: '/#tournaments' },
+      { title: 'K.O.-Runde steht', body: knockoutNotify.message, url: `/#tournaments/${tournament!.id}` },
       'direct',
       { key: `tournament:${tournament!.id}:stage:knockout` },
       notificationScope,
@@ -944,11 +976,11 @@ function saveTournamentResult(req: Request, res: Response) {
         ? buildMatchReadyNotify(readyNextMatchId)
         : undefined;
 
-  // A round wrapping up can ready several next-round matches at once (round-
-  // robin isn't gated to one match at a time like the bracket is), so each
+  // A league or group round can ready several next-round matches at once
+  // (unlike a bracket, which waits for both feeder teams), so each
   // gets its own broadcast/toast rather than trying to cram them into the
   // single `notify` slot the response below uses.
-  for (const matchId of readyRoundRobinMatchIds) {
+  for (const matchId of readyNextRoundMatchIds) {
     const roundNotify = buildMatchReadyNotify(matchId);
     if (!roundNotify) continue;
     const roundBase = {

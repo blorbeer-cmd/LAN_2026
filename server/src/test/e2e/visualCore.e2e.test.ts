@@ -58,11 +58,18 @@ for (const width of [390, 1024]) {
         assert.equal(layout.columns, width < 640 ? 1 : 2);
         await assertNoOverflow(roster);
       });
-      const tabs = page.locator('.section-tabs');
-      await scenes.capture(`core-tabs-${width}`, tabs, async () => {
-        assert.equal(await tabs.locator('[aria-current="page"]').getAttribute('data-section-tab'), 'matchmaking');
-        await assertControlHeights(tabs.locator('button'));
-        await assertNoOverflow(tabs);
+      const setup = page.locator('.matchmaking-setup-head');
+      await scenes.capture(`core-match-setup-${width}`, setup, async () => {
+        assert.equal(await page.locator('[data-section-tab="matchmaking"]').count(), 0);
+        assert.equal(await setup.locator('label[for="mm-game-search"]').innerText(), 'Spiel auswählen');
+        assert.equal(await setup.locator('[data-mm-mode][aria-pressed="true"]').count(), 1);
+        if (width >= 640) {
+          const mode = await setup.locator('.selection-toolbar').boundingBox();
+          const game = await setup.locator('#mm-game-search').boundingBox();
+          assert.ok(mode && game && mode.x + mode.width < game.x, 'mode choice should sit left of game choice');
+        }
+        await assertControlHeights(setup.locator('#mm-game-search, [data-mm-mode]'));
+        await assertNoOverflow(setup);
       });
       const footer = page.locator('[aria-labelledby="matchmaking-draw-title"] .card-footer-actions');
       await scenes.capture(`core-footer-${width}`, footer, async () => {

@@ -39,12 +39,12 @@ function inSection(view, render) {
 
 export const VIEW_REGISTRY = createViewRegistry({
   home: renderHome,
-  matchmaking: inSection('matchmaking', renderMatchmaking),
+  matchmaking: renderMatchmaking,
   votes: renderVotes,
   leaderboard: inSection('leaderboard', renderLeaderboard),
   analytics: inSection('analytics', renderAnalytics),
   profile: renderProfile,
-  tournaments: inSection('tournaments', renderTournaments),
+  tournaments: renderTournaments,
   hallOfFame: inSection('hallOfFame', renderHallOfFame),
   seating: renderSeating,
   myStats: renderMyStats,

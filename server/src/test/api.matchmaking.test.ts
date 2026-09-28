@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { nanoid } from 'nanoid';
-import { createTestApp } from './testApp';
+import { createTestApp, TEST_ADMIN_ID } from './testApp';
 import { db, DEFAULT_GROUP_ID } from '../db';
 
 const app = createTestApp();
@@ -237,6 +237,60 @@ test('GET /api/matchmaking/history does not leak draws from other games', async 
   const res = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
   assert.equal(res.status, 200);
   assert.ok(res.body.history.every((h: { gameId: string }) => h.gameId === gameId));
+});
+
+test('history pages recorded matches before the limit and keeps open draws separate', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Paged History Game' });
+  const createDraw = (ids = playerIds.slice(0, 2)) => request(app).post('/api/matchmaking').send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+  const oldest = await createDraw([TEST_ADMIN_ID, playerIds[0]]);
+  const middle = await createDraw();
+  const reroll = await createDraw([TEST_ADMIN_ID, playerIds[0]]);
+  const newest = await createDraw();
+  for (const [draw, time] of [[oldest, 1000], [middle, 2000], [reroll, 3000], [newest, 4000]] as const) {
+    assert.equal(draw.status, 200);
+    db.prepare('UPDATE matchmaking_draws SET generated_at = ? WHERE id = ?').run(time, draw.body.id);
+  }
+  for (const draw of [oldest, middle]) {
+    const recorded = await request(app).post('/api/matches').send({
+      gameId: game.body.id,
+      teams: draw.body.teams.map((team: { players: Array<{ id: string }> }) => ({
+        playerIds: team.players.map((player) => player.id),
+      })),
+      winnerTeamIndex: 0,
+      drawId: draw.body.id,
+    });
+    assert.equal(recorded.status, 201);
+  }
+  const teams = newest.body.teams.map((team: { players: Array<{ id: string }> }, index: number) => ({
+    name: `Team ${index + 1}`, playerIds: team.players.map((player) => player.id),
+  }));
+  const tournament = await request(app).post('/api/tournaments').send({
+    gameId: game.body.id, format: 'single_elimination', teams, drawId: newest.body.id,
+  });
+  assert.equal(tournament.status, 201);
+
+  const first = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&limit=1`);
+  assert.equal(first.status, 200);
+  assert.deepEqual(first.body.history.map((draw: { id: string }) => draw.id), [middle.body.id]);
+  assert.deepEqual(first.body.openDraws.map((draw: { id: string }) => draw.id), [reroll.body.id]);
+  assert.ok(first.body.nextCursor);
+  const second = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&limit=1&before=${first.body.nextCursor.before}&beforeId=${first.body.nextCursor.beforeId}`);
+  assert.deepEqual(second.body.history.map((draw: { id: string }) => draw.id), [oldest.body.id]);
+  assert.equal(second.body.nextCursor, null);
+  assert.equal(second.body.openDraws, undefined);
+
+  // Both newer records were created by this admin but do not include them.
+  // Participation must filter before LIMIT and also scope the open lineup.
+  const mine = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&mine=1&limit=1`);
+  assert.equal(mine.status, 200);
+  assert.deepEqual(mine.body.history.map((draw: { id: string }) => draw.id), [oldest.body.id]);
+  assert.deepEqual(mine.body.openDraws.map((draw: { id: string }) => draw.id), [reroll.body.id]);
+  assert.equal(mine.body.nextCursor, null);
+  const unfiltered = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&mine=0&limit=1`);
+  assert.deepEqual(unfiltered.body.history.map((draw: { id: string }) => draw.id), [middle.body.id]);
+  for (const value of ['yes', '1&mine=0']) {
+    assert.equal((await request(app).get(`/api/matchmaking/history?mine=${value}`)).status, 400);
+  }
 });
 
 test('POST /api/matchmaking returns a draw id and null matchId', async () => {
@@ -519,4 +573,51 @@ test('PATCH /api/matchmaking/draws/:id/move rejects once a result was recorded f
     .patch(`/api/matchmaking/draws/${draw.body.id}/move`)
     .send({ playerId: ids[0], toTeamIndex: 1 });
   assert.equal(moved.status, 409);
+});
+
+test('DELETE /api/matchmaking/draws/:id removes open draws and recorded matches from history and ranking', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Delete Draw Card Game' });
+  const p1 = await request(app).post('/api/players').send({ name: 'DeleteDrawA' });
+  const p2 = await request(app).post('/api/players').send({ name: 'DeleteDrawB' });
+  const ids = [p1.body.id, p2.body.id];
+  const makeDraw = () => request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+
+  const open = await makeDraw();
+  assert.equal((await request(app).delete(`/api/matchmaking/draws/${open.body.id}`)).status, 204);
+  const afterOpen = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches`);
+  assert.equal(afterOpen.body.openDraws.some((draw: { id: string }) => draw.id === open.body.id), false);
+
+  const played = await makeDraw();
+  const recorded = await request(app).post('/api/matches').send({
+    gameId: game.body.id,
+    teams: played.body.teams.map((team: { players: Array<{ id: string }> }) =>
+      ({ playerIds: team.players.map((player) => player.id) })),
+    winnerTeamIndex: 0,
+    drawId: played.body.id,
+  });
+  assert.equal(recorded.status, 201);
+  assert.equal((await request(app).delete(`/api/matchmaking/draws/${played.body.id}`)).status, 204);
+  const afterPlayed = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches`);
+  assert.equal(afterPlayed.body.history.some((draw: { id: string }) => draw.id === played.body.id), false);
+  assert.equal(afterPlayed.body.openDraws.some((draw: { id: string }) => draw.id === played.body.id), false);
+  assert.equal(db.prepare('SELECT id FROM matches WHERE id = ?').get(recorded.body.id), undefined);
+  assert.deepEqual((await request(app).get(`/api/leaderboard?gameId=${game.body.id}`)).body.standings, []);
+});
+
+test('DELETE /api/matchmaking/draws/:id protects tournament-owned draws', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Delete Tournament Draw Guard' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 2), teamCount: 2 });
+  const tournament = await request(app).post('/api/tournaments').send({
+    gameId: game.body.id,
+    format: 'single_elimination',
+    drawId: draw.body.id,
+    teams: draw.body.teams.map((team: { players: Array<{ id: string }> }) =>
+      ({ playerIds: team.players.map((player) => player.id) })),
+  });
+  assert.equal(tournament.status, 201);
+  const deleted = await request(app).delete(`/api/matchmaking/draws/${draw.body.id}`);
+  assert.equal(deleted.status, 409);
+  assert.ok(db.prepare('SELECT id FROM tournaments WHERE id = ?').get(tournament.body.id));
 });

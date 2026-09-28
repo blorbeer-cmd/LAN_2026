@@ -26,7 +26,7 @@ test('every section tab is a real route and belongs to exactly one section', () 
 });
 
 test('a section is entered on its first tab and its tabs share one nav group', () => {
-  assert.equal(sectionEntryView('competition'), 'matchmaking');
+  assert.equal(sectionEntryView('competition'), null);
   assert.equal(sectionEntryView('insights'), 'leaderboard');
   assert.equal(sectionEntryView('checklist'), null);
   // Orga's tabs are sorted alphabetically for display, so its first tab is
@@ -35,7 +35,8 @@ test('a section is entered on its first tab and its tabs share one nav group', (
   // other section.
   assert.equal(sectionEntryView('orga'), 'eventPolls');
 
-  assert.deepEqual(SECTIONS.competition.tabs.map((tab) => tab.view), ['matchmaking', 'tournaments']);
+  assert.equal(sectionForView('matchmaking'), null);
+  assert.equal(sectionForView('tournaments'), null);
   assert.equal(navGroupForView('matchmaking'), navGroupForView('tournaments'));
   assert.equal(navGroupForView('hallOfFame'), navGroupForView('leaderboard'));
   // A route outside every section stands for itself.
@@ -131,17 +132,17 @@ function stubContainer() {
 
 test('the shell renders the area title, marks the active tab and returns the content slot', () => {
   const container = stubContainer();
-  const slot = renderSectionShell(container, 'matchmaking');
+  const slot = renderSectionShell(container, 'leaderboard');
   assert.equal(slot, container.sectionView);
   assert.match(container.innerHTML, /class="section-page-header"/);
-  assert.match(container.innerHTML, /<h1 class="view-title">Match<\/h1>/);
-  for (const tab of SECTIONS.competition.tabs) {
+  assert.match(container.innerHTML, /<h1 class="view-title">Auswertung<\/h1>/);
+  for (const tab of SECTIONS.insights.tabs) {
     assert.ok(container.innerHTML.includes(`data-section-tab="${tab.view}"`), tab.view);
   }
   // Exactly the active tab is marked, for assistive tech and visually.
   assert.equal((container.innerHTML.match(/aria-current="page"/g) ?? []).length, 1);
-  assert.match(container.innerHTML, /data-section-tab="matchmaking" aria-current="page"/);
-  assert.match(container.innerHTML, /data-section-tab="matchmaking"[^>]*>Teams</);
+  assert.match(container.innerHTML, /data-section-tab="leaderboard" aria-current="page"/);
+  assert.match(container.innerHTML, /data-section-tab="leaderboard"[^>]*>Rangliste</);
 
   // Tabs carry their plain label only, never a count.
   renderSectionShell(container, 'checklist');

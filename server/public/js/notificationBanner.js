@@ -100,7 +100,7 @@ export function entryHtml(entry) {
   // The whole entry is the link: opening it marks it read. Entries without a
   // target view are only marked read.
   const openAttrs = view
-    ? `data-notification-navigate="${view}" data-notification-target="${escapeHtml(target?.id ?? '')}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" aria-label="${escapeHtml(`${feedEntryTitle(entry)}: ${FEED_LINK_LABELS[view]}`)}"`
+    ? `data-notification-navigate="${view}" data-notification-target="${escapeHtml(target?.id ?? '')}" data-notification-target-type="${escapeHtml(target?.type ?? '')}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" aria-label="${escapeHtml(`${feedEntryTitle(entry)}: ${FEED_LINK_LABELS[view]}`)}"`
     : 'data-notification-mark-seen';
   return `<article class="notification-center-entry${unread ? ' is-unread' : ''}${obsolete ? ' is-obsolete' : ''}" data-notification-entry="${entry.id}">
     <button type="button" class="notification-center-open" ${openAttrs} data-notification-id="${entry.id}">
@@ -333,7 +333,7 @@ export function renderBanner() {
       markSeen(control.dataset.notificationId, {
         navigate: control.dataset.notificationNavigate,
         eventId: control.dataset.notificationEventId,
-        target: control.dataset.notificationTarget ? { type: 'order', id: control.dataset.notificationTarget } : null,
+        target: control.dataset.notificationTarget ? { type: control.dataset.notificationTargetType, id: control.dataset.notificationTarget } : null,
       })
     );
   });
