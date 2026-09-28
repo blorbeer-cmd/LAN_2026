@@ -64,8 +64,9 @@ function nextPowerOfTwo(n: number): number {
 // seed 1 and seed 2 can only meet in the final, seeds 1-4 can only meet from
 // the semis on, etc. This is the same scheme sports brackets use; since our
 // "seeds" are really just an arbitrary team order (no ranking data to seed
-// by), the caller is expected to shuffle teamIds beforehand if randomness is
-// wanted — this function only controls bracket *shape*, not team order.
+// by), tournament creation shuffles teamIds beforehand; the group-stage
+// knockout instead passes a deliberate order (see selectAdvancers). This
+// function only controls bracket *shape*, not team order.
 function seedOrder(n: number): number[] {
   if (n === 1) return [1];
   const prev = seedOrder(n / 2);
@@ -258,8 +259,8 @@ export function computeRoundRobinStandings(
 // ---------- Group stage + knockout ----------
 
 // Deals teams into groupCount groups as evenly as possible (round-robin
-// dealing, so group sizes never differ by more than one). Caller decides
-// team order beforehand (e.g. shuffled) — this only controls the split.
+// dealing, so group sizes never differ by more than one). Tournament creation
+// shuffles the team order beforehand — this only controls the split.
 export function assignGroups(teamIds: string[], groupCount: number): string[][] {
   if (groupCount < 2) throw new Error('Es müssen mindestens 2 Gruppen sein.');
   if (teamIds.length < groupCount * 2) {
