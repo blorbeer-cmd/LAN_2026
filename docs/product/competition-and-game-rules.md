@@ -371,7 +371,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   ballot over.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
   closed and retains its open state across live re-renders.
-- **Tournament overview** — Match lists running tournaments as compact „Aktuell“ style rows with „Öffnen“ above its setup. The selected game's „Ohne Ergebnis“ section keeps running tournaments as collapsible history tiles; completed tournaments belong in the history filter. The compact rows say „Öffnen“ instead of showing a disclosure chevron. Every tournament starts from a Match draw or Captain
+- **Tournament overview** — Match lists running tournaments as compact „Aktuell“ style rows above its setup. These whole-row actions highlight on pointer hover and show keyboard focus, without a trailing chevron or „Öffnen“ label. The selected game's „Ohne Ergebnis“ section keeps running tournaments as collapsible history tiles; completed tournaments belong in the history filter. Every tournament starts from a Match draw or Captain
   Draft; there is no separate creation page or tournament tab. Legacy `#tournaments` and
   `#tournaments/new` routes replace themselves with `#matchmaking`. A tournament detail link keeps
   its own `#tournaments/<id>` route, including search, Home and browser history navigation. The

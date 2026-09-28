@@ -323,7 +323,8 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   row with the To-Do symbol, the title and the colour-free due text, or — while none are taken
   yet — a single row nudging toward the shared pool's still-open To-Dos; with neither, the
   tile stays hidden rather than offering an empty link into the full list. Every current
-  item is a single full-row action that navigates into its source view.
+  item is a single full-row action that navigates into its source view. „Aktuell“ rows use hover
+  highlighting and visible keyboard focus without a trailing navigation arrow.
   Current items and To-Dos use the same compact, divided row treatment inside their main card.
   The personal status and player entries remain nested cards on the secondary elevated background;
   „Gerade aktiv“ is a subsection of

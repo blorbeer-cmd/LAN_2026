@@ -415,10 +415,10 @@ export function createTournamentPresentation(myPlayerId = null) {
     // collapsible card that starts closed (open state lives in the view).
     return `<details class="card grouped-page-section collapsible-section" data-tournament-teams ${teamsOpen ? 'open' : ''}>
       <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         <h2>Teams</h2>
         <span class="collapsible-section-summary-end">
           <span class="badge badge-offline">${t.teams.length}</span>
-          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         </span>
       </summary>
       <div class="collapsible-section-content"><div class="tournament-team-grid">${cards}</div></div>

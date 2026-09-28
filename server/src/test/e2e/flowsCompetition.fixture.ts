@@ -361,6 +361,21 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await latestToggle.getAttribute('aria-expanded'), 'false', 'the latest result starts collapsed');
   assert.equal(await currentVote.locator('.event-poll-card-header .vote-win-chip').count(), 1);
   assert.equal(await currentVote.locator('.event-poll-option:visible').count(), 0);
+  // A desktop header has room for its result and actions on one line.
+  // On a phone those contents deliberately wrap instead of being clipped.
+  await page.setViewportSize({ width: 1280, height: 844 });
+  const rankingDisclosure = page.locator('details.collapsible-section').filter({ hasText: 'Top 10 nach Bock-Level' });
+  const latestGeometry = await currentVote.evaluate((card) => ({
+    height: card.getBoundingClientRect().height,
+    titleX: card.querySelector('strong')!.getBoundingClientRect().x,
+  }));
+  const rankingGeometry = await rankingDisclosure.evaluate((card) => ({
+    height: card.getBoundingClientRect().height,
+    titleX: card.querySelector('h2')!.getBoundingClientRect().x,
+  }));
+  assert.equal(latestGeometry.height, rankingGeometry.height, 'closed Vote sections share one height');
+  assert.equal(latestGeometry.titleX, rankingGeometry.titleX, 'closed Vote section titles align');
+  await page.setViewportSize({ width: 390, height: 844 });
   await latestToggle.click();
   await page.waitForFunction(
     (expected) => document.querySelectorAll('section[aria-labelledby="vote-current-result-title"] .event-poll-option').length === expected,

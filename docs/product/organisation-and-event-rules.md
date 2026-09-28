@@ -393,9 +393,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   includes every invited account and labels each row as `Zugesagt`, `Einladung offen` or
   `Abgelehnt`; its summary separates accepted and still-open invitation counts. Member cards remain
   accepted-only and expose neither pending/declined identities nor that management status. Participant lists use
-  the shared collapsible-section behavior with a trailing chevron after the name and metadata,
+  the shared collapsible-section behavior with a leading chevron before the name and metadata,
   start closed and preserve their open state across live re-renders. Their people remain one full-width
-  row per line at every breakpoint so payment proof and the creator's toggle have predictable room;
+  row per line at every breakpoint so payment proof and the creator's toggle have predictable room.
+  Payment managers' rows reserve one line for the payment proof even before payment, keeping paid
+  and unpaid rows equally high. Without proof the name stays vertically centered in that space;
+  recording payment moves it up to make room for the proof. Longer proof stays on one line with
+  the full text in its tooltip;
   owner/admin cards integrate Einladen, Erneut einladen and Entfernen directly in this list.
   Eligible people without an invitation follow existing roster entries with an Einladen action.
   Ended events omit those uninvited rows. Creating an event opens its card and roster directly;

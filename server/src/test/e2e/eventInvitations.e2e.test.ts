@@ -594,10 +594,39 @@ test('manager invites a member who accepts and both open clients update', async 
   await creatorPaymentButton.click();
   await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]`).waitFor();
   assert.equal(await ownerPage.locator('.modal-backdrop [data-mark-all-event-paid]').count(), 0);
+  await memberRow.locator('[data-toggle-event-paid][aria-pressed="false"]').waitFor();
+  const unpaidRowHeight = await memberRow.evaluate((row) => row.getBoundingClientRect().height);
+  const unpaidNamePosition = await memberRow.locator('.event-participant-name').evaluate((block) => {
+    const name = block.querySelector('.player-name')!.getBoundingClientRect();
+    const box = block.getBoundingClientRect();
+    return { offset: name.top - box.top, centerGap: name.top + name.height / 2 - box.top - box.height / 2 };
+  });
+  assert.equal(unpaidNamePosition.centerGap, 0, 'an unpaid name stays centered in its reserved space');
+  await ownerPage.setViewportSize({ width: 390, height: 844 });
+  const unpaidPhoneRowHeight = await memberRow.evaluate((row) => row.getBoundingClientRect().height);
+  await ownerPage.setViewportSize({ width: 1024, height: 800 });
   await creatorPaymentButton.click();
   await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="true"]`).waitFor();
   await memberRow.locator('.event-payment-proof', { hasText: `Bezahlt von ${OWNER_NAME}` }).waitFor();
   assert.match((await memberRow.textContent()) ?? '', new RegExp(`Bezahlt von ${OWNER_NAME}`));
+  assert.ok(
+    await memberRow.locator('.event-participant-name').evaluate((block) =>
+      block.querySelector('.player-name')!.getBoundingClientRect().top - block.getBoundingClientRect().top
+    ) < unpaidNamePosition.offset,
+    'recording payment moves the name up above its proof',
+  );
+  assert.equal(
+    await memberRow.evaluate((row) => row.getBoundingClientRect().height),
+    unpaidRowHeight,
+    'recording payment must not change the participant row height',
+  );
+  await ownerPage.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await memberRow.evaluate((row) => row.getBoundingClientRect().height),
+    unpaidPhoneRowHeight,
+    'payment proof must not move the participant actions onto another line on phones',
+  );
+  await ownerPage.setViewportSize({ width: 1024, height: 800 });
 
   await creatorPaymentButton.click();
   await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]`).waitFor();

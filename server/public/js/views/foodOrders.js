@@ -463,8 +463,8 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
 
   const leftHtml = collapsible
     ? `<button type="button" class="food-order-group-toggle" data-group-toggle="${playerId}" data-order="${order.id}" aria-expanded="${expanded ? 'true' : 'false'}">
-         ${headText}
          ${icon('chevronRight', { className: 'food-order-group-chevron' })}
+         ${headText}
        </button>`
     : `<div class="food-order-group-static">${headText}</div>`;
 
@@ -898,8 +898,8 @@ function renderOrderCard(order, myId, { collapsible = false } = {}) {
   const titleHtml = `<strong class="food-order-card-title">${escapeHtml(order.title)}</strong>`;
   const headerLeft = collapsible
     ? `<button type="button" class="food-order-card-header-toggle" data-order-toggle="${order.id}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="food-order-card-body-${order.id}" aria-label="Bestellung ${escapeHtml(order.title)} ${expanded ? 'einklappen' : 'ausklappen'}">
-         ${titleHtml}
          ${icon('chevronRight', { className: 'food-order-card-chevron' })}
+         ${titleHtml}
        </button>`
     : titleHtml;
   const actionsHtml = renderOrderActions(order, myId, { expanded });
@@ -1511,10 +1511,10 @@ export function renderFoodOrders(container, ctx) {
         closedOrders.length
           ? `<details class="card grouped-page-section collapsible-section" data-food-history="history" ${historyOpen ? 'open' : ''}>
                <summary class="collapsible-section-header">
+                 <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
                  <h2>Historie</h2>
                  <span class="collapsible-section-summary-end">
                    <span class="badge badge-offline">${closedOrders.length}</span>
-                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
                  </span>
                </summary>
                <div class="collapsible-section-content">

@@ -550,7 +550,8 @@ function renderHistory(group) {
   return `
     <details class="collapsible-section event-poll-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
       <summary class="collapsible-section-header">
-        <span>Frühere Runden (${history.length})</span><span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
+        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
+        <span>Frühere Runden (${history.length})</span>
       </summary>
       <div class="collapsible-section-content event-poll-history-list">${history.map(renderHistoryRound).join('')}</div>
     </details>`;
@@ -562,10 +563,10 @@ function renderEndedPolls(groups, eventId) {
   return `
     <details class="card grouped-page-section history-details collapsible-section event-poll-ended-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
       <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
         <h2>Historie</h2>
         <span class="collapsible-section-summary-end">
           <span class="badge badge-offline">${groups.length}</span>
-          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
         </span>
       </summary>
       <div class="collapsible-section-content stack event-poll-list">${groups.map(renderPollGroup).join('')}</div>
@@ -587,11 +588,11 @@ function renderPollGroup(group) {
     <article class="card event-poll-card" data-poll-group="${escapeHtml(group.key)}" data-poll-card="${escapeHtml(latest.id)}">
       <header class="event-poll-card-header">
         <button type="button" class="event-poll-card-toggle" data-toggle-poll="${escapeHtml(group.key)}" aria-expanded="${expanded}">
+          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
           <span class="event-poll-card-title">
             <strong>${escapeHtml(latest.title)}</strong>
             <span class="event-poll-card-meta-line"><span class="muted">${meta}</span>${bestResult ? `<span class="event-poll-best-result">${WIN_CHIP}<span>${escapeHtml(bestResult)}</span></span>` : ''}${pollStatusBadge(latest.status)}<span class="event-poll-answer-inline">${answerStatusChip(latest)}</span></span>
           </span>
-          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
         </button>
         <div class="event-poll-card-side">
           <span class="event-poll-answer-side">${answerStatusChip(latest)}</span>

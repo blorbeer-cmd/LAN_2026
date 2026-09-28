@@ -357,13 +357,13 @@ function renderAcceptedParticipants(event, { includeInvitationStatuses = false }
   return `
     <details class="collapsible-section food-order-group event-card-participants" data-event-participants="${escapeHtml(event.id)}" ${isExpanded ? 'open' : ''}>
       <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
         <span class="event-participant-toggle">
           <span class="food-order-group-headtext">
             <strong>${rosterTitle}</strong>
             <span class="muted food-order-group-meta">${participantCountLabel}</span>
           </span>
         </span>
-        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
       </summary>
       <div class="collapsible-section-content">
         ${includeInvitationStatuses && event.isEnded ? '<p class="muted event-participants-note">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}
@@ -379,7 +379,7 @@ function renderAcceptedParticipants(event, { includeInvitationStatuses = false }
                   ${avatarHtml(player, 24)}
                   <span class="event-participant-name">
                     <span class="player-name">${escapeHtml(participant.name)}</span>
-                    ${canManagePayments && participant.paid ? `<small class="event-payment-proof">${escapeHtml(paymentProof(participant))}</small>` : ''}
+                    ${canManagePayments ? `<small class="event-payment-proof" title="${participant.paid ? escapeHtml(paymentProof(participant)) : ''}">${participant.paid ? escapeHtml(paymentProof(participant)) : ''}</small>` : ''}
                   </span>
                   ${participation ? `<span class="badge ${participation.badge}">${participation.label}</span>` : ''}
                   ${canManagePayments && participant.status === 'accepted'
@@ -685,8 +685,8 @@ function renderEventCardToggle(event, expanded, titleHtml, metaParts) {
   const kind = eventIsGroup(event) ? 'Gruppe' : 'Event';
   const label = `${kind} ${event.name}, ${metaParts.join(', ')}, ${expanded ? 'einklappen' : 'ausklappen'}`;
   return `<button type="button" class="food-order-card-header-toggle" data-event-card-toggle="${escapeHtml(event.id)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="event-card-body-${escapeHtml(event.id)}" aria-label="${escapeHtml(label)}">
-    ${titleHtml}
     ${icon('chevronRight', { className: 'food-order-card-chevron' })}
+    ${titleHtml}
   </button>`;
 }
 
@@ -864,10 +864,10 @@ function renderWorkspaceSection({
         declinedEvents.length > 0
           ? `<details class="card grouped-page-section collapsible-section" data-declined-events="${listKind}" ${declinedOpen[listKind] ? 'open' : ''}>
                <summary class="collapsible-section-header">
+                 <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
                  <h2>Abgesagt</h2>
                  <span class="collapsible-section-summary-end">
                    <span class="badge badge-offline">${declinedEvents.length}</span>
-                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
                  </span>
                </summary>
                <div class="collapsible-section-content">
@@ -880,10 +880,10 @@ function renderWorkspaceSection({
         endedEvents.length > 0
           ? `<details class="card grouped-page-section collapsible-section" data-event-history="${listKind}" ${historyOpen[listKind] ? 'open' : ''}>
                <summary class="collapsible-section-header">
+                 <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
                  <h2>Historie</h2>
                  <span class="collapsible-section-summary-end">
                    <span class="badge badge-offline">${endedEvents.length}</span>
-                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
                  </span>
                </summary>
                <div class="collapsible-section-content">

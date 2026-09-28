@@ -213,6 +213,10 @@ dokumentierte Einbettung.
 NumberStepper-Hälften ergänzen das native Zahlenfeld; Zeichenpalette und Bracketzeilen
 sind keine unabhängigen Standardbuttons. Zustands-/Layoutmarker besitzen keine eigene Controlhöhe.
 
+`poll-disclosure` verwendet einen links stehenden Pfeil, null inneres Padding und eine
+44-px-Mindesthöhe; der Kartenkopf liefert den Standardkartenabstand genau einmal.
+`registry:poll-card-container`: Die äußere Umfragekarte hat kein eigenes Padding; Kartenkopf
+und aufgeklappter Inhalt liefern ihre Innenabstände selbst, ohne doppelte Einrückung.
 `poll-disclosure` und `food-disclosure` enthalten Überschrift plus Runden-/Frist- bzw.
 Personen-/Bestellmetadaten und dürfen in diesem mehrzeiligen Zustand höher als 33 px sein.
 Die bloße Zustandsänderung eines normalen Buttons erzeugt keinen mehrzeiligen Sonderfall.

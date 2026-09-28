@@ -677,10 +677,10 @@ function wireDrawCards(container, ctx) {
 function renderHistoryDetails(title, count, content) {
   return `<details class="card history-details collapsible-section" ${historySectionOpen ? 'open' : ''}>
     <summary class="collapsible-section-header">
+      <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
       <h2>${title}</h2>
       <span class="collapsible-section-summary-end">
         <span class="badge badge-offline">${count}</span>
-        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
       </span>
     </summary>
     <div class="collapsible-section-content">${content}</div>
@@ -693,9 +693,9 @@ function historyItemHtml(id, title, meta, actions, details, extraClass = '', isM
   return `<div class="card matchmaking-history-item ${extraClass}">
     <div class="matchmaking-history-head">
       <button type="button" class="matchmaking-history-toggle" data-history-toggle="${escapeHtml(id)}" aria-expanded="${open}" aria-controls="${escapeHtml(panelId)}">
+        <span class="matchmaking-history-chevron">${icon('chevronRight')}</span>
         <span class="matchmaking-history-title player-name">${isMine ? `<strong>${escapeHtml(title)}</strong>` : escapeHtml(title)}</span>
         <span class="matchmaking-history-meta">${meta}</span>
-        <span class="matchmaking-history-chevron">${icon('chevronRight')}</span>
       </button>
       <div class="matchmaking-draw-actions">${actions}</div>
     </div>
@@ -858,11 +858,11 @@ function renderOpenDraws(selectedGameId) {
   ].filter(Boolean).join(' · ');
   return `<details class="card matchmaking-open-draws collapsible-section" ${openDrawsSectionOpen ? 'open' : ''}>
     <summary class="collapsible-section-header">
+      <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
       <h2>Ohne Ergebnis</h2>
       <span class="collapsible-section-summary-end">
         <span class="muted">${summary}</span>
         <span class="badge badge-offline">Offen</span>
-        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
       </span>
     </summary>
     <div class="collapsible-section-content"><div id="match-history-open"></div></div>
@@ -964,7 +964,6 @@ function renderActiveTournaments() {
           <span class="list-row-icon">${icon(domainIcon('tournaments'))}</span>
           <span class="home-current-copy"><span class="player-name">${escapeHtml(tournament.name)}</span>
             <span class="muted list-row-desc">${escapeHtml(TOURNAMENT_FORMAT_LABELS[tournament.format])} · ${tournament.decidedMatchCount}/${tournament.matchCount} Partien</span></span>
-          <span class="muted">Öffnen</span>
         </button>
       </article>`).join('')}</div>` : ''}
     ${tournamentError ? '<div class="muted">Turniere konnten nicht aktualisiert werden.</div>' : ''}

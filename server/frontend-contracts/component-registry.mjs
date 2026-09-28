@@ -2324,6 +2324,15 @@ export const permanentVariants = [
     "reason": "actionMenu.js raises the card stacking order while its menu is open; it does not alter control interior."
   },
   {
+    "id": "poll-card-container",
+    "role": "composite-part",
+    "selector": ".card.event-poll-card",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "properties": ["padding"],
+    "reason": "Poll cards delegate the standard card inset to their header and expanded content, so the outer container must not add it a second time."
+  },
+  {
     "id": "desktop-navigation-state",
     "role": "composite-part",
     "selector": ":root[data-layout-mode='desktop'] .desktop-nav-btn.active",

@@ -494,6 +494,7 @@ function renderLatestVoteCard({ showRunoff }) {
     <section class="card vote-page-section event-poll-card" aria-labelledby="vote-current-result-title" data-latest-vote>
       <header class="event-poll-card-header">
         <button type="button" class="event-poll-card-toggle" data-toggle-latest-vote aria-expanded="${latestVoteOpen}">
+          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
           <span class="event-poll-card-title">
             <strong id="vote-current-result-title">Letzter Vote</strong>
             <span class="event-poll-card-meta-line">
@@ -501,7 +502,6 @@ function renderLatestVoteCard({ showRunoff }) {
               ${winners.length ? `<span class="event-poll-best-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : ''}
             </span>
           </span>
-          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
         </button>
         <div class="event-poll-card-side">
           <button type="button" class="btn btn-sm" data-open-vote-round="${h.round}">Stimmen ansehen</button>
@@ -705,20 +705,18 @@ export function renderVotes(container, ctx) {
 
     <details class="card history-details collapsible-section vote-page-section" data-vote-top10 ${top10Open ? 'open' : ''}>
       <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         <h2>Top 10 nach Bock-Level</h2>
-        <span class="collapsible-section-summary-end">
-          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
-        </span>
       </summary>
       <div class="collapsible-section-content">${renderTop10(votes.catalogResults)}</div>
     </details>
 
     <details class="card history-details collapsible-section" data-vote-history ${historyOpen ? 'open' : ''}>
       <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         <h2>Historie</h2>
         <span class="collapsible-section-summary-end">
           <span class="badge badge-offline">${Math.max(0, (historyCache?.length ?? 0) - 1)}</span>
-          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         </span>
       </summary>
       <div class="collapsible-section-content">${renderHistory()}</div>

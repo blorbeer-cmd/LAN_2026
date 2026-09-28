@@ -802,10 +802,10 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
         activeTab === 'todos' && doneTasks.length
           ? `<details class="card grouped-page-section collapsible-section" data-checklist-history ${historyOpen ? 'open' : ''}>
                <summary class="collapsible-section-header">
+                 <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
                  <h2>Historie</h2>
                  <span class="collapsible-section-summary-end">
                    <span class="badge badge-offline">${doneTasks.length}</span>
-                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
                  </span>
                </summary>
                <div class="collapsible-section-content">
