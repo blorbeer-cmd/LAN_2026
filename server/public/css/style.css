@@ -867,7 +867,6 @@ textarea {
 .event-poll-card-content {
   gap: var(--space-4);
   padding: 0 var(--space-4) var(--space-4);
-  border-top: 1px solid var(--border);
 }
 .event-poll-round {
   gap: var(--space-4);
@@ -876,7 +875,7 @@ textarea {
 .event-poll-note {
   margin: 0;
 }
-.event-poll-options {
+.stack.event-poll-options {
   gap: 0;
 }
 /* Options are flat rows separated by hairlines, not boxes inside the card. */
@@ -892,10 +891,6 @@ textarea {
 }
 .event-poll-option:first-child {
   border-top: 0;
-  padding-top: 0;
-}
-.event-poll-option:last-child {
-  padding-bottom: 0;
 }
 .event-poll-option-note {
   font-size: var(--font-size-sm);
@@ -908,17 +903,12 @@ textarea {
   min-width: 0;
 }
 .event-poll-result {
-  /* The legend hangs below the bar. An empty first row of the same flexible
-     height mirrors it, so the bar stays on the row's middle line, level with
-     the avatars and answer buttons, even when the legend wraps. */
-  display: grid;
-  grid-template-rows: 1fr auto 1fr;
-  row-gap: var(--space-1);
+  /* Center the complete bar/count block, just like name/note and controls. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   min-width: 0;
   margin-inline-end: var(--space-4);
-}
-.event-poll-result::before {
-  content: '';
 }
 .event-poll-bar {
   display: block;
@@ -1323,7 +1313,6 @@ textarea {
   }
   .event-poll-options.is-compact .event-poll-option.is-column-start {
     border-top: 0;
-    padding-top: 0;
   }
 }
 @media (max-width: 639px) { /* --bp-md */
@@ -1363,11 +1352,7 @@ textarea {
     grid-row: 1;
   }
   .event-poll-result {
-    grid-template-rows: auto;
     margin-inline-end: 0;
-  }
-  .event-poll-result::before {
-    display: none;
   }
   .event-poll-option-badges,
   .btn.event-poll-voter-stack {

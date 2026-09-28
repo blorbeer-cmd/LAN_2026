@@ -227,6 +227,8 @@ sind keine unabhängigen Standardbuttons. Zustands-/Layoutmarker besitzen keine 
 
 `poll-disclosure` verwendet einen links stehenden Pfeil, null inneres Padding und eine
 44-px-Mindesthöhe; der Kartenkopf liefert den Standardkartenabstand genau einmal.
+Kopf und aufgeklappter Inhalt werden durch Abstand ohne zusätzliche Trennlinie verbunden,
+wie bei den nativen einklappbaren Bereichen.
 `registry:poll-card-container`: Die äußere Umfragekarte hat kein eigenes Padding; Kartenkopf
 und aufgeklappter Inhalt liefern ihre Innenabstände selbst, ohne doppelte Einrückung.
 `poll-disclosure` und `food-disclosure` enthalten Überschrift plus Runden-/Frist- bzw.

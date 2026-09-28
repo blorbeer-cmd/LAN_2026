@@ -317,7 +317,9 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     const first = avatars.item(0).getBoundingClientRect();
     const last = avatars.item(avatars.length - 1).getBoundingClientRect();
     const stackBox = element.getBoundingClientRect();
-    const bar = option.querySelector('.event-poll-bar')!.getBoundingClientRect();
+    const result = option.querySelector('.event-poll-result')!.getBoundingClientRect();
+    const info = option.querySelector('.event-poll-option-info')!.getBoundingClientRect();
+    const row = option.getBoundingClientRect();
     const controls = option.querySelector('.event-poll-response-toolbar')!.getBoundingClientRect();
     const middle = (box: DOMRect) => (box.top + box.bottom) / 2;
     return {
@@ -327,8 +329,10 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
       stackContentLeftInset: first.left - stackBox.left,
       stackContentRightInset: stackBox.right - last.right,
       avatarLeft: first.left,
-      avatarToBarMiddle: Math.abs(middle(first) - middle(bar)),
+      avatarToResultMiddle: Math.abs(middle(first) - middle(result)),
       avatarToControlsMiddle: Math.abs(middle(first) - middle(controls)),
+      infoToRowMiddle: Math.abs(middle(info) - middle(row)),
+      resultToRowMiddle: Math.abs(middle(result) - middle(row)),
     };
   }, { title: 'Welcher Zeitraum passt?', index: optionIndex });
   await ownerPage.setViewportSize({ width: 390, height: 844 });
@@ -343,7 +347,11 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
   assert.ok(desktopStack.stackContentLeftInset <= 1 && desktopSingleStack.stackContentLeftInset <= 1, `desktop avatars start at their column edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
   assert.ok(Math.abs(desktopStack.avatarLeft - desktopSingleStack.avatarLeft) <= 1, `avatars of different rows share one left edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
-  assert.ok(desktopStack.avatarToBarMiddle <= 1 && desktopStack.avatarToControlsMiddle <= 1, `bar, avatars and answers share one middle line (${JSON.stringify(desktopStack)})`);
+  for (const geometry of [desktopStack, desktopSingleStack]) {
+    assert.ok(geometry.avatarToResultMiddle <= 1 && geometry.avatarToControlsMiddle <= 1
+      && geometry.infoToRowMiddle <= 1 && geometry.resultToRowMiddle <= 1,
+    `complete text/results, avatars and answers center in the row (${JSON.stringify(geometry)})`);
+  }
   await liveStack.click();
   const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await liveVoteDialog.waitFor();
@@ -618,6 +626,18 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   ]) {
     await ownerPage.setViewportSize(viewport);
     await assertRatingGeometry();
+    if (viewport.width >= 640) {
+      const offsets = await ratingPoll.locator('.event-poll-option').evaluateAll((rows) => rows.map((row, index) => {
+        const rect = row.getBoundingClientRect();
+        const next = rows.slice(index + 1).find((candidate) => candidate.getBoundingClientRect().left === rect.left);
+        const middle = (rect.top + (next?.getBoundingClientRect().top ?? rect.bottom)) / 2;
+        return ['.event-poll-option-info', '.event-poll-response-toolbar'].map((selector) => {
+          const block = row.querySelector(selector)!.getBoundingClientRect();
+          return Math.abs(block.top + block.height / 2 - middle);
+        });
+      }));
+      assert.ok(offsets.flat().every((offset) => offset <= 1), 'poll text and controls center between the separating lines');
+    }
     const optionLinkControl = await optionLink.evaluate((control) => {
       const box = control.getBoundingClientRect();
       const icon = control.querySelector('.ui-icon')!.getBoundingClientRect();
