@@ -3267,6 +3267,7 @@ button.draft-pool-player {
 }
 /* History cards use the compact Home header alignment. */
 .history-details > .collapsible-section-header,
+.matchmaking-open-draws > .collapsible-section-header,
 [data-checklist-history] > .collapsible-section-header,
 [data-food-history] > .collapsible-section-header,
 [data-broadcast-history] > .collapsible-section-header,
