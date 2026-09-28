@@ -392,7 +392,14 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   outcomes, without team skill or member names. Champion and expanded team cards still show members
   and current team skill; no historical tournament skill snapshot exists, and missing ratings are
   identified instead of counted as a balancing fallback. The signed-in player's name alone is bold
-  in champion and team cards; winner and loser states keep their own meaning.
+  in champion and team cards; winner and loser states keep their own meaning. Wherever the
+  signed-in player's own team appears among equal siblings (bracket rows, fixtures, table row,
+  active lobby row and team card) it carries one quiet marker: a thin accent edge and the faint
+  `--accent-bg-subtle` tint, with a visually hidden „(dein Team)“ for screen readers and no visible
+  „Du“ label. Their own lobby leads „Aktive Lobbys“; the other lobbies keep their order. On phones
+  the first view of a tournament scrolls the bracket to the player's own open match, and live
+  re-renders keep the reader's horizontal bracket position. Players outside the tournament see no
+  marking.
   Tables show #, Team, Sp, S, U, N, +/− (only with scores) and Pkt; advancing group teams carry a
   „weiter“ marker. Every result action sits in a fixed trailing slot („+“ open, pencil recorded)
   and opens the common result form. Changing an earlier winner warns before later knockout pairings or results are reset; changing a group winner warns if the knockout phase already exists. Canceling keeps the result form usable. The tournament's score setting fixes the mode: score rows

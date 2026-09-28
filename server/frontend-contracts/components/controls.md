@@ -694,6 +694,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:bracket-state`: Bracket availability and outcome preserve the host geometry; only winner elevation may differ.
 
+- `registry:bracket-own-team`: The signed-in player's own bracket row keeps the host geometry; only its accent edge and the rounded outer corners of that edge may differ.
+
 - `registry:rating-divergence-state`: Divergent suggestion only changes emphasis colors.
 
 - `registry:arcade-soon-state`: Unavailable game tile changes opacity only.

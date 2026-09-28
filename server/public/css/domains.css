@@ -2575,6 +2575,43 @@ input.food-order-price-input {
 .tournament-lobby-row:last-child {
   padding-bottom: 0;
 }
+
+/* ---------- Tournament: the signed-in player's own team ---------- */
+/* One quiet marker for every place the own team appears among equal siblings:
+   a thin accent edge plus a faint tint. Borders, winner/loser text and result
+   chips keep their own meaning; a visually hidden „(dein Team)“ in the markup
+   carries the same information for screen readers. Declared after the lobby
+   row's first/last-child rules so the marked row keeps its inner padding. */
+.bracket-team-row.is-mine,
+.tournament-fixture.is-mine,
+.tournament-lobby-row.is-mine,
+.tournament-standings tr.is-mine td {
+  background: var(--accent-bg-subtle);
+}
+.bracket-team-row.is-mine,
+.tournament-fixture.is-mine,
+.tournament-lobby-row.is-mine,
+.tournament-standings tr.is-mine td:first-child,
+.tournament-team-card.is-mine {
+  box-shadow: inset 2px 0 0 var(--accent); /* design-token-ok: hairline-weight marker edge, not a spacing step */
+}
+.bracket-team-row.is-mine:first-child {
+  border-top-left-radius: var(--radius-sm);
+}
+.bracket-team-row.is-mine:last-child {
+  border-bottom-left-radius: var(--radius-sm);
+}
+/* Fixtures and lobby rows run edge to edge inside their card; the marked row
+   steps out by its own inset so its text stays aligned with the unmarked rows. */
+.tournament-fixture.is-mine,
+.tournament-lobby-row.is-mine {
+  margin-inline: calc(-1 * var(--space-2));
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+.tournament-lobby-row.is-mine {
+  padding-block: var(--space-2);
+}
 .tournament-lobby-row .tournament-lobby-matchup {
   display: flex;
   flex-direction: column;

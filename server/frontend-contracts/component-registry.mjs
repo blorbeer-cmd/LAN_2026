@@ -1232,6 +1232,20 @@ export const components = [
       "box-shadow"
     ]
   },
+  {
+    "id": "bracket-own-team",
+    "role": "composite-part",
+    "selector": ".is-mine",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "The signed-in player's own bracket row keeps the host geometry; only its accent edge and the rounded outer corners of that edge may differ.",
+    "control": false,
+    "properties": [
+      "box-shadow",
+      "border-top-left-radius",
+      "border-bottom-left-radius"
+    ]
+  },
 
   {
     "id": "rating-divergence-state",

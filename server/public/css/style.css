@@ -30,6 +30,9 @@
      semantic state colors below, for selected/active chip-style controls
      that need a light fill rather than a solid gradient. */
   --accent-bg: rgba(91, 140, 255, 0.16);
+  /* Quieter accent tint for marking the signed-in player's own rows among
+     equal siblings (tournament boards) without competing with result states. */
+  --accent-bg-subtle: rgba(91, 140, 255, 0.07);
   --rank-1-gold: #ffd166;
   --danger: #ef4444;
   --danger-bg: rgba(239, 68, 68, 0.15);
