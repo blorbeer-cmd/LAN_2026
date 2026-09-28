@@ -544,7 +544,10 @@ flowTest('standard control variants center single lines and grow for wrapped con
   t.after(async () => {
     await page.evaluate(() => document.getElementById('control-contract-probe')?.remove());
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
   });
+  // Measure settled geometry rather than an intermediate chevron rotation.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.evaluate(async () => {
     const { emptyStateHtml } = await globalThis.eval("import('/js/emptyState.js')");
     const probe = document.createElement('section');
@@ -576,6 +579,30 @@ flowTest('standard control variants center single lines and grow for wrapped con
       <div class="row" data-wrapping-row>
         <button class="btn" style="width:100px"><span>Eine längere Aktion vollständig ausführen</span></button>
         <button class="btn btn-sm" style="width:100px"><span>Eine längere Aktion vollständig ausführen</span></button>
+      </div>
+      ${[
+        'data-event-history="events"', 'data-event-history="groups"',
+        'data-declined-events="events"', 'data-declined-events="groups"', '',
+      ].map((attribute) => `<details class="card grouped-page-section collapsible-section" ${attribute}>
+        <summary class="collapsible-section-header">
+          <span class="collapsible-section-chevron"><svg class="ui-icon" aria-hidden="true"></svg></span>
+          <h2>${attribute.includes('declined') ? 'Abgesagt' : attribute ? 'Historie' : 'Ein längerer einklappbarer Bereich mit mehrzeiliger Überschrift'}</h2>
+          <span class="collapsible-section-summary-end"><span class="badge">2</span></span>
+        </summary>
+        <div class="collapsible-section-content">Inhalt</div>
+      </details>`).join('')}
+      <details class="collapsible-section food-order-group event-card-participants">
+        <summary class="collapsible-section-header"><span class="collapsible-section-chevron"><svg class="ui-icon" aria-hidden="true"></svg></span><span class="event-participant-toggle"><span class="food-order-group-headtext"><strong>Teilnehmende &amp; Einladungen</strong><span class="muted food-order-group-meta">4 Zusagen</span></span></span></summary>
+        <div class="collapsible-section-content">Teilnehmende</div>
+      </details>
+      <div data-disclosure-background style="background:var(--bg-elevated-2)"></div>
+      ${['matchmaking-history-item', 'food-order-card', 'event-card', 'event-poll-card'].map((className) => `<div class="card ${className}" data-disclosure-card>Aufklappbare Karte</div>`).join('')}
+      <div class="card" data-nested-surface>
+        <div class="card event-card" data-nested-surface>
+          <div class="event-card-participants" data-nested-surface>
+            <div class="card" data-nested-surface>Vierte Kartenebene</div>
+          </div>
+        </div>
       </div>
       ${emptyStateHtml({ text: 'Laden fehlgeschlagen.', action: { id: 'empty-recovery', label: 'Erneut laden' } })}
       <div class="grouped-page-section" data-empty-migration>
@@ -641,7 +668,59 @@ flowTest('standard control variants center single lines and grow for wrapped con
     assert.deepEqual(geometry.emptyMigration[1], geometry.emptyMigration[0], 'the registered compact EmptyState preserves the former inline presentation inside the real grouped/Vote context');
     assert.ok(geometry.emptyLong.height > 33 && geometry.emptyLong.lines > 1, 'a wrapping EmptyState recovery action grows');
     assert.equal(geometry.emptyLong.clipped, false, 'a wrapping EmptyState recovery action stays fully visible');
+    for (const open of [false, true]) {
+      const headers = await page.locator('#control-contract-probe details').evaluateAll((sections, expanded) => {
+        return sections.map((section) => {
+          (section as HTMLDetailsElement).open = expanded;
+          const header = section.querySelector('summary')!;
+          const box = header.getBoundingClientRect();
+          const middle = (element: Element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.top + rect.height / 2;
+          };
+          return {
+            title: header.textContent?.trim(),
+            height: box.height,
+            offsets: Array.from(header.querySelectorAll('h2, .badge, .collapsible-section-chevron, .event-participant-toggle'))
+              .map((element) => Math.abs(middle(element) - middle(header))),
+            clipped: header.scrollWidth > header.clientWidth || header.scrollHeight > header.clientHeight,
+          };
+        });
+      }, open);
+      for (const header of headers) {
+        assert.ok(header.height >= 44 && header.offsets.every((offset) => offset <= 1),
+          `disclosure contents share the header center at ${viewport.width}px, open=${open}: ${JSON.stringify(header)}`);
+        assert.equal(header.clipped, false,
+          `disclosure headings remain visible at ${viewport.width}px, open=${open}: ${JSON.stringify(header)}`);
+      }
+      const backgrounds = await page.locator('#control-contract-probe').evaluate((probe) => {
+        const colors = [
+          getComputedStyle(probe).backgroundColor,
+          getComputedStyle(probe.querySelector('[data-disclosure-background]')!).backgroundColor,
+        ];
+        return Array.from(probe.querySelectorAll('details, [data-disclosure-card], [data-nested-surface]'))
+          .map((element) => {
+            let depth = 0;
+            for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+              if (parent.matches('.card, .event-card-participants')) depth += 1;
+              if (parent === probe) break;
+            }
+            return { depth, expected: colors[depth % 2], actual: getComputedStyle(element).backgroundColor };
+          });
+      });
+      assert.ok(backgrounds.every(({ expected, actual }) => actual === expected),
+        `card surfaces alternate by nesting at ${viewport.width}px, open=${open}: ${JSON.stringify(backgrounds)}`);
+    }
   }
+  const disclosure = page.locator('#control-contract-probe details').first();
+  await page.locator('#control-contract-probe [data-wrapping-row] button').last().focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await disclosure.locator('summary').evaluate((header) => document.activeElement === header), true);
+  assert.equal(await disclosure.locator('summary').evaluate((header) => header.matches(':focus-visible')), true);
+  await page.keyboard.press('Enter');
+  assert.equal(await disclosure.evaluate((section) => (section as HTMLDetailsElement).open), false);
+  await page.keyboard.press('Space');
+  assert.equal(await disclosure.evaluate((section) => (section as HTMLDetailsElement).open), true);
   await page.locator('#empty-recovery-long').focus();
   await page.keyboard.press('Shift+Tab');
   assert.equal(await page.locator('#empty-recovery').evaluate((button) => document.activeElement === button), true);
@@ -1503,8 +1582,14 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   const unseated = page.locator('.seating-pool .profile-rows');
   assert.equal(await unseated.evaluate((rows) => getComputedStyle(rows).display), 'flex');
   await page.setViewportSize({ width: 900, height: 844 });
-  assert.equal(await unseated.evaluate((rows) => getComputedStyle(rows).gridTemplateColumns.split(' ').length), 2);
-  assert.equal(await page.locator('.seating-side-top .seating-side-seats').evaluate((seats) => getComputedStyle(seats).display), 'grid');
+  // A background render may replace the rows between locator resolution and
+  // evaluation. Wait for the current DOM's layout, not a detached old element.
+  await page.waitForFunction(() => {
+    const rows = document.querySelector('.seating-pool .profile-rows');
+    const seats = document.querySelector('.seating-side-top .seating-side-seats');
+    return rows && seats && getComputedStyle(rows).gridTemplateColumns.split(' ').length === 2
+      && getComputedStyle(seats).display === 'grid';
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok((await page.locator('.seating-seat:not(.is-occupied)').count()) > 0);
   assert.equal(await page.locator('.seating-seat:not(.is-occupied)').first().getByText('Frei', { exact: true }).count(), 1);

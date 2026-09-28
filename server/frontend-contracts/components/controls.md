@@ -71,6 +71,18 @@ erhalten ihre vorhandene Strukturgeometrie.
 Ganze Karten, Spielreaktionsflächen und die große Wortauswahl können größer als 44 px sein;
 die Normalisierung definiert ihre bestehenden Spielmaße nicht neu.
 
+Einklappbare Kopfzeilen zentrieren Titel beziehungsweise Titel-/Metadatenblock, Anzahl/Status und
+Pfeil vertikal in geschlossenem und geöffnetem Zustand. Text bleibt linksbündig. Die gemeinsame
+`.collapsible-section-header` besitzt diese Ausrichtung ohne ansichtsbezogene Selektorlisten;
+ihre Mindesthöhe `--tap-target-size` darf bei Textumbruch wachsen. Zusammengesetzte Button-Auslöser
+für Karten und Personen folgen derselben Ausrichtung innerhalb ihrer registrierten Geometrie.
+Kartenflächen wechseln unabhängig vom geöffneten Zustand mit der Verschachtelungstiefe:
+äußerste Karte `--bg-elevated`, Kindkarte `--bg-elevated-2`, Enkelkarte wieder
+`--bg-elevated`. Das gilt auch für native einklappbare Bereiche, Teilnehmendenlisten und
+Karten für Match, Events, Bestellungen und Umfragen. Eine einzelne Karte ohne
+Einklappauslöser folgt derselben Ebenenregel. Flache Personen-/Positionszeilen und reine
+Infoboxen behalten ihre eigene Darstellung.
+
 ## 5. Erlaubte Anpassungen
 
 - Bedeutung: neutral (`.btn`), primär (`.btn-primary`), destruktiv (`.btn-danger`) oder bereit
@@ -641,7 +653,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:event-card-action-width`: Event card actions yield width to whole-group reflow.
 
-- `registry:grouped-card-surface`: Nested card surface removes redundant elevation.
+- `registry:nested-card-surface`: Nested card and participant surfaces alternate colors by depth and omit redundant elevation.
 
 - `registry:tournament-skill-field`: Team skill field fits the header alongside the team label.
 
