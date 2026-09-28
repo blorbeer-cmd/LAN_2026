@@ -50,7 +50,8 @@ Seine bearbeitbaren Auslosungen werden erst beim Aufklappen aufgebaut und beim S
 wieder aus dem DOM entfernt; die Anzahl und Erreichbarkeit aller offenen Auslosungen bleiben erhalten.
 Laufende Turniere stehen dort ebenfalls; erst nach Abschluss wechseln sie in die Historie.
 Eine gemeinsame, stets sichtbare Filterzeile steht vor „Ohne Ergebnis“ und „Historie“.
-„Alle“, „Matches“ und „Turniere“ gelten für beide Abschnitte und die laufende Turnierübersicht.
+„Alle“, „Matches“ und „Turniere“ gelten für beide Abschnitte. Die laufende Turnierübersicht bleibt
+davon unabhängig und zeigt immer alle laufenden Turniere.
 Der zusätzliche Schalter „Meine“ lässt sich mit jeder Art kombinieren und berücksichtigt die
 Teamteilnahme des angemeldeten Spielers, auch bei älteren nachgeladenen Ergebnissen. Filterwechsel
 erhalten die geöffneten Abschnitte und Kacheln; ein leerer Treffer entfernt nie die Filterzeile.

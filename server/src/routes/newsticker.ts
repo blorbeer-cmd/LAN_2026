@@ -1,14 +1,16 @@
 import { Router } from 'express';
 import { BASE_EVENT_ID } from '../db';
+import { resolveAccessibleGroupEventScope } from '../groupEventScope';
 import { getNewstickerFeed } from '../newsticker';
 
 export const newstickerRouter = Router();
 
-// GET /api/newsticker - the Broadcast screen's playful headline feed. Only
-// the event-scoped Broadcast credential reads it: the feed exists for the
-// shared screen, and its scope comes from that token alone.
+// GET /api/newsticker - the Broadcast screen's playful headline feed. The
+// event is resolved like every other Broadcast card: the Broadcast token's
+// own event, or, when the screen runs on a signed-in account instead, that
+// account's active event (participation is still required).
 newstickerRouter.get('/', (req, res) => {
-  const scope = req.kioskScope;
-  if (!scope) return res.status(403).json({ error: 'Der Newsticker ist nur im Broadcast verfügbar.' });
-  res.json(getNewstickerFeed(scope.groupId, scope.eventId ?? BASE_EVENT_ID));
+  const scope = resolveAccessibleGroupEventScope(req, res, req.query.eventId);
+  if (!scope) return;
+  res.json(getNewstickerFeed(req.group!.id, scope.eventId ?? BASE_EVENT_ID));
 });

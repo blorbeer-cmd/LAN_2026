@@ -68,7 +68,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   its cards only when opened. Each unplayed game is also a collapsed tile that can be opened
   independently to show its teams and player moves. Recorded matches and completed tournaments share the „Historie“ for the selected game. It starts
   collapsed. The shared „Alle | Matches | Turniere“ filter row sits above „Ohne Ergebnis“ and applies
-  to open draws, running tournaments and completed history, including the running overview above setup.
+  to open draws, running tournaments and completed history. The running overview above setup is
+  independent of these filters and always shows every running tournament.
   The independent „Meine“ toggle combines with each type and shows only entries whose teams include
   the signed-in player, regardless of who created them. It also scopes older Match pages before
   pagination. The filters remain visible when sections are collapsed or have no matching entries.
@@ -88,7 +89,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   K.O.“, one name field per team (at most 30 characters; a drafted team is prefilled as „Team <Captain>“, a drawn one as
   „Team 1“ …), the options side by side and the optional lobby base name and password. The server
   claims the draw in the same transaction that creates the tournament, so one lineup becomes either
-  a single result or a tournament, never both (`409` for the loser of a race). Recording and editing share one compact result dialog: one
+  a single result or a tournament, never both (`409` for the loser of a race). The server draws
+  the first-round bracket pairings and the group split from a random team order; team numbering
+  stays as entered, and the knockout after a group stage is seeded by group placement.
+  Recording and editing share one compact result dialog: one
   „Sieger“ and „Punktestand“ modes share one form with tournaments and the free Admin result. A native
   single choice selects a team or „Unentschieden“ in equal-height cards with a subtle accent outline;
   switching modes keeps the dialog body height stable. Score rows show live places, with ties sharing a

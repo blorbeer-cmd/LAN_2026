@@ -88,7 +88,14 @@ let bracketId: string;
 let bracketTeamIds: string[];
 let bracketMatches: Array<{ id: string; round: number; slot: number; teamAId: string | null; teamBId: string | null; isBye: boolean }>;
 
-test('POST /api/tournaments creates a single-elimination bracket for 4 teams', async () => {
+// Bracket slots and groups come from a shuffled team order. Pinning
+// Math.random to 0 makes that shuffle a fixed left rotation (Team 2, 3, …,
+// Team 1), so the tests can tell a drawn order from the submitted one.
+const teamNamesOf = (teams: Array<{ id: string; name: string }>, ids: Array<string | null>) =>
+  ids.map((id) => teams.find((team) => team.id === id)?.name);
+
+test('POST /api/tournaments creates a single-elimination bracket for 4 teams', async (t) => {
+  t.mock.method(Math, 'random', () => 0);
   const res = await request(app)
     .post('/api/tournaments')
     .send({
@@ -108,6 +115,14 @@ test('POST /api/tournaments creates a single-elimination bracket for 4 teams', a
   assert.equal(res.body.lobbyPassword, 'geheim');
   const generatedLobbyNames = res.body.matches.map((m: { lobbyName: string }) => m.lobbyName);
   assert.deepEqual(generatedLobbyNames, ['Respawn-KO-R1-M1', 'Respawn-KO-R1-M2', 'Respawn-KO-R2-M1']);
+  const roundOne = res.body.matches.filter((m: { round: number }) => m.round === 1);
+  assert.deepEqual(
+    roundOne.map((m: { teamAId: string; teamBId: string }) => teamNamesOf(res.body.teams, [m.teamAId, m.teamBId])),
+    [
+      ['Team 2', 'Team 1'],
+      ['Team 3', 'Team 4'],
+    ]
+  );
 
   bracketId = res.body.id;
   bracketTeamIds = res.body.teams.map((t: { id: string }) => t.id);
@@ -448,7 +463,8 @@ test('POST /api/tournaments rejects advancersPerGroup larger than the smallest g
 
 let groupKnockoutId: string;
 
-test('POST /api/tournaments creates a group stage (no knockout matches yet) for group_knockout', async () => {
+test('POST /api/tournaments creates a group stage (no knockout matches yet) for group_knockout', async (t) => {
+  t.mock.method(Math, 'random', () => 0);
   const res = await request(app)
     .post('/api/tournaments')
     .send({ gameId, format: 'group_knockout', groupCount: 2, advancersPerGroup: 2, teams: soloTeams(groupPlayerIds) });
@@ -460,7 +476,13 @@ test('POST /api/tournaments creates a group stage (no knockout matches yet) for 
   assert.ok(res.body.groups.every((g: { standings: unknown[] }) => g.standings.length === 4));
   assert.ok(res.body.matches.every((m: { stage: string }) => m.stage === 'group'));
   assert.equal(res.body.matches.length, 12); // C(4,2) = 6 per group * 2 groups
-  assert.ok(res.body.teams.every((t: { groupIndex: number | null }) => t.groupIndex === 0 || t.groupIndex === 1));
+  const groupNames = (groupIndex: number) =>
+    res.body.teams
+      .filter((team: { groupIndex: number | null }) => team.groupIndex === groupIndex)
+      .map((team: { name: string }) => team.name)
+      .sort();
+  assert.deepEqual(groupNames(0), ['Team 2', 'Team 4', 'Team 6', 'Team 8']);
+  assert.deepEqual(groupNames(1), ['Team 1', 'Team 3', 'Team 5', 'Team 7']);
 
   groupKnockoutId = res.body.id;
 });

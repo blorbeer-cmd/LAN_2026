@@ -590,23 +590,29 @@ test('a match-ready push names the lobby and its default host (the upper bracket
     });
   const tournamentId = created.body.id;
   const round1 = created.body.matches.filter((m: { round: number }) => m.round === 1);
+  const hostTeamId = created.body.teams.find((team: { name: string }) => team.name === 'HostTeam').id as string;
+  // Bracket slots are drawn at random, so let HostTeam win wherever it landed
+  // and otherwise take team A. The upper round-1 winner hosts the final.
+  const winnerOf = (match: { teamAId: string; teamBId: string }) =>
+    match.teamBId === hostTeamId ? hostTeamId : match.teamAId;
+  const upperWinnerName = created.body.teams.find((team: { id: string }) => team.id === winnerOf(round1[0])).name as string;
 
   const sendMock = t.mock.method(pushTransport, 'send', async () => {});
   // Decide both round-1 matches so the final's teams (and thus a "match
   // ready" push) become known.
   await request(app)
     .post(`/api/tournaments/${tournamentId}/matches/${round1[0].id}/result`)
-    .send({ winnerTeamId: round1[0].teamAId });
+    .send({ winnerTeamId: winnerOf(round1[0]) });
   await request(app)
     .post(`/api/tournaments/${tournamentId}/matches/${round1[1].id}/result`)
-    .send({ winnerTeamId: round1[1].teamAId });
+    .send({ winnerTeamId: winnerOf(round1[1]) });
 
   const payloads = sendMock.mock.calls.map((c) => JSON.parse(c.arguments[1] as string));
   const matchReady = payloads.find((p) => /nächstes Match/.test(p.body));
   assert.ok(matchReady, 'expected a match-ready push once the final\'s teams were known');
   assert.match(matchReady.body, /Lobby "Respawn-KO-R2-M1"/);
   assert.match(matchReady.body, /PW: geheim/);
-  assert.match(matchReady.body, /HostTeam eröffnet die Lobby/);
+  assert.match(matchReady.body, new RegExp(`${upperWinnerName} eröffnet die Lobby`));
 
   // GET /api/push/last is the Kiosk's shared-screen banner - a personally-
   // targeted push ("dein Match ist bereit", audience 'direct') would read as
