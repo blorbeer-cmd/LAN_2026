@@ -89,7 +89,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   K.O.“, one name field per team (a drafted team is prefilled as „Team <Captain>“, a drawn one as
   „Team 1“ …), the options side by side and the optional lobby base name and password. The server
   claims the draw in the same transaction that creates the tournament, so one lineup becomes either
-  a single result or a tournament, never both (`409` for the loser of a race). Recording and editing share one compact result dialog: one
+  a single result or a tournament, never both (`409` for the loser of a race). The server draws
+  the first-round bracket pairings and the group split from a random team order; team numbering
+  stays as entered, and the knockout after a group stage is seeded by group placement.
+  Recording and editing share one compact result dialog: one
   „Sieger“ and „Punktestand“ modes share one form with tournaments and the free Admin result. A native
   single choice selects a team or „Unentschieden“ in equal-height cards with a subtle accent outline;
   switching modes keeps the dialog body height stable. Score rows show live places, with ties sharing a
