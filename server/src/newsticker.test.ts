@@ -95,6 +95,8 @@ test('a long feed does not repeat lines, forms or the same person back to back',
     assert.notEqual(composed.subject, previousSubject, 'the same person is not named twice in a row');
     // House style: no dashes in visible copy.
     assert.doesNotMatch(composed.text, /[–—]/);
+    // Short enough to read from across the room and to fit a small tile.
+    assert.ok(composed.text.length <= 170, `line too long (${composed.text.length}): ${composed.text}`);
     texts.add(composed.text);
     templates.push(composed.templateId);
     previousSubject = composed.subject;

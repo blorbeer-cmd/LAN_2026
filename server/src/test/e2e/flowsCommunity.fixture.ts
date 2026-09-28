@@ -584,7 +584,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     const items = Array.from(tile.querySelectorAll('.kiosk-news-item'));
     return { count: items.length, fits: items.every((item) => item.getBoundingClientRect().bottom <= bottom + 0.5) };
   });
-  assert.ok(newsBounds.count >= 2 && newsBounds.count <= 5, `the newsticker shows two to five lines: ${JSON.stringify(newsBounds)}`);
+  assert.ok(newsBounds.count >= 2 && newsBounds.count <= 7, `the newsticker shows two to seven lines: ${JSON.stringify(newsBounds)}`);
   assert.equal(newsBounds.fits, true, 'no newsticker line reaches past the tile');
 
   // The last-push banner shows the food order's own push (title "Neue
