@@ -21,6 +21,7 @@ import { openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
 import { focusGameCatalog } from './views/gameCatalog.js';
+import { clearTournamentTeamTarget, prepareTournamentTeamTarget } from './views/tournament.js';
 import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from './searchSelect.js';
 import { icon, installIconReplacement } from './icons.js';
@@ -679,8 +680,10 @@ function switchView(
   if (view === 'tournaments' && (searchTarget?.type === 'tournament' || searchTarget?.type === 'tournament-team')) {
     localRoute = { kind: 'detail', id: searchTarget.id };
     // "tournament-team" (the start push's #tournaments/<id>/teams) keeps a
-    // pending target so the detail opens its Teams card on the own team.
-    if (searchTarget.type === 'tournament') searchTarget = null;
+    // pending target so the detail scrolls to the own team; the view itself
+    // keeps the card open and highlighted across live re-renders.
+    if (searchTarget.type === 'tournament-team') prepareTournamentTeamTarget(searchTarget.id);
+    else searchTarget = null;
   }
   if (view === 'tournaments' && localRoute?.kind !== 'detail'
     && !(localRoute === undefined && currentView === 'tournaments' && currentLocalRoute?.kind === 'detail')) {
@@ -717,6 +720,7 @@ function switchView(
     || (navigationOrigin instanceof HTMLElement && viewContainer.contains(navigationOrigin))
   );
   if (view !== 'foodOrders') clearFoodOrderTarget();
+  if (view !== 'tournaments') clearTournamentTeamTarget();
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   if (view === 'foodOrders' && searchTarget?.type === 'order') prepareFoodOrderTarget(searchTarget.id);
   currentView = view;

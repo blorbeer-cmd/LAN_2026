@@ -330,12 +330,12 @@ export function createTournamentPresentation(myPlayerId = null) {
 
   const isOwnTeam = (team) => Boolean(myPlayerId) && team.players.some((player) => player.id === myPlayerId);
 
-  function teamCardHtml(t, team, { winner = false, renamable = false } = {}) {
+  function teamCardHtml(t, team, { winner = false, renamable = false, highlight = false } = {}) {
     // The own card carries a marker so a "wählt euren Teamnamen" deep link
     // can open the Teams card and highlight exactly this team.
     const ownMarker = isOwnTeam(team) ? ` data-own-tournament-team="${escapeHtml(t.id)}"` : '';
     return `
-        <div class="team-card tournament-team-card"${ownMarker}>
+        <div class="team-card tournament-team-card${highlight ? ' search-target-highlight' : ''}"${ownMarker}>
           <div class="team-card-header">
             <span class="row tournament-team-card-heading" style="gap:var(--space-2);">
               <span class="tournament-team-card-name">${escapeHtml(team.name)}</span>
@@ -379,9 +379,11 @@ export function createTournamentPresentation(myPlayerId = null) {
   // canRename(team) decides per team whether the pencil appears (own team
   // or a group admin, while the tournament runs). The own team leads the
   // grid so it is found without scanning.
-  function renderTournamentTeams(t, { teamsOpen = false, canRename = () => false } = {}) {
+  function renderTournamentTeams(t, { teamsOpen = false, canRename = () => false, highlightOwn = false } = {}) {
     const ordered = [...t.teams.filter(isOwnTeam), ...t.teams.filter((team) => !isOwnTeam(team))];
-    const cards = ordered.map((team) => teamCardHtml(t, team, { renamable: canRename(team) })).join('');
+    const cards = ordered
+      .map((team) => teamCardHtml(t, team, { renamable: canRename(team), highlight: highlightOwn && isOwnTeam(team) }))
+      .join('');
 
     // Teams are a lookup next to the live bracket, so they sit in the shared
     // collapsible card that starts closed (open state lives in the view).

@@ -2296,33 +2296,55 @@ flowTest('the tournament start link opens the own team and renames it in place',
   const gamesResponse = await page.request.get(`${BASE_URL}/api/games`);
   const gameId = ((await gamesResponse.json()) as Array<{ id: string }>)[0].id;
   const created = await page.request.post(`${BASE_URL}/api/tournaments`, {
-    data: { gameId, format: 'round_robin', teams: [{ playerIds: [bob.id] }, { playerIds: [alice.id] }] },
+    data: { gameId, format: 'round_robin', teams: [{ playerIds: [alice.id] }, { playerIds: [bob.id] }] },
   });
   assert.equal(created.status(), 201, await created.text());
-  const tournament = await created.json() as { id: string };
-  t.after(async () => { await page.request.delete(`${BASE_URL}/api/tournaments/${tournament.id}`); });
+  const tournament = await created.json() as { id: string; teams: Array<{ id: string; players: Array<{ id: string }> }> };
+  const aliceTeamId = tournament.teams.find((team) => team.players.some((player) => player.id === alice.id))!.id;
+  // A cold start as the member Bob, as when the push opens a fresh app
+  // window: its first live refreshes re-render the detail and must keep the
+  // highlight.
+  await finishE2EOnboarding(BASE_URL, bob.cookie);
+  const coldContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const coldPage = await coldContext.newPage();
+  t.after(async () => {
+    await coldContext.close();
+    await page.request.delete(`${BASE_URL}/api/tournaments/${tournament.id}`);
+  });
+  await addSessionCookie(coldContext, BASE_URL, bob.cookie);
 
-  await page.goto(`${BASE_URL}/#tournaments/${tournament.id}/teams`);
-  const ownCard = page.locator(`[data-own-tournament-team="${tournament.id}"].search-target-highlight`);
-  await ownCard.waitFor();
-  assert.equal(await page.locator('[data-tournament-teams]').evaluate((el) => (el as HTMLDetailsElement).open), true,
+  await coldPage.goto(`${BASE_URL}/#tournaments/${tournament.id}/teams`);
+  const ownCard = coldPage.locator(`[data-own-tournament-team="${tournament.id}"]`);
+  await coldPage.locator(`[data-own-tournament-team="${tournament.id}"].search-target-highlight`).waitFor();
+  assert.equal(await coldPage.locator('[data-tournament-teams]').evaluate((el) => (el as HTMLDetailsElement).open), true,
     'the start link opens the collapsed Teams card');
-  assert.equal(await page.locator('.tournament-team-card').first().getAttribute('data-own-tournament-team'), tournament.id,
+  assert.equal(await coldPage.locator('.tournament-team-card').first().getAttribute('data-own-tournament-team'), tournament.id,
     'the own team leads the Teams grid');
-  assert.equal(new URL(page.url()).hash, `#tournaments/${tournament.id}`, 'a reload does not replay the highlight');
+  assert.equal(new URL(coldPage.url()).hash, `#tournaments/${tournament.id}`, 'the stored hash drops the one-shot suffix');
+
+  assert.equal(await coldPage.locator('[data-rename-team]').count(), 1, 'a member may rename only the own team');
+
+  // Force a live re-render (an admin renames another team) and prove it happened.
+  const otherRename = await page.request.put(`${BASE_URL}/api/tournaments/${tournament.id}/teams/${aliceTeamId}`, {
+    data: { name: 'Toastbrot Esports' },
+  });
+  assert.equal(otherRename.status(), 200, await otherRename.text());
+  await coldPage.locator('.tournament-team-card-name:has-text("Toastbrot Esports")').waitFor();
+  assert.match(await ownCard.getAttribute('class') ?? '', /search-target-highlight/,
+    'the highlight survives live re-renders');
 
   await ownCard.locator('[data-rename-team]').click();
-  const dialog = page.getByRole('dialog', { name: 'Teamnamen ändern' });
+  const dialog = coldPage.getByRole('dialog', { name: 'Teamnamen ändern' });
   await dialog.locator('#rename-team-name').fill('Boost Brothers');
   await dialog.getByRole('button', { name: 'Speichern' }).click();
   await dialog.waitFor({ state: 'detached' });
-  await page.locator('.tournament-standings-name:has-text("Boost Brothers")').waitFor();
-  assert.equal(await page.locator(`[data-own-tournament-team="${tournament.id}"] .tournament-team-card-name`).innerText(),
-    'Boost Brothers');
-  // Leave the detail like the other tournament tests do: the next test opens
-  // a different tournament by hash, which must not start from this one.
-  await page.goto(`${BASE_URL}/#matchmaking`);
-  await page.locator('#mm-game').waitFor({ state: 'attached' });
+  await coldPage.locator('.tournament-standings-name:has-text("Boost Brothers")').waitFor();
+  assert.equal(await ownCard.locator('.tournament-team-card-name').innerText(), 'Boost Brothers');
+
+  await coldPage.reload();
+  await ownCard.waitFor({ state: 'attached' });
+  assert.doesNotMatch(await ownCard.getAttribute('class') ?? '', /search-target-highlight/,
+    'a reload of the stored hash does not replay the highlight');
 });
 
 flowTest('correcting an early K.O. winner warns before later results are reset', async (t) => {

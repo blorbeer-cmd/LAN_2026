@@ -20,6 +20,22 @@ import { isGroupAdmin } from '../groupContext.js';
 
 // Open state of the detail page's collapsible Teams card across re-renders.
 let tournamentTeamsOpen = false;
+// Tournament whose own team card stays highlighted after arriving through the
+// start push (#tournaments/<id>/teams). Kept here rather than as a one-off DOM
+// class so the live re-renders right after startup do not drop it.
+let ownTeamFocusFor = null;
+
+// Called by app.js before rendering a "tournament-team" target.
+export function prepareTournamentTeamTarget(tournamentId) {
+  ownTeamFocusFor = tournamentId;
+  tournamentTeamsOpen = true;
+}
+
+// Called by app.js when navigating away, so a later ordinary visit of the
+// same tournament does not replay the highlight.
+export function clearTournamentTeamTarget() {
+  ownTeamFocusFor = null;
+}
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -148,7 +164,7 @@ function renderDetail(container, ctx) {
       ${renderChampion(t)}
       ${activeLobbies}
       ${board}
-      ${renderTournamentTeams(t, { teamsOpen: tournamentTeamsOpen, canRename: (team) => canRenameTeam(t, team) })}
+      ${renderTournamentTeams(t, { teamsOpen: tournamentTeamsOpen, canRename: (team) => canRenameTeam(t, team), highlightOwn: ownTeamFocusFor === t.id })}
     </div>
   `;
 
@@ -248,6 +264,7 @@ function openRenameTeamDialog(t, team, index, ctx) {
     saving = true;
     try {
       detailCache = await api.tournaments.renameTeam(t.id, team.id, name);
+      ownTeamFocusFor = null;
       close();
       ctx.rerender();
       showToast('Teamname gespeichert.');

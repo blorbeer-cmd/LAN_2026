@@ -389,8 +389,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   claiming the same name at once exactly one succeeds. Creating a tournament sends every participant
   a personal push „<Turnier> startet“ that names their teammates and asks them to choose a team name;
   the shared Kiosk keeps the neutral „Neues Turnier“ entry. The push links to
-  `#tournaments/<id>/teams`, which opens the Teams card, highlights the own team and keeps only
-  `#tournaments/<id>` in the history, so a reload does not repeat the highlight. Tournament results use plain cards without
+  `#tournaments/<id>/teams`, which opens the Teams card and highlights the own team until the reader
+  renames it or leaves the tournament; live updates keep the highlight. Only `#tournaments/<id>` is
+  kept in the history, so a reload does not repeat the highlight. Tournament results use plain cards without
   accent rails: a knockout bracket card, stacked „Tabelle“ and „Spielplan“ cards for a league, and
   one card per group with its table and rounds plus a „K.O.-Runde“ card. A knockout phase with
   exactly one fixture is a 1:1 row under „Finale“, including pure two-team knockout tournaments;
