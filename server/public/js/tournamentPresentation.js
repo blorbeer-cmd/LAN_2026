@@ -67,8 +67,11 @@ export function createTournamentPresentation(myPlayerId = null) {
         const teamA = teamLabel(teamsById, match.teamAId);
         const teamB = teamLabel(teamsById, match.teamBId);
         const mine = isMyMatch(match, myTeamId);
-        return `<div class="tournament-lobby-row${mine ? ' is-mine' : ''}" aria-label="${mine ? 'Deine Lobby' : 'Lobby'} für ${teamA} gegen ${teamB}">
+        // The row is a generic container, so its aria-label is not reliably
+        // announced; the own-lobby hint therefore is real (hidden) text.
+        return `<div class="tournament-lobby-row${mine ? ' is-mine' : ''}" aria-label="Lobby für ${teamA} gegen ${teamB}">
           <div class="tournament-lobby-matchup">
+            ${mine ? '<span class="visually-hidden">Deine Lobby: </span>' : ''}
             <strong>${teamA} <span class="muted">vs</span> ${teamB}</strong>
             <span class="muted">${escapeHtml(activeLobbyPhaseLabel(tournament, match))} · ${teamA} eröffnet</span>
           </div>

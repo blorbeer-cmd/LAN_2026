@@ -55,6 +55,9 @@ const league = {
   ],
 };
 
+// Text a screen reader reads from the markup (hidden hints included, attributes not).
+const readableText = (html) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
 const lobbyOrder = (html) => [...html.matchAll(/data-copy-lobby-match="([^"]+)" data-copy-lobby-kind="name"/g)].map((m) => m[1]);
 
 test('marks only the signed-in player’s team and puts their lobby first', () => {
@@ -63,7 +66,8 @@ test('marks only the signed-in player’s team and puts their lobby first', () =
   const lobbies = pres.renderActiveLobbies(knockout);
   assert.deepEqual(lobbyOrder(lobbies), ['qf2', 'qf1']);
   assert.equal((lobbies.match(/tournament-lobby-row is-mine/g) ?? []).length, 1);
-  assert.match(lobbies, /aria-label="Deine Lobby für Team 3 gegen Team 4"/);
+  assert.match(readableText(lobbies), /^Aktive Lobbys Deine Lobby: Team 3 vs Team 4 /);
+  assert.equal((readableText(lobbies).match(/Deine Lobby/g) ?? []).length, 1);
 
   const bracket = pres.renderBracket(knockout);
   assert.equal((bracket.match(/bracket-team-row[^"]*is-mine/g) ?? []).length, 1);
@@ -72,7 +76,7 @@ test('marks only the signed-in player’s team and puts their lobby first', () =
 
   const board = pres.renderRoundRobin(league);
   assert.equal((board.match(/tournament-fixture is-mine/g) ?? []).length, 1);
-  assert.match(board, /aria-label="Dein Spiel: Team 2 gegen Team 1"/);
+  assert.match(readableText(board), /Dein Spiel: Team 2 vs Team 1/);
   assert.equal((board.match(/<tr class="[^"]*is-mine/g) ?? []).length, 1);
 
   const teams = pres.renderTournamentTeams(league);
