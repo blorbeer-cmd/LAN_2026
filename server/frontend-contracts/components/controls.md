@@ -71,6 +71,16 @@ erhalten ihre vorhandene Strukturgeometrie.
 Ganze Karten, Spielreaktionsflächen und die große Wortauswahl können größer als 44 px sein;
 die Normalisierung definiert ihre bestehenden Spielmaße nicht neu.
 
+Einklappbare Kopfzeilen zentrieren Titel beziehungsweise Titel-/Metadatenblock, Anzahl/Status und
+Pfeil vertikal in geschlossenem und geöffnetem Zustand. Text bleibt linksbündig. Die gemeinsame
+`.collapsible-section-header` besitzt diese Ausrichtung ohne ansichtsbezogene Selektorlisten;
+ihre Mindesthöhe `--tap-target-size` darf bei Textumbruch wachsen. Zusammengesetzte Button-Auslöser
+für Karten und Personen folgen derselben Ausrichtung innerhalb ihrer registrierten Geometrie.
+Aufklappbare Inhaltsflächen verwenden unabhängig von Verschachtelung und geöffnetem Zustand
+`--bg-elevated-2`: native Bereiche, Teilnehmendenlisten und Karten für Match, Events, Bestellungen
+und Umfragen. Eine einzelne Karte ohne Einklappauslöser behält dieselbe Fläche. Flache Personen-/
+Positionszeilen und reine Infoboxen folgen weiterhin ihrer eigenen Darstellung.
+
 ## 5. Erlaubte Anpassungen
 
 - Bedeutung: neutral (`.btn`), primär (`.btn-primary`), destruktiv (`.btn-danger`) oder bereit
