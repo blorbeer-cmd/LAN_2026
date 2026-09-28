@@ -788,18 +788,19 @@ function historyTournamentDetailHtml(tournament) {
       && match.winnerTeamId && match.winnerTeamId !== team.id).sort((a, b) => b.round - a.round)[0];
     const stage = lastKnockout && final ? lastKnockout.round === final.round - 1 ? 'Halbfinale'
       : lastKnockout.round === final.round - 2 ? 'Viertelfinale' : `Runde ${lastKnockout.round}` : null;
-    const placeLabel = Number.isFinite(place) ? `${place}. Platz`
-      : stage ? `${stage} ausgeschieden`
-        : standing && detail.format === 'group_knockout' ? `Gruppe ${standing.groupIndex + 1} · Platz ${standing.rank}` : '';
+    const placeLabel = Number.isFinite(place) ? `${place}. Platz` : '';
+    const exitLabel = stage && !placeLabel ? `${stage} ausgeschieden`
+      : standing && detail.format === 'group_knockout' && !placeLabel
+        ? `Gruppe ${standing.groupIndex + 1} · Platz ${standing.rank}` : null;
     const context = [
-      detail.format === 'group_knockout' ? `Gruppe ${(team.groupIndex ?? 0) + 1}` : null,
+      exitLabel,
+      detail.format === 'group_knockout' && !exitLabel?.startsWith('Gruppe ') ? `Gruppe ${(team.groupIndex ?? 0) + 1}` : null,
       standing ? `${standing.played} Sp` : `${wins} Siege · ${playedMatches.length} Sp`,
     ].filter(Boolean).join(' · ');
     return `<div class="matchmaking-history-team">
-      ${placeLabel ? `<div class="matchmaking-history-placement">${escapeHtml(placeLabel)}</div>` : ''}
       <div class="matchmaking-history-team-head">
+        ${placeLabel ? `<span class="matchmaking-history-placement lb-rank${place === 1 ? ' is-first' : ''}" title="${escapeHtml(placeLabel)}" aria-label="${escapeHtml(placeLabel)}">${place}</span>` : ''}
         <strong>${escapeHtml(team.name)}</strong>
-        ${detail.championTeamId === team.id ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}
         ${teamSkillHtml(team.players, detail.gameId, { balanced: false, current: true })}
         ${standing ? `<span class="matchmaking-history-team-score" title="Tabellenpunkte">${standing.points} Pkt</span>` : ''}
       </div>

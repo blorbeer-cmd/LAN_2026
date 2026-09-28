@@ -3092,9 +3092,6 @@ button.profile-row-main {
   flex-shrink: 0;
 }
 .matchmaking-history-placement {
-  color: var(--text-muted);
-  font-size: var(--font-size-2xs);
-  margin-bottom: var(--space-1);
   white-space: nowrap;
 }
 .matchmaking-history-team-head .lb-rank.is-first {
@@ -3102,8 +3099,10 @@ button.profile-row-main {
 }
 .matchmaking-history-team-score {
   margin-left: auto;
+  flex-shrink: 0;
   font-weight: var(--font-weight-bold);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .matchmaking-history-team-score.is-win,
 .matchmaking-history-meta .is-win {

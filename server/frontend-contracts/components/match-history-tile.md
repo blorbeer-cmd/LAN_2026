@@ -42,6 +42,10 @@ Ergebnispunkte stehen in derselben Kopfzeile, Spielernamen darunter.
 Turnierkacheln laden beim Öffnen Teams, Spieler und verfügbare Ergebnisdaten nach; Fehler bieten
 einen erneuten Ladeversuch. „Ohne Ergebnis“ steht über der Historie und ist zu Beginn geschlossen.
 Beendete Turniere nennen Sieger und Platz zwei ausdrücklich; Ligateams zeigen ihre Tabellenplätze.
+Platzangaben stehen als kompakte Nummer wie bei Matchteams in derselben Kopfzeile wie der
+Teamname; Titel und zugänglicher Name nennen den Platz ausdrücklich. Die Platznummer ersetzt
+das zusätzliche Win-Chip in der Teamkarte; das Win-Chip im Spielkopf bleibt. Bei K.-o.-Teams ohne eindeutigen
+Platz steht die Ausscheidungsrunde in der Kontextzeile unter den Spielernamen.
 Seine bearbeitbaren Auslosungen werden erst beim Aufklappen aufgebaut und beim Schließen
 wieder aus dem DOM entfernt; die Anzahl und Erreichbarkeit aller offenen Auslosungen bleiben erhalten.
 Laufende Turniere stehen dort ebenfalls; erst nach Abschluss wechseln sie in die Historie.

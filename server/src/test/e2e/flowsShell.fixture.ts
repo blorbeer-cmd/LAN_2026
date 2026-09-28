@@ -2218,9 +2218,17 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await historyTournament.locator('.matchmaking-history-team').first().waitFor();
   assert.equal(await historyTournament.locator('.matchmaking-history-team').count(), 2);
   assert.ok((await historyTournament.locator('.matchmaking-history-players').first().innerText()).length > 0);
-  assert.equal(await historyTournament.locator('.matchmaking-history-details .tournament-fixture-score.is-pick:has-text("Win")').count(), 1);
-  assert.equal(await historyTournament.locator('.matchmaking-history-placement:has-text("1. Platz")').count(), 1);
-  assert.equal(await historyTournament.locator('.matchmaking-history-placement:has-text("2. Platz")').count(), 1);
+  assert.equal(await historyTournament.locator('.matchmaking-history-details .lb-rank.is-first').innerText(), '1');
+  assert.equal(await historyTournament.locator('.matchmaking-history-placement[aria-label="1. Platz"]').innerText(), '1');
+  assert.equal(await historyTournament.locator('.matchmaking-history-placement[aria-label="2. Platz"]').innerText(), '2');
+  assert.equal(await historyTournament.locator('.matchmaking-history-team-context:has-text("ausgeschieden")').count(), 0,
+    'finalists use their explicit placements without a duplicate elimination label');
+  const knockoutPlacementAlignment = await historyTournament.locator('.matchmaking-history-team').first().evaluate((team) => {
+    const placement = team.querySelector('.matchmaking-history-placement')!;
+    const name = team.querySelector('.matchmaking-history-team-head strong')!;
+    return Math.abs(placement.getBoundingClientRect().top - name.getBoundingClientRect().top);
+  });
+  assert.ok(knockoutPlacementAlignment < 8, 'K.O. placement stays beside the team name');
   assert.equal(await historyTournament.locator('.matchmaking-history-team .team-skill-total').count(), 2);
   assert.equal(await historyTournament.locator('.matchmaking-history-players strong').innerText(), alice.name);
   await page.locator(`.matchmaking-history-item [data-open-draw-tournament="${tournamentId}"]`).click();
@@ -2258,15 +2266,20 @@ flowTest('completed league history shows placements and points beside team names
   assert.equal(await tile.locator('.matchmaking-history-title strong').count(), 1);
   await tile.locator('.matchmaking-history-toggle').click();
   await tile.locator('.matchmaking-history-team').first().waitFor();
-  assert.deepEqual(await tile.locator('.matchmaking-history-placement').allTextContents(), ['1. Platz', '2. Platz']);
+  assert.deepEqual(await tile.locator('.matchmaking-history-placement').allTextContents(), ['1', '2']);
+  assert.equal(await tile.locator('.matchmaking-history-placement[aria-label="2. Platz"]').count(), 1);
   assert.deepEqual(await tile.locator('.matchmaking-history-team-score').allTextContents(), ['3 Pkt', '0 Pkt']);
   assert.equal(await tile.locator('.matchmaking-history-team-context:has-text("Pkt")').count(), 0);
   const scoreAlignment = await tile.locator('.matchmaking-history-team').first().evaluate((team) => {
+    const placement = team.querySelector('.matchmaking-history-placement')!;
     const name = team.querySelector('.matchmaking-history-team-head strong')!;
     const points = team.querySelector('.matchmaking-history-team-score')!;
-    return Math.abs(name.getBoundingClientRect().top - points.getBoundingClientRect().top);
+    return Math.max(
+      Math.abs(placement.getBoundingClientRect().top - name.getBoundingClientRect().top),
+      Math.abs(name.getBoundingClientRect().top - points.getBoundingClientRect().top),
+    );
   });
-  assert.ok(scoreAlignment < 8, 'table points stay in the team-name line');
+  assert.ok(scoreAlignment < 8, 'league placement and table points stay in the team-name line');
 });
 
 flowTest('correcting an early K.O. winner warns before later results are reset', async (t) => {
