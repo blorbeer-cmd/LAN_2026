@@ -298,6 +298,11 @@
 .kiosk-news-item:last-child::before {
   display: none;
 }
+/* The lead line takes all free height of the tile: its text stays at the top
+   while its rail simply runs longer down to the second line. */
+.kiosk-news-item.is-first {
+  flex: 1 0 auto;
+}
 .kiosk-news-dot {
   position: relative;
   z-index: 1;
