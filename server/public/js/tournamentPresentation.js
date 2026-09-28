@@ -23,17 +23,6 @@ export function createTournamentPresentation(myPlayerId = null) {
     return t ? escapeHtml(t.name) : 'TBD';
   }
 
-  function teamMembers(teamsById, teamId) {
-    const players = teamsById.get(teamId)?.players ?? [];
-    return players.map((player) => player.id === myPlayerId
-      ? `<strong>${escapeHtml(player.name)}</strong>` : escapeHtml(player.name)).join(', ');
-  }
-
-  function currentTeamSkill(teamsById, teamId, gameId) {
-    const team = teamsById.get(teamId);
-    return team ? teamSkillHtml(team.players, gameId, { balanced: false, current: true }) : '';
-  }
-
   function activeLobbyPhaseLabel(tournament, match) {
     if (tournament.format === 'round_robin') return `Runde ${match.round}`;
     if (tournament.format === 'group_knockout' && match.stage === 'group') {
@@ -118,10 +107,7 @@ export function createTournamentPresentation(myPlayerId = null) {
   // two team rows plus a trailing action column inside the box, so the action
   // never floats over the connector lines.
   function renderBracketMatchBox(m, t, teamsById) {
-    const teamContent = (teamId) => `<span class="bracket-team-content">
-      <span class="bracket-team-primary"><span class="bracket-team-name">${teamLabel(teamsById, teamId)}</span>${currentTeamSkill(teamsById, teamId, t.gameId)}</span>
-      <span class="bracket-team-players">${teamMembers(teamsById, teamId)}</span>
-    </span>`;
+    const teamContent = (teamId) => `<span class="bracket-team-name">${teamLabel(teamsById, teamId)}</span>`;
     if (m.isBye) {
       return `
         <div class="bracket-match is-bye">
@@ -192,7 +178,7 @@ export function createTournamentPresentation(myPlayerId = null) {
     ].join('');
     const tree = buildBracketNode(matchesByKey, totalRounds, 0, t, teamsById);
     const championHtml = champion
-      ? `<div class="bracket-champion" aria-label="Sieger: ${champion}"><span class="bracket-team-content"><span class="bracket-team-primary"><span class="bracket-team-name">${champion}</span>${currentTeamSkill(teamsById, final.winnerTeamId, t.gameId)}</span><span class="bracket-team-players">${teamMembers(teamsById, final.winnerTeamId)}</span></span></div>`
+      ? `<div class="bracket-champion" aria-label="Sieger: ${champion}"><span class="bracket-team-name">${champion}</span></div>`
       : '';
 
     return `
@@ -223,13 +209,7 @@ export function createTournamentPresentation(myPlayerId = null) {
     }
     const nameA = teamLabel(teamsById, m.teamAId);
     const nameB = teamLabel(teamsById, m.teamBId);
-    const teamHtml = (teamId, won, home) => {
-      const members = teamMembers(teamsById, teamId);
-      return `<span class="${nameCls(won)}${home ? ' is-home' : ''}">
-        <span class="tournament-fixture-team-identity"><span class="tournament-fixture-team-name">${teamLabel(teamsById, teamId)}</span>${currentTeamSkill(teamsById, teamId, t.gameId)}</span>
-        ${members ? `<span class="tournament-fixture-team-players">${members}</span>` : ''}
-      </span>`;
-    };
+    const teamHtml = (teamId, won, home) => `<span class="${nameCls(won)}${home ? ' is-home' : ''}">${teamLabel(teamsById, teamId)}</span>`;
     return `<div class="tournament-fixture" aria-label="${nameA} gegen ${nameB}">
         ${teamHtml(m.teamAId, aWon, true)}
         ${center}
@@ -275,13 +255,9 @@ export function createTournamentPresentation(myPlayerId = null) {
     const rows = (standings || [])
       .map((s, i) => {
         const advances = i < advancers;
-        const members = teamMembers(teamsById, s.teamId);
         return `<tr class="${i === 0 && s.played > 0 ? 'is-leader' : ''}${advances ? ' is-advancing' : ''}">
           <td class="tournament-standings-rank">${i + 1}</td>
-          <td class="tournament-standings-team"><span class="tournament-standings-line">
-            <span class="tournament-standings-identity"><span class="tournament-standings-name">${teamLabel(teamsById, s.teamId)}</span>${currentTeamSkill(teamsById, s.teamId, t.gameId)}${advances ? '<span class="tournament-standings-advance">weiter</span>' : ''}</span>
-            ${members ? `<span class="tournament-standings-players">${members}</span>` : ''}
-            </span></td>
+          <td class="tournament-standings-team"><span class="tournament-standings-identity"><span class="tournament-standings-name">${teamLabel(teamsById, s.teamId)}</span>${advances ? '<span class="tournament-standings-advance">weiter</span>' : ''}</span></td>
           <td>${s.played}</td>
           <td>${s.wins}</td>
           <td>${s.draws}</td>

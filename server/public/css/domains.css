@@ -661,38 +661,6 @@ button.player-card {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.bracket-team-content {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-.bracket-team-primary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-}
-.bracket-team-primary .bracket-team-name {
-  flex: 0 1 auto;
-}
-.bracket-team-primary .rating {
-  flex-shrink: 0;
-}
-.bracket-team-players {
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: var(--font-size-2xs);
-  font-weight: var(--font-weight-regular);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.bracket-champion .bracket-team-players {
-  color: var(--accent-text);
-}
-.bracket-champion .rating {
-  color: var(--accent-text);
-}
 .bracket-team-row.is-winner {
   font-weight: var(--font-weight-medium);
 }
@@ -805,39 +773,14 @@ button.bracket-side {
   border-top: 1px solid var(--border);
 }
 .tournament-fixture-team {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--space-1);
-  min-width: 0;
-}
-.tournament-fixture-team-identity {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-}
-.tournament-fixture-team-name,
-.tournament-fixture-team-players {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.tournament-fixture-team-players {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-regular);
-}
-.tournament-fixture-team-identity .rating {
-  flex-shrink: 0;
-}
 .tournament-fixture-team.is-home {
   text-align: right;
-  align-items: flex-end;
-}
-.tournament-fixture-team:not(.is-home) {
-  align-items: flex-start;
 }
 .tournament-fixture-team.is-winner {
   font-weight: var(--font-weight-medium);
@@ -962,12 +905,6 @@ span.tournament-fixture-action {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tournament-standings-line {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-}
 .tournament-standings-identity {
   display: flex;
   align-items: center;
@@ -978,16 +915,6 @@ span.tournament-fixture-action {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.tournament-standings-players {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  white-space: nowrap;
-}
-.tournament-standings-identity .rating {
-  flex-shrink: 0;
 }
 .tournament-standings tr.is-leader .tournament-standings-rank {
   color: var(--rank-1-gold);

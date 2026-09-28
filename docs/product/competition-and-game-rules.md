@@ -379,9 +379,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   larger phases keep the bracket and a phase not yet created keeps its empty state. Fixtures read like a
   scoreboard (home team right-aligned, result chip centered, away team left-aligned); winners are
   emphasized and losers muted, with a green winner score or a „‹ Win“/„Win ›“ chip without a score.
-  League and group round fixtures use the same grouping and divider treatment. On wider views, fixture
-  pairings and table team cells place the current team skill directly beside the team name and player names on a new line. No historical tournament skill snapshot exists; missing ratings are identified instead of counted as a balancing fallback. Phones keep the compact names and skill.
-  The signed-in player's name alone is bold in fixtures, group and league tables, knockout bracket, champion and team cards; winner and loser states keep their own meaning.
+  League and group round fixtures use the same grouping and divider treatment. Fixtures, knockout
+  bracket (including its winner column), group tables and league tables show only team names and
+  outcomes, without team skill or member names. Champion and expanded team cards still show members
+  and current team skill; no historical tournament skill snapshot exists, and missing ratings are
+  identified instead of counted as a balancing fallback. The signed-in player's name alone is bold
+  in champion and team cards; winner and loser states keep their own meaning.
   Tables show #, Team, Sp, S, U, N, +/− (only with scores) and Pkt; advancing group teams carry a
   „weiter“ marker. Every result action sits in a fixed trailing slot („+“ open, pencil recorded)
   and opens the common result form. Changing an earlier winner warns before later knockout pairings or results are reset; changing a group winner warns if the knockout phase already exists. Canceling keeps the result form usable. The tournament's score setting fixes the mode: score rows

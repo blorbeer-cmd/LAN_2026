@@ -2154,9 +2154,9 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   // A two-team K.O. tournament shows one Finale fixture, not a bracket.
   await page.waitForSelector('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture');
   assert.equal(await page.locator('.bracket-match').count(), 0);
-  assert.equal(await page.locator('.tournament-fixture-team-players strong').innerText(), alice.name,
-    'only the signed-in player name is emphasized in the fixture');
-  assert.equal(await page.locator('.tournament-fixture-team-identity .team-skill-total').count(), 2);
+  assert.deepEqual(await page.locator('.tournament-fixture-team').allTextContents(), ['Team 1', 'Team 2'],
+    'fixtures show just the team names');
+  assert.equal(await page.locator('.tournament-fixture .rating, .tournament-fixture-team-players').count(), 0);
   assert.equal(await page.locator('.is-my-team, .tournament-own-team-marker').count(), 0);
   assert.match(new URL(page.url()).hash, /^#tournaments\/.+/);
   const tournamentDetailHash = new URL(page.url()).hash;
@@ -2193,7 +2193,7 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await championCard.waitFor();
   assert.equal(await championCard.locator('h2').innerText(), 'Turnier beendet');
   assert.equal(await championCard.locator('.tournament-fixture-score:has-text("Win")').count(), 1);
-  const finalWinner = (await page.locator('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture-team.is-winner .tournament-fixture-team-name').innerText()).trim();
+  const finalWinner = (await page.locator('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture-team.is-winner').innerText()).trim();
   assert.ok((await championCard.locator('.team-card-header').innerText()).includes(finalWinner));
 
   await page.goto(`${BASE_URL}/#tournaments`);
@@ -2250,13 +2250,18 @@ flowTest('completed league history shows placements and points beside team names
     matches: Array<{ id: string; teamAId: string; teamBId: string }>;
   };
   t.after(async () => { await page.request.delete(`${BASE_URL}/api/tournaments/${tournament.id}`); });
+  await page.goto(`${BASE_URL}/#tournaments/${tournament.id}`);
+  await page.locator('.tournament-standings').waitFor();
+  assert.deepEqual(await page.locator('.tournament-standings-name').allTextContents(), ['Team 1', 'Team 2']);
+  assert.equal(await page.locator('.tournament-board-card .rating, .tournament-standings-players, .tournament-fixture-team-players').count(), 0,
+    'league table and schedule show team names without skill or members');
   const match = tournament.matches.find((entry) => entry.teamAId && entry.teamBId)!;
   const saved = await page.request.post(`${BASE_URL}/api/tournaments/${tournament.id}/matches/${match.id}/result`, {
     data: { winnerTeamId: match.teamAId },
   });
   assert.equal(saved.status(), 200, await saved.text());
 
-  await page.reload();
+  await page.goto(`${BASE_URL}/#matchmaking`);
   await page.locator('#mm-game-search').click();
   await page.locator(`#mm-game-list [data-search-select-value="${gameId}"]`).click();
   await openMatchmakingHistory();
@@ -2329,7 +2334,8 @@ flowTest('correcting an early K.O. winner warns before later results are reset',
   await page.locator('.modal').waitFor({ state: 'detached' });
   assert.equal(await page.locator(`[data-open-result="${final.id}"].is-open`).count(), 1,
     'the downstream final is reopened only after confirmation');
-  assert.ok(await page.locator('.bracket-team-players strong').count() > 0);
+  assert.equal(await page.locator('.bracket-tree-wrap .rating, .bracket-team-players').count(), 0,
+    'the bracket keeps team names and outcomes without skill or members');
   assert.equal(await page.locator('.tournament-team-card .team-player-name strong').count(), 1);
   assert.equal(await page.locator('.is-my-team, .tournament-own-team-marker').count(), 0);
 });
