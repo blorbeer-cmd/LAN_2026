@@ -526,10 +526,10 @@ arcadeTest('navigation', 'the kiosk removes stale quiz markup before rendering a
     await assertNoOverflow(kiosk.locator('html'));
     const fullscreen = kiosk.locator('#kiosk-fullscreen');
     await fullscreen.waitFor();
-    // Deliberately a small plain icon next to the banner's own date/time
-    // text, not a touch-sized control: this unattended TV canvas is operated
-    // by mouse at most, and a full 44px button here would visually compete
-    // with the date it sits beside instead of reading as part of it.
+    // Deliberately a small plain icon next to the header clock, not a
+    // touch-sized control: this unattended TV canvas is operated by mouse at
+    // most, and a full 44px button here would visually compete with the
+    // clock it sits beside instead of reading as part of it.
     const fullscreenBox = await fullscreen.boundingBox();
     assert.ok(fullscreenBox && fullscreenBox.width > 0 && fullscreenBox.height > 0 && fullscreenBox.width < 44 && fullscreenBox.height < 44, 'TV fullscreen stays a small icon-sized control, not a touch target');
     await fullscreen.focus();

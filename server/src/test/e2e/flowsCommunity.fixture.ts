@@ -581,7 +581,19 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   await page.waitForSelector('#kiosk-broadcast:not([hidden]) >> text=Neue Sammelbestellung');
   await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('.kiosk-broadcast-time');
+  assert.match(
+    (await page.locator('.kiosk-broadcast-time').textContent()) ?? '',
+    /^(gerade eben|vor \d+ Min\.)$/,
+    'a fresh banner shows its age instead of a second clock time',
+  );
   await page.waitForSelector('.notification-banner-body');
+  assert.match((await page.locator('#kiosk-clock').textContent()) ?? '', /\d{2}:\d{2}/, 'the header shows a running clock');
+  const bannerLine = await page.locator('#kiosk-broadcast').evaluate((banner) => {
+    const title = banner.querySelector('.notification-banner-text strong')!.getClientRects()[0];
+    const body = banner.querySelector('.notification-banner-body')!.getClientRects()[0];
+    return { titleTop: title.top, bodyTop: body.top };
+  });
+  assert.ok(Math.abs(bannerLine.titleTop - bannerLine.bodyTop) <= 4, `banner title and body share one line: ${JSON.stringify(bannerLine)}`);
   await page.click('#kiosk-fullscreen');
   await page.waitForSelector('#kiosk-fullscreen[aria-pressed="true"]');
   await page.click('#kiosk-fullscreen');
@@ -597,7 +609,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Live-Durchsage neu');
   assert.equal(await page.locator('#kiosk-broadcast >> text=Kiosk-Live-Durchsage alt').count(), 0);
   await page.waitForSelector('.kiosk-vote-overview >> text=Stichwahl läuft');
-  await page.waitForSelector('.kiosk-vote-overview >> text=Zwischenstand');
+  assert.equal(await page.locator('.kiosk-vote-overview >> text=Zwischenstand').count(), 0);
   await page.waitForFunction(() => {
     const text = document.querySelector('.kiosk-vote-header .badge')?.textContent ?? '';
     return /^1 \/ \d+ abgestimmt$/.test(text.trim());
@@ -671,15 +683,16 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   await page.request.post(`${BASE_URL}/api/votes/points`, {
     data: {
       playerId,
-      // 0-5 points: one clear winner, every game scored — the kiosk caps
-      // display at a fixed Top 5 (VOTE_ROWS_VISIBLE), so only the strongest
-      // five of these ten should ever render.
+      // 0-5 points: one clear winner, every game scored. The kiosk shows as
+      // many of these ten as fit the card at the normal row size.
       entries: kioskGames.map((game, index) => ({ gameId: game.id, points: index === 0 ? 5 : Math.max(1, 4 - Math.floor((index - 1) / 2)) })),
     },
   });
-  await page.waitForSelector('.kiosk-vote-result:nth-child(5)');
-  assert.equal(await page.locator('.kiosk-vote-result').count(), 5, 'the kiosk shows a fixed Top 5, never all ten scored games');
-  assert.equal(await page.locator('.kiosk-vote-result.is-concealed').count(), 5);
+  // Rows are fitted synchronously in the same task that paints them, so the
+  // first visible row already belongs to the final, fitted list.
+  await page.waitForSelector('.kiosk-vote-result');
+  const shownVoteRows = await page.locator('.kiosk-vote-result').count();
+  assert.equal(await page.locator('.kiosk-vote-result.is-concealed').count(), shownVoteRows);
   assert.ok(await page.locator('.kiosk-vote-result.is-concealed strong').evaluateAll((names) => {
     const lengths = names.map((name) => name.textContent?.length ?? 0);
     return new Set(lengths).size > 1;
@@ -696,7 +709,16 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       allVisible: resultBoxes.every((result) => result.top >= contentBox.top && result.bottom <= contentBox.bottom),
     };
   });
-  assert.equal(voteBounds.allVisible, true, `the fixed Top 5 vote results should remain visible inside the kiosk card: ${JSON.stringify(voteBounds)}`);
+  assert.equal(voteBounds.allVisible, true, `the shown vote results should remain visible inside the kiosk card: ${JSON.stringify(voteBounds)}`);
+  const voteRowHeights = voteBounds.results.map((result) => result.bottom - result.top);
+  assert.ok(Math.max(...voteRowHeights) - Math.min(...voteRowHeights) <= 1, `vote rows keep one row size: ${voteRowHeights}`);
+  if (shownVoteRows < kioskGames.length) {
+    const lastBottom = voteBounds.results[voteBounds.results.length - 1].bottom;
+    assert.ok(
+      voteBounds.content.bottom - lastBottom < 2 * voteRowHeights[0],
+      `the vote card fills its free height before hiding further rows: ${JSON.stringify(voteBounds)}`,
+    );
+  }
   await page.request.post(`${BASE_URL}/api/votes/close`);
   await page.waitForSelector('.kiosk-vote-countdown >> text=Ergebnis in');
   assert.equal(await page.locator('.kiosk-vote-countdown .countdown-num-fill').textContent(), '5');
@@ -704,7 +726,14 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   assert.equal(await page.locator('.kiosk-vote-countdown .countdown-pop').count(), 1);
   assert.equal(await page.locator('.kiosk-vote-result').count(), 0);
   await page.waitForSelector('.kiosk-vote-final >> text=Ergebnis im Detail', { timeout: 7_000 });
-  assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result').count(), 5, 'the revealed result also caps display at the fixed Top 5');
+  assert.ok(
+    await page.locator('#kiosk-votes').evaluate((voteContent) => {
+      const bottom = voteContent.getBoundingClientRect().bottom;
+      const rows = Array.from(voteContent.querySelectorAll('.kiosk-vote-final .kiosk-vote-result'));
+      return rows.length > 0 && rows.every((row) => row.getBoundingClientRect().bottom <= bottom + 0.5);
+    }),
+    'the revealed result is fitted to the card like the running vote',
+  );
   assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result.is-concealed').count(), 0);
   assert.equal(await page.locator('.kiosk-vote-final .kiosk-vote-result.is-leading').count(), 0);
   assert.deepEqual(await page.locator('.kiosk-vote-final-title').allTextContents(), ['Gewinner', 'Ergebnis im Detail']);

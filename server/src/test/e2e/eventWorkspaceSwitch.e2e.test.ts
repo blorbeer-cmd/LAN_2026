@@ -618,7 +618,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await openView('admin');
   const admin = await viewText();
-  assert.doesNotMatch(admin, /LAN-Bereitschaft|TV-Kiosk|Sitzplan/);
+  assert.doesNotMatch(admin, /LAN-Bereitschaft|Broadcast|Sitzplan/);
   assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 0);
   assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 0);
   // Without tracking there is no readiness card, so the backup is a tool row.

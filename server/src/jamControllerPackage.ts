@@ -136,7 +136,7 @@ export function buildControllerReadme(): string {
     '   Redirect URI im Spotify Developer Dashboard hinterlegen und mit Spotify anmelden.',
     '6. Optional auf http://127.0.0.1:43821 den Autostart aktivieren.',
     '7. In Respawn unter Mehr -> Jam -> Gerät auswählen "Diesen Browser als Musikgerät starten"',
-    '   wählen. Im TV-Kiosk stattdessen zuerst "Kiosk-Ton aktivieren" anklicken.',
+    '   wählen. Im Broadcast stattdessen zuerst "Broadcast-Ton aktivieren" anklicken.',
     '',
     'Respawn-Adresse und Kopplungscode sind im Paket bereits eingetragen.',
     'Repository, npm und eine vorhandene Node.js-Installation sind nicht nötig. Nach erfolgreicher',
