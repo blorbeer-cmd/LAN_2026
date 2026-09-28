@@ -150,12 +150,12 @@ test('an invite link registers a new account and logs it straight in', async () 
 
   await page.waitForSelector('#onboarding-root [role="dialog"]');
 
-  // Regression coverage: highlighted bottom-navigation steps move the dialog
-  // to the top. At laptop widths, the later media rule must not restore a
-  // bottom anchor (which would stretch the panel), and the spotlight shadow
-  // must remain below the dialog instead of dimming its copy and controls.
+  // Regression coverage: the onboarding dialog keeps one stable bottom
+  // position even while the spotlight moves between targets. The spotlight
+  // shadow must remain below the dialog instead of dimming its copy and
+  // controls.
   await page.setViewportSize({ width: 1024, height: 768 });
-  await page.waitForSelector('.onboarding-dialog--top');
+  await page.waitForSelector('.onboarding-dialog');
   await page.waitForSelector('.onboarding-target-ring');
   const onboardingLayers = await page.evaluate(() => {
     const dialog = document.querySelector('.onboarding-dialog');
@@ -169,116 +169,59 @@ test('an invite link registers a new account and logs it straight in', async () 
       dialogHeight: dialog.getBoundingClientRect().height,
       dialogZIndex: Number(dialogStyle.zIndex),
       ringZIndex: Number(ringStyle.zIndex),
+      isTop: dialog.classList.contains('onboarding-dialog--top'),
       laptopBottomAnchor,
       viewportHeight: window.innerHeight,
     };
   });
-  assert.ok(
-    onboardingLayers.dialogBottom > onboardingLayers.laptopBottomAnchor,
-    'the top dialog must not retain the laptop bottom anchor',
-  );
-  assert.ok(onboardingLayers.dialogHeight < onboardingLayers.viewportHeight / 2, 'the top dialog must stay compact');
+  assert.ok(Math.abs(onboardingLayers.dialogBottom - onboardingLayers.laptopBottomAnchor) < 0.1);
+  assert.equal(onboardingLayers.isTop, false);
+  assert.ok(onboardingLayers.dialogHeight < onboardingLayers.viewportHeight / 2, 'the bottom dialog must stay compact');
   assert.ok(onboardingLayers.dialogZIndex > onboardingLayers.ringZIndex, 'the dialog must stay above the spotlight shadow');
   await page.setViewportSize({ width: 390, height: 844 });
 
-  // One click per step reaches the mandatory rating phase after the core
-  // tour. The step count depends on the account's role (see buildSteps() in
-  // onboarding.js), so read it off the tour's own progress text ("Schritt 1
-  // von N") instead of hardcoding it.
+  // The shared tour has eight steps and ends directly in the catalog. No
+  // rating is required before the player can finish it.
   const totalCoreSteps = await page.locator('.onboarding-progress').evaluate((element) => {
     const match = element.textContent?.match(/von (\d+)/);
     if (!match) throw new Error('onboarding progress text is missing the step count');
     return Number(match[1]);
   });
+  const mobileDialogBottom = await page.locator('.onboarding-dialog').evaluate((element) => (
+    window.innerHeight - element.getBoundingClientRect().bottom
+  ));
+  assert.equal(totalCoreSteps, 8);
+  const titles: string[] = [];
   for (let step = 0; step < totalCoreSteps; step += 1) {
-    await page.click('[data-onboarding-next]');
-    await page.waitForSelector('#onboarding-root [role="dialog"]');
-  }
-  await page.waitForSelector('.game-table-row.onboarding-required .skill-row [data-rating-value]');
-  assert.equal(
-    await page.evaluate(() => document.activeElement?.matches('.game-table-row.onboarding-required .skill-row [data-rating-value]')),
-    true,
-    'rating mode should place initial focus on a required rating',
-  );
-  await page.click('[data-onboarding-later]');
-  await page.waitForFunction(() => !document.querySelector('#onboarding-root [role="dialog"]'));
-  await page.waitForSelector('[data-tab="catalog"]');
-  await page.reload();
-  await page.waitForSelector('#onboarding-root [role="dialog"]');
-  await page.waitForSelector('[data-onboarding-finish][disabled]');
-  const requiredRows = page.locator('.game-table-row.onboarding-required');
-  assert.equal(await requiredRows.count(), 10);
-
-  // Regression coverage: the rerender after a required rating's own save
-  // must not steal focus (and the page scroll with it) back to the very
-  // first required row - it only used to happen for a row other than the
-  // first, so rate a later one via real keyboard input. Wait for the saved
-  // number to render as selected and read the focus in the same page task: a
-  // separate locator evaluate could still resolve the replaced button.
-  await requiredRows.nth(5).locator('.skill-row [data-rating-value="3"]').first().focus();
-  await page.keyboard.press('Enter');
-  const focusAfterSave = await page.waitForFunction(() => {
-    const button = document.querySelectorAll('.game-table-row.onboarding-required')[5]
-      ?.querySelector<HTMLButtonElement>('.skill-row [data-rating-value="3"]');
-    if (!button || button.getAttribute('aria-pressed') !== 'true') return null;
-    return { focused: button === document.activeElement };
-  });
-  assert.equal(
-    (await focusAfterSave.jsonValue())?.focused,
-    true,
-    'saving a later required row must keep focus on that row instead of jumping back to the first one',
-  );
-
-  const requiredCount = await requiredRows.count();
-  for (let rowIndex = 0; rowIndex < requiredCount - 1; rowIndex += 1) {
-    const ratingRows = requiredRows.nth(rowIndex).locator('.skill-row');
-    for (let ratingIndex = 0; ratingIndex < await ratingRows.count(); ratingIndex += 1) {
-      const five = ratingRows.nth(ratingIndex).locator('[data-rating-value="5"]');
-      await five.click();
-      await page.waitForFunction(
-        ([row, rating]) => document.querySelectorAll('.game-table-row.onboarding-required')[row]
-          ?.querySelectorAll('.skill-row')[rating]
-          ?.querySelector('[data-rating-value="5"]')?.getAttribute('aria-pressed') === 'true',
-        [rowIndex, ratingIndex],
-      );
+    titles.push((await page.locator('#onboarding-title').textContent()) ?? '');
+    if (step === totalCoreSteps - 1) {
+      await page.waitForSelector('#view-container[data-view="gameCatalog"]');
+      assert.equal(await page.locator('[data-onboarding-next]').textContent(), 'Abschließen');
+      assert.equal(await page.locator('.game-table-row.onboarding-required').count(), 0);
+      await page.click('[data-onboarding-next]');
+      break;
     }
-    // The dialog counts a required game as done only once both of its
-    // ratings came back. Wait for that counter to include this row instead
-    // of guessing how long the round trip takes.
+    const previousTitle = titles.at(-1);
+    await page.click('[data-onboarding-next]');
     await page.waitForFunction(
-      (expected) => {
-        const progress = document.querySelector('.onboarding-rating-progress')?.textContent ?? '';
-        return Number(progress.split(' von ')[0]) >= expected;
-      },
-      rowIndex + 1,
+      (title) => document.querySelector('#onboarding-title')?.textContent !== title,
+      previousTitle,
+    );
+    const currentDialogBottom = await page.locator('.onboarding-dialog').evaluate((element) => (
+      window.innerHeight - element.getBoundingClientRect().bottom
+    ));
+    assert.ok(
+      Math.abs(currentDialogBottom - mobileDialogBottom) < 0.1,
+      `the onboarding dialog must keep its bottom position after step ${step + 1}`,
     );
   }
-  // Regression: the last required game is rated outside the Spiele view, so
-  // no rating save there refreshes the dialog. The realtime reload that brings the
-  // ratings in must still move the counter to its end and unlock finishing.
-  const lastGameId = await requiredRows.nth(requiredCount - 1).locator('.skill-row').first().getAttribute('data-game');
-  assert.ok(lastGameId);
-  const me = (await (await page.request.get(`${BASE_URL}/api/me`)).json()) as { id: string };
-  for (const kind of ['preferences', 'skills']) {
-    const saved = await page.request.put(`${BASE_URL}/api/${kind}`, { data: { playerId: me.id, gameId: lastGameId, rating: 5 } });
-    assert.equal(saved.status(), 200, await saved.text());
-  }
-  await page.waitForFunction(
-    (required) => document.querySelector('.onboarding-rating-progress')?.textContent?.startsWith(`${required} von `) ?? false,
-    requiredCount,
-  );
-  await page.waitForSelector('[data-onboarding-finish]:not([disabled])');
-  await page.click('[data-onboarding-finish]');
+  assert.deepEqual(titles, ['Home', 'Mein Profil', 'Orga', 'Aktives Event', 'Match', 'Vote', 'Essen', 'Spielekatalog']);
   await page.waitForSelector('#onboarding-root [role="dialog"]', { state: 'detached' });
-  // Regression: the "Pflicht" badge/blue outline is a rating-mode-only
-  // marker and must disappear once the round is done, not linger on the
-  // catalog forever just because the server still remembers which ten
-  // games were the required set.
   await page.waitForSelector('[data-tab="catalog"]');
   assert.equal(await page.locator('.game-table-row.onboarding-required').count(), 0);
 });
 
-test('admin onboarding reaches the event filter and the rating handoff', async () => {
+test('admin onboarding uses the same shared tour without admin-only steps', async () => {
   const reset = await fetch(`${BASE_URL}/api/me/onboarding`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
@@ -298,7 +241,7 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
     await adminPage.waitForSelector('#onboarding-root [role="dialog"]');
 
     await adminPage.waitForFunction(() =>
-      document.querySelector('.onboarding-progress')?.textContent?.includes('von 14') ?? false,
+      document.querySelector('.onboarding-progress')?.textContent?.includes('von 8') ?? false,
       undefined,
       { timeout: 10_000 },
     );
@@ -307,7 +250,7 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
       if (!match) throw new Error('onboarding progress text is missing the step count');
       return Number(match[1]);
     });
-    assert.equal(totalCoreSteps, 14, 'admins must get both event steps before ratings');
+    assert.equal(totalCoreSteps, 8);
 
     assert.equal(await adminPage.locator('html').getAttribute('data-layout-mode'), 'desktop');
     await adminPage.waitForSelector('.desktop-nav-btn[data-view="home"]:visible');
@@ -322,7 +265,6 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
         && Math.abs(target!.height - ring!.height) < 1;
     }, undefined, { timeout: 5_000 });
 
-    let sawEventSelection = false;
     let sawHeaderEvent = false;
     for (let step = 0; step < totalCoreSteps; step += 1) {
       const title = await adminPage.locator('#onboarding-title').textContent();
@@ -343,27 +285,8 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
         }
         await adminPage.setViewportSize({ width: 1920, height: 1080 });
       }
-      if (title === 'Event-Auswahl') {
-        sawEventSelection = true;
-        await adminPage.waitForSelector('#view-container[data-view="analytics"]');
-        await adminPage.waitForSelector('section[aria-label="Ansicht"] .search-select-control');
-        await adminPage.waitForSelector('.onboarding-target-ring');
-        const waitForSpotlightAlignment = async () => {
-          await adminPage.waitForFunction(() => {
-            const target = document.querySelector('section[aria-label="Ansicht"] .search-select-control')?.getBoundingClientRect();
-            const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
-            return Boolean(target && ring)
-              && Math.abs(target!.left - ring!.left) < 1
-              && Math.abs(target!.top - ring!.top) < 1
-              && Math.abs(target!.width - ring!.width) < 1
-              && Math.abs(target!.height - ring!.height) < 1;
-          }, undefined, { timeout: 5_000 });
-        };
-        await waitForSpotlightAlignment();
-
-        await adminPage.setViewportSize({ width: 420, height: 800 });
-        await waitForSpotlightAlignment();
-      }
+      assert.notEqual(title, 'Admin');
+      assert.notEqual(title, 'Event-Auswahl');
       await adminPage.click('[data-onboarding-next]');
       if (step + 1 < totalCoreSteps) {
         await adminPage.waitForFunction(
@@ -374,17 +297,9 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
       }
     }
     assert.equal(sawHeaderEvent, true);
-    assert.equal(sawEventSelection, true);
-    await adminPage.waitForSelector('.game-table-row.onboarding-required .skill-row [data-rating-value]');
-    await adminPage.click('[data-onboarding-later]');
     await adminPage.waitForFunction(() => !document.querySelector('#onboarding-root [role="dialog"]'));
   } finally {
     await adminPage.close();
-    // "Später" leaves the shared admin with a deferred rating, which every
-    // later admin session resumes asynchronously after startup - navigating
-    // to the game catalog and away from whatever view a test opened in the
-    // meantime (seen as a vanished "Mehr" entry). Restore the completed
-    // onboarding the file's other admin flows start from.
     const restored = await fetch(`${BASE_URL}/api/me/onboarding/test-complete`, {
       method: 'POST',
       headers: { Cookie: adminCookie },

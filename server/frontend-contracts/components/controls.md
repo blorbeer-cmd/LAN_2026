@@ -667,8 +667,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:event-context-toggle`: On phones the topbar event switcher keeps its toggle's tap target but sits the chevron at the right edge, so the event name keeps its room and ends in an ellipsis before it.
 
-- `registry:desktop-nav-indicator`: Internal active navigation indicator preserves the whole navigation target.
-
 - `registry:arrival-header-action`: The carpool header action keeps one line while the long direction title wraps on phones.
 
 - `registry:event-context-search-field`: Compact event switcher reserves its integrated selector action.
@@ -732,7 +730,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:card-open-menu-state`: actionMenu.js raises the card stacking order while its menu is open; it does not alter control interior.
 
-- `registry:desktop-navigation-state`: app.js toggles the active desktop navigation entry; only colors, font weight and decorative indicator visibility change.
+- `registry:desktop-navigation-state`: app.js toggles the active desktop navigation entry; only colors, font weight and background change.
 
 - `registry:player-dragging-state`: The tournament and matchmaking drag callers lower the moving roster row opacity without resizing it.
 

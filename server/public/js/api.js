@@ -138,6 +138,7 @@ export const api = {
   onboarding: {
     get: () => apiFetch('/api/me/onboarding'),
     update: (data) => apiFetch('/api/me/onboarding', { method: 'PUT', body: JSON.stringify(data) }),
+    complete: () => apiFetch('/api/me/onboarding/complete', { method: 'POST' }),
     rating: {
       start: (options = {}) => apiFetch('/api/me/onboarding/rating/start', { method: 'POST', body: JSON.stringify(options) }),
       complete: () => apiFetch('/api/me/onboarding/rating/complete', { method: 'POST' }),
