@@ -395,12 +395,12 @@ async function renderLive(players) {
 
 // Newsticker: a timeline of playful headlines. The server writes every line
 // (see server/src/newsticker.ts), so all screens of one event show the same
-// feed; this screen only asks again when the next 30-second line is due.
+// feed; this screen only asks again when the next randomized line is due.
 // The newest line leads with its "Eilmeldung" kicker, older ones slide one
 // place down, and whatever no longer fits below the tile edge is dropped.
 const NEWS_RETRY_MS = 15_000;
-// Never wait longer than one slot, even if the reported delay looks odd.
-const NEWS_MAX_DELAY_MS = 30_000;
+// Bound the wait to the server's maximum line interval plus a small margin.
+const NEWS_MAX_DELAY_MS = 10 * 60_000 + 1_000;
 const NEWS_SHIFT_MS = 450;
 // At most seven lines; a tall screen spreads them over the tile (see the
 // flex weights in kiosk.css) instead of showing ever more small lines.
