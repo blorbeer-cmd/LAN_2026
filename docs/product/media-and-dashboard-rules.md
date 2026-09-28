@@ -26,7 +26,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   not fit do pages rotate, marked by dots.
 - **Newsticker**: a timeline of playful, clearly invented headlines. The server writes one new
   line every 30 seconds for the whole event, so every Broadcast screen of that event shows the same
-  feed. Fresh real results (matches and tournament fixtures of the last 90 minutes) are reported
+  feed; a new feed starts with a full set of ten lines. A screen that runs on a signed-in account
+  instead of its Broadcast token shows the feed of that account's active event, like every other
+  card. If the feed cannot be loaded before any line was shown, the card says „Newsticker gerade
+  nicht erreichbar.“ and keeps retrying. Fresh real results (matches and tournament fixtures of the last 90 minutes) are reported
   first and each only once; where the event records play time, long ongoing sessions and daily
   play-time milestones are used as well. Otherwise a line combines a real participant with a game
   from the group's catalog (a few well-known games when the catalog is empty). Anti-repeat rules
