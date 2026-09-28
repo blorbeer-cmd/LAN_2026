@@ -6,7 +6,7 @@
 
 import { api, getKioskToken, setKioskMode, setKioskToken } from './api.js';
 import { connectSocket } from './socket.js';
-import { escapeHtml, stateLabel, avatarHtml, formatDateTime } from './format.js';
+import { escapeHtml, stateLabel, avatarHtml } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcade/shared/arcadeStreamRenderer.js';
@@ -199,12 +199,12 @@ function renderKioskLogin() {
         <div class="kiosk-login-brand">
           <img src="/img/logo.svg" alt="" width="48" height="48" />
           <div>
-            <h1>TV-Kiosk</h1>
+            <h1>Broadcast</h1>
             <p class="muted">Mit dem Konto dieses LAN-Events anmelden.</p>
           </div>
         </div>
         <label>
-          <span class="field-label is-required">Kiosk-Konto</span>
+          <span class="field-label is-required">Broadcast-Konto</span>
           <input name="username" type="text" autocomplete="username" maxlength="100" required value="${escapeHtml(account)}" />
         </label>
         <label>
@@ -212,7 +212,7 @@ function renderKioskLogin() {
           <input name="password" type="password" autocomplete="current-password" maxlength="200" required />
         </label>
         <p class="form-error" data-kiosk-login-error role="alert" hidden></p>
-        <button type="submit" class="btn btn-primary btn-block">Kiosk öffnen</button>
+        <button type="submit" class="btn btn-primary btn-block">Broadcast öffnen</button>
       </form>
     </main>`;
 
@@ -249,7 +249,7 @@ function renderKioskLogin() {
 // left there: a roster that shrinks later (people going offline, the event
 // ending) should loosen back up instead of keeping empty space reserved for
 // a bigger crowd that isn't there any more.
-const LIVE_MAX_COLUMNS = 2;
+const LIVE_MAX_COLUMNS = 3;
 const LIVE_MIN_COLUMN_WIDTH = 240;
 const LIVE_MIN_PAGE_SIZE = 6;
 const LIVE_ROTATE_INTERVAL_MS = 6_000;
@@ -380,7 +380,7 @@ function renderLivePageContent() {
 async function renderLive(players) {
   if (players.length === 0) {
     stopLiveRotation();
-    updateHtml('kiosk-live', emptyStateHtml('Noch keine Spieler.'));
+    updateHtml('kiosk-live', emptyStateHtml('Noch keine Spieler.', { className: 'kiosk-empty-state' }));
     return;
   }
   liveAllPlayers = [...players].sort((a, b) => {
@@ -393,8 +393,8 @@ async function renderLive(players) {
   renderLivePageContent();
 }
 
-const LEADERBOARD_MAX_ROWS = 8;
-const LEADERBOARD_MIN_ROWS = 4;
+// Fixed Top 5 as an interim simplification, no longer settled/adaptive.
+const LEADERBOARD_ROWS_VISIBLE = 5;
 
 function leaderboardRowHtml(s, i) {
   return `
@@ -406,31 +406,14 @@ function leaderboardRowHtml(s, i) {
       </div>`;
 }
 
-// Top 8 is the target, but a shorter kiosk screen may not fit even that
-// already-capped list (see the 800px-height media query in kiosk.css). Rather
-// than clip the last row or two, this settles for whatever count this screen
-// actually has room for, same idea as Live-Status's own settling page size.
-// Same overlap risk as settleLiveLayout above (e.g. the initial refreshAll
-// and a 'leaderboard:changed' socket event landing close together), same
-// token guard.
-let leaderboardSettleToken = 0;
-
-async function renderLeaderboard(standings) {
-  const myToken = ++leaderboardSettleToken;
+function renderLeaderboard(standings) {
   const container = document.getElementById('kiosk-leaderboard');
   if (!standings || standings.length === 0) {
-    container.innerHTML = emptyStateHtml('Noch keine Ergebnisse.');
+    container.innerHTML = emptyStateHtml('Noch keine Ergebnisse.', { className: 'kiosk-empty-state' });
     return;
   }
-  let count = Math.min(LEADERBOARD_MAX_ROWS, standings.length);
-  for (;;) {
-    const rows = standings.slice(0, count).map(leaderboardRowHtml).join('');
-    container.innerHTML = `<div class="kiosk-ranking-grid">${rows}</div>`;
-    await nextFrame();
-    if (myToken !== leaderboardSettleToken) return;
-    if (container.scrollHeight <= container.clientHeight + 1 || count <= LEADERBOARD_MIN_ROWS) break;
-    count -= 2;
-  }
+  const rows = standings.slice(0, LEADERBOARD_ROWS_VISIBLE).map(leaderboardRowHtml).join('');
+  container.innerHTML = `<div class="kiosk-ranking-grid">${rows}</div>`;
 }
 
 function concealedGameLabel(gameId, round) {
@@ -451,19 +434,13 @@ function kioskVoteScore(vote, result) {
   return vote.mode === 'points' ? `${result.points} P` : `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
 }
 
-// A fixed Top 5, one column, read straight down — unlike Live-Status this
-// doesn't need to adapt further: five rows always fit even the shortest
-// supported kiosk screen, so there is nothing left to settle at render time.
-const VOTE_ROWS_VISIBLE = 5;
-
 function renderKioskVoteRows(vote, { concealed = false, highlightLeading = true } = {}) {
   const scored = vote.results.filter((result) => result.score > 0);
-  if (scored.length === 0) return emptyStateHtml('Noch keine Stimmen.', { className: 'kiosk-vote-empty' });
+  if (scored.length === 0) return emptyStateHtml('Noch keine Stimmen.', { className: 'kiosk-vote-empty kiosk-empty-state' });
   const maxScore = Math.max(...scored.map((result) => result.score));
-  const visibleResults = scored.slice(0, VOTE_ROWS_VISIBLE);
   let previousScore = null;
   let rank = 0;
-  const rows = visibleResults.map((result, index) => {
+  const rows = scored.map((result, index) => {
     if (previousScore === null || result.score !== previousScore) rank = index + 1;
     previousScore = result.score;
     const highlighted = result.score === maxScore;
@@ -494,6 +471,51 @@ function renderKioskVoteWinners(vote) {
       </div>
     </div>`;
 }
+
+// One column, read straight down, rows at their normal size: every scored
+// result is rendered and fitVoteRows then drops the ones below the card's
+// bottom edge. A taller screen shows more of the ranking instead of more
+// empty space, and a shorter one never squeezes the row geometry or font.
+let lastVotesHtml = '';
+
+// Synchronous on purpose: the card height comes from the dashboard grid, not
+// from these rows, so a forced layout read is already final and the
+// overflowing rows never paint. The ResizeObserver below re-fits once the
+// first real layout (or any later size change) settles.
+function fitVoteRows() {
+  const list = document.querySelector('#kiosk-votes .kiosk-vote-results');
+  if (!list) return;
+  const limit = list.getBoundingClientRect().bottom + 0.5;
+  for (const row of [...list.children]) {
+    if (row.getBoundingClientRect().bottom > limit) row.remove();
+  }
+}
+
+function paintVotes(html) {
+  lastVotesHtml = html;
+  updateHtml('kiosk-votes', html);
+  fitVoteRows();
+}
+
+// Fullscreen, a window resize or a TV switching resolution changes the card
+// height without a new vote payload. Watching the card itself (not the
+// window) re-fits the rows for every such change: the full list is painted
+// again and fitVoteRows keeps as many as the new height holds.
+let voteResizeTimer = null;
+let voteCardHeight = 0;
+const kioskVotesElement = document.getElementById('kiosk-votes');
+const voteResizeObserver = new ResizeObserver(([entry]) => {
+  const height = Math.round(entry.contentRect.height);
+  if (height === voteCardHeight) return;
+  voteCardHeight = height;
+  clearTimeout(voteResizeTimer);
+  voteResizeTimer = setTimeout(() => {
+    if (!lastVotesHtml) return;
+    document.getElementById('kiosk-votes').innerHTML = lastVotesHtml;
+    fitVoteRows();
+  }, 150);
+});
+if (kioskVotesElement) voteResizeObserver.observe(kioskVotesElement);
 
 let voteDisplayTimer = null;
 
@@ -543,7 +565,7 @@ function renderVotes(votes) {
     clearVoteDisplayTimer();
   }
   if (!vote) {
-    return emptyStateHtml('Noch keine Abstimmung.', { className: 'kiosk-vote-state' });
+    return emptyStateHtml('Noch keine Abstimmung.', { className: 'kiosk-vote-state kiosk-empty-state' });
   }
   const heading = vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft';
   const eligibleVoters = Number.isFinite(vote.eligibleVoters) ? vote.eligibleVoters : vote.totalVoters;
@@ -556,7 +578,6 @@ function renderVotes(votes) {
         </span>
         <span class="badge badge-playing">${vote.totalVoters} / ${eligibleVoters} abgestimmt</span>
       </div>
-      <div class="section-title kiosk-vote-section-title">Zwischenstand</div>
       ${renderKioskVoteRows(vote, { concealed: true })}
     </div>`;
 }
@@ -573,7 +594,7 @@ function tournamentStandingRow(name, standing, index, { compact = false } = {}) 
 }
 
 function renderTournament(t) {
-  if (!t) return emptyStateHtml('Noch kein Turnier.');
+  if (!t) return emptyStateHtml('Noch kein Turnier.', { className: 'kiosk-empty-state' });
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
   const teamName = (id) => (id ? escapeHtml(teamsById.get(id)?.name ?? 'TBD') : 'TBD');
 
@@ -679,7 +700,8 @@ function renderBroadcastBanner(entry) {
     const delay = Math.max(0, Math.min(entry.expiresAt - Date.now() + 50, 2_147_483_647));
     pushBannerExpiryTimer = setTimeout(refreshPushBanner, delay);
   }
-  const html = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">${formatDateTime(entry.createdAt)} Uhr</span>`;
+  const createdAt = Number(entry.createdAt);
+  const html = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time" data-created-at="${createdAt}">${broadcastAgeText(createdAt)}</span>`;
   if (el.innerHTML !== html) el.innerHTML = html;
   el.hidden = false;
   updateAlertLayout();
@@ -708,7 +730,7 @@ function renderKioskLocalPlayback(element) {
   const action = connectedPlayer
     ? '<strong>Als Spotify-Gerät bereit</strong><span class="muted">Jam jetzt auf einem Handy oder im Respawn-Tab starten.</span>'
     : kioskLocalPlayback.ready
-      ? '<strong>Ton über diesen Kiosk/TV</strong><span class="muted">Aktiviert den Browser als Spotify-Gerät; der Ton läuft über HDMI oder den gewählten Computer-Ausgang.</span><button type="button" class="btn btn-primary" id="kiosk-enable-local-playback">Kiosk-Ton aktivieren</button>'
+      ? '<strong>Ton über diesen Broadcast/TV</strong><span class="muted">Aktiviert den Browser als Spotify-Gerät; der Ton läuft über HDMI oder den gewählten Computer-Ausgang.</span><button type="button" class="btn btn-primary" id="kiosk-enable-local-playback">Broadcast-Ton aktivieren</button>'
       : `<strong>Browser-Wiedergabe freigeben</strong><span class="muted">${escapeHtml(kioskLocalPlayback.message || 'Spotify im lokalen Controller neu freigeben.')}</span><a class="btn btn-primary" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Lokalen Controller öffnen</a>`;
   const renderKey = connectedPlayer
     ? `local:${connectedPlayer.deviceId}`
@@ -833,8 +855,8 @@ function renderMusicBar(payload) {
   const recoveryHtml = needsBrowserRecovery ? `
     <span class="kiosk-music-local">
       <strong>Browser-Ton getrennt</strong>
-      <span class="muted">Nach dem Neuladen muss der Kiosk einmal wieder mit dem laufenden Jam verbunden werden.</span>
-      <button type="button" class="btn btn-primary" id="kiosk-recover-local-playback">Kiosk-Ton wiederherstellen</button>
+      <span class="muted">Nach dem Neuladen muss der Broadcast einmal wieder mit dem laufenden Jam verbunden werden.</span>
+      <button type="button" class="btn btn-primary" id="kiosk-recover-local-playback">Broadcast-Ton wiederherstellen</button>
     </span>` : '';
   const html = `${playbackHtml}${recoveryHtml}`;
   if (element.dataset.renderKey !== renderKey) {
@@ -919,7 +941,7 @@ async function refreshVotes() {
   try {
     const votes = await api.votes.kiosk();
     if (!isLatestRefresh('vote', requestVersion)) return;
-    updateHtml('kiosk-votes', renderVotes(votes));
+    paintVotes(renderVotes(votes));
   } catch (error) {
     logRefreshFailure('vote', error);
   }
@@ -930,7 +952,7 @@ async function refreshLeaderboard() {
   try {
     const leaderboard = await api.leaderboard.get();
     if (!isLatestRefresh('leaderboard', requestVersion)) return;
-    await renderLeaderboard(leaderboard.standings);
+    renderLeaderboard(leaderboard.standings);
   } catch (error) {
     logRefreshFailure('leaderboard', error);
   }
@@ -948,24 +970,22 @@ async function refreshTournament() {
       if (!isLatestRefresh('tournament', requestVersion)) return;
       updateHtml('kiosk-tournament', renderTournament(detail));
     } else {
-      updateHtml('kiosk-tournament', emptyStateHtml('Noch kein Turnier.'));
+      updateHtml('kiosk-tournament', emptyStateHtml('Noch kein Turnier.', { className: 'kiosk-empty-state' }));
     }
   } catch (err) {
     logRefreshFailure('tournament', err);
   }
 }
 
-// Sequential, not Promise.all: Live-Status and Rangliste share a grid row
-// (see .kiosk-grid), and both settle their own layout by temporarily
-// rendering an oversized candidate before measuring and shrinking back down
-// (settleLiveLayout / renderLeaderboard). Running them concurrently let one
-// card's temporarily oversized render inflate the shared row's height right
-// as the other card sampled its own clientHeight, leaving it settled on a
-// row count that no longer fit once the row height dropped back down.
+// Sequential, not Promise.all: Live-Status settles its own layout by
+// temporarily rendering an oversized candidate before measuring and
+// shrinking back down (settleLiveLayout). Running refreshes concurrently let
+// another card's render inflate the shared .kiosk-grid row's height right as
+// Live-Status sampled its own clientHeight, leaving it settled on a column/
+// page count that no longer fit once the row height dropped back down.
 // The banner and music bar go first for the same reason: both sit above or
-// below the grid and shrink how much height it actually gets, so the cards
-// that measure against that height must not settle before those two have
-// already claimed their share of it.
+// below the grid and shrink how much height it actually gets, so Live-Status
+// must not settle before those two have already claimed their share of it.
 async function refreshAll() {
   await refreshPushBanner();
   await refreshMusic();
@@ -1014,6 +1034,44 @@ function playPushSound() {
   } catch {
     // see comment above — never let this take the kiosk down
   }
+}
+
+// Weekday plus time: a LAN runs over several days, so "Samstag 13:19"
+// answers the glance better than the time alone. Built from two parts
+// because the combined de-DE format inserts a comma after the weekday.
+// Ticking every few seconds keeps the minute change prompt without tying the
+// update to the second boundary. The same tick ages the banner's
+// "vor 5 Min." so it never shows a second, competing clock time.
+const CLOCK_TICK_MS = 5_000;
+
+function updateClock() {
+  const clock = document.getElementById('kiosk-clock');
+  if (!clock) return;
+  const now = new Date();
+  const weekday = now.toLocaleDateString('de-DE', { weekday: 'long' });
+  const time = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  clock.textContent = `${weekday} ${time}`;
+  updateBroadcastAge();
+}
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+function broadcastAgeText(createdAt, now = Date.now()) {
+  const age = Math.max(0, now - createdAt);
+  if (age < MINUTE_MS) return 'gerade eben';
+  if (age < HOUR_MS) return `vor ${Math.floor(age / MINUTE_MS)} Min.`;
+  if (age < DAY_MS) return `vor ${Math.floor(age / HOUR_MS)} Std.`;
+  return `seit ${new Date(createdAt).toLocaleDateString('de-DE', { weekday: 'long' })}`;
+}
+
+function updateBroadcastAge() {
+  const age = document.querySelector('#kiosk-broadcast .kiosk-broadcast-time');
+  const createdAt = Number(age?.dataset.createdAt);
+  if (!age || !Number.isFinite(createdAt)) return;
+  const text = broadcastAgeText(createdAt);
+  if (age.textContent !== text) age.textContent = text;
 }
 
 const CORNER_IDLE_HIDE_MS = 2000;
@@ -1097,6 +1155,8 @@ async function main() {
   }
 
   wireFullscreenControl();
+  updateClock();
+  setInterval(updateClock, CLOCK_TICK_MS);
   setInterval(refreshMusic, 5_000);
   setInterval(refreshAll, KIOSK_REFRESH_INTERVAL_MS);
   const socket = connectSocket({ kiosk: true });

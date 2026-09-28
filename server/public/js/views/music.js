@@ -154,7 +154,7 @@ export function musicSetupHtml(status, activePairing = pairing) {
       <div class="grouped-page-section-title"><h2 id="music-setup-title">${hasKnownController ? 'Musik-PC wieder verbinden' : 'Musik-PC einrichten'}</h2></div>
       <p class="music-note">${hasKnownController
         ? `${escapeHtml(status.controller.label)} ist nicht erreichbar. Ohne laufenden Jam wird die Verbindung nach 24 Stunden ohne Kontakt entfernt.`
-        : 'Ein Musik-PC oder Kiosk-Pi verbindet die Community mit Spotify.'}</p>
+        : 'Ein Musik-PC oder Broadcast-Pi verbindet die Community mit Spotify.'}</p>
       <ol class="music-setup-steps">
         ${steps.map(([title, text, slot], index) => `<li class="${index < current ? 'is-complete' : index === current ? 'is-current' : ''}">
           <span class="music-setup-step-number">${index + 1}</span>

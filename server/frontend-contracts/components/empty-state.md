@@ -138,4 +138,4 @@ steht im [Paket-5-Inventar](../evidence/package-5-baseline.tsv). Es gibt keine b
 - `registry:empty-state-notifications`: Shared empty/loading/error slot inside the notification panel.
 
 
-- `registry:empty-state-kiosk`: TV vote placeholders fill their existing dashboard region.
+- `registry:empty-state-kiosk`: TV tile placeholders center one larger line in their dashboard tile.

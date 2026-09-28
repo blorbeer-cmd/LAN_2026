@@ -1181,10 +1181,10 @@ export const components = [
   {
     "id": "empty-state-kiosk",
     "role": "composite-part",
-    "selector": ".kiosk-vote-empty, .kiosk-vote-state",
+    "selector": ".kiosk-vote-empty, .kiosk-vote-state, .kiosk-empty-state",
     "owner": "public/css/kiosk.css",
     "contract": "components/empty-state.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "TV vote placeholders fill their existing dashboard region.",
+    "purpose": "TV tile placeholders center one larger line in their dashboard tile.",
     "control": false
   },
   {

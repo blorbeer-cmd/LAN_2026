@@ -1079,7 +1079,7 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   assert.match(await page.locator('#event-paypal').getAttribute('placeholder') ?? '', /E-Mail-Adresse/);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
   await page.click('[data-confirm]');
-  // TV-Kiosk is not an Orga tab (only "Kioskverwaltung" in Admin reaches it,
+  // Broadcast is not an Orga tab (only its own tool card in Admin reaches it,
   // see "the authenticated admin role owns the seating editor and backup
   // tools" below), and neither is "Events & Gruppen" any more: it picks and
   // creates the workspaces the Orga routes work inside. Orga itself only ever
@@ -1441,20 +1441,24 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await page.click('[data-retry-kiosk-password]');
   await page.waitForSelector('[data-copy-kiosk-password]');
   await page.unroute(kioskPasswordUrl);
-  await assertCompactAdminHeader('TV-Kiosk');
-  assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);
+  await assertCompactAdminHeader('Broadcast', { minimum: 100 });
+  assert.equal(await page.getByRole('heading', { name: 'Broadcast' }).count(), 1);
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
   assert.equal(await page.locator('a[href="/kiosk.html"]').count(), 0);
   assert.equal(await page.locator('.profile-row-meta code').count(), 1);
   assert.deepEqual(
     await page.locator('a[href^="/kiosk.html?account="]').allTextContents(),
-    await page.locator('a[href^="/kiosk.html?account="]').evaluateAll((links) => links.map(() => 'Kiosk öffnen')),
+    await page.locator('a[href^="/kiosk.html?account="]').evaluateAll((links) => links.map(() => 'Broadcast öffnen')),
   );
   assert.equal(
     await page.locator('a[href^="/kiosk.html?account="]:not(.btn-primary):not(.kiosk-open-link)').count(),
     0,
   );
-  assert.equal(await page.locator('#orga-kiosk-help').count(), 1);
+  assert.equal(await page.locator('.more-subpage-header .info-tooltip').count(), 0);
+  assert.match(
+    (await page.locator('.more-subpage-header > p.muted').textContent()) ?? '',
+    /eigenes Broadcast-Konto/,
+  );
   await openMoreViewEntry(page, '[data-navigate="admin"]');
   await page.waitForSelector('[aria-label="Werkzeuge"]');
   await openAdminSection('test');

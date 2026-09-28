@@ -676,7 +676,7 @@ function renderPanel(container, ctx) {
     openTool('Feedback', 'Rückmeldungen aus der App', 'adminFeedback'),
     openTool('Nutzungsauswertung', 'Welche Bereiche genutzt werden', 'adminFeatureUsage'),
     seatingEnabled ? openTool('Sitzplan', 'Plätze und sichtbare Monitore', 'seating') : null,
-    kioskEnabled ? openTool('TV-Kiosk', 'Kiosk-Zugänge und Anzeige', 'kiosk') : null,
+    kioskEnabled ? openTool('Broadcast', 'Broadcast-Zugänge und Anzeige', 'kiosk') : null,
     trackingEnabled ? null : {
       title: 'Backup',
       meta: 'Datenbank als Datei',
