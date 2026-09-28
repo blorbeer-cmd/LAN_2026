@@ -16,7 +16,7 @@ test('a signed-in account reads a full newsticker for its active event', async (
   const res = await request(app).get('/api/newsticker').set('x-test-player-id', TEST_ADMIN_ID);
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.equal(res.body.items.length, 10, 'a new feed starts with a full tile of lines');
-  assert.ok(res.body.nextInMs > 0 && res.body.nextInMs <= 30_000);
+  assert.ok(res.body.nextInMs >= 3 * 60_000 && res.body.nextInMs <= 10 * 60_000);
   const ids = res.body.items.map((item: { id: string }) => item.id);
   assert.equal(new Set(ids).size, ids.length, 'every line of the start set is distinct');
 });
