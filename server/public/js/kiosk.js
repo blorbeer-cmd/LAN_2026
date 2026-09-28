@@ -199,12 +199,12 @@ function renderKioskLogin() {
         <div class="kiosk-login-brand">
           <img src="/img/logo.svg" alt="" width="48" height="48" />
           <div>
-            <h1>TV-Kiosk</h1>
+            <h1>Broadcast</h1>
             <p class="muted">Mit dem Konto dieses LAN-Events anmelden.</p>
           </div>
         </div>
         <label>
-          <span class="field-label is-required">Kiosk-Konto</span>
+          <span class="field-label is-required">Broadcast-Konto</span>
           <input name="username" type="text" autocomplete="username" maxlength="100" required value="${escapeHtml(account)}" />
         </label>
         <label>
@@ -212,7 +212,7 @@ function renderKioskLogin() {
           <input name="password" type="password" autocomplete="current-password" maxlength="200" required />
         </label>
         <p class="form-error" data-kiosk-login-error role="alert" hidden></p>
-        <button type="submit" class="btn btn-primary btn-block">Kiosk öffnen</button>
+        <button type="submit" class="btn btn-primary btn-block">Broadcast öffnen</button>
       </form>
     </main>`;
 
@@ -378,12 +378,16 @@ function renderLivePageContent() {
 }
 
 async function renderLive(players) {
-  if (players.length === 0) {
+  // Offline players add nothing to a "who's active right now" board — showing
+  // only online/paused/playing keeps the roster shorter and the tile useful
+  // even at events with many registered but currently inactive players.
+  const active = players.filter((p) => p.state !== 'offline');
+  if (active.length === 0) {
     stopLiveRotation();
     updateHtml('kiosk-live', emptyStateHtml('Noch keine Spieler.'));
     return;
   }
-  liveAllPlayers = [...players].sort((a, b) => {
+  liveAllPlayers = [...active].sort((a, b) => {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
     return rankDiff !== 0 ? rankDiff : a.name.localeCompare(b.name, 'de');
   });
@@ -393,8 +397,9 @@ async function renderLive(players) {
   renderLivePageContent();
 }
 
-const LEADERBOARD_MAX_ROWS = 8;
-const LEADERBOARD_MIN_ROWS = 4;
+// Fixed Top 5, same idea as the Abstimmung card's VOTE_ROWS_VISIBLE: an
+// interim simplification, no longer settled/adaptive.
+const LEADERBOARD_ROWS_VISIBLE = 5;
 
 function leaderboardRowHtml(s, i) {
   return `
@@ -406,31 +411,14 @@ function leaderboardRowHtml(s, i) {
       </div>`;
 }
 
-// Top 8 is the target, but a shorter kiosk screen may not fit even that
-// already-capped list (see the 800px-height media query in kiosk.css). Rather
-// than clip the last row or two, this settles for whatever count this screen
-// actually has room for, same idea as Live-Status's own settling page size.
-// Same overlap risk as settleLiveLayout above (e.g. the initial refreshAll
-// and a 'leaderboard:changed' socket event landing close together), same
-// token guard.
-let leaderboardSettleToken = 0;
-
-async function renderLeaderboard(standings) {
-  const myToken = ++leaderboardSettleToken;
+function renderLeaderboard(standings) {
   const container = document.getElementById('kiosk-leaderboard');
   if (!standings || standings.length === 0) {
     container.innerHTML = emptyStateHtml('Noch keine Ergebnisse.');
     return;
   }
-  let count = Math.min(LEADERBOARD_MAX_ROWS, standings.length);
-  for (;;) {
-    const rows = standings.slice(0, count).map(leaderboardRowHtml).join('');
-    container.innerHTML = `<div class="kiosk-ranking-grid">${rows}</div>`;
-    await nextFrame();
-    if (myToken !== leaderboardSettleToken) return;
-    if (container.scrollHeight <= container.clientHeight + 1 || count <= LEADERBOARD_MIN_ROWS) break;
-    count -= 2;
-  }
+  const rows = standings.slice(0, LEADERBOARD_ROWS_VISIBLE).map(leaderboardRowHtml).join('');
+  container.innerHTML = `<div class="kiosk-ranking-grid">${rows}</div>`;
 }
 
 function concealedGameLabel(gameId, round) {
@@ -708,7 +696,7 @@ function renderKioskLocalPlayback(element) {
   const action = connectedPlayer
     ? '<strong>Als Spotify-Gerät bereit</strong><span class="muted">Jam jetzt auf einem Handy oder im Respawn-Tab starten.</span>'
     : kioskLocalPlayback.ready
-      ? '<strong>Ton über diesen Kiosk/TV</strong><span class="muted">Aktiviert den Browser als Spotify-Gerät; der Ton läuft über HDMI oder den gewählten Computer-Ausgang.</span><button type="button" class="btn btn-primary" id="kiosk-enable-local-playback">Kiosk-Ton aktivieren</button>'
+      ? '<strong>Ton über diesen Broadcast/TV</strong><span class="muted">Aktiviert den Browser als Spotify-Gerät; der Ton läuft über HDMI oder den gewählten Computer-Ausgang.</span><button type="button" class="btn btn-primary" id="kiosk-enable-local-playback">Broadcast-Ton aktivieren</button>'
       : `<strong>Browser-Wiedergabe freigeben</strong><span class="muted">${escapeHtml(kioskLocalPlayback.message || 'Spotify im lokalen Controller neu freigeben.')}</span><a class="btn btn-primary" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Lokalen Controller öffnen</a>`;
   const renderKey = connectedPlayer
     ? `local:${connectedPlayer.deviceId}`
@@ -833,8 +821,8 @@ function renderMusicBar(payload) {
   const recoveryHtml = needsBrowserRecovery ? `
     <span class="kiosk-music-local">
       <strong>Browser-Ton getrennt</strong>
-      <span class="muted">Nach dem Neuladen muss der Kiosk einmal wieder mit dem laufenden Jam verbunden werden.</span>
-      <button type="button" class="btn btn-primary" id="kiosk-recover-local-playback">Kiosk-Ton wiederherstellen</button>
+      <span class="muted">Nach dem Neuladen muss der Broadcast einmal wieder mit dem laufenden Jam verbunden werden.</span>
+      <button type="button" class="btn btn-primary" id="kiosk-recover-local-playback">Broadcast-Ton wiederherstellen</button>
     </span>` : '';
   const html = `${playbackHtml}${recoveryHtml}`;
   if (element.dataset.renderKey !== renderKey) {
@@ -930,7 +918,7 @@ async function refreshLeaderboard() {
   try {
     const leaderboard = await api.leaderboard.get();
     if (!isLatestRefresh('leaderboard', requestVersion)) return;
-    await renderLeaderboard(leaderboard.standings);
+    renderLeaderboard(leaderboard.standings);
   } catch (error) {
     logRefreshFailure('leaderboard', error);
   }
@@ -955,17 +943,15 @@ async function refreshTournament() {
   }
 }
 
-// Sequential, not Promise.all: Live-Status and Rangliste share a grid row
-// (see .kiosk-grid), and both settle their own layout by temporarily
-// rendering an oversized candidate before measuring and shrinking back down
-// (settleLiveLayout / renderLeaderboard). Running them concurrently let one
-// card's temporarily oversized render inflate the shared row's height right
-// as the other card sampled its own clientHeight, leaving it settled on a
-// row count that no longer fit once the row height dropped back down.
+// Sequential, not Promise.all: Live-Status settles its own layout by
+// temporarily rendering an oversized candidate before measuring and
+// shrinking back down (settleLiveLayout). Running refreshes concurrently let
+// another card's render inflate the shared .kiosk-grid row's height right as
+// Live-Status sampled its own clientHeight, leaving it settled on a column/
+// page count that no longer fit once the row height dropped back down.
 // The banner and music bar go first for the same reason: both sit above or
-// below the grid and shrink how much height it actually gets, so the cards
-// that measure against that height must not settle before those two have
-// already claimed their share of it.
+// below the grid and shrink how much height it actually gets, so Live-Status
+// must not settle before those two have already claimed their share of it.
 async function refreshAll() {
   await refreshPushBanner();
   await refreshMusic();

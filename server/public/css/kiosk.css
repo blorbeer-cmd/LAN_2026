@@ -262,18 +262,19 @@
   align-content: start;
   gap: var(--space-2);
 }
-/* Stacked, not side by side: a round with only one or two matches used to
-   leave the card looking mostly empty at only half its width in use. A
-   capped width keeps a lone match from stretching edge to edge. */
 .kiosk-match-grid {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
   gap: var(--space-2);
   width: 100%;
 }
-.kiosk-match-grid > .kiosk-match-card {
+/* A lone match would otherwise stretch across both grid columns edge to
+   edge; span it explicitly and cap its width instead. */
+.kiosk-match-grid > :only-child {
+  grid-column: 1 / -1;
   width: min(100%, calc(var(--selection-card-min-width) * 2));
+  justify-self: center;
 }
 .kiosk-live-grid {
   /* Column count is a JS decision (settleLiveLayout in kiosk.js), not a CSS
@@ -288,7 +289,13 @@
      which is exactly what kiosk.js measures to decide whether to page. The
      parent #kiosk-live already clips visually; this only controls what the
      fit check can see. */
-  align-content: start;
+  /* stretch, not start: a short roster used to pack at the top and leave the
+     rest of the tile empty. Stretching lets the (few) rows themselves grow
+     to fill the available height instead of the text/avatars growing, which
+     would fight readability across very different roster sizes. Only free
+     space is redistributed, so a full-to-overflowing roster behaves exactly
+     as before and the fit check above is unaffected. */
+  align-content: stretch;
 }
 .kiosk-live-row {
   display: flex;
@@ -598,12 +605,11 @@
   border-radius: var(--radius);
   background: var(--accent-gradient);
   color: var(--accent-text);
-  /* Sized for reading across a room, not at arm's length like regular body
-     text (--font-size-md) -- this is the one banner a kiosk view needs
-     legible from a distance. Stops short of --font-size-2xl/3xl because
-     .notification-banner-body is capped at two lines; a bigger jump would
-     truncate more announcements sooner. */
-  font-size: var(--font-size-xl);
+  /* Matches the card heading/content size used everywhere else on this
+     dashboard (--font-size-lg) instead of its own larger step: the kiosk
+     otherwise reads as a small, deliberate set of sizes, and a banner this
+     wide at a bigger size read as oversized next to everything below it. */
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-medium);
   box-shadow: 0 4px 24px rgba(91, 140, 255, 0.45);
   animation: kiosk-broadcast-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);

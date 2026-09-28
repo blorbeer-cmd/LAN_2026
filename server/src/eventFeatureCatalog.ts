@@ -111,7 +111,7 @@ export const EVENT_FEATURE_CATALOG: Readonly<Record<EventFeatureKey, EventFeatur
   kiosk: {
     key: 'kiosk',
     version: 1,
-    title: 'Kiosk',
+    title: 'Broadcast',
     description: 'Read-only Eventanzeige für gemeinsam genutzte Bildschirme',
     requiredFeatureKeys: [],
   },
