@@ -763,10 +763,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 112);
+  assert.equal(migrations.length, 113);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 112 }, (_, index) => index + 1),
+    Array.from({ length: 113 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -829,8 +829,13 @@ test('records the complete migration history and does not duplicate it on restar
     );
     assert.equal(columns.some((column) => column.name === 'schedule_revision'), false);
   }
-  const playerColumns = migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  const playerColumns = migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string; dflt_value: string | null }>;
   assert.ok(playerColumns.some((column) => column.name === 'deactivated_at'));
+  assert.equal(
+    playerColumns.find((column) => column.name === 'newsticker_opt_out')?.dflt_value,
+    '0',
+    'legacy players default to being named in the newsticker',
+  );
   assert.ok(playerColumns.some((column) => column.name === 'test_owner_group_id'));
   assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'admin_log'").get());
   for (const table of ['groups', 'group_memberships', 'group_invites']) {
@@ -1355,8 +1360,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 112 }, (_, index) => index + 1),
-    'every version 1..112 runs exactly once',
+    Array.from({ length: 113 }, (_, index) => index + 1),
+    'every version 1..113 runs exactly once',
   );
 });
 

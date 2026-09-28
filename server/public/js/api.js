@@ -131,6 +131,7 @@ export const api = {
 
   kiosk: {
     login: (data) => apiFetch('/api/kiosk/login', { method: 'POST', body: JSON.stringify(data) }),
+    newsticker: () => apiFetch('/api/newsticker'),
   },
   me: () => apiFetch('/api/me'),
 

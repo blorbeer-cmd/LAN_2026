@@ -254,9 +254,6 @@
   min-height: 0;
 }
 
-.kiosk-card .lb-row {
-  font-size: var(--font-size-lg);
-}
 /* A tile without data centers its one line in the whole tile body, at the
    dashboard's content size so it still reads from across the room. The
    shared empty-state padding would push the line toward the top of a short
@@ -268,6 +265,114 @@
   place-items: center;
   padding: 0;
   font-size: var(--font-size-lg);
+}
+
+/* Newsticker timeline: every line hangs on one vertical rail with its icon.
+   The newest line is the large "Eilmeldung" with a gradient icon; older
+   lines are single rows. kiosk.js drops the lines that no longer fit and
+   animates the shift when a new one arrives. */
+.kiosk-news {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow: hidden;
+}
+.kiosk-news-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--row-icon-size) minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--space-4);
+}
+/* The rail runs from below this icon to the next one, across the gap. */
+.kiosk-news-item::before {
+  content: '';
+  position: absolute;
+  top: var(--row-icon-size);
+  bottom: calc(-1 * var(--space-3));
+  left: calc(var(--row-icon-size) / 2 - 1px);
+  width: 2px;
+  background: var(--border);
+}
+.kiosk-news-item:last-child::before {
+  display: none;
+}
+.kiosk-news-dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: var(--row-icon-size);
+  height: var(--row-icon-size);
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+}
+.kiosk-news-item.is-first .kiosk-news-dot {
+  border-color: transparent;
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+}
+.kiosk-news-text {
+  display: flex;
+  min-width: 0;
+  min-height: var(--row-icon-size);
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
+}
+.kiosk-news-line {
+  overflow: hidden;
+  font-size: var(--font-size-lg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kiosk-news-item.is-first .kiosk-news-line {
+  display: -webkit-box;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.3;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.kiosk-news-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--accent);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* The small pink "on air" light in front of the kicker. */
+.kiosk-news-kicker::before {
+  content: '';
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--accent-3);
+  box-shadow: 0 0 var(--space-2) var(--accent-3);
+}
+/* Compact dashboard (see the 900px rule above): the lead line keeps its
+   weight but drops one size so three lines hold a whole headline. */
+@media (max-width: 900px) { /* design-token-ok: fixed kiosk dashboard breakpoint */
+  .kiosk-news-item.is-first .kiosk-news-line {
+    font-size: var(--font-size-xl);
+  }
+}
+.kiosk-news-meta,
+.kiosk-news-age {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.kiosk-news-age {
+  font-variant-numeric: tabular-nums;
+  line-height: var(--row-icon-size);
+  white-space: nowrap;
 }
 #kiosk-live {
   display: flex;
@@ -295,7 +400,6 @@
 }
 
 .kiosk-live-grid,
-.kiosk-ranking-grid,
 .kiosk-tournament-standings-grid,
 .kiosk-tournament-group-grid {
   display: grid;
@@ -379,12 +483,6 @@
 }
 .kiosk-live-dot.is-active {
   background: var(--accent);
-}
-.kiosk-ranking-grid .lb-row {
-  padding: var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
 }
 .kiosk-vote-state {
   height: 100%;
@@ -749,12 +847,11 @@
   padding: var(--space-8);
 }
 
-/* A short 720p-class screen leaves little vertical room: Rangliste and
-   Turnier both draw a fixed row count instead of rotating like Live-Status
-   or fitting like Abstimmung, so they squeeze their rows to stay on-screen
+/* A short 720p-class screen leaves little vertical room: Turnier draws a
+   fixed row count instead of rotating like Live-Status or fitting like
+   Abstimmung and Newsticker, so it squeezes its rows to stay on-screen
    without clipping the last row or two. */
 @media (max-height: 800px) { /* design-token-ok: fixed kiosk dashboard breakpoint, same reasoning as the 900px width one above */
-  .kiosk-ranking-grid .lb-row,
   .kiosk-tournament-standings-grid .kiosk-standing-row {
     padding: var(--space-1) var(--space-2);
   }

@@ -74,11 +74,15 @@ test('GET /api/players/:id 404s for an unknown id', async () => {
   assert.equal(res.status, 404);
 });
 
-test('PATCH /api/players/:id renames and recolors', async () => {
-  const res = await patchPlayer(createdId, { name: 'Alexandra', color: '#ff0000' });
+test('PATCH /api/players/:id renames, recolors and toggles the newsticker opt-out', async () => {
+  const res = await patchPlayer(createdId, { name: 'Alexandra', color: '#ff0000', newstickerOptOut: true });
   assert.equal(res.status, 200);
   assert.equal(res.body.name, 'Alexandra');
   assert.equal(res.body.color, '#ff0000');
+  assert.equal(res.body.newsticker_opt_out, 1);
+  // Leaving the field out keeps the stored choice.
+  assert.equal((await patchPlayer(createdId, { color: '#00ff00' })).body.newsticker_opt_out, 1);
+  assert.equal((await patchPlayer(createdId, { newstickerOptOut: false })).body.newsticker_opt_out, 0);
 });
 
 test('PATCH /api/players/:id rejects profile changes from another identity', async () => {
@@ -92,9 +96,12 @@ test('PATCH /api/players/:id rejects profile changes from another identity', asy
   await request(app).delete(`/api/players/${other.body.id}`);
 });
 
-test('PATCH /api/players/:id rejects an invalid color', async () => {
+test('PATCH /api/players/:id rejects an invalid color or opt-out value', async () => {
   const res = await patchPlayer(createdId, { color: 'nope' });
   assert.equal(res.status, 400);
+  const optOut = await patchPlayer(createdId, { newstickerOptOut: 'ja' });
+  assert.equal(optOut.status, 400);
+  assert.match(optOut.body.error, /newstickerOptOut/);
 });
 
 test('POST /api/players rejects a name that is already taken (case-insensitive)', async () => {

@@ -572,8 +572,18 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   await page.waitForSelector('#kiosk-fullscreen');
   assert.deepEqual(
     await page.locator('#kiosk-dashboard > .kiosk-card > div').evaluateAll((contents) => contents.map((content) => content.id)),
-    ['kiosk-live', 'kiosk-leaderboard', 'kiosk-votes', 'kiosk-tournament'],
+    ['kiosk-live', 'kiosk-newsticker', 'kiosk-votes', 'kiosk-tournament'],
   );
+  // The newsticker opens with a few generated lines: one lead headline with
+  // its kicker, all of them fitted inside the tile.
+  await page.waitForSelector('#kiosk-newsticker .kiosk-news-item.is-first .kiosk-news-kicker >> text=Eilmeldung');
+  const newsBounds = await page.locator('#kiosk-newsticker').evaluate((tile) => {
+    const bottom = tile.getBoundingClientRect().bottom;
+    const items = Array.from(tile.querySelectorAll('.kiosk-news-item'));
+    return { count: items.length, fits: items.every((item) => item.getBoundingClientRect().bottom <= bottom + 0.5) };
+  });
+  assert.ok(newsBounds.count >= 2, `the newsticker starts with several lines: ${JSON.stringify(newsBounds)}`);
+  assert.equal(newsBounds.fits, true, 'no newsticker line reaches past the tile');
 
   // The last-push banner shows the food order's own push (title "Neue
   // Sammelbestellung"), not the earlier Durchsage — with a timestamp, and

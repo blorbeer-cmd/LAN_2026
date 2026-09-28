@@ -42,6 +42,9 @@ db.exec(`
     -- text version it was set under, NULL when off. A changed text therefore
     -- stops it from applying until the account agrees to the new wording.
     tracking_consent_default_version TEXT,
+    -- Player-side opt-out from the Broadcast newsticker's playful headlines
+    -- (see newsticker.ts); 1 keeps the name out of every generated line.
+    newsticker_opt_out INTEGER NOT NULL DEFAULT 0 CHECK (newsticker_opt_out IN (0, 1)),
     is_admin        INTEGER NOT NULL DEFAULT 0, -- moderation role; can be granted via PATCH /api/players/:id
     is_test         INTEGER NOT NULL DEFAULT 0, -- admin-seeded test player; hidden outside admin mode (see testUsers.ts)
     deactivated_at  INTEGER, -- former participant: kept for history, denied login/agent access and hidden from active rosters
@@ -5393,6 +5396,15 @@ function moveRatingsToZeroToFive(): void {
   moveStoredDrawRatingsToZeroToFive();
 }
 registerMigration({ version: 112, name: 'move bock, skill and poll ratings to 0-5', up: moveRatingsToZeroToFive });
+
+// The Broadcast newsticker names real participants in invented, playful
+// headlines, so every player can keep their name out of it.
+function addNewstickerOptOut(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === 'newsticker_opt_out')) return;
+  db.exec('ALTER TABLE players ADD COLUMN newsticker_opt_out INTEGER NOT NULL DEFAULT 0 CHECK (newsticker_opt_out IN (0, 1))');
+}
+registerMigration({ version: 113, name: 'add newsticker opt-out', up: addNewstickerOptOut });
 
 runRegisteredMigrations();
 
