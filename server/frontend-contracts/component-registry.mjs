@@ -2007,19 +2007,6 @@ export const permanentVariants = [
     "reason": "Existing rating-panel composite action row keeps its short application labels and horizontal density at the shared minimum height."
   },
   {
-    "id": "desktop-nav-indicator",
-    "role": "composite-part",
-    "selector": ":root[data-layout-mode='desktop'] .desktop-nav-btn::before",
-    "owner": "public/css/style.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "width",
-      "height",
-      "border-radius"
-    ],
-    "reason": "Internal active navigation indicator preserves the whole navigation target."
-  },
-  {
     "id": "arrival-header-action",
     "role": "composite-part",
     "selector": ".arrivals-carpool-section > .grouped-page-section-title > .btn",
@@ -2339,11 +2326,11 @@ export const permanentVariants = [
   {
     "id": "desktop-navigation-state",
     "role": "composite-part",
-    "selector": ":root[data-layout-mode='desktop'] .desktop-nav-btn.active, :root[data-layout-mode='desktop'] .desktop-nav-btn.active::before",
+    "selector": ":root[data-layout-mode='desktop'] .desktop-nav-btn.active",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "properties": [],
-    "reason": "app.js toggles the active desktop navigation entry; only colors, font weight and decorative indicator visibility change."
+    "reason": "app.js toggles the active desktop navigation entry; only colors, font weight and background change."
   },
   {
     "id": "player-dragging-state",
