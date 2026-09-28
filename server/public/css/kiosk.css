@@ -298,10 +298,18 @@
 .kiosk-news-item:last-child::before {
   display: none;
 }
-/* The lead line takes all free height of the tile: its text stays at the top
-   while its rail simply runs longer down to the second line. */
-.kiosk-news-item.is-first {
+/* Free height of the tile is shared out below the lines, lead first: every
+   line grows under its text (which stays at the top) and its rail runs on to
+   the next line. The lead gets two shares, every other line one and the last
+   none, so the gap after the lead is always twice as large as the others. */
+.kiosk-news-item {
   flex: 1 0 auto;
+}
+.kiosk-news-item.is-first {
+  flex-grow: 2;
+}
+.kiosk-news-item:last-child {
+  flex-grow: 0;
 }
 .kiosk-news-dot {
   position: relative;
@@ -315,9 +323,12 @@
   background: var(--bg-elevated-2);
   color: var(--text-muted);
 }
+/* The gradient must start under the transparent border: with the default
+   padding-box origin it repeats into that 1px ring and shows the far end of
+   the gradient as a thin seam around the circle. */
 .kiosk-news-item.is-first .kiosk-news-dot {
   border-color: transparent;
-  background: var(--accent-gradient);
+  background: var(--accent-gradient) border-box;
   color: var(--accent-text);
 }
 .kiosk-news-text {
@@ -334,15 +345,28 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Same size as the banner text: the lead stands out through its gradient
-   icon, kicker, weight and meta line, not through a larger type step. */
+/* One step above the other lines at a medium weight: the lead reads first
+   without the heavy headline look. */
 .kiosk-news-item.is-first .kiosk-news-line {
-  display: -webkit-box;
+  font-size: var(--font-size-xl);
   font-weight: var(--font-weight-medium);
   line-height: 1.35;
   white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+}
+/* The lead headline is never cut short. When it does not fit a short tile
+   on its own, kiosk.js steps it down: compact drops one size and the meta
+   line, tight drops another size and the kicker. */
+.kiosk-news.is-compact .kiosk-news-item.is-first .kiosk-news-line {
+  font-size: var(--font-size-lg);
+}
+.kiosk-news.is-compact .kiosk-news-meta {
+  display: none;
+}
+.kiosk-news.is-tight .kiosk-news-item.is-first .kiosk-news-line {
+  font-size: var(--font-size-md);
+}
+.kiosk-news.is-tight .kiosk-news-kicker {
+  display: none;
 }
 .kiosk-news-kicker {
   display: flex;

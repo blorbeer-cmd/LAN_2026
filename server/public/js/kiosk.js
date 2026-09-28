@@ -402,9 +402,9 @@ const NEWS_RETRY_MS = 15_000;
 // Never wait longer than one slot, even if the reported delay looks odd.
 const NEWS_MAX_DELAY_MS = 30_000;
 const NEWS_SHIFT_MS = 450;
-// At most five lines: the lead stretches to fill the rest of the tile, so a
-// tall screen shows a longer rail below it instead of more small lines.
-const NEWS_LINES_VISIBLE = 5;
+// At most seven lines; a tall screen spreads them over the tile (see the
+// flex weights in kiosk.css) instead of showing ever more small lines.
+const NEWS_LINES_VISIBLE = 7;
 let newsTimer = null;
 let newsIds = '';
 let lastNewsHtml = '';
@@ -425,12 +425,23 @@ function newsItemHtml(item, index) {
 
 // Synchronous like fitVoteRows: the tile height comes from the dashboard
 // grid, so the lines that do not fully fit never paint.
+// The lead headline is never removed or cut. First it gets a size at which
+// it fits on its own (normal, compact, tight); then older lines give way
+// from the bottom until the rest fits too.
+const NEWS_FIT_STEPS = ['is-compact', 'is-tight'];
+
 function fitNewsItems() {
   const list = document.querySelector('#kiosk-newsticker .kiosk-news');
   if (!list) return;
-  const limit = list.getBoundingClientRect().bottom + 0.5;
-  for (const item of [...list.children]) {
-    if (item.getBoundingClientRect().bottom > limit) item.remove();
+  const lead = list.firstElementChild;
+  const limit = () => list.getBoundingClientRect().bottom + 0.5;
+  list.classList.remove(...NEWS_FIT_STEPS);
+  for (const step of NEWS_FIT_STEPS) {
+    if (lead.getBoundingClientRect().bottom <= limit()) break;
+    list.classList.add(step);
+  }
+  while (list.children.length > 1 && list.lastElementChild.getBoundingClientRect().bottom > limit()) {
+    list.lastElementChild.remove();
   }
 }
 

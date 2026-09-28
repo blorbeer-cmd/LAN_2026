@@ -34,9 +34,12 @@ const FEED_LENGTH = 10;
 const INITIAL_ITEMS = FEED_LENGTH;
 // Slots missed while no screen asked are not back-filled beyond this.
 const MAX_CATCH_UP = 4;
-const RECENT_TEMPLATE_WINDOW = 15;
+const RECENT_TEMPLATE_WINDOW = 20;
 // Two hours of ticker: no identical line comes back within that time.
 const RECENT_TEXT_WINDOW = 240;
+// Longer lines read badly from across the room and crowd a small tile, so
+// they are re-rolled; only if every try is long does one still run.
+const MAX_TEXT_LENGTH = 170;
 const FRESH_FACT_SHARE = 0.8;
 const TRACKING_FACT_SHARE = 0.35;
 const STATE_IDLE_MS = 12 * 60 * 60_000;
@@ -256,7 +259,7 @@ export function composeNews(input: NewsInput, rng: NewsRandom, history: NewsHist
     const composed = attempt();
     if (!composed) continue;
     last = composed;
-    if (!history.recentTexts.includes(composed.text)) return composed;
+    if (!history.recentTexts.includes(composed.text) && composed.text.length <= MAX_TEXT_LENGTH) return composed;
   }
   return last;
 }
