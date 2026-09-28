@@ -903,7 +903,7 @@ textarea {
   min-width: 0;
 }
 .event-poll-result {
-  /* Center the complete bar/count block, just like name/note and controls. */
+  /* Center the bar and count together as one block between the row lines. */
   display: flex;
   flex-direction: column;
   gap: var(--space-1);

@@ -337,8 +337,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   closed cards and no hover fill. Opened, it lists every game of the round sorted by score, each with
   its result bar, „N Pkt. · X/Y spielen mit“ (voters who gave at least one point, out of everyone
   who voted) and the avatars of those voters; winners carry the green „Win“ chip, tied winners
-  each carry it. The complete name/metadata block, result bar/count block, voter avatars and
-  answer controls are vertically centered within each row, with equal top and bottom padding.
+  each carry it. The complete name/metadata block, bar/count block, voter avatars and answer
+  controls are centered between the row separators.
+  Rows have equal top and bottom padding and no extra gap between them.
   „Stimmen ansehen“ — in that header, on every history row and behind each avatar
   stack — opens the Umfrage vote table: numbered legend with each game's summary, one row per
   voter with their points, a 0 shown as „Spielt nicht“. History lists only the rounds before the

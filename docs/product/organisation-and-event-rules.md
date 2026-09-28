@@ -218,7 +218,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   the counts, the voter avatars and the response controls. The bar is a soft brand gradient on a
   grey track (Passt blue, Notfalls violet and Nein pink for per-option ratings; blue to violet for
   choices and the 0 to 5 average). The complete title/note block, bar/count block, avatars and
-  controls are centered vertically in every row, with equal top and bottom padding. The chosen
+  controls are centered between the row separators. Rows have equal top and
+  bottom padding and no extra gap between them. The chosen
   answer is outlined in the accent color; single- and multiple-choice controls say „Wählen“ or
   „Ausgewählt“, and „Speichern“ sits in the round's footer beside the response progress. An ended
   round lists its options by result and marks the winner with the green „Win“ chip; running rounds
