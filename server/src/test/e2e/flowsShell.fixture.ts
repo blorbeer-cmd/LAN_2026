@@ -2158,7 +2158,8 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   // A two-team K.O. tournament shows one Finale fixture, not a bracket.
   await page.waitForSelector('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture');
   assert.equal(await page.locator('.bracket-match').count(), 0);
-  assert.deepEqual(await page.locator('.tournament-fixture-team').allTextContents(), ['Team 1', 'Team 2'],
+  // Bracket sides are drawn at random, so compare the names regardless of side.
+  assert.deepEqual((await page.locator('.tournament-fixture-team').allTextContents()).sort(), ['Team 1', 'Team 2'],
     'fixtures show just the team names');
   assert.equal(await page.locator('.tournament-fixture .rating, .tournament-fixture-team-players').count(), 0);
   assert.equal(await page.locator('.is-my-team, .tournament-own-team-marker').count(), 0);
