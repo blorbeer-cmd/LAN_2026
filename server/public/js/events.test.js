@@ -159,6 +159,7 @@ test('every upcoming event card offers the excuse generator, ended ones do not',
   const event = { id: 'excuse-event', name: 'Winter LAN' };
   const html = renderEventExcuseActions(event);
   assert.match(html, /data-event-excuse="excuse-event"/);
+  assert.match(html, /Keine Zeit\?/);
   assert.match(html, /Ausrede generieren/);
   assert.equal(renderEventExcuseActions({ ...event, isEnded: true }), '');
 });
