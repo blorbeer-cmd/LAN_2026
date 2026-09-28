@@ -39,6 +39,10 @@ test('a tournament push opens its detail in an already open app', async () => {
     type: 'navigate', view: 'tournaments', target: { type: 'tournament', id: 'cup-123' }, eventId: 'lan-1',
   }]);
   assert.deepEqual(result.openedUrls, []);
+
+  const start = await clickNotification('/#tournaments/cup-123/teams');
+  assert.deepEqual(start.messages[0].target, { type: 'tournament-team', id: 'cup-123' },
+    'the start push opens the detail on the own team');
 });
 
 test('order pushes keep their target and a cold start keeps the tournament hash', async () => {

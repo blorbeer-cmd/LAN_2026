@@ -85,7 +85,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   players and available standings or match totals. A participating player's game title is bold in a collapsed Match tile; only their name is bold in expanded teams. Open draws show every player's skill. Completed tournament headers show the winning team with „Win“ and the tournament name; team details use the same compact place numbers as Match teams in the team-name line, including the finalist's second place, with an explicit place label in the title and accessible name. The number replaces the extra Win chip inside the team card; table points stay beside the team name. Knockout exits without a distinct place appear in the context line below the players. The result pencil precedes „Rematch“; tournament actions
   need no empty action slot.
   „Turnier erstellen“ opens one compact dialog: Turnierformat, the group fields for „Gruppenphase +
-  K.O.“, one name field per team (a drafted team is prefilled as „Team <Captain>“, a drawn one as
+  K.O.“, one name field per team (at most 30 characters; a drafted team is prefilled as „Team <Captain>“, a drawn one as
   „Team 1“ …), the options side by side and the optional lobby base name and password. The server
   claims the draw in the same transaction that creates the tournament, so one lineup becomes either
   a single result or a tournament, never both (`409` for the loser of a race). Recording and editing share one compact result dialog: one
@@ -376,7 +376,17 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   matches („4 Teams · 15 Spieler · 0/3 entschieden“) instead of separate counter tiles. Below it
   follow „Aktive Lobbys“, the results and a collapsible „Teams“ card with its team count that
   starts closed and keeps its open state; team cards share the draw preview's responsive grid:
-  one column on phones, two from 640 px and up to four from 860 px. Tournament results use plain cards without
+  one column on phones, two from 640 px and up to four from 860 px. The signed-in player's team leads
+  that grid. While the tournament runs, every member of a team and every admin or owner sees a neutral
+  pencil in the team card's trailing slot instead of the player count; it opens the compact dialog
+  „Teamnamen ändern“ (1–30 characters, unique within the tournament ignoring case, optionally reset
+  to „Team N“). The new name replaces the old one everywhere at once, and the other participants get
+  the toast „<old> heißt jetzt „<new>““. A completed tournament keeps its names (`409`); of two teams
+  claiming the same name at once exactly one succeeds. Creating a tournament sends every participant
+  a personal push „<Turnier> startet“ that names their teammates and asks them to choose a team name;
+  the shared Kiosk keeps the neutral „Neues Turnier“ entry. The push links to
+  `#tournaments/<id>/teams`, which opens the Teams card, highlights the own team and keeps only
+  `#tournaments/<id>` in the history, so a reload does not repeat the highlight. Tournament results use plain cards without
   accent rails: a knockout bracket card, stacked „Tabelle“ and „Spielplan“ cards for a league, and
   one card per group with its table and rounds plus a „K.O.-Runde“ card. A knockout phase with
   exactly one fixture is a 1:1 row under „Finale“, including pure two-team knockout tournaments;

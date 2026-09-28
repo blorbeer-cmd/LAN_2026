@@ -20,7 +20,15 @@ export function parseAppHash(hash) {
     // Tournaments are created from a Match draw now; an old "new" link simply
     // lands on the list instead of being mistaken for a tournament id.
     if (segment === 'new') return { view, localRoute: null, searchTarget: null };
-    if (segment) return { view, localRoute: { kind: 'detail', id: segment }, searchTarget: null };
+    // "#tournaments/<id>/teams" (the start push) additionally asks the detail
+    // to open its Teams card on the reader's own team.
+    if (segment) {
+      return {
+        view,
+        localRoute: { kind: 'detail', id: segment },
+        searchTarget: parts[2] === 'teams' ? { type: 'tournament-team', id: segment } : null,
+      };
+    }
     return { view, localRoute: null, searchTarget: null };
   }
   if (view === 'arcade') {

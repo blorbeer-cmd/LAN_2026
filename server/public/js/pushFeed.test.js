@@ -14,6 +14,7 @@ test('notification categories use the shared UI icon set', () => {
   assert.deepEqual(feedLinkTarget('/#foodOrders/order-123'), { type: 'order', id: 'order-123' });
   assert.equal(feedEntryIcon({ url: '/#tournaments' }), 'swords');
   assert.deepEqual(feedLinkTarget('/#tournaments/cup-123'), { type: 'tournament', id: 'cup-123' });
+  assert.deepEqual(feedLinkTarget('/#tournaments/cup-123/teams'), { type: 'tournament-team', id: 'cup-123' });
   assert.equal(feedEntryIcon({ url: '/unbekannt' }), 'bell');
 });
 

@@ -43,10 +43,11 @@ export function feedLinkView(url) {
 export function feedLinkTarget(url) {
   const hashIndex = (url || '').indexOf('#');
   if (hashIndex === -1) return null;
-  const [view, encodedId] = url.slice(hashIndex + 1).split('/');
+  const [view, encodedId, focus] = url.slice(hashIndex + 1).split('/');
   if (!['foodOrders', 'tournaments'].includes(view) || !encodedId) return null;
+  const type = view === 'foodOrders' ? 'order' : focus === 'teams' ? 'tournament-team' : 'tournament';
   try {
-    return { type: view === 'tournaments' ? 'tournament' : 'order', id: decodeURIComponent(encodedId) };
+    return { type, id: decodeURIComponent(encodedId) };
   } catch {
     return null;
   }

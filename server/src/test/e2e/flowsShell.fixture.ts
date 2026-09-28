@@ -2291,6 +2291,39 @@ flowTest('completed league history shows placements and points beside team names
   assert.ok(scoreAlignment < 8, 'league placement and table points stay in the team-name line');
 });
 
+flowTest('the tournament start link opens the own team and renames it in place', async (t) => {
+  const gamesResponse = await page.request.get(`${BASE_URL}/api/games`);
+  const gameId = ((await gamesResponse.json()) as Array<{ id: string }>)[0].id;
+  const created = await page.request.post(`${BASE_URL}/api/tournaments`, {
+    data: { gameId, format: 'round_robin', teams: [{ playerIds: [bob.id] }, { playerIds: [alice.id] }] },
+  });
+  assert.equal(created.status(), 201, await created.text());
+  const tournament = await created.json() as { id: string };
+  t.after(async () => { await page.request.delete(`${BASE_URL}/api/tournaments/${tournament.id}`); });
+
+  await page.goto(`${BASE_URL}/#tournaments/${tournament.id}/teams`);
+  const ownCard = page.locator(`[data-own-tournament-team="${tournament.id}"].search-target-highlight`);
+  await ownCard.waitFor();
+  assert.equal(await page.locator('[data-tournament-teams]').evaluate((el) => (el as HTMLDetailsElement).open), true,
+    'the start link opens the collapsed Teams card');
+  assert.equal(await page.locator('.tournament-team-card').first().getAttribute('data-own-tournament-team'), tournament.id,
+    'the own team leads the Teams grid');
+  assert.equal(new URL(page.url()).hash, `#tournaments/${tournament.id}`, 'a reload does not replay the highlight');
+
+  await ownCard.locator('[data-rename-team]').click();
+  const dialog = page.getByRole('dialog', { name: 'Teamnamen ändern' });
+  await dialog.locator('#rename-team-name').fill('Boost Brothers');
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await page.locator('.tournament-standings-name:has-text("Boost Brothers")').waitFor();
+  assert.equal(await page.locator(`[data-own-tournament-team="${tournament.id}"] .tournament-team-card-name`).innerText(),
+    'Boost Brothers');
+  // Leave the detail like the other tournament tests do: the next test opens
+  // a different tournament by hash, which must not start from this one.
+  await page.goto(`${BASE_URL}/#matchmaking`);
+  await page.locator('#mm-game').waitFor({ state: 'attached' });
+});
+
 flowTest('correcting an early K.O. winner warns before later results are reset', async (t) => {
   const gamesResponse = await page.request.get(`${BASE_URL}/api/games`);
   const gameId = ((await gamesResponse.json()) as Array<{ id: string }>)[0].id;

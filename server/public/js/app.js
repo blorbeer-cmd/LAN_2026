@@ -627,6 +627,8 @@ function focusPendingSearchTarget() {
     broadcast: [...viewContainer.querySelectorAll('[data-broadcast]')].filter((el) => el.dataset.broadcast === id),
     carpool: [...viewContainer.querySelectorAll('[data-carpool]')].filter((el) => el.dataset.carpool === id),
     poll: [...viewContainer.querySelectorAll('[data-poll-card]')].filter((el) => el.dataset.pollCard === id),
+    'tournament-team': [...viewContainer.querySelectorAll('[data-own-tournament-team]')]
+      .filter((el) => el.dataset.ownTournamentTeam === id),
   }[type] ?? [];
   const element = candidates[0];
   if (!element) return false;
@@ -674,9 +676,11 @@ function switchView(
   view,
   { fromHistory = false, replace = false, searchTarget = null, localRoute = undefined } = {},
 ) {
-  if (view === 'tournaments' && searchTarget?.type === 'tournament') {
+  if (view === 'tournaments' && (searchTarget?.type === 'tournament' || searchTarget?.type === 'tournament-team')) {
     localRoute = { kind: 'detail', id: searchTarget.id };
-    searchTarget = null;
+    // "tournament-team" (the start push's #tournaments/<id>/teams) keeps a
+    // pending target so the detail opens its Teams card on the own team.
+    if (searchTarget.type === 'tournament') searchTarget = null;
   }
   if (view === 'tournaments' && localRoute?.kind !== 'detail'
     && !(localRoute === undefined && currentView === 'tournaments' && currentLocalRoute?.kind === 'detail')) {
@@ -873,7 +877,14 @@ function wireNav() {
     const hashRoute = parseAppHash(location.hash);
     const view = e.state?.view || hashRoute.view || (getMyId() ? 'home' : 'profile');
     const localRoute = e.state?.localRoute ?? hashRoute.localRoute;
-    switchView(view, { fromHistory: true, localRoute, searchTarget: hashRoute.searchTarget });
+    // A typed or linked "#tournaments/<id>/teams" is a one-shot target: store
+    // the plain detail hash so a later reload does not replay the highlight.
+    switchView(view, {
+      fromHistory: true,
+      replace: hashRoute.searchTarget?.type === 'tournament-team',
+      localRoute,
+      searchTarget: hashRoute.searchTarget,
+    });
   });
 
   // Tapping a push notification while the app is already open: the service
@@ -1034,9 +1045,16 @@ function wireSocket() {
 
     // Same pattern as the vote nudge: only the players actually named in
     // this notification see it, and not if they're already looking at the
-    // tournament detail (it just updated in place).
+    // tournament detail (it just updated in place). A renamed team is the
+    // exception: its new name should be announced even on the detail page,
+    // just not to the player who typed it.
     const myId = getMyId();
-    if (payload?.notify && myId && payload.notify.playerIds.includes(myId) && currentView !== 'tournaments') {
+    const announceOnDetail = payload?.type === 'team_renamed';
+    if (
+      payload?.notify && myId && payload.notify.playerIds.includes(myId)
+      && myId !== payload.notify.excludePlayerId
+      && (currentView !== 'tournaments' || announceOnDetail)
+    ) {
       showToast(payload.notify.message, {
         duration: 5000,
         onClick: () => {
