@@ -470,15 +470,13 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:food-disclosure`: Card/roster heading and person plus metadata form a composite, optionally multiline disclosure.
 
-- `registry:result-fields`: Large score fields of the shared result dialog keep one tap-target height.
-
 - `registry:result-actions`: Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one.
+
+- `registry:visually-hidden-control`: Native radio inputs in labeled result choices remain keyboard and screenreader accessible while their visible label owns the target.
 
 - `registry:result-open-hosts`: Open bracket boxes and open fixture scores only recolor their host; the static open result action shares the marker class.
 
 - `registry:poll-legend-open`: The open-answer legend dot only recolors itself; it shares the open marker class with result actions.
-
-- `registry:result-pick`: Whole-row outcome choice in the shared result dialog: team name plus players at tap-target height.
 
 - `registry:result-state`: Open, primary next-step and draw markers recolor their result host without changing its geometry.
 
@@ -694,7 +692,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:calendar-day-state`: Calendar selection/today colors and inset emphasis preserve the day target.
 
-- `registry:bracket-state`: Bracket availability, winner and loser emphasis preserve the host geometry; only winner elevation may differ.
+- `registry:bracket-state`: Bracket availability and outcome preserve the host geometry; only winner elevation may differ.
 
 - `registry:rating-divergence-state`: Divergent suggestion only changes emphasis colors.
 

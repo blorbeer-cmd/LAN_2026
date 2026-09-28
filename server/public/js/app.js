@@ -674,6 +674,16 @@ function switchView(
   view,
   { fromHistory = false, replace = false, searchTarget = null, localRoute = undefined } = {},
 ) {
+  if (view === 'tournaments' && searchTarget?.type === 'tournament') {
+    localRoute = { kind: 'detail', id: searchTarget.id };
+    searchTarget = null;
+  }
+  if (view === 'tournaments' && localRoute?.kind !== 'detail'
+    && !(localRoute === undefined && currentView === 'tournaments' && currentLocalRoute?.kind === 'detail')) {
+    view = 'matchmaking';
+    localRoute = null;
+    replace = true;
+  }
   // Admin-only areas stay reachable through Admin links and deep links alike,
   // but never render for an account whose role no longer permits them.
   if (viewRequiresAdminRole(view) && startupData.ready && !currentPlayerHasAdminRole()) {
@@ -713,8 +723,7 @@ function switchView(
   // view is active. Without it, a running game can rebuild the current DOM
   // during navigation and make a tap appear to be lost.
   viewContainer.dataset.view = view;
-  // A nav button stands for a whole area, so every route inside that area
-  // (e.g. Teams inside Wettkampf) keeps its button lit — see sectionNav.js.
+  // A detail route borrows its parent nav highlight — see sectionNav.js.
   syncBottomNavigationActiveState();
   syncDesktopNavigationActiveState();
   // Restart the view-enter animation (see .view-enter in style.css). Only on
@@ -818,9 +827,7 @@ function wireNav() {
       renderCurrent();
       return;
     }
-    // An area's own tab row (see sectionNav.js). Same navigation as
-    // data-navigate, but switching back to the Turniere tab always returns to
-    // the tournament list instead of whichever board was open last.
+    // An area's own tab row (see sectionNav.js).
     const tab = e.target.closest('[data-section-tab]');
     if (tab) {
       switchView(tab.dataset.sectionTab, { localRoute: null });
@@ -1016,18 +1023,18 @@ function wireSocket() {
     // A result was just recorded for this draw elsewhere — the "gerade
     // ausgelost" panel (if still showing that same draw) disappears too,
     // not just the history entry.
-    if (payload?.matchId && state.lastMatchmaking?.id === payload.id) {
+    if ((payload?.matchId || payload?.deleted) && state.lastMatchmaking?.id === payload.id) {
       state.lastMatchmaking = null;
     }
     if (currentView === 'matchmaking') renderCurrent();
   });
   socket.on('tournaments:changed', (payload) => {
     invalidateViewCaches(VIEW_REGISTRY, 'tournaments:changed');
-    if (currentView === 'tournaments' || currentView === 'home') renderCurrent();
+    if (currentView === 'tournaments' || currentView === 'home' || currentView === 'matchmaking') renderCurrent();
 
     // Same pattern as the vote nudge: only the players actually named in
     // this notification see it, and not if they're already looking at the
-    // Turniere tab (it just updated in place).
+    // tournament detail (it just updated in place).
     const myId = getMyId();
     if (payload?.notify && myId && payload.notify.playerIds.includes(myId) && currentView !== 'tournaments') {
       showToast(payload.notify.message, {

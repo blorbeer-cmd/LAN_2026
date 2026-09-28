@@ -5,7 +5,7 @@
 import { state } from './state.js';
 import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
 import { invalidateHomeSeating } from './views/home.js';
-import { invalidateMatchmakingHistory, invalidateMatchmakingDraft } from './views/matchmaking.js';
+import { invalidateMatchmakingHistory, invalidateMatchmakingDraft, invalidateMatchTournaments } from './views/matchmaking.js';
 import { invalidateBroadcasts } from './views/broadcast.js';
 import { invalidateInfoBoard } from './views/infoBoard.js';
 import { invalidateFoodOrders } from './views/foodOrders.js';
@@ -55,13 +55,15 @@ export const VIEW_LIFECYCLE_HANDLERS = Object.freeze({
     [EVENT_SCOPE_CHANGE]: () => {
       invalidateMatchmakingHistory({ hard: true });
       invalidateMatchmakingDraft();
+      invalidateMatchTournaments({ hard: true });
     },
-    [CONNECTION_RESTORED]: invalidateMatchmakingHistory,
+    [CONNECTION_RESTORED]: () => { invalidateMatchmakingHistory(); invalidateMatchTournaments(); },
     'games:changed': invalidateMatchmakingHistory,
     'leaderboard:changed': invalidateMatchmakingHistory,
     'matchmaking:generated': invalidateMatchmakingHistory,
     'matchmaking:draws-changed': invalidateMatchmakingHistory,
     'draft:changed': invalidateMatchmakingHistory,
+    'tournaments:changed': () => { invalidateMatchmakingHistory(); invalidateMatchTournaments(); },
   }),
   votes: Object.freeze({
     [EVENT_SCOPE_CHANGE]: invalidateVoteEventScope,

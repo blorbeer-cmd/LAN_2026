@@ -20,6 +20,7 @@ import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupRole } from '../groupAuthorization';
 import { activeGroupPlayers, type GroupPlayerSnapshot } from '../groupPlayers';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
+import { buildTeamsSnapshot } from './matchmaking';
 
 export const draftRouter = Router();
 
@@ -351,14 +352,17 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   }
 
   // A finished draft is a set of teams like any matchmaking draw — log it
-  // into the same history so Team-Historie shows drafted teams too. Ratings
-  // aren't part of a draft, so they're stored as 0/absent.
+  // into the same history so Match history shows drafted teams too. The
+  // ratings are informational, captured once at completion, never used for
+  // pick order. The marker distinguishes these entries from older drafts.
   const historyEventId = row.event_id;
   let finishedDraw: Record<string, unknown> | null = null;
   if (completed && state.draft) {
-    const teamsSnapshot = state.draft.teams.map((t) => ({
-      players: t.players.map((p) => ({ ...p, rating: null })),
-      totalRating: 0,
+    const ratings = buildTeamsSnapshot(row.game_id, state.draft.teams.map((team) => team.players.map((player) => player.id)));
+    const teamsSnapshot = state.draft.teams.map((t, index) => ({
+      players: t.players.map((p, playerIndex) => ({ ...p, rating: ratings[index].players[playerIndex].rating })),
+      totalRating: ratings[index].totalRating,
+      skillSnapshot: true,
     }));
     const drawId = nanoid();
     db.prepare(

@@ -71,15 +71,16 @@ test('every route carries the shared navigation and lifecycle contract', () => {
     if (entry.requiresRole) assert.equal(entry.requiresRole, 'admin', `${view}: requiresRole`);
   }
 
-  // Only the Arcade launcher refines itself in place; a local route that swaps
-  // the whole page (a tournament board replacing the tournament list) must
-  // keep entering like any other screen, scroll reset included.
+  // Only the Arcade launcher refines itself in place; the tournament detail
+  // is a separate page and keeps entering like any other screen.
   assert.deepEqual(
     Object.entries(VIEW_MANIFEST).filter(([, entry]) => entry.inPlaceLocalRoutes).map(([view]) => view),
     ['arcade'],
   );
 
-  assert.deepEqual(sectionViews('competition').map((entry) => entry.view), ['matchmaking', 'tournaments']);
+  assert.deepEqual(sectionViews('competition').map((entry) => entry.view), []);
+  assert.equal(VIEW_MANIFEST.matchmaking.section ?? null, null);
+  assert.equal(VIEW_MANIFEST.tournaments.section ?? null, null);
   // Orga lost its Events tab: picking and creating workspaces sits one level
   // above organising work inside the selected one.
   assert.deepEqual(sectionViews('orga').map((entry) => entry.view), ['eventPolls', 'arrivals', 'checklistPacking', 'checklist']);

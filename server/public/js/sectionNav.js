@@ -1,5 +1,5 @@
 // Top-level areas of the app. Several formerly standalone views now share one
-// area with a tab row (Teams+Turniere, Rangliste+Statistiken+Hall of Fame,
+// area with a tab row (Rangliste+Statistiken+Hall of Fame,
 // Packliste+To-Dos+An-/Abreise) so the bottom nav stays short and related work
 // sits next to each other instead of in separate corners of the "Mehr" hub.
 //
@@ -54,7 +54,7 @@ export function sectionEntryView(key, event) {
 // highlight, so the bar still shows where the page lives ("Meine Statistiken"
 // is opened from "Mein Profil"). The desktop rail keeps its own map in
 // bottomNav.js (DESKTOP_PARENT_BY_VIEW).
-const NAV_PARENT_BY_VIEW = Object.freeze({ myStats: 'profile' });
+const NAV_PARENT_BY_VIEW = Object.freeze({ myStats: 'profile', tournaments: 'matchmaking' });
 
 export function navGroupForView(view, event) {
   const parent = NAV_PARENT_BY_VIEW[view];

@@ -132,16 +132,8 @@ export async function openMatchmakingHistory(): Promise<void> {
   if ((await details.getAttribute('open')) === null) await details.locator('summary').click();
 }
 
-// Merged areas (see public/js/sectionNav.js): the bottom nav opens the area on
-// its first tab, the tab row switches within it. Each tab is still its own
-// route, so these two clicks are ordinary navigation.
-async function openSectionTab(navView: string, tab: string): Promise<void> {
-  await page.click(`.nav-btn[data-view="${navView}"]`);
-  await page.click(`[data-section-tab="${tab}"]`);
-}
-
 export async function openTeams(): Promise<void> {
-  await openSectionTab('matchmaking', 'matchmaking');
+  await page.click('.nav-btn[data-view="matchmaking"]');
 }
 
 // Auswertung (Rangliste/Statistiken/Hall of Fame) has no bottom-nav slot or

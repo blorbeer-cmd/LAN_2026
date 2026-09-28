@@ -378,7 +378,7 @@ test('GET /api/push/log hides entries the player was not a recipient of, and mar
   const matchReady = involved.body.entries.find((e: { title: string }) => /Match ist bereit/.test(e.title));
   assert.ok(matchReady, 'match-ready push must appear for a recipient');
   assert.equal(matchReady.audience, 'direct');
-  assert.equal(matchReady.url, '/#tournaments');
+  assert.equal(matchReady.url, `/#tournaments/${created.body.id}`);
 });
 
 test('a subscription that comes back as gone (410) is pruned', async (t) => {
@@ -452,6 +452,70 @@ test('finishing a round-robin round pushes the next round\'s teams', async (t) =
   await request(app)
     .post('/api/push/unsubscribe')
     .send({ playerId, endpoint: 'https://push.example.com/sub-rr' });
+});
+
+test('finishing one group round pushes that group\'s next pairings', async (t) => {
+  t.mock.method(pushTransport, 'send', async () => {});
+  const game = await request(app).post('/api/games').send({ name: 'Group Push Test Game' });
+  const players: string[] = [];
+  for (let index = 1; index <= 8; index++) {
+    const player = await request(app).post('/api/players').send({ name: `GP${index}` });
+    players.push(player.body.id);
+  }
+  const created = await request(app)
+    .post('/api/tournaments')
+    .send({
+      gameId: game.body.id,
+      format: 'group_knockout',
+      groupCount: 2,
+      advancersPerGroup: 2,
+      teams: players.map((id) => ({ playerIds: [id] })),
+    });
+  assert.equal(created.status, 201);
+  const tournamentId = created.body.id as string;
+  const groupZeroRoundOne = created.body.matches.filter(
+    (match: { stage: string; groupIndex: number; round: number }) =>
+      match.stage === 'group' && match.groupIndex === 0 && match.round === 1
+  );
+  const groupZeroRoundTwo = created.body.matches.filter(
+    (match: { stage: string; groupIndex: number; round: number }) =>
+      match.stage === 'group' && match.groupIndex === 0 && match.round === 2
+  );
+  assert.equal(groupZeroRoundOne.length, 2);
+  assert.equal(groupZeroRoundTwo.length, 2);
+  const playerForTeam = (teamId: string) =>
+    created.body.teams.find((team: { id: string }) => team.id === teamId).players[0].id as string;
+  const nextPlayerId = playerForTeam(groupZeroRoundTwo[0].teamAId);
+  const otherGroupTeam = created.body.teams.find((team: { groupIndex: number }) => team.groupIndex === 1);
+  const otherGroupPlayerId = otherGroupTeam.players[0].id as string;
+  const readyEntries = async (id: string) => {
+    const feed = await request(app).get(`/api/push/log?playerId=${id}`);
+    assert.equal(feed.status, 200);
+    return feed.body.entries.filter((entry: { title: string }) => entry.title === 'Dein Match ist bereit');
+  };
+
+  await request(app).post('/api/push/subscribe').send({
+    playerId: nextPlayerId,
+    subscription: { endpoint: 'https://push.example.com/sub-group', keys: { p256dh: 'p', auth: 'a' } },
+  });
+  const sendMock = t.mock.method(pushTransport, 'send', async () => {});
+  await request(app)
+    .post(`/api/tournaments/${tournamentId}/matches/${groupZeroRoundOne[0].id}/result`)
+    .send({ winnerTeamId: groupZeroRoundOne[0].teamAId });
+  assert.equal((await readyEntries(nextPlayerId)).length, 0, 'an unfinished group round must not notify the next round');
+
+  await request(app)
+    .post(`/api/tournaments/${tournamentId}/matches/${groupZeroRoundOne[1].id}/result`)
+    .send({ winnerTeamId: groupZeroRoundOne[1].teamAId });
+  const received = await readyEntries(nextPlayerId);
+  assert.equal(received.length, 1, 'the player receives their next group match when this group advances');
+  assert.equal(received[0].url, `/#tournaments/${tournamentId}`);
+  assert.equal((await readyEntries(otherGroupPlayerId)).length, 0, 'the other group has not advanced');
+  assert.ok(sendMock.mock.calls.some((call) => /nächstes Match/.test(JSON.parse(call.arguments[1] as string).body)));
+
+  await request(app)
+    .post('/api/push/unsubscribe')
+    .send({ playerId: nextPlayerId, endpoint: 'https://push.example.com/sub-group' });
 });
 
 test('a match-ready push names the lobby and its default host (the upper bracket team)', async (t) => {

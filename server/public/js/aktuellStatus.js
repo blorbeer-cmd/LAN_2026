@@ -81,16 +81,16 @@ function loadStatus() {
   statusLoading = true;
   const run = (async () => {
     try {
-      const [tournaments, foodOrders, arcadeLobbies] = await Promise.all([
+      const [tournaments, foodOrders, arcadeLobbies] = await Promise.allSettled([
         api.tournaments.list(),
         api.foodOrders.list(),
         api.arcade.lobbies(),
       ]);
       if (isCurrent()) {
         statusCache = {
-          tournaments,
-          foodOrders: foodOrders.orders ?? [],
-          arcadeLobbies: arcadeLobbies.lobbies ?? [],
+          tournaments: tournaments.status === 'fulfilled' ? tournaments.value : [],
+          foodOrders: foodOrders.status === 'fulfilled' ? foodOrders.value.orders ?? [] : [],
+          arcadeLobbies: arcadeLobbies.status === 'fulfilled' ? arcadeLobbies.value.lobbies ?? [] : [],
         };
       }
     } catch {
@@ -215,6 +215,7 @@ export function aktuellItems() {
       title: t.name,
       sub: `${t.gameName} · ${FORMAT_LABELS[t.format] ?? t.format}`,
       navigate: 'tournaments',
+      target: { type: 'tournament', id: t.id },
     });
   }
 

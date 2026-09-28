@@ -116,7 +116,7 @@ test('wide desktop exposes grouped direct destinations without a More duplicate'
     navigation.groups.flatMap((group) => group.entries.map((entry) => entry.iconKey)),
     [
       'home',
-      'competition',
+      'tournaments',
       'votes',
       'gameCatalog',
       'eventPolls',

@@ -1,5 +1,5 @@
-// Tournament view (FR-33): list and detail of tournaments with an
-// automatically generated single-elimination bracket ("Turnierbaum") or
+// Tournament detail view (FR-33): automatically generated single-elimination
+// bracket ("Turnierbaum") or
 // round-robin league ("jeder gegen jeden", optionally Hin- und Rückspiele),
 // then record results as they happen. Teams come from a Match draw or
 // Captain Draft: its "Turnier erstellen" action (views/matchmaking.js)
@@ -9,13 +9,14 @@ import { api } from '../api.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
-import { icon } from '../icons.js';
 import { createTournamentPresentation } from '../tournamentPresentation.js';
 import { withStepUp } from '../reauth.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { localRouteKey } from '../appRoute.js';
 import { copyText } from '../clipboard.js';
-import { parseResultScores, resultScoreInputValue } from '../resultScores.js';
+import { resultFormHtml, wireResultForm } from '../resultDialog.js';
+import { getMyId } from '../whoami.js';
+import { isGroupAdmin } from '../groupContext.js';
 
 // Open state of the detail page's collapsible Teams card across re-renders.
 let tournamentTeamsOpen = false;
@@ -25,48 +26,18 @@ const FORMAT_LABELS = {
   round_robin: 'Liga (jeder gegen jeden)',
   group_knockout: 'Gruppenphase + K.O.',
 };
-const SHORT_FORMAT_LABELS = {
-  single_elimination: 'K.O.-Turnier',
-  round_robin: 'Liga',
-  group_knockout: 'Gruppenphase + K.O.',
-};
 
 // ---------- module state ----------
 
-let listCache = null;
-let listLoading = false;
-let listStale = false;
-let listRequestVersion = 0;
-let completedSectionOpen = false;
-
-let currentTournamentId = null; // null = list view
+let currentTournamentId = null;
 let detailCache = null;
 let detailLoading = false;
 let detailForId = null;
 let detailStale = false;
 let detailRequestVersion = 0;
+let detailError = null;
 
 let appliedRouteKey = null;
-
-async function loadList(ctx) {
-  const version = ++listRequestVersion;
-  listLoading = true;
-  listStale = false;
-  try {
-    const result = await api.tournaments.list();
-    if (version === listRequestVersion) listCache = result;
-  } catch (err) {
-    if (version === listRequestVersion) {
-      showToast(err.message, { error: true });
-      if (listCache === null) listCache = [];
-    }
-  } finally {
-    if (version === listRequestVersion) {
-      listLoading = false;
-      ctx.rerender();
-    }
-  }
-}
 
 async function loadDetail(id, ctx) {
   const version = ++detailRequestVersion;
@@ -77,12 +48,14 @@ async function loadDetail(id, ctx) {
     if (version === detailRequestVersion) {
       detailCache = result;
       detailForId = id;
+      detailError = null;
     }
   } catch (err) {
     if (version === detailRequestVersion) {
       showToast(err.message, { error: true });
-      if (detailForId !== id) detailCache = null;
+      if (detailForId !== id || err.status === 404) detailCache = null;
       detailForId = id;
+      detailError = err.status === 404 ? 'Dieses Turnier ist nicht mehr verfügbar.' : 'Turnier konnte nicht geladen werden.';
     }
   } finally {
     if (version === detailRequestVersion) {
@@ -95,16 +68,13 @@ async function loadDetail(id, ctx) {
 // Called from app.js on every tournaments:changed socket event, so this
 // view's data is never more than one re-render stale.
 export function invalidateTournaments({ hard = false } = {}) {
-  listRequestVersion += 1;
   detailRequestVersion += 1;
-  listLoading = false;
   detailLoading = false;
-  listStale = true;
   detailStale = true;
   if (hard) {
-    listCache = null;
     detailCache = null;
     detailForId = null;
+    detailError = null;
   }
 }
 
@@ -113,108 +83,7 @@ function applyLocalRoute(route) {
   if (key === appliedRouteKey) return;
   appliedRouteKey = key;
   currentTournamentId = route?.kind === 'detail' ? route.id : null;
-}
-
-// ---------- list ----------
-
-function renderList(container, ctx) {
-  if ((listCache === null || listStale) && !listLoading) loadList(ctx);
-
-  const tournamentCards = (tournaments) => `<div class="card-grid tournament-list-grid">${tournaments
-    .map(
-      (t) => `
-      <button type="button" class="card tournament-list-card" data-open-tournament="${t.id}">
-                <span class="tournament-list-card-main">
-          <span class="player-name">${escapeHtml(t.name)}</span>
-          <span class="muted tournament-list-game">${escapeHtml(t.gameName)}</span>
-          <span class="muted tournament-list-meta">${SHORT_FORMAT_LABELS[t.format]} · ${t.teamCount} Teams</span>
-          ${
-            t.status === 'completed'
-              ? t.championName
-                ? `<span class="tournament-list-result">Sieger: <strong>${escapeHtml(t.championName)}</strong></span>`
-                : ''
-              : Number.isInteger(t.matchCount)
-                ? `<span class="tournament-list-result">${t.decidedMatchCount}/${t.matchCount} Partien</span>`
-                : ''
-          }
-        </span>
-        <span class="tournament-list-card-end">
-          <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
-          ${icon('chevronRight')}
-        </span>
-      </button>`
-    )
-    .join('')}</div>`;
-  const tournamentSection = (
-    title,
-    tournaments,
-    { active = false, collapsible = false, loading = false, emptyText } = {},
-  ) => {
-    const content = loading
-      ? emptyStateHtml('Lädt…', { className: 'tournament-list-empty' })
-      : tournaments.length
-        ? tournamentCards(tournaments)
-        : emptyStateHtml(emptyText ?? 'Noch keine Turniere.', { className: 'tournament-list-empty' });
-    if (collapsible) {
-      return `<details class="card tournament-list-section collapsible-section" data-completed-tournaments ${completedSectionOpen ? 'open' : ''}>
-        <summary class="collapsible-section-header">
-          <h2>${title}</h2>
-          <span class="collapsible-section-summary-end">
-            <span class="badge badge-offline">${tournaments.length}</span>
-            <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
-          </span>
-        </summary>
-        <div class="collapsible-section-content">${content}</div>
-      </details>`;
-    }
-
-    return `<section class="card stack grouped-page-section${active ? ' primary-collection-section' : ''} tournament-list-section" aria-label="${title}">
-      <div class="grouped-page-section-title">
-        <h2>${title}</h2>
-        ${active ? '<button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">Turnier anlegen</button>' : ''}
-      </div>
-      ${content}
-    </section>`;
-  };
-
-  let currentListHtml;
-  let completedListHtml = '';
-  if (listCache === null) {
-    currentListHtml = tournamentSection('Aktuelle Turniere', [], { active: true, loading: true });
-  } else if (listCache.length === 0) {
-    currentListHtml = tournamentSection('Aktuelle Turniere', [], {
-      active: true,
-      emptyText: 'Noch keine Turniere.',
-    });
-  } else {
-    const activeTournaments = listCache.filter((t) => t.status !== 'completed');
-    const completedTournaments = listCache.filter((t) => t.status === 'completed');
-    currentListHtml = tournamentSection('Aktuelle Turniere', activeTournaments, { active: true });
-    completedListHtml = tournamentSection('Abgeschlossene Turniere', completedTournaments, { collapsible: true });
-  }
-
-  container.innerHTML = `<div class="grouped-page-sections">
-    ${currentListHtml}
-    ${completedListHtml}
-  </div>`;
-
-  // Every tournament starts from a draw: Match > Teams draws or drafts the
-  // lineup, and that draw offers "Turnier erstellen".
-  container.querySelector('#tourn-new-btn')?.addEventListener('click', () => {
-    window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'matchmaking' }));
-  });
-
-  container.querySelectorAll('[data-open-tournament]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      ctx.navigateLocal({ kind: 'detail', id: btn.dataset.openTournament });
-    });
-  });
-
-  const completedSection = container.querySelector('[data-completed-tournaments]');
-  completedSection?.addEventListener('toggle', () => {
-    completedSectionOpen = completedSection.open;
-  });
-
+  detailError = null;
 }
 
 function renderDetail(container, ctx) {
@@ -222,7 +91,7 @@ function renderDetail(container, ctx) {
     loadDetail(currentTournamentId, ctx);
   }
   if (detailForId !== currentTournamentId || !detailCache) {
-    container.innerHTML = emptyStateHtml('Lädt…');
+    container.innerHTML = `<h2 class="view-title">Turnier</h2>${emptyStateHtml(detailError ?? 'Lädt…')}`;
     return;
   }
 
@@ -233,19 +102,22 @@ function renderDetail(container, ctx) {
     renderBracket,
     renderChampion,
     renderGroupKnockout,
+    renderSingleFinal,
     renderRoundRobin,
     renderTournamentTeams,
-  } = createTournamentPresentation();
+  } = createTournamentPresentation(getMyId());
   const boardContent =
     t.format === 'single_elimination'
-      ? renderBracket(t)
+      ? t.matches.filter((match) => !match.isBye).length === 1
+        ? renderSingleFinal(t, t.matches.find((match) => !match.isBye))
+        : renderBracket(t)
       : t.format === 'group_knockout'
         ? renderGroupKnockout(t)
         : renderRoundRobin(t);
   const board =
     t.format === 'single_elimination'
       ? `<section class="card stack grouped-page-section tournament-board-card">
-           <div class="grouped-page-section-title"><h2>Turnierbaum</h2></div>
+           <div class="grouped-page-section-title"><h2>${t.matches.filter((match) => !match.isBye).length === 1 ? 'Finale' : 'Turnierbaum'}</h2></div>
            ${boardContent}
          </section>`
       : boardContent;
@@ -266,7 +138,7 @@ function renderDetail(container, ctx) {
   container.innerHTML = `
     <div class="row-between page-title-row">
       <h2 class="view-title">${escapeHtml(t.name)}</h2>
-      <button type="button" class="btn btn-sm" id="tourn-delete">Löschen</button>
+      ${isGroupAdmin() ? '<button type="button" class="btn btn-sm" id="tourn-delete">Löschen</button>' : ''}
     </div>
     <div class="muted tournament-detail-meta">
       <span>${formatExplanation} · ${t.teams.length} Teams · ${participantCount} Spieler · ${decidedMatches}/${t.matches.length} entschieden</span>
@@ -299,14 +171,12 @@ function renderDetail(container, ctx) {
     });
   });
 
-  container.querySelector('#tourn-delete').addEventListener('click', async () => {
+  container.querySelector('#tourn-delete')?.addEventListener('click', async () => {
     if (!(await confirmDialog(`Turnier "${t.name}" wirklich löschen?`, { confirmText: 'Löschen', danger: true }))) return;
     try {
       const removed = await withStepUp(() => api.tournaments.remove(t.id));
       if (removed === undefined) return;
       currentTournamentId = null;
-      if (listCache) listCache = listCache.filter((entry) => entry.id !== t.id);
-      listStale = true;
       showToast('Turnier gelöscht.');
       ctx.navigateLocal(null, { replace: true });
     } catch (err) {
@@ -322,69 +192,53 @@ function renderDetail(container, ctx) {
   });
 }
 
-// One dialog enters and edits every result, for all formats: two large score
-// fields when the tournament tracks a score, otherwise one button per outcome
-// that saves immediately. Knockout matches never offer a draw.
+// Tournament persistence keeps scoreA/scoreB and expectedPlayedAt; the form
+// itself is shared with Match and Admin.
+function affectedFollowup(t, match, nextWinnerId) {
+  if (nextWinnerId === match.winnerTeamId) return null;
+  if (t.format === 'group_knockout' && match.stage === 'group' &&
+      t.matches.some((candidate) => candidate.stage === 'knockout')) {
+    return 'Wenn du den Sieger änderst, wird die K.-o.-Phase neu erstellt. Dort bereits eingetragene Ergebnisse gehen verloren. Trotzdem speichern?';
+  }
+  if (t.format !== 'single_elimination' && match.stage !== 'knockout') return null;
+  const hasDescendant = t.matches.some((candidate) =>
+    candidate.stage === match.stage && candidate.round > match.round &&
+    Math.floor(match.slot / (2 ** (candidate.round - match.round))) === candidate.slot);
+  return hasDescendant
+    ? 'Wenn du den Sieger änderst, werden nachfolgende K.-o.-Partien neu besetzt. Bereits eingetragene Ergebnisse dort gehen verloren. Trotzdem speichern?'
+    : null;
+}
+
 function openResultDialog(t, match, phaseLabel, ctx) {
-  const teamName = (teamId) => escapeHtml(t.teams.find((team) => team.id === teamId)?.name ?? 'offen');
+  const team = (id) => t.teams.find((candidate) => candidate.id === id);
+  const teams = [match.teamAId, match.teamBId].map((id) => ({
+    name: team(id)?.name ?? 'offen',
+    players: team(id)?.players.map((player) => player.name) ?? [],
+  }));
   const decided = match.winnerTeamId !== null || match.isDraw;
   const knockout = t.format === 'single_elimination' || match.stage === 'knockout';
-
-  const body = t.trackScore
-    ? `<form class="stack tournament-result-form" data-result-form>
-        <div class="tournament-result-teams">
-          <label for="result-score-a">${teamName(match.teamAId)}</label>
-          <span class="muted">vs</span>
-          <label for="result-score-b">${teamName(match.teamBId)}</label>
-        </div>
-        <div class="tournament-result-teams">
-          <input type="number" id="result-score-a" class="tournament-result-score" min="0" inputmode="numeric" placeholder="0" value="${decided && match.scoreA != null ? match.scoreA : ''}" />
-          <span class="muted">:</span>
-          <input type="number" id="result-score-b" class="tournament-result-score" min="0" inputmode="numeric" placeholder="0" value="${decided && match.scoreB != null ? match.scoreB : ''}" />
-        </div>
-        <button type="submit" class="btn btn-primary btn-block">Speichern</button>
-      </form>`
-    : `<div class="stack tournament-result-form">
-        <span class="muted">Wer hat gewonnen?</span>
-        <button type="button" class="tournament-result-pick${match.winnerTeamId === match.teamAId ? ' is-selected' : ''}" data-result-winner="${match.teamAId}">${teamName(match.teamAId)}</button>
-        <button type="button" class="tournament-result-pick${match.winnerTeamId === match.teamBId ? ' is-selected' : ''}" data-result-winner="${match.teamBId}">${teamName(match.teamBId)}</button>
-        ${knockout ? '' : `<button type="button" class="tournament-result-pick is-draw${match.isDraw ? ' is-selected' : ''}" data-result-winner="">Unentschieden</button>`}
-      </div>`;
-
-  const { close, el } = openModal(`Ergebnis · ${phaseLabel}`, body);
-
-  async function save(payload) {
-    try {
+  const { close, el } = openModal('Ergebnis', `
+    <div class="muted result-dialog-subtitle">${escapeHtml(t.name)} · ${escapeHtml(phaseLabel)}</div>
+    ${resultFormHtml({ teams, prefix: 'tournament-result', mode: t.trackScore ? 'score' : 'winner', fixedMode: true, allowDraw: !knockout, integerScores: true, winnerIndex: decided && !t.trackScore ? match.isDraw ? -1 : match.winnerTeamId === match.teamAId ? 0 : 1 : undefined, scores: [match.scoreA, match.scoreB] })}`);
+  wireResultForm(el, {
+    teams, mode: t.trackScore ? 'score' : 'winner', allowDraw: !knockout, integerScores: true,
+    onSave: async ({ mode, winnerIndex, scores }) => {
+      const nextWinnerId = winnerIndex === null ? null : winnerIndex === 0 ? match.teamAId : match.teamBId;
+      const payload = mode === 'score'
+        ? { scoreA: scores[0], scoreB: scores[1] }
+        : { winnerTeamId: nextWinnerId };
+      const warning = decided ? affectedFollowup(t, match, nextWinnerId) : null;
+      if (warning && !(await confirmDialog(warning, { title: 'Folgende Partien betroffen', confirmText: 'Trotzdem speichern', danger: true }))) {
+        return false;
+      }
       detailCache = decided
         ? await api.tournaments.updateResult(t.id, match.id, { ...payload, expectedPlayedAt: match.playedAt })
         : await api.tournaments.recordResult(t.id, match.id, payload);
       close();
       ctx.rerender();
       const champion = detailCache.teams.find((team) => team.id === detailCache.championTeamId);
-      if (t.status !== 'completed' && champion) showToast(`Turnier beendet – Sieger: ${champion.name}`);
-    } catch (err) {
-      showToast(err.message, { error: true });
-    }
-  }
-
-  el.querySelector('[data-result-form]')?.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const scores = parseResultScores(
-      ['#result-score-a', '#result-score-b'].map((selector) => resultScoreInputValue(el.querySelector(selector))),
-    );
-    if (!scores) {
-      showToast('Bitte mindestens ein Ergebnis eintragen.', { error: true });
-      return;
-    }
-    const [scoreA, scoreB] = scores;
-    if (!Number.isInteger(scoreA) || !Number.isInteger(scoreB) || scoreA < 0 || scoreB < 0) {
-      showToast('Ergebnisse müssen ganze Zahlen ab 0 sein.', { error: true });
-      return;
-    }
-    save({ scoreA, scoreB });
-  });
-  el.querySelectorAll('[data-result-winner]').forEach((btn) => {
-    btn.addEventListener('click', () => save({ winnerTeamId: btn.dataset.resultWinner || null }));
+      showToast(t.status !== 'completed' && champion ? `Turnier beendet – Sieger: ${champion.name}` : 'Ergebnis gespeichert.');
+    },
   });
 }
 
@@ -392,9 +246,6 @@ function openResultDialog(t, match, phaseLabel, ctx) {
 
 export function renderTournaments(container, ctx) {
   applyLocalRoute(ctx.localRoute());
-  if (currentTournamentId) {
-    renderDetail(container, ctx);
-  } else {
-    renderList(container, ctx);
-  }
+  if (currentTournamentId) renderDetail(container, ctx);
+  else container.innerHTML = `<h2 class="view-title">Turnier</h2>${emptyStateHtml('Turnier in Match auswählen.')}`;
 }
