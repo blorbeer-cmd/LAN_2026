@@ -24,7 +24,7 @@ test('bottom navigation and More define every canonical view icon', () => {
 test('packing and To-Do use distinct symbols', () => {
   // The general-event footer places these actions side by side, so their
   // symbols must remain distinguishable even without reading the labels.
-  assert.equal(domainIcon('competition'), domainIcon('tournaments'));
+  assert.equal(domainIcon('tournaments'), 'swords');
   assert.equal(domainIcon('insights'), domainIcon('leaderboard'));
   assert.notEqual(domainIcon('checklistPacking'), domainIcon('checklist'));
 });

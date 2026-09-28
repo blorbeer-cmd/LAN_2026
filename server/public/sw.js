@@ -48,11 +48,14 @@ self.addEventListener('notificationclick', (event) => {
           const hashIndex = url.indexOf('#');
           if (hashIndex !== -1) {
             const hash = url.slice(hashIndex + 1);
-            const [view, encodedOrderId] = hash.split('/');
+            const [view, encodedTargetId] = hash.split('/');
             let target = null;
-            if (view === 'foodOrders' && encodedOrderId) {
+            if ((view === 'foodOrders' || view === 'tournaments') && encodedTargetId) {
               try {
-                target = { type: 'order', id: decodeURIComponent(encodedOrderId) };
+                target = {
+                  type: view === 'foodOrders' ? 'order' : 'tournament',
+                  id: decodeURIComponent(encodedTargetId),
+                };
               } catch {
                 target = null;
               }

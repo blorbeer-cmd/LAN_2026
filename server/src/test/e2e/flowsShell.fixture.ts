@@ -16,6 +16,7 @@ import {
   alice,
   bob,
   accountsByName,
+  openMatchmakingHistory,
   openAuswertungTab,
   ensureAdminMode,
   openAdminSection,
@@ -794,8 +795,8 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
     const tabbedMetrics: Array<[string, CardMetrics]> = [];
 
     await page.click('.nav-btn[data-view="matchmaking"]');
-    await page.waitForSelector('#view-container h1:text-is("Match")');
-    tabbedMetrics.push(['Match', await firstCardMetrics('Match')]);
+    await page.waitForSelector('#view-container .view-title:text-is("Match")');
+    metrics.push(['Match', await firstCardMetrics('Match')]);
 
     for (const [view, title] of [
       ['home', 'Home'],
@@ -1613,13 +1614,13 @@ flowTest('global search filters areas, supports keyboard navigation and restores
   assert.equal(await page.getByText('Dieses Profil kann nur von E2E Bob selbst bearbeitet werden.', { exact: true }).count(), 0);
   await page.click('[data-close]');
 
-  // A merged area's tab is its own search hit and lands on that tab.
+  // Match is a direct area; Auswertung still has its own tabs.
   await page.keyboard.press('Control+K');
   await page.fill('#global-search-input', 'Captain Draft');
-  await page.waitForSelector('.global-search-result:has-text("Teams")');
-  await page.click('.global-search-result:has-text("Teams")');
+  await page.waitForSelector('.global-search-result:has-text("Match")');
+  await page.click('.global-search-result:has-text("Match")');
   await page.waitForSelector('.view-title:text("Match")');
-  await page.waitForSelector('[data-section-tab="matchmaking"][aria-current="page"]');
+  assert.equal(await page.locator('[data-section-tab="matchmaking"]').count(), 0);
 
   await page.keyboard.press('Control+K');
   await page.fill('#global-search-input', 'Statistiken');
@@ -1956,13 +1957,10 @@ flowTest('Spiele: a skill suggestion chip appears after enough recorded results 
 });
 
 flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a champion', async () => {
-  // Tournaments live in the second tab of the shared Match area. Every
-  // tournament starts from a draw, so "Turnier anlegen" leads to Teams.
+  // Tournaments start from a Match draw; there is no tournament tab.
   await page.click('.nav-btn[data-view="matchmaking"]');
-  await page.click('[data-section-tab="tournaments"]');
-  await page.waitForSelector('#tourn-new-btn');
-  await page.click('#tourn-new-btn');
   await page.waitForSelector('#mm-generate');
+  assert.equal(await page.locator('[data-section-tab="tournaments"]').count(), 0);
   assert.equal(new URL(page.url()).hash, '#matchmaking');
 
   const tournamentGamesRes = await page.request.get(`${BASE_URL}/api/games`);
@@ -2003,9 +2001,9 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await page.keyboard.press('Tab');
   await tournamentGameList.waitFor({ state: 'hidden' });
   assert.equal(
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.mmMode),
-    'draw',
-    'Tab should leave the combobox for the mode choice instead of moving through every listbox option',
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.id),
+    'mm-teamcount',
+    'Tab should leave the combobox for the next setup control instead of moving through every listbox option',
   );
   await page.click('#mm-game-search');
   await tournamentGameList.waitFor({ state: 'visible' });
@@ -2157,30 +2155,193 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await page.keyboard.press('Escape');
   await page.click('#draw-tournament-form button[type="submit"]');
 
-  // Each open bracket match has a "+" action that opens the shared result
-  // dialog; pick the first team as winner until the tournament is finished.
-  await page.waitForSelector('.bracket-match');
+  // A two-team K.O. tournament shows one Finale fixture, not a bracket.
+  await page.waitForSelector('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture');
+  assert.equal(await page.locator('.bracket-match').count(), 0);
+  assert.deepEqual(await page.locator('.tournament-fixture-team').allTextContents(), ['Team 1', 'Team 2'],
+    'fixtures show just the team names');
+  assert.equal(await page.locator('.tournament-fixture .rating, .tournament-fixture-team-players').count(), 0);
+  assert.equal(await page.locator('.is-my-team, .tournament-own-team-marker').count(), 0);
   assert.match(new URL(page.url()).hash, /^#tournaments\/.+/);
   const tournamentDetailHash = new URL(page.url()).hash;
+  const tournamentId = tournamentDetailHash.slice('#tournaments/'.length);
+  await page.click('.nav-btn[data-view="home"]');
+  await page.locator(`[data-current-item="tournament:${tournamentId}"] [data-navigate="tournaments"]`).click();
+  assert.equal(new URL(page.url()).hash, tournamentDetailHash, 'Home Aktuell should open the tournament itself');
+  await page.click('.nav-btn[data-view="matchmaking"]');
+  const openTournamentSection = page.locator('.matchmaking-open-draws');
+  await openTournamentSection.waitFor();
+  if (!(await openTournamentSection.evaluate((section) => (section as HTMLDetailsElement).open))) {
+    await openTournamentSection.locator('summary').click();
+  }
+  await openTournamentSection.locator(`[data-open-draw-tournament="${tournamentId}"]`).waitFor();
+  assert.equal(await page.locator(`.history-details [data-open-draw-tournament="${tournamentId}"]`).count(), 0,
+    'a running tournament belongs in Ohne Ergebnis, not Historie');
+  await page.locator(`.matchmaking-active-tournaments [data-open-draw-tournament="${tournamentId}"]`).click();
+  assert.equal(new URL(page.url()).hash, tournamentDetailHash, 'the running card should open the detail');
   await page.reload();
-  await page.waitForSelector('.bracket-match');
+  await page.waitForSelector('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture');
   assert.equal(new URL(page.url()).hash, tournamentDetailHash);
   for (let i = 0; i < 8; i++) {
     if (await page.locator('text=Beendet').count()) break;
-    const openMatch = page.locator('.bracket-side.is-open[data-open-result]').first();
+    const openMatch = page.locator('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture-action.is-open[data-open-result]').first();
     if ((await openMatch.count()) === 0) break;
     await openMatch.click();
-    await page.locator('.modal [data-result-winner]').first().click();
+    await page.locator('.modal label.tournament-result-pick:has(input[value="0"])').click();
+    await page.locator('.modal [data-result-save]').click();
     await page.waitForSelector('.modal', { state: 'detached' });
   }
   await page.waitForSelector('text=Beendet', { timeout: 5000 });
-  // The finished tournament leads with its winner, the same team the bracket names.
+  // The finished tournament leads with the same winner as the Finale row.
   const championCard = page.locator('[data-tournament-champion]');
   await championCard.waitFor();
   assert.equal(await championCard.locator('h2').innerText(), 'Turnier beendet');
   assert.equal(await championCard.locator('.tournament-fixture-score:has-text("Win")').count(), 1);
-  const bracketChampion = (await page.locator('.bracket-champion .bracket-team-name').innerText()).trim();
-  assert.ok((await championCard.locator('.team-card-header').innerText()).includes(bracketChampion));
+  const finalWinner = (await page.locator('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture-team.is-winner').innerText()).trim();
+  assert.ok((await championCard.locator('.team-card-header').innerText()).includes(finalWinner));
+
+  await page.goto(`${BASE_URL}/#tournaments`);
+  await page.waitForFunction(() => location.hash === '#matchmaking');
+  await page.goto(`${BASE_URL}/#tournaments/new`);
+  await page.waitForFunction(() => location.hash === '#matchmaking');
+  await page.goto(`${BASE_URL}/${tournamentDetailHash}`);
+  await page.waitForSelector('.tournament-board-card:has(h2:text-is("Finale"))');
+  assert.equal(await page.locator('[data-navigate="matchmaking"]:has-text("‹ Match")').count(), 0);
+  await page.click('.nav-btn[data-view="matchmaking"]');
+  await page.click('#mm-game-search');
+  await page.locator(`#mm-game-list [data-search-select-value="${otherTournamentGame.id}"]`).click();
+  await openMatchmakingHistory();
+  await page.click('[data-history-filter="tournaments"]');
+  assert.equal(await page.locator(`.matchmaking-open-draws [data-open-draw-tournament="${tournamentId}"]`).count(), 0,
+    'the completed tournament has left Ohne Ergebnis');
+  const historyTournament = page.locator(`.matchmaking-history-item:has([data-open-draw-tournament="${tournamentId}"])`);
+  assert.equal(await historyTournament.locator('.matchmaking-history-toggle').getAttribute('aria-expanded'), 'false');
+  assert.equal(await historyTournament.locator('.matchmaking-history-title strong').count(), 1);
+  assert.match(await historyTournament.locator('.matchmaking-history-meta').innerText(), /Win[\s\S]*1\. Platz/);
+  await historyTournament.locator('.matchmaking-history-toggle').click();
+  await historyTournament.locator('.matchmaking-history-team').first().waitFor();
+  assert.equal(await historyTournament.locator('.matchmaking-history-team').count(), 2);
+  assert.ok((await historyTournament.locator('.matchmaking-history-players').first().innerText()).length > 0);
+  assert.equal(await historyTournament.locator('.matchmaking-history-details .lb-rank.is-first').innerText(), '1');
+  assert.equal(await historyTournament.locator('.matchmaking-history-placement[aria-label="1. Platz"]').innerText(), '1');
+  assert.equal(await historyTournament.locator('.matchmaking-history-placement[aria-label="2. Platz"]').innerText(), '2');
+  assert.equal(await historyTournament.locator('.matchmaking-history-team-context:has-text("ausgeschieden")').count(), 0,
+    'finalists use their explicit placements without a duplicate elimination label');
+  const knockoutPlacementAlignment = await historyTournament.locator('.matchmaking-history-team').first().evaluate((team) => {
+    const placement = team.querySelector('.matchmaking-history-placement')!;
+    const name = team.querySelector('.matchmaking-history-team-head strong')!;
+    return Math.abs(placement.getBoundingClientRect().top - name.getBoundingClientRect().top);
+  });
+  assert.ok(knockoutPlacementAlignment < 8, 'K.O. placement stays beside the team name');
+  assert.equal(await historyTournament.locator('.matchmaking-history-team .team-skill-total').count(), 2);
+  assert.equal(await historyTournament.locator('.matchmaking-history-players strong').innerText(), alice.name);
+  await page.locator(`.matchmaking-history-item [data-open-draw-tournament="${tournamentId}"]`).click();
+  assert.equal(new URL(page.url()).hash, tournamentDetailHash, 'the history filter should link to the detail');
+  await page.goto(`${BASE_URL}/#tournaments/deleted-example`);
+  await page.waitForSelector('text=Dieses Turnier ist nicht mehr verfügbar.');
+});
+
+flowTest('completed league history shows placements and points beside team names', async (t) => {
+  await page.goto(`${BASE_URL}/#matchmaking`);
+  await page.locator('#mm-game').waitFor({ state: 'attached' });
+  const gameId = await page.locator('#mm-game').inputValue();
+  const created = await page.request.post(`${BASE_URL}/api/tournaments`, {
+    data: { gameId, format: 'round_robin', teams: [{ playerIds: [alice.id] }, { playerIds: [bob.id] }] },
+  });
+  assert.equal(created.status(), 201, await created.text());
+  const tournament = await created.json() as {
+    id: string;
+    matches: Array<{ id: string; teamAId: string; teamBId: string }>;
+  };
+  t.after(async () => { await page.request.delete(`${BASE_URL}/api/tournaments/${tournament.id}`); });
+  await page.goto(`${BASE_URL}/#tournaments/${tournament.id}`);
+  await page.locator('.tournament-standings').waitFor();
+  assert.deepEqual(await page.locator('.tournament-standings-name').allTextContents(), ['Team 1', 'Team 2']);
+  assert.equal(await page.locator('.tournament-board-card .rating, .tournament-standings-players, .tournament-fixture-team-players').count(), 0,
+    'league table and schedule show team names without skill or members');
+  const match = tournament.matches.find((entry) => entry.teamAId && entry.teamBId)!;
+  const saved = await page.request.post(`${BASE_URL}/api/tournaments/${tournament.id}/matches/${match.id}/result`, {
+    data: { winnerTeamId: match.teamAId },
+  });
+  assert.equal(saved.status(), 200, await saved.text());
+
+  await page.goto(`${BASE_URL}/#matchmaking`);
+  await page.locator('#mm-game-search').click();
+  await page.locator(`#mm-game-list [data-search-select-value="${gameId}"]`).click();
+  await openMatchmakingHistory();
+  await page.locator('[data-history-filter="tournaments"]').click();
+  const tile = page.locator(`.history-details .matchmaking-history-item:has([data-open-draw-tournament="${tournament.id}"])`);
+  await tile.waitFor();
+  assert.equal(await tile.locator('.matchmaking-history-title strong').count(), 1);
+  await tile.locator('.matchmaking-history-toggle').click();
+  await tile.locator('.matchmaking-history-team').first().waitFor();
+  assert.deepEqual(await tile.locator('.matchmaking-history-placement').allTextContents(), ['1', '2']);
+  assert.equal(await tile.locator('.matchmaking-history-placement[aria-label="2. Platz"]').count(), 1);
+  assert.deepEqual(await tile.locator('.matchmaking-history-team-score').allTextContents(), ['3 Pkt', '0 Pkt']);
+  assert.equal(await tile.locator('.matchmaking-history-team-context:has-text("Pkt")').count(), 0);
+  const scoreAlignment = await tile.locator('.matchmaking-history-team').first().evaluate((team) => {
+    const placement = team.querySelector('.matchmaking-history-placement')!;
+    const name = team.querySelector('.matchmaking-history-team-head strong')!;
+    const points = team.querySelector('.matchmaking-history-team-score')!;
+    return Math.max(
+      Math.abs(placement.getBoundingClientRect().top - name.getBoundingClientRect().top),
+      Math.abs(name.getBoundingClientRect().top - points.getBoundingClientRect().top),
+    );
+  });
+  assert.ok(scoreAlignment < 8, 'league placement and table points stay in the team-name line');
+});
+
+flowTest('correcting an early K.O. winner warns before later results are reset', async (t) => {
+  const gamesResponse = await page.request.get(`${BASE_URL}/api/games`);
+  const gameId = ((await gamesResponse.json()) as Array<{ id: string }>)[0].id;
+  const extraIds: string[] = [];
+  for (const name of ['K.O. Warnung 1', 'K.O. Warnung 2']) {
+    const response = await page.request.post(`${BASE_URL}/api/players`, { data: { name } });
+    assert.equal(response.status(), 201, await response.text());
+    extraIds.push((await response.json()).id);
+  }
+  const created = await page.request.post(`${BASE_URL}/api/tournaments`, {
+    data: {
+      gameId,
+      format: 'single_elimination',
+      teams: [alice.id, bob.id, ...extraIds].map((id) => ({ playerIds: [id] })),
+    },
+  });
+  assert.equal(created.status(), 201, await created.text());
+  const tournament = await created.json() as { id: string; matches: Array<{ id: string; round: number; slot: number; teamAId: string; teamBId: string }> };
+  t.after(async () => { await page.request.delete(`${BASE_URL}/api/tournaments/${tournament.id}`); });
+  const semiFinals = tournament.matches.filter((match) => match.round === 1 && match.teamAId && match.teamBId);
+  assert.equal(semiFinals.length, 2);
+  for (const match of semiFinals) {
+    const result = await page.request.post(`${BASE_URL}/api/tournaments/${tournament.id}/matches/${match.id}/result`, {
+      data: { winnerTeamId: match.teamAId },
+    });
+    assert.equal(result.status(), 200, await result.text());
+  }
+  const ready = await (await page.request.get(`${BASE_URL}/api/tournaments/${tournament.id}`)).json() as { matches: Array<{ id: string; round: number; teamAId: string }> };
+  const final = ready.matches.find((match) => match.round === 2)!;
+  const finalResult = await page.request.post(`${BASE_URL}/api/tournaments/${tournament.id}/matches/${final.id}/result`, {
+    data: { winnerTeamId: final.teamAId },
+  });
+  assert.equal(finalResult.status(), 200, await finalResult.text());
+
+  await page.goto(`${BASE_URL}/#tournaments/${tournament.id}`);
+  await page.locator(`[data-open-result="${semiFinals[0].id}"]`).click();
+  await page.locator('.modal label.tournament-result-pick:has(input[value="1"])').click();
+  await page.locator('.modal [data-result-save]').click();
+  await page.getByRole('alertdialog', { name: 'Folgende Partien betroffen' }).waitFor();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Abbrechen' }).click();
+  assert.equal(await page.locator('.modal [data-result-save]').isEnabled(), true,
+    'canceling the warning keeps the result form usable');
+  await page.locator('.modal [data-result-save]').click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Trotzdem speichern' }).click();
+  await page.locator('.modal').waitFor({ state: 'detached' });
+  assert.equal(await page.locator(`[data-open-result="${final.id}"].is-open`).count(), 1,
+    'the downstream final is reopened only after confirmation');
+  assert.equal(await page.locator('.bracket-tree-wrap .rating, .bracket-team-players').count(), 0,
+    'the bracket keeps team names and outcomes without skill or members');
+  assert.equal(await page.locator('.tournament-team-card .team-player-name strong').count(), 1);
+  assert.equal(await page.locator('.is-my-team, .tournament-own-team-marker').count(), 0);
 });
 
 flowTest('Admin: the verified role exposes tools and can temporarily hide seeded test users', async () => {

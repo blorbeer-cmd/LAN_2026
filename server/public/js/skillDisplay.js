@@ -59,14 +59,19 @@ export function unratedPlayerCount(players, gameId, options = {}) {
 }
 
 export function teamSkillHtml(players, gameId, options = {}) {
-  const { balanced = true } = options;
+  const { balanced = true, current = false } = options;
   const total = teamSkillTotal(players, gameId, options);
   // Only a balanced lineup can state what the missing ratings contributed;
   // without that, the count would name a share of a sum it never entered.
-  const unrated = balanced ? unratedPlayerCount(players, gameId, options) : 0;
-  const value = unrated > 0 ? `${total} <span class="rating-unrated">(${unrated})</span>` : `${total}`;
+  const unrated = balanced || current ? unratedPlayerCount(players, gameId, options) : 0;
+  const value = current && unrated === players.length ? '–'
+    : unrated > 0 ? `${total} <span class="rating-unrated">(${unrated})</span>` : `${total}`;
   const title =
-    unrated > 0
+    current
+      ? unrated === players.length ? 'Aktueller Team-Skill nicht verfügbar: niemand hat dieses Spiel bewertet'
+        : unrated > 0 ? `Aktueller Team-Skill ${total} aus ${players.length - unrated} bewerteten Spielern; ${unrated} ohne Bewertung`
+          : `Aktueller Team-Skill ${total}`
+      : unrated > 0
       ? `Gesamt-Skill ${total}, davon ${unrated} ohne eigene Bewertung mit je ${UNRATED_SKILL_VALUE}`
       : `Gesamt-Skill ${total}`;
   return `<span class="rating team-skill-total" title="${title}" aria-label="${title}">${icon(domainIcon('skill'))}<span>${value}</span></span>`;

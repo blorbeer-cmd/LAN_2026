@@ -25,6 +25,9 @@ interface DrawLinkRow {
   tournament_id: string | null;
   event_id: string;
   seat_pairs_considered: number;
+  game_id: string;
+  source: string;
+  teams: string;
 }
 
 class DrawAlreadyClaimedError extends Error {}
@@ -189,7 +192,7 @@ matchesRouter.post('/', (req, res) => {
   let draw: DrawLinkRow | undefined;
   if (drawId) {
     draw = db
-      .prepare('SELECT id, match_id, tournament_id, event_id, seat_pairs_considered FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+      .prepare('SELECT id, match_id, tournament_id, event_id, seat_pairs_considered, game_id, source, teams FROM matchmaking_draws WHERE id = ? AND group_id = ?')
       .get(drawId, req.group!.id) as DrawLinkRow | undefined;
     if (!draw) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
     if (draw.match_id) return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
@@ -232,7 +235,20 @@ matchesRouter.post('/', (req, res) => {
       // lineup, and so its length always matches the match's for
       // attachMatchResults' score/rank/winner enrichment.
       const teamPlayerIdLists = validated.teams.map((t) => t.playerIds);
-      const snapshotTeams = buildTeamsSnapshot(gameId, teamPlayerIdLists);
+      const originalTeams = JSON.parse(draw.teams) as Array<{
+        skillSnapshot?: boolean;
+        players: Array<{ id: string; rating: number | null }>;
+      }>;
+      const preserveDraftSkill = draw.source === 'draft' && draw.game_id === gameId
+        && originalTeams.length > 0 && originalTeams.every((team) => team.skillSnapshot === true);
+      // Preserve completion-time ratings by player ID, even after a move or
+      // FFA regrouping. New participants get their rating at result entry.
+      // An old draft or a result for another game has no applicable snapshot.
+      const storedRatings = preserveDraftSkill
+        ? new Map(originalTeams.flatMap((team) => team.players.map((player) => [player.id, player.rating] as const)))
+        : undefined;
+      const snapshotTeams = buildTeamsSnapshot(gameId, teamPlayerIdLists, storedRatings)
+        .map((team) => preserveDraftSkill ? { ...team, skillSnapshot: true } : team);
       const seatConflicts = draw.seat_pairs_considered > 0
         ? applySeatConflicts(req.group!.id, draw.event_id, snapshotTeams)
         : 0;
