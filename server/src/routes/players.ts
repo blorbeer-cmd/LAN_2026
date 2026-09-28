@@ -34,6 +34,7 @@ interface PlayerRow {
   avatar: string | null;
   api_key: string;
   tracking_paused: number;
+  newsticker_opt_out: number;
   is_admin: number;
   is_test: number;
   deactivated_at: number | null;
@@ -136,6 +137,7 @@ playersRouter.post('/', requireUser, (req, res) => {
     avatar: avatar ?? null,
     api_key: nanoid(24),
     tracking_paused: 0,
+    newsticker_opt_out: 0,
     // New players are regular participants until an existing admin grants
     // the moderation flag. Arcade AI matches rely on this flag too.
     is_admin: 0,
@@ -169,7 +171,8 @@ playersRouter.post('/', requireUser, (req, res) => {
 // trackingPaused is the player-side opt-out: while
 // true, the agent's reports for this player are received but silently
 // dropped (see routes/agent.ts) — no live status, no playtime, regardless
-// of whether an event is tracking.
+// of whether an event is tracking. newstickerOptOut keeps the player's name
+// out of the Broadcast newsticker's invented headlines (see newsticker.ts).
 playersRouter.patch('/:id', requireUser, (req, res) => {
   const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as PlayerRow | undefined;
   if (!existing) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
@@ -182,8 +185,8 @@ playersRouter.patch('/:id', requireUser, (req, res) => {
     return res.status(403).json({ error: 'Du kannst nur dein eigenes Profil bearbeiten.' });
   }
 
-  const { name, realName, color, avatar, trackingPaused } = req.body ?? {};
-  const changesProfile = [name, realName, color, avatar, trackingPaused].some((value) => value !== undefined);
+  const { name, realName, color, avatar, trackingPaused, newstickerOptOut } = req.body ?? {};
+  const changesProfile = [name, realName, color, avatar, trackingPaused, newstickerOptOut].some((value) => value !== undefined);
   const actorId = req.player?.id;
   if (changesProfile && actorId !== existing.id) {
     return res.status(403).json({ error: 'Du kannst nur dein eigenes Profil bearbeiten.' });
@@ -204,6 +207,9 @@ playersRouter.patch('/:id', requireUser, (req, res) => {
   if (trackingPaused !== undefined && typeof trackingPaused !== 'boolean') {
     return res.status(400).json({ error: 'trackingPaused muss ein Boolean sein.' });
   }
+  if (newstickerOptOut !== undefined && typeof newstickerOptOut !== 'boolean') {
+    return res.status(400).json({ error: 'newstickerOptOut muss ein Boolean sein.' });
+  }
   const nextName = name !== undefined ? name.trim() : existing.name;
   if (name !== undefined && nameTaken(nextName, existing.id)) {
     return res.status(409).json({ error: `Der Name "${nextName}" ist schon vergeben.` });
@@ -211,9 +217,10 @@ playersRouter.patch('/:id', requireUser, (req, res) => {
   const nextColor = color !== undefined ? color : existing.color;
   const nextAvatar = avatar !== undefined ? avatar : existing.avatar;
   const nextTrackingPaused = trackingPaused !== undefined ? (trackingPaused ? 1 : 0) : existing.tracking_paused;
+  const nextNewstickerOptOut = newstickerOptOut !== undefined ? (newstickerOptOut ? 1 : 0) : existing.newsticker_opt_out;
   db.prepare(
-    'UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ? WHERE id = ?',
-  ).run(nextName, nextRealName, nextColor, nextAvatar, nextTrackingPaused, existing.id);
+    'UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ?, newsticker_opt_out = ? WHERE id = ?',
+  ).run(nextName, nextRealName, nextColor, nextAvatar, nextTrackingPaused, nextNewstickerOptOut, existing.id);
 
   // Profile changes are visible in every group the player belongs to, not
   // only in the tab the request happened to come from.
@@ -228,6 +235,7 @@ playersRouter.patch('/:id', requireUser, (req, res) => {
       color: nextColor,
       avatar: nextAvatar,
       tracking_paused: nextTrackingPaused,
+      newsticker_opt_out: nextNewstickerOptOut,
       is_admin: existing.is_admin,
     }),
   );

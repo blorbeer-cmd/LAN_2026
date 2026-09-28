@@ -4,36 +4,59 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
 
 ## TV-Kiosk
 
-- **Kiosk dashboard** — Kiosk is a fixed, read-only TV canvas with no page or card scrollbars. Its
-  header offers a keyboard-accessible „Vollbild“ toggle and reflects whether browser fullscreen is
-  currently active. Browsers without Fullscreen API support omit the unavailable control.
-  Its
-  four primary cards remain a 2×2 grid and distribute live players, rankings, tournament standings,
-  groups and matches across internal columns, ordered Live-Status and Rangliste above Abstimmung
-  and Turnier. Vote status is a centered icon/text stack. Only the
-  newest active system notification appears above the dashboard as one full-width brand-gradient
-  banner; separate food-order summary cards are omitted because order pushes already use that banner.
-  Tournament standings and group phases start directly below their metadata. In a
-  knockout view, game and round remain fixed at the top while the bracket round itself is centered in
-  the remaining card area. All variants use bordered standing, group or match cards with textual winner
-  states, matching the main app's nested-surface hierarchy. Vote is a live room display: open rounds
-  vertically center their participant count in the status header and show their current ranking as
-  „Zwischenstand“, but replace every game name with a stable, differently sized random-character
-  mask plus blur so the room display cannot influence voting. Single-choice runoffs are explicitly labeled
-  „Stichwahl“. The two-column live ranking uses the complete remaining card height for up to ten
-  games, distributing its five rows evenly instead of compressing them at the top. Low-height TV
-  canvases reduce only row padding and gaps so the fixed dashboard still needs no scrollbar. After
-  a round closes, a five-second countdown hides every result and reuses Arcade's large layered
-  gradient/glow number with its per-second pop effect. The revealed view starts at the top rather
-  than floating vertically centered: the standard section title „Gewinner“ introduces a separately
-  purple-pink gradient-bordered winner surface (including every tied winner). The smaller standard
-  section title „Ergebnis im Detail“ then introduces the complete neutral ranking; its leading rows
-  do not repeat the winner border. The result remains visible for ten minutes,
-  based on the persisted close timestamp; then the card switches to the empty state. A new
-  open round replaces that result immediately. Without an open or recently closed round, the card
-  only states that no vote is running. The regular personal Vote
-  view keeps its open-round distribution hidden. Without a tournament, the tournament card uses
-  the concise empty state „Kein offenes Turnier.“.
+- **Broadcast dashboard**: The shared screen (visible name „Broadcast“, technically still
+  `kiosk.html`) is a fixed, read-only TV canvas with no page or card scrollbars. A slim, calm
+  header without its own surface shows the Respawn logo on the left and, on the right, the icon-only
+  fullscreen toggle followed by a clock with the written-out weekday („Samstag 13:19“). Logo and
+  clock line up with the outer edges of the cards. The keyboard-accessible toggle reflects whether
+  browser fullscreen is active, idles out of sight in fullscreen until the mouse moves, and is
+  omitted where the Fullscreen API is missing.
+- **Banner**: Only the newest active system notification appears below the header as one
+  full-width brand-gradient banner; without one, the cards move up directly below the header.
+  Title and body share one line separated by a dash and may wrap to a second line; the right side
+  shows the notification's age („gerade eben“, „vor 12 Min.“, „vor 3 Std.“, „seit Samstag“)
+  instead of a second clock time. A notification disappears when its topic is resolved or expires
+  or when a newer one replaces it. Separate food-order summary cards are omitted because order
+  pushes already use this banner.
+- **Cards**: Four cards remain a 2×2 grid: Live-Status and Newsticker above Abstimmung and
+  Turnier, with the Jam bar below. Banner, header and Jam bar share the card edges and the card
+  content inset. A card without data centers one short line at content size in the whole card.
+- **Live-Status**: shows every participant including offline ones, playing first. It uses the
+  fewest columns (up to three, each at least 240 px wide) that show everyone; only if even that does
+  not fit do pages rotate, marked by dots.
+- **Newsticker**: a timeline of playful, clearly invented headlines. The server writes one new
+  line every 30 seconds for the whole event, so every Broadcast screen of that event shows the same
+  feed. Fresh real results (matches and tournament fixtures of the last 90 minutes) are reported
+  first and each only once; where the event records play time, long ongoing sessions and daily
+  play-time milestones are used as well. Otherwise a line combines a real participant with a game
+  from the group's catalog (a few well-known games when the catalog is empty). Anti-repeat rules
+  keep an identical line out for two hours, a sentence form for 15 lines and the same person out
+  of two consecutive lines. The newest line leads as „Eilmeldung“ with a gradient icon, a slightly
+  heavier weight at the banner's text size and its game or tournament as meta line; older lines sit below it on one vertical rail,
+  each with its icon and age. A new line fades in on top while the others slide down; lines that
+  no longer fit are dropped, and reduced motion shows the new state without movement. The tone
+  stays friendly: no remarks about looks, weak skill, health or private life. Accounts that opted
+  out in Mein Profil are never named, and a line naming them disappears with the next refresh.
+- **Abstimmung**: Vote is a live room display. Open rounds vertically center their participant
+  count in the status header and show the current ranking in one column, with every game name
+  replaced by a stable, differently sized random-character mask plus blur so the room display
+  cannot influence voting. Single-choice runoffs are explicitly labeled „Stichwahl“. Rows keep
+  their normal size; the card shows as many as fit and re-fits whenever its height changes, for
+  example when entering fullscreen. After a round closes, a five-second countdown hides every
+  result and reuses Arcade's large layered gradient/glow number with its per-second pop effect.
+  The revealed view starts at the top: the standard section title „Gewinner“ introduces a
+  separately purple-pink gradient-bordered winner surface (including every tied winner), and the
+  smaller title „Ergebnis im Detail“ introduces the neutral ranking without repeating the winner
+  border. The result remains visible for ten minutes, based on the persisted close timestamp; a new
+  open round replaces it immediately. Without an open or recently closed round, the card only
+  states that no vote is running. The regular personal Vote view keeps its open-round
+  distribution hidden.
+- **Turnier**: Standings and group phases start directly below their metadata; in a knockout
+  view, game and round remain fixed at the top while the bracket round is centered below, with
+  matches side by side. All variants use bordered standing, group or match cards with textual
+  winner states. Low-height canvases reduce only row padding and gaps so the dashboard still needs
+  no scrollbar. Without a tournament the card title reads „Turnier“ and the card states that no
+  tournament exists.
 
 ## Jam-Sessions und Analytics
 

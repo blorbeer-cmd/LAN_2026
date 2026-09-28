@@ -648,6 +648,13 @@ export function renderProfile(container, ctx) {
           })}
           ${pushRow()}
           ${profileRow({
+            title: 'Newsticker',
+            meta: me.newsticker_opt_out
+              ? 'Aus · dein Name erscheint nicht im Broadcast-Newsticker'
+              : 'An · der Broadcast darf dich in erfundenen Spaß-Meldungen nennen',
+            action: `<button type="button" class="btn btn-sm" id="profile-newsticker" aria-pressed="${!me.newsticker_opt_out}">${me.newsticker_opt_out ? 'Aktivieren' : 'Deaktivieren'}</button>`,
+          })}
+          ${profileRow({
             title: 'Passwort',
             meta: 'Meldet andere Geräte ab',
             action: '<button type="button" class="btn btn-sm" id="profile-password-open">Ändern</button>',
@@ -745,6 +752,19 @@ export function renderProfile(container, ctx) {
       await api.players.update(myId, { trackingPaused: pause });
       await ctx.refresh();
       showToast(pause ? 'Tracking pausiert.' : 'Tracking wieder aktiv.');
+    } catch (err) {
+      e.currentTarget.disabled = false;
+      showToast(err.message, { error: true });
+    }
+  });
+
+  container.querySelector('#profile-newsticker')?.addEventListener('click', async (e) => {
+    const optOut = !me.newsticker_opt_out;
+    e.currentTarget.disabled = true;
+    try {
+      await api.players.update(myId, { newstickerOptOut: optOut });
+      await ctx.refresh();
+      showToast(optOut ? 'Du erscheinst nicht mehr im Newsticker.' : 'Du kannst wieder im Newsticker erscheinen.');
     } catch (err) {
       e.currentTarget.disabled = false;
       showToast(err.message, { error: true });

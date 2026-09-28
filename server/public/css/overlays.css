@@ -818,6 +818,16 @@ button.seating-seat {
 }
 
 @media (min-width: 640px) { /* --bp-md */
+  /* The short sides sit against the table like the long sides do: their
+     columns are wider than a seat, so centering left a large gap. Pulling
+     each column toward the table leaves only the plan's own --space-3 gap,
+     the same distance the top and bottom rows keep. */
+  .seating-side-left .seating-side-seats {
+    align-items: flex-end;
+  }
+  .seating-side-right .seating-side-seats {
+    align-items: flex-start;
+  }
   /* Many seats on a long side: the name moves below the avatar so it keeps
      a readable width. seating.js marks the plan once a long side exceeds
      eight seats. */

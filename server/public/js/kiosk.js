@@ -393,27 +393,81 @@ async function renderLive(players) {
   renderLivePageContent();
 }
 
-// Fixed Top 5 as an interim simplification, no longer settled/adaptive.
-const LEADERBOARD_ROWS_VISIBLE = 5;
+// Newsticker: a timeline of playful headlines. The server writes every line
+// (see server/src/newsticker.ts), so all screens of one event show the same
+// feed; this screen only asks again when the next 30-second line is due.
+// The newest line leads with its "Eilmeldung" kicker, older ones slide one
+// place down, and whatever no longer fits below the tile edge is dropped.
+const NEWS_RETRY_MS = 15_000;
+// Never wait longer than one slot, even if the reported delay looks odd.
+const NEWS_MAX_DELAY_MS = 30_000;
+const NEWS_SHIFT_MS = 450;
+let newsTimer = null;
+let newsIds = '';
+let lastNewsHtml = '';
 
-function leaderboardRowHtml(s, i) {
-  return `
-      <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-        <span class="lb-rank">${i + 1}</span>
-        ${avatarHtml(s, 28)}
-        <span style="flex:1;">${escapeHtml(s.name)}</span>
-        <span class="lb-points">${s.points} P</span>
-      </div>`;
+function newsItemHtml(item, index) {
+  const first = index === 0;
+  const createdAt = Number(item.createdAt);
+  return `<div class="kiosk-news-item${first ? ' is-first' : ''}" data-news-id="${escapeHtml(item.id)}">
+      <span class="kiosk-news-dot">${icon(item.icon)}</span>
+      <span class="kiosk-news-text">
+        ${first ? '<span class="kiosk-news-kicker">Eilmeldung</span>' : ''}
+        <span class="kiosk-news-line">${escapeHtml(item.text)}</span>
+        ${first && item.meta ? `<span class="kiosk-news-meta">${escapeHtml(item.meta)}</span>` : ''}
+      </span>
+      <span class="kiosk-news-age" data-created-at="${createdAt}">${relativeAgeText(createdAt)}</span>
+    </div>`;
 }
 
-function renderLeaderboard(standings) {
-  const container = document.getElementById('kiosk-leaderboard');
-  if (!standings || standings.length === 0) {
-    container.innerHTML = emptyStateHtml('Noch keine Ergebnisse.', { className: 'kiosk-empty-state' });
+// Synchronous like fitVoteRows: the tile height comes from the dashboard
+// grid, so the lines that do not fully fit never paint.
+function fitNewsItems() {
+  const list = document.querySelector('#kiosk-newsticker .kiosk-news');
+  if (!list) return;
+  const limit = list.getBoundingClientRect().bottom + 0.5;
+  for (const item of [...list.children]) {
+    if (item.getBoundingClientRect().bottom > limit) item.remove();
+  }
+}
+
+// FLIP: every line that stays moves from its previous place to its new one,
+// and a new line fades in on top. Reduced motion shows the new state at once.
+function animateNewsShift(container, previousTops) {
+  if (previousTops.size === 0 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const easing = 'cubic-bezier(0.2, 0.9, 0.3, 1)';
+  container.querySelectorAll('[data-news-id]').forEach((item) => {
+    const before = previousTops.get(item.dataset.newsId);
+    if (before === undefined) {
+      item.animate([{ opacity: 0, transform: 'translateY(-12px)' }, { opacity: 1, transform: 'none' }], { duration: NEWS_SHIFT_MS, easing });
+      return;
+    }
+    const shift = before - item.getBoundingClientRect().top;
+    if (Math.abs(shift) < 1) return;
+    item.animate([{ transform: `translateY(${shift}px)` }, { transform: 'none' }], { duration: NEWS_SHIFT_MS, easing });
+  });
+}
+
+function renderNewsticker(items) {
+  const container = document.getElementById('kiosk-newsticker');
+  if (!container) return;
+  const ids = items.map((item) => item.id).join('|');
+  // Same lines as on screen: only their ages move on, which the clock tick
+  // already does.
+  if (ids === newsIds && lastNewsHtml) return;
+  newsIds = ids;
+  if (items.length === 0) {
+    lastNewsHtml = emptyStateHtml('Noch keine Meldungen.', { className: 'kiosk-empty-state' });
+    container.innerHTML = lastNewsHtml;
     return;
   }
-  const rows = standings.slice(0, LEADERBOARD_ROWS_VISIBLE).map(leaderboardRowHtml).join('');
-  container.innerHTML = `<div class="kiosk-ranking-grid">${rows}</div>`;
+  const previousTops = new Map(
+    [...container.querySelectorAll('[data-news-id]')].map((item) => [item.dataset.newsId, item.getBoundingClientRect().top]),
+  );
+  lastNewsHtml = `<div class="kiosk-news">${items.map(newsItemHtml).join('')}</div>`;
+  container.innerHTML = lastNewsHtml;
+  fitNewsItems();
+  animateNewsShift(container, previousTops);
 }
 
 function concealedGameLabel(gameId, round) {
@@ -516,6 +570,23 @@ const voteResizeObserver = new ResizeObserver(([entry]) => {
   }, 150);
 });
 if (kioskVotesElement) voteResizeObserver.observe(kioskVotesElement);
+
+// Same refit for the newsticker: a taller tile shows more of the feed.
+let newsResizeTimer = null;
+let newsTileHeight = 0;
+const kioskNewsElement = document.getElementById('kiosk-newsticker');
+const newsResizeObserver = new ResizeObserver(([entry]) => {
+  const height = Math.round(entry.contentRect.height);
+  if (height === newsTileHeight) return;
+  newsTileHeight = height;
+  clearTimeout(newsResizeTimer);
+  newsResizeTimer = setTimeout(() => {
+    if (!lastNewsHtml) return;
+    kioskNewsElement.innerHTML = lastNewsHtml;
+    fitNewsItems();
+  }, 150);
+});
+if (kioskNewsElement) newsResizeObserver.observe(kioskNewsElement);
 
 let voteDisplayTimer = null;
 
@@ -701,7 +772,7 @@ function renderBroadcastBanner(entry) {
     pushBannerExpiryTimer = setTimeout(refreshPushBanner, delay);
   }
   const createdAt = Number(entry.createdAt);
-  const html = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time" data-created-at="${createdAt}">${broadcastAgeText(createdAt)}</span>`;
+  const html = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time" data-created-at="${createdAt}">${relativeAgeText(createdAt)}</span>`;
   if (el.innerHTML !== html) el.innerHTML = html;
   el.hidden = false;
   updateAlertLayout();
@@ -947,15 +1018,21 @@ async function refreshVotes() {
   }
 }
 
-async function refreshLeaderboard() {
-  const requestVersion = nextRefreshVersion('leaderboard');
+async function refreshNewsticker() {
+  clearTimeout(newsTimer);
+  const requestVersion = nextRefreshVersion('newsticker');
+  let delay = NEWS_RETRY_MS;
   try {
-    const leaderboard = await api.leaderboard.get();
-    if (!isLatestRefresh('leaderboard', requestVersion)) return;
-    renderLeaderboard(leaderboard.standings);
+    const feed = await api.kiosk.newsticker();
+    if (!isLatestRefresh('newsticker', requestVersion)) return;
+    renderNewsticker(Array.isArray(feed.items) ? feed.items : []);
+    // The server reports the wait itself, so a screen whose clock is off
+    // still asks right after the next line was written.
+    delay = Math.min(Math.max(Number(feed.nextInMs) + 250, 1_000), NEWS_MAX_DELAY_MS);
   } catch (error) {
-    logRefreshFailure('leaderboard', error);
+    logRefreshFailure('newsticker', error);
   }
+  newsTimer = setTimeout(refreshNewsticker, delay);
 }
 
 async function refreshTournament() {
@@ -991,7 +1068,7 @@ async function refreshAll() {
   await refreshMusic();
   await refreshLive();
   await refreshVotes();
-  await refreshLeaderboard();
+  await refreshNewsticker();
   await refreshTournament();
 }
 
@@ -1051,14 +1128,14 @@ function updateClock() {
   const weekday = now.toLocaleDateString('de-DE', { weekday: 'long' });
   const time = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   clock.textContent = `${weekday} ${time}`;
-  updateBroadcastAge();
+  updateRelativeAges();
 }
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
-function broadcastAgeText(createdAt, now = Date.now()) {
+function relativeAgeText(createdAt, now = Date.now()) {
   const age = Math.max(0, now - createdAt);
   if (age < MINUTE_MS) return 'gerade eben';
   if (age < HOUR_MS) return `vor ${Math.floor(age / MINUTE_MS)} Min.`;
@@ -1066,12 +1143,15 @@ function broadcastAgeText(createdAt, now = Date.now()) {
   return `seit ${new Date(createdAt).toLocaleDateString('de-DE', { weekday: 'long' })}`;
 }
 
-function updateBroadcastAge() {
-  const age = document.querySelector('#kiosk-broadcast .kiosk-broadcast-time');
-  const createdAt = Number(age?.dataset.createdAt);
-  if (!age || !Number.isFinite(createdAt)) return;
-  const text = broadcastAgeText(createdAt);
-  if (age.textContent !== text) age.textContent = text;
+// Banner and newsticker both show relative ages; one pass keeps them all
+// moving with the clock instead of each owning a timer.
+function updateRelativeAges() {
+  document.querySelectorAll('[data-created-at]').forEach((age) => {
+    const createdAt = Number(age.dataset.createdAt);
+    if (!Number.isFinite(createdAt)) return;
+    const text = relativeAgeText(createdAt);
+    if (age.textContent !== text) age.textContent = text;
+  });
 }
 
 const CORNER_IDLE_HIDE_MS = 2000;
@@ -1176,12 +1256,10 @@ async function main() {
   socket.on('players:changed', async () => {
     // Sequential for the same reason as refreshAll above.
     await refreshLive();
-    await refreshLeaderboard();
     await refreshTournament();
   });
   socket.on('votes:changed', refreshVotes);
   socket.on('events:changed', refreshVotes);
-  socket.on('leaderboard:changed', refreshLeaderboard);
   socket.on('tournaments:changed', refreshTournament);
   socket.on('music:changed', refreshMusic);
 

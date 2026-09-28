@@ -12,6 +12,9 @@ const SHARED_DOMAIN_ICONS = Object.freeze({
   live: 'radioTower',
   skill: 'activity',
   feedback: 'messageSquare',
+  // The Broadcast newsticker is playful invented news, deliberately not the
+  // megaphone of a real Durchsage.
+  newsticker: 'sparkles',
 });
 
 export const DOMAIN_ICONS = Object.freeze({

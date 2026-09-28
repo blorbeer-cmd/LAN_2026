@@ -134,6 +134,33 @@ test('a token-only kiosk loads one exact event and honours archival', () => {
         401,
       );
 
+      // Newsticker: readable with the event credential only, built from the
+      // event's own roster, and an opt-out removes the name from the feed
+      // already on screen, not only from future lines.
+      for (const [id, name] of [['news-a', 'Tickerfuchs'], ['news-b', 'Tickerdachs']]) {
+        db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(id, name, id + '-key', now);
+        db.prepare("INSERT OR IGNORE INTO group_memberships (group_id, player_id, role, status, joined_at) VALUES (?, ?, 'member', 'active', ?)").run(GROUP, id, now);
+        db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(lanEvent.id, id);
+      }
+      const newsGet = () => request(app).get('/api/newsticker').set('x-kiosk-mode', '1').set('x-access-token', login.body.token);
+      const feed = await newsGet();
+      assert.equal(feed.status, 200, JSON.stringify(feed.body));
+      assert.ok(feed.body.items.length > 0, 'a fresh feed starts with a few lines');
+      assert.ok(feed.body.nextAt > Date.now(), 'the next line is announced for the future');
+      assert.ok(
+        feed.body.items.every((item) => /Tickerfuchs|Tickerdachs/.test(item.text)),
+        'every line names a participant of this event: ' + JSON.stringify(feed.body.items),
+      );
+      assert.equal((await request(app).get('/api/newsticker')).status, 401, 'no feed without any credential');
+      db.prepare('UPDATE players SET newsticker_opt_out = 1 WHERE id = ?').run('news-b');
+      const afterOptOut = await newsGet();
+      assert.equal(afterOptOut.status, 200);
+      assert.equal(
+        afterOptOut.body.items.some((item) => item.text.includes('Tickerdachs')),
+        false,
+        'an opted-out name leaves the visible feed at once',
+      );
+
       // #1 — /push/last must be a read-only kiosk path; before the fix a
       // token-only kiosk 401s here and its whole Promise.all refresh fails.
       const lastEmpty = await kioskGet(app, '/api/push/last');

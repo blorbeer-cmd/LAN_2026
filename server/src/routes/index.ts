@@ -35,6 +35,7 @@ import { adminRouter } from './admin';
 import { backupRouter } from './backup';
 import { authRouter } from './auth';
 import { kioskAccessRouter } from './kioskAccess';
+import { newstickerRouter } from './newsticker';
 import { groupsRouter } from './groups';
 import { pingsRouter } from './pings';
 import { musicRouter } from './music';
@@ -85,6 +86,7 @@ const KIOSK_GET_PATHS = [
   /^\/tournaments(?:\/[^/]+)?\/?$/,
   /^\/food-orders\/?$/,
   /^\/music\/kiosk\/?$/,
+  /^\/newsticker\/?$/,
   // The dashboard loads the latest group-wide banner alongside the other
   // read-only views; without this a token-only kiosk 401s on the whole
   // Promise.all refresh. getLastPushLogEntry only returns 'all'-audience
@@ -242,6 +244,7 @@ apiRouter.use('/push', pushRouter);
 apiRouter.use('/agent-download', requireActiveEventFeatureMutation('tracking'), agentDownloadRouter);
 apiRouter.use('/draft', requireActiveEventFeatureMutation('competition'), draftRouter);
 apiRouter.use('/broadcasts', broadcastsRouter);
+apiRouter.use('/newsticker', newstickerRouter);
 apiRouter.use('/info', infoBoardRouter);
 apiRouter.use('/food-orders', requireActiveEventFeatureMutation('food'), foodOrdersRouter);
 // Packliste and To-Dos are two switchable areas now, so the router guards

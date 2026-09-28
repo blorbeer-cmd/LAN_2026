@@ -291,7 +291,10 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   location, and „Annehmen“. Tapping the row opens a dialog with the full facts including cost and
   payment deadline and three equal buttons „Ausrede“, „Ablehnen“ and „Annehmen“. Acceptance shows
   a card „Einladung angenommen“ with a compact „Event öffnen“; the invitation becomes read
-  notification history and the action switches the active event.
+  notification history and the action switches the active event. The row „Newsticker“ below
+  „Push-Benachrichtigungen“ lets every account keep its name out of the Broadcast newsticker's
+  invented headlines („Deaktivieren“/„Aktivieren“); it is on by default and takes effect on the
+  shared screen with its next refresh, including lines already shown.
 - **Meine Statistiken** — reached through „Ansehen“ in the profile; the navigation keeps the
   profile's highlight. The event filter sits in the title row with „Alle Events“ first. One card
   shows the key figures centered in equal columns: play time with its active share, the number of
