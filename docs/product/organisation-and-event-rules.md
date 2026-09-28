@@ -29,6 +29,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   running broadcasts. The whole row opens a detail dialog with the full message, its line breaks,
   sender and times, where the creator can also end it. The Kiosk banner shows the message on up to
   two lines.
+- **Newsticker** — The Broadcast screen starts with ten generated headlines. It adds one new
+  headline after a randomly selected interval from three to ten minutes. All screens for the same
+  event share the same feed and update time.
 - **Food orders** — Open and historical orders use one full-width nested card per row with the
   standard hairline border and no accent rails or state badges. The card header holds the title and,
   for the creator or an admin, the next lock step as a compact neutral button (`Abschicken` for an

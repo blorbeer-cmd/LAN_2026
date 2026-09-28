@@ -1,10 +1,10 @@
-// Broadcast newsticker: every 30 seconds one new, playfully exaggerated
+// Broadcast newsticker: every few minutes one new, playfully exaggerated
 // headline about the running event. Real, fresh results (matches,
 // tournament fixtures) and, where the event tracks play time, ongoing
 // sessions take priority; otherwise a line combines a real participant with
 // a catalog game. Everything is generated on the server so every Broadcast
 // screen of an event shows the same feed, and it is generated lazily on
-// request (no timer), keyed by the 30-second slot the request falls into.
+// request (no timer), with a per-event randomized interval.
 //
 // The feed history is deliberately in memory only: after a restart the
 // ticker simply starts a fresh feed, which costs nothing for a fun display.
@@ -23,7 +23,8 @@ import {
   type NewsTemplate,
 } from './newstickerTemplates';
 
-export const NEWSTICKER_SLOT_MS = 30_000;
+export const NEWSTICKER_MIN_INTERVAL_MS = 3 * 60_000;
+export const NEWSTICKER_MAX_INTERVAL_MS = 10 * 60_000;
 // Results older than this are no longer "news" and are left to the fallback.
 export const NEWSTICKER_FRESH_MS = 90 * 60_000;
 // A session has to run a while before it is worth a headline.
@@ -32,8 +33,7 @@ const PLAYTIME_MIN_HOURS = 2;
 const FEED_LENGTH = 10;
 // A new feed starts full, so the tile never waits minutes to fill up.
 const INITIAL_ITEMS = FEED_LENGTH;
-// Slots missed while no screen asked are not back-filled beyond this.
-const MAX_CATCH_UP = 4;
+// Headlines missed while no screen asked are not back-filled.
 const RECENT_TEMPLATE_WINDOW = 20;
 // Two hours of ticker: no identical line comes back within that time.
 const RECENT_TEXT_WINDOW = 240;
@@ -494,7 +494,8 @@ interface StoredItem extends NewsItem {
 
 interface FeedState {
   items: StoredItem[];
-  lastSlot: number;
+  lastSequence: number;
+  nextAt: number;
   history: NewsHistory;
   touchedAt: number;
 }
@@ -514,39 +515,53 @@ function pruneIdleFeeds(now: number): void {
 export function getNewstickerFeed(groupId: string, eventId: string, now = Date.now()): NewsFeed {
   pruneIdleFeeds(now);
   const key = `${groupId}:${eventId}`;
-  const slot = Math.floor(now / NEWSTICKER_SLOT_MS);
   let state = feeds.get(key);
   if (!state) {
     state = {
       items: [],
-      lastSlot: slot - INITIAL_ITEMS,
+      lastSequence: 0,
+      nextAt: now + newstickerInterval(key, 0),
       history: { recentTemplates: [], recentTexts: [], usedFacts: new Set(), lastSubject: null },
       touchedAt: now,
     };
     feeds.set(key, state);
-  }
-  state.touchedAt = now;
-
-  if (slot > state.lastSlot) {
-    const catchUp = state.items.length === 0 ? INITIAL_ITEMS : MAX_CATCH_UP;
-    const firstSlot = Math.max(state.lastSlot + 1, slot - catchUp + 1);
     const input = loadNewsInput(groupId, eventId, now);
-    for (let current = firstSlot; current <= slot; current += 1) {
-      const rng = seededRandom(hashSeed(`${key}:${current}`));
+    for (let sequence = -INITIAL_ITEMS; sequence < 0; sequence += 1) {
+      const rng = seededRandom(hashSeed(`${key}:${sequence}`));
       const composed = composeNews(input, rng, state.history, now);
       if (!composed) continue;
       rememberNews(state.history, composed);
       state.items.unshift({
-        id: `${eventId}:${current}`,
+        id: `${eventId}:${sequence}`,
         text: composed.text,
         icon: composed.icon,
         meta: composed.meta,
-        createdAt: current * NEWSTICKER_SLOT_MS,
+        createdAt: now,
+        playerIds: composed.playerIds,
+      });
+    }
+  }
+  state.touchedAt = now;
+
+  if (now >= state.nextAt) {
+    const input = loadNewsInput(groupId, eventId, now);
+    const sequence = state.lastSequence + 1;
+    const rng = seededRandom(hashSeed(`${key}:${sequence}`));
+    const composed = composeNews(input, rng, state.history, now);
+    if (composed) {
+      rememberNews(state.history, composed);
+      state.items.unshift({
+        id: `${eventId}:${sequence}`,
+        text: composed.text,
+        icon: composed.icon,
+        meta: composed.meta,
+        createdAt: now,
         playerIds: composed.playerIds,
       });
     }
     state.items.length = Math.min(state.items.length, FEED_LENGTH);
-    state.lastSlot = slot;
+    state.lastSequence = sequence;
+    state.nextAt = now + newstickerInterval(key, sequence);
   }
 
   // Filtered on every read, not only when a line is created: someone who
@@ -555,6 +570,10 @@ export function getNewstickerFeed(groupId: string, eventId: string, now = Date.n
   const items = state.items
     .filter((item) => item.playerIds.every((id) => visible.has(id)))
     .map(({ playerIds: _playerIds, ...item }) => item);
-  const nextAt = (slot + 1) * NEWSTICKER_SLOT_MS;
-  return { items, nextAt, nextInMs: nextAt - now };
+  return { items, nextAt: state.nextAt, nextInMs: Math.max(0, state.nextAt - now) };
+}
+
+export function newstickerInterval(key: string, sequence: number): number {
+  const range = NEWSTICKER_MAX_INTERVAL_MS - NEWSTICKER_MIN_INTERVAL_MS + 1;
+  return NEWSTICKER_MIN_INTERVAL_MS + Math.floor(seededRandom(hashSeed(`${key}:interval:${sequence}`)).next() * range);
 }
