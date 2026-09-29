@@ -10,8 +10,19 @@ import {
 } from '../loginRateLimit';
 import { isNonEmptyString } from '../validation';
 import { writeAdminAudit } from '../adminAudit';
+import { consumeKioskHandoff } from '../kioskHandoffs';
 
 export const kioskAccessRouter = Router();
+
+kioskAccessRouter.post('/handoff', (req, res) => {
+  const code = req.body?.code;
+  if (typeof code !== 'string' || !/^[0-9a-f]{64}$/.test(code)) {
+    return res.status(400).json({ error: 'Broadcast-Zugang ist ungültig.' });
+  }
+  const issued = consumeKioskHandoff(code);
+  if (!issued) return res.status(410).json({ error: 'Broadcast-Zugang ist abgelaufen oder bereits benutzt.' });
+  return res.json(issued);
+});
 
 // A kiosk account never becomes a player session. Successful login only
 // issues the existing event-scoped, read-only kiosk credential, so every
