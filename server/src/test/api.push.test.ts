@@ -579,6 +579,7 @@ test('a match-ready push names the lobby and its default host (the upper bracket
     .send({
       gameId,
       format: 'single_elimination',
+      playAllPlaces: true,
       lobbyName: 'Respawn',
       lobbyPassword: 'geheim',
       teams: [
@@ -613,6 +614,14 @@ test('a match-ready push names the lobby and its default host (the upper bracket
   assert.match(matchReady.body, /Lobby "Respawn-KO-R2-M1"/);
   assert.match(matchReady.body, /PW: geheim/);
   assert.match(matchReady.body, new RegExp(`${upperWinnerName} eröffnet die Lobby`));
+  // The semifinal losers are sent to their own third-place lobby, not the
+  // final's. They hold no subscription here, so read the logged notification.
+  const thirdPlaceReady = db
+    .prepare("SELECT body FROM push_log WHERE topic_key LIKE ? AND body LIKE '%nächstes Match%'")
+    .all(`tournament:${tournamentId}:match:%`) as Array<{ body: string }>;
+  assert.equal(thirdPlaceReady.length, 2, JSON.stringify(thirdPlaceReady));
+  assert.equal(thirdPlaceReady.filter((entry) => /Lobby "Respawn-P3-R2-M1"/.test(entry.body)).length, 1,
+    JSON.stringify(thirdPlaceReady));
 
   // GET /api/push/last is the Kiosk's shared-screen banner - a personally-
   // targeted push ("dein Match ist bereit", audience 'direct') would read as
@@ -626,11 +635,15 @@ test('a match-ready push names the lobby and its default host (the upper bracket
   assert.match(ready.body.entry.title, /Match ist bereit/);
 
   const detail = await request(app).get(`/api/tournaments/${tournamentId}`);
-  const finalMatch = detail.body.matches.find((match: { round: number }) => match.round === 2);
-  assert.ok(finalMatch?.teamAId && finalMatch?.teamBId);
-  await request(app)
-    .post(`/api/tournaments/${tournamentId}/matches/${finalMatch.id}/result`)
-    .send({ winnerTeamId: finalMatch.teamAId });
+  // The final and the third-place match both finish the tournament.
+  const lastMatches = detail.body.matches.filter((match: { round: number }) => match.round === 2);
+  assert.equal(lastMatches.length, 2);
+  for (const match of lastMatches) {
+    assert.ok(match.teamAId && match.teamBId);
+    await request(app)
+      .post(`/api/tournaments/${tournamentId}/matches/${match.id}/result`)
+      .send({ winnerTeamId: match.teamAId });
+  }
 
   const afterResult = await request(app).get(`/api/push/current?playerId=${playerId}`);
   assert.ok(!/Lobby "Respawn/.test(afterResult.body.entry?.body ?? ''));

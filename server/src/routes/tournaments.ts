@@ -1022,6 +1022,7 @@ function saveTournamentResult(req: Request, res: Response) {
       slot: nextMatch.slot,
       stage: nextMatch.stage,
       groupIndex: nextMatch.group_index,
+      placeFrom: nextMatch.place_from,
     });
     const lobbyBits = [
       lobbyName ? `Lobby "${lobbyName}"` : null,
