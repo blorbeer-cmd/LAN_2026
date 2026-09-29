@@ -328,7 +328,7 @@ function renderResponseControl(poll, option) {
   if (poll.responseMode === 'rating_1_5') {
     return ratingScaleHtml({
       selected: draft[option.id],
-      tone: 'bock',
+      tone: 'vote',
       groupLabel: `Bewertung für ${optionLabel(option)}`,
       valueLabel: (value) => (value === 0 ? '0 von 5, lehne ich ab' : `${value} von 5`),
       attributes: (value) => `data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"`,

@@ -301,8 +301,8 @@ geordnet 0–5 um. Beide kollidierenden Kontextregeln berücksichtigen die
 Quadratvariante; die konkurrierenden Höhen-/Mindestbreitenvorgaben und der frühere
 30×30-Override sind ersetzt. Gemessen wird die verfügbare Elternbreite, nicht die fit-content-Breite
 der Toolbar; die Browserprüfung erzwingt zusätzlich 192 und 191 px Elternbreite.
-0–5-Umfragen verwenden wie Bock die violette Skala samt 4-px-Füllbalken unter den Zahlen.
-Vote verwendet die umgesetzte Variante `tone: 'vote'` / `.rating-scale--vote`: derselbe
+Vote und 0–5-Umfragen verwenden die Skala samt 4-px-Füllbalken unter den Zahlen
+in der umgesetzten Variante `tone: 'vote'` / `.rating-scale--vote`: derselbe
 Verlauf von `--accent` zu `--accent-2` wie im Ergebnisbalken, mit `--accent-2` für die gewählte Ziffer.
 Die Balken folgen dem lokalen Entwurf, bleiben bei 0 leer und sind ohne Bewertung gestrichelt.
 Der gesamte Zahlen-/Balkenblock steht auf Telefonen unter dem Optionstitel und wird als Einheit

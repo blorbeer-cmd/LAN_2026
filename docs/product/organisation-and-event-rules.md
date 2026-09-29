@@ -165,7 +165,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   A rating round uses the shared 0–5 number scale of Vote and Bock/Skill; 0 rejects the option,
   lowers its average like any other value and is counted as „N lehnen ab“ beside it. While
   answering, a chosen 0 is marked „Lehne ich ab“ beside the numbers. The own rating uses the
-  violet Bock scale with its small fill line below the numbers, empty at 0 and dashed while unrated.
+  blue-to-violet Vote scale with its small fill line below the numbers, empty at 0 and dashed while unrated.
   While the viewer cannot see the interim result, the empty result column is dropped: the answer
   controls sit beside the option name and, from `--bp-lg`, the options fill two columns, read down the left column first, then the
   right one. Phones keep the stacked layout.
