@@ -226,8 +226,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   „Ausgewählt“, and „Speichern“ sits in the round's footer beside the response progress. An ended
   round lists its options by result and marks the winner with the green „Win“ chip. From `--bp-lg`,
   these results use two columns, filled down the left column before continuing at the top right;
-  narrower screens use one column. Consecutive place numbers follow the Top 10 presentation:
-  the first place is gold, the others muted. The voter column stays reserved for empty results,
+  narrower screens use one column. Place numbers follow the Top 10 presentation; equal results
+  share their place, counting prior entries for the next place (`1, 1, 3`). Rating polls compare
+  the average, choices their votes, feasibility polls Passt/Notfalls/Nein in their result order.
+  Participation and stored option position stabilize the order without separating tied places.
+  All first places are gold, the others muted. Visible numbers have accompanying „Platz N“ text
+  for screen readers. The voter column stays reserved for empty results,
   so every result bar shares its column's left edge. The passive „Win“ label follows the text
   height in headers and result rows without increasing the gap to the option note. Running rounds use no placement numbers
   and name no leader. A non-anonymous round shows the voters of an option as up to four overlapping

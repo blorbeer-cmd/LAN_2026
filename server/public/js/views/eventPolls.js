@@ -9,6 +9,7 @@ import { emptyStateHtml } from '../emptyState.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { ratingScaleHtml } from '../ratingScale.js';
+import { sharedRankNumbers } from '../rankedList.js';
 import { voteBreakdownHtml, voterNamesText, voterStackHtml, WIN_CHIP } from '../voteBreakdown.js';
 
 const RESPONSE_VALUES = ['can', 'if_needed', 'cannot'];
@@ -474,7 +475,8 @@ function renderOption(poll, option, columnStart = false, rank = null) {
   return `
     <div class="event-poll-option${win ? ' is-winner' : ''}${columnStart ? ' is-column-start' : ''}" data-poll-option="${escapeHtml(option.id)}">
       ${rank === null ? info : `<div class="row" style="gap:var(--space-2);min-width:0;">
-        <span class="lb-rank${rank === 1 ? ' is-first' : ''}" style="flex-shrink:0;" aria-label="Platz ${rank}">${rank}</span>${info}
+        <span class="lb-rank${rank === 1 ? ' is-first' : ''}" style="flex-shrink:0;" aria-hidden="true">${rank}</span>
+        <span class="visually-hidden">Platz ${rank}</span>${info}
       </div>`}
       ${renderResultBar(poll, option)}
       <span class="event-poll-option-badges">${badges}</span>
@@ -520,13 +522,17 @@ function renderRound(poll) {
   const compact = canAnswer && poll.options.every((option) => !option.counts);
   const ranked = poll.status === 'closed';
   const options = poll.status === 'open' ? poll.options : optionsByResult(poll);
+  // Participation and option position only stabilize the order of a tie.
+  const ranks = ranked ? sharedRankNumbers(options.map((option) =>
+    poll.responseMode === 'rating_1_5' ? option.counts.average ?? -1
+      : poll.responseMode === 'feasibility' ? resultSortValues(poll, option) : option.counts.can)) : [];
   // Two compact columns read down the left column first, then the right one.
   const columnRows = Math.max(1, Math.ceil(options.length / 2));
   return `
     <section class="stack event-poll-round" data-poll-round="${escapeHtml(poll.id)}">
       <div class="event-poll-tags">${tags.map((tag) => `<span class="event-poll-tag">${escapeHtml(tag)}</span>`).join('')}</div>
       ${poll.note ? `<p class="event-poll-note">${escapeHtml(poll.note)}</p>` : ''}
-      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}${compact ? ' is-compact' : ''}${ranked ? ' is-ranked' : ''}"${compact || ranked ? ` style="--compact-rows: ${columnRows};"` : ''}>${options.map((option, index) => renderOption(poll, option, (compact || ranked) && index === columnRows, ranked ? index + 1 : null)).join('')}</div>
+      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}${compact ? ' is-compact' : ''}${ranked ? ' is-ranked' : ''}"${compact || ranked ? ` style="--compact-rows: ${columnRows};"` : ''}>${options.map((option, index) => renderOption(poll, option, (compact || ranked) && index === columnRows, ranked ? ranks[index] : null)).join('')}</div>
       ${canAnswer
         ? `<div class="event-poll-save-row event-poll-footer"><span class="muted">${escapeHtml(draftProgress(poll))}</span><button type="button" class="btn btn-primary btn-sm" data-save-poll="${escapeHtml(poll.id)}" ${responseDraftIsValid(poll) ? '' : 'disabled'}>Speichern</button></div>`
         : ''}

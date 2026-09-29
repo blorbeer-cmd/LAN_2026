@@ -410,6 +410,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(layout.columns, 2, 'closed polls in history use two columns on wide screens');
   assert.ok(layout.rows.every((row) => row.titleExtraHeight <= 1), 'Win labels follow the title height');
   assert.deepEqual(layout.rows.map((row) => row.rank), layout.rows.map((_, index) => index + 1));
+  assert.deepEqual(await rankedResults.locator('.visually-hidden').allTextContents(), ['Platz 1', 'Platz 2']);
+  assert.equal(await rankedResults.locator('.lb-rank[aria-label]').count(), 0);
   const half = Math.ceil(layout.rows.length / 2);
   for (const column of [layout.rows.slice(0, half), layout.rows.slice(half)]) {
     assert.ok(column.every((row) => Math.abs(row.x - column[0].x) <= 1));
@@ -852,6 +854,34 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await manyOptionPoll.waitFor();
   assert.equal(await manyOptionPoll.locator('.event-poll-option').count(), 9);
   assert.equal(await manyOptionPoll.locator('.event-poll-voter-stack').count(), 0, 'options without votes stay avatar-free');
+  await manyOptionPoll.locator('[data-poll-choice]').nth(0).click();
+  await manyOptionPoll.locator('[data-poll-choice]').nth(1).click();
+  await manyOptionPoll.locator('[data-save-poll]').click();
+  await ownerPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
+  await choosePollAction(manyOptionPoll, '[data-close-poll]');
+  await ownerPage.locator('.modal-backdrop [data-confirm]').click();
+  await ownerPage.locator('.toast', { hasText: 'Umfrage beendet' }).waitFor();
+  await ownerPage.locator('.event-poll-ended-history').evaluate((details) => {
+    (details as HTMLDetailsElement).open = true;
+    details.dispatchEvent(new Event('toggle'));
+  });
+  const tiedChoice = ownerPage.locator('[data-poll-group]', { hasText: 'Viele Möglichkeiten' });
+  await tiedChoice.locator('.lb-rank').first().waitFor();
+  assert.deepEqual(await tiedChoice.locator('.lb-rank').allTextContents(), ['1', '1', '3', '3', '3', '3', '3', '3', '3'],
+    'tied choices and zero-vote options share places, also across the column break');
+  assert.equal(await tiedChoice.locator('.lb-rank.is-first').count(), 2);
+
+  // Complete the existing rating scenario with a tie after its edit/search checks.
+  await ratingPoll.locator('[data-poll-response="5"]').first().click();
+  await ratingPoll.locator('[data-save-poll]').click();
+  await ownerPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
+  await choosePollAction(ratingPoll, '[data-close-poll]');
+  await ownerPage.locator('.modal-backdrop [data-confirm]').click();
+  await ownerPage.locator('.toast', { hasText: 'Umfrage beendet' }).waitFor();
+  const tiedRating = ownerPage.locator('[data-poll-group]', { hasText: 'Unterkünfte bewerten' });
+  await tiedRating.locator('.lb-rank').first().waitFor();
+  assert.deepEqual(await tiedRating.locator('.lb-rank').allTextContents(), ['1', '1'],
+    'equal rating averages share first place');
 
   await createPoll(ownerPage, {
     title: 'Schalter beim Starten',

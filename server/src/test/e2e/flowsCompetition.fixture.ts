@@ -39,14 +39,19 @@ async function assertRankedVoteColumns(card: Locator): Promise<void> {
       return { x: box.x, y: box.y, barX: row.querySelector('.event-poll-bar')!.getBoundingClientRect().x,
         titleExtraHeight: title.getBoundingClientRect().height - title.querySelector('strong')!.getBoundingClientRect().height,
         rank: Number(row.querySelector('.lb-rank')!.textContent),
+        spokenRank: row.querySelector('.visually-hidden')!.textContent,
         score: Number(row.querySelector('.event-poll-count-text')!.textContent!.split(' ')[0]) };
     }),
   }));
   assert.equal(layout.columns, 2, 'wide latest and historical Vote results use two columns');
   assert.ok(layout.rows.every((row) => row.titleExtraHeight <= 1), 'Win labels do not increase the title-to-info spacing');
   const half = Math.ceil(layout.rows.length / 2);
-  assert.deepEqual(layout.rows.map((row) => row.rank), layout.rows.map((_, index) => index + 1),
-    'visible place numbers continue from the left column into the right one');
+  assert.deepEqual(layout.rows.map((row) => row.rank), layout.rows.map((row) =>
+    layout.rows.findIndex((other) => other.score === row.score) + 1),
+    'equal scores share a place across both columns, with subsequent places skipped');
+  assert.deepEqual(layout.rows.map((row) => row.spokenRank), layout.rows.map((row) => `Platz ${row.rank}`),
+    'screen readers receive an explicit place label as text');
+  assert.equal(await card.locator('.lb-rank[aria-label]').count(), 0, 'generic spans have no prohibited accessible name');
   assert.deepEqual(layout.rows.map((row) => row.score), layout.rows.map((row) => row.score).sort((a, b) => b - a),
     'results follow the placement, highest score first');
   for (const column of [layout.rows.slice(0, half), layout.rows.slice(half)]) {
@@ -290,8 +295,11 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
   assert.equal(await page.locator('.card-footer-actions #votes-start').count(), 1);
-  const startBelowGames = await page.locator('#votes-start').evaluate((button) =>
-    button.getBoundingClientRect().top > document.querySelector('#votes-game-select-wrap')!.getBoundingClientRect().bottom);
+  // History loading can replace the card between resolving a Locator and
+  // evaluating it. Read both current elements in one DOM snapshot.
+  const startBelowGames = await page.evaluate(() =>
+    document.querySelector('#votes-start')!.getBoundingClientRect().top
+      > document.querySelector('#votes-game-select-wrap')!.getBoundingClientRect().bottom);
   assert.ok(startBelowGames, 'starting the round follows the entire game selection');
   assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
   await page.click('#votes-start');
@@ -442,6 +450,14 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   }));
   assert.equal(latestGeometry.height, rankingGeometry.height, 'closed Vote sections share one height');
   assert.equal(latestGeometry.titleX, rankingGeometry.titleX, 'closed Vote section titles align');
+  await rankingDisclosure.locator(':scope > summary').click();
+  const bockRanks = await rankingDisclosure.locator('.lb-row').evaluateAll((rows) => rows.map((row) => ({
+    rank: Number(row.querySelector('.lb-rank')!.textContent),
+    average: Number(row.querySelector('.lb-points')!.textContent!.match(/\d+(?:\.\d+)?/)?.[0] ?? -1),
+  })));
+  assert.deepEqual(bockRanks.map((row) => row.rank), bockRanks.map((row) =>
+    bockRanks.findIndex((other) => other.average === row.average) + 1), 'equal Bock values share Top-10 places');
+  await rankingDisclosure.locator(':scope > summary').click();
   await page.setViewportSize({ width: 390, height: 844 });
   await latestToggle.click();
   await page.waitForFunction(
@@ -449,6 +465,9 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     totalGames
   );
   assert.equal(await currentVote.locator('.event-poll-option.is-winner .vote-win-chip').count(), 2);
+  assert.deepEqual(await currentVote.locator('.event-poll-option.is-winner .lb-rank').allTextContents(), ['1', '1']);
+  assert.equal(await currentVote.locator('.event-poll-option.is-winner .lb-rank.is-first').count(), 2,
+    'both tied winners receive the first-place emphasis');
   assert.equal(await currentVote.locator('.event-poll-bar-fill.is-choice').first().evaluate((fill) =>
     getComputedStyle(fill).backgroundImage), ballotGradient, 'ballot and result bars use the same gradient');
   await page.setViewportSize({ width: 1280, height: 844 });

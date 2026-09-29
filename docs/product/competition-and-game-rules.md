@@ -337,7 +337,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   that starts collapsed and keeps its open state across live re-renders. Expanded latest and
   historical results preserve the server's score ranking and, from `--bp-lg`, fill two columns
   down the left first, then down the right; phones keep one readable column. Each game carries a
-  consecutive place number in the Top-10 style, with the first number gold and the rest muted.
+  place number in the Top-10 style. Equal points (or votes in a runoff) share their place,
+  regardless of popularity or name used to stabilize their order: `1, 1, 3` for two co-winners.
+  All first-place numbers are gold, the others muted. The Top 10 likewise share places for equal
+  Bock averages. Visible result numbers are hidden from assistive technology and accompanied
+  by explicit „Platz N“ text for screen readers.
   The voter column remains reserved even without supporters, so zero-point result bars keep
   the same left edge as the other bars in their column.
   The passive „Win“ label follows the text height in headers and result rows; it does not increase

@@ -38,6 +38,7 @@ import { emptyStateHtml } from '../emptyState.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { ratingScaleHtml } from '../ratingScale.js';
 import { skillRatingFor } from '../skillDisplay.js';
+import { sharedRankNumbers } from '../rankedList.js';
 import { voteBreakdownHtml, voterNamesText, voterStackHtml, WIN_CHIP } from '../voteBreakdown.js';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
@@ -261,12 +262,13 @@ function renderRankingColumns(items, rowHtml) {
 // per game to be useful at a glance.
 function renderTop10(results) {
   const top10 = topByPreference(results, 10);
+  const ranks = sharedRankNumbers(top10.map((result) => result.avgPreference ?? -1));
   if (top10.length === 0) {
     return emptyStateHtml('Noch keine Spiele.', { className: 'empty-state-compact' });
   }
   const rowHtml = (r, i) => `
-    <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-      <span class="lb-rank">${i + 1}</span>
+    <div class="lb-row ${ranks[i] === 1 ? 'rank-1' : ''}">
+      <span class="lb-rank">${ranks[i]}</span>
             <span style="flex:1;min-width:0;">
         <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.gameName)}</div>
         <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topMetaHtml(r)}</div>
@@ -444,6 +446,7 @@ function supportersOf(h, gameId) {
 
 function renderResultRows(h, columnRows) {
   const maxPoints = Math.max(1, ...h.results.map((r) => r.points));
+  const ranks = sharedRankNumbers(h.results.map((result) => h.mode === 'single' ? result.votes : result.points));
   const winners = new Set(h.winnerGameIds ?? []);
   return h.results
     .map((r, index) => {
@@ -458,7 +461,8 @@ function renderResultRows(h, columnRows) {
       return `
         <div class="event-poll-option${win ? ' is-winner' : ''}${index === columnRows ? ' is-column-start' : ''}">
           <div class="row" style="gap:var(--space-2);min-width:0;">
-            <span class="lb-rank${index === 0 ? ' is-first' : ''}" style="flex-shrink:0;" aria-label="Platz ${index + 1}">${index + 1}</span>
+            <span class="lb-rank${ranks[index] === 1 ? ' is-first' : ''}" style="flex-shrink:0;" aria-hidden="true">${ranks[index]}</span>
+            <span class="visually-hidden">Platz ${ranks[index]}</span>
             <div class="event-poll-option-info">
               <span class="event-poll-option-title-row">
                 <strong>${escapeHtml(r.gameName)}</strong>
