@@ -248,7 +248,6 @@ function homeTaskRowHtml({ title, sub, attrs = '' }) {
           <span class="player-name">${title}</span>
           ${sub ? `<span class="muted list-row-desc">${sub}</span>` : ''}
         </span>
-        <span class="muted">${icon('chevronRight')}</span>
       </button>
     </article>`;
 }

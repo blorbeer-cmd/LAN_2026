@@ -410,8 +410,8 @@ test('manager invites a member who accepts and both open clients update', async 
   // The member reads the accepted roster: themselves and the manager, who is
   // on it as the event's creator.
   assert.match((await participantList.locator('.food-order-group-meta').textContent()) ?? '', /2 Personen/);
-  assert.equal(await participantList.locator('summary > .collapsible-section-chevron').count(), 1,
-    'the participant disclosure places its chevron after the title');
+  assert.equal(await participantList.locator('summary > .collapsible-section-chevron:first-child').count(), 1,
+    'the participant disclosure places its chevron before the title');
   assert.equal(
     await participantList.locator('[data-toggle-event-paid]').count(),
     0,
