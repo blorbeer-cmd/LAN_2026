@@ -2233,6 +2233,12 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await freshDraw.locator('[data-draw-tournament].btn-primary').click();
   await page.waitForSelector('#draw-tournament-form');
   assert.equal(await page.locator('[data-draw-team-name]').count(), 2);
+  // Two players on two teams: every solo team is prefilled with its player's name.
+  const drawnPlayers = (await freshDraw.locator('.team-player-name').allInnerTexts()).map((name) => name.trim());
+  const prefilledNames = await page.locator('[data-draw-team-name]').evaluateAll((inputs) =>
+    inputs.map((input) => (input as HTMLInputElement).value));
+  assert.equal(drawnPlayers.length, 2);
+  assert.deepEqual(prefilledNames, drawnPlayers, 'solo teams are prefilled with their player names');
   assert.equal(await page.locator('#draw-tournament-two-legged').count(), 0, 'K.O. has no second leg');
   for (const width of [390, 1024]) {
     await page.setViewportSize({ width, height: 844 });
@@ -2256,7 +2262,7 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await page.waitForSelector('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture');
   assert.equal(await page.locator('.bracket-match').count(), 0);
   // Bracket sides are drawn at random, so compare the names regardless of side.
-  assert.deepEqual((await page.locator('.tournament-fixture-team').allTextContents()).sort(), ['Team 1', 'Team 2'],
+  assert.deepEqual((await page.locator('.tournament-fixture-team').allTextContents()).sort(), [...prefilledNames].sort(),
     'fixtures show just the team names');
   assert.equal(await page.locator('.tournament-fixture .rating, .tournament-fixture-team-players').count(), 0);
   assert.equal(await page.locator('.is-my-team, .tournament-own-team-marker').count(), 0);

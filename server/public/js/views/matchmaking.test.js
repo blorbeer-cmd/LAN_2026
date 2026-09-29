@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { capTeamCountValue, teamCountMax } from './matchmaking.js';
+import { capTeamCountValue, defaultDrawTeamName, teamCountMax } from './matchmaking.js';
 
 test('the team count is capped at the number of selected players', () => {
   assert.equal(capTeamCountValue('12', 10), '10');
@@ -21,4 +21,25 @@ test('the cap never drops below the field minimum and leaves an empty field alon
   assert.equal(teamCountMax(1), 2);
   assert.equal(capTeamCountValue('5', 1), '2');
   assert.equal(capTeamCountValue('', 3), '');
+});
+
+const players = (...names) => names.map((name, index) => ({ id: `p${index}`, name }));
+
+test('a solo draw team is named after its player and follows later moves', () => {
+  const draw = { source: 'balanced' };
+  assert.equal(defaultDrawTeamName(draw, { players: players('Alice') }, 0), 'Alice');
+  assert.equal(defaultDrawTeamName(draw, { players: players('Alice', 'Bob') }, 0), 'Team 1');
+  assert.equal(defaultDrawTeamName(draw, { players: players('Bob') }, 1), 'Bob');
+});
+
+test('a drafted team keeps its captain name unless the captain plays alone', () => {
+  const draw = { source: 'draft' };
+  assert.equal(defaultDrawTeamName(draw, { players: players('Cara', 'Dan') }, 0), 'Team Cara');
+  assert.equal(defaultDrawTeamName(draw, { players: players('Cara') }, 0), 'Cara');
+});
+
+test('derived team names fit the tournament team name limit', () => {
+  const longName = `${'x'.repeat(29)} yz`;
+  assert.equal(defaultDrawTeamName({ source: 'balanced' }, { players: players(longName) }, 0), 'x'.repeat(29));
+  assert.equal(defaultDrawTeamName({ source: 'draft' }, { players: players('y'.repeat(60), 'Dan') }, 0).length, 30);
 });

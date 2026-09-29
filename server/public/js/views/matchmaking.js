@@ -33,6 +33,20 @@ let avoidAdjacentOpponents = false;
 let avoidAdjacentOpponentsGameId = null;
 let teamCountValue = '2';
 
+// Tournament team names are capped server-side (TEAM_NAME_MAX_LENGTH).
+const DRAW_TEAM_NAME_MAX_LENGTH = 30;
+
+// Draw teams have no stored name: it is derived from the current lineup, so
+// moving a player updates it with the next render. A solo team is named after
+// its player, a drafted lineup after its captain (the first player of each
+// drafted team, see draft.ts); a balanced draw keeps the neutral numbering.
+export function defaultDrawTeamName(draw, team, index) {
+  const solo = team.players.length === 1 ? team.players[0].name : null;
+  const captain = draw.source === 'draft' ? team.players[0]?.name : null;
+  const name = solo ?? (captain ? `Team ${captain}` : `Team ${index + 1}`);
+  return name.slice(0, DRAW_TEAM_NAME_MAX_LENGTH).trim();
+}
+
 // A draw cannot form more teams than it has players (POST /api/matchmaking
 // refuses that too), so the "Anzahl Teams" field is capped at the current
 // selection: typing a larger number snaps to it, and deselecting players pulls
@@ -281,6 +295,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
   const skillOptions = hasSkillSnapshot
     ? { stored: true, balanced: draw.source !== 'draft' }
     : { balanced: false, current: true };
+  const teamNames = draw.teams.map((team, index) => defaultDrawTeamName(draw, team, index));
   const teamsHtml = draw.teams
     .map((t, i) => {
       // Only meaningful once a result is actually recorded (read-only cards)
@@ -297,9 +312,9 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       const isLoser = decided && draw.winnerTeamIndex !== null && !isWinner;
 
       return `
-      <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${isLoser ? ' is-loser' : ''}" role="group" aria-label="Team ${i + 1}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
+      <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${isLoser ? ' is-loser' : ''}" role="group" aria-label="${escapeHtml(teamNames[i])}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
         <div class="team-card-header">
-          <span class="row" style="gap:var(--space-2);">Team ${i + 1}${isWinner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}</span>
+          <span class="row" style="gap:var(--space-2);">${escapeHtml(teamNames[i])}${isWinner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}</span>
           ${teamSkillHtml(t.players, draw.gameId, skillOptions)}
         </div>
         ${resultLine}
@@ -314,7 +329,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
           ${
             editable
               ? `</button>${teamMoveControlHtml({
-                  teamNames: draw.teams.map((_, index) => `Team ${index + 1}`),
+                  teamNames,
                   currentIndex: i,
                   playerName: p.name,
                   attributes: `data-move-draw-select="${draw.id}" data-move-player="${p.id}"`,
@@ -373,7 +388,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
 function openDrawResultDialog(draw, ctx) {
   const recorded = Boolean(draw.matchId);
   const hasValues = recorded && draw.teams.some((team) => team.score != null);
-  const teams = draw.teams.map((team, index) => ({ name: `Team ${index + 1}`, players: team.players.map((player) => player.name) }));
+  const teams = draw.teams.map((team, index) => ({ name: defaultDrawTeamName(draw, team, index), players: team.players.map((player) => player.name) }));
   const { close, el } = openModal('Ergebnis', `
     <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
     ${resultFormHtml({ teams, prefix: 'draw-result', mode: hasValues ? 'score' : 'winner', winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? -1 : undefined, scores: draw.teams.map((team) => team.score) })}`);
@@ -409,13 +424,6 @@ const TOURNAMENT_FORMAT_LABELS = {
   round_robin: 'Liga (jeder gegen jeden)',
   group_knockout: 'Gruppenphase + K.O.',
 };
-
-// A drafted lineup is named after its captain (the first player of each
-// drafted team, see draft.ts); a balanced draw keeps the neutral numbering.
-function defaultDrawTeamName(draw, team, index) {
-  const captain = draw.source === 'draft' ? team.players[0]?.name : null;
-  return captain ? `Team ${captain}` : `Team ${index + 1}`;
-}
 
 // Turns a drawn lineup into a tournament: the teams are fixed by the draw,
 // only format, names and lobby details are chosen here. The draw is claimed
