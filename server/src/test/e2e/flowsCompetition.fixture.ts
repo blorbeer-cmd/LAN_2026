@@ -546,6 +546,10 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
 
   // Closing the runoff moves the previous result into its own history card.
   await currentVote.locator('#votes-runoff').click();
+  // Alice gave both tied games 5 points, so neither was declined before.
+  const runoffDeclines = page.locator('[data-points-row] .event-poll-option-note', { hasText: 'Vorrunde: 0 spielen nicht' });
+  await runoffDeclines.first().waitFor();
+  assert.equal(await runoffDeclines.count(), 2, 'every runoff game names its declines from the tied round');
   const runoffPick = page.locator('[data-vote-select]').first();
   const runoffGameId = (await runoffPick.getAttribute('data-vote-select')) ?? '';
   await runoffPick.click();
@@ -578,8 +582,8 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await historyCard.locator('.event-poll-option').first().waitFor({ state: 'detached' });
   assert.equal(await historyToggle.getAttribute('aria-expanded'), 'false');
 
-  // The decided runoff hands its winner and its participants to Match, so
-  // only the team count is left to choose before drawing.
+  // The decided runoff hands its winner and its participants who did not
+  // decline that game before to Match, so only the team count is left.
   await currentVote.locator('#votes-generate-match').click();
   await page.waitForSelector('#mm-generate');
   assert.equal(await page.inputValue('#mm-game'), runoffGameId);

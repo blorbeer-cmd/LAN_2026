@@ -331,7 +331,7 @@ function ownSkillHtml(gameId) {
   return `<span class="vote-own-skill${skill === null ? ' is-missing' : ''}">Mein Skill: ${skill ?? '–'}</span>`;
 }
 
-function renderOpenRow(votes, r, draftReady, columnStart = false) {
+function renderOpenRow(votes, r, draftReady, columnStart = false, source = null) {
   let control;
   if (!draftReady) {
     control = '<span class="muted vote-points-loading">Lädt…</span>';
@@ -359,7 +359,7 @@ function renderOpenRow(votes, r, draftReady, columnStart = false) {
     <div class="event-poll-option${columnStart ? ' is-column-start' : ''}" data-points-row="${r.gameId}">
       <div class="event-poll-option-info">
         <span class="event-poll-option-title-row"><strong>${escapeHtml(r.gameName)}</strong></span>
-        <span class="muted event-poll-option-note">${ownSkillHtml(r.gameId)} · ${gameMetaHtml(r)}</span>
+        <span class="muted event-poll-option-note">${[ownSkillHtml(r.gameId), runoffDeclineText(source, r.gameId), gameMetaHtml(r)].filter(Boolean).join(' · ')}</span>
       </div>
       <span class="event-poll-result"></span>
       <span class="event-poll-option-badges">
@@ -375,7 +375,8 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
   // Two columns on wide screens read down the left column first, then the
   // right one (see .event-poll-options.is-compact).
   const columnRows = Math.max(1, Math.ceil(games.length / 2));
-  const rows = games.map((r, index) => renderOpenRow(votes, r, mineReady, index === columnRows)).join('');
+  const source = isPoints ? null : runoffSourceRound(historyCache, votes);
+  const rows = games.map((r, index) => renderOpenRow(votes, r, mineReady, index === columnRows, source)).join('');
   const tags = [];
   // Runoffs are titled "Stichwahl: …" already, so the tag only shows when
   // the title does not say it.
@@ -446,6 +447,7 @@ function supportersOf(h, gameId) {
 }
 
 function renderResultRows(h, columnRows) {
+  const source = sourceRoundOf(h);
   const maxPoints = Math.max(1, ...h.results.map((r) => r.points));
   const ranks = sharedRankNumbers(h.results.map((result) => h.mode === 'single' ? result.votes : result.points));
   const winners = new Set(h.winnerGameIds ?? []);
@@ -469,7 +471,7 @@ function renderResultRows(h, columnRows) {
                 <strong>${escapeHtml(r.gameName)}</strong>
                 ${win ? WIN_CHIP : ''}
               </span>
-              <span class="muted event-poll-option-note">${gameMetaHtml(r)}</span>
+              <span class="muted event-poll-option-note">${[runoffDeclineText(source, r.gameId), gameMetaHtml(r)].filter(Boolean).join(' · ')}</span>
             </div>
           </div>
           <span class="event-poll-result">
@@ -488,23 +490,56 @@ function winnerNames(h) {
   return h.results.filter((r) => (h.winnerGameIds ?? []).includes(r.gameId)).map((r) => r.gameName);
 }
 
+// A runoff re-asks the tied winners of the latest points round before it
+// (a runoff of a runoff still goes back to that points round). Its ballots
+// still say who would not play each game, which the runoff itself cannot ask.
+// `runoff` is either a closed history round or the open round's payload.
+export function runoffSourceRound(history, runoff) {
+  const gameIds = runoff.results.map((r) => r.gameId);
+  return (history ?? [])
+    .filter((h) => h.mode === 'points' && h.totalVoters > 0 && h.round < runoff.round
+      && gameIds.every((gameId) => h.results.some((r) => r.gameId === gameId)))
+    .reduce((latest, h) => (!latest || h.round > latest.round ? h : latest), null);
+}
+
+function declinedInRound(h, playerId, gameId) {
+  const ballot = h.ballots?.find((entry) => entry.playerId === playerId);
+  return Boolean(ballot?.entries.some((entry) => entry.gameId === gameId && entry.points === 0));
+}
+
+// Shown on every runoff row, zero included: the count is the comparison
+// between the tied games, so "0" is information here, not an empty value.
+function runoffDeclineText(source, gameId) {
+  if (!source) return null;
+  const count = (source.ballots ?? []).filter((ballot) => declinedInRound(source, ballot.playerId, gameId)).length;
+  return `Vorrunde: ${count} spielen nicht`;
+}
+
 // "Match generieren" turns a closed round into a prepared Match draw: its
 // single winner becomes the game, and everyone who gave that game at least
-// one point becomes the roster. A runoff decides only which of the tied games
-// is played, so there every participant counts. A tie has no game yet (the
-// runoff comes first), and a winner no longer in the catalog cannot be drawn.
-export function matchSelectionFromVote(h, catalogGameIds) {
+// one point becomes the roster. After a runoff every participant counts
+// except those who gave the winner 0 points in the runoff's points round
+// (`source`, see runoffSourceRound). A tie has no game yet (the runoff comes
+// first), and a winner no longer in the catalog cannot be drawn.
+export function matchSelectionFromVote(h, catalogGameIds, source = null) {
   const winners = h?.winnerGameIds ?? [];
   if (winners.length !== 1 || !catalogGameIds.has(winners[0])) return null;
   const [gameId] = winners;
   const playerIds = (h.ballots ?? [])
-    .filter((ballot) => h.mode === 'single' || ballot.entries.some((entry) => entry.gameId === gameId && entry.points > 0))
+    .filter((ballot) => h.mode === 'single'
+      ? !(source && declinedInRound(source, ballot.playerId, gameId))
+      : ballot.entries.some((entry) => entry.gameId === gameId && entry.points > 0))
     .map((ballot) => ballot.playerId);
   return playerIds.length ? { gameId, playerIds } : null;
 }
 
+function sourceRoundOf(h) {
+  return h?.mode === 'single' ? runoffSourceRound(historyCache, h) : null;
+}
+
 function latestMatchSelection() {
-  return matchSelectionFromVote(historyCache?.[0], new Set(catalogGames().map((game) => game.id)));
+  const latest = historyCache?.[0];
+  return matchSelectionFromVote(latest, new Set(catalogGames().map((game) => game.id)), sourceRoundOf(latest));
 }
 
 function renderVoteResultContent(h) {
