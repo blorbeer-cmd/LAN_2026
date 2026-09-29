@@ -13,11 +13,24 @@ import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication } from '../sessions';
 import { getReadiness } from '../readiness';
 import { getKioskPassword } from '../kioskAccounts';
+import { createKioskHandoff } from '../kioskHandoffs';
 import { getOrRepairActiveEvent } from '../eventContext';
 import { computeFeatureUsage } from '../featureUsage';
 import { isAdminTestMode } from '../testDataVisibility';
 
 export const adminRouter = Router();
+
+adminRouter.post('/kiosk-handoff', requireAdmin, (req, res) => {
+  const eventId = req.query.eventId;
+  if (typeof eventId !== 'string' || !eventId) return res.status(400).json({ error: 'eventId ist erforderlich.' });
+  const event = db.prepare("SELECT id FROM events WHERE id = ? AND group_id = ? AND event_type_key = 'lan'")
+    .get(eventId, req.group!.id);
+  if (!event) return res.status(404).json({ error: 'LAN-Event nicht gefunden.' });
+  const code = createKioskHandoff(req.group!.id, eventId, req.player!.id);
+  writeAdminAudit({ actorPlayerId: req.player!.id, groupId: req.group!.id, action: 'kiosk_handoff_created', targetType: 'event', targetId: eventId });
+  // The code stays in the fragment: it is not sent in the next HTTP request.
+  res.redirect(303, `/kiosk.html?account=${encodeURIComponent(`kiosk-${eventId}`)}#handoff=${code}`);
+});
 
 // GET /api/admin/feature-usage?eventId= — Bestandsdaten-Auswertung
 // (docs/KONZEPT-FEATURE-NUTZUNGSANALYSE.md, Baustein A): how many distinct

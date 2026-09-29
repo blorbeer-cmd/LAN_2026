@@ -107,7 +107,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   level up (see [„Bereichsseiten und Mehr-Navigation“](navigation-and-account-rules.md#bereichsseiten-und-mehr-navigation)).
   Packliste is its own switchable area rather than part of „Aufgaben & Mitbringen“, so a workspace
   can keep the shared To-Do board without a packing list. TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
-  „Kioskverwaltung“ tool card (see [„Admin tools“](navigation-and-account-rules.md#profile-und-admin)) since opening the shared-screen dashboard is an
+  „Broadcast“ tool card (see [„Admin tools“](navigation-and-account-rules.md#profile-und-admin)) since opening the shared-screen dashboard is an
   admin task, not something every member needs from Orga. „Mehr“ opens Orga on its first tab,
   „Umfragen“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
   top-left tab is the one actually selected on arrival; the already persisted push url `/#checklist`
@@ -422,15 +422,19 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   become eligible two hours after acceptance. Further reminders run at most once per rolling two-hour
   window, using durable reminder state independent of push history. Opening a payment reminder
   switches to its event, expands that event and its participant list, and scrolls to its card.
-  TV-Kiosk (Admin's „Kioskverwaltung“
+  TV-Kiosk (Admin's „Broadcast“
   card, not an Orga tab) stays one grouped section but lists one automatic account for every LAN
-  event, including its stable `kiosk-<eventId>` username and a prefilled link to `/kiosk.html`.
+  event, including its stable `kiosk-<eventId>` username. The event action opens a separate tab
+  through a one-use, 60-second handoff. That tab exchanges the handoff for its own event-scoped
+  Broadcast token. Each tab stores its token separately; a previously opened Broadcast cannot
+  change the event selected by another action. If the handoff expires, the selected account is
+  shown in the password form.
   The section leads directly with the shared login password itself (configured or generated once
   on first use — see server/OPERATIONS.md) as one compact label/value/copy-icon row, so admins never
   need server/.env access just to read out a working kiosk login. It has no repeated explanation or
-  unscoped login action above the event cards. Each event card provides one primary `Kiosk öffnen`
-  action with its account already selected. The standalone page shows a centered
-  account/password card until its event-scoped credential is established; this identity never
+  unscoped login action above the event cards. Each event card provides one primary `Broadcast öffnen`
+  action for its event. The standalone page shows a centered account/password card if no
+  event-scoped credential is available; this identity never
   becomes a player or a regular app session.
 
 ## An- und Abreise
