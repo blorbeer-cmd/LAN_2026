@@ -755,6 +755,8 @@ function openVoteStartForm(ctx) {
         query,
         extraHtml: voteSelectToggleHtml(allVisibleSelected()),
         className: 'vote-game-toolbar',
+        // The start list filters by genre only.
+        ratingFilters: false,
       })}
     </div>
     ${gameRowsHtml()}

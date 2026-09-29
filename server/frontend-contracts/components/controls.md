@@ -183,7 +183,8 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
   abgeschnittene Werte. Die Suche nutzt den verbleibenden Platz.
 - Auf schmalen Ansichten steht die Suche über Sortierung und Filter. Das Filtermenü erscheint oberhalb der Hauptnavigation.
 - Die Spieleliste im Dialog „Abstimmung starten“ (Vote) verwendet dieselbe Werkzeugleiste mit
-  denselben Sortier- und Filterauswahlen. Dort steht die Suche immer allein in der ersten Zeile;
+  denselben Sortierauswahlen; ihr Filtermenü enthält nur die Genres, ohne „Offene Bewertungen“, und
+  entfällt, solange kein Spiel ein Genre trägt. Dort steht die Suche immer allein in der ersten Zeile;
   darunter folgen der Sammelschalter der Auswahl, Sortierung und Filter. Im Dialog öffnen beide
   Menüs auch auf Telefonen direkt unter ihrem Auslöser, weil die Hauptnavigation verdeckt ist
   (`registry:vote-game-toolbar`, `registry:vote-game-menu-panel`).

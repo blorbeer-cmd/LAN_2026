@@ -826,6 +826,23 @@ flowTest('Vote: the start dialog lists games with catalog sort/filter, search an
     .sort((a, b) => a.name.localeCompare(b.name, 'de'))
     .map((game) => game.id);
 
+  // One genre in the catalog gives the dialog's genre filter a choice.
+  const counterStrike = catalogGames.find((game) => game.name === 'Counter-Strike 2')!;
+  const setGenres = async (genres: string[]) => {
+    const response = await fetch(`${BASE_URL}/api/games/${counterStrike.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({ genres }),
+    });
+    assert.equal(response.status, 200, await response.text());
+  };
+  await setGenres(['Shooter']);
+  // A fresh load makes the new genre part of the client's game list.
+  await page.reload();
+  await page.waitForSelector('#app:not([hidden])');
+  await page.click('.nav-btn[data-view="votes"]');
+  await page.waitForSelector('#votes-new');
+
   await page.click('#votes-new');
   await page.waitForSelector('#vote-start-form');
   const voteGameCheckboxes = page.locator('[data-vote-game-checkbox]');
@@ -851,18 +868,15 @@ flowTest('Vote: the start dialog lists games with catalog sort/filter, search an
   assert.deepEqual(await renderedOrder(), [...alphabeticalVoteOrder].reverse());
   assert.deepEqual((await checkedIds()).sort(), [...initiallySelected].sort());
 
-  // The catalog's filter: "Bock offen" hides the games Alice has rated; they
-  // keep their selection and still count. Escape closes only the open menu.
-  const aliceBock = (await (await page.request.get(`${BASE_URL}/api/preferences?playerId=${alice.id}`)).json()) as Array<{ game_id?: string; gameId?: string }>;
-  const ratedIds = new Set(aliceBock.map((row) => row.gameId ?? row.game_id));
+  // The dialog filters by genre only, without the catalog's open-rating
+  // filters. Hidden games keep their selection and still count. Escape
+  // closes only the open menu.
   await page.click('.modal .game-catalog-filter-trigger');
-  await page.click('.modal [data-rating-filter="bock"]');
+  assert.equal(await page.locator('.modal [data-rating-filter]').count(), 0, 'no "Bock offen"/"Skill offen" in the dialog');
+  assert.deepEqual(await page.locator('.modal .game-catalog-filter-heading').allTextContents(), ['Genres']);
+  await page.click('.modal [data-genre-filter="Shooter"]');
   await page.locator('.modal .game-catalog-filter-trigger:has-text("Filter (1)")').waitFor();
-  assert.deepEqual(
-    (await renderedOrder()).sort(),
-    alphabeticalVoteOrder.filter((id) => !ratedIds.has(id)).sort(),
-    'the open-rating filter hides games with an own Bock',
-  );
+  assert.deepEqual(await renderedOrder(), [counterStrike.id], 'the genre filter shows only the matching games');
   await page.keyboard.press('Escape');
   await page.locator('.modal .game-catalog-filter-menu:not([open])').waitFor();
   assert.equal(await page.locator('#vote-start-form').count(), 1, 'Escape closes the open menu, not the dialog');
@@ -885,7 +899,6 @@ flowTest('Vote: the start dialog lists games with catalog sort/filter, search an
     await page.click('#votes-select-all');
   }
   assert.equal(await page.locator('[data-vote-game-search-item]:not([hidden]) [data-vote-game-checkbox]:checked').count(), 0);
-  const counterStrike = catalogGames.find((game) => game.name === 'Counter-Strike 2')!;
   assert.equal(
     await page.locator('[data-vote-game-search-item][hidden] [data-vote-game-checkbox]:checked').count(),
     initiallySelected.filter((gameId) => gameId !== counterStrike.id).length,
@@ -926,6 +939,7 @@ flowTest('Vote: the start dialog lists games with catalog sort/filter, search an
   await page.click('.modal [data-close]');
   await page.click('[data-confirm]');
   await page.waitForSelector('#vote-start-form', { state: 'detached' });
+  await setGenres([]);
 });
 
 flowTest('Vote: a Passt/Notfalls/Nein round with a visible interim result and anonymous voters', async () => {

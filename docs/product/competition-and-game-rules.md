@@ -331,7 +331,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   (preselected) with contextual help, then the required „Spiele“ list and a right-aligned
   „Abstimmung starten“ beside the count of selected games. The list uses the Spielekatalog's
   toolbar: „Spiel suchen“, the same sorting („Name“, „Mein Bock“, „Ø Bock“, „Ø Skill“, each in both
-  directions) and the same filter menu („Offene Bewertungen“ and „Genres“). Search and filters only
+  directions) and a filter menu with the catalog's „Genres“ only — the open-rating filters („Bock
+  offen“, „Skill offen“) are left out, and without any genre in the catalog the menu is not shown.
+  Search and filters only
   narrow what is shown; a hidden game keeps its selection and still counts when the round starts.
   Each row names the game with its genres and Ø Bock. Separate full-width cards for „Letzter Vote“
   and „Top 10 nach Bock-Level“; the Top 10 card is collapsible and starts closed.

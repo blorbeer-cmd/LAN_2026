@@ -103,11 +103,17 @@ function sortOptionsHtml(filters) {
 
 // games: the list the genre choices are derived from. `extraHtml` sits
 // between search and sorting (the Vote list's bulk toggle); `className`
-// adds a layout modifier.
-export function gameListToolbarHtml(filters, { games, myId, searchId, searchLabel = 'Spiele suchen', query = '', extraHtml = '', className = '' }) {
+// adds a layout modifier. `ratingFilters: false` leaves out the open-rating
+// filters (the Vote list filters by genre only); without any filter group
+// the filter menu is left out as well.
+export function gameListToolbarHtml(
+  filters,
+  { games, myId, searchId, searchLabel = 'Spiele suchen', query = '', extraHtml = '', className = '', ratingFilters = true },
+) {
   const { genreFilter, ratingFilter } = filters;
   const usedGenres = GAME_GENRES.filter((g) => games.some((game) => (game.genres ?? []).includes(g)));
   const filterCount = activeFilterCount(filters);
+  const showRatingFilters = ratingFilters && Boolean(myId);
   return `<section class="game-catalog-toolbar${className ? ` ${className}` : ''}" aria-label="Spiele durchsuchen, sortieren und filtern">
           <input type="search" id="${searchId}" value="${escapeHtml(query)}" placeholder="Spiel suchen" aria-label="${escapeHtml(searchLabel)}" autocomplete="off" />
           ${extraHtml}
@@ -119,13 +125,13 @@ export function gameListToolbarHtml(filters, { games, myId, searchId, searchLabe
               ${sortOptionsHtml(filters)}
             </div>
           </details>
-          <details class="action-menu game-catalog-filter-menu" ${filters.filterMenuOpen ? 'open' : ''}>
+          ${showRatingFilters || usedGenres.length ? `<details class="action-menu game-catalog-filter-menu" ${filters.filterMenuOpen ? 'open' : ''}>
             <summary class="btn btn-sm game-catalog-filter-trigger" aria-label="Filter öffnen${filterCount > 0 ? `, ${filterCount} aktiv` : ''}">
               Filter${filterCount > 0 ? ` (${filterCount})` : ''} ${icon('chevronDown')}
             </summary>
             <div class="action-menu-panel game-catalog-filter-panel">
               ${
-                myId
+                showRatingFilters
                   ? `<div class="stack game-catalog-filter-section" role="group" aria-label="Nach fehlender eigener Bewertung filtern">
                        <span class="game-catalog-filter-heading">Offene Bewertungen</span>
                        <div class="chip-list">
@@ -156,7 +162,7 @@ export function gameListToolbarHtml(filters, { games, myId, searchId, searchLabe
                   : ''
               }
             </div>
-          </details>
+          </details>` : ''}
         </section>`;
 }
 
