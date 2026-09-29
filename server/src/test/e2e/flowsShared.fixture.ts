@@ -75,6 +75,35 @@ export async function waitForTextDecoration(locator: Locator, expected: string):
   assert.fail(`text-decoration-line sollte ${expected} sein, war zuletzt ${lastObserved}`);
 }
 
+// Reads a computed box-shadow from the node currently in the DOM. A live
+// refresh can replace the resolved node before evaluation, and a detached
+// node reports an empty computed style instead of its real value.
+export async function readConnectedBoxShadow(locator: Locator): Promise<string> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    try {
+      const shadow = await locator.evaluate((element) => (element.isConnected ? getComputedStyle(element).boxShadow : null));
+      if (shadow !== null) return shadow;
+    } catch {
+      // The next locator evaluation resolves the current node.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail('box-shadow blieb unlesbar, weil das Element nicht verbunden war');
+}
+
+// Reads a bounding box from the node currently in the DOM; a live refresh can
+// detach the resolved node, which then reports no box at all.
+export async function readConnectedBoundingBox(locator: Locator): Promise<{ x: number; y: number; width: number; height: number }> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const box = await locator.boundingBox().catch(() => null);
+    if (box) return box;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail('Bounding-Box blieb unlesbar, weil das Element nicht verbunden war');
+}
+
 export function flowTest(
   name: string,
   fn: (context: TestContext) => void | Promise<void>,
