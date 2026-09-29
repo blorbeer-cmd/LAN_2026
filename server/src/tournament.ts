@@ -1,7 +1,7 @@
 // Pure tournament logic (FR-33), kept free of DB/HTTP so it's directly
 // unit-testable — same split as matchmaking.ts. Covers three formats:
 //   - single-elimination bracket ("Turnierbaum"), with byes for team counts
-//     that aren't a power of two
+//     that aren't a power of two and an optional third-place match
 //   - round-robin ("jeder gegen jeden"), single or double (Hin-/Rückspiele)
 //   - group stage + knockout ("Gruppenphase + K.O."): the roster is split
 //     into groups that each play round-robin, then the top N teams per
@@ -51,7 +51,14 @@ export interface BracketMatchSlot {
   teamBId: string | null;
   winnerTeamId: string | null;
   isBye: boolean;
+  // The optional match between the semifinal losers. It shares the final's
+  // round as slot 1, so it never sits on any winner's path.
+  isThirdPlace?: boolean;
 }
+
+// A third-place match needs two semifinal losers; with three teams one
+// semifinal is a bye, so its loser would simply be third.
+export const THIRD_PLACE_MIN_TEAMS = 4;
 
 function nextPowerOfTwo(n: number): number {
   let p = 1;
@@ -76,7 +83,7 @@ function seedOrder(n: number): number[] {
 }
 
 function propagateWinner(matches: BracketMatchSlot[], round: number, slot: number, winnerTeamId: string): void {
-  const nextMatch = matches.find((m) => m.round === round + 1 && m.slot === Math.floor(slot / 2));
+  const nextMatch = matches.find((m) => !m.isThirdPlace && m.round === round + 1 && m.slot === Math.floor(slot / 2));
   if (!nextMatch) return; // that was the final
   if (slot % 2 === 0) nextMatch.teamAId = winnerTeamId;
   else nextMatch.teamBId = winnerTeamId;
@@ -85,7 +92,8 @@ function propagateWinner(matches: BracketMatchSlot[], round: number, slot: numbe
 // Builds the full bracket shape up front (every round's match slots, later
 // rounds starting empty) and resolves any byes immediately, propagating a
 // bye's free winner into the next round exactly like a real result would.
-export function generateBracket(teamIds: string[]): BracketMatchSlot[] {
+// thirdPlace adds the semifinal losers' match from four teams on.
+export function generateBracket(teamIds: string[], thirdPlace = false): BracketMatchSlot[] {
   if (teamIds.length < 2) throw new Error('Ein Turnier braucht mindestens 2 Teams.');
 
   const bracketSize = nextPowerOfTwo(teamIds.length);
@@ -118,6 +126,10 @@ export function generateBracket(teamIds: string[]): BracketMatchSlot[] {
     matchesInRound /= 2;
   }
 
+  if (thirdPlace && teamIds.length >= THIRD_PLACE_MIN_TEAMS) {
+    matches.push({ round: totalRounds, slot: 1, teamAId: null, teamBId: null, winnerTeamId: null, isBye: false, isThirdPlace: true });
+  }
+
   for (const bye of matches.filter((m) => m.round === 1 && m.isBye)) {
     propagateWinner(matches, bye.round, bye.slot, bye.winnerTeamId!);
   }
@@ -126,7 +138,7 @@ export function generateBracket(teamIds: string[]): BracketMatchSlot[] {
 }
 
 // Records a winner for one bracket match and advances them into the next
-// round's slot. Returns a new array (matches is not mutated) so callers can
+// round's slot; a semifinal loser moves into the third-place match. Returns a new array (matches is not mutated) so callers can
 // diff old vs. new to know what changed. Throws if the match can't be
 // resolved yet (a previous round's winner hasn't advanced into it) or the
 // given winner isn't actually one of the two teams in that match.
@@ -148,13 +160,38 @@ export function applyBracketResult(
   }
   match.winnerTeamId = winnerTeamId;
   propagateWinner(next, round, slot, winnerTeamId);
+  const thirdPlace = next.find((m) => m.isThirdPlace);
+  if (thirdPlace && !match.isThirdPlace && round === thirdPlace.round - 1) {
+    const loserTeamId = winnerTeamId === match.teamAId ? match.teamBId : match.teamAId;
+    if (slot % 2 === 0) thirdPlace.teamAId = loserTeamId;
+    else thirdPlace.teamBId = loserTeamId;
+  }
   return next;
 }
 
+// Complete once every played match has a winner: the final and, if the
+// bracket has one, the third-place match.
 export function bracketIsComplete(matches: BracketMatchSlot[]): boolean {
+  return matches.every((m) => m.isBye || m.winnerTeamId !== null);
+}
+
+export interface BracketPlacement {
+  teamId: string;
+  place: number;
+}
+
+// Distinct final places decided so far: 1 and 2 from the final, 3 and 4 from
+// the third-place match. Other knockout exits share their place.
+export function computeBracketPlacements(matches: BracketMatchSlot[]): BracketPlacement[] {
   const finalRound = Math.max(...matches.map((m) => m.round));
-  const final = matches.find((m) => m.round === finalRound);
-  return Boolean(final && final.winnerTeamId);
+  const placements: BracketPlacement[] = [];
+  for (const match of matches.filter((m) => m.round === finalRound && m.winnerTeamId !== null)) {
+    const top = match.isThirdPlace ? 3 : 1;
+    const loserTeamId = match.winnerTeamId === match.teamAId ? match.teamBId : match.teamAId;
+    placements.push({ teamId: match.winnerTeamId!, place: top });
+    if (loserTeamId) placements.push({ teamId: loserTeamId, place: top + 1 });
+  }
+  return placements.sort((a, b) => a.place - b.place);
 }
 
 // ---------- Round-robin ----------
