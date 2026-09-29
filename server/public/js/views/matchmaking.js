@@ -55,6 +55,13 @@ let drawPlayerSearchQuery = '';
 // reads as one linear step instead of two competing panels.
 let teamsMode = 'draw';
 
+export function prepareMatchFromVote(gameId, playerIds) {
+  state.selectedGameId = gameId;
+  checkedIds = new Set(playerIds);
+  teamsMode = 'draw';
+  teamCountValue = '2';
+}
+
 // Captain-draft state: the latest draft (active or finished) as delivered by
 // GET /api/draft or the draft:changed socket event. A running draft takes
 // over the whole view on every device (that's the point — it's a live event
@@ -1078,7 +1085,7 @@ export function renderMatchmaking(container, ctx) {
   // or played, because this one <select> also scopes the Historie below:
   // without it, that draw's Ergebnis-/Rematch-Aktionen would be unreachable.
   // Drawing and drafting stay blocked for such a game (see drawDisabledReason).
-  const pickableGames = gamesWithHistory([state.lastMatchmaking?.gameId]);
+  const pickableGames = gamesWithHistory([state.lastMatchmaking?.gameId, state.selectedGameId]);
   if (catalogGames().length === 0 || eventPlayers().length === 0) {
     container.innerHTML = `${leading}${emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.')}`;
     wireDrawCards(container, ctx);

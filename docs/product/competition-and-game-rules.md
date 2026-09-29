@@ -320,13 +320,16 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
-  New/current-round controls come first. The new-round form keeps its searchable full game list
+  New/current-round controls come first. The new-round form stays available while other rounds run,
+  so several Votes can run in parallel. Each open round is a separate collapsible card with its own
+  ballot, saved answer, participation count, and admin actions; opening or closing one card leaves
+  the others intact. The new-round form keeps its searchable full game list
   directly visible and deliberately offers no additional genre filter. Draft selection, query,
   focus and scroll survive same-view renders. Separate full-width cards for „Letzter Vote“
   and „Top 10 nach Bock-Level“; the Top 10 card is collapsible and starts closed.
   An open round and every closed result use the same presentation as an Umfrage with a hidden
   interim result (see „Umfragen“ in [Organisation](organisation-and-event-rules.md)), minus the
-  poll-only parts: no response-mode tag, no „Neue Runde“ and no „Wieder öffnen“. The open round is
+  poll-only parts: no response-mode tag, no „Neue Runde“ and no „Wieder öffnen“. Each open round is
   one `.event-poll-card` whose header names the round, the participation („X/Y abgegeben“, updated
   through the existing realtime refresh) and the viewer's own state („Abgegeben“ or „Deine Stimme
   fehlt“); admins get a compact „Beenden“ and, directly beside it, a red „Abbrechen“ — no
@@ -373,6 +376,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   per-game results as „Letzter Vote“. Cards start closed, preserve their own open state across
   live re-renders and reset that state when the active event changes. Header and results have
   no additional dividing line.
+  „Letzter Vote“ always displays the most recently ended round, even when another Vote remains open
+  or an older round ends after a newer one. Its card and every historical round with a winner offer
+  „Match generieren“. For a tie, the dialog lets the user choose the winner game. The action opens
+  the Match view with that game and the players who gave it more than zero points preselected. The
+  roster remains editable there; only the Match view's own action starts the draw.
   The Top 10 form two ordered five-item columns from `--bp-md`, while phones keep one continuous
   list. The new-round form's `.vote-game-grid` keeps one column on phones, two from `--bp-md` and
   three from `--bp-xl`, with the same bordered card treatment at every size.

@@ -445,7 +445,7 @@ flowTest('Aktuell: an open vote appears as a compact navigation row on Home', as
   await page.waitForSelector('#votes-title');
   await page.fill('#votes-title', 'Freitagabend-Runde');
   await page.click('#votes-start');
-  await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
+  await page.waitForSelector('[data-votes-close]'); // only rendered once ctx.refresh() shows the round as open
 
   const openedVote = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
   assert.equal(openedVote.title, 'Freitagabend-Runde');
@@ -461,7 +461,7 @@ flowTest('Aktuell: an open vote appears as a compact navigation row on Home', as
 
   // Leave no open round behind for later tests.
   await page.click('.nav-btn[data-view="votes"]');
-  await page.click('#votes-close');
+  await page.click('[data-votes-close]');
   await page.waitForSelector('#votes-start');
 });
 

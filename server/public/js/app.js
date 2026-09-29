@@ -971,7 +971,7 @@ function wireSocket() {
     invalidateViewCaches(VIEW_REGISTRY, 'live:changed');
     if (currentView === 'home' || currentView === 'seating') renderCurrent();
   });
-  socket.on('votes:changed', async () => {
+  socket.on('votes:changed', async (change) => {
     const refreshVersion = ++voteRealtimeRefreshVersion;
     let payload;
     try {
@@ -983,9 +983,9 @@ function wireSocket() {
       return;
     }
     if (refreshVersion !== voteRealtimeRefreshVersion) return;
-    const isNewRound = payload.open && payload.round !== lastVoteRound;
-    if (!payload.open) invalidateViewCaches(VIEW_REGISTRY, 'votes:closed');
-    lastVoteRound = payload.round;
+    const isNewRound = payload.open && payload.round > (lastVoteRound ?? 0);
+    if (change?.open === false) invalidateViewCaches(VIEW_REGISTRY, 'votes:closed');
+    lastVoteRound = Math.max(lastVoteRound ?? 0, payload.round);
 
     state.votes = payload;
     // Home shows an "Abstimmung läuft" status card driven by state.votes.

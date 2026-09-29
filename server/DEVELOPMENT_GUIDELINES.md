@@ -39,7 +39,7 @@ Check-dann-Schreiben-Races.
 
 - Handler mit gemeinsamem veränderlichem Zustand erhalten einen atomaren Guard, eine Transaktion
   oder eine passende Datenbank-Constraint.
-- Typische Fälle sind eindeutige Namen, genau eine laufende Abstimmung, Event-Tracking-Konflikte,
+- Typische Fälle sind eindeutige Namen, einmaliges Beenden einer bestimmten Abstimmung, Event-Tracking-Konflikte,
   Captain-Draft-Picks und einmalig entscheidbare Turnier-Matches.
 - Genau ein konkurrierender Request darf gewinnen. Verlierer erhalten `409` und dürfen weder
   duplizieren noch fremden Zustand überschreiben.
