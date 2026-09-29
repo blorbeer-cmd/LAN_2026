@@ -763,10 +763,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 114);
+  assert.equal(migrations.length, 115);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 114 }, (_, index) => index + 1),
+    Array.from({ length: 115 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1368,8 +1368,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 114 }, (_, index) => index + 1),
-    'every version 1..114 runs exactly once',
+    Array.from({ length: 115 }, (_, index) => index + 1),
+    'every version 1..115 runs exactly once',
   );
 });
 
@@ -1503,6 +1503,53 @@ test('migration 111 lets votes store a deliberate 0, keeps existing rows and rol
     'the scope triggers and keys survive the rebuild',
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 111').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 115 adds vote round privacy options, keeps existing rounds and rolls back on failure', () => {
+  const dbFile = makeTempDbPath('vote-privacy-options');
+  runMigrations(dbFile);
+
+  // Rebuild the pre-115 shape (no privacy columns) with one closed round.
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture.exec(`
+    ALTER TABLE vote_rounds DROP COLUMN anonymous;
+    ALTER TABLE vote_rounds DROP COLUMN hide_live_results;
+    INSERT INTO vote_rounds (group_id, round, event_id, started_at, closed_at, mode, title)
+      VALUES ('default-group', 1, NULL, ${now}, ${now}, 'points', 'Freitag');
+    DELETE FROM schema_migrations WHERE version = 115;
+  `);
+  // A column that differs only in case slips past the name check and makes
+  // the second ALTER fail, so the first one has to roll back with it.
+  fixture.exec('ALTER TABLE vote_rounds ADD COLUMN HIDE_LIVE_RESULTS INTEGER');
+  fixture.close();
+
+  assert.throws(() => runMigrations(dbFile), /duplicate column name/);
+  const afterFailure = new Database(dbFile, { readonly: true });
+  assert.equal(afterFailure.prepare('SELECT 1 FROM schema_migrations WHERE version = 115').get(), undefined);
+  const columnsAfterFailure = afterFailure.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>;
+  assert.ok(!columnsAfterFailure.some((column) => column.name === 'anonymous'), 'a failed attempt adds no column');
+  afterFailure.close();
+
+  const retry = new Database(dbFile);
+  retry.exec('ALTER TABLE vote_rounds DROP COLUMN HIDE_LIVE_RESULTS');
+  retry.close();
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');
+
+  const migrated = new Database(dbFile);
+  assert.deepEqual(
+    migrated.prepare('SELECT mode, title, anonymous, hide_live_results AS hidden FROM vote_rounds WHERE round = 1').get(),
+    { mode: 'points', title: 'Freitag', anonymous: 0, hidden: 1 },
+    'an existing round keeps its data and the previous hidden, non-anonymous behavior',
+  );
+  assert.throws(() => migrated.prepare('UPDATE vote_rounds SET anonymous = 2 WHERE round = 1').run(), /CHECK constraint failed/);
+  assert.throws(
+    () => migrated.prepare('UPDATE vote_rounds SET hide_live_results = 2 WHERE round = 1').run(),
+    /CHECK constraint failed/,
+  );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

@@ -86,7 +86,7 @@ Registry-Bezüge: `selection-toolbar`, `selection-icons`, `selection-search-acti
 ## 9. Repräsentative Aufrufer
 
 - `public/js/rosterPicker.js` für Matchmaking und Turniererstellung
-- `public/js/views/votes.js` für die Spielesuche („Spiel suchen“) der neuen Abstimmung
+- `public/js/views/votes.js` für die Spielesuche („Spiel suchen“) im Dialog „Abstimmung starten“
 - `public/js/views/gameCatalog.js` für das ständig sichtbare Suchfeld des Spielekatalogs
 
 ## 10. Prüfungen und Abnahmebeispiele

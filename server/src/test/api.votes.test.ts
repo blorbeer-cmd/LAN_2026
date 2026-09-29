@@ -445,6 +445,59 @@ test('concurrent ballots from one player leave exactly one complete ballot', asy
   await request(app).post('/api/votes/cancel');
 });
 
+test('POST /api/votes/start validates the privacy options', async () => {
+  const badFlag = await request(app).post('/api/votes/start').send({ anonymous: 'yes' });
+  assert.equal(badFlag.status, 400);
+  const badHidden = await request(app).post('/api/votes/start').send({ hideLiveResults: 1 });
+  assert.equal(badHidden.status, 400);
+  assert.equal((await request(app).get('/api/votes')).body.open, false, 'no rejected start opens a round');
+});
+
+test('a points round with a visible interim result shows its counts and voters while running', async () => {
+  const started = await request(app)
+    .post('/api/votes/start')
+    .send({ hideLiveResults: false, gameIds: [gameCs2, gameRl, gameAoe2] });
+  assert.equal(started.status, 201);
+  assert.equal(started.body.mode, 'points');
+  assert.equal(started.body.hideLiveResults, false);
+  assert.equal(started.body.anonymous, false);
+
+  const cast = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerA, entries: fullBallot(started.body.results, { [gameRl]: 4, [gameCs2]: 2 }) });
+  assert.equal(cast.status, 200);
+  assert.deepEqual(
+    cast.body.results.map((r: { gameId: string; points: number }) => [r.gameId, r.points]),
+    [[gameRl, 4], [gameCs2, 2], [gameAoe2, 0]],
+    'the running round already ranks by points',
+  );
+  assert.deepEqual(cast.body.ballots.map((ballot: { name: string }) => ballot.name), ['Voter A']);
+  await request(app).post('/api/votes/cancel');
+});
+
+test('an anonymous round never reveals who voted how, not even once closed', async () => {
+  const started = await request(app)
+    .post('/api/votes/start')
+    .send({ anonymous: true, hideLiveResults: false, gameIds: [gameCs2, gameRl] });
+  assert.equal(started.status, 201);
+  const cast = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerA, entries: fullBallot(started.body.results, { [gameRl]: 5 }) });
+  assert.equal(cast.status, 200);
+  assert.equal(cast.body.results.find((r: { gameId: string }) => r.gameId === gameRl).points, 5, 'the counts stay visible');
+  assert.equal(cast.body.ballots, undefined);
+  const closed = await request(app).post('/api/votes/close');
+  assert.deepEqual(closed.body.winnerGameIds, [gameRl]);
+  const history = await request(app).get('/api/votes/history');
+  const entry = history.body.history.find((h: { round: number }) => h.round === closed.body.round);
+  assert.equal(entry.anonymous, true);
+  assert.deepEqual(entry.ballots, []);
+  const detail = await request(app).get(`/api/votes/history/${closed.body.round}`);
+  assert.equal(detail.body.anonymous, true);
+  assert.deepEqual(detail.body.ballots, []);
+  assert.equal(detail.body.totalVoters, 1);
+});
+
 test('a game deleted during a points round leaves the remaining ballot savable', async () => {
   const extra = await request(app).post('/api/games').send({ name: 'Vote Delete Probe' });
   assert.equal(extra.status, 201, JSON.stringify(extra.body));
@@ -480,11 +533,12 @@ test('points endpoint is rejected while a round is in single mode', async () => 
 });
 
 test('each result row reports its all-time vote win count', async () => {
-  // CS2 won the single-mode round and Rocket League won the points round.
+  // CS2 won the single-mode round; Rocket League won the points and the
+  // anonymous round.
   const res = await request(app).get('/api/votes');
   const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
   const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
-  assert.equal(rlResult.voteWinCount, 1);
+  assert.equal(rlResult.voteWinCount, 2);
   assert.equal(cs2Result.voteWinCount, 1);
 });
 
@@ -628,4 +682,18 @@ test('a cancelled round can reuse its number without reusing its draft identity'
   assert.equal(second.body.round, first.body.round);
   assert.ok(second.body.startedAt > first.body.startedAt);
   assert.equal((await request(app).post('/api/votes/cancel')).status, 200);
+});
+
+test('the last closed Vote stays current even when an older round ends later', async () => {
+  const older = await request(app).post('/api/votes/start');
+  const newer = await request(app).post('/api/votes/start');
+  assert.equal((await request(app).post('/api/votes/close').send({ round: newer.body.round })).status, 200);
+  assert.equal((await request(app).post('/api/votes/close').send({ round: older.body.round })).status, 200);
+
+  const current = await request(app).get('/api/votes');
+  const history = await request(app).get('/api/votes/history?limit=1');
+  const kiosk = await request(app).get('/api/votes/kiosk');
+  assert.equal(current.body.round, older.body.round);
+  assert.equal(history.body.history[0].round, older.body.round);
+  assert.equal(kiosk.body.recentResult.round, older.body.round);
 });
