@@ -185,7 +185,7 @@ export function createTournamentPresentation(myPlayerId = null) {
   // matches defaults to the tournament's full match list (single_elimination),
   // but group_knockout passes just its knockout-stage rows so this can be
   // reused for that sub-bracket once it's been generated. A third-place match
-  // sits below the tree in the final's column.
+  // sits directly below the final in the final's column.
   function renderBracket(t, matches = t.matches) {
     const teamsById = new Map(t.teams.map((team) => [team.id, team]));
     const thirdPlace = matches.find((m) => m.isThirdPlace);
@@ -204,8 +204,12 @@ export function createTournamentPresentation(myPlayerId = null) {
       ? `<div class="bracket-champion" aria-label="Sieger: ${champion}"><span class="bracket-team-name">${champion}</span></div>`
       : '';
     // Same columns as the round titles, so the box lines up under the final.
+    // The final sits at the tree's vertical center and nothing else occupies
+    // its column below it, so the row starts right under the final's bottom
+    // edge instead of below the whole tree.
+    const finalBottom = (bracketSubtreeHeight(totalRounds - 1) + BRACKET_MATCH_H) / 2;
     const thirdPlaceHtml = thirdPlace
-      ? `<div class="bracket-third-place-row" data-bracket-third-place>
+      ? `<div class="bracket-third-place-row" data-bracket-third-place style="--final-bottom:${finalBottom}px;">
           ${'<div aria-hidden="true"></div>'.repeat(totalRounds - 1)}
           <div class="bracket-third-place">
             <div class="bracket-third-place-title">Spiel um Platz 3</div>
@@ -219,8 +223,10 @@ export function createTournamentPresentation(myPlayerId = null) {
       <div class="bracket-tree-wrap">
         <div class="bracket-tree-content">
           <div class="bracket-round-titles">${titles}</div>
-          <div class="bracket-final-row">${tree}${championHtml}</div>
-          ${thirdPlaceHtml}
+          <div class="bracket-tree-body">
+            <div class="bracket-final-row">${tree}${championHtml}</div>
+            ${thirdPlaceHtml}
+          </div>
         </div>
       </div>`;
   }
