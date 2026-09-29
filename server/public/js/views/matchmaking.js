@@ -20,6 +20,7 @@ import { filterRosterPicker, pruneRosterSelection, rosterPickerHtml, wireRosterP
 import { resultFormHtml, wireResultForm } from '../resultDialog.js';
 import { withStepUp } from '../reauth.js';
 import { isGroupAdmin } from '../groupContext.js';
+import { RESTORE_FOCUS_EVENT } from '../viewRenderState.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -31,6 +32,22 @@ let avoidAdjacentOpponents = false;
 // for the same game (e.g. from an unrelated realtime update).
 let avoidAdjacentOpponentsGameId = null;
 let teamCountValue = '2';
+
+// A draw cannot form more teams than it has players (POST /api/matchmaking
+// refuses that too), so the "Anzahl Teams" field is capped at the current
+// selection: typing a larger number snaps to it, and deselecting players pulls
+// an already-higher value down with them. The floor stays at the field's
+// minimum of 2 so an (almost) empty selection never produces an invalid cap;
+// an empty field (automatic team count) is left alone.
+export function teamCountMax(selectedCount) {
+  return Math.max(2, selectedCount);
+}
+
+export function capTeamCountValue(value, selectedCount) {
+  const max = teamCountMax(selectedCount);
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > max ? String(max) : value;
+}
 let drawPlayerSearchQuery = '';
 
 // Which of the two team-formation workflows is currently open below the
@@ -1097,6 +1114,7 @@ export function renderMatchmaking(container, ctx) {
   checkedIds = pruneRosterSelection(checkedIds, eventPlayers());
   draftPlayerIds = pruneRosterSelection(draftPlayerIds, eventPlayers());
   draftCaptainIds = new Set([...draftCaptainIds].filter((id) => draftPlayerIds.has(id)));
+  teamCountValue = capTeamCountValue(teamCountValue, checkedIds.size);
 
   const selectedGameId = pickableGames.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : catalogGames()[0].id;
 
@@ -1175,7 +1193,7 @@ export function renderMatchmaking(container, ctx) {
           selectAllId: 'mm-select-all',
           toolbarLeadingHtml: `<div class="tournament-team-count-field">
             <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
-            <input type="number" id="mm-teamcount" min="2" value="${escapeHtml(teamCountValue)}" />
+            <input type="number" id="mm-teamcount" min="2" max="${teamCountMax(checkedIds.size)}" value="${escapeHtml(teamCountValue)}" />
           </div>`,
           renderTrailing: (player) => playerSkillHtml(player, selectedGameId),
         })}
@@ -1315,9 +1333,15 @@ export function renderMatchmaking(container, ctx) {
     });
   });
 
-  container.querySelector('#mm-teamcount')?.addEventListener('input', (event) => {
-    teamCountValue = event.target.value;
-  });
+  const capTeamCountField = (event) => {
+    teamCountValue = capTeamCountValue(event.target.value, checkedIds.size);
+    if (event.target.value !== teamCountValue) event.target.value = teamCountValue;
+  };
+  container.querySelector('#mm-teamcount')?.addEventListener('input', capTeamCountField);
+  // A realtime re-render while this field is focused writes the value typed
+  // before it back without an input event — even when the roster has shrunk
+  // below it in the meantime. Re-apply the cap to that restored value.
+  container.querySelector('#mm-teamcount')?.addEventListener(RESTORE_FOCUS_EVENT, capTeamCountField);
 
   container.querySelector('#draft-start')?.addEventListener('click', async () => {
     const captainIds = [...draftCaptainIds];
@@ -1348,7 +1372,7 @@ export function renderMatchmaking(container, ctx) {
   container.querySelector('#mm-generate')?.addEventListener('click', async () => {
     const gameId = selectedGameId;
     const playerIds = [...checkedIds];
-    const teamCountRaw = container.querySelector('#mm-teamcount').value;
+    const teamCountRaw = capTeamCountValue(container.querySelector('#mm-teamcount').value, playerIds.length);
     const body = { gameId, playerIds, avoidAdjacentOpponents };
     if (teamCountRaw) body.teamCount = parseInt(teamCountRaw, 10);
 
