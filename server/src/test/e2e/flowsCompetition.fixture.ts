@@ -944,6 +944,8 @@ flowTest('Vote: a Passt/Notfalls/Nein round with a visible interim result and an
   await roundCard.waitFor();
   assert.deepEqual(await roundCard.locator('.event-poll-tag').allTextContents(), ['Jedes Spiel bewerten', 'Anonym']);
   const rows = roundCard.locator('[data-vote-row]');
+  // The answer buttons replace "Lädt…" once the own (empty) ballot has loaded.
+  await rows.first().locator('[data-vote-response="can"]').waitFor();
   assert.deepEqual(await rows.first().locator('[data-vote-response]').allTextContents(), ['Passt', 'Notfalls', 'Nein']);
   assert.ok(await page.locator('#votes-submit').isDisabled(), 'an answer is needed before saving');
   await rows.nth(0).locator('[data-vote-response="can"]').click();
