@@ -426,8 +426,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   window, using durable reminder state independent of push history. Opening a payment reminder
   switches to its event, expands that event and its participant list, and scrolls to its card.
   TV-Kiosk (Admin's „Broadcast“
-  card, not an Orga tab) stays one grouped section but lists one automatic account for every LAN
-  event, including its stable `kiosk-<eventId>` username. The event action opens a separate tab
+  card, not an Orga tab) stays one grouped section but lists only published, non-ended LAN events.
+  Groups, drafts, cancelled events and ended events do not appear there. Each listed LAN event has
+  its stable `kiosk-<eventId>` username. The event action opens a separate tab
   through a one-use, 60-second handoff. That tab exchanges the handoff for its own event-scoped
   Broadcast token. Each tab stores its token separately; a previously opened Broadcast cannot
   change the event selected by another action. If the handoff expires, the selected account is
