@@ -5424,6 +5424,22 @@ function addTournamentThirdPlaceMatch(): void {
 }
 registerMigration({ version: 114, name: 'add tournament third-place match', up: addTournamentThirdPlaceMatch });
 
+// A Vote round may be anonymous and may show its interim result while it
+// runs, like an Umfrage. Existing rounds keep their behavior: not anonymous
+// and with the interim result hidden.
+function addVoteRoundPrivacyOptions(): void {
+  const columns = db.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'anonymous')) {
+    db.exec('ALTER TABLE vote_rounds ADD COLUMN anonymous INTEGER NOT NULL DEFAULT 0 CHECK (anonymous IN (0, 1))');
+  }
+  if (!columns.some((column) => column.name === 'hide_live_results')) {
+    db.exec(
+      'ALTER TABLE vote_rounds ADD COLUMN hide_live_results INTEGER NOT NULL DEFAULT 1 CHECK (hide_live_results IN (0, 1))',
+    );
+  }
+}
+registerMigration({ version: 115, name: 'add vote round privacy options', up: addVoteRoundPrivacyOptions });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
