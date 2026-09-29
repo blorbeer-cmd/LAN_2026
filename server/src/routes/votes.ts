@@ -328,10 +328,12 @@ function buildResults(
   return filterResults(buildAllResults(groupId, round, mode, includeTestData, selectedGameIds), selectedGameIds);
 }
 
-// While a round is open, nobody — not even the person about to close it —
-// sees how votes/points are distributed across games yet: only the final
-// picture, once closed, should influence anyone (no bandwagoning towards
-// whatever's currently ahead). Total participation (how many people/points
+// While a round with a hidden interim result (hideLiveResults, the default)
+// is open, nobody — not even the person about to close it — sees how
+// votes/points are distributed across games yet: only the final picture, once
+// closed, should influence anyone (no bandwagoning towards whatever's
+// currently ahead). A round started with a visible interim result skips this
+// redaction (see buildPayload). Total participation (how many people/points
 // have been cast so far) is still shown — that's not a per-game distribution
 // and is a useful "is it worth waiting a bit longer" signal — but each
 // game's own votes/points/score are stripped, and the list is re-sorted by
@@ -473,9 +475,12 @@ votesRouter.get('/', (req, res) => {
 // GET /api/votes/kiosk - the shared room display receives the current tally
 // while a round is open, but kiosk.js masks every game identity until the
 // persisted post-close reveal time.
-// The regular GET /api/votes stays redacted while open, so this does not
-// change the anti-bandwagoning behavior on phones; the room display's masks
-// prevent its live ranking from influencing those votes too.
+// The regular GET /api/votes stays redacted while a round with a hidden
+// interim result is open, so this does not change the anti-bandwagoning
+// behavior on phones; the room display's masks prevent its live ranking from
+// influencing those votes too. The kiosk masks game names until the reveal
+// even when the round shows its interim result to participants: it stays
+// deliberately conservative for the shared screen.
 votesRouter.get('/kiosk', (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res, req.query.eventId);
