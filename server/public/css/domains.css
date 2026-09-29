@@ -732,12 +732,28 @@ button.bracket-side {
   align-items: center;
   gap: var(--bracket-round-gap);
 }
-/* The third-place match sits in the final's column below the tree; the
-   empty cells mirror the round-title columns so the box lines up. */
+/* The tree and the third-place row share one grid cell, so the cell grows
+   to whichever reaches further down and nothing gets clipped. */
+.bracket-tree-body {
+  display: grid;
+  justify-items: center;
+}
+.bracket-tree-body > * {
+  grid-area: 1 / 1;
+  align-self: start;
+}
+/* The third-place match sits in the final's column directly below the final
+   (--final-bottom is set inline); the empty cells mirror the round-title
+   columns so the box lines up. They overlap earlier rounds and must not catch
+   clicks meant for their result actions. */
 .bracket-third-place-row {
   display: flex;
   gap: var(--bracket-round-gap);
-  margin-top: var(--space-5);
+  margin-top: calc(var(--final-bottom) + var(--space-5));
+  pointer-events: none;
+}
+.bracket-third-place {
+  pointer-events: auto;
 }
 .bracket-third-place-row > div {
   width: var(--bracket-match-w);

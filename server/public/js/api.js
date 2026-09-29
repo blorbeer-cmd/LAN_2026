@@ -5,6 +5,7 @@
 import { filterTestUsers } from './testFilter.js';
 
 const KIOSK_TOKEN_KEY = 'respawn_kiosk_token';
+const KIOSK_EVENT_KEY = 'respawn_kiosk_event';
 const LEGACY_KIOSK_TOKEN_KEY = 'respawn_access_token';
 let kioskMode = false;
 // One instance, one group: this is no longer sent as a request header (the
@@ -18,24 +19,46 @@ export function setKioskMode(enabled) {
 }
 
 export function getKioskToken() {
-  const token = localStorage.getItem(KIOSK_TOKEN_KEY);
+  const account = new URLSearchParams(globalThis.location?.search || '').get('account');
+  const token = sessionStorage.getItem(KIOSK_TOKEN_KEY);
   if (token) {
-    localStorage.removeItem(LEGACY_KIOSK_TOKEN_KEY);
+    if (account && account !== `kiosk-${sessionStorage.getItem(KIOSK_EVENT_KEY)}`) return '';
     return token;
   }
 
+  // An explicit event link must never borrow a credential from another tab.
+  if (account) return '';
+
+  const previousToken = localStorage.getItem(KIOSK_TOKEN_KEY);
+  if (previousToken) {
+    sessionStorage.setItem(KIOSK_TOKEN_KEY, previousToken);
+    localStorage.removeItem(LEGACY_KIOSK_TOKEN_KEY);
+    return previousToken;
+  }
+
   // Before the auth cutover the dedicated kiosk credential shared the
-  // browser key used by the removed legacy login. Move it once so already
-  // configured kiosk screens keep working without reviving shared auth.
+  // browser key used by the removed legacy login. Keep a shared copy for
+  // unattended screens that have not reloaded yet.
   const legacyToken = localStorage.getItem(LEGACY_KIOSK_TOKEN_KEY);
   if (!legacyToken) return '';
+  sessionStorage.setItem(KIOSK_TOKEN_KEY, legacyToken);
   localStorage.setItem(KIOSK_TOKEN_KEY, legacyToken);
   localStorage.removeItem(LEGACY_KIOSK_TOKEN_KEY);
   return legacyToken;
 }
 
-export function setKioskToken(token) {
-  localStorage.setItem(KIOSK_TOKEN_KEY, token);
+export function setKioskToken(token, eventId = '') {
+  if (token) sessionStorage.setItem(KIOSK_TOKEN_KEY, token);
+  else sessionStorage.removeItem(KIOSK_TOKEN_KEY);
+  if (eventId) sessionStorage.setItem(KIOSK_EVENT_KEY, eventId);
+  else sessionStorage.removeItem(KIOSK_EVENT_KEY);
+  // Existing unattended screens may still need the old shared key on reload.
+  // New event links never read it because their URL names the account.
+}
+
+export function clearKioskToken() {
+  setKioskToken('');
+  localStorage.removeItem(KIOSK_TOKEN_KEY);
   localStorage.removeItem(LEGACY_KIOSK_TOKEN_KEY);
 }
 
@@ -131,6 +154,7 @@ export const api = {
 
   kiosk: {
     login: (data) => apiFetch('/api/kiosk/login', { method: 'POST', body: JSON.stringify(data) }),
+    exchangeHandoff: (code) => apiFetch('/api/kiosk/handoff', { method: 'POST', body: JSON.stringify({ code }) }),
     newsticker: () => apiFetch('/api/newsticker'),
   },
   me: () => apiFetch('/api/me'),

@@ -369,6 +369,45 @@ test('the required-mode kiosk starts with its dedicated read-only token', async 
   }
 });
 
+test('each Broadcast button opens its own event in a separate tab', async () => {
+  const adminPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await trackE2EContext(adminPage.context(), 'auth-broadcast-handoff');
+  const openedPages: Page[] = [];
+  try {
+    await adminPage.goto(BASE_URL);
+    await adminPage.fill('#auth-name', 'E2E Bootstrap Admin');
+    await adminPage.fill('#auth-password', 'e2e bootstrap password');
+    await adminPage.click('#auth-form button[type="submit"]');
+    await waitForPlayerData(adminPage);
+    const events = [];
+    for (const name of ['Handoff E2E A', 'Handoff E2E B']) {
+      const response = await adminPage.request.post(`${BASE_URL}/api/events`, {
+        data: { name, startsAt: Date.now() + 7_200_000, endsAt: Date.now() + 10_800_000, eventType: 'lan' },
+      });
+      assert.equal(response.status(), 201, await response.text());
+      events.push((await response.json()) as { id: string; name: string });
+    }
+    await adminPage.reload();
+    await waitForPlayerData(adminPage);
+    await openUtilityView(adminPage, 'admin');
+    await adminPage.click('[data-navigate="kiosk"]');
+    for (const event of events) {
+      const row = adminPage.locator('.profile-row', { hasText: event.name });
+      const [popup] = await Promise.all([adminPage.waitForEvent('popup'), row.locator('.kiosk-open-link').click()]);
+      openedPages.push(popup);
+      await popup.waitForFunction(() => Boolean(sessionStorage.getItem('respawn_kiosk_event')));
+      await popup.waitForSelector('#kiosk-fullscreen');
+      assert.equal(await popup.evaluate(() => sessionStorage.getItem('respawn_kiosk_event')), event.id);
+      assert.equal(new URL(popup.url()).hash, '', 'the one-use handoff is removed from the address');
+    }
+    const tokens = await Promise.all(openedPages.map((popup) => popup.evaluate(() => sessionStorage.getItem('respawn_kiosk_token'))));
+    assert.ok(tokens[0] && tokens[1] && tokens[0] !== tokens[1]);
+  } finally {
+    for (const popup of openedPages) await popup.close();
+    await adminPage.close();
+  }
+});
+
 test('a reset link replaces the password and signs the browser in with a fresh session', async () => {
   const code = await mintResetInviteCode();
   await page.goto(`${BASE_URL}/?reset=${code}`);
