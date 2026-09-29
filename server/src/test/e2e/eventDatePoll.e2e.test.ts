@@ -742,6 +742,20 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   // vote count is read before the save has landed.
   await ratingSavedToast.waitFor({ state: 'detached' });
   await ownerPage.setViewportSize({ width: 1024, height: 768 });
+  // Beside a saved voter avatar a chosen 0 keeps its "Lehne ich ab" tag inside
+  // the voter column, clear of the answer buttons.
+  await linkedOption.locator('[data-poll-response="0"]').click();
+  const rejectTagGeometry = await linkedOption.evaluate((option) => {
+    const badges = option.querySelector('.event-poll-option-badges')!.getBoundingClientRect();
+    const tag = option.querySelector('.event-poll-reject-tag')!.getBoundingClientRect();
+    const toolbar = option.querySelector('.event-poll-rating-toolbar')!.getBoundingClientRect();
+    return { hasVoters: !!option.querySelector('.event-poll-voter-stack'),
+      badgesRight: badges.right, tagRight: tag.right, toolbarLeft: toolbar.left };
+  });
+  assert.equal(rejectTagGeometry.hasVoters, true, JSON.stringify(rejectTagGeometry));
+  assert.ok(rejectTagGeometry.tagRight <= rejectTagGeometry.badgesRight + 0.5, JSON.stringify(rejectTagGeometry));
+  assert.ok(rejectTagGeometry.toolbarLeft - rejectTagGeometry.tagRight >= 16, JSON.stringify(rejectTagGeometry));
+  await linkedOption.locator('[data-poll-response="1"]').click();
   const ratingPollId = await ratingPoll.getAttribute('data-poll-card');
   await assertPaintedPollResultCentered(ratingPoll.locator('.event-poll-option').first());
   await navigate(ownerPage, 'home');
