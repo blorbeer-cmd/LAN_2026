@@ -404,14 +404,15 @@ function defaultDrawTeamName(draw, team, index) {
 // only format, names and lobby details are chosen here. The draw is claimed
 // server-side in the same step, so it can no longer become a single result.
 function openDrawTournamentDialog(draw) {
-  const form = { format: 'single_elimination', twoLegged: false, trackScore: false, playAllPlaces: false, groupCount: 2, advancers: 1 };
+  const form = { format: 'single_elimination', twoLegged: false, trackScore: false, thirdPlaceMatch: false, groupCount: 2, advancers: 1 };
   let bodyEl;
   const names = draw.teams.map((team, index) => defaultDrawTeamName(draw, team, index));
   const lobby = { name: '', password: '' };
 
   function render() {
     const hasLeague = form.format === 'round_robin' || form.format === 'group_knockout';
-    const hasKnockout = form.format !== 'round_robin';
+    // Needs two semifinal losers; the group stage decides its count later.
+    const canPlayThird = form.format === 'group_knockout' || (form.format === 'single_elimination' && draw.teams.length >= 4);
     bodyEl.innerHTML = `
       <form class="stack draw-tournament-form" id="draw-tournament-form">
         <div>
@@ -436,7 +437,7 @@ function openDrawTournamentDialog(draw) {
         </div>
         <div class="draw-tournament-options">
           ${hasLeague ? `<label class="check-row"><input type="checkbox" id="draw-tournament-two-legged" ${form.twoLegged ? 'checked' : ''} /> Hin- & Rückrunde${form.format === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>` : ''}
-          ${hasKnockout ? `<label class="check-row"><input type="checkbox" id="draw-tournament-all-places" ${form.playAllPlaces ? 'checked' : ''} /> Alle Plätze ausspielen</label>` : ''}
+          ${canPlayThird ? `<label class="check-row"><input type="checkbox" id="draw-tournament-third-place" ${form.thirdPlaceMatch ? 'checked' : ''} /> Spiel um Platz 3</label>` : ''}
           <label class="check-row"><input type="checkbox" id="draw-tournament-track-score" ${form.trackScore ? 'checked' : ''} /> Ergebnisse inkl. Punktestand</label>
         </div>
         <div class="field-row">
@@ -454,7 +455,7 @@ function openDrawTournamentDialog(draw) {
       form.format = bodyEl.querySelector('#draw-tournament-format').value;
       form.twoLegged = Boolean(bodyEl.querySelector('#draw-tournament-two-legged')?.checked);
       form.trackScore = bodyEl.querySelector('#draw-tournament-track-score').checked;
-      form.playAllPlaces = Boolean(bodyEl.querySelector('#draw-tournament-all-places')?.checked);
+      form.thirdPlaceMatch = Boolean(bodyEl.querySelector('#draw-tournament-third-place')?.checked);
       form.groupCount = Number(bodyEl.querySelector('#draw-tournament-groups')?.value ?? form.groupCount);
       form.advancers = Number(bodyEl.querySelector('#draw-tournament-advancers')?.value ?? form.advancers);
       bodyEl.querySelectorAll('[data-draw-team-name]').forEach((input) => {
@@ -477,7 +478,7 @@ function openDrawTournamentDialog(draw) {
           format: form.format,
           twoLegged: form.twoLegged,
           trackScore: form.trackScore,
-          ...(form.format !== 'round_robin' ? { playAllPlaces: form.playAllPlaces } : {}),
+          ...(form.format !== 'round_robin' ? { thirdPlaceMatch: form.thirdPlaceMatch } : {}),
           ...(form.format === 'group_knockout' ? { groupCount: form.groupCount, advancersPerGroup: form.advancers } : {}),
           ...(lobby.name.trim() ? { lobbyName: lobby.name.trim() } : {}),
           ...(lobby.password.trim() ? { lobbyPassword: lobby.password.trim() } : {}),
@@ -770,10 +771,10 @@ function historyTournamentDetailHtml(tournament) {
   (detail.standings ?? []).forEach((entry, index) => standings.set(entry.teamId, { rank: index + 1, ...entry }));
   (detail.groups ?? []).forEach((group) => group.standings.forEach((entry, index) =>
     standings.set(entry.teamId, { rank: index + 1, groupIndex: group.groupIndex, ...entry })));
-  // Placement matches share the knockout's rounds, so exits and the final are
-  // read from the main bracket only; distinct places come from the server.
+  // The third-place match shares the final's round, so exits are read from
+  // the tree only; its places come with the final's from the server.
   const knockout = detail.matches.filter((match) => (detail.format === 'single_elimination' || match.stage === 'knockout')
-    && (match.placeFrom ?? 1) === 1);
+    && !match.isThirdPlace);
   const final = knockout.reduce((latest, match) => !latest || match.round > latest.round ? match : latest, null);
   const places = new Map(detail.status === 'completed' ? (detail.placements ?? []).map((entry) => [entry.teamId, entry.place]) : []);
   const placement = (teamId) => {

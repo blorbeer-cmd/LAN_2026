@@ -653,14 +653,13 @@
   display: flex;
   min-height: 0;
   flex: 1;
-  /* Column: rotating match pages add their dots below the grid. */
-  flex-direction: column;
   /* flex-start, not center: stacked match cards (see .kiosk-match-grid) can
      now be taller than this area on a short kiosk screen, and a centered
      child that overflows its container spills equally in both directions —
      up into the round header above it, not just down. Starting from the
      top keeps any overflow clipped cleanly at the bottom instead. */
-  justify-content: flex-start;
+  align-items: flex-start;
+  justify-content: center;
   overflow: hidden;
 }
 .kiosk-tournament-bracket-body .kiosk-match-grid {
@@ -723,7 +722,7 @@
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
 }
-/* Names the place a placement match is played for („Spiel um Platz 3“). */
+/* Names the third-place match beside the final. */
 .kiosk-match-label {
   padding: var(--space-1) var(--space-3);
   border-bottom: 1px solid var(--border);

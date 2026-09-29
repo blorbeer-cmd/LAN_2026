@@ -149,7 +149,7 @@ test('both semifinals reported at once fill the final and the third-place match 
     .send({
       gameId: gameIds[0],
       format: 'single_elimination',
-      playAllPlaces: true,
+      thirdPlaceMatch: true,
       teams: playerIds.map((id, index) => ({ name: `P${index + 1}`, playerIds: [id] })),
     });
   assert.equal(create.status, 201);
@@ -162,10 +162,10 @@ test('both semifinals reported at once fill the final and the third-place match 
   assert.deepEqual(results.map((r) => r.status), [200, 200]);
 
   const detail = await request(app).get(`/api/tournaments/${create.body.id}`);
-  const next = (placeFrom: number) =>
-    detail.body.matches.find((m: { round: number; placeFrom: number }) => m.round === 2 && m.placeFrom === placeFrom);
-  assert.deepEqual([next(1).teamAId, next(1).teamBId], semis.map((semi: { teamAId: string }) => semi.teamAId));
-  assert.deepEqual([next(3).teamAId, next(3).teamBId], semis.map((semi: { teamBId: string }) => semi.teamBId));
+  const next = (thirdPlace: boolean) =>
+    detail.body.matches.find((m: { round: number; isThirdPlace: boolean }) => m.round === 2 && m.isThirdPlace === thirdPlace);
+  assert.deepEqual([next(false).teamAId, next(false).teamBId], semis.map((semi: { teamAId: string }) => semi.teamAId));
+  assert.deepEqual([next(true).teamAId, next(true).teamBId], semis.map((semi: { teamBId: string }) => semi.teamBId));
 });
 
 test('simultaneous tournament corrections accept one current version only', async () => {

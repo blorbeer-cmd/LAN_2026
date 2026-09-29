@@ -3,8 +3,6 @@ import { escapeHtml, avatarHtml } from './format.js';
 import { icon } from './icons.js';
 import { playerSkillHtml, teamSkillHtml } from './skillDisplay.js';
 import { selectActiveLobbyMatches } from './tournamentLobbies.js';
-import { rankedListHtml } from './rankedList.js';
-import { isMainBracketMatch, placementMatchLabel } from './tournamentPlacements.js';
 
 // Presentation functions share one immutable render-state snapshot. Keeping
 // bracket/league markup here leaves views/tournament.js responsible for data,
@@ -47,7 +45,7 @@ export function createTournamentPresentation(myPlayerId = null) {
       (candidate) => tournament.format === 'single_elimination' || candidate.stage === 'knockout',
     );
     const totalRounds = Math.max(...knockoutMatches.map((candidate) => candidate.round));
-    return isMainBracketMatch(match) ? bracketRoundLabel(match.round, totalRounds) : placementMatchLabel(match, totalRounds);
+    return match.isThirdPlace ? 'Spiel um Platz 3' : bracketRoundLabel(match.round, totalRounds);
   }
 
   function renderActiveLobbies(tournament) {
@@ -184,14 +182,16 @@ export function createTournamentPresentation(myPlayerId = null) {
       </div>`;
   }
 
-  // matches defaults to the tournament's main bracket (single_elimination),
+  // matches defaults to the tournament's full match list (single_elimination),
   // but group_knockout passes just its knockout-stage rows so this can be
-  // reused for that sub-bracket once it's been generated. Placement matches
-  // are listed separately (renderPlacementMatches).
-  function renderBracket(t, matches = t.matches.filter(isMainBracketMatch)) {
+  // reused for that sub-bracket once it's been generated. A third-place match
+  // sits below the tree in the final's column.
+  function renderBracket(t, matches = t.matches) {
     const teamsById = new Map(t.teams.map((team) => [team.id, team]));
-    const totalRounds = Math.max(...matches.map((m) => m.round));
-    const matchesByKey = new Map(matches.map((m) => [`${m.round}:${m.slot}`, m]));
+    const thirdPlace = matches.find((m) => m.isThirdPlace);
+    const treeMatches = matches.filter((m) => !m.isThirdPlace);
+    const totalRounds = Math.max(...treeMatches.map((m) => m.round));
+    const matchesByKey = new Map(treeMatches.map((m) => [`${m.round}:${m.slot}`, m]));
     const final = matchesByKey.get(`${totalRounds}:0`);
     const champion = final?.winnerTeamId ? teamLabel(teamsById, final.winnerTeamId) : null;
 
@@ -203,12 +203,24 @@ export function createTournamentPresentation(myPlayerId = null) {
     const championHtml = champion
       ? `<div class="bracket-champion" aria-label="Sieger: ${champion}"><span class="bracket-team-name">${champion}</span></div>`
       : '';
+    // Same columns as the round titles, so the box lines up under the final.
+    const thirdPlaceHtml = thirdPlace
+      ? `<div class="bracket-third-place-row" data-bracket-third-place>
+          ${'<div aria-hidden="true"></div>'.repeat(totalRounds - 1)}
+          <div class="bracket-third-place">
+            <div class="bracket-third-place-title">Spiel um Platz 3</div>
+            ${renderBracketMatchBox(thirdPlace, t, teamsById, myTeamIdOf(t))}
+          </div>
+          ${champion ? '<div aria-hidden="true"></div>' : ''}
+        </div>`
+      : '';
 
     return `
       <div class="bracket-tree-wrap">
         <div class="bracket-tree-content">
           <div class="bracket-round-titles">${titles}</div>
           <div class="bracket-final-row">${tree}${championHtml}</div>
+          ${thirdPlaceHtml}
         </div>
       </div>`;
   }
@@ -246,34 +258,6 @@ export function createTournamentPresentation(myPlayerId = null) {
   function renderSingleFinal(t, match) {
     const teamsById = new Map(t.teams.map((team) => [team.id, team]));
     return fixtureRowHtml(match, t, teamsById);
-  }
-
-  // Placement matches as fixture rows, one block per placement bracket and
-  // round in the order they are played. Byes decide a place on their own and
-  // stay out of the list. Empty string when all places are not played out.
-  function renderPlacementMatches(t, knockoutMatches) {
-    const totalRounds = Math.max(...knockoutMatches.map((m) => m.round));
-    const playable = knockoutMatches.filter((m) => !isMainBracketMatch(m) && !m.isBye);
-    if (playable.length === 0) return '';
-    const teamsById = new Map(t.teams.map((team) => [team.id, team]));
-    const myTeamId = myTeamIdOf(t);
-    const blocks = new Map();
-    for (const m of playable) {
-      const key = `${m.round}:${m.placeFrom}`;
-      blocks.set(key, [...(blocks.get(key) ?? []), m]);
-    }
-    const rows = [...blocks.values()]
-      .sort((a, b) => a[0].round - b[0].round || a[0].placeFrom - b[0].placeFrom)
-      .map((matches) => `
-          <div class="tournament-round">
-            <div class="tournament-round-head">${escapeHtml(placementMatchLabel(matches[0], totalRounds))}</div>
-            ${matches.map((m) => fixtureRowHtml(m, t, teamsById, myTeamId)).join('')}
-          </div>`)
-      .join('');
-    return `<section class="card stack grouped-page-section tournament-board-card" aria-labelledby="tournament-placements-title" data-tournament-placements>
-        <div class="grouped-page-section-title"><h2 id="tournament-placements-title">Platzierungsspiele</h2></div>
-        ${rows}
-      </section>`;
   }
 
   function renderFixtures(t, teamsById, matches) {
@@ -372,18 +356,17 @@ export function createTournamentPresentation(myPlayerId = null) {
       .join('');
 
     const knockoutMatches = t.matches.filter((m) => m.stage === 'knockout');
-    const mainBracket = knockoutMatches.filter(isMainBracketMatch);
+    // A third-place match needs four teams, so a lone final never has one.
     const knockoutHtml = `<section class="card stack grouped-page-section tournament-board-card">
-        <div class="grouped-page-section-title"><h2>${mainBracket.length === 1 ? 'Finale' : 'K.O.-Runde'}</h2></div>
+        <div class="grouped-page-section-title"><h2>${knockoutMatches.length === 1 ? 'Finale' : 'K.O.-Runde'}</h2></div>
         ${
-          mainBracket.length === 0
+          knockoutMatches.length === 0
             ? emptyStateHtml('Startet automatisch, sobald alle Gruppenspiele entschieden sind.')
-            : mainBracket.length === 1 ? renderSingleFinal(t, mainBracket[0]) : renderBracket(t, mainBracket)
+            : knockoutMatches.length === 1 ? renderSingleFinal(t, knockoutMatches[0]) : renderBracket(t, knockoutMatches)
         }
       </section>`;
-    const placementHtml = knockoutMatches.length > 0 ? renderPlacementMatches(t, knockoutMatches) : '';
 
-    return `<div class="tournament-group-stage"><div class="tournament-groups-grid">${groupBlocks}</div>${knockoutHtml}${placementHtml}</div>`;
+    return `<div class="tournament-group-stage"><div class="tournament-groups-grid">${groupBlocks}</div>${knockoutHtml}</div>`;
   }
 
   const isOwnTeam = (team) => Boolean(myPlayerId) && team.players.some((player) => player.id === myPlayerId);
@@ -425,36 +408,14 @@ export function createTournamentPresentation(myPlayerId = null) {
   }
 
   // A finished tournament leads with its outcome, so the end is visible
-  // without reading the board: the winning team with its players and, when
-  // every place was played out, the complete final ranking below it.
+  // without reading the board: the winning team with its players.
   function renderChampion(t) {
     const champion = t.status === 'completed' ? t.teams.find((team) => team.id === t.championTeamId) : null;
     if (!champion) return '';
     return `<section class="card stack grouped-page-section" aria-labelledby="tournament-champion-title" data-tournament-champion>
       <div class="grouped-page-section-title"><h2 id="tournament-champion-title">Turnier beendet</h2></div>
       ${teamCardHtml(t, champion, { winner: true })}
-      ${renderFinalRanking(t)}
     </section>`;
-  }
-
-  function renderFinalRanking(t) {
-    const placements = t.playAllPlaces ? t.placements ?? [] : [];
-    if (placements.length <= 2) return '';
-    const teamsById = new Map(t.teams.map((team) => [team.id, team]));
-    const myTeamId = myTeamIdOf(t);
-    const items = placements
-      .filter((placement) => teamsById.has(placement.teamId))
-      .map((placement) => {
-        const team = teamsById.get(placement.teamId);
-        const wins = t.matches.filter((m) => !m.isBye && m.winnerTeamId === team.id).length;
-        return {
-          rank: placement.place,
-          title: `${escapeHtml(team.name)}${team.id === myTeamId ? MY_TEAM_HINT : ''}`,
-          meta: team.players.map((player) => escapeHtml(player.name)).join(', '),
-          value: wins > 0 ? `${wins} ${wins === 1 ? 'Sieg' : 'Siege'}` : '',
-        };
-      });
-    return `<h3 class="tournament-group-subtitle">Endstand</h3>${rankedListHtml(items, { ranked: true, label: 'Endstand' })}`;
   }
 
   // canRename(team) decides per team whether the pencil appears (own team
@@ -486,7 +447,6 @@ export function createTournamentPresentation(myPlayerId = null) {
     renderBracket,
     renderChampion,
     renderGroupKnockout,
-    renderPlacementMatches,
     renderSingleFinal,
     renderRoundRobin,
     renderTournamentTeams,

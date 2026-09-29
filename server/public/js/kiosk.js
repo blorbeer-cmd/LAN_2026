@@ -13,7 +13,6 @@ import { drawArcadeStreamCanvas } from './arcade/shared/arcadeStreamRenderer.js'
 import { domainIcon, installDomainIcons } from './domainIcons.js';
 import { snakeArenaLegendHtml } from './arcade/shared/snakeArenaLegend.js';
 import { emptyStateHtml } from './emptyState.js';
-import { isMainBracketMatch, placementMatchLabel } from './tournamentPlacements.js';
 import { kioskMusicQueueHtml, kioskMusicQueueKey } from './kioskMusic.js';
 import {
   connectLocalSpotifyPlayer,
@@ -680,89 +679,7 @@ function tournamentStandingRow(name, standing, index, { compact = false } = {}) 
     </div>`;
 }
 
-// A round with placement matches can hold more match cards than the
-// tournament card fits (15 teams: seven final-round matches). Instead of
-// clipping them, the cards then rotate in pages, like Live-Status.
-const TOURNAMENT_ROTATE_INTERVAL_MS = 6_000;
-let tournamentCards = [];
-let tournamentPages = []; // [start, end) card ranges; empty = every card fits
-let tournamentPageIndex = 0;
-let tournamentRotationTimer = null;
-let tournamentSettleToken = 0;
-
-function stopTournamentRotation() {
-  if (tournamentRotationTimer !== null) clearInterval(tournamentRotationTimer);
-  tournamentRotationTimer = null;
-}
-
-function tournamentPageHtml(cards, totalPages, pageIndex) {
-  return `<div class="kiosk-match-grid">${cards.join('')}</div>${liveDotsHtml(totalPages, pageIndex)}`;
-}
-
-function renderTournamentPage(body) {
-  if (tournamentPageIndex >= tournamentPages.length) tournamentPageIndex = 0;
-  const [start, end] = tournamentPages[tournamentPageIndex];
-  body.innerHTML = tournamentPageHtml(tournamentCards.slice(start, end), tournamentPages.length, tournamentPageIndex);
-}
-
-// Called after every tournament paint: keeps all cards when they fit,
-// otherwise fills each page (dots included) with as many cards as fit and
-// rotates through them. Pages differ in size because a placement card
-// carries an extra caption line.
-async function settleTournamentPages() {
-  const myToken = ++tournamentSettleToken;
-  stopTournamentRotation();
-  tournamentPages = [];
-  tournamentPageIndex = 0;
-  const body = document.querySelector('#kiosk-tournament .kiosk-tournament-bracket-body');
-  if (!body || tournamentCards.length <= 1) return;
-  await nextFrame();
-  if (myToken !== tournamentSettleToken || !body.isConnected || liveFits(body)) return;
-
-  const pages = [];
-  for (let start = 0; start < tournamentCards.length;) {
-    // Two dots stand in for the final count: the dots row has the same
-    // height for any number of pages.
-    let end = tournamentCards.length;
-    for (; end > start + 1; end -= 1) {
-      body.innerHTML = tournamentPageHtml(tournamentCards.slice(start, end), 2, 0);
-      await nextFrame();
-      if (myToken !== tournamentSettleToken || !body.isConnected) return;
-      if (liveFits(body)) break;
-    }
-    pages.push([start, end]);
-    start = end;
-  }
-  tournamentPages = pages;
-  renderTournamentPage(body);
-  tournamentRotationTimer = setInterval(() => {
-    if (!body.isConnected) return stopTournamentRotation();
-    tournamentPageIndex += 1;
-    renderTournamentPage(body);
-  }, TOURNAMENT_ROTATE_INTERVAL_MS);
-}
-
-// A different card height (fullscreen, resolution change) re-decides the
-// page size from the full set of cards.
-let tournamentResizeTimer = null;
-let tournamentCardHeight = 0;
-const kioskTournamentElement = document.getElementById('kiosk-tournament');
-const tournamentResizeObserver = new ResizeObserver(([entry]) => {
-  const height = Math.round(entry.contentRect.height);
-  if (height === tournamentCardHeight) return;
-  tournamentCardHeight = height;
-  clearTimeout(tournamentResizeTimer);
-  tournamentResizeTimer = setTimeout(() => {
-    const body = document.querySelector('#kiosk-tournament .kiosk-tournament-bracket-body');
-    if (!body || tournamentCards.length <= 1) return;
-    body.innerHTML = `<div class="kiosk-match-grid">${tournamentCards.join('')}</div>`;
-    settleTournamentPages();
-  }, 150);
-});
-if (kioskTournamentElement) tournamentResizeObserver.observe(kioskTournamentElement);
-
 function renderTournament(t) {
-  tournamentCards = [];
   if (!t) return emptyStateHtml('Noch kein Turnier.', { className: 'kiosk-empty-state' });
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
   const teamName = (id) => (id ? escapeHtml(teamsById.get(id)?.name ?? 'TBD') : 'TBD');
@@ -801,17 +718,13 @@ function renderTournament(t) {
   const bracketMatches = t.format === 'group_knockout' ? knockoutMatches : t.matches;
 
   // Bracket: show whichever round still has an undecided-but-playable
-  // match, or the final result if it's all done. Placement matches of that
-  // round appear after the main bracket with their place; byes inside a
-  // placement bracket decide nothing worth showing.
+  // match, or the final result if it's all done.
   const totalRounds = Math.max(...bracketMatches.map((m) => m.round));
   const currentRound =
     bracketMatches.find((m) => !m.isBye && m.teamAId && m.teamBId && !m.winnerTeamId)?.round ?? totalRounds;
-  tournamentCards = bracketMatches
-    .filter((m) => m.round === currentRound && (isMainBracketMatch(m) || !m.isBye))
-    .sort((a, b) => (a.placeFrom ?? 1) - (b.placeFrom ?? 1) || a.slot - b.slot)
+  const rows = bracketMatches
+    .filter((m) => m.round === currentRound)
     .map((m) => {
-      const placeLabel = isMainBracketMatch(m) ? '' : `<div class="kiosk-match-label">${escapeHtml(placementMatchLabel(m, totalRounds))}</div>`;
       if (m.isBye) {
         return `
           <div class="kiosk-match-card">
@@ -821,17 +734,18 @@ function renderTournament(t) {
       }
       return `
         <div class="kiosk-match-card">
-          ${placeLabel}
+          ${m.isThirdPlace ? '<div class="kiosk-match-label">Spiel um Platz 3</div>' : ''}
           <div class="kiosk-match-team ${m.winnerTeamId === m.teamAId ? 'is-winner' : ''}"><strong>${teamName(m.teamAId)}</strong>${m.winnerTeamId === m.teamAId ? '<span class="badge badge-playing">Sieger</span>' : ''}</div>
           <div class="kiosk-match-team ${m.winnerTeamId === m.teamBId ? 'is-winner' : ''}"><strong>${teamName(m.teamBId)}</strong>${m.winnerTeamId === m.teamBId ? '<span class="badge badge-playing">Sieger</span>' : ''}</div>
         </div>`;
-    });
+    })
+    .join('');
   return `<div class="kiosk-tournament-overview kiosk-tournament-bracket">
     <div class="kiosk-tournament-meta">
       <strong>${escapeHtml(t.gameName)}</strong>
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : `Runde ${currentRound}/${totalRounds}`}</span>
     </div>
-    <div class="kiosk-tournament-bracket-body"><div class="kiosk-match-grid">${tournamentCards.join('')}</div></div>
+    <div class="kiosk-tournament-bracket-body"><div class="kiosk-match-grid">${rows}</div></div>
   </div>`;
 }
 
@@ -1155,10 +1069,8 @@ async function refreshTournament() {
       if (!isLatestRefresh('tournament', requestVersion)) return;
       updateHtml('kiosk-tournament', renderTournament(detail));
     } else {
-      tournamentCards = [];
       updateHtml('kiosk-tournament', emptyStateHtml('Noch kein Turnier.', { className: 'kiosk-empty-state' }));
     }
-    await settleTournamentPages();
   } catch (err) {
     logRefreshFailure('tournament', err);
   }

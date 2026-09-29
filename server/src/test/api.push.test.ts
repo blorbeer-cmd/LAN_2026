@@ -579,7 +579,7 @@ test('a match-ready push names the lobby and its default host (the upper bracket
     .send({
       gameId,
       format: 'single_elimination',
-      playAllPlaces: true,
+      thirdPlaceMatch: true,
       lobbyName: 'Respawn',
       lobbyPassword: 'geheim',
       teams: [
@@ -616,12 +616,11 @@ test('a match-ready push names the lobby and its default host (the upper bracket
   assert.match(matchReady.body, new RegExp(`${upperWinnerName} eröffnet die Lobby`));
   // The semifinal losers are sent to their own third-place lobby, not the
   // final's. They hold no subscription here, so read the logged notification.
-  const thirdPlaceReady = db
+  const readyLogs = db
     .prepare("SELECT body FROM push_log WHERE topic_key LIKE ? AND body LIKE '%nächstes Match%'")
     .all(`tournament:${tournamentId}:match:%`) as Array<{ body: string }>;
-  assert.equal(thirdPlaceReady.length, 2, JSON.stringify(thirdPlaceReady));
-  assert.equal(thirdPlaceReady.filter((entry) => /Lobby "Respawn-P3-R2-M1"/.test(entry.body)).length, 1,
-    JSON.stringify(thirdPlaceReady));
+  assert.equal(readyLogs.length, 2, JSON.stringify(readyLogs));
+  assert.equal(readyLogs.filter((entry) => /Lobby "Respawn-KO-R2-M2"/.test(entry.body)).length, 1, JSON.stringify(readyLogs));
 
   // GET /api/push/last is the Kiosk's shared-screen banner - a personally-
   // targeted push ("dein Match ist bereit", audience 'direct') would read as

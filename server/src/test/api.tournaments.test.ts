@@ -250,68 +250,51 @@ test('correcting a bracket result reopens dependent matches without duplicating 
   assert.match(stale.body.error, /inzwischen geändert/);
 });
 
-interface PlacementMatch {
-  id: string;
-  round: number;
-  slot: number;
-  isBye: boolean;
-  placeFrom: number | null;
-  placeRange: { from: number; to: number } | null;
-  teamAId: string | null;
-  teamBId: string | null;
-  winnerTeamId: string | null;
-  matchId: string | null;
-  playedAt: number | null;
-  lobbyName: string | null;
-}
-
-test('playAllPlaces must be a boolean', async () => {
+test('thirdPlaceMatch must be a boolean', async () => {
   const res = await request(app)
     .post('/api/tournaments')
-    .send({ gameId, format: 'single_elimination', playAllPlaces: 'ja', teams: soloTeams(playerIds) });
+    .send({ gameId, format: 'single_elimination', thirdPlaceMatch: 'ja', teams: soloTeams(playerIds) });
   assert.equal(res.status, 400);
 });
 
-test('a league ignores playAllPlaces because its table already ranks every team', async () => {
-  const res = await request(app)
+test('a third-place match is only added where two semifinal losers exist', async () => {
+  const league = await request(app)
     .post('/api/tournaments')
-    .send({ gameId, format: 'round_robin', playAllPlaces: true, teams: soloTeams(playerIds.slice(0, 3)) });
-  assert.equal(res.status, 201);
-  assert.equal(res.body.playAllPlaces, false);
+    .send({ gameId, format: 'round_robin', thirdPlaceMatch: true, teams: soloTeams(playerIds) });
+  assert.equal(league.body.thirdPlaceMatch, false);
+  const threeTeams = await request(app)
+    .post('/api/tournaments')
+    .send({ gameId, format: 'single_elimination', thirdPlaceMatch: true, teams: soloTeams(playerIds.slice(0, 3)) });
+  assert.equal(threeTeams.body.thirdPlaceMatch, false);
+  assert.equal(threeTeams.body.matches.some((m: { isThirdPlace: boolean }) => m.isThirdPlace), false);
 });
 
-test('playing all places: the semifinal losers play for third and the tournament ends after both matches', async () => {
+test('the semifinal losers play for third and the tournament ends after both last matches', async () => {
   const create = await request(app).post('/api/tournaments').send({
-    gameId,
-    name: 'Platzierungsturnier',
-    format: 'single_elimination',
-    playAllPlaces: true,
-    lobbyName: 'Platz',
+    gameId, name: 'Platz-3-Turnier', format: 'single_elimination', thirdPlaceMatch: true, lobbyName: 'Platz',
     teams: soloTeams(playerIds),
   });
   assert.equal(create.status, 201);
-  assert.equal(create.body.playAllPlaces, true);
+  assert.equal(create.body.thirdPlaceMatch, true);
   const id = create.body.id;
-  const matches = create.body.matches as PlacementMatch[];
-  const thirdPlace = matches.find((m) => m.placeFrom === 3)!;
+  type Board = { id: string; round: number; slot: number; isThirdPlace: boolean; teamAId: string; teamBId: string; playedAt: number };
+  const matches = create.body.matches as Board[];
+  const thirdPlace = matches.find((m) => m.isThirdPlace)!;
   assert.equal(matches.length, 4);
-  assert.deepEqual(thirdPlace.placeRange, { from: 3, to: 4 });
-  assert.equal(thirdPlace.lobbyName, 'Platz-P3-R2-M1');
+  assert.equal((thirdPlace as Board & { lobbyName: string }).lobbyName, 'Platz-KO-R2-M2');
 
   const semis = matches.filter((m) => m.round === 1);
   for (const semi of semis) {
     const res = await request(app).post(`/api/tournaments/${id}/matches/${semi.id}/result`).send({ winnerTeamId: semi.teamAId });
     assert.equal(res.status, 200);
   }
-  let detail = (await request(app).get(`/api/tournaments/${id}`)).body;
-  const filledThird = detail.matches.find((m: PlacementMatch) => m.id === thirdPlace.id);
+  const detail = (await request(app).get(`/api/tournaments/${id}`)).body;
+  const filledThird = detail.matches.find((m: Board) => m.id === thirdPlace.id);
   assert.deepEqual([filledThird.teamAId, filledThird.teamBId], semis.map((semi) => semi.teamBId));
 
-  const final = detail.matches.find((m: PlacementMatch) => m.round === 2 && m.placeFrom === 1);
+  const final = detail.matches.find((m: Board) => m.round === 2 && !m.isThirdPlace);
   const finalRes = await request(app).post(`/api/tournaments/${id}/matches/${final.id}/result`).send({ winnerTeamId: final.teamBId });
   assert.equal(finalRes.body.status, 'active', 'the third-place match is still open');
-  assert.equal(finalRes.body.championTeamId, null);
-
   const thirdRes = await request(app)
     .post(`/api/tournaments/${id}/matches/${thirdPlace.id}/result`)
     .send({ winnerTeamId: filledThird.teamAId });
@@ -326,48 +309,25 @@ test('playing all places: the semifinal losers play for third and the tournament
 
   // Hall of Fame and export crown the final's winner, not the third-place winner.
   const exportRes = await request(app).get('/api/export');
-  const entry = exportRes.body.tournaments.find((t: { name: string }) => t.name === 'Platzierungsturnier');
+  const entry = exportRes.body.tournaments.find((t: { name: string }) => t.name === 'Platz-3-Turnier');
   assert.equal(entry.championTeamName, teamNamesOf(thirdRes.body.teams, [final.teamBId])[0]);
 
   // Changing a semifinal winner moves both its teams: the final and the
-  // third-place match reopen and lose their recorded results.
-  detail = thirdRes.body;
-  const semi = detail.matches.find((m: PlacementMatch) => m.id === semis[0].id);
+  // third-place match reopen and their results leave the leaderboard.
+  const semi = thirdRes.body.matches.find((m: Board) => m.id === semis[0].id);
   const beforeMatches = (await request(app).get(`/api/matches?gameId=${gameId}`)).body.length;
   const correction = await request(app)
     .put(`/api/tournaments/${id}/matches/${semi.id}/result`)
     .send({ winnerTeamId: semi.teamBId, expectedPlayedAt: semi.playedAt });
   assert.equal(correction.status, 200);
   assert.equal(correction.body.status, 'active');
-  const reopenedFinal = correction.body.matches.find((m: PlacementMatch) => m.id === final.id);
-  const reopenedThird = correction.body.matches.find((m: PlacementMatch) => m.id === thirdPlace.id);
-  assert.equal(reopenedFinal.teamAId, semi.teamBId);
-  assert.equal(reopenedThird.teamAId, semi.teamAId);
-  assert.equal(reopenedFinal.winnerTeamId, null);
-  assert.equal(reopenedThird.winnerTeamId, null);
+  const reopenedFinal = correction.body.matches.find((m: Board & { winnerTeamId: string | null }) => m.id === final.id);
+  const reopenedThird = correction.body.matches.find((m: Board & { winnerTeamId: string | null }) => m.id === thirdPlace.id);
+  assert.deepEqual([reopenedFinal.teamAId, reopenedFinal.winnerTeamId], [semi.teamBId, null]);
+  assert.deepEqual([reopenedThird.teamAId, reopenedThird.winnerTeamId], [semi.teamAId, null]);
   assert.deepEqual(correction.body.placements, []);
   const afterMatches = (await request(app).get(`/api/matches?gameId=${gameId}`)).body.length;
   assert.equal(afterMatches, beforeMatches - 2, 'the final and third-place results leave the leaderboard');
-});
-
-test('playing all places with byes gives every team its own place', async () => {
-  const create = await request(app)
-    .post('/api/tournaments')
-    .send({ gameId, format: 'single_elimination', playAllPlaces: true, teams: soloTeams(playerIds.slice(0, 3)) });
-  assert.equal(create.status, 201);
-  const id = create.body.id;
-  // Three teams: one semifinal plus a bye, so the semifinal loser takes third
-  // place without another match.
-  const playable = (body: { matches: PlacementMatch[] }) =>
-    body.matches.filter((m) => !m.isBye && m.teamAId && m.teamBId && m.winnerTeamId === null);
-  let body = create.body;
-  assert.equal(playable(body).length, 1);
-  while (playable(body).length > 0) {
-    const [match] = playable(body);
-    body = (await request(app).post(`/api/tournaments/${id}/matches/${match.id}/result`).send({ winnerTeamId: match.teamAId })).body;
-  }
-  assert.equal(body.status, 'completed');
-  assert.deepEqual(body.placements.map((p: { place: number }) => p.place), [1, 2, 3]);
 });
 
 test('POST /api/tournaments auto-resolves a bye for an odd team count', async () => {

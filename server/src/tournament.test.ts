@@ -4,8 +4,6 @@ import {
   generateBracket,
   applyBracketResult,
   bracketIsComplete,
-  bracketPlaceFrom,
-  bracketPlaceRange,
   computeBracketPlacements,
   generateRoundRobin,
   computeRoundRobinStandings,
@@ -28,10 +26,6 @@ test('deriveTournamentLobbyName creates unique phase/round/slot names', () => {
   assert.equal(
     deriveTournamentLobbyName('LAN26', 'group_knockout', { round: 1, slot: 0, stage: 'knockout', groupIndex: null }),
     'LAN26-KO-R1-M1'
-  );
-  assert.equal(
-    deriveTournamentLobbyName('LAN26', 'single_elimination', { round: 2, slot: 0, stage: null, groupIndex: null, placeFrom: 3 }),
-    'LAN26-P3-R2-M1'
   );
 });
 
@@ -252,63 +246,34 @@ test('a fully played bracket has exactly one team with no losses recorded agains
   assert.equal(champion, 'a');
 });
 
-test('playing all places adds a third-place match for the semifinal losers', () => {
-  let matches = generateBracket(['a', 'b', 'c', 'd'], true);
-  const thirdPlace = matches.find((m) => bracketPlaceFrom(m) === 3)!;
-  assert.equal(thirdPlace.round, 2);
-  assert.deepEqual(bracketPlaceRange(matches, thirdPlace), { from: 3, to: 4 });
+test('a third-place match takes both semifinal losers and completes the bracket', () => {
+  let matches = generateBracket(['a', 'b', 'c', 'd', 'e', 'f'], true);
+  const thirdPlace = matches.find((m) => m.isThirdPlace)!;
+  assert.deepEqual([thirdPlace.round, thirdPlace.slot], [3, 1], 'it shares the final round as slot 1');
 
-  const [m0, m1] = matches.filter((m) => m.round === 1).sort((x, y) => x.slot - y.slot);
-  matches = applyBracketResult(matches, 1, m0.slot, m0.teamAId!);
-  matches = applyBracketResult(matches, 1, m1.slot, m1.teamBId!);
-  const filled = matches.find((m) => bracketPlaceFrom(m) === 3)!;
-  assert.deepEqual([filled.teamAId, filled.teamBId], [m0.teamBId, m1.teamAId], 'both semifinal losers meet');
-
-  matches = applyBracketResult(matches, 2, 0, m0.teamAId!);
-  assert.equal(bracketIsComplete(matches), false, 'the third place is still open');
-  assert.deepEqual(computeBracketPlacements(matches).map((p) => p.place), [1, 2]);
-  matches = applyBracketResult(matches, 2, 0, m1.teamAId!, 3);
-  assert.equal(bracketIsComplete(matches), true);
-  assert.deepEqual(computeBracketPlacements(matches), [
-    { teamId: m0.teamAId, place: 1 },
-    { teamId: m1.teamBId, place: 2 },
-    { teamId: m1.teamAId, place: 3 },
-    { teamId: m0.teamBId, place: 4 },
-  ]);
-});
-
-// Byes put missing teams into the placement brackets. However they fall,
-// every real team must still play every match it reaches and end with its
-// own place, without gaps — for every team count a LAN plausibly has.
-test('playing all places gives every team a distinct place for 2 to 16 teams', () => {
-  for (let teamCount = 2; teamCount <= 16; teamCount++) {
-    const teams = Array.from({ length: teamCount }, (_, i) => `t${i + 1}`);
-    let matches = generateBracket(teams, true);
-    for (;;) {
-      const open = matches.find((m) => !m.isBye && m.winnerTeamId === null && m.teamAId && m.teamBId);
-      if (!open) break;
-      const { from, to } = bracketPlaceRange(matches, open);
-      assert.ok(from < to, `${teamCount} teams: a real match decides at least two places`);
-      matches = applyBracketResult(matches, open.round, open.slot, open.teamAId!, bracketPlaceFrom(open));
-    }
-    assert.equal(bracketIsComplete(matches), true, `${teamCount} teams: nothing left unplayed`);
-    const placements = computeBracketPlacements(matches);
-    assert.deepEqual(
-      placements.map((p) => p.place),
-      teams.map((_, i) => i + 1),
-      `${teamCount} teams: places 1..n`
-    );
-    assert.deepEqual(new Set(placements.map((p) => p.teamId)), new Set(teams));
-  }
-});
-
-test('without placement matches only the final decides distinct places', () => {
-  let matches = generateBracket(['a', 'b', 'c', 'd', 'e']);
-  assert.ok(matches.every((m) => bracketPlaceFrom(m) === 1));
   for (;;) {
-    const open = matches.find((m) => !m.isBye && m.winnerTeamId === null && m.teamAId && m.teamBId);
+    const open = matches.find((m) => !m.isBye && m.winnerTeamId === null && m.teamAId && m.teamBId && !m.isThirdPlace);
     if (!open) break;
     matches = applyBracketResult(matches, open.round, open.slot, open.teamAId!);
   }
+  const semis = matches.filter((m) => m.round === 2);
+  const filled = matches.find((m) => m.isThirdPlace)!;
+  assert.deepEqual([filled.teamAId, filled.teamBId], semis.map((semi) => semi.teamBId), 'both semifinal losers meet');
+  const final = matches.find((m) => m.round === 3 && !m.isThirdPlace)!;
+  assert.deepEqual([final.teamAId, final.teamBId], semis.map((semi) => semi.teamAId), 'no loser reaches the final');
+  assert.equal(bracketIsComplete(matches), false, 'the third place is still open');
   assert.deepEqual(computeBracketPlacements(matches).map((p) => p.place), [1, 2]);
+
+  matches = applyBracketResult(matches, 3, 1, filled.teamBId!);
+  assert.equal(bracketIsComplete(matches), true);
+  assert.deepEqual(computeBracketPlacements(matches), [
+    { teamId: final.winnerTeamId, place: 1 },
+    { teamId: final.teamBId, place: 2 },
+    { teamId: filled.teamBId, place: 3 },
+    { teamId: filled.teamAId, place: 4 },
+  ]);
+});
+
+test('fewer than four teams get no third-place match', () => {
+  assert.equal(generateBracket(['a', 'b', 'c'], true).some((m) => m.isThirdPlace), false);
 });

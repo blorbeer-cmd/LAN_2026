@@ -35,13 +35,12 @@ export function getCompletedTournamentSummaries(eventId: string, groupId: string
       // group_knockout only ever reaches 'completed' once its knockout
       // bracket (not the group stage) has a decided final — same
       // "winner of the highest round" resolution as a plain bracket, just
-      // scoped to the knockout-stage rows. Placement matches share the last
-      // round, so only the main bracket (place_from 1 or NULL) counts.
+      // scoped to the knockout-stage rows. A third-place match shares the
+      // final's round and is never the final.
       const rows = db
-        .prepare('SELECT round, winner_team_id, stage, place_from FROM tournament_matches WHERE tournament_id = ?')
-        .all(t.id) as Array<{ round: number; winner_team_id: string | null; stage: string | null; place_from: number | null }>;
-      const bracketRows = (t.format === 'group_knockout' ? rows.filter((r) => r.stage === 'knockout') : rows)
-        .filter((r) => (r.place_from ?? 1) === 1);
+        .prepare('SELECT round, winner_team_id, stage FROM tournament_matches WHERE tournament_id = ? AND is_third_place = 0')
+        .all(t.id) as Array<{ round: number; winner_team_id: string | null; stage: string | null }>;
+      const bracketRows = t.format === 'group_knockout' ? rows.filter((r) => r.stage === 'knockout') : rows;
       const finalRound = Math.max(...bracketRows.map((r) => r.round));
       championTeamId = bracketRows.find((r) => r.round === finalRound)?.winner_team_id ?? null;
     } else {

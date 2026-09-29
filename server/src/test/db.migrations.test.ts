@@ -839,12 +839,12 @@ test('records the complete migration history and does not duplicate it on restar
   assert.ok(playerColumns.some((column) => column.name === 'test_owner_group_id'));
   const tournamentColumns = migrated.prepare('PRAGMA table_info(tournaments)').all() as Array<{ name: string; dflt_value: string | null }>;
   assert.equal(
-    tournamentColumns.find((column) => column.name === 'play_all_places')?.dflt_value,
+    tournamentColumns.find((column) => column.name === 'third_place_match')?.dflt_value,
     '0',
-    'legacy tournaments keep their plain knockout without placement matches',
+    'legacy tournaments keep their plain knockout without a third-place match',
   );
-  const tournamentMatchColumns = migrated.prepare('PRAGMA table_info(tournament_matches)').all() as Array<{ name: string }>;
-  assert.ok(tournamentMatchColumns.some((column) => column.name === 'place_from'));
+  const tournamentMatchColumns = migrated.prepare('PRAGMA table_info(tournament_matches)').all() as Array<{ name: string; dflt_value: string | null }>;
+  assert.equal(tournamentMatchColumns.find((column) => column.name === 'is_third_place')?.dflt_value, '0');
   assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'admin_log'").get());
   for (const table of ['groups', 'group_memberships', 'group_invites']) {
     assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
