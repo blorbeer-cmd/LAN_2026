@@ -250,6 +250,86 @@ test('correcting a bracket result reopens dependent matches without duplicating 
   assert.match(stale.body.error, /inzwischen geändert/);
 });
 
+test('thirdPlaceMatch must be a boolean', async () => {
+  const res = await request(app)
+    .post('/api/tournaments')
+    .send({ gameId, format: 'single_elimination', thirdPlaceMatch: 'ja', teams: soloTeams(playerIds) });
+  assert.equal(res.status, 400);
+});
+
+test('a third-place match is only added where two semifinal losers exist', async () => {
+  const league = await request(app)
+    .post('/api/tournaments')
+    .send({ gameId, format: 'round_robin', thirdPlaceMatch: true, teams: soloTeams(playerIds) });
+  assert.equal(league.body.thirdPlaceMatch, false);
+  const threeTeams = await request(app)
+    .post('/api/tournaments')
+    .send({ gameId, format: 'single_elimination', thirdPlaceMatch: true, teams: soloTeams(playerIds.slice(0, 3)) });
+  assert.equal(threeTeams.body.thirdPlaceMatch, false);
+  assert.equal(threeTeams.body.matches.some((m: { isThirdPlace: boolean }) => m.isThirdPlace), false);
+});
+
+test('the semifinal losers play for third and the tournament ends after both last matches', async () => {
+  const create = await request(app).post('/api/tournaments').send({
+    gameId, name: 'Platz-3-Turnier', format: 'single_elimination', thirdPlaceMatch: true, lobbyName: 'Platz',
+    teams: soloTeams(playerIds),
+  });
+  assert.equal(create.status, 201);
+  assert.equal(create.body.thirdPlaceMatch, true);
+  const id = create.body.id;
+  type Board = { id: string; round: number; slot: number; isThirdPlace: boolean; teamAId: string; teamBId: string; playedAt: number };
+  const matches = create.body.matches as Board[];
+  const thirdPlace = matches.find((m) => m.isThirdPlace)!;
+  assert.equal(matches.length, 4);
+  assert.equal((thirdPlace as Board & { lobbyName: string }).lobbyName, 'Platz-KO-R2-M2');
+
+  const semis = matches.filter((m) => m.round === 1);
+  for (const semi of semis) {
+    const res = await request(app).post(`/api/tournaments/${id}/matches/${semi.id}/result`).send({ winnerTeamId: semi.teamAId });
+    assert.equal(res.status, 200);
+  }
+  const detail = (await request(app).get(`/api/tournaments/${id}`)).body;
+  const filledThird = detail.matches.find((m: Board) => m.id === thirdPlace.id);
+  assert.deepEqual([filledThird.teamAId, filledThird.teamBId], semis.map((semi) => semi.teamBId));
+
+  const final = detail.matches.find((m: Board) => m.round === 2 && !m.isThirdPlace);
+  const finalRes = await request(app).post(`/api/tournaments/${id}/matches/${final.id}/result`).send({ winnerTeamId: final.teamBId });
+  assert.equal(finalRes.body.status, 'active', 'the third-place match is still open');
+  const thirdRes = await request(app)
+    .post(`/api/tournaments/${id}/matches/${thirdPlace.id}/result`)
+    .send({ winnerTeamId: filledThird.teamAId });
+  assert.equal(thirdRes.body.status, 'completed');
+  assert.equal(thirdRes.body.championTeamId, final.teamBId);
+  assert.deepEqual(thirdRes.body.placements, [
+    { teamId: final.teamBId, place: 1 },
+    { teamId: final.teamAId, place: 2 },
+    { teamId: filledThird.teamAId, place: 3 },
+    { teamId: filledThird.teamBId, place: 4 },
+  ]);
+
+  // Hall of Fame and export crown the final's winner, not the third-place winner.
+  const exportRes = await request(app).get('/api/export');
+  const entry = exportRes.body.tournaments.find((t: { name: string }) => t.name === 'Platz-3-Turnier');
+  assert.equal(entry.championTeamName, teamNamesOf(thirdRes.body.teams, [final.teamBId])[0]);
+
+  // Changing a semifinal winner moves both its teams: the final and the
+  // third-place match reopen and their results leave the leaderboard.
+  const semi = thirdRes.body.matches.find((m: Board) => m.id === semis[0].id);
+  const beforeMatches = (await request(app).get(`/api/matches?gameId=${gameId}`)).body.length;
+  const correction = await request(app)
+    .put(`/api/tournaments/${id}/matches/${semi.id}/result`)
+    .send({ winnerTeamId: semi.teamBId, expectedPlayedAt: semi.playedAt });
+  assert.equal(correction.status, 200);
+  assert.equal(correction.body.status, 'active');
+  const reopenedFinal = correction.body.matches.find((m: Board & { winnerTeamId: string | null }) => m.id === final.id);
+  const reopenedThird = correction.body.matches.find((m: Board & { winnerTeamId: string | null }) => m.id === thirdPlace.id);
+  assert.deepEqual([reopenedFinal.teamAId, reopenedFinal.winnerTeamId], [semi.teamBId, null]);
+  assert.deepEqual([reopenedThird.teamAId, reopenedThird.winnerTeamId], [semi.teamAId, null]);
+  assert.deepEqual(correction.body.placements, []);
+  const afterMatches = (await request(app).get(`/api/matches?gameId=${gameId}`)).body.length;
+  assert.equal(afterMatches, beforeMatches - 2, 'the final and third-place results leave the leaderboard');
+});
+
 test('POST /api/tournaments auto-resolves a bye for an odd team count', async () => {
   const res = await request(app)
     .post('/api/tournaments')

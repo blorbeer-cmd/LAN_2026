@@ -4,6 +4,7 @@ import {
   generateBracket,
   applyBracketResult,
   bracketIsComplete,
+  computeBracketPlacements,
   generateRoundRobin,
   computeRoundRobinStandings,
   assignGroups,
@@ -243,4 +244,36 @@ test('a fully played bracket has exactly one team with no losses recorded agains
   assert.equal(bracketIsComplete(matches), true);
   const champion = matches.find((m) => m.round === 2)!.winnerTeamId;
   assert.equal(champion, 'a');
+});
+
+test('a third-place match takes both semifinal losers and completes the bracket', () => {
+  let matches = generateBracket(['a', 'b', 'c', 'd', 'e', 'f'], true);
+  const thirdPlace = matches.find((m) => m.isThirdPlace)!;
+  assert.deepEqual([thirdPlace.round, thirdPlace.slot], [3, 1], 'it shares the final round as slot 1');
+
+  for (;;) {
+    const open = matches.find((m) => !m.isBye && m.winnerTeamId === null && m.teamAId && m.teamBId && !m.isThirdPlace);
+    if (!open) break;
+    matches = applyBracketResult(matches, open.round, open.slot, open.teamAId!);
+  }
+  const semis = matches.filter((m) => m.round === 2);
+  const filled = matches.find((m) => m.isThirdPlace)!;
+  assert.deepEqual([filled.teamAId, filled.teamBId], semis.map((semi) => semi.teamBId), 'both semifinal losers meet');
+  const final = matches.find((m) => m.round === 3 && !m.isThirdPlace)!;
+  assert.deepEqual([final.teamAId, final.teamBId], semis.map((semi) => semi.teamAId), 'no loser reaches the final');
+  assert.equal(bracketIsComplete(matches), false, 'the third place is still open');
+  assert.deepEqual(computeBracketPlacements(matches).map((p) => p.place), [1, 2]);
+
+  matches = applyBracketResult(matches, 3, 1, filled.teamBId!);
+  assert.equal(bracketIsComplete(matches), true);
+  assert.deepEqual(computeBracketPlacements(matches), [
+    { teamId: final.winnerTeamId, place: 1 },
+    { teamId: final.teamBId, place: 2 },
+    { teamId: filled.teamBId, place: 3 },
+    { teamId: filled.teamAId, place: 4 },
+  ]);
+});
+
+test('fewer than four teams get no third-place match', () => {
+  assert.equal(generateBracket(['a', 'b', 'c'], true).some((m) => m.isThirdPlace), false);
 });
