@@ -53,6 +53,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   filters the captain list, which has no search field of its own. A single bulk toggle selects all
   visible rows, or deselects them when every visible row is already selected. Switching modes keeps both selections and search
   terms intact, so toggling back and forth loses no work.
+  „Anzahl Teams“ is capped at the number of selected draw players (never below its minimum of 2):
+  a larger typed value snaps to that number, and deselecting players lowers an already-higher value
+  with them. Reselecting players does not raise it again.
   „Teams auslosen“ and „Draft starten“ share one rule: each stays disabled until its minimum
   (2 selected players; 2–4 captains plus at least 1 pool player) is met, and a red
   `.info-tooltip-trigger--warning` beside the disabled button names the exact missing requirement —
