@@ -590,13 +590,21 @@ export function newstickerInterval(key: string, sequence: number): number {
 // Keep every LAN event's feed moving independently of connected screens.
 // Also discovers events created after startup on the next sweep.
 export function generateNewstickerFeeds(now = Date.now()): void {
-  const events = db.prepare(
-    `SELECT ka.group_id AS groupId, ka.event_id AS eventId
-     FROM kiosk_accounts ka
-     JOIN events e ON e.id = ka.event_id AND e.group_id = ka.group_id
-     JOIN groups g ON g.id = ka.group_id
-     WHERE g.archived_at IS NULL AND e.ended_at IS NULL`,
-  ).all() as Array<{ groupId: string; eventId: string }>;
+  let events: Array<{ groupId: string; eventId: string }>;
+  try {
+    events = db.prepare(
+      `SELECT ka.group_id AS groupId, ka.event_id AS eventId
+       FROM kiosk_accounts ka
+       JOIN events e ON e.id = ka.event_id AND e.group_id = ka.group_id
+       JOIN groups g ON g.id = ka.group_id
+       WHERE g.archived_at IS NULL AND e.ended_at IS NULL`,
+    ).all() as Array<{ groupId: string; eventId: string }>;
+  } catch (error) {
+    // A temporary database error in this optional feed must not stop the server.
+    // eslint-disable-next-line no-console
+    console.error('Newsticker event scan failed:', error);
+    return;
+  }
   for (const event of events) {
     try {
       getNewstickerFeed(event.groupId, event.eventId, now);
