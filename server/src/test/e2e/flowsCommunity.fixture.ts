@@ -442,7 +442,7 @@ flowTest('the device back button steps back through in-app views instead of leav
 
 flowTest('Aktuell: an open vote appears as a compact navigation row on Home', async () => {
   await page.click('.nav-btn[data-view="votes"]');
-  await page.waitForSelector('#votes-title');
+  await page.click('#votes-new');
   await page.fill('#votes-title', 'Freitagabend-Runde');
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
@@ -462,7 +462,7 @@ flowTest('Aktuell: an open vote appears as a compact navigation row on Home', as
   // Leave no open round behind for later tests.
   await page.click('.nav-btn[data-view="votes"]');
   await page.click('#votes-close');
-  await page.waitForSelector('#votes-start');
+  await page.waitForSelector('#votes-new');
 });
 
 flowTest('Kiosk: centers tournament content and shows only the latest feature push across the full width', async () => {

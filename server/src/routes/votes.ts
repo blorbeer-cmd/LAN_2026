@@ -13,6 +13,8 @@
 // A player may change their ballot as long as the round is open: every
 // submission replaces the player's previous one inside one transaction, so
 // double taps and concurrent devices leave exactly one complete ballot.
+// A round may be anonymous (nobody ever sees who voted how) and may show its
+// interim result while it runs instead of hiding it until the round closes.
 // Both modes rank games by a "score" (vote count for 'single', point sum for
 // 'points'); ties (including the all-zero state before anyone has voted)
 // fall back to the games' aggregate "Bock" rating (preferences table) so the
@@ -101,27 +103,49 @@ interface RoundMeta {
   title: string | null;
   info: string | null;
   selectedGameIds: string[] | null; // null = every game in the catalog
+  anonymous: boolean; // nobody ever sees who voted how
+  hideLiveResults: boolean; // no per-game result while the round runs
 }
+
+const DEFAULT_ROUND_META: RoundMeta = {
+  eventId: null,
+  title: null,
+  info: null,
+  selectedGameIds: null,
+  anonymous: false,
+  hideLiveResults: true,
+};
 
 // A round's title/info/game-selection live in vote_rounds (set once on
 // /start, immutable afterwards), unlike round/open/mode which are mirrored
 // into app_state for cheap access — this is only read a handful of times per
 // request, so a small extra query is fine.
 function getRoundMeta(groupId: string, round: number): RoundMeta {
-  if (round < 1) return { eventId: null, title: null, info: null, selectedGameIds: null };
+  if (round < 1) return { ...DEFAULT_ROUND_META };
   const row = db
     .prepare(
-      'SELECT event_id AS eventId, title, info, selected_game_ids AS selectedGameIdsJson FROM vote_rounds WHERE group_id = ? AND round = ?',
+      `SELECT event_id AS eventId, title, info, selected_game_ids AS selectedGameIdsJson,
+              anonymous, hide_live_results AS hideLiveResults
+       FROM vote_rounds WHERE group_id = ? AND round = ?`,
     )
     .get(groupId, round) as
-    | { eventId: string | null; title: string | null; info: string | null; selectedGameIdsJson: string | null }
+    | {
+        eventId: string | null;
+        title: string | null;
+        info: string | null;
+        selectedGameIdsJson: string | null;
+        anonymous: number;
+        hideLiveResults: number;
+      }
     | undefined;
-  if (!row) return { eventId: null, title: null, info: null, selectedGameIds: null };
+  if (!row) return { ...DEFAULT_ROUND_META };
   return {
     eventId: row.eventId,
     title: row.title,
     info: row.info,
     selectedGameIds: row.selectedGameIdsJson ? JSON.parse(row.selectedGameIdsJson) : null,
+    anonymous: row.anonymous === 1,
+    hideLiveResults: row.hideLiveResults === 1,
   };
 }
 
@@ -304,10 +328,12 @@ function buildResults(
   return filterResults(buildAllResults(groupId, round, mode, includeTestData, selectedGameIds), selectedGameIds);
 }
 
-// While a round is open, nobody — not even the person about to close it —
-// sees how votes/points are distributed across games yet: only the final
-// picture, once closed, should influence anyone (no bandwagoning towards
-// whatever's currently ahead). Total participation (how many people/points
+// While a round with a hidden interim result (hideLiveResults, the default)
+// is open, nobody — not even the person about to close it — sees how
+// votes/points are distributed across games yet: only the final picture, once
+// closed, should influence anyone (no bandwagoning towards whatever's
+// currently ahead). A round started with a visible interim result skips this
+// redaction (see buildPayload). Total participation (how many people/points
 // have been cast so far) is still shown — that's not a per-game distribution
 // and is a useful "is it worth waiting a bit longer" signal — but each
 // game's own votes/points/score are stripped, and the list is re-sorted by
@@ -365,9 +391,9 @@ interface Ballot {
   entries: Array<{ gameId: string; points: number | null }>;
 }
 
-// Who voted how in a closed round, one entry per voter, for the "Stimmen
-// ansehen" table. Only closed rounds reach this: while a round is open the
-// distribution stays hidden from everyone (see redactOpenRoundResults).
+// Who voted how, one entry per voter, for the "Stimmen ansehen" table and the
+// voter avatars. Callers only reach this for a round that is not anonymous and
+// either closed or showing its interim result (see buildPayload).
 function roundBallots(groupId: string, round: number, includeTestData: boolean, gameIds: string[]): Ballot[] {
   const shownGames = new Set(gameIds);
   const rows = db
@@ -426,9 +452,17 @@ function buildPayload(
   const totalVotes = fullResults.reduce((sum, r) => sum + r.votes, 0);
   const totalPoints = fullResults.reduce((sum, r) => sum + r.points, 0);
   const totalVoters = countRoundVoters(groupId, state.round, includeTestData);
-  const results = state.open ? redactOpenRoundResults(fullResults) : fullResults;
-  const catalogResults = state.open ? redactOpenRoundResults(catalogFullResults) : catalogFullResults;
-  return { ...state, ...meta, results, catalogResults, totalVotes, totalPoints, totalVoters, ...extra };
+  const hidden = state.open && meta.hideLiveResults;
+  const results = hidden ? redactOpenRoundResults(fullResults) : fullResults;
+  const catalogResults = hidden ? redactOpenRoundResults(catalogFullResults) : catalogFullResults;
+  // A running round that shows its interim result also shows who voted how,
+  // like an Umfrage — unless it is anonymous. Closed rounds carry their
+  // ballots in the history instead.
+  const liveBallots =
+    state.open && !meta.hideLiveResults && !meta.anonymous
+      ? { ballots: roundBallots(groupId, state.round, includeTestData, fullResults.map((r) => r.gameId)) }
+      : {};
+  return { ...state, ...meta, results, catalogResults, totalVotes, totalPoints, totalVoters, ...liveBallots, ...extra };
 }
 
 // GET /api/votes - current round's state and tally.
@@ -441,9 +475,12 @@ votesRouter.get('/', (req, res) => {
 // GET /api/votes/kiosk - the shared room display receives the current tally
 // while a round is open, but kiosk.js masks every game identity until the
 // persisted post-close reveal time.
-// The regular GET /api/votes stays redacted while open, so this does not
-// change the anti-bandwagoning behavior on phones; the room display's masks
-// prevent its live ranking from influencing those votes too.
+// The regular GET /api/votes stays redacted while a round with a hidden
+// interim result is open, so this does not change the anti-bandwagoning
+// behavior on phones; the room display's masks prevent its live ranking from
+// influencing those votes too. The kiosk masks game names until the reveal
+// even when the round shows its interim result to participants: it stays
+// deliberately conservative for the shared screen.
 votesRouter.get('/kiosk', (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res, req.query.eventId);
@@ -512,13 +549,15 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
 });
 
 // POST /api/votes/start - begins a new round. Fails if one is already open.
-// Body: { mode?, title?, info?, gameIds? }
+// Body: { mode?, title?, info?, gameIds?, anonymous?, hideLiveResults? }
 // - mode: 'points' (default, the normal voting mode) or 'single' — 'single'
 //   is only meant for a runoff between tied winners (see /close), it's not
 //   offered as a choice when starting a fresh round.
 // - title/info: optional free text shown to voters.
 // - gameIds: optional preselection of which games this round covers; omit
 //   for "every game in the catalog".
+// - anonymous: nobody ever sees who voted how (default false).
+// - hideLiveResults: no per-game result while the round runs (default true).
 votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res);
@@ -528,7 +567,7 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
     return res.status(409).json({ error: 'Es läuft bereits eine Abstimmung.' });
   }
 
-  const { mode, title, info, gameIds } = req.body ?? {};
+  const { mode, title, info, gameIds, anonymous, hideLiveResults } = req.body ?? {};
   if (mode !== undefined && mode !== 'single' && mode !== 'points') {
     return res.status(400).json({ error: 'mode muss "single" oder "points" sein.' });
   }
@@ -536,6 +575,12 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
     return res.status(403).json({ error: 'Stichwahlen können nur von Community-Admins gestartet werden.' });
   }
   const nextMode: VoteMode = mode === 'single' ? 'single' : 'points';
+  if (anonymous !== undefined && typeof anonymous !== 'boolean') {
+    return res.status(400).json({ error: 'anonymous muss true oder false sein.' });
+  }
+  if (hideLiveResults !== undefined && typeof hideLiveResults !== 'boolean') {
+    return res.status(400).json({ error: 'hideLiveResults muss true oder false sein.' });
+  }
 
   const cleanTitle = optionalText(title, MAX_TITLE_LENGTH);
   if (cleanTitle === undefined) {
@@ -576,8 +621,9 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   db.transaction(() => {
     db.prepare(
       `INSERT INTO vote_rounds
-         (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids)
-       VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)`,
+         (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids,
+          anonymous, hide_live_results)
+       VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)`,
     ).run(
       groupId,
       nextRound,
@@ -587,6 +633,8 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
       cleanTitle,
       cleanInfo,
       selectedGameIds ? JSON.stringify(selectedGameIds) : null,
+      anonymous === true ? 1 : 0,
+      hideLiveResults === false ? 0 : 1,
     );
     setState(scopedStateKey(ROUND_KEY, groupId, eventId), String(nextRound));
     setState(scopedStateKey(OPEN_KEY, groupId, eventId), '1');
@@ -820,6 +868,12 @@ interface VoteRoundRow {
   title: string | null;
   info: string | null;
   selectedGameIdsJson: string | null;
+  anonymous: number;
+  hideLiveResults: number;
+}
+
+function roundOptions(row: VoteRoundRow): Pick<RoundMeta, 'anonymous' | 'hideLiveResults'> {
+  return { anonymous: row.anonymous === 1, hideLiveResults: row.hideLiveResults === 1 };
 }
 
 // GET /api/votes/history - past (closed) rounds for the active event, newest
@@ -841,7 +895,8 @@ votesRouter.get('/history', (req, res) => {
       `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
-              vr.selected_game_ids AS selectedGameIdsJson
+              vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous AS anonymous,
+              vr.hide_live_results AS hideLiveResults
        FROM vote_rounds vr
        JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
        WHERE vr.group_id = ? AND vr.closed_at IS NOT NULL AND vr.event_id = ?
@@ -869,12 +924,13 @@ votesRouter.get('/history', (req, res) => {
       mode: r.mode,
       title: r.title,
       info: r.info,
+      ...roundOptions(r),
       totalVotes,
       totalVoters,
       winnerGameIds: winnerIds,
       results,
       winners,
-      ballots: roundBallots(groupId, r.round, includeTestData, results.map((x) => x.gameId)),
+      ballots: r.anonymous ? [] : roundBallots(groupId, r.round, includeTestData, results.map((x) => x.gameId)),
     };
   });
 
@@ -909,7 +965,8 @@ votesRouter.get('/history/:round', (req, res) => {
       `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
-              vr.selected_game_ids AS selectedGameIdsJson
+              vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous AS anonymous,
+              vr.hide_live_results AS hideLiveResults
        FROM vote_rounds vr
        JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
        WHERE vr.group_id = ? AND vr.round = ? AND vr.event_id = ?`,
@@ -936,11 +993,12 @@ votesRouter.get('/history/:round', (req, res) => {
     mode: row.mode,
     title: row.title,
     info: row.info,
+    ...roundOptions(row),
     results,
     totalVotes,
     totalPoints,
     totalVoters,
     winnerGameIds,
-    ballots: roundBallots(req.group!.id, row.round, includeTestData, results.map((r) => r.gameId)),
+    ballots: row.anonymous ? [] : roundBallots(req.group!.id, row.round, includeTestData, results.map((r) => r.gameId)),
   });
 });

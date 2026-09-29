@@ -167,3 +167,13 @@ test('the action never becomes the selected value shown in the collapsed control
   const control = html.slice(0, html.indexOf('search-select-list'));
   assert.doesNotMatch(control, /Gruppen verwalten/);
 });
+
+test('a non-searchable select renders a read-only field without list autocompletion', () => {
+  const html = searchSelectHtml('mode', OPTIONS, 'g1', { searchable: false });
+  assert.match(html, /class="search-select is-readonly"/);
+  assert.match(html, /<input type="text" id="mode-search"[^>]* readonly [^>]*aria-autocomplete="none"/);
+  assert.match(html, /value="🎮 Counter-Strike 2"/);
+  const searchable = searchSelectHtml('mode', OPTIONS, 'g1');
+  assert.doesNotMatch(searchable, /readonly/);
+  assert.match(searchable, /aria-autocomplete="list"/);
+});

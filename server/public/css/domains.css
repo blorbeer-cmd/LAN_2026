@@ -1124,6 +1124,7 @@ input[type='number'].tournament-result-score {
   border-bottom: 1px solid var(--border);
 }
 .check-row input[type='checkbox'] {
+  flex-shrink: 0;
   width: 20px;
   height: 20px;
   accent-color: var(--accent);
@@ -1204,31 +1205,25 @@ input[type='number'].tournament-result-score {
   width: 100%;
   min-height: calc(var(--row-min-h) * 2);
 }
-.vote-info-input {
-  min-height: var(--control-height);
+/* The start dialog's game list: search on its own row, then the bulk toggle,
+   sorting and the filter menu of the Spielekatalog. */
+.game-catalog-toolbar.vote-game-toolbar {
+  grid-template-columns: auto repeat(2, minmax(0, 1fr));
 }
-.vote-game-select-wrap {
-  gap: var(--space-2);
+.vote-game-toolbar > input[type='search'] {
+  grid-column: 1 / -1;
 }
-.vote-start-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-  align-items: end;
+.vote-game-option {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
-@media (min-width: 640px) { /* --bp-md */
-  .vote-start-row {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+.vote-game-option-meta {
+  font-size: var(--font-size-xs);
 }
-.vote-start-toolbar {
-  flex-wrap: nowrap;
-}
-.vote-start-row .vote-info-input {
-  display: block;
-  height: var(--control-height);
-  min-height: var(--control-height);
-  resize: none;
+.vote-game-search-empty {
+  font-size: var(--font-size-xs);
 }
 @media (min-width: 640px) { /* --bp-md */
   .vote-game-grid {
@@ -1239,11 +1234,22 @@ input[type='number'].tournament-result-score {
     column-gap: var(--space-6);
   }
 }
-/* A third column keeps the game checkboxes of the start form compact instead
-   of stretching them across half of a wide desktop's content width. */
-@media (min-width: 1280px) { /* --bp-xl */
-  .vote-game-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+/* Inside the dialog the catalog's phone menus open below their trigger
+   instead of above the (covered) bottom navigation. */
+@media (max-width: 639px) { /* --bp-md */
+  .vote-game-toolbar .game-catalog-sort-menu .game-catalog-sort-panel,
+  .vote-game-toolbar .game-catalog-filter-menu .game-catalog-filter-panel {
+    position: absolute;
+    max-height: none;
+    overflow-y: visible;
+  }
+  .vote-game-toolbar .game-catalog-sort-menu .game-catalog-sort-panel {
+    inset: calc(100% + var(--space-1)) auto auto 0;
+    width: 100%;
+  }
+  .vote-game-toolbar .game-catalog-filter-menu .game-catalog-filter-panel {
+    inset: calc(100% + var(--space-1)) 0 auto auto;
+    width: min(16rem, calc(100vw - var(--space-8)));
   }
 }
 
