@@ -4,7 +4,7 @@
 // format.js modules the main app uses, but renders its own compact layout
 // rather than the phone-sized views (see kiosk.html/css).
 
-import { api, getKioskToken, setKioskMode, setKioskToken } from './api.js';
+import { api, clearKioskToken, getKioskToken, setKioskMode, setKioskToken } from './api.js';
 import { connectSocket } from './socket.js';
 import { escapeHtml, stateLabel, avatarHtml } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
@@ -171,6 +171,18 @@ function renderArcadeStream(game) {
 }
 
 async function ensureAccess() {
+  const handoff = new URLSearchParams(location.hash.slice(1)).get('handoff');
+  if (handoff) {
+    // Remove the one-use secret before any network request or later navigation.
+    history.replaceState(null, '', `${location.pathname}${location.search}`);
+    setKioskToken('');
+    try {
+      const result = await api.kiosk.exchangeHandoff(handoff);
+      setKioskToken(result.token, result.eventId);
+    } catch {
+      return false; // The selected account remains visible for manual login.
+    }
+  }
   const fromUrl = new URLSearchParams(location.search).get('token');
   if (fromUrl) setKioskToken(fromUrl);
 
@@ -185,7 +197,7 @@ async function ensureAccess() {
     // is actually bad. A network failure, timeout or transient 5xx (e.g. the
     // server restarting mid-deploy) must not wipe an otherwise valid kiosk
     // token that this unattended screen has no way to re-enter itself.
-    if (err?.status === 401) setKioskToken('');
+    if (err?.status === 401) clearKioskToken();
     return false;
   }
 }
@@ -229,7 +241,7 @@ function renderKioskLogin() {
         username: String(data.get('username') || '').trim(),
         password: String(data.get('password') || ''),
       });
-      setKioskToken(result.token);
+      setKioskToken(result.token, result.eventId);
       history.replaceState(null, '', `${location.pathname}${location.hash}`);
       location.reload();
     } catch (loginError) {

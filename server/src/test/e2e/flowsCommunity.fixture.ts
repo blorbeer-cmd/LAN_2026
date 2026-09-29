@@ -535,7 +535,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   // server restarting mid-deploy) while re-checking access on reload must not
   // wipe an otherwise valid, persisted token — only a genuine 401 means the
   // credential itself is bad.
-  const loginKioskToken = await page.evaluate(() => localStorage.getItem('respawn_kiosk_token'));
+  const loginKioskToken = await page.evaluate(() => sessionStorage.getItem('respawn_kiosk_token'));
   assert.ok(loginKioskToken, 'kiosk login should have stored a token');
   const transientFailureRoute = (route: import('playwright').Route) =>
     route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Kiosk-Serverfehler (Test)' }) });
@@ -547,7 +547,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     await page.unroute('**/api/live', transientFailureRoute);
   }
   assert.equal(
-    await page.evaluate(() => localStorage.getItem('respawn_kiosk_token')),
+    await page.evaluate(() => sessionStorage.getItem('respawn_kiosk_token')),
     loginKioskToken,
     'a transient failure while checking kiosk access must not clear the stored token',
   );
@@ -562,12 +562,12 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     await page.unroute('**/api/live', invalidTokenRoute);
   }
   assert.equal(
-    await page.evaluate(() => localStorage.getItem('respawn_kiosk_token')),
-    '',
+    await page.evaluate(() => sessionStorage.getItem('respawn_kiosk_token')),
+    null,
     'a genuine 401 while checking kiosk access must clear the stale token',
   );
 
-  await page.evaluate(() => localStorage.removeItem('respawn_kiosk_token'));
+  await page.evaluate(() => sessionStorage.removeItem('respawn_kiosk_token'));
   assert.equal((await page.request.delete(`${BASE_URL}/api/events/${loginEvent.id}`)).status(), 200);
 
   await page.goto(`${BASE_URL}/kiosk.html?token=${E2E_KIOSK_TOKEN}`);
