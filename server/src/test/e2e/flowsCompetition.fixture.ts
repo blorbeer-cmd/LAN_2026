@@ -978,6 +978,30 @@ flowTest('Vote: a 0-5 round with a visible interim result and anonymous voters',
   // are clicked (pressing a chosen value again clears it).
   await rows.first().locator('[data-points-value="5"]').waitFor();
   const rowCount = await rows.count();
+  assert.ok(rowCount >= 3, 'the visible-result layout covers enough games to expose an extra grid column');
+  const compactViewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 1024, height: 844 });
+  const wideLayout = await page.evaluate(() => {
+    const options = document.querySelector('.vote-round-card .event-poll-options')!;
+    const optionBoxes = Array.from(options.querySelectorAll('[data-vote-row]')).map((row) => row.getBoundingClientRect());
+    return {
+      columns: getComputedStyle(options).gridTemplateColumns.split(' ').length,
+      rowLefts: optionBoxes.map((box) => Math.round(box.left)),
+      rowTops: optionBoxes.map((box) => Math.round(box.top)),
+      rowWidths: optionBoxes.map((box) => box.width),
+      overflowing: options.scrollWidth > options.clientWidth || document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    };
+  });
+  const split = Math.ceil(rowCount / 2);
+  assert.equal(wideLayout.columns, 2, `visible Vote results use two columns: ${JSON.stringify(wideLayout)}`);
+  assert.equal(wideLayout.overflowing, false, `visible Vote results stay within the page: ${JSON.stringify(wideLayout)}`);
+  assert.ok(wideLayout.rowWidths.every((width) => width > 0), `every game stays readable: ${JSON.stringify(wideLayout)}`);
+  assert.ok(wideLayout.rowLefts.slice(0, split).every((left) => left === wideLayout.rowLefts[0])
+    && wideLayout.rowLefts.slice(split).every((left) => left === wideLayout.rowLefts[split])
+    && wideLayout.rowLefts[split] > wideLayout.rowLefts[0]
+    && Math.abs(wideLayout.rowTops[split] - wideLayout.rowTops[0]) <= 1,
+  `games read down the left column, then the right: ${JSON.stringify(wideLayout)}`);
+  await page.setViewportSize(compactViewport);
   for (let index = 0; index < rowCount; index += 1) {
     const value = index === 0 ? 5 : 0;
     const row = rows.nth(index);

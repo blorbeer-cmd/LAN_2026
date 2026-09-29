@@ -353,8 +353,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   The 0–5 draft meter uses the same blue-to-violet gradient as the revealed result bars. Like every
   Umfrage with a hidden interim result, the empty result column is dropped so the answers sit
   beside the name, and from `--bp-lg` the games fill two columns, read down the left column first,
-  then the right one. A round that shows its interim result keeps the result bar and, unless it is
-  anonymous, the voter avatars in every row like an open Umfrage. A ballot the viewer has not saved yet in this round starts with the own Bock
+  then the right one. The two-column order also applies when the interim result is visible: each
+  game's result bar and answer control then use full rows beneath its title and voter avatars.
+  Unless the round is anonymous, the voter avatars appear as in an open Umfrage. A ballot the viewer has not saved yet in this round starts with the own Bock
   preselected for every game that has one; games without an own Bock start unrated. This
   preselection is only a local draft — nothing counts until „Speichern“. No selected number means unrated; pressing the chosen number again clears
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
