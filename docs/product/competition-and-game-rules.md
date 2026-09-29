@@ -375,7 +375,19 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   the title's gap to metadata.
   Its header names the
   round, date, participation and winner and always offers „Stimmen ansehen“ and, on a tie, a
-  compact „Stichwahl starten“. Its closed header has the same compact height as the neighboring
+  compact „Stichwahl starten“. With exactly one winner that is still in the catalog, a compact
+  primary „Match generieren“ takes its place for every participant: it opens Match in „Auslosung“
+  mode with that game selected and exactly the voters who gave it at least one point preselected,
+  so only „Anzahl Teams“ remains before „Teams auslosen“. After a runoff, every runoff participant
+  is preselected except those who gave the runoff's winner 0 points in the tied points round
+  before it; a player who only joined for the runoff counts as a participant. Every runoff row,
+  open or closed, names how many voters declined that game in that tied round
+  („Vorrunde: N spielen nicht“, including 0, since the count compares the tied games). An
+  anonymous round names no voters, so it offers no „Match generieren“, and a runoff after an
+  anonymous tied round shows no „Vorrunde“ count. While a
+  Captain Draft runs in the event, Match shows only that live draft, so „Match generieren“ does
+  not open Match: it reads the current draft state and shows an error toast naming the draft's game
+  („Gerade läuft ein Captain Draft für <Spiel>. …“); the draft is never cancelled from Vote. Its closed header has the same compact height as the neighboring
   closed cards and no hover fill. Opened, it lists every game of the round sorted by score, each with
   its result bar, „N Pkt. · X/Y spielen mit“ (voters who gave at least one point, out of everyone
   who voted) and the avatars of those voters; winners carry the green „Win“ chip, tied winners

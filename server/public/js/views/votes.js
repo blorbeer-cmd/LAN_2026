@@ -25,6 +25,7 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { state, catalogGames, eventPlayers } from '../state.js';
+import { prepareDrawFromVote, setDraftState } from './matchmaking.js';
 import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
@@ -358,7 +359,7 @@ function ballotControlHtml(votes, r) {
 
 // Same four columns as an Umfrage row (name, result, voters, answer). While
 // the interim result is hidden the result and voter columns stay empty.
-function renderOpenRow(votes, r, draftReady, { columnStart, showResult, maxPoints }) {
+function renderOpenRow(votes, r, draftReady, { columnStart, showResult, maxPoints, source }) {
   const control = draftReady ? ballotControlHtml(votes, r) : '<span class="muted vote-points-loading">Lädt…</span>';
   const decline = votes.mode === 'points'
     ? `<span class="event-poll-tag vote-decline-tag" data-decline-tag ${draftReady && draft.get(r.gameId) === 0 ? '' : 'hidden'}>${DECLINE_LABEL}</span>`
@@ -367,7 +368,7 @@ function renderOpenRow(votes, r, draftReady, { columnStart, showResult, maxPoint
     <div class="event-poll-option${columnStart ? ' is-column-start' : ''}" data-vote-row="${escapeHtml(r.gameId)}">
       <div class="event-poll-option-info">
         <span class="event-poll-option-title-row"><strong>${escapeHtml(r.gameName)}</strong></span>
-        <span class="muted event-poll-option-note">${ownSkillHtml(r.gameId)} · ${gameMetaHtml(r)}</span>
+        <span class="muted event-poll-option-note">${[ownSkillHtml(r.gameId), runoffDeclineText(source, r.gameId), gameMetaHtml(r)].filter(Boolean).join(' · ')}</span>
       </div>
       ${showResult ? resultCellHtml(votes, r, maxPoints) : '<span class="event-poll-result"></span>'}
       <span class="event-poll-option-badges">${showResult ? supporterStackHtml(votes, r, 'data-open-live-votes') : ''}${decline}</span>
@@ -396,8 +397,9 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
   // With the result hidden, two columns on wide screens read down the left
   // column first, then the right one (see .event-poll-options.is-compact).
   const columnRows = Math.max(1, Math.ceil(games.length / 2));
+  const source = votes.mode === 'single' ? runoffSourceRound(historyCache, votes) : null;
   const rows = games
-    .map((r, index) => renderOpenRow(votes, r, mineReady, { columnStart: !showResult && index === columnRows, showResult, maxPoints }))
+    .map((r, index) => renderOpenRow(votes, r, mineReady, { columnStart: !showResult && index === columnRows, showResult, maxPoints, source }))
     .join('');
   const admin = isGroupAdmin();
   const answer = mineReady ? answerChipHtml(hasSubmitted) : '';
@@ -448,6 +450,7 @@ function roundMetaText(h) {
 }
 
 function renderResultRows(h, columnRows) {
+  const source = sourceRoundOf(h);
   const maxPoints = Math.max(1, ...h.results.map((r) => r.points));
   const ranks = sharedRankNumbers(h.results.map((result) => rankValue(h, result)));
   const winners = new Set(h.winnerGameIds ?? []);
@@ -464,7 +467,7 @@ function renderResultRows(h, columnRows) {
                 <strong>${escapeHtml(r.gameName)}</strong>
                 ${win ? WIN_CHIP : ''}
               </span>
-              <span class="muted event-poll-option-note">${gameMetaHtml(r)}</span>
+              <span class="muted event-poll-option-note">${[runoffDeclineText(source, r.gameId), gameMetaHtml(r)].filter(Boolean).join(' · ')}</span>
             </div>
           </div>
           ${resultCellHtml(h, r, maxPoints)}
@@ -478,6 +481,59 @@ function renderResultRows(h, columnRows) {
 
 function winnerNames(h) {
   return h.results.filter((r) => (h.winnerGameIds ?? []).includes(r.gameId)).map((r) => r.gameName);
+}
+
+// A runoff re-asks the tied winners of the latest points round before it
+// (a runoff of a runoff still goes back to that points round). Its ballots
+// still say who would not play each game, which the runoff itself cannot ask.
+// `runoff` is either a closed history round or the open round's payload.
+export function runoffSourceRound(history, runoff) {
+  const gameIds = runoff.results.map((r) => r.gameId);
+  return (history ?? [])
+    .filter((h) => h.mode === 'points' && h.totalVoters > 0 && h.round < runoff.round
+      && gameIds.every((gameId) => h.results.some((r) => r.gameId === gameId)))
+    .reduce((latest, h) => (!latest || h.round > latest.round ? h : latest), null);
+}
+
+function declinedInRound(h, playerId, gameId) {
+  const ballot = h.ballots?.find((entry) => entry.playerId === playerId);
+  return Boolean(ballot?.entries.some((entry) => entry.gameId === gameId && entry.points === 0));
+}
+
+// Shown on every runoff row, zero included: the count is the comparison
+// between the tied games, so "0" is information here, not an empty value.
+// An anonymous round carries no ballots, so it has no count to show.
+function runoffDeclineText(source, gameId) {
+  if (!source || source.anonymous) return null;
+  const count = (source.ballots ?? []).filter((ballot) => declinedInRound(source, ballot.playerId, gameId)).length;
+  return `Vorrunde: ${count} spielen nicht`;
+}
+
+// "Match generieren" turns a closed round into a prepared Match draw: its
+// single winner becomes the game, and everyone who gave that game at least
+// one point becomes the roster. After a runoff every participant counts
+// except those who gave the winner 0 points in the runoff's points round
+// (`source`, see runoffSourceRound). A tie has no game yet (the runoff comes
+// first), and a winner no longer in the catalog cannot be drawn.
+export function matchSelectionFromVote(h, catalogGameIds, source = null) {
+  const winners = h?.winnerGameIds ?? [];
+  if (winners.length !== 1 || !catalogGameIds.has(winners[0])) return null;
+  const [gameId] = winners;
+  const playerIds = (h.ballots ?? [])
+    .filter((ballot) => h.mode === 'single'
+      ? !(source && declinedInRound(source, ballot.playerId, gameId))
+      : ballot.entries.some((entry) => entry.gameId === gameId && entry.points > 0))
+    .map((ballot) => ballot.playerId);
+  return playerIds.length ? { gameId, playerIds } : null;
+}
+
+function sourceRoundOf(h) {
+  return h?.mode === 'single' ? runoffSourceRound(historyCache, h) : null;
+}
+
+function latestMatchSelection() {
+  const latest = historyCache?.[0];
+  return matchSelectionFromVote(latest, new Set(catalogGames().map((game) => game.id)), sourceRoundOf(latest));
 }
 
 function renderVoteResultContent(h) {
@@ -524,6 +580,7 @@ function renderLatestVoteCard({ showRunoff }) {
         <div class="event-poll-card-side">
           ${votesButtonHtml(h)}
           ${showRunoff ? '<button type="button" class="btn btn-primary btn-sm" id="votes-runoff">Stichwahl starten</button>' : ''}
+          ${latestMatchSelection() ? '<button type="button" class="btn btn-primary btn-sm" id="votes-generate-match">Match generieren</button>' : ''}
         </div>
       </header>
       <div class="stack event-poll-card-content" ${latestVoteOpen ? '' : 'hidden'}>
@@ -1025,6 +1082,33 @@ export function renderVotes(container, ctx) {
       }
     });
   }
+
+  container.querySelector('#votes-generate-match')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const selection = latestMatchSelection();
+    if (!selection || button.disabled) return;
+    button.disabled = true;
+    try {
+      // A running captain draft takes over Match on every device, so the
+      // prepared draw would stay hidden behind it. Ask the server rather than
+      // a cache that may predate a draft started elsewhere, and never cancel
+      // that shared draft from here.
+      const draftState = await api.draft.get();
+      setDraftState(draftState);
+      const draft = draftState?.draft;
+      if (draft?.status === 'active') {
+        showToast(`Gerade läuft ein Captain Draft für ${draft.gameName}. Match generieren geht erst, wenn er beendet oder abgebrochen ist.`, { error: true });
+        return;
+      }
+    } catch (err) {
+      showToast(err.message, { error: true });
+      return;
+    } finally {
+      button.disabled = false;
+    }
+    prepareDrawFromVote(selection);
+    window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view: 'matchmaking' } }));
+  });
 
   const closeBtn = container.querySelector('#votes-close');
   if (closeBtn) {
