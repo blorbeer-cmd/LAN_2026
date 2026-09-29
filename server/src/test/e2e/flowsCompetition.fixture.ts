@@ -582,6 +582,25 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await historyCard.locator('.event-poll-option').first().waitFor({ state: 'detached' });
   assert.equal(await historyToggle.getAttribute('aria-expanded'), 'false');
 
+  // A running captain draft owns Match on every device: the handoff names it
+  // and keeps both the draft and this page instead of opening the draft.
+  const draftExtra = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'Draft Pool' } });
+  assert.equal(draftExtra.status(), 201, await draftExtra.text());
+  const draftExtraId = (await draftExtra.json()).id as string;
+  const catalog = await (await page.request.get(`${BASE_URL}/api/games`)).json() as Array<{ id: string; isSuggestion?: boolean }>;
+  const otherGameId = catalog.find((game) => game.id !== runoffGameId && !game.isSuggestion)!.id;
+  const draftStart = await page.request.post(`${BASE_URL}/api/draft/start`, {
+    data: { gameId: otherGameId, captainIds: [alice.id, bob.id], poolPlayerIds: [draftExtraId] },
+  });
+  assert.equal(draftStart.status(), 201, await draftStart.text());
+  const draftGameName = (await draftStart.json()).draft.gameName as string;
+  await currentVote.locator('#votes-generate-match').click();
+  await page.locator('.toast', { hasText: `Gerade läuft ein Captain Draft für ${draftGameName}.` }).waitFor();
+  assert.equal(await page.locator('#vote-current-result-title').count(), 1, 'Vote stays open while the draft runs');
+  assert.equal((await (await page.request.get(`${BASE_URL}/api/draft`)).json()).draft.status, 'active', 'the draft keeps running');
+  assert.equal((await page.request.post(`${BASE_URL}/api/draft/cancel`)).status(), 200);
+  assert.ok((await page.request.delete(`${BASE_URL}/api/players/${draftExtraId}`)).ok());
+
   // The decided runoff hands its winner and its participants who did not
   // decline that game before to Match, so only the team count is left.
   await currentVote.locator('#votes-generate-match').click();

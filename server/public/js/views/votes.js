@@ -29,7 +29,7 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { state, catalogGames, eventPlayers } from '../state.js';
-import { prepareDrawFromVote } from './matchmaking.js';
+import { prepareDrawFromVote, setDraftState } from './matchmaking.js';
 import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
@@ -987,9 +987,29 @@ export function renderVotes(container, ctx) {
     });
   }
 
-  container.querySelector('#votes-generate-match')?.addEventListener('click', () => {
+  container.querySelector('#votes-generate-match')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
     const selection = latestMatchSelection();
-    if (!selection) return;
+    if (!selection || button.disabled) return;
+    button.disabled = true;
+    try {
+      // A running captain draft takes over Match on every device, so the
+      // prepared draw would stay hidden behind it. Ask the server rather than
+      // a cache that may predate a draft started elsewhere, and never cancel
+      // that shared draft from here.
+      const draftState = await api.draft.get();
+      setDraftState(draftState);
+      const draft = draftState?.draft;
+      if (draft?.status === 'active') {
+        showToast(`Gerade läuft ein Captain Draft für ${draft.gameName}. Match generieren geht erst, wenn er beendet oder abgebrochen ist.`, { error: true });
+        return;
+      }
+    } catch (err) {
+      showToast(err.message, { error: true });
+      return;
+    } finally {
+      button.disabled = false;
+    }
     prepareDrawFromVote(selection);
     window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view: 'matchmaking' } }));
   });
