@@ -325,18 +325,23 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     const stackBox = element.getBoundingClientRect();
     const result = option.querySelector('.event-poll-result')!.getBoundingClientRect();
     const info = option.querySelector('.event-poll-option-info')!.getBoundingClientRect();
+    const badges = option.querySelector('.event-poll-option-badges')!.getBoundingClientRect();
     const row = option.getBoundingClientRect();
     const controls = option.querySelector('.event-poll-response-toolbar')!.getBoundingClientRect();
     return {
       rowLeft: row.left,
       rowTop: row.top,
       rowRight: row.right,
+      infoRight: info.right,
       infoBottom: info.bottom,
       resultTop: result.top,
       resultBottom: result.bottom,
       resultLeft: result.left,
       resultRight: result.right,
+      badgesLeft: badges.left,
+      badgesRight: badges.right,
       controlsTop: controls.top,
+      controlsLeft: controls.left,
       controlsRight: controls.right,
       stackWidth: stackBox.width,
       stackHeight: stackBox.height,
@@ -358,15 +363,26 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const desktopSingleStack = await voterStackGeometry(1);
   assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
   assert.ok(desktopStack.stackContentLeftInset <= 1 && desktopSingleStack.stackContentLeftInset <= 1, `desktop avatars start at their column edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
-  assert.ok(desktopSingleStack.rowLeft > desktopStack.rowLeft && Math.abs(desktopSingleStack.rowTop - desktopStack.rowTop) <= 1,
-    `running polls with visible results use two columns (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
+  assert.ok(Math.abs(desktopSingleStack.rowLeft - desktopStack.rowLeft) <= 1 && desktopSingleStack.rowTop > desktopStack.rowTop,
+    `poll options use full-width rows when four parts cannot fit in half-width rows (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
   for (const geometry of [desktopStack, desktopSingleStack]) {
-    assert.ok(geometry.infoBottom <= geometry.resultTop + 1 && geometry.resultBottom <= geometry.controlsTop + 1,
-      `visible results and answers follow the title without overlap (${JSON.stringify(geometry)})`);
-    assert.ok(Math.abs(geometry.resultLeft - geometry.rowLeft) <= 1 && Math.abs(geometry.resultRight - geometry.rowRight) <= 1
-      && geometry.controlsRight <= geometry.rowRight + 1,
-    `result bars and answers fit their column (${JSON.stringify(geometry)})`);
+    assert.ok(geometry.infoRight <= geometry.resultLeft + 1 && geometry.resultRight <= geometry.badgesLeft + 1
+      && geometry.badgesRight <= geometry.controlsLeft + 1 && geometry.controlsRight <= geometry.rowRight + 1,
+    `title, bar, voters and answers stay in one horizontal option row (${JSON.stringify(geometry)})`);
   }
+  await ownerPage.setViewportSize({ width: 1760, height: 900 });
+  await ownerPage.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
+  const wideStack = await voterStackGeometry(0);
+  const wideSingleStack = await voterStackGeometry(1);
+  assert.ok(wideSingleStack.rowLeft > wideStack.rowLeft && Math.abs(wideSingleStack.rowTop - wideStack.rowTop) <= 1,
+    `poll options use two columns when each horizontal row has enough room (${JSON.stringify({ wideStack, wideSingleStack })})`);
+  for (const geometry of [wideStack, wideSingleStack]) {
+    assert.ok(geometry.infoRight <= geometry.resultLeft + 1 && geometry.resultRight <= geometry.badgesLeft + 1
+      && geometry.badgesRight <= geometry.controlsLeft + 1 && geometry.controlsRight <= geometry.rowRight + 1,
+    `wide poll options keep all four parts in one row (${JSON.stringify(geometry)})`);
+  }
+  await ownerPage.setViewportSize({ width: 1024, height: 800 });
+  await ownerPage.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
   await liveStack.click();
   const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await liveVoteDialog.waitFor();
@@ -410,6 +426,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     chips.map((chip) => chip.getBoundingClientRect().height));
   assert.ok(chipHeights.length > 1 && chipHeights.every((height) => Math.abs(height - chipHeights[0]) <= 1),
     'poll header and result Win labels share the same compact height');
+  await ownerPage.setViewportSize({ width: 1760, height: 900 });
+  await ownerPage.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   const layout = await rankedResults.evaluate((options) => ({
     columns: getComputedStyle(options).gridTemplateColumns.split(' ').length,
     rows: Array.from(options.querySelectorAll('.event-poll-option')).map((row) => {
@@ -649,11 +667,13 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
             clipped: button.scrollWidth > button.clientWidth };
         }),
         overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        rowOverflow: option.scrollWidth > option.clientWidth,
       };
     });
     assert.deepEqual(geometry.buttons.map((button) => button.text), ['0', '1', '2', '3', '4', '5']);
     assert.equal(geometry.gap, 8);
     assert.equal(geometry.overflow, false);
+    assert.equal(geometry.rowOverflow, false, 'an option never overflows its own row');
     for (const button of geometry.buttons) {
       assert.equal(button.width, 32, JSON.stringify(geometry));
       assert.equal(button.height, 32, JSON.stringify(geometry));
@@ -669,12 +689,12 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   };
   for (const viewport of [
     { width: 320, height: 568 }, { width: 390, height: 844 },
-    { width: 512, height: 384 }, { width: 720, height: 450 }, { width: 860, height: 600 },
+    { width: 512, height: 384 }, { width: 640, height: 450 }, { width: 720, height: 450 }, { width: 860, height: 600 },
     { width: 1024, height: 768 }, { width: 1440, height: 900 },
   ]) {
     await ownerPage.setViewportSize(viewport);
     await assertRatingGeometry();
-    if (viewport.width >= 640 && viewport.width < 860) {
+    if (viewport.width >= 720 && viewport.width < 860) {
       const offsets = await ratingPoll.locator('.event-poll-option').evaluateAll((rows) => rows.map((row, index) => {
         const rect = row.getBoundingClientRect();
         const next = rows.slice(index + 1).find((candidate) => candidate.getBoundingClientRect().left === rect.left);

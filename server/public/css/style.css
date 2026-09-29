@@ -875,6 +875,7 @@ textarea {
   gap: var(--space-4);
   /* The card header already supplies the gap before the expanded content. */
   padding-top: 0;
+  container-type: inline-size;
 }
 .event-poll-note {
   margin: 0;
@@ -887,7 +888,7 @@ textarea {
    voter avatars, answer buttons. Ended rounds simply have no last column. */
 .event-poll-option {
   display: grid;
-  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) 7rem auto;
+  grid-template-columns: clamp(10.5rem, 20%, 14rem) minmax(6rem, 1fr) max-content auto;
   align-items: center;
   gap: var(--space-2) var(--space-4);
   padding: var(--space-3) 0;
@@ -912,7 +913,7 @@ textarea {
   flex-direction: column;
   gap: var(--space-1);
   min-width: 0;
-  margin-inline-end: var(--space-4);
+  margin-inline-end: 0;
 }
 .event-poll-bar {
   display: block;
@@ -1026,7 +1027,7 @@ textarea {
   flex-wrap: wrap;
   /* Trimmed count text has no leading of its own, so wrapped legend lines
      need the row gap to stay apart. */
-  gap: var(--space-1) var(--space-3);
+  gap: var(--space-1);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   line-height: var(--control-line-height);
@@ -1314,9 +1315,9 @@ textarea {
     display: none;
   }
 }
-@media (min-width: 860px) { /* --bp-lg */
-  /* Filled column by column (--compact-rows = half the options, rounded up),
-     so every poll and Vote reads down the left column first. */
+@container (min-width: 82rem) {
+  /* Two columns only when each option keeps its title, bar, voters and
+     answer controls side by side. Read down the left column first. */
   .stack.event-poll-options {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1326,30 +1327,6 @@ textarea {
   }
   .event-poll-options .event-poll-option.is-column-start {
     border-top: 0;
-  }
-  /* A visible interim result needs room for its bar and answer controls in
-     each half-width option: title and voters lead, then both use full rows. */
-  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option-info {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option-badges {
-    grid-column: 2;
-    grid-row: 1;
-  }
-  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-result {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    margin-inline-end: 0;
-  }
-  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option > .rating-scale,
-  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option > .event-poll-response-toolbar,
-  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option > .event-poll-choice-control {
-    grid-column: 1 / -1;
-    grid-row: 3;
   }
   .event-poll-options.is-ranked .event-poll-option {
     /* Reserve the shared voter column even when an option has no supporters. */
@@ -1374,16 +1351,24 @@ textarea {
     flex: 1 1 100%;
     justify-content: flex-end;
   }
-  /* Phone: name and avatars share the first line; bar, counts and the
-     answer buttons use the full width below. The answer status moves into
-     the card's meta line. */
+  /* The answer status moves into the card's meta line on a phone. */
   .event-poll-answer-side {
     display: none;
   }
   .event-poll-answer-inline {
     display: inline-flex;
   }
-  .event-poll-option {
+  .event-poll-vote-person.row-between {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
+  }
+}
+/* A narrow card cannot keep a readable bar and every answer button beside
+   the title, even when the viewport itself has passed the phone breakpoint. */
+@container (max-width: 36rem) {
+  .event-poll-option,
+  .event-poll-options.is-compact .event-poll-option {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--space-2);
   }
@@ -1394,9 +1379,6 @@ textarea {
   .event-poll-option-badges {
     grid-column: 2;
     grid-row: 1;
-  }
-  .event-poll-result {
-    margin-inline-end: 0;
   }
   .event-poll-option-badges,
   .btn.event-poll-voter-stack {
@@ -1413,11 +1395,6 @@ textarea {
   .event-poll-choice-control .selection-toolbar,
   .event-poll-choice-control .selection-toolbar .event-poll-choice-btn {
     width: 100%;
-  }
-  .event-poll-vote-person.row-between {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0;
   }
 }
 

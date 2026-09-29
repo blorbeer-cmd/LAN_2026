@@ -167,9 +167,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   answering, a chosen 0 is marked „Lehne ich ab“ beside the numbers. The own rating uses the
   blue-to-violet Vote scale with its small fill line below the numbers, empty at 0 and dashed while unrated.
   While the viewer cannot see the interim result, the empty result column is dropped: the answer
-  controls sit beside the option name. From `--bp-lg`, all running polls fill two columns, read down
-  the left column first, then the right one. When the interim result is visible, the result bar and
-  answer controls each use the full width of their option within that column. Phones keep the stacked layout.
+  controls sit beside the option name. Each option keeps its title, result bar, voter avatars and
+  answers in one horizontal row. Polls fill two columns, read down the left first, only when both
+  complete rows fit; otherwise options use the full card width one below another. Phones stack the
+  parts within each option.
   The tab adds no own page heading or explanatory subtitle below the Orga tabs because the active
   event is already visible in the top-right workspace switcher. Its compact „Umfrage starten“
   action has no decorative plus sign. The create dialog uses ordinary global text fields, one
@@ -220,18 +221,17 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   Adding options informs everyone who had already completed the round and makes those responses
   incomplete until the added options have been answered. Removing or disabling a chosen option
   also informs voters whose response thereby became incomplete. Option rows are flat rows: on
-  narrower screens, the title and note, result bar and counts, voter avatars and response controls
-  use fixed columns; in a wide two-column poll with visible results, title and voters share the
-  first line above full-width result and answer lines. The bar is a soft brand gradient on a
+  wider screens, the title and note, result bar and counts, voter avatars and response controls
+  use fixed columns within each option, including a wide two-column poll. The bar is a soft brand gradient on a
   grey track (Passt blue, Notfalls violet and Nein pink for per-option ratings; blue to violet for
   choices and the 0 to 5 average). On single-row layouts, the complete title/note block,
   bar/count block, avatars and controls are centered between the row separators. Rows have equal top and
   bottom padding and no extra gap between them. The chosen
   answer is outlined in the accent color; single- and multiple-choice controls say „Wählen“ or
   „Ausgewählt“, and „Speichern“ sits in the round's footer beside the response progress. An ended
-  round lists its options by result and marks the winner with the green „Win“ chip. From `--bp-lg`,
-  these results use two columns, filled down the left column before continuing at the top right;
-  narrower screens use one column. Place numbers follow the Top 10 presentation; equal results
+  round lists its options by result and marks the winner with the green „Win“ chip. These results
+  use two columns only when each complete option row fits, filled down the left column before
+  continuing at the top right; narrower cards use one column. Place numbers follow the Top 10 presentation; equal results
   share their place, counting prior entries for the next place (`1, 1, 3`). Rating polls compare
   the average, choices their votes, feasibility polls Passt/Notfalls/Nein in their result order.
   Participation and stored option position stabilize the order without separating tied places.

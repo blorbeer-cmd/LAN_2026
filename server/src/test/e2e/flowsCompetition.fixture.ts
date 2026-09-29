@@ -37,6 +37,9 @@ async function startVoteRound(): Promise<void> {
 }
 
 async function assertRankedVoteColumns(card: Locator): Promise<void> {
+  const previousViewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 1760, height: 900 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   const chipHeights = await card.locator('.vote-win-chip').evaluateAll((chips) =>
     chips.map((chip) => chip.getBoundingClientRect().height));
   assert.ok(chipHeights.length > 1 && chipHeights.every((height) => Math.abs(height - chipHeights[0]) <= 1),
@@ -74,6 +77,9 @@ async function assertRankedVoteColumns(card: Locator): Promise<void> {
     assert.ok(layout.rows[half].x > layout.rows[0].x, 'the remaining placements continue in the right column');
     assert.ok(Math.abs(layout.rows[half].y - layout.rows[0].y) <= 1, 'both columns start on the same line');
   }
+  await page.setViewportSize(previousViewport);
+  await page.waitForFunction((mode) => document.documentElement.dataset.layoutMode === mode,
+    previousViewport.width >= 1280 ? 'desktop' : 'laptop');
 }
 
 flowTest('full click-through: players, matchmaking, voting, leaderboard, live pause', async (t) => {
@@ -372,13 +378,15 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.ok(await page.locator('#votes-submit').isDisabled(), 'an incomplete ballot cannot be saved');
   assert.equal(await roundCard.locator('.event-poll-tag:text-is("Zwischenstand verborgen")').count(), 1);
   assert.equal(await roundCard.locator('.event-poll-bar').count(), 0, 'no bars while the round is open');
-  // With the result hidden, the numbers sit beside the name: two columns
-  // from --bp-lg that read down the left column first, the regular stacked
-  // rows on a phone. Every row names the viewer's own Skill as orientation.
+  // With the result hidden, the numbers sit beside the name. Two columns
+  // appear only when each option has enough horizontal room.
   const ballotColumns = () => roundCard.locator('.event-poll-options').evaluate((element) =>
     getComputedStyle(element).display === 'grid' ? getComputedStyle(element).gridTemplateColumns.split(' ').length : 1);
   assert.equal(await ballotColumns(), 1);
   await page.setViewportSize({ width: 900, height: 844 });
+  assert.equal(await ballotColumns(), 1);
+  await page.setViewportSize({ width: 1760, height: 900 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   assert.equal(await ballotColumns(), 2);
   const ballotAlignment = await roundCard.locator('[data-vote-row]').evaluateAll((rows) => rows.map((row, index) => {
     const box = row.getBoundingClientRect();
@@ -980,21 +988,36 @@ flowTest('Vote: a 0-5 round with a visible interim result and anonymous voters',
   const rowCount = await rows.count();
   assert.ok(rowCount >= 3, 'the visible-result layout covers enough games to expose an extra grid column');
   const compactViewport = page.viewportSize()!;
-  await page.setViewportSize({ width: 1024, height: 844 });
-  const wideLayout = await page.evaluate(() => {
+  const voteLayout = async (width: number) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.waitForFunction((mode) => document.documentElement.dataset.layoutMode === mode,
+      width >= 1280 ? 'desktop' : 'laptop');
+    return page.evaluate(() => {
     const options = document.querySelector('.vote-round-card .event-poll-options')!;
     const optionBoxes = Array.from(options.querySelectorAll('[data-vote-row]')).map((row) => row.getBoundingClientRect());
     return {
-      columns: getComputedStyle(options).gridTemplateColumns.split(' ').length,
+      columns: getComputedStyle(options).display === 'grid' ? getComputedStyle(options).gridTemplateColumns.split(' ').length : 1,
       rowLefts: optionBoxes.map((box) => Math.round(box.left)),
       rowTops: optionBoxes.map((box) => Math.round(box.top)),
       rowWidths: optionBoxes.map((box) => box.width),
       overflowing: options.scrollWidth > options.clientWidth || document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      partsInline: Array.from(options.querySelectorAll('[data-vote-row]')).every((row) => {
+        const parts = ['.event-poll-option-info', '.event-poll-result', '.event-poll-option-badges', '.rating-scale']
+          .map((selector) => row.querySelector(selector)!.getBoundingClientRect());
+        return parts.every((part, index) => index === 0 || parts[index - 1].right <= part.left + 1);
+      }),
     };
   });
+  };
+  const singleLayout = await voteLayout(1024);
+  assert.equal(singleLayout.columns, 1, `visible Vote results use full-width rows when space is tight: ${JSON.stringify(singleLayout)}`);
+  assert.equal(singleLayout.overflowing, false, `visible Vote results stay within the page: ${JSON.stringify(singleLayout)}`);
+  assert.equal(singleLayout.partsInline, true, `title, bar, voters and answers stay inline: ${JSON.stringify(singleLayout)}`);
+  const wideLayout = await voteLayout(1760);
   const split = Math.ceil(rowCount / 2);
   assert.equal(wideLayout.columns, 2, `visible Vote results use two columns: ${JSON.stringify(wideLayout)}`);
   assert.equal(wideLayout.overflowing, false, `visible Vote results stay within the page: ${JSON.stringify(wideLayout)}`);
+  assert.equal(wideLayout.partsInline, true, `wide Vote options keep all four parts inline: ${JSON.stringify(wideLayout)}`);
   assert.ok(wideLayout.rowWidths.every((width) => width > 0), `every game stays readable: ${JSON.stringify(wideLayout)}`);
   assert.ok(wideLayout.rowLefts.slice(0, split).every((left) => left === wideLayout.rowLefts[0])
     && wideLayout.rowLefts.slice(split).every((left) => left === wideLayout.rowLefts[split])
