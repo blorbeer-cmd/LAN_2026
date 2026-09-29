@@ -529,6 +529,9 @@ button.player-card {
   inset: 0;
   width: 100%;
   height: 100%;
+  /* The shared select padding (chevron gap) would widen the invisible picker
+     past its icon slot and the team card. */
+  padding: 0;
   opacity: 0;
   cursor: pointer;
 }

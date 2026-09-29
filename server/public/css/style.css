@@ -3184,6 +3184,16 @@ button.profile-row-main {
   gap: var(--space-2);
   flex-shrink: 0;
 }
+/* Draw team names derive from player names (up to 30 characters, often one
+   word), so the title shrinks and wraps inside the card instead of pushing the
+   skill total and neighbouring cards aside. */
+.matchmaking-draw-team-title {
+  min-width: 0;
+}
+.matchmaking-draw-team-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .matchmaking-draw-team .team-card-header .tournament-fixture-score {
   padding-block: 0;
   line-height: var(--control-line-height);

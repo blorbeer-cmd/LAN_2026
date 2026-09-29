@@ -84,6 +84,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   game, time, result and actions in its header. Expanding a match shows teams by place without changing their
   stored indices, and each team's skill sum beside its name, never individual player skills. A fresh draw appears under the heading „Neue Auslosung“; a
   finished Captain Draft becomes the fresh draw on every device the same way.
+  Draw teams have no stored name; cards, the team picker, the result dialog and the history derive it
+  from the current lineup with the same rule, so a player move renames affected teams immediately.
   The winning team carries the green „Win“ chip and an accessible group label, the losing teams
   are muted and a drawn result shows „Remis“. Card actions sit in the card header: an open draw
   offers a neutral „+“ for a single result and, rightmost, „Turnier erstellen“ (the primary
@@ -92,9 +94,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   players and available standings or match totals. A participating player's game title is bold in a collapsed Match tile; only their name is bold in expanded teams. Open draws show every player's skill. Completed tournament headers show the winning team with „Win“ and the tournament name; team details use the same compact place numbers as Match teams in the team-name line, including the finalist's second place, with an explicit place label in the title and accessible name. The number replaces the extra Win chip inside the team card; table points stay beside the team name. With a played third-place match, the semifinal losers carry places 3 and 4 the same way. Knockout exits without a distinct place appear in the context line below the players. The result pencil precedes „Rematch“; tournament actions
   need no empty action slot.
   „Turnier erstellen“ opens one compact dialog: Turnierformat, the group fields for „Gruppenphase +
-  K.O.“, one name field per team (at most 30 characters; a drafted team is prefilled as „Team <Captain>“, a drawn one as
-  „Team 1“ …), the options side by side („Hin- & Rückrunde“ for league-based formats, „Spiel um
-  Platz 3“ for knockout-based formats, „Ergebnisse inkl. Punktestand“) and the optional lobby base
+  K.O.“, one name field per team (at most 30 characters; a team with a single player is prefilled with that
+  player's name, a drafted team as „Team <Captain>“, a drawn one as „Team 1“ …), the options side by
+  side („Hin- & Rückrunde“ for league-based formats, „Spiel um Platz 3“ for knockout-based formats,
+  „Ergebnisse inkl. Punktestand“) and the optional lobby base
   name and password. „Spiel um Platz 3“ is off by default and needs four knockout teams: a pure
   knockout with fewer drawn teams does not offer it, and after a group stage with fewer advancers the
   server ignores it. When on, both semifinal losers meet for places 3 and 4, and the tournament
