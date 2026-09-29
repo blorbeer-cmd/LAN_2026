@@ -29,6 +29,7 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { state, catalogGames, eventPlayers } from '../state.js';
+import { prepareDrawFromVote } from './matchmaking.js';
 import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
@@ -487,6 +488,25 @@ function winnerNames(h) {
   return h.results.filter((r) => (h.winnerGameIds ?? []).includes(r.gameId)).map((r) => r.gameName);
 }
 
+// "Match generieren" turns a closed round into a prepared Match draw: its
+// single winner becomes the game, and everyone who gave that game at least
+// one point becomes the roster. A runoff decides only which of the tied games
+// is played, so there every participant counts. A tie has no game yet (the
+// runoff comes first), and a winner no longer in the catalog cannot be drawn.
+export function matchSelectionFromVote(h, catalogGameIds) {
+  const winners = h?.winnerGameIds ?? [];
+  if (winners.length !== 1 || !catalogGameIds.has(winners[0])) return null;
+  const [gameId] = winners;
+  const playerIds = (h.ballots ?? [])
+    .filter((ballot) => h.mode === 'single' || ballot.entries.some((entry) => entry.gameId === gameId && entry.points > 0))
+    .map((ballot) => ballot.playerId);
+  return playerIds.length ? { gameId, playerIds } : null;
+}
+
+function latestMatchSelection() {
+  return matchSelectionFromVote(historyCache?.[0], new Set(catalogGames().map((game) => game.id)));
+}
+
 function renderVoteResultContent(h) {
   // The API already ranks results by this round's score. Preserve that order
   // while filling the left column before the right one, as in the ballot.
@@ -526,6 +546,7 @@ function renderLatestVoteCard({ showRunoff }) {
         <div class="event-poll-card-side">
           <button type="button" class="btn btn-sm" data-open-vote-round="${h.round}">Stimmen ansehen</button>
           ${showRunoff ? '<button type="button" class="btn btn-primary btn-sm" id="votes-runoff">Stichwahl starten</button>' : ''}
+          ${latestMatchSelection() ? '<button type="button" class="btn btn-primary btn-sm" id="votes-generate-match">Match generieren</button>' : ''}
         </div>
       </header>
       <div class="stack event-poll-card-content" ${latestVoteOpen ? '' : 'hidden'}>
@@ -930,6 +951,13 @@ export function renderVotes(container, ctx) {
       }
     });
   }
+
+  container.querySelector('#votes-generate-match')?.addEventListener('click', () => {
+    const selection = latestMatchSelection();
+    if (!selection) return;
+    prepareDrawFromVote(selection);
+    window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view: 'matchmaking' } }));
+  });
 
   const closeBtn = container.querySelector('#votes-close');
   if (closeBtn) {

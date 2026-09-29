@@ -351,7 +351,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   the title's gap to metadata.
   Its header names the
   round, date, participation and winner and always offers „Stimmen ansehen“ and, on a tie, a
-  compact „Stichwahl starten“. Its closed header has the same compact height as the neighboring
+  compact „Stichwahl starten“. With exactly one winner that is still in the catalog, a compact
+  primary „Match generieren“ takes its place for every participant: it opens Match in „Auslosung“
+  mode with that game selected and exactly the voters who gave it at least one point preselected
+  (after a runoff, every runoff participant), so only „Anzahl Teams“ remains before „Teams
+  auslosen“. Its closed header has the same compact height as the neighboring
   closed cards and no hover fill. Opened, it lists every game of the round sorted by score, each with
   its result bar, „N Pkt. · X/Y spielen mit“ (voters who gave at least one point, out of everyone
   who voted) and the avatars of those voters; winners carry the green „Win“ chip, tied winners

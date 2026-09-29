@@ -55,6 +55,17 @@ let drawPlayerSearchQuery = '';
 // reads as one linear step instead of two competing panels.
 let teamsMode = 'draw';
 
+// Vote's "Match generieren" hands its result over before navigating here:
+// the winning game and the players who want to play it replace the current
+// draw setup, so only the team count is left to choose. The search is
+// cleared so every preselected player is visible.
+export function prepareDrawFromVote({ gameId, playerIds }) {
+  state.selectedGameId = gameId;
+  checkedIds = new Set(playerIds);
+  drawPlayerSearchQuery = '';
+  teamsMode = 'draw';
+}
+
 // Captain-draft state: the latest draft (active or finished) as delivered by
 // GET /api/draft or the draft:changed socket event. A running draft takes
 // over the whole view on every device (that's the point — it's a live event

@@ -525,6 +525,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await currentVote.locator('.event-poll-option.is-winner .event-poll-voter-stack').count(), 2);
   assert.equal(await currentVote.getByText('Unentschieden', { exact: true }).count(), 0);
   assert.equal(await currentVote.locator('#votes-runoff').count(), 1, 'the runoff action belongs to the current Vote card');
+  assert.equal(await currentVote.locator('#votes-generate-match').count(), 0, 'a tie has no single game to draw teams for');
   assert.equal(await page.locator('section[aria-labelledby="vote-runoff-title"]').count(), 0, 'no separate runoff card remains');
   assert.equal(await page.locator('details.history-details:has(summary:has-text("Historie"))').getAttribute('open'), null);
 
@@ -545,7 +546,9 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
 
   // Closing the runoff moves the previous result into its own history card.
   await currentVote.locator('#votes-runoff').click();
-  await page.locator('[data-vote-select]').first().click();
+  const runoffPick = page.locator('[data-vote-select]').first();
+  const runoffGameId = (await runoffPick.getAttribute('data-vote-select')) ?? '';
+  await runoffPick.click();
   await page.locator('#votes-submit').click();
   await page.locator('[data-vote-participation]:text-is("1/2 abgegeben")').waitFor();
   await page.locator('#votes-close').click();
@@ -574,6 +577,17 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await historyToggle.click();
   await historyCard.locator('.event-poll-option').first().waitFor({ state: 'detached' });
   assert.equal(await historyToggle.getAttribute('aria-expanded'), 'false');
+
+  // The decided runoff hands its winner and its participants to Match, so
+  // only the team count is left to choose before drawing.
+  await currentVote.locator('#votes-generate-match').click();
+  await page.waitForSelector('#mm-generate');
+  assert.equal(await page.inputValue('#mm-game'), runoffGameId);
+  assert.ok(await page.locator(`[data-player="${alice.id}"]`).isChecked(), 'the voter is preselected');
+  assert.ok(!(await page.locator(`[data-player="${bob.id}"]`).isChecked()), 'a player who did not vote stays unselected');
+  // Later tests draw with both players again.
+  await page.click('#mm-select-all');
+  await page.locator(`[data-player="${bob.id}"]:checked`).waitFor();
 
   // Admin mode stays active from here for the rest of this shard's shared
   // page/session (test players, Arcade AI). Auswertung itself no longer
