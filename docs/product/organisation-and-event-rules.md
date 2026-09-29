@@ -196,7 +196,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   card is raised above later siblings while the menu is open. Earlier rounds live in a nested,
   initially collapsed history with one compact row per round (round, end date, answered count and
   winning option) and a „Details“ button that opens the round's result dialog. Ended polls collect
-  in the page's collapsible „Historie“. Choosing the current feasibility answer again clears it
+  in the page's collapsible „Historie“. If no current poll exists, „Aktuelle Umfragen“ shows
+  „Keine Aktuelle Umfrage“. Choosing the current feasibility answer again clears it
   back to „offen“, which is also the incomplete-response count. Repeated reminders reuse one stable notification-center
   entry per poll and recipient, moving it to the top; automatic sends run 48 hours and 2 hours before
   the deadline. While a round is open, its creator can edit title, description, deadline, option
@@ -223,8 +224,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   bottom padding and no extra gap between them. The chosen
   answer is outlined in the accent color; single- and multiple-choice controls say „Wählen“ or
   „Ausgewählt“, and „Speichern“ sits in the round's footer beside the response progress. An ended
-  round lists its options by result and marks the winner with the green „Win“ chip; running rounds
-  name no leader. A non-anonymous round shows the voters of an option as up to four overlapping
+  round lists its options by result and marks the winner with the green „Win“ chip. From `--bp-lg`,
+  these results use two columns, filled down the left column before continuing at the top right;
+  narrower screens use one column. Consecutive place numbers follow the Top 10 presentation:
+  the first place is gold, the others muted. The voter column stays reserved for empty results,
+  so every result bar shares its column's left edge. The passive „Win“ label follows the text
+  height in headers and result rows without increasing the gap to the option note. Running rounds use no placement numbers
+  and name no leader. A non-anonymous round shows the voters of an option as up to four overlapping
   avatars, left-aligned in their column, followed by the number of remaining voters; a rating round pictures everyone who rated the option, the
   other modes picture the people the option won over. The avatars open the same „Stimmen“ dialog as
   the poll's own action. That dialog is one compact table: a legend numbers the options (with the

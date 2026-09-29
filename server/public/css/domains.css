@@ -1123,6 +1123,8 @@ input[type='number'].tournament-result-score {
   grid-column: 1 / -1;
 }
 .vote-win-chip {
+  /* A passive label follows the text height, including in card headers. */
+  min-height: 0;
   min-width: 0;
   flex-shrink: 0;
   padding-block: 0;
@@ -2449,7 +2451,8 @@ input.food-order-price-input {
   width: 1.6em;
   text-align: center;
 }
-.lb-row.rank-1 .lb-rank {
+.lb-row.rank-1 .lb-rank,
+.event-poll-options.is-ranked .lb-rank.is-first {
   color: var(--rank-1-gold);
 }
 .leaderboard-row-main {

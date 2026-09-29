@@ -442,11 +442,11 @@ function supportersOf(h, gameId) {
     .map(({ ballot }) => ({ playerId: ballot.playerId, name: ballot.name }));
 }
 
-function renderResultRows(h) {
+function renderResultRows(h, columnRows) {
   const maxPoints = Math.max(1, ...h.results.map((r) => r.points));
   const winners = new Set(h.winnerGameIds ?? []);
   return h.results
-    .map((r) => {
+    .map((r, index) => {
       const win = winners.has(r.gameId);
       const share = h.mode === 'single' ? r.votes / Math.max(1, h.totalVoters) : r.points / maxPoints;
       const supporters = supportersOf(h, r.gameId);
@@ -456,13 +456,16 @@ function renderResultRows(h) {
         attributes: `data-open-vote-round="${h.round}"`,
       });
       return `
-        <div class="event-poll-option${win ? ' is-winner' : ''}">
-          <div class="event-poll-option-info">
-            <span class="event-poll-option-title-row">
-              <strong>${escapeHtml(r.gameName)}</strong>
-              ${win ? WIN_CHIP : ''}
-            </span>
-            <span class="muted event-poll-option-note">${gameMetaHtml(r)}</span>
+        <div class="event-poll-option${win ? ' is-winner' : ''}${index === columnRows ? ' is-column-start' : ''}">
+          <div class="row" style="gap:var(--space-2);min-width:0;">
+            <span class="lb-rank${index === 0 ? ' is-first' : ''}" style="flex-shrink:0;" aria-label="Platz ${index + 1}">${index + 1}</span>
+            <div class="event-poll-option-info">
+              <span class="event-poll-option-title-row">
+                <strong>${escapeHtml(r.gameName)}</strong>
+                ${win ? WIN_CHIP : ''}
+              </span>
+              <span class="muted event-poll-option-note">${gameMetaHtml(r)}</span>
+            </div>
           </div>
           <span class="event-poll-result">
             <span class="event-poll-bar" aria-hidden="true">${share > 0 ? `<span class="event-poll-bar-fill is-choice" style="width:${Math.round(share * 1000) / 10}%;"></span>` : ''}</span>
@@ -481,9 +484,12 @@ function winnerNames(h) {
 }
 
 function renderVoteResultContent(h) {
+  // The API already ranks results by this round's score. Preserve that order
+  // while filling the left column before the right one, as in the ballot.
+  const columnRows = Math.max(1, Math.ceil(h.results.length / 2));
   return `<section class="stack event-poll-round">
     ${h.info ? `<p class="event-poll-note">${escapeHtml(h.info)}</p>` : ''}
-    <div class="stack event-poll-options">${renderResultRows(h)}</div>
+    <div class="stack event-poll-options is-ranked" style="--compact-rows: ${columnRows};">${renderResultRows(h, columnRows)}</div>
   </section>`;
 }
 

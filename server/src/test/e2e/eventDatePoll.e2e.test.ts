@@ -392,6 +392,36 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await voteDialog.locator('[data-close]').click();
   assert.equal(await closed.locator('.event-poll-option.is-winner .vote-win-chip').count(), 1, 'the ended round marks its winner');
   assert.match((await closed.locator('.event-poll-option').first().textContent()) ?? '', /Erstes Wochenende/, 'the ended round lists its options by result');
+  const rankedResults = closed.locator('.event-poll-options');
+  const chipHeights = await closed.locator('.vote-win-chip').evaluateAll((chips) =>
+    chips.map((chip) => chip.getBoundingClientRect().height));
+  assert.ok(chipHeights.length > 1 && chipHeights.every((height) => Math.abs(height - chipHeights[0]) <= 1),
+    'poll header and result Win labels share the same compact height');
+  const layout = await rankedResults.evaluate((options) => ({
+    columns: getComputedStyle(options).gridTemplateColumns.split(' ').length,
+    rows: Array.from(options.querySelectorAll('.event-poll-option')).map((row) => {
+      const box = row.getBoundingClientRect();
+      const title = row.querySelector('.event-poll-option-title-row')!;
+      return { x: box.x, y: box.y, rank: Number(row.querySelector('.lb-rank')!.textContent),
+        titleExtraHeight: title.getBoundingClientRect().height - title.querySelector('strong')!.getBoundingClientRect().height,
+        barX: row.querySelector('.event-poll-bar')!.getBoundingClientRect().x };
+    }),
+  }));
+  assert.equal(layout.columns, 2, 'closed polls in history use two columns on wide screens');
+  assert.ok(layout.rows.every((row) => row.titleExtraHeight <= 1), 'Win labels follow the title height');
+  assert.deepEqual(layout.rows.map((row) => row.rank), layout.rows.map((_, index) => index + 1));
+  const half = Math.ceil(layout.rows.length / 2);
+  for (const column of [layout.rows.slice(0, half), layout.rows.slice(half)]) {
+    assert.ok(column.every((row) => Math.abs(row.x - column[0].x) <= 1));
+    assert.ok(column.every((row) => Math.abs(row.barX - column[0].barX) <= 1), 'empty results keep their bar aligned');
+    assert.ok(column.every((row, index) => index === 0 || row.y > column[index - 1].y));
+  }
+  assert.ok(layout.rows[half].x > layout.rows[0].x, 'placements continue at the top of the right column');
+  assert.ok(Math.abs(layout.rows[half].y - layout.rows[0].y) <= 1);
+  await ownerPage.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await rankedResults.evaluate((options) => getComputedStyle(options).display), 'flex',
+    'phone poll results remain one readable column');
+  await ownerPage.setViewportSize({ width: 1024, height: 800 });
   assert.equal(await closed.locator('[data-decide-poll]').count(), 0, 'the closed counts are the result; there is no second decision step');
   await choosePollAction(closed, '[data-new-poll-round]');
   await ownerPage.waitForSelector('#event-poll-form');

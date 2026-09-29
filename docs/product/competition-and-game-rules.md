@@ -334,7 +334,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
   own progress („X von Y bewertet“) and „Speichern“, enabled once every game is rated. A runoff offers the Umfrage
   „Wählen“/„Ausgewählt“ choice instead of numbers. „Letzter Vote“ is a collapsible Umfrage card
-  that starts collapsed and keeps its open state across live re-renders; its header names the
+  that starts collapsed and keeps its open state across live re-renders. Expanded latest and
+  historical results preserve the server's score ranking and, from `--bp-lg`, fill two columns
+  down the left first, then down the right; phones keep one readable column. Each game carries a
+  consecutive place number in the Top-10 style, with the first number gold and the rest muted.
+  The voter column remains reserved even without supporters, so zero-point result bars keep
+  the same left edge as the other bars in their column.
+  The passive „Win“ label follows the text height in headers and result rows; it does not increase
+  the title's gap to metadata.
+  Its header names the
   round, date, participation and winner and always offers „Stimmen ansehen“ and, on a tie, a
   compact „Stichwahl starten“. Its closed header has the same compact height as the neighboring
   closed cards and no hover fill. Opened, it lists every game of the round sorted by score, each with

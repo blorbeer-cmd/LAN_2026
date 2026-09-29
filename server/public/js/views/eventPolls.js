@@ -456,15 +456,12 @@ function rejectTagHtml(poll, option) {
   return responseDraftFor(poll)[option.id] === '0' ? '<span class="event-poll-tag event-poll-reject-tag">Lehne ich ab</span>' : '';
 }
 
-function renderOption(poll, option, columnStart = false) {
+function renderOption(poll, option, columnStart = false, rank = null) {
   const link = optionUrl(option);
   const label = optionLabel(option);
   const win = option.isRecommended && poll.status !== 'open' && poll.status !== 'cancelled';
   const badges = `${renderVoterStack(poll, option)}${rejectTagHtml(poll, option)}${!option.active ? '<span class="badge badge-paused">Deaktiviert</span>' : ''}`;
-  // Fixed columns: name and note, result bar, voter avatars, answer buttons.
-  return `
-    <div class="event-poll-option${win ? ' is-winner' : ''}${columnStart ? ' is-column-start' : ''}" data-poll-option="${escapeHtml(option.id)}">
-      <div class="event-poll-option-info">
+  const info = `<div class="event-poll-option-info">
         <span class="event-poll-option-title-row">
           <strong>${escapeHtml(label)}</strong>
           ${win ? WIN_CHIP : ''}
@@ -472,7 +469,13 @@ function renderOption(poll, option, columnStart = false) {
           ${link ? `<a class="icon-btn event-poll-option-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" aria-label="Link zu ${escapeHtml(label)} öffnen" title="Link öffnen">${icon('squareArrowOutUpRight')}</a>` : ''}
         </span>
         ${option.description ? `<span class="muted event-poll-option-note">${escapeHtml(option.description)}</span>` : ''}
-      </div>
+      </div>`;
+  // Fixed columns: name and note, result bar, voter avatars, answer buttons.
+  return `
+    <div class="event-poll-option${win ? ' is-winner' : ''}${columnStart ? ' is-column-start' : ''}" data-poll-option="${escapeHtml(option.id)}">
+      ${rank === null ? info : `<div class="row" style="gap:var(--space-2);min-width:0;">
+        <span class="lb-rank${rank === 1 ? ' is-first' : ''}" style="flex-shrink:0;" aria-label="Platz ${rank}">${rank}</span>${info}
+      </div>`}
       ${renderResultBar(poll, option)}
       <span class="event-poll-option-badges">${badges}</span>
       ${renderResponseControl(poll, option)}
@@ -515,6 +518,7 @@ function renderRound(poll) {
   const canAnswer = poll.isInvitee && poll.status === 'open';
   // No interim result for this viewer: answers move up beside the title.
   const compact = canAnswer && poll.options.every((option) => !option.counts);
+  const ranked = poll.status === 'closed';
   const options = poll.status === 'open' ? poll.options : optionsByResult(poll);
   // Two compact columns read down the left column first, then the right one.
   const columnRows = Math.max(1, Math.ceil(options.length / 2));
@@ -522,7 +526,7 @@ function renderRound(poll) {
     <section class="stack event-poll-round" data-poll-round="${escapeHtml(poll.id)}">
       <div class="event-poll-tags">${tags.map((tag) => `<span class="event-poll-tag">${escapeHtml(tag)}</span>`).join('')}</div>
       ${poll.note ? `<p class="event-poll-note">${escapeHtml(poll.note)}</p>` : ''}
-      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}${compact ? ' is-compact' : ''}"${compact ? ` style="--compact-rows: ${columnRows};"` : ''}>${options.map((option, index) => renderOption(poll, option, compact && index === columnRows)).join('')}</div>
+      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}${compact ? ' is-compact' : ''}${ranked ? ' is-ranked' : ''}"${compact || ranked ? ` style="--compact-rows: ${columnRows};"` : ''}>${options.map((option, index) => renderOption(poll, option, (compact || ranked) && index === columnRows, ranked ? index + 1 : null)).join('')}</div>
       ${canAnswer
         ? `<div class="event-poll-save-row event-poll-footer"><span class="muted">${escapeHtml(draftProgress(poll))}</span><button type="button" class="btn btn-primary btn-sm" data-save-poll="${escapeHtml(poll.id)}" ${responseDraftIsValid(poll) ? '' : 'disabled'}>Speichern</button></div>`
         : ''}
@@ -1167,7 +1171,7 @@ export function renderEventPolls(container, ctx) {
   let currentContent;
   if (cached?.loading && !groups.length) currentContent = emptyStateHtml('Umfragen werden geladen…');
   else if (cached?.error) currentContent = `<div class="card stack"><p class="muted">${escapeHtml(cached.error)}</p><button type="button" class="btn btn-sm" id="retry-event-polls">Erneut versuchen</button></div>`;
-  else if (!activeGroups.length) currentContent = emptyStateHtml('Noch keine Umfrage.');
+  else if (!activeGroups.length) currentContent = emptyStateHtml('Keine Aktuelle Umfrage');
   else currentContent = `<div class="stack event-poll-list">${activeGroups.map(renderPollGroup).join('')}</div>`;
   const scrollTop = pollScrollContainer(container).scrollTop;
   const viewportAnchors = visiblePollViewportAnchors(container);
