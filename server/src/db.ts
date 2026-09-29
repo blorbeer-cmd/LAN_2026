@@ -372,7 +372,8 @@ db.exec(`
     status               TEXT NOT NULL DEFAULT 'active', -- 'active' | 'completed'
     created_at           INTEGER NOT NULL,
     lobby_name           TEXT,                         -- optional base name; each match receives a deterministic unique suffix
-    lobby_password       TEXT                          -- optional: in-game lobby password used throughout the tournament
+    lobby_password       TEXT,                         -- optional: in-game lobby password used throughout the tournament
+    play_all_places      INTEGER NOT NULL DEFAULT 0    -- knockout losers keep playing for every place (third-place match, ...)
   );
 
   -- A tournament's roster: fixed for the tournament's whole duration (unlike
@@ -393,7 +394,10 @@ db.exec(`
   -- stage/group_index disambiguate group_knockout's two phases: 'group'
   -- rows belong to one group's round-robin schedule (group_index says
   -- which), 'knockout' rows are the bracket generated once every group
-  -- match is decided — both NULL for the other two formats. score_a/score_b
+  -- match is decided — both NULL for the other two formats. place_from marks
+  -- a knockout row's (sub-)bracket: 1 for the main bracket, the first place a
+  -- placement bracket plays for otherwise (NULL on non-knockout and older
+  -- rows, read as 1). score_a/score_b
   -- are only populated when the owning tournament has track_score set.
   -- match_id points at the matches row created when a result is recorded,
   -- so playing in a tournament also counts toward the normal leaderboard;
@@ -414,7 +418,8 @@ db.exec(`
     is_draw        INTEGER NOT NULL DEFAULT 0,
     is_bye         INTEGER NOT NULL DEFAULT 0,
     match_id       TEXT REFERENCES matches(id) ON DELETE SET NULL,
-    played_at      INTEGER
+    played_at      INTEGER,
+    place_from     INTEGER
   );
 
   -- Web Push subscriptions (real OS-level notifications, not just in-app
@@ -5405,6 +5410,20 @@ function addNewstickerOptOut(): void {
   db.exec('ALTER TABLE players ADD COLUMN newsticker_opt_out INTEGER NOT NULL DEFAULT 0 CHECK (newsticker_opt_out IN (0, 1))');
 }
 registerMigration({ version: 113, name: 'add newsticker opt-out', up: addNewstickerOptOut });
+
+// Knockout tournaments can play out every place. Existing tournaments keep
+// their plain bracket; their rows stay the main bracket (NULL place_from).
+function addTournamentPlacementMatches(): void {
+  const tournamentColumns = db.prepare('PRAGMA table_info(tournaments)').all() as Array<{ name: string }>;
+  if (!tournamentColumns.some((column) => column.name === 'play_all_places')) {
+    db.exec('ALTER TABLE tournaments ADD COLUMN play_all_places INTEGER NOT NULL DEFAULT 0');
+  }
+  const matchColumns = db.prepare('PRAGMA table_info(tournament_matches)').all() as Array<{ name: string }>;
+  if (!matchColumns.some((column) => column.name === 'place_from')) {
+    db.exec('ALTER TABLE tournament_matches ADD COLUMN place_from INTEGER');
+  }
+}
+registerMigration({ version: 114, name: 'add tournament placement matches', up: addTournamentPlacementMatches });
 
 runRegisteredMigrations();
 

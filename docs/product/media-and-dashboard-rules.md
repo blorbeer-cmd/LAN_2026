@@ -59,7 +59,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   distribution hidden.
 - **Turnier**: Standings and group phases start directly below their metadata; in a knockout
   view, game and round remain fixed at the top while the bracket round is centered below, with
-  matches side by side. All variants use bordered standing, group or match cards with textual
+  matches side by side; placement matches of that round follow the main bracket with their place
+  („Spiel um Platz 3“) as a small caption, and placement byes are left out. All variants use
+  bordered standing, group or match cards with textual
   winner states. Low-height canvases reduce only row padding and gaps so the dashboard still needs
   no scrollbar. Without a tournament the card title reads „Turnier“ and the card states that no
   tournament exists.

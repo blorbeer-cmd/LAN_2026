@@ -10,6 +10,7 @@ import { confirmDialog, openModal } from '../modal.js';
 import { escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { createTournamentPresentation } from '../tournamentPresentation.js';
+import { isMainBracketMatch } from '../tournamentPlacements.js';
 import { withStepUp } from '../reauth.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { localRouteKey } from '../appRoute.js';
@@ -143,14 +144,16 @@ function renderDetail(container, ctx) {
     renderBracket,
     renderChampion,
     renderGroupKnockout,
+    renderPlacementMatches,
     renderSingleFinal,
     renderRoundRobin,
     renderTournamentTeams,
   } = createTournamentPresentation(getMyId());
+  const mainBracketPlayed = t.matches.filter((match) => isMainBracketMatch(match) && !match.isBye);
   const boardContent =
     t.format === 'single_elimination'
-      ? t.matches.filter((match) => !match.isBye).length === 1
-        ? renderSingleFinal(t, t.matches.find((match) => !match.isBye))
+      ? mainBracketPlayed.length === 1
+        ? renderSingleFinal(t, mainBracketPlayed[0])
         : renderBracket(t)
       : t.format === 'group_knockout'
         ? renderGroupKnockout(t)
@@ -158,17 +161,21 @@ function renderDetail(container, ctx) {
   const board =
     t.format === 'single_elimination'
       ? `<section class="card stack grouped-page-section tournament-board-card">
-           <div class="grouped-page-section-title"><h2>${t.matches.filter((match) => !match.isBye).length === 1 ? 'Finale' : 'Turnierbaum'}</h2></div>
+           <div class="grouped-page-section-title"><h2>${mainBracketPlayed.length === 1 ? 'Finale' : 'Turnierbaum'}</h2></div>
            ${boardContent}
-         </section>`
+         </section>${renderPlacementMatches(t, t.matches)}`
       : boardContent;
 
-  const decidedMatches = t.matches.filter((match) => match.winnerTeamId !== null || match.isDraw).length;
+  // Byes decide themselves (or, in a placement bracket, nothing at all), so
+  // only real matches count, like the tournament's Match tile.
+  const playedMatches = t.matches.filter((match) => !match.isBye);
+  const decidedMatches = playedMatches.filter((match) => match.winnerTeamId !== null || match.isDraw).length;
   const participantCount = t.teams.reduce((sum, team) => sum + team.players.length, 0);
 
   const formatMeta = [
     t.twoLegged ? 'Hin- & Rückrunde' : null,
     t.format === 'group_knockout' ? `${t.groupCount} Gruppen · Top ${t.advancersPerGroup} steigen auf` : null,
+    t.playAllPlaces ? 'Alle Plätze ausgespielt' : null,
     t.trackScore ? 'Punktestand' : null,
   ]
     .filter(Boolean)
@@ -182,7 +189,7 @@ function renderDetail(container, ctx) {
       ${isGroupAdmin() ? '<button type="button" class="btn btn-sm" id="tourn-delete">Löschen</button>' : ''}
     </div>
     <div class="muted tournament-detail-meta">
-      <span>${formatExplanation} · ${t.teams.length} Teams · ${participantCount} Spieler · ${decidedMatches}/${t.matches.length} entschieden</span>
+      <span>${formatExplanation} · ${t.teams.length} Teams · ${participantCount} Spieler · ${decidedMatches}/${playedMatches.length} entschieden</span>
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
     </div>
     <div class="grouped-page-sections tournament-board">
@@ -302,9 +309,9 @@ function affectedFollowup(t, match, nextWinnerId) {
     return 'Wenn du den Sieger änderst, wird die K.-o.-Phase neu erstellt. Dort bereits eingetragene Ergebnisse gehen verloren. Trotzdem speichern?';
   }
   if (t.format !== 'single_elimination' && match.stage !== 'knockout') return null;
-  const hasDescendant = t.matches.some((candidate) =>
-    candidate.stage === match.stage && candidate.round > match.round &&
-    Math.floor(match.slot / (2 ** (candidate.round - match.round))) === candidate.slot);
+  // Every knockout round but the last passes its winner (and, with placement
+  // matches, its loser) on to a later match.
+  const hasDescendant = t.matches.some((candidate) => candidate.stage === match.stage && candidate.round > match.round);
   return hasDescendant
     ? 'Wenn du den Sieger änderst, werden nachfolgende K.-o.-Partien neu besetzt. Bereits eingetragene Ergebnisse dort gehen verloren. Trotzdem speichern?'
     : null;

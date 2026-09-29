@@ -1,7 +1,7 @@
 // Tournaments (FR-33): pick a game, group present players into teams, and
-// get either a single-elimination bracket ("Turnierbaum") or a round-robin
-// league ("jeder gegen jeden", optionally home-and-away) generated
-// automatically. Recording a match's result also creates a normal `matches`
+// get either a single-elimination bracket ("Turnierbaum", optionally with
+// placement matches for every place) or a round-robin league ("jeder gegen
+// jeden", optionally home-and-away) generated automatically. Recording a match's result also creates a normal `matches`
 // row, so playing in a tournament counts toward the regular leaderboard too.
 
 import { Router, type Request, type Response } from 'express';
@@ -21,6 +21,10 @@ import {
   generateBracket,
   applyBracketResult,
   bracketIsComplete,
+  bracketMatchTargets,
+  bracketPlaceFrom,
+  bracketPlaceRange,
+  computeBracketPlacements,
   generateRoundRobin,
   computeRoundRobinStandings,
   assignGroups,
@@ -52,6 +56,7 @@ interface TournamentRow {
   lobby_name: string | null;
   lobby_password: string | null;
   group_id: string | null;
+  play_all_places: number;
 }
 
 interface TournamentTeamRow {
@@ -78,6 +83,7 @@ interface TournamentMatchRow {
   is_bye: number;
   match_id: string | null;
   played_at: number | null;
+  place_from: number | null;
 }
 
 interface PlayerRow {
@@ -95,62 +101,73 @@ function toBracketSlot(row: TournamentMatchRow): BracketMatchSlot {
     teamBId: row.team_b_id,
     winnerTeamId: row.winner_team_id,
     isBye: Boolean(row.is_bye),
+    placeFrom: row.place_from ?? 1,
   };
 }
 
+const isKnockoutRow = (format: TournamentFormat, row: { stage: string | null }): boolean =>
+  format === 'single_elimination' || row.stage === 'knockout';
+
 // Advances a single-elimination-shaped set of rows by one result and
-// persists the next round's teams if this was the last piece needed to
-// complete it. Shared by single_elimination (the whole tournament is one
+// persists every match it fills: the winner's next match, the loser's
+// placement match (when all places are played out) and byes that resolve on
+// the way. Shared by single_elimination (the whole tournament is one
 // bracket) and group_knockout's knockout stage (bracketRows pre-filtered to
 // stage='knockout') — both progress identically once the bracket exists.
+// readyMatchIds lists the matches whose two teams are now known, winner's
+// match first.
 function progressBracketRows(
   bracketRows: TournamentMatchRow[],
-  round: number,
-  slot: number,
+  played: TournamentMatchRow,
   winnerTeamId: string
-): { readyNextMatchId: string | null; completed: boolean } {
+): { readyMatchIds: string[]; completed: boolean } {
   const before = bracketRows.map(toBracketSlot);
-  const after = applyBracketResult(before, round, slot, winnerTeamId);
+  const after = applyBracketResult(before, played.round, played.slot, winnerTeamId, played.place_from ?? 1);
 
-  let readyNextMatchId: string | null = null;
-  const next = after.find((m, i) => m.teamAId !== before[i].teamAId || m.teamBId !== before[i].teamBId);
-  if (next) {
-    const nextRow = bracketRows.find((r) => r.round === next.round && r.slot === next.slot)!;
-    db.prepare('UPDATE tournament_matches SET team_a_id = ?, team_b_id = ? WHERE id = ?').run(
+  const readyMatchIds: string[] = [];
+  after.forEach((next, i) => {
+    const prev = before[i];
+    if (next.teamAId === prev.teamAId && next.teamBId === prev.teamBId && next.winnerTeamId === prev.winnerTeamId) return;
+    db.prepare('UPDATE tournament_matches SET team_a_id = ?, team_b_id = ?, winner_team_id = ? WHERE id = ?').run(
       next.teamAId,
       next.teamBId,
-      nextRow.id
+      next.winnerTeamId,
+      bracketRows[i].id
     );
-    if (next.teamAId && next.teamBId) {
-      readyNextMatchId = nextRow.id;
-    }
-  }
+    if (!next.isBye && next.teamAId && next.teamBId && next.winnerTeamId === null) readyMatchIds.push(bracketRows[i].id);
+  });
 
-  return { readyNextMatchId, completed: bracketIsComplete(after) };
+  return { readyMatchIds, completed: bracketIsComplete(after) };
 }
 
-function clearBracketDescendants(
-  bracketRows: TournamentMatchRow[],
-  round: number,
-  slot: number
-): void {
-  const finalRound = Math.max(...bracketRows.map((row) => row.round));
-  let feederSlot = slot;
-  for (let nextRound = round + 1; nextRound <= finalRound; nextRound++) {
-    const nextSlot = Math.floor(feederSlot / 2);
-    const nextRow = bracketRows.find((row) => row.round === nextRound && row.slot === nextSlot);
-    if (!nextRow) break;
+// A corrected result invalidates everything its old winner and loser went
+// on to: their slots in the following matches are emptied and any result
+// already recorded there is removed, together with that match's own
+// consequences. A bye only ever passed on its winner.
+function clearBracketDescendants(bracketRows: TournamentMatchRow[], changed: TournamentMatchRow): void {
+  const slots = bracketRows.map(toBracketSlot);
+  const clearFrom = (row: TournamentMatchRow, passedOnLoser: boolean) => {
+    const targets = bracketMatchTargets(slots, toBracketSlot(row));
+    for (const target of passedOnLoser ? [targets.winner, targets.loser] : [targets.winner]) {
+      if (!target) continue;
+      const nextRow = bracketRows.find(
+        (candidate) =>
+          candidate.round === target.round && candidate.slot === target.slot && (candidate.place_from ?? 1) === target.placeFrom
+      );
+      if (!nextRow) continue;
 
-    if (nextRow.match_id) db.prepare('DELETE FROM matches WHERE id = ?').run(nextRow.match_id);
-    const incomingColumn = feederSlot % 2 === 0 ? 'team_a_id' : 'team_b_id';
-    db.prepare(
-      `UPDATE tournament_matches
-       SET ${incomingColumn} = NULL, winner_team_id = NULL, score_a = NULL, score_b = NULL,
-           is_draw = 0, match_id = NULL, played_at = NULL
-       WHERE id = ?`
-    ).run(nextRow.id);
-    feederSlot = nextSlot;
-  }
+      if (nextRow.match_id) db.prepare('DELETE FROM matches WHERE id = ?').run(nextRow.match_id);
+      const incomingColumn = target.side === 'A' ? 'team_a_id' : 'team_b_id';
+      db.prepare(
+        `UPDATE tournament_matches
+         SET ${incomingColumn} = NULL, winner_team_id = NULL, score_a = NULL, score_b = NULL,
+             is_draw = 0, match_id = NULL, played_at = NULL
+         WHERE id = ?`
+      ).run(nextRow.id);
+      if (nextRow.winner_team_id !== null) clearFrom(nextRow, !nextRow.is_bye);
+    }
+  };
+  clearFrom(changed, true);
 }
 
 function clearKnockoutStage(tournamentId: string): void {
@@ -201,8 +218,10 @@ function buildDetail(tournamentId: string, groupId: string) {
   }));
 
   const matchRows = db
-    .prepare('SELECT * FROM tournament_matches WHERE tournament_id = ? ORDER BY round, slot')
+    .prepare('SELECT * FROM tournament_matches WHERE tournament_id = ? ORDER BY round, COALESCE(place_from, 1), slot')
     .all(tournamentId) as TournamentMatchRow[];
+  const knockoutRows = matchRows.filter((m) => isKnockoutRow(tournament.format, m));
+  const knockoutSlots = knockoutRows.map(toBracketSlot);
   const matches = matchRows.map((m) => ({
     id: m.id,
     round: m.round,
@@ -218,11 +237,19 @@ function buildDetail(tournamentId: string, groupId: string) {
     isBye: Boolean(m.is_bye),
     matchId: m.match_id,
     playedAt: m.played_at,
+    // Knockout rows only: 1 for the main bracket, otherwise the placement
+    // bracket; placeRange names the real places that bracket decides.
+    placeFrom: isKnockoutRow(tournament.format, m) ? (m.place_from ?? 1) : null,
+    placeRange:
+      isKnockoutRow(tournament.format, m) && (m.place_from ?? 1) > 1
+        ? bracketPlaceRange(knockoutSlots, toBracketSlot(m))
+        : null,
     lobbyName: deriveTournamentLobbyName(tournament.lobby_name, tournament.format, {
       round: m.round,
       slot: m.slot,
       stage: m.stage,
       groupIndex: m.group_index,
+      placeFrom: m.place_from,
     }),
   }));
 
@@ -248,17 +275,18 @@ function buildDetail(tournamentId: string, groupId: string) {
     });
   }
 
+  // Distinct final places a knockout has decided so far: the final's two
+  // teams, or every team once all places are played out. Teams knocked out
+  // in a group stage are not part of it.
+  const placements = knockoutSlots.length > 0 ? computeBracketPlacements(knockoutSlots) : [];
+
   // The winner of a completed tournament: the knockout final's winner, or the
   // league leader for a pure round-robin. null while it is still running.
   let championTeamId: string | null = null;
   if (tournament.status === 'completed') {
-    if (standings) {
-      championTeamId = standings[0]?.teamId ?? null;
-    } else {
-      const knockout = matches.filter((m) => tournament.format === 'single_elimination' || m.stage === 'knockout');
-      const finalRound = Math.max(...knockout.map((m) => m.round));
-      championTeamId = knockout.find((m) => m.round === finalRound)?.winnerTeamId ?? null;
-    }
+    championTeamId = standings
+      ? (standings[0]?.teamId ?? null)
+      : (placements.find((placement) => placement.place === 1)?.teamId ?? null);
   }
 
   return {
@@ -273,8 +301,10 @@ function buildDetail(tournamentId: string, groupId: string) {
     trackScore: Boolean(tournament.track_score),
     groupCount: tournament.group_count,
     advancersPerGroup: tournament.advancers_per_group,
+    playAllPlaces: Boolean(tournament.play_all_places),
     status: tournament.status,
     championTeamId,
+    placements,
     createdAt: tournament.created_at,
     lobbyName: tournament.lobby_name,
     lobbyPassword: tournament.lobby_password,
@@ -436,13 +466,15 @@ function notifyTournamentStart(
 // starting schedule immediately (the knockout bracket of group_knockout is
 // the one exception — it can't be generated until the group stage decides
 // who advances, see the result-recording handler below).
-// Body: { gameId, name?, format, twoLegged?, trackScore?, groupCount?,
+// Body: { gameId, name?, format, twoLegged?, trackScore?, playAllPlaces?, groupCount?,
 //         advancersPerGroup?, lobbyName?, lobbyPassword?, teams: [{ name?, playerIds }], drawId? }
+// playAllPlaces adds placement matches to the knockout (bracket formats only).
 // drawId names the Match draw these teams came from; the draw is claimed in
 // the same transaction so it can no longer be recorded as a single result.
 tournamentsRouter.post('/', (req, res) => {
-  const { gameId, name, format, twoLegged, trackScore, groupCount, advancersPerGroup, lobbyName, lobbyPassword, teams, drawId } =
-    req.body ?? {};
+  const {
+    gameId, name, format, twoLegged, trackScore, playAllPlaces, groupCount, advancersPerGroup, lobbyName, lobbyPassword, teams, drawId,
+  } = req.body ?? {};
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -461,6 +493,9 @@ tournamentsRouter.post('/', (req, res) => {
   }
   if (trackScore !== undefined && typeof trackScore !== 'boolean') {
     return res.status(400).json({ error: 'trackScore muss ein Boolean sein.' });
+  }
+  if (playAllPlaces !== undefined && typeof playAllPlaces !== 'boolean') {
+    return res.status(400).json({ error: 'playAllPlaces muss ein Boolean sein.' });
   }
   if (name !== undefined && !isNonEmptyString(name, 80)) {
     return res.status(400).json({ error: 'name muss 1-80 Zeichen lang sein.' });
@@ -532,6 +567,8 @@ tournamentsRouter.post('/', (req, res) => {
   const tournamentId = nanoid();
   const resolvedTwoLegged = resolvedFormat !== 'single_elimination' && Boolean(twoLegged);
   const resolvedTrackScore = Boolean(trackScore);
+  // A league already ranks every team, so only knockout formats use it.
+  const resolvedPlayAllPlaces = resolvedFormat !== 'round_robin' && Boolean(playAllPlaces);
   const now = Date.now();
 
   const teamIds = teamsInput.map(() => nanoid());
@@ -546,8 +583,8 @@ tournamentsRouter.post('/', (req, res) => {
   const create = db.transaction(() => {
     db.prepare(
       `INSERT INTO tournaments
-         (id, event_id, game_id, name, format, two_legged, track_score, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password, group_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
+         (id, event_id, game_id, name, format, two_legged, track_score, play_all_places, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password, group_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
     ).run(
       tournamentId,
       eventId,
@@ -556,6 +593,7 @@ tournamentsRouter.post('/', (req, res) => {
       resolvedFormat,
       resolvedTwoLegged ? 1 : 0,
       resolvedTrackScore ? 1 : 0,
+      resolvedPlayAllPlaces ? 1 : 0,
       resolvedGroupCount,
       resolvedAdvancersPerGroup,
       now,
@@ -588,12 +626,12 @@ tournamentsRouter.post('/', (req, res) => {
 
     const insertMatch = db.prepare(
       `INSERT INTO tournament_matches
-         (id, tournament_id, round, slot, stage, group_index, team_a_id, team_b_id, winner_team_id, is_draw, is_bye, match_id, played_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL)`
+         (id, tournament_id, round, slot, stage, group_index, team_a_id, team_b_id, winner_team_id, is_draw, is_bye, match_id, played_at, place_from)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, ?)`
     );
 
     if (resolvedFormat === 'single_elimination') {
-      const bracket = generateBracket(drawnTeamIds);
+      const bracket = generateBracket(drawnTeamIds, resolvedPlayAllPlaces);
       for (const m of bracket) {
         insertMatch.run(
           nanoid(),
@@ -605,7 +643,8 @@ tournamentsRouter.post('/', (req, res) => {
           m.teamAId,
           m.teamBId,
           m.winnerTeamId,
-          m.isBye ? 1 : 0
+          m.isBye ? 1 : 0,
+          bracketPlaceFrom(m)
         );
       }
     } else if (resolvedFormat === 'round_robin') {
@@ -614,7 +653,7 @@ tournamentsRouter.post('/', (req, res) => {
       for (const f of fixtures) {
         const slot = slotByRound.get(f.round) ?? 0;
         slotByRound.set(f.round, slot + 1);
-        insertMatch.run(nanoid(), tournamentId, f.round, slot, null, null, f.teamAId, f.teamBId, null, 0);
+        insertMatch.run(nanoid(), tournamentId, f.round, slot, null, null, f.teamAId, f.teamBId, null, 0, null);
       }
     } else {
       // group_knockout: only the group stage is known up front; the
@@ -627,7 +666,7 @@ tournamentsRouter.post('/', (req, res) => {
         for (const f of fixtures) {
           const slot = slotByRound.get(f.round) ?? 0;
           slotByRound.set(f.round, slot + 1);
-          insertMatch.run(nanoid(), tournamentId, f.round, slot, 'group', groupIndex, f.teamAId, f.teamBId, null, 0);
+          insertMatch.run(nanoid(), tournamentId, f.round, slot, 'group', groupIndex, f.teamAId, f.teamBId, null, 0, null);
         }
       }
     }
@@ -718,7 +757,7 @@ function saveTournamentResult(req: Request, res: Response) {
 
   // Knockout-shaped matches — the whole bracket in single_elimination, or
   // just the knockout stage of group_knockout — never allow a draw.
-  const isKnockoutLike = tournament.format === 'single_elimination' || match.stage === 'knockout';
+  const isKnockoutLike = isKnockoutRow(tournament.format, match);
 
   let winnerTeamId: string | null;
   let scoreA: number | null = null;
@@ -797,7 +836,9 @@ function saveTournamentResult(req: Request, res: Response) {
   // has. The equivalent nudge-worthy moment is the round itself wrapping up:
   // once every match in a round is decided, the next round's matches are
   // "up", so their teams get notified. Populated inside the transaction
-  // below with the ids of any matches that just became ready this way.
+  // below with the ids of any matches that just became ready this way. A
+  // bracket with placement matches adds the loser's next match here, since
+  // one result then readies up to two matches.
   let readyNextRoundMatchIds: string[] = [];
 
   const record = db.transaction(() => {
@@ -809,7 +850,7 @@ function saveTournamentResult(req: Request, res: Response) {
     if (isCorrection) {
       db.prepare('UPDATE matches SET result = ? WHERE id = ?').run(leaderboardResult, leaderboardMatchId);
 
-      if (outcomeChanged && (tournament.format === 'single_elimination' || match.stage === 'knockout')) {
+      if (outcomeChanged && isKnockoutLike) {
         const bracketRows = db
           .prepare(
             tournament.format === 'single_elimination'
@@ -817,7 +858,7 @@ function saveTournamentResult(req: Request, res: Response) {
               : `SELECT * FROM tournament_matches WHERE tournament_id = ? AND stage = 'knockout'`
           )
           .all(tournament.id) as TournamentMatchRow[];
-        clearBracketDescendants(bracketRows, match.round, match.slot);
+        clearBracketDescendants(bracketRows, match);
         db.prepare("UPDATE tournaments SET status = 'active' WHERE id = ?").run(tournament.id);
       } else if (outcomeChanged && tournament.format === 'group_knockout' && match.stage === 'group') {
         clearKnockoutStage(tournament.id);
@@ -836,8 +877,8 @@ function saveTournamentResult(req: Request, res: Response) {
       const allRows = db
         .prepare('SELECT * FROM tournament_matches WHERE tournament_id = ?')
         .all(tournament.id) as TournamentMatchRow[];
-      const result = progressBracketRows(allRows, match.round, match.slot, winnerTeamId);
-      readyNextMatchId = result.readyNextMatchId;
+      const result = progressBracketRows(allRows, match, winnerTeamId);
+      [readyNextMatchId = null, ...readyNextRoundMatchIds] = result.readyMatchIds;
       if (result.completed) {
         db.prepare("UPDATE tournaments SET status = 'completed' WHERE id = ?").run(tournament.id);
       }
@@ -870,8 +911,8 @@ function saveTournamentResult(req: Request, res: Response) {
         const bracketRows = db
           .prepare(`SELECT * FROM tournament_matches WHERE tournament_id = ? AND stage = 'knockout'`)
           .all(tournament.id) as TournamentMatchRow[];
-        const result = progressBracketRows(bracketRows, match.round, match.slot, winnerTeamId);
-        readyNextMatchId = result.readyNextMatchId;
+        const result = progressBracketRows(bracketRows, match, winnerTeamId);
+        [readyNextMatchId = null, ...readyNextRoundMatchIds] = result.readyMatchIds;
         if (result.completed) {
           db.prepare("UPDATE tournaments SET status = 'completed' WHERE id = ?").run(tournament.id);
         }
@@ -929,21 +970,22 @@ function saveTournamentResult(req: Request, res: Response) {
           });
 
           advancingTeamIds = selectAdvancers(standingsByGroup, tournament.advancers_per_group!);
-          const bracket = generateBracket(advancingTeamIds);
+          const bracket = generateBracket(advancingTeamIds, Boolean(tournament.play_all_places));
           const insertKoMatch = db.prepare(
             `INSERT INTO tournament_matches
-               (id, tournament_id, round, slot, stage, group_index, team_a_id, team_b_id, winner_team_id, is_draw, is_bye, match_id, played_at)
-             VALUES (?, ?, ?, ?, 'knockout', NULL, ?, ?, ?, 0, ?, NULL, NULL)`
+               (id, tournament_id, round, slot, stage, group_index, team_a_id, team_b_id, winner_team_id, is_draw, is_bye, match_id, played_at, place_from)
+             VALUES (?, ?, ?, ?, 'knockout', NULL, ?, ?, ?, 0, ?, NULL, NULL, ?)`
           );
           for (const m of bracket) {
-            insertKoMatch.run(nanoid(), tournament.id, m.round, m.slot, m.teamAId, m.teamBId, m.winnerTeamId, m.isBye ? 1 : 0);
+            insertKoMatch.run(
+              nanoid(), tournament.id, m.round, m.slot, m.teamAId, m.teamBId, m.winnerTeamId, m.isBye ? 1 : 0, bracketPlaceFrom(m)
+            );
           }
           knockoutJustGenerated = true;
 
-          // A tiny bracket can end up fully bye-resolved (e.g. exactly 3
+          // A tiny bracket can end up partly bye-resolved (e.g. exactly 3
           // advancers -> one bye sits straight in the final) but the final
-          // itself always still needs a real result — bracketIsComplete
-          // correctly only looks at the final, so this stays safe.
+          // itself always still needs a real result, so this stays safe.
           if (bracketIsComplete(bracket)) {
             db.prepare("UPDATE tournaments SET status = 'completed' WHERE id = ?").run(tournament.id);
           }
@@ -1032,7 +1074,7 @@ function saveTournamentResult(req: Request, res: Response) {
         : undefined;
 
   // A league or group round can ready several next-round matches at once
-  // (unlike a bracket, which waits for both feeder teams), so each
+  // (a bracket at most two, when its loser plays on for a place), so each
   // gets its own broadcast/toast rather than trying to cram them into the
   // single `notify` slot the response below uses.
   for (const matchId of readyNextRoundMatchIds) {

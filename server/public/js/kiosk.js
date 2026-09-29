@@ -13,6 +13,7 @@ import { drawArcadeStreamCanvas } from './arcade/shared/arcadeStreamRenderer.js'
 import { domainIcon, installDomainIcons } from './domainIcons.js';
 import { snakeArenaLegendHtml } from './arcade/shared/snakeArenaLegend.js';
 import { emptyStateHtml } from './emptyState.js';
+import { isMainBracketMatch, placementMatchLabel } from './tournamentPlacements.js';
 import { kioskMusicQueueHtml, kioskMusicQueueKey } from './kioskMusic.js';
 import {
   connectLocalSpotifyPlayer,
@@ -718,13 +719,17 @@ function renderTournament(t) {
   const bracketMatches = t.format === 'group_knockout' ? knockoutMatches : t.matches;
 
   // Bracket: show whichever round still has an undecided-but-playable
-  // match, or the final result if it's all done.
+  // match, or the final result if it's all done. Placement matches of that
+  // round appear after the main bracket with their place; byes inside a
+  // placement bracket decide nothing worth showing.
   const totalRounds = Math.max(...bracketMatches.map((m) => m.round));
   const currentRound =
     bracketMatches.find((m) => !m.isBye && m.teamAId && m.teamBId && !m.winnerTeamId)?.round ?? totalRounds;
   const rows = bracketMatches
-    .filter((m) => m.round === currentRound)
+    .filter((m) => m.round === currentRound && (isMainBracketMatch(m) || !m.isBye))
+    .sort((a, b) => (a.placeFrom ?? 1) - (b.placeFrom ?? 1) || a.slot - b.slot)
     .map((m) => {
+      const placeLabel = isMainBracketMatch(m) ? '' : `<div class="kiosk-match-label">${escapeHtml(placementMatchLabel(m, totalRounds))}</div>`;
       if (m.isBye) {
         return `
           <div class="kiosk-match-card">
@@ -734,6 +739,7 @@ function renderTournament(t) {
       }
       return `
         <div class="kiosk-match-card">
+          ${placeLabel}
           <div class="kiosk-match-team ${m.winnerTeamId === m.teamAId ? 'is-winner' : ''}"><strong>${teamName(m.teamAId)}</strong>${m.winnerTeamId === m.teamAId ? '<span class="badge badge-playing">Sieger</span>' : ''}</div>
           <div class="kiosk-match-team ${m.winnerTeamId === m.teamBId ? 'is-winner' : ''}"><strong>${teamName(m.teamBId)}</strong>${m.winnerTeamId === m.teamBId ? '<span class="badge badge-playing">Sieger</span>' : ''}</div>
         </div>`;

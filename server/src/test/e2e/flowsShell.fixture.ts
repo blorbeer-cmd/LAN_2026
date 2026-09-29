@@ -2460,7 +2460,7 @@ flowTest('the tournament start link opens the own team and renames it in place',
   assert.match(await ownCells.last().evaluate((element) => getComputedStyle(element).boxShadow), / -2px 0px 0px/);
 });
 
-flowTest('correcting an early K.O. winner warns before later results are reset', async (t) => {
+flowTest('correcting an early K.O. winner warns before later results and placement matches are reset', async (t) => {
   const gamesResponse = await page.request.get(`${BASE_URL}/api/games`);
   const gameId = ((await gamesResponse.json()) as Array<{ id: string }>)[0].id;
   const extraIds: string[] = [];
@@ -2473,11 +2473,13 @@ flowTest('correcting an early K.O. winner warns before later results are reset',
     data: {
       gameId,
       format: 'single_elimination',
+      playAllPlaces: true,
       teams: [alice.id, bob.id, ...extraIds].map((id) => ({ playerIds: [id] })),
     },
   });
   assert.equal(created.status(), 201, await created.text());
-  const tournament = await created.json() as { id: string; matches: Array<{ id: string; round: number; slot: number; teamAId: string; teamBId: string }> };
+  type BoardMatch = { id: string; round: number; slot: number; placeFrom: number; teamAId: string; teamBId: string };
+  const tournament = await created.json() as { id: string; matches: BoardMatch[] };
   t.after(async () => { await page.request.delete(`${BASE_URL}/api/tournaments/${tournament.id}`); });
   const semiFinals = tournament.matches.filter((match) => match.round === 1 && match.teamAId && match.teamBId);
   assert.equal(semiFinals.length, 2);
@@ -2487,14 +2489,26 @@ flowTest('correcting an early K.O. winner warns before later results are reset',
     });
     assert.equal(result.status(), 200, await result.text());
   }
-  const ready = await (await page.request.get(`${BASE_URL}/api/tournaments/${tournament.id}`)).json() as { matches: Array<{ id: string; round: number; teamAId: string }> };
-  const final = ready.matches.find((match) => match.round === 2)!;
-  const finalResult = await page.request.post(`${BASE_URL}/api/tournaments/${tournament.id}/matches/${final.id}/result`, {
-    data: { winnerTeamId: final.teamAId },
-  });
-  assert.equal(finalResult.status(), 200, await finalResult.text());
+  const ready = await (await page.request.get(`${BASE_URL}/api/tournaments/${tournament.id}`)).json() as { matches: BoardMatch[] };
+  const final = ready.matches.find((match) => match.round === 2 && match.placeFrom === 1)!;
+  const thirdPlace = ready.matches.find((match) => match.placeFrom === 3)!;
+  for (const match of [final, thirdPlace]) {
+    const result = await page.request.post(`${BASE_URL}/api/tournaments/${tournament.id}/matches/${match.id}/result`, {
+      data: { winnerTeamId: match.teamAId },
+    });
+    assert.equal(result.status(), 200, await result.text());
+  }
 
   await page.goto(`${BASE_URL}/#tournaments/${tournament.id}`);
+  // Every place was played out: the finished board ranks all four teams and
+  // lists the third-place match below the bracket.
+  const ranking = page.locator('[data-tournament-champion] .ranked-list');
+  await ranking.waitFor();
+  assert.deepEqual(await ranking.locator('.ranked-list-rank').allTextContents(), ['1', '2', '3', '4']);
+  const placements = page.locator('[data-tournament-placements]');
+  assert.equal((await placements.locator('.tournament-round-head').textContent())?.trim(), 'Spiel um Platz 3');
+  assert.equal(await placements.locator(`[data-open-result="${thirdPlace.id}"]`).count(), 1);
+  assert.equal(await page.locator('.bracket-match').count(), 3, 'the bracket keeps semifinals and final only');
   await page.locator(`[data-open-result="${semiFinals[0].id}"]`).click();
   await page.locator('.modal label.tournament-result-pick:has(input[value="1"])').click();
   await page.locator('.modal [data-result-save]').click();
@@ -2507,6 +2521,9 @@ flowTest('correcting an early K.O. winner warns before later results are reset',
   await page.locator('.modal').waitFor({ state: 'detached' });
   assert.equal(await page.locator(`[data-open-result="${final.id}"].is-open`).count(), 1,
     'the downstream final is reopened only after confirmation');
+  assert.equal(await page.locator(`[data-open-result="${thirdPlace.id}"].is-open`).count(), 1,
+    'the third-place match reopens with the changed semifinal loser');
+  assert.equal(await page.locator('[data-tournament-champion]').count(), 0);
   assert.equal(await page.locator('.bracket-tree-wrap .rating, .bracket-team-players').count(), 0,
     'the bracket keeps team names and outcomes without skill or members');
   assert.equal(await page.locator('.tournament-team-card .team-player-name strong').count(), 1);

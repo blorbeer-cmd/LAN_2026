@@ -722,6 +722,14 @@
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
 }
+/* Names the place a placement match is played for („Spiel um Platz 3“). */
+.kiosk-match-label {
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-muted);
+}
 .kiosk-match-team + .kiosk-match-team {
   border-top: 1px solid var(--border);
 }
