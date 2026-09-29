@@ -190,7 +190,7 @@ test('the running vote of the previous event disappears when the workspace chang
   await switchWorkspaceInBrowser(eventB);
   const inB = await viewText();
   assert.doesNotMatch(inB, /Abstimmung läuft/, 'event B must not show event A running round');
-  assert.match(inB, /Neue Abstimmung/, 'event B offers starting its own round instead');
+  assert.match(inB, /Keine laufende Abstimmung/, 'event B offers starting its own round instead');
 
   await switchWorkspaceInBrowser(eventA);
   const backInA = await viewText();

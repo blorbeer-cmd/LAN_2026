@@ -12,6 +12,12 @@
 // all. The state is never colour alone: `iconLabel` becomes the row's own
 // accessible name and the control's description.
 //
+// With `searchable: false` the control is a plain select with the same dark,
+// app-rendered list: the field is read-only, a click, Enter, Space or an arrow
+// key opens every option and nothing filters. A few fixed choices (the answer
+// kind of a Vote or an Umfrage) use it instead of a native <select>, whose
+// browser popup neither follows the design system nor opens below the field.
+//
 // A picker may additionally carry one `action`: a row that leaves the picker
 // instead of selecting something in it. It is deliberately not an option — it
 // lives outside the listbox, below a divider in the popup's pinned footer, so
@@ -56,7 +62,7 @@ export function searchSelectHtml(
   id,
   options,
   selectedValue,
-  { placeholder = 'Suchen', label = 'Verfügbare Optionen', ariaLabel = '', action = null } = {},
+  { placeholder = 'Suchen', label = 'Verfügbare Optionen', ariaLabel = '', action = null, searchable = true } = {},
 ) {
   const selected = options.find((option) => option.value === (selectedValue ?? ''));
   const initialLabel = selected ? selected.label : '';
@@ -66,11 +72,11 @@ export function searchSelectHtml(
   const withIcons = options.some((option) => option.icon);
 
   return `
-    <div class="search-select${withIcons ? ' has-status-icon' : ''}" data-search-select>
+    <div class="search-select${withIcons ? ' has-status-icon' : ''}${searchable ? '' : ' is-readonly'}" data-search-select>
       <input type="hidden" id="${id}" value="${escapeHtml(selectedValue ?? '')}" />
       <div class="search-select-control">
         ${withIcons ? `<span class="search-select-value-icon" data-search-select-value-icon>${statusIconHtml(selected, 'search-select-status')}</span>` : ''}
-        <input type="text" id="${id}-search" value="${escapeHtml(initialLabel)}" placeholder="${escapeHtml(placeholder)}"${ariaLabel ? ` aria-label="${escapeHtml(ariaLabel)}"` : ''} autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}-results" />
+        <input type="text" id="${id}-search" value="${escapeHtml(initialLabel)}" placeholder="${escapeHtml(placeholder)}"${ariaLabel ? ` aria-label="${escapeHtml(ariaLabel)}"` : ''}${searchable ? '' : ' readonly'} autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="${searchable ? 'list' : 'none'}" aria-expanded="false" aria-controls="${id}-results" />
         <button type="button" class="search-select-toggle" aria-label="Auswahl öffnen" aria-controls="${id}-results" aria-expanded="false" tabindex="-1">${icon('chevronDown')}</button>
       </div>
       <div id="${id}-list" class="search-select-list" hidden>
@@ -100,6 +106,9 @@ export function wireSearchSelect(
   const actionButton = list?.querySelector('[data-search-select-action]');
   if (!hidden || !search || !wrapper || !list || !results || !toggle) return;
 
+  // A read-only field is a plain select: it never filters and never clears
+  // the shown label while its list is open.
+  const searchable = !search.readOnly;
   let filteredOptions = options.map((option, originalIndex) => ({ ...option, originalIndex }));
   let activeIndex = -1;
   let suppressNextFocusOpen = false;
@@ -183,10 +192,10 @@ export function wireSearchSelect(
   };
 
   const open = ({ clear = false } = {}) => {
-    if (clear) search.value = '';
+    if (clear && searchable) search.value = '';
     list.hidden = false;
     updateExpandedState(true);
-    renderOptions(search.value);
+    renderOptions(searchable ? search.value : '');
   };
 
   const close = ({ restore = true } = {}) => {
@@ -241,10 +250,13 @@ export function wireSearchSelect(
       suppressNextFocusOpen = false;
       return;
     }
-    if (!isOpen()) open({ clear: true });
+    // A plain select opens on a click or key, never merely because Tab
+    // passed through it.
+    if (!isOpen() && searchable) open({ clear: true });
   });
   search.addEventListener('click', () => {
     if (!isOpen()) open({ clear: true });
+    else if (!searchable) close();
   });
   search.addEventListener('input', () => {
     if (!isOpen()) open();
@@ -260,7 +272,10 @@ export function wireSearchSelect(
       const direction = event.key === 'ArrowDown' ? 1 : -1;
       activeIndex = (activeIndex + direction + filteredOptions.length) % filteredOptions.length;
       updateActiveOption();
-    } else if (event.key === 'Enter' && isOpen()) {
+    } else if (!searchable && !isOpen() && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      open();
+    } else if ((event.key === 'Enter' || (!searchable && event.key === ' ')) && isOpen()) {
       event.preventDefault();
       selectOption(filteredOptions[activeIndex]);
     } else if (event.key === 'Escape' && isOpen()) {
