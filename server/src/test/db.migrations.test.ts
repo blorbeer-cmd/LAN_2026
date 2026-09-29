@@ -763,10 +763,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 113);
+  assert.equal(migrations.length, 114);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 113 }, (_, index) => index + 1),
+    Array.from({ length: 114 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -837,6 +837,14 @@ test('records the complete migration history and does not duplicate it on restar
     'legacy players default to being named in the newsticker',
   );
   assert.ok(playerColumns.some((column) => column.name === 'test_owner_group_id'));
+  const tournamentColumns = migrated.prepare('PRAGMA table_info(tournaments)').all() as Array<{ name: string; dflt_value: string | null }>;
+  assert.equal(
+    tournamentColumns.find((column) => column.name === 'third_place_match')?.dflt_value,
+    '0',
+    'legacy tournaments keep their plain knockout without a third-place match',
+  );
+  const tournamentMatchColumns = migrated.prepare('PRAGMA table_info(tournament_matches)').all() as Array<{ name: string; dflt_value: string | null }>;
+  assert.equal(tournamentMatchColumns.find((column) => column.name === 'is_third_place')?.dflt_value, '0');
   assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'admin_log'").get());
   for (const table of ['groups', 'group_memberships', 'group_invites']) {
     assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
@@ -1360,8 +1368,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 113 }, (_, index) => index + 1),
-    'every version 1..113 runs exactly once',
+    Array.from({ length: 114 }, (_, index) => index + 1),
+    'every version 1..114 runs exactly once',
   );
 });
 
