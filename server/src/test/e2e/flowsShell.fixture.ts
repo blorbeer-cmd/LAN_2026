@@ -2236,6 +2236,12 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await freshDraw.locator('[data-draw-tournament].btn-primary').click();
   await page.waitForSelector('#draw-tournament-form');
   assert.equal(await page.locator('[data-draw-team-name]').count(), 2);
+  // Two players on two teams: every solo team is prefilled with its player's name.
+  const drawnPlayers = (await freshDraw.locator('.team-player-name').allInnerTexts()).map((name) => name.trim());
+  const prefilledNames = await page.locator('[data-draw-team-name]').evaluateAll((inputs) =>
+    inputs.map((input) => (input as HTMLInputElement).value));
+  assert.equal(drawnPlayers.length, 2);
+  assert.deepEqual(prefilledNames, drawnPlayers, 'solo teams are prefilled with their player names');
   assert.equal(await page.locator('#draw-tournament-two-legged').count(), 0, 'K.O. has no second leg');
   for (const width of [390, 1024]) {
     await page.setViewportSize({ width, height: 844 });
@@ -2259,7 +2265,7 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await page.waitForSelector('.tournament-board-card:has(h2:text-is("Finale")) .tournament-fixture');
   assert.equal(await page.locator('.bracket-match').count(), 0);
   // Bracket sides are drawn at random, so compare the names regardless of side.
-  assert.deepEqual((await page.locator('.tournament-fixture-team').allTextContents()).sort(), ['Team 1', 'Team 2'],
+  assert.deepEqual((await page.locator('.tournament-fixture-team').allTextContents()).sort(), [...prefilledNames].sort(),
     'fixtures show just the team names');
   assert.equal(await page.locator('.tournament-fixture .rating, .tournament-fixture-team-players').count(), 0);
   assert.equal(await page.locator('.is-my-team, .tournament-own-team-marker').count(), 0);
@@ -2743,4 +2749,59 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   await page.waitForFunction(() => document.querySelector('[data-admin-section="test"] .profile-row-meta')?.textContent?.startsWith('0 vorhanden'));
   const cleanedHall = await (await page.request.get(`${BASE_URL}/api/hall-of-fame`)).json() as { events: Array<{ eventName: string }> };
   assert.equal(cleanedHall.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN')).length, 0);
+});
+
+flowTest('Match: a long solo team name wraps inside its drawn team card', async (t) => {
+  // A solo team is named after its player; a valid 30-character name without
+  // spaces must stay inside the card header next to the skill total.
+  const longName = 'W'.repeat(30);
+  const renameBob = (name: string) => fetch(`${BASE_URL}/api/players/${bob.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: bob.cookie },
+    body: JSON.stringify({ name }),
+  });
+  const renamed = await renameBob(longName);
+  assert.equal(renamed.status, 200, await renamed.text());
+  t.after(async () => { await renameBob(bob.name); });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/#matchmaking`);
+  await page.waitForSelector('#mm-generate');
+  // The field snaps to the selected player count, so every drawn team is solo.
+  await page.fill('#mm-teamcount', '99');
+  await page.click('#mm-generate');
+  const freshDraw = page.locator('.matchmaking-new-draw');
+  const longTeam = freshDraw.locator('.matchmaking-draw-team', { has: page.locator('.matchmaking-draw-team-name', { hasText: longName }) });
+  await longTeam.waitFor();
+  const drawId = await freshDraw.locator('[data-draw-tournament]').getAttribute('data-draw-tournament');
+  t.after(async () => {
+    const reauthenticated = await fetch(`${BASE_URL}/api/auth/reauth`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: alice.cookie },
+      body: JSON.stringify({ password: alice.password }),
+    });
+    assert.equal(reauthenticated.status, 204, await reauthenticated.text());
+    const deleted = await fetch(`${BASE_URL}/api/matchmaking/draws/${drawId}`, { method: 'DELETE', headers: { cookie: alice.cookie } });
+    assert.ok(deleted.ok, await deleted.text());
+  });
+
+  assert.equal(await longTeam.getAttribute('aria-label'), longName, 'the team group keeps the full accessible name');
+  for (const width of [390, 1024]) {
+    await page.setViewportSize({ width, height: 844 });
+    await assertNoOverflow(longTeam);
+    const geometry = await longTeam.evaluate((card) => {
+      const cardRect = card.getBoundingClientRect();
+      const name = card.querySelector('.matchmaking-draw-team-name')!;
+      const skill = card.querySelector('.team-card-header .team-skill-total')!;
+      return {
+        cardRight: cardRect.right,
+        nameRight: name.getBoundingClientRect().right,
+        skillRight: skill.getBoundingClientRect().right,
+        text: name.textContent,
+      };
+    });
+    assert.equal(geometry.text, longName, `the full name stays visible at ${width}px`);
+    assert.ok(geometry.nameRight <= geometry.cardRight, `the name stays inside its card at ${width}px`);
+    assert.ok(geometry.skillRight <= geometry.cardRight, `the skill total stays inside the card at ${width}px`);
+  }
 });
