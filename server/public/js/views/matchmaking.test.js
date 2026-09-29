@@ -42,4 +42,7 @@ test('derived team names fit the tournament team name limit', () => {
   const longName = `${'x'.repeat(29)} yz`;
   assert.equal(defaultDrawTeamName({ source: 'balanced' }, { players: players(longName) }, 0), 'x'.repeat(29));
   assert.equal(defaultDrawTeamName({ source: 'draft' }, { players: players('y'.repeat(60), 'Dan') }, 0).length, 30);
+  const emojiCut = defaultDrawTeamName({ source: 'balanced' }, { players: players(`${'x'.repeat(29)}🔥`) }, 0);
+  assert.equal(emojiCut, 'x'.repeat(29), 'a cut through an emoji drops its orphaned half');
+  assert.equal(defaultDrawTeamName({ source: 'balanced' }, { players: players(`${'x'.repeat(28)}🔥`) }, 0), `${'x'.repeat(28)}🔥`);
 });

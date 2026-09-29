@@ -44,7 +44,9 @@ export function defaultDrawTeamName(draw, team, index) {
   const solo = team.players.length === 1 ? team.players[0].name : null;
   const captain = draw.source === 'draft' ? team.players[0]?.name : null;
   const name = solo ?? (captain ? `Team ${captain}` : `Team ${index + 1}`);
-  return name.slice(0, DRAW_TEAM_NAME_MAX_LENGTH).trim();
+  // The limit counts UTF-16 code units; drop a high surrogate left over when
+  // the cut splits an emoji, so the name stays well-formed.
+  return name.slice(0, DRAW_TEAM_NAME_MAX_LENGTH).replace(/[\uD800-\uDBFF]$/, '').trim();
 }
 
 // A draw cannot form more teams than it has players (POST /api/matchmaking
