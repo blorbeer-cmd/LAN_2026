@@ -431,7 +431,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   one card per group with its table and rounds plus a „K.O.-Runde“ card. A knockout phase with
   exactly one fixture is a 1:1 row under „Finale“, including pure two-team knockout tournaments;
   larger phases keep the bracket and a phase not yet created keeps its empty state. A third-place match
-  sits inside the bracket card below the tree, in the final's column, under the small caption
+  sits inside the bracket card directly below the final, in the final's column, under the small caption
   „Spiel um Platz 3“ and with the same match box and result action. Fixtures read like a
   scoreboard (home team right-aligned, result chip centered, away team left-aligned); winners are
   emphasized and losers muted, with a green winner score or a „‹ Win“/„Win ›“ chip without a score.
