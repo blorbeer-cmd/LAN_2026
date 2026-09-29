@@ -314,10 +314,10 @@ function renderPeopleList() {
   return `
     <details class="card grouped-page-section history-details collapsible-section arrivals-times-section" data-arrivals-times ${peopleListOpen ? 'open' : ''}>
       <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
         <h2 id="arrivals-times-title">Alle Zeiten</h2>
         <span class="collapsible-section-summary-end">
           <span class="badge badge-offline">${people.length}</span>
-          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
         </span>
       </summary>
       <div class="collapsible-section-content stack">

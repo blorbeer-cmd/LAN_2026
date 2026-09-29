@@ -104,7 +104,7 @@ function openPrivacyDetails(trackingConsent) {
 function renderPrivacySection() {
   const section = (body) => `
     <details class="card grouped-page-section collapsible-section" data-profile-section="privacy" aria-labelledby="profile-privacy-title" ${profileSectionOpen.privacy ? 'open' : ''}>
-      <summary class="collapsible-section-header"><h2 id="profile-privacy-title">Datenschutz</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+      <summary class="collapsible-section-header"><span class="collapsible-section-chevron">${icon('chevronRight')}</span><h2 id="profile-privacy-title">Datenschutz</h2></summary>
       <div class="collapsible-section-content stack">${body}</div>
     </details>`;
   if (!privacyState) return section(emptyStateHtml('Lädt', { className: 'empty-state-compact' }));
@@ -166,7 +166,7 @@ function renderPrivacySection() {
 function renderMyDataSection() {
   return `
     <details class="card grouped-page-section collapsible-section" data-profile-section="data" aria-labelledby="profile-data-title" ${profileSectionOpen.data ? 'open' : ''}>
-      <summary class="collapsible-section-header"><h2 id="profile-data-title">Meine Daten</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+      <summary class="collapsible-section-header"><span class="collapsible-section-chevron">${icon('chevronRight')}</span><h2 id="profile-data-title">Meine Daten</h2></summary>
       <div class="collapsible-section-content profile-rows">
         ${profileRow({
           title: 'Exportieren',
@@ -673,7 +673,7 @@ export function renderProfile(container, ctx) {
       </section>` : ''}
 
       ${trackingEnabled ? `<details class="card grouped-page-section collapsible-section" data-profile-section="agent" aria-labelledby="profile-agent-title" ${profileSectionOpen.agent ? 'open' : ''}>
-        <summary class="collapsible-section-header"><h2 id="profile-agent-title">Live-Status &amp; Agent</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+        <summary class="collapsible-section-header"><span class="collapsible-section-chevron">${icon('chevronRight')}</span><h2 id="profile-agent-title">Live-Status &amp; Agent</h2></summary>
         <div class="collapsible-section-content profile-rows">
           ${profileRow({
             title: 'Tracking',

@@ -217,7 +217,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   the title with an icon-only link and its note as a muted line below, a result bar with a legend of
   the counts, the voter avatars and the response controls. The bar is a soft brand gradient on a
   grey track (Passt blue, Notfalls violet and Nein pink for per-option ratings; blue to violet for
-  choices and the 0 to 5 average), and bar, avatars and controls share one middle line. The chosen
+  choices and the 0 to 5 average). The complete title/note block, bar/count block, avatars and
+  controls are centered between the row separators. Rows have equal top and
+  bottom padding and no extra gap between them. The chosen
   answer is outlined in the accent color; single- and multiple-choice controls say „Wählen“ or
   „Ausgewählt“, and „Speichern“ sits in the round's footer beside the response progress. An ended
   round lists its options by result and marks the winner with the green „Win“ chip; running rounds
@@ -372,7 +374,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   and timestamp of their own payment, plus a personal toggle for recording or correcting it; foreign
   payment states and aggregates are absent from both UI and API payload. A managing non-creator who
   lacks payment-management rights receives only the boolean `paymentLocked` removal guard on roster
-  rows, without amount, actor or timestamp, so the blocked action has an explicit reason; this is
+  rows, without amount, actor or timestamp; the removal action is disabled until payment is reset. This is
   the sole administrative exception to the foreign-payment privacy rule. The visible full-width
   PayPal action says `Bezahlen`. The handoff refreshes the event before opening PayPal,
   prefills the EUR amount for PayPal.me, attempts to copy an e-mail recipient for the generic PayPal
@@ -393,18 +395,23 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   includes every invited account and labels each row as `Zugesagt`, `Einladung offen` or
   `Abgelehnt`; its summary separates accepted and still-open invitation counts. Member cards remain
   accepted-only and expose neither pending/declined identities nor that management status. Participant lists use
-  the shared collapsible-section behavior plus Food orders' leading chevron/name/meta header pattern,
+  the shared collapsible-section behavior with a leading chevron before the name and metadata,
   start closed and preserve their open state across live re-renders. Their people remain one full-width
-  row per line at every breakpoint so payment proof and the creator's toggle have predictable room;
+  row per line at every breakpoint so payment proof and the creator's toggle have predictable room.
+  Payment managers' rows reserve one line for the payment proof even before payment, keeping paid
+  and unpaid rows equally high. Without proof the name stays vertically centered in that space;
+  recording payment moves it up to make room for the proof. Longer proof stays on one line with
+  the full text in its tooltip;
   owner/admin cards integrate Einladen, Erneut einladen and Entfernen directly in this list.
   Eligible people without an invitation follow existing roster entries with an Einladen action.
   Ended events omit those uninvited rows. Creating an event opens its card and roster directly;
   there is no separate participant-management dialog. State-specific blockers remain explicit: an ended event shows once that
-  new invitations are unavailable, and a paid row associates its removal action with the instruction
-  to reset the payment first.
+  new invitations are unavailable, and a paid row disables its removal action until payment is reset.
   An optional date-only payment deadline starts reminders on that day; without one, contributions
   become eligible two hours after acceptance. Further reminders run at most once per rolling two-hour
-  window, using durable reminder state independent of push history. TV-Kiosk (Admin's „Kioskverwaltung“
+  window, using durable reminder state independent of push history. Opening a payment reminder
+  switches to its event, expands that event and its participant list, and scrolls to its card.
+  TV-Kiosk (Admin's „Kioskverwaltung“
   card, not an Orga tab) stays one grouped section but lists one automatic account for every LAN
   event, including its stable `kiosk-<eventId>` username and a prefilled link to `/kiosk.html`.
   The section leads directly with the shared login password itself (configured or generated once

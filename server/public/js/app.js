@@ -20,6 +20,7 @@ import { setDraftState } from './views/matchmaking.js';
 import { openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
+import { prepareEventTarget } from './views/events.js';
 import { focusGameCatalog } from './views/gameCatalog.js';
 import { clearTournamentTeamTarget, prepareTournamentTeamTarget } from './views/tournament.js';
 import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
@@ -625,6 +626,7 @@ function focusPendingSearchTarget() {
     order: [
       ...viewContainer.querySelectorAll('[data-order-card], [data-closed-order]'),
     ].filter((el) => el.dataset.orderCard === id || el.dataset.closedOrder === id),
+    event: [...viewContainer.querySelectorAll('[data-event-card]')].filter((el) => el.dataset.eventCard === id),
     broadcast: [...viewContainer.querySelectorAll('[data-broadcast]')].filter((el) => el.dataset.broadcast === id),
     carpool: [...viewContainer.querySelectorAll('[data-carpool]')].filter((el) => el.dataset.carpool === id),
     poll: [...viewContainer.querySelectorAll('[data-poll-card]')].filter((el) => el.dataset.pollCard === id),
@@ -723,6 +725,7 @@ function switchView(
   if (view !== 'tournaments') clearTournamentTeamTarget();
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   if (view === 'foodOrders' && searchTarget?.type === 'order') prepareFoodOrderTarget(searchTarget.id);
+  if (view === 'events' && searchTarget?.type === 'event') prepareEventTarget(searchTarget.id);
   currentView = view;
   currentLocalRoute = nextLocalRoute;
   document.title = `${viewDefinition(view)?.label ?? 'Respawn'} · Respawn`;

@@ -224,10 +224,10 @@ export function renderBroadcast(container, ctx) {
       ${past.length > 0 ? `
       <details class="card grouped-page-section collapsible-section" data-broadcast-history ${historyOpen ? 'open' : ''}>
         <summary class="collapsible-section-header">
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           <h2>Historie</h2>
           <span class="collapsible-section-summary-end">
             <span class="badge badge-offline">${past.length}</span>
-            <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           </span>
         </summary>
         <div class="collapsible-section-content">${tableHtml(past, myId, 'Historie')}</div>

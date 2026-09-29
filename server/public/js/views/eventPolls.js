@@ -409,8 +409,8 @@ function renderResultBar(poll, option) {
 }
 
 function renderLegend(poll, option) {
-  if (poll.responseMode !== 'feasibility') return escapeHtml(renderCounts(poll, option));
-  const item = (key, count, label) => `<span class="event-poll-legend-item"><span class="event-poll-legend-dot is-${key}" aria-hidden="true"></span>${count} ${label}</span>`;
+  if (poll.responseMode !== 'feasibility') return `<span class="event-poll-count-text">${escapeHtml(renderCounts(poll, option))}</span>`;
+  const item = (key, count, label) => `<span class="event-poll-legend-item"><span class="event-poll-legend-dot is-${key}" aria-hidden="true"></span><span class="event-poll-count-text">${count} ${label}</span></span>`;
   return [
     item('can', option.counts.can, 'Passt'),
     item('if-needed', option.counts.ifNeeded, 'Notfalls'),
@@ -550,7 +550,8 @@ function renderHistory(group) {
   return `
     <details class="collapsible-section event-poll-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
       <summary class="collapsible-section-header">
-        <span class="row"><span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span><span>Frühere Runden (${history.length})</span></span>
+        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
+        <span>Frühere Runden (${history.length})</span>
       </summary>
       <div class="collapsible-section-content event-poll-history-list">${history.map(renderHistoryRound).join('')}</div>
     </details>`;
@@ -562,10 +563,10 @@ function renderEndedPolls(groups, eventId) {
   return `
     <details class="card grouped-page-section history-details collapsible-section event-poll-ended-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
       <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
         <h2>Historie</h2>
         <span class="collapsible-section-summary-end">
           <span class="badge badge-offline">${groups.length}</span>
-          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
         </span>
       </summary>
       <div class="collapsible-section-content stack event-poll-list">${groups.map(renderPollGroup).join('')}</div>

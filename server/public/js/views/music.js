@@ -199,7 +199,8 @@ export function musicControllerManagementHtml(status) {
   const sessionActive = Boolean(status.session);
   return `<details class="card grouped-page-section collapsible-section music-controller-management" data-music-connection ${connectionOpen ? 'open' : ''}>
     <summary class="collapsible-section-header">
-      <h2>Verbindung verwalten</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+      <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+      <h2>Verbindung verwalten</h2>
     </summary>
     <div class="collapsible-section-content music-management-row">
       <span class="music-meta">${sessionActive

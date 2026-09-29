@@ -50,11 +50,11 @@ self.addEventListener('notificationclick', (event) => {
             const hash = url.slice(hashIndex + 1);
             const [view, encodedTargetId, focus] = hash.split('/');
             let target = null;
-            if ((view === 'foodOrders' || view === 'tournaments') && encodedTargetId) {
+            if ((view === 'foodOrders' || view === 'tournaments' || view === 'events') && encodedTargetId) {
               try {
                 target = {
                   // "#tournaments/<id>/teams" opens the detail on the own team.
-                  type: view === 'foodOrders' ? 'order' : focus === 'teams' ? 'tournament-team' : 'tournament',
+                  type: view === 'foodOrders' ? 'order' : view === 'events' ? 'event' : focus === 'teams' ? 'tournament-team' : 'tournament',
                   id: decodeURIComponent(encodedTargetId),
                 };
               } catch {

@@ -333,13 +333,23 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   „Wählen“/„Ausgewählt“ choice instead of numbers. „Letzter Vote“ is a collapsible Umfrage card
   that starts collapsed and keeps its open state across live re-renders; its header names the
   round, date, participation and winner and always offers „Stimmen ansehen“ and, on a tie, a
-  compact „Stichwahl starten“. Opened, it lists every game of the round sorted by score, each with
+  compact „Stichwahl starten“. Its closed header has the same compact height as the neighboring
+  closed cards and no hover fill. Opened, it lists every game of the round sorted by score, each with
   its result bar, „N Pkt. · X/Y spielen mit“ (voters who gave at least one point, out of everyone
   who voted) and the avatars of those voters; winners carry the green „Win“ chip, tied winners
-  each carry it. „Stimmen ansehen“ — in that header, on every history row and behind each avatar
+  each carry it. The complete name/metadata block, bar/count block, voter avatars and answer
+  controls are centered between the row separators.
+  Rows have equal top and bottom padding and no extra gap between them.
+  Count text removes outer font leading against the capital height and baseline where supported;
+  descenders remain visible. The bar/count block uses those text metrics for its optical center.
+  „Stimmen ansehen“ — in that header, on every history row and behind each avatar
   stack — opens the Umfrage vote table: numbered legend with each game's summary, one row per
   voter with their points, a 0 shown as „Spielt nicht“. History lists only the rounds before the
-  latest one as compact Umfrage history rows (title, date, participation, winner).
+  latest one as separate collapsible cards. Each retains its compact history row as a header
+  (title, date, participation, winner and „Stimmen ansehen“) and independently opens the same
+  per-game results as „Letzter Vote“. Cards start closed, preserve their own open state across
+  live re-renders and reset that state when the active event changes. Header and results have
+  no additional dividing line.
   The Top 10 form two ordered five-item columns from `--bp-md`, while phones keep one continuous
   list. The new-round form's `.vote-game-grid` keeps one column on phones, two from `--bp-md` and
   three from `--bp-xl`, with the same bordered card treatment at every size.
@@ -370,7 +380,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   ballot over.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
   closed and retains its open state across live re-renders.
-- **Tournament overview** — Match lists running tournaments above its setup and in the selected game's „Ohne Ergebnis“ section; completed tournaments belong in the history filter. Every tournament starts from a Match draw or Captain
+- **Tournament overview** — Match lists running tournaments as compact „Aktuell“ style rows above its setup. These whole-row actions highlight on pointer hover and show keyboard focus, without a trailing chevron or „Öffnen“ label. The selected game's „Ohne Ergebnis“ section keeps running tournaments as collapsible history tiles; completed tournaments belong in the history filter. Every tournament starts from a Match draw or Captain
   Draft; there is no separate creation page or tournament tab. Legacy `#tournaments` and
   `#tournaments/new` routes replace themselves with `#matchmaking`. A tournament detail link keeps
   its own `#tournaments/<id>` route, including search, Home and browser history navigation. The
@@ -383,8 +393,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   one column on phones, two from 640 px and up to four from 860 px. The signed-in player's team leads
   that grid. While the tournament runs, every member of a team and every admin or owner sees a neutral
   pencil in the team card's trailing slot instead of the player count; it opens the compact dialog
-  „Teamnamen ändern“ (1–30 characters, unique within the tournament ignoring case, optionally reset
-  to „Team N“). The new name replaces the old one everywhere at once, and the other participants get
+  „Teamnamen ändern“ with only the tournament name, one team-name field and „Speichern“.
+  An empty, overlong or non-unique name produces an error when saved (1–30 characters, unique
+  within the tournament ignoring case). The new name replaces the old one everywhere at once, and the other participants get
   the toast „<old> heißt jetzt „<new>““. A completed tournament keeps its names (`409`); of two teams
   claiming the same name at once exactly one succeeds. Creating a tournament sends every participant
   a personal push „<Turnier> startet“ that names their teammates and asks them to choose a team name;

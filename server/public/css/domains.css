@@ -246,6 +246,20 @@
 .event-payment-proof {
   color: var(--text-muted);
 }
+.event-participant-name > .event-payment-proof {
+  min-height: calc(var(--control-line-height) * 1em);
+  line-height: var(--control-line-height);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-participant-name:has(> .event-payment-proof) {
+  min-height: calc(var(--control-height) + var(--space-2));
+  justify-content: center;
+}
+.event-participant-name > .event-payment-proof:empty {
+  display: none;
+}
 .event-settlement {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
@@ -313,14 +327,20 @@
   overflow-wrap: anywhere;
 }
 .event-participant-row:first-child {
-  border-top: 0;
+  border-top-color: transparent;
 }
 .event-participant-name {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
+}
+@media (max-width: 639px) { /* --bp-md */
+  .event-participant-name {
+    /* Name and proof always share the avatar line, regardless of payment. */
+    flex-basis: calc(100% - var(--space-6) - var(--space-2));
+  }
 }
 .event-card-empty-copy {
   margin: 0;
@@ -346,10 +366,6 @@
   justify-content: flex-end;
   gap: var(--space-2);
   min-width: 0;
-}
-.event-roster-actions small {
-  flex-basis: 100%;
-  text-align: right;
 }
 
 @media (max-width: 639px) { /* --bp-md */
@@ -1320,10 +1336,8 @@ input[type='number'].tournament-result-score {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
-/* LAN-Bereitschaft: each check ends in its status (icon plus text) in the
-   row's action column. The overall status sits right next to the header's
-   chevron like the counters of the other cards; the row statuses end on the
-   same edge (the chevron's width plus its gap before the card edge). */
+/* LAN-Bereitschaft: each check and its header align their status to the
+   trailing edge; the disclosure chevron belongs to the leading title. */
 .readiness-status {
   display: inline-flex;
   align-items: center;
@@ -1344,9 +1358,6 @@ input[type='number'].tournament-result-score {
 }
 .readiness-status[data-readiness-state='error'] .ui-icon {
   color: var(--danger);
-}
-.profile-row.is-status .profile-row-action {
-  padding-right: calc(1.2 * var(--font-size-md) + var(--space-2)); /* design-token-ok: .ui-icon chevron is 1.2em */
 }
 /* Konten: the group title names the role, so most rows carry no meta line;
    every row keeps the height of a row with one, so both columns stay even. */
@@ -2527,7 +2538,7 @@ input.food-order-price-input {
     grid-column: auto;
   }
   :root[data-layout-mode='desktop'] .home-live-grid {
-    grid-template-rows: repeat(var(--home-live-rows-3, 1), auto);
+    grid-template-rows: repeat(var(--home-live-rows-3, 1), minmax(var(--home-player-row-height), auto));
   }
 }
 

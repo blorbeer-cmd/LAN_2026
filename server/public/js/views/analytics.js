@@ -345,10 +345,10 @@ function renderPlaytimeContent() {
     </section>
     <details class="card history-details collapsible-section grouped-page-section">
       <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         <h2>Session-Protokoll</h2>
         <span class="collapsible-section-summary-end">
           <span class="badge badge-offline">${sessions.length}</span>
-          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         </span>
       </summary>
       <div class="collapsible-section-content">

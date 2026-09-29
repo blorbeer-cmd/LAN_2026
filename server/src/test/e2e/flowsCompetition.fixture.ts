@@ -21,6 +21,7 @@ import {
 } from './flowsShared.fixture';
 import { openMoreViewEntry } from './navHelpers';
 import { TRACKING_CONSENT_TEXT_VERSION } from '../../privacyPolicy';
+import { assertPaintedPollResultCentered } from './pollResultGeometry';
 
 registerFlowFixture('competition');
 
@@ -268,6 +269,16 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await ballotColumns(), 1);
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(await ballotColumns(), 2);
+  const ballotAlignment = await roundCard.locator('[data-points-row]').evaluateAll((rows) => rows.map((row, index) => {
+    const box = row.getBoundingClientRect();
+    const next = rows.slice(index + 1).find((candidate) => candidate.getBoundingClientRect().left === box.left);
+    const middle = (box.top + (next?.getBoundingClientRect().top ?? box.bottom)) / 2;
+    return ['.event-poll-option-info', '.event-poll-response-toolbar'].map((selector) => {
+      const rect = row.querySelector(selector)!.getBoundingClientRect();
+      return Math.abs(rect.top + rect.height / 2 - middle);
+    });
+  }));
+  assert.ok(ballotAlignment.flat().every((offset) => offset <= 1), 'ballot text and controls center between the separating lines');
   const ballotLefts = await roundCard.locator('[data-points-row]').evaluateAll((rows) =>
     rows.map((row) => Math.round(row.getBoundingClientRect().left)));
   const leftColumnCount = Math.ceil(ballotLefts.length / 2);
@@ -361,12 +372,42 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await latestToggle.getAttribute('aria-expanded'), 'false', 'the latest result starts collapsed');
   assert.equal(await currentVote.locator('.event-poll-card-header .vote-win-chip').count(), 1);
   assert.equal(await currentVote.locator('.event-poll-option:visible').count(), 0);
+  // A desktop header has room for its result and actions on one line.
+  // On a phone those contents deliberately wrap instead of being clipped.
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
+  const rankingDisclosure = page.locator('details.collapsible-section').filter({ hasText: 'Top 10 nach Bock-Level' });
+  const latestGeometry = await currentVote.evaluate((card) => ({
+    height: card.getBoundingClientRect().height,
+    titleX: card.querySelector('strong')!.getBoundingClientRect().x,
+  }));
+  const rankingGeometry = await rankingDisclosure.evaluate((card) => ({
+    height: card.getBoundingClientRect().height,
+    titleX: card.querySelector('h2')!.getBoundingClientRect().x,
+  }));
+  assert.equal(latestGeometry.height, rankingGeometry.height, 'closed Vote sections share one height');
+  assert.equal(latestGeometry.titleX, rankingGeometry.titleX, 'closed Vote section titles align');
+  await page.setViewportSize({ width: 390, height: 844 });
   await latestToggle.click();
   await page.waitForFunction(
     (expected) => document.querySelectorAll('section[aria-labelledby="vote-current-result-title"] .event-poll-option').length === expected,
     totalGames
   );
   assert.equal(await currentVote.locator('.event-poll-option.is-winner .vote-win-chip').count(), 2);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  const resultAlignment = await currentVote.locator('.event-poll-option').evaluateAll((rows) => rows.map((row, index) => {
+    const center = (selector: string) => {
+      const rect = row.querySelector(selector)!.getBoundingClientRect();
+      return rect.top + rect.height / 2;
+    };
+    const rect = row.getBoundingClientRect();
+    const middle = (rect.top + (rows[index + 1]?.getBoundingClientRect().top ?? rect.bottom)) / 2;
+    return ['.event-poll-option-info', '.event-poll-result', '.event-poll-option-badges']
+      .map((selector) => Math.abs(center(selector) - middle));
+  }));
+  assert.ok(resultAlignment.flat().every((offset) => offset <= 1), 'complete result blocks center between the separating lines');
+  await assertPaintedPollResultCentered(currentVote.locator('.event-poll-option.is-winner').first());
+  await page.setViewportSize({ width: 390, height: 844 });
   assert.deepEqual(
     await currentVote.locator('.event-poll-option.is-winner .event-poll-counts').allTextContents(),
     ['5 Pkt. · 1/1 spielen mit', '5 Pkt. · 1/1 spielen mit']
@@ -382,7 +423,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // repeated there; who voted how opens from "Letzter Vote" instead.
   await page.click('details.history-details:has(summary:has-text("Historie")) > summary');
   await page.waitForSelector('[data-vote-history] >> text=Noch keine älteren Abstimmungen.');
-  assert.equal(await page.locator('[data-vote-history] .event-poll-history-round').count(), 0);
+  assert.equal(await page.locator('[data-vote-history] [data-vote-history-round]').count(), 0);
   await currentVote.locator('.event-poll-card-side [data-open-vote-round]:text-is("Stimmen ansehen")').click();
   await page.waitForSelector('.modal h2:text-is("Stimmen · Abstimmung Runde 1")');
   const breakdown = page.locator('.modal .event-poll-vote-table');
@@ -392,6 +433,35 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await breakdown.locator('tbody .event-poll-vote-cell.is-cannot[aria-label="Spielt nicht"]').count(), totalGames - 3);
   assert.equal(await page.locator('.modal .event-poll-vote-key:has-text("Spielt nicht")').count(), 1);
   await page.click('[data-close]');
+
+  // Closing the runoff moves the previous result into its own history card.
+  await currentVote.locator('#votes-runoff').click();
+  await page.locator('[data-vote-select]').first().click();
+  await page.locator('#votes-submit').click();
+  await page.locator('[data-vote-participation]:text-is("1/2 abgegeben")').waitFor();
+  await page.locator('#votes-close').click();
+  const historyCard = page.locator('[data-vote-history-round="1"]');
+  const historyToggle = historyCard.locator('[data-toggle-vote-history]');
+  await historyToggle.waitFor();
+  assert.equal(await historyToggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(await historyCard.locator('.event-poll-option:visible').count(), 0);
+  assert.match((await historyToggle.textContent()) ?? '', /Abstimmung Runde 1/);
+  await historyToggle.focus();
+  await page.keyboard.press('Enter');
+  await historyCard.locator('.event-poll-option').first().waitFor();
+  assert.equal(await historyCard.locator('.event-poll-option').count(), totalGames);
+  assert.equal(await historyCard.locator('.event-poll-option.is-winner .vote-win-chip').count(), 2);
+  assert.equal(await historyToggle.evaluate((button) => document.activeElement === button), true);
+  await historyCard.locator('.event-poll-card-side [data-open-vote-round]').click();
+  await page.locator('.modal h2:text-is("Stimmen · Abstimmung Runde 1")').waitFor();
+  await page.click('[data-close]');
+  await page.click('.nav-btn[data-view="home"]');
+  await page.click('.nav-btn[data-view="votes"]');
+  await historyToggle.waitFor();
+  assert.equal(await historyToggle.getAttribute('aria-expanded'), 'true', 'history expansion survives a re-render');
+  await historyToggle.click();
+  await historyCard.locator('.event-poll-option').first().waitFor({ state: 'detached' });
+  assert.equal(await historyToggle.getAttribute('aria-expanded'), 'false');
 
   // Admin mode stays active from here for the rest of this shard's shared
   // page/session (test players, Arcade AI). Auswertung itself no longer

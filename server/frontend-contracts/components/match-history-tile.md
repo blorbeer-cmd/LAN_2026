@@ -25,8 +25,8 @@ Jede Auslosung in diesem Abschnitt ist selbst eine einklappbare Kachel mit Aktio
 
 ## 5. Erlaubte Anpassungen
 
-Aufrufer dürfen Spielname, Zeit, Ergebnistext und Aktionen liefern. Der Pfeil bleibt ein
-eigenständiger Button neben den Aktionen; Aktionen werden nie darin verschachtelt.
+Aufrufer dürfen Spielname, Zeit, Ergebnistext und Aktionen liefern. Der Pfeil steht ganz links
+im Aufklappbutton, vor Titel und Metadaten; Aktionen stehen getrennt rechts und werden nie darin verschachtelt.
 
 ## 6. Komponenteneigene Invarianten
 

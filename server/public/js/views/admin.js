@@ -720,7 +720,7 @@ function renderPanel(container, ctx) {
   })).join('');
 
   const testSectionHtml = adminModeActive ? `<details class="card grouped-page-section collapsible-section" data-admin-section="test" aria-labelledby="admin-test-players-title" ${adminSectionOpen.test ? 'open' : ''}>
-      <summary class="collapsible-section-header"><h2 id="admin-test-players-title">Testdaten</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+      <summary class="collapsible-section-header"><span class="collapsible-section-chevron">${icon('chevronRight')}</span><h2 id="admin-test-players-title">Testdaten</h2></summary>
       <div class="collapsible-section-content profile-rows profile-rows-columns" style="--profile-rows-count:1;">
         ${profileRow({
           title: 'Test-Spieler',
@@ -749,10 +749,10 @@ function renderPanel(container, ctx) {
       </section>
       ${trackingEnabled ? `<details class="card grouped-page-section collapsible-section" data-admin-section="readiness" aria-labelledby="admin-readiness-title" ${adminSectionOpen.readiness ? 'open' : ''}>
         <summary class="collapsible-section-header">
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           <h2 id="admin-readiness-title">LAN-Bereitschaft</h2>
           <span class="collapsible-section-summary-end">
             ${readiness ? readinessStatusHtml(readiness.overall) : ''}
-            <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           </span>
         </summary>
         <div class="collapsible-section-content stack">
@@ -764,10 +764,10 @@ function renderPanel(container, ctx) {
       </details>` : ''}
       <details class="card grouped-page-section collapsible-section" data-admin-section="invites" aria-labelledby="admin-invites-title" ${adminSectionOpen.invites ? 'open' : ''}>
         <summary class="collapsible-section-header">
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           <h2 id="admin-invites-title">Einladungslinks</h2>
           <span class="collapsible-section-summary-end">
             ${activeInvites?.length ? `<span class="badge badge-offline">${activeInvites.length}</span>` : ''}
-            <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           </span>
         </summary>
         <div class="collapsible-section-content">
@@ -785,10 +785,10 @@ function renderPanel(container, ctx) {
       </details>
       <details class="card grouped-page-section collapsible-section" data-admin-section="accounts" aria-labelledby="admin-players-title" ${adminSectionOpen.accounts ? 'open' : ''}>
         <summary class="collapsible-section-header">
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           <h2 id="admin-players-title">Konten</h2>
           <span class="collapsible-section-summary-end">
             ${players.length ? `<span class="badge badge-offline">${players.length}</span>` : ''}
-            <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
           </span>
         </summary>
         <div class="collapsible-section-content stack">

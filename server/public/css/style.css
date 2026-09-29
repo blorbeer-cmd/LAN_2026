@@ -696,7 +696,7 @@ textarea {
 .event-poll-list {
   gap: var(--space-3);
 }
-.event-poll-card {
+.card.event-poll-card {
   position: relative;
   padding: 0;
   overflow: visible;
@@ -710,7 +710,7 @@ textarea {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--card-padding);
 }
 .event-poll-card-toggle {
   display: grid;
@@ -719,8 +719,8 @@ textarea {
   gap: var(--space-3);
   flex: 1 1 auto;
   min-width: 0;
-  min-height: var(--control-height);
-  padding: var(--space-2);
+  min-height: var(--tap-target-size);
+  padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -732,10 +732,15 @@ textarea {
 .event-poll-card-toggle[aria-expanded='true'] .collapsible-section-chevron {
   transform: rotate(90deg);
 }
-@media (hover: hover) {
-  .event-poll-card-toggle:hover {
-    background: var(--bg-elevated-2);
-  }
+.event-poll-card[data-latest-vote] .event-poll-card-title {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+.event-poll-card[data-latest-vote] .event-poll-card-title > strong {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
 }
 .event-poll-card-title {
   display: flex;
@@ -862,7 +867,6 @@ textarea {
 .event-poll-card-content {
   gap: var(--space-4);
   padding: 0 var(--space-4) var(--space-4);
-  border-top: 1px solid var(--border);
 }
 .event-poll-round {
   gap: var(--space-4);
@@ -871,7 +875,7 @@ textarea {
 .event-poll-note {
   margin: 0;
 }
-.event-poll-options {
+.stack.event-poll-options {
   gap: 0;
 }
 /* Options are flat rows separated by hairlines, not boxes inside the card. */
@@ -887,10 +891,6 @@ textarea {
 }
 .event-poll-option:first-child {
   border-top: 0;
-  padding-top: 0;
-}
-.event-poll-option:last-child {
-  padding-bottom: 0;
 }
 .event-poll-option-note {
   font-size: var(--font-size-sm);
@@ -903,17 +903,12 @@ textarea {
   min-width: 0;
 }
 .event-poll-result {
-  /* The legend hangs below the bar. An empty first row of the same flexible
-     height mirrors it, so the bar stays on the row's middle line, level with
-     the avatars and answer buttons, even when the legend wraps. */
-  display: grid;
-  grid-template-rows: 1fr auto 1fr;
-  row-gap: var(--space-1);
+  /* Center the bar and count together as one block between the row lines. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   min-width: 0;
   margin-inline-end: var(--space-4);
-}
-.event-poll-result::before {
-  content: '';
 }
 .event-poll-bar {
   display: block;
@@ -1029,6 +1024,12 @@ textarea {
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   line-height: var(--control-line-height);
+}
+.event-poll-count-text {
+  /* Center against capitals/baseline, not empty font leading. Descenders stay visible. */
+  display: block;
+  text-box-trim: trim-both;
+  text-box-edge: cap alphabetic;
 }
 /* Voter avatars beside their option. They carry the same identities the vote
    dialog lists, compressed into the option's existing title row so a visible
@@ -1318,7 +1319,6 @@ textarea {
   }
   .event-poll-options.is-compact .event-poll-option.is-column-start {
     border-top: 0;
-    padding-top: 0;
   }
 }
 @media (max-width: 639px) { /* --bp-md */
@@ -1358,11 +1358,7 @@ textarea {
     grid-row: 1;
   }
   .event-poll-result {
-    grid-template-rows: auto;
     margin-inline-end: 0;
-  }
-  .event-poll-result::before {
-    display: none;
   }
   .event-poll-option-badges,
   .btn.event-poll-voter-stack {
@@ -3232,12 +3228,16 @@ button.draft-pool-player {
 .collapsible-section-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: var(--space-3);
   min-height: var(--tap-target-size);
   margin-bottom: 0;
   cursor: pointer;
   list-style: none;
+}
+.collapsible-section-header > :nth-child(2) {
+  flex: 1;
+  min-width: 0;
 }
 .collapsible-section-header h2 {
   margin: 0;
@@ -3253,13 +3253,15 @@ button.draft-pool-player {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+  margin-left: auto;
 }
 .collapsible-section-chevron {
   display: inline-flex;
+  flex: 0 0 auto;
   color: var(--text-muted);
-  transition: transform 0.15s ease;
+  transition: transform var(--motion-fast);
 }
-.collapsible-section[open] .collapsible-section-chevron {
+.collapsible-section[open] > .collapsible-section-header > .collapsible-section-chevron {
   transform: rotate(90deg);
 }
 .tournament-list-result {
@@ -4119,6 +4121,11 @@ button.card {
 .home-current--compact .home-current-items {
   gap: 0;
 }
+.home-live-grid {
+  /* Include both borders so a game subtitle fits without growing its row. */
+  --home-player-row-height: calc(var(--tap-target-size) + var(--space-8) + 2px);
+  grid-auto-rows: minmax(var(--home-player-row-height), auto);
+}
 .home-current--compact {
   padding-block: var(--space-3);
 }
@@ -4184,9 +4191,6 @@ button.card {
   }
   .home-current-row:has(.home-current-navigate:hover) {
     border-color: var(--accent);
-  }
-  .home-current--compact .home-current-navigate:hover {
-    background: transparent;
   }
   .home-current--compact .home-current-row:has(.home-current-navigate:hover) {
     border-color: transparent;
@@ -4623,7 +4627,7 @@ button.card {
   /* The live board reads like every list: the left column fills top to
      bottom before the next one starts (row counts set by home.js). */
   .two-column-card-grid.home-live-grid {
-    grid-template-rows: repeat(var(--home-live-rows-2, 1), auto);
+    grid-template-rows: repeat(var(--home-live-rows-2, 1), minmax(var(--home-player-row-height), auto));
     grid-auto-flow: column;
   }
 }

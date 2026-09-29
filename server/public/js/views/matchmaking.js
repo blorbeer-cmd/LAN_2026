@@ -5,6 +5,7 @@
 
 import { api } from '../api.js';
 import { icon } from '../icons.js';
+import { domainIcon } from '../domainIcons.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { state, gameById, catalogGames, gamesWithHistory, eventPlayers } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime, seatConflictIconHtml } from '../format.js';
@@ -676,10 +677,10 @@ function wireDrawCards(container, ctx) {
 function renderHistoryDetails(title, count, content) {
   return `<details class="card history-details collapsible-section" ${historySectionOpen ? 'open' : ''}>
     <summary class="collapsible-section-header">
+      <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
       <h2>${title}</h2>
       <span class="collapsible-section-summary-end">
         <span class="badge badge-offline">${count}</span>
-        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
       </span>
     </summary>
     <div class="collapsible-section-content">${content}</div>
@@ -857,11 +858,11 @@ function renderOpenDraws(selectedGameId) {
   ].filter(Boolean).join(' · ');
   return `<details class="card matchmaking-open-draws collapsible-section" ${openDrawsSectionOpen ? 'open' : ''}>
     <summary class="collapsible-section-header">
+      <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
       <h2>Ohne Ergebnis</h2>
       <span class="collapsible-section-summary-end">
         <span class="muted">${summary}</span>
         <span class="badge badge-offline">Offen</span>
-        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
       </span>
     </summary>
     <div class="collapsible-section-content"><div id="match-history-open"></div></div>
@@ -955,14 +956,16 @@ function renderActiveTournaments() {
   // filters below narrow open draws and historical entries.
   const active = (tournamentCache ?? []).filter((tournament) => tournament.status !== 'completed');
   if (!active.length && !tournamentError) return '';
-  return `<section class="card stack grouped-page-section matchmaking-active-tournaments" aria-labelledby="match-active-tournaments-title">
+  return `<section class="card stack grouped-page-section home-current home-current--compact matchmaking-active-tournaments" aria-labelledby="match-active-tournaments-title">
     <div class="grouped-page-section-title"><h2 id="match-active-tournaments-title">Laufende Turniere</h2></div>
-    ${active.length ? `<div class="matchmaking-active-tournament-grid">${active.map((tournament) => `
-      <button type="button" class="card tournament-list-card" data-open-draw-tournament="${escapeHtml(tournament.id)}">
-        <span class="tournament-list-card-main"><span class="player-name">${escapeHtml(tournament.name)}</span>
-          <span class="muted">${escapeHtml(TOURNAMENT_FORMAT_LABELS[tournament.format])} · ${tournament.decidedMatchCount}/${tournament.matchCount} Partien</span></span>
-        <span class="tournament-list-card-end"><span class="badge badge-playing">Läuft</span>${icon('chevronRight')}</span>
-      </button>`).join('')}</div>` : ''}
+    ${active.length ? `<div class="home-current-items">${active.map((tournament) => `
+      <article class="list-row home-current-row">
+        <button type="button" class="home-current-navigate" data-open-draw-tournament="${escapeHtml(tournament.id)}">
+          <span class="list-row-icon">${icon(domainIcon('tournaments'))}</span>
+          <span class="home-current-copy"><span class="player-name">${escapeHtml(tournament.name)}</span>
+            <span class="muted list-row-desc">${escapeHtml(TOURNAMENT_FORMAT_LABELS[tournament.format])} · ${tournament.decidedMatchCount}/${tournament.matchCount} Partien</span></span>
+        </button>
+      </article>`).join('')}</div>` : ''}
     ${tournamentError ? '<div class="muted">Turniere konnten nicht aktualisiert werden.</div>' : ''}
   </section>`;
 }

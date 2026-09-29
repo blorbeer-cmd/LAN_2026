@@ -48,6 +48,7 @@ let historyStale = false;
 let historyOpen = false;
 let top10Open = false;
 let latestVoteOpen = false;
+const expandedHistoryRounds = new Set();
 let historyRequestVersion = 0;
 
 async function loadHistory(ctx) {
@@ -85,6 +86,7 @@ export function invalidateVoteHistory({ hard = false } = {}) {
 // point rather than a stronger version of that one.
 export function invalidateVoteEventScope() {
   invalidateVoteHistory({ hard: true });
+  expandedHistoryRounds.clear();
   mineCache = null;
   mineCacheKey = null;
   mineLoading = false;
@@ -463,7 +465,7 @@ function renderResultRows(h) {
           </div>
           <span class="event-poll-result">
             <span class="event-poll-bar" aria-hidden="true">${share > 0 ? `<span class="event-poll-bar-fill is-choice" style="width:${Math.round(share * 1000) / 10}%;"></span>` : ''}</span>
-            <span class="event-poll-counts">${escapeHtml(resultSummary(h, r))}</span>
+            <span class="event-poll-counts"><span class="event-poll-count-text">${escapeHtml(resultSummary(h, r))}</span></span>
           </span>
           <span class="event-poll-option-badges">${stack}</span>
         </div>`;
@@ -475,6 +477,13 @@ function renderResultRows(h) {
 
 function winnerNames(h) {
   return h.results.filter((r) => (h.winnerGameIds ?? []).includes(r.gameId)).map((r) => r.gameName);
+}
+
+function renderVoteResultContent(h) {
+  return `<section class="stack event-poll-round">
+    ${h.info ? `<p class="event-poll-note">${escapeHtml(h.info)}</p>` : ''}
+    <div class="stack event-poll-options">${renderResultRows(h)}</div>
+  </section>`;
 }
 
 // Collapsed like an Umfrage card: the header keeps the round, its winner and
@@ -509,15 +518,12 @@ function renderLatestVoteCard({ showRunoff }) {
         </div>
       </header>
       <div class="stack event-poll-card-content" ${latestVoteOpen ? '' : 'hidden'}>
-        <section class="stack event-poll-round">
-          ${h.info ? `<p class="event-poll-note">${escapeHtml(h.info)}</p>` : ''}
-          <div class="stack event-poll-options">${renderResultRows(h)}</div>
-        </section>
+        ${renderVoteResultContent(h)}
       </div>
     </section>`;
 }
 
-// ---------- history: one compact row per older round ----------
+// ---------- history: one independently collapsible card per older round ----------
 
 function renderHistory() {
   if (historyCache === null) {
@@ -531,18 +537,30 @@ function renderHistory() {
       className: 'vote-empty-state empty-state-compact',
     });
   }
-  return `<div class="event-poll-history-list">${olderRounds
+  return `<div class="stack">${olderRounds
     .map((h) => {
       const winners = winnerNames(h);
       const meta = [roundTitle(h), formatDateTime(h.closedAt), submissionCountLabel(h.totalVoters)].join(' · ');
+      const round = escapeHtml(String(h.round));
+      const expanded = expandedHistoryRounds.has(String(h.round));
       return `
-        <div class="event-poll-history-round">
-          <span class="event-poll-history-main">
-            <span class="event-poll-history-meta">${escapeHtml(meta)}</span>
-            ${winners.length ? `<span class="event-poll-history-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : '<span class="muted">Keine Stimmen</span>'}
-          </span>
-          <button type="button" class="btn btn-sm" data-open-vote-round="${h.round}">Stimmen ansehen</button>
-        </div>`;
+        <article class="card event-poll-card" data-vote-history-round="${round}" aria-labelledby="vote-history-title-${round}">
+          <header class="event-poll-card-header">
+            <button type="button" class="event-poll-card-toggle" data-toggle-vote-history="${round}" aria-expanded="${expanded}" aria-controls="vote-history-result-${round}">
+              <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
+              <span class="event-poll-history-main">
+                <span class="event-poll-history-meta" id="vote-history-title-${round}">${escapeHtml(meta)}</span>
+                ${winners.length ? `<span class="event-poll-history-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : '<span class="muted">Keine Stimmen</span>'}
+              </span>
+            </button>
+            <div class="event-poll-card-side">
+              <button type="button" class="btn btn-sm" data-open-vote-round="${round}">Stimmen ansehen</button>
+            </div>
+          </header>
+          <div class="stack event-poll-card-content" id="vote-history-result-${round}" ${expanded ? '' : 'hidden'}>
+            ${expanded ? renderVoteResultContent(h) : ''}
+          </div>
+        </article>`;
     })
     .join('')}</div>`;
 }
@@ -705,20 +723,18 @@ export function renderVotes(container, ctx) {
 
     <details class="card history-details collapsible-section vote-page-section" data-vote-top10 ${top10Open ? 'open' : ''}>
       <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         <h2>Top 10 nach Bock-Level</h2>
-        <span class="collapsible-section-summary-end">
-          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
-        </span>
       </summary>
       <div class="collapsible-section-content">${renderTop10(votes.catalogResults)}</div>
     </details>
 
     <details class="card history-details collapsible-section" data-vote-history ${historyOpen ? 'open' : ''}>
       <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         <h2>Historie</h2>
         <span class="collapsible-section-summary-end">
           <span class="badge badge-offline">${Math.max(0, (historyCache?.length ?? 0) - 1)}</span>
-          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
         </span>
       </summary>
       <div class="collapsible-section-content">${renderHistory()}</div>
@@ -742,6 +758,16 @@ export function renderVotes(container, ctx) {
   container.querySelector('[data-toggle-latest-vote]')?.addEventListener('click', () => {
     latestVoteOpen = !latestVoteOpen;
     ctx.rerender();
+  });
+  container.querySelectorAll('[data-toggle-vote-history]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const round = button.dataset.toggleVoteHistory;
+      if (expandedHistoryRounds.has(round)) expandedHistoryRounds.delete(round);
+      else expandedHistoryRounds.add(round);
+      await ctx.rerender();
+      [...container.querySelectorAll('[data-toggle-vote-history]')]
+        .find((toggle) => toggle.dataset.toggleVoteHistory === round)?.focus({ preventScroll: true });
+    });
   });
 
   container.querySelectorAll('[data-vote-select]').forEach((btn) => {

@@ -66,7 +66,7 @@ test('event payment reminders start after two hours and preserve their cadence a
     assert.equal(entry.title, 'Offener Event-Beitrag');
     assert.match(entry.body, /Reminder LAN/);
     assert.match(entry.body, /25,50/);
-    assert.equal(entry.url, '/#events');
+    assert.equal(entry.url, `/#events/${encodeURIComponent(eventId)}`);
     assert.equal(entry.audience, 'direct');
     assert.equal(entry.notificationType, 'event-payment');
     assert.equal(entry.targetId, eventId);

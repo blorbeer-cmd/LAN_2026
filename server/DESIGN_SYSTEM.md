@@ -468,8 +468,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Collapsible section** — `.collapsible-section` uses a native `details` element with
   `.collapsible-section-header`, a count/status badge and `.collapsible-section-chevron`. It is the
   standard presentation for collapsed histories, completed tournament lists and closed order
-  cards: a full bordered card whose chevron rotates when opened. Section-specific content lives in
+  cards: a full bordered card whose chevron rotates when opened. Disclosure chevrons are the first
+  element on the left, followed by the title and metadata; separate actions remain on the right.
+  This applies to native section summaries and card/row disclosure buttons. Navigation rows use
+  pointer hover and keyboard focus feedback instead of disclosure chevrons. Section-specific content lives in
   `.collapsible-section-content`; decorative heading icons are omitted.
+  Disclosure headers and their expanded content are separated by spacing, without a horizontal
+  divider directly below the header. This includes the shared Vote and poll card content.
   Every collapsible header vertically centers its title or title/metadata block, count/status and
   chevron, both closed and open, on phones and laptops. Text stays left-aligned. The shared
   `.collapsible-section-header` owns this alignment without view-specific selector lists; its

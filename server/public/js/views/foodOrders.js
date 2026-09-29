@@ -1511,10 +1511,10 @@ export function renderFoodOrders(container, ctx) {
         closedOrders.length
           ? `<details class="card grouped-page-section collapsible-section" data-food-history="history" ${historyOpen ? 'open' : ''}>
                <summary class="collapsible-section-header">
+                 <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
                  <h2>Historie</h2>
                  <span class="collapsible-section-summary-end">
                    <span class="badge badge-offline">${closedOrders.length}</span>
-                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
                  </span>
                </summary>
                <div class="collapsible-section-content">

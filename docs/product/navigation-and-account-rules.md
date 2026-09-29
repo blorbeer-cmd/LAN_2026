@@ -323,14 +323,16 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   row with the To-Do symbol, the title and the colour-free due text, or — while none are taken
   yet — a single row nudging toward the shared pool's still-open To-Dos; with neither, the
   tile stays hidden rather than offering an empty link into the full list. Every current
-  item is a single full-row action that navigates into its source view.
+  item is a single full-row action that navigates into its source view. „Aktuell“ and „Meine To-Dos“
+  rows use hover highlighting and visible keyboard focus without a trailing navigation arrow.
   Current items and To-Dos use the same compact, divided row treatment inside their main card.
   The personal status and player entries remain nested cards on the secondary elevated background;
   „Gerade aktiv“ is a subsection of
   „Live-Status“ rather than a competing page-level group. A pending event invitation appears here as
   a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); answering it happens only in
   Profile, not in this list. The live board fills its left column first, grouped by state and
-  alphabetical within a state. The admin-only „Rangliste“ shows the top six as a RankedList with
+  alphabetical within a state. Playing and online player cards reserve the same height so a tracked
+  game does not resize a row. The admin-only „Rangliste“ shows the top six as a RankedList with
   „Alle ansehen“ in its header. The seating plan draws free seats and the table as plain outlines
   labelled „Frei“ and „Tisch“, so occupied seats carry the plan; a layout without seats shows
   „Noch keine Plätze“. Main groups stay in one continuous column
