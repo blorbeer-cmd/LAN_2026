@@ -169,6 +169,7 @@ function renderDetail(container, ctx) {
   const formatMeta = [
     t.twoLegged ? 'Hin- & Rückrunde' : null,
     t.format === 'group_knockout' ? `${t.groupCount} Gruppen · Top ${t.advancersPerGroup} steigen auf` : null,
+    t.thirdPlaceMatch ? 'Spiel um Platz 3' : null,
     t.trackScore ? 'Punktestand' : null,
   ]
     .filter(Boolean)

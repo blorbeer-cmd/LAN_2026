@@ -372,7 +372,8 @@ db.exec(`
     status               TEXT NOT NULL DEFAULT 'active', -- 'active' | 'completed'
     created_at           INTEGER NOT NULL,
     lobby_name           TEXT,                         -- optional base name; each match receives a deterministic unique suffix
-    lobby_password       TEXT                          -- optional: in-game lobby password used throughout the tournament
+    lobby_password       TEXT,                         -- optional: in-game lobby password used throughout the tournament
+    third_place_match    INTEGER NOT NULL DEFAULT 0    -- knockout adds a match between the semifinal losers
   );
 
   -- A tournament's roster: fixed for the tournament's whole duration (unlike
@@ -393,7 +394,9 @@ db.exec(`
   -- stage/group_index disambiguate group_knockout's two phases: 'group'
   -- rows belong to one group's round-robin schedule (group_index says
   -- which), 'knockout' rows are the bracket generated once every group
-  -- match is decided — both NULL for the other two formats. score_a/score_b
+  -- match is decided — both NULL for the other two formats. is_third_place
+  -- marks the optional match between the semifinal losers; it shares the
+  -- final's round as slot 1. score_a/score_b
   -- are only populated when the owning tournament has track_score set.
   -- match_id points at the matches row created when a result is recorded,
   -- so playing in a tournament also counts toward the normal leaderboard;
@@ -414,7 +417,8 @@ db.exec(`
     is_draw        INTEGER NOT NULL DEFAULT 0,
     is_bye         INTEGER NOT NULL DEFAULT 0,
     match_id       TEXT REFERENCES matches(id) ON DELETE SET NULL,
-    played_at      INTEGER
+    played_at      INTEGER,
+    is_third_place INTEGER NOT NULL DEFAULT 0
   );
 
   -- Web Push subscriptions (real OS-level notifications, not just in-app
@@ -5405,6 +5409,20 @@ function addNewstickerOptOut(): void {
   db.exec('ALTER TABLE players ADD COLUMN newsticker_opt_out INTEGER NOT NULL DEFAULT 0 CHECK (newsticker_opt_out IN (0, 1))');
 }
 registerMigration({ version: 113, name: 'add newsticker opt-out', up: addNewstickerOptOut });
+
+// Knockout tournaments can add a third-place match. Existing tournaments keep
+// their plain bracket without one.
+function addTournamentThirdPlaceMatch(): void {
+  const tournamentColumns = db.prepare('PRAGMA table_info(tournaments)').all() as Array<{ name: string }>;
+  if (!tournamentColumns.some((column) => column.name === 'third_place_match')) {
+    db.exec('ALTER TABLE tournaments ADD COLUMN third_place_match INTEGER NOT NULL DEFAULT 0');
+  }
+  const matchColumns = db.prepare('PRAGMA table_info(tournament_matches)').all() as Array<{ name: string }>;
+  if (!matchColumns.some((column) => column.name === 'is_third_place')) {
+    db.exec('ALTER TABLE tournament_matches ADD COLUMN is_third_place INTEGER NOT NULL DEFAULT 0');
+  }
+}
+registerMigration({ version: 114, name: 'add tournament third-place match', up: addTournamentThirdPlaceMatch });
 
 runRegisteredMigrations();
 
