@@ -377,8 +377,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   A contextual-help trigger keeps its full touch target through negative outer margin, so adding
   help never shifts only that heading
   downward.
-- **Mode / setting choice** — choose controls by the decision shape: a native select for
-  three or more mutually exclusive named options, a toggle for an either/or choice, a segmented
+- **Mode / setting choice** — choose controls by the decision shape: a select for
+  three or more mutually exclusive named options (native, or the non-searchable Searchable select
+  where its popup must match the app's dropdowns, as for the answer kind of Umfragen and Vote),
+  a toggle for an either/or choice, a segmented
   pill only beside a competing primary CTA, and a checkbox for an independent on/off flag.
   Product-specific choices live in [Product rules](../docs/product/README.md).
 - **Input** — plain `<input>`/`<select>`/`<textarea>` are styled globally by
@@ -452,6 +454,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   choosing, which a native `<select>` cannot do inside its options. `iconState` only colours the
   icon — each one also carries the German state as `aria-label` and `title`, so meaning is never
   colour alone. Option sets without icons render exactly the markup they did before.
+  With `searchable: false` the same component is a plain select for a few fixed choices
+  (`.search-select.is-readonly`): the field is read-only, a click, Enter, Space or an arrow key
+  opens every option, Tab alone never opens it and nothing filters. The list opens below the field
+  in the shared dark style instead of the browser's own popup that overlays the field.
   A picker may additionally carry one pinned `action` (`.search-select-action`) — a command that
   leaves the picker instead of selecting in it, such as the topbar switcher's „Events & Gruppen
   verwalten“. It must read as a different kind of thing than the rows above it, because an action

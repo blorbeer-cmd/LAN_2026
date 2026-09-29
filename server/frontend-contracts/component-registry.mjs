@@ -135,8 +135,8 @@ export const components = [
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
-        "file": "public/js/views/eventPolls.js",
-        "source": "class=\"btn btn-sm${draft[option.id] === value ? ' is-selected' : ''}\"",
+        "file": "public/js/pollControls.js",
+        "source": "class=\"btn btn-sm${selected === value ? ' is-selected' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
@@ -571,17 +571,17 @@ export const components = [
         "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
-        "file": "public/js/views/gameCatalog.js",
+        "file": "public/js/gameListControls.js",
         "source": "class=\"chip${genreFilter.has(g) ? ' is-active' : ''}\"",
         "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
-        "file": "public/js/views/gameCatalog.js",
+        "file": "public/js/gameListControls.js",
         "source": "class=\"chip${ratingFilter.has('bock') ? ' is-active' : ''}\"",
         "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
-        "file": "public/js/views/gameCatalog.js",
+        "file": "public/js/gameListControls.js",
         "source": "class=\"chip${ratingFilter.has('skill') ? ' is-active' : ''}\"",
         "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
@@ -635,14 +635,9 @@ export const components = [
     "purpose": "Compact choice text retains the standard minimum height.",
     "dynamicUses": [
       {
-        "file": "public/js/views/eventPolls.js",
+        "file": "public/js/pollControls.js",
         "source": "event-poll-choice-btn${selected ? ' is-selected' : ''}",
-        "reason": "Literal class followed by the conditional selected-state marker; this exact template supplies the registered choice control."
-      },
-      {
-        "file": "public/js/views/votes.js",
-        "source": "event-poll-choice-btn${selected ? ' is-selected' : ''}",
-        "reason": "A Vote runoff offers the same Wählen/Ausgewählt choice as a single-choice Umfrage; this exact template supplies the registered choice control."
+        "reason": "Literal class followed by the conditional selected-state marker; Umfragen and Vote share this exact choice-control template."
       }
     ]
   },
@@ -653,14 +648,6 @@ export const components = [
     "owner": "public/css/style.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
     "purpose": "Composite card header: title plus round/deadline metadata are a documented multiline state."
-  },
-  {
-    "id": "vote-fields",
-    "role": "standard-control",
-    "selector": ".vote-info-input",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Textarea minimum; rows/content determine the multiline state."
   },
   {
     "id": "food-fields",
@@ -1658,12 +1645,20 @@ export const permanentVariants = [
     "reason": "Transparent native team picker covers its icon slot on touch layouts."
   },
   {
-    "id": "vote-start-field",
-    "role": "standard-control",
-    "selector": ".vote-start-row .vote-info-input",
+    "id": "vote-game-toolbar",
+    "role": "composite-part",
+    "selector": ".game-catalog-toolbar.vote-game-toolbar",
     "owner": "public/css/domains.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "The info textarea matches the single-line title field in the one-row start form."
+    "contract": "components/controls.md#spielkatalog-werkzeugleiste",
+    "reason": "The Vote start dialog reuses the catalog toolbar with the bulk toggle beside sorting and filter below its full-width search."
+  },
+  {
+    "id": "vote-game-menu-panel",
+    "role": "composite-part",
+    "selector": ".vote-game-toolbar .game-catalog-sort-menu .game-catalog-sort-panel, .vote-game-toolbar .game-catalog-filter-menu .game-catalog-filter-panel",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#spielkatalog-werkzeugleiste",
+    "reason": "Inside the Vote start dialog the catalog's phone menus open below their trigger instead of above the covered bottom navigation."
   },
   {
     "id": "arrival-sort-mobile",

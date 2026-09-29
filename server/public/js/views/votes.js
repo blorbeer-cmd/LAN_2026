@@ -2,29 +2,26 @@
 // voter, so casting a vote needs no extra identity form.
 //
 // Layout, top to bottom:
-// 1. Either "start a new round" controls (idle), or the running round as one
-//    card in the same shape as an Umfrage whose interim result is hidden:
-//    header with participation and the viewer's answer state, one row per
-//    game, and a footer with the own progress and "Speichern".
+// 1. Either the "Aktuelle Abstimmung" card whose „Abstimmung starten" opens
+//    the start dialog (idle), or the running round as one card in the same
+//    shape as an Umfrage: header with participation and the viewer's answer
+//    state, one row per game, and a footer with the own progress and
+//    "Speichern".
 // 2. The latest closed result as "Letzter Vote", pulled from history, as a
 //    collapsed Umfrage card: the header names round and winner, the opened
 //    card shows result bar, "Win" chip and voter avatars per game.
 // 3. The current Top 10 by aggregate "Bock" rating, split into two compact
 //    five-item columns on wider screens.
 //
-// While a round is open, nobody sees how votes/points are distributed across
-// games yet — only the server-side final tally, once closed, may influence
-// anyone (no watching a leader emerge and piling onto it). The view only
-// shows: the list of games to rate, your own local draft, and how many people
-// have already submitted. Once closed, everyone can see who voted how.
-//
-// Every regular round runs in 'points' mode: a 0-5 number scale per game, and every
-// game needs a rating from 0 to 5 before the ballot can be saved. 0 is a
-// deliberate "Spiele ich nicht", so each result names how many voters would
-// play the game. 'single' mode (pick exactly one game) only ever gets used
-// for a runoff between tied winners (see the "Stichwahl" button below).
-// Either mode requires an explicit "Speichern" tap — picking a number only
-// stages a local draft. A saved ballot can be changed until the round ends.
+// A round offers the same answer kinds and privacy options as an Umfrage
+// (see pollControls.js): "Jedes Spiel bewerten" (Passt/Notfalls/Nein),
+// "Einzelauswahl" (also every runoff), "Mehrfachauswahl" and "Bewertung 0 bis
+// 5" (the default: every game needs a rating, 0 is a deliberate "Spiele ich
+// nicht"). "Zwischenstand verbergen" (on by default) keeps the per-game
+// distribution hidden from everyone while the round runs, so nobody piles
+// onto a visible leader; only participation shows. "Anonym" never reveals
+// who voted how. Every answer is a local draft until "Speichern"; a saved
+// ballot can be changed until the round ends.
 
 import { api } from '../api.js';
 import { icon } from '../icons.js';
@@ -33,13 +30,54 @@ import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
+import { matchesSelectionSearch, wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { ratingScaleHtml } from '../ratingScale.js';
 import { skillRatingFor } from '../skillDisplay.js';
 import { sharedRankNumbers } from '../rankedList.js';
-import { voteBreakdownHtml, voterNamesText, voterStackHtml, WIN_CHIP } from '../voteBreakdown.js';
+import { wireActionMenus } from '../actionMenu.js';
+import { wireInfoTooltips } from '../infoTooltip.js';
+import {
+  choiceBarFillHtml,
+  CHOSEN_CELL,
+  feasibilityBarFillHtml,
+  feasibilityCellHtml,
+  feasibilityKeyHtml,
+  feasibilityLegendHtml,
+  resultBarHtml,
+  voteBreakdownHtml,
+  voterNamesText,
+  voterStackHtml,
+  WIN_CHIP,
+} from '../voteBreakdown.js';
+import {
+  choiceControlHtml,
+  feasibilityControlHtml,
+  maxSelectionsFieldHtml,
+  pollFlagsHtml,
+  responseModeFieldHtml,
+  wireResponseModeField,
+} from '../pollControls.js';
+import {
+  createGameListFilters,
+  filterGames,
+  gameListToolbarHtml,
+  ratingStats,
+  sortGames,
+  wireGameListToolbar,
+} from '../gameListControls.js';
+
+// Same answer kinds as an Umfrage; only the wording names games.
+const MODE_LABELS = {
+  feasibility: 'Jedes Spiel bewerten',
+  single: 'Einzelauswahl',
+  multiple: 'Mehrfachauswahl',
+  points: 'Bewertung 0 bis 5',
+};
+const MODE_OPTIONS = Object.entries(MODE_LABELS).map(([value, label]) => ({ value, label }));
+const ANONYMOUS_HELP = 'Stimmen bleiben dauerhaft anonym. Auch nach Ende der Abstimmung ist nicht sichtbar, wer wie abgestimmt hat.';
+const LIVE_RESULTS_HELP = 'Solange die Abstimmung läuft, sieht niemand, wie die Stimmen verteilt sind; sichtbar ist nur, wie viele schon abgestimmt haben. Nach dem Ende ist das Ergebnis für alle sichtbar.';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
 // from its own endpoint, not part of the main loadAll() round-trip.
@@ -91,16 +129,14 @@ export function invalidateVoteEventScope() {
   mineCache = null;
   mineCacheKey = null;
   mineLoading = false;
-  draftSingleGameId = null;
-  draftPoints = null;
+  draft = null;
   draftKey = null;
-  resetVoteGameSelection();
 }
 
 // The current player's own saved ballot in the running round. Any entry
 // means this identity has answered; the draft below starts from it and can
 // still be changed and saved again until the round ends.
-let mineCache = null; // Map<gameId, points|null>
+let mineCache = null; // Map<gameId, { points, response }>
 let mineCacheKey = null; // see mineKey()
 let mineLoading = false;
 
@@ -115,7 +151,7 @@ async function loadMine(key, playerId, ctx) {
   mineLoading = true;
   try {
     const mine = await api.votes.mine(playerId);
-    mineCache = new Map(mine.entries.map((e) => [e.gameId, e.points]));
+    mineCache = new Map(mine.entries.map((e) => [e.gameId, { points: e.points, response: e.response ?? null }]));
   } catch {
     mineCache = new Map();
   } finally {
@@ -125,31 +161,35 @@ async function loadMine(key, playerId, ctx) {
   }
 }
 
-// Local, not-yet-saved picks. Tapping a game or a number only changes
-// this draft; nothing reaches the server until "Speichern" is pressed.
-// Reseeded from mineCache once per round/player (draftKey tracks that so a
-// fresh round starts blank rather than carrying over a stale draft).
-// A game missing from draftPoints is still unrated; 0 is a real rating.
-let draftSingleGameId = null;
-let draftPoints = null; // Map<gameId, points>
+// Local, not-yet-saved answers, one per game: 0-5 points, a Passt/Notfalls/
+// Nein answer or `true` for a picked game. Tapping only changes this draft;
+// nothing reaches the server until "Speichern" is pressed. Reseeded from
+// mineCache once per round/player (draftKey tracks that so a fresh round
+// starts blank rather than carrying over a stale draft). A game missing from
+// the draft is still unanswered; 0 is a real rating.
+let draft = null; // Map<gameId, number | string | true>
 let draftKey = null; // mineKey() of the round/player the current draft belongs to
 
-// "Neue Abstimmung" game selection. Persisted here (like matchmaking.js's
-// checkedIds) rather than left in the DOM, because a votes:changed/
-// games:changed socket event re-renders this whole view from scratch
-// whenever anyone else interacts with voting — without this, that re-render
-// would clear any manual deselection mid-edit.
-// The first selection of every fresh round is the current Top 10 by Bock;
-// excludedGameIds then tracks games manually unchecked from that starting
-// point. Anything not listed after initialization (including a newly added
-// game) defaults to selected — so a round covering every game is just the
-// Top-10 starting point with "Alle markieren" applied, or every remaining
-// exclusion cleared by hand.
-let excludedGameIds = new Set();
-let voteSelectionInitialized = false;
-let voteSelectionDirty = false;
-let voteGameSearchQuery = '';
-let lastRenderedRoundOpen = false;
+function seedDraft(votes) {
+  draft = new Map();
+  for (const [gameId, entry] of mineCache) {
+    if (votes.mode === 'points') {
+      if (typeof entry.points === 'number') draft.set(gameId, entry.points);
+    } else if (votes.mode === 'feasibility') {
+      if (entry.response) draft.set(gameId, entry.response);
+    } else {
+      draft.set(gameId, true);
+    }
+  }
+  // A points ballot not yet answered starts from the viewer's own Bock per
+  // game; it is still only a local draft until "Speichern".
+  if (votes.mode === 'points' && mineCache.size === 0) {
+    for (const r of votes.results) {
+      const bock = ownBock(r.gameId);
+      if (bock !== null) draft.set(r.gameId, bock);
+    }
+  }
+}
 
 // Games are listed alphabetically everywhere on this page, so a game is
 // always found at the same place while choosing or rating.
@@ -167,50 +207,8 @@ function gamesByPreference(games, results) {
   });
 }
 
-function initializeVoteGameSelection(votes) {
-  if (voteSelectionInitialized && voteSelectionDirty) return;
-  const catalog = catalogGames();
-  const selectedGameIds = new Set(gamesByPreference(catalog, votes.catalogResults ?? []).slice(0, 10).map((game) => game.id));
-  excludedGameIds = new Set(catalog.filter((game) => !selectedGameIds.has(game.id)).map((game) => game.id));
-  voteSelectionInitialized = true;
-}
-
-function resetVoteGameSelection() {
-  excludedGameIds = new Set();
-  voteSelectionInitialized = false;
-  voteSelectionDirty = false;
-}
-
-function voteSearchVisibleGames() {
-  return sortVoteGames(catalogGames()).filter((game) => matchesSelectionSearch(game.name, voteGameSearchQuery));
-}
-
-function allVisibleVoteGamesSelected() {
-  const visible = voteSearchVisibleGames();
-  return visible.length > 0 && visible.every((g) => !excludedGameIds.has(g.id));
-}
-
-function voteSelectToggleContent(allSelected) {
-  return allSelected
-    ? { iconName: 'listX', label: 'Sichtbare Spiele abwählen', tooltip: 'Sichtbare abwählen' }
-    : { iconName: 'listChecks', label: 'Sichtbare Spiele markieren', tooltip: 'Sichtbare markieren' };
-}
-
-function voteSelectToggleHtml(allSelected) {
-  const { iconName, label, tooltip } = voteSelectToggleContent(allSelected);
-  return `<button type="button" class="icon-btn selection-toolbar-icon" id="votes-select-all" aria-label="${label}" data-tooltip="${tooltip}">${icon(iconName)}</button>`;
-}
-
-function syncVoteSelectToggle(button) {
-  if (!button) return;
-  const { iconName, label, tooltip } = voteSelectToggleContent(allVisibleVoteGamesSelected());
-  button.setAttribute('aria-label', label);
-  button.dataset.tooltip = tooltip;
-  button.innerHTML = icon(iconName);
-}
-
-// The points button that was just pressed, so keyboard focus survives the
-// re-render that the press triggers.
+// The button that was just pressed, so keyboard focus survives the re-render
+// that the press triggers.
 let focusAfterRender = null;
 
 // One compact meta line per game, shared by the open round and the result:
@@ -278,6 +276,58 @@ function renderTop10(results) {
   return renderRankingColumns(top10, rowHtml);
 }
 
+// ---------- results: shared by a visible interim result and closed rounds ----------
+
+function resultSummary(h, r) {
+  if (h.mode === 'points') return `${r.points} Pkt. · ${r.votes}/${h.totalVoters} spielen mit`;
+  if (h.mode === 'feasibility') return `${r.votes}× Passt`;
+  return `${r.votes} ${r.votes === 1 ? 'Stimme' : 'Stimmen'}`;
+}
+
+// The value a result's place number compares, as the server ranks it.
+function rankValue(h, r) {
+  if (h.mode === 'points') return r.points;
+  if (h.mode === 'feasibility') return [r.votes, r.ifNeeded, -r.declines];
+  return r.votes;
+}
+
+function resultCellHtml(h, r, maxPoints) {
+  if (h.mode === 'feasibility') {
+    const counts = { can: r.votes, ifNeeded: r.ifNeeded, cannot: r.declines };
+    return resultBarHtml(feasibilityBarFillHtml(counts, h.totalVoters), feasibilityLegendHtml(counts));
+  }
+  const share = h.mode === 'points' ? r.points / maxPoints : r.votes / Math.max(1, h.totalVoters);
+  return resultBarHtml(choiceBarFillHtml(share), `<span class="event-poll-count-text">${escapeHtml(resultSummary(h, r))}</span>`);
+}
+
+function supports(mode, entry) {
+  if (mode === 'points') return entry.points > 0;
+  if (mode === 'feasibility') return entry.response === 'can';
+  return true;
+}
+
+// Everyone who picked the game, answered Passt or gave it at least one point,
+// highest first. An anonymous round names nobody.
+function supportersOf(h, gameId) {
+  if (h.anonymous) return [];
+  return (h.ballots ?? [])
+    .map((ballot) => ({ ballot, entry: ballot.entries.find((entry) => entry.gameId === gameId) }))
+    .filter(({ entry }) => entry && supports(h.mode, entry))
+    .sort((a, b) => (b.entry.points ?? 0) - (a.entry.points ?? 0) || a.ballot.name.localeCompare(b.ballot.name, 'de'))
+    .map(({ ballot }) => ({ playerId: ballot.playerId, name: ballot.name }));
+}
+
+const SUPPORTER_LABELS = { points: 'Spielen mit', feasibility: 'Passt', single: 'Gewählt von', multiple: 'Gewählt von' };
+
+function supporterStackHtml(h, r, attributes) {
+  const supporters = supportersOf(h, r.gameId);
+  return voterStackHtml({
+    people: supporters,
+    label: `Stimmen zu ${r.gameName} ansehen · ${SUPPORTER_LABELS[h.mode] ?? 'Gewählt von'}: ${voterNamesText(supporters)}`,
+    attributes,
+  });
+}
+
 // ---------- open round: stage a local draft, save explicitly ----------
 
 const DECLINE_LABEL = 'Spiele ich nicht';
@@ -291,19 +341,31 @@ function ballotGames(votes) {
   return [...votes.results].sort((a, b) => a.gameName.localeCompare(b.gameName, 'de'));
 }
 
-function ratedDraftCount(votes) {
-  return votes.results.filter((r) => draftPoints.has(r.gameId)).length;
+function answeredCount(votes) {
+  return votes.results.filter((r) => draft.has(r.gameId)).length;
 }
 
 function ballotComplete(votes) {
-  if (votes.mode === 'single') return Boolean(draftSingleGameId);
-  return votes.results.length > 0 && ratedDraftCount(votes) === votes.results.length;
+  const answered = answeredCount(votes);
+  if (votes.mode === 'points') return votes.results.length > 0 && answered === votes.results.length;
+  if (votes.mode === 'single') return answered === 1;
+  if (votes.mode === 'multiple') return answered >= 1 && (!votes.maxSelections || answered <= votes.maxSelections);
+  return answered >= 1;
 }
 
 function draftProgressText(votes) {
-  if (votes.mode === 'single') return `${draftSingleGameId ? 1 : 0} gewählt`;
-  return `${ratedDraftCount(votes)} von ${votes.results.length} bewertet`;
+  const answered = answeredCount(votes);
+  if (votes.mode === 'points' || votes.mode === 'feasibility') return `${answered} von ${votes.results.length} bewertet`;
+  if (votes.mode === 'multiple' && votes.maxSelections) return `${answered} von ${votes.maxSelections} gewählt`;
+  return `${answered} gewählt`;
 }
+
+const INCOMPLETE_MESSAGES = {
+  points: 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.',
+  feasibility: 'Bitte mindestens ein Spiel bewerten.',
+  single: 'Bitte zuerst ein Spiel auswählen.',
+  multiple: 'Bitte mindestens ein Spiel auswählen.',
+};
 
 function answerChipHtml(hasSubmitted) {
   return hasSubmitted
@@ -311,9 +373,6 @@ function answerChipHtml(hasSubmitted) {
     : '<span class="badge event-poll-answer-chip is-missing">Deine Stimme fehlt</span>';
 }
 
-// Same four columns as an Umfrage row (name, result, voters, answer); while
-// the round runs the result and voter columns stay empty, exactly like an
-// Umfrage with a hidden interim result.
 // The viewer's own Bock (0-5) for a game, or null. Vote points use the same
 // scale, so an unanswered ballot starts from it.
 function ownBock(gameId) {
@@ -330,56 +389,68 @@ function ownSkillHtml(gameId) {
   return `<span class="vote-own-skill${skill === null ? ' is-missing' : ''}">Mein Skill: ${skill ?? '–'}</span>`;
 }
 
-function renderOpenRow(votes, r, draftReady, columnStart = false) {
-  let control;
-  if (!draftReady) {
-    control = '<span class="muted vote-points-loading">Lädt…</span>';
-  } else if (votes.mode === 'single') {
-    const selected = draftSingleGameId === r.gameId;
-    control = `
-      <div class="event-poll-choice-control">
-        <div class="selection-toolbar event-poll-response-toolbar">
-          <button type="button" class="btn btn-sm event-poll-choice-btn${selected ? ' is-selected' : ''}" data-vote-select="${r.gameId}"
-            aria-pressed="${selected}" aria-label="${escapeHtml(`${r.gameName} wählen`)}">${selected ? 'Ausgewählt' : 'Wählen'}</button>
-        </div>
-      </div>`;
-  } else {
-    // The same 0-5 number scale as an Umfrage rating; no button selected
-    // means "not rated yet".
-    control = ratingScaleHtml({
-      selected: draftPoints.get(r.gameId),
+// The answer control of one game: the same controls as an Umfrage of the
+// same answer kind.
+function ballotControlHtml(votes, r) {
+  const value = draft.get(r.gameId);
+  const gameId = escapeHtml(r.gameId);
+  if (votes.mode === 'points') {
+    // No button selected means "not rated yet".
+    return ratingScaleHtml({
+      selected: value,
       tone: 'vote',
       groupLabel: `Punkte für ${r.gameName}`,
       valueLabel: pointsValueText,
-      attributes: (value) => `data-vote-points="${r.gameId}" data-points-value="${value}"`,
+      attributes: (points) => `data-vote-points="${gameId}" data-points-value="${points}"`,
     });
   }
+  if (votes.mode === 'feasibility') {
+    return feasibilityControlHtml({
+      selected: value,
+      groupLabel: `Bewertung für ${r.gameName}`,
+      attributes: (response) => `data-vote-response="${response}" data-game-id="${gameId}"`,
+    });
+  }
+  return choiceControlHtml({ selected: value === true, label: `${r.gameName} wählen`, attributes: `data-vote-select="${gameId}"` });
+}
+
+// Same four columns as an Umfrage row (name, result, voters, answer). While
+// the interim result is hidden the result and voter columns stay empty.
+function renderOpenRow(votes, r, draftReady, { columnStart, showResult, maxPoints }) {
+  const control = draftReady ? ballotControlHtml(votes, r) : '<span class="muted vote-points-loading">Lädt…</span>';
+  const decline = votes.mode === 'points'
+    ? `<span class="event-poll-tag vote-decline-tag" data-decline-tag ${draftReady && draft.get(r.gameId) === 0 ? '' : 'hidden'}>${DECLINE_LABEL}</span>`
+    : '';
   return `
-    <div class="event-poll-option${columnStart ? ' is-column-start' : ''}" data-points-row="${r.gameId}">
+    <div class="event-poll-option${columnStart ? ' is-column-start' : ''}" data-vote-row="${escapeHtml(r.gameId)}">
       <div class="event-poll-option-info">
         <span class="event-poll-option-title-row"><strong>${escapeHtml(r.gameName)}</strong></span>
         <span class="muted event-poll-option-note">${ownSkillHtml(r.gameId)} · ${gameMetaHtml(r)}</span>
       </div>
-      <span class="event-poll-result"></span>
-      <span class="event-poll-option-badges">
-        <span class="event-poll-tag vote-decline-tag" data-decline-tag ${draftReady && draftPoints?.get(r.gameId) === 0 ? '' : 'hidden'}>${DECLINE_LABEL}</span>
-      </span>
+      ${showResult ? resultCellHtml(votes, r, maxPoints) : '<span class="event-poll-result"></span>'}
+      <span class="event-poll-option-badges">${showResult ? supporterStackHtml(votes, r, 'data-open-live-votes') : ''}${decline}</span>
       ${control}
     </div>`;
 }
 
+function roundTagsHtml(votes) {
+  const tags = [MODE_LABELS[votes.mode] ?? MODE_LABELS.points];
+  if (votes.mode === 'multiple' && votes.maxSelections) tags.push(`höchstens ${votes.maxSelections}`);
+  if (votes.anonymous) tags.push('Anonym');
+  if (votes.hideLiveResults) tags.push('Zwischenstand verborgen');
+  return `<div class="event-poll-tags">${tags.map((tag) => `<span class="event-poll-tag">${escapeHtml(tag)}</span>`).join('')}</div>`;
+}
+
 function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
-  const isPoints = votes.mode === 'points';
   const games = ballotGames(votes);
-  // Two columns on wide screens read down the left column first, then the
-  // right one (see .event-poll-options.is-compact).
+  const showResult = !votes.hideLiveResults;
+  const maxPoints = Math.max(1, ...votes.results.map((r) => r.points ?? 0));
+  // With the result hidden, two columns on wide screens read down the left
+  // column first, then the right one (see .event-poll-options.is-compact).
   const columnRows = Math.max(1, Math.ceil(games.length / 2));
-  const rows = games.map((r, index) => renderOpenRow(votes, r, mineReady, index === columnRows)).join('');
-  const tags = [];
-  // Runoffs are titled "Stichwahl: …" already, so the tag only shows when
-  // the title does not say it.
-  if (!isPoints && !(votes.title ?? '').includes('Stichwahl')) tags.push('Stichwahl');
-  tags.push('Zwischenstand verborgen');
+  const rows = games
+    .map((r, index) => renderOpenRow(votes, r, mineReady, { columnStart: !showResult && index === columnRows, showResult, maxPoints }))
+    .join('');
   const admin = isGroupAdmin();
   const answer = mineReady ? answerChipHtml(hasSubmitted) : '';
   return `
@@ -400,11 +471,9 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
       </header>
       <div class="stack event-poll-card-content">
         <section class="stack event-poll-round">
-          <div class="event-poll-tags">
-            ${tags.map((tag) => `<span class="event-poll-tag">${tag}</span>`).join('')}
-          </div>
+          ${roundTagsHtml(votes)}
           ${votes.info ? `<p class="event-poll-note">${escapeHtml(votes.info)}</p>` : ''}
-          <div class="stack event-poll-options has-answers is-compact" style="--compact-rows: ${columnRows};">${rows}</div>
+          <div class="stack event-poll-options has-answers${showResult ? '' : ' is-compact'}"${showResult ? '' : ` style="--compact-rows: ${columnRows};"`}>${rows}</div>
           <div class="event-poll-save-row event-poll-footer">
             <span class="muted" data-vote-rated-progress>${mineReady ? draftProgressText(votes) : ''}</span>
             <button type="button" class="btn btn-primary btn-sm" id="votes-submit" ${mineReady && ballotComplete(votes) ? '' : 'disabled'}>Speichern</button>
@@ -425,39 +494,16 @@ function submissionCountLabel(count) {
 }
 
 function roundMetaText(h) {
-  return [h.title, formatDateTime(h.closedAt), h.mode === 'single' && !(h.title ?? '').includes('Stichwahl') ? 'Stichwahl' : null, submissionCountLabel(h.totalVoters)]
-    .filter(Boolean)
-    .join(' · ');
-}
-
-function resultSummary(h, r) {
-  if (h.mode === 'single') return `${r.votes} ${r.votes === 1 ? 'Stimme' : 'Stimmen'}`;
-  return `${r.points} Pkt. · ${r.votes}/${h.totalVoters} spielen mit`;
-}
-
-// Everyone who picked the game, or gave it at least one point, highest first.
-function supportersOf(h, gameId) {
-  return (h.ballots ?? [])
-    .map((ballot) => ({ ballot, entry: ballot.entries.find((entry) => entry.gameId === gameId) }))
-    .filter(({ entry }) => entry && (h.mode === 'single' || entry.points > 0))
-    .sort((a, b) => (b.entry.points ?? 0) - (a.entry.points ?? 0) || a.ballot.name.localeCompare(b.ballot.name, 'de'))
-    .map(({ ballot }) => ({ playerId: ballot.playerId, name: ballot.name }));
+  return [h.title, formatDateTime(h.closedAt), submissionCountLabel(h.totalVoters)].filter(Boolean).join(' · ');
 }
 
 function renderResultRows(h, columnRows) {
   const maxPoints = Math.max(1, ...h.results.map((r) => r.points));
-  const ranks = sharedRankNumbers(h.results.map((result) => h.mode === 'single' ? result.votes : result.points));
+  const ranks = sharedRankNumbers(h.results.map((result) => rankValue(h, result)));
   const winners = new Set(h.winnerGameIds ?? []);
   return h.results
     .map((r, index) => {
       const win = winners.has(r.gameId);
-      const share = h.mode === 'single' ? r.votes / Math.max(1, h.totalVoters) : r.points / maxPoints;
-      const supporters = supportersOf(h, r.gameId);
-      const stack = voterStackHtml({
-        people: supporters,
-        label: `Stimmen zu ${r.gameName} ansehen · ${h.mode === 'single' ? 'Gewählt von' : 'Spielen mit'}: ${voterNamesText(supporters)}`,
-        attributes: `data-open-vote-round="${h.round}"`,
-      });
       return `
         <div class="event-poll-option${win ? ' is-winner' : ''}${index === columnRows ? ' is-column-start' : ''}">
           <div class="row" style="gap:var(--space-2);min-width:0;">
@@ -471,11 +517,8 @@ function renderResultRows(h, columnRows) {
               <span class="muted event-poll-option-note">${gameMetaHtml(r)}</span>
             </div>
           </div>
-          <span class="event-poll-result">
-            <span class="event-poll-bar" aria-hidden="true">${share > 0 ? `<span class="event-poll-bar-fill is-choice" style="width:${Math.round(share * 1000) / 10}%;"></span>` : ''}</span>
-            <span class="event-poll-counts"><span class="event-poll-count-text">${escapeHtml(resultSummary(h, r))}</span></span>
-          </span>
-          <span class="event-poll-option-badges">${stack}</span>
+          ${resultCellHtml(h, r, maxPoints)}
+          <span class="event-poll-option-badges">${supporterStackHtml(h, r, `data-open-vote-round="${h.round}"`)}</span>
         </div>`;
     })
     .join('');
@@ -495,6 +538,11 @@ function renderVoteResultContent(h) {
     ${h.info ? `<p class="event-poll-note">${escapeHtml(h.info)}</p>` : ''}
     <div class="stack event-poll-options is-ranked" style="--compact-rows: ${columnRows};">${renderResultRows(h, columnRows)}</div>
   </section>`;
+}
+
+// "Stimmen ansehen" only exists where the round names its voters.
+function votesButtonHtml(h) {
+  return h.anonymous ? '' : `<button type="button" class="btn btn-sm" data-open-vote-round="${escapeHtml(String(h.round))}">Stimmen ansehen</button>`;
 }
 
 // Collapsed like an Umfrage card: the header keeps the round, its winner and
@@ -524,7 +572,7 @@ function renderLatestVoteCard({ showRunoff }) {
           </span>
         </button>
         <div class="event-poll-card-side">
-          <button type="button" class="btn btn-sm" data-open-vote-round="${h.round}">Stimmen ansehen</button>
+          ${votesButtonHtml(h)}
           ${showRunoff ? '<button type="button" class="btn btn-primary btn-sm" id="votes-runoff">Stichwahl starten</button>' : ''}
         </div>
       </header>
@@ -564,9 +612,7 @@ function renderHistory() {
                 ${winners.length ? `<span class="event-poll-history-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : '<span class="muted">Keine Stimmen</span>'}
               </span>
             </button>
-            <div class="event-poll-card-side">
-              <button type="button" class="btn btn-sm" data-open-vote-round="${round}">Stimmen ansehen</button>
-            </div>
+            <div class="event-poll-card-side">${votesButtonHtml(h)}</div>
           </header>
           <div class="stack event-poll-card-content" id="vote-history-result-${round}" ${expanded ? '' : 'hidden'}>
             ${expanded ? renderVoteResultContent(h) : ''}
@@ -576,16 +622,15 @@ function renderHistory() {
     .join('')}</div>`;
 }
 
-// ---------- "Stimmen": who voted how in one closed round ----------
+// ---------- "Stimmen": who voted how in one round ----------
 
 const DECLINE_CELL = `<span class="event-poll-vote-cell is-cannot" role="img" aria-label="Spielt nicht" title="Spielt nicht">${icon('x')}</span>`;
 
 function ballotCell(h, entry) {
-  if (h.mode === 'single') {
-    return entry
-      ? `<span class="event-poll-vote-cell is-can" role="img" aria-label="Gewählt" title="Gewählt">${icon('check')}</span>`
-      : '<span class="event-poll-vote-cell is-empty" aria-hidden="true"></span>';
+  if (h.mode === 'single' || h.mode === 'multiple') {
+    return entry ? CHOSEN_CELL : '<span class="event-poll-vote-cell is-empty" aria-hidden="true"></span>';
   }
+  if (h.mode === 'feasibility') return feasibilityCellHtml(entry?.response);
   if (!entry) return '<span class="event-poll-vote-cell is-empty" aria-label="Nicht bewertet">–</span>';
   if (entry.points === 0) return DECLINE_CELL;
   return `<span class="event-poll-vote-cell is-rating">${entry.points}</span>`;
@@ -598,11 +643,13 @@ function roundBreakdownHtml(h) {
     h.ballots.map((ballot) => [ballot.playerId, new Map(ballot.entries.map((entry) => [entry.gameId, entry]))]),
   );
   const hasDeclines = h.mode === 'points' && h.ballots.some((ballot) => ballot.entries.some((entry) => entry.points === 0));
-  const keyHtml = hasDeclines
-    ? `<div class="muted event-poll-vote-key"><span><span class="event-poll-vote-cell is-cannot" aria-hidden="true">${icon('x')}</span>Spielt nicht</span></div>`
-    : '';
+  const keyHtml = h.mode === 'feasibility'
+    ? feasibilityKeyHtml()
+    : hasDeclines
+      ? `<div class="muted event-poll-vote-key"><span><span class="event-poll-vote-cell is-cannot" aria-hidden="true">${icon('x')}</span>Spielt nicht</span></div>`
+      : '';
   return `
-    <div class="muted vote-result-meta">${escapeHtml(roundMetaText(h))}</div>
+    <div class="muted vote-result-meta">${escapeHtml(h.open ? [h.title, submissionCountLabel(h.totalVoters)].filter(Boolean).join(' · ') : roundMetaText(h))}</div>
     ${h.info ? `<p class="event-poll-note">${escapeHtml(h.info)}</p>` : ''}
     ${voteBreakdownHtml({
       columns: h.results.map((r) => ({ label: r.gameName, win: winners.has(r.gameId), summary: resultSummary(h, r) })),
@@ -626,16 +673,258 @@ async function openRoundBreakdown(round) {
   }
 }
 
-export function renderVotes(container, ctx) {
+// A running round with a visible interim result already carries its ballots.
+function openLiveBreakdown(votes) {
+  openModal(`Stimmen · ${roundTitle(votes)}`, `<div class="stack">${roundBreakdownHtml(votes)}</div>`);
+}
 
+// ---------- start dialog: like "Umfrage starten", plus the game list ----------
+
+function voteSelectToggleContent(allSelected) {
+  return allSelected
+    ? { iconName: 'listX', label: 'Sichtbare Spiele abwählen', tooltip: 'Sichtbare abwählen' }
+    : { iconName: 'listChecks', label: 'Sichtbare Spiele markieren', tooltip: 'Sichtbare markieren' };
+}
+
+function voteSelectToggleHtml(allSelected) {
+  const { iconName, label, tooltip } = voteSelectToggleContent(allSelected);
+  return `<button type="button" class="icon-btn selection-toolbar-icon" id="votes-select-all" aria-label="${label}" data-tooltip="${tooltip}">${icon(iconName)}</button>`;
+}
+
+function selectionCountText(count) {
+  return `${count} ${count === 1 ? 'Spiel' : 'Spiele'} ausgewählt`;
+}
+
+// One compact meta line per game in the start list: genres and the group's
+// average Bock, so sorting and filtering by them stays readable.
+function startGameMetaHtml(game) {
+  const bock = ratingStats(state.preferences ?? [], game.id).avg;
+  return [
+    game.genres?.length ? escapeHtml(game.genres.join(', ')) : null,
+    bock === null ? null : `${icon('flame')} Ø ${bock.toFixed(1)}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function openVoteStartForm(ctx) {
+  const catalog = sortVoteGames(catalogGames());
+  // The ten games the group most wants to play are the starting selection;
+  // the bulk toggle or single checkboxes adjust it.
+  const selected = new Set(gamesByPreference(catalog, state.votes?.catalogResults ?? []).slice(0, 10).map((game) => game.id));
+  const filters = createGameListFilters();
+  const myId = getMyId();
+  let query = '';
+  let dirty = false;
+
+  const listedGames = () => sortGames(filterGames(catalog, filters, myId), filters, myId);
+  const searchVisibleGames = () => listedGames().filter((game) => matchesSelectionSearch(game.name, query));
+  const allVisibleSelected = () => {
+    const visible = searchVisibleGames();
+    return visible.length > 0 && visible.every((game) => selected.has(game.id));
+  };
+
+  const gameRowsHtml = () => {
+    const games = listedGames();
+    if (games.length === 0) {
+      return emptyStateHtml(catalog.length === 0 ? 'Noch keine Spiele.' : 'Keine Spiele für diese Filter.', { className: 'empty-state-compact' });
+    }
+    return `<div id="votes-game-select" class="vote-game-grid" role="group" aria-labelledby="votes-games-label">${games
+      .map((game) => {
+        const meta = startGameMetaHtml(game);
+        return `
+        <label class="check-row" data-vote-game-search-item data-selection-search="${escapeHtml(game.name)}">
+          <input type="checkbox" data-vote-game-checkbox value="${escapeHtml(game.id)}" ${selected.has(game.id) ? 'checked' : ''} />
+          <span class="vote-game-option">
+            <span class="vote-game-option-name">${escapeHtml(game.name)}</span>
+            ${meta ? `<span class="muted vote-game-option-meta">${meta}</span>` : ''}
+          </span>
+        </label>`;
+      })
+      .join('')}</div>`;
+  };
+
+  const pickerHtml = () => `
+    <div>
+      <span class="field-label is-required" id="votes-games-label">Spiele</span>
+      ${gameListToolbarHtml(filters, {
+        games: catalog,
+        myId,
+        searchId: 'votes-game-search',
+        searchLabel: 'Spiel suchen',
+        query,
+        extraHtml: voteSelectToggleHtml(allVisibleSelected()),
+        className: 'vote-game-toolbar',
+      })}
+    </div>
+    ${gameRowsHtml()}
+    <p class="muted vote-game-search-empty" data-vote-game-search-empty role="status" hidden>Keine passenden Spiele gefunden.</p>`;
+
+  const { close } = openModal('Abstimmung starten', `
+    <form id="vote-start-form" class="stack event-poll-form">
+      <div><label for="votes-title" class="field-label">Titel</label><input type="text" id="votes-title" maxlength="80" placeholder="Samstagabend" autofocus /></div>
+      <div><label for="votes-info" class="field-label">Beschreibung</label><textarea id="votes-info" class="event-poll-note-input" maxlength="500" rows="1" placeholder="Nur Spiele für 4 Leute"></textarea></div>
+      <div class="field-row event-poll-form-pair">
+        ${responseModeFieldHtml('votes-mode', MODE_OPTIONS, 'points')}
+        <div class="vote-max-slot" id="votes-max-wrap">${maxSelectionsFieldHtml('votes-max', '')}</div>
+      </div>
+      ${pollFlagsHtml({
+        anonymousId: 'votes-anonymous',
+        hiddenId: 'votes-hide-live-results',
+        anonymousHelp: ANONYMOUS_HELP,
+        hiddenHelp: LIVE_RESULTS_HELP,
+      })}
+      <div class="stack vote-game-picker" data-vote-game-picker>${pickerHtml()}</div>
+      <div class="event-poll-save-row event-poll-footer">
+        <span class="muted" data-vote-selected-count>${selectionCountText(selected.size)}</span>
+        <button type="submit" class="btn btn-primary btn-sm" id="votes-start">Abstimmung starten</button>
+      </div>
+    </form>`, {
+    confirmClose: () => (dirty ? 'Die eingegebenen Angaben gehen verloren.' : null),
+    onMount: (modal) => {
+      const form = modal.querySelector('#vote-start-form');
+      const picker = modal.querySelector('[data-vote-game-picker]');
+      const maxField = modal.querySelector('#votes-max-wrap > div');
+      maxField.hidden = true;
+      const markDirty = () => { dirty = true; };
+      form.addEventListener('input', markDirty);
+      form.addEventListener('change', markDirty);
+      wireInfoTooltips(modal);
+      wireResponseModeField(modal, 'votes-mode', MODE_OPTIONS, {
+        onChange: (mode) => {
+          dirty = true;
+          maxField.hidden = mode !== 'multiple';
+        },
+      });
+
+      const syncSelection = () => {
+        const button = picker.querySelector('#votes-select-all');
+        if (button) {
+          const { iconName, label, tooltip } = voteSelectToggleContent(allVisibleSelected());
+          button.setAttribute('aria-label', label);
+          button.dataset.tooltip = tooltip;
+          button.innerHTML = icon(iconName);
+        }
+        modal.querySelector('[data-vote-selected-count]').textContent = selectionCountText(selected.size);
+      };
+
+      const renderPicker = ({ focusSelector } = {}) => {
+        picker.innerHTML = pickerHtml();
+        wirePicker();
+        if (focusSelector) picker.querySelector(focusSelector)?.focus({ preventScroll: true });
+      };
+
+      function wirePicker() {
+        wireActionMenus(picker);
+        wireGameListToolbar(picker, filters, { onChange: renderPicker });
+        wireSelectionSearch(picker, {
+          inputId: 'votes-game-search',
+          itemSelector: '[data-vote-game-search-item]',
+          emptySelector: '[data-vote-game-search-empty]',
+          onQueryChange: (value) => {
+            query = value;
+            syncSelection();
+          },
+        });
+        // Enter in the search field filters; it must not start the round.
+        picker.querySelector('#votes-game-search')?.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') event.preventDefault();
+        });
+        picker.querySelectorAll('[data-vote-game-checkbox]').forEach((checkbox) => {
+          checkbox.addEventListener('change', () => {
+            if (checkbox.checked) selected.add(checkbox.value);
+            else selected.delete(checkbox.value);
+            syncSelection();
+          });
+        });
+        // One bulk toggle like the Match rosters: deselect when every visible
+        // game is selected, otherwise select all visible games.
+        picker.querySelector('#votes-select-all')?.addEventListener('click', () => {
+          dirty = true;
+          const deselect = allVisibleSelected();
+          for (const game of searchVisibleGames()) {
+            if (deselect) selected.delete(game.id);
+            else selected.add(game.id);
+          }
+          picker.querySelectorAll('[data-vote-game-checkbox]').forEach((checkbox) => {
+            checkbox.checked = selected.has(checkbox.value);
+          });
+          syncSelection();
+        });
+      }
+      wirePicker();
+
+      // The dialog closes on Escape; an open sort or filter menu inside it
+      // takes that Escape first and only closes itself.
+      modal.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const menu = picker.querySelector('.action-menu[open]');
+        if (!menu) return;
+        event.preventDefault();
+        menu.open = false;
+        menu.querySelector('summary')?.focus();
+      });
+
+      form.addEventListener('submit', async (submitEvent) => {
+        submitEvent.preventDefault();
+        const submitButton = submitEvent.submitter ?? modal.querySelector('#votes-start');
+        const mode = modal.querySelector('#votes-mode').value;
+        // Every selected game counts, also one a filter currently hides.
+        const gameIds = catalog.filter((game) => selected.has(game.id)).map((game) => game.id);
+        if (gameIds.length === 0) return showToast('Bitte mindestens ein Spiel auswählen.', { error: true });
+        const rawMax = modal.querySelector('#votes-max').value;
+        const maxSelections = mode === 'multiple' && rawMax ? Number(rawMax) : null;
+        if (maxSelections !== null && (!Number.isInteger(maxSelections) || maxSelections < 1 || maxSelections > gameIds.length)) {
+          return showToast(`Die Stimmenzahl muss zwischen 1 und ${gameIds.length} liegen.`, { error: true });
+        }
+        submitButton.disabled = true;
+        try {
+          // No ctx.refresh() (a full loadAll()): patch state.votes straight
+          // from our own response and do a plain rerender() instead — see the
+          // submit button below for why that's both cheaper and more reliable
+          // than depending solely on the 'votes:changed' broadcast this call
+          // also triggers for every other client.
+          state.votes = await api.votes.start({
+            mode,
+            title: modal.querySelector('#votes-title').value.trim() || undefined,
+            info: modal.querySelector('#votes-info').value.trim() || undefined,
+            gameIds,
+            anonymous: modal.querySelector('#votes-anonymous').checked,
+            hideLiveResults: modal.querySelector('#votes-hide-live-results').checked,
+            maxSelections,
+          });
+          dirty = false;
+          close();
+          ctx.rerender();
+          showToast('Abstimmung gestartet.');
+        } catch (err) {
+          submitButton.disabled = false;
+          showToast(err.message, { error: true });
+        }
+      });
+    },
+  });
+}
+
+// ---------- page ----------
+
+function renderStartSection() {
+  return `
+    <section class="card stack grouped-page-section primary-collection-section vote-page-section" aria-labelledby="vote-start-title">
+      <div class="grouped-page-section-title">
+        <h2 id="vote-start-title">Aktuelle Abstimmung</h2>
+        <button type="button" class="btn btn-primary btn-sm" id="votes-new">Abstimmung starten</button>
+      </div>
+      ${emptyStateHtml('Keine laufende Abstimmung')}
+    </section>`;
+}
+
+export function renderVotes(container, ctx) {
   const votes = state.votes;
   if (!votes) {
     container.innerHTML = `<h1 class="view-title">Vote</h1>${emptyStateHtml('Lädt…')}`;
     return;
   }
-
-  if (!votes.open && lastRenderedRoundOpen) resetVoteGameSelection();
-  lastRenderedRoundOpen = votes.open;
 
   if ((historyCache === null || historyStale) && !historyLoading) {
     loadHistory(ctx);
@@ -650,16 +939,7 @@ export function renderVotes(container, ctx) {
   const hasSubmitted = Boolean(mineReady && mineCache.size > 0);
 
   if (mineReady && draftKey !== mineCacheKey) {
-    draftSingleGameId = votes.mode === 'single' ? [...mineCache.keys()][0] ?? null : null;
-    draftPoints = new Map([...mineCache].filter(([, points]) => typeof points === 'number'));
-    // A ballot not yet answered starts from the viewer's own Bock per game;
-    // it is still only a local draft until "Speichern".
-    if (votes.mode === 'points' && mineCache.size === 0) {
-      for (const r of votes.results) {
-        const bock = ownBock(r.gameId);
-        if (bock !== null) draftPoints.set(r.gameId, bock);
-      }
-    }
+    seedDraft(votes);
     draftKey = mineCacheKey;
   }
 
@@ -668,61 +948,6 @@ export function renderVotes(container, ctx) {
   // the "X/Y" denominator (see eventPlayers()).
   const totalPlayers = eventPlayers().length;
 
-  let openSectionHtml = '';
-  if (votes.open) {
-    openSectionHtml = renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers });
-  } else {
-    initializeVoteGameSelection(votes);
-    const gameCheckboxes = sortVoteGames(catalogGames())
-      .map(
-        (g) => `
-        <label class="check-row" data-vote-game-search-item data-selection-search="${escapeHtml(g.name)}">
-          <input type="checkbox" data-vote-game-checkbox value="${g.id}" ${excludedGameIds.has(g.id) ? '' : 'checked'} />
-          <span class="row" style="flex:1;gap:var(--space-2);">${escapeHtml(g.name)}</span>
-        </label>`
-      )
-      .join('');
-    openSectionHtml = `
-      <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-start-title">
-        <div class="grouped-page-section-title">
-          <h2 id="vote-start-title">Neue Abstimmung</h2>
-        </div>
-        <div class="vote-start-row">
-          <div>
-            <label class="field-label" for="votes-title">Titel</label>
-            <input type="text" id="votes-title" maxlength="80" placeholder="Samstagabend" />
-          </div>
-          <div>
-            <label class="field-label" for="votes-info">Info</label>
-            <textarea class="vote-info-input" id="votes-info" maxlength="500" rows="1" placeholder="Nur Spiele für 4 Leute"></textarea>
-          </div>
-          <div class="selection-toolbar vote-start-toolbar">
-            ${voteSelectToggleHtml(allVisibleVoteGamesSelected())}
-            ${selectionSearchHtml('votes-game-search', voteGameSearchQuery, { placeholder: 'Spiel suchen', label: 'Spiel suchen' })}
-          </div>
-        </div>
-        <div id="votes-game-select-wrap" class="stack vote-game-select-wrap">
-          <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
-          <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
-        </div>
-        <div class="card-footer-actions row" style="justify-content:flex-end;border-top:0;">
-          <button type="button" class="btn btn-primary btn-sm" id="votes-start">Starten</button>
-        </div>
-      </section>`;
-  }
-
-  // Title/Info are typed before the round exists, so they live only in the
-  // DOM — and this view re-renders on its own whenever a background fetch
-  // (history, own submissions) resolves or a realtime event arrives. Carry
-  // both across that re-render, same survives-its-own-rerender pattern the
-  // Checkliste's add-item field uses; without it a round could be started
-  // with an empty title just because a fetch landed mid-typing.
-  const previousDraft = {
-    title: container.querySelector('#votes-title')?.value ?? '',
-    info: container.querySelector('#votes-info')?.value ?? '',
-    focusedId: document.activeElement?.closest?.('#votes-title, #votes-info')?.id ?? null,
-  };
-
   // A tie in the most recent round offers the runoff right in that card's
   // header, like every other primary action on this page.
   const latestRound = historyCache?.[0];
@@ -730,7 +955,7 @@ export function renderVotes(container, ctx) {
 
   container.innerHTML = `
     <h1 class="view-title">Vote</h1>
-    ${openSectionHtml}
+    ${votes.open ? renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) : renderStartSection()}
 
     ${renderLatestVoteCard({ showRunoff })}
 
@@ -754,14 +979,7 @@ export function renderVotes(container, ctx) {
     </details>
   `;
 
-
-  for (const [id, value] of [['votes-title', previousDraft.title], ['votes-info', previousDraft.info]]) {
-    if (!value) continue;
-    const field = container.querySelector(`#${id}`);
-    if (field) field.value = value;
-  }
-  if (previousDraft.focusedId) container.querySelector(`#${previousDraft.focusedId}`)?.focus();
-
+  container.querySelector('#votes-new')?.addEventListener('click', () => openVoteStartForm(ctx));
   container.querySelector('[data-vote-history]')?.addEventListener('toggle', (event) => {
     historyOpen = event.currentTarget.open;
   });
@@ -783,35 +1001,58 @@ export function renderVotes(container, ctx) {
     });
   });
 
+  // A pick in a single choice replaces the previous one; a multiple choice
+  // toggles the game within its limit.
   container.querySelectorAll('[data-vote-select]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      draftSingleGameId = btn.dataset.voteSelect;
+      const gameId = btn.dataset.voteSelect;
+      if (votes.mode === 'single') {
+        draft = new Map([[gameId, true]]);
+      } else if (draft.has(gameId)) {
+        draft.delete(gameId);
+      } else {
+        if (votes.maxSelections && answeredCount(votes) >= votes.maxSelections) {
+          return showToast(`Du kannst höchstens ${votes.maxSelections} Spiele wählen.`, { error: true });
+        }
+        draft.set(gameId, true);
+      }
+      focusAfterRender = `[data-vote-select="${CSS.escape(gameId)}"]`;
       ctx.rerender();
     });
   });
 
-  // Like an Umfrage rating: pressing the chosen number again clears it.
-
+  // Like an Umfrage: pressing the chosen answer again clears it.
   container.querySelectorAll('[data-vote-points]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const gameId = btn.dataset.votePoints;
       const value = Number(btn.dataset.pointsValue);
-      if (draftPoints.get(gameId) === value) draftPoints.delete(gameId);
-      else draftPoints.set(gameId, value);
-      focusAfterRender = { gameId, value };
+      if (draft.get(gameId) === value) draft.delete(gameId);
+      else draft.set(gameId, value);
+      focusAfterRender = `[data-vote-points="${CSS.escape(gameId)}"][data-points-value="${value}"]`;
+      ctx.rerender();
+    });
+  });
+  container.querySelectorAll('[data-vote-response]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const gameId = btn.dataset.gameId;
+      const value = btn.dataset.voteResponse;
+      if (draft.get(gameId) === value) draft.delete(gameId);
+      else draft.set(gameId, value);
+      focusAfterRender = `[data-vote-response="${value}"][data-game-id="${CSS.escape(gameId)}"]`;
       ctx.rerender();
     });
   });
   if (focusAfterRender) {
-    const { gameId, value } = focusAfterRender;
+    const selector = focusAfterRender;
     focusAfterRender = null;
-    [...container.querySelectorAll('[data-vote-points]')]
-      .find((btn) => btn.dataset.votePoints === gameId && Number(btn.dataset.pointsValue) === value)
-      ?.focus({ preventScroll: true });
+    container.querySelector(selector)?.focus({ preventScroll: true });
   }
 
   container.querySelectorAll('[data-open-vote-round]').forEach((btn) => {
     btn.addEventListener('click', () => openRoundBreakdown(btn.dataset.openVoteRound));
+  });
+  container.querySelectorAll('[data-open-live-votes]').forEach((btn) => {
+    btn.addEventListener('click', () => openLiveBreakdown(votes));
   });
 
   const submitBtn = container.querySelector('#votes-submit');
@@ -820,12 +1061,10 @@ export function renderVotes(container, ctx) {
       if (submitBtn.disabled) return;
       const playerId = getMyId();
       if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-      if (!ballotComplete(votes)) {
-        return showToast(votes.mode === 'single' ? 'Bitte zuerst ein Spiel auswählen.' : 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.', { error: true });
-      }
-      const entries = votes.mode === 'points'
-        ? votes.results.map((r) => ({ gameId: r.gameId, points: draftPoints.get(r.gameId) }))
-        : [];
+      if (!ballotComplete(votes)) return showToast(INCOMPLETE_MESSAGES[votes.mode], { error: true });
+      // Only games of this round count; a draft may still hold a game that
+      // was removed since.
+      const answered = votes.results.filter((r) => draft.has(r.gameId)).map((r) => [r.gameId, draft.get(r.gameId)]);
       const key = mineKey(votes, playerId);
       submitBtn.disabled = true;
       try {
@@ -838,73 +1077,21 @@ export function renderVotes(container, ctx) {
         // write lands, the broadcast never arrives. The saved ballot is
         // exactly what was just sent, so the own-entries cache is set from
         // it directly instead of reloading and flashing the rows.
-        state.votes = votes.mode === 'single' ? await api.votes.cast(playerId, draftSingleGameId) : await api.votes.castPoints(playerId, entries);
-        mineCache = votes.mode === 'single'
-          ? new Map([[draftSingleGameId, null]])
-          : new Map(entries.map((entry) => [entry.gameId, entry.points]));
+        if (votes.mode === 'single') state.votes = await api.votes.cast(playerId, answered[0][0]);
+        else if (votes.mode === 'multiple') state.votes = await api.votes.castChoices(playerId, answered.map(([gameId]) => gameId));
+        else if (votes.mode === 'feasibility') {
+          state.votes = await api.votes.castResponses(playerId, answered.map(([gameId, response]) => ({ gameId, response })));
+        } else state.votes = await api.votes.castPoints(playerId, answered.map(([gameId, points]) => ({ gameId, points })));
+        mineCache = new Map(answered.map(([gameId, value]) => [gameId, {
+          points: typeof value === 'number' ? value : null,
+          response: typeof value === 'string' ? value : null,
+        }]));
         mineCacheKey = key;
         draftKey = key;
         ctx.rerender();
-        showToast(votes.mode === 'single' ? 'Deine Stimme wurde gespeichert.' : 'Deine Bewertung wurde gespeichert.');
+        showToast(votes.mode === 'points' || votes.mode === 'feasibility' ? 'Deine Bewertung wurde gespeichert.' : 'Deine Stimme wurde gespeichert.');
       } catch (err) {
         submitBtn.disabled = false;
-        showToast(err.message, { error: true });
-      }
-    });
-  }
-
-  container.querySelectorAll('[data-vote-game-checkbox]').forEach((checkbox) => {
-    checkbox.addEventListener('change', () => {
-      voteSelectionDirty = true;
-      if (checkbox.checked) excludedGameIds.delete(checkbox.value);
-      else excludedGameIds.add(checkbox.value);
-      syncVoteSelectToggle(container.querySelector('#votes-select-all'));
-    });
-  });
-
-  wireSelectionSearch(container, {
-    inputId: 'votes-game-search',
-    itemSelector: '[data-vote-game-search-item]',
-    emptySelector: '[data-vote-game-search-empty]',
-    onQueryChange: (query) => {
-      voteGameSearchQuery = query;
-      syncVoteSelectToggle(container.querySelector('#votes-select-all'));
-    },
-  });
-
-  // One bulk toggle like the Match rosters: deselect when every visible game
-  // is selected, otherwise select all visible games.
-  container.querySelector('#votes-select-all')?.addEventListener('click', () => {
-    voteSelectionDirty = true;
-    const deselect = allVisibleVoteGamesSelected();
-    for (const g of voteSearchVisibleGames()) {
-      if (deselect) excludedGameIds.add(g.id);
-      else excludedGameIds.delete(g.id);
-    }
-    ctx.rerender();
-  });
-
-  const startBtn = container.querySelector('#votes-start');
-  if (startBtn) {
-    startBtn.addEventListener('click', async () => {
-      const title = container.querySelector('#votes-title')?.value.trim() || undefined;
-      const info = container.querySelector('#votes-info')?.value.trim() || undefined;
-      const gameIds = sortVoteGames(catalogGames())
-        .filter((g) => !excludedGameIds.has(g.id))
-        .map((g) => g.id);
-      if (gameIds.length === 0) {
-        return showToast('Bitte mindestens ein Spiel auswählen.', { error: true });
-      }
-      try {
-        // No ctx.refresh() (a full loadAll()): patch state.votes straight
-        // from our own response and do a plain rerender() instead — see the
-        // submit button above for why that's both cheaper and more reliable
-        // than depending solely on the 'votes:changed' broadcast this call
-        // also triggers for every other client.
-        state.votes = await api.votes.start({ mode: 'points', title, info, gameIds });
-        resetVoteGameSelection();
-        ctx.rerender();
-      } catch (err) {
         showToast(err.message, { error: true });
       }
     });
@@ -916,13 +1103,15 @@ export function renderVotes(container, ctx) {
       const lastClosed = historyCache && historyCache[0];
       if (!lastClosed) return;
       try {
-        // No ctx.refresh(): see the start button above.
+        // No ctx.refresh(): see the submit button above. The runoff keeps
+        // the privacy options of the round it decides.
         state.votes = await api.votes.start({
           mode: 'single',
           title: lastClosed.title ? `Stichwahl: ${lastClosed.title}` : 'Stichwahl',
           gameIds: lastClosed.winners.map((w) => w.gameId),
+          anonymous: Boolean(lastClosed.anonymous),
+          hideLiveResults: lastClosed.hideLiveResults !== false,
         });
-        resetVoteGameSelection();
         ctx.rerender();
         showToast('Stichwahl gestartet.');
       } catch (err) {
@@ -935,7 +1124,7 @@ export function renderVotes(container, ctx) {
   if (closeBtn) {
     closeBtn.addEventListener('click', async () => {
       try {
-        // No ctx.refresh(): see the start button above.
+        // No ctx.refresh(): see the submit button above.
         state.votes = await api.votes.close();
         // The close response belongs to this client, so invalidate the
         // separately cached history immediately instead of waiting for the
@@ -955,9 +1144,8 @@ export function renderVotes(container, ctx) {
     cancelBtn.addEventListener('click', async () => {
       if (!(await confirmDialog('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.', { confirmText: 'Abstimmung abbrechen', danger: true }))) return;
       try {
-        // No ctx.refresh(): see the start button above.
+        // No ctx.refresh(): see the submit button above.
         state.votes = await api.votes.cancel();
-        resetVoteGameSelection();
         ctx.rerender();
         showToast('Abstimmung abgebrochen.');
       } catch (err) {

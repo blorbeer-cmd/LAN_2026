@@ -26,6 +26,16 @@ import { assertPaintedPollResultCentered } from './pollResultGeometry';
 
 registerFlowFixture('competition');
 
+// Starts a Vote round through the page's „Abstimmung starten“ dialog with its
+// preselected games and default answer kind.
+async function startVoteRound(): Promise<void> {
+  await page.click('#votes-new');
+  const form = page.locator('#vote-start-form');
+  await form.waitFor();
+  await page.click('#votes-start');
+  await form.waitFor({ state: 'detached' });
+}
+
 async function assertRankedVoteColumns(card: Locator): Promise<void> {
   const chipHeights = await card.locator('.vote-win-chip').evaluateAll((chips) =>
     chips.map((chip) => chip.getBoundingClientRect().height));
@@ -285,24 +295,62 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     assert.equal(unratedCount ?? 0, team.players.filter((text) => text.startsWith('(')).length);
   }
 
-  // Voting: start a round (points mode, the only mode offered when starting
-  // fresh), rate every game, save, change the ballot and save again. Alice's
-  // personal session already fixes the voter identity, so no extra identity
-  // form appears. Picking a number only stages a local draft — it must not
-  // count as a vote until "Speichern" is pressed. While the round is open, no
-  // per-game distribution (bars/counts) may be visible anywhere — only total
+  // Voting: start a round (points mode, the default answer kind), rate every
+  // game, save, change the ballot and save again. Alice's personal session
+  // already fixes the voter identity, so no extra identity form appears.
+  // Picking a number only stages a local draft — it must not count as a vote
+  // until "Speichern" is pressed. While the round is open, no per-game
+  // distribution (bars/counts) may be visible anywhere — only total
   // participation and the voter's own ballot.
   await page.click('.nav-btn[data-view="votes"]');
-  await page.waitForSelector('#votes-start');
-  assert.equal(await page.locator('.card-footer-actions #votes-start').count(), 1);
-  // History loading can replace the card between resolving a Locator and
-  // evaluating it. Read both current elements in one DOM snapshot.
+  await page.waitForSelector('#votes-new');
+  assert.equal(await page.locator('#votes-game-select').count(), 0, 'the game list lives in the start dialog, not on the page');
+  assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
+  await page.click('#votes-new');
+  await page.waitForSelector('#vote-start-form');
+  // Like „Umfrage starten“: 0-5 is preselected, the interim result hidden.
+  assert.equal(await page.locator('#votes-mode').inputValue(), 'points');
+  assert.equal(await page.locator('#votes-mode-search').inputValue(), 'Bewertung 0 bis 5');
+  assert.equal(await page.locator('#votes-hide-live-results').isChecked(), true);
+  assert.equal(await page.locator('#votes-anonymous').isChecked(), false);
+  // Every label keeps the same small gap to its field.
+  const labelGaps = await page.evaluate(() => {
+    const gap = (label: string, field: string) =>
+      Math.round(document.querySelector(field)!.getBoundingClientRect().top - document.querySelector(label)!.getBoundingClientRect().bottom);
+    return [
+      gap('label[for="votes-title"]', '#votes-title'),
+      gap('label[for="votes-info"]', '#votes-info'),
+      gap('label[for="votes-mode-search"]', '#votes-mode-search'),
+      gap('#votes-games-label', '#votes-game-search'),
+    ];
+  });
+  assert.deepEqual(labelGaps, [4, 4, 4, 4]);
+  // The answer kind is the app's own select: its list opens below the field
+  // instead of a browser popup laid over it, and the field cannot be typed in.
+  assert.equal(await page.locator('#votes-mode-search').getAttribute('readonly'), '');
+  await page.click('#votes-mode-search');
+  const modeList = page.locator('#votes-mode-list');
+  await modeList.waitFor();
+  assert.deepEqual(await modeList.locator('.search-select-option').allTextContents(),
+    ['Jedes Spiel bewerten', 'Einzelauswahl', 'Mehrfachauswahl', 'Bewertung 0 bis 5']);
+  const modeGeometry = await page.evaluate(() => ({
+    field: document.querySelector('#votes-mode-search')!.getBoundingClientRect().bottom,
+    list: document.querySelector('#votes-mode-list')!.getBoundingClientRect().top,
+  }));
+  assert.ok(modeGeometry.list >= modeGeometry.field, 'the answer kinds open below the field');
+  await modeList.locator('[data-search-select-value="multiple"]').click();
+  assert.equal(await page.locator('#votes-max').isVisible(), true, 'Mehrfachauswahl asks for the votes per person');
+  await page.click('#votes-mode-search');
+  await page.locator('#votes-mode-list [data-search-select-value="points"]').click();
+  assert.equal(await page.locator('#votes-max').isVisible(), false);
+  // History loading can re-render the page behind the dialog; read both
+  // elements in one DOM snapshot.
   const startBelowGames = await page.evaluate(() =>
     document.querySelector('#votes-start')!.getBoundingClientRect().top
-      > document.querySelector('#votes-game-select-wrap')!.getBoundingClientRect().bottom);
+      > document.querySelector('#votes-game-select')!.getBoundingClientRect().bottom);
   assert.ok(startBelowGames, 'starting the round follows the entire game selection');
-  assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
   await page.click('#votes-start');
+  await page.waitForSelector('#vote-start-form', { state: 'detached' });
   await page.waitForSelector('#votes-close'); // only rendered once the round shows as open
   const roundCard = page.locator('.vote-round-card');
   await roundCard.locator('[data-vote-participation]:text-is("0/2 abgegeben")').waitFor();
@@ -328,7 +376,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await ballotColumns(), 1);
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(await ballotColumns(), 2);
-  const ballotAlignment = await roundCard.locator('[data-points-row]').evaluateAll((rows) => rows.map((row, index) => {
+  const ballotAlignment = await roundCard.locator('[data-vote-row]').evaluateAll((rows) => rows.map((row, index) => {
     const box = row.getBoundingClientRect();
     const next = rows.slice(index + 1).find((candidate) => candidate.getBoundingClientRect().left === box.left);
     const middle = (box.top + (next?.getBoundingClientRect().top ?? box.bottom)) / 2;
@@ -338,7 +386,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     });
   }));
   assert.ok(ballotAlignment.flat().every((offset) => offset <= 1), 'ballot text and controls center between the separating lines');
-  const ballotLefts = await roundCard.locator('[data-points-row]').evaluateAll((rows) =>
+  const ballotLefts = await roundCard.locator('[data-vote-row]').evaluateAll((rows) =>
     rows.map((row) => Math.round(row.getBoundingClientRect().left)));
   const leftColumnCount = Math.ceil(ballotLefts.length / 2);
   assert.deepEqual(
@@ -350,7 +398,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.match((await roundCard.locator('.vote-own-skill').first().textContent()) ?? '', /^Mein Skill: (\d|–)$/);
 
   // Same 0-5 number scale as an Umfrage rating.
-  const ballotRows = roundCard.locator('[data-points-row]');
+  const ballotRows = roundCard.locator('[data-vote-row]');
   const setPoints = async (index: number, value: number) => {
     const button = ballotRows.nth(index).locator(`[data-points-value="${value}"]`);
     await button.click();
@@ -368,15 +416,15 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   for (let index = 0; index < totalGames; index += 1) await setPoints(index, 2);
   await page.click('#votes-submit');
   await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
-  const bockGameId = (await ballotRows.first().getAttribute('data-points-row')) ?? '';
+  const bockGameId = (await ballotRows.first().getAttribute('data-vote-row')) ?? '';
   const bockResponse = await page.request.put(`${BASE_URL}/api/preferences`, {
     data: { playerId: alice.id, gameId: bockGameId, rating: 4 },
   });
   assert.equal(bockResponse.status(), 200, await bockResponse.text());
   await page.click('#votes-cancel');
   await page.click('[data-confirm]');
-  await page.waitForSelector('#votes-start');
-  await page.click('#votes-start');
+  await page.waitForSelector('#votes-new');
+  await startVoteRound();
   await roundCard.locator('[data-vote-participation]:text-is("0/2 abgegeben")').waitFor();
   await roundCard.locator('.event-poll-answer-inline:has-text("Deine Stimme fehlt")').waitFor();
   await page.waitForLoadState('networkidle');
@@ -425,7 +473,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   const ballotGradient = await ballotRows.first().locator('.rating-scale-meter-fill').evaluate((fill) =>
     getComputedStyle(fill).backgroundImage);
   await page.click('#votes-close');
-  await page.waitForSelector('#votes-start');
+  await page.waitForSelector('#votes-new');
   // Closing reveals the result as a collapsed Umfrage card: the header names
   // the winners and keeps its actions; opening it shows every game of the
   // round with its bar, how many voters would play it and the "Win" chips.
@@ -718,27 +766,24 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.waitForFunction(() => !document.querySelector('.badge-paused'));
 });
 
-flowTest('Vote: game-limit selection survives an unrelated re-render and select-all/none ignore prior manual state', async () => {
-  // Regression test: the game-selection checkboxes used to live only in the
-  // DOM with no persisted JS state. A votes:changed/preferences:changed
-  // socket event re-renders this whole view from scratch whenever *anyone*
-  // interacts with voting elsewhere — that silently cleared manual
-  // deselections. `respawn:rerender` is the same generic re-render signal
-  // the app itself dispatches; firing it here simulates that unrelated
-  // event without needing a second browser context.
+flowTest('Vote: the start dialog lists games with catalog sort/filter, search and one bulk toggle', async () => {
+  // The dialog opens with the current Top 10 by Bock preselected, lists the
+  // accepted games alphabetically and reuses the Spielekatalog's sorting and
+  // filters. Search and filters only change the visible rows; hidden games
+  // keep their selection. A re-render of the page behind the dialog
+  // (`respawn:rerender`, the same generic signal the app dispatches on
+  // realtime events) must not touch the dialog's state.
   await page.click('.nav-btn[data-view="votes"]');
-  await page.waitForSelector('#votes-start');
-  await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
-  const initialVoteState = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+  await page.waitForSelector('#votes-new');
+  const voteState = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
   const catalogGames = (await (await page.request.get(`${BASE_URL}/api/games`)).json()) as Array<{
     id: string;
     name: string;
     isSuggestion?: boolean;
   }>;
-  const counterStrike = catalogGames.find((game) => game.name === 'Counter-Strike 2')!;
   const catalogGameIds = new Set(catalogGames.filter((game) => !game.isSuggestion).map((game) => game.id));
   const preferenceByGameId = new Map<string, number>(
-    initialVoteState.catalogResults.map(
+    voteState.catalogResults.map(
       (result: { gameId: string; avgPreference: number | null }): [string, number] => [
         result.gameId,
         result.avgPreference ?? -1,
@@ -756,77 +801,54 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
     .filter((game) => catalogGameIds.has(game.id))
     .sort((a, b) => a.name.localeCompare(b.name, 'de'))
     .map((game) => game.id);
-  const renderedVoteOrder = await page.locator('[data-vote-game-checkbox]').evaluateAll((els) =>
-    els.map((el) => (el as HTMLInputElement).value),
-  );
-  assert.deepEqual(renderedVoteOrder, alphabeticalVoteOrder, 'the vote game list should be sorted alphabetically');
-  let initiallySelected = await page.locator('[data-vote-game-checkbox]:checked').evaluateAll((els) =>
-    els.map((el) => (el as HTMLInputElement).value),
-  );
+
+  await page.click('#votes-new');
+  await page.waitForSelector('#vote-start-form');
+  const voteGameCheckboxes = page.locator('[data-vote-game-checkbox]');
+  const renderedOrder = () => voteGameCheckboxes.evaluateAll((els) => els.map((el) => (el as HTMLInputElement).value));
+  const checkedIds = () => page.locator('[data-vote-game-checkbox]:checked').evaluateAll((els) =>
+    els.map((el) => (el as HTMLInputElement).value));
+  assert.deepEqual(await renderedOrder(), alphabeticalVoteOrder, 'the vote game list should be sorted alphabetically');
+  const initiallySelected = await checkedIds();
   assert.deepEqual(
     [...initiallySelected].sort(),
     expectedVoteOrder.slice(0, 10).sort(),
     'the initial vote selection should contain the current Top 10 by Bock level',
   );
+  assert.equal(await page.locator('[data-vote-selected-count]').textContent(), `${initiallySelected.length} Spiele ausgewählt`);
 
-  // A live Bock update while the idle form is still untouched must refresh
-  // the automatic Top-10 selection together with the visible sort order.
-  // Preserve the fixture's previous rating so later scenarios stay isolated.
-  if (expectedVoteOrder.length > 10) {
-    const liveBockTarget = expectedVoteOrder[expectedVoteOrder.length - 1];
-    const previousPreferenceResponse = await page.request.get(
-      `${BASE_URL}/api/preferences?playerId=${alice.id}&gameId=${liveBockTarget}`,
-    );
-    const previousPreferences = (await previousPreferenceResponse.json()) as Array<{ rating: number }>;
-    const previousRating = previousPreferences[0]?.rating;
-    const updatedPreference = await page.request.put(`${BASE_URL}/api/preferences`, {
-      data: { playerId: alice.id, gameId: liveBockTarget, rating: 5 },
-    });
-    assert.equal(updatedPreference.status(), 200, await updatedPreference.text());
-    await page.waitForFunction((targetId) => {
-      const checkbox = document.querySelector(`[data-vote-game-checkbox][value="${targetId}"]`) as HTMLInputElement | null;
-      return checkbox?.checked === true;
-    }, liveBockTarget);
+  // The catalog's sorting: Name · Z–A reverses the list, selection unchanged.
+  await page.click('.modal .game-catalog-sort-trigger');
+  assert.deepEqual(
+    await page.locator('.modal .game-catalog-sort-option').allTextContents(),
+    ['Name · A–Z', 'Name · Z–A', 'Mein Bock · ↑', 'Mein Bock · ↓', 'Ø Bock · ↑', 'Ø Bock · ↓', 'Ø Skill · ↑', 'Ø Skill · ↓'],
+  );
+  await page.click('.modal [data-sort-value="name:desc"]');
+  assert.deepEqual(await renderedOrder(), [...alphabeticalVoteOrder].reverse());
+  assert.deepEqual((await checkedIds()).sort(), [...initiallySelected].sort());
 
-    const liveVoteState = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
-    const livePreferenceByGameId = new Map<string, number>(
-      liveVoteState.catalogResults.map(
-        (result: { gameId: string; avgPreference: number | null }): [string, number] => [
-          result.gameId,
-          result.avgPreference ?? -1,
-        ],
-      ),
-    );
-    const liveExpectedVoteOrder = catalogGames
-      .filter((game) => catalogGameIds.has(game.id))
-      .sort((a, b) => {
-        const preferenceDiff = (livePreferenceByGameId.get(b.id) ?? -1) - (livePreferenceByGameId.get(a.id) ?? -1);
-        return preferenceDiff !== 0 ? preferenceDiff : a.name.localeCompare(b.name, 'de');
-      })
-      .map((game) => game.id);
-    const liveSelected = await page.locator('[data-vote-game-checkbox]:checked').evaluateAll((els) =>
-      els.map((el) => (el as HTMLInputElement).value),
-    );
-    assert.deepEqual(
-      [...liveSelected].sort(),
-      liveExpectedVoteOrder.slice(0, 10).sort(),
-      'a live Bock update should refresh the untouched Top-10 selection',
-    );
+  // The catalog's filter: "Bock offen" hides the games Alice has rated; they
+  // keep their selection and still count. Escape closes only the open menu.
+  const aliceBock = (await (await page.request.get(`${BASE_URL}/api/preferences?playerId=${alice.id}`)).json()) as Array<{ game_id?: string; gameId?: string }>;
+  const ratedIds = new Set(aliceBock.map((row) => row.gameId ?? row.game_id));
+  await page.click('.modal .game-catalog-filter-trigger');
+  await page.click('.modal [data-rating-filter="bock"]');
+  await page.locator('.modal .game-catalog-filter-trigger:has-text("Filter (1)")').waitFor();
+  assert.deepEqual(
+    (await renderedOrder()).sort(),
+    alphabeticalVoteOrder.filter((id) => !ratedIds.has(id)).sort(),
+    'the open-rating filter hides games with an own Bock',
+  );
+  await page.keyboard.press('Escape');
+  await page.locator('.modal .game-catalog-filter-menu:not([open])').waitFor();
+  assert.equal(await page.locator('#vote-start-form').count(), 1, 'Escape closes the open menu, not the dialog');
+  assert.equal(await page.locator('[data-vote-selected-count]').textContent(), `${initiallySelected.length} Spiele ausgewählt`);
+  await page.click('.modal .game-catalog-filter-trigger');
+  await page.click('.modal [data-clear-game-filters]');
+  await page.click('.modal .game-catalog-sort-trigger');
+  await page.click('.modal [data-sort-value="name:asc"]');
+  assert.deepEqual(await renderedOrder(), alphabeticalVoteOrder);
 
-    if (previousRating === undefined) {
-      await page.request.delete(`${BASE_URL}/api/preferences/${alice.id}/${liveBockTarget}`);
-    } else {
-      await page.request.put(`${BASE_URL}/api/preferences`, {
-        data: { playerId: alice.id, gameId: liveBockTarget, rating: previousRating },
-      });
-    }
-    await page.waitForTimeout(250);
-    initiallySelected = await page.locator('[data-vote-game-checkbox]:checked').evaluateAll((els) =>
-      els.map((el) => (el as HTMLInputElement).value),
-    );
-  }
-
-  const voteGameCheckboxes = page.locator('[data-vote-game-checkbox]');
   const voteGameCount = await voteGameCheckboxes.count();
   assert.ok(voteGameCount >= 2, 'test fixture must ship at least two games');
   assert.equal(await page.getAttribute('#votes-game-search', 'placeholder'), 'Spiel suchen');
@@ -839,6 +861,7 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
     await page.click('#votes-select-all');
   }
   assert.equal(await page.locator('[data-vote-game-search-item]:not([hidden]) [data-vote-game-checkbox]:checked').count(), 0);
+  const counterStrike = catalogGames.find((game) => game.name === 'Counter-Strike 2')!;
   assert.equal(
     await page.locator('[data-vote-game-search-item][hidden] [data-vote-game-checkbox]:checked').count(),
     initiallySelected.filter((gameId) => gameId !== counterStrike.id).length,
@@ -855,8 +878,7 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
   await voteGameCheckboxes.nth(1).uncheck();
 
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:rerender')));
-
-  await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
+  await page.waitForSelector('.view-title:text-is("Vote")');
   assert.equal(await voteGameCheckboxes.nth(0).isChecked(), false, 'a manual deselection must survive an unrelated re-render');
   assert.equal(await voteGameCheckboxes.nth(1).isChecked(), false);
 
@@ -873,6 +895,48 @@ flowTest('Vote: game-limit selection survives an unrelated re-render and select-
     await voteGameCheckboxes.evaluateAll((els) => els.map((el) => (el as HTMLInputElement).checked)),
     Array(voteGameCount).fill(false)
   );
+  assert.equal(await page.locator('[data-vote-selected-count]').textContent(), '0 Spiele ausgewählt');
+  await page.click('#votes-start');
+  await page.locator('.toast:has-text("Bitte mindestens ein Spiel auswählen.")').waitFor();
+  // The changed dialog asks before its selection is discarded.
+  await page.click('.modal [data-close]');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('#vote-start-form', { state: 'detached' });
+});
+
+flowTest('Vote: a Passt/Notfalls/Nein round with a visible interim result and anonymous voters', async () => {
+  await page.click('.nav-btn[data-view="votes"]');
+  await page.click('#votes-new');
+  await page.waitForSelector('#vote-start-form');
+  await page.fill('#votes-title', 'Sonntag');
+  await page.click('#votes-mode-search');
+  await page.locator('#votes-mode-list [data-search-select-value="feasibility"]').click();
+  await page.check('#votes-anonymous');
+  await page.uncheck('#votes-hide-live-results');
+  await page.click('#votes-start');
+  await page.waitForSelector('#vote-start-form', { state: 'detached' });
+
+  const roundCard = page.locator('.vote-round-card');
+  await roundCard.waitFor();
+  assert.deepEqual(await roundCard.locator('.event-poll-tag').allTextContents(), ['Jedes Spiel bewerten', 'Anonym']);
+  const rows = roundCard.locator('[data-vote-row]');
+  assert.deepEqual(await rows.first().locator('[data-vote-response]').allTextContents(), ['Passt', 'Notfalls', 'Nein']);
+  assert.ok(await page.locator('#votes-submit').isDisabled(), 'an answer is needed before saving');
+  await rows.nth(0).locator('[data-vote-response="can"]').click();
+  await rows.nth(0).locator('[data-vote-response="can"][aria-pressed="true"]').waitFor();
+  await rows.nth(1).locator('[data-vote-response="if_needed"]').click();
+  await roundCard.locator('[data-vote-rated-progress]').filter({ hasText: `2 von ${await rows.count()} bewertet` }).waitFor();
+  await page.click('#votes-submit');
+  await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
+  // The interim result is visible, but an anonymous round names nobody.
+  await rows.nth(0).locator('.event-poll-legend-item:has-text("1 Passt")').waitFor();
+  assert.equal(await roundCard.locator('.event-poll-voter-stack').count(), 0);
+
+  await page.click('#votes-close');
+  await page.waitForSelector('#votes-new');
+  const latest = page.locator('section[aria-labelledby="vote-current-result-title"]');
+  await latest.locator('.event-poll-card-meta-line:has-text("Sonntag")').waitFor();
+  assert.equal(await latest.locator('[data-open-vote-round]').count(), 0, 'an anonymous round offers no vote table');
 });
 
 flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async () => {

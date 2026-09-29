@@ -10,12 +10,31 @@ import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { ratingScaleHtml } from '../ratingScale.js';
 import { sharedRankNumbers } from '../rankedList.js';
-import { voteBreakdownHtml, voterNamesText, voterStackHtml, WIN_CHIP } from '../voteBreakdown.js';
+import {
+  choiceBarFillHtml,
+  CHOSEN_CELL,
+  feasibilityBarFillHtml,
+  feasibilityCellHtml,
+  feasibilityKeyHtml,
+  feasibilityLegendHtml,
+  resultBarHtml,
+  voteBreakdownHtml,
+  voterNamesText,
+  voterStackHtml,
+  WIN_CHIP,
+} from '../voteBreakdown.js';
+import {
+  choiceControlHtml,
+  FEASIBILITY_VALUES as RESPONSE_VALUES,
+  feasibilityControlHtml,
+  maxSelectionsFieldHtml,
+  pollFlagsHtml,
+  responseModeFieldHtml,
+  wireResponseModeField,
+} from '../pollControls.js';
 
-const RESPONSE_VALUES = ['can', 'if_needed', 'cannot'];
 const FEASIBILITY_VALUES = [...RESPONSE_VALUES, 'open'];
 const RATING_VALUES = ['0', '1', '2', '3', '4', '5'];
-const RESPONSE_LABELS = { can: 'Passt', if_needed: 'Notfalls', cannot: 'Nein', open: 'Offen' };
 const MODE_INFO = {
   feasibility: {
     label: 'Jede Option bewerten',
@@ -235,11 +254,6 @@ function bestResultLabel(poll) {
 // Who answered what, as one compact table: one row per person (alphabetical),
 // one numbered column per option. The legend above names each number, so the
 // column heads stay equally narrow no matter how long an option label is.
-const VOTE_CELL_SYMBOLS = {
-  can: { icon: 'check', state: 'can', label: 'Passt' },
-  if_needed: { icon: 'minus', state: 'if-needed', label: 'Notfalls' },
-  cannot: { icon: 'x', state: 'cannot', label: 'Nein' },
-};
 
 function voteDetailAnswers(poll, options) {
   const names = new Map();
@@ -280,9 +294,7 @@ function voteDetailCell(poll, value) {
   if (poll.responseMode === 'rating_1_5') {
     return value === '0' ? REJECT_CELL : `<span class="event-poll-vote-cell is-rating">${escapeHtml(value)}</span>`;
   }
-  const symbol = VOTE_CELL_SYMBOLS[value];
-  const label = poll.responseMode === 'feasibility' ? symbol.label : 'Gewählt';
-  return `<span class="event-poll-vote-cell is-${symbol.state}" role="img" aria-label="${label}" title="${label}">${icon(symbol.icon)}</span>`;
+  return poll.responseMode === 'feasibility' ? feasibilityCellHtml(value) : CHOSEN_CELL;
 }
 
 function voteDetailSummary(poll, option) {
@@ -304,9 +316,7 @@ function openVoteDetails(poll, { showRound = false } = {}) {
   const title = `Stimmen · ${poll.title}${showRound ? ` · Runde ${poll.roundNumber}` : ''}`;
   const hasRejections = poll.responseMode === 'rating_1_5' && people.some((person) => [...(answers.get(person.playerId)?.values() ?? [])].includes('0'));
   const keyHtml = poll.responseMode === 'feasibility' && people.length
-    ? `<div class="muted event-poll-vote-key">
-         ${Object.values(VOTE_CELL_SYMBOLS).map((symbol) => `<span><span class="event-poll-vote-cell is-${symbol.state}" aria-hidden="true">${icon(symbol.icon)}</span>${symbol.label}</span>`).join('')}
-       </div>`
+    ? feasibilityKeyHtml()
     : hasRejections
       ? `<div class="muted event-poll-vote-key"><span><span class="event-poll-vote-cell is-cannot" aria-hidden="true">${icon('x')}</span>Lehnt ab</span></div>`
       : '';
@@ -336,24 +346,16 @@ function renderResponseControl(poll, option) {
     });
   }
   if (poll.responseMode === 'feasibility') {
-    const fullLabels = { can: 'Passt', if_needed: 'Wenn nötig', cannot: 'Passt nicht' };
-    return `
-      <div class="selection-toolbar event-poll-response-toolbar" role="group" aria-label="Bewertung für ${escapeHtml(optionLabel(option))}">
-        ${RESPONSE_VALUES.map((value) => `
-          <button type="button" class="btn btn-sm${draft[option.id] === value ? ' is-selected' : ''}"
-            data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"
-            aria-label="${fullLabels[value]}" aria-pressed="${draft[option.id] === value}">${RESPONSE_LABELS[value]}</button>`).join('')}
-      </div>`;
+    return feasibilityControlHtml({
+      selected: draft[option.id],
+      groupLabel: `Bewertung für ${optionLabel(option)}`,
+      attributes: (value) => `data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"`,
+    });
   }
-  const selected = draft[option.id] === 'can';
-  const label = selected ? 'Ausgewählt' : 'Wählen';
-  return `
-    <div class="event-poll-choice-control">
-      <div class="selection-toolbar event-poll-response-toolbar">
-        <button type="button" class="btn btn-sm event-poll-choice-btn${selected ? ' is-selected' : ''}" data-poll-choice="${escapeHtml(poll.id)}"
-          data-option-id="${escapeHtml(option.id)}" aria-pressed="${selected}">${label}</button>
-      </div>
-    </div>`;
+  return choiceControlHtml({
+    selected: draft[option.id] === 'can',
+    attributes: `data-poll-choice="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"`,
+  });
 }
 
 function renderCounts(poll, option) {
@@ -370,55 +372,27 @@ function renderCounts(poll, option) {
   return `${option.counts.can} ${option.counts.can === 1 ? 'Stimme' : 'Stimmen'}${option.active ? ` · ${option.counts.open} offen` : ''}`;
 }
 
-const percent = (value, total) => `${Math.round((Math.max(0, value) / Math.max(1, total)) * 1000) / 10}%`;
-
-// Interim or final result as one bar in the middle of the option row. The
-// fill is a soft gradient in the brand colors: for "Jede Option bewerten" the
-// colors of Passt, Notfalls and Nein meet at the middle of their segments, so
-// each answer keeps its hue while neighbours blend instead of hard edges.
+// Interim or final result as one bar in the middle of the option row; see
+// voteBreakdown.js for the shared bar and legend.
 function renderResultBar(poll, option) {
   // An empty cell keeps the avatar and answer columns in place.
   if (!option.counts) return '<span class="event-poll-result"></span>';
   const total = poll.invitees.length;
-  let fill = '';
   if (poll.responseMode === 'feasibility') {
-    const parts = [
-      ['var(--accent)', option.counts.can],
-      ['var(--accent-2)', option.counts.ifNeeded],
-      ['var(--accent-3)', option.counts.cannot],
-    ].filter(([, count]) => count > 0);
-    const answered = parts.reduce((sum, [, count]) => sum + count, 0);
-    if (answered) {
-      let offset = 0;
-      const stops = parts.map(([color, count]) => {
-        const middle = offset + count / 2;
-        offset += count;
-        return `${color} ${percent(middle, answered)}`;
-      });
-      const background = stops.length === 1 ? parts[0][0] : `linear-gradient(90deg, ${stops.join(', ')})`;
-      fill = `<span class="event-poll-bar-fill" style="width:${percent(answered, total)};background:${background};"></span>`;
-    }
-  } else if (poll.responseMode === 'rating_1_5') {
-    if (option.counts.average !== null) fill = `<span class="event-poll-bar-fill is-choice" style="width:${percent(option.counts.average, 5)};"></span>`;
-  } else if (option.counts.can) {
-    fill = `<span class="event-poll-bar-fill is-choice" style="width:${percent(option.counts.can, total)};"></span>`;
+    return resultBarHtml(
+      feasibilityBarFillHtml({ can: option.counts.can, ifNeeded: option.counts.ifNeeded, cannot: option.counts.cannot }, total),
+      feasibilityLegendHtml({
+        can: option.counts.can,
+        ifNeeded: option.counts.ifNeeded,
+        cannot: option.counts.cannot,
+        open: option.active ? option.counts.open : null,
+      }),
+    );
   }
-  return `
-    <span class="event-poll-result">
-      <span class="event-poll-bar" aria-hidden="true">${fill}</span>
-      <span class="event-poll-counts">${renderLegend(poll, option)}</span>
-    </span>`;
-}
-
-function renderLegend(poll, option) {
-  if (poll.responseMode !== 'feasibility') return `<span class="event-poll-count-text">${escapeHtml(renderCounts(poll, option))}</span>`;
-  const item = (key, count, label) => `<span class="event-poll-legend-item"><span class="event-poll-legend-dot is-${key}" aria-hidden="true"></span><span class="event-poll-count-text">${count} ${label}</span></span>`;
-  return [
-    item('can', option.counts.can, 'Passt'),
-    item('if-needed', option.counts.ifNeeded, 'Notfalls'),
-    item('cannot', option.counts.cannot, 'Nein'),
-    option.active ? item('open', option.counts.open, 'offen') : '',
-  ].join('');
+  const share = poll.responseMode === 'rating_1_5'
+    ? (option.counts.average ?? 0) / 5
+    : option.counts.can / Math.max(1, total);
+  return resultBarHtml(choiceBarFillHtml(share), `<span class="event-poll-count-text">${escapeHtml(renderCounts(poll, option))}</span>`);
 }
 
 // Mirrors the server's hasAnsweredDatePoll on the viewer's own saved answers.
@@ -683,14 +657,22 @@ function dueFieldHtml(id, helpId, value) {
     </div>`;
 }
 
+// The label sits on its list with the usual field-label gap, like every
+// other field of the form.
 function optionsBlockHtml(initialOptions) {
   return `
     <div class="stack event-poll-form-options">
-      <span class="field-label is-required">Optionen</span>
-      <div class="stack event-poll-form-option-list" id="poll-option-rows">${initialOptions.map((value, index) => optionRowHtml(index, value)).join('')}</div>
+      <div>
+        <span class="field-label is-required">Optionen</span>
+        <div class="stack event-poll-form-option-list" id="poll-option-rows">${initialOptions.map((value, index) => optionRowHtml(index, value)).join('')}</div>
+      </div>
       <div class="row"><button type="button" class="btn btn-sm" id="poll-add-option">Option hinzufügen</button></div>
     </div>`;
 }
+
+const POLL_MODE_OPTIONS = Object.entries(MODE_INFO).map(([value, info]) => ({ value, label: info.label }));
+const ANONYMOUS_HELP = 'Antworten bleiben dauerhaft anonym. Auch nach Ende der Umfrage ist nicht sichtbar, wer wie geantwortet hat.';
+const LIVE_RESULTS_HELP = 'Solange die Umfrage läuft, sehen nur die Verwaltenden der Umfrage die Stimmen und die Namen. Alle anderen sehen nur ihre eigene Antwort. Nach dem Ende sind Stimmen und Namen für alle sichtbar.';
 
 function optionValuesFromForm(modal) {
   return [...modal.querySelectorAll('[data-poll-option-row]')].map((row) => ({
@@ -729,30 +711,21 @@ function openPollForm(event, ctx, previousRound = null) {
       <div><label for="poll-title" class="field-label is-required">Titel</label><input type="text" id="poll-title" maxlength="100" required value="${escapeHtml(previousRound?.title ?? '')}" placeholder="Termin für die Sommer-LAN" autofocus /></div>
       <div><label for="poll-note" class="field-label">Beschreibung</label><textarea id="poll-note" class="event-poll-note-input" maxlength="500" rows="1" placeholder="Bitte bis Freitag abstimmen">${escapeHtml(previousRound?.note ?? '')}</textarea></div>
       <div class="field-row event-poll-form-pair">
-        <div>
-          <label for="poll-mode" class="field-label is-required">Antwortart</label>
-          <select id="poll-mode">
-            ${Object.entries(MODE_INFO).map(([value, info]) => `<option value="${value}" ${initialMode === value ? 'selected' : ''}>${escapeHtml(info.label)}</option>`).join('')}
-          </select>
-        </div>
+        ${responseModeFieldHtml('poll-mode', POLL_MODE_OPTIONS, initialMode)}
         ${dueFieldHtml('poll-due', 'poll-due-help', Date.now() + 7 * 86_400_000)}
       </div>
       <div class="field-row event-poll-form-pair" id="poll-max-wrap" ${initialMode === 'multiple_choice' ? '' : 'hidden'}>
-        <div><label for="poll-max" class="field-label">Stimmen pro Person</label><input id="poll-max" type="number" min="1" value="${previousRound?.maxSelections ?? ''}" placeholder="Unbegrenzt" /></div>
+        ${maxSelectionsFieldHtml('poll-max', previousRound?.maxSelections)}
         <div aria-hidden="true"></div>
       </div>
-      <div class="event-poll-form-flags">
-        <div class="event-poll-flag">
-          <input type="checkbox" id="poll-anonymous" ${previousRound?.anonymous ? 'checked' : ''} />
-          <label for="poll-anonymous">Anonym</label>
-          ${infoTooltipHtml('poll-anonymous-help', 'Anonym', 'Antworten bleiben dauerhaft anonym. Auch nach Ende der Umfrage ist nicht sichtbar, wer wie geantwortet hat.')}
-        </div>
-        <div class="event-poll-flag">
-          <input type="checkbox" id="poll-hide-live-results" ${(previousRound?.liveResultsHidden ?? true) ? 'checked' : ''} />
-          <label for="poll-hide-live-results">Zwischenstand verbergen</label>
-          ${infoTooltipHtml('poll-live-results-help', 'Zwischenstand verbergen', 'Solange die Umfrage läuft, sehen nur die Verwaltenden der Umfrage die Stimmen und die Namen. Alle anderen sehen nur ihre eigene Antwort. Nach dem Ende sind Stimmen und Namen für alle sichtbar.')}
-        </div>
-      </div>
+      ${pollFlagsHtml({
+        anonymousId: 'poll-anonymous',
+        hiddenId: 'poll-hide-live-results',
+        anonymous: Boolean(previousRound?.anonymous),
+        hideLiveResults: previousRound?.liveResultsHidden ?? true,
+        anonymousHelp: ANONYMOUS_HELP,
+        hiddenHelp: LIVE_RESULTS_HELP,
+      })}
       ${optionsBlockHtml(initialOptions)}
       <div class="row event-poll-save-row"><button type="submit" class="btn btn-primary btn-sm">${previousRound ? 'Neue Runde starten' : 'Umfrage starten'}</button></div>
     </form>`, {
@@ -764,9 +737,11 @@ function openPollForm(event, ctx, previousRound = null) {
       const markDirty = () => { dirty = true; };
       modal.querySelector('#event-poll-form').addEventListener('input', markDirty);
       modal.querySelector('#event-poll-form').addEventListener('change', markDirty);
-      modal.querySelector('#poll-mode').addEventListener('change', (eventChange) => {
-        dirty = true;
-        modal.querySelector('#poll-max-wrap').hidden = eventChange.target.value !== 'multiple_choice';
+      wireResponseModeField(modal, 'poll-mode', POLL_MODE_OPTIONS, {
+        onChange: (mode) => {
+          dirty = true;
+          modal.querySelector('#poll-max-wrap').hidden = mode !== 'multiple_choice';
+        },
       });
       modal.querySelector('#poll-add-option').addEventListener('click', () => {
         dirty = true;
@@ -836,15 +811,14 @@ function openEditPollForm(event, poll, ctx) {
   let dirty = false;
   let capturedModal;
   const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
+  // The answer kind of a running round is fixed; the disabled select names it.
+  const editModeOptions = [{ value: 'fixed', label: [mode.label, poll.anonymous ? 'Anonym' : null].filter(Boolean).join(' · ') }];
   const { close } = openModal('Umfrage bearbeiten', `
     <form id="event-poll-edit-form" class="stack event-poll-form">
       <div><label for="poll-edit-title" class="field-label is-required">Titel</label><input type="text" id="poll-edit-title" maxlength="100" required value="${escapeHtml(poll.title)}" placeholder="Termin für die Sommer-LAN" autofocus /></div>
       <div><label for="poll-edit-note" class="field-label">Beschreibung</label><textarea id="poll-edit-note" class="event-poll-note-input" maxlength="500" rows="1" placeholder="Bitte bis Freitag abstimmen">${escapeHtml(poll.note ?? '')}</textarea></div>
       <div class="field-row event-poll-form-pair">
-        <div>
-          <label for="poll-edit-mode" class="field-label">Antwortart</label>
-          <select id="poll-edit-mode" disabled><option>${escapeHtml([mode.label, poll.anonymous ? 'Anonym' : null].filter(Boolean).join(' · '))}</option></select>
-        </div>
+        ${responseModeFieldHtml('poll-edit-mode', editModeOptions, 'fixed', { required: false })}
         ${dueFieldHtml('poll-edit-due', `poll-edit-due-help-${poll.id}`, poll.responseDueAt)}
       </div>
       ${optionsBlockHtml(initialOptions)}
@@ -854,6 +828,7 @@ function openEditPollForm(event, poll, ctx) {
     onMount: (modal) => {
       capturedModal = modal;
       wireDateTimeField(modal, 'poll-edit-due');
+      wireResponseModeField(modal, 'poll-edit-mode', editModeOptions, { disabled: true });
       wireInfoTooltips(modal);
       const markDirty = () => { dirty = true; };
       modal.querySelector('#event-poll-edit-form').addEventListener('input', markDirty);

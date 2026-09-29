@@ -5406,6 +5406,70 @@ function addNewstickerOptOut(): void {
 }
 registerMigration({ version: 113, name: 'add newsticker opt-out', up: addNewstickerOptOut });
 
+// A Vote round offers the same answer kinds and privacy options as an Umfrage:
+// 'feasibility' (Passt/Notfalls/Nein per game), 'single', 'multiple' (with an
+// optional per-person limit) and 'points' (0-5). vote_rounds.mode carried a
+// CHECK for the two original modes only, so the table is rebuilt; votes keeps
+// its rows and only gains the feasibility answer. Existing rounds keep their
+// behavior: not anonymous and with the interim result hidden, as before.
+function addVoteRoundPollOptions(): void {
+  const roundsSql = (
+    db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'vote_rounds'").get() as { sql: string }
+  ).sql;
+  if (!/hide_live_results/.test(roundsSql)) {
+    const indexSql = (
+      db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'vote_rounds' AND sql IS NOT NULL")
+        .all() as Array<{ sql: string }>
+    ).map((row) => row.sql);
+    // The votes scope triggers name vote_rounds; SQLite re-checks them on the
+    // rename below, so they step aside for the rebuild and return unchanged.
+    const triggers = db
+      .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND sql LIKE '%vote_rounds%'")
+      .all() as Array<{ name: string; sql: string }>;
+    for (const trigger of triggers) db.exec(`DROP TRIGGER "${trigger.name}"`);
+    db.exec(`
+      CREATE TABLE vote_rounds_poll_options_114 (
+        group_id          TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+        round             INTEGER NOT NULL,
+        event_id          TEXT,
+        started_at        INTEGER NOT NULL,
+        closed_at         INTEGER,
+        winner_game_ids   TEXT,
+        mode              TEXT NOT NULL DEFAULT 'single' CHECK (mode IN ('single', 'points', 'multiple', 'feasibility')),
+        title             TEXT,
+        info              TEXT,
+        selected_game_ids TEXT,
+        anonymous         INTEGER NOT NULL DEFAULT 0 CHECK (anonymous IN (0, 1)),
+        hide_live_results INTEGER NOT NULL DEFAULT 1 CHECK (hide_live_results IN (0, 1)),
+        max_selections    INTEGER CHECK (max_selections IS NULL OR max_selections >= 1),
+        PRIMARY KEY (group_id, round),
+        FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE
+      );
+      INSERT INTO vote_rounds_poll_options_114
+        (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids)
+      SELECT group_id, round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids
+      FROM vote_rounds;
+      DROP TABLE vote_rounds;
+      ALTER TABLE vote_rounds_poll_options_114 RENAME TO vote_rounds;
+    `);
+    for (const sql of indexSql) db.exec(sql);
+    for (const trigger of triggers) db.exec(trigger.sql);
+  }
+  const voteColumns = db.prepare('PRAGMA table_info(votes)').all() as Array<{ name: string }>;
+  if (!voteColumns.some((column) => column.name === 'response')) {
+    db.exec(
+      "ALTER TABLE votes ADD COLUMN response TEXT CHECK (response IS NULL OR response IN ('can', 'if_needed', 'cannot'))",
+    );
+  }
+}
+registerMigration({
+  version: 114,
+  name: 'add vote round poll options',
+  up: addVoteRoundPollOptions,
+  disableForeignKeysForRebuild: true,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

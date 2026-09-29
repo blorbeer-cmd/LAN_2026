@@ -1950,14 +1950,15 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
     assert.ok(cancelled.ok(), `vote cleanup failed (${cancelled.status()}): ${await cancelled.text()}`);
   }
   await page.click('.nav-btn[data-view="votes"]');
-  await page.waitForSelector('#votes-start');
-  await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
+  await page.click('#votes-new');
   await page.locator('#votes-game-select label.check-row', { hasText: 'Counter-Strike 2' }).waitFor();
   assert.equal(
     await page.locator('#votes-game-select label.check-row', { hasText: gameTitle }).count(),
     0,
     'a suggestion must not be offered as a votable game',
   );
+  await page.click('.modal [data-close]');
+  await page.waitForSelector('#vote-start-form', { state: 'detached' });
   await page.click('.nav-btn[data-view="gameCatalog"]');
   await suggestionRow.waitFor();
 

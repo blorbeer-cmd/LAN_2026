@@ -5,16 +5,23 @@
 // results), not from vote outcomes, since a vote winner isn't guaranteed to
 // actually get played.
 //
-// Two modes, chosen when a round is started:
-// - 'single' (default): each player picks exactly one game.
-// - 'points': each player rates every game of the round with 0-5 points.
-//   0 is a deliberate answer ("I won't play this"), stored like any other
-//   rating, so each game can report how many voters would play it.
+// The same answer kinds as an Umfrage, chosen when a round is started:
+// - 'points' (default, "Bewertung 0 bis 5"): each player rates every game of
+//   the round with 0-5 points. 0 is a deliberate answer ("I won't play this"),
+//   stored like any other rating, so each game can report how many voters
+//   would play it.
+// - 'feasibility' ("Jedes Spiel bewerten"): Passt, Notfalls or Nein per game;
+//   a game left open stores no row.
+// - 'single' ("Einzelauswahl", also every runoff): exactly one game.
+// - 'multiple' ("Mehrfachauswahl"): one or more games, optionally capped by
+//   the round's maxSelections.
+// Like an Umfrage, a round may be anonymous (nobody ever sees who voted how)
+// and may show or hide its interim result while it runs.
 // A player may change their ballot as long as the round is open: every
 // submission replaces the player's previous one inside one transaction, so
 // double taps and concurrent devices leave exactly one complete ballot.
-// Both modes rank games by a "score" (vote count for 'single', point sum for
-// 'points'); ties (including the all-zero state before anyone has voted)
+// Every mode ranks games by a "score" (point sum for 'points', supporters
+// otherwise; feasibility breaks ties by Notfalls, then fewer Nein); ties (including the all-zero state before anyone has voted)
 // fall back to the games' aggregate "Bock" rating (preferences table) so the
 // list starts out sorted by general popularity, not alphabetically.
 
@@ -61,7 +68,14 @@ export function voteNotificationPlayerIds(groupId?: string, scopedEventId?: stri
   return communicationRecipientIds(groupId ?? DEFAULT_GROUP_ID, scopedEventId ?? BASE_EVENT_ID);
 }
 
-type VoteMode = 'single' | 'points';
+type VoteMode = 'single' | 'points' | 'multiple' | 'feasibility';
+const VOTE_MODES: readonly VoteMode[] = ['feasibility', 'single', 'multiple', 'points'];
+type FeasibilityResponse = 'can' | 'if_needed' | 'cannot';
+const FEASIBILITY_RESPONSES: readonly FeasibilityResponse[] = ['can', 'if_needed', 'cannot'];
+
+function isVoteMode(value: unknown): value is VoteMode {
+  return typeof value === 'string' && (VOTE_MODES as readonly string[]).includes(value);
+}
 
 interface RoundState {
   round: number;
@@ -82,7 +96,7 @@ function readRoundState(groupId: string, eventId: string): RoundState {
     startedAt: getState(scopedStateKey(STARTED_AT_KEY, groupId, eventId))
       ? parseInt(getState(scopedStateKey(STARTED_AT_KEY, groupId, eventId))!, 10)
       : null,
-    mode: storedMode === 'points' ? 'points' : 'single',
+    mode: isVoteMode(storedMode) ? storedMode : 'single',
   };
 }
 
@@ -101,27 +115,49 @@ interface RoundMeta {
   title: string | null;
   info: string | null;
   selectedGameIds: string[] | null; // null = every game in the catalog
+  anonymous: boolean; // nobody ever sees who voted how
+  hideLiveResults: boolean; // no per-game result while the round runs
+  maxSelections: number | null; // 'multiple' only: most games one ballot may pick
 }
+
+const DEFAULT_ROUND_META: RoundMeta = {
+  eventId: null,
+  title: null,
+  info: null,
+  selectedGameIds: null,
+  anonymous: false,
+  hideLiveResults: true,
+  maxSelections: null,
+};
 
 // A round's title/info/game-selection live in vote_rounds (set once on
 // /start, immutable afterwards), unlike round/open/mode which are mirrored
 // into app_state for cheap access — this is only read a handful of times per
 // request, so a small extra query is fine.
 function getRoundMeta(groupId: string, round: number): RoundMeta {
-  if (round < 1) return { eventId: null, title: null, info: null, selectedGameIds: null };
+  if (round < 1) return { ...DEFAULT_ROUND_META };
   const row = db
     .prepare(
-      'SELECT event_id AS eventId, title, info, selected_game_ids AS selectedGameIdsJson FROM vote_rounds WHERE group_id = ? AND round = ?',
+      `SELECT event_id AS eventId, title, info, selected_game_ids AS selectedGameIdsJson,
+              anonymous, hide_live_results AS hideLiveResults, max_selections AS maxSelections
+       FROM vote_rounds WHERE group_id = ? AND round = ?`,
     )
     .get(groupId, round) as
-    | { eventId: string | null; title: string | null; info: string | null; selectedGameIdsJson: string | null }
+    | (Omit<RoundMeta, 'selectedGameIds' | 'anonymous' | 'hideLiveResults'> & {
+        selectedGameIdsJson: string | null;
+        anonymous: number;
+        hideLiveResults: number;
+      })
     | undefined;
-  if (!row) return { eventId: null, title: null, info: null, selectedGameIds: null };
+  if (!row) return { ...DEFAULT_ROUND_META };
   return {
     eventId: row.eventId,
     title: row.title,
     info: row.info,
     selectedGameIds: row.selectedGameIdsJson ? JSON.parse(row.selectedGameIdsJson) : null,
+    anonymous: row.anonymous === 1,
+    hideLiveResults: row.hideLiveResults === 1,
+    maxSelections: row.maxSelections,
   };
 }
 
@@ -143,33 +179,15 @@ function winnerGameIdsOfRound(groupId: string, round: number): Set<string> {
   }
 }
 
-// Mirrors buildAllResults' HAVING rule for the submit paths: a suggestion is
-// never on a fresh ballot, but one this round actually put there stays
-// votable — either explicitly (a runoff's selectedGameIds) or because it
-// already carries votes of this round (it was demoted mid-round). Otherwise
-// the round would show a game to some voters and reject it for the next one.
-function suggestionIsOnBallot(
-  groupId: string,
-  round: number,
-  gameId: string,
-  selectedGameIds: string[] | null,
-): boolean {
-  if (selectedGameIds) return selectedGameIds.includes(gameId);
-  return Boolean(
-    db
-      .prepare('SELECT 1 FROM votes WHERE group_id = ? AND round = ? AND game_id = ? LIMIT 1')
-      .get(groupId, round, gameId),
-  );
-}
-
 interface ResultRow {
   gameId: string;
   gameName: string;
   icon: string;
-  votes: number; // distinct voters who picked this game or gave it at least 1 point
-  declines: number; // distinct voters who rated this game 0 ("won't play"); always 0 in 'single' mode
-  points: number; // sum of points given (0 in 'single' mode)
-  score: number; // the metric this round ranks by: votes for 'single', points for 'points'
+  votes: number; // supporters: picked the game, answered Passt or gave it at least 1 point
+  ifNeeded: number; // 'feasibility' only: voters who answered Notfalls
+  declines: number; // voters who rated this game 0 or answered Nein; always 0 in the choice modes
+  points: number; // sum of points given (0 outside 'points' mode)
+  score: number; // the metric this round ranks by: points for 'points', supporters otherwise
   lastPlayedAt: number | null;
   playCount: number;
   avgPreference: number | null; // aggregate "Bock" rating across all players, null if nobody has rated it
@@ -223,8 +241,14 @@ function buildAllResults(
   const rows = db
     .prepare(
       `SELECT g.id AS gameId, g.name AS gameName, g.icon AS icon,
-              COUNT(v.player_id) - COALESCE(SUM(CASE WHEN v.points = 0 THEN 1 ELSE 0 END), 0) AS votes,
-              COALESCE(SUM(CASE WHEN v.points = 0 THEN 1 ELSE 0 END), 0) AS declines,
+              COALESCE(SUM(CASE
+                WHEN v.player_id IS NULL THEN 0
+                WHEN v.response IS NOT NULL THEN v.response = 'can'
+                WHEN v.points = 0 THEN 0
+                ELSE 1
+              END), 0) AS votes,
+              COALESCE(SUM(CASE WHEN v.response = 'if_needed' THEN 1 ELSE 0 END), 0) AS ifNeeded,
+              COALESCE(SUM(CASE WHEN v.points = 0 OR v.response = 'cannot' THEN 1 ELSE 0 END), 0) AS declines,
               COALESCE(SUM(v.points), 0) AS points,
               m.lastPlayedAt AS lastPlayedAt, COALESCE(m.playCount, 0) AS playCount,
               p.avgPreference AS avgPreference, COALESCE(p.preferenceCount, 0) AS preferenceCount,
@@ -279,13 +303,46 @@ function buildAllResults(
   // Sort by this round's score first, then by aggregate popularity (so the
   // list starts out popularity-sorted before anyone has voted), then name.
   results.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
+    const rankDiff = compareRank(a, b, mode);
+    if (rankDiff !== 0) return rankDiff;
     const aPref = a.avgPreference ?? -1;
     const bPref = b.avgPreference ?? -1;
     if (bPref !== aPref) return bPref - aPref;
     return a.gameName.localeCompare(b.gameName, 'de');
   });
   return results;
+}
+
+// A result's ranking tuple, compared lexicographically: feasibility ranks
+// like an Umfrage (Passt, then Notfalls, then fewer Nein).
+function rankKey(result: Pick<ResultRow, 'votes' | 'ifNeeded' | 'declines' | 'points'>, mode: VoteMode): number[] {
+  if (mode === 'points') return [result.points];
+  if (mode === 'feasibility') return [result.votes, result.ifNeeded, -result.declines];
+  return [result.votes];
+}
+
+// Negative when `a` ranks before `b`, 0 on an exact tie.
+function compareRank(
+  a: Pick<ResultRow, 'votes' | 'ifNeeded' | 'declines' | 'points'>,
+  b: Pick<ResultRow, 'votes' | 'ifNeeded' | 'declines' | 'points'>,
+  mode: VoteMode,
+): number {
+  const left = rankKey(a, mode);
+  const right = rankKey(b, mode);
+  for (let index = 0; index < left.length; index += 1) {
+    if (right[index] !== left[index]) return right[index] - left[index];
+  }
+  return 0;
+}
+
+// The closed round's winners: every game tied with the leader, as long as the
+// leader has any support at all (a Notfalls counts for feasibility).
+function winnerGameIdsOf(results: ResultRow[], mode: VoteMode): string[] {
+  const leader = results[0];
+  if (!leader) return [];
+  const supported = mode === 'feasibility' ? leader.votes + leader.ifNeeded > 0 : leader.score > 0;
+  if (!supported) return [];
+  return results.filter((result) => compareRank(result, leader, mode) === 0).map((result) => result.gameId);
 }
 
 function filterResults(results: ResultRow[], selectedGameIds: string[] | null): ResultRow[] {
@@ -315,14 +372,16 @@ function buildResults(
 // would otherwise leak through the ordering even without the numbers.
 function redactOpenRoundResults(
   results: ResultRow[],
-): Array<Omit<ResultRow, 'votes' | 'declines' | 'points' | 'score'>> {
+): Array<Omit<ResultRow, 'votes' | 'ifNeeded' | 'declines' | 'points' | 'score'>> {
   const sorted = [...results].sort((a, b) => {
     const aPref = a.avgPreference ?? -1;
     const bPref = b.avgPreference ?? -1;
     if (bPref !== aPref) return bPref - aPref;
     return a.gameName.localeCompare(b.gameName, 'de');
   });
-  return sorted.map(({ votes: _votes, declines: _declines, points: _points, score: _score, ...rest }) => rest);
+  return sorted.map(
+    ({ votes: _votes, ifNeeded: _ifNeeded, declines: _declines, points: _points, score: _score, ...rest }) => rest,
+  );
 }
 
 function countRoundVoters(
@@ -351,9 +410,13 @@ function deletePlayerBallot(groupId: string, playerId: string, round: number): v
   db.prepare('DELETE FROM votes WHERE group_id = ? AND player_id = ? AND round = ?').run(groupId, playerId, round);
 }
 
-// Every game a points ballot has to rate: exactly the games the voters are
-// shown — the round's selection or the catalog, minus a game deleted since the
-// round started, which would otherwise block every further ballot.
+// Every game a ballot may answer (and a points ballot has to rate): exactly
+// the games the voters are shown — the round's selection or the catalog, minus
+// a game deleted since the round started, which would otherwise block every
+// further ballot. Like buildAllResults' HAVING rule, a suggestion stays on the
+// ballot when this round put it there (a runoff's selection) or it already
+// carries votes of this round (demoted mid-round), so the round never shows a
+// game to some voters and rejects it for the next one.
 function roundBallotGameIds(groupId: string, round: number, selectedGameIds: string[] | null): string[] {
   return buildResults(groupId, round, 'points', true, selectedGameIds).map((result) => result.gameId);
 }
@@ -362,18 +425,18 @@ interface Ballot {
   playerId: string;
   name: string;
   submittedAt: number;
-  entries: Array<{ gameId: string; points: number | null }>;
+  entries: Array<{ gameId: string; points: number | null; response: FeasibilityResponse | null }>;
 }
 
-// Who voted how in a closed round, one entry per voter, for the "Stimmen
-// ansehen" table. Only closed rounds reach this: while a round is open the
-// distribution stays hidden from everyone (see redactOpenRoundResults).
+// Who voted how, one entry per voter, for the "Stimmen ansehen" table and the
+// voter avatars. Callers only reach this for a round that is not anonymous and
+// either closed or showing its interim result (see buildPayload).
 function roundBallots(groupId: string, round: number, includeTestData: boolean, gameIds: string[]): Ballot[] {
   const shownGames = new Set(gameIds);
   const rows = db
     .prepare(
       `SELECT v.player_id AS playerId, COALESCE(p.name, v.player_name_snapshot) AS name,
-              v.game_id AS gameId, v.points, v.created_at AS createdAt
+              v.game_id AS gameId, v.points, v.response, v.created_at AS createdAt
        FROM votes v LEFT JOIN players p ON p.id = v.player_id
        WHERE v.group_id = ? AND v.round = ? AND (? = 1 OR COALESCE(p.is_test, 0) = 0)`,
     )
@@ -382,6 +445,7 @@ function roundBallots(groupId: string, round: number, includeTestData: boolean, 
     name: string;
     gameId: string;
     points: number | null;
+    response: FeasibilityResponse | null;
     createdAt: number;
   }>;
   const ballots = new Map<string, Ballot>();
@@ -389,7 +453,7 @@ function roundBallots(groupId: string, round: number, includeTestData: boolean, 
     if (!shownGames.has(row.gameId)) continue;
     const ballot = ballots.get(row.playerId) ?? { playerId: row.playerId, name: row.name, submittedAt: 0, entries: [] };
     ballot.submittedAt = Math.max(ballot.submittedAt, row.createdAt);
-    ballot.entries.push({ gameId: row.gameId, points: row.points });
+    ballot.entries.push({ gameId: row.gameId, points: row.points, response: row.response });
     ballots.set(row.playerId, ballot);
   }
   return [...ballots.values()].sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }));
@@ -426,9 +490,17 @@ function buildPayload(
   const totalVotes = fullResults.reduce((sum, r) => sum + r.votes, 0);
   const totalPoints = fullResults.reduce((sum, r) => sum + r.points, 0);
   const totalVoters = countRoundVoters(groupId, state.round, includeTestData);
-  const results = state.open ? redactOpenRoundResults(fullResults) : fullResults;
-  const catalogResults = state.open ? redactOpenRoundResults(catalogFullResults) : catalogFullResults;
-  return { ...state, ...meta, results, catalogResults, totalVotes, totalPoints, totalVoters, ...extra };
+  const hidden = state.open && meta.hideLiveResults;
+  const results = hidden ? redactOpenRoundResults(fullResults) : fullResults;
+  const catalogResults = hidden ? redactOpenRoundResults(catalogFullResults) : catalogFullResults;
+  // A running round that shows its interim result also shows who answered
+  // what, like an Umfrage — unless it is anonymous. Closed rounds carry their
+  // ballots in the history instead.
+  const liveBallots =
+    state.open && !meta.hideLiveResults && !meta.anonymous
+      ? { ballots: roundBallots(groupId, state.round, includeTestData, fullResults.map((r) => r.gameId)) }
+      : {};
+  return { ...state, ...meta, results, catalogResults, totalVotes, totalPoints, totalVoters, ...liveBallots, ...extra };
 }
 
 // GET /api/votes - current round's state and tally.
@@ -503,22 +575,36 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
   const state = readRoundState(req.group!.id, eventId);
   const entries = db
     .prepare(
-      `SELECT v.game_id AS gameId, v.points
+      `SELECT v.game_id AS gameId, v.points, v.response
        FROM votes v JOIN games g ON g.id = v.game_id
        WHERE v.group_id = ? AND v.player_id = ? AND v.round = ? AND g.group_id = ?`,
     )
-    .all(req.group!.id, playerId, state.round, req.group!.id) as Array<{ gameId: string; points: number | null }>;
+    .all(req.group!.id, playerId, state.round, req.group!.id) as Array<{
+    gameId: string;
+    points: number | null;
+    response: FeasibilityResponse | null;
+  }>;
   res.json({ round: state.round, mode: state.mode, entries });
 });
 
 // POST /api/votes/start - begins a new round. Fails if one is already open.
-// Body: { mode?, title?, info?, gameIds? }
-// - mode: 'points' (default, the normal voting mode) or 'single' — 'single'
-//   is only meant for a runoff between tied winners (see /close), it's not
-//   offered as a choice when starting a fresh round.
+// Body: { mode?, title?, info?, gameIds?, anonymous?, hideLiveResults?, maxSelections? }
+// - mode: 'points' (default), 'feasibility', 'single' (also every runoff
+//   between tied winners, see /close) or 'multiple'.
 // - title/info: optional free text shown to voters.
 // - gameIds: optional preselection of which games this round covers; omit
 //   for "every game in the catalog".
+// - anonymous: nobody ever sees who voted how (default false).
+// - hideLiveResults: no per-game result while the round runs (default true).
+// - maxSelections: 'multiple' only, the most games one ballot may pick;
+//   omit or null for no limit.
+const START_NOTIFICATION_BODIES: Record<VoteMode, string> = {
+  points: 'Was zocken wir als Nächstes? Spiele mit Punkten bewerten.',
+  feasibility: 'Was zocken wir als Nächstes? Jedes Spiel bewerten.',
+  single: 'Was zocken wir als Nächstes? Ein Spiel wählen.',
+  multiple: 'Was zocken wir als Nächstes? Passende Spiele wählen.',
+};
+
 votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res);
@@ -528,14 +614,25 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
     return res.status(409).json({ error: 'Es läuft bereits eine Abstimmung.' });
   }
 
-  const { mode, title, info, gameIds } = req.body ?? {};
-  if (mode !== undefined && mode !== 'single' && mode !== 'points') {
-    return res.status(400).json({ error: 'mode muss "single" oder "points" sein.' });
+  const { mode, title, info, gameIds, anonymous, hideLiveResults, maxSelections } = req.body ?? {};
+  if (mode !== undefined && !isVoteMode(mode)) {
+    return res.status(400).json({ error: 'mode muss "feasibility", "single", "multiple" oder "points" sein.' });
   }
-  if (mode === 'single' && req.groupMembership?.role === 'member') {
-    return res.status(403).json({ error: 'Stichwahlen können nur von Community-Admins gestartet werden.' });
+  const nextMode: VoteMode = mode ?? 'points';
+  if (anonymous !== undefined && typeof anonymous !== 'boolean') {
+    return res.status(400).json({ error: 'anonymous muss true oder false sein.' });
   }
-  const nextMode: VoteMode = mode === 'single' ? 'single' : 'points';
+  if (hideLiveResults !== undefined && typeof hideLiveResults !== 'boolean') {
+    return res.status(400).json({ error: 'hideLiveResults muss true oder false sein.' });
+  }
+  if (maxSelections !== undefined && maxSelections !== null) {
+    if (nextMode !== 'multiple') {
+      return res.status(400).json({ error: 'Eine Stimmenzahl gibt es nur bei Mehrfachauswahl.' });
+    }
+    if (!Number.isInteger(maxSelections) || maxSelections < 1) {
+      return res.status(400).json({ error: 'Die Stimmenzahl muss eine positive Ganzzahl sein.' });
+    }
+  }
 
   const cleanTitle = optionalText(title, MAX_TITLE_LENGTH);
   if (cleanTitle === undefined) {
@@ -565,6 +662,21 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
     }
     selectedGameIds = uniqueIds as string[];
   }
+  const cleanMaxSelections = typeof maxSelections === 'number' ? maxSelections : null;
+  if (cleanMaxSelections !== null) {
+    const ballotSize =
+      selectedGameIds?.length ??
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM games WHERE group_id = ? AND arcade_key IS NULL AND status != 'suggestion'",
+          )
+          .get(groupId) as { n: number }
+      ).n;
+    if (cleanMaxSelections > ballotSize) {
+      return res.status(400).json({ error: `Die Stimmenzahl muss zwischen 1 und ${ballotSize} liegen.` });
+    }
+  }
 
   const nextRound =
     (
@@ -576,8 +688,9 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   db.transaction(() => {
     db.prepare(
       `INSERT INTO vote_rounds
-         (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids)
-       VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)`,
+         (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids,
+          anonymous, hide_live_results, max_selections)
+       VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       groupId,
       nextRound,
@@ -587,6 +700,9 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
       cleanTitle,
       cleanInfo,
       selectedGameIds ? JSON.stringify(selectedGameIds) : null,
+      anonymous === true ? 1 : 0,
+      hideLiveResults === false ? 0 : 1,
+      cleanMaxSelections,
     );
     setState(scopedStateKey(ROUND_KEY, groupId, eventId), String(nextRound));
     setState(scopedStateKey(OPEN_KEY, groupId, eventId), '1');
@@ -601,10 +717,7 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
     voteNotificationPlayerIds(groupId, eventId),
     {
       title: cleanTitle || 'Neue Abstimmung',
-      body:
-        nextMode === 'single'
-          ? 'Stichwahl: jetzt für einen der Gewinner abstimmen.'
-          : 'Was zocken wir als Nächstes? Spiele mit Punkten bewerten.',
+      body: START_NOTIFICATION_BODIES[nextMode],
       url: '/#votes',
     },
     'all',
@@ -615,58 +728,112 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   res.status(201).json(payload);
 });
 
+interface BallotContext {
+  groupId: string;
+  eventId: string;
+  round: number;
+  meta: RoundMeta;
+  player: { name: string };
+  playerId: string;
+}
+
+// Shared prelude of every ballot route: an open round of the expected answer
+// kind, in the active event, and a voter who belongs to it.
+function ballotContext(req: Request, res: Response, expectedMode: VoteMode): BallotContext | null {
+  const groupId = req.group!.id;
+  const eventId = requestVoteEventId(req, res);
+  if (!eventId) return null;
+  const state = readRoundState(groupId, eventId);
+  if (!state.open) {
+    res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
+    return null;
+  }
+  if (state.mode !== expectedMode) {
+    res.status(409).json({ error: 'Die aktuelle Abstimmung verwendet eine andere Antwortart.' });
+    return null;
+  }
+  const { playerId } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId) {
+    res.status(400).json({ error: 'playerId ist erforderlich.' });
+    return null;
+  }
+  const player = activeGroupPlayers(groupId, [playerId]).get(playerId);
+  if (!player || !competitionPlayersBelongToGroup(groupId, eventId, [playerId])) {
+    res.status(404).json({ error: 'Spieler nicht gefunden.' });
+    return null;
+  }
+  const meta = getRoundMeta(groupId, state.round);
+  if (meta.eventId !== eventId) {
+    res.status(409).json({ error: 'Die Abstimmung gehört zu einem anderen Event.' });
+    return null;
+  }
+  return { groupId, eventId, round: state.round, meta, player, playerId };
+}
+
+// Checks that a game exists in this group and is on this round's ballot;
+// answers the request and returns false otherwise.
+function requireBallotGame(res: Response, groupId: string, gameId: unknown, ballot: Set<string>): gameId is string {
+  if (typeof gameId !== 'string' || !gameId) {
+    res.status(400).json({ error: 'Jeder Eintrag braucht eine gameId.' });
+    return false;
+  }
+  const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, groupId) as
+    | { id: string; status: string }
+    | undefined;
+  if (!game) {
+    res.status(404).json({ error: 'Spiel nicht gefunden.' });
+    return false;
+  }
+  if (!ballot.has(gameId)) {
+    res
+      .status(400)
+      .json({ error: isSuggestionGame(game) ? SUGGESTION_GAME_ERROR : 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
+    return false;
+  }
+  return true;
+}
+
+// Replaces the voter's whole ballot atomically, so double taps and
+// concurrent devices always leave exactly one complete ballot, then answers
+// with the fresh payload every other client also receives as a broadcast.
+function saveBallot(
+  req: Request,
+  res: Response,
+  context: BallotContext,
+  entries: Array<{ gameId: string; points: number | null; response: FeasibilityResponse | null }>,
+): void {
+  const { groupId, eventId, round, meta, player, playerId } = context;
+  const now = Date.now();
+  db.transaction(() => {
+    deletePlayerBallot(groupId, playerId, round);
+    const insert = db.prepare(
+      `INSERT INTO votes
+         (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, response, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const entry of entries) {
+      insert.run(nanoid(), groupId, playerId, player.name, entry.gameId, meta.eventId, round, entry.points, entry.response, now);
+    }
+  })();
+
+  const payload = buildPayload(groupId, eventId, includesTestPlayers(req));
+  broadcast(Events.votesChanged, { round: payload.round, open: payload.open }, { groupId, eventId });
+  res.json(payload);
+}
+
 // POST /api/votes - cast or change one vote in the current round ('single'
 // mode only). Body: { playerId, gameId }. A later call replaces the player's
 // earlier pick while the round is open.
 votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
-  const groupId = req.group!.id;
-  const eventId = requestVoteEventId(req, res);
-  if (!eventId) return;
-  const state = readRoundState(groupId, eventId);
-  if (!state.open) {
-    return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
-  }
-  if (state.mode !== 'single') {
-    return res.status(409).json({ error: 'Die aktuelle Abstimmung läuft im Punkte-Modus.' });
-  }
-
-  const { playerId, gameId } = req.body ?? {};
-  if (typeof playerId !== 'string' || !playerId) {
-    return res.status(400).json({ error: 'playerId ist erforderlich.' });
-  }
+  const context = ballotContext(req, res, 'single');
+  if (!context) return;
+  const { gameId } = req.body ?? {};
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
   }
-  const player = activeGroupPlayers(groupId, [playerId]).get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  if (!competitionPlayersBelongToGroup(groupId, eventId, [playerId])) {
-    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  }
-  const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
-    | { id: string; status: string }
-    | undefined;
-  if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
-  const meta = getRoundMeta(groupId, state.round);
-  if (meta.eventId !== eventId) return res.status(409).json({ error: 'Die Abstimmung gehört zu einem anderen Event.' });
-  if (isSuggestionGame(game) && !suggestionIsOnBallot(groupId, state.round, gameId, meta.selectedGameIds)) {
-    return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
-  }
-  if (meta.selectedGameIds && !meta.selectedGameIds.includes(gameId)) {
-    return res.status(400).json({ error: 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
-  }
-
-  db.transaction(() => {
-    deletePlayerBallot(groupId, playerId, state.round);
-    db.prepare(
-      `INSERT INTO votes
-         (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-    ).run(nanoid(), groupId, playerId, player.name, gameId, meta.eventId, state.round, Date.now());
-  })();
-
-  const payload = buildPayload(req.group!.id, eventId, includesTestPlayers(req));
-  broadcast(Events.votesChanged, { round: payload.round, open: payload.open }, { groupId, eventId });
-  res.json(payload);
+  const ballot = new Set(roundBallotGameIds(context.groupId, context.round, context.meta.selectedGameIds));
+  if (!requireBallotGame(res, context.groupId, gameId, ballot)) return;
+  saveBallot(req, res, context, [{ gameId, points: null, response: null }]);
 });
 
 // POST /api/votes/points - cast or change a player's ballot in the current
@@ -674,82 +841,89 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 // with exactly one entry per game of the round, 0-5 points each. A later
 // submission replaces the earlier ballot while the round is open.
 votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
-  const groupId = req.group!.id;
-  const eventId = requestVoteEventId(req, res);
-  if (!eventId) return;
-  const state = readRoundState(groupId, eventId);
-  if (!state.open) {
-    return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
-  }
-  if (state.mode !== 'points') {
-    return res.status(409).json({ error: 'Die aktuelle Abstimmung läuft im Einzel-Modus.' });
-  }
-
-  const { playerId, entries } = req.body ?? {};
-  if (typeof playerId !== 'string' || !playerId) {
-    return res.status(400).json({ error: 'playerId ist erforderlich.' });
-  }
-  const player = activeGroupPlayers(groupId, [playerId]).get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  if (!competitionPlayersBelongToGroup(groupId, eventId, [playerId])) {
-    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  }
-
+  const context = ballotContext(req, res, 'points');
+  if (!context) return;
+  const { entries } = req.body ?? {};
   if (!Array.isArray(entries)) {
     return res.status(400).json({ error: 'entries muss ein Array sein.' });
   }
   if (entries.length === 0) {
     return res.status(400).json({ error: 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.' });
   }
-
-  const meta = getRoundMeta(groupId, state.round);
-  if (meta.eventId !== eventId) return res.status(409).json({ error: 'Die Abstimmung gehört zu einem anderen Event.' });
-  const ballot = new Set(roundBallotGameIds(groupId, state.round, meta.selectedGameIds));
+  const ballot = new Set(roundBallotGameIds(context.groupId, context.round, context.meta.selectedGameIds));
   const seen = new Set<string>();
-  const clean: Array<{ gameId: string; points: number }> = [];
+  const clean: Array<{ gameId: string; points: number; response: null }> = [];
   for (const entry of entries) {
     const { gameId, points } = (entry ?? {}) as { gameId?: unknown; points?: unknown };
-    if (typeof gameId !== 'string' || !gameId) {
-      return res.status(400).json({ error: 'Jeder Eintrag braucht eine gameId.' });
-    }
-    if (seen.has(gameId)) {
+    if (typeof gameId === 'string' && seen.has(gameId)) {
       return res.status(400).json({ error: 'Jedes Spiel darf nur einmal bewertet werden.' });
     }
-    seen.add(gameId);
+    if (typeof gameId === 'string') seen.add(gameId);
     if (!isIntInRange(points, 0, 5)) {
       return res.status(400).json({ error: 'Punkte müssen eine Ganzzahl zwischen 0 und 5 sein.' });
     }
-    const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
-      | { id: string; status: string }
-      | undefined;
-    if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
-    if (!ballot.has(gameId)) {
-      return res
-        .status(400)
-        .json({ error: isSuggestionGame(game) ? SUGGESTION_GAME_ERROR : 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
-    }
-    clean.push({ gameId, points });
+    if (!requireBallotGame(res, context.groupId, gameId, ballot)) return;
+    clean.push({ gameId, points, response: null });
   }
   if (seen.size !== ballot.size) {
     return res.status(400).json({ error: 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.' });
   }
+  saveBallot(req, res, context, clean);
+});
 
-  const now = Date.now();
-  db.transaction(() => {
-    deletePlayerBallot(groupId, playerId, state.round);
-    const insert = db.prepare(
-      `INSERT INTO votes
-         (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    for (const entry of clean) {
-      insert.run(nanoid(), groupId, playerId, player.name, entry.gameId, meta.eventId, state.round, entry.points, now);
+// POST /api/votes/choices - cast or change a player's picks in the current
+// round ('multiple' mode only). Body: { playerId, gameIds } with at least one
+// and at most the round's maxSelections games.
+votesRouter.post('/choices', ...withBodyPlayerIdentity, (req, res) => {
+  const context = ballotContext(req, res, 'multiple');
+  if (!context) return;
+  const { gameIds } = req.body ?? {};
+  if (!Array.isArray(gameIds) || gameIds.length === 0) {
+    return res.status(400).json({ error: 'Bitte mindestens ein Spiel wählen.' });
+  }
+  if (new Set(gameIds).size !== gameIds.length) {
+    return res.status(400).json({ error: 'Jedes Spiel darf nur einmal gewählt werden.' });
+  }
+  const max = context.meta.maxSelections;
+  if (max !== null && gameIds.length > max) {
+    return res.status(400).json({ error: `Du kannst höchstens ${max} Spiele wählen.` });
+  }
+  const ballot = new Set(roundBallotGameIds(context.groupId, context.round, context.meta.selectedGameIds));
+  const clean: Array<{ gameId: string; points: null; response: null }> = [];
+  for (const gameId of gameIds as unknown[]) {
+    if (!requireBallotGame(res, context.groupId, gameId, ballot)) return;
+    clean.push({ gameId, points: null, response: null });
+  }
+  saveBallot(req, res, context, clean);
+});
+
+// POST /api/votes/responses - cast or change a player's answers in the
+// current round ('feasibility' mode only). Body: { playerId, entries:
+// [{ gameId, response }] } with Passt ('can'), Notfalls ('if_needed') or Nein
+// ('cannot'); a game left out stays open. At least one game needs an answer.
+votesRouter.post('/responses', ...withBodyPlayerIdentity, (req, res) => {
+  const context = ballotContext(req, res, 'feasibility');
+  if (!context) return;
+  const { entries } = req.body ?? {};
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return res.status(400).json({ error: 'Bitte mindestens ein Spiel bewerten.' });
+  }
+  const ballot = new Set(roundBallotGameIds(context.groupId, context.round, context.meta.selectedGameIds));
+  const seen = new Set<string>();
+  const clean: Array<{ gameId: string; points: null; response: FeasibilityResponse }> = [];
+  for (const entry of entries) {
+    const { gameId, response } = (entry ?? {}) as { gameId?: unknown; response?: unknown };
+    if (typeof gameId === 'string' && seen.has(gameId)) {
+      return res.status(400).json({ error: 'Jedes Spiel darf nur einmal bewertet werden.' });
     }
-  })();
-
-  const payload = buildPayload(req.group!.id, eventId, includesTestPlayers(req));
-  broadcast(Events.votesChanged, { round: payload.round, open: payload.open }, { groupId, eventId });
-  res.json(payload);
+    if (typeof gameId === 'string') seen.add(gameId);
+    if (!(FEASIBILITY_RESPONSES as readonly unknown[]).includes(response)) {
+      return res.status(400).json({ error: 'Antwort muss Passt, Notfalls oder Nein sein.' });
+    }
+    if (!requireBallotGame(res, context.groupId, gameId, ballot)) return;
+    clean.push({ gameId, points: null, response: response as FeasibilityResponse });
+  }
+  saveBallot(req, res, context, clean);
 });
 
 // POST /api/votes/close - ends the round and reports the winner(s) (ties are
@@ -771,9 +945,7 @@ votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   // winners depending on incidental request state. Test-player points still
   // show up in the admin-mode `results` view below, they just never decide.
   const canonicalResults = buildResults(req.group!.id, state.round, state.mode, false, meta.selectedGameIds);
-  const topScore = canonicalResults[0]?.score ?? 0;
-  const winnerGameIds =
-    topScore > 0 ? canonicalResults.filter((r) => r.score === topScore).map((r) => r.gameId) : [];
+  const winnerGameIds = winnerGameIdsOf(canonicalResults, state.mode);
 
   db.prepare('UPDATE vote_rounds SET closed_at = ?, winner_game_ids = ? WHERE group_id = ? AND round = ?').run(
     Date.now(),
@@ -820,6 +992,13 @@ interface VoteRoundRow {
   title: string | null;
   info: string | null;
   selectedGameIdsJson: string | null;
+  anonymous: number;
+  hideLiveResults: number;
+  maxSelections: number | null;
+}
+
+function roundOptions(row: VoteRoundRow): Pick<RoundMeta, 'anonymous' | 'hideLiveResults' | 'maxSelections'> {
+  return { anonymous: row.anonymous === 1, hideLiveResults: row.hideLiveResults === 1, maxSelections: row.maxSelections };
 }
 
 // GET /api/votes/history - past (closed) rounds for the active event, newest
@@ -841,7 +1020,8 @@ votesRouter.get('/history', (req, res) => {
       `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
-              vr.selected_game_ids AS selectedGameIdsJson
+              vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous AS anonymous,
+              vr.hide_live_results AS hideLiveResults, vr.max_selections AS maxSelections
        FROM vote_rounds vr
        JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
        WHERE vr.group_id = ? AND vr.closed_at IS NOT NULL AND vr.event_id = ?
@@ -869,12 +1049,13 @@ votesRouter.get('/history', (req, res) => {
       mode: r.mode,
       title: r.title,
       info: r.info,
+      ...roundOptions(r),
       totalVotes,
       totalVoters,
       winnerGameIds: winnerIds,
       results,
       winners,
-      ballots: roundBallots(groupId, r.round, includeTestData, results.map((x) => x.gameId)),
+      ballots: r.anonymous ? [] : roundBallots(groupId, r.round, includeTestData, results.map((x) => x.gameId)),
     };
   });
 
@@ -909,7 +1090,8 @@ votesRouter.get('/history/:round', (req, res) => {
       `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
-              vr.selected_game_ids AS selectedGameIdsJson
+              vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous AS anonymous,
+              vr.hide_live_results AS hideLiveResults, vr.max_selections AS maxSelections
        FROM vote_rounds vr
        JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
        WHERE vr.group_id = ? AND vr.round = ? AND vr.event_id = ?`,
@@ -936,11 +1118,12 @@ votesRouter.get('/history/:round', (req, res) => {
     mode: row.mode,
     title: row.title,
     info: row.info,
+    ...roundOptions(row),
     results,
     totalVotes,
     totalPoints,
     totalVoters,
     winnerGameIds,
-    ballots: roundBallots(req.group!.id, row.round, includeTestData, results.map((r) => r.gameId)),
+    ballots: row.anonymous ? [] : roundBallots(req.group!.id, row.round, includeTestData, results.map((r) => r.gameId)),
   });
 });
