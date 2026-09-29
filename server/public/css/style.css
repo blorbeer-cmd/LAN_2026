@@ -1305,8 +1305,8 @@ textarea {
 }
 /* While the result stays hidden from the viewer (a running Vote, an Umfrage
    with a hidden interim result) the result and voter columns would stay
-   empty: the answers move up beside the title instead, and wide screens show
-   two options per row. Phones keep the regular stacked layout below. */
+   empty: the answers move up beside the title. Phones keep the regular
+   stacked layout below. */
 @media (min-width: 640px) { /* --bp-md */
   .event-poll-options.is-compact .event-poll-option {
     grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1317,18 +1317,40 @@ textarea {
 }
 @media (min-width: 860px) { /* --bp-lg */
   /* Filled column by column (--compact-rows = half the options, rounded up),
-     so the list reads down the left column first, then the right one. */
-  .event-poll-options.is-compact,
-  .event-poll-options.is-ranked {
+     so every poll and Vote reads down the left column first. */
+  .stack.event-poll-options {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: repeat(var(--compact-rows, 1), auto);
     grid-auto-flow: column;
     column-gap: var(--space-7);
   }
-  .event-poll-options.is-compact .event-poll-option.is-column-start,
-  .event-poll-options.is-ranked .event-poll-option.is-column-start {
+  .event-poll-options .event-poll-option.is-column-start {
     border-top: 0;
+  }
+  /* A visible interim result needs room for its bar and answer controls in
+     each half-width option: title and voters lead, then both use full rows. */
+  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option-info {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option-badges {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-result {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-inline-end: 0;
+  }
+  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option > .rating-scale,
+  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option > .event-poll-response-toolbar,
+  .event-poll-options:not(.is-compact):not(.is-ranked) .event-poll-option > .event-poll-choice-control {
+    grid-column: 1 / -1;
+    grid-row: 3;
   }
   .event-poll-options.is-ranked .event-poll-option {
     /* Reserve the shared voter column even when an option has no supporters. */

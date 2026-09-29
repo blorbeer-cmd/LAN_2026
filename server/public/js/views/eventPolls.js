@@ -526,13 +526,13 @@ function renderRound(poll) {
   const ranks = ranked ? sharedRankNumbers(options.map((option) =>
     poll.responseMode === 'rating_1_5' ? option.counts.average ?? -1
       : poll.responseMode === 'feasibility' ? resultSortValues(poll, option) : option.counts.can)) : [];
-  // Two compact columns read down the left column first, then the right one.
+  // Two columns read down the left column first, then the right one.
   const columnRows = Math.max(1, Math.ceil(options.length / 2));
   return `
     <section class="stack event-poll-round" data-poll-round="${escapeHtml(poll.id)}">
       <div class="event-poll-tags">${tags.map((tag) => `<span class="event-poll-tag">${escapeHtml(tag)}</span>`).join('')}</div>
       ${poll.note ? `<p class="event-poll-note">${escapeHtml(poll.note)}</p>` : ''}
-      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}${compact ? ' is-compact' : ''}${ranked ? ' is-ranked' : ''}"${compact || ranked ? ` style="--compact-rows: ${columnRows};"` : ''}>${options.map((option, index) => renderOption(poll, option, (compact || ranked) && index === columnRows, ranked ? ranks[index] : null)).join('')}</div>
+      <div class="stack event-poll-options${canAnswer ? ' has-answers' : ''}${compact ? ' is-compact' : ''}${ranked ? ' is-ranked' : ''}" style="--compact-rows: ${columnRows};">${options.map((option, index) => renderOption(poll, option, index === columnRows, ranked ? ranks[index] : null)).join('')}</div>
       ${canAnswer
         ? `<div class="event-poll-save-row event-poll-footer"><span class="muted">${escapeHtml(draftProgress(poll))}</span><button type="button" class="btn btn-primary btn-sm" data-save-poll="${escapeHtml(poll.id)}" ${responseDraftIsValid(poll) ? '' : 'disabled'}>Speichern</button></div>`
         : ''}

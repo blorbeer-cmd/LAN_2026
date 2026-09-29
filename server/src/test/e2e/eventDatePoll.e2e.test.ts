@@ -322,18 +322,22 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     const info = option.querySelector('.event-poll-option-info')!.getBoundingClientRect();
     const row = option.getBoundingClientRect();
     const controls = option.querySelector('.event-poll-response-toolbar')!.getBoundingClientRect();
-    const middle = (box: DOMRect) => (box.top + box.bottom) / 2;
     return {
+      rowLeft: row.left,
+      rowTop: row.top,
+      rowRight: row.right,
+      infoBottom: info.bottom,
+      resultTop: result.top,
+      resultBottom: result.bottom,
+      resultLeft: result.left,
+      resultRight: result.right,
+      controlsTop: controls.top,
+      controlsRight: controls.right,
       stackWidth: stackBox.width,
       stackHeight: stackBox.height,
       avatarWidth: last.width,
       stackContentLeftInset: first.left - stackBox.left,
       stackContentRightInset: stackBox.right - last.right,
-      avatarLeft: first.left,
-      avatarToResultMiddle: Math.abs(middle(first) - middle(result)),
-      avatarToControlsMiddle: Math.abs(middle(first) - middle(controls)),
-      infoToRowMiddle: Math.abs(middle(info) - middle(row)),
-      resultToRowMiddle: Math.abs(middle(result) - middle(row)),
     };
   }, { title: 'Welcher Zeitraum passt?', index: optionIndex });
   await ownerPage.setViewportSize({ width: 390, height: 844 });
@@ -342,18 +346,22 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.ok(mobileStack.stackWidth >= 44 && mobileStack.stackHeight >= 32, `the multi-voter stack keeps a comfortable tap target (${JSON.stringify(mobileStack)})`);
   assert.equal(mobileSingleStack.stackWidth, 44, `the single-voter stack keeps the minimum width (${JSON.stringify(mobileSingleStack)})`);
   assert.ok(mobileStack.stackContentRightInset <= 1 && mobileSingleStack.stackContentRightInset <= 1, `mobile avatars align to the right of the title line (${JSON.stringify({ mobileStack, mobileSingleStack })})`);
+  assert.ok(Math.abs(mobileStack.rowLeft - mobileSingleStack.rowLeft) <= 1 && mobileSingleStack.rowTop > mobileStack.rowTop,
+    `phone poll options stay in one column (${JSON.stringify({ mobileStack, mobileSingleStack })})`);
   await ownerPage.setViewportSize({ width: 1024, height: 800 });
   const desktopStack = await voterStackGeometry(0);
   const desktopSingleStack = await voterStackGeometry(1);
   assert.equal(desktopStack.avatarWidth, 24, `voter avatars remain clearly visible (${JSON.stringify(desktopStack)})`);
   assert.ok(desktopStack.stackContentLeftInset <= 1 && desktopSingleStack.stackContentLeftInset <= 1, `desktop avatars start at their column edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
-  assert.ok(Math.abs(desktopStack.avatarLeft - desktopSingleStack.avatarLeft) <= 1, `avatars of different rows share one left edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
+  assert.ok(desktopSingleStack.rowLeft > desktopStack.rowLeft && Math.abs(desktopSingleStack.rowTop - desktopStack.rowTop) <= 1,
+    `running polls with visible results use two columns (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
   for (const geometry of [desktopStack, desktopSingleStack]) {
-    assert.ok(geometry.avatarToResultMiddle <= 1 && geometry.avatarToControlsMiddle <= 1
-      && geometry.infoToRowMiddle <= 1 && geometry.resultToRowMiddle <= 1,
-    `complete text/results, avatars and answers center in the row (${JSON.stringify(geometry)})`);
+    assert.ok(geometry.infoBottom <= geometry.resultTop + 1 && geometry.resultBottom <= geometry.controlsTop + 1,
+      `visible results and answers follow the title without overlap (${JSON.stringify(geometry)})`);
+    assert.ok(Math.abs(geometry.resultLeft - geometry.rowLeft) <= 1 && Math.abs(geometry.resultRight - geometry.rowRight) <= 1
+      && geometry.controlsRight <= geometry.rowRight + 1,
+    `result bars and answers fit their column (${JSON.stringify(geometry)})`);
   }
-  await assertPaintedPollResultCentered(refreshed.locator('.event-poll-option').first());
   await liveStack.click();
   const liveVoteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
   await liveVoteDialog.waitFor();
@@ -420,6 +428,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   }
   assert.ok(layout.rows[half].x > layout.rows[0].x, 'placements continue at the top of the right column');
   assert.ok(Math.abs(layout.rows[half].y - layout.rows[0].y) <= 1);
+  await assertPaintedPollResultCentered(closed.locator('.event-poll-option').first());
   await ownerPage.setViewportSize({ width: 390, height: 844 });
   assert.equal(await rankedResults.evaluate((options) => getComputedStyle(options).display), 'flex',
     'phone poll results remain one readable column');
@@ -655,12 +664,12 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   };
   for (const viewport of [
     { width: 320, height: 568 }, { width: 390, height: 844 },
-    { width: 512, height: 384 }, { width: 720, height: 450 },
+    { width: 512, height: 384 }, { width: 720, height: 450 }, { width: 860, height: 600 },
     { width: 1024, height: 768 }, { width: 1440, height: 900 },
   ]) {
     await ownerPage.setViewportSize(viewport);
     await assertRatingGeometry();
-    if (viewport.width >= 640) {
+    if (viewport.width >= 640 && viewport.width < 860) {
       const offsets = await ratingPoll.locator('.event-poll-option').evaluateAll((rows) => rows.map((row, index) => {
         const rect = row.getBoundingClientRect();
         const next = rows.slice(index + 1).find((candidate) => candidate.getBoundingClientRect().left === rect.left);
@@ -738,7 +747,6 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ratingSavedToast.waitFor({ state: 'detached' });
   await ownerPage.setViewportSize({ width: 1024, height: 768 });
   const ratingPollId = await ratingPoll.getAttribute('data-poll-card');
-  await assertPaintedPollResultCentered(ratingPoll.locator('.event-poll-option').first());
   await navigate(ownerPage, 'home');
   await ownerPage.click('#global-search-btn');
   await ownerPage.fill('#global-search-input', 'Haus am See');
