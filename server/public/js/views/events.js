@@ -64,7 +64,7 @@ const TRACKING_BUTTON_HELP = `Schaltet die Erfassung für dieses Event ein und a
 const TRACKING_START_CONFIRM = (name) => `Tracking für „${name}“ starten? ${TRACKING_SCOPE_SENTENCE}`;
 const TRACKING_STOP_CONFIRM = (name) =>
   `Tracking für „${name}“ stoppen? Laufende Spielzeiten werden abgeschlossen und der Live-Status geleert; bereits erfasste Spielzeit und der Event-Workspace bleiben erhalten.`;
-const KIOSK_HELP = 'Jedes LAN-Event hat ein eigenes Broadcast-Konto mit gemeinsamem Passwort. „Broadcast öffnen“ öffnet das gewählte Event in einem eigenen Tab.';
+const KIOSK_HELP = 'Verfügbare LAN-Events haben je ein eigenes Broadcast-Konto mit gemeinsamem Passwort. „Broadcast öffnen“ öffnet das gewählte Event in einem eigenen Tab.';
 const expandedEventParticipants = new Set();
 // Mirrors foodOrders.js's card-header-toggle pattern: an event card becomes
 // collapsible only once its list holds more than one card (a lone card gets
@@ -129,7 +129,7 @@ function renderKioskPasswordRow() {
 
 function renderKioskSection() {
   const events = (state.managedEvents || [])
-    .filter((event) => event.eventType === 'lan' && !event.isBase && !event.isOutsideEvents)
+    .filter((event) => event.eventType === 'lan' && event.status === 'published' && !event.isEnded && !event.isBase && !event.isOutsideEvents)
     .sort((a, b) => a.name.localeCompare(b.name, 'de'));
   const rows = events
     .map((event, index) => {
@@ -148,7 +148,7 @@ function renderKioskSection() {
       ${
         events.length
           ? `<div class="profile-rows profile-rows-columns profile-rows-divided" style="--profile-rows-count:${columnRows};">${rows}</div>`
-          : `<div class="profile-rows-divided">${emptyStateHtml('Noch keine LAN-Events.')}</div>`
+          : `<div class="profile-rows-divided">${emptyStateHtml('Keine verfügbaren LAN-Events.')}</div>`
       }
     </section>
   `;
