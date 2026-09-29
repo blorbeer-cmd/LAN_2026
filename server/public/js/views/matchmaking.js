@@ -314,7 +314,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       return `
       <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${isLoser ? ' is-loser' : ''}" role="group" aria-label="${escapeHtml(teamNames[i])}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
         <div class="team-card-header">
-          <span class="row" style="gap:var(--space-2);">${escapeHtml(teamNames[i])}${isWinner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}</span>
+          <span class="row matchmaking-draw-team-title" style="gap:var(--space-2);"><span class="matchmaking-draw-team-name">${escapeHtml(teamNames[i])}</span>${isWinner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}</span>
           ${teamSkillHtml(t.players, draw.gameId, skillOptions)}
         </div>
         ${resultLine}
