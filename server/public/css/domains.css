@@ -1232,13 +1232,8 @@ input[type='number'].tournament-result-score {
   }
 }
 /* Inside the dialog the catalog's phone menus open below their trigger
-   instead of above the (covered) bottom navigation. The empty „Stimmen pro
-   Person" slot keeps the answer kind half wide beside it on wider screens,
-   but must not add an empty wrapped row on phones. */
+   instead of above the (covered) bottom navigation. */
 @media (max-width: 639px) { /* --bp-md */
-  .vote-max-slot:has(> [hidden]) {
-    display: none;
-  }
   .vote-game-toolbar .game-catalog-sort-menu .game-catalog-sort-panel,
   .vote-game-toolbar .game-catalog-filter-menu .game-catalog-filter-panel {
     position: absolute;

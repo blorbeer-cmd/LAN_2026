@@ -512,9 +512,7 @@ function concealedGameLabel(gameId, round) {
 }
 
 function kioskVoteScore(vote, result) {
-  if (vote.mode === 'points') return `${result.points} P`;
-  if (vote.mode === 'feasibility') return `${result.votes}× Passt`;
-  return `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
+  return vote.mode === 'points' ? `${result.points} P` : `${result.votes} ${result.votes === 1 ? 'Stimme' : 'Stimmen'}`;
 }
 
 function renderKioskVoteRows(vote, { concealed = false, highlightLeading = true } = {}) {
@@ -667,9 +665,7 @@ function renderVotes(votes) {
   if (!vote) {
     return emptyStateHtml('Noch keine Abstimmung.', { className: 'kiosk-vote-state kiosk-empty-state' });
   }
-  // A runoff is an Einzelauswahl titled „Stichwahl“; any other round may use
-  // that answer kind too, so only the title tells them apart.
-  const heading = (vote.title ?? '').startsWith('Stichwahl') ? 'Stichwahl läuft' : 'Abstimmung läuft';
+  const heading = vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft';
   const eligibleVoters = Number.isFinite(vote.eligibleVoters) ? vote.eligibleVoters : vote.totalVoters;
   return `
     <div class="kiosk-vote-overview">

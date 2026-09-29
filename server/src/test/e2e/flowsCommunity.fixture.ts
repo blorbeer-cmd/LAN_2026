@@ -774,7 +774,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   await page.request.post(`${BASE_URL}/api/votes/start`, {
     data: { mode: 'single', title: 'Kiosk Ergebnis ausblenden', gameIds: [games[0].id] },
   });
-  await page.waitForSelector('.kiosk-vote-overview >> text=Abstimmung läuft');
+  await page.waitForSelector('.kiosk-vote-overview >> text=Stichwahl läuft');
   await page.request.post(`${BASE_URL}/api/votes/cancel`);
   await page.waitForSelector('#kiosk-votes >> text=Noch keine Abstimmung.');
   assert.equal(await page.locator('.kiosk-vote-overview').count(), 0);

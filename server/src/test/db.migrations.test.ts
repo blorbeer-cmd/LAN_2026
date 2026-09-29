@@ -1507,86 +1507,49 @@ test('migration 111 lets votes store a deliberate 0, keeps existing rows and rol
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 115 adds poll answer kinds to vote rounds, keeps rounds and votes and rolls back on failure', () => {
-  const dbFile = makeTempDbPath('vote-poll-options');
+test('migration 115 adds vote round privacy options, keeps existing rounds and rolls back on failure', () => {
+  const dbFile = makeTempDbPath('vote-privacy-options');
   runMigrations(dbFile);
 
-  // Rebuild the pre-115 shape (two modes, no privacy columns) with one closed
-  // round and its vote.
+  // Rebuild the pre-115 shape (no privacy columns) with one closed round.
   const fixture = new Database(dbFile);
-  fixture.pragma('foreign_keys = OFF');
   const now = Date.now();
   fixture.exec(`
-    INSERT INTO players (id, name, api_key, created_at) VALUES ('poll-voter', 'Poll Voter', 'poll-voter-key', ${now});
-    INSERT INTO group_memberships (group_id, player_id, role, status, joined_at)
-      VALUES ('default-group', 'poll-voter', 'member', 'active', ${now});
-    DROP TABLE vote_rounds;
-    CREATE TABLE vote_rounds (
-      group_id          TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-      round             INTEGER NOT NULL,
-      event_id          TEXT,
-      started_at        INTEGER NOT NULL,
-      closed_at         INTEGER,
-      winner_game_ids   TEXT,
-      mode              TEXT NOT NULL DEFAULT 'single' CHECK (mode IN ('single', 'points')),
-      title             TEXT,
-      info              TEXT,
-      selected_game_ids TEXT,
-      PRIMARY KEY (group_id, round),
-      FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE
-    );
-    CREATE INDEX idx_vote_rounds_group_event ON vote_rounds(group_id, event_id, round DESC);
+    ALTER TABLE vote_rounds DROP COLUMN anonymous;
+    ALTER TABLE vote_rounds DROP COLUMN hide_live_results;
     INSERT INTO vote_rounds (group_id, round, event_id, started_at, closed_at, mode, title)
       VALUES ('default-group', 1, NULL, ${now}, ${now}, 'points', 'Freitag');
     DELETE FROM schema_migrations WHERE version = 115;
   `);
-  const gameId = (fixture.prepare("SELECT id FROM games WHERE group_id = 'default-group' LIMIT 1").get() as { id: string }).id;
-  fixture.exec('ALTER TABLE votes DROP COLUMN response');
-  fixture
-    .prepare(
-      `INSERT INTO votes (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
-       VALUES ('legacy-vote', 'default-group', 'poll-voter', 'Poll Voter', ?, NULL, 1, 4, ?)`,
-    )
-    .run(gameId, now);
-  // Blocks the rebuild's first statement, so the whole migration must roll back.
-  fixture.exec('CREATE TABLE vote_rounds_poll_options_115 (blocking INTEGER)');
+  // A column that differs only in case slips past the name check and makes
+  // the second ALTER fail, so the first one has to roll back with it.
+  fixture.exec('ALTER TABLE vote_rounds ADD COLUMN HIDE_LIVE_RESULTS INTEGER');
   fixture.close();
 
-  assert.throws(() => runMigrations(dbFile), /vote_rounds_poll_options_115/);
+  assert.throws(() => runMigrations(dbFile), /duplicate column name/);
   const afterFailure = new Database(dbFile, { readonly: true });
   assert.equal(afterFailure.prepare('SELECT 1 FROM schema_migrations WHERE version = 115').get(), undefined);
-  assert.doesNotMatch(
-    (afterFailure.prepare("SELECT sql FROM sqlite_master WHERE name = 'vote_rounds'").get() as { sql: string }).sql,
-    /hide_live_results/,
-    'a failed attempt leaves the old table in place',
-  );
-  assert.equal((afterFailure.prepare("SELECT COUNT(*) AS n FROM votes WHERE id = 'legacy-vote'").get() as { n: number }).n, 1);
+  const columnsAfterFailure = afterFailure.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>;
+  assert.ok(!columnsAfterFailure.some((column) => column.name === 'anonymous'), 'a failed attempt adds no column');
   afterFailure.close();
 
   const retry = new Database(dbFile);
-  retry.exec('DROP TABLE vote_rounds_poll_options_115');
+  retry.exec('ALTER TABLE vote_rounds DROP COLUMN HIDE_LIVE_RESULTS');
   retry.close();
   assert.doesNotThrow(() => runMigrations(dbFile));
   assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');
 
   const migrated = new Database(dbFile);
   assert.deepEqual(
-    migrated
-      .prepare('SELECT mode, title, anonymous, hide_live_results AS hidden, max_selections AS max FROM vote_rounds WHERE round = 1')
-      .get(),
-    { mode: 'points', title: 'Freitag', anonymous: 0, hidden: 1, max: null },
+    migrated.prepare('SELECT mode, title, anonymous, hide_live_results AS hidden FROM vote_rounds WHERE round = 1').get(),
+    { mode: 'points', title: 'Freitag', anonymous: 0, hidden: 1 },
     'an existing round keeps its data and the previous hidden, non-anonymous behavior',
   );
-  assert.deepEqual(migrated.prepare("SELECT points, response FROM votes WHERE id = 'legacy-vote'").get(), { points: 4, response: null });
-  assert.ok(migrated.prepare("SELECT 1 FROM sqlite_master WHERE name = 'idx_vote_rounds_group_event'").get());
-  assert.doesNotThrow(() => migrated.prepare("UPDATE vote_rounds SET mode = 'feasibility' WHERE round = 1").run());
-  assert.throws(() => migrated.prepare("UPDATE vote_rounds SET mode = 'ranked' WHERE round = 1").run(), /CHECK constraint failed/);
-  assert.doesNotThrow(() => migrated.prepare("UPDATE votes SET points = NULL, response = 'if_needed' WHERE id = 'legacy-vote'").run());
-  assert.throws(() => migrated.prepare("UPDATE votes SET response = 'maybe' WHERE id = 'legacy-vote'").run(), /CHECK constraint failed/);
-  // Deleting the round still cascades to its votes after the rebuild.
-  migrated.pragma('foreign_keys = ON');
-  migrated.prepare('DELETE FROM vote_rounds WHERE round = 1').run();
-  assert.equal((migrated.prepare("SELECT COUNT(*) AS n FROM votes WHERE id = 'legacy-vote'").get() as { n: number }).n, 0);
+  assert.throws(() => migrated.prepare('UPDATE vote_rounds SET anonymous = 2 WHERE round = 1').run(), /CHECK constraint failed/);
+  assert.throws(
+    () => migrated.prepare('UPDATE vote_rounds SET hide_live_results = 2 WHERE round = 1').run(),
+    /CHECK constraint failed/,
+  );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

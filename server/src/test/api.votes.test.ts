@@ -111,7 +111,7 @@ test('a player can change their single-mode vote while the round is open', async
   const changed = await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameRl });
   assert.equal(changed.status, 200);
   const mineChanged = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
-  assert.deepEqual(mineChanged.body.entries, [{ gameId: gameRl, points: null, response: null }]);
+  assert.deepEqual(mineChanged.body.entries, [{ gameId: gameRl, points: null }]);
   assert.equal(changed.body.totalVotes, 2, 'a change replaces the earlier pick instead of adding one');
   assert.equal(changed.body.totalVoters, 2);
 
@@ -436,126 +436,46 @@ test('concurrent ballots from one player leave exactly one complete ballot', asy
   await request(app).post('/api/votes/cancel');
 });
 
-test('POST /api/votes/start validates the Umfrage answer options', async () => {
+test('POST /api/votes/start validates the privacy options', async () => {
   const badFlag = await request(app).post('/api/votes/start').send({ anonymous: 'yes' });
   assert.equal(badFlag.status, 400);
   const badHidden = await request(app).post('/api/votes/start').send({ hideLiveResults: 1 });
   assert.equal(badHidden.status, 400);
-  const limitOutsideMultiple = await request(app).post('/api/votes/start').send({ mode: 'single', maxSelections: 2 });
-  assert.equal(limitOutsideMultiple.status, 400);
-  const zeroLimit = await request(app).post('/api/votes/start').send({ mode: 'multiple', maxSelections: 0 });
-  assert.equal(zeroLimit.status, 400);
-  const limitAboveBallot = await request(app)
-    .post('/api/votes/start')
-    .send({ mode: 'multiple', maxSelections: 3, gameIds: [gameCs2, gameRl] });
-  assert.equal(limitAboveBallot.status, 400);
-  assert.match(limitAboveBallot.body.error, /zwischen 1 und 2/);
   assert.equal((await request(app).get('/api/votes')).body.open, false, 'no rejected start opens a round');
 });
 
-test('feasibility mode: Passt/Notfalls/Nein per game, open games allowed, ranked like an Umfrage', async () => {
+test('a points round with a visible interim result shows its counts and voters while running', async () => {
   const started = await request(app)
     .post('/api/votes/start')
-    .send({ mode: 'feasibility', gameIds: [gameCs2, gameRl, gameAoe2] });
+    .send({ hideLiveResults: false, gameIds: [gameCs2, gameRl, gameAoe2] });
   assert.equal(started.status, 201);
-  assert.equal(started.body.mode, 'feasibility');
-  assert.equal(started.body.hideLiveResults, true, 'the interim result stays hidden by default');
+  assert.equal(started.body.mode, 'points');
+  assert.equal(started.body.hideLiveResults, false);
   assert.equal(started.body.anonymous, false);
 
-  const wrongEndpoint = await request(app)
+  const cast = await request(app)
     .post('/api/votes/points')
-    .send({ playerId: playerA, entries: fullBallot(started.body.results, {}) });
-  assert.equal(wrongEndpoint.status, 409);
-  const badAnswer = await request(app)
-    .post('/api/votes/responses')
-    .send({ playerId: playerA, entries: [{ gameId: gameCs2, response: 'maybe' }] });
-  assert.equal(badAnswer.status, 400);
-  const empty = await request(app).post('/api/votes/responses').send({ playerId: playerA, entries: [] });
-  assert.equal(empty.status, 400);
-  const offBallot = await request(app)
-    .post('/api/votes/responses')
-    .send({ playerId: playerA, entries: [{ gameId: 'ghost', response: 'can' }] });
-  assert.equal(offBallot.status, 404);
-
-  // Both rank Rocket League and CS2 with one Passt; RL wins on its Notfalls.
-  // AoE2 stays open for A (no row), which is a valid ballot.
-  const castA = await request(app)
-    .post('/api/votes/responses')
-    .send({ playerId: playerA, entries: [{ gameId: gameCs2, response: 'can' }, { gameId: gameRl, response: 'if_needed' }] });
-  assert.equal(castA.status, 200, JSON.stringify(castA.body));
-  const castB = await request(app)
-    .post('/api/votes/responses')
-    .send({
-      playerId: playerB,
-      entries: [
-        { gameId: gameCs2, response: 'cannot' },
-        { gameId: gameRl, response: 'can' },
-        { gameId: gameAoe2, response: 'cannot' },
-      ],
-    });
-  assert.equal(castB.status, 200);
-  const mine = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
+    .send({ playerId: playerA, entries: fullBallot(started.body.results, { [gameRl]: 4, [gameCs2]: 2 }) });
+  assert.equal(cast.status, 200);
   assert.deepEqual(
-    mine.body.entries.map((entry: { gameId: string; response: string }) => [entry.gameId, entry.response]).sort(),
-    [[gameCs2, 'can'], [gameRl, 'if_needed']].sort(),
+    cast.body.results.map((r: { gameId: string; points: number }) => [r.gameId, r.points]),
+    [[gameRl, 4], [gameCs2, 2], [gameAoe2, 0]],
+    'the running round already ranks by points',
   );
-  const open = await request(app).get('/api/votes');
-  assert.equal(open.body.results.find((r: { gameId: string }) => r.gameId === gameRl).ifNeeded, undefined);
-
-  const closed = await request(app).post('/api/votes/close');
-  assert.deepEqual(closed.body.winnerGameIds, [gameRl]);
-  const rl = closed.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
-  const cs2 = closed.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
-  assert.deepEqual([rl.votes, rl.ifNeeded, rl.declines], [1, 1, 0]);
-  assert.deepEqual([cs2.votes, cs2.ifNeeded, cs2.declines], [1, 0, 1]);
-  assert.deepEqual(closed.body.results.map((r: { gameId: string }) => r.gameId), [gameRl, gameCs2, gameAoe2]);
-  const detail = await request(app).get(`/api/votes/history/${closed.body.round}`);
-  const ballotB = detail.body.ballots.find((ballot: { playerId: string }) => ballot.playerId === playerB);
-  assert.equal(ballotB.entries.find((entry: { gameId: string }) => entry.gameId === gameAoe2).response, 'cannot');
-});
-
-test('multiple mode: at least one and at most maxSelections games; a live result shows its voters', async () => {
-  const started = await request(app)
-    .post('/api/votes/start')
-    .send({ mode: 'multiple', maxSelections: 2, hideLiveResults: false, gameIds: [gameCs2, gameRl, gameAoe2] });
-  assert.equal(started.status, 201);
-  assert.equal(started.body.maxSelections, 2);
-  assert.equal(started.body.hideLiveResults, false);
-
-  const none = await request(app).post('/api/votes/choices').send({ playerId: playerA, gameIds: [] });
-  assert.equal(none.status, 400);
-  const tooMany = await request(app).post('/api/votes/choices').send({ playerId: playerA, gameIds: [gameCs2, gameRl, gameAoe2] });
-  assert.equal(tooMany.status, 400);
-  const duplicate = await request(app).post('/api/votes/choices').send({ playerId: playerA, gameIds: [gameCs2, gameCs2] });
-  assert.equal(duplicate.status, 400);
-  const single = await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameCs2 });
-  assert.equal(single.status, 409, 'the single-choice endpoint only serves Einzelauswahl rounds');
-
-  const castA = await request(app).post('/api/votes/choices').send({ playerId: playerA, gameIds: [gameCs2, gameRl] });
-  assert.equal(castA.status, 200);
-  // With a visible interim result the running round already carries counts
-  // and who picked what.
-  const cs2 = castA.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
-  assert.equal(cs2.votes, 1);
-  assert.deepEqual(castA.body.ballots.map((ballot: { name: string }) => ballot.name), ['Voter A']);
-
-  // Changing the picks replaces them.
-  const changedA = await request(app).post('/api/votes/choices').send({ playerId: playerA, gameIds: [gameAoe2] });
-  assert.equal(changedA.status, 200);
-  const mine = await request(app).get(`/api/votes/mine?playerId=${playerA}`);
-  assert.deepEqual(mine.body.entries.map((entry: { gameId: string }) => entry.gameId), [gameAoe2]);
-  const closed = await request(app).post('/api/votes/close');
-  assert.deepEqual(closed.body.winnerGameIds, [gameAoe2]);
+  assert.deepEqual(cast.body.ballots.map((ballot: { name: string }) => ballot.name), ['Voter A']);
+  await request(app).post('/api/votes/cancel');
 });
 
 test('an anonymous round never reveals who voted how, not even once closed', async () => {
   const started = await request(app)
     .post('/api/votes/start')
-    .send({ mode: 'single', anonymous: true, hideLiveResults: false, gameIds: [gameCs2, gameRl] });
+    .send({ anonymous: true, hideLiveResults: false, gameIds: [gameCs2, gameRl] });
   assert.equal(started.status, 201);
-  const cast = await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameRl });
+  const cast = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: playerA, entries: fullBallot(started.body.results, { [gameRl]: 5 }) });
   assert.equal(cast.status, 200);
-  assert.equal(cast.body.results.find((r: { gameId: string }) => r.gameId === gameRl).votes, 1, 'the counts stay visible');
+  assert.equal(cast.body.results.find((r: { gameId: string }) => r.gameId === gameRl).points, 5, 'the counts stay visible');
   assert.equal(cast.body.ballots, undefined);
   const closed = await request(app).post('/api/votes/close');
   assert.deepEqual(closed.body.winnerGameIds, [gameRl]);
@@ -567,40 +487,6 @@ test('an anonymous round never reveals who voted how, not even once closed', asy
   assert.equal(detail.body.anonymous, true);
   assert.deepEqual(detail.body.ballots, []);
   assert.equal(detail.body.totalVoters, 1);
-});
-
-test('concurrent choice and feasibility ballots from one player leave exactly one ballot', async () => {
-  await request(app).post('/api/votes/start').send({ mode: 'multiple', gameIds: [gameCs2, gameRl, gameAoe2] });
-  const choices = await Promise.all([
-    request(app).post('/api/votes/choices').send({ playerId: playerA, gameIds: [gameCs2, gameRl] }),
-    request(app).post('/api/votes/choices').send({ playerId: playerA, gameIds: [gameAoe2] }),
-  ]);
-  assert.deepEqual(choices.map((res) => res.status), [200, 200]);
-  const pickedGames = (await request(app).get(`/api/votes/mine?playerId=${playerA}`)).body.entries
-    .map((entry: { gameId: string }) => entry.gameId)
-    .sort();
-  assert.ok(
-    JSON.stringify(pickedGames) === JSON.stringify([gameCs2, gameRl].sort()) || JSON.stringify(pickedGames) === JSON.stringify([gameAoe2]),
-    'one submission wins entirely instead of mixing both',
-  );
-  await request(app).post('/api/votes/cancel');
-
-  await request(app).post('/api/votes/start').send({ mode: 'feasibility', gameIds: [gameCs2, gameRl] });
-  const responses = await Promise.all([
-    request(app).post('/api/votes/responses').send({ playerId: playerA, entries: [{ gameId: gameCs2, response: 'can' }] }),
-    request(app)
-      .post('/api/votes/responses')
-      .send({ playerId: playerA, entries: [{ gameId: gameCs2, response: 'cannot' }, { gameId: gameRl, response: 'if_needed' }] }),
-  ]);
-  assert.deepEqual(responses.map((res) => res.status), [200, 200]);
-  const answers = (await request(app).get(`/api/votes/mine?playerId=${playerA}`)).body.entries as Array<{ response: string }>;
-  assert.ok(
-    (answers.length === 1 && answers[0].response === 'can') ||
-      (answers.length === 2 && answers.every((answer) => answer.response !== 'can')),
-    'one submission wins entirely instead of mixing both',
-  );
-  assert.equal((await request(app).get('/api/votes')).body.totalVoters, 1);
-  await request(app).post('/api/votes/cancel');
 });
 
 test('a game deleted during a points round leaves the remaining ballot savable', async () => {
@@ -638,12 +524,12 @@ test('points endpoint is rejected while a round is in single mode', async () => 
 });
 
 test('each result row reports its all-time vote win count', async () => {
-  // CS2 won the single-mode round; Rocket League won the points, the
-  // feasibility and the anonymous round.
+  // CS2 won the single-mode round; Rocket League won the points and the
+  // anonymous round.
   const res = await request(app).get('/api/votes');
   const cs2Result = res.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
   const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
-  assert.equal(rlResult.voteWinCount, 3);
+  assert.equal(rlResult.voteWinCount, 2);
   assert.equal(cs2Result.voteWinCount, 1);
 });
 

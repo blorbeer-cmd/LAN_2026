@@ -379,7 +379,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   downward.
 - **Mode / setting choice** — choose controls by the decision shape: a select for
   three or more mutually exclusive named options (native, or the non-searchable Searchable select
-  where its popup must match the app's dropdowns, as for the answer kind of Umfragen and Vote),
+  where its popup must match the app's dropdowns, as for the answer kind of Umfragen),
   a toggle for an either/or choice, a segmented
   pill only beside a competing primary CTA, and a checkbox for an independent on/off flag.
   Product-specific choices live in [Product rules](../docs/product/README.md).

@@ -13,11 +13,10 @@
 // 3. The current Top 10 by aggregate "Bock" rating, split into two compact
 //    five-item columns on wider screens.
 //
-// A round offers the same answer kinds and privacy options as an Umfrage
-// (see pollControls.js): "Jedes Spiel bewerten" (Passt/Notfalls/Nein),
-// "Einzelauswahl" (also every runoff), "Mehrfachauswahl" and "Bewertung 0 bis
-// 5" (the default: every game needs a rating, 0 is a deliberate "Spiele ich
-// nicht"). "Zwischenstand verbergen" (on by default) keeps the per-game
+// Every game of a round gets 0-5 points (0 is a deliberate "Spiele ich
+// nicht"); only a runoff between tied winners ("Stichwahl") asks for exactly
+// one game. Like an Umfrage (see pollControls.js), a round may be anonymous
+// and may hide its interim result: "Zwischenstand verbergen" (on by default) keeps the per-game
 // distribution hidden from everyone while the round runs, so nobody piles
 // onto a visible leader; only participation shows. "Anonym" never reveals
 // who voted how. Every answer is a local draft until "Speichern"; a saved
@@ -41,24 +40,13 @@ import { wireInfoTooltips } from '../infoTooltip.js';
 import {
   choiceBarFillHtml,
   CHOSEN_CELL,
-  feasibilityBarFillHtml,
-  feasibilityCellHtml,
-  feasibilityKeyHtml,
-  feasibilityLegendHtml,
   resultBarHtml,
   voteBreakdownHtml,
   voterNamesText,
   voterStackHtml,
   WIN_CHIP,
 } from '../voteBreakdown.js';
-import {
-  choiceControlHtml,
-  feasibilityControlHtml,
-  maxSelectionsFieldHtml,
-  pollFlagsHtml,
-  responseModeFieldHtml,
-  wireResponseModeField,
-} from '../pollControls.js';
+import { choiceControlHtml, pollFlagsHtml } from '../pollControls.js';
 import {
   createGameListFilters,
   filterGames,
@@ -68,14 +56,6 @@ import {
   wireGameListToolbar,
 } from '../gameListControls.js';
 
-// Same answer kinds as an Umfrage; only the wording names games.
-const MODE_LABELS = {
-  feasibility: 'Jedes Spiel bewerten',
-  single: 'Einzelauswahl',
-  multiple: 'Mehrfachauswahl',
-  points: 'Bewertung 0 bis 5',
-};
-const MODE_OPTIONS = Object.entries(MODE_LABELS).map(([value, label]) => ({ value, label }));
 const ANONYMOUS_HELP = 'Stimmen bleiben dauerhaft anonym. Auch nach Ende der Abstimmung ist nicht sichtbar, wer wie abgestimmt hat.';
 const LIVE_RESULTS_HELP = 'Solange die Abstimmung läuft, sieht niemand, wie die Stimmen verteilt sind; sichtbar ist nur, wie viele schon abgestimmt haben. Nach dem Ende ist das Ergebnis für alle sichtbar.';
 
@@ -136,7 +116,7 @@ export function invalidateVoteEventScope() {
 // The current player's own saved ballot in the running round. Any entry
 // means this identity has answered; the draft below starts from it and can
 // still be changed and saved again until the round ends.
-let mineCache = null; // Map<gameId, { points, response }>
+let mineCache = null; // Map<gameId, { points }>
 let mineCacheKey = null; // see mineKey()
 let mineLoading = false;
 
@@ -151,7 +131,7 @@ async function loadMine(key, playerId, ctx) {
   mineLoading = true;
   try {
     const mine = await api.votes.mine(playerId);
-    mineCache = new Map(mine.entries.map((e) => [e.gameId, { points: e.points, response: e.response ?? null }]));
+    mineCache = new Map(mine.entries.map((e) => [e.gameId, { points: e.points }]));
   } catch {
     mineCache = new Map();
   } finally {
@@ -161,25 +141,20 @@ async function loadMine(key, playerId, ctx) {
   }
 }
 
-// Local, not-yet-saved answers, one per game: 0-5 points, a Passt/Notfalls/
-// Nein answer or `true` for a picked game. Tapping only changes this draft;
+// Local, not-yet-saved answers, one per game: 0-5 points or `true` for the
+// picked game of a runoff. Tapping only changes this draft;
 // nothing reaches the server until "Speichern" is pressed. Reseeded from
 // mineCache once per round/player (draftKey tracks that so a fresh round
 // starts blank rather than carrying over a stale draft). A game missing from
 // the draft is still unanswered; 0 is a real rating.
-let draft = null; // Map<gameId, number | string | true>
+let draft = null; // Map<gameId, number | true>
 let draftKey = null; // mineKey() of the round/player the current draft belongs to
 
 function seedDraft(votes) {
   draft = new Map();
   for (const [gameId, entry] of mineCache) {
-    if (votes.mode === 'points') {
-      if (typeof entry.points === 'number') draft.set(gameId, entry.points);
-    } else if (votes.mode === 'feasibility') {
-      if (entry.response) draft.set(gameId, entry.response);
-    } else {
-      draft.set(gameId, true);
-    }
+    if (votes.mode !== 'points') draft.set(gameId, true);
+    else if (typeof entry.points === 'number') draft.set(gameId, entry.points);
   }
   // A points ballot not yet answered starts from the viewer's own Bock per
   // game; it is still only a local draft until "Speichern".
@@ -280,50 +255,34 @@ function renderTop10(results) {
 
 function resultSummary(h, r) {
   if (h.mode === 'points') return `${r.points} Pkt. · ${r.votes}/${h.totalVoters} spielen mit`;
-  if (h.mode === 'feasibility') return `${r.votes}× Passt`;
   return `${r.votes} ${r.votes === 1 ? 'Stimme' : 'Stimmen'}`;
 }
 
 // The value a result's place number compares, as the server ranks it.
 function rankValue(h, r) {
-  if (h.mode === 'points') return r.points;
-  if (h.mode === 'feasibility') return [r.votes, r.ifNeeded, -r.declines];
-  return r.votes;
+  return h.mode === 'points' ? r.points : r.votes;
 }
 
 function resultCellHtml(h, r, maxPoints) {
-  if (h.mode === 'feasibility') {
-    const counts = { can: r.votes, ifNeeded: r.ifNeeded, cannot: r.declines };
-    return resultBarHtml(feasibilityBarFillHtml(counts, h.totalVoters), feasibilityLegendHtml(counts));
-  }
   const share = h.mode === 'points' ? r.points / maxPoints : r.votes / Math.max(1, h.totalVoters);
   return resultBarHtml(choiceBarFillHtml(share), `<span class="event-poll-count-text">${escapeHtml(resultSummary(h, r))}</span>`);
 }
 
-function supports(mode, entry) {
-  if (mode === 'points') return entry.points > 0;
-  if (mode === 'feasibility') return entry.response === 'can';
-  return true;
-}
-
-// Everyone who picked the game, answered Passt or gave it at least one point,
-// highest first. An anonymous round names nobody.
+// Everyone who picked the game or gave it at least one point, highest first. An anonymous round names nobody.
 function supportersOf(h, gameId) {
   if (h.anonymous) return [];
   return (h.ballots ?? [])
     .map((ballot) => ({ ballot, entry: ballot.entries.find((entry) => entry.gameId === gameId) }))
-    .filter(({ entry }) => entry && supports(h.mode, entry))
+    .filter(({ entry }) => entry && (h.mode !== 'points' || entry.points > 0))
     .sort((a, b) => (b.entry.points ?? 0) - (a.entry.points ?? 0) || a.ballot.name.localeCompare(b.ballot.name, 'de'))
     .map(({ ballot }) => ({ playerId: ballot.playerId, name: ballot.name }));
 }
-
-const SUPPORTER_LABELS = { points: 'Spielen mit', feasibility: 'Passt', single: 'Gewählt von', multiple: 'Gewählt von' };
 
 function supporterStackHtml(h, r, attributes) {
   const supporters = supportersOf(h, r.gameId);
   return voterStackHtml({
     people: supporters,
-    label: `Stimmen zu ${r.gameName} ansehen · ${SUPPORTER_LABELS[h.mode] ?? 'Gewählt von'}: ${voterNamesText(supporters)}`,
+    label: `Stimmen zu ${r.gameName} ansehen · ${h.mode === 'points' ? 'Spielen mit' : 'Gewählt von'}: ${voterNamesText(supporters)}`,
     attributes,
   });
 }
@@ -348,24 +307,14 @@ function answeredCount(votes) {
 function ballotComplete(votes) {
   const answered = answeredCount(votes);
   if (votes.mode === 'points') return votes.results.length > 0 && answered === votes.results.length;
-  if (votes.mode === 'single') return answered === 1;
-  if (votes.mode === 'multiple') return answered >= 1 && (!votes.maxSelections || answered <= votes.maxSelections);
-  return answered >= 1;
+  return answered === 1;
 }
 
 function draftProgressText(votes) {
   const answered = answeredCount(votes);
-  if (votes.mode === 'points' || votes.mode === 'feasibility') return `${answered} von ${votes.results.length} bewertet`;
-  if (votes.mode === 'multiple' && votes.maxSelections) return `${answered} von ${votes.maxSelections} gewählt`;
+  if (votes.mode === 'points') return `${answered} von ${votes.results.length} bewertet`;
   return `${answered} gewählt`;
 }
-
-const INCOMPLETE_MESSAGES = {
-  points: 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.',
-  feasibility: 'Bitte mindestens ein Spiel bewerten.',
-  single: 'Bitte zuerst ein Spiel auswählen.',
-  multiple: 'Bitte mindestens ein Spiel auswählen.',
-};
 
 function answerChipHtml(hasSubmitted) {
   return hasSubmitted
@@ -389,8 +338,8 @@ function ownSkillHtml(gameId) {
   return `<span class="vote-own-skill${skill === null ? ' is-missing' : ''}">Mein Skill: ${skill ?? '–'}</span>`;
 }
 
-// The answer control of one game: the same controls as an Umfrage of the
-// same answer kind.
+// The answer control of one game: the 0-5 scale, or in a runoff the same
+// Wählen button as an Umfrage with a single choice.
 function ballotControlHtml(votes, r) {
   const value = draft.get(r.gameId);
   const gameId = escapeHtml(r.gameId);
@@ -402,13 +351,6 @@ function ballotControlHtml(votes, r) {
       groupLabel: `Punkte für ${r.gameName}`,
       valueLabel: pointsValueText,
       attributes: (points) => `data-vote-points="${gameId}" data-points-value="${points}"`,
-    });
-  }
-  if (votes.mode === 'feasibility') {
-    return feasibilityControlHtml({
-      selected: value,
-      groupLabel: `Bewertung für ${r.gameName}`,
-      attributes: (response) => `data-vote-response="${response}" data-game-id="${gameId}"`,
     });
   }
   return choiceControlHtml({ selected: value === true, label: `${r.gameName} wählen`, attributes: `data-vote-select="${gameId}"` });
@@ -433,9 +375,15 @@ function renderOpenRow(votes, r, draftReady, { columnStart, showResult, maxPoint
     </div>`;
 }
 
+function isUntitledRunoff(round) {
+  return round.mode === 'single' && !(round.title ?? '').includes('Stichwahl');
+}
+
 function roundTagsHtml(votes) {
-  const tags = [MODE_LABELS[votes.mode] ?? MODE_LABELS.points];
-  if (votes.mode === 'multiple' && votes.maxSelections) tags.push(`höchstens ${votes.maxSelections}`);
+  const tags = [];
+  // Runoffs are titled "Stichwahl: …" already, so the tag only shows when
+  // the title does not say it.
+  if (isUntitledRunoff(votes)) tags.push('Stichwahl');
   if (votes.anonymous) tags.push('Anonym');
   if (votes.hideLiveResults) tags.push('Zwischenstand verborgen');
   return `<div class="event-poll-tags">${tags.map((tag) => `<span class="event-poll-tag">${escapeHtml(tag)}</span>`).join('')}</div>`;
@@ -494,7 +442,9 @@ function submissionCountLabel(count) {
 }
 
 function roundMetaText(h) {
-  return [h.title, formatDateTime(h.closedAt), submissionCountLabel(h.totalVoters)].filter(Boolean).join(' · ');
+  return [h.title, formatDateTime(h.closedAt), isUntitledRunoff(h) ? 'Stichwahl' : null, submissionCountLabel(h.totalVoters)]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 function renderResultRows(h, columnRows) {
@@ -627,10 +577,9 @@ function renderHistory() {
 const DECLINE_CELL = `<span class="event-poll-vote-cell is-cannot" role="img" aria-label="Spielt nicht" title="Spielt nicht">${icon('x')}</span>`;
 
 function ballotCell(h, entry) {
-  if (h.mode === 'single' || h.mode === 'multiple') {
+  if (h.mode === 'single') {
     return entry ? CHOSEN_CELL : '<span class="event-poll-vote-cell is-empty" aria-hidden="true"></span>';
   }
-  if (h.mode === 'feasibility') return feasibilityCellHtml(entry?.response);
   if (!entry) return '<span class="event-poll-vote-cell is-empty" aria-label="Nicht bewertet">–</span>';
   if (entry.points === 0) return DECLINE_CELL;
   return `<span class="event-poll-vote-cell is-rating">${entry.points}</span>`;
@@ -643,11 +592,9 @@ function roundBreakdownHtml(h) {
     h.ballots.map((ballot) => [ballot.playerId, new Map(ballot.entries.map((entry) => [entry.gameId, entry]))]),
   );
   const hasDeclines = h.mode === 'points' && h.ballots.some((ballot) => ballot.entries.some((entry) => entry.points === 0));
-  const keyHtml = h.mode === 'feasibility'
-    ? feasibilityKeyHtml()
-    : hasDeclines
-      ? `<div class="muted event-poll-vote-key"><span><span class="event-poll-vote-cell is-cannot" aria-hidden="true">${icon('x')}</span>Spielt nicht</span></div>`
-      : '';
+  const keyHtml = hasDeclines
+    ? `<div class="muted event-poll-vote-key"><span><span class="event-poll-vote-cell is-cannot" aria-hidden="true">${icon('x')}</span>Spielt nicht</span></div>`
+    : '';
   return `
     <div class="muted vote-result-meta">${escapeHtml(h.open ? [h.title, submissionCountLabel(h.totalVoters)].filter(Boolean).join(' · ') : roundMetaText(h))}</div>
     ${h.info ? `<p class="event-poll-note">${escapeHtml(h.info)}</p>` : ''}
@@ -766,10 +713,6 @@ function openVoteStartForm(ctx) {
     <form id="vote-start-form" class="stack event-poll-form">
       <div><label for="votes-title" class="field-label">Titel</label><input type="text" id="votes-title" maxlength="80" placeholder="Samstagabend" autofocus /></div>
       <div><label for="votes-info" class="field-label">Beschreibung</label><textarea id="votes-info" class="event-poll-note-input" maxlength="500" rows="1" placeholder="Nur Spiele für 4 Leute"></textarea></div>
-      <div class="field-row event-poll-form-pair">
-        ${responseModeFieldHtml('votes-mode', MODE_OPTIONS, 'points')}
-        <div class="vote-max-slot" id="votes-max-wrap">${maxSelectionsFieldHtml('votes-max', '')}</div>
-      </div>
       ${pollFlagsHtml({
         anonymousId: 'votes-anonymous',
         hiddenId: 'votes-hide-live-results',
@@ -786,18 +729,10 @@ function openVoteStartForm(ctx) {
     onMount: (modal) => {
       const form = modal.querySelector('#vote-start-form');
       const picker = modal.querySelector('[data-vote-game-picker]');
-      const maxField = modal.querySelector('#votes-max-wrap > div');
-      maxField.hidden = true;
       const markDirty = () => { dirty = true; };
       form.addEventListener('input', markDirty);
       form.addEventListener('change', markDirty);
       wireInfoTooltips(modal);
-      wireResponseModeField(modal, 'votes-mode', MODE_OPTIONS, {
-        onChange: (mode) => {
-          dirty = true;
-          maxField.hidden = mode !== 'multiple';
-        },
-      });
 
       const syncSelection = () => {
         const button = picker.querySelector('#votes-select-all');
@@ -870,15 +805,9 @@ function openVoteStartForm(ctx) {
       form.addEventListener('submit', async (submitEvent) => {
         submitEvent.preventDefault();
         const submitButton = submitEvent.submitter ?? modal.querySelector('#votes-start');
-        const mode = modal.querySelector('#votes-mode').value;
         // Every selected game counts, also one a filter currently hides.
         const gameIds = catalog.filter((game) => selected.has(game.id)).map((game) => game.id);
         if (gameIds.length === 0) return showToast('Bitte mindestens ein Spiel auswählen.', { error: true });
-        const rawMax = modal.querySelector('#votes-max').value;
-        const maxSelections = mode === 'multiple' && rawMax ? Number(rawMax) : null;
-        if (maxSelections !== null && (!Number.isInteger(maxSelections) || maxSelections < 1 || maxSelections > gameIds.length)) {
-          return showToast(`Die Stimmenzahl muss zwischen 1 und ${gameIds.length} liegen.`, { error: true });
-        }
         submitButton.disabled = true;
         try {
           // No ctx.refresh() (a full loadAll()): patch state.votes straight
@@ -887,13 +816,12 @@ function openVoteStartForm(ctx) {
           // than depending solely on the 'votes:changed' broadcast this call
           // also triggers for every other client.
           state.votes = await api.votes.start({
-            mode,
+            mode: 'points',
             title: modal.querySelector('#votes-title').value.trim() || undefined,
             info: modal.querySelector('#votes-info').value.trim() || undefined,
             gameIds,
             anonymous: modal.querySelector('#votes-anonymous').checked,
             hideLiveResults: modal.querySelector('#votes-hide-live-results').checked,
-            maxSelections,
           });
           dirty = false;
           close();
@@ -1003,21 +931,11 @@ export function renderVotes(container, ctx) {
     });
   });
 
-  // A pick in a single choice replaces the previous one; a multiple choice
-  // toggles the game within its limit.
+  // A runoff pick replaces the previous one.
   container.querySelectorAll('[data-vote-select]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const gameId = btn.dataset.voteSelect;
-      if (votes.mode === 'single') {
-        draft = new Map([[gameId, true]]);
-      } else if (draft.has(gameId)) {
-        draft.delete(gameId);
-      } else {
-        if (votes.maxSelections && answeredCount(votes) >= votes.maxSelections) {
-          return showToast(`Du kannst höchstens ${votes.maxSelections} Spiele wählen.`, { error: true });
-        }
-        draft.set(gameId, true);
-      }
+      draft = new Map([[gameId, true]]);
       focusAfterRender = `[data-vote-select="${CSS.escape(gameId)}"]`;
       ctx.rerender();
     });
@@ -1031,16 +949,6 @@ export function renderVotes(container, ctx) {
       if (draft.get(gameId) === value) draft.delete(gameId);
       else draft.set(gameId, value);
       focusAfterRender = `[data-vote-points="${CSS.escape(gameId)}"][data-points-value="${value}"]`;
-      ctx.rerender();
-    });
-  });
-  container.querySelectorAll('[data-vote-response]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const gameId = btn.dataset.gameId;
-      const value = btn.dataset.voteResponse;
-      if (draft.get(gameId) === value) draft.delete(gameId);
-      else draft.set(gameId, value);
-      focusAfterRender = `[data-vote-response="${value}"][data-game-id="${CSS.escape(gameId)}"]`;
       ctx.rerender();
     });
   });
@@ -1063,7 +971,9 @@ export function renderVotes(container, ctx) {
       if (submitBtn.disabled) return;
       const playerId = getMyId();
       if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-      if (!ballotComplete(votes)) return showToast(INCOMPLETE_MESSAGES[votes.mode], { error: true });
+      if (!ballotComplete(votes)) {
+        return showToast(votes.mode === 'single' ? 'Bitte zuerst ein Spiel auswählen.' : 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.', { error: true });
+      }
       // Only games of this round count; a draft may still hold a game that
       // was removed since.
       const answered = votes.results.filter((r) => draft.has(r.gameId)).map((r) => [r.gameId, draft.get(r.gameId)]);
@@ -1080,18 +990,12 @@ export function renderVotes(container, ctx) {
         // exactly what was just sent, so the own-entries cache is set from
         // it directly instead of reloading and flashing the rows.
         if (votes.mode === 'single') state.votes = await api.votes.cast(playerId, answered[0][0]);
-        else if (votes.mode === 'multiple') state.votes = await api.votes.castChoices(playerId, answered.map(([gameId]) => gameId));
-        else if (votes.mode === 'feasibility') {
-          state.votes = await api.votes.castResponses(playerId, answered.map(([gameId, response]) => ({ gameId, response })));
-        } else state.votes = await api.votes.castPoints(playerId, answered.map(([gameId, points]) => ({ gameId, points })));
-        mineCache = new Map(answered.map(([gameId, value]) => [gameId, {
-          points: typeof value === 'number' ? value : null,
-          response: typeof value === 'string' ? value : null,
-        }]));
+        else state.votes = await api.votes.castPoints(playerId, answered.map(([gameId, points]) => ({ gameId, points })));
+        mineCache = new Map(answered.map(([gameId, value]) => [gameId, { points: typeof value === 'number' ? value : null }]));
         mineCacheKey = key;
         draftKey = key;
         ctx.rerender();
-        showToast(votes.mode === 'points' || votes.mode === 'feasibility' ? 'Deine Bewertung wurde gespeichert.' : 'Deine Stimme wurde gespeichert.');
+        showToast(votes.mode === 'points' ? 'Deine Bewertung wurde gespeichert.' : 'Deine Stimme wurde gespeichert.');
       } catch (err) {
         submitBtn.disabled = false;
         showToast(err.message, { error: true });

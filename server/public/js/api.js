@@ -296,10 +296,6 @@ export const api = {
     cast: (playerId, gameId) => apiFetch('/api/votes', { method: 'POST', body: JSON.stringify({ playerId, gameId }) }),
     castPoints: (playerId, entries) =>
       apiFetch('/api/votes/points', { method: 'POST', body: JSON.stringify({ playerId, entries }) }),
-    castChoices: (playerId, gameIds) =>
-      apiFetch('/api/votes/choices', { method: 'POST', body: JSON.stringify({ playerId, gameIds }) }),
-    castResponses: (playerId, entries) =>
-      apiFetch('/api/votes/responses', { method: 'POST', body: JSON.stringify({ playerId, entries }) }),
     close: () => apiFetch('/api/votes/close', { method: 'POST' }),
     cancel: () => apiFetch('/api/votes/cancel', { method: 'POST' }),
   },

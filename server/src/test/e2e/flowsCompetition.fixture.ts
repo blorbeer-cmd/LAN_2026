@@ -27,7 +27,7 @@ import { assertPaintedPollResultCentered } from './pollResultGeometry';
 registerFlowFixture('competition');
 
 // Starts a Vote round through the page's „Abstimmung starten“ dialog with its
-// preselected games and default answer kind.
+// preselected games and default options.
 async function startVoteRound(): Promise<void> {
   await page.click('#votes-new');
   const form = page.locator('#vote-start-form');
@@ -319,8 +319,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     assert.equal(unratedCount ?? 0, team.players.filter((text) => text.startsWith('(')).length);
   }
 
-  // Voting: start a round (points mode, the default answer kind), rate every
-  // game, save, change the ballot and save again. Alice's personal session
+  // Voting: start a round (every game gets 0-5 points), rate every game, save, change the ballot and save again. Alice's personal session
   // already fixes the voter identity, so no extra identity form appears.
   // Picking a number only stages a local draft — it must not count as a vote
   // until "Speichern" is pressed. While the round is open, no per-game
@@ -332,9 +331,9 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
   await page.click('#votes-new');
   await page.waitForSelector('#vote-start-form');
-  // Like „Umfrage starten“: 0-5 is preselected, the interim result hidden.
-  assert.equal(await page.locator('#votes-mode').inputValue(), 'points');
-  assert.equal(await page.locator('#votes-mode-search').inputValue(), 'Bewertung 0 bis 5');
+  // Like „Umfrage starten“ the interim result starts hidden; a vote always
+  // rates 0-5, so there is no answer kind to choose.
+  assert.equal(await page.locator('#votes-mode, #votes-mode-search').count(), 0);
   assert.equal(await page.locator('#votes-hide-live-results').isChecked(), true);
   assert.equal(await page.locator('#votes-anonymous').isChecked(), false);
   // Every label keeps the same small gap to its field.
@@ -344,29 +343,10 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     return [
       gap('label[for="votes-title"]', '#votes-title'),
       gap('label[for="votes-info"]', '#votes-info'),
-      gap('label[for="votes-mode-search"]', '#votes-mode-search'),
       gap('#votes-games-label', '#votes-game-search'),
     ];
   });
-  assert.deepEqual(labelGaps, [4, 4, 4, 4]);
-  // The answer kind is the app's own select: its list opens below the field
-  // instead of a browser popup laid over it, and the field cannot be typed in.
-  assert.equal(await page.locator('#votes-mode-search').getAttribute('readonly'), '');
-  await page.click('#votes-mode-search');
-  const modeList = page.locator('#votes-mode-list');
-  await modeList.waitFor();
-  assert.deepEqual(await modeList.locator('.search-select-option').allTextContents(),
-    ['Jedes Spiel bewerten', 'Einzelauswahl', 'Mehrfachauswahl', 'Bewertung 0 bis 5']);
-  const modeGeometry = await page.evaluate(() => ({
-    field: document.querySelector('#votes-mode-search')!.getBoundingClientRect().bottom,
-    list: document.querySelector('#votes-mode-list')!.getBoundingClientRect().top,
-  }));
-  assert.ok(modeGeometry.list >= modeGeometry.field, 'the answer kinds open below the field');
-  await modeList.locator('[data-search-select-value="multiple"]').click();
-  assert.equal(await page.locator('#votes-max').isVisible(), true, 'Mehrfachauswahl asks for the votes per person');
-  await page.click('#votes-mode-search');
-  await page.locator('#votes-mode-list [data-search-select-value="points"]').click();
-  assert.equal(await page.locator('#votes-max').isVisible(), false);
+  assert.deepEqual(labelGaps, [4, 4, 4]);
   // History loading can re-render the page behind the dialog; read both
   // elements in one DOM snapshot.
   const startBelowGames = await page.evaluate(() =>
@@ -942,13 +922,11 @@ flowTest('Vote: the start dialog lists games with catalog sort/filter, search an
   await setGenres([]);
 });
 
-flowTest('Vote: a Passt/Notfalls/Nein round with a visible interim result and anonymous voters', async () => {
+flowTest('Vote: a 0-5 round with a visible interim result and anonymous voters', async () => {
   await page.click('.nav-btn[data-view="votes"]');
   await page.click('#votes-new');
   await page.waitForSelector('#vote-start-form');
   await page.fill('#votes-title', 'Sonntag');
-  await page.click('#votes-mode-search');
-  await page.locator('#votes-mode-list [data-search-select-value="feasibility"]').click();
   await page.check('#votes-anonymous');
   await page.uncheck('#votes-hide-live-results');
   await page.click('#votes-start');
@@ -956,20 +934,26 @@ flowTest('Vote: a Passt/Notfalls/Nein round with a visible interim result and an
 
   const roundCard = page.locator('.vote-round-card');
   await roundCard.waitFor();
-  assert.deepEqual(await roundCard.locator('.event-poll-tag').allTextContents(), ['Jedes Spiel bewerten', 'Anonym']);
+  assert.deepEqual(await roundCard.locator('.event-poll-tags .event-poll-tag').allTextContents(), ['Anonym']);
   const rows = roundCard.locator('[data-vote-row]');
-  // The answer buttons replace "Lädt…" once the own (empty) ballot has loaded.
-  await rows.first().locator('[data-vote-response="can"]').waitFor();
-  assert.deepEqual(await rows.first().locator('[data-vote-response]').allTextContents(), ['Passt', 'Notfalls', 'Nein']);
-  assert.ok(await page.locator('#votes-submit').isDisabled(), 'an answer is needed before saving');
-  await rows.nth(0).locator('[data-vote-response="can"]').click();
-  await rows.nth(0).locator('[data-vote-response="can"][aria-pressed="true"]').waitFor();
-  await rows.nth(1).locator('[data-vote-response="if_needed"]').click();
-  await roundCard.locator('[data-vote-rated-progress]').filter({ hasText: `2 von ${await rows.count()} bewertet` }).waitFor();
+  // The rating buttons replace "Lädt…" once the own ballot has loaded; an
+  // unanswered ballot may start from the own Bock, so only unpressed values
+  // are clicked (pressing a chosen value again clears it).
+  await rows.first().locator('[data-points-value="5"]').waitFor();
+  const rowCount = await rows.count();
+  for (let index = 0; index < rowCount; index += 1) {
+    const value = index === 0 ? 5 : 0;
+    const row = rows.nth(index);
+    if ((await row.locator(`[data-points-value="${value}"][aria-pressed="true"]`).count()) === 0) {
+      await row.locator(`[data-points-value="${value}"]`).click();
+    }
+    await row.locator(`[data-points-value="${value}"][aria-pressed="true"]`).waitFor();
+  }
   await page.click('#votes-submit');
   await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
-  // The interim result is visible, but an anonymous round names nobody.
-  await rows.nth(0).locator('.event-poll-legend-item:has-text("1 Passt")').waitFor();
+  // The interim result is visible while the round runs, but an anonymous
+  // round names nobody.
+  await rows.nth(0).locator('.event-poll-count-text:has-text("5 Pkt.")').waitFor();
   assert.equal(await roundCard.locator('.event-poll-voter-stack').count(), 0);
 
   await page.click('#votes-close');

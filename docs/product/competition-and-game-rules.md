@@ -6,8 +6,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 
 - **Mode / setting choice** — pick the widget by the shape of the decision, not by habit: a
   select for three or more mutually exclusive named options (a native `<select>` for the
-  tournament format; the non-searchable shared select for the answer kind of Umfragen and Vote,
-  whose list opens below the field like every other app dropdown); the
+  tournament format; the non-searchable shared select for the answer kind of Umfragen, whose list
+  opens below the field like every other app dropdown); the
   `.btn`/`.btn-primary` two-or-three-way toggle (`aria-pressed`, usually inside `.selection-toolbar`)
   for a plain either/or choice with no competing primary action nearby (Team formation's
   Auslosung/Captain Draft, Checkliste's tabs, the To-Do dialog's Art); the Arcade
@@ -324,31 +324,29 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   The current round comes first: while none runs, a primary-collection card „Aktuelle Abstimmung“
   shows the one-row empty state „Keine laufende Abstimmung“ and the compact header action
   „Abstimmung starten“; the game list is not shown on the page. That action opens the dialog
-  „Abstimmung starten“, modeled on „Umfrage starten“: optional „Titel“ and „Beschreibung“, the same
-  „Antwortart“ select with „Jede Option bewerten“ (shown as „Jedes Spiel bewerten“),
-  „Einzelauswahl“, „Mehrfachauswahl“ (with „Stimmen pro Person“, empty for no limit) and
-  „Bewertung 0 bis 5“ (preselected), the checkboxes „Anonym“ and „Zwischenstand verbergen“
-  (preselected) with contextual help, then the required „Spiele“ list and a right-aligned
+  „Abstimmung starten“, modeled on „Umfrage starten“: optional „Titel“ and „Beschreibung“, the
+  checkboxes „Anonym“ and „Zwischenstand verbergen“ (preselected) with contextual help, then the required „Spiele“ list and a right-aligned
   „Abstimmung starten“ beside the count of selected games. The list uses the Spielekatalog's
   toolbar: „Spiel suchen“, the same sorting („Name“, „Mein Bock“, „Ø Bock“, „Ø Skill“, each in both
   directions) and a filter menu with the catalog's „Genres“ only — the open-rating filters („Bock
   offen“, „Skill offen“) are left out, and without any genre in the catalog the menu is not shown.
   Search and filters only
   narrow what is shown; a hidden game keeps its selection and still counts when the round starts.
-  Each row names the game with its genres and Ø Bock. Separate full-width cards for „Letzter Vote“
+  Each row names the game with its genres and Ø Bock. A Vote has no „Antwortart“: every round rates
+  each game with 0 to 5 points, only a runoff asks for exactly one game. Separate full-width cards for „Letzter Vote“
   and „Top 10 nach Bock-Level“; the Top 10 card is collapsible and starts closed.
-  An open round and every closed result use the same presentation and answer controls as an
-  Umfrage of the same answer kind (see „Umfragen“ in [Organisation](organisation-and-event-rules.md)),
+  An open round and every closed result use the same presentation and answer controls as a 0–5
+  Umfrage, a runoff those of an „Einzelauswahl“ (see „Umfragen“ in [Organisation](organisation-and-event-rules.md)),
   minus the poll-only parts: no „Neue Runde“ and no „Wieder öffnen“. The open round is
   one `.event-poll-card` whose header names the round, the participation („X/Y abgegeben“, updated
   through the existing realtime refresh) and the viewer's own state („Abgegeben“ or „Deine Stimme
   fehlt“); admins get a compact „Beenden“ and, directly beside it, a red „Abbrechen“ — no
-  „Aktion“ menu for a single action (the shared menu never holds just one entry). Tags name the
-  answer kind, „höchstens N“ for a limited Mehrfachauswahl, „Anonym“ and „Zwischenstand verborgen“
+  „Aktion“ menu for a single action (the shared menu never holds just one entry). Tags name
+  „Stichwahl“ for a runoff whose title does not say it, „Anonym“ and „Zwischenstand verborgen“
   where they apply; the round info follows. Games are listed alphabetically, one
   Umfrage option row each: name and one compact meta line that starts with the viewer's own Skill
-  („Mein Skill: X“, „–“ without one) followed by the other values, and the Umfrage answer control
-  of the round's kind: the 0–5 number scale, „Passt“/„Notfalls“/„Nein“ or „Wählen“/„Ausgewählt“.
+  („Mein Skill: X“, „–“ without one) followed by the other values, and the Umfrage answer control:
+  the 0–5 number scale, in a runoff „Wählen“/„Ausgewählt“.
   The 0–5 draft meter uses the same blue-to-violet gradient as the revealed result bars. Like every
   Umfrage with a hidden interim result, the empty result column is dropped so the answers sit
   beside the name, and from `--bp-lg` the games fill two columns, read down the left column first,
@@ -357,11 +355,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   preselected for every game that has one; games without an own Bock start unrated. This
   preselection is only a local draft — nothing counts until „Speichern“. No selected number means unrated; pressing the chosen number again clears
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
-  own progress („X von Y bewertet“, „X gewählt“ or „X von N gewählt“) and „Speichern“, enabled once
-  the ballot is valid: every game rated for 0–5, at least one answered game for „Jedes Spiel
-  bewerten“ (the rest stay open), exactly one game for „Einzelauswahl“ and one up to the limit for
-  „Mehrfachauswahl“. A runoff is an „Einzelauswahl“ titled „Stichwahl“ and keeps the anonymity and
-  interim-result setting of the round it decides. „Letzter Vote“ is a collapsible Umfrage card
+  own progress („X von Y bewertet“, in a runoff „X gewählt“) and „Speichern“, enabled once every
+  game is rated (in a runoff: once one game is picked). A runoff is titled „Stichwahl“ and keeps the
+  anonymity and interim-result setting of the round it decides. „Letzter Vote“ is a collapsible Umfrage card
   that starts collapsed and keeps its open state across live re-renders. Expanded latest and
   historical results preserve the server's score ranking and, from `--bp-lg`, fill two columns
   down the left first, then down the right; phones keep one readable column. Each game carries a
@@ -387,11 +383,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   descenders remain visible. The bar/count block uses those text metrics for its optical center.
   „Stimmen ansehen“ — in that header, on every history row and behind each avatar
   stack — opens the Umfrage vote table: numbered legend with each game's summary, one row per
-  voter with their points (a 0 shown as „Spielt nicht“), their Passt/Notfalls/Nein or their picks.
+  voter with their points (a 0 shown as „Spielt nicht“) or their runoff pick.
   An anonymous round offers no „Stimmen ansehen“ and no avatars; its counts stay visible. Results
-  read „N Pkt. · X/Y spielen mit“ for 0–5, the Passt/Notfalls/Nein legend for „Jedes Spiel
-  bewerten“ and „N Stimmen“ for the choices; „Jedes Spiel bewerten“ ranks by Passt, then Notfalls,
-  then fewer Nein. History lists only the rounds before the
+  read „N Pkt. · X/Y spielen mit“, in a runoff „N Stimmen“. History lists only the rounds before the
   latest one as separate collapsible cards. Each retains its compact history row as a header
   (title, date, participation, winner and „Stimmen ansehen“) and independently opens the same
   per-game results as „Letzter Vote“. Cards start closed, preserve their own open state across
@@ -417,12 +411,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   A points ballot rates every game of the round with 0 to 5 points; the server rejects empty or
   incomplete ballots with `400`. Until the round ends, every identity can change and save its
   ballot again: each submission atomically replaces that identity's earlier one, so double taps
-  and concurrent devices leave exactly one ballot. The same holds for the choice and
-  Passt/Notfalls/Nein ballots. With „Zwischenstand verbergen“ (the default) the per-game
+  and concurrent devices leave exactly one ballot. The same holds for a runoff pick. With „Zwischenstand verbergen“ (the default) the per-game
   distribution and who voted how stay hidden from everyone while the round is open, only the
   participation shows; without it the running result and, unless anonymous, the voters are visible
   to the event's participants. After closing, the result is visible to them and, unless the round
-  is anonymous, who voted how. Any member may start a round with any answer kind.
+  is anonymous, who voted how. Any member may start a round; only community admins start a
+  runoff.
   A cancelled round is deleted together with its votes and the next round may reuse its number, so
   the client tells rounds apart by number and start time and never carries a cancelled round's
   ballot over.

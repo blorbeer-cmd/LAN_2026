@@ -2,7 +2,7 @@
 // stack beside an option, the result bar with its counts and the "Stimmen"
 // dialog body (numbered legend plus one person x option table). Both views
 // feed their own data shape into the same markup so a poll and a vote round
-// with the same answer kind read the same way.
+// read the same way; the Passt/Notfalls/Nein pieces serve Umfragen only.
 
 import { avatarHtml, escapeHtml } from './format.js';
 import { icon } from './icons.js';

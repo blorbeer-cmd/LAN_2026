@@ -177,7 +177,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   deadline and the two round settings. The response-mode select is the shared non-searchable app
   select: its list opens below the field in the style of every other dropdown. Every label, the
   options list's included, keeps the same small gap to its field. The Vote start dialog reuses
-  the same response modes, round settings and field layout. The description starts as one line and grows with its text.
+  the same round settings and field layout, but no response mode (a Vote always rates 0–5). The description starts as one line and grows with its text.
   Each option is one compact row with its name, a link icon that opens the note and link fields, the
   active switch and a remove action; the submit sits right-aligned at the dialog's end. Every free option
   may additionally carry a short note and a validated HTTP-/HTTPS-link. A poll can be marked

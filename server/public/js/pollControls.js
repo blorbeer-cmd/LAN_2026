@@ -1,7 +1,8 @@
-// Shared form fields and answer controls of Umfragen and Vote. Both start
-// dialogs offer the same answer kinds and privacy options, and both ballots
-// answer an option or a game with the same Passt/Notfalls/Nein toolbar or
-// Wählen button; only the wording of the details differs per view.
+// Form fields and answer controls of Umfragen, partly shared with Vote: both
+// start dialogs offer the same privacy options („Anonym“, „Zwischenstand
+// verbergen“) and a Vote runoff uses the same Wählen button as a single
+// choice. The answer kind, its limit and the Passt/Notfalls/Nein toolbar
+// belong to Umfragen only; a Vote always rates 0-5.
 
 import { escapeHtml } from './format.js';
 import { infoTooltipHtml } from './infoTooltip.js';
