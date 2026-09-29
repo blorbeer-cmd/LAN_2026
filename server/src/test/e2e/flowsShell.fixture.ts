@@ -2393,7 +2393,7 @@ flowTest('the tournament start link opens the own team and renames it in place',
   const gamesResponse = await page.request.get(`${BASE_URL}/api/games`);
   const gameId = ((await gamesResponse.json()) as Array<{ id: string }>)[0].id;
   const created = await page.request.post(`${BASE_URL}/api/tournaments`, {
-    data: { gameId, format: 'round_robin', teams: [{ playerIds: [alice.id] }, { playerIds: [bob.id] }] },
+    data: { gameId, format: 'round_robin', lobbyName: 'LAN26', teams: [{ playerIds: [alice.id] }, { playerIds: [bob.id] }] },
   });
   assert.equal(created.status(), 201, await created.text());
   const tournament = await created.json() as { id: string; name: string; teams: Array<{ id: string; players: Array<{ id: string }> }> };
