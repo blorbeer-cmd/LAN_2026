@@ -23,6 +23,8 @@ import {
   openEventsView,
   openOrgaTab,
   openProfile,
+  readConnectedBoundingBox,
+  readConnectedBoxShadow,
 } from './flowsShared.fixture';
 import { openMoreViewEntry, setAdminMode } from './navHelpers';
 import { assertControlHeights, assertNoOverflow } from './visualHelpers';
@@ -2452,13 +2454,13 @@ flowTest('the tournament start link opens the own team and renames it in place',
   assert.doesNotMatch(await ownCard.getAttribute('class') ?? '', /search-target-highlight/,
     'a reload of the stored hash does not replay the highlight');
   for (const selector of ['.tournament-team-card.is-mine', '.tournament-fixture.is-mine', '.tournament-lobby-row.is-mine']) {
-    const shadow = await coldPage.locator(selector).first().evaluate((element) => getComputedStyle(element).boxShadow);
+    const shadow = await readConnectedBoxShadow(coldPage.locator(selector).first());
     assert.match(shadow, / 2px 0px 0px/);
     assert.match(shadow, / -2px 0px 0px/, 'the own-team marker appears on both sides');
   }
   const ownCells = coldPage.locator('.tournament-standings tr.is-mine td');
-  assert.match(await ownCells.first().evaluate((element) => getComputedStyle(element).boxShadow), / 2px 0px 0px/);
-  assert.match(await ownCells.last().evaluate((element) => getComputedStyle(element).boxShadow), / -2px 0px 0px/);
+  assert.match(await readConnectedBoxShadow(ownCells.first()), / 2px 0px 0px/);
+  assert.match(await readConnectedBoxShadow(ownCells.last()), / -2px 0px 0px/);
 });
 
 flowTest('correcting an early K.O. winner warns before the final and third-place match are reset', async (t) => {
@@ -2501,16 +2503,17 @@ flowTest('correcting an early K.O. winner warns before the final and third-place
   }
 
   await page.goto(`${BASE_URL}/#tournaments/${tournament.id}`);
-  // The third-place match sits in the tree, below the final's column.
+  // The third-place match sits in the tree, directly below the final.
   const thirdPlaceBox = page.locator('[data-bracket-third-place] .bracket-match');
   await thirdPlaceBox.waitFor();
   assert.equal((await page.locator('.bracket-third-place-title').textContent())?.trim(), 'Spiel um Platz 3');
   const [finalBox, thirdBox] = await Promise.all([
-    page.locator(`.bracket-final-row > .bracket-node > .bracket-match:has([data-open-result="${final.id}"])`).boundingBox(),
-    thirdPlaceBox.boundingBox(),
+    readConnectedBoundingBox(page.locator(`.bracket-final-row > .bracket-node > .bracket-match:has([data-open-result="${final.id}"])`)),
+    readConnectedBoundingBox(thirdPlaceBox),
   ]);
-  assert.ok(finalBox && thirdBox && Math.abs(finalBox.x - thirdBox.x) < 1 && thirdBox.y > finalBox.y,
-    `third-place match lines up below the final (${JSON.stringify({ finalBox, thirdBox })})`);
+  assert.ok(Math.abs(finalBox.x - thirdBox.x) < 1 && thirdBox.y > finalBox.y + finalBox.height
+    && thirdBox.y - (finalBox.y + finalBox.height) < 60,
+    `third-place match lines up closely below the final (${JSON.stringify({ finalBox, thirdBox })})`);
   await page.locator(`[data-open-result="${semiFinals[0].id}"]`).click();
   await page.locator('.modal label.tournament-result-pick:has(input[value="1"])').click();
   await page.locator('.modal [data-result-save]').click();

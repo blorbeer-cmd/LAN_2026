@@ -64,7 +64,7 @@ const TRACKING_BUTTON_HELP = `Schaltet die Erfassung für dieses Event ein und a
 const TRACKING_START_CONFIRM = (name) => `Tracking für „${name}“ starten? ${TRACKING_SCOPE_SENTENCE}`;
 const TRACKING_STOP_CONFIRM = (name) =>
   `Tracking für „${name}“ stoppen? Laufende Spielzeiten werden abgeschlossen und der Live-Status geleert; bereits erfasste Spielzeit und der Event-Workspace bleiben erhalten.`;
-const KIOSK_HELP = 'Jedes LAN-Event hat ein eigenes Broadcast-Konto mit gemeinsamem Passwort. „Broadcast öffnen“ meldet es automatisch an.';
+const KIOSK_HELP = 'Jedes LAN-Event hat ein eigenes Broadcast-Konto mit gemeinsamem Passwort. „Broadcast öffnen“ öffnet das gewählte Event in einem eigenen Tab.';
 const expandedEventParticipants = new Set();
 // Mirrors foodOrders.js's card-header-toggle pattern: an event card becomes
 // collapsible only once its list holds more than one card (a lone card gets
@@ -133,11 +133,10 @@ function renderKioskSection() {
     .sort((a, b) => a.name.localeCompare(b.name, 'de'));
   const rows = events
     .map((event, index) => {
-      const username = `kiosk-${event.id}`;
       return profileRow({
         title: escapeHtml(event.name),
         meta: eventStatusBadgeHtml(event),
-        action: `<a href="/kiosk.html?account=${encodeURIComponent(username)}" target="_blank" rel="noopener" class="btn btn-sm kiosk-open-link">Broadcast öffnen</a>`,
+        action: `<form action="/api/admin/kiosk-handoff?eventId=${encodeURIComponent(event.id)}" method="post" target="_blank" rel="noopener"><button type="submit" class="btn btn-sm kiosk-open-link">Broadcast öffnen</button></form>`,
         className: columnRowClass(index, events.length),
       });
     })
