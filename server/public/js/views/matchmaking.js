@@ -437,13 +437,13 @@ function openDrawTournamentDialog(draw) {
           ${hasLeague ? `<label class="check-row"><input type="checkbox" id="draw-tournament-two-legged" ${form.twoLegged ? 'checked' : ''} /> Hin- & Rückrunde${form.format === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>` : ''}
           <label class="check-row"><input type="checkbox" id="draw-tournament-track-score" ${form.trackScore ? 'checked' : ''} /> Ergebnisse inkl. Punktestand</label>
         </div>
-        <div class="field-row event-poll-form-pair">
-          <div><span class="title-with-info"><label class="field-label" for="draw-tournament-lobby">Lobby-Basisname</label>${infoTooltipHtml(
+        <div class="field-row">
+          <div><span class="title-with-info field-label"><label for="draw-tournament-lobby">Lobby-Basisname</label>${infoTooltipHtml(
               'draw-tournament-lobby-help',
               'Lobby-Basisname',
               'Aus dem Basisnamen wird für jede gleichzeitig spielbare Paarung ein eindeutiger Lobbyname erzeugt. Das zuerst genannte Team eröffnet die Lobby.'
             )}</span><input type="text" id="draw-tournament-lobby" maxlength="60" placeholder="LAN26" value="${escapeHtml(lobby.name)}" /></div>
-          <div><span class="title-with-info"><label class="field-label" for="draw-tournament-password">Lobby-Passwort</label></span><input type="text" id="draw-tournament-password" maxlength="60" placeholder="zocken123" value="${escapeHtml(lobby.password)}" /></div>
+          <div><label class="field-label" for="draw-tournament-password">Lobby-Passwort</label><input type="text" id="draw-tournament-password" maxlength="60" placeholder="zocken123" value="${escapeHtml(lobby.password)}" /></div>
         </div>
         <div class="draw-tournament-footer"><button type="submit" class="btn btn-primary btn-sm">Turnier erstellen</button></div>
       </form>`;
@@ -1175,15 +1175,6 @@ export function renderMatchmaking(container, ctx) {
           renderTrailing: (player) => playerSkillHtml(player, selectedGameId),
         })}
         <div class="card-footer-actions row" style="justify-content:flex-end;flex-wrap:wrap;">
-          <div class="row">
-            <button type="button" class="btn btn-primary btn-sm" id="mm-generate" ${drawReady ? '' : 'disabled'}>Teams auslosen</button>
-            ${drawReady ? '' : infoTooltipHtml(
-                'matchmaking-draw-disabled-help',
-                'Warum ist „Teams auslosen“ deaktiviert?',
-                drawDisabledReason,
-                'warning'
-              )}
-          </div>
           <div class="check-row" style="padding:0;border-bottom:0;">
             <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
             <span class="title-with-info tournament-option-label">
@@ -1194,6 +1185,15 @@ export function renderMatchmaking(container, ctx) {
                 'Sitznachbarn werden nach Möglichkeit in dasselbe Team gelost. Die Skill-Balance hat Vorrang, wenn beides nicht gleichzeitig möglich ist.'
               )}
             </span>
+          </div>
+          <div class="row">
+            <button type="button" class="btn btn-primary btn-sm" id="mm-generate" ${drawReady ? '' : 'disabled'}>Teams auslosen</button>
+            ${drawReady ? '' : infoTooltipHtml(
+                'matchmaking-draw-disabled-help',
+                'Warum ist „Teams auslosen“ deaktiviert?',
+                drawDisabledReason,
+                'warning'
+              )}
           </div>
         </div>
       </section>` : ''}

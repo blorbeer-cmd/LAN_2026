@@ -1106,6 +1106,10 @@ textarea {
   --scale-low: #9bb7f5;
   --scale-high: #536dff;
 }
+.rating-scale--vote {
+  --scale-low: var(--accent);
+  --scale-high: var(--accent-2);
+}
 .rating-scale .event-poll-response-toolbar .btn.is-selected {
   box-shadow: inset 0 0 0 1px var(--scale-high);
   color: var(--scale-high);

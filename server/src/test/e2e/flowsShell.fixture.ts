@@ -2236,9 +2236,9 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   assert.equal(await page.locator('#draw-tournament-two-legged').count(), 0, 'K.O. has no second leg');
   for (const width of [390, 1024]) {
     await page.setViewportSize({ width, height: 844 });
-    const fields = await page.locator('.draw-tournament-form .event-poll-form-pair').evaluate((pair) =>
+    const fields = await page.locator('.draw-tournament-form .field-row:has(#draw-tournament-lobby)').evaluate((pair) =>
       Array.from(pair.children).map((field) => {
-        const label = field.querySelector('.title-with-info')!.getBoundingClientRect();
+        const label = field.querySelector('label')!.getBoundingClientRect();
         const input = field.querySelector('input')!.getBoundingClientRect();
         return { gap: Math.round(input.top - label.bottom), top: Math.round(input.top) };
       }));

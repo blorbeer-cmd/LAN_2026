@@ -19,7 +19,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 - **In-card footer actions** — `.card-footer-actions` sets a card's primary action(s) off from a
   long preceding list (vote game rows, player-selection grids) with a hairline top border. It
   scrolls with the rest of the card like any other content. Used for the „Teams auslosen“/„Draft
-  starten“ actions in Team formation and Tournament creation; Vote's open round uses the Umfrage
+  starten“ actions in Team formation and Tournament creation. Vote's new-round action follows
+  the game selection with the same footer spacing but without a divider; its open round uses the Umfrage
   footer instead. This replaced an
   earlier `position: sticky` treatment (issue #557) that pinned the bar to the bottom of the
   viewport while its card scrolled through: the pinned bar briefly covered whatever list row
@@ -43,7 +44,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   duplicate tooltip or empty-state instruction. `.captain-selection-group` keeps its label close to
   the associated player grid. Both selections use the standard checkbox-card state without an
   additional selected-card highlight. „Teams auslosen“ and „Draft starten“ are compact gradient buttons at the bottom
-  right; „Sitznachbarn“ sits directly to the right of „Teams auslosen“ on the same center line
+  right; „Sitznachbarn“ sits directly to the left of „Teams auslosen“ on the same center line
   within the separated footer, wrapping as a whole option when space is insufficient.
   The captain action stays labeled simply „Draft starten“ without repeating participant counts already visible in the
   selections. The draw and draft participant grids each show a visible, named search field
@@ -324,7 +325,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   „Aktion“ menu for a single action (the shared menu never holds just one entry). A „Zwischenstand verborgen“ tag and the round info follow. Games are listed alphabetically, one
   Umfrage option row each: name and one compact meta line that starts with the viewer's own Skill
   („Mein Skill: X“, „–“ without one) followed by the other values, and the same 0–5 number scale
-  as an Umfrage rating as the answer control. Like every Umfrage with a hidden interim result, the
+  as an Umfrage rating as the answer control. Its draft meter uses the same blue-to-violet gradient
+  as the revealed result bars. Like every Umfrage with a hidden interim result, the
   empty result column is dropped so the numbers sit beside the name, and from `--bp-lg` the games
   fill two columns, read down the left column first, then the right one. A ballot the viewer has not saved yet in this round starts with the own Bock
   preselected for every game that has one; games without an own Bock start unrated. This

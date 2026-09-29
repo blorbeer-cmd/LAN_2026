@@ -205,9 +205,9 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
       const button = footer.querySelector('#mm-generate')!.getBoundingClientRect();
       const option = footer.querySelector('#mm-avoid-adjacent')!.getBoundingClientRect();
       return { offset: Math.abs(button.top + button.height / 2 - option.top - option.height / 2),
-        followsButton: option.left > button.right };
+        precedesButton: option.right < button.left };
     });
-    assert.ok(drawActions.offset <= 1 && drawActions.followsButton, JSON.stringify(drawActions));
+    assert.ok(drawActions.offset <= 1 && drawActions.precedesButton, JSON.stringify(drawActions));
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.click('#mm-generate');
@@ -378,6 +378,8 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(mine.entries.filter((entry: { points: number }) => entry.points === 1).length, 1);
   await roundCard.locator('[data-vote-participation]:text-is("1/2 abgegeben")').waitFor();
 
+  const ballotGradient = await ballotRows.first().locator('.rating-scale-meter-fill').evaluate((fill) =>
+    getComputedStyle(fill).backgroundImage);
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
   // Closing reveals the result as a collapsed Umfrage card: the header names
@@ -411,6 +413,8 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     totalGames
   );
   assert.equal(await currentVote.locator('.event-poll-option.is-winner .vote-win-chip').count(), 2);
+  assert.equal(await currentVote.locator('.event-poll-bar-fill.is-choice').first().evaluate((fill) =>
+    getComputedStyle(fill).backgroundImage), ballotGradient, 'ballot and result bars use the same gradient');
   await page.setViewportSize({ width: 1280, height: 844 });
   assert.equal(await currentVote.evaluate((card) => {
     const header = card.querySelector('.event-poll-card-toggle')!.getBoundingClientRect();
