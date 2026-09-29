@@ -104,7 +104,12 @@ async function createPoll(
   assert.equal(await page.getByText('2 bis 8', { exact: true }).count(), 0);
   assert.equal(await page.locator('#poll-max').getAttribute('max'), null);
   await page.fill('#poll-title', title);
-  await page.selectOption('#poll-mode', mode);
+  // The answer kind is the app's own select, not a native <select>.
+  if ((await page.locator('#poll-mode').inputValue()) !== mode) {
+    await page.click('#poll-mode-search');
+    await page.click(`#poll-mode-list [data-search-select-value="${mode}"]`);
+  }
+  assert.equal(await page.locator('#poll-mode').inputValue(), mode);
   if (anonymous) await page.check('#poll-anonymous');
   assert.equal(await page.locator('#poll-hide-live-results').isChecked(), true, 'a new round hides its interim result by default');
   if (!hideLiveResults) await page.uncheck('#poll-hide-live-results');

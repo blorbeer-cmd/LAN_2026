@@ -1024,7 +1024,9 @@ textarea {
 .event-poll-counts {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 var(--space-3);
+  /* Trimmed count text has no leading of its own, so wrapped legend lines
+     need the row gap to stay apart. */
+  gap: var(--space-1) var(--space-3);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   line-height: var(--control-line-height);
@@ -1238,18 +1240,15 @@ textarea {
   color: var(--text-muted);
   text-decoration: line-through;
 }
-/* Paired fields keep their labels on one line height, with or without an
-   info trigger, so both inputs start on the same edge. */
-.event-poll-form-pair > div > .field-label:first-child,
+/* Paired fields keep the regular field-label gap of every other field. A
+   help trigger beside a label keeps its 32px target through negative block
+   margin, so labels with and without help share one line height and both
+   inputs start on the same edge. */
 .event-poll-form-pair > div > .title-with-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: var(--control-height);
   margin-bottom: var(--space-1);
 }
-.event-poll-form-pair > div > .title-with-info > .field-label {
-  margin-bottom: 0;
+.event-poll-form-pair > div > .title-with-info .info-tooltip-trigger {
+  margin-block: calc(-1 * var(--space-3));
 }
 .event-poll-form-flags {
   display: flex;
@@ -2059,6 +2058,12 @@ select {
 }
 .search-select.is-open .search-select-toggle .ui-icon {
   transform: rotate(180deg);
+}
+/* A non-searchable select reads as a choice, not as a text field. */
+.search-select.is-readonly .search-select-control > input {
+  cursor: pointer;
+  caret-color: transparent;
+  text-overflow: ellipsis;
 }
 /* Busy state while a selection triggers an in-flight request (e.g. the
    topbar workspace switcher awaiting its activate call) — same treatment as
@@ -3200,6 +3205,16 @@ button.profile-row-main {
   align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
+}
+/* Draw team names derive from player names (up to 30 characters, often one
+   word), so the title shrinks and wraps inside the card instead of pushing the
+   skill total and neighbouring cards aside. */
+.matchmaking-draw-team-title {
+  min-width: 0;
+}
+.matchmaking-draw-team-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .matchmaking-draw-team .team-card-header .tournament-fixture-score {
   padding-block: 0;

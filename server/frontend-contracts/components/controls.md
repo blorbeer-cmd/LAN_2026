@@ -53,8 +53,9 @@ Bedeutung und Breite werden mit der Basisvariante kombiniert.
 | `number-stepper` | zwei interne Hälften des 32-px-Felds | interne Spalte |
 
 Es gibt keine `.btn-touch`-Klasse und keine Variante `kompakt-touch`. Eine segmentierte Einstellung
-besitzt genau zwei Optionen; ab drei benannten exklusiven Optionen MUSS ein natives `select`
-verwendet werden. Selection-Toolbars, Filterchips, Tabs und Feasibility-Abstimmungen sind keine
+besitzt genau zwei Optionen; ab drei benannten exklusiven Optionen MUSS ein Select verwendet
+werden: ein natives `select` oder die nicht durchsuchbare gemeinsame Auswahl
+(`searchSelectHtml(..., { searchable: false })`), deren Liste im App-Stil unter dem Feld öffnet. Selection-Toolbars, Filterchips, Tabs und Feasibility-Abstimmungen sind keine
 segmentierte Einstellung im Sinne dieser Regel.
 
 ### Strukturziele mit 44 px
@@ -181,6 +182,12 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
 - Sortierung und Filterauslöser sind gleich breit, kompakt und linksbündig. Kurze Sortiertexte vermeiden
   abgeschnittene Werte. Die Suche nutzt den verbleibenden Platz.
 - Auf schmalen Ansichten steht die Suche über Sortierung und Filter. Das Filtermenü erscheint oberhalb der Hauptnavigation.
+- Die Spieleliste im Dialog „Abstimmung starten“ (Vote) verwendet dieselbe Werkzeugleiste mit
+  denselben Sortierauswahlen; ihr Filtermenü enthält nur die Genres, ohne „Offene Bewertungen“, und
+  entfällt, solange kein Spiel ein Genre trägt. Dort steht die Suche immer allein in der ersten Zeile;
+  darunter folgen der Sammelschalter der Auswahl, Sortierung und Filter. Im Dialog öffnen beide
+  Menüs auch auf Telefonen direkt unter ihrem Auslöser, weil die Hauptnavigation verdeckt ist
+  (`registry:vote-game-toolbar`, `registry:vote-game-menu-panel`).
 
 Registry-Zuordnung: `registry:game-catalog-toolbar`, `registry:game-catalog-sort-trigger`,
 `registry:game-catalog-sort-option`, `registry:game-catalog-filter-trigger`,
@@ -215,7 +222,7 @@ einen Zustandsmarker. Diese Grenzen gelten auch neben einer Basisklasse und in a
 
 Die Standardfamilien `date-fields`, `search-select`, `profile-controls`, `row-icons`,
 `game-catalog-link-action`, `arrival-controls`, `filter-chip`, `section-tab`, `poll-choice`,
-`vote-fields`, `food-fields`, `payment-controls`, `result-fields`, `arcade-mute`
+`food-fields`, `payment-controls`, `result-fields`, `arcade-mute`
 und `music-controls` verwenden die passende Basisvariante.
 
 Die internen Familien `selection-toolbar`, `number-stepper`, `food-action-slots`,
@@ -307,8 +314,10 @@ Verlauf von `--accent` zu `--accent-2` wie im Ergebnisbalken, mit `--accent-2` f
 Die Balken folgen dem lokalen Entwurf, bleiben bei 0 leer und sind ohne Bewertung gestrichelt.
 Der gesamte Zahlen-/Balkenblock steht auf Telefonen unter dem Optionstitel und wird als Einheit
 zwischen den Zeilentrennern zentriert; die Zahlen bleiben tastaturbedienbar.
-Gepaarte Formularfelder mit Hilfe verwenden `.event-poll-form-pair`: ihre Labelzeile reserviert
-`--control-height` und lässt `--space-1` (4 px) zum Eingabefeld. Der Turnierdialog verwendet
+Gepaarte Formularfelder mit Hilfe verwenden `.event-poll-form-pair`: wie jedes andere Feld des
+Dialogs lassen sie `--space-1` (4 px) vom Beschriftungstext zum Eingabefeld. Ein Info-Trigger neben
+dem Label behält seine 32-px-Trefferfläche über negativen Blockabstand und vergrößert die
+Labelzeile nicht; beide Felder eines Paars beginnen an derselben Kante. Der Turnierdialog verwendet
 die normale `.field-label`-Zeile mit 4 px Abstand ab dem Beschriftungstext; sein vorhandener
 Info-Trigger-Ausgleich verhindert eine zusätzliche Labelhöhe durch die Hilfe.
 
@@ -408,7 +417,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
 | `profile-preview` | Nichtinteraktive Vorschau folgt der benachbarten Controlzeile. |
 | `arrival-sort-mobile`, `interactive-chip` | Bestehende Formular-/Sortierkontexte behalten Platzierung und kurze eigene Labels bei 32 px. |
-| `team-move-picker`, `vote-start-field` | Der transparente Team-Picker füllt seinen Iconplatz; das Info-Feld hat im einzeiligen Startformular die Höhe des Titelfelds. |
+| `team-move-picker` | Der transparente Team-Picker füllt seinen Iconplatz. |
 | `food-position-slots`, `food-payment-marker`, `food-header` | Gleich breite Aktionsplätze der Personenzeile, 32-px-Zahlungsaktion und permanenter 44-px-Kartenkopf. |
 | `food-open-section-action`, `food-amount-copy`, `food-inline-remove` | Die Kopfaktion der offenen Bestellungen bricht nicht um; Kopieren steht als 32-px-Quadrat vor dem Betrag; Löschen einer eigenen Position ist ein zeilenhohes Symbol hinter dem Gericht. |
 | `arcade-toolbar-buttons`, `challenge-test-disclosure` | Standardhöhe mit echtem Textumbruch; Segment-/Erstellungsgeometrie bleibt beim Pilotvertrag. |
@@ -488,7 +497,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 
 
-- `registry:vote-fields`: Textarea minimum; rows/content determine the multiline state.
 
 - `registry:food-fields`: Standard fields and add button retain their form-column placement.
 
@@ -600,7 +608,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:team-move-picker`: Transparent native team picker covers its icon slot on touch layouts.
 
-- `registry:vote-start-field`: The info textarea matches the single-line title field in the one-row start form.
 
 - `registry:arrival-sort-mobile`: Bordered phone sorting controls retain the same single-line height.
 

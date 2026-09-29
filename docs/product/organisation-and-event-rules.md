@@ -172,10 +172,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   answer controls each use the full width of their option within that column. Phones keep the stacked layout.
   The tab adds no own page heading or explanatory subtitle below the Orga tabs because the active
   event is already visible in the top-right workspace switcher. Its compact „Umfrage starten“
-  action has no decorative plus sign. The create dialog uses ordinary global text fields, one native
+  action has no decorative plus sign. The create dialog uses ordinary global text fields, one
   select for the four response modes („Jede Option bewerten“, „Einzelauswahl“, „Mehrfachauswahl“,
   „Bewertung 0 bis 5“) paired with the deadline in one row, and contextual info only beside the
-  deadline and the two round settings. The description starts as one line and grows with its text.
+  deadline and the two round settings. The response-mode select is the shared non-searchable app
+  select: its list opens below the field in the style of every other dropdown. Every label, the
+  options list's included, keeps the same small gap to its field. The Vote start dialog reuses
+  the same round settings and field layout, but no response mode (a Vote always rates 0–5). The description starts as one line and grows with its text.
   Each option is one compact row with its name, a link icon that opens the note and link fields, the
   active switch and a remove action; the submit sits right-aligned at the dialog's end. Every free option
   may additionally carry a short note and a validated HTTP-/HTTPS-link. A poll can be marked
