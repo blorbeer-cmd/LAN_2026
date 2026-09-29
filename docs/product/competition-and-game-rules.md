@@ -89,11 +89,16 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   offers a neutral „+“ for a single result and, rightmost, „Turnier erstellen“ (the primary
   gradient on the fresh draw, neutral in the open section); a recorded draw offers a pencil before „Rematch“;
   every open or recorded game card offers admins and owners a trash action with confirmation; regular members see no delete controls, including on the tournament detail page. Removing a recorded draw removes its linked result from the ranking. A tournament tile offers „Turnier“ and, for admins and owners, a trash action using the existing tournament delete behavior; already recorded tournament matches remain in the ranking, and the confirmation explains this. Its expanded state shows tournament teams,
-  players and available standings or match totals. A participating player's game title is bold in a collapsed Match tile; only their name is bold in expanded teams. Open draws show every player's skill. Completed tournament headers show the winning team with „Win“ and the tournament name; team details use the same compact place numbers as Match teams in the team-name line, including the finalist's second place, with an explicit place label in the title and accessible name. The number replaces the extra Win chip inside the team card; table points stay beside the team name. Knockout exits without a distinct place appear in the context line below the players. The result pencil precedes „Rematch“; tournament actions
+  players and available standings or match totals. A participating player's game title is bold in a collapsed Match tile; only their name is bold in expanded teams. Open draws show every player's skill. Completed tournament headers show the winning team with „Win“ and the tournament name; team details use the same compact place numbers as Match teams in the team-name line, including the finalist's second place, with an explicit place label in the title and accessible name. The number replaces the extra Win chip inside the team card; table points stay beside the team name. With a played third-place match, the semifinal losers carry places 3 and 4 the same way. Knockout exits without a distinct place appear in the context line below the players. The result pencil precedes „Rematch“; tournament actions
   need no empty action slot.
   „Turnier erstellen“ opens one compact dialog: Turnierformat, the group fields for „Gruppenphase +
   K.O.“, one name field per team (at most 30 characters; a drafted team is prefilled as „Team <Captain>“, a drawn one as
-  „Team 1“ …), the options side by side and the optional lobby base name and password. The server
+  „Team 1“ …), the options side by side („Hin- & Rückrunde“ for league-based formats, „Spiel um
+  Platz 3“ for knockout-based formats, „Ergebnisse inkl. Punktestand“) and the optional lobby base
+  name and password. „Spiel um Platz 3“ is off by default and needs four knockout teams: a pure
+  knockout with fewer drawn teams does not offer it, and after a group stage with fewer advancers the
+  server ignores it. When on, both semifinal losers meet for places 3 and 4, and the tournament
+  completes only once the final and this match are decided. A league ignores it. The server
   claims the draw in the same transaction that creates the tournament, so one lineup becomes either
   a single result or a tournament, never both (`409` for the loser of a race). The server draws
   the first-round bracket pairings and the group split from a random team order; team numbering
@@ -447,7 +452,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   accent rails: a knockout bracket card, stacked „Tabelle“ and „Spielplan“ cards for a league, and
   one card per group with its table and rounds plus a „K.O.-Runde“ card. A knockout phase with
   exactly one fixture is a 1:1 row under „Finale“, including pure two-team knockout tournaments;
-  larger phases keep the bracket and a phase not yet created keeps its empty state. Fixtures read like a
+  larger phases keep the bracket and a phase not yet created keeps its empty state. A third-place match
+  sits inside the bracket card below the tree, in the final's column, under the small caption
+  „Spiel um Platz 3“ and with the same match box and result action. Fixtures read like a
   scoreboard (home team right-aligned, result chip centered, away team left-aligned); winners are
   emphasized and losers muted, with a green winner score or a „‹ Win“/„Win ›“ chip without a score.
   League and group round fixtures use the same grouping and divider treatment. Fixtures, knockout
@@ -473,7 +480,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   detail page then leads with a „Turnier beendet“ card showing the winning team (knockout final
   winner, or the league leader) with its „Win“ chip and players. „Aktive Lobbys“ is one card with its
   heading inside; each currently playable pairing is a flat hairline row with the matchup, a muted
-  line naming phase and hosting team („Halbfinale · Team 1 eröffnet“) and, on the right, the lobby
+  line naming phase and hosting team („Halbfinale · Team 1 eröffnet“, „Spiel um Platz 3 · Team 2
+  eröffnet“) and, on the right, the lobby
   name and password as non-wrapping code chips with equal-width labels. A stored lobby base name
   receives a deterministic phase/round/match suffix, so parallel pairings always have distinct
   lobby names without mutable lobby assignments. League and group modes show only the earliest
@@ -484,5 +492,5 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   tooltips.
   Bracket matches keep a fixed height with an internal trailing action column. Tournament details
   show the full format configuration as plain text (for example „Liga · Hin- & Rückrunde ·
-  Punktestand“). Tournament overview cards use the compact format names without explanatory
+  Punktestand“ or „K.O.-Turnier · Spiel um Platz 3“). Tournament overview cards use the compact format names without explanatory
   parentheses.

@@ -729,6 +729,26 @@ button.bracket-side {
   align-items: center;
   gap: var(--bracket-round-gap);
 }
+/* The third-place match sits in the final's column below the tree; the
+   empty cells mirror the round-title columns so the box lines up. */
+.bracket-third-place-row {
+  display: flex;
+  gap: var(--bracket-round-gap);
+  margin-top: var(--space-5);
+}
+.bracket-third-place-row > div {
+  width: var(--bracket-match-w);
+  flex-shrink: 0;
+}
+.bracket-third-place-title {
+  margin-bottom: var(--space-2);
+  text-align: center;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
 .bracket-champion {
   width: var(--bracket-match-w);
   flex-shrink: 0;

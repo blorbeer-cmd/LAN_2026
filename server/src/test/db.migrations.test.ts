@@ -763,10 +763,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 114);
+  assert.equal(migrations.length, 115);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 114 }, (_, index) => index + 1),
+    Array.from({ length: 115 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -837,6 +837,14 @@ test('records the complete migration history and does not duplicate it on restar
     'legacy players default to being named in the newsticker',
   );
   assert.ok(playerColumns.some((column) => column.name === 'test_owner_group_id'));
+  const tournamentColumns = migrated.prepare('PRAGMA table_info(tournaments)').all() as Array<{ name: string; dflt_value: string | null }>;
+  assert.equal(
+    tournamentColumns.find((column) => column.name === 'third_place_match')?.dflt_value,
+    '0',
+    'legacy tournaments keep their plain knockout without a third-place match',
+  );
+  const tournamentMatchColumns = migrated.prepare('PRAGMA table_info(tournament_matches)').all() as Array<{ name: string; dflt_value: string | null }>;
+  assert.equal(tournamentMatchColumns.find((column) => column.name === 'is_third_place')?.dflt_value, '0');
   assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'admin_log'").get());
   for (const table of ['groups', 'group_memberships', 'group_invites']) {
     assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
@@ -1360,8 +1368,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 114 }, (_, index) => index + 1),
-    'every version 1..114 runs exactly once',
+    Array.from({ length: 115 }, (_, index) => index + 1),
+    'every version 1..115 runs exactly once',
   );
 });
 
@@ -1499,11 +1507,11 @@ test('migration 111 lets votes store a deliberate 0, keeps existing rows and rol
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 114 adds poll answer kinds to vote rounds, keeps rounds and votes and rolls back on failure', () => {
+test('migration 115 adds poll answer kinds to vote rounds, keeps rounds and votes and rolls back on failure', () => {
   const dbFile = makeTempDbPath('vote-poll-options');
   runMigrations(dbFile);
 
-  // Rebuild the pre-114 shape (two modes, no privacy columns) with one closed
+  // Rebuild the pre-115 shape (two modes, no privacy columns) with one closed
   // round and its vote.
   const fixture = new Database(dbFile);
   fixture.pragma('foreign_keys = OFF');
@@ -1530,7 +1538,7 @@ test('migration 114 adds poll answer kinds to vote rounds, keeps rounds and vote
     CREATE INDEX idx_vote_rounds_group_event ON vote_rounds(group_id, event_id, round DESC);
     INSERT INTO vote_rounds (group_id, round, event_id, started_at, closed_at, mode, title)
       VALUES ('default-group', 1, NULL, ${now}, ${now}, 'points', 'Freitag');
-    DELETE FROM schema_migrations WHERE version = 114;
+    DELETE FROM schema_migrations WHERE version = 115;
   `);
   const gameId = (fixture.prepare("SELECT id FROM games WHERE group_id = 'default-group' LIMIT 1").get() as { id: string }).id;
   fixture.exec('ALTER TABLE votes DROP COLUMN response');
@@ -1541,12 +1549,12 @@ test('migration 114 adds poll answer kinds to vote rounds, keeps rounds and vote
     )
     .run(gameId, now);
   // Blocks the rebuild's first statement, so the whole migration must roll back.
-  fixture.exec('CREATE TABLE vote_rounds_poll_options_114 (blocking INTEGER)');
+  fixture.exec('CREATE TABLE vote_rounds_poll_options_115 (blocking INTEGER)');
   fixture.close();
 
-  assert.throws(() => runMigrations(dbFile), /vote_rounds_poll_options_114/);
+  assert.throws(() => runMigrations(dbFile), /vote_rounds_poll_options_115/);
   const afterFailure = new Database(dbFile, { readonly: true });
-  assert.equal(afterFailure.prepare('SELECT 1 FROM schema_migrations WHERE version = 114').get(), undefined);
+  assert.equal(afterFailure.prepare('SELECT 1 FROM schema_migrations WHERE version = 115').get(), undefined);
   assert.doesNotMatch(
     (afterFailure.prepare("SELECT sql FROM sqlite_master WHERE name = 'vote_rounds'").get() as { sql: string }).sql,
     /hide_live_results/,
@@ -1556,7 +1564,7 @@ test('migration 114 adds poll answer kinds to vote rounds, keeps rounds and vote
   afterFailure.close();
 
   const retry = new Database(dbFile);
-  retry.exec('DROP TABLE vote_rounds_poll_options_114');
+  retry.exec('DROP TABLE vote_rounds_poll_options_115');
   retry.close();
   assert.doesNotThrow(() => runMigrations(dbFile));
   assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');

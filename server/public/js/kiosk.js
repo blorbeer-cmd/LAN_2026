@@ -738,6 +738,7 @@ function renderTournament(t) {
       }
       return `
         <div class="kiosk-match-card">
+          ${m.isThirdPlace ? '<div class="kiosk-match-label">Spiel um Platz 3</div>' : ''}
           <div class="kiosk-match-team ${m.winnerTeamId === m.teamAId ? 'is-winner' : ''}"><strong>${teamName(m.teamAId)}</strong>${m.winnerTeamId === m.teamAId ? '<span class="badge badge-playing">Sieger</span>' : ''}</div>
           <div class="kiosk-match-team ${m.winnerTeamId === m.teamBId ? 'is-winner' : ''}"><strong>${teamName(m.teamBId)}</strong>${m.winnerTeamId === m.teamBId ? '<span class="badge badge-playing">Sieger</span>' : ''}</div>
         </div>`;
