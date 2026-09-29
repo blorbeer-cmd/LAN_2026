@@ -31,6 +31,22 @@ let avoidAdjacentOpponents = false;
 // for the same game (e.g. from an unrelated realtime update).
 let avoidAdjacentOpponentsGameId = null;
 let teamCountValue = '2';
+
+// A draw cannot form more teams than it has players (POST /api/matchmaking
+// refuses that too), so the "Anzahl Teams" field is capped at the current
+// selection: typing a larger number snaps to it, and deselecting players pulls
+// an already-higher value down with them. The floor stays at the field's
+// minimum of 2 so an (almost) empty selection never produces an invalid cap;
+// an empty field (automatic team count) is left alone.
+export function teamCountMax(selectedCount) {
+  return Math.max(2, selectedCount);
+}
+
+export function capTeamCountValue(value, selectedCount) {
+  const max = teamCountMax(selectedCount);
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > max ? String(max) : value;
+}
 let drawPlayerSearchQuery = '';
 
 // Which of the two team-formation workflows is currently open below the
@@ -1092,6 +1108,7 @@ export function renderMatchmaking(container, ctx) {
   checkedIds = pruneRosterSelection(checkedIds, eventPlayers());
   draftPlayerIds = pruneRosterSelection(draftPlayerIds, eventPlayers());
   draftCaptainIds = new Set([...draftCaptainIds].filter((id) => draftPlayerIds.has(id)));
+  teamCountValue = capTeamCountValue(teamCountValue, checkedIds.size);
 
   const selectedGameId = pickableGames.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : catalogGames()[0].id;
 
@@ -1170,7 +1187,7 @@ export function renderMatchmaking(container, ctx) {
           selectAllId: 'mm-select-all',
           toolbarLeadingHtml: `<div class="tournament-team-count-field">
             <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
-            <input type="number" id="mm-teamcount" min="2" value="${escapeHtml(teamCountValue)}" />
+            <input type="number" id="mm-teamcount" min="2" max="${teamCountMax(checkedIds.size)}" value="${escapeHtml(teamCountValue)}" />
           </div>`,
           renderTrailing: (player) => playerSkillHtml(player, selectedGameId),
         })}
@@ -1311,7 +1328,8 @@ export function renderMatchmaking(container, ctx) {
   });
 
   container.querySelector('#mm-teamcount')?.addEventListener('input', (event) => {
-    teamCountValue = event.target.value;
+    teamCountValue = capTeamCountValue(event.target.value, checkedIds.size);
+    if (event.target.value !== teamCountValue) event.target.value = teamCountValue;
   });
 
   container.querySelector('#draft-start')?.addEventListener('click', async () => {

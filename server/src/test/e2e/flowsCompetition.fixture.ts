@@ -119,6 +119,10 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // Matchmaking: draw teams for both players.
   await openTeams();
   assert.equal(await page.inputValue('#mm-teamcount'), '2');
+  // The team count is capped at the selected players: typing more snaps back.
+  assert.equal(await page.getAttribute('#mm-teamcount', 'max'), '2');
+  await page.fill('#mm-teamcount', '5');
+  assert.equal(await page.inputValue('#mm-teamcount'), '2');
   // The roster search is an always-visible named field, not a magnifier toggle.
   assert.equal(await page.getAttribute('#mm-player-search', 'placeholder'), 'Spieler suchen');
   await page.fill('#mm-player-search', profileTitle);
