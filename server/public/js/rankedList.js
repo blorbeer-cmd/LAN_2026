@@ -12,6 +12,20 @@ export function rankedListColumnBreak(count) {
   return Math.ceil(count / 2);
 }
 
+// Already ordered result values (a number or a tuple of voting criteria).
+// Equal results share a place; the next place counts all preceding entries.
+export function sharedRankNumbers(values) {
+  const keys = values.map((value) => Array.isArray(value) ? value : [value]);
+  let rank = 1;
+  return keys.map((key, index) => {
+    const previous = keys[index - 1];
+    if (previous && (previous.length !== key.length || key.some((value, part) => value !== previous[part]))) {
+      rank = index + 1;
+    }
+    return rank;
+  });
+}
+
 // Items carry pre-escaped HTML in `title`, `meta` and `value`; `lead` is an
 // optional leading element such as an avatar. `rank` overrides the place
 // number for shared places (ties); it defaults to the position.

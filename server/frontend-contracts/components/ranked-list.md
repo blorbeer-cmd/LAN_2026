@@ -22,6 +22,10 @@ der Aufrufer nach ihrem Wert; eine Liste ohne Rang sortiert die Komponente selbs
 - Markup: `rankedListHtml(items, { ranked = false, label = '' })`
 - Spaltengrenze: `rankedListColumnBreak(count)` liefert den Index der ersten Zeile der rechten
   Spalte (`Math.ceil(count / 2)`).
+- Platzberechnung: `sharedRankNumbers(values)` erhält bereits fachlich absteigend sortierte
+  Zahlen oder Tupel von Ergebniskriterien. Gleiche Werte teilen ihren Platz; Folgeplätze zählen
+  alle vorherigen Einträge mit (zum Beispiel `1, 1, 3`). Stabile Sortierhilfen wie Namen gehören
+  nicht zum Ergebnisschlüssel. Vote, Umfragen und die Top 10 nutzen diese Berechnung.
 - Eintrag: `{ title, meta?, value, lead?, rank?, sortKey? }`. `title`, `meta`, `value` und
   `lead` sind bereits escaptes HTML. `rank` überschreibt die Platznummer bei geteilten Plätzen.
   `sortKey` ist der Klartext für die alphabetische Sortierung; ohne ihn gilt der Titel ohne

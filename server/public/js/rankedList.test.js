@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rankedListColumnBreak, rankedListHtml, sortUnrankedItems } from './rankedList.js';
+import { rankedListColumnBreak, rankedListHtml, sharedRankNumbers, sortUnrankedItems } from './rankedList.js';
 
 const titles = (html) => [...html.matchAll(/class="ranked-list-title">([^<]*)</g)].map((match) => match[1]);
 const ranks = (html) => [...html.matchAll(/class="ranked-list-rank">(\d+)</g)].map((match) => Number(match[1]));
@@ -24,6 +24,10 @@ test('a ranking keeps its order, numbers every place and marks both column tops'
 });
 
 test('shared places keep the number the caller passes', () => {
+  assert.deepEqual(sharedRankNumbers([]), []);
+  assert.deepEqual(sharedRankNumbers([5, 5, 3, 3, 0]), [1, 1, 3, 3, 5]);
+  assert.deepEqual(sharedRankNumbers([0, 0, 0]), [1, 1, 1]);
+  assert.deepEqual(sharedRankNumbers([[3, 2, -1], [3, 2, -1], [3, 1, -1], [2, 2, 0]]), [1, 1, 3, 4]);
   const html = rankedListHtml([{ title: 'A', value: '5', rank: 1 }, { title: 'B', value: '5', rank: 1 }, { title: 'C', value: '3' }], { ranked: true });
   assert.deepEqual(ranks(html), [1, 1, 3]);
 });

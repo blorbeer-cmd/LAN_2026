@@ -712,6 +712,9 @@ textarea {
   gap: var(--space-2);
   padding: var(--card-padding);
 }
+.event-poll-card-header:has(+ .event-poll-card-content:not([hidden])) {
+  padding-bottom: var(--space-3);
+}
 .event-poll-card-toggle {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -870,7 +873,8 @@ textarea {
 }
 .event-poll-round {
   gap: var(--space-4);
-  padding-top: var(--space-4);
+  /* The card header already supplies the gap before the expanded content. */
+  padding-top: 0;
 }
 .event-poll-note {
   margin: 0;
@@ -1102,6 +1106,10 @@ textarea {
   --scale-low: #9bb7f5;
   --scale-high: #536dff;
 }
+.rating-scale--vote {
+  --scale-low: var(--accent);
+  --scale-high: var(--accent-2);
+}
 .rating-scale .event-poll-response-toolbar .btn.is-selected {
   box-shadow: inset 0 0 0 1px var(--scale-high);
   color: var(--scale-high);
@@ -1310,15 +1318,24 @@ textarea {
 @media (min-width: 860px) { /* --bp-lg */
   /* Filled column by column (--compact-rows = half the options, rounded up),
      so the list reads down the left column first, then the right one. */
-  .event-poll-options.is-compact {
+  .event-poll-options.is-compact,
+  .event-poll-options.is-ranked {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: repeat(var(--compact-rows, 1), auto);
     grid-auto-flow: column;
     column-gap: var(--space-7);
   }
-  .event-poll-options.is-compact .event-poll-option.is-column-start {
+  .event-poll-options.is-compact .event-poll-option.is-column-start,
+  .event-poll-options.is-ranked .event-poll-option.is-column-start {
     border-top: 0;
+  }
+  .event-poll-options.is-ranked .event-poll-option {
+    /* Reserve the shared voter column even when an option has no supporters. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 7rem;
+  }
+  .event-poll-options.is-ranked .event-poll-result {
+    margin-inline-end: 0;
   }
 }
 @media (max-width: 639px) { /* --bp-md */
@@ -1365,6 +1382,7 @@ textarea {
     justify-content: flex-end;
   }
   .event-poll-result,
+  .event-poll-option > .rating-scale,
   .event-poll-option > .event-poll-response-toolbar,
   .event-poll-option > .event-poll-choice-control {
     grid-column: 1 / -1;

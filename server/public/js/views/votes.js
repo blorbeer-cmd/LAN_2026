@@ -38,6 +38,7 @@ import { emptyStateHtml } from '../emptyState.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { ratingScaleHtml } from '../ratingScale.js';
 import { skillRatingFor } from '../skillDisplay.js';
+import { sharedRankNumbers } from '../rankedList.js';
 import { voteBreakdownHtml, voterNamesText, voterStackHtml, WIN_CHIP } from '../voteBreakdown.js';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
@@ -261,12 +262,13 @@ function renderRankingColumns(items, rowHtml) {
 // per game to be useful at a glance.
 function renderTop10(results) {
   const top10 = topByPreference(results, 10);
+  const ranks = sharedRankNumbers(top10.map((result) => result.avgPreference ?? -1));
   if (top10.length === 0) {
     return emptyStateHtml('Noch keine Spiele.', { className: 'empty-state-compact' });
   }
   const rowHtml = (r, i) => `
-    <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-      <span class="lb-rank">${i + 1}</span>
+    <div class="lb-row ${ranks[i] === 1 ? 'rank-1' : ''}">
+      <span class="lb-rank">${ranks[i]}</span>
             <span style="flex:1;min-width:0;">
         <div class="player-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.gameName)}</div>
         <div class="muted" style="font-size:var(--font-size-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${topMetaHtml(r)}</div>
@@ -346,6 +348,7 @@ function renderOpenRow(votes, r, draftReady, columnStart = false) {
     // means "not rated yet".
     control = ratingScaleHtml({
       selected: draftPoints.get(r.gameId),
+      tone: 'vote',
       groupLabel: `Punkte für ${r.gameName}`,
       valueLabel: pointsValueText,
       attributes: (value) => `data-vote-points="${r.gameId}" data-points-value="${value}"`,
@@ -441,11 +444,12 @@ function supportersOf(h, gameId) {
     .map(({ ballot }) => ({ playerId: ballot.playerId, name: ballot.name }));
 }
 
-function renderResultRows(h) {
+function renderResultRows(h, columnRows) {
   const maxPoints = Math.max(1, ...h.results.map((r) => r.points));
+  const ranks = sharedRankNumbers(h.results.map((result) => h.mode === 'single' ? result.votes : result.points));
   const winners = new Set(h.winnerGameIds ?? []);
   return h.results
-    .map((r) => {
+    .map((r, index) => {
       const win = winners.has(r.gameId);
       const share = h.mode === 'single' ? r.votes / Math.max(1, h.totalVoters) : r.points / maxPoints;
       const supporters = supportersOf(h, r.gameId);
@@ -455,13 +459,17 @@ function renderResultRows(h) {
         attributes: `data-open-vote-round="${h.round}"`,
       });
       return `
-        <div class="event-poll-option${win ? ' is-winner' : ''}">
-          <div class="event-poll-option-info">
-            <span class="event-poll-option-title-row">
-              <strong>${escapeHtml(r.gameName)}</strong>
-              ${win ? WIN_CHIP : ''}
-            </span>
-            <span class="muted event-poll-option-note">${gameMetaHtml(r)}</span>
+        <div class="event-poll-option${win ? ' is-winner' : ''}${index === columnRows ? ' is-column-start' : ''}">
+          <div class="row" style="gap:var(--space-2);min-width:0;">
+            <span class="lb-rank${ranks[index] === 1 ? ' is-first' : ''}" style="flex-shrink:0;" aria-hidden="true">${ranks[index]}</span>
+            <span class="visually-hidden">Platz ${ranks[index]}</span>
+            <div class="event-poll-option-info">
+              <span class="event-poll-option-title-row">
+                <strong>${escapeHtml(r.gameName)}</strong>
+                ${win ? WIN_CHIP : ''}
+              </span>
+              <span class="muted event-poll-option-note">${gameMetaHtml(r)}</span>
+            </div>
           </div>
           <span class="event-poll-result">
             <span class="event-poll-bar" aria-hidden="true">${share > 0 ? `<span class="event-poll-bar-fill is-choice" style="width:${Math.round(share * 1000) / 10}%;"></span>` : ''}</span>
@@ -480,9 +488,12 @@ function winnerNames(h) {
 }
 
 function renderVoteResultContent(h) {
+  // The API already ranks results by this round's score. Preserve that order
+  // while filling the left column before the right one, as in the ballot.
+  const columnRows = Math.max(1, Math.ceil(h.results.length / 2));
   return `<section class="stack event-poll-round">
     ${h.info ? `<p class="event-poll-note">${escapeHtml(h.info)}</p>` : ''}
-    <div class="stack event-poll-options">${renderResultRows(h)}</div>
+    <div class="stack event-poll-options is-ranked" style="--compact-rows: ${columnRows};">${renderResultRows(h, columnRows)}</div>
   </section>`;
 }
 
@@ -675,7 +686,6 @@ export function renderVotes(container, ctx) {
       <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-start-title">
         <div class="grouped-page-section-title">
           <h2 id="vote-start-title">Neue Abstimmung</h2>
-          <button type="button" class="btn btn-primary btn-sm" id="votes-start">Starten</button>
         </div>
         <div class="vote-start-row">
           <div>
@@ -694,6 +704,9 @@ export function renderVotes(container, ctx) {
         <div id="votes-game-select-wrap" class="stack vote-game-select-wrap">
           <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
           <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
+        </div>
+        <div class="card-footer-actions row" style="justify-content:flex-end;border-top:0;">
+          <button type="button" class="btn btn-primary btn-sm" id="votes-start">Starten</button>
         </div>
       </section>`;
   }

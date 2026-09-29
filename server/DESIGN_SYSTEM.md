@@ -475,6 +475,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.collapsible-section-content`; decorative heading icons are omitted.
   Disclosure headers and their expanded content are separated by spacing, without a horizontal
   divider directly below the header. This includes the shared Vote and poll card content.
+  The header-to-content gap is `--space-3` (12 px), supplied once; nested content must not add
+  another top inset. A list row keeps its own symmetric row padding after that gap.
   Every collapsible header vertically centers its title or title/metadata block, count/status and
   chevron, both closed and open, on phones and laptops. Text stays left-aligned. The shared
   `.collapsible-section-header` owns this alignment without view-specific selector lists; its

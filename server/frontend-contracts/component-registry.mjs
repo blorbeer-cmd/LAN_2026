@@ -1243,7 +1243,9 @@ export const components = [
     "properties": [
       "box-shadow",
       "border-top-left-radius",
-      "border-bottom-left-radius"
+      "border-bottom-left-radius",
+      "border-top-right-radius",
+      "border-bottom-right-radius"
     ]
   },
 

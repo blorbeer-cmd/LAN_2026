@@ -1123,6 +1123,8 @@ input[type='number'].tournament-result-score {
   grid-column: 1 / -1;
 }
 .vote-win-chip {
+  /* A passive label follows the text height, including in card headers. */
+  min-height: 0;
   min-width: 0;
   flex-shrink: 0;
   padding-block: 0;
@@ -2449,7 +2451,8 @@ input.food-order-price-input {
   width: 1.6em;
   text-align: center;
 }
-.lb-row.rank-1 .lb-rank {
+.lb-row.rank-1 .lb-rank,
+.event-poll-options.is-ranked .lb-rank.is-first {
   color: var(--rank-1-gold);
 }
 .leaderboard-row-main {
@@ -2613,15 +2616,22 @@ input.food-order-price-input {
 .bracket-team-row.is-mine,
 .tournament-fixture.is-mine,
 .tournament-lobby-row.is-mine,
-.tournament-standings tr.is-mine td:first-child,
 .tournament-team-card.is-mine {
-  box-shadow: inset 2px 0 0 var(--accent); /* design-token-ok: hairline-weight marker edge, not a spacing step */
+  box-shadow: inset 2px 0 0 var(--accent), inset -2px 0 0 var(--accent); /* design-token-ok: symmetric hairline-weight marker edges, not a spacing step */
+}
+.tournament-standings tr.is-mine td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent); /* design-token-ok: left marker on the table row's first cell */
+}
+.tournament-standings tr.is-mine td:last-child {
+  box-shadow: inset -2px 0 0 var(--accent); /* design-token-ok: right marker on the table row's last cell */
 }
 .bracket-team-row.is-mine:first-child {
   border-top-left-radius: var(--radius-sm);
+  border-top-right-radius: var(--radius-sm);
 }
 .bracket-team-row.is-mine:last-child {
   border-bottom-left-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
 }
 /* Fixtures and lobby rows run edge to edge inside their card; the marked row
    steps out by its own inset so its text stays aligned with the unmarked rows. */

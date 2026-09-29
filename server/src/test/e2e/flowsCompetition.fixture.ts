@@ -4,6 +4,7 @@
 // Sibling tests here intentionally share that state and run in order.
 
 import assert from 'node:assert/strict';
+import type { Locator } from 'playwright';
 import { addSessionCookie, createE2EAccount, waitForPlayerData } from './authHelpers';
 import {
   flowTest,
@@ -24,6 +25,46 @@ import { TRACKING_CONSENT_TEXT_VERSION } from '../../privacyPolicy';
 import { assertPaintedPollResultCentered } from './pollResultGeometry';
 
 registerFlowFixture('competition');
+
+async function assertRankedVoteColumns(card: Locator): Promise<void> {
+  const chipHeights = await card.locator('.vote-win-chip').evaluateAll((chips) =>
+    chips.map((chip) => chip.getBoundingClientRect().height));
+  assert.ok(chipHeights.length > 1 && chipHeights.every((height) => Math.abs(height - chipHeights[0]) <= 1),
+    'header and result Win labels share the same compact height');
+  const layout = await card.locator('.event-poll-options').evaluate((options) => ({
+    columns: getComputedStyle(options).gridTemplateColumns.split(' ').length,
+    rows: Array.from(options.querySelectorAll('.event-poll-option')).map((row) => {
+      const box = row.getBoundingClientRect();
+      const title = row.querySelector('.event-poll-option-title-row')!;
+      return { x: box.x, y: box.y, barX: row.querySelector('.event-poll-bar')!.getBoundingClientRect().x,
+        titleExtraHeight: title.getBoundingClientRect().height - title.querySelector('strong')!.getBoundingClientRect().height,
+        rank: Number(row.querySelector('.lb-rank')!.textContent),
+        spokenRank: row.querySelector('.visually-hidden')!.textContent,
+        score: Number(row.querySelector('.event-poll-count-text')!.textContent!.split(' ')[0]) };
+    }),
+  }));
+  assert.equal(layout.columns, 2, 'wide latest and historical Vote results use two columns');
+  assert.ok(layout.rows.every((row) => row.titleExtraHeight <= 1), 'Win labels do not increase the title-to-info spacing');
+  const half = Math.ceil(layout.rows.length / 2);
+  assert.deepEqual(layout.rows.map((row) => row.rank), layout.rows.map((row) =>
+    layout.rows.findIndex((other) => other.score === row.score) + 1),
+    'equal scores share a place across both columns, with subsequent places skipped');
+  assert.deepEqual(layout.rows.map((row) => row.spokenRank), layout.rows.map((row) => `Platz ${row.rank}`),
+    'screen readers receive an explicit place label as text');
+  assert.equal(await card.locator('.lb-rank[aria-label]').count(), 0, 'generic spans have no prohibited accessible name');
+  assert.deepEqual(layout.rows.map((row) => row.score), layout.rows.map((row) => row.score).sort((a, b) => b - a),
+    'results follow the placement, highest score first');
+  for (const column of [layout.rows.slice(0, half), layout.rows.slice(half)]) {
+    assert.ok(column.every((row) => Math.abs(row.x - column[0].x) <= 1), 'each column contains consecutive placements');
+    assert.ok(column.every((row) => Math.abs(row.barX - column[0].barX) <= 1),
+      'result bars align even when an option has no supporters or points');
+    assert.ok(column.every((row, index) => index === 0 || row.y > column[index - 1].y), 'placements read down each column');
+  }
+  if (layout.rows.length > 1) {
+    assert.ok(layout.rows[half].x > layout.rows[0].x, 'the remaining placements continue in the right column');
+    assert.ok(Math.abs(layout.rows[half].y - layout.rows[0].y) <= 1, 'both columns start on the same line');
+  }
+}
 
 flowTest('full click-through: players, matchmaking, voting, leaderboard, live pause', async (t) => {
   // This test starts a vote round partway through and only cancels it via UI
@@ -199,6 +240,17 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
 
   await page.click('[data-mm-mode="draw"]');
   await page.waitForSelector('#mm-generate');
+  for (const width of [390, 1024]) {
+    await page.setViewportSize({ width, height: 844 });
+    const drawActions = await page.locator('.match-mode-panel .card-footer-actions').evaluate((footer) => {
+      const button = footer.querySelector('#mm-generate')!.getBoundingClientRect();
+      const option = footer.querySelector('#mm-avoid-adjacent')!.getBoundingClientRect();
+      return { offset: Math.abs(button.top + button.height / 2 - option.top - option.height / 2),
+        precedesButton: option.right < button.left };
+    });
+    assert.ok(drawActions.offset <= 1 && drawActions.precedesButton, JSON.stringify(drawActions));
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.click('#mm-generate');
   await page.waitForSelector('.matchmaking-new-draw .team-card');
   const teamCards = await page.locator('.matchmaking-new-draw .team-card').count();
@@ -242,6 +294,13 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // participation and the voter's own ballot.
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
+  assert.equal(await page.locator('.card-footer-actions #votes-start').count(), 1);
+  // History loading can replace the card between resolving a Locator and
+  // evaluating it. Read both current elements in one DOM snapshot.
+  const startBelowGames = await page.evaluate(() =>
+    document.querySelector('#votes-start')!.getBoundingClientRect().top
+      > document.querySelector('#votes-game-select-wrap')!.getBoundingClientRect().bottom);
+  assert.ok(startBelowGames, 'starting the round follows the entire game selection');
   assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once the round shows as open
@@ -273,7 +332,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     const box = row.getBoundingClientRect();
     const next = rows.slice(index + 1).find((candidate) => candidate.getBoundingClientRect().left === box.left);
     const middle = (box.top + (next?.getBoundingClientRect().top ?? box.bottom)) / 2;
-    return ['.event-poll-option-info', '.event-poll-response-toolbar'].map((selector) => {
+    return ['.event-poll-option-info', '.rating-scale'].map((selector) => {
       const rect = row.querySelector(selector)!.getBoundingClientRect();
       return Math.abs(rect.top + rect.height / 2 - middle);
     });
@@ -296,6 +355,8 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     const button = ballotRows.nth(index).locator(`[data-points-value="${value}"]`);
     await button.click();
     await ballotRows.nth(index).locator(`[data-points-value="${value}"][aria-pressed="true"]`).waitFor();
+    assert.equal(await ballotRows.nth(index).locator('.rating-scale-meter-fill').evaluate((fill) =>
+      (fill as HTMLElement).style.width), `${value * 20}%`, 'the own draft updates the meter before saving');
   };
   const totalGames = await ballotRows.count();
   assert.deepEqual(await ballotRows.first().locator('[data-vote-points]').allTextContents(), ['0', '1', '2', '3', '4', '5']);
@@ -361,6 +422,8 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(mine.entries.filter((entry: { points: number }) => entry.points === 1).length, 1);
   await roundCard.locator('[data-vote-participation]:text-is("1/2 abgegeben")').waitFor();
 
+  const ballotGradient = await ballotRows.first().locator('.rating-scale-meter-fill').evaluate((fill) =>
+    getComputedStyle(fill).backgroundImage);
   await page.click('#votes-close');
   await page.waitForSelector('#votes-start');
   // Closing reveals the result as a collapsed Umfrage card: the header names
@@ -387,6 +450,14 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   }));
   assert.equal(latestGeometry.height, rankingGeometry.height, 'closed Vote sections share one height');
   assert.equal(latestGeometry.titleX, rankingGeometry.titleX, 'closed Vote section titles align');
+  await rankingDisclosure.locator(':scope > summary').click();
+  const bockRanks = await rankingDisclosure.locator('.lb-row').evaluateAll((rows) => rows.map((row) => ({
+    rank: Number(row.querySelector('.lb-rank')!.textContent),
+    average: Number(row.querySelector('.lb-points')!.textContent!.match(/\d+(?:\.\d+)?/)?.[0] ?? -1),
+  })));
+  assert.deepEqual(bockRanks.map((row) => row.rank), bockRanks.map((row) =>
+    bockRanks.findIndex((other) => other.average === row.average) + 1), 'equal Bock values share Top-10 places');
+  await rankingDisclosure.locator(':scope > summary').click();
   await page.setViewportSize({ width: 390, height: 844 });
   await latestToggle.click();
   await page.waitForFunction(
@@ -394,20 +465,34 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     totalGames
   );
   assert.equal(await currentVote.locator('.event-poll-option.is-winner .vote-win-chip').count(), 2);
+  assert.deepEqual(await currentVote.locator('.event-poll-option.is-winner .lb-rank').allTextContents(), ['1', '1']);
+  assert.equal(await currentVote.locator('.event-poll-option.is-winner .lb-rank.is-first').count(), 2,
+    'both tied winners receive the first-place emphasis');
+  assert.equal(await currentVote.locator('.event-poll-bar-fill.is-choice').first().evaluate((fill) =>
+    getComputedStyle(fill).backgroundImage), ballotGradient, 'ballot and result bars use the same gradient');
   await page.setViewportSize({ width: 1280, height: 844 });
+  assert.equal(await currentVote.evaluate((card) => {
+    const header = card.querySelector('.event-poll-card-toggle')!.getBoundingClientRect();
+    const options = card.querySelector('.event-poll-options')!.getBoundingClientRect();
+    return options.top - header.bottom;
+  }), 12, 'expanded Vote has exactly one shared gap before its list');
+  await assertRankedVoteColumns(currentVote);
   const resultAlignment = await currentVote.locator('.event-poll-option').evaluateAll((rows) => rows.map((row, index) => {
     const center = (selector: string) => {
       const rect = row.querySelector(selector)!.getBoundingClientRect();
       return rect.top + rect.height / 2;
     };
     const rect = row.getBoundingClientRect();
-    const middle = (rect.top + (rows[index + 1]?.getBoundingClientRect().top ?? rect.bottom)) / 2;
+    const next = rows.slice(index + 1).find((candidate) => Math.abs(candidate.getBoundingClientRect().x - rect.x) <= 1);
+    const middle = (rect.top + (next?.getBoundingClientRect().top ?? rect.bottom)) / 2;
     return ['.event-poll-option-info', '.event-poll-result', '.event-poll-option-badges']
       .map((selector) => Math.abs(center(selector) - middle));
   }));
   assert.ok(resultAlignment.flat().every((offset) => offset <= 1), 'complete result blocks center between the separating lines');
   await assertPaintedPollResultCentered(currentVote.locator('.event-poll-option.is-winner').first());
   await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await currentVote.locator('.event-poll-options').evaluate((options) =>
+    getComputedStyle(options).display), 'flex', 'phone results remain one readable column');
   assert.deepEqual(
     await currentVote.locator('.event-poll-option.is-winner .event-poll-counts').allTextContents(),
     ['5 Pkt. · 1/1 spielen mit', '5 Pkt. · 1/1 spielen mit']
@@ -451,6 +536,9 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await historyCard.locator('.event-poll-option').first().waitFor();
   assert.equal(await historyCard.locator('.event-poll-option').count(), totalGames);
   assert.equal(await historyCard.locator('.event-poll-option.is-winner .vote-win-chip').count(), 2);
+  await page.setViewportSize({ width: 1024, height: 844 });
+  await assertRankedVoteColumns(historyCard);
+  await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await historyToggle.evaluate((button) => document.activeElement === button), true);
   await historyCard.locator('.event-poll-card-side [data-open-vote-round]').click();
   await page.locator('.modal h2:text-is("Stimmen · Abstimmung Runde 1")').waitFor();

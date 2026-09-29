@@ -19,7 +19,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 - **In-card footer actions** — `.card-footer-actions` sets a card's primary action(s) off from a
   long preceding list (vote game rows, player-selection grids) with a hairline top border. It
   scrolls with the rest of the card like any other content. Used for the „Teams auslosen“/„Draft
-  starten“ actions in Team formation and Tournament creation; Vote's open round uses the Umfrage
+  starten“ actions in Team formation and Tournament creation. Vote's new-round action follows
+  the game selection with the same footer spacing but without a divider; its open round uses the Umfrage
   footer instead. This replaced an
   earlier `position: sticky` treatment (issue #557) that pinned the bar to the bottom of the
   viewport while its card scrolled through: the pinned bar briefly covered whatever list row
@@ -43,8 +44,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   duplicate tooltip or empty-state instruction. `.captain-selection-group` keeps its label close to
   the associated player grid. Both selections use the standard checkbox-card state without an
   additional selected-card highlight. „Teams auslosen“ and „Draft starten“ are compact gradient buttons at the bottom
-  right; the lone „Sitznachbarn“ option carries no list-row hairline, so only the footer divider
-  separates it from the action. The captain action stays labeled simply „Draft starten“ without repeating participant counts already visible in the
+  right; „Sitznachbarn“ sits directly to the left of „Teams auslosen“ on the same center line
+  within the separated footer, wrapping as a whole option when space is insufficient.
+  The captain action stays labeled simply „Draft starten“ without repeating participant counts already visible in the
   selections. The draw and draft participant grids each show a visible, named search field
   („Spieler suchen“) that filters rows without changing hidden selections; the draft field also
   filters the captain list, which has no search field of its own. A single bulk toggle selects all
@@ -323,7 +325,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   „Aktion“ menu for a single action (the shared menu never holds just one entry). A „Zwischenstand verborgen“ tag and the round info follow. Games are listed alphabetically, one
   Umfrage option row each: name and one compact meta line that starts with the viewer's own Skill
   („Mein Skill: X“, „–“ without one) followed by the other values, and the same 0–5 number scale
-  as an Umfrage rating as the answer control. Like every Umfrage with a hidden interim result, the
+  as an Umfrage rating as the answer control. Its draft meter uses the same blue-to-violet gradient
+  as the revealed result bars. Like every Umfrage with a hidden interim result, the
   empty result column is dropped so the numbers sit beside the name, and from `--bp-lg` the games
   fill two columns, read down the left column first, then the right one. A ballot the viewer has not saved yet in this round starts with the own Bock
   preselected for every game that has one; games without an own Bock start unrated. This
@@ -331,7 +334,19 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
   own progress („X von Y bewertet“) and „Speichern“, enabled once every game is rated. A runoff offers the Umfrage
   „Wählen“/„Ausgewählt“ choice instead of numbers. „Letzter Vote“ is a collapsible Umfrage card
-  that starts collapsed and keeps its open state across live re-renders; its header names the
+  that starts collapsed and keeps its open state across live re-renders. Expanded latest and
+  historical results preserve the server's score ranking and, from `--bp-lg`, fill two columns
+  down the left first, then down the right; phones keep one readable column. Each game carries a
+  place number in the Top-10 style. Equal points (or votes in a runoff) share their place,
+  regardless of popularity or name used to stabilize their order: `1, 1, 3` for two co-winners.
+  All first-place numbers are gold, the others muted. The Top 10 likewise share places for equal
+  Bock averages. Visible result numbers are hidden from assistive technology and accompanied
+  by explicit „Platz N“ text for screen readers.
+  The voter column remains reserved even without supporters, so zero-point result bars keep
+  the same left edge as the other bars in their column.
+  The passive „Win“ label follows the text height in headers and result rows; it does not increase
+  the title's gap to metadata.
+  Its header names the
   round, date, participation and winner and always offers „Stimmen ansehen“ and, on a tie, a
   compact „Stichwahl starten“. Its closed header has the same compact height as the neighboring
   closed cards and no hover fill. Opened, it lists every game of the round sorted by score, each with
@@ -355,7 +370,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   three from `--bp-xl`, with the same bordered card treatment at every size.
   Vote shows no info tooltips. Title, info and the game search („Spiel suchen“) with the bulk toggle
   share one row of equal-width parts from `--bp-md` and stack on phones; title and info have the
-  same control height. „Starten“ is a compact primary action in the new-round card header.
+  same control height. „Starten“ is a compact, right-aligned primary submit below the game selection
+  in the new-round card's separated footer.
   Starting a round always shows its game selection grid — there is no separate checkbox gating it.
   It preselects the current Top 10 by Bock as a starting point, same as before; a round covering
   everything simply uses the bulk toggle or clears the remaining exclusions by hand. The grid
@@ -416,7 +432,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   identified instead of counted as a balancing fallback. The signed-in player's name alone is bold
   in champion and team cards; winner and loser states keep their own meaning. Wherever the
   signed-in player's own team appears among equal siblings (bracket rows, fixtures, table row,
-  active lobby row and team card) it carries one quiet marker: a thin accent edge and the faint
+  active lobby row and team card) it carries one quiet marker: thin accent edges on both sides and the faint
   `--accent-bg-subtle` tint, with a visually hidden „(dein Team)“ for screen readers and no visible
   „Du“ label. Their own lobby leads „Aktive Lobbys“; the other lobbies keep their order. On phones
   the first view of a tournament scrolls the bracket to the player's own open match, and live
