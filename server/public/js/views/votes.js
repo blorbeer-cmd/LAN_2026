@@ -346,6 +346,7 @@ function renderOpenRow(votes, r, draftReady, columnStart = false) {
     // means "not rated yet".
     control = ratingScaleHtml({
       selected: draftPoints.get(r.gameId),
+      tone: 'bock',
       groupLabel: `Punkte für ${r.gameName}`,
       valueLabel: pointsValueText,
       attributes: (value) => `data-vote-points="${r.gameId}" data-points-value="${value}"`,
@@ -675,7 +676,6 @@ export function renderVotes(container, ctx) {
       <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-start-title">
         <div class="grouped-page-section-title">
           <h2 id="vote-start-title">Neue Abstimmung</h2>
-          <button type="button" class="btn btn-primary btn-sm" id="votes-start">Starten</button>
         </div>
         <div class="vote-start-row">
           <div>
@@ -694,6 +694,9 @@ export function renderVotes(container, ctx) {
         <div id="votes-game-select-wrap" class="stack vote-game-select-wrap">
           <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
           <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
+        </div>
+        <div class="card-footer-actions row" style="justify-content:flex-end;">
+          <button type="button" class="btn btn-primary btn-sm" id="votes-start">Starten</button>
         </div>
       </section>`;
   }

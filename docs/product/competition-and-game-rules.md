@@ -43,8 +43,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   duplicate tooltip or empty-state instruction. `.captain-selection-group` keeps its label close to
   the associated player grid. Both selections use the standard checkbox-card state without an
   additional selected-card highlight. „Teams auslosen“ and „Draft starten“ are compact gradient buttons at the bottom
-  right; the lone „Sitznachbarn“ option carries no list-row hairline, so only the footer divider
-  separates it from the action. The captain action stays labeled simply „Draft starten“ without repeating participant counts already visible in the
+  right; „Sitznachbarn“ sits directly to the right of „Teams auslosen“ on the same center line
+  within the separated footer, wrapping as a whole option when space is insufficient.
+  The captain action stays labeled simply „Draft starten“ without repeating participant counts already visible in the
   selections. The draw and draft participant grids each show a visible, named search field
   („Spieler suchen“) that filters rows without changing hidden selections; the draft field also
   filters the captain list, which has no search field of its own. A single bulk toggle selects all
@@ -355,7 +356,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   three from `--bp-xl`, with the same bordered card treatment at every size.
   Vote shows no info tooltips. Title, info and the game search („Spiel suchen“) with the bulk toggle
   share one row of equal-width parts from `--bp-md` and stack on phones; title and info have the
-  same control height. „Starten“ is a compact primary action in the new-round card header.
+  same control height. „Starten“ is a compact, right-aligned primary submit below the game selection
+  in the new-round card's separated footer.
   Starting a round always shows its game selection grid — there is no separate checkbox gating it.
   It preselects the current Top 10 by Bock as a starting point, same as before; a round covering
   everything simply uses the bulk toggle or clears the remaining exclusions by hand. The grid
@@ -416,7 +418,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   identified instead of counted as a balancing fallback. The signed-in player's name alone is bold
   in champion and team cards; winner and loser states keep their own meaning. Wherever the
   signed-in player's own team appears among equal siblings (bracket rows, fixtures, table row,
-  active lobby row and team card) it carries one quiet marker: a thin accent edge and the faint
+  active lobby row and team card) it carries one quiet marker: thin accent edges on both sides and the faint
   `--accent-bg-subtle` tint, with a visually hidden „(dein Team)“ for screen readers and no visible
   „Du“ label. Their own lobby leads „Aktive Lobbys“; the other lobbies keep their order. On phones
   the first view of a tournament scrolls the bracket to the player's own open match, and live

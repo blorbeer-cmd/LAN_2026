@@ -199,6 +199,17 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
 
   await page.click('[data-mm-mode="draw"]');
   await page.waitForSelector('#mm-generate');
+  for (const width of [390, 1024]) {
+    await page.setViewportSize({ width, height: 844 });
+    const drawActions = await page.locator('.match-mode-panel .card-footer-actions').evaluate((footer) => {
+      const button = footer.querySelector('#mm-generate')!.getBoundingClientRect();
+      const option = footer.querySelector('#mm-avoid-adjacent')!.getBoundingClientRect();
+      return { offset: Math.abs(button.top + button.height / 2 - option.top - option.height / 2),
+        followsButton: option.left > button.right };
+    });
+    assert.ok(drawActions.offset <= 1 && drawActions.followsButton, JSON.stringify(drawActions));
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.click('#mm-generate');
   await page.waitForSelector('.matchmaking-new-draw .team-card');
   const teamCards = await page.locator('.matchmaking-new-draw .team-card').count();
@@ -242,6 +253,10 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // participation and the voter's own ballot.
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
+  assert.equal(await page.locator('.card-footer-actions #votes-start').count(), 1);
+  const startBelowGames = await page.locator('#votes-start').evaluate((button) =>
+    button.getBoundingClientRect().top > document.querySelector('#votes-game-select-wrap')!.getBoundingClientRect().bottom);
+  assert.ok(startBelowGames, 'starting the round follows the entire game selection');
   assert.equal(await page.getByText('Du bist E2E Alice', { exact: true }).count(), 0);
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once the round shows as open
@@ -273,7 +288,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     const box = row.getBoundingClientRect();
     const next = rows.slice(index + 1).find((candidate) => candidate.getBoundingClientRect().left === box.left);
     const middle = (box.top + (next?.getBoundingClientRect().top ?? box.bottom)) / 2;
-    return ['.event-poll-option-info', '.event-poll-response-toolbar'].map((selector) => {
+    return ['.event-poll-option-info', '.rating-scale'].map((selector) => {
       const rect = row.querySelector(selector)!.getBoundingClientRect();
       return Math.abs(rect.top + rect.height / 2 - middle);
     });
@@ -296,6 +311,8 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     const button = ballotRows.nth(index).locator(`[data-points-value="${value}"]`);
     await button.click();
     await ballotRows.nth(index).locator(`[data-points-value="${value}"][aria-pressed="true"]`).waitFor();
+    assert.equal(await ballotRows.nth(index).locator('.rating-scale-meter-fill').evaluate((fill) =>
+      (fill as HTMLElement).style.width), `${value * 20}%`, 'the own draft updates the meter before saving');
   };
   const totalGames = await ballotRows.count();
   assert.deepEqual(await ballotRows.first().locator('[data-vote-points]').allTextContents(), ['0', '1', '2', '3', '4', '5']);
@@ -395,6 +412,11 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   );
   assert.equal(await currentVote.locator('.event-poll-option.is-winner .vote-win-chip').count(), 2);
   await page.setViewportSize({ width: 1280, height: 844 });
+  assert.equal(await currentVote.evaluate((card) => {
+    const header = card.querySelector('.event-poll-card-toggle')!.getBoundingClientRect();
+    const options = card.querySelector('.event-poll-options')!.getBoundingClientRect();
+    return options.top - header.bottom;
+  }), 12, 'expanded Vote has exactly one shared gap before its list');
   const resultAlignment = await currentVote.locator('.event-poll-option').evaluateAll((rows) => rows.map((row, index) => {
     const center = (selector: string) => {
       const rect = row.querySelector(selector)!.getBoundingClientRect();

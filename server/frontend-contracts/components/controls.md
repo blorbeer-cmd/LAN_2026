@@ -301,6 +301,12 @@ geordnet 0–5 um. Beide kollidierenden Kontextregeln berücksichtigen die
 Quadratvariante; die konkurrierenden Höhen-/Mindestbreitenvorgaben und der frühere
 30×30-Override sind ersetzt. Gemessen wird die verfügbare Elternbreite, nicht die fit-content-Breite
 der Toolbar; die Browserprüfung erzwingt zusätzlich 192 und 191 px Elternbreite.
+Vote und 0–5-Umfragen verwenden wie Bock die violette Skala samt 4-px-Füllbalken unter den
+Zahlen. Der Balken folgt dem lokalen Entwurf, bleibt bei 0 leer und ist ohne Bewertung gestrichelt.
+Der gesamte Zahlen-/Balkenblock steht auf Telefonen unter dem Optionstitel und wird als Einheit
+zwischen den Zeilentrennern zentriert; die Zahlen bleiben tastaturbedienbar.
+Gepaarte Formularfelder mit Hilfe verwenden `.event-poll-form-pair`: ihre Labelzeile reserviert
+`--control-height` und lässt `--space-1` (4 px) zum Eingabefeld, auch im Turnierdialog.
 
 ### Gruppen-Home und kompakte Aktuell-Liste
 

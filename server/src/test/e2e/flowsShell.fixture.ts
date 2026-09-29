@@ -2234,6 +2234,18 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await page.waitForSelector('#draw-tournament-form');
   assert.equal(await page.locator('[data-draw-team-name]').count(), 2);
   assert.equal(await page.locator('#draw-tournament-two-legged').count(), 0, 'K.O. has no second leg');
+  for (const width of [390, 1024]) {
+    await page.setViewportSize({ width, height: 844 });
+    const fields = await page.locator('.draw-tournament-form .event-poll-form-pair').evaluate((pair) =>
+      Array.from(pair.children).map((field) => {
+        const label = field.querySelector('.title-with-info')!.getBoundingClientRect();
+        const input = field.querySelector('input')!.getBoundingClientRect();
+        return { gap: Math.round(input.top - label.bottom), top: Math.round(input.top) };
+      }));
+    assert.deepEqual(fields.map((field) => field.gap), [4, 4], 'lobby labels keep the shared field gap');
+    if (width >= 640) assert.equal(fields[0].top, fields[1].top, 'side-by-side lobby fields align with and without help');
+    else assert.ok(fields[1].top > fields[0].top, 'phone lobby fields stack without crowding');
+  }
   const lobbyHelp = page.locator('[aria-controls="draw-tournament-lobby-help"]');
   await lobbyHelp.click();
   assert.equal(await lobbyHelp.getAttribute('aria-expanded'), 'true');
@@ -2438,6 +2450,14 @@ flowTest('the tournament start link opens the own team and renames it in place',
   await ownCard.waitFor({ state: 'attached' });
   assert.doesNotMatch(await ownCard.getAttribute('class') ?? '', /search-target-highlight/,
     'a reload of the stored hash does not replay the highlight');
+  for (const selector of ['.tournament-team-card.is-mine', '.tournament-fixture.is-mine', '.tournament-lobby-row.is-mine']) {
+    const shadow = await coldPage.locator(selector).first().evaluate((element) => getComputedStyle(element).boxShadow);
+    assert.match(shadow, / 2px 0px 0px/);
+    assert.match(shadow, / -2px 0px 0px/, 'the own-team marker appears on both sides');
+  }
+  const ownCells = coldPage.locator('.tournament-standings tr.is-mine td');
+  assert.match(await ownCells.first().evaluate((element) => getComputedStyle(element).boxShadow), / 2px 0px 0px/);
+  assert.match(await ownCells.last().evaluate((element) => getComputedStyle(element).boxShadow), / -2px 0px 0px/);
 });
 
 flowTest('correcting an early K.O. winner warns before later results are reset', async (t) => {

@@ -633,7 +633,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
         const rect = row.getBoundingClientRect();
         const next = rows.slice(index + 1).find((candidate) => candidate.getBoundingClientRect().left === rect.left);
         const middle = (rect.top + (next?.getBoundingClientRect().top ?? rect.bottom)) / 2;
-        return ['.event-poll-option-info', '.event-poll-response-toolbar'].map((selector) => {
+        return ['.event-poll-option-info', '.rating-scale'].map((selector) => {
           const block = row.querySelector(selector)!.getBoundingClientRect();
           return Math.abs(block.top + block.height / 2 - middle);
         });
@@ -666,6 +666,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     await ownerPage.waitForFunction(() => Array.from(document.querySelectorAll('.event-poll-rating-toolbar button'))
       .every((button) => getComputedStyle(button).transform === 'none'));
     assert.equal(await ratingButtons.nth(value).getAttribute('aria-pressed'), 'true');
+    assert.equal(await linkedOption.locator('.rating-scale-meter-fill').evaluate((fill) =>
+      (fill as HTMLElement).style.width), `${value * 20}%`, 'the own draft moves the fill line');
     assert.equal(await linkedOption.locator('.event-poll-reject-tag:text-is("Lehne ich ab")').count(), value === 0 ? 1 : 0,
       'only a chosen 0 is marked as a rejection');
     await assertRatingGeometry();

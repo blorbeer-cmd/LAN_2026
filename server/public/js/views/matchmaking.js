@@ -437,7 +437,7 @@ function openDrawTournamentDialog(draw) {
           ${hasLeague ? `<label class="check-row"><input type="checkbox" id="draw-tournament-two-legged" ${form.twoLegged ? 'checked' : ''} /> Hin- & Rückrunde${form.format === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>` : ''}
           <label class="check-row"><input type="checkbox" id="draw-tournament-track-score" ${form.trackScore ? 'checked' : ''} /> Ergebnisse inkl. Punktestand</label>
         </div>
-        <div class="field-row">
+        <div class="field-row event-poll-form-pair">
           <div><span class="title-with-info"><label class="field-label" for="draw-tournament-lobby">Lobby-Basisname</label>${infoTooltipHtml(
               'draw-tournament-lobby-help',
               'Lobby-Basisname',
@@ -1174,19 +1174,8 @@ export function renderMatchmaking(container, ctx) {
           </div>`,
           renderTrailing: (player) => playerSkillHtml(player, selectedGameId),
         })}
-        <div class="check-row">
-          <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
-          <span class="title-with-info tournament-option-label">
-            <label for="mm-avoid-adjacent">Sitznachbarn</label>
-            ${infoTooltipHtml(
-                'matchmaking-neighbors-help',
-                'Sitznachbarn',
-                'Sitznachbarn werden nach Möglichkeit in dasselbe Team gelost. Die Skill-Balance hat Vorrang, wenn beides nicht gleichzeitig möglich ist.'
-              )}
-          </span>
-        </div>
-        <div class="card-footer-actions">
-          <div class="row" style="flex-wrap:wrap;">
+        <div class="card-footer-actions row" style="justify-content:flex-end;flex-wrap:wrap;">
+          <div class="row">
             <button type="button" class="btn btn-primary btn-sm" id="mm-generate" ${drawReady ? '' : 'disabled'}>Teams auslosen</button>
             ${drawReady ? '' : infoTooltipHtml(
                 'matchmaking-draw-disabled-help',
@@ -1194,6 +1183,17 @@ export function renderMatchmaking(container, ctx) {
                 drawDisabledReason,
                 'warning'
               )}
+          </div>
+          <div class="check-row" style="padding:0;border-bottom:0;">
+            <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
+            <span class="title-with-info tournament-option-label">
+              <label for="mm-avoid-adjacent">Sitznachbarn</label>
+              ${infoTooltipHtml(
+                'matchmaking-neighbors-help',
+                'Sitznachbarn',
+                'Sitznachbarn werden nach Möglichkeit in dasselbe Team gelost. Die Skill-Balance hat Vorrang, wenn beides nicht gleichzeitig möglich ist.'
+              )}
+            </span>
           </div>
         </div>
       </section>` : ''}
