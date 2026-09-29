@@ -20,6 +20,7 @@ import { filterRosterPicker, pruneRosterSelection, rosterPickerHtml, wireRosterP
 import { resultFormHtml, wireResultForm } from '../resultDialog.js';
 import { withStepUp } from '../reauth.js';
 import { isGroupAdmin } from '../groupContext.js';
+import { RESTORE_FOCUS_EVENT } from '../viewRenderState.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -1327,10 +1328,15 @@ export function renderMatchmaking(container, ctx) {
     });
   });
 
-  container.querySelector('#mm-teamcount')?.addEventListener('input', (event) => {
+  const capTeamCountField = (event) => {
     teamCountValue = capTeamCountValue(event.target.value, checkedIds.size);
     if (event.target.value !== teamCountValue) event.target.value = teamCountValue;
-  });
+  };
+  container.querySelector('#mm-teamcount')?.addEventListener('input', capTeamCountField);
+  // A realtime re-render while this field is focused writes the value typed
+  // before it back without an input event — even when the roster has shrunk
+  // below it in the meantime. Re-apply the cap to that restored value.
+  container.querySelector('#mm-teamcount')?.addEventListener(RESTORE_FOCUS_EVENT, capTeamCountField);
 
   container.querySelector('#draft-start')?.addEventListener('click', async () => {
     const captainIds = [...draftCaptainIds];
@@ -1361,7 +1367,7 @@ export function renderMatchmaking(container, ctx) {
   container.querySelector('#mm-generate')?.addEventListener('click', async () => {
     const gameId = selectedGameId;
     const playerIds = [...checkedIds];
-    const teamCountRaw = container.querySelector('#mm-teamcount').value;
+    const teamCountRaw = capTeamCountValue(container.querySelector('#mm-teamcount').value, playerIds.length);
     const body = { gameId, playerIds, avoidAdjacentOpponents };
     if (teamCountRaw) body.teamCount = parseInt(teamCountRaw, 10);
 

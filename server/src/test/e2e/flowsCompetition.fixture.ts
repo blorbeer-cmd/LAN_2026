@@ -123,6 +123,26 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await page.getAttribute('#mm-teamcount', 'max'), '2');
   await page.fill('#mm-teamcount', '5');
   assert.equal(await page.inputValue('#mm-teamcount'), '2');
+  // A realtime re-render while the field is focused restores the value typed
+  // before it, without an input event. When the roster has shrunk below that
+  // value in the meantime, the restored value must be capped again. Plant such
+  // a stale value the same way (no input event) and trigger players:changed.
+  await page.focus('#mm-teamcount');
+  await page.locator('#mm-teamcount').evaluate((input: HTMLInputElement) => {
+    input.value = '5';
+    input.dataset.beforeRealtimeRender = 'true';
+  });
+  const touchBob = await fetch(`${BASE_URL}/api/players/${bob.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: bob.cookie },
+    body: JSON.stringify({ name: profileTitle }),
+  });
+  assert.equal(touchBob.status, 200, await touchBob.text());
+  await page.waitForFunction(() => {
+    const input = document.querySelector<HTMLInputElement>('#mm-teamcount');
+    return Boolean(input) && input!.dataset.beforeRealtimeRender === undefined;
+  });
+  assert.equal(await page.inputValue('#mm-teamcount'), '2');
   // The roster search is an always-visible named field, not a magnifier toggle.
   assert.equal(await page.getAttribute('#mm-player-search', 'placeholder'), 'Spieler suchen');
   await page.fill('#mm-player-search', profileTitle);
