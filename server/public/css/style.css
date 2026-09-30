@@ -888,7 +888,7 @@ textarea {
    voter avatars, answer buttons. Ended rounds simply have no last column. */
 .event-poll-option {
   display: grid;
-  grid-template-columns: clamp(10.5rem, 20%, 14rem) minmax(6rem, 1fr) max-content auto;
+  grid-template-columns: clamp(10.5rem, 20%, 14rem) minmax(6rem, 1fr) 7rem auto;
   align-items: center;
   gap: var(--space-2) var(--space-4);
   padding: var(--space-3) 0;
@@ -1000,6 +1000,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  flex-wrap: wrap;
   gap: var(--space-1);
   min-height: 24px;
 }
@@ -1315,7 +1316,7 @@ textarea {
     display: none;
   }
 }
-@container (min-width: 82rem) {
+@container (min-width: 88rem) {
   /* Two columns only when each option keeps its title, bar, voters and
      answer controls side by side. Read down the left column first. */
   .stack.event-poll-options {

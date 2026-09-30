@@ -38,6 +38,14 @@ async function startVoteRound(): Promise<void> {
 
 async function assertRankedVoteColumns(card: Locator): Promise<void> {
   const previousViewport = page.viewportSize()!;
+  const narrowTracks = await card.locator('.event-poll-option').evaluateAll((rows) => rows.map((row) => ({
+    barWidth: row.querySelector('.event-poll-bar')!.getBoundingClientRect().width,
+    avatarLeft: row.querySelector('.event-poll-option-badges')!.getBoundingClientRect().left,
+  })));
+  assert.ok(narrowTracks.length > 1 && narrowTracks.every((track) =>
+    Math.abs(track.barWidth - narrowTracks[0].barWidth) <= 1
+      && Math.abs(track.avatarLeft - narrowTracks[0].avatarLeft) <= 1),
+  `one-column Vote results keep equal bar tracks and aligned avatars: ${JSON.stringify(narrowTracks)}`);
   await page.setViewportSize({ width: 1760, height: 900 });
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   const chipHeights = await card.locator('.vote-win-chip').evaluateAll((chips) =>
@@ -1013,6 +1021,8 @@ flowTest('Vote: a 0-5 round with a visible interim result and anonymous voters',
   assert.equal(singleLayout.columns, 1, `visible Vote results use full-width rows when space is tight: ${JSON.stringify(singleLayout)}`);
   assert.equal(singleLayout.overflowing, false, `visible Vote results stay within the page: ${JSON.stringify(singleLayout)}`);
   assert.equal(singleLayout.partsInline, true, `title, bar, voters and answers stay inline: ${JSON.stringify(singleLayout)}`);
+  const nearThresholdLayout = await voteLayout(1600);
+  assert.equal(nearThresholdLayout.columns, 1, `Vote options stay full-width until both complete rows fit: ${JSON.stringify(nearThresholdLayout)}`);
   const wideLayout = await voteLayout(1760);
   const split = Math.ceil(rowCount / 2);
   assert.equal(wideLayout.columns, 2, `visible Vote results use two columns: ${JSON.stringify(wideLayout)}`);

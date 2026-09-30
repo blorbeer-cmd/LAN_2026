@@ -365,17 +365,30 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.ok(desktopStack.stackContentLeftInset <= 1 && desktopSingleStack.stackContentLeftInset <= 1, `desktop avatars start at their column edge (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
   assert.ok(Math.abs(desktopSingleStack.rowLeft - desktopStack.rowLeft) <= 1 && desktopSingleStack.rowTop > desktopStack.rowTop,
     `poll options use full-width rows when four parts cannot fit in half-width rows (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
+  assert.ok(Math.abs((desktopStack.resultRight - desktopStack.resultLeft) - (desktopSingleStack.resultRight - desktopSingleStack.resultLeft)) <= 1
+    && Math.abs(desktopStack.badgesLeft - desktopSingleStack.badgesLeft) <= 1,
+  `different voter counts keep equal bar tracks and aligned avatars (${JSON.stringify({ desktopStack, desktopSingleStack })})`);
   for (const geometry of [desktopStack, desktopSingleStack]) {
     assert.ok(geometry.infoRight <= geometry.resultLeft + 1 && geometry.resultRight <= geometry.badgesLeft + 1
       && geometry.badgesRight <= geometry.controlsLeft + 1 && geometry.controlsRight <= geometry.rowRight + 1,
     `title, bar, voters and answers stay in one horizontal option row (${JSON.stringify(geometry)})`);
   }
+  await ownerPage.setViewportSize({ width: 1600, height: 900 });
+  await ownerPage.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
+  const nearThresholdStack = await voterStackGeometry(0);
+  const nearThresholdSingleStack = await voterStackGeometry(1);
+  assert.ok(Math.abs(nearThresholdSingleStack.rowLeft - nearThresholdStack.rowLeft) <= 1
+    && nearThresholdSingleStack.rowTop > nearThresholdStack.rowTop,
+  'options remain full-width near the two-column threshold');
   await ownerPage.setViewportSize({ width: 1760, height: 900 });
   await ownerPage.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   const wideStack = await voterStackGeometry(0);
   const wideSingleStack = await voterStackGeometry(1);
   assert.ok(wideSingleStack.rowLeft > wideStack.rowLeft && Math.abs(wideSingleStack.rowTop - wideStack.rowTop) <= 1,
     `poll options use two columns when each horizontal row has enough room (${JSON.stringify({ wideStack, wideSingleStack })})`);
+  assert.ok(Math.abs((wideStack.resultRight - wideStack.resultLeft) - (wideSingleStack.resultRight - wideSingleStack.resultLeft)) <= 1
+    && Math.abs((wideStack.badgesLeft - wideStack.rowLeft) - (wideSingleStack.badgesLeft - wideSingleStack.rowLeft)) <= 1,
+  `wide rows keep equal bar tracks and aligned avatars (${JSON.stringify({ wideStack, wideSingleStack })})`);
   for (const geometry of [wideStack, wideSingleStack]) {
     assert.ok(geometry.infoRight <= geometry.resultLeft + 1 && geometry.resultRight <= geometry.badgesLeft + 1
       && geometry.badgesRight <= geometry.controlsLeft + 1 && geometry.controlsRight <= geometry.rowRight + 1,
