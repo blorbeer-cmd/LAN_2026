@@ -414,12 +414,12 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
   const games = ballotGames(votes);
   const showResult = !votes.hideLiveResults;
   const maxPoints = Math.max(1, ...votes.results.map((r) => r.points ?? 0));
-  // With the result hidden, two columns on wide screens read down the left
-  // column first, then the right one (see .event-poll-options.is-compact).
+  // On wide screens both visible and hidden interim results read down the
+  // left column first, then the right one.
   const columnRows = Math.max(1, Math.ceil(games.length / 2));
   const source = votes.mode === 'single' ? runoffSourceRound(historyCache, votes) : null;
   const rows = games
-    .map((r, index) => renderOpenRow(votes, r, mineReady, { columnStart: !showResult && index === columnRows, showResult, maxPoints, source }))
+    .map((r, index) => renderOpenRow(votes, r, mineReady, { columnStart: index === columnRows, showResult, maxPoints, source }))
     .join('');
   const admin = isGroupAdmin();
   const answer = mineReady ? answerChipHtml(hasSubmitted) : '';
@@ -446,7 +446,7 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
         <section class="stack event-poll-round">
           ${roundTagsHtml(votes)}
           ${votes.info ? `<p class="event-poll-note">${escapeHtml(votes.info)}</p>` : ''}
-          <div class="stack event-poll-options has-answers${showResult ? '' : ' is-compact'}"${showResult ? '' : ` style="--compact-rows: ${columnRows};"`}>${rows}</div>
+          <div class="stack event-poll-options has-answers${showResult ? '' : ' is-compact'}" style="--compact-rows: ${columnRows};">${rows}</div>
           <div class="event-poll-save-row event-poll-footer">
             <span class="muted" data-vote-rated-progress>${mineReady ? draftProgressText(votes) : ''}</span>
             <button type="button" class="btn btn-primary btn-sm" data-votes-submit="${votes.round}" ${mineReady && ballotComplete(votes) ? '' : 'disabled'}>Speichern</button>
