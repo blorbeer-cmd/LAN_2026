@@ -995,7 +995,8 @@ textarea {
 /* Its own flex row, not the shared `.row`: that 12px gap would push a
    following badge visibly away from the voter avatars. */
 /* Avatars start at the column's left edge, so a trailing "+N" never shifts
-   them against the rows above and below. */
+   them against the rows above and below. A tag that no longer fits beside
+   the avatars wraps below them instead of running into the answer buttons. */
 .event-poll-option-badges {
   display: flex;
   align-items: center;
