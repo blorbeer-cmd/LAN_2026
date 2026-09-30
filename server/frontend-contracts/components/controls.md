@@ -160,7 +160,9 @@ besitzen keine starre Höhe; einzeilige und mehrzeilige rows-Zustände werden ge
   in einer eigenen Spalte zwischen Ergebnisbalken und Antwortbuttons und vor einem Status-Badge.
   Den Abstand zu einem Badge liefert der eigene `--space-1`-Gap der Badgezeile, nicht der
   12-px-Gap von `.row`. Ab `--bp-md` ist die Spalte 7rem breit und der Inhalt linksbündig: der
-  linke Avatar steht in jeder Zeile an derselben Kante, eine Anzahl „+N“ folgt rechts. Auf
+  linke Avatar steht in jeder Zeile an derselben Kante, eine Anzahl „+N“ folgt rechts. Passt ein
+  Badge wie „Lehne ich ab“ nicht mehr neben den Stapel, bricht die Badgezeile darunter um, statt
+  über die Spalte hinaus an die Antwortbuttons zu reichen. Auf
   Telefonen steht der Stapel rechtsbündig neben dem Optionstitel.
 - Er zeigt höchstens vier Avatare; weitere Personen erscheinen als zusammengefasste Anzahl. Die
   Avatare überlappen einander nur um `--space-1` und heben sich mit einem Ring von der
