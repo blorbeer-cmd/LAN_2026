@@ -53,6 +53,15 @@ test('a runoff finds the points round whose tie it resolves', () => {
   assert.equal(runoffSourceRound([{ ...tiedRound, results: [{ gameId: 'cs2' }] }], runoff), null, 'games must match');
 });
 
+test('a runoff uses its stored source when a newer parallel points round closed first', () => {
+  const newer = { ...tiedRound, round: 6, ballots: [ballot('bob', { cs2: 0, aoe: 5 })] };
+  const older = { ...tiedRound, round: 5 };
+  const decided = { ...runoff, round: 7, sourceRound: 5 };
+  assert.equal(runoffSourceRound([newer, older], decided), older);
+  assert.deepEqual(matchSelectionFromVote(decided, catalog, runoffSourceRound([newer, older], decided)),
+    { gameId: 'cs2', playerIds: ['alice', 'carol', 'dave'] });
+});
+
 test('after a runoff every participant plays except those who gave the winner 0 before', () => {
   // Bob declined cs2 in round 1; Dave only joined for the runoff.
   assert.deepEqual(matchSelectionFromVote(runoff, catalog, tiedRound), { gameId: 'cs2', playerIds: ['alice', 'carol', 'dave'] });

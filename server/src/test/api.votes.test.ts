@@ -59,9 +59,19 @@ test('POST /api/votes/start opens a round', async () => {
   assert.equal(res.body.round, 1);
 });
 
-test('POST /api/votes/start rejects starting a second round while one is open', async () => {
+test('POST /api/votes/start allows a second independent round while one is open', async () => {
   const res = await request(app).post('/api/votes/start');
-  assert.equal(res.status, 409);
+  assert.equal(res.status, 201);
+  assert.deepEqual(res.body.openRounds.map((round: { round: number }) => round.round), [2, 1]);
+  assert.equal((await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameCs2 })).status, 400);
+  assert.equal((await request(app).post('/api/votes').send({ round: 1, playerId: playerA, gameId: gameCs2 })).status, 200);
+  const secondBallot = fullBallot(res.body.openRounds[0].results, { [gameRl]: 5 });
+  assert.equal((await request(app).post('/api/votes/points').send({ round: 2, playerId: playerA, entries: secondBallot })).status, 200);
+  const firstMine = await request(app).get(`/api/votes/mine?playerId=${playerA}&round=1`);
+  const secondMine = await request(app).get(`/api/votes/mine?playerId=${playerA}&round=2`);
+  assert.deepEqual(firstMine.body.entries, [{ gameId: gameCs2, points: null }]);
+  assert.equal(secondMine.body.entries.find((entry: { gameId: string }) => entry.gameId === gameRl).points, 5);
+  assert.equal((await request(app).post('/api/votes/cancel').send({ round: 2 })).status, 200);
 });
 
 test('POST /api/votes rejects an unknown player or game', async () => {
@@ -160,7 +170,7 @@ test('POST /api/votes/cancel discards the round without a winner', async () => {
   const res = await request(app).post('/api/votes/cancel');
   assert.equal(res.status, 200);
   assert.equal(res.body.open, false);
-  assert.equal(res.body.totalVotes, 0);
+  assert.deepEqual(res.body.openRounds, []);
 });
 
 test('POST /api/votes/cancel rejects when nothing is open', async () => {
@@ -222,11 +232,10 @@ test('GET /api/votes/history still lists a round nobody voted in', async () => {
   assert.deepEqual(entry.winners, []);
 });
 
-test('GET /api/votes/history ranks rounds with a result above later rounds nobody voted in', async () => {
+test('GET /api/votes/history keeps closed rounds in time order even without votes', async () => {
   // At this point round 1 (has votes) and round 2 (nobody voted, from the
   // previous test) are both closed. Close a brand-new round 3 with a vote so
-  // the newest round in history is also a "no result" round beats out by an
-  // older-but-voted round. Voting for Age of Empires 2 here (rather than CS2)
+  // the newest round in history has a result. Voting for Age of Empires 2 here (rather than CS2)
   // keeps this round's win out of the later "each result row reports its
   // all-time vote win count" assertions, which pin CS2's and Rocket League's
   // counts to exactly 1.
@@ -236,7 +245,7 @@ test('GET /api/votes/history ranks rounds with a result above later rounds nobod
 
   const history = await request(app).get('/api/votes/history');
   const rounds = history.body.history.map((h: { round: number }) => h.round);
-  assert.deepEqual(rounds, [closed.body.round, 1, 2]);
+  assert.deepEqual(rounds, [closed.body.round, 2, 1]);
 });
 
 test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beliebtheit)', async () => {
@@ -664,4 +673,55 @@ test('closing with admin mode on never lets a test-only vote decide the persiste
   // The same persisted winner is reported with admin mode off too.
   const history = await request(app).get(`/api/votes/history/${closed.body.round}`);
   assert.deepEqual(history.body.winnerGameIds, [gameCs2]);
+});
+
+test('a cancelled round can reuse its number without reusing its draft identity', async () => {
+  const first = await request(app).post('/api/votes/start');
+  assert.equal((await request(app).post('/api/votes/cancel')).status, 200);
+  const second = await request(app).post('/api/votes/start');
+  assert.equal(second.body.round, first.body.round);
+  assert.ok(second.body.startedAt > first.body.startedAt);
+  assert.equal((await request(app).post('/api/votes/cancel')).status, 200);
+});
+
+test('the last closed Vote stays current even when an older round ends later', async () => {
+  const older = await request(app).post('/api/votes/start');
+  const newer = await request(app).post('/api/votes/start');
+  assert.equal((await request(app).post('/api/votes/close').send({ round: newer.body.round })).status, 200);
+  assert.equal((await request(app).post('/api/votes/close').send({ round: older.body.round })).status, 200);
+
+  const current = await request(app).get('/api/votes');
+  const history = await request(app).get('/api/votes/history?limit=1');
+  const kiosk = await request(app).get('/api/votes/kiosk');
+  assert.equal(current.body.round, older.body.round);
+  assert.equal(history.body.history[0].round, older.body.round);
+  assert.equal(kiosk.body.recentResult.round, older.body.round);
+});
+
+test('a runoff keeps its exact source and cannot be started twice while open', async () => {
+  const older = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
+  const newer = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes/points').send({
+    round: older.body.round,
+    playerId: playerA,
+    entries: [{ gameId: gameCs2, points: 5 }, { gameId: gameRl, points: 5 }],
+  });
+  assert.equal((await request(app).post('/api/votes/close').send({ round: newer.body.round })).status, 200);
+  const kiosk = await request(app).get('/api/votes/kiosk');
+  assert.deepEqual(kiosk.body.openRounds.map((round: { round: number }) => round.round), [older.body.round]);
+  assert.equal(kiosk.body.recentResult.round, newer.body.round);
+
+  const closed = await request(app).post('/api/votes/close').send({ round: older.body.round });
+  assert.deepEqual(closed.body.winnerGameIds.sort(), [gameCs2, gameRl].sort());
+  const runoff = await request(app).post('/api/votes/start').send({
+    mode: 'single', sourceRound: older.body.round, gameIds: [gameCs2, gameRl],
+  });
+  assert.equal(runoff.status, 201);
+  assert.equal(runoff.body.openRounds[0].sourceRound, older.body.round);
+  assert.equal((await request(app).post('/api/votes/start').send({
+    mode: 'single', sourceRound: older.body.round, gameIds: [gameCs2, gameRl],
+  })).status, 409);
+  assert.equal((await request(app).post('/api/votes/close').send({ round: runoff.body.round })).status, 200);
+  const detail = await request(app).get(`/api/votes/history/${runoff.body.round}`);
+  assert.equal(detail.body.sourceRound, older.body.round);
 });

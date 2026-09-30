@@ -324,7 +324,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
-  The current round comes first: while none runs, a primary-collection card „Aktuelle Abstimmung“
+  The start control comes first and stays available while other rounds run. Several Votes can run
+  in parallel; each open round has its own collapsible card, ballot, saved answer and admin actions.
+  While none runs, a primary-collection card „Aktuelle Abstimmung“
   shows the one-row empty state „Keine laufende Abstimmung“ and the compact header action
   „Abstimmung starten“; the game list is not shown on the page. That action opens the dialog
   „Abstimmung starten“, modeled on „Umfrage starten“: optional „Titel“ and „Beschreibung“, the
@@ -340,7 +342,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   and „Top 10 nach Bock-Level“; the Top 10 card is collapsible and starts closed.
   An open round and every closed result use the same presentation and answer controls as a 0–5
   Umfrage, a runoff those of an „Einzelauswahl“ (see „Umfragen“ in [Organisation](organisation-and-event-rules.md)),
-  minus the poll-only parts: no „Neue Runde“ and no „Wieder öffnen“. The open round is
+  minus the poll-only parts: no „Neue Runde“ and no „Wieder öffnen“. Each open round is
   one `.event-poll-card` whose header names the round, the participation („X/Y abgegeben“, updated
   through the existing realtime refresh) and the viewer's own state („Abgegeben“ or „Deine Stimme
   fehlt“); admins get a compact „Beenden“ and, directly beside it, a red „Abbrechen“ — no
@@ -375,11 +377,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   The passive „Win“ label follows the text height in headers and result rows; it does not increase
   the title's gap to metadata.
   Its header names the
-  round, date, participation and winner and always offers „Stimmen ansehen“ and, on a tie, a
-  compact „Stichwahl starten“. With exactly one winner that is still in the catalog, a compact
-  primary „Match generieren“ takes its place for every participant: it opens Match in „Auslosung“
-  mode with that game selected and exactly the voters who gave it at least one point preselected,
-  so only „Anzahl Teams“ remains before „Teams auslosen“. After a runoff, every runoff participant
+  round, date, participation and winner and offers „Stimmen ansehen“ for named ballots and, on a tie, a
+  compact „Stichwahl starten“ as long as no runoff for that round is already open. A runoff stores
+  the exact round it resolves, so simultaneous Votes cannot change its decline counts or player
+  selection. „Match generieren“ opens Match in „Auslosung“
+  mode with the winning game selected and exactly the voters who gave it at least one point preselected.
+  It never starts the draw itself; players and team count can still be changed on Match. If several
+  games tie, a dialog lets the user choose one of them first. After a runoff, every runoff participant
   is preselected except those who gave the runoff's winner 0 points in the tied points round
   before it; a player who only joined for the runoff counts as a participant. Every runoff row,
   open or closed, names how many voters declined that game in that tied round
@@ -401,11 +405,14 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   stack — opens the Umfrage vote table: numbered legend with each game's summary, one row per
   voter with their points (a 0 shown as „Spielt nicht“) or their runoff pick.
   An anonymous round offers no „Stimmen ansehen“ and no avatars; its counts stay visible. Results
-  read „N Pkt. · X/Y spielen mit“, in a runoff „N Stimmen“. History lists only the rounds before the
+  read „N Pkt. · X/Y spielen mit“, in a runoff „N Stimmen“. „Letzter Vote“ always shows the
+  most recently ended round, even if another Vote is open or a lower numbered round ends later.
+  History lists only the rounds before the
   latest one as separate collapsible cards. Each retains its compact history row as a header
   (title, date, participation, winner and „Stimmen ansehen“) and independently opens the same
   per-game results as „Letzter Vote“. Cards start closed, preserve their own open state across
-  live re-renders and reset that state when the active event changes. Header and results have
+  live re-renders and reset that state when the active event changes. Every historical card with
+  an eligible winner also offers „Match generieren“. Header and results have
   no additional dividing line.
   The Top 10 form two ordered five-item columns from `--bp-md`, while phones keep one continuous
   list. The dialog's `.vote-game-grid` keeps one column on phones and two from `--bp-md`, with the

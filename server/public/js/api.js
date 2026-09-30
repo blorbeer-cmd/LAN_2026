@@ -289,15 +289,15 @@ export const api = {
   votes: {
     get: () => apiFetch('/api/votes'),
     kiosk: () => apiFetch('/api/votes/kiosk'),
-    mine: (playerId) => apiFetch(`/api/votes/mine?playerId=${encodeURIComponent(playerId)}`),
+    mine: (playerId, round) => apiFetch(`/api/votes/mine?playerId=${encodeURIComponent(playerId)}&round=${round}`),
     history: () => apiFetch('/api/votes/history'),
     historyRound: (round) => apiFetch(`/api/votes/history/${round}`),
     start: (options = {}) => apiFetch('/api/votes/start', { method: 'POST', body: JSON.stringify(options) }),
-    cast: (playerId, gameId) => apiFetch('/api/votes', { method: 'POST', body: JSON.stringify({ playerId, gameId }) }),
-    castPoints: (playerId, entries) =>
-      apiFetch('/api/votes/points', { method: 'POST', body: JSON.stringify({ playerId, entries }) }),
-    close: () => apiFetch('/api/votes/close', { method: 'POST' }),
-    cancel: () => apiFetch('/api/votes/cancel', { method: 'POST' }),
+    cast: (playerId, gameId, round) => apiFetch('/api/votes', { method: 'POST', body: JSON.stringify({ playerId, gameId, round }) }),
+    castPoints: (playerId, entries, round) =>
+      apiFetch('/api/votes/points', { method: 'POST', body: JSON.stringify({ playerId, entries, round }) }),
+    close: (round) => apiFetch('/api/votes/close', { method: 'POST', body: JSON.stringify({ round }) }),
+    cancel: (round) => apiFetch('/api/votes/cancel', { method: 'POST', body: JSON.stringify({ round }) }),
   },
 
   matches: {

@@ -197,12 +197,12 @@ export function aktuellItems() {
     });
   }
 
-  if (state.votes?.open) {
-    const voters = state.votes.totalVoters ?? 0;
+  for (const vote of (state.votes?.openRounds ?? (state.votes?.open ? [state.votes] : []))) {
+    const voters = vote.totalVoters ?? 0;
     items.push({
-      id: `vote:${state.votes.round}`,
+      id: `vote:${vote.round}`,
       iconName: domainIcon('votes'),
-      title: state.votes.title || 'Abstimmung läuft',
+      title: vote.title || 'Abstimmung läuft',
       sub: `${voters} Teilnehmer bisher`,
       navigate: 'votes',
     });

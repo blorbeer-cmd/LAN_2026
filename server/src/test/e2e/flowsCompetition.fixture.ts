@@ -369,7 +369,19 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.ok(startBelowGames, 'starting the round follows the entire game selection');
   await page.click('#votes-start');
   await page.waitForSelector('#vote-start-form', { state: 'detached' });
-  await page.waitForSelector('#votes-close'); // only rendered once the round shows as open
+  await page.waitForSelector('[data-votes-close]'); // only rendered once the round shows as open
+  await page.click('#votes-new');
+  await page.locator('#votes-title').fill('Zweiter Vote');
+  await page.click('#votes-start');
+  await page.waitForSelector('#vote-start-form', { state: 'detached' });
+  const secondRound = page.locator('[data-vote-round="2"]');
+  await secondRound.waitFor();
+  assert.equal(await page.locator('.vote-round-card').count(), 2, 'votes can run in parallel');
+  await secondRound.locator('[data-toggle-open-vote]').click();
+  assert.equal(await secondRound.locator('[data-toggle-open-vote]').getAttribute('aria-expanded'), 'false');
+  await secondRound.locator('[data-votes-cancel]').click();
+  await page.click('[data-confirm]');
+  await secondRound.waitFor({ state: 'detached' });
   const roundCard = page.locator('.vote-round-card');
   await roundCard.locator('[data-vote-participation]:text-is("0/2 abgegeben")').waitFor();
   // Opening the round also kicks off votes.js's own follow-up mine/history
@@ -379,11 +391,11 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // Same card shape as an Umfrage: Beenden and Abbrechen side by side in the
   // header (no one-item "Aktion" menu), one row per game and the save action
   // in the footer.
-  assert.equal(await roundCard.locator('.event-poll-card-side > #votes-close').count(), 1);
-  assert.equal(await roundCard.locator('.event-poll-card-side > #votes-cancel').count(), 1);
+  assert.equal(await roundCard.locator('.event-poll-card-side > [data-votes-close]').count(), 1);
+  assert.equal(await roundCard.locator('.event-poll-card-side > [data-votes-cancel]').count(), 1);
   assert.equal(await roundCard.locator('.action-menu').count(), 0);
-  assert.equal(await roundCard.locator('.event-poll-footer #votes-submit').count(), 1);
-  assert.ok(await page.locator('#votes-submit').isDisabled(), 'an incomplete ballot cannot be saved');
+  assert.equal(await roundCard.locator('.event-poll-footer [data-votes-submit]').count(), 1);
+  assert.ok(await page.locator('[data-votes-submit]').isDisabled(), 'an incomplete ballot cannot be saved');
   assert.equal(await roundCard.locator('.event-poll-tag:text-is("Zwischenstand verborgen")').count(), 1);
   assert.equal(await roundCard.locator('.event-poll-bar').count(), 0, 'no bars while the round is open');
   // With the result hidden, the numbers sit beside the name. Two columns
@@ -434,14 +446,14 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // answered; an unanswered ballot starts from the own Bock instead, here
   // for the one game Alice has a Bock for.
   for (let index = 0; index < totalGames; index += 1) await setPoints(index, 2);
-  await page.click('#votes-submit');
+  await page.click('[data-votes-submit]');
   await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
   const bockGameId = (await ballotRows.first().getAttribute('data-vote-row')) ?? '';
   const bockResponse = await page.request.put(`${BASE_URL}/api/preferences`, {
     data: { playerId: alice.id, gameId: bockGameId, rating: 4 },
   });
   assert.equal(bockResponse.status(), 200, await bockResponse.text());
-  await page.click('#votes-cancel');
+  await page.click('[data-votes-cancel]');
   await page.click('[data-confirm]');
   await page.waitForSelector('#votes-new');
   await startVoteRound();
@@ -455,7 +467,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     'only the own Bock is preselected, never the cancelled ballot'
   );
   await roundCard.locator('[data-vote-rated-progress]').filter({ hasText: `1 von ${totalGames} bewertet` }).waitFor();
-  assert.ok(await page.locator('#votes-submit').isDisabled());
+  assert.ok(await page.locator('[data-votes-submit]').isDisabled());
   const bockCleanup = await page.request.delete(`${BASE_URL}/api/preferences/${alice.id}/${bockGameId}`);
   assert.equal(bockCleanup.status(), 204);
   await setPoints(0, 5);
@@ -470,9 +482,9 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // Every other game gets a deliberate 0, marked "Spiele ich nicht".
   for (let index = 2; index < totalGames; index += 1) await setPoints(index, 0);
   assert.equal(await roundCard.locator('[data-decline-tag]:visible').count(), totalGames - 2);
-  assert.ok(!(await page.locator('#votes-submit').isDisabled()), 'a complete ballot can be saved');
+  assert.ok(!(await page.locator('[data-votes-submit]').isDisabled()), 'a complete ballot can be saved');
 
-  await page.click('#votes-submit');
+  await page.click('[data-votes-submit]');
   await roundCard.locator('[data-vote-participation]:text-is("1/2 abgegeben")').waitFor();
   await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
   assert.ok(!(await ballotRows.first().locator('[data-vote-points]').first().isDisabled()), 'a saved ballot stays editable');
@@ -482,7 +494,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await setPoints(2, 1);
   const [changed] = await Promise.all([
     page.waitForResponse((response) => response.url().endsWith('/api/votes/points') && response.request().method() === 'POST'),
-    page.click('#votes-submit'),
+    page.click('[data-votes-submit]'),
   ]);
   assert.equal(changed.status(), 200);
   const mine = await (await page.request.get(`${BASE_URL}/api/votes/mine?playerId=${alice.id}`)).json();
@@ -492,7 +504,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
 
   const ballotGradient = await ballotRows.first().locator('.rating-scale-meter-fill').evaluate((fill) =>
     getComputedStyle(fill).backgroundImage);
-  await page.click('#votes-close');
+  await page.click('[data-votes-close]');
   await page.waitForSelector('#votes-new');
   // Closing reveals the result as a collapsed Umfrage card: the header names
   // the winners and keeps its actions; opening it shows every game of the
@@ -569,7 +581,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await currentVote.locator('.event-poll-option.is-winner .event-poll-voter-stack').count(), 2);
   assert.equal(await currentVote.getByText('Unentschieden', { exact: true }).count(), 0);
   assert.equal(await currentVote.locator('#votes-runoff').count(), 1, 'the runoff action belongs to the current Vote card');
-  assert.equal(await currentVote.locator('#votes-generate-match').count(), 0, 'a tie has no single game to draw teams for');
+  assert.equal(await currentVote.locator('[data-generate-vote-match]').count(), 1);
   assert.equal(await page.locator('section[aria-labelledby="vote-runoff-title"]').count(), 0, 'no separate runoff card remains');
   assert.equal(await page.locator('details.history-details:has(summary:has-text("Historie"))').getAttribute('open'), null);
 
@@ -597,9 +609,9 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   const runoffPick = page.locator('[data-vote-select]').first();
   const runoffGameId = (await runoffPick.getAttribute('data-vote-select')) ?? '';
   await runoffPick.click();
-  await page.locator('#votes-submit').click();
+  await page.locator('[data-votes-submit]').click();
   await page.locator('[data-vote-participation]:text-is("1/2 abgegeben")').waitFor();
-  await page.locator('#votes-close').click();
+  await page.locator('[data-votes-close]').click();
   const historyCard = page.locator('[data-vote-history-round="1"]');
   const historyToggle = historyCard.locator('[data-toggle-vote-history]');
   await historyToggle.waitFor();
@@ -1043,14 +1055,14 @@ flowTest('Vote: a 0-5 round with a visible interim result and anonymous voters',
     }
     await row.locator(`[data-points-value="${value}"][aria-pressed="true"]`).waitFor();
   }
-  await page.click('#votes-submit');
+  await page.click('[data-votes-submit]');
   await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
   // The interim result is visible while the round runs, but an anonymous
   // round names nobody.
   await rows.nth(0).locator('.event-poll-count-text:has-text("5 Pkt.")').waitFor();
   assert.equal(await roundCard.locator('.event-poll-voter-stack').count(), 0);
 
-  await page.click('#votes-close');
+  await page.click('[data-votes-close]');
   await page.waitForSelector('#votes-new');
   const latest = page.locator('section[aria-labelledby="vote-current-result-title"]');
   await latest.locator('.event-poll-card-meta-line:has-text("Sonntag")').waitFor();
@@ -1615,4 +1627,28 @@ flowTest('Auswertungen (via Mehr) shows a real award and keeps detail logs colla
   assert.equal(await page.locator('[data-dt-field^="an-"]').count(), 0);
   assert.equal(await page.locator('#analytics-arcade-range-help').count(), 0);
   assert.equal(await page.getByText('Matches pro Tag', { exact: true }).count(), 0);
+});
+
+flowTest('Vote history preselects a past winner and positive voters on Match', async () => {
+  await page.click('.nav-btn[data-view="votes"]');
+  const history = page.locator('[data-vote-history]');
+  if (!(await history.evaluate((element: HTMLDetailsElement) => element.open))) {
+    await history.locator('summary').click();
+  }
+  const oldVote = history.locator('[data-vote-history-round="1"]');
+  await oldVote.locator('[data-generate-vote-match]').click();
+  const dialog = page.locator('.modal-backdrop', { hasText: 'Gewinnerspiel auswählen' });
+  await dialog.waitFor();
+  assert.equal(await dialog.locator('#vote-match-game option').count(), 2, 'both tied winners can be chosen');
+  const gameId = await dialog.locator('#vote-match-game').inputValue();
+  let generated = false;
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/matchmaking') && request.method() === 'POST') generated = true;
+  });
+  await dialog.locator('[data-vote-match-submit]').click();
+  await page.waitForSelector('#mm-generate');
+  assert.equal(await page.locator('#mm-game').inputValue(), gameId);
+  assert.equal(await page.locator('[data-player]:checked').count(), 1);
+  assert.equal(await page.locator(`[data-player="${alice.id}"]`).isChecked(), true);
+  assert.equal(generated, false, 'opening Match does not create a draw');
 });

@@ -47,6 +47,32 @@ function readMigrationRunOrder(): number[] {
   return JSON.parse(stdout.toString()) as number[];
 }
 
+test('migration 116 removes orphaned Vote rounds but keeps the legacy active round', () => {
+  const dbFile = makeTempDbPath('parallel-votes');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  const addRound = fixture.prepare(
+    `INSERT INTO vote_rounds (group_id, round, event_id, started_at, closed_at, mode)
+     VALUES ('default-group', ?, 'instance-base-event', ?, NULL, 'points')`,
+  );
+  addRound.run(1, now - 2000);
+  addRound.run(2, now - 1000);
+  fixture.prepare("INSERT OR REPLACE INTO app_state (key, value) VALUES ('vote_open:default-group', '1')").run();
+  fixture.prepare("INSERT OR REPLACE INTO app_state (key, value) VALUES ('vote_round:default-group', '1')").run();
+  fixture.prepare("INSERT OR REPLACE INTO app_state (key, value) VALUES ('vote_open:default-group:instance-base-event', '1')").run();
+  fixture.prepare("INSERT OR REPLACE INTO app_state (key, value) VALUES ('vote_round:default-group:instance-base-event', '2')").run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 116').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile, { readonly: true });
+  const rounds = migrated.prepare('SELECT round FROM vote_rounds ORDER BY round').all() as Array<{ round: number }>;
+  assert.deepEqual(rounds.map((row) => row.round), [2]);
+  assert.ok((migrated.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>).some((column) => column.name === 'source_round'));
+  migrated.close();
+});
+
 test('legacy game_catalog tables are merged into games and preferences', () => {
   const dbFile = makeTempDbPath('catalog-merge');
   const now = Date.now();
@@ -763,10 +789,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 115);
+  assert.equal(migrations.length, 116);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 115 }, (_, index) => index + 1),
+    Array.from({ length: 116 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1368,8 +1394,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 115 }, (_, index) => index + 1),
-    'every version 1..115 runs exactly once',
+    Array.from({ length: 116 }, (_, index) => index + 1),
+    'every version 1..116 runs exactly once',
   );
 });
 

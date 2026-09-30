@@ -29,24 +29,25 @@ test('setup: players and games', async () => {
   gameIds = games.body.slice(0, 3).map((g: { id: string }) => g.id);
 });
 
-test('simultaneous vote starts: exactly one round opens', async () => {
+test('simultaneous vote starts create separate rounds and each round can close only once', async () => {
   const results = await Promise.all(
     Array.from({ length: 10 }, () => request(app).post('/api/votes/start').send({ mode: 'single' }))
   );
   const counts = statusCounts(results.map((r) => r.status));
-  assert.equal(counts[201], 1, JSON.stringify(counts));
-  assert.equal(counts[409], 9, JSON.stringify(counts));
+  assert.equal(counts[201], 10, JSON.stringify(counts));
+  assert.deepEqual(results.map((r) => r.body.openRounds.length).sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
   const state = await request(app).get('/api/votes');
   assert.equal(state.body.open, true);
-  assert.equal(state.body.round, 1);
+  assert.equal(state.body.round, 10);
+  assert.equal(state.body.openRounds.length, 10);
 });
 
 test('double-tapped and simultaneous votes: each player keeps exactly one vote', async () => {
   const results = await Promise.all(
     playerIds.flatMap((playerId) => [
-      request(app).post('/api/votes').send({ playerId, gameId: gameIds[0] }),
-      request(app).post('/api/votes').send({ playerId, gameId: gameIds[1] }),
+      request(app).post('/api/votes').send({ round: 1, playerId, gameId: gameIds[0] }),
+      request(app).post('/api/votes').send({ round: 1, playerId, gameId: gameIds[1] }),
     ])
   );
   // A repeated vote replaces the earlier one while the round is open, so
@@ -54,16 +55,15 @@ test('double-tapped and simultaneous votes: each player keeps exactly one vote',
   assert.ok(results.every((r) => r.status === 200), JSON.stringify(results.map((r) => r.status)));
 
   const state = await request(app).get('/api/votes');
-  assert.equal(state.body.totalVotes, playerIds.length);
-  assert.equal(state.body.totalVoters, playerIds.length);
+  assert.equal(state.body.openRounds.find((round: { round: number }) => round.round === 1).totalVoters, playerIds.length);
 });
 
 test('simultaneous closes plus late casts: one close wins, stragglers are cleanly rejected', async () => {
   const results = await Promise.all([
-    request(app).post('/api/votes/close'),
-    request(app).post('/api/votes/close'),
-    request(app).post('/api/votes').send({ playerId: playerIds[0], gameId: gameIds[0] }),
-    request(app).post('/api/votes').send({ playerId: playerIds[1], gameId: gameIds[0] }),
+    request(app).post('/api/votes/close').send({ round: 1 }),
+    request(app).post('/api/votes/close').send({ round: 1 }),
+    request(app).post('/api/votes').send({ round: 1, playerId: playerIds[0], gameId: gameIds[0] }),
+    request(app).post('/api/votes').send({ round: 1, playerId: playerIds[1], gameId: gameIds[0] }),
   ]);
   const closeCounts = statusCounts(results.slice(0, 2).map((r) => r.status));
   assert.equal(closeCounts[200], 1, JSON.stringify(closeCounts));
@@ -71,6 +71,16 @@ test('simultaneous closes plus late casts: one close wins, stragglers are cleanl
   // A cast either landed before the close (200) or was rejected (409) —
   // never accepted into an already-closed round.
   assert.ok(results.slice(2).every((r) => r.status === 200 || r.status === 409));
+});
+
+test('closing an older open vote makes it the latest result without ending other votes', async () => {
+  assert.equal((await request(app).post('/api/votes/close').send({ round: 10 })).status, 200);
+  assert.equal((await request(app).post('/api/votes/close').send({ round: 2 })).status, 200);
+  const history = await request(app).get('/api/votes/history');
+  assert.deepEqual(history.body.history.slice(0, 2).map((round: { round: number }) => round.round), [2, 10]);
+  const current = await request(app).get('/api/votes');
+  assert.equal(current.body.openRounds.length, 7);
+  assert.equal(current.body.openRounds.some((round: { round: number }) => round.round === 3), true);
 });
 
 test('simultaneous creates with the same name: exactly one player/game wins', async () => {

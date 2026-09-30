@@ -2,8 +2,8 @@
 // voter, so casting a vote needs no extra identity form.
 //
 // Layout, top to bottom:
-// 1. Either the "Aktuelle Abstimmung" card whose „Abstimmung starten" opens
-//    the start dialog (idle), or the running round as one card in the same
+// 1. The „Abstimmung starten" dialog and every running round as its own
+//    collapsible card in the same
 //    shape as an Umfrage: header with participation and the viewer's answer
 //    state, one row per game, and a footer with the own progress and
 //    "Speichern".
@@ -69,6 +69,7 @@ let historyOpen = false;
 let top10Open = false;
 let latestVoteOpen = false;
 const expandedHistoryRounds = new Set();
+const collapsedOpenRounds = new Set();
 let historyRequestVersion = 0;
 
 async function loadHistory(ctx) {
@@ -107,19 +108,23 @@ export function invalidateVoteHistory({ hard = false } = {}) {
 export function invalidateVoteEventScope() {
   invalidateVoteHistory({ hard: true });
   expandedHistoryRounds.clear();
+  collapsedOpenRounds.clear();
+  mineByKey.clear();
+  mineLoadingKeys.clear();
+  draftsByKey.clear();
   mineCache = null;
-  mineCacheKey = null;
-  mineLoading = false;
   draft = null;
-  draftKey = null;
+  activeDraftKey = null;
 }
 
-// The current player's own saved ballot in the running round. Any entry
+// The current player's own saved ballot in each running round. Any entry
 // means this identity has answered; the draft below starts from it and can
 // still be changed and saved again until the round ends.
 let mineCache = null; // Map<gameId, { points }>
-let mineCacheKey = null; // see mineKey()
-let mineLoading = false;
+const mineByKey = new Map();
+const mineLoadingKeys = new Set();
+const draftsByKey = new Map();
+let activeDraftKey = null;
 
 // A cancelled round is deleted on the server, so the next round reuses its
 // number. The start time tells the two apart; without it, the cancelled
@@ -128,16 +133,15 @@ function mineKey(votes, playerId) {
   return `${votes.round}:${votes.startedAt}:${playerId}`;
 }
 
-async function loadMine(key, playerId, ctx) {
-  mineLoading = true;
+async function loadMine(key, playerId, round, ctx) {
+  mineLoadingKeys.add(key);
   try {
-    const mine = await api.votes.mine(playerId);
-    mineCache = new Map(mine.entries.map((e) => [e.gameId, { points: e.points }]));
+    const mine = await api.votes.mine(playerId, round);
+    mineByKey.set(key, new Map(mine.entries.map((e) => [e.gameId, { points: e.points }])));
   } catch {
-    mineCache = new Map();
+    mineByKey.set(key, new Map());
   } finally {
-    mineCacheKey = key;
-    mineLoading = false;
+    mineLoadingKeys.delete(key);
     ctx.rerender();
   }
 }
@@ -149,22 +153,36 @@ async function loadMine(key, playerId, ctx) {
 // starts blank rather than carrying over a stale draft). A game missing from
 // the draft is still unanswered; 0 is a real rating.
 let draft = null; // Map<gameId, number | true>
-let draftKey = null; // mineKey() of the round/player the current draft belongs to
 
-function seedDraft(votes) {
+function seedDraft(votes, saved) {
   draft = new Map();
-  for (const [gameId, entry] of mineCache) {
+  for (const [gameId, entry] of saved) {
     if (votes.mode !== 'points') draft.set(gameId, true);
     else if (typeof entry.points === 'number') draft.set(gameId, entry.points);
   }
   // A points ballot not yet answered starts from the viewer's own Bock per
   // game; it is still only a local draft until "Speichern".
-  if (votes.mode === 'points' && mineCache.size === 0) {
+  if (votes.mode === 'points' && saved.size === 0) {
     for (const r of votes.results) {
       const bock = ownBock(r.gameId);
       if (bock !== null) draft.set(r.gameId, bock);
     }
   }
+}
+
+function activateDraft(votes, playerId) {
+  if (!playerId) return false;
+  const key = mineKey(votes, playerId);
+  const saved = mineByKey.get(key);
+  if (!saved) return false;
+  mineCache = saved;
+  activeDraftKey = key;
+  if (!draftsByKey.has(key)) {
+    seedDraft(votes, saved);
+    draftsByKey.set(key, draft);
+  }
+  draft = draftsByKey.get(key);
+  return true;
 }
 
 // Games are listed alphabetically everywhere on this page, so a game is
@@ -391,6 +409,8 @@ function roundTagsHtml(votes) {
 }
 
 function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
+  const disclosureKey = `${votes.round}:${votes.startedAt}`;
+  const expanded = !collapsedOpenRounds.has(disclosureKey);
   const games = ballotGames(votes);
   const showResult = !votes.hideLiveResults;
   const maxPoints = Math.max(1, ...votes.results.map((r) => r.points ?? 0));
@@ -404,29 +424,32 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
   const admin = isGroupAdmin();
   const answer = mineReady ? answerChipHtml(hasSubmitted) : '';
   return `
-    <section class="card vote-page-section event-poll-card vote-round-card" aria-labelledby="vote-current-title">
+    <section class="card vote-page-section event-poll-card vote-round-card" data-vote-round="${votes.round}" aria-labelledby="vote-current-title-${votes.round}">
       <header class="event-poll-card-header">
-        <div class="event-poll-card-title vote-round-heading">
-          <h2 id="vote-current-title">${votes.title ? escapeHtml(votes.title) : 'Abstimmung läuft'}</h2>
+        <button type="button" class="event-poll-card-toggle" data-toggle-open-vote="${disclosureKey}" aria-expanded="${expanded}" aria-controls="vote-open-content-${votes.round}">
+          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
+          <span class="event-poll-card-title vote-round-heading">
+          <strong id="vote-current-title-${votes.round}">${votes.title ? escapeHtml(votes.title) : `Abstimmung läuft · Runde ${votes.round}`}</strong>
           <span class="event-poll-card-meta-line">
             <span class="muted" data-vote-participation>${votes.totalVoters}/${totalPlayers} abgegeben</span>
             <span class="event-poll-answer-inline">${answer}</span>
           </span>
-        </div>
+          </span>
+        </button>
         <div class="event-poll-card-side">
           <span class="event-poll-answer-side">${answer}</span>
-          ${admin ? '<button type="button" class="btn btn-sm" id="votes-close">Beenden</button>' : ''}
-          ${admin ? '<button type="button" class="btn btn-sm btn-danger" id="votes-cancel">Abbrechen</button>' : ''}
+          ${admin ? `<button type="button" class="btn btn-sm" data-votes-close="${votes.round}">Beenden</button>` : ''}
+          ${admin ? `<button type="button" class="btn btn-sm btn-danger" data-votes-cancel="${votes.round}">Abbrechen</button>` : ''}
         </div>
       </header>
-      <div class="stack event-poll-card-content">
+      <div class="stack event-poll-card-content" id="vote-open-content-${votes.round}" ${expanded ? '' : 'hidden'}>
         <section class="stack event-poll-round">
           ${roundTagsHtml(votes)}
           ${votes.info ? `<p class="event-poll-note">${escapeHtml(votes.info)}</p>` : ''}
           <div class="stack event-poll-options has-answers${showResult ? '' : ' is-compact'}" style="--compact-rows: ${columnRows};">${rows}</div>
           <div class="event-poll-save-row event-poll-footer">
             <span class="muted" data-vote-rated-progress>${mineReady ? draftProgressText(votes) : ''}</span>
-            <button type="button" class="btn btn-primary btn-sm" id="votes-submit" ${mineReady && ballotComplete(votes) ? '' : 'disabled'}>Speichern</button>
+            <button type="button" class="btn btn-primary btn-sm" data-votes-submit="${votes.round}" ${mineReady && ballotComplete(votes) ? '' : 'disabled'}>Speichern</button>
           </div>
         </section>
       </div>
@@ -483,11 +506,17 @@ function winnerNames(h) {
   return h.results.filter((r) => (h.winnerGameIds ?? []).includes(r.gameId)).map((r) => r.gameName);
 }
 
-// A runoff re-asks the tied winners of the latest points round before it
+// A runoff re-asks the tied winners of its stored source round
 // (a runoff of a runoff still goes back to that points round). Its ballots
 // still say who would not play each game, which the runoff itself cannot ask.
 // `runoff` is either a closed history round or the open round's payload.
 export function runoffSourceRound(history, runoff) {
+  if (runoff.sourceRound != null) {
+    const source = (history ?? []).find((round) => round.round === runoff.sourceRound && round.round < runoff.round);
+    if (!source) return null;
+    return source.mode === 'points' ? source : runoffSourceRound(history, source);
+  }
+  // Historical runoffs from before source_round existed use the old lookup.
   const gameIds = runoff.results.map((r) => r.gameId);
   return (history ?? [])
     .filter((h) => h.mode === 'points' && h.totalVoters > 0 && h.round < runoff.round
@@ -531,9 +560,14 @@ function sourceRoundOf(h) {
   return h?.mode === 'single' ? runoffSourceRound(historyCache, h) : null;
 }
 
-function latestMatchSelection() {
-  const latest = historyCache?.[0];
-  return matchSelectionFromVote(latest, new Set(catalogGames().map((game) => game.id)), sourceRoundOf(latest));
+function matchSelections(h) {
+  if (!h || h.anonymous) return [];
+  const catalogIds = new Set(catalogGames().map((game) => game.id));
+  return (h.winnerGameIds ?? []).map((gameId) => {
+    const selection = matchSelectionFromVote({ ...h, winnerGameIds: [gameId] }, catalogIds, sourceRoundOf(h));
+    const gameName = h.results.find((result) => result.gameId === gameId)?.gameName;
+    return selection && gameName ? { ...selection, gameName } : null;
+  }).filter(Boolean);
 }
 
 function renderVoteResultContent(h) {
@@ -555,8 +589,8 @@ function votesButtonHtml(h) {
 // the actions visible; the full result opens below it.
 function renderLatestVoteCard({ showRunoff }) {
   const h = historyCache?.[0];
-  if (!h?.totalVoters) {
-    const empty = historyCache === null ? 'Lädt…' : historyCache.length === 0 ? 'Noch keine Abstimmung.' : 'Niemand hat abgestimmt.';
+  if (!h) {
+    const empty = historyCache === null ? 'Lädt…' : 'Noch keine Abstimmung.';
     return `
       <section class="card vote-page-section stack" aria-labelledby="vote-current-result-title">
         <div class="grouped-page-section-title"><h2 id="vote-current-result-title">Letzter Vote</h2></div>
@@ -580,11 +614,11 @@ function renderLatestVoteCard({ showRunoff }) {
         <div class="event-poll-card-side">
           ${votesButtonHtml(h)}
           ${showRunoff ? '<button type="button" class="btn btn-primary btn-sm" id="votes-runoff">Stichwahl starten</button>' : ''}
-          ${latestMatchSelection() ? '<button type="button" class="btn btn-primary btn-sm" id="votes-generate-match">Match generieren</button>' : ''}
+          ${matchSelections(h).length ? `<button type="button" class="btn btn-primary btn-sm" id="votes-generate-match" data-generate-vote-match="${h.round}">Match generieren</button>` : ''}
         </div>
       </header>
       <div class="stack event-poll-card-content" ${latestVoteOpen ? '' : 'hidden'}>
-        ${renderVoteResultContent(h)}
+        ${h.totalVoters ? renderVoteResultContent(h) : emptyStateHtml('Niemand hat abgestimmt.')}
       </div>
     </section>`;
 }
@@ -619,7 +653,7 @@ function renderHistory() {
                 ${winners.length ? `<span class="event-poll-history-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : '<span class="muted">Keine Stimmen</span>'}
               </span>
             </button>
-            <div class="event-poll-card-side">${votesButtonHtml(h)}</div>
+            <div class="event-poll-card-side">${votesButtonHtml(h)}${matchSelections(h).length ? `<button type="button" class="btn btn-sm" data-generate-vote-match="${round}">Match generieren</button>` : ''}</div>
           </header>
           <div class="stack event-poll-card-content" id="vote-history-result-${round}" ${expanded ? '' : 'hidden'}>
             ${expanded ? renderVoteResultContent(h) : ''}
@@ -895,14 +929,14 @@ function openVoteStartForm(ctx) {
 
 // ---------- page ----------
 
-function renderStartSection() {
+function renderStartSection(hasOpenRounds) {
   return `
     <section class="card stack grouped-page-section primary-collection-section vote-page-section" aria-labelledby="vote-start-title">
       <div class="grouped-page-section-title">
-        <h2 id="vote-start-title">Aktuelle Abstimmung</h2>
+        <h2 id="vote-start-title">${hasOpenRounds ? 'Neue Abstimmung' : 'Aktuelle Abstimmung'}</h2>
         <button type="button" class="btn btn-primary btn-sm" id="votes-new">Abstimmung starten</button>
       </div>
-      ${emptyStateHtml('Keine laufende Abstimmung')}
+      ${hasOpenRounds ? '' : emptyStateHtml('Keine laufende Abstimmung')}
     </section>`;
 }
 
@@ -918,31 +952,29 @@ export function renderVotes(container, ctx) {
   }
 
   const myId = getMyId();
-  const currentMineKey = votes.open && myId ? mineKey(votes, myId) : null;
-  if (currentMineKey && mineCacheKey !== currentMineKey && !mineLoading) {
-    loadMine(currentMineKey, myId, ctx);
-  }
-  const mineReady = Boolean(currentMineKey && mineCacheKey === currentMineKey && mineCache);
-  const hasSubmitted = Boolean(mineReady && mineCache.size > 0);
-
-  if (mineReady && draftKey !== mineCacheKey) {
-    seedDraft(votes);
-    draftKey = mineCacheKey;
-  }
+  const openRounds = votes.openRounds ?? (votes.open ? [votes] : []);
 
   // Eligible voters are the active event's accepted participants, not every
   // group member — an invited-but-not-yet-accepted person must not inflate
   // the "X/Y" denominator (see eventPlayers()).
   const totalPlayers = eventPlayers().length;
+  const openCards = openRounds.map((round) => {
+    const key = myId ? mineKey(round, myId) : null;
+    if (key && !mineByKey.has(key) && !mineLoadingKeys.has(key)) loadMine(key, myId, round.round, ctx);
+    const mineReady = activateDraft(round, myId);
+    return renderOpenRound(round, { mineReady, hasSubmitted: mineReady && mineCache.size > 0, totalPlayers });
+  }).join('');
 
   // A tie in the most recent round offers the runoff right in that card's
   // header, like every other primary action on this page.
   const latestRound = historyCache?.[0];
-  const showRunoff = !votes.open && isGroupAdmin() && Boolean(latestRound?.totalVoters) && latestRound.winnerGameIds?.length > 1;
+  const hasOpenRunoff = openRounds.some((round) => round.sourceRound === latestRound?.round);
+  const showRunoff = isGroupAdmin() && !hasOpenRunoff && Boolean(latestRound?.totalVoters) && latestRound.winnerGameIds?.length > 1;
 
   container.innerHTML = `
     <h1 class="view-title">Vote</h1>
-    ${votes.open ? renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) : renderStartSection()}
+    ${renderStartSection(openRounds.length > 0)}
+    ${openCards}
 
     ${renderLatestVoteCard({ showRunoff })}
 
@@ -977,6 +1009,17 @@ export function renderVotes(container, ctx) {
     latestVoteOpen = !latestVoteOpen;
     ctx.rerender();
   });
+  container.querySelectorAll('[data-toggle-open-vote]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const key = button.dataset.toggleOpenVote;
+      if (collapsedOpenRounds.has(key)) collapsedOpenRounds.delete(key);
+      else collapsedOpenRounds.add(key);
+      await ctx.rerender();
+      [...container.querySelectorAll('[data-toggle-open-vote]')]
+        .find((toggle) => toggle.dataset.toggleOpenVote === key)?.focus({ preventScroll: true });
+    });
+  });
+  const roundFor = (control) => openRounds.find((round) => String(round.round) === control.closest('[data-vote-round]')?.dataset.voteRound);
   container.querySelectorAll('[data-toggle-vote-history]').forEach((button) => {
     button.addEventListener('click', async () => {
       const round = button.dataset.toggleVoteHistory;
@@ -991,9 +1034,12 @@ export function renderVotes(container, ctx) {
   // A runoff pick replaces the previous one.
   container.querySelectorAll('[data-vote-select]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      const round = roundFor(btn);
+      if (!round || !activateDraft(round, myId)) return;
       const gameId = btn.dataset.voteSelect;
       draft = new Map([[gameId, true]]);
-      focusAfterRender = `[data-vote-select="${CSS.escape(gameId)}"]`;
+      draftsByKey.set(activeDraftKey, draft);
+      focusAfterRender = `[data-vote-round="${round.round}"] [data-vote-select="${CSS.escape(gameId)}"]`;
       ctx.rerender();
     });
   });
@@ -1001,11 +1047,13 @@ export function renderVotes(container, ctx) {
   // Like an Umfrage: pressing the chosen answer again clears it.
   container.querySelectorAll('[data-vote-points]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      const round = roundFor(btn);
+      if (!round || !activateDraft(round, myId)) return;
       const gameId = btn.dataset.votePoints;
       const value = Number(btn.dataset.pointsValue);
       if (draft.get(gameId) === value) draft.delete(gameId);
       else draft.set(gameId, value);
-      focusAfterRender = `[data-vote-points="${CSS.escape(gameId)}"][data-points-value="${value}"]`;
+      focusAfterRender = `[data-vote-round="${round.round}"] [data-vote-points="${CSS.escape(gameId)}"][data-points-value="${value}"]`;
       ctx.rerender();
     });
   });
@@ -1019,22 +1067,26 @@ export function renderVotes(container, ctx) {
     btn.addEventListener('click', () => openRoundBreakdown(btn.dataset.openVoteRound));
   });
   container.querySelectorAll('[data-open-live-votes]').forEach((btn) => {
-    btn.addEventListener('click', () => openLiveBreakdown(votes));
+    btn.addEventListener('click', () => {
+      const round = roundFor(btn);
+      if (round) openLiveBreakdown(round);
+    });
   });
 
-  const submitBtn = container.querySelector('#votes-submit');
-  if (submitBtn) {
+  container.querySelectorAll('[data-votes-submit]').forEach((submitBtn) => {
     submitBtn.addEventListener('click', async () => {
+      const round = roundFor(submitBtn);
+      if (!round || !activateDraft(round, myId)) return;
       if (submitBtn.disabled) return;
       const playerId = getMyId();
       if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-      if (!ballotComplete(votes)) {
-        return showToast(votes.mode === 'single' ? 'Bitte zuerst ein Spiel auswählen.' : 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.', { error: true });
+      if (!ballotComplete(round)) {
+        return showToast(round.mode === 'single' ? 'Bitte zuerst ein Spiel auswählen.' : 'Bitte jedes Spiel mit 0 bis 5 Punkten bewerten.', { error: true });
       }
       // Only games of this round count; a draft may still hold a game that
       // was removed since.
-      const answered = votes.results.filter((r) => draft.has(r.gameId)).map((r) => [r.gameId, draft.get(r.gameId)]);
-      const key = mineKey(votes, playerId);
+      const answered = round.results.filter((r) => draft.has(r.gameId)).map((r) => [r.gameId, draft.get(r.gameId)]);
+      const key = mineKey(round, playerId);
       submitBtn.disabled = true;
       try {
         // Every vote mutation route returns the same fresh payload it
@@ -1046,19 +1098,18 @@ export function renderVotes(container, ctx) {
         // write lands, the broadcast never arrives. The saved ballot is
         // exactly what was just sent, so the own-entries cache is set from
         // it directly instead of reloading and flashing the rows.
-        if (votes.mode === 'single') state.votes = await api.votes.cast(playerId, answered[0][0]);
-        else state.votes = await api.votes.castPoints(playerId, answered.map(([gameId, points]) => ({ gameId, points })));
+        if (round.mode === 'single') state.votes = await api.votes.cast(playerId, answered[0][0], round.round);
+        else state.votes = await api.votes.castPoints(playerId, answered.map(([gameId, points]) => ({ gameId, points })), round.round);
         mineCache = new Map(answered.map(([gameId, value]) => [gameId, { points: typeof value === 'number' ? value : null }]));
-        mineCacheKey = key;
-        draftKey = key;
+        mineByKey.set(key, mineCache);
         ctx.rerender();
-        showToast(votes.mode === 'points' ? 'Deine Bewertung wurde gespeichert.' : 'Deine Stimme wurde gespeichert.');
+        showToast(round.mode === 'points' ? 'Deine Bewertung wurde gespeichert.' : 'Deine Stimme wurde gespeichert.');
       } catch (err) {
         submitBtn.disabled = false;
         showToast(err.message, { error: true });
       }
     });
-  }
+  });
 
   const runoffBtn = container.querySelector('#votes-runoff');
   if (runoffBtn) {
@@ -1070,6 +1121,7 @@ export function renderVotes(container, ctx) {
         // the privacy options of the round it decides.
         state.votes = await api.votes.start({
           mode: 'single',
+          sourceRound: lastClosed.round,
           title: lastClosed.title ? `Stichwahl: ${lastClosed.title}` : 'Stichwahl',
           gameIds: lastClosed.winners.map((w) => w.gameId),
           anonymous: Boolean(lastClosed.anonymous),
@@ -1083,10 +1135,8 @@ export function renderVotes(container, ctx) {
     });
   }
 
-  container.querySelector('#votes-generate-match')?.addEventListener('click', async (event) => {
-    const button = event.currentTarget;
-    const selection = latestMatchSelection();
-    if (!selection || button.disabled) return;
+  const openMatch = async (button, selection) => {
+    if (button.disabled) return;
     button.disabled = true;
     try {
       // A running captain draft takes over Match on every device, so the
@@ -1108,14 +1158,38 @@ export function renderVotes(container, ctx) {
     }
     prepareDrawFromVote(selection);
     window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view: 'matchmaking' } }));
+  };
+  container.querySelectorAll('[data-generate-vote-match]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const vote = historyCache?.find((round) => String(round.round) === button.dataset.generateVoteMatch);
+      const selections = matchSelections(vote);
+      if (!selections.length) return;
+      if (selections.length === 1) {
+        openMatch(button, selections[0]);
+        return;
+      }
+      const options = selections.map((selection) =>
+        `<option value="${escapeHtml(selection.gameId)}">${escapeHtml(selection.gameName)}</option>`).join('');
+      const { el, close } = openModal('Gewinnerspiel auswählen', `
+        <form class="stack" data-vote-match-form>
+          <div><label class="field-label" for="vote-match-game">Spiel</label><select id="vote-match-game">${options}</select></div>
+          <p class="muted">Personen mit mehr als 0 Punkten werden auf der Match-Seite vorausgewählt.</p>
+          <div class="row" style="justify-content:flex-end;"><button type="submit" class="btn btn-primary btn-sm" data-vote-match-submit>Zur Match-Seite</button></div>
+        </form>`);
+      el.querySelector('[data-vote-match-form]').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const selection = selections.find((item) => item.gameId === el.querySelector('#vote-match-game').value);
+        close();
+        if (selection) openMatch(button, selection);
+      });
+    });
   });
 
-  const closeBtn = container.querySelector('#votes-close');
-  if (closeBtn) {
+  container.querySelectorAll('[data-votes-close]').forEach((closeBtn) => {
     closeBtn.addEventListener('click', async () => {
       try {
         // No ctx.refresh(): see the submit button above.
-        state.votes = await api.votes.close();
+        state.votes = await api.votes.close(Number(closeBtn.dataset.votesClose));
         // The close response belongs to this client, so invalidate the
         // separately cached history immediately instead of waiting for the
         // socket echo. This also guarantees a fresh history request when a
@@ -1127,20 +1201,19 @@ export function renderVotes(container, ctx) {
         showToast(err.message, { error: true });
       }
     });
-  }
+  });
 
-  const cancelBtn = container.querySelector('#votes-cancel');
-  if (cancelBtn) {
+  container.querySelectorAll('[data-votes-cancel]').forEach((cancelBtn) => {
     cancelBtn.addEventListener('click', async () => {
       if (!(await confirmDialog('Abstimmung wirklich abbrechen? Alle Stimmen gehen verloren.', { confirmText: 'Abstimmung abbrechen', danger: true }))) return;
       try {
         // No ctx.refresh(): see the submit button above.
-        state.votes = await api.votes.cancel();
+        state.votes = await api.votes.cancel(Number(cancelBtn.dataset.votesCancel));
         ctx.rerender();
         showToast('Abstimmung abgebrochen.');
       } catch (err) {
         showToast(err.message, { error: true });
       }
     });
-  }
+  });
 }

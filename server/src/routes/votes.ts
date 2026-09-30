@@ -1,6 +1,5 @@
-// "What's next?" voting (FR-19..21). State (current round, open/closed,
-// mode) lives in the small app_state key/value table so we don't need a
-// dedicated table just for a few flags + counter. "Zuletzt gespielt" / play
+// "What's next?" voting (FR-19..21). Each round's lifecycle lives in
+// vote_rounds, allowing independent parallel votes. "Zuletzt gespielt" / play
 // counts (FR-20) are derived from the matches table (actual recorded
 // results), not from vote outcomes, since a vote winner isn't guaranteed to
 // actually get played.
@@ -38,15 +37,13 @@ import { includesTestPlayers } from '../testDataVisibility';
 
 export const votesRouter = Router();
 
-const ROUND_KEY = 'vote_round';
-const OPEN_KEY = 'vote_open';
-const STARTED_AT_KEY = 'vote_started_at';
-const MODE_KEY = 'vote_mode';
 export const KIOSK_RESULT_REVEAL_DELAY_MS = 5 * 1000;
 export const KIOSK_RESULT_DURATION_MS = 10 * 60 * 1000;
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_INFO_LENGTH = 500;
+const KIOSK_RESULT_FLOOR_KEY = 'vote_kiosk_result_floor';
+const LAST_STARTED_AT_KEY = 'vote_last_started_at';
 
 // Same shape as games.ts's optionalText: undefined means "invalid" (caller
 // should 400), null means "explicitly cleared/absent", a string means a
@@ -72,20 +69,43 @@ interface RoundState {
   mode: VoteMode;
 }
 
-function scopedStateKey(key: string, groupId: string, eventId: string): string {
-  return `${key}:${groupId}:${eventId}`;
+function roundStates(groupId: string, eventId: string): RoundState[] {
+  return (db.prepare(
+    `SELECT round, started_at AS startedAt, mode FROM vote_rounds
+     WHERE group_id = ? AND event_id = ? AND closed_at IS NULL ORDER BY round DESC`,
+  ).all(groupId, eventId) as Array<Omit<RoundState, 'open'>>).map((row) => ({ ...row, open: true }));
 }
 
-function readRoundState(groupId: string, eventId: string): RoundState {
-  const storedMode = getState(scopedStateKey(MODE_KEY, groupId, eventId));
-  return {
-    round: parseInt(getState(scopedStateKey(ROUND_KEY, groupId, eventId)) ?? '0', 10),
-    open: getState(scopedStateKey(OPEN_KEY, groupId, eventId)) === '1',
-    startedAt: getState(scopedStateKey(STARTED_AT_KEY, groupId, eventId))
-      ? parseInt(getState(scopedStateKey(STARTED_AT_KEY, groupId, eventId))!, 10)
-      : null,
-    mode: storedMode === 'points' ? 'points' : 'single',
-  };
+function readRoundState(groupId: string, eventId: string, requestedRound?: number): RoundState {
+  const row = requestedRound === undefined
+    ? db.prepare(
+      `SELECT round, started_at AS startedAt, closed_at AS closedAt, mode FROM vote_rounds
+       WHERE group_id = ? AND event_id = ?
+       ORDER BY (closed_at IS NULL) DESC, closed_at DESC, round DESC LIMIT 1`,
+    ).get(groupId, eventId)
+    : db.prepare(
+      `SELECT round, started_at AS startedAt, closed_at AS closedAt, mode FROM vote_rounds
+       WHERE group_id = ? AND event_id = ? AND round = ?`,
+    ).get(groupId, eventId, requestedRound);
+  const state = row as { round: number; startedAt: number; closedAt: number | null; mode: VoteMode } | undefined;
+  return state ? { round: state.round, startedAt: state.startedAt, open: state.closedAt === null, mode: state.mode }
+    : { round: 0, startedAt: null, open: false, mode: 'single' };
+}
+
+function requestedOpenRound(req: Request, res: Response, groupId: string, eventId: string): RoundState | null {
+  const raw = req.body?.round ?? req.query.round;
+  if (raw !== undefined && !isIntInRange(Number(raw), 1, Number.MAX_SAFE_INTEGER)) {
+    res.status(400).json({ error: 'round muss eine positive Ganzzahl sein.' });
+    return null;
+  }
+  const open = roundStates(groupId, eventId);
+  if (raw === undefined && open.length > 1) {
+    res.status(400).json({ error: 'Bitte die Abstimmungsrunde angeben.' });
+    return null;
+  }
+  const state = raw === undefined ? open[0] : open.find((item) => item.round === Number(raw));
+  if (!state) res.status(409).json({ error: 'Diese Abstimmung läuft nicht.' });
+  return state ?? null;
 }
 
 function requestVoteEventId(req: Request, res: Response, requestedEventId?: unknown): string | null {
@@ -100,6 +120,7 @@ function requestVoteEventId(req: Request, res: Response, requestedEventId?: unkn
 
 interface RoundMeta {
   eventId: string | null;
+  sourceRound: number | null;
   title: string | null;
   info: string | null;
   selectedGameIds: string[] | null; // null = every game in the catalog
@@ -109,6 +130,7 @@ interface RoundMeta {
 
 const DEFAULT_ROUND_META: RoundMeta = {
   eventId: null,
+  sourceRound: null,
   title: null,
   info: null,
   selectedGameIds: null,
@@ -117,20 +139,19 @@ const DEFAULT_ROUND_META: RoundMeta = {
 };
 
 // A round's title/info/game-selection live in vote_rounds (set once on
-// /start, immutable afterwards), unlike round/open/mode which are mirrored
-// into app_state for cheap access — this is only read a handful of times per
-// request, so a small extra query is fine.
+// /start, immutable afterwards).
 function getRoundMeta(groupId: string, round: number): RoundMeta {
   if (round < 1) return { ...DEFAULT_ROUND_META };
   const row = db
     .prepare(
-      `SELECT event_id AS eventId, title, info, selected_game_ids AS selectedGameIdsJson,
+      `SELECT event_id AS eventId, source_round AS sourceRound, title, info, selected_game_ids AS selectedGameIdsJson,
               anonymous, hide_live_results AS hideLiveResults
        FROM vote_rounds WHERE group_id = ? AND round = ?`,
     )
     .get(groupId, round) as
     | {
         eventId: string | null;
+        sourceRound: number | null;
         title: string | null;
         info: string | null;
         selectedGameIdsJson: string | null;
@@ -141,6 +162,7 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
   if (!row) return { ...DEFAULT_ROUND_META };
   return {
     eventId: row.eventId,
+    sourceRound: row.sourceRound,
     title: row.title,
     info: row.info,
     selectedGameIds: row.selectedGameIdsJson ? JSON.parse(row.selectedGameIdsJson) : null,
@@ -437,8 +459,9 @@ function buildPayload(
   eventId: string,
   includeTestData: boolean,
   extra: Record<string, unknown> = {},
+  requestedRound?: number,
 ) {
-  const state = readRoundState(groupId, eventId);
+  const state = readRoundState(groupId, eventId, requestedRound);
   const meta = getRoundMeta(groupId, state.round);
   // One query (buildAllResults) backs both views: the round-scoped
   // `results` (filtered to this round's own game selection, if any) and the
@@ -465,11 +488,18 @@ function buildPayload(
   return { ...state, ...meta, results, catalogResults, totalVotes, totalPoints, totalVoters, ...liveBallots, ...extra };
 }
 
-// GET /api/votes - current round's state and tally.
+function buildOverviewPayload(groupId: string, eventId: string, includeTestData: boolean, extra: Record<string, unknown> = {}) {
+  const openRounds = roundStates(groupId, eventId).map((round) =>
+    buildPayload(groupId, eventId, includeTestData, {}, round.round));
+  return { ...buildPayload(groupId, eventId, includeTestData, extra), openRounds };
+}
+
+// GET /api/votes - all open rounds plus the newest open or closed round for
+// existing overview consumers.
 votesRouter.get('/', (req, res) => {
   const eventId = requestVoteEventId(req, res, req.query.eventId);
   if (!eventId) return;
-  res.json(buildPayload(req.group!.id, eventId, includesTestPlayers(req)));
+  res.json(buildOverviewPayload(req.group!.id, eventId, includesTestPlayers(req)));
 });
 
 // GET /api/votes/kiosk - the shared room display receives the current tally
@@ -485,43 +515,39 @@ votesRouter.get('/kiosk', (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res, req.query.eventId);
   if (!eventId) return;
-  const state = readRoundState(groupId, eventId);
-  const meta = getRoundMeta(groupId, state.round);
-  const currentResults = state.open ? buildResults(groupId, state.round, state.mode, false, meta.selectedGameIds) : [];
-  const currentEligibleVoterIds = state.open ? eligibleVoterIds(groupId, eventId, false) : [];
-  const currentTotalVoters = state.open
-    ? countRoundVoters(groupId, state.round, false, currentEligibleVoterIds)
-    : 0;
-  const currentEligibleVoters = currentEligibleVoterIds.length;
-  const closedRound = state.open
-    ? undefined
-    : (db
-        .prepare('SELECT closed_at AS closedAt FROM vote_rounds WHERE group_id = ? AND round = ?')
-        .get(groupId, state.round) as { closedAt: number | null } | undefined);
+  const currentEligibleVoterIds = eligibleVoterIds(groupId, eventId, false);
+  const openRounds = roundStates(groupId, eventId).map((state) => {
+    const meta = getRoundMeta(groupId, state.round);
+    return {
+      ...state,
+      ...meta,
+      results: buildResults(groupId, state.round, state.mode, false, meta.selectedGameIds),
+      totalVoters: countRoundVoters(groupId, state.round, false, currentEligibleVoterIds),
+      eligibleVoters: currentEligibleVoterIds.length,
+    };
+  });
+  const closedRound = db.prepare(
+    `SELECT round, closed_at AS closedAt FROM vote_rounds WHERE group_id = ? AND event_id = ?
+     AND closed_at IS NOT NULL ORDER BY closed_at DESC, round DESC LIMIT 1`,
+  ).get(groupId, eventId) as { round: number; closedAt: number } | undefined;
   const resultRevealAt = closedRound?.closedAt ? closedRound.closedAt + KIOSK_RESULT_REVEAL_DELAY_MS : null;
   const resultExpiresAt = resultRevealAt ? resultRevealAt + KIOSK_RESULT_DURATION_MS : null;
-  const recentResult = resultExpiresAt && resultExpiresAt > Date.now()
+  const resultFloor = Number(getState(`${KIOSK_RESULT_FLOOR_KEY}:${groupId}:${eventId}`) ?? 0);
+  const recentResult = resultExpiresAt && resultExpiresAt > Date.now() && closedRound!.closedAt > resultFloor
     ? {
-        ...state,
-        ...meta,
+        ...readRoundState(groupId, eventId, closedRound!.round),
+        ...getRoundMeta(groupId, closedRound!.round),
         closedAt: closedRound!.closedAt,
         revealAt: resultRevealAt,
         expiresAt: resultExpiresAt,
-        results: buildResults(groupId, state.round, state.mode, false, meta.selectedGameIds),
-        totalVoters: countRoundVoters(groupId, state.round, false),
+        results: buildResults(groupId, closedRound!.round, readRoundState(groupId, eventId, closedRound!.round).mode, false, getRoundMeta(groupId, closedRound!.round).selectedGameIds),
+        totalVoters: countRoundVoters(groupId, closedRound!.round, false),
       }
     : null;
 
   res.json({
-    current: state.open
-      ? {
-          ...state,
-          ...meta,
-          results: currentResults,
-          totalVoters: currentTotalVoters,
-          eligibleVoters: currentEligibleVoters,
-        }
-      : null,
+    current: openRounds[0] ?? null,
+    openRounds,
     recentResult,
   });
 });
@@ -537,7 +563,13 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
   }
   const eventId = requestVoteEventId(req, res, req.query.eventId);
   if (!eventId) return;
-  const state = readRoundState(req.group!.id, eventId);
+  const groupId = req.group!.id;
+  const rawRound = req.query.round;
+  if (rawRound !== undefined && (typeof rawRound !== 'string' || !isIntInRange(Number(rawRound), 1, Number.MAX_SAFE_INTEGER))) {
+    return res.status(400).json({ error: 'round muss eine positive Ganzzahl sein.' });
+  }
+  const state = readRoundState(groupId, eventId, rawRound === undefined ? undefined : Number(rawRound));
+  if (!state.open) return res.status(409).json({ error: 'Diese Abstimmung läuft nicht.' });
   const entries = db
     .prepare(
       `SELECT v.game_id AS gameId, v.points
@@ -548,7 +580,7 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
   res.json({ round: state.round, mode: state.mode, entries });
 });
 
-// POST /api/votes/start - begins a new round. Fails if one is already open.
+// POST /api/votes/start - begins a new independent round.
 // Body: { mode?, title?, info?, gameIds?, anonymous?, hideLiveResults? }
 // - mode: 'points' (default, the normal voting mode) or 'single' — 'single'
 //   is only meant for a runoff between tied winners (see /close), it's not
@@ -562,11 +594,6 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res);
   if (!eventId) return;
-  const state = readRoundState(groupId, eventId);
-  if (state.open) {
-    return res.status(409).json({ error: 'Es läuft bereits eine Abstimmung.' });
-  }
-
   const { mode, title, info, gameIds, anonymous, hideLiveResults } = req.body ?? {};
   if (mode !== undefined && mode !== 'single' && mode !== 'points') {
     return res.status(400).json({ error: 'mode muss "single" oder "points" sein.' });
@@ -592,7 +619,32 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   }
 
   let selectedGameIds: string[] | null = null;
-  const runoffWinners = winnerGameIdsOfRound(groupId, state.round);
+  const runoffWinners = new Set<string>();
+  let sourceRoundToStore: number | null = null;
+  if (mode === 'single') {
+    const sourceRound = req.body?.sourceRound;
+    if (sourceRound !== undefined) {
+      if (!isIntInRange(sourceRound, 1, Number.MAX_SAFE_INTEGER)) {
+        return res.status(400).json({ error: 'sourceRound muss eine positive Ganzzahl sein.' });
+      }
+      const source = readRoundState(groupId, eventId, sourceRound);
+      if (!source.round || source.open) return res.status(404).json({ error: 'Abgeschlossene Abstimmung nicht gefunden.' });
+      sourceRoundToStore = sourceRound;
+      for (const id of winnerGameIdsOfRound(groupId, sourceRound)) runoffWinners.add(id);
+    } else {
+      const latestClosed = db.prepare(
+        `SELECT round FROM vote_rounds WHERE group_id = ? AND event_id = ? AND closed_at IS NOT NULL
+         ORDER BY closed_at DESC, round DESC LIMIT 1`,
+      ).get(groupId, eventId) as { round: number } | undefined;
+      sourceRoundToStore = latestClosed?.round ?? null;
+      for (const id of winnerGameIdsOfRound(groupId, latestClosed?.round ?? 0)) runoffWinners.add(id);
+    }
+    if (sourceRoundToStore !== null && db.prepare(
+      'SELECT 1 FROM vote_rounds WHERE group_id = ? AND event_id = ? AND source_round = ? AND closed_at IS NULL',
+    ).get(groupId, eventId, sourceRoundToStore)) {
+      return res.status(409).json({ error: 'Für diese Abstimmung läuft bereits eine Stichwahl.' });
+    }
+  }
   if (gameIds !== undefined) {
     if (!Array.isArray(gameIds) || gameIds.length === 0) {
       return res.status(400).json({ error: 'Mindestens ein Spiel muss ausgewählt sein.' });
@@ -617,13 +669,14 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
         round: number;
       }
     ).round + 1;
-  const now = Date.now();
+  const startedAtKey = `${LAST_STARTED_AT_KEY}:${groupId}:${eventId}`;
+  const now = Math.max(Date.now(), Number(getState(startedAtKey) ?? 0) + 1);
   db.transaction(() => {
     db.prepare(
       `INSERT INTO vote_rounds
          (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids,
-          anonymous, hide_live_results)
-       VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)`,
+          anonymous, hide_live_results, source_round)
+       VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       groupId,
       nextRound,
@@ -635,15 +688,14 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
       selectedGameIds ? JSON.stringify(selectedGameIds) : null,
       anonymous === true ? 1 : 0,
       hideLiveResults === false ? 0 : 1,
+      sourceRoundToStore,
     );
-    setState(scopedStateKey(ROUND_KEY, groupId, eventId), String(nextRound));
-    setState(scopedStateKey(OPEN_KEY, groupId, eventId), '1');
-    setState(scopedStateKey(STARTED_AT_KEY, groupId, eventId), String(now));
-    setState(scopedStateKey(MODE_KEY, groupId, eventId), nextMode);
+    setState(startedAtKey, String(now));
+    setState(`${KIOSK_RESULT_FLOOR_KEY}:${groupId}:${eventId}`, String(now));
   })();
 
-  const payload = buildPayload(req.group!.id, eventId, includesTestPlayers(req));
-  broadcast(Events.votesChanged, { round: payload.round, open: payload.open }, { groupId, eventId });
+  const payload = buildOverviewPayload(req.group!.id, eventId, includesTestPlayers(req));
+  broadcast(Events.votesChanged, { round: nextRound, open: true }, { groupId, eventId });
 
   notifyPlayers(
     voteNotificationPlayerIds(groupId, eventId),
@@ -670,10 +722,8 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res);
   if (!eventId) return;
-  const state = readRoundState(groupId, eventId);
-  if (!state.open) {
-    return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
-  }
+  const state = requestedOpenRound(req, res, groupId, eventId);
+  if (!state) return;
   if (state.mode !== 'single') {
     return res.status(409).json({ error: 'Die aktuelle Abstimmung läuft im Punkte-Modus.' });
   }
@@ -712,8 +762,8 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     ).run(nanoid(), groupId, playerId, player.name, gameId, meta.eventId, state.round, Date.now());
   })();
 
-  const payload = buildPayload(req.group!.id, eventId, includesTestPlayers(req));
-  broadcast(Events.votesChanged, { round: payload.round, open: payload.open }, { groupId, eventId });
+  const payload = buildOverviewPayload(groupId, eventId, includesTestPlayers(req));
+  broadcast(Events.votesChanged, { round: state.round, open: true }, { groupId, eventId });
   res.json(payload);
 });
 
@@ -725,10 +775,8 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res);
   if (!eventId) return;
-  const state = readRoundState(groupId, eventId);
-  if (!state.open) {
-    return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
-  }
+  const state = requestedOpenRound(req, res, groupId, eventId);
+  if (!state) return;
   if (state.mode !== 'points') {
     return res.status(409).json({ error: 'Die aktuelle Abstimmung läuft im Einzel-Modus.' });
   }
@@ -795,8 +843,8 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
     }
   })();
 
-  const payload = buildPayload(req.group!.id, eventId, includesTestPlayers(req));
-  broadcast(Events.votesChanged, { round: payload.round, open: payload.open }, { groupId, eventId });
+  const payload = buildOverviewPayload(groupId, eventId, includesTestPlayers(req));
+  broadcast(Events.votesChanged, { round: state.round, open: true }, { groupId, eventId });
   res.json(payload);
 });
 
@@ -806,11 +854,8 @@ votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res);
   if (!eventId) return;
-  const state = readRoundState(groupId, eventId);
-  if (!state.open) {
-    return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
-  }
-  setState(scopedStateKey(OPEN_KEY, groupId, eventId), '0');
+  const state = requestedOpenRound(req, res, groupId, eventId);
+  if (!state) return;
 
   const meta = getRoundMeta(groupId, state.round);
   // The persisted winner must not depend on whether the closing admin's
@@ -823,16 +868,21 @@ votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   const winnerGameIds =
     topScore > 0 ? canonicalResults.filter((r) => r.score === topScore).map((r) => r.gameId) : [];
 
-  db.prepare('UPDATE vote_rounds SET closed_at = ?, winner_game_ids = ? WHERE group_id = ? AND round = ?').run(
-    Date.now(),
+  const latestClosedAt = db.prepare(
+    'SELECT MAX(closed_at) AS value FROM vote_rounds WHERE group_id = ? AND event_id = ?',
+  ).get(groupId, eventId) as { value: number | null };
+  const resultFloor = Number(getState(`${KIOSK_RESULT_FLOOR_KEY}:${groupId}:${eventId}`) ?? 0);
+  const closedAt = Math.max(Date.now(), (latestClosedAt.value ?? 0) + 1, resultFloor + 1);
+  db.prepare('UPDATE vote_rounds SET closed_at = ?, winner_game_ids = ? WHERE group_id = ? AND round = ? AND closed_at IS NULL').run(
+    closedAt,
     JSON.stringify(winnerGameIds),
     groupId,
     state.round,
   );
   resolvePushTopic(`vote:${state.round}`, false, { groupId, eventId: meta.eventId });
 
-  const payload = buildPayload(req.group!.id, eventId, includesTestPlayers(req), { winnerGameIds });
-  broadcast(Events.votesChanged, { round: payload.round, open: payload.open }, { groupId, eventId });
+  const payload = buildOverviewPayload(groupId, eventId, includesTestPlayers(req), { winnerGameIds });
+  broadcast(Events.votesChanged, { round: state.round, open: false }, { groupId, eventId });
   res.json(payload);
 });
 
@@ -843,22 +893,20 @@ votesRouter.post('/cancel', requireGroupRole('admin'), (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res);
   if (!eventId) return;
-  const state = readRoundState(groupId, eventId);
-  if (!state.open) {
-    return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
-  }
+  const state = requestedOpenRound(req, res, groupId, eventId);
+  if (!state) return;
   const meta = getRoundMeta(groupId, state.round);
   db.prepare('DELETE FROM vote_rounds WHERE group_id = ? AND round = ?').run(groupId, state.round);
-  setState(scopedStateKey(OPEN_KEY, groupId, eventId), '0');
   resolvePushTopic(`vote:${state.round}`, false, { groupId, eventId: meta.eventId });
 
-  const payload = buildPayload(req.group!.id, eventId, includesTestPlayers(req));
-  broadcast(Events.votesChanged, { round: payload.round, open: payload.open }, { groupId, eventId });
+  const payload = buildOverviewPayload(groupId, eventId, includesTestPlayers(req));
+  broadcast(Events.votesChanged, { round: state.round, open: false }, { groupId, eventId });
   res.json(payload);
 });
 
 interface VoteRoundRow {
   round: number;
+  sourceRound: number | null;
   eventId: string;
   eventName: string;
   startedAt: number;
@@ -892,7 +940,7 @@ votesRouter.get('/history', (req, res) => {
 
   const rows = db
     .prepare(
-      `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
+      `SELECT vr.round AS round, vr.source_round AS sourceRound, vr.event_id AS eventId, e.name AS eventName,
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
               vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous AS anonymous,
@@ -900,7 +948,7 @@ votesRouter.get('/history', (req, res) => {
        FROM vote_rounds vr
        JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
        WHERE vr.group_id = ? AND vr.closed_at IS NOT NULL AND vr.event_id = ?
-       ORDER BY vr.round DESC
+       ORDER BY vr.closed_at DESC, vr.round DESC
        LIMIT ?`,
     )
     .all(groupId, filterEventId, limitNum) as VoteRoundRow[];
@@ -917,6 +965,7 @@ votesRouter.get('/history', (req, res) => {
       .map((x) => ({ gameId: x.gameId, gameName: x.gameName, icon: x.icon, votes: x.votes, points: x.points }));
     return {
       round: r.round,
+      sourceRound: r.sourceRound,
       eventId: r.eventId,
       eventName: r.eventName,
       startedAt: r.startedAt,
@@ -934,14 +983,7 @@ votesRouter.get('/history', (req, res) => {
     };
   });
 
-  // Rounds nobody voted in (totalVoters === 0) carry no result to show, so they
-  // sink below every round that does; within each of those two groups the
-  // existing round-descending (= newest-first) order from the query above is
-  // preserved.
-  history.sort((a, b) => {
-    const hasResult = (h: (typeof history)[number]) => (h.totalVoters > 0 ? 1 : 0);
-    return hasResult(b) - hasResult(a) || b.round - a.round;
-  });
+  history.sort((a, b) => b.closedAt - a.closedAt || b.round - a.round);
 
   res.json({ history });
 });
@@ -962,7 +1004,7 @@ votesRouter.get('/history/:round', (req, res) => {
 
   const row = db
     .prepare(
-      `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
+      `SELECT vr.round AS round, vr.source_round AS sourceRound, vr.event_id AS eventId, e.name AS eventName,
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
               vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous AS anonymous,
@@ -986,6 +1028,7 @@ votesRouter.get('/history/:round', (req, res) => {
 
   res.json({
     round: row.round,
+    sourceRound: row.sourceRound,
     eventId: row.eventId,
     eventName: row.eventName,
     startedAt: row.startedAt,

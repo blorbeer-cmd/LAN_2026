@@ -616,6 +616,7 @@ const newsResizeObserver = new ResizeObserver(([entry]) => {
 if (kioskNewsElement) newsResizeObserver.observe(kioskNewsElement);
 
 let voteDisplayTimer = null;
+const VOTE_DISPLAY_INTERVAL_MS = 10_000;
 
 function clearVoteDisplayTimer() {
   if (voteDisplayTimer !== null) clearTimeout(voteDisplayTimer);
@@ -631,16 +632,13 @@ function scheduleVoteRefresh(at) {
 }
 
 function renderVotes(votes) {
-  const vote = votes?.current ?? null;
-  if (vote) {
-    clearVoteDisplayTimer();
-  } else if (votes?.recentResult) {
-    const result = votes.recentResult;
-    const now = Date.now();
-    if (now < result.revealAt) {
-      const seconds = Math.max(1, Math.ceil((result.revealAt - now) / 1000));
-      scheduleVoteRefresh(Math.min(result.revealAt, now + 1000));
-      return `
+  const now = Date.now();
+  const openRounds = votes?.openRounds ?? (votes?.current ? [votes.current] : []);
+  const result = votes?.recentResult ?? null;
+  if (result && now < result.revealAt) {
+    const seconds = Math.max(1, Math.ceil((result.revealAt - now) / 1000));
+    scheduleVoteRefresh(Math.min(result.revealAt, now + 1000));
+    return `
         <div class="kiosk-vote-state kiosk-vote-countdown">
           <strong>Ergebnis in</strong>
           <div class="countdown-num-wrap kiosk-vote-countdown-number countdown-pop" aria-label="${seconds}">
@@ -648,8 +646,32 @@ function renderVotes(votes) {
             <span class="countdown-num countdown-num-fill">${seconds}</span>
           </div>
         </div>`;
+  }
+
+  let vote = null;
+  let showResult = false;
+  if (result) {
+    const soloUntil = result.revealAt + VOTE_DISPLAY_INTERVAL_MS;
+    if (now < soloUntil || openRounds.length === 0) {
+      showResult = true;
+      scheduleVoteRefresh(openRounds.length ? Math.min(soloUntil, result.expiresAt) : result.expiresAt);
+    } else {
+      const slot = (Math.floor((now - soloUntil) / VOTE_DISPLAY_INTERVAL_MS) + 1) % (openRounds.length + 1);
+      showResult = slot === 0;
+      vote = slot === 0 ? null : openRounds[slot - 1];
+      const next = soloUntil + (Math.floor((now - soloUntil) / VOTE_DISPLAY_INTERVAL_MS) + 1) * VOTE_DISPLAY_INTERVAL_MS;
+      scheduleVoteRefresh(Math.min(next, result.expiresAt));
     }
-    scheduleVoteRefresh(result.expiresAt);
+  } else if (openRounds.length > 1) {
+    const slot = Math.floor(now / VOTE_DISPLAY_INTERVAL_MS) % openRounds.length;
+    vote = openRounds[slot];
+    scheduleVoteRefresh((Math.floor(now / VOTE_DISPLAY_INTERVAL_MS) + 1) * VOTE_DISPLAY_INTERVAL_MS);
+  } else {
+    vote = openRounds[0] ?? null;
+    clearVoteDisplayTimer();
+  }
+
+  if (showResult) {
     return `
       <div class="kiosk-vote-final">
         ${renderKioskVoteWinners(result)}
@@ -659,8 +681,6 @@ function renderVotes(votes) {
         </div>
         ${renderKioskVoteRows(result, { highlightLeading: false })}
       </div>`;
-  } else {
-    clearVoteDisplayTimer();
   }
   if (!vote) {
     return emptyStateHtml('Noch keine Abstimmung.', { className: 'kiosk-vote-state kiosk-empty-state' });

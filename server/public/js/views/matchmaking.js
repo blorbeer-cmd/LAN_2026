@@ -1099,7 +1099,7 @@ export function renderMatchmaking(container, ctx) {
   // or played, because this one <select> also scopes the Historie below:
   // without it, that draw's Ergebnis-/Rematch-Aktionen would be unreachable.
   // Drawing and drafting stay blocked for such a game (see drawDisabledReason).
-  const pickableGames = gamesWithHistory([state.lastMatchmaking?.gameId]);
+  const pickableGames = gamesWithHistory([state.lastMatchmaking?.gameId, state.selectedGameId]);
   if (catalogGames().length === 0 || eventPlayers().length === 0) {
     container.innerHTML = `${leading}${emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.')}`;
     wireDrawCards(container, ctx);

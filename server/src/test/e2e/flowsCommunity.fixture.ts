@@ -445,7 +445,7 @@ flowTest('Aktuell: an open vote appears as a compact navigation row on Home', as
   await page.click('#votes-new');
   await page.fill('#votes-title', 'Freitagabend-Runde');
   await page.click('#votes-start');
-  await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
+  await page.waitForSelector('[data-votes-close]'); // only rendered once ctx.refresh() shows the round as open
 
   const openedVote = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
   assert.equal(openedVote.title, 'Freitagabend-Runde');
@@ -461,7 +461,7 @@ flowTest('Aktuell: an open vote appears as a compact navigation row on Home', as
 
   // Leave no open round behind for later tests.
   await page.click('.nav-btn[data-view="votes"]');
-  await page.click('#votes-close');
+  await page.click('[data-votes-close]');
   await page.waitForSelector('#votes-new');
 });
 
@@ -689,9 +689,10 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   await page.waitForSelector('.kiosk-vote-overview >> text=Kiosk nach Reconnect', { timeout: 10_000 });
   await page.request.post(`${BASE_URL}/api/votes/cancel`);
   const kioskGames = games.slice(0, 10) as Array<{ id: string }>;
-  await page.request.post(`${BASE_URL}/api/votes/start`, {
+  const largeVoteStart = await page.request.post(`${BASE_URL}/api/votes/start`, {
     data: { mode: 'points', title: 'Großer Kiosk Vote', gameIds: kioskGames.map((game) => game.id) },
   });
+  const largeVoteRound = (await largeVoteStart.json()).round as number;
   await page.request.post(`${BASE_URL}/api/votes/points`, {
     data: {
       playerId,
@@ -732,7 +733,11 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       `the vote card fills its free height before hiding further rows: ${JSON.stringify(voteBounds)}`,
     );
   }
-  await page.request.post(`${BASE_URL}/api/votes/close`);
+  const parallelVoteStart = await page.request.post(`${BASE_URL}/api/votes/start`, {
+    data: { mode: 'points', title: 'Parallel auf dem Kiosk', gameIds: [games[0].id] },
+  });
+  const parallelVoteRound = (await parallelVoteStart.json()).round as number;
+  await page.request.post(`${BASE_URL}/api/votes/close`, { data: { round: largeVoteRound } });
   await page.waitForSelector('.kiosk-vote-countdown >> text=Ergebnis in');
   assert.equal(await page.locator('.kiosk-vote-countdown .countdown-num-fill').textContent(), '5');
   assert.equal(await page.locator('.kiosk-vote-countdown .countdown-num-glow').textContent(), '5');
@@ -771,6 +776,8 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       return box.top >= contentBox.top && box.bottom <= contentBox.bottom;
     });
   }), true, 'winner and the fixed Top 5 detailed results should remain visible at 720p');
+  await page.waitForSelector('.kiosk-vote-overview >> text=Parallel auf dem Kiosk', { timeout: 25_000 });
+  await page.request.post(`${BASE_URL}/api/votes/cancel`, { data: { round: parallelVoteRound } });
   await page.request.post(`${BASE_URL}/api/votes/start`, {
     data: { mode: 'single', title: 'Kiosk Ergebnis ausblenden', gameIds: [games[0].id] },
   });
