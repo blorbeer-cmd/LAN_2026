@@ -363,7 +363,14 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   preselection is only a local draft — nothing counts until „Speichern“. No selected number means unrated; pressing the chosen number again clears
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
   own progress („X von Y bewertet“, in a runoff „X gewählt“) and „Speichern“, enabled once every
-  game is rated (in a runoff: once one game is picked). A runoff is titled „Stichwahl“ and keeps the
+  game is rated (in a runoff: once one game is picked). The number of the own Bock carries a faint
+  dashed outline on every points ballot („dein Bock“ in its name and tooltip), so a changed rating
+  stays visible. While at least one rated game differs from the own Bock (including games without
+  one), a „Bock übernehmen“ checkbox appears beside „Speichern“: checked, saving also writes those
+  points as the own Bock in the game catalog, in the same step as the ballot. It starts checked and
+  remembers the last choice per account on that device; runoffs have no such option. Anonymous
+  rounds offer it too: adopting then makes those points visible as the player's own Bock, an
+  accepted trade-off. A runoff is titled „Stichwahl“ and keeps the
   anonymity and interim-result setting of the round it decides. „Letzter Vote“ is a collapsible Umfrage card
   that starts collapsed and keeps its open state across live re-renders. Expanded latest and
   historical results preserve the server's score ranking and fill two columns when complete

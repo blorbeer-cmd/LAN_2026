@@ -1188,6 +1188,22 @@ input[type='number'].tournament-result-score {
 .vote-own-skill.is-missing {
   color: var(--text-muted);
 }
+/* „Bock übernehmen“ stays beside „Speichern“ and wraps below the progress
+   text on narrow cards instead of squeezing it. */
+.event-poll-save-row.event-poll-footer:has(.vote-save-actions) {
+  flex-wrap: wrap;
+}
+.vote-save-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+.vote-adopt-bock[hidden] {
+  display: none;
+}
 /* Sits in the voter column, which stays empty while the round runs. */
 .vote-decline-tag {
   white-space: nowrap;

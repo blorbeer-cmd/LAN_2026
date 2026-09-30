@@ -50,6 +50,18 @@ export function eventPlayers() {
   return state.players.filter((p) => allowed.has(p.id));
 }
 
+// Patches one Bock rating into state.preferences; null removes it.
+export function setPreference(playerId, gameId, rating) {
+  const existing = state.preferences.find((p) => p.player_id === playerId && p.game_id === gameId);
+  if (rating === null) {
+    state.preferences = state.preferences.filter((p) => p !== existing);
+  } else if (existing) {
+    existing.rating = rating;
+  } else {
+    state.preferences.push({ player_id: playerId, game_id: gameId, rating });
+  }
+}
+
 export function gameById(id) {
   return state.games.find((g) => g.id === id);
 }

@@ -314,6 +314,9 @@ Vote und 0–5-Umfragen verwenden die Skala samt 4-px-Füllbalken unter den Zahl
 in der umgesetzten Variante `tone: 'vote'` / `.rating-scale--vote`: derselbe
 Verlauf von `--accent` zu `--accent-2` wie im Ergebnisbalken, mit `--accent-2` für die gewählte Ziffer.
 Die Balken folgen dem lokalen Entwurf, bleiben bei 0 leer und sind ohne Bewertung gestrichelt.
+Auf einem Vote-Stimmzettel markiert `hint` die Ziffer des eigenen Bocks mit einem schwachen,
+gestrichelten Umriss (`.is-hint`) und nennt ihn in Name und Tooltip („dein Bock“); die gewählte
+Ziffer und der Fokusring ersetzen diese Markierung.
 Der gesamte Zahlen-/Balkenblock steht auf Telefonen unter dem Optionstitel und wird als Einheit
 zwischen den Zeilentrennern zentriert; die Zahlen bleiben tastaturbedienbar.
 Gepaarte Formularfelder mit Hilfe verwenden `.event-poll-form-pair`: wie jedes andere Feld des
@@ -415,6 +418,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `selection-buttons`, `poll-secondary`, `poll-text-width`, `poll-choice-text` | Toolbarlayout und Bedeutung respektieren die gewählte Basis-/Quadratvariante. |
 | `poll-selected-answer`, `poll-option-extra-toggle` | Die gewählte Umfrageantwort und der geöffnete Notiz-/Link-Schalter zeigen ihren Zustand mit Akzentumriss bzw. Akzentfarbe, ohne eigene Geometrie. |
 | `rating-scale-selected` | Auf der Bock-/Skill-Skala nehmen die gewählte Ziffer und ihr Umriss die kräftige Farbe der Skala an, ohne eigene Geometrie. |
+| `rating-scale-hint` | Auf einem Vote-Stimmzettel trägt die Ziffer des eigenen Bocks einen schwachen gestrichelten Umriss als Orientierung, ohne eigene Geometrie; Auswahl und Fokus ersetzen ihn. |
 | `poll-note-field`, `poll-flag-checkbox` | Die einzeilige Umfragebeschreibung wächst bis vier Controlhöhen; die 20-px-Checkbox ist Teil der beschrifteten Umfrageeinstellung. |
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
 | `profile-preview` | Nichtinteraktive Vorschau folgt der benachbarten Controlzeile. |
@@ -586,6 +590,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:profile-row-action`: Mein Profil keeps one fixed right-hand action column across all cards, so compact buttons and the view select share one width; the select matches the compact buttons' type size.
 - `registry:rating-scale-selected`: On the Bock/Skill scale the chosen number and its inset outline take that scale's saturated color; geometry stays with the square variant.
+- `registry:rating-scale-hint`: On a Vote ballot the viewer's own Bock gets a faint dashed outline as orientation; geometry stays with the square variant.
 
 - `registry:checklist-table-action`: Übernehmen and Abgeben fill the fixed To-Do action column, so both share one width and line up from row to row.
 - `registry:broadcast-table-action`: Beenden fills the fixed Durchsage action column, so it lines up from row to row.

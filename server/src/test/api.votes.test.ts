@@ -725,3 +725,42 @@ test('a runoff keeps its exact source and cannot be started twice while open', a
   const detail = await request(app).get(`/api/votes/history/${runoff.body.round}`);
   assert.equal(detail.body.sourceRound, older.body.round);
 });
+
+test('a points ballot can adopt its points as the own Bock, atomically and only on request', async () => {
+  const voter = (await request(app).post('/api/players').send({ name: 'Bock Voter' })).body.id as string;
+  const bock = async () => {
+    const rows = (await request(app).get(`/api/preferences?playerId=${voter}`)).body as Array<{ game_id: string; rating: number }>;
+    return Object.fromEntries(rows.map((row) => [row.game_id, row.rating]));
+  };
+  await request(app).put('/api/preferences').send({ playerId: voter, gameId: gameCs2, rating: 3 });
+  await request(app).put('/api/preferences').send({ playerId: voter, gameId: gameRl, rating: 1 });
+  const started = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl, gameAoe2] });
+  assert.equal(started.status, 201);
+  const ballot = (points: Record<string, number>) => [gameCs2, gameRl, gameAoe2].map((gameId) => ({ gameId, points: points[gameId] }));
+
+  const invalid = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: voter, entries: ballot({ [gameCs2]: 5, [gameRl]: 1, [gameAoe2]: 2 }), adoptPreferences: 'yes' });
+  assert.equal(invalid.status, 400);
+  assert.deepEqual((await request(app).get(`/api/votes/mine?playerId=${voter}`)).body.entries, [], 'a rejected flag saves no ballot');
+
+  const plain = await request(app).post('/api/votes/points').send({ playerId: voter, entries: ballot({ [gameCs2]: 5, [gameRl]: 1, [gameAoe2]: 2 }) });
+  assert.equal(plain.status, 200);
+  assert.deepEqual(await bock(), { [gameCs2]: 3, [gameRl]: 1 }, 'without the flag the catalog Bock stays untouched');
+
+  const adopted = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: voter, entries: ballot({ [gameCs2]: 5, [gameRl]: 1, [gameAoe2]: 0 }), adoptPreferences: true });
+  assert.equal(adopted.status, 200);
+  assert.deepEqual(await bock(), { [gameCs2]: 5, [gameRl]: 1, [gameAoe2]: 0 }, 'changed and missing ratings are adopted, 0 included');
+
+  // Two concurrent adopting ballots: the stored ballot and the Bock always
+  // come from the same winning submission.
+  await Promise.all([
+    request(app).post('/api/votes/points').send({ playerId: voter, entries: ballot({ [gameCs2]: 1, [gameRl]: 2, [gameAoe2]: 3 }), adoptPreferences: true }),
+    request(app).post('/api/votes/points').send({ playerId: voter, entries: ballot({ [gameCs2]: 4, [gameRl]: 4, [gameAoe2]: 4 }), adoptPreferences: true }),
+  ]);
+  const mine = await request(app).get(`/api/votes/mine?playerId=${voter}`);
+  assert.deepEqual(await bock(), Object.fromEntries(mine.body.entries.map((e: { gameId: string; points: number }) => [e.gameId, e.points])));
+  await request(app).post('/api/votes/cancel');
+});

@@ -17,6 +17,8 @@ function scaleValue(value) {
 // the button for the caller's click handler.
 // tone ('bock' | 'skill' | 'vote'): colors the chosen number's outline and adds
 // the fill line using the former sliders' gradient or Vote's result gradient.
+// hint: an optional reference value (a Vote ballot's own Bock) whose number
+// gets a faint outline and `hintLabel` in its name and tooltip.
 export function ratingScaleHtml({
   selected,
   groupLabel,
@@ -24,13 +26,21 @@ export function ratingScaleHtml({
   attributes,
   disabled = false,
   tone = null,
+  hint = null,
+  hintLabel = '',
 }) {
   const chosen = scaleValue(selected);
+  const hinted = scaleValue(hint);
+  const buttonHtml = (value) => {
+    const isHint = hinted === value;
+    const label = isHint && hintLabel ? `${valueLabel(value)}, ${hintLabel}` : valueLabel(value);
+    return `
+        <button type="button" class="btn btn-square${chosen === value ? ' is-selected' : ''}${isHint ? ' is-hint' : ''}" ${attributes(value)}
+          aria-label="${escapeHtml(label)}" aria-pressed="${chosen === value}"${isHint && hintLabel ? ` title="${escapeHtml(hintLabel)}"` : ''} ${disabled ? 'disabled' : ''}>${value}</button>`;
+  };
   const toolbar = `
     <div class="selection-toolbar event-poll-response-toolbar event-poll-rating-toolbar" role="group" aria-label="${escapeHtml(groupLabel)}">
-      ${RATING_SCALE_VALUES.map((value) => `
-        <button type="button" class="btn btn-square${chosen === value ? ' is-selected' : ''}" ${attributes(value)}
-          aria-label="${escapeHtml(valueLabel(value))}" aria-pressed="${chosen === value}" ${disabled ? 'disabled' : ''}>${value}</button>`).join('')}
+      ${RATING_SCALE_VALUES.map(buttonHtml).join('')}
     </div>`;
   if (!tone) return toolbar;
   // The fill line repeats the chosen value visually; a dashed empty line means

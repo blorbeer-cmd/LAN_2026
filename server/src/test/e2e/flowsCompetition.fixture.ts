@@ -451,6 +451,34 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // answered; an unanswered ballot starts from the own Bock instead, here
   // for the one game Alice has a Bock for.
   for (let index = 0; index < totalGames; index += 1) await setPoints(index, 2);
+  // Without any own Bock every rated game differs, so „Bock übernehmen“ is
+  // offered and starts checked. Unchecked, saving leaves the catalog alone —
+  // the preselection below proves no Bock was written.
+  const adoptBock = roundCard.locator('[data-vote-adopt-bock]');
+  assert.ok(await adoptBock.isVisible() && await adoptBock.isChecked(), '„Bock übernehmen“ starts checked');
+  // Even with a blocked localStorage the cleared box survives the re-render
+  // of the next rating change.
+  // Only this choice's key throws, so unrelated requests keep working.
+  await page.evaluate(() => {
+    const { getItem, setItem } = Storage.prototype;
+    const guard = (key: string) => {
+      if (key.startsWith('respawn_vote_adopt_bock:')) throw new DOMException('blocked', 'SecurityError');
+    };
+    Object.assign(Storage.prototype, {
+      __getItem: getItem,
+      __setItem: setItem,
+      getItem(this: Storage, key: string) { guard(key); return getItem.call(this, key); },
+      setItem(this: Storage, key: string, value: string) { guard(key); return setItem.call(this, key, value); },
+    });
+  });
+  await adoptBock.uncheck();
+  await setPoints(0, 3);
+  await setPoints(0, 2);
+  assert.ok(!(await adoptBock.isChecked()), 'a cleared box stays cleared without localStorage');
+  await page.evaluate(() => {
+    const proto = Storage.prototype as Storage & { __getItem: Storage['getItem']; __setItem: Storage['setItem'] };
+    Object.assign(Storage.prototype, { getItem: proto.__getItem, setItem: proto.__setItem });
+  });
   await page.click('[data-votes-submit]');
   await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
   const bockGameId = (await ballotRows.first().getAttribute('data-vote-row')) ?? '';
@@ -473,6 +501,14 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   );
   await roundCard.locator('[data-vote-rated-progress]').filter({ hasText: `1 von ${totalGames} bewertet` }).waitFor();
   assert.ok(await page.locator('[data-votes-submit]').isDisabled());
+  assert.deepEqual(
+    await roundCard.locator('[data-vote-points].is-hint').evaluateAll((buttons) =>
+      buttons.map((button) => [(button as HTMLElement).dataset.votePoints, (button as HTMLElement).dataset.pointsValue, button.getAttribute('title')])),
+    [[bockGameId, '4', 'dein Bock']],
+    'the own Bock is marked on its number'
+  );
+  assert.ok(!(await adoptBock.isVisible()), 'nothing to adopt while the draft equals the own Bock');
+  assert.ok(!(await adoptBock.isChecked()), 'the unchecked choice is remembered');
   const bockCleanup = await page.request.delete(`${BASE_URL}/api/preferences/${alice.id}/${bockGameId}`);
   assert.equal(bockCleanup.status(), 204);
   await setPoints(0, 5);
@@ -489,8 +525,20 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(await roundCard.locator('[data-decline-tag]:visible').count(), totalGames - 2);
   assert.ok(!(await page.locator('[data-votes-submit]').isDisabled()), 'a complete ballot can be saved');
 
+  // Checked, the saved points become the own Bock in the game catalog.
+  await adoptBock.check();
+  const ballotPoints = new Map(await ballotRows.evaluateAll((rows) => rows.map((row): [string, number] => [
+    (row as HTMLElement).dataset.voteRow!,
+    Number(row.querySelector('[data-vote-points][aria-pressed="true"]')!.getAttribute('data-points-value')),
+  ])));
   await page.click('[data-votes-submit]');
   await roundCard.locator('[data-vote-participation]:text-is("1/2 abgegeben")').waitFor();
+  const adoptedBock = (await (await page.request.get(`${BASE_URL}/api/preferences?playerId=${alice.id}`)).json()) as Array<{
+    game_id: string;
+    rating: number;
+  }>;
+  assert.deepEqual(new Map(adoptedBock.map((row) => [row.game_id, row.rating])), ballotPoints, 'the ballot became the own Bock');
+  assert.ok(!(await adoptBock.isVisible()), 'after adopting, the ballot equals the own Bock');
   await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
   assert.ok(!(await ballotRows.first().locator('[data-vote-points]').first().isDisabled()), 'a saved ballot stays editable');
   assert.equal(await roundCard.locator('.event-poll-bar').count(), 0, 'still no bars after saving, before closing');

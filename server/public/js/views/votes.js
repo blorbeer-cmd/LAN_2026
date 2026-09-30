@@ -24,7 +24,7 @@
 
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { state, catalogGames, eventPlayers } from '../state.js';
+import { state, catalogGames, eventPlayers, setPreference } from '../state.js';
 import { prepareDrawFromVote, setDraftState } from './matchmaking.js';
 import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
@@ -349,6 +349,52 @@ function ownBock(gameId) {
   return entry ? entry.rating : null;
 }
 
+// Games whose drafted points differ from the viewer's own Bock, including
+// games without a Bock yet: what „Bock übernehmen“ would write.
+function bockDifferences(votes) {
+  if (votes.mode !== 'points') return [];
+  return votes.results
+    .filter((r) => typeof draft.get(r.gameId) === 'number' && draft.get(r.gameId) !== ownBock(r.gameId))
+    .map((r) => ({ gameId: r.gameId, rating: draft.get(r.gameId) }));
+}
+
+// „Bock übernehmen“ starts checked and remembers the last choice per account
+// on this device, like the layout preference in layoutMode.js. The choice is
+// also kept in page state, so a re-render never re-checks a box the viewer
+// just cleared when localStorage is blocked.
+const ADOPT_BOCK_KEY_PREFIX = 'respawn_vote_adopt_bock:';
+const adoptBockChoices = new Map(); // playerId -> boolean
+
+function adoptBockPreferred(playerId) {
+  if (adoptBockChoices.has(playerId)) return adoptBockChoices.get(playerId);
+  try {
+    return globalThis.localStorage?.getItem(`${ADOPT_BOCK_KEY_PREFIX}${playerId}`) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function rememberAdoptBock(playerId, adopt) {
+  adoptBockChoices.set(playerId, adopt);
+  try {
+    globalThis.localStorage?.setItem(`${ADOPT_BOCK_KEY_PREFIX}${playerId}`, adopt ? '1' : '0');
+  } catch {
+    // A blocked localStorage only means the choice is not remembered.
+  }
+}
+
+// Only shown while the ballot would change the Bock; hidden it leaves the
+// footer exactly as before.
+function adoptBockHtml(votes) {
+  const myId = getMyId();
+  const id = `vote-adopt-bock-${votes.round}`;
+  return `
+    <div class="event-poll-flag vote-adopt-bock" ${myId && bockDifferences(votes).length > 0 ? '' : 'hidden'}>
+      <input type="checkbox" id="${id}" data-vote-adopt-bock="${votes.round}" ${myId && adoptBockPreferred(myId) ? 'checked' : ''} />
+      <label for="${id}">Bock übernehmen</label>
+    </div>`;
+}
+
 // The viewer's own Skill beside each game as orientation; 0 means
 // "kenne ich nicht", – means not rated yet.
 function ownSkillHtml(gameId) {
@@ -366,6 +412,8 @@ function ballotControlHtml(votes, r) {
     // No button selected means "not rated yet".
     return ratingScaleHtml({
       selected: value,
+      hint: ownBock(r.gameId),
+      hintLabel: 'dein Bock',
       tone: 'vote',
       groupLabel: `Punkte für ${r.gameName}`,
       valueLabel: pointsValueText,
@@ -449,7 +497,10 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
           <div class="stack event-poll-options has-answers${showResult ? '' : ' is-compact'}" style="--compact-rows: ${columnRows};">${rows}</div>
           <div class="event-poll-save-row event-poll-footer">
             <span class="muted" data-vote-rated-progress>${mineReady ? draftProgressText(votes) : ''}</span>
-            <button type="button" class="btn btn-primary btn-sm" data-votes-submit="${votes.round}" ${mineReady && ballotComplete(votes) ? '' : 'disabled'}>Speichern</button>
+            <span class="vote-save-actions">
+              ${mineReady && votes.mode === 'points' ? adoptBockHtml(votes) : ''}
+              <button type="button" class="btn btn-primary btn-sm" data-votes-submit="${votes.round}" ${mineReady && ballotComplete(votes) ? '' : 'disabled'}>Speichern</button>
+            </span>
           </div>
         </section>
       </div>
@@ -1088,6 +1139,8 @@ export function renderVotes(container, ctx) {
       // was removed since.
       const answered = round.results.filter((r) => draft.has(r.gameId)).map((r) => [r.gameId, draft.get(r.gameId)]);
       const key = mineKey(round, playerId);
+      const adoptBox = container.querySelector(`[data-vote-adopt-bock="${round.round}"]`);
+      const adopted = round.mode === 'points' && adoptBox?.checked ? bockDifferences(round) : [];
       submitBtn.disabled = true;
       try {
         // Every vote mutation route returns the same fresh payload it
@@ -1100,15 +1153,28 @@ export function renderVotes(container, ctx) {
         // exactly what was just sent, so the own-entries cache is set from
         // it directly instead of reloading and flashing the rows.
         if (round.mode === 'single') state.votes = await api.votes.cast(playerId, answered[0][0], round.round);
-        else state.votes = await api.votes.castPoints(playerId, answered.map(([gameId, points]) => ({ gameId, points })), round.round);
+        else {
+          const entries = answered.map(([gameId, points]) => ({ gameId, points }));
+          state.votes = await api.votes.castPoints(playerId, entries, round.round, { adoptPreferences: adopted.length > 0 });
+        }
         mineCache = new Map(answered.map(([gameId, value]) => [gameId, { points: typeof value === 'number' ? value : null }]));
         mineByKey.set(key, mineCache);
+        // Same reasoning as state.votes above: the own Bock is patched from
+        // what was sent instead of waiting for 'preferences:changed'.
+        for (const { gameId, rating } of adopted) setPreference(playerId, gameId, rating);
         ctx.rerender();
-        showToast(round.mode === 'points' ? 'Deine Bewertung wurde gespeichert.' : 'Deine Stimme wurde gespeichert.');
+        if (round.mode !== 'points') showToast('Deine Stimme wurde gespeichert.');
+        else showToast(adopted.length > 0 ? 'Deine Bewertung und dein Bock wurden gespeichert.' : 'Deine Bewertung wurde gespeichert.');
       } catch (err) {
         submitBtn.disabled = false;
         showToast(err.message, { error: true });
       }
+    });
+  });
+
+  container.querySelectorAll('[data-vote-adopt-bock]').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      if (myId) rememberAdoptBock(myId, checkbox.checked);
     });
   });
 
