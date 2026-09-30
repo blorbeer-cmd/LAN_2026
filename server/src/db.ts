@@ -5440,6 +5440,27 @@ function addVoteRoundPrivacyOptions(): void {
 }
 registerMigration({ version: 115, name: 'add vote round privacy options', up: addVoteRoundPrivacyOptions });
 
+// Before parallel Votes, app_state named the only live round. Older schema
+// transitions could leave rows with closed_at = NULL even though that state
+// no longer considered them open. Reconcile them once before the round table
+// becomes the source of truth, and record the runoff's exact source round.
+function prepareParallelVoteRounds(): void {
+  const columns = db.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'source_round')) {
+    db.exec('ALTER TABLE vote_rounds ADD COLUMN source_round INTEGER');
+  }
+  db.prepare(
+    `DELETE FROM vote_rounds
+     WHERE closed_at IS NULL AND NOT EXISTS (
+       SELECT 1 FROM app_state opened JOIN app_state current_round
+         ON opened.key = 'vote_open:' || vote_rounds.group_id || ':' || vote_rounds.event_id
+        AND current_round.key = 'vote_round:' || vote_rounds.group_id || ':' || vote_rounds.event_id
+       WHERE opened.value = '1' AND current_round.value = CAST(vote_rounds.round AS TEXT)
+     )`,
+  ).run();
+}
+registerMigration({ version: 116, name: 'reconcile open votes and add runoff source', up: prepareParallelVoteRounds });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

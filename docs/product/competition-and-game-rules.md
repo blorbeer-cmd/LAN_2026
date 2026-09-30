@@ -377,7 +377,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   the title's gap to metadata.
   Its header names the
   round, date, participation and winner and offers „Stimmen ansehen“ for named ballots and, on a tie, a
-  compact „Stichwahl starten“. „Match generieren“ opens Match in „Auslosung“
+  compact „Stichwahl starten“ as long as no runoff for that round is already open. A runoff stores
+  the exact round it resolves, so simultaneous Votes cannot change its decline counts or player
+  selection. „Match generieren“ opens Match in „Auslosung“
   mode with the winning game selected and exactly the voters who gave it at least one point preselected.
   It never starts the draw itself; players and team count can still be changed on Match. If several
   games tie, a dialog lets the user choose one of them first. After a runoff, every runoff participant

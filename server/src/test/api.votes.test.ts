@@ -697,3 +697,31 @@ test('the last closed Vote stays current even when an older round ends later', a
   assert.equal(history.body.history[0].round, older.body.round);
   assert.equal(kiosk.body.recentResult.round, older.body.round);
 });
+
+test('a runoff keeps its exact source and cannot be started twice while open', async () => {
+  const older = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
+  const newer = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes/points').send({
+    round: older.body.round,
+    playerId: playerA,
+    entries: [{ gameId: gameCs2, points: 5 }, { gameId: gameRl, points: 5 }],
+  });
+  assert.equal((await request(app).post('/api/votes/close').send({ round: newer.body.round })).status, 200);
+  const kiosk = await request(app).get('/api/votes/kiosk');
+  assert.deepEqual(kiosk.body.openRounds.map((round: { round: number }) => round.round), [older.body.round]);
+  assert.equal(kiosk.body.recentResult.round, newer.body.round);
+
+  const closed = await request(app).post('/api/votes/close').send({ round: older.body.round });
+  assert.deepEqual(closed.body.winnerGameIds.sort(), [gameCs2, gameRl].sort());
+  const runoff = await request(app).post('/api/votes/start').send({
+    mode: 'single', sourceRound: older.body.round, gameIds: [gameCs2, gameRl],
+  });
+  assert.equal(runoff.status, 201);
+  assert.equal(runoff.body.openRounds[0].sourceRound, older.body.round);
+  assert.equal((await request(app).post('/api/votes/start').send({
+    mode: 'single', sourceRound: older.body.round, gameIds: [gameCs2, gameRl],
+  })).status, 409);
+  assert.equal((await request(app).post('/api/votes/close').send({ round: runoff.body.round })).status, 200);
+  const detail = await request(app).get(`/api/votes/history/${runoff.body.round}`);
+  assert.equal(detail.body.sourceRound, older.body.round);
+});

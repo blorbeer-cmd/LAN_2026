@@ -43,7 +43,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   the others slide down; lines that no longer fit on a short screen are dropped, and reduced motion shows the new state without movement. The tone
   stays friendly: no remarks about looks, weak skill, health or private life. Accounts that opted
   out in Mein Profil are never named, and a line naming them disappears with the next refresh.
-- **Abstimmung**: Vote is a live room display. Open rounds vertically center their participant
+- **Abstimmung**: Vote is a live room display. Parallel open rounds take turns every ten seconds.
+  The displayed round vertically centers its participant
   count in the status header and show the current ranking in one column, with every game name
   replaced by a stable, differently sized random-character mask plus blur so the room display
   cannot influence voting. Single-choice runoffs are explicitly labeled „Stichwahl“. Rows keep
@@ -53,8 +54,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   The revealed view starts at the top: the standard section title „Gewinner“ introduces a
   separately purple-pink gradient-bordered winner surface (including every tied winner), and the
   smaller title „Ergebnis im Detail“ introduces the neutral ranking without repeating the winner
-  border. The result remains visible for ten minutes, based on the persisted close timestamp; a new
-  open round replaces it immediately. Without an open or recently closed round, the card only
+  border. The result is shown alone for ten seconds after reveal, then takes turns with any
+  already open rounds every ten seconds until its ten-minute expiry, based on the persisted close
+  timestamp. A round started after the result replaces it immediately. Without an open or recently closed round, the card only
   states that no vote is running. The regular personal Vote view keeps its open-round
   distribution hidden.
 - **Turnier**: Standings and group phases start directly below their metadata; in a knockout

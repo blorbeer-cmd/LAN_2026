@@ -506,11 +506,17 @@ function winnerNames(h) {
   return h.results.filter((r) => (h.winnerGameIds ?? []).includes(r.gameId)).map((r) => r.gameName);
 }
 
-// A runoff re-asks the tied winners of the latest points round before it
+// A runoff re-asks the tied winners of its stored source round
 // (a runoff of a runoff still goes back to that points round). Its ballots
 // still say who would not play each game, which the runoff itself cannot ask.
 // `runoff` is either a closed history round or the open round's payload.
 export function runoffSourceRound(history, runoff) {
+  if (runoff.sourceRound != null) {
+    const source = (history ?? []).find((round) => round.round === runoff.sourceRound && round.round < runoff.round);
+    if (!source) return null;
+    return source.mode === 'points' ? source : runoffSourceRound(history, source);
+  }
+  // Historical runoffs from before source_round existed use the old lookup.
   const gameIds = runoff.results.map((r) => r.gameId);
   return (history ?? [])
     .filter((h) => h.mode === 'points' && h.totalVoters > 0 && h.round < runoff.round
@@ -962,7 +968,8 @@ export function renderVotes(container, ctx) {
   // A tie in the most recent round offers the runoff right in that card's
   // header, like every other primary action on this page.
   const latestRound = historyCache?.[0];
-  const showRunoff = isGroupAdmin() && Boolean(latestRound?.totalVoters) && latestRound.winnerGameIds?.length > 1;
+  const hasOpenRunoff = openRounds.some((round) => round.sourceRound === latestRound?.round);
+  const showRunoff = isGroupAdmin() && !hasOpenRunoff && Boolean(latestRound?.totalVoters) && latestRound.winnerGameIds?.length > 1;
 
   container.innerHTML = `
     <h1 class="view-title">Vote</h1>
