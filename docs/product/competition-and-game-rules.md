@@ -368,7 +368,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   stays visible. While at least one rated game differs from the own Bock (including games without
   one), a „Bock übernehmen“ checkbox appears beside „Speichern“: checked, saving also writes those
   points as the own Bock in the game catalog, in the same step as the ballot. It starts checked and
-  remembers the last choice per account on that device; runoffs have no such option. A runoff is titled „Stichwahl“ and keeps the
+  remembers the last choice per account on that device; runoffs have no such option. Anonymous
+  rounds offer it too: adopting then makes those points visible as the player's own Bock, an
+  accepted trade-off. A runoff is titled „Stichwahl“ and keeps the
   anonymity and interim-result setting of the round it decides. „Letzter Vote“ is a collapsible Umfrage card
   that starts collapsed and keeps its open state across live re-renders. Expanded latest and
   historical results preserve the server's score ranking and fill two columns when complete

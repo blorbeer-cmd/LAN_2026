@@ -773,6 +773,8 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 // submission replaces the earlier ballot while the round is open. With
 // `adoptPreferences: true` the same points also become the player's Bock in
 // the game catalog (same 0-5 scale), in the same transaction as the ballot.
+// Also in an anonymous round, by product decision: the per-player Bock then
+// shows how that player rated those games (accepted trade-off).
 votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res);

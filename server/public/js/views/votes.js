@@ -359,10 +359,14 @@ function bockDifferences(votes) {
 }
 
 // „Bock übernehmen“ starts checked and remembers the last choice per account
-// on this device, like the layout preference in layoutMode.js.
+// on this device, like the layout preference in layoutMode.js. The choice is
+// also kept in page state, so a re-render never re-checks a box the viewer
+// just cleared when localStorage is blocked.
 const ADOPT_BOCK_KEY_PREFIX = 'respawn_vote_adopt_bock:';
+const adoptBockChoices = new Map(); // playerId -> boolean
 
 function adoptBockPreferred(playerId) {
+  if (adoptBockChoices.has(playerId)) return adoptBockChoices.get(playerId);
   try {
     return globalThis.localStorage?.getItem(`${ADOPT_BOCK_KEY_PREFIX}${playerId}`) !== '0';
   } catch {
@@ -371,6 +375,7 @@ function adoptBockPreferred(playerId) {
 }
 
 function rememberAdoptBock(playerId, adopt) {
+  adoptBockChoices.set(playerId, adopt);
   try {
     globalThis.localStorage?.setItem(`${ADOPT_BOCK_KEY_PREFIX}${playerId}`, adopt ? '1' : '0');
   } catch {

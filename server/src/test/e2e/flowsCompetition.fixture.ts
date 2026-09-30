@@ -456,7 +456,29 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   // the preselection below proves no Bock was written.
   const adoptBock = roundCard.locator('[data-vote-adopt-bock]');
   assert.ok(await adoptBock.isVisible() && await adoptBock.isChecked(), '„Bock übernehmen“ starts checked');
+  // Even with a blocked localStorage the cleared box survives the re-render
+  // of the next rating change.
+  // Only this choice's key throws, so unrelated requests keep working.
+  await page.evaluate(() => {
+    const { getItem, setItem } = Storage.prototype;
+    const guard = (key: string) => {
+      if (key.startsWith('respawn_vote_adopt_bock:')) throw new DOMException('blocked', 'SecurityError');
+    };
+    Object.assign(Storage.prototype, {
+      __getItem: getItem,
+      __setItem: setItem,
+      getItem(this: Storage, key: string) { guard(key); return getItem.call(this, key); },
+      setItem(this: Storage, key: string, value: string) { guard(key); return setItem.call(this, key, value); },
+    });
+  });
   await adoptBock.uncheck();
+  await setPoints(0, 3);
+  await setPoints(0, 2);
+  assert.ok(!(await adoptBock.isChecked()), 'a cleared box stays cleared without localStorage');
+  await page.evaluate(() => {
+    const proto = Storage.prototype as Storage & { __getItem: Storage['getItem']; __setItem: Storage['setItem'] };
+    Object.assign(Storage.prototype, { getItem: proto.__getItem, setItem: proto.__setItem });
+  });
   await page.click('[data-votes-submit]');
   await roundCard.locator('.event-poll-answer-inline:has-text("Abgegeben")').waitFor();
   const bockGameId = (await ballotRows.first().getAttribute('data-vote-row')) ?? '';
