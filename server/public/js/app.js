@@ -7,7 +7,7 @@ import { ensureLogin } from './authGate.js';
 import { connectSocket } from './socket.js';
 import { initConnectionStatus } from './connectionStatus.js';
 import { createConnectionRefreshCoordinator } from './connectionRefresh.js';
-import { selectableEventWorkspaces, state } from './state.js';
+import { selectableEventWorkspaces, setPreference, state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { openFeedbackModal } from './feedback.js';
@@ -1010,17 +1010,13 @@ function wireSocket() {
   // payload, so that one tally is refetched too — cheap compared to a full
   // reload, and makes a slider change on one device show up everywhere else
   // immediately instead of only after some other event happens to reload.
+  // A Vote ballot saved with „Bock übernehmen“ sends all its changed ratings
+  // at once as `ratings: [{ gameId, rating }]`.
   socket.on('preferences:changed', async (payload) => {
     if (payload) {
-      const { playerId, gameId, rating } = payload;
-      const existing = state.preferences.find((p) => p.player_id === playerId && p.game_id === gameId);
-      if (rating === null) {
-        state.preferences = state.preferences.filter((p) => !(p.player_id === playerId && p.game_id === gameId));
-      } else if (existing) {
-        existing.rating = rating;
-      } else {
-        state.preferences.push({ player_id: playerId, game_id: gameId, rating });
-      }
+      const { playerId } = payload;
+      const changes = Array.isArray(payload.ratings) ? payload.ratings : [payload];
+      for (const { gameId, rating } of changes) setPreference(playerId, gameId, rating);
     }
     try {
       state.votes = await api.votes.get();

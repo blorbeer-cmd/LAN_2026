@@ -294,8 +294,8 @@ export const api = {
     historyRound: (round) => apiFetch(`/api/votes/history/${round}`),
     start: (options = {}) => apiFetch('/api/votes/start', { method: 'POST', body: JSON.stringify(options) }),
     cast: (playerId, gameId, round) => apiFetch('/api/votes', { method: 'POST', body: JSON.stringify({ playerId, gameId, round }) }),
-    castPoints: (playerId, entries, round) =>
-      apiFetch('/api/votes/points', { method: 'POST', body: JSON.stringify({ playerId, entries, round }) }),
+    castPoints: (playerId, entries, round, { adoptPreferences = false } = {}) =>
+      apiFetch('/api/votes/points', { method: 'POST', body: JSON.stringify({ playerId, entries, round, adoptPreferences }) }),
     close: (round) => apiFetch('/api/votes/close', { method: 'POST', body: JSON.stringify({ round }) }),
     cancel: (round) => apiFetch('/api/votes/cancel', { method: 'POST', body: JSON.stringify({ round }) }),
   },

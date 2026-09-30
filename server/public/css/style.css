@@ -1119,6 +1119,12 @@ textarea {
   box-shadow: inset 0 0 0 1px var(--scale-high);
   color: var(--scale-high);
 }
+/* A Vote ballot's own Bock: a faint dashed outline as orientation, so it never
+   reads as the chosen number; choosing it or focusing it shows the full ring. */
+.rating-scale .event-poll-response-toolbar .btn.is-hint:not(.is-selected):not(:focus-visible) {
+  outline: 1px dashed color-mix(in srgb, var(--scale-high) 60%, transparent);
+  outline-offset: -1px;
+}
 .rating-scale-meter {
   display: block;
   height: var(--space-1);

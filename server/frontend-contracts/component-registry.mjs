@@ -176,8 +176,8 @@ export const components = [
     "dynamicUses": [
       {
         "file": "public/js/ratingScale.js",
-        "source": "class=\"btn btn-square${chosen === value ? ' is-selected' : ''}\"",
-        "reason": "The shared 0-5 number scale of Vote, Umfragen and Bock/Skill composes the selected-state class; component geometry remains owned by this entry."
+        "source": "class=\"btn btn-square${chosen === value ? ' is-selected' : ''}${isHint ? ' is-hint' : ''}\"",
+        "reason": "The shared 0-5 number scale of Vote, Umfragen and Bock/Skill composes the selected-state and own-Bock hint classes; component geometry remains owned by this entry."
       }
     ]
   },
@@ -1489,6 +1489,18 @@ export const permanentVariants = [
     "reason": "On the Bock/Skill scale the chosen number and its inset outline take that scale's saturated color; geometry stays with the square variant.",
     "properties": [
       "box-shadow"
+    ]
+  },
+  {
+    "id": "rating-scale-hint",
+    "role": "standard-control",
+    "selector": ".rating-scale .event-poll-response-toolbar .btn.is-hint:not(.is-selected):not(:focus-visible)",
+    "owner": "public/css/style.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "On a Vote ballot the viewer's own Bock gets a faint dashed outline as orientation; geometry stays with the square variant.",
+    "properties": [
+      "outline",
+      "outline-offset"
     ]
   },
   {

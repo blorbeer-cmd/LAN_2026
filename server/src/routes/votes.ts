@@ -770,7 +770,9 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 // POST /api/votes/points - cast or change a player's ballot in the current
 // round ('points' mode only). Body: { playerId, entries: [{ gameId, points }] }
 // with exactly one entry per game of the round, 0-5 points each. A later
-// submission replaces the earlier ballot while the round is open.
+// submission replaces the earlier ballot while the round is open. With
+// `adoptPreferences: true` the same points also become the player's Bock in
+// the game catalog (same 0-5 scale), in the same transaction as the ballot.
 votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res);
@@ -781,7 +783,7 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(409).json({ error: 'Die aktuelle Abstimmung läuft im Einzel-Modus.' });
   }
 
-  const { playerId, entries } = req.body ?? {};
+  const { playerId, entries, adoptPreferences } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
@@ -789,6 +791,9 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (!competitionPlayersBelongToGroup(groupId, eventId, [playerId])) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  if (adoptPreferences !== undefined && typeof adoptPreferences !== 'boolean') {
+    return res.status(400).json({ error: 'adoptPreferences muss true oder false sein.' });
   }
 
   if (!Array.isArray(entries)) {
@@ -831,7 +836,7 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   }
 
   const now = Date.now();
-  db.transaction(() => {
+  const adoptedRatings = db.transaction(() => {
     deletePlayerBallot(groupId, playerId, state.round);
     const insert = db.prepare(
       `INSERT INTO votes
@@ -841,10 +846,30 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
     for (const entry of clean) {
       insert.run(nanoid(), groupId, playerId, player.name, entry.gameId, meta.eventId, state.round, entry.points, now);
     }
+    if (adoptPreferences !== true) return [];
+    // Only ratings that actually change are written and announced.
+    const current = db.prepare('SELECT rating FROM preferences WHERE player_id = ? AND game_id = ? AND group_id = ?');
+    const upsert = db.prepare(
+      `INSERT INTO preferences (player_id, game_id, group_id, rating) VALUES (?, ?, ?, ?)
+       ON CONFLICT(player_id, game_id) DO UPDATE SET rating = excluded.rating`,
+    );
+    const changed: Array<{ gameId: string; rating: number }> = [];
+    for (const entry of clean) {
+      const row = current.get(playerId, entry.gameId, groupId) as { rating: number } | undefined;
+      if (row?.rating === entry.points) continue;
+      upsert.run(playerId, entry.gameId, groupId, entry.points);
+      changed.push({ gameId: entry.gameId, rating: entry.points });
+    }
+    return changed;
   })();
 
   const payload = buildOverviewPayload(groupId, eventId, includesTestPlayers(req));
   broadcast(Events.votesChanged, { round: state.round, open: true }, { groupId, eventId });
+  // One batched signal instead of one per game, so each client refetches the
+  // vote overview once (see the 'preferences:changed' handler in app.js).
+  if (adoptedRatings.length > 0) {
+    broadcast(Events.preferencesChanged, { playerId, ratings: adoptedRatings }, { groupId });
+  }
   res.json(payload);
 });
 
