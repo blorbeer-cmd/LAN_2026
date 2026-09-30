@@ -376,8 +376,13 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.waitForSelector('#vote-start-form', { state: 'detached' });
   const secondRound = page.locator('[data-vote-round="2"]');
   await secondRound.waitFor();
-  assert.equal(await page.locator('.vote-round-card').count(), 2, 'votes can run in parallel');
-  await secondRound.locator('[data-toggle-open-vote]').click();
+  // Like „Aktuelle Umfragen", both running rounds are nested cards inside the
+  // one „Aktuelle Abstimmungen" main card.
+  assert.equal(
+    await page.locator('section:has(> .grouped-page-section-title h2:text-is("Aktuelle Abstimmungen")) .vote-round-card').count(),
+    2,
+    'votes can run in parallel inside the current-votes card',
+  );  await secondRound.locator('[data-toggle-open-vote]').click();
   assert.equal(await secondRound.locator('[data-toggle-open-vote]').getAttribute('aria-expanded'), 'false');
   await secondRound.locator('[data-votes-cancel]').click();
   await page.click('[data-confirm]');

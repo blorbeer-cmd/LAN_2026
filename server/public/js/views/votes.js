@@ -2,9 +2,9 @@
 // voter, so casting a vote needs no extra identity form.
 //
 // Layout, top to bottom:
-// 1. The „Abstimmung starten" dialog and every running round as its own
-//    collapsible card in the same
-//    shape as an Umfrage: header with participation and the viewer's answer
+// 1. „Aktuelle Abstimmungen" like „Aktuelle Umfragen": the „Abstimmung
+//    starten" action and every running round as its own nested collapsible
+//    card in the shape of an Umfrage: header with participation and the viewer's answer
 //    state, one row per game, and a footer with the own progress and
 //    "Speichern".
 // 2. The latest closed result as "Letzter Vote", pulled from history, as a
@@ -424,7 +424,7 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
   const admin = isGroupAdmin();
   const answer = mineReady ? answerChipHtml(hasSubmitted) : '';
   return `
-    <section class="card vote-page-section event-poll-card vote-round-card" data-vote-round="${votes.round}" aria-labelledby="vote-current-title-${votes.round}">
+    <section class="card event-poll-card vote-round-card" data-vote-round="${votes.round}" aria-labelledby="vote-current-title-${votes.round}">
       <header class="event-poll-card-header">
         <button type="button" class="event-poll-card-toggle" data-toggle-open-vote="${disclosureKey}" aria-expanded="${expanded}" aria-controls="vote-open-content-${votes.round}">
           <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
@@ -929,14 +929,16 @@ function openVoteStartForm(ctx) {
 
 // ---------- page ----------
 
-function renderStartSection(hasOpenRounds) {
+// Like „Aktuelle Umfragen": one main card with the start action whose nested
+// cards are the running rounds.
+function renderCurrentSection(openCards) {
   return `
-    <section class="card stack grouped-page-section primary-collection-section vote-page-section" aria-labelledby="vote-start-title">
+    <section class="card stack grouped-page-section primary-collection-section vote-page-section" aria-labelledby="vote-current-section-title">
       <div class="grouped-page-section-title">
-        <h2 id="vote-start-title">${hasOpenRounds ? 'Neue Abstimmung' : 'Aktuelle Abstimmung'}</h2>
+        <h2 id="vote-current-section-title">Aktuelle Abstimmungen</h2>
         <button type="button" class="btn btn-primary btn-sm" id="votes-new">Abstimmung starten</button>
       </div>
-      ${hasOpenRounds ? '' : emptyStateHtml('Keine laufende Abstimmung')}
+      ${openCards ? `<div class="stack event-poll-list">${openCards}</div>` : emptyStateHtml('Keine laufende Abstimmung')}
     </section>`;
 }
 
@@ -973,8 +975,7 @@ export function renderVotes(container, ctx) {
 
   container.innerHTML = `
     <h1 class="view-title">Vote</h1>
-    ${renderStartSection(openRounds.length > 0)}
-    ${openCards}
+    ${renderCurrentSection(openCards)}
 
     ${renderLatestVoteCard({ showRunoff })}
 
