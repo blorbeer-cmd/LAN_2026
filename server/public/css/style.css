@@ -999,7 +999,6 @@ textarea {
    the avatars wraps below them instead of running into the answer buttons. */
 .event-poll-option-badges {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
   flex-wrap: wrap;
