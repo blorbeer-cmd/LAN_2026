@@ -324,11 +324,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
-  The start control comes first and stays available while other rounds run. Several Votes can run
-  in parallel; each open round has its own collapsible card, ballot, saved answer and admin actions.
-  While none runs, a primary-collection card „Aktuelle Abstimmung“
-  shows the one-row empty state „Keine laufende Abstimmung“ and the compact header action
-  „Abstimmung starten“; the game list is not shown on the page. That action opens the dialog
+  Like „Aktuelle Umfragen“, the page opens with the primary-collection card „Aktuelle
+  Abstimmungen“ and its compact header action „Abstimmung starten“, which stays available while
+  other rounds run. Several Votes can run in parallel; each open round is its own collapsible card
+  nested inside that main card, with its ballot, saved answer and admin actions. While none runs,
+  the main card shows the one-row empty state „Keine laufende Abstimmung“; the game list is not
+  shown on the page. That action opens the dialog
   „Abstimmung starten“, modeled on „Umfrage starten“: optional „Titel“ and „Beschreibung“, the
   checkboxes „Anonym“ and „Zwischenstand verbergen“ (preselected) with contextual help, then the required „Spiele“ list and a right-aligned
   „Abstimmung starten“ beside the count of selected games. The list uses the Spielekatalog's
