@@ -352,9 +352,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   the 0–5 number scale, in a runoff „Wählen“/„Ausgewählt“.
   The 0–5 draft meter uses the same blue-to-violet gradient as the revealed result bars. Like every
   Umfrage with a hidden interim result, the empty result column is dropped so the answers sit
-  beside the name, and from `--bp-lg` the games fill two columns, read down the left column first,
-  then the right one. A round that shows its interim result keeps the result bar and, unless it is
-  anonymous, the voter avatars in every row like an open Umfrage. A ballot the viewer has not saved yet in this round starts with the own Bock
+  beside the name. Each game keeps its title, result bar, voter avatars and answers in one horizontal
+  row. Games fill two columns, read down the left first, only when both complete rows fit;
+  otherwise they use one full-width column, including when the interim result is visible.
+  Unless the round is anonymous, the voter avatars appear as in an open Umfrage. A ballot the viewer has not saved yet in this round starts with the own Bock
   preselected for every game that has one; games without an own Bock start unrated. This
   preselection is only a local draft — nothing counts until „Speichern“. No selected number means unrated; pressing the chosen number again clears
   it. 0 is a deliberate rating, marked „Spiele ich nicht“ in the voter column. The footer shows the
@@ -362,8 +363,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   game is rated (in a runoff: once one game is picked). A runoff is titled „Stichwahl“ and keeps the
   anonymity and interim-result setting of the round it decides. „Letzter Vote“ is a collapsible Umfrage card
   that starts collapsed and keeps its open state across live re-renders. Expanded latest and
-  historical results preserve the server's score ranking and, from `--bp-lg`, fill two columns
-  down the left first, then down the right; phones keep one readable column. Each game carries a
+  historical results preserve the server's score ranking and fill two columns when complete
+  horizontal rows fit, down the left first, then down the right; narrower cards keep one column. Each game carries a
   place number in the Top-10 style. Equal points (or votes in a runoff) share their place,
   regardless of popularity or name used to stabilize their order: `1, 1, 3` for two co-winners.
   All first-place numbers are gold, the others muted. The Top 10 likewise share places for equal
