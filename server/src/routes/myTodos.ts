@@ -4,19 +4,23 @@
 
 import { Router } from 'express';
 import { buildMyTodos } from '../myTodos';
-import { getOrRepairActiveEvent } from '../eventContext';
+import { resolveRequestGroupEventScope } from '../groupEventScope';
 import { includesTestEvents } from '../testDataVisibility';
 
 export const myTodosRouter = Router();
 
 myTodosRouter.get('/', (req, res) => {
-  const activeEvent = getOrRepairActiveEvent(req.player!.id);
+  // The workspace this request actually sees, with the same visible fallback
+  // as /api/votes and /api/me/active-event: a stored but now hidden test
+  // event resolves to the base event, so "Du hast noch nicht abgestimmt"
+  // describes the rounds that are on screen.
+  const scope = resolveRequestGroupEventScope(req, undefined);
   res.json(
     buildMyTodos({
       groupId: req.group!.id,
       playerId: req.player!.id,
       role: req.groupMembership?.role,
-      activeEventId: activeEvent.group_id === req.group!.id ? activeEvent.id : null,
+      activeEventId: scope.ok ? scope.eventId : null,
       includeTestEvents: includesTestEvents(req),
     }),
   );

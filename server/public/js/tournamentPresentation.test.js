@@ -93,6 +93,23 @@ test('an early-ended tournament offers no result action, a regularly completed o
   assert.equal(resultActions(pres.renderBracket({ ...knockout, status: 'completed', endedEarly: true })), 0);
 });
 
+test('a decided final crowns its winner only when the tournament was not ended early', () => {
+  const pres = createTournamentPresentation(null);
+  const decided = {
+    ...knockout,
+    matches: [
+      match('qf1', 1, 0, '1', '2', { winnerTeamId: '1' }),
+      match('qf2', 1, 1, '3', '4', { winnerTeamId: '3' }),
+      match('f', 2, 0, '1', '3', { winnerTeamId: '1' }),
+    ],
+  };
+  assert.match(pres.renderBracket(decided), /class="bracket-champion" aria-label="Sieger: /);
+  const endedEarly = pres.renderBracket({ ...decided, status: 'completed', endedEarly: true });
+  assert.doesNotMatch(endedEarly, /bracket-champion/);
+  // The recorded final itself stays on the board.
+  assert.match(endedEarly, /bracket-win-mark|is-winner/);
+});
+
 test('leaves boards unmarked and in schedule order for players outside the tournament', () => {
   for (const pres of [createTournamentPresentation('spectator'), createTournamentPresentation(null)]) {
     const html = [

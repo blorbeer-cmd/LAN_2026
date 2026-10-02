@@ -196,7 +196,9 @@ export function createTournamentPresentation(myPlayerId = null) {
     const totalRounds = Math.max(...treeMatches.map((m) => m.round));
     const matchesByKey = new Map(treeMatches.map((m) => [`${m.round}:${m.slot}`, m]));
     const final = matchesByKey.get(`${totalRounds}:0`);
-    const champion = final?.winnerTeamId ? teamLabel(teamsById, final.winnerTeamId) : null;
+    // A tournament ended early has no winner even with a decided final (its
+    // third-place match may still be open): the result stays, the crown not.
+    const champion = !t.endedEarly && final?.winnerTeamId ? teamLabel(teamsById, final.winnerTeamId) : null;
 
     const titles = [
       ...Array.from({ length: totalRounds }, (_, i) => `<div>${bracketRoundLabel(i + 1, totalRounds)}</div>`),

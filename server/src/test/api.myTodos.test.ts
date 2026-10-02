@@ -170,3 +170,27 @@ test('left-behind workflows reach exactly the people who can close them', async 
   assert.deepEqual(orga(await todosOf(mia)), ['event-contributions']);
   assert.equal((await todosOf(admin)).some((todo) => todo.kind === 'vote-close'), false);
 });
+
+test('"noch nicht abgestimmt" follows the visible workspace when a stored test event is hidden', async () => {
+  const now = Date.now();
+  const admin = '__integration-test-admin__';
+  const testEvent = createEvent('Hidden Test LAN', { startsAt: now - HOUR, endsAt: now + DAY, participants: [admin] });
+  db.prepare('UPDATE events SET is_test = 1 WHERE id = ?').run(testEvent);
+  const insertRound = db.prepare(
+    `INSERT INTO vote_rounds (group_id, round, event_id, started_at, mode, created_by) VALUES (?, ?, ?, ?, 'points', ?)`,
+  );
+  insertRound.run(DEFAULT_GROUP_ID, 9101, testEvent, now, admin);
+  insertRound.run(DEFAULT_GROUP_ID, 9102, 'instance-base-event', now, admin);
+
+  // Admin mode may enter the test event; it stays the stored workspace.
+  const activated = await request(app).put('/api/me/active-event').set('x-admin-mode', '1').send({ eventId: testEvent });
+  assert.equal(activated.status, 200, JSON.stringify(activated.body));
+  const withTestData = await request(app).get('/api/me/todos').set('x-admin-mode', '1');
+  assert.deepEqual(withTestData.body.pendingVoteRounds, [9101]);
+
+  // Without admin mode every API falls back to the base event, and so does this hint.
+  const visible = await request(app).get('/api/votes');
+  assert.ok(visible.body.openRounds.some((round: { round: number }) => round.round === 9102));
+  const withoutTestData = await request(app).get('/api/me/todos');
+  assert.deepEqual(withoutTestData.body.pendingVoteRounds, [9102]);
+});
