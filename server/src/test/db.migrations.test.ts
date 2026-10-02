@@ -97,6 +97,37 @@ test('migration 119 keeps existing tournaments as regularly ended and is repeata
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 120 moves only the handmade TestEvent into admin mode and is repeatable', () => {
+  const dbFile = makeTempDbPath('handmade-test-event');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  const addEvent = fixture.prepare(
+    `INSERT INTO events (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+     VALUES (?, ?, NULL, NULL, 0, 'default-group', 'published', 'participants')`,
+  );
+  addEvent.run('handmade-test', 'TestEvent');
+  addEvent.run('real-lan', 'LAN 2026');
+  addEvent.run('similar-name', 'Testevent Planung');
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 120').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated
+      .prepare("SELECT id, is_test AS isTest FROM events WHERE id IN ('handmade-test', 'real-lan', 'similar-name') ORDER BY id")
+      .all(),
+    [
+      { id: 'handmade-test', isTest: 1 },
+      { id: 'real-lan', isTest: 0 },
+      { id: 'similar-name', isTest: 0 },
+    ],
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 118 adds the Vote round creator without touching existing rounds and is repeatable', () => {
   const dbFile = makeTempDbPath('vote-round-creator');
   runMigrations(dbFile);
@@ -861,10 +892,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 119);
+  assert.equal(migrations.length, 120);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 119 }, (_, index) => index + 1),
+    Array.from({ length: 120 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1466,8 +1497,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 119 }, (_, index) => index + 1),
-    'every version 1..119 runs exactly once',
+    Array.from({ length: 120 }, (_, index) => index + 1),
+    'every version 1..120 runs exactly once',
   );
 });
 

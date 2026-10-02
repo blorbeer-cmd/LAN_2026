@@ -5500,6 +5500,16 @@ function addTournamentEndedEarly(): void {
 }
 registerMigration({ version: 119, name: 'add tournament early end', up: addTournamentEndedEarly });
 
+// The organizers created one event by hand just to try things out, before an
+// event could be marked as test data. Moving it into Admin mode hides it (and
+// its To-Dos) like the generated test events, and "Testdaten aufräumen"
+// removes it with them. The exact, case-sensitive name keeps every real event
+// untouched.
+function markHandmadeTestEvent(): void {
+  db.prepare("UPDATE events SET is_test = 1 WHERE name = 'TestEvent' AND is_test = 0").run();
+}
+registerMigration({ version: 120, name: 'move handmade TestEvent into admin mode', up: markHandmadeTestEvent });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
