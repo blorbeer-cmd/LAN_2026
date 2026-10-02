@@ -64,7 +64,12 @@ export const VIEW_LIFECYCLE_HANDLERS = Object.freeze({
     'votes:changed': invalidateMyTodos,
     'checklist:changed': invalidateMyTodos,
     'arrivals:changed': invalidateMyTodos,
-    'visibility:changed': invalidateHomeSeating,
+    // Admin mode decides whether test events' To-Dos are visible at all, so
+    // the old list (and any request still answering under it) is dropped.
+    'visibility:changed': () => {
+      invalidateHomeSeating();
+      invalidateMyTodos({ hard: true });
+    },
   }),
   matchmaking: Object.freeze({
     [EVENT_SCOPE_CHANGE]: () => {

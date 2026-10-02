@@ -16,10 +16,15 @@ import { eventDateRange } from './eventPresentation.js';
 // Left-behind workflows turn stale purely by time passing, with no realtime
 // signal. A visible Home refetches once its copy is older than this.
 export const MY_TODOS_MAX_AGE_MS = 60 * 1000;
+// After a failed load, renders wait this long before trying again. A failure
+// redraws nothing, so a persistent 503 or network outage cannot turn Home's
+// render → load → render cycle into a request loop.
+export const MY_TODOS_RETRY_AFTER_FAILURE_MS = 30 * 1000;
 export const MY_TODOS_VISIBLE_LIMIT = 5;
 
 let cache = null; // { todos, pendingVoteRounds }
 let loadedAt = 0;
+let failedAt = null;
 let stale = false;
 let request = null;
 let generation = 0;
@@ -34,29 +39,37 @@ function load() {
   if (request) return request;
   const requestGeneration = generation;
   const run = (async () => {
+    let loaded = false;
     try {
       const result = await api.myTodos.get();
       if (requestGeneration !== generation) return;
       cache = { todos: result.todos ?? [], pendingVoteRounds: result.pendingVoteRounds ?? [] };
       loadedAt = Date.now();
+      failedAt = null;
       stale = false;
+      loaded = true;
     } catch {
-      // Keep the last known list; the next render or signal retries. A first
-      // failure leaves the tile hidden instead of showing a broken state.
+      // Keep the last known list and redraw nothing: a first failure leaves
+      // the tile hidden instead of showing a broken state, and the next
+      // signal or the retry delay brings the next attempt.
+      if (requestGeneration === generation) failedAt = Date.now();
     } finally {
       if (request === run) request = null;
-      if (requestGeneration === generation) notifyChanged();
-      else if (homeIsOpen()) void load();
+      if (loaded) notifyChanged();
+      else if (requestGeneration !== generation && homeIsOpen()) void load();
     }
   })();
   request = run;
   return run;
 }
 
-// Safe to call from every Home render: a no-op while fresh or in flight.
+// Safe to call from every Home render: a no-op while fresh, in flight or
+// still backing off from a failed load. Returns the running load, if any.
 export function ensureMyTodosLoaded(now = Date.now()) {
-  if (request) return;
-  if (cache === null || stale || now - loadedAt >= MY_TODOS_MAX_AGE_MS) void load();
+  if (request) return request;
+  if (failedAt !== null && now - failedAt < MY_TODOS_RETRY_AFTER_FAILURE_MS) return null;
+  if (cache === null || stale || now - loadedAt >= MY_TODOS_MAX_AGE_MS) return load();
+  return null;
 }
 
 // Called for every realtime signal that can add or settle a To-Do (see the

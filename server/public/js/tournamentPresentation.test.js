@@ -84,6 +84,15 @@ test('marks only the signed-in player’s team and puts their lobby first', () =
   assert.equal((teams.match(/\(dein Team\)/g) ?? []).length, 1);
 });
 
+test('an early-ended tournament offers no result action, a regularly completed one keeps its corrections', () => {
+  const pres = createTournamentPresentation('me');
+  const played = { ...league, status: 'completed', matches: [match('m1', 1, 0, '1', '3', { winnerTeamId: '1' }), match('m2', 1, 1, '2', '1')] };
+  const resultActions = (html) => (html.match(/data-open-result="/g) ?? []).length;
+  assert.equal(resultActions(pres.renderRoundRobin(played)), 1, 'a completed tournament still allows correcting a recorded result');
+  assert.equal(resultActions(pres.renderRoundRobin({ ...played, endedEarly: true })), 0);
+  assert.equal(resultActions(pres.renderBracket({ ...knockout, status: 'completed', endedEarly: true })), 0);
+});
+
 test('leaves boards unmarked and in schedule order for players outside the tournament', () => {
   for (const pres of [createTournamentPresentation('spectator'), createTournamentPresentation(null)]) {
     const html = [

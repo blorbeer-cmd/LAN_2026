@@ -92,8 +92,11 @@ export function createTournamentPresentation(myPlayerId = null) {
   // Every result is entered and edited through one dialog (see
   // openResultDialog in views/tournament.js), so boards stay read-only and the
   // action always sits in the same trailing slot: "+" for an open match,
-  // a pencil for a decided one.
+  // a pencil for a decided one. A tournament an admin ended early accepts no
+  // result at all, not even a correction (see the finish route), so its
+  // board offers neither.
   function canOpenResult(m, t) {
+    if (t.endedEarly) return false;
     if (!m.teamAId || !m.teamBId || m.isBye) return false;
     const decided = m.winnerTeamId !== null || m.isDraw;
     return decided || t.status === 'active';
