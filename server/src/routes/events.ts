@@ -55,7 +55,7 @@ import {
   isEventTypeKey,
 } from '../eventFeatureCatalog';
 import { includesTestEvents } from '../testDataVisibility';
-import { confirmEventCalendar, STEFAN_CALENDAR_GAG_USERNAME } from '../eventReminders';
+import { confirmEventCalendar, eventScheduleKey, STEFAN_CALENDAR_GAG_USERNAME } from '../eventReminders';
 
 export const eventsRouter = Router();
 
@@ -893,10 +893,20 @@ eventsRouter.post('/:id/calendar-confirmation', resolveEvent, (req, res) => {
   const event = req.groupResource as EventRow;
   const playerId = requestPlayerId(req);
   if (!playerId) return res.status(400).json({ error: 'Spieleridentität ist erforderlich.' });
+  // Optional: the period the client exported. Without it the current
+  // schedule is confirmed, as before.
+  const { startsAt, endsAt } = req.body ?? {};
+  const exportedSchedule = startsAt !== undefined || endsAt !== undefined;
+  if (exportedSchedule && !(Number.isSafeInteger(startsAt) && Number.isSafeInteger(endsAt))) {
+    return res.status(400).json({ error: 'Ungültiger Zeitraum.' });
+  }
 
-  const result = confirmEventCalendar(event.id, playerId);
+  const result = confirmEventCalendar(event.id, playerId, Date.now(), exportedSchedule ? eventScheduleKey(startsAt, endsAt) : null);
   if (!result.ok) {
     if (result.reason === 'not_accepted') return res.status(404).json({ error: 'Event nicht gefunden.' });
+    if (result.reason === 'schedule_changed') {
+      return res.status(409).json({ error: 'Der Termin wurde inzwischen geändert. Bitte den neuen Zeitraum eintragen.' });
+    }
     return res.status(409).json({ error: 'Nur laufende oder bevorstehende Events mit vollständigem Zeitraum können bestätigt werden.' });
   }
 

@@ -277,12 +277,16 @@ export function runEventReminderSweepOnce(now = Date.now()): { calendar: number;
 
 export type ConfirmEventCalendarResult =
   | { ok: true; changed: boolean; confirmedAt: number; scheduleKey: string }
-  | { ok: false; reason: 'not_accepted' | 'not_upcoming' };
+  | { ok: false; reason: 'not_accepted' | 'not_upcoming' | 'schedule_changed' };
 
+// `expectedScheduleKey` is the period the participant actually exported. A
+// dialog left open while the organizer moved the event must not acknowledge
+// the new period on the participant's behalf.
 export function confirmEventCalendar(
   eventId: string,
   playerId: string,
   now = Date.now(),
+  expectedScheduleKey: string | null = null,
 ): ConfirmEventCalendarResult {
   const row = db
     .prepare(
@@ -315,6 +319,7 @@ export function confirmEventCalendar(
     return { ok: false, reason: 'not_upcoming' };
   }
   const scheduleKey = eventScheduleKey(row.startsAt, row.endsAt);
+  if (expectedScheduleKey !== null && expectedScheduleKey !== scheduleKey) return { ok: false, reason: 'schedule_changed' };
 
   const existing = db
     .prepare(

@@ -153,9 +153,26 @@ test('accepted participants confirm a calendar import for the current schedule r
     'accepted',
     'the acceptance itself deliberately survives a reschedule',
   );
+  // A dialog still showing the old period must not acknowledge the new one.
+  const stale = await request(app)
+    .post(`/api/events/${eventId}/calendar-confirmation`)
+    .set('x-test-player-id', memberId)
+    .send({ startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS });
+  assert.equal(stale.status, 409, JSON.stringify(stale.body));
+  const malformed = await request(app)
+    .post(`/api/events/${eventId}/calendar-confirmation`)
+    .set('x-test-player-id', memberId)
+    .send({ startsAt: String(movedStartsAt), endsAt: movedEndsAt });
+  assert.equal(malformed.status, 400);
+  const stillOpen = await request(app).get('/api/events').set('x-test-player-id', memberId);
+  assert.equal(
+    stillOpen.body.availableEvents.find((event: { id: string }) => event.id === eventId).myParticipation.calendarConfirmed,
+    false,
+  );
   const reconfirmed = await request(app)
     .post(`/api/events/${eventId}/calendar-confirmation`)
-    .set('x-test-player-id', memberId);
+    .set('x-test-player-id', memberId)
+    .send({ startsAt: movedStartsAt, endsAt: movedEndsAt });
   assert.equal(reconfirmed.status, 200);
   assert.equal(reconfirmed.body.changed, true);
   assert.equal(reconfirmed.body.scheduleKey, eventScheduleKey(movedStartsAt, movedEndsAt));

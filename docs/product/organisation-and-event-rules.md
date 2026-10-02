@@ -354,7 +354,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   apps. An accepted participant confirms the handoff with the visible checkbox „Eingetragen“ beside
   that menu, because external providers expose no reliable import callback. Once set it stays set and
   is bound to the event's current start/end period, so moving the date asks for confirmation again while
-  the participant's acceptance itself deliberately stays valid. Pending invitations, ended events and
+  the participant's acceptance itself deliberately stays valid. The confirmation names the period it
+  exported; if the event moved in the meantime, the server rejects it (409) instead of acknowledging
+  the new period, and Home's open „Eintragen“ dialog closes with a hint to add the new period. Pending invitations, ended events and
   incomplete periods omit the calendar controls. Until confirmed, an upcoming event is also a row in
   Home's „Meine To-Dos“ whose „Eintragen“ dialog offers the same „Google“, „Outlook“ and „Download“
   and „Eingetragen“. Two-hour and weekly calendar nudges stop after

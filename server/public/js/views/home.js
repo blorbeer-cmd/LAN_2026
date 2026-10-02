@@ -375,9 +375,7 @@ function openCalendarDialog(todo, ctx) {
   const links = eventCalendarLinks({ ...todo, name: todo.eventName });
   if (!links) return;
   const event = { id: todo.eventId, name: todo.eventName, startsAt: todo.startsAt, endsAt: todo.endsAt, location: todo.location, description: todo.description };
-  const { el, close } = openModal(
-    'In den Kalender eintragen',
-    `<div class="stack">
+  const body = `<div class="stack">
        <p><strong>${escapeHtml(todo.eventName)}</strong><br><span class="muted">${escapeHtml(eventDateRange(todo))}</span></p>
        <div class="event-calendar-action-buttons" role="group" aria-label="Kalender wählen">
          <a class="btn btn-sm" href="${escapeHtml(links.google)}" target="_blank" rel="noopener noreferrer">Google</a>
@@ -387,16 +385,36 @@ function openCalendarDialog(todo, ctx) {
        <div class="row" style="justify-content:flex-end;">
          <button type="button" class="btn btn-primary btn-sm" data-todo-calendar-confirm>Eingetragen</button>
        </div>
-     </div>`,
+     </div>`;
+  // The links above export exactly this period. When a reload shows the
+  // event moved (or the entry gone), the dialog is outdated and closes; the
+  // confirmation itself names the exported period, so a click that races the
+  // reload is rejected by the server instead of confirming the new one.
+  const { el, close } = openModal(
+    'In den Kalender eintragen',
+    body,
+    { onClose: () => window.removeEventListener('respawn:my-todos-changed', onTodosChanged) },
   );
+  function onTodosChanged() {
+    const current = myTodos()?.find((candidate) => candidate.id === todo.id);
+    if (current && current.startsAt === todo.startsAt && current.endsAt === todo.endsAt) return;
+    close();
+    if (current) showToast('Der Termin wurde geändert. Bitte den neuen Zeitraum eintragen.');
+  }
+  window.addEventListener('respawn:my-todos-changed', onTodosChanged);
   el.querySelector('[data-todo-calendar-file]').addEventListener('click', () => downloadEventCalendar(event));
   el.querySelector('[data-todo-calendar-confirm]').addEventListener('click', async (clickEvent) => {
     const confirmed = await confirmEventCalendarEntry(todo.eventId, {
       needsExtraCheck: Boolean(todo.needsExtraCheck),
       button: clickEvent.currentTarget,
+      schedule: { startsAt: todo.startsAt, endsAt: todo.endsAt },
       ctx,
     });
-    if (!confirmed) return;
+    if (!confirmed) {
+      // A rejected stale confirmation: fetch the moved period right away.
+      invalidateMyTodos();
+      return;
+    }
     close();
     invalidateMyTodos();
   });

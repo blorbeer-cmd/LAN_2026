@@ -386,7 +386,13 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ granted, ...(textVersion ? { textVersion } : {}) }),
       }),
-    confirmCalendar: (id) => apiFetch(`/api/events/${id}/calendar-confirmation`, { method: 'POST' }),
+    // `schedule` ({ startsAt, endsAt }) is the period the caller exported;
+    // the server rejects it with 409 once the event has moved since.
+    confirmCalendar: (id, schedule = null) =>
+      apiFetch(`/api/events/${id}/calendar-confirmation`, {
+        method: 'POST',
+        ...(schedule ? { body: JSON.stringify({ startsAt: schedule.startsAt, endsAt: schedule.endsAt }) } : {}),
+      }),
   },
 
   eventPolls: {

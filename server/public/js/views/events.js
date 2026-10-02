@@ -1088,7 +1088,7 @@ export function acceptedInvitationHandoffHtml() {
 // Records that the account copied the event into its calendar, which ends
 // the calendar reminders. Shared with Home's "Meine To-Dos". Resolves true
 // once confirmed.
-export async function confirmEventCalendarEntry(eventId, { needsExtraCheck = false, button = null, ctx }) {
+export async function confirmEventCalendarEntry(eventId, { needsExtraCheck = false, button = null, schedule = null, ctx }) {
   if (
     needsExtraCheck &&
     !(await confirmDialog('Hast du den Termin wirklich eingetragen, Stefan??!!', {
@@ -1098,7 +1098,7 @@ export async function confirmEventCalendarEntry(eventId, { needsExtraCheck = fal
   ) return false;
   if (button) button.disabled = true;
   try {
-    await api.events.confirmCalendar(eventId);
+    await api.events.confirmCalendar(eventId, schedule);
     await ctx.refresh();
     showToast('Kalenderübernahme bestätigt. Weitere Kalender-Erinnerungen sind beendet.');
     return true;
@@ -1628,6 +1628,7 @@ export function renderOrgaEvents(container, ctx) {
       const confirmed = await confirmEventCalendarEntry(eventId, {
         needsExtraCheck: Boolean(event?.myParticipation?.calendarConfirmationNeedsExtraCheck),
         button: btn,
+        schedule: event ? { startsAt: event.startsAt, endsAt: event.endsAt } : null,
         ctx,
       });
       if (!confirmed) return;
