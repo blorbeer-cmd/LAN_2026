@@ -45,45 +45,29 @@ bestehenden CI-Pflichtchecks und Conversation Resolution bleiben bestehen; der H
 keine GitHub-Schutzregeln. Die historische Regel „Human merge only“ enthält seit dem
 7. September keine Update-Sperre mehr, sondern Lösch- und Force-Push-Schutz.
 
-## Persönliche Skills installieren oder aktualisieren
+## Skills im Repository
 
 Voraussetzung: Das jeweilige Werkzeug kann GitHub lesen und Kommentare veröffentlichen,
 beispielsweise über seine GitHub-Anbindung oder eine authentifizierte `gh`-CLI.
 
-Die Vorlagen liegen unter [Claude](review-skills/claude/pr-review/SKILL.md) und
-[Codex](review-skills/codex/pr-review/SKILL.md). Die Prüfanleitungen sind identisch;
-die Metadaten erlauben nur ausdrückliche Aufrufe. Ein Merge installiert keine persönlichen Dateien.
+Der Skill liegt versioniert in den Repository-Ordnern, die beide Werkzeuge beim Start einer
+Session im Repository selbst durchsuchen:
 
-Die folgenden PowerShell-Befehle im Repository-Root des gewünschten, geprüften Stands ausführen.
-Sie sichern bestehende Dateien vor dem Aktualisieren und erhalten sonstige persönliche Dateien.
+- Claude Code: [`.claude/skills/pr-review/SKILL.md`](../.claude/skills/pr-review/SKILL.md)
+- Codex: [`.agents/skills/pr-review/SKILL.md`](../.agents/skills/pr-review/SKILL.md) mit
+  [`agents/openai.yaml`](../.agents/skills/pr-review/agents/openai.yaml)
 
-```powershell
-$reviewSources = Join-Path (Get-Location).Path 'docs/review-skills'
-$reviewBackupStamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
-$reviewCopies = @(
-    @('claude/pr-review/SKILL.md', '.claude/skills/pr-review/SKILL.md'),
-    @('codex/pr-review/SKILL.md', '.agents/skills/pr-review/SKILL.md'),
-    @('codex/pr-review/agents/openai.yaml', '.agents/skills/pr-review/agents/openai.yaml')
-)
-foreach ($reviewCopy in $reviewCopies) {
-    $reviewSource = Join-Path $reviewSources $reviewCopy[0]
-    if (-not (Test-Path -LiteralPath $reviewSource -PathType Leaf)) {
-        throw "Vorlage fehlt: $reviewSource"
-    }
-}
-foreach ($reviewCopy in $reviewCopies) {
-    $reviewSource = Join-Path $reviewSources $reviewCopy[0]
-    $reviewTarget = Join-Path $env:USERPROFILE $reviewCopy[1]
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $reviewTarget) | Out-Null
-    if (Test-Path -LiteralPath $reviewTarget) {
-        Copy-Item -LiteralPath $reviewTarget -Destination "$reviewTarget.backup-$reviewBackupStamp" -ErrorAction Stop
-    }
-    Copy-Item -LiteralPath $reviewSource -Destination $reviewTarget -Force -ErrorAction Stop
-}
-```
+Damit steht `/pr-review` beziehungsweise `$pr-review` ohne Installation in jeder lokalen oder
+Cloud-Session zur Verfügung, die dieses Repository auscheckt. Maßgeblich ist der Stand des
+ausgecheckten Branches; Cloud-Sessions starten in der Regel auf `main`. Die Prüfanleitungen
+beider Dateien sind identisch und bei Änderungen gemeinsam zu pflegen; die Metadaten erlauben
+nur ausdrückliche Aufrufe.
 
-Danach eine neue Unterhaltung in Claude beziehungsweise Codex starten; gegebenenfalls das
-Werkzeug neu öffnen. Die Vorlagen bei späteren Änderungen gemeinsam pflegen und erneut kopieren.
+Früher manuell kopierte persönliche Fassungen unter `~/.claude/skills/pr-review/` oder
+`~/.agents/skills/pr-review/` sind nicht mehr nötig und sollten entfernt werden: In Claude Code
+hat ein persönlicher Skill gleichen Namens Vorrang vor dem Repository-Skill, und Codex zeigt
+gleichnamige Skills mehrfach an. Eine veraltete Kopie würde sonst die versionierte Fassung
+überdecken.
 
 ## Reviewbereitschaft und Beobachtung durch den Implementierer
 
