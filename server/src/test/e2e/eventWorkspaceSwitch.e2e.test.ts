@@ -578,34 +578,31 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await openView('events');
   const generalEventCard = page.locator(`[data-event-card="${generalEvent}"]`);
-  assert.equal(
-    await generalEventCard.locator('.event-card-header-badges .badge').first().innerText(),
-    'Allgemeines Event',
-  );
   const eventToggle = generalEventCard.locator('[data-event-card-toggle]');
   assert.equal(await eventToggle.getAttribute('aria-expanded'), 'false');
-  assert.match(await generalEventCard.innerText(), /Erstellt von E2E Bootstrap Admin/);
-  // Collapsed hides the information box, so the header carries the period and
-  // the toggle repeats both in its accessible name.
-  assert.match(await generalEventCard.locator('.event-card-meta-group').innerText(), /\d+\.\d+\.\d{4}|Termin wird noch abgestimmt|Dauerhaft geöffnet/);
+  // One meta line: type, then while collapsed the period, then the count. The
+  // toggle repeats it in its accessible name.
+  const collapsedMeta = await generalEventCard.locator('.event-card-meta').innerText();
+  assert.match(collapsedMeta, /^Allgemeines Event · /);
+  assert.match(collapsedMeta, /\d+\.\d+\.\d{4}|Termin wird noch abgestimmt|Dauerhaft geöffnet/);
   const toggleLabel = (await eventToggle.getAttribute('aria-label')) ?? '';
-  assert.match(toggleLabel, /Erstellt von E2E Bootstrap Admin/);
+  assert.match(toggleLabel, /Allgemeines Event/);
   assert.equal(await eventToggle.getAttribute('aria-describedby'), null);
-  // Without tracking a general event has only Bearbeiten and Beenden, so both
-  // sit directly in the collapsed header instead of behind "Aktion".
-  assert.equal(await generalEventCard.locator('.action-menu').count(), 0);
-  const editAction = generalEventCard.locator('.event-card-header-side > [data-edit-event]');
-  await editAction.waitFor({ state: 'visible' });
-  assert.equal(await editAction.evaluate((element) => {
+  // Management always sits behind the one "Aktion" menu in the header.
+  const manageMenu = generalEventCard.locator('[data-action-menu^="event-manage-"] > summary');
+  await manageMenu.waitFor({ state: 'visible' });
+  assert.equal(await manageMenu.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
   }), true, 'collapsed-card header actions stay reachable');
-  assert.equal(await generalEventCard.locator('.event-card-header-side > [data-end-event]:not(.btn-danger)').count(), 1);
+  await manageMenu.click();
+  assert.equal(await generalEventCard.locator('[data-edit-event]').isVisible(), true);
+  assert.equal(await generalEventCard.locator('.btn-danger[data-end-event]').count(), 1);
   assert.equal(await generalEventCard.locator('[data-start-tracking], [data-stop-tracking]').count(), 0);
+  await manageMenu.click();
   await eventToggle.click();
   assert.equal(await eventToggle.evaluate((element) => element === document.activeElement), true);
-  await generalEventCard.locator('[data-event-participants] > summary').click();
-  assert.match(await generalEventCard.innerText(), /Teilnehmende & Einladungen/);
+  assert.match(await generalEventCard.innerText(), /TEILNEHMENDE|Teilnehmende/);
   await page.click('#new-event-btn');
   assert.deepEqual(
     await page.locator('#event-type option').allTextContents(),
@@ -725,6 +722,9 @@ test('an organizer can withdraw and restore their own participation on the manag
   await page.waitForSelector(`[data-event-card="${eventId}"]`);
   const card = page.locator(`[data-event-card="${eventId}"]`);
   await expandEventCard(card, eventId);
+  // "Absagen" is a menu when an excuse is possible, otherwise a plain button.
+  const declineMenu = card.locator(`[data-action-menu="event-decline-${eventId}"] > summary`);
+  if (await declineMenu.count()) await declineMenu.click();
   await card.locator(`[data-decline-participation="${eventId}"]`).click();
   await page.click('[data-confirm]');
   await card.locator(`[data-accept-participation="${eventId}"]`).waitFor();
@@ -736,6 +736,6 @@ test('an organizer can withdraw and restore their own participation on the manag
   );
 
   await card.locator(`[data-accept-participation="${eventId}"]`).click();
-  await card.locator(`[data-decline-participation="${eventId}"]`).waitFor();
+  await card.locator(`[data-decline-participation="${eventId}"]`).waitFor({ state: 'attached' });
   assert.doesNotMatch((await card.textContent()) ?? '', /Du: Abgesagt/);
 });

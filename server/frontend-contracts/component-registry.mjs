@@ -660,7 +660,7 @@ export const components = [
   {
     "id": "payment-controls",
     "role": "standard-control",
-    "selector": ".payment-paid-marker, .food-order-paid-marker, .payment-paypal-button, .event-paypal-button, .food-order-group-copy, .food-order-group-pay",
+    "selector": ".payment-paid-marker, .food-order-paid-marker, .event-calendar-marker, .payment-paypal-button, .event-paypal-button, .food-order-group-copy, .food-order-group-pay",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "32px payment/copy actions; icon actions inherit the shared minimum width.",
@@ -676,11 +676,24 @@ export const components = [
         "reason": "Concrete payment-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
+        "file": "public/js/eventPresentation.js",
+        "source": "class=\"payment-paid-marker event-calendar-marker ${confirmed ? 'is-paid' : ''}\"",
+        "reason": "The Event card's \"Eingetragen\" calendar acknowledgement reuses the payment checkbox marker; the static inventory does not infer the runtime branch. Its wider label keeps the marker's minimum width."
+      },
+      {
         "file": "public/js/views/foodOrders.js",
         "source": "class=\"payment-paid-marker food-order-paid-marker ${allPaid ? 'is-paid' : ''}\"",
         "reason": "Concrete payment-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
     ]
+  },
+  {
+    "id": "event-roster-controls",
+    "role": "composite-part",
+    "selector": ".event-roster-remove, .event-participant-excuse, .event-participant-excuse-toggle, .excuse-dialog-submit",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Event roster parts: the 32px remove icon, the shortened excuse that opens its full text as a text-styled button, and the excuse dialog's full-width submit."
   },
   {
     "id": "food-action-slots",
@@ -1909,50 +1922,49 @@ export const permanentVariants = [
     "reason": "Native checkbox glyph is an internal 20px part of the labeled selection row."
   },
   {
-    "id": "event-calendar-actions",
+    "id": "event-card-chevron",
     "role": "composite-part",
-    "selector": ".event-calendar-action-buttons .btn",
+    "selector": ".event-card .food-order-card-chevron .ui-icon",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
-      "min-width",
-      "white-space"
+      "width",
+      "height"
     ],
-    "reason": "Calendar handoff labels may wrap within their equal-width action group."
+    "reason": "A fixed 16px chevron lets the open Event card indent its sections exactly to the title edge."
   },
   {
-    "id": "event-excuse-actions",
+    "id": "event-info-icon-actions",
     "role": "composite-part",
-    "selector": ".event-excuse-actions .btn",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "min-width",
-      "white-space"
-    ],
-    "reason": "Parallel excuse actions wrap labels within the available footer."
-  },
-  {
-    "id": "event-card-action-width",
-    "role": "composite-part",
-    "selector": ".event-card-actions .btn",
+    "selector": ".event-info-actions .icon-btn",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
       "min-width"
     ],
-    "reason": "Event card actions yield width to whole-group reflow."
+    "reason": "Copy and map icons sit tight beside the calendar controls in an Infos row."
+  },
+  {
+    "id": "event-roster-slot",
+    "role": "composite-part",
+    "selector": ".event-roster-slot > .btn",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width"
+    ],
+    "reason": "\"Einladen\" fills the same fixed slot as the Bezahlt marker so both align flush right."
   },
   {
     "id": "nested-card-surface",
     "role": "composite-part",
-    "selector": ":is(.card, .event-card-participants) :is(.card, .event-card-participants), :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants), :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants), :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants)",
+    "selector": ".card .card, .card .card .card, .card .card .card .card, .card .card .card .card .card",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
       "box-shadow"
     ],
-    "reason": "Nested card and participant surfaces alternate colors by depth and omit redundant elevation."
+    "reason": "Nested card surfaces alternate colors by depth and omit redundant elevation."
   },
   {
     "id": "tournament-skill-field",

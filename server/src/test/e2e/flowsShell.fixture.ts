@@ -593,15 +593,15 @@ flowTest('standard control variants center single lines and grow for wrapped con
         </summary>
         <div class="collapsible-section-content">Inhalt</div>
       </details>`).join('')}
-      <details class="collapsible-section food-order-group event-card-participants">
-        <summary class="collapsible-section-header"><span class="collapsible-section-chevron"><svg class="ui-icon" aria-hidden="true"></svg></span><span class="event-participant-toggle"><span class="food-order-group-headtext"><strong>Teilnehmende &amp; Einladungen</strong><span class="muted food-order-group-meta">4 Zusagen</span></span></span></summary>
+      <details class="card collapsible-section food-order-group">
+        <summary class="collapsible-section-header"><span class="collapsible-section-chevron"><svg class="ui-icon" aria-hidden="true"></svg></span><span class="event-participant-toggle"><span class="food-order-group-headtext"><strong>Bestellung von Alex</strong><span class="muted food-order-group-meta">2 Positionen</span></span></span></summary>
         <div class="collapsible-section-content">Teilnehmende</div>
       </details>
       <div data-disclosure-background style="background:var(--bg-elevated-2)"></div>
       ${['matchmaking-history-item', 'food-order-card', 'event-card', 'event-poll-card'].map((className) => `<div class="card ${className}" data-disclosure-card>Aufklappbare Karte</div>`).join('')}
       <div class="card" data-nested-surface>
         <div class="card event-card" data-nested-surface>
-          <div class="event-card-participants" data-nested-surface>
+          <div class="card" data-nested-surface>
             <div class="card" data-nested-surface>Vierte Kartenebene</div>
           </div>
         </div>
@@ -704,7 +704,7 @@ flowTest('standard control variants center single lines and grow for wrapped con
           .map((element) => {
             let depth = 0;
             for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-              if (parent.matches('.card, .event-card-participants')) depth += 1;
+              if (parent.matches('.card')) depth += 1;
               if (parent === probe) break;
             }
             return { depth, expected: colors[depth % 2], actual: getComputedStyle(element).backgroundColor };
@@ -1013,23 +1013,21 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   const groupCard = page.locator('.event-card', { hasText: GROUP_NAME });
   await groupCard.waitFor();
   assert.equal(
-    await groupCard.locator('.event-card-info').count(),
+    await groupCard.locator('.event-card-section-title', { hasText: 'Infos' }).count(),
     0,
-    'a group without location and note has nothing to show in the information box and renders none',
+    'a group without location and note has nothing to show in Infos and renders no section',
   );
-  // A group offers only Bearbeiten and Beenden, both directly in its header.
-  await groupCard.locator('.event-card-header-side > [data-edit-event]').click();
+  await groupCard.locator('[data-action-menu^="event-manage-"] > summary').click();
+  await groupCard.locator('[data-edit-event]').click();
   const editGroupModal = page.locator('.modal-backdrop', { hasText: 'Gruppe bearbeiten' });
   await editGroupModal.waitFor();
   assert.equal(await editGroupModal.locator('#event-starts-date[required]').count(), 0);
   await editGroupModal.locator('#event-description').fill(GROUP_NOTE);
   await editGroupModal.locator('#event-form-submit').click();
   await editGroupModal.waitFor({ state: 'detached' });
-  await groupCard.locator('.event-card-info', { hasText: GROUP_NOTE }).waitFor();
+  await groupCard.locator('.event-info-row', { hasText: GROUP_NOTE }).waitFor();
 
-  await page.click('[aria-label="Mehr Informationen zu Events"]');
-  await page.waitForSelector('#orga-events-help:not([hidden])');
-  await page.click('[aria-label="Mehr Informationen zu Events"]');
+  assert.equal(await page.locator('[aria-label="Mehr Informationen zu Events"]').count(), 0, 'section titles carry no help tooltip');
   assert.equal((await page.locator('#new-event-btn').textContent())?.trim(), 'Event anlegen');
   await page.click('#new-event-btn');
   assert.equal(await page.getByText('Tracking', { exact: true }).count(), 0);
