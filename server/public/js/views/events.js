@@ -44,7 +44,12 @@ import {
   parseEventAccommodationCostCents,
   parseEventCostCents,
 } from '../eventModel.js';
-import { eventDateRange, renderEventCalendarActions, renderEventLocation } from '../eventPresentation.js';
+import {
+  eventDateRange,
+  eventLocationHref,
+  eventScheduleLabel,
+  renderEventCalendarActions,
+} from '../eventPresentation.js';
 
 export { eventDateRange, renderEventCalendarActions, renderEventLocation } from '../eventPresentation.js';
 export {
@@ -52,20 +57,15 @@ export {
   parseEventCostCents,
 } from '../eventModel.js';
 
-const EVENT_HELP = 'Typ, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
-const GROUP_HELP =
-  'Eine Gruppe ist ein dauerhafter Kreis ohne Zeitraum und ohne Kosten. Sie läuft weiter, bis sie beendet wird.';
 // Starting tracking enables event processing, not the agent's diagnostic reports.
 // Both the tooltip and confirmation explain the selected-event and consent
 // prerequisites from activeTrackingContexts. Share the sentence to avoid drift.
 const TRACKING_SCOPE_SENTENCE =
   'Während dieses Event läuft und Tracking aktiviert ist, entstehen aus den Agent-Meldungen Live-Status, Spielzeit und Auswertungen nur für zugesagte Teilnehmende, die dieses Event aktuell in ihrem Konto ausgewählt haben und deren Einwilligung zum Event-Tracking gültig ist. Der Agent meldet nur laufende Spiele aus der Server-Liste, keine anderen Programme. Ohne gültigen Kontext werden keine erkannten Spiele übertragen, gespeichert oder in der Agent-Diagnose angezeigt. Jede Person kann die Einwilligung widerrufen oder das Tracking im eigenen Profil pausieren.';
-const TRACKING_BUTTON_HELP = `Schaltet die Erfassung für dieses Event ein und aus. ${TRACKING_SCOPE_SENTENCE}`;
 const TRACKING_START_CONFIRM = (name) => `Tracking für „${name}“ starten? ${TRACKING_SCOPE_SENTENCE}`;
 const TRACKING_STOP_CONFIRM = (name) =>
   `Tracking für „${name}“ stoppen? Laufende Spielzeiten werden abgeschlossen und der Live-Status geleert; bereits erfasste Spielzeit und der Event-Workspace bleiben erhalten.`;
 const KIOSK_HELP = 'Verfügbare LAN-Events haben je ein eigenes Broadcast-Konto mit gemeinsamem Passwort. „Broadcast öffnen“ öffnet das gewählte Event in einem eigenen Tab.';
-const expandedEventParticipants = new Set();
 // Mirrors foodOrders.js's card-header-toggle pattern: an event card becomes
 // collapsible only once its list holds more than one card (a lone card gets
 // no collapse chrome), and — because the set starts empty — every card
@@ -77,7 +77,6 @@ const expandedEventCards = new Set();
 export function prepareEventTarget(eventId) {
   if (!eventId) return;
   expandedEventCards.add(eventId);
-  expandedEventParticipants.add(eventId);
 }
 // Mirrors foodOrders.js's Historie collapse: ended workspaces start collapsed
 // and this survives the section's own live re-renders. Events and groups are
@@ -154,18 +153,9 @@ function renderKioskSection() {
   `;
 }
 
-// The gag action of the Events cards: an event that is still ahead can collide
-// with something else, and this writes the excuse for that other appointment
-// (see eventExcuses.js). An ended event has nothing left to collide with.
-export function renderEventExcuseActions(event) {
-  if (!event || event.isEnded || eventIsGroup(event)) return '';
-  return `
-    <div class="event-excuse-actions">
-      <span class="event-card-detail-label">Keine Zeit?</span>
-      <button type="button" class="btn btn-sm" data-event-excuse="${escapeHtml(event.id)}">Ausrede generieren</button>
-    </div>`;
-}
-
+// The Ausreden-Generator is the gag of the Events cards: an event still
+// ahead can collide with something else, and it writes the excuse for that
+// other appointment (see eventExcuses.js).
 function renderExcuseResult(excuse) {
   if (!excuse) {
     return '<p class="muted excuse-empty">Für diese Kategorie und Dauer ist gerade keine Ausrede im Vorrat.</p>';
@@ -179,16 +169,45 @@ function renderExcuseResult(excuse) {
 // left; the window is small enough that a narrow category filter still works.
 const EXCUSE_HISTORY_LIMIT = 10;
 
-function openExcuseDialog(event) {
+const DECLINE_EXCUSE_MAX_LENGTH = 300;
+
+// The Ausreden-Generator. Without `onDecline` it only writes and copies an
+// excuse (the invitation teaser in Profile). With it, the dialog becomes
+// "Mit Ausrede absagen": a generated excuse can be edited, or an own one
+// written, and "Übernehmen und absagen" hands the final text to onDecline
+// after one confirmation that everyone will read it.
+function openExcuseDialog(event, { onDecline = null } = {}) {
   const recentIds = [];
   let category = 'alle';
   let current = null;
+  let mode = 'generate';
 
   const categoryOptions = [{ id: 'alle', label: 'Alle' }, ...EXCUSE_CATEGORIES]
     .map((entry) => `<option value="${escapeHtml(entry.id)}">${escapeHtml(entry.label)}</option>`)
     .join('');
 
-  openModal('Ausreden-Generator', `
+  const declineBody = `
+    <div class="stack excuse-dialog">
+      <div class="excuse-mode" role="group" aria-label="Ausrede">
+        <button type="button" class="btn btn-sm" data-excuse-mode="generate" aria-pressed="true">Generieren</button>
+        <button type="button" class="btn btn-sm" data-excuse-mode="own" aria-pressed="false">Eigene</button>
+      </div>
+      <div data-excuse-generate-only>
+        <label for="excuse-category" class="field-label">Kategorie</label>
+        <select id="excuse-category" data-excuse-category>${categoryOptions}</select>
+      </div>
+      <div>
+        <label for="excuse-text" class="field-label">Ausrede</label>
+        <textarea id="excuse-text" rows="4" maxlength="${DECLINE_EXCUSE_MAX_LENGTH}" data-excuse-text placeholder="Oma hat Geburtstag"></textarea>
+        <div class="excuse-meta-row"><span class="excuse-meta" data-excuse-meta aria-live="polite"></span><span class="excuse-meta" data-excuse-count></span></div>
+      </div>
+      <div class="excuse-dialog-actions">
+        <button type="button" class="btn btn-sm" data-excuse-next>Neue Ausrede</button>
+        <button type="button" class="btn btn-sm" data-excuse-copy>Kopieren</button>
+        <button type="button" class="btn btn-primary btn-sm excuse-dialog-submit" data-excuse-decline>Übernehmen und absagen</button>
+      </div>
+    </div>`;
+  const generatorBody = `
     <div class="stack excuse-dialog">
       <div>
         <label for="excuse-category" class="field-label">Kategorie</label>
@@ -199,19 +218,55 @@ function openExcuseDialog(event) {
         <button type="button" class="btn btn-sm" data-excuse-next>Neue Ausrede</button>
         <button type="button" class="btn btn-primary btn-sm" data-excuse-copy>Kopieren</button>
       </div>
-    </div>
-  `, {
-    onMount: (backdrop) => {
+    </div>`;
+
+  openModal(onDecline ? 'Mit Ausrede absagen' : 'Ausreden-Generator', onDecline ? declineBody : generatorBody, {
+    onMount: (backdrop, close) => {
       const result = backdrop.querySelector('[data-excuse-result]');
+      const textField = backdrop.querySelector('[data-excuse-text]');
+      const meta = backdrop.querySelector('[data-excuse-meta]');
+      const count = backdrop.querySelector('[data-excuse-count]');
       const copyBtn = backdrop.querySelector('[data-excuse-copy]');
+      const nextBtn = backdrop.querySelector('[data-excuse-next]');
+      const declineBtn = backdrop.querySelector('[data-excuse-decline]');
+      const currentText = () => (textField ? textField.value.trim() : current?.text ?? '');
+      const sync = () => {
+        if (count) count.textContent = `${textField.value.length} / ${DECLINE_EXCUSE_MAX_LENGTH}`;
+        copyBtn.disabled = !currentText();
+        if (declineBtn) declineBtn.disabled = !currentText();
+      };
       const draw = () => {
         current = pickEventExcuse(event, { category, recentIds });
         if (current) {
           recentIds.push(current.id);
           if (recentIds.length > EXCUSE_HISTORY_LIMIT) recentIds.shift();
         }
-        copyBtn.disabled = !current;
-        result.innerHTML = renderExcuseResult(current);
+        if (textField) {
+          textField.value = current ? current.text.slice(0, DECLINE_EXCUSE_MAX_LENGTH) : '';
+          meta.textContent = current
+            ? `Glaubwürdigkeit ${current.credibility} von 5`
+            : 'Für diese Kategorie und Dauer ist gerade keine Ausrede im Vorrat.';
+        } else {
+          result.innerHTML = renderExcuseResult(current);
+        }
+        sync();
+      };
+      const setMode = (next) => {
+        mode = next;
+        backdrop.querySelectorAll('[data-excuse-mode]').forEach((btn) => {
+          btn.setAttribute('aria-pressed', String(btn.dataset.excuseMode === mode));
+        });
+        backdrop.querySelector('[data-excuse-generate-only]').hidden = mode !== 'generate';
+        nextBtn.hidden = mode !== 'generate';
+        copyBtn.hidden = mode !== 'generate';
+        if (mode === 'own') {
+          textField.value = '';
+          meta.textContent = '';
+          sync();
+          textField.focus();
+        } else {
+          draw();
+        }
       };
 
       backdrop.querySelector('[data-excuse-category]').addEventListener('change', (changeEvent) => {
@@ -222,18 +277,37 @@ function openExcuseDialog(event) {
         recentIds.length = 0;
         draw();
       });
-      backdrop.querySelector('[data-excuse-next]').addEventListener('click', draw);
+      nextBtn.addEventListener('click', draw);
+      textField?.addEventListener('input', () => {
+        if (meta && current && textField.value.trim() !== current.text) meta.textContent = '';
+        sync();
+      });
+      backdrop.querySelectorAll('[data-excuse-mode]').forEach((btn) => {
+        btn.addEventListener('click', () => setMode(btn.dataset.excuseMode));
+      });
       copyBtn.addEventListener('click', async () => {
-        if (!current) return;
+        const text = currentText();
+        if (!text) return;
         try {
-          await navigator.clipboard.writeText(current.text);
+          await navigator.clipboard.writeText(text);
           showToast('Ausrede kopiert. Viel Erfolg.');
         } catch {
           showToast('Kopieren hat nicht geklappt. Die Ausrede steht weiter im Dialog.', { error: true });
         }
       });
+      declineBtn?.addEventListener('click', async () => {
+        const text = currentText();
+        if (!text) return;
+        if (!(await confirmDialog(
+          `Teilnahme an „${event.name}“ absagen? Alle Teilnehmenden sehen deine Ausrede: „${text}“`,
+          { title: 'Teilnahme absagen', confirmText: 'Absagen', danger: true },
+        ))) return;
+        declineBtn.disabled = true;
+        if (await onDecline(text)) close();
+        else declineBtn.disabled = false;
+      });
       draw();
-      backdrop.querySelector('[data-excuse-next]').focus();
+      nextBtn.focus();
     },
   });
 }
@@ -323,7 +397,7 @@ function eventRoster(event, includeInvitationStatuses) {
 
 function participantSummary(participants, includeInvitationStatuses) {
   if (!includeInvitationStatuses) {
-    return `${participants.length} ${participants.length === 1 ? 'Person' : 'Personen'}`;
+    return `${participants.length} ${participants.length === 1 ? 'Zusage' : 'Zusagen'}`;
   }
   const acceptedCount = participants.filter((participant) => participant.status === 'accepted').length;
   const invitedCount = participants.filter((participant) => participant.status === 'invited').length;
@@ -331,66 +405,95 @@ function participantSummary(participants, includeInvitationStatuses) {
   return [
     `${acceptedCount} ${acceptedCount === 1 ? 'Zusage' : 'Zusagen'}`,
     invitedCount > 0 ? `${invitedCount} ${invitedCount === 1 ? 'Einladung offen' : 'Einladungen offen'}` : '',
-    declinedCount > 0 ? `${declinedCount} abgelehnt` : '',
+    declinedCount > 0 ? `${declinedCount} abgesagt` : '',
   ]
     .filter(Boolean)
     .join(' · ');
 }
 
-function renderAcceptedParticipants(event, { includeInvitationStatuses = false } = {}) {
+function participantStateText(status) {
+  if (status === 'invited') return 'Eingeladen';
+  if (status === 'declined') return 'Abgesagt';
+  if (!status) return 'Nicht eingeladen';
+  return '';
+}
+
+// Flat two-column roster, filled column by column like a RankedList. Every
+// row keeps one line: name, a muted state and an excuse are truncated rather
+// than wrapped, so both columns stay on the same row rhythm. Management rows
+// show only the controls that apply, right-aligned: the remove trash, then
+// "Bezahlt" or "Einladen". Whatever comes last always ends flush right. Members see the
+// accepted roster plus declines that left an excuse. A row with an excuse
+// shows it shortened; clicking the excuse opens the full text.
+function renderParticipantsSection(event, { includeInvitationStatuses = false } = {}) {
   const participants = eventRoster(event, includeInvitationStatuses);
-  // A group has members, not attendees — nobody "attends" a circle that never
-  // takes place on a given day.
   const isGroup = eventIsGroup(event);
-  const rosterTitle = isGroup
-    ? (includeInvitationStatuses ? 'Mitglieder & Einladungen' : 'Mitglieder')
-    : (includeInvitationStatuses ? 'Teilnehmende & Einladungen' : 'Teilnehmende');
-  const canManagePayments = canManageEventPayments(event)
+  const myId = getMyId();
+  const canManagePayments = includeInvitationStatuses && canManageEventPayments(event)
     && (event.costCents !== null || participants.some((participant) => participant.paid));
-  const isExpanded = expandedEventParticipants.has(event.id);
-  const participantCountLabel = participantSummary(participants, includeInvitationStatuses);
+  const excuses = new Map((event.declinedExcuses || []).map((entry) => [entry.playerId, entry.excuse]));
+  const declinedWithExcuse = includeInvitationStatuses
+    ? []
+    : (event.declinedExcuses || []).map((entry) => ({ playerId: entry.playerId, name: entry.name, status: 'declined' }));
   const rows = includeInvitationStatuses
     ? [...participants, ...state.players.filter((player) => !event.isEnded && !participants.some((entry) => entry.playerId === player.id))
       .map((player) => ({ playerId: player.id, name: player.name }))]
-    : participants;
+    : [...participants, ...declinedWithExcuse];
+  const half = Math.ceil(rows.length / 2);
+  const summary = (isGroup
+    ? participantSummary(participants, includeInvitationStatuses).replace(/(\d+) Zusagen?/, (_, n) => `${n} ${n === '1' ? 'Mitglied' : 'Mitglieder'}`)
+    : participantSummary(participants, includeInvitationStatuses))
+    + (declinedWithExcuse.length ? ` · ${declinedWithExcuse.length} abgesagt` : '');
+  const rowHtml = rows.map((participant, index) => {
+    const player = state.players.find((candidate) => candidate.id === participant.playerId) ?? participant;
+    const status = includeInvitationStatuses ? participant.status : (participant.status ?? 'accepted');
+    const stateText = participantStateText(status);
+    const excuse = status === 'declined' ? excuses.get(participant.playerId) : null;
+    const isMe = participant.playerId === myId;
+    const paidTitle = participant.paid
+      ? `${participant.name}: ${paymentProof(participant)}. Markierung aufheben`
+      : `${participant.name} als bezahlt markieren`;
+    let slot = '';
+    let remove = '';
+    if (includeInvitationStatuses) {
+      if (status === 'accepted') {
+        slot = canManagePayments
+          ? `<button type="button" class="payment-paid-marker ${participant.paid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(participant.playerId)}" aria-pressed="${Boolean(participant.paid)}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}"><span class="payment-paid-box" aria-hidden="true">${participant.paid ? icon('check') : ''}</span><span>Bezahlt</span></button>`
+          : '';
+      } else if (!event.isEnded && (!status || status === 'declined')) {
+        slot = `<button type="button" class="btn btn-sm" data-invite-participant="${escapeHtml(participant.playerId)}" data-roster-event="${escapeHtml(event.id)}">Einladen</button>`;
+      }
+      if (status) {
+        const locked = Boolean(participant.paymentLocked ?? participant.paid);
+        const removeLabel = locked
+          ? `${participant.name} hat bezahlt und kann nicht entfernt werden`
+          : `${participant.name} entfernen`;
+        remove = `<button type="button" class="icon-btn event-roster-remove" data-remove-participant="${escapeHtml(participant.playerId)}" data-roster-event="${escapeHtml(event.id)}" ${locked ? 'disabled' : ''} title="${escapeHtml(removeLabel)}" aria-label="${escapeHtml(removeLabel)}">${icon('trash')}</button>`;
+      }
+    }
+    const trailing = includeInvitationStatuses
+      ? `${remove}${slot ? `<span class="event-roster-slot">${slot}</span>` : ''}`
+      : '';
+    return `<li class="event-participant-row${index === 0 || index === half ? ' is-column-start' : ''}" ${includeInvitationStatuses && status ? `data-event-participation-status="${escapeHtml(status)}"` : ''}>
+      ${avatarHtml(player, 24)}
+      ${excuse
+        ? `<span class="event-participant-name">
+            <span class="player-name${isMe ? ' is-me' : ''}">${escapeHtml(participant.name)}</span><span class="muted"> · ${stateText} · </span><button type="button" class="event-participant-excuse event-participant-excuse-toggle" data-show-excuse="${escapeHtml(participant.playerId)}" data-excuse-event="${escapeHtml(event.id)}" title="Ausrede lesen" aria-label="${escapeHtml(`Ausrede von ${participant.name} lesen`)}">„${escapeHtml(excuse)}“</button>
+          </span>`
+        : `<span class="event-participant-name">
+            <span class="player-name${isMe ? ' is-me' : ''}">${escapeHtml(participant.name)}</span>${stateText ? `<span class="muted"> · ${stateText}</span>` : ''}
+          </span>`}
+      ${trailing}
+    </li>`;
+  }).join('');
   return `
-    <details class="collapsible-section food-order-group event-card-participants" data-event-participants="${escapeHtml(event.id)}" ${isExpanded ? 'open' : ''}>
-      <summary class="collapsible-section-header">
-        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
-        <span class="event-participant-toggle">
-          <span class="food-order-group-headtext">
-            <strong>${rosterTitle}</strong>
-            <span class="muted food-order-group-meta">${participantCountLabel}</span>
-          </span>
-        </span>
-      </summary>
-      <div class="collapsible-section-content">
-        ${includeInvitationStatuses && event.isEnded ? '<p class="muted event-participants-note">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}
-        ${rows.length
-          ? `<ul class="event-participant-list">${rows
-              .map((participant) => {
-                const player = state.players.find((candidate) => candidate.id === participant.playerId) ?? participant;
-                const participation = includeInvitationStatuses && participant.status ? participationStatus(participant.status) : null;
-                const paidTitle = participant.paid
-                  ? `${participant.name}: Bezahlt – Markierung aufheben`
-                  : `${participant.name} als bezahlt markieren`;
-                return `<li class="event-participant-row ${participant.paid ? 'is-paid' : ''}" ${participation ? `data-event-participation-status="${escapeHtml(participant.status)}"` : ''}>
-                  ${avatarHtml(player, 24)}
-                  <span class="event-participant-name">
-                    <span class="player-name">${escapeHtml(participant.name)}</span>
-                    ${canManagePayments ? `<small class="event-payment-proof" title="${participant.paid ? escapeHtml(paymentProof(participant)) : ''}">${participant.paid ? escapeHtml(paymentProof(participant)) : ''}</small>` : ''}
-                  </span>
-                  ${participation ? `<span class="badge ${participation.badge}">${participation.label}</span>` : ''}
-                  ${canManagePayments && participant.status === 'accepted'
-                    ? `<button type="button" class="payment-paid-marker ${participant.paid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(participant.playerId)}" aria-pressed="${Boolean(participant.paid)}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}"><span class="payment-paid-box" aria-hidden="true">${participant.paid ? icon('check') : ''}</span><span>Bezahlt</span></button>`
-                    : ''}
-                  ${includeInvitationStatuses ? renderParticipantActions(event, participant) : ''}
-                </li>`;
-              })
-              .join('')}</ul>`
-          : `<p class="muted event-card-empty-copy">${isGroup ? 'Noch keine Mitglieder.' : 'Noch niemand zugesagt.'}</p>`}
-      </div>
-    </details>`;
+    <section class="event-card-section event-card-participants" data-event-participants="${escapeHtml(event.id)}">
+      <h4 class="event-card-section-title">${isGroup ? 'Mitglieder' : 'Teilnehmende'} <span class="muted">${escapeHtml(summary)}</span></h4>
+      ${includeInvitationStatuses && event.isEnded ? '<p class="muted event-participants-note">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}
+      ${rows.length
+        ? `<ul class="event-participant-list" style="--event-roster-rows:${half}">${rowHtml}</ul>`
+        : `<p class="muted event-card-empty-copy">${isGroup ? 'Noch keine Mitglieder.' : 'Noch niemand zugesagt.'}</p>`}
+    </section>`;
 }
 
 function balanceBadge(balanceCents) {
@@ -457,10 +560,11 @@ function renderEventPayment(event) {
     const paidCount = settlement.paidCount;
     const openCount = settlement.unpaidCount;
     return `
+      <section class="event-card-section">
+      <h4 class="event-card-section-title">Abrechnung</h4>
       <div class="event-card-payment event-card-payment-creator">
         <div class="event-payment-heading">
           <div class="event-card-detail">
-            <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
             <span class="event-card-detail-content">
               <span class="event-card-detail-label">Beitrag pro Person</span>
               <strong class="event-payment-amount">${escapeHtml(amount)}</strong>
@@ -474,28 +578,25 @@ function renderEventPayment(event) {
         ${event.costCents && event.paymentDueAt ? `<span class="muted event-payment-due">Zahlungsziel: ${escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))}</span>` : ''}
         ${renderEventSettlement(event)}
         ${settlement.missingAmountCount > 0 ? `<span class="muted event-payment-overview">${settlement.missingAmountCount} historische ${settlement.missingAmountCount === 1 ? 'Zahlung hat' : 'Zahlungen haben'} keinen gespeicherten Betrag.</span>` : ''}
-      </div>`;
+      </div>
+      </section>`;
   }
 
   const isPaid = Boolean(myParticipation?.paid);
+  const due = event.paymentDueAt ? ` · bis ${new Date(event.paymentDueAt).toLocaleDateString('de-DE')}` : '';
+  const meta = myParticipation && isPaid ? ` · ${paymentProof(myParticipation)}` : due;
   return `
-    <div class="event-card-payment event-card-payment-member">
-      <div class="event-payment-member-actions">
-        <div class="event-payment-member-main">
-        <div class="event-card-detail">
-          <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
-          <span class="event-card-detail-content">
-            <span class="event-card-detail-label">${myParticipation ? 'Dein Beitrag' : 'Kosten pro Person'}</span>
-            <strong class="event-payment-amount">${escapeHtml(amount)}</strong>
-          </span>
-        </div>
-        ${myParticipation ? `<button type="button" class="payment-paid-marker ${isPaid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(myParticipation.playerId)}" aria-pressed="${isPaid}" title="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}" aria-label="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}"><span class="payment-paid-box" aria-hidden="true">${isPaid ? icon('check') : ''}</span><span>Bezahlt</span></button>` : ''}
-        </div>
-        ${myParticipation && !isPaid && event.paypalLink ? `<button type="button" class="btn btn-primary btn-sm event-paypal-button" data-pay-event="${escapeHtml(event.id)}" title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">Bezahlen</button>` : ''}
+    <section class="event-card-section">
+      <h4 class="event-card-section-title">${myParticipation ? 'Dein Beitrag' : 'Kosten pro Person'}</h4>
+      <div class="event-info-row event-payment-member">
+        <span class="event-info-label">Beitrag</span>
+        <span class="event-info-value"><strong class="event-info-strong">${escapeHtml(amount)}</strong><span class="muted">${escapeHtml(meta)}</span></span>
+        <span class="event-info-actions">
+          ${myParticipation ? `<button type="button" class="payment-paid-marker ${isPaid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(myParticipation.playerId)}" aria-pressed="${isPaid}" title="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}" aria-label="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}"><span class="payment-paid-box" aria-hidden="true">${isPaid ? icon('check') : ''}</span><span>Bezahlt</span></button>` : ''}
+          ${myParticipation && event.paypalLink ? `<button type="button" class="icon-btn payment-paypal-button" data-pay-event="${escapeHtml(event.id)}" ${isPaid ? 'disabled' : ''} title="${escapeHtml(isPaid ? 'Bereits bezahlt' : payTitle)}" aria-label="${escapeHtml(isPaid ? 'Bereits bezahlt' : payTitle)}">${icon('paypal')}</button>` : ''}
+        </span>
       </div>
-      ${myParticipation && !isPaid && event.paymentDueAt ? `<span class="muted event-payment-due">Bitte bis ${escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))} bezahlen.</span>` : ''}
-      ${myParticipation && isPaid ? `<small class="event-payment-proof">${escapeHtml(paymentProof(myParticipation))}</small>` : ''}
-    </div>`;
+    </section>`;
 }
 
 async function handleEventPay(eventId, ctx) {
@@ -566,40 +667,44 @@ async function handleEventPay(eventId, ctx) {
   }
 }
 
-function renderEventInfo(event, { invitation = false } = {}) {
-  const additionalDetails = `${renderEventLocation(event.location)}${
-    event.description
-      ? `<div class="event-card-detail event-card-description">
-           <span class="event-card-detail-icon" aria-hidden="true">${icon('file')}</span>
-           <span class="event-card-detail-content">
-             <span class="event-card-detail-label">Notiz</span>
-             <span>${escapeHtml(event.description)}</span>
-           </span>
-         </div>`
-      : ''
-  }`;
-  const dateLine = eventIsGroup(event)
-    ? ''
-    : `<span class="food-order-send-at">
-      <span class="food-order-detail-icon" aria-hidden="true">${icon('calendar')}</span>
-      ${escapeHtml(eventDateRange(event))}
-    </span>`;
-  const blocks = [
-    dateLine ? `<div class="food-order-details-head">${dateLine}</div>` : '',
-    additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : '',
-    renderEventCalendarActions(event, { invitation }),
-    renderEventExcuseActions(event),
-    invitation ? renderInvitationPayment(event) : renderEventPayment(event),
-  ].filter(Boolean);
-  // Period, calendar handoff, excuse and money are all things a group has no
-  // concept of, so a group without a location and without a note fills none of
-  // this box. Drop the box itself in that case instead of leaving an empty
-  // framed surface on the card.
-  if (blocks.length === 0) return '';
-  return `
-    <div class="food-order-details event-card-info">
-      ${blocks.join('')}
-    </div>`;
+function copyButtonHtml(value, label) {
+  return `<button type="button" class="icon-btn" data-copy-event-value="${escapeHtml(value)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${icon('copy')}</button>`;
+}
+
+// Infos: period and place first, as the two facts people look up and paste.
+// Each row keeps label, value and actions in fixed columns.
+function renderEventInfoSection(event) {
+  const rows = [];
+  const schedule = eventScheduleLabel(event);
+  if (schedule) {
+    rows.push(`<div class="event-info-row">
+      <span class="event-info-label">Zeitraum</span>
+      <span class="event-info-value event-info-strong">${escapeHtml(schedule)}</span>
+      <span class="event-info-actions">${renderEventCalendarActions(event)}${copyButtonHtml(schedule, 'Zeitraum kopieren')}</span>
+    </div>`);
+  }
+  if (event.location) {
+    const href = eventLocationHref(event.location);
+    rows.push(`<div class="event-info-row">
+      <span class="event-info-label">Ort</span>
+      <span class="event-info-value event-info-strong"><a class="event-location-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(event.location)}</a></span>
+      <span class="event-info-actions">
+        <a class="icon-btn" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" title="In Google Maps öffnen" aria-label="${escapeHtml(`${event.location} in Google Maps öffnen`)}">${icon('squareArrowOutUpRight')}</a>
+        ${copyButtonHtml(event.location, 'Ort kopieren')}
+      </span>
+    </div>`);
+  }
+  if (event.description) {
+    rows.push(`<div class="event-info-row">
+      <span class="event-info-label">Notiz</span>
+      <span class="event-info-value event-info-note">${escapeHtml(event.description)}</span>
+    </div>`);
+  }
+  if (rows.length === 0) return '';
+  return `<section class="event-card-section">
+    <h4 class="event-card-section-title">Infos</h4>
+    <div class="event-info-rows">${rows.join('')}</div>
+  </section>`;
 }
 
 // Why an answer is currently blocked. The server decides this
@@ -617,69 +722,65 @@ function participationLockNote(event) {
   return text ? `<span class="muted event-participation-note">${escapeHtml(text)}</span>` : '';
 }
 
-// The own answer stays on the card for as long as it can be changed: a yes
-// remains reversible and a no remains reversible the same way. This belongs on
-// every card variant, management cards included — organizing an event is not
-// the same as attending it, and "Teilnehmende verwalten" only offers removing
-// a roster row, which is a different act from answering for oneself.
-// A still-open invitation is deliberately absent: it is answered on its own
-// invitation card in "Mein Profil".
+// The own answer stays on the card for as long as it can be changed. A yes is
+// withdrawn through "Absagen", which offers a plain decline and, for an event
+// still ahead, a decline with an excuse everyone gets to read. A no is taken
+// back with "Zusagen". A still-open invitation is answered in "Mein Profil".
 export function ownParticipationAction(event, { primary = true } = {}) {
   const participation = event.myParticipation;
   if (!participation || participation.status === 'invited') return '';
+  const id = escapeHtml(event.id);
   if (participation.status === 'accepted') {
-    return participation.canDecline
-      ? `<button type="button" class="btn btn-sm" data-decline-participation="${escapeHtml(event.id)}">Teilnahme absagen</button>`
-      : participationLockNote(event);
+    if (!participation.canDecline) return participationLockNote(event);
+    const withExcuse = !event.isEnded && !eventIsGroup(event);
+    return actionMenuHtml(
+      [
+        `<button type="button" class="btn btn-sm" data-decline-participation="${id}">Absagen</button>`,
+        withExcuse ? `<button type="button" class="btn btn-sm" data-decline-with-excuse="${id}">Mit Ausrede absagen</button>` : '',
+      ],
+      `Absagen: Teilnahme an ${event.name}`,
+      { key: `event-decline-${event.id}`, summary: 'Absagen' },
+    );
   }
   return participation.canAccept
-    ? `<button type="button" class="btn${primary ? ' btn-primary' : ''} btn-sm" data-accept-participation="${escapeHtml(event.id)}">Doch zusagen</button>`
+    ? `<button type="button" class="btn${primary ? ' btn-primary' : ''} btn-sm" data-accept-participation="${id}">Zusagen</button>`
     : participationLockNote(event);
 }
 
-// Own footer for the card variants that have none of their own. The management
-// card instead places the same action inside its existing footer, so a card
-// never grows a second action row.
 export function renderOwnParticipationActions(event, { primary = true } = {}) {
   const action = ownParticipationAction(event, { primary });
   return action ? `<div class="event-card-actions">${action}</div>` : '';
 }
 
 // A management card is the only place an owner/admin sees an event they
-// declined themselves: their declined events never move into the member
-// "Abgesagt" section, because the management list already holds every event of
-// the group. The state therefore has to be readable on the card itself instead
-// of being implied by the action beside it.
+// declined themselves, so the state is spelled out on the card.
 function ownDeclinedBadge(event) {
   return event.myParticipation?.status === 'declined'
     ? '<span class="badge badge-offline">Du: Abgesagt</span>'
     : '';
 }
 
-// The creator is recorded nowhere else on the card. The period joins it only
-// while the body is collapsed and its information box is therefore hidden; an
-// expanded card leaves the period to that box (see renderEventInfo) instead of
-// printing the identical range twice.
+// One meta line: type and headcount always; while collapsed also the period
+// and place, which the open card shows in its Infos rows instead.
 function eventHeaderMeta(event, { withDateRange }) {
-  const creator = state.players.find((player) => player.id === event.createdBy);
-  const parts = [`Erstellt von ${creator?.name ?? 'Unbekannt'}`];
-  if (withDateRange && !eventIsGroup(event)) parts.push(eventDateRange(event));
+  const isGroup = eventIsGroup(event);
+  const count = acceptedParticipants(event).length;
+  const parts = [eventTypeTitle(event.eventType, state.eventTypeOptions)];
+  if (withDateRange && !isGroup) parts.push(eventDateRange(event).replace(' – ', ' bis '));
+  if (withDateRange && event.location) parts.push(event.location);
+  parts.push(isGroup
+    ? `${count} ${count === 1 ? 'Mitglied' : 'Mitglieder'}`
+    : `${count} ${count === 1 ? 'Zusage' : 'Zusagen'}`);
   return parts;
 }
 
 function renderEventHeaderText(event, metaParts) {
   return `<span class="event-card-heading">
     <span class="food-order-card-title">${escapeHtml(event.name)}</span>
-    <span class="event-card-meta-group">${metaParts
-      .map((part) => `<span class="muted event-card-meta">${escapeHtml(part)}</span>`)
-      .join('')}</span>
+    <span class="muted event-card-meta">${escapeHtml(metaParts.join(' · '))}</span>
   </span>`;
 }
 
-// Same header-toggle button foodOrders.js uses for its own collapsible cards.
-// The meta lines join the accessible name instead of an aria-describedby: that
-// would have to point at a node inside this very button, and a description is
-// the first thing a screen reader drops at lower verbosity.
 function renderEventCardToggle(event, expanded, titleHtml, metaParts) {
   const kind = eventIsGroup(event) ? 'Gruppe' : 'Event';
   const label = `${kind} ${event.name}, ${metaParts.join(', ')}, ${expanded ? 'einklappen' : 'ausklappen'}`;
@@ -689,121 +790,80 @@ function renderEventCardToggle(event, expanded, titleHtml, metaParts) {
   </button>`;
 }
 
-// Read-only card for a member's own accepted events. The same information is
-// useful to admins, so both card variants share the detail and accepted-roster
-// blocks while only the management card receives lifecycle actions.
-function renderMemberEventCard(event, { collapsible = false } = {}) {
+// Running tracking is the only lifecycle state worth a chip; everything else
+// is evident from the list an event sits in.
+function trackingChip(event) {
+  return event.trackingEnabled && !event.isEnded
+    ? '<span class="badge badge-playing event-tracking-chip">Trackt</span>'
+    : '';
+}
+
+function renderEventCardShell(event, { collapsible, managed }) {
   const expanded = !collapsible || expandedEventCards.has(event.id);
   const metaParts = eventHeaderMeta(event, { withDateRange: !expanded });
   const titleHtml = renderEventHeaderText(event, metaParts);
+  const side = managed ? renderManagementMenu(event) : '';
   return `
-    <article class="card stack event-card event-card-member" data-event-card="${escapeHtml(event.id)}">
+    <article class="card stack event-card ${managed ? 'event-card-managed' : 'event-card-member'}${collapsible ? ' is-collapsible' : ''}" data-event-card="${escapeHtml(event.id)}">
       <div class="row-between food-order-card-header event-card-header">
         ${collapsible ? renderEventCardToggle(event, expanded, titleHtml, metaParts) : titleHtml}
-        <span class="event-card-header-badges">
-          <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
-          ${eventIsGroup(event) && !event.isEnded ? '' : eventStatusBadgeHtml(event)}
+        <div class="event-card-header-side">${ownDeclinedBadge(event)}${trackingChip(event)}${side}</div>
+      </div>
+      <div class="food-order-card-body event-card-body" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
+        ${renderEventInfoSection(event)}
+        ${renderEventPayment(event)}
+        ${renderParticipantsSection(event, { includeInvitationStatuses: managed })}
+        ${renderOwnParticipationActions(event, { primary: false })}
+      </div>
+    </article>
+  `;
+}
+
+// Read-only card for a member's own events: same sections, no lifecycle menu.
+function renderMemberEventCard(event, { collapsible = false } = {}) {
+  return renderEventCardShell(event, { collapsible, managed: false });
+}
+
+// A declined event keeps exactly the teaser it was answered from, no roster,
+// plus the way back.
+export function renderDeclinedEventCard(event) {
+  return `
+    <article class="card stack event-card event-card-declined" data-declined-event="${escapeHtml(event.id)}">
+      <div class="row-between food-order-card-header event-card-header">
+        <span class="event-card-heading">
+          <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
+          <span class="muted event-card-meta">${escapeHtml([eventTypeTitle(event.eventType, state.eventTypeOptions), eventIsGroup(event) ? '' : eventDateRange(event).replace(' – ', ' bis ')].filter(Boolean).join(' · '))}</span>
         </span>
       </div>
-      <div class="food-order-card-body stack" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
-        ${renderEventInfo(event)}
-        ${renderAcceptedParticipants(event)}
+      <div class="event-card-body">
+        ${renderEventInfoSection({ ...event, myParticipation: null, isEnded: true })}
         ${renderOwnParticipationActions(event)}
       </div>
     </article>
   `;
 }
 
-// A declined event keeps exactly the teaser it was answered from — no roster,
-// no event data — plus the way back. Rendered in its own collapsed section so
-// it stays findable without competing with the events actually being planned.
-export function renderDeclinedEventCard(event) {
-  return `
-    <article class="card stack event-card event-card-declined" data-declined-event="${escapeHtml(event.id)}">
-      <div class="row-between food-order-card-header event-card-header">
-        <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
-        <span class="event-card-header-badges">
-          <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
-          <span class="badge badge-offline">Abgesagt</span>
-        </span>
-      </div>
-      ${renderEventInfo(event, { invitation: true })}
-      <div class="event-card-actions">${ownParticipationAction(event)}</div>
-    </article>
-  `;
-}
-
-// An invitation discloses the contribution before acceptance, but it does
-// not offer payment actions until the account is an accepted participant.
-function renderInvitationPayment(event) {
-  if (!event.costCents) return '';
-  const amount = formatEuroCents(event.costCents);
-  return `
-    <div class="event-card-payment event-invitation-payment">
-      <div class="event-card-detail">
-        <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
-        <span class="event-card-detail-content">
-          <span class="event-card-detail-label">Kosten pro Person</span>
-          <strong>${escapeHtml(amount)}</strong>
-        </span>
-      </div>
-      ${event.paymentDueAt ? `<span class="muted event-payment-due">Zahlungsziel: ${escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))}</span>` : ''}
-    </div>`;
-}
-
-export function renderEventCard(event, { collapsible = false } = {}) {
-  // Tracking requires a scheduled event; roster editing does not.
+function renderManagementMenu(event) {
   const hasDate = event.startsAt != null;
-  // The tooltip sits with the running/stopping pair only: "Event wieder
-  // starten" is an event-lifecycle action whose confirmation already spells the
-  // tracking part out.
-  const trackingHelp = infoTooltipHtml(`event-tracking-help-${event.id}`, 'Tracking', TRACKING_BUTTON_HELP);
   const trackingBtn = !hasDate || !eventHasFeature(event, 'tracking')
     ? ''
     : event.isEnded
       ? `<button type="button" class="btn btn-sm" data-restart-event="${event.id}">Event wieder starten</button>`
       : event.trackingEnabled
-        ? `<div class="action-menu-row"><button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">Tracking stoppen</button>${trackingHelp}</div>`
-        : `<div class="action-menu-row"><button type="button" class="btn btn-sm" data-start-tracking="${event.id}">Tracking starten</button>${trackingHelp}</div>`;
-  // Closing a workspace is a lifecycle step, not a scheduled one: an event
-  // whose date is still being polled — or was removed again — is exactly the
-  // kind that gets abandoned, so "Beenden" follows the ended state alone.
-  // Up to two actions sit directly in the header as compact neutral buttons;
-  // only the full Bearbeiten/Tracking/Beenden set is bundled in "Aktion",
-  // where "Beenden" keeps its danger styling behind the menu's hairline.
-  const actionsInline = 1 + (trackingBtn ? 1 : 0) + (event.isEnded ? 0 : 1) <= 2;
+        ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">Tracking stoppen</button>`
+        : `<button type="button" class="btn btn-sm" data-start-tracking="${event.id}">Tracking starten</button>`;
   const endBtn = event.isEnded
     ? ''
-    : actionsInline
-      ? `<button type="button" class="btn btn-sm" data-end-event="${event.id}">Beenden</button>`
-      : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
-  const expanded = !collapsible || expandedEventCards.has(event.id);
-  const metaParts = eventHeaderMeta(event, { withDateRange: !expanded });
-  const titleHtml = renderEventHeaderText(event, metaParts);
+    : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
+  return actionMenuHtml(
+    [`<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>`, trackingBtn, endBtn],
+    `Aktionen für ${eventIsGroup(event) ? 'Gruppe' : 'Event'} ${event.name}`,
+    { key: `event-manage-${event.id}`, inlineMax: 0 },
+  );
+}
 
-  return `
-    <article class="card stack event-card event-card-managed" data-event-card="${escapeHtml(event.id)}">
-      <div class="row-between food-order-card-header event-card-header">
-        ${collapsible ? renderEventCardToggle(event, expanded, titleHtml, metaParts) : titleHtml}
-        <div class="event-card-header-side"><span class="event-card-header-badges">
-          <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
-          ${ownDeclinedBadge(event)}
-          ${eventIsGroup(event) && !event.isEnded ? '' : eventStatusBadgeHtml(event)}
-        </span>
-        ${actionMenuHtml(
-          [`<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>`, trackingBtn, endBtn],
-          `Aktionen für ${eventIsGroup(event) ? 'Gruppe' : 'Event'} ${event.name}`,
-          { inlineMax: 2 },
-        )}
-        </div>
-      </div>
-      <div class="food-order-card-body stack" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
-        ${renderEventInfo(event)}
-        ${renderAcceptedParticipants(event, { includeInvitationStatuses: true })}
-        ${renderOwnParticipationActions(event, { primary: false })}
-      </div>
-    </article>
-  `;
+export function renderEventCard(event, { collapsible = false } = {}) {
+  return renderEventCardShell(event, { collapsible, managed: true });
 }
 
 // Events and groups are two different kinds of workspace, so they get two
@@ -821,8 +881,6 @@ function renderWorkspaceSection({
   const listKind = isGroupList ? 'group' : 'event';
   const titleId = isGroupList ? 'orga-groups-title' : 'orga-events-title';
   const title = isGroupList ? 'Gruppen' : 'Events';
-  const helpId = isGroupList ? 'orga-groups-help' : 'orga-events-help';
-  const help = isGroupList ? GROUP_HELP : EVENT_HELP;
   const createLabel = isGroupList ? 'Gruppe anlegen' : 'Event anlegen';
   const createId = isGroupList ? 'new-group-btn' : 'new-event-btn';
   const activeEvents = events.filter((e) => !e.isEnded);
@@ -840,10 +898,7 @@ function renderWorkspaceSection({
   return `
     <section class="card stack grouped-page-section primary-collection-section" aria-labelledby="${titleId}">
       <div class="grouped-page-section-title">
-        <span class="title-with-info">
-          <h2 id="${titleId}" tabindex="-1">${title}</h2>
-          ${infoTooltipHtml(helpId, title, help)}
-        </span>
+        <h2 id="${titleId}" tabindex="-1">${title}</h2>
         ${
           canManage
             ? `<span class="row" style="gap:var(--space-2);">
@@ -1112,6 +1167,28 @@ export function wireParticipationAnswerActions(container, ctx) {
     });
   });
 
+  container.querySelectorAll('[data-decline-with-excuse]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const eventId = btn.dataset.declineWithExcuse;
+      const event = eventCardById(eventId);
+      if (!event) return;
+      openExcuseDialog(event, {
+        onDecline: async (excuse) => {
+          try {
+            await api.events.declineInvitation(eventId, excuse);
+            await ctx.refresh();
+            container.querySelector('#orga-events-title')?.focus();
+            showToast('Teilnahme abgesagt. Deine Ausrede ist für alle sichtbar.');
+            return true;
+          } catch (err) {
+            showToast(err.message, { error: true });
+            return false;
+          }
+        },
+      });
+    });
+  });
+
   container.querySelectorAll('[data-accept-participation]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const eventId = btn.dataset.acceptParticipation;
@@ -1191,7 +1268,7 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
         </div>
         <div>
           <label for="event-description" class="field-label">Notiz</label>
-          <textarea id="event-description" maxlength="500" rows="2" placeholder="Treffpunkt um 16 Uhr am Bahnhof">${escapeHtml(existing?.description ?? '')}</textarea>
+          <textarea id="event-description" maxlength="500" rows="1" placeholder="Treffpunkt um 16 Uhr am Bahnhof">${escapeHtml(existing?.description ?? '')}</textarea>
         </div>
         <div class="field-row event-payment-fields" data-event-payment-fields ${isGroup ? 'hidden' : ''}>
           <div>
@@ -1368,9 +1445,8 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
               const created = await api.events.create(payload);
               close();
               expandedEventCards.add(created.id);
-              expandedEventParticipants.add(created.id);
               await ctx.refresh();
-              document.querySelector(`[data-event-participants="${CSS.escape(created.id)}"] > summary`)?.focus();
+              document.querySelector(`[data-event-participants="${CSS.escape(created.id)}"] [data-invite-participant]`)?.focus();
               showToast(isGroup ? 'Gruppe angelegt. Jetzt Mitglieder einladen.' : 'Event angelegt. Jetzt Teilnehmende einladen.');
             }
           } catch (err) {
@@ -1380,23 +1456,6 @@ function openEventForm(ctx, existing, { eventType: preselectedEventType } = {}) 
       },
     }
   );
-}
-
-function participationStatus(status) {
-  if (status === 'accepted') return { label: 'Zugesagt', badge: 'badge-playing' };
-  if (status === 'declined') return { label: 'Abgelehnt', badge: 'badge-offline' };
-  return { label: 'Einladung offen', badge: 'badge-paused' };
-}
-
-function renderParticipantActions(event, participant) {
-  const playerId = escapeHtml(participant.playerId);
-  const eventId = escapeHtml(event.id);
-  const paymentLocked = Boolean(participant.paymentLocked ?? participant.paid);
-  return `<span class="event-roster-actions">
-    ${!event.isEnded && (!participant.status || participant.status === 'declined')
-      ? `<button type="button" class="btn btn-sm" data-invite-participant="${playerId}" data-roster-event="${eventId}">${participant.status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
-    ${participant.status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${playerId}" data-roster-event="${eventId}" ${paymentLocked ? 'disabled' : ''}>Entfernen</button>` : ''}
-  </span>`;
 }
 
 function wireParticipantActions(container, ctx) {
@@ -1417,7 +1476,7 @@ function wireParticipantActions(container, ctx) {
         else await api.events.removeParticipant(eventId, playerId);
         await ctx.refresh();
         const roster = container.querySelector(`[data-event-participants="${CSS.escape(eventId)}"]`);
-        (roster?.querySelector(`[data-invite-participant="${CSS.escape(playerId)}"], [data-remove-participant="${CSS.escape(playerId)}"]`) ?? roster?.querySelector('summary'))?.focus();
+        (roster?.querySelector(`[data-invite-participant="${CSS.escape(playerId)}"], [data-remove-participant="${CSS.escape(playerId)}"]`) ?? roster?.querySelector('button'))?.focus();
         showToast(isInvite ? 'Einladung gesendet.' : 'Event-Teilnahme entfernt.');
       } catch (err) {
         button.disabled = false;
@@ -1481,12 +1540,6 @@ export function renderOrgaEvents(container, ctx) {
     </div>
   `;
 
-  container.querySelectorAll('[data-event-participants]').forEach((details) => {
-    details.addEventListener('toggle', () => {
-      if (details.open) expandedEventParticipants.add(details.dataset.eventParticipants);
-      else expandedEventParticipants.delete(details.dataset.eventParticipants);
-    });
-  });
 
   // Both lists can carry a "Historie" and an "Abgesagt" section, so every one
   // of them is bound and remembers itself under its own list kind.
@@ -1517,6 +1570,24 @@ export function renderOrgaEvents(container, ctx) {
   wireParticipationAnswerActions(container, ctx);
 
   wireEventExcuseActions(container);
+  container.querySelectorAll('[data-show-excuse]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const event = eventCardById(btn.dataset.excuseEvent);
+      const entry = (event?.declinedExcuses || []).find((candidate) => candidate.playerId === btn.dataset.showExcuse);
+      if (!entry) return;
+      openModal(`Ausrede von ${entry.name}`, `<blockquote class="excuse-text excuse-quote">„${escapeHtml(entry.excuse)}“</blockquote>`);
+    });
+  });
+  container.querySelectorAll('[data-copy-event-value]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await copyText(btn.dataset.copyEventValue);
+        showToast('Kopiert.');
+      } catch {
+        showToast('Kopieren nicht möglich, bitte manuell markieren.', { error: true });
+      }
+    });
+  });
   container.querySelectorAll('[data-download-event-calendar]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const event = eventCardById(btn.dataset.downloadEventCalendar);

@@ -376,7 +376,11 @@ export const api = {
         body: JSON.stringify({ paid }),
       }),
     acceptInvitation: (id) => apiFetch(`/api/events/${id}/invitation/accept`, { method: 'POST' }),
-    declineInvitation: (id) => apiFetch(`/api/events/${id}/invitation/decline`, { method: 'POST' }),
+    declineInvitation: (id, excuse = null) =>
+      apiFetch(`/api/events/${id}/invitation/decline`, {
+        method: 'POST',
+        ...(excuse ? { body: JSON.stringify({ excuse }) } : {}),
+      }),
     setTrackingConsent: (id, granted, textVersion) =>
       apiFetch(`/api/events/${id}/tracking-consent`, {
         method: 'POST',

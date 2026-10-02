@@ -17,6 +17,7 @@ import {
   getParticipantIds,
   getEventParticipants,
   getAcceptedEventParticipants,
+  getDeclinedEventExcuses,
   getEventPaymentSummary,
   getPaidEventParticipantIds,
   inviteParticipant,
@@ -431,6 +432,7 @@ function serializeEvent(
       event.id === OUTSIDE_EVENTS_ID
         ? undefined
         : eventParticipantsForViewer(event.id, viewerId, revealAllPayments),
+    declinedExcuses: event.id === OUTSIDE_EVENTS_ID ? undefined : getDeclinedEventExcuses(event.id),
     ...(event.id === OUTSIDE_EVENTS_ID || !viewerId ? {} : myParticipationField(event as EventRow, viewerId)),
   };
 }
@@ -491,6 +493,7 @@ function serializeEventSummary(
             paymentViewerId,
             revealAllParticipantPayments,
           ),
+          declinedExcuses: getDeclinedEventExcuses(event.id),
         }
       : {}),
   };
@@ -659,6 +662,7 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
       ...(managementFields.canManagePayments ? { accommodationCostCents: event.accommodation_cost_cents } : {}),
       participantIds: getParticipantIds(event.id),
       acceptedParticipants: acceptedParticipantsForViewer(event.id, req.player!.id, managementFields.canManagePayments),
+      declinedExcuses: getDeclinedEventExcuses(event.id),
       // Own answer and what may still be done with it, the same field the
       // event lists carry — a card rendered from this detail response needs
       // it to offer (or explain the absence of) the withdrawal action.
@@ -777,6 +781,8 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
   });
 });
 
+const DECLINE_EXCUSE_MAX_LENGTH = 300;
+
 function answerEventInvitation(response: 'accepted' | 'declined') {
   return (req: Request, res: Response): Response => {
     const event = req.groupResource as EventRow;
@@ -787,8 +793,18 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
     const playerId = requestPlayerId(req);
     if (!playerId) return res.status(400).json({ error: 'Spieleridentität ist erforderlich.' });
 
+    let declineExcuse: string | null = null;
+    if (response === 'declined' && req.body?.excuse !== undefined && req.body?.excuse !== null) {
+      const raw: unknown = req.body.excuse;
+      const trimmed = typeof raw === 'string' ? raw.trim() : '';
+      if (!trimmed || trimmed.length > DECLINE_EXCUSE_MAX_LENGTH) {
+        return res.status(400).json({ error: `Die Ausrede muss 1 bis ${DECLINE_EXCUSE_MAX_LENGTH} Zeichen lang sein.` });
+      }
+      declineExcuse = trimmed;
+    }
+
     const wasActiveContext = activeContextPlayerIds(event.id).includes(playerId);
-    const result = respondToEventInvitation(event.id, playerId, response);
+    const result = respondToEventInvitation(event.id, playerId, response, declineExcuse);
     if (!result.ok) {
       return res.status(409).json({
         error:
@@ -811,6 +827,7 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
         status: response,
         previousStatus: result.previousStatus,
         changed: result.changed,
+        withExcuse: declineExcuse !== null,
       },
     });
     // Accepting an already tracking event is the other moment the standing

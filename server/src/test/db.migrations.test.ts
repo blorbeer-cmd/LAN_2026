@@ -73,6 +73,29 @@ test('migration 116 removes orphaned Vote rounds but keeps the legacy active rou
   migrated.close();
 });
 
+test('migration 117 adds the decline excuse once and bounds its length', () => {
+  const dbFile = makeTempDbPath('decline-excuse');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec('ALTER TABLE event_participants DROP COLUMN decline_excuse');
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 117').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  const columns = migrated.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  assert.equal(columns.filter((column) => column.name === 'decline_excuse').length, 1);
+  migrated.prepare("INSERT INTO players (id, name, api_key, created_at) VALUES ('excuse-player', 'Excuse', 'excuse-key', 1)").run();
+  migrated.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES ('instance-base-event', 'excuse-player', 'declined')").run();
+  const setExcuse = migrated.prepare("UPDATE event_participants SET decline_excuse = ? WHERE player_id = 'excuse-player'");
+  setExcuse.run('x'.repeat(300));
+  assert.throws(() => setExcuse.run('x'.repeat(301)), /CHECK constraint failed/);
+  assert.throws(() => setExcuse.run(''), /CHECK constraint failed/);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('legacy game_catalog tables are merged into games and preferences', () => {
   const dbFile = makeTempDbPath('catalog-merge');
   const now = Date.now();
@@ -789,10 +812,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 116);
+  assert.equal(migrations.length, 117);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 116 }, (_, index) => index + 1),
+    Array.from({ length: 117 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1394,8 +1417,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 116 }, (_, index) => index + 1),
-    'every version 1..116 runs exactly once',
+    Array.from({ length: 117 }, (_, index) => index + 1),
+    'every version 1..117 runs exactly once',
   );
 });
 
@@ -3654,7 +3677,9 @@ test('migration 85 restores accepted-only participation and enables independent 
       confirmed_schedule_revision INTEGER,
       PRIMARY KEY (event_id, player_id)
     );
-    INSERT INTO event_participants SELECT * FROM event_participants_before_85;
+    INSERT INTO event_participants
+      SELECT event_id, player_id, status, paid, paid_by, paid_at, paid_amount_cents, confirmed_schedule_revision
+      FROM event_participants_before_85;
     DROP TABLE event_participants_before_85;
     INSERT INTO players (id, name, api_key, created_at)
       VALUES ('migration-85-interested', 'Migration 85 Interested', 'migration-85-key', 1);

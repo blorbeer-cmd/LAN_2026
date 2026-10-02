@@ -7,12 +7,14 @@ import { icon } from './icons.js';
 // render directly as the buttons they are. An optional key gives the menu a
 // stable identity, so a live re-render that restores disclosure state
 // (viewRenderState.js) never mistakes one menu, or another details element,
-// for a different one.
-export function actionMenuHtml(actions, label, { key = null, inlineMax = 1 } = {}) {
+// for a different one. `summary` names the visible trigger; it defaults to
+// the generic "Aktion" and is only set where the menu bundles one kind of
+// action (e.g. "Kalender", "Absagen").
+export function actionMenuHtml(actions, label, { key = null, inlineMax = 1, summary = 'Aktion' } = {}) {
   const entries = actions.filter(Boolean);
   if (entries.length <= inlineMax) return entries.join('');
   return `<details class="action-menu"${key ? ` data-action-menu="${escapeHtml(key)}"` : ''}>
-    <summary class="btn btn-sm" aria-label="${escapeHtml(label)}">Aktion ${icon('chevronDown')}</summary>
+    <summary class="btn btn-sm" aria-label="${escapeHtml(label)}">${escapeHtml(summary)} ${icon('chevronDown')}</summary>
     <div class="action-menu-panel">${entries.join('')}</div>
   </details>`;
 }
