@@ -425,6 +425,8 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(payload),
       }),
+    // Ends a tournament that will not be played out: no champion, no further results.
+    finish: (id) => apiFetch(`/api/tournaments/${id}/finish`, { method: 'POST' }),
     remove: (id) => apiFetch(`/api/tournaments/${id}`, { method: 'DELETE' }),
   },
 
@@ -478,6 +480,11 @@ export const api = {
 
   digest: {
     get: (playerId) => apiFetch(`/api/digest?playerId=${encodeURIComponent(playerId)}`),
+  },
+
+  // Home's "Meine To-Dos" across all open events (see myTodos.js).
+  myTodos: {
+    get: () => apiFetch('/api/me/todos'),
   },
 
   push: {

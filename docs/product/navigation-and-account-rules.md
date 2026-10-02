@@ -291,7 +291,8 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   location, and „Annehmen“. Tapping the row opens a dialog with the full facts including cost and
   payment deadline and three equal buttons „Ausrede“, „Ablehnen“ and „Annehmen“. Acceptance shows
   a card „Einladung angenommen“ with a compact „Event öffnen“; the invitation becomes read
-  notification history and the action switches the active event. The row „Newsticker“ below
+  notification history and the action switches the active event. Home's „Meine To-Dos“ offers the
+  same „Annehmen“ and „Ablehnen“ directly in the invitation's row. The row „Newsticker“ below
   „Push-Benachrichtigungen“ lets every account keep its name out of the Broadcast newsticker's
   invented headlines („Deaktivieren“/„Aktivieren“); it is on by default and takes effect on the
   shared screen with its next refresh, including lines already shown.
@@ -318,19 +319,46 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   result entry. Team and free-for-all result inputs use the same aligned responsive grid.
 - **Home overview** — Home follows the same full-width grouped-card hierarchy as Tournaments,
   Teams and Vote. „Aktuell“, „Live-Status“, „Rangliste“ and „Sitzplan“ are separate main cards with
-  their heading inside the surface. „Meine To-Dos“ only renders once there is something to act on:
-  up to three To-Dos the signed-in identity has taken over, ordered by due date, each as a compact
-  row with the To-Do symbol, the title and the colour-free due text, or — while none are taken
-  yet — a single row nudging toward the shared pool's still-open To-Dos; with neither, the
-  tile stays hidden rather than offering an empty link into the full list. Every current
-  item is a single full-row action that navigates into its source view. „Aktuell“ and „Meine To-Dos“
+  their heading inside the surface. „Aktuell“ lists only what is running right now: open Votes,
+  active tournaments, open Sammelbestellungen and waiting Arcade lobbies. A Vote row adds „Du hast
+  noch nicht abgestimmt“ while the signed-in account has no ballot in it. Once the active event's
+  period is over (or the event has ended), its still-open Votes and tournaments leave „Aktuell“;
+  whoever can end them finds them in „Meine To-Dos“ instead. The permanent base workspace has no
+  end and keeps them.
+- **Meine To-Dos** — everything the signed-in account still has to do, across every open event of
+  the group (`GET /api/me/todos`, see `server/src/myTodos.ts` and `public/js/myTodos.js`), also in
+  a group workspace above its members. Personal entries: pay an order's own unpaid positions once
+  the order was sent, pay the event contribution („Überfällig“ after the payment due date), copy an
+  upcoming accepted event into the calendar until „Eingetragen“ is confirmed, answer a pending
+  event invitation, finish a taken To-Do or Mitbring-Anfrage („Überfällig“ once its due day is
+  over), enter the arrival for an event starting within 14 days whose An- und Abreise area is
+  enabled, and rate the skill of a game being played right now. While no To-Do of the active event
+  is taken, one row points to the shared pool's still-open To-Dos. Left-behind workflows reach only
+  the people who can close them: „Event beenden“ for group admins 12 hours after an event's period
+  ended; „Sammelbestellung abschicken“ for its creator or group admins 2 hours after the planned
+  dispatch time, or 24 hours after creation without one; „Sammelbestellung abrechnen“ 24 hours after
+  dispatch while positions are unpaid; „Abstimmung beenden“ for its starter or group admins after
+  3 hours or once the event's period is over; „Turnier beenden“ for group admins once the event's
+  period is over; „Beiträge prüfen“ for whoever manages an event's payments after the payment due
+  date while contributions are open; and a To-Do its creator made that nobody took before its due
+  day passed. The payment and calendar entries share the push reminders' eligibility without their
+  delivery delay, and no orga entry sends a push of its own. Invitations come first, then
+  overdue entries, live skill nudges and the rest by date; five rows are visible, „Alle anzeigen (n)“
+  in the card header shows the rest. Each row is a compact divided row like „Aktuell“: the row
+  itself navigates to where the To-Do lives — switching the workspace first when it belongs to
+  another event — and a trailing action slot settles it in place: „Bezahlen“ (PayPal, then „Bezahlt?“)
+  plus the „Bezahlt“ marker, „Eintragen“ (a dialog with Google Kalender, Outlook, Kalenderdatei and
+  „Eingetragen“), „Ablehnen“/„Annehmen“, „Erledigt“, „Abschicken“ or „Beenden“ behind a
+  confirmation. Event-level actions work from any workspace; actions on an event's orders, To-Dos,
+  Votes and tournaments are offered only inside that event's workspace, elsewhere the row leads
+  there first. Rows name their event when it is not the active one; overdue is spelled out in text,
+  never by colour alone. With nothing to do, the tile stays hidden. Every „Aktuell“ item is a single
+  full-row action that navigates into its source view. „Aktuell“ and „Meine To-Dos“
   rows use hover highlighting and visible keyboard focus without a trailing navigation arrow.
   Current items and To-Dos use the same compact, divided row treatment inside their main card.
-  The personal status and player entries remain nested cards on the secondary elevated background;
-  „Gerade aktiv“ is a subsection of
-  „Live-Status“ rather than a competing page-level group. A pending event invitation appears here as
-  a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); answering it happens only in
-  Profile, not in this list. The live board fills its left column first, grouped by state and
+- **Home live board** — The personal status and player entries remain nested cards on the secondary
+  elevated background; „Gerade aktiv“ is a subsection of
+  „Live-Status“ rather than a competing page-level group. The live board fills its left column first, grouped by state and
   alphabetical within a state. Playing and online player cards reserve the same height so a tracked
   game does not resize a row. The admin-only „Rangliste“ shows the top six as a RankedList with
   „Alle ansehen“ in its header. The seating plan draws free seats and the table as plain outlines

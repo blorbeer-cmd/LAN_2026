@@ -144,17 +144,16 @@ function removeTaskFromCache(taskId) {
 }
 
 // How many unclaimed To-Dos sit in the shared pool, independent of the
-// signed-in identity. Home's "Meine To-Dos" tile treats these "free" To-Dos
-// as reason enough to show up even when nothing is assigned to this identity
-// yet. Returns 0 while nothing is loaded yet.
+// signed-in identity. Home's "Meine To-Dos" adds one row for them while this
+// identity has taken none in the active event. Returns 0 while nothing is
+// loaded yet.
 export function freeTaskCount() {
   return tasksCache?.filter((task) => task.status === 'open').length ?? 0;
 }
 
-// Shared dashboard projection for the signed-in identity. `null` deliberately
+// The signed-in identity's taken To-Dos, due date first. `null` deliberately
 // means "still loading", while an empty array is a loaded list without work.
-// Keeping the due-date ordering here prevents Home and the full To-Do view
-// from drifting apart.
+// Home's "Meine To-Dos" reads the same state from GET /api/me/todos.
 export function assignedTasks() {
   const myId = getMyId();
   if (tasksCache === null) return null;

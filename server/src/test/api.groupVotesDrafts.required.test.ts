@@ -57,12 +57,16 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
         .send({ playerIds: [alice.account.id, bob.account.id, eve.account.id] })).status, 200);
 
       // Starting a vote is a group activity, so every active member may do it.
-      // Moderation actions such as closing/cancelling remain admin-only.
+      // Closing stays with admins plus the member who started that round;
+      // cancelling remains admin-only.
       const memberRunoff = await scoped(app, 'post', '/api/votes/start', bob).send({ mode: 'single', gameIds: [gameA.body.id] });
       assert.equal(memberRunoff.status, 403);
       const memberVote = await scoped(app, 'post', '/api/votes/start', bob).send({});
       assert.equal(memberVote.status, 201, JSON.stringify(memberVote.body));
-      assert.equal((await scoped(app, 'post', '/api/votes/close', alice).send({})).status, 200);
+      assert.equal(memberVote.body.createdBy, bob.account.id);
+      assert.equal((await scoped(app, 'post', '/api/votes/close', eve).send({})).status, 403);
+      assert.equal((await scoped(app, 'post', '/api/votes/cancel', bob).send({})).status, 403);
+      assert.equal((await scoped(app, 'post', '/api/votes/close', bob).send({})).status, 200);
       assert.equal((await scoped(app, 'post', '/api/draft/start', bob).send({
         gameId: gameA.body.id, captainIds: [alice.account.id, bob.account.id], poolPlayerIds: [eve.account.id],
       })).status, 403);

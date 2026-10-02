@@ -108,6 +108,13 @@ function requestedOpenRound(req: Request, res: Response, groupId: string, eventI
   return state ?? null;
 }
 
+// Mirrors the close route's rule so Home's "Meine To-Dos" offers "Beenden"
+// to exactly the people the route accepts.
+export function canCloseVoteRound(role: string | undefined, playerId: string | undefined, createdBy: string | null): boolean {
+  if (role === 'owner' || role === 'admin') return true;
+  return Boolean(playerId) && createdBy === playerId;
+}
+
 function requestVoteEventId(req: Request, res: Response, requestedEventId?: unknown): string | null {
   const scope = resolveRequestGroupEventScope(req, requestedEventId);
   if (!scope.ok) {
@@ -126,11 +133,13 @@ interface RoundMeta {
   selectedGameIds: string[] | null; // null = every game in the catalog
   anonymous: boolean; // nobody ever sees who voted how
   hideLiveResults: boolean; // no per-game result while the round runs
+  createdBy: string | null; // who started it; NULL for rounds older than migration 117
 }
 
 const DEFAULT_ROUND_META: RoundMeta = {
   eventId: null,
   sourceRound: null,
+  createdBy: null,
   title: null,
   info: null,
   selectedGameIds: null,
@@ -145,7 +154,7 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
   const row = db
     .prepare(
       `SELECT event_id AS eventId, source_round AS sourceRound, title, info, selected_game_ids AS selectedGameIdsJson,
-              anonymous, hide_live_results AS hideLiveResults
+              anonymous, hide_live_results AS hideLiveResults, created_by AS createdBy
        FROM vote_rounds WHERE group_id = ? AND round = ?`,
     )
     .get(groupId, round) as
@@ -157,6 +166,7 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
         selectedGameIdsJson: string | null;
         anonymous: number;
         hideLiveResults: number;
+        createdBy: string | null;
       }
     | undefined;
   if (!row) return { ...DEFAULT_ROUND_META };
@@ -168,6 +178,7 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
     selectedGameIds: row.selectedGameIdsJson ? JSON.parse(row.selectedGameIdsJson) : null,
     anonymous: row.anonymous === 1,
     hideLiveResults: row.hideLiveResults === 1,
+    createdBy: row.createdBy,
   };
 }
 
@@ -675,8 +686,8 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
     db.prepare(
       `INSERT INTO vote_rounds
          (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids,
-          anonymous, hide_live_results, source_round)
-       VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+          anonymous, hide_live_results, source_round, created_by)
+       VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       groupId,
       nextRound,
@@ -689,6 +700,7 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
       anonymous === true ? 1 : 0,
       hideLiveResults === false ? 0 : 1,
       sourceRoundToStore,
+      req.player?.id ?? null,
     );
     setState(startedAtKey, String(now));
     setState(`${KIOSK_RESULT_FLOOR_KEY}:${groupId}:${eventId}`, String(now));
@@ -876,8 +888,9 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
 });
 
 // POST /api/votes/close - ends the round and reports the winner(s) (ties are
-// all reported so the group can decide/re-vote).
-votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
+// all reported so the group can decide/re-vote). Community admins may close
+// any round; a member only the round they started themselves.
+votesRouter.post('/close', requireGroupRole('member'), (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res);
   if (!eventId) return;
@@ -885,6 +898,9 @@ votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   if (!state) return;
 
   const meta = getRoundMeta(groupId, state.round);
+  if (!canCloseVoteRound(req.groupMembership?.role, req.player?.id, meta.createdBy)) {
+    return res.status(403).json({ error: 'Nur wer die Abstimmung gestartet hat oder Community-Admins können sie beenden.' });
+  }
   // The persisted winner must not depend on whether the closing admin's
   // device happens to have admin mode on: it's always derived from real
   // votes only, so the same round can never end up with two different
@@ -900,12 +916,16 @@ votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   ).get(groupId, eventId) as { value: number | null };
   const resultFloor = Number(getState(`${KIOSK_RESULT_FLOOR_KEY}:${groupId}:${eventId}`) ?? 0);
   const closedAt = Math.max(Date.now(), (latestClosedAt.value ?? 0) + 1, resultFloor + 1);
-  db.prepare('UPDATE vote_rounds SET closed_at = ?, winner_game_ids = ? WHERE group_id = ? AND round = ? AND closed_at IS NULL').run(
+  // Two concurrent closes both pass requestedOpenRound; only the one whose
+  // UPDATE still finds the round open wins, the other gets the same 409 as a
+  // close that arrived after the round had ended.
+  const closed = db.prepare('UPDATE vote_rounds SET closed_at = ?, winner_game_ids = ? WHERE group_id = ? AND round = ? AND closed_at IS NULL').run(
     closedAt,
     JSON.stringify(winnerGameIds),
     groupId,
     state.round,
   );
+  if (closed.changes === 0) return res.status(409).json({ error: 'Diese Abstimmung läuft nicht.' });
   resolvePushTopic(`vote:${state.round}`, false, { groupId, eventId: meta.eventId });
 
   const payload = buildOverviewPayload(groupId, eventId, includesTestPlayers(req), { winnerGameIds });

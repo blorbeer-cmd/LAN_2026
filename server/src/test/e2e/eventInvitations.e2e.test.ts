@@ -236,15 +236,23 @@ test('manager invites a member who accepts and both open clients update', async 
 
   // A pending invitation is no longer shown on the Events tab at all — it
   // would otherwise sit directly above the tab's own event cards. Instead it
-  // surfaces as a Home "Aktuell" nudge and is actually answered in "Mein
-  // Profil" (see events.js/profile.js/aktuellStatus.js).
+  // is a personal Home "Meine To-Dos" row that can be answered right there,
+  // and its row still leads to the full invitation in "Mein Profil" (see
+  // events.js/profile.js/myTodos.js).
   assert.equal(await memberPage.locator(`[data-pending-invitation="${eventId}"]`).count(), 0);
   await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'home' })));
   await memberPage.waitForSelector('#view-container[data-view="home"]');
-  const homeInvitationRow = memberPage.locator('[data-current-item]', { hasText: EVENT_NAME });
+  const homeInvitationRow = memberPage.locator(`[data-home-todo="event-invitation:${eventId}"]`);
   await homeInvitationRow.waitFor();
   assert.match((await homeInvitationRow.textContent()) ?? '', /Einladung/);
-  await homeInvitationRow.locator('.home-current-navigate').click();
+  assert.equal(await homeInvitationRow.locator(`[data-accept-invitation="${eventId}"]`).count(), 1);
+  assert.equal(await homeInvitationRow.locator(`[data-decline-invitation="${eventId}"]`).count(), 1);
+  assert.equal(
+    await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+    'the inline invitation answers must fit a phone without horizontal scrolling',
+  );
+  await homeInvitationRow.locator('.home-todo-navigate').click();
   await memberPage.waitForSelector('#view-container[data-view="profile"]');
   await memberPage.locator('#privacy-auto-consent').waitFor({ state: 'attached' });
   assert.equal(await memberPage.locator(`[data-consent-event="${eventId}"]`).count(), 0);

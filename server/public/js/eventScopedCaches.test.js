@@ -85,7 +85,7 @@ test('every registered view handler is enabled by its lifecycle declaration', ()
 
 test('the event switch still drops every secondary cache and drawn lineup', () => {
   const expectedInvalidators = {
-    home: ['invalidateAktuellStatus', 'invalidateHomeSeating'],
+    home: ['invalidateAktuellStatus', 'invalidateMyTodos', 'invalidateHomeSeating'],
     matchmaking: ['invalidateMatchmakingHistory', 'invalidateMatchmakingDraft', 'invalidateMatchTournaments'],
     votes: ['invalidateVoteEventScope'],
     tournaments: ['invalidateTournaments'],

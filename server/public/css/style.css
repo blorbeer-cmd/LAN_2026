@@ -4205,6 +4205,29 @@ button.card {
     margin-left: 0;
   }
 }
+/* "Meine To-Dos" rows keep the navigating copy and add a trailing action
+   slot (Bezahlen, Bezahlt, Eintragen, Annehmen, Erledigt, Beenden). On
+   phones the actions move below the copy instead of squeezing the title. */
+.home-todo-row {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.home-todo-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-left: auto;
+  padding: var(--space-1) var(--space-3);
+}
+@media (max-width: 479px) { /* --bp-sm */
+  .home-todo-actions {
+    width: 100%;
+    padding-top: 0;
+  }
+}
 .home-current-navigate {
   display: flex;
   align-items: center;

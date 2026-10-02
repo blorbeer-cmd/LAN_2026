@@ -1,9 +1,9 @@
 // Home (formerly "Live-Status"): the landing view and the page everyone
 // keeps coming back to during the party. Stacks, in order of urgency: what's
-// currently running and needs you (open vote / active tournament / open food
-// order / waiting arcade lobby / an unrated skill for a currently-live game —
-// the kiosk content, but tappable and personalized), the realtime live board,
-// a leaderboard snapshot and the seating plan. Notifications live only in
+// currently running (open vote / active tournament / open food order /
+// waiting arcade lobby — the kiosk content, but tappable), what the signed-in
+// account still has to do ("Meine To-Dos", see myTodos.js), the realtime live
+// board, a leaderboard snapshot and the seating plan. Notifications live only in
 // the header bell (see notificationBanner.js), so Home does not duplicate
 // the same content in a second style.
 
@@ -15,14 +15,32 @@ import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
-import { ensureAktuellLoaded, aktuellItems } from '../aktuellStatus.js';
+import { ensureAktuellLoaded, aktuellItems, missingSkillNudges } from '../aktuellStatus.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { isAdmin } from '../admin.js';
 import { eventHasFeature, viewIsEnabledForEvent } from '../eventFeatures.js';
 import { eventTypeTitle } from '../eventTypes.js';
 import { formatEuroCents } from '../paypal.js';
-import { dueText } from '../checklistDue.js';
-import { assignedTasks, ensureTasksLoaded, freeTaskCount } from './checklist.js';
+import { confirmDialog, openModal } from '../modal.js';
+import { eventCalendarLinks } from '../calendarExport.js';
+import { eventDateRange } from '../eventPresentation.js';
+import { ensureTasksLoaded, freeTaskCount } from './checklist.js';
+import {
+  ensureMyTodosLoaded,
+  invalidateMyTodos,
+  myTodoRows,
+  myTodos,
+  MY_TODOS_VISIBLE_LIMIT,
+  skillRow,
+} from '../myTodos.js';
+import {
+  answerPendingInvitation,
+  confirmEventCalendarEntry,
+  downloadEventCalendar,
+  handleEventPay,
+} from './events.js';
+import { markOwnFoodSharePaid, payOwnFoodShare, sendFoodOrder } from './foodOrders.js';
+import { finishTournament } from './tournament.js';
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 
@@ -92,6 +110,9 @@ let lastCtx = null;
 const homeIsOpen = () => document.getElementById('view-container')?.dataset.view === 'home';
 
 window.addEventListener('respawn:aktuell-changed', () => {
+  if (homeIsOpen()) lastCtx?.rerender();
+});
+window.addEventListener('respawn:my-todos-changed', () => {
   if (homeIsOpen()) lastCtx?.rerender();
 });
 
@@ -237,70 +258,253 @@ function renderGroupMembers() {
     </section>`;
 }
 
-// Same compact single-line rows as "Aktuell": the To-Do symbol, the title
-// and the due date as plain text, without type labels or coloured badges.
-function homeTaskRowHtml({ title, sub, attrs = '' }) {
+// "Meine To-Dos": everything the signed-in account still has to do, across
+// every open event (see myTodos.js), in the compact divided rows of "Aktuell".
+// A row itself navigates to where the To-Do lives — switching the workspace
+// first when it belongs to another event — while its trailing actions settle
+// it right here: pay, mark paid, add to the calendar, answer an invitation,
+// finish a To-Do, or end what has been left open too long.
+let showAllTodos = false;
+let renderedTodoRows = new Map();
+
+// Literal class lists keep both button variants visible to the component
+// contract check (frontend-contracts), which cannot follow composed classes.
+function todoActionButton(row, action, label, { primary = false, extra = '' } = {}) {
+  const attrs = `data-todo-action="${action}" data-todo-id="${escapeHtml(row.id)}" ${extra}`;
+  return primary
+    ? `<button type="button" class="btn btn-primary btn-sm" ${attrs}>${label}</button>`
+    : `<button type="button" class="btn btn-sm" ${attrs}>${label}</button>`;
+}
+
+function paidMarkerHtml(row) {
+  const label = 'Als bezahlt markieren';
+  return `<button type="button" class="payment-paid-marker" data-todo-action="paid" data-todo-id="${escapeHtml(row.id)}" aria-pressed="false" title="${label}" aria-label="${label}"><span class="payment-paid-box" aria-hidden="true"></span><span>Bezahlt</span></button>`;
+}
+
+function todoActionsHtml(row, todo) {
+  if (!row.inline) return '';
+  switch (row.kind) {
+    case 'food-payment':
+    case 'event-payment':
+      return `${todo?.hasPaypal ? todoActionButton(row, 'pay', 'Bezahlen', { primary: true }) : ''}${paidMarkerHtml(row)}`;
+    case 'event-calendar':
+      return todoActionButton(row, 'calendar', 'Eintragen');
+    case 'event-invitation':
+      return `${todoActionButton(row, 'decline', 'Ablehnen', { extra: `data-decline-invitation="${escapeHtml(row.eventId)}"` })}${todoActionButton(row, 'accept', 'Annehmen', { primary: true, extra: `data-accept-invitation="${escapeHtml(row.eventId)}"` })}`;
+    case 'task':
+      return todoActionButton(row, 'done', 'Erledigt');
+    case 'food-order-send':
+      return todoActionButton(row, 'send-order', 'Abschicken');
+    case 'event-end':
+    case 'vote-close':
+    case 'tournament-finish':
+      return todoActionButton(row, 'end', 'Beenden');
+    default:
+      return '';
+  }
+}
+
+function todoRowHtml(row, todo) {
+  const navigation = row.switchesEvent && row.eventId
+    ? `data-todo-event-navigate="${escapeHtml(row.id)}"`
+    : `data-navigate="${escapeHtml(row.navigate.view)}"${row.navigate.target
+      ? ` data-navigate-target-type="${escapeHtml(row.navigate.target.type)}" data-navigate-target-id="${escapeHtml(row.navigate.target.id)}"`
+      : ''}`;
+  const actions = todoActionsHtml(row, todo);
   return `
-    <article class="list-row home-current-row">
-      <button type="button" class="home-current-navigate home-todo-navigate" data-navigate="checklist" ${attrs}>
-        <span class="list-row-icon">${icon('listChecks')}</span>
+    <article class="list-row home-current-row home-todo-row" data-home-todo="${escapeHtml(row.id)}">
+      <button type="button" class="home-current-navigate home-todo-navigate" ${navigation}>
+        <span class="list-row-icon">${icon(row.iconName)}</span>
         <span class="home-current-copy">
-          <span class="player-name">${title}</span>
-          ${sub ? `<span class="muted list-row-desc">${sub}</span>` : ''}
+          <span class="player-name">${escapeHtml(row.title)}</span>
+          ${row.sub ? `<span class="muted list-row-desc">${escapeHtml(row.sub)}</span>` : ''}
         </span>
       </button>
+      ${actions ? `<span class="home-todo-actions">${actions}</span>` : ''}
     </article>`;
 }
 
-function homeTaskHtml(task) {
-  return homeTaskRowHtml({
-    title: escapeHtml(task.title),
-    sub: escapeHtml(dueText(task.dueAt)),
-    attrs: `data-home-assigned-task="${escapeHtml(task.id)}"`,
-  });
+// A row nudging toward the shared pool's still-open To-Dos of the active
+// event while this account has taken none of them yet.
+function freeTodosRow(count) {
+  return {
+    id: 'free-tasks',
+    kind: 'free-tasks',
+    eventId: null,
+    switchesEvent: false,
+    iconName: 'listChecks',
+    title: count === 1 ? 'Ein offenes To-Do' : `${count} offene To-Dos`,
+    sub: '',
+    navigate: { view: 'checklist' },
+    inline: false,
+  };
 }
 
-// A row nudging toward the shared pool when nothing is assigned to this
-// identity yet — the tile is only visible at all because these exist (see
-// renderAssignedTodos), so it still needs one clickable way into the list.
-function homeFreeTodosHtml(count) {
-  return homeTaskRowHtml({ title: count === 1 ? 'Ein offenes To-Do' : `${count} offene To-Dos` });
-}
-
-// Only worth a tile when there is something to act on: To-Dos assigned to
-// this identity, or free ones still waiting in the shared pool for anyone to
-// claim. An empty pool with nothing assigned needs no dedicated link — every
-// row here already navigates to the full list on click. Nothing is known yet
-// while tasksCache is still loading, so the tile stays out entirely rather
-// than flashing a "Lädt…" placeholder that may immediately disappear again.
-function renderAssignedTodos() {
-  if (!eventHasFeature(state.activeEvent, 'tasks')) return '';
-  const tasks = assignedTasks();
-  if (tasks === null) return '';
-  const freeCount = freeTaskCount();
-  if (tasks.length === 0 && freeCount === 0) return '';
+// Only worth a tile when there is something to act on. Nothing is known yet
+// while the list is still loading, so the tile stays out entirely rather than
+// flashing a placeholder that may immediately disappear again.
+function renderMyTodos() {
   const myId = getMyId();
-  let content;
-  // assignedTasks() is always [] without an identity, so this only renders
-  // once freeCount > 0 (the gate above already hid the tile otherwise) — the
-  // pool row keeps a navigable way in even before an identity is chosen.
-  if (!myId) {
-    content = `<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p><div class="home-current-items">${homeFreeTodosHtml(freeCount)}</div>`;
-  } else if (tasks.length === 0) content = `<div class="home-current-items">${homeFreeTodosHtml(freeCount)}</div>`;
-  else {
-    const visibleTasks = tasks.slice(0, 3);
-    const remaining = tasks.length - visibleTasks.length;
-    content = `
-      <div class="home-current-items">${visibleTasks.map(homeTaskHtml).join('')}</div>
-      ${remaining > 0 ? `<p class="muted">${remaining === 1 ? 'Ein weiteres To-Do' : `${remaining} weitere To-Dos`} findest du in der vollständigen Liste.</p>` : ''}`;
-  }
+  if (!myId) return '';
+  const rows = myTodoRows({ skillNudges: missingSkillNudges().map(({ game, id }) => skillRow(game, id)) });
+  if (rows === null) return '';
+  const tasksEnabled = eventHasFeature(state.activeEvent, 'tasks');
+  const freeCount = tasksEnabled ? freeTaskCount() : 0;
+  const allRows = freeCount > 0 && !rows.some((row) => row.kind === 'task' && !row.switchesEvent)
+    ? [...rows, freeTodosRow(freeCount)]
+    : rows;
+  if (allRows.length === 0) return '';
+
+  const todosById = new Map((myTodos() ?? []).map((todo) => [todo.id, todo]));
+  renderedTodoRows = new Map(allRows.map((row) => [row.id, { row, todo: todosById.get(row.id) }]));
+  const collapsible = allRows.length > MY_TODOS_VISIBLE_LIMIT;
+  const visibleRows = collapsible && !showAllTodos ? allRows.slice(0, MY_TODOS_VISIBLE_LIMIT) : allRows;
   return `
     <section class="card grouped-page-section stack home-current home-current--compact" aria-labelledby="home-todos-title" data-home-assigned-todos>
       <div class="grouped-page-section-title">
-        <h2 id="home-todos-title">Meine To-Dos</h2>
+        <h2 id="home-todos-title" tabindex="-1">Meine To-Dos</h2>
+        ${collapsible
+          ? `<button type="button" class="btn btn-sm" data-todos-toggle aria-expanded="${showAllTodos}">${showAllTodos ? 'Weniger anzeigen' : `Alle anzeigen (${allRows.length})`}</button>`
+          : ''}
       </div>
-      ${content}
+      <div class="home-current-items">${visibleRows.map((row) => todoRowHtml(row, todosById.get(row.id))).join('')}</div>
     </section>`;
+}
+
+function openCalendarDialog(todo, ctx) {
+  const links = eventCalendarLinks({ ...todo, name: todo.eventName });
+  if (!links) return;
+  const event = { id: todo.eventId, name: todo.eventName, startsAt: todo.startsAt, endsAt: todo.endsAt, location: todo.location, description: todo.description };
+  const { el, close } = openModal(
+    'In den Kalender eintragen',
+    `<div class="stack">
+       <p><strong>${escapeHtml(todo.eventName)}</strong><br><span class="muted">${escapeHtml(eventDateRange(todo))}</span></p>
+       <div class="event-calendar-action-buttons" role="group" aria-label="Kalender wählen">
+         <a class="btn btn-sm" href="${escapeHtml(links.google)}" target="_blank" rel="noopener noreferrer">Google Kalender</a>
+         <a class="btn btn-sm" href="${escapeHtml(links.outlook)}" target="_blank" rel="noopener noreferrer">Outlook</a>
+         <button type="button" class="btn btn-sm" data-todo-calendar-file>Kalenderdatei</button>
+       </div>
+       <div class="row" style="justify-content:flex-end;">
+         <button type="button" class="btn btn-primary btn-sm" data-todo-calendar-confirm>Eingetragen</button>
+       </div>
+     </div>`,
+  );
+  el.querySelector('[data-todo-calendar-file]').addEventListener('click', () => downloadEventCalendar(event));
+  el.querySelector('[data-todo-calendar-confirm]').addEventListener('click', async (clickEvent) => {
+    const confirmed = await confirmEventCalendarEntry(todo.eventId, {
+      needsExtraCheck: Boolean(todo.needsExtraCheck),
+      button: clickEvent.currentTarget,
+      ctx,
+    });
+    if (!confirmed) return;
+    close();
+    invalidateMyTodos();
+  });
+}
+
+const END_CONFIRMATIONS = {
+  'event-end': (todo) => ({
+    question: `Event „${todo.eventName}“ beenden? Das Event wird in die Historie verschoben, laufendes Tracking endet.`,
+    run: () => api.events.end(todo.eventId),
+    done: 'Event beendet.',
+  }),
+  'vote-close': (todo) => ({
+    question: `Abstimmung „${todo.title || 'ohne Titel'}“ beenden? Das aktuelle Ergebnis wird festgehalten.`,
+    run: () => api.votes.close(todo.round),
+    done: 'Abstimmung beendet.',
+  }),
+};
+
+async function runTodoAction(button, ctx) {
+  const entry = renderedTodoRows.get(button.dataset.todoId);
+  if (!entry) return;
+  const { row, todo } = entry;
+  const action = button.dataset.todoAction;
+  const settle = async (work) => {
+    button.disabled = true;
+    try {
+      const result = await work();
+      if (result !== false) invalidateMyTodos();
+    } finally {
+      if (button.isConnected) button.disabled = false;
+    }
+  };
+
+  if (action === 'pay' && row.kind === 'event-payment') return settle(() => handleEventPay(row.eventId, ctx));
+  // Opens PayPal synchronously inside this click (popup blockers), then
+  // re-reads the order before handing over the amount.
+  if (action === 'pay' && row.kind === 'food-payment') {
+    return settle(() => payOwnFoodShare({ id: todo.orderId, paypalLink: todo.paypalLink, items: todo.items }, ctx));
+  }
+  if (action === 'paid' && row.kind === 'food-payment') return settle(() => markOwnFoodSharePaid(todo.orderId, ctx));
+  if (action === 'paid' && row.kind === 'event-payment') {
+    return settle(async () => {
+      try {
+        await api.events.setParticipantPaid(row.eventId, getMyId(), true);
+        await ctx.refresh();
+        showToast('Event-Beitrag als bezahlt markiert.');
+        return true;
+      } catch (err) {
+        showToast(err.message, { error: true });
+        return false;
+      }
+    });
+  }
+  if (action === 'calendar') return openCalendarDialog(todo, ctx);
+  if (action === 'accept' || action === 'decline') return settle(() => answerPendingInvitation(button, ctx));
+  if (action === 'done') {
+    return settle(async () => {
+      try {
+        await api.checklist.setDone(todo.taskId, getMyId());
+        showToast('To-Do erledigt.');
+        return true;
+      } catch (err) {
+        showToast(err.message, { error: true });
+        return false;
+      }
+    });
+  }
+  if (action === 'send-order') return settle(() => sendFoodOrder(todo.orderId));
+  if (action === 'end' && row.kind === 'tournament-finish') {
+    return settle(() => finishTournament({ id: todo.tournamentId, name: todo.name }));
+  }
+  if (action === 'end') {
+    const plan = END_CONFIRMATIONS[row.kind]?.(todo);
+    if (!plan || !(await confirmDialog(plan.question, { confirmText: 'Beenden', danger: true }))) return;
+    return settle(async () => {
+      try {
+        await plan.run();
+        await ctx.refresh();
+        showToast(plan.done);
+        return true;
+      } catch (err) {
+        showToast(err.message, { error: true });
+        return false;
+      }
+    });
+  }
+}
+
+function wireMyTodos(container, ctx) {
+  container.querySelector('[data-todos-toggle]')?.addEventListener('click', () => {
+    showAllTodos = !showAllTodos;
+    ctx.rerender();
+    document.querySelector('[data-todos-toggle]')?.focus();
+  });
+  container.querySelectorAll('[data-todo-event-navigate]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const entry = renderedTodoRows.get(button.dataset.todoEventNavigate);
+      if (!entry) return;
+      window.dispatchEvent(new CustomEvent('respawn:event-navigate', {
+        detail: { eventId: entry.row.eventId, view: entry.row.navigate.view, target: entry.row.navigate.target ?? null },
+      }));
+    });
+  });
+  container.querySelectorAll('[data-todo-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      void runTodoAction(button, ctx);
+    });
+  });
 }
 
 // Groups currently-playing players by game (FR-27): a quick glance at what's
@@ -394,19 +598,21 @@ export function renderHome(container, ctx) {
 
   if (eventHasFeature(state.activeEvent, 'tasks')) ensureTasksLoaded(ctx);
   ensureAktuellLoaded();
+  ensureMyTodosLoaded();
 
   if (players.length === 0 && trackingEnabled) {
     container.innerHTML = `
       <h1 class="view-title">Home</h1>
       <div class="grouped-page-sections home-desktop-layout">
         ${renderStatus()}
-        ${renderAssignedTodos()}
+        ${renderMyTodos()}
         ${emptyStateHtml({
           text: 'Noch keine Spieler.',
           illustration: { src: '/img/mascot.svg', alt: '', width: 72, height: 66, className: 'mascot' },
           action: { label: 'Eigenes Profil anlegen', navigate: 'profile' },
         })}
       </div>`;
+    wireMyTodos(container, ctx);
     return;
   }
 
@@ -461,7 +667,7 @@ export function renderHome(container, ctx) {
     <h1 class="view-title">Home</h1>
     <div class="grouped-page-sections home-desktop-layout">
       ${renderGeneralEventOverview()}
-      ${isEventlessGroup ? renderGroupMembers() : `${renderStatus()}${renderAssignedTodos()}`}
+      ${isEventlessGroup ? `${renderMyTodos()}${renderGroupMembers()}` : `${renderStatus()}${renderMyTodos()}`}
       ${
         trackingEnabled
           ? `<section class="card grouped-page-section stack" aria-labelledby="home-live-title">
@@ -476,6 +682,8 @@ export function renderHome(container, ctx) {
       ${trackingEnabled ? renderLeaderboardTop() : ''}
     </div>
   `;
+
+  wireMyTodos(container, ctx);
 
   container.querySelectorAll('[data-toggle-pause]').forEach((btn) => {
     btn.addEventListener('click', async () => {

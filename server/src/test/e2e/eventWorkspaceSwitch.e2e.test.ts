@@ -499,7 +499,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   await switchWorkspaceInBrowser(generalEvent);
 
   // "Meine To-Dos" only renders once it has something to show (see
-  // renderAssignedTodos() in home.js); an open pool To-Do for this event
+  // renderMyTodos() in home.js); an open pool To-Do for this event
   // keeps the Home assertion below meaningful instead of racing an empty tile.
   const me = await api('/api/me');
   const createdTodo = await api('/api/checklist/tasks/todo', {

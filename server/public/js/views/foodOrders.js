@@ -1127,6 +1127,32 @@ async function handleGroupPay(order, playerId, ctx) {
   await markGroupItemsPaid(order.id, playerId, items.filter((item) => !item.paid).map((item) => item.id), ctx);
 }
 
+// Home's "Meine To-Dos" pays and marks the signed-in account's own share of
+// an order through the very same flows as the order card. The snapshot only
+// needs { id, paypalLink, items: [{ id, playerId, paid }] }: both flows
+// re-read the order before acting.
+export function payOwnFoodShare(orderSnapshot, ctx) {
+  return handleGroupPay(orderSnapshot, getMyId(), ctx);
+}
+
+export function markOwnFoodSharePaid(orderId, ctx) {
+  return handleGroupPaid(orderId, getMyId(), true, ctx);
+}
+
+// Shared with Home's "Meine To-Dos": dispatch an order nobody sent yet.
+export async function sendFoodOrder(orderId) {
+  if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.', { confirmText: 'Abschicken' }))) return false;
+  try {
+    await api.foodOrders.close(orderId);
+    invalidateFoodOrderCache();
+    showToast('Bestellung abgeschickt.');
+    return true;
+  } catch (err) {
+    showToast(err.message, { error: true });
+    return false;
+  }
+}
+
 async function handleGroupPaid(orderId, playerId, paid, ctx) {
   if (!(await fetchFoodOrders(ctx))) return;
   const order = cache?.find((candidate) => candidate.id === orderId);
