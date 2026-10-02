@@ -508,6 +508,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:payment-controls`: 32px payment/copy actions; icon actions inherit the shared minimum width.
 
+- `registry:event-roster-controls`: Event roster parts: the 32px remove icon, the shortened excuse that opens its full text as a text-styled button, and the excuse dialog's full-width submit.
+
 - `registry:food-action-slots`: Group-row icon actions keep 44 by 32px slots; the position remove action is an inline icon after the dish.
 
 - `registry:food-disclosure`: Card/roster heading and person plus metadata form a composite, optionally multiline disclosure.
@@ -673,13 +675,13 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:checkbox-in-row`: Native checkbox glyph is an internal 20px part of the labeled selection row.
 
-- `registry:event-calendar-actions`: Calendar handoff labels may wrap within their equal-width action group.
+- `registry:event-card-chevron`: A fixed 16px chevron lets the open Event card indent its sections exactly to the title edge.
 
-- `registry:event-excuse-actions`: Parallel excuse actions wrap labels within the available footer.
+- `registry:event-info-icon-actions`: Copy and map icons sit tight beside the calendar controls in an Infos row.
 
-- `registry:event-card-action-width`: Event card actions yield width to whole-group reflow.
+- `registry:event-roster-slot`: „Einladen“ fills the same fixed slot as the Bezahlt marker so both align flush right.
 
-- `registry:nested-card-surface`: Nested card and participant surfaces alternate colors by depth and omit redundant elevation.
+- `registry:nested-card-surface`: Nested card surfaces alternate colors by depth and omit redundant elevation.
 
 - `registry:tournament-skill-field`: Team skill field fits the header alongside the team label.
 

@@ -303,8 +303,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   once).
   An *answered* participation is different: it stays on this tab, because this is where the member
   already looks at the events they are part of. Every card variant therefore carries the account's
-  own answer through `ownParticipationAction`: „Teilnahme absagen“ while the server reports
-  `myParticipation.canDecline`, „Doch zusagen“ while it reports `canAccept`, and otherwise the
+  own answer through `ownParticipationAction`: an „Absagen“ menu with „Absagen“ and, for an event
+  still ahead, „Mit Ausrede absagen“ while the server reports `myParticipation.canDecline` (a group
+  shows the plain „Absagen“ button), „Zusagen“ while it reports `canAccept`, and otherwise the
   reason in plain words (`lockReason`: recorded payment, running, ended or cancelled event) rather
   than a control that silently disappears. Member and management cards both keep a dedicated
   personal-participation footer. A management card marks its own decline with „Du: Abgesagt“ in
@@ -314,25 +315,23 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   answered on its invitation card in „Mein Profil“.
   Declining is not leaving: for a member the event moves into this tab's own „Abgesagt“
   section — the same collapsible-section pattern as „Historie“, likewise collapsed by default and
-  preserving its open state — where it stays as a teaser card with „Doch zusagen“
+  preserving its open state, where it stays as a teaser card with „Zusagen“
   (`renderDeclinedEventCard`). An owner/admin keeps seeing it as a management card instead, since
   that list already holds every event of the group, and it is therefore never listed twice. Only an
   organizer withdrawing the invitation removes the event from someone's app entirely, and that
   removal notifies them unless they had declined themselves. Event
   cards stay in one vertical column at
-  phone and laptop widths so payment and participant controls keep enough room. Their card hierarchy
-  use alternating accent rails and a concise title/status header that lead
-  into one shared `.food-order-details` information box, followed by the separately collapsible
-  participant list. Date, location, note and payment information therefore never form competing
-  sibling boxes; each header also shows the recorded creator, and adds the date range while the card is
-  collapsed — an expanded card leaves the period to the information box below rather than printing the
-  identical range twice, and a lone uncollapsible card therefore shows the creator only. The collapse
-  toggle repeats that header text in its accessible name instead of pointing an `aria-describedby` back
-  into itself. Missing creators use „Unbekannt“, undated events keep „Termin wird noch abgestimmt“. Owner/admin cards expose
-  „Bearbeiten“ and the state-dependent Tracking/Beenden/Wieder-starten beside the header badges:
-  with all three they share the „Aktion“ menu, where „Beenden“ keeps its red danger text; with only
-  two (a group, an undated event, an event without Tracking or an ended one) both are compact neutral
-  header buttons, and an ended event without Tracking shows „Bearbeiten“ alone. There is no PDF
+  phone and laptop widths so payment and participant controls keep enough room. A card has no
+  accent rail. Its header is the title with one meta line (type, and while collapsed also period and
+  place, then the acceptance count), a „Trackt“ chip only while Tracking runs, and for owner/admin
+  the „Aktion“ menu. The open card consists of flat sections that start at the title's left edge:
+  „Infos“, then „Abrechnung“ (payment manager) or „Dein Beitrag“ (accepted member), then
+  „Teilnehmende“ („Mitglieder“ for a group), and finally the own participation action right-aligned.
+  Info rows keep label, value and actions in fixed columns and stack on phones. The collapse toggle
+  repeats the header text in its accessible name instead of pointing an `aria-describedby` back into
+  itself. Undated events keep „Termin wird noch abgestimmt“. Owner/admin cards expose
+  „Bearbeiten“ and the state-dependent Tracking/Beenden/Wieder-starten always inside the one
+  „Aktion“ menu, where „Beenden“ keeps its red danger text. There is no PDF
   export. Member Event cards have no organizer actions. „Beenden“ is not one
   of the dated controls: an event whose date is still being polled — or whose period was removed
   again — is exactly the kind that gets abandoned, so it closes like any other workspace, while
@@ -344,36 +343,35 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   removal until it is stopped, because live status and play sessions are attributed through that
   period. Cards in lists with
   multiple events start collapsed, keep their disclosure state through refreshes and preserve keyboard
-  focus when toggled. A single event stays expanded without collapse controls, and location links
-  are clickable without a separate copy action when an event stores a web URL; plain locations remain
-  text. A current event with a complete start/end period offers „Google Kalender“, „Outlook“ and
-  „Kalenderdatei“ directly inside that same information box; the first two open a prefilled web event,
-  while the RFC-5545 `.ics` download covers native and other compatible calendar apps. An accepted
-  participant explicitly confirms the handoff below those actions because external providers expose no
-  reliable import callback. The confirmation becomes a compact „Im Kalender eingetragen“ state and is
-  bound to the event's current start/end period, so moving the date asks for confirmation again while
+  focus when toggled. A single event stays expanded without collapse controls. „Infos“ starts with
+  „Zeitraum“ (weekday, date and time, joined with „bis“) and „Ort“, the two facts people look up and
+  paste, each with a copy action; the place is a link to its stored web URL or else to a Google Maps
+  search, with a separate open action. A current event with a complete start/end period offers a
+  „Kalender“ menu in the period row with „Google“, „Outlook“ and „Download“; the first two open a
+  prefilled web event, while the RFC-5545 `.ics` download covers native and other compatible calendar
+  apps. An accepted participant confirms the handoff with the visible checkbox „Eingetragen“ beside
+  that menu, because external providers expose no reliable import callback. Once set it stays set and
+  is bound to the event's current start/end period, so moving the date asks for confirmation again while
   the participant's acceptance itself deliberately stays valid. Pending invitations, ended events and
-  incomplete periods omit the action group. Two-hour and weekly calendar nudges stop after
+  incomplete periods omit the calendar controls. Two-hour and weekly calendar nudges stop after
   confirmation; general one-week and one-day event reminders do not, and a moved period announces
   itself again on its own approach. The
   account `$t3vYb0y` gets the deliberate Stefan gag: its confirmation opens one additional themed
   safety question, and one week after confirmation it receives one final direct calendar check while
   the event is still upcoming.
-  Directly below the calendar group, the same information box carries the second deliberate gag of
-  this area: „Keine Zeit?“ plus „Ausrede generieren“ opens the Ausreden-Generator
-  (`eventExcuses.js`, `renderEventExcuseActions`/`wireEventExcuseActions` in `events.js`). It writes
-  an excuse for whatever *other* appointment collides with the event, so no entry ever names the
-  event itself — the text is meant to be sent to the organizer of the competing date. The action
-  appears on management cards and member cards, and in a pending invitation's detail dialog as the
-  button „Ausrede“ beside „Ablehnen“ and „Annehmen“, because deciding against a parallel
-  obligation is a personal act; it disappears once an event has ended. The dialog is a shared
-  `openModal()` instance with a native „Kategorie“ select (Alle plus eight categories), the excuse
-  as plain text below a hairline with its category and „Glaubwürdigkeit N von 5“ as one muted
-  line, an `aria-live="polite"` region so „Neue Ausrede“ is announced without rebuilding the
-  dialog, and the two equal-width actions „Neue Ausrede“ and „Kopieren“ (gradient). Periods inside
-  excuses read „11.09. bis 13.09.“. It carries no explanatory
-  copy above the filter: the title, the select and the excuse itself already say what the dialog is,
-  and a sentence repeating the event name and a pool count only pushed the actual result down.
+  The second deliberate gag of this area is the Ausreden-Generator (`eventExcuses.js`,
+  `openExcuseDialog`/`wireEventExcuseActions` in `events.js`). It writes an excuse for whatever
+  *other* appointment collides with the event, so no entry ever names the event itself. On an event
+  card it is reached through „Absagen“ → „Mit Ausrede absagen“: the dialog switches between
+  „Generieren“ (native „Kategorie“ select, the excuse in an editable text field, „Glaubwürdigkeit
+  N von 5“, „Neue Ausrede“ and „Kopieren“) and „Eigene“ (an empty text field). „Übernehmen und
+  absagen“ asks once more, then declines and stores the trimmed excuse (1 to 300 characters) on the
+  participation. Every participant of the event sees it: a declined row shows it shortened, and
+  clicking the excuse opens the full text in a dialog. Answering „Zusagen“ again or a new invitation
+  removes it. A pending invitation's detail dialog keeps the plain generator as the button „Ausrede“
+  beside „Ablehnen“ and „Annehmen“, with only „Neue Ausrede“ and „Kopieren“. The action disappears
+  once an event has ended and never appears for a group. Periods inside excuses read „11.09. bis
+  13.09.“.
   Every excuse is tagged with
   the absence lengths it fits: a single evening, a two-to-three-day weekend or a longer trip, so a
   three-day LAN never gets an excuse written for one afternoon. Every category stays usable at every
@@ -391,8 +389,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   payment states and aggregates are absent from both UI and API payload. A managing non-creator who
   lacks payment-management rights receives only the boolean `paymentLocked` removal guard on roster
   rows, without amount, actor or timestamp; the removal action is disabled until payment is reset. This is
-  the sole administrative exception to the foreign-payment privacy rule. The visible full-width
-  PayPal action says `Bezahlen`. The handoff refreshes the event before opening PayPal,
+  the sole administrative exception to the foreign-payment privacy rule. „Dein Beitrag“ shows the
+  amount and deadline, then the own `Bezahlt` checkbox and, flush right, the PayPal icon button known
+  from food orders. The handoff refreshes the event before opening PayPal,
   prefills the EUR amount for PayPal.me, attempts to copy an e-mail recipient for the generic PayPal
   flow and keeps that recipient visible in the confirmation if clipboard access is unavailable. It
   asks „Bezahlt?“ afterwards; only an affirmative answer records the payment. The recorded event
@@ -408,17 +407,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   per-head calculation. Payment controls keep the reset action visible for an already recorded
   payment even if the current contribution was subsequently cleared, so roster and account-removal
   guards never create a dead end. The card-level list
-  includes every invited account and labels each row as `Zugesagt`, `Einladung offen` or
-  `Abgelehnt`; its summary separates accepted and still-open invitation counts. Member cards remain
-  accepted-only and expose neither pending/declined identities nor that management status. Participant lists use
-  the shared collapsible-section behavior with a leading chevron before the name and metadata,
-  start closed and preserve their open state across live re-renders. Their people remain one full-width
-  row per line at every breakpoint so payment proof and the creator's toggle have predictable room.
-  Payment managers' rows reserve one line for the payment proof even before payment, keeping paid
-  and unpaid rows equally high. Without proof the name stays vertically centered in that space;
-  recording payment moves it up to make room for the proof. Longer proof stays on one line with
-  the full text in its tooltip;
-  owner/admin cards integrate Einladen, Erneut einladen and Entfernen directly in this list.
+  includes every invited account; a row names a non-accepted state as muted text („Eingeladen“,
+  „Abgesagt“, „Nicht eingeladen“) and the summary separates accepted, still-open and declined
+  counts. Member cards show the accepted participants plus declines that left an excuse, and expose
+  neither pending identities nor management status. The list is a flat section, not a nested card,
+  with one row per person in one column on phones and two columns filled column by column from
+  `--bp-lg`. Every row stays one line high; long text is shortened. Owner/admin rows show only the
+  controls that apply, right-aligned and ending flush right: a remove icon (disabled while a payment
+  is recorded), then `Bezahlt` for an accepted person (payment manager only) or „Einladen“ for a
+  declined or uninvited one. The payment proof sits in the `Bezahlt` toggle's tooltip.
   Eligible people without an invitation follow existing roster entries with an Einladen action.
   Ended events omit those uninvited rows. Creating an event opens its card and roster directly;
   there is no separate participant-management dialog. State-specific blockers remain explicit: an ended event shows once that
@@ -426,7 +423,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   An optional date-only payment deadline starts reminders on that day; without one, contributions
   become eligible two hours after acceptance. Further reminders run at most once per rolling two-hour
   window, using durable reminder state independent of push history. Opening a payment reminder
-  switches to its event, expands that event and its participant list, and scrolls to its card.
+  switches to its event, expands that event, and scrolls to its card.
   TV-Kiosk (Admin's „Broadcast“
   card, not an Orga tab) stays one grouped section but lists only published, non-ended LAN events.
   Groups, drafts, cancelled events and ended events do not appear there. Each listed LAN event has

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { eventScheduleLabel } from './eventPresentation.js';
 import {
   acceptedParticipantCount,
   eventDateRange,
@@ -7,7 +8,6 @@ import {
   parseEventAccommodationCostCents,
   parseEventCostCents,
   renderEventCalendarActions,
-  renderEventExcuseActions,
   renderEventLocation,
   renderInvitationRow,
   renderDeclinedEventCard,
@@ -44,22 +44,28 @@ test('scheduled event cards offer Google, Outlook and an ICS calendar file', () 
   assert.match(html, /data-download-event-calendar="calendar-event"/);
   assert.doesNotMatch(html, /data-confirm-event-calendar/);
 
+  // The three ways sit behind one named "Kalender" menu.
+  assert.match(html, /<summary class="btn btn-sm" aria-label="Kalender für Kalender LAN">Kalender /);
+  assert.match(html, />Google</);
+  assert.match(html, />Outlook</);
+  assert.match(html, />Download</);
+
+  // The own acknowledgement is a visible "Eingetragen" checkbox, not a hidden
+  // button with a help tooltip.
   const unconfirmed = renderEventCalendarActions({
     ...event,
     myParticipation: { status: 'accepted', calendarConfirmed: false },
   });
-  assert.match(unconfirmed, /data-confirm-event-calendar="calendar-event"/);
-  assert.match(unconfirmed, /class="info-tooltip"/);
-  assert.match(unconfirmed, /aria-label="Mehr Informationen zu Kalenderübernahme"/);
-  assert.match(unconfirmed, /id="event-calendar-confirmation-help-calendar-event"[^>]*role="tooltip"[^>]*>Beendet die Kalender-Erinnerungen\.<\/span>/);
-  assert.doesNotMatch(unconfirmed, /class="muted">Beendet die Kalender-Erinnerungen/);
+  assert.match(unconfirmed, /data-confirm-event-calendar="calendar-event"[^>]*aria-pressed="false"/);
+  assert.match(unconfirmed, /<span>Eingetragen<\/span>/);
+  assert.doesNotMatch(unconfirmed, /info-tooltip/);
 
   const confirmed = renderEventCalendarActions({
     ...event,
     myParticipation: { status: 'accepted', calendarConfirmed: true },
   });
-  assert.match(confirmed, /data-event-calendar-confirmed="calendar-event"/);
-  assert.match(confirmed, /Im Kalender eingetragen/);
+  assert.match(confirmed, /data-event-calendar-confirmed="calendar-event"[^>]*aria-pressed="true"/);
+  assert.match(confirmed, /title="Im Kalender eingetragen"/);
   assert.doesNotMatch(confirmed, /data-confirm-event-calendar/);
 
   assert.doesNotMatch(renderEventCalendarActions({ startsAt: null, endsAt: null }), /Kalender/);
@@ -155,15 +161,6 @@ test('accepted participant count follows the visible accepted participant list',
   );
 });
 
-test('every upcoming event card offers the excuse generator, ended ones do not', () => {
-  const event = { id: 'excuse-event', name: 'Winter LAN' };
-  const html = renderEventExcuseActions(event);
-  assert.match(html, /data-event-excuse="excuse-event"/);
-  assert.match(html, /Keine Zeit\?/);
-  assert.match(html, /Ausrede generieren/);
-  assert.equal(renderEventExcuseActions({ ...event, isEnded: true }), '');
-});
-
 test('a pending invitation is one row: shortened name, meta line and only "Annehmen"', () => {
   const html = renderInvitationRow({
     id: 'invited-event',
@@ -190,8 +187,18 @@ test('an accepted member card offers the withdrawal, or names why it is blocked'
     ...event,
     myParticipation: { status: 'accepted', canDecline: true, lockReason: null },
   });
+  // "Absagen" bundles the plain decline and the decline with an excuse.
+  assert.match(open, /<summary class="btn btn-sm" aria-label="Absagen: Teilnahme an Winter LAN">Absagen /);
   assert.match(open, /data-decline-participation="member-event"/);
-  assert.match(open, /Teilnahme absagen/);
+  assert.match(open, /data-decline-with-excuse="member-event">Mit Ausrede absagen/);
+  // A group or an ended event has no clashing appointment to excuse.
+  const groupOpen = renderOwnParticipationActions({
+    ...event,
+    eventType: 'group',
+    myParticipation: { status: 'accepted', canDecline: true, lockReason: null },
+  });
+  assert.match(groupOpen, /data-decline-participation="member-event"/);
+  assert.doesNotMatch(groupOpen, /data-decline-with-excuse|action-menu/);
 
   const locked = renderOwnParticipationActions({
     ...event,
@@ -243,8 +250,7 @@ test('a declined event stays a teaser with the way back', () => {
     myParticipation: { status: 'declined', canAccept: true, lockReason: null },
   };
   const html = renderDeclinedEventCard(event);
-  assert.match(html, /badge-offline">Abgesagt</);
-  assert.match(html, /data-accept-participation="declined-event"/);
+  assert.match(html, /data-accept-participation="declined-event">Zusagen</);
   // Teaser rules: no roster, and no calendar handoff before acceptance.
   assert.doesNotMatch(html, /event-participant-list|data-event-calendar=/);
 
@@ -273,7 +279,7 @@ test('a group card drops every dated and paid control instead of disabling it', 
   };
   const html = renderEventCard(group);
 
-  assert.match(html, /<span class="badge">Gruppe<\/span>/);
+  assert.match(html, /<span class="muted event-card-meta">Gruppe · 0 Mitglieder<\/span>/);
   // "Beenden" stays: it is how a group that was created by mistake is retired.
   assert.match(html, /data-end-event="skatrunde"/);
   for (const absent of [
@@ -281,27 +287,24 @@ test('a group card drops every dated and paid control instead of disabling it', 
     /data-stop-tracking/,
     /data-event-calendar=/,
     /Termin wird noch abgestimmt/,
+    /Zeitraum/,
     // An excuse answers a clashing appointment; a group has none.
-    /data-event-excuse/,
+    /data-decline-with-excuse/,
   ]) {
     assert.doesNotMatch(html, absent, String(absent));
   }
-  // Editing name, location and note stays available. With only Bearbeiten and
-  // Beenden left, both sit directly in the header instead of behind "Aktion",
-  // and Beenden is a neutral header button whose confirmation carries the risk.
+  // Management always sits behind the one "Aktion" menu.
   assert.match(html, /data-edit-event="skatrunde"/);
-  assert.doesNotMatch(html, /class="action-menu"/);
-  assert.match(html, /<button type="button" class="btn btn-sm" data-end-event="skatrunde">/);
-  // Period, calendar handoff, excuse and money are exactly what the shared
-  // information box holds, so a group without a location and without a note
-  // fills none of it and the box itself is dropped instead of framing nothing.
-  assert.doesNotMatch(html, /event-card-info/);
+  assert.match(html, /<details class="action-menu" data-action-menu="event-manage-skatrunde">/);
+  // Without location and note the Infos section is dropped entirely.
+  assert.doesNotMatch(html, /<h4 class="event-card-section-title">Infos/);
   const documented = renderEventCard({ ...group, location: 'Bei Tim', description: 'Jeden Donnerstag' });
-  assert.match(documented, /class="food-order-details event-card-info"/);
+  assert.match(documented, /<h4 class="event-card-section-title">Infos/);
   assert.match(documented, /Jeden Donnerstag/);
-  assert.match(documented, /Bei Tim/);
+  assert.match(documented, /maps\/search\/\?api=1&amp;query=Bei%20Tim/);
+  assert.match(documented, /data-copy-event-value="Bei Tim"/);
   // A circle has members, not attendees.
-  assert.match(html, /<strong>Mitglieder & Einladungen<\/strong>/);
+  assert.match(html, /<h4 class="event-card-section-title">Mitglieder /);
   assert.doesNotMatch(html, /Teilnehmende/);
 
   // The same event as a LAN keeps all of it, so the difference is the type and
@@ -314,17 +317,14 @@ test('a group card drops every dated and paid control instead of disabling it', 
     enabledFeatures: ['tracking'],
   });
   assert.match(lan, /data-start-tracking/);
-  // Bearbeiten, Tracking and Beenden are enough to bundle again.
-  assert.match(lan, /<details class="action-menu">[\s\S]*btn-danger" data-end-event/);
+  assert.match(lan, /btn-danger" data-end-event/);
   assert.match(lan, /Teilnehmende/);
+  assert.match(lan, /Zeitraum/);
 
-  // An ended group reports that state instead of repeating its own kind, and
-  // offers nothing further to close.
+  // An ended group offers nothing further to close.
   const endedGroup = renderEventCard({ ...group, isEnded: true });
-  assert.match(endedGroup, /aria-label="Beendet"/);
   assert.doesNotMatch(endedGroup, /data-end-event/);
   assert.match(endedGroup, /data-edit-event="skatrunde"/);
-  assert.doesNotMatch(endedGroup, /class="action-menu"/);
 
   // An event whose date is still open drops the same dated controls, but it is
   // abandoned the same way a group is, so "Beenden" is not a dated control.
@@ -337,6 +337,15 @@ test('a group card drops every dated and paid control instead of disabling it', 
   assert.match(undatedEvent, /data-end-event="termin-offen"/);
   assert.match(undatedEvent, /Termin wird noch abgestimmt/);
   assert.doesNotMatch(undatedEvent, /data-start-tracking/);
+});
+
+test('the Infos period names weekdays and times and joins with "bis"', () => {
+  const startsAt = new Date(2026, 9, 9, 18, 0).getTime();
+  const endsAt = new Date(2026, 9, 11, 14, 30).getTime();
+  assert.equal(eventScheduleLabel({ startsAt, endsAt }), 'Fr 09.10., 18:00 bis So 11.10.2026, 14:30');
+  const sameDay = new Date(2026, 9, 9, 22, 0).getTime();
+  assert.equal(eventScheduleLabel({ startsAt, endsAt: sameDay }), 'Fr 09.10.2026, 18:00 bis 22:00');
+  assert.equal(eventScheduleLabel({ eventType: 'group', startsAt: null }), '');
 });
 
 test('a group has no period text', () => {

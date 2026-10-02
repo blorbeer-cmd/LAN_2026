@@ -115,77 +115,6 @@
   margin-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
-.event-calendar-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
-.event-calendar-action-buttons {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
-}
-.event-calendar-action-buttons .btn {
-  min-width: 0;
-  white-space: normal;
-}
-.event-calendar-action-buttons a.btn {
-  text-align: center;
-}
-/* The help trigger explains this button, so it stays beside it at every width:
-   a column layout parked the glyph on its own line below the action on phones,
-   which reads as an unrelated control. Button plus 32px square fit well inside
-   a 320px card. */
-.event-calendar-confirmation {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-.event-calendar-confirmed {
-  align-self: flex-start;
-}
-.event-calendar-confirmed:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.event-calendar-actions + .event-card-payment {
-  margin-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
-@media (min-width: 640px) { /* --bp-md */
-  .event-calendar-action-buttons {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-/* Ausreden-Generator: the same separated label/action block as the calendar
-   group above it, so the information box keeps one rhythm no matter which of
-   the two an event actually offers. */
-.event-excuse-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
-.event-excuse-actions .btn {
-  align-self: stretch;
-  min-width: 0;
-  white-space: normal;
-}
-.event-excuse-actions + .event-card-payment {
-  margin-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
-@media (min-width: 640px) { /* --bp-md */
-  .event-excuse-actions .btn {
-    align-self: flex-start;
-  }
-}
 .excuse-result {
   display: flex;
   flex-direction: column;
@@ -204,35 +133,46 @@
 .excuse-empty {
   margin: 0;
 }
+/* Secondary actions share one row exactly as wide as the primary action
+   below them; hidden entries leave no gap. */
 .excuse-dialog-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
+  align-self: flex-end;
+}
+.excuse-dialog-actions [hidden] {
+  display: none;
+}
+.excuse-dialog-actions .btn {
+  justify-content: center;
+}
+.excuse-dialog-submit {
+  grid-column: 1 / -1;
+}
+.excuse-mode {
+  display: flex;
+  gap: var(--space-2);
+}
+.excuse-mode .btn {
+  border: 1px solid var(--border);
+  background: none;
+}
+.excuse-mode .btn[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.excuse-meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 .event-payment-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-}
-.event-payment-member-actions {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-.event-payment-member-main {
-  display: flex;
-  flex: 1 1 16rem;
-  align-items: flex-end;
-  gap: var(--space-2);
-  min-width: 0;
-}
-.event-payment-member-main .event-card-detail {
-  flex: 1 1 auto;
-}
-.event-payment-member-actions .event-paypal-button {
-  flex: 0 0 auto;
 }
 .event-payment-amount {
   font-size: var(--font-size-lg);
@@ -245,20 +185,6 @@
 }
 .event-payment-proof {
   color: var(--text-muted);
-}
-.event-participant-name > .event-payment-proof {
-  min-height: calc(var(--control-line-height) * 1em);
-  line-height: var(--control-line-height);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.event-participant-name:has(> .event-payment-proof) {
-  min-height: calc(var(--control-height) + var(--space-2));
-  justify-content: center;
-}
-.event-participant-name > .event-payment-proof:empty {
-  display: none;
 }
 .event-settlement {
   padding-top: var(--space-3);
@@ -296,22 +222,105 @@
   height: var(--space-7);
   padding: var(--space-1);
 }
-.event-card-participants {
-  display: block;
+.event-card-empty-copy {
+  margin: 0;
+  font-size: var(--font-size-xs);
 }
-.event-participant-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
+/* Open card: flat sections (Infos, Abrechnung or Dein Beitrag, Teilnehmende)
+   that start at the title's left edge, not under the disclosure chevron. */
+.event-card .food-order-card-chevron .ui-icon {
+  width: var(--space-4);
+  height: var(--space-4);
+}
+.event-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
   min-width: 0;
 }
-.event-card-participants .collapsible-section-content {
-  padding-top: 0;
+.event-card.is-collapsible .event-card-body {
+  padding-left: calc(var(--space-4) + var(--space-2));
+}
+.event-card-section {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.event-card-section-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.event-card-section-title .muted {
+  font-weight: var(--font-weight-regular);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.event-card-section > .event-card-payment {
+  padding-top: var(--space-3);
+}
+.event-info-rows {
+  display: flex;
+  flex-direction: column;
+}
+.event-info-row {
+  display: grid;
+  grid-template-columns: var(--event-info-label-width) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target-size);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--border);
+}
+.event-info-rows > .event-info-row:first-child {
+  border-top: 0;
+}
+.event-info-label {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.event-info-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-info-strong {
+  font-weight: var(--font-weight-medium);
+}
+.event-info-note {
+  white-space: pre-wrap;
+}
+.event-info-value .muted {
+  font-size: var(--font-size-xs);
+}
+.event-info-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+.event-info-actions .icon-btn {
+  min-width: var(--control-height);
+  color: var(--text-muted);
+}
+.payment-paid-marker.event-calendar-marker {
+  width: auto;
+  min-width: var(--payment-marker-width);
+  padding-inline: var(--space-3);
 }
 .event-participant-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 0;
+  column-gap: var(--space-7);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -319,73 +328,132 @@
 .event-participant-row {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space-2);
   min-width: 0;
-  padding: var(--space-3) 0;
+  min-height: var(--tap-target-size);
+  padding: var(--space-1) 0;
   border-top: 1px solid var(--border);
-  overflow-wrap: anywhere;
 }
 .event-participant-row:first-child {
-  border-top-color: transparent;
+  border-top: 0;
 }
 .event-participant-name {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
   flex: 1 1 0;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-@media (max-width: 639px) { /* --bp-md */
-  .event-participant-name {
-    /* Name and proof always share the avatar line, regardless of payment. */
-    flex-basis: calc(100% - var(--space-6) - var(--space-2));
-  }
-}
-.event-card-empty-copy {
-  margin: 0;
+.event-participant-name .muted {
   font-size: var(--font-size-xs);
 }
-.event-card-actions {
+.player-name.is-me {
+  font-weight: var(--font-weight-bold);
+}
+.event-participant-excuse {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+}
+/* The shortened excuse itself opens the full text; the name stays plain.
+   Hover and focus mark it as clickable. */
+/* A row with an excuse lays name, state and excuse out in a line, so the
+   excuse button ends where its visible text ends and can ellipsize itself. */
+.event-participant-name:has(> .event-participant-excuse-toggle) {
   display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: var(--space-2);
-  margin-top: auto;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+  align-items: baseline;
 }
-.event-card-actions .btn {
-  flex: 1 1 calc(50% - var(--space-2));
+.event-participant-name:has(> .event-participant-excuse-toggle) > span {
+  flex: none;
+  white-space: pre;
+}
+.event-participant-excuse-toggle {
+  display: block;
+  flex: 0 1 auto;
   min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+  cursor: pointer;
 }
-.event-roster-actions {
+@media (hover: hover) {
+  .event-participant-excuse-toggle:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
+}
+.event-participant-excuse-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.excuse-quote {
+  font-style: italic;
+  white-space: pre-wrap;
+}
+.event-roster-slot {
+  display: inline-flex;
+  flex: 0 0 var(--payment-marker-width);
+  justify-content: flex-end;
+}
+.event-roster-slot > .btn {
+  width: 100%;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: none;
+}
+.event-roster-remove {
+  min-width: var(--control-height);
+  color: var(--text-muted);
+}
+.event-roster-remove:disabled {
+  opacity: 0.35;
+}
+.event-card-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
-  min-width: 0;
 }
-
+.event-card-actions > .btn:not(.btn-primary) {
+  border: 1px solid var(--border);
+  background: none;
+}
+@media (min-width: 860px) { /* --bp-lg */
+  .event-participant-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(var(--event-roster-rows, 1), auto);
+    grid-auto-flow: column;
+  }
+  .event-participant-row.is-column-start {
+    border-top: 0;
+  }
+}
 @media (max-width: 639px) { /* --bp-md */
-  .event-payment-heading {
-    align-items: flex-start;
+  /* Phones stack label, value and actions so a long period never squeezes
+     the value into a sliver beside the calendar controls. */
+  .event-info-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+    padding: var(--space-2) 0;
   }
-  .event-payment-member-main {
-    flex-basis: 100%;
-  }
-  .event-payment-member-actions .event-paypal-button {
-    margin-left: auto;
+  .event-info-actions {
+    justify-content: flex-start;
   }
   .event-card-header > .food-order-card-header-toggle {
     flex-basis: 100%;
   }
   .event-card-header-side {
     width: 100%;
-  }
-  .event-roster-actions {
-    flex-basis: 100%;
   }
 }
 
@@ -1381,17 +1449,17 @@ input[type='number'].tournament-result-score {
 /* Card surfaces alternate by actual nesting, whether or not a card can
    collapse. Event participants use the same surface without a .card class.
    Flat person/item rows and menus are controls, not another card level. */
-:is(.card, .event-card-participants) :is(.card, .event-card-participants) {
+.card .card {
   background: var(--bg-elevated-2);
   box-shadow: none;
 }
-:is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) {
+.card .card .card {
   background: var(--bg-elevated);
 }
-:is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) {
+.card .card .card .card {
   background: var(--bg-elevated-2);
 }
-:is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) {
+.card .card .card .card .card {
   background: var(--bg-elevated);
 }
 .two-column-card-grid {
@@ -1502,8 +1570,7 @@ input[type='number'].tournament-result-score {
   align-content: start;
   overflow: hidden;
 }
-/* The card clips its own content by design (the Orga event card's accent
-   rail below stays flush with the rounded corners), but that same clip cut off the add-item
+/* The card clips its own content by design, but that same clip cut off the add-item
    description field's suggestion dropdown (.search-select-list) whenever it
    had less room below the input than the open list needed, hiding or
    truncating later suggestions instead of letting them float over the next
@@ -1512,19 +1579,6 @@ input[type='number'].tournament-result-score {
 .food-order-card:has(.action-menu[open]),
 .event-card:has(.action-menu[open]) {
   overflow: visible;
-}
-.event-card::before {
-  content: '';
-  position: absolute;
-  inset: var(--space-3) auto var(--space-3) 0;
-  width: var(--space-1);
-  border-radius: 0 var(--radius-full) var(--radius-full) 0;
-}
-.orga-event-grid > .event-card:nth-child(odd)::before {
-  background: var(--accent);
-}
-.orga-event-grid > .event-card:nth-child(even)::before {
-  background: var(--accent-3);
 }
 .food-order-meta,
 .food-order-overview,
@@ -2960,7 +3014,8 @@ input.food-order-price-input {
 }
 /* Starts as one line like every other field and grows with line breaks. */
 #broadcast-message,
-#feedback-message {
+#feedback-message,
+#event-description {
   display: block;
   field-sizing: content;
   min-height: var(--control-height);

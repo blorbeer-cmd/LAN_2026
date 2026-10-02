@@ -5461,6 +5461,20 @@ function prepareParallelVoteRounds(): void {
 }
 registerMigration({ version: 116, name: 'reconcile open votes and add runoff source', up: prepareParallelVoteRounds });
 
+// A member who declines may leave an excuse that every participant of the
+// event sees next to the declined name (the Ausreden-Generator's payoff). It
+// belongs to the decline itself, so the row carries it and any new answer or
+// re-invitation clears it again.
+function addEventDeclineExcuse(): void {
+  const columns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'decline_excuse')) {
+    db.exec(
+      'ALTER TABLE event_participants ADD COLUMN decline_excuse TEXT CHECK (decline_excuse IS NULL OR length(decline_excuse) BETWEEN 1 AND 300)',
+    );
+  }
+}
+registerMigration({ version: 117, name: 'add event decline excuse', up: addEventDeclineExcuse });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
