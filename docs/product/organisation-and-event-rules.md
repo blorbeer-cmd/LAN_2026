@@ -94,8 +94,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   itself. Both expanded-state sets live in module state and survive live re-renders.
 
   Two hours after an order is sent, unpaid active members become eligible for a direct payment
-  reminder, repeated at most once per rolling two-hour window. Home's `Aktuell` list enriches the
-  existing order row instead of adding a duplicate. The
+  reminder, repeated at most once per rolling two-hour window. Home's „Meine To-Dos“ lists the
+  account's own unpaid positions as soon as the order is sent, with „Bezahlen“ and the „Bezahlt“
+  marker; „Aktuell“ shows only orders that are still open. The
   reminder uses the same order deep link and a durable per-player/event send timestamp independent of
   the bounded push history.
 - **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
@@ -296,8 +297,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   preserves its open state across live re-renders. Pending invitations for the current identity are
   deliberately absent from this tab — a teaser sitting directly above the Events cards made it too
   easy to miss and cluttered the tab with the cards immediately following it. Instead, an
-  invitation surfaces as a personal Home „Aktuell“ nudge (see [„Home overview“](navigation-and-account-rules.md#mein-profil-auswertung-und-home)) that links into „Mein
-  Profil“, and Profile's own leading „Einladungen“ section is where it is actually answered
+  invitation surfaces as a personal Home „Meine To-Dos“ row (see [„Home overview“](navigation-and-account-rules.md#mein-profil-auswertung-und-home)) with
+  „Ablehnen“ and „Annehmen“ that also links into „Mein Profil“, and Profile's own leading
+  „Einladungen“ section answers it with the full details
   (`renderInvitationRow`/`openInvitationDialog`/`pendingEventInvitations`/`wirePendingInvitationActions`
   in `events.js`, reused by `profile.js` so the row, dialog and accept/decline wiring exist exactly
   once).
@@ -352,8 +354,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   apps. An accepted participant confirms the handoff with the visible checkbox „Eingetragen“ beside
   that menu, because external providers expose no reliable import callback. Once set it stays set and
   is bound to the event's current start/end period, so moving the date asks for confirmation again while
-  the participant's acceptance itself deliberately stays valid. Pending invitations, ended events and
-  incomplete periods omit the calendar controls. Two-hour and weekly calendar nudges stop after
+  the participant's acceptance itself deliberately stays valid. The confirmation names the period it
+  exported; if the event moved in the meantime, the server rejects it (409) instead of acknowledging
+  the new period, and Home's open „Eintragen“ dialog closes with a hint to add the new period. Pending invitations, ended events and
+  incomplete periods omit the calendar controls. Until confirmed, an upcoming event is also a row in
+  Home's „Meine To-Dos“ whose „Eintragen“ dialog offers the same „Google“, „Outlook“ and „Download“
+  and „Eingetragen“. Two-hour and weekly calendar nudges stop after
   confirmation; general one-week and one-day event reminders do not, and a moved period announces
   itself again on its own approach. The
   account `$t3vYb0y` gets the deliberate Stefan gag: its confirmation opens one additional themed
@@ -424,6 +430,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   become eligible two hours after acceptance. Further reminders run at most once per rolling two-hour
   window, using durable reminder state independent of push history. Opening a payment reminder
   switches to its event, expands that event, and scrolls to its card.
+  The open contribution is also a row in Home's „Meine To-Dos“ from acceptance on (with
+  „Bezahlen“ and the „Bezahlt“ marker, „Überfällig“ after the deadline); whoever manages the
+  payments sees „Beiträge prüfen“ there while contributions remain open after the deadline.
   TV-Kiosk (Admin's „Broadcast“
   card, not an Orga tab) stays one grouped section but lists only published, non-ended LAN events.
   Groups, drafts, cancelled events and ended events do not appear there. Each listed LAN event has

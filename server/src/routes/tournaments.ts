@@ -56,6 +56,7 @@ interface TournamentRow {
   lobby_password: string | null;
   group_id: string | null;
   third_place_match: number;
+  ended_early: number;
 }
 
 interface TournamentTeamRow {
@@ -265,8 +266,10 @@ function buildDetail(tournamentId: string, groupId: string) {
 
   // The winner of a completed tournament: the knockout final's winner, or the
   // league leader for a pure round-robin. null while it is still running.
+  // A tournament an admin ended early has no champion: whoever led the
+  // unfinished board never actually won it.
   let championTeamId: string | null = null;
-  if (tournament.status === 'completed') {
+  if (tournament.status === 'completed' && !tournament.ended_early) {
     championTeamId = standings
       ? (standings[0]?.teamId ?? null)
       : (placements.find((placement) => placement.place === 1)?.teamId ?? null);
@@ -286,6 +289,7 @@ function buildDetail(tournamentId: string, groupId: string) {
     advancersPerGroup: tournament.advancers_per_group,
     thirdPlaceMatch: Boolean(tournament.third_place_match),
     status: tournament.status,
+    endedEarly: Boolean(tournament.ended_early),
     championTeamId,
     placements,
     createdAt: tournament.created_at,
@@ -310,7 +314,8 @@ tournamentsRouter.get('/', (req, res) => {
 
   const rows = db
     .prepare(
-      `SELECT t.id, t.name, t.format, t.two_legged AS twoLegged, t.status, t.created_at AS createdAt,
+      `SELECT t.id, t.name, t.format, t.two_legged AS twoLegged, t.status, t.ended_early AS endedEarly,
+              t.created_at AS createdAt,
               t.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
               (SELECT COUNT(*) FROM tournament_teams tt WHERE tt.tournament_id = t.id) AS teamCount,
               (SELECT COUNT(*) FROM tournament_matches m WHERE m.tournament_id = t.id AND m.is_bye = 0) AS matchCount,
@@ -339,6 +344,7 @@ tournamentsRouter.get('/', (req, res) => {
     rows.map((r) => ({
       ...r,
       twoLegged: Boolean(r.twoLegged),
+      endedEarly: Boolean(r.endedEarly),
       championName: r.status === 'completed' ? championName(r.id as string, req.group!.id) : null,
       participantIds: participantIdsByTournament.get(r.id as string) ?? [],
     })),
@@ -716,6 +722,7 @@ function saveTournamentResult(req: Request, res: Response) {
     | undefined;
   if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   if (!requireGroupEventAccess(req, res, tournament.event_id)) return;
+  if (tournament.ended_early) return res.status(409).json({ error: 'Das Turnier wurde vorzeitig beendet.' });
 
   const match = db
     .prepare('SELECT * FROM tournament_matches WHERE id = ? AND tournament_id = ?')
@@ -1182,6 +1189,34 @@ tournamentsRouter.put('/:id/teams/:teamId', (req, res) => {
     { groupId: req.group!.id, eventId: communicationEventId(tournament.event_id) },
   );
   res.json(buildDetail(tournament.id, req.group!.id));
+});
+
+// POST /api/tournaments/:id/finish - ends a tournament that will not be
+// played out (typically one left running after its event). It reads as
+// completed from then on, keeps every recorded result, but crowns no
+// champion and accepts no further results. Only one of several concurrent
+// requests flips it; the others get 409.
+tournamentsRouter.post('/:id/finish', requireGroupRole('admin'), (req, res) => {
+  const tournament = db
+    .prepare('SELECT event_id, name FROM tournaments WHERE id = ? AND group_id = ?')
+    .get(req.params.id, req.group!.id) as { event_id: string; name: string } | undefined;
+  if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, tournament.event_id)) return;
+  const result = db
+    .prepare("UPDATE tournaments SET status = 'completed', ended_early = 1 WHERE id = ? AND group_id = ? AND status = 'active'")
+    .run(req.params.id, req.group!.id);
+  if (result.changes === 0) return res.status(409).json({ error: 'Das Turnier ist bereits beendet.' });
+  writeAdminAudit({
+    actorPlayerId: req.player?.id,
+    groupId: req.group!.id,
+    action: 'tournament_finished_early',
+    targetType: 'tournament',
+    targetId: req.params.id,
+  });
+  const scope = { groupId: req.group!.id, eventId: communicationEventId(tournament.event_id) };
+  resolvePushTopic(`tournament:${req.params.id}`, true, scope);
+  broadcast(Events.tournamentsChanged, { type: 'finished', tournamentId: req.params.id }, scope);
+  res.json(buildDetail(req.params.id, req.group!.id));
 });
 
 // DELETE /api/tournaments/:id - removes the tournament and its teams/

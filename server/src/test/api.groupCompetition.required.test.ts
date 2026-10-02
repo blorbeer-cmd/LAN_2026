@@ -165,6 +165,10 @@ test('matches, matchmaking draws, tournaments and their aggregates stay event-sc
       const tournamentNames = hallOfFame.body.events.flatMap((e) => e.tournamentChampions.map((t) => t.name));
       assert.ok(tournamentNames.includes(tournamentA.body.name) || tournamentNames.includes(tournamentB.body.name));
 
+      // Ending a tournament early is moderation, not a member action.
+      const memberFinish = await scoped(app, 'post', '/api/tournaments/' + tournamentB.body.id + '/finish', bob.cookie, groupId);
+      assert.equal(memberFinish.status, 403);
+
       // A group admin (not just the owner) may delete group-owned competition
       // history.
       const promoteBob = await request(app)

@@ -106,6 +106,7 @@ export const VIEW_MANIFEST = Object.freeze({
       CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills,
       'live:changed', 'tournaments:changed', 'push:sent', 'foodOrders:changed',
       'arcade:lobbies-changed', 'visibility:changed',
+      CORE_REALTIME_EVENTS.events, 'votes:changed', 'checklist:changed', 'arrivals:changed',
     ] }),
   }),
   matchmaking: defineView({

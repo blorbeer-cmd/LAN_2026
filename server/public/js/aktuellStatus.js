@@ -1,13 +1,17 @@
-// Shared "what's currently active" status: an open vote, active tournaments,
-// open food orders, waiting arcade lobbies, and (personal) unrated skills
-// for currently-live games. Single source of truth for Home's "Aktuell"
-// section (see home.js). Returns plain data via aktuellItems(), not markup.
+// Shared "what's currently active" status: open votes, active tournaments,
+// open food orders and waiting arcade lobbies. Single source of truth for
+// Home's "Aktuell" section (see home.js). Returns plain data via
+// aktuellItems(), not markup. Personal obligations — paying an order,
+// answering an invitation, rating the skill of a game being played — live in
+// "Meine To-Dos" (myTodos.js); this module still loads the unrated-skill
+// digest and hands it over through missingSkillNudges().
 
 import { api } from './api.js';
 import { state } from './state.js';
 import { formatDateTime } from './format.js';
 import { getMyId } from './whoami.js';
 import { domainIcon } from './domainIcons.js';
+import { pendingVoteRounds } from './myTodos.js';
 
 let statusCache = null; // { tournaments, foodOrders, arcadeLobbies }
 let statusLoading = false;
@@ -16,8 +20,6 @@ let statusGeneration = 0;
 let missingSkillsCache = null;
 let missingSkillsLoadedForId = null;
 let missingSkillsLoading = false;
-
-export const FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS = 2 * 60 * 60 * 1000;
 
 export function missingSkillAktuellId(gameId, livePlayers = state.live) {
   if (typeof gameId !== 'string' || !gameId) return null;
@@ -31,35 +33,27 @@ export function missingSkillAktuellId(gameId, livePlayers = state.live) {
   return `skill:${gameId}:${Math.min(...starts)}`;
 }
 
-// Food orders already have a stable Home identity. When the current player
-// still owes items, enrich that same entry instead of adding a second one for
-// the reminder push. A finalized order cannot be paid in the UI anymore, so
-// it does not become a payment nudge.
-export function foodOrderAktuellItem(order, myId, now = Date.now()) {
-  const unpaidOwnItems = myId
-    ? (order.items ?? []).filter((item) => item.playerId === myId && !item.paid)
-    : [];
-  const unpaidOwnItemCount = unpaidOwnItems.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
-  const paymentReminderDue =
-    unpaidOwnItems.length > 0 &&
-    !order.finalizedAt &&
-    Number.isFinite(order.closedAt) &&
-    now >= order.closedAt + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS;
-  const paymentDue = paymentReminderDue;
-  if (!order.open && !paymentDue) return null;
-
+// An open order is something happening right now. Paying for it afterwards
+// is a personal To-Do in "Meine To-Dos", not a second "Aktuell" entry.
+export function foodOrderAktuellItem(order) {
+  if (!order.open) return null;
   return {
-    id: paymentDue ? `food-order:${order.id}:payment` : `food-order:${order.id}`,
+    id: `food-order:${order.id}`,
     iconName: domainIcon('foodOrders'),
-    title: paymentDue ? `Sammelbestellung „${order.title}" bezahlen` : `Sammelbestellung „${order.title}"`,
-    sub: paymentDue
-      ? `${unpaidOwnItemCount} ${unpaidOwnItemCount === 1 ? 'Position' : 'Positionen'} noch offen`
-      : order.sendAt
-        ? `Versand ${formatDateTime(order.sendAt)} Uhr`
-        : 'Zeitpunkt noch offen',
+    title: `Sammelbestellung „${order.title}"`,
+    sub: order.sendAt ? `Versand ${formatDateTime(order.sendAt)} Uhr` : 'Zeitpunkt noch offen',
     navigate: 'foodOrders',
     target: { type: 'order', id: order.id },
   };
+}
+
+// Once the active event's period is over, a still-open Vote or tournament is
+// no longer "running" — it is left behind, and whoever can end it finds it in
+// "Meine To-Dos". The permanent base workspace has no end and never hides them.
+export function activeEventPeriodOver(event, now = Date.now()) {
+  if (!event) return false;
+  if (event.isEnded || event.status === 'ended') return true;
+  return event.endsAt != null && event.endsAt <= now;
 }
 
 // Fired whenever a (re)load completes, so Home can re-render without its own
@@ -159,69 +153,57 @@ const FORMAT_LABELS = {
   group_knockout: 'Gruppen + K.O.',
 };
 
+// Unrated skills of games being played right now, as "Meine To-Dos" rows
+// input: { game, id } where the id names the live occurrence.
+export function missingSkillNudges(livePlayers = state.live) {
+  const nudges = [];
+  for (const game of missingSkillsCache ?? []) {
+    const id = missingSkillAktuellId(game.id, livePlayers);
+    // The digest is group-wide while state.live belongs to the active event.
+    // Only nudge when that event has a concrete live occurrence whose start
+    // distinguishes a later play session as its own entry.
+    if (id) nudges.push({ game, id });
+  }
+  return nudges;
+}
+
 // { id, iconName, title, sub, navigate }[] — title/sub are raw text, not yet
 // HTML-escaped, so the caller escapes them while rendering. The id names the
 // live occurrence, not just its category, so a resolved vote/lobby drops out
 // while the next genuinely new occurrence appears as its own entry.
-export function aktuellItems() {
+export function aktuellItems(now = Date.now()) {
   const items = [];
+  const periodOver = activeEventPeriodOver(state.activeEvent, now);
+  const unvoted = new Set(pendingVoteRounds());
 
-  // Personal nudge first — nobody else would otherwise learn you still owe
-  // a rating for a game everyone can already see running.
-  for (const g of missingSkillsCache ?? []) {
-    const id = missingSkillAktuellId(g.id);
-    // The digest is group-wide while state.live belongs to the active event.
-    // Only show a nudge when that event has a concrete live occurrence whose
-    // start distinguishes a later play session as its own entry.
-    if (!id) continue;
-    items.push({
-      id,
-      iconName: domainIcon('skill'),
-      title: `Skill für ${g.name} bewerten`,
-      sub: 'Wird gerade gespielt',
-      navigate: 'gameCatalog',
-    });
+  if (!periodOver) {
+    for (const vote of (state.votes?.openRounds ?? (state.votes?.open ? [state.votes] : []))) {
+      const voters = vote.totalVoters ?? 0;
+      items.push({
+        id: `vote:${vote.round}`,
+        iconName: domainIcon('votes'),
+        title: vote.title || 'Abstimmung läuft',
+        sub: [unvoted.has(vote.round) ? 'Du hast noch nicht abgestimmt' : '', `${voters} Teilnehmer bisher`]
+          .filter(Boolean)
+          .join(' · '),
+        navigate: 'votes',
+      });
+    }
+
+    for (const t of (statusCache?.tournaments ?? []).filter((t) => t.status === 'active')) {
+      items.push({
+        id: `tournament:${t.id}`,
+        iconName: domainIcon('tournaments'),
+        title: t.name,
+        sub: `${t.gameName} · ${FORMAT_LABELS[t.format] ?? t.format}`,
+        navigate: 'tournaments',
+        target: { type: 'tournament', id: t.id },
+      });
+    }
   }
 
-  // Pending event invitations need a response, so they get the same personal
-  // nudge as an unrated skill. The full card with Annehmen/Ablehnen lives in
-  // Profile now (see events.js's renderInvitationCard) rather than sitting
-  // directly above the Events tab's own cards.
-  for (const invitation of state.eventInvitations ?? []) {
-    items.push({
-      id: `event-invitation:${invitation.id}`,
-      iconName: domainIcon('events'),
-      title: `Einladung: ${invitation.name}`,
-      sub: 'Annehmen oder ablehnen im Profil',
-      navigate: 'profile',
-    });
-  }
-
-  for (const vote of (state.votes?.openRounds ?? (state.votes?.open ? [state.votes] : []))) {
-    const voters = vote.totalVoters ?? 0;
-    items.push({
-      id: `vote:${vote.round}`,
-      iconName: domainIcon('votes'),
-      title: vote.title || 'Abstimmung läuft',
-      sub: `${voters} Teilnehmer bisher`,
-      navigate: 'votes',
-    });
-  }
-
-  for (const t of (statusCache?.tournaments ?? []).filter((t) => t.status === 'active')) {
-    items.push({
-      id: `tournament:${t.id}`,
-      iconName: domainIcon('tournaments'),
-      title: t.name,
-      sub: `${t.gameName} · ${FORMAT_LABELS[t.format] ?? t.format}`,
-      navigate: 'tournaments',
-      target: { type: 'tournament', id: t.id },
-    });
-  }
-
-  const myId = getMyId();
   for (const o of statusCache?.foodOrders ?? []) {
-    const item = foodOrderAktuellItem(o, myId);
+    const item = foodOrderAktuellItem(o);
     if (item) items.push(item);
   }
 

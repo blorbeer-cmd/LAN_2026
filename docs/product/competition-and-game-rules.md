@@ -346,7 +346,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   minus the poll-only parts: no „Neue Runde“ and no „Wieder öffnen“. Each open round is
   one `.event-poll-card` whose header names the round, the participation („X/Y abgegeben“, updated
   through the existing realtime refresh) and the viewer's own state („Abgegeben“ or „Deine Stimme
-  fehlt“); admins get a compact „Beenden“ and, directly beside it, a red „Abbrechen“ — no
+  fehlt“); admins get a compact „Beenden“ and, directly beside it, a red „Abbrechen“; the member
+  who started the round also gets „Beenden“ (not „Abbrechen“) for that round — no
   „Aktion“ menu for a single action (the shared menu never holds just one entry). Tags name
   „Stichwahl“ for a runoff whose title does not say it, „Anonym“ and „Zwischenstand verborgen“
   where they apply; the round info follows. Games are listed alphabetically, one
@@ -503,9 +504,14 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   accept whole numbers from 0 and require at least one entry, while winner choices include
   „Unentschieden“ except in knockout matches. Saving is always explicit. A decided final shows
   its champion in the existing „Turnier beendet“ card. The last result completes the
-  tournament automatically (no separate „Beenden“ action): a toast names the winner and the
+  tournament automatically: a toast names the winner and the
   detail page then leads with a „Turnier beendet“ card showing the winning team (knockout final
-  winner, or the league leader) with its „Win“ chip and players. „Aktive Lobbys“ is one card with its
+  winner, or the league leader) with its „Win“ chip and players. A tournament that will not be
+  played out can be ended early by group admins with a compact neutral „Beenden“ beside „Löschen“
+  in the detail header (confirmation: open games no longer count and there is no winner). It then
+  reads „Vorzeitig beendet“, keeps every recorded result, accepts no further results and crowns no
+  champion, neither on the board nor in the Hall of Fame. Home's „Meine To-Dos“ offers the same
+  action once the tournament's event period is over. „Aktive Lobbys“ is one card with its
   heading inside; each currently playable pairing is a flat hairline row with the matchup, a muted
   line naming phase and hosting team („Halbfinale · Team 1 eröffnet“, „Spiel um Platz 3 · Team 2
   eröffnet“) and, on the right, the lobby

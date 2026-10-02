@@ -336,7 +336,7 @@ function eventCardById(eventId) {
   return candidates.find((event) => event.id === eventId) ?? null;
 }
 
-function downloadEventCalendar(event) {
+export function downloadEventCalendar(event) {
   const contents = eventCalendarIcs(event);
   if (!contents) {
     showToast('Für dieses Event ist noch kein vollständiger Zeitraum festgelegt.', { error: true });
@@ -599,7 +599,9 @@ function renderEventPayment(event) {
     </section>`;
 }
 
-async function handleEventPay(eventId, ctx) {
+// Opens PayPal for the signed-in account's own contribution and records it
+// once confirmed. Shared with Home's "Meine To-Dos".
+export async function handleEventPay(eventId, ctx) {
   const popup = window.open('', '_blank');
   if (popup) popup.opener = null;
   let handedOff = false;
@@ -1083,10 +1085,34 @@ export function acceptedInvitationHandoffHtml() {
     </section>`;
 }
 
+// Records that the account copied the event into its calendar, which ends
+// the calendar reminders. Shared with Home's "Meine To-Dos". Resolves true
+// once confirmed.
+export async function confirmEventCalendarEntry(eventId, { needsExtraCheck = false, button = null, schedule = null, ctx }) {
+  if (
+    needsExtraCheck &&
+    !(await confirmDialog('Hast du den Termin wirklich eingetragen, Stefan??!!', {
+      title: 'Ganz sicher, Stefan?',
+      confirmText: 'Ja, wirklich',
+    }))
+  ) return false;
+  if (button) button.disabled = true;
+  try {
+    await api.events.confirmCalendar(eventId, schedule);
+    await ctx.refresh();
+    showToast('Kalenderübernahme bestätigt. Weitere Kalender-Erinnerungen sind beendet.');
+    return true;
+  } catch (err) {
+    if (button) button.disabled = false;
+    showToast(err.message, { error: true });
+    return false;
+  }
+}
+
 // Shared by the row's "Annehmen" and the detail dialog. The refresh replaces
 // the clicked button's own DOM, so focus moves to a still-present Profile
 // heading instead of falling back to <body>. Resolves true once answered.
-async function answerPendingInvitation(btn, ctx) {
+export async function answerPendingInvitation(btn, ctx) {
   const accept = Boolean(btn.dataset.acceptInvitation);
   const eventId = btn.dataset.acceptInvitation || btn.dataset.declineInvitation;
   const invitation = (state.eventInvitations || []).find((event) => event.id === eventId);
@@ -1105,6 +1131,7 @@ async function answerPendingInvitation(btn, ctx) {
       document.querySelector('#profile-accepted-invitation-title')
       || document.querySelector('#profile-invitations-title')
       || document.querySelector('#profile-view-title')
+      || document.querySelector('#home-todos-title')
     )?.focus();
     showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
     return true;
@@ -1598,25 +1625,16 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const eventId = btn.dataset.confirmEventCalendar;
       const event = eventCardById(eventId);
-      if (
-        event?.myParticipation?.calendarConfirmationNeedsExtraCheck &&
-        !(await confirmDialog('Hast du den Termin wirklich eingetragen, Stefan??!!', {
-          title: 'Ganz sicher, Stefan?',
-          confirmText: 'Ja, wirklich',
-        }))
-      ) return;
-      btn.disabled = true;
-      try {
-        await api.events.confirmCalendar(eventId);
-        await ctx.refresh();
-        [...container.querySelectorAll('[data-event-calendar-confirmed]')]
-          .find((candidate) => candidate.dataset.eventCalendarConfirmed === eventId)
-          ?.focus();
-        showToast('Kalenderübernahme bestätigt. Weitere Kalender-Erinnerungen sind beendet.');
-      } catch (err) {
-        btn.disabled = false;
-        showToast(err.message, { error: true });
-      }
+      const confirmed = await confirmEventCalendarEntry(eventId, {
+        needsExtraCheck: Boolean(event?.myParticipation?.calendarConfirmationNeedsExtraCheck),
+        button: btn,
+        schedule: event ? { startsAt: event.startsAt, endsAt: event.endsAt } : null,
+        ctx,
+      });
+      if (!confirmed) return;
+      [...container.querySelectorAll('[data-event-calendar-confirmed]')]
+        .find((candidate) => candidate.dataset.eventCalendarConfirmed === eventId)
+        ?.focus();
     });
   });
   wireInfoTooltips(container);

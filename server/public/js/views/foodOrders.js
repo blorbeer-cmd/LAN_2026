@@ -1127,6 +1127,58 @@ async function handleGroupPay(order, playerId, ctx) {
   await markGroupItemsPaid(order.id, playerId, items.filter((item) => !item.paid).map((item) => item.id), ctx);
 }
 
+// Home's "Meine To-Dos" pays and marks the signed-in account's own share of
+// an order through the very same flows as the order card. The snapshot only
+// needs { id, paypalLink, items: [{ id, playerId, paid }] }: both flows
+// re-read the order before acting.
+//
+// Home lists every open payment, also of an order older than the ten the
+// default list returns. While such an action runs, its order is the fetch
+// target (GET /api/food-orders?orderId=), so the fresh re-read finds it. Only
+// the fetch target is borrowed: the Essen view's pending deep-link expansion
+// stays untouched, and afterwards the targeted cache is dropped so a later
+// plain visit to Essen does not show the extra older order.
+async function withOrderAsFetchTarget(orderId, work) {
+  const borrowed = activeOrderTargetId !== orderId;
+  if (borrowed) {
+    orderTargetStateVersion += 1;
+    activeOrderTargetId = orderId;
+    if (cache !== null && !cache.some((order) => order.id === orderId)) cache = null;
+  }
+  try {
+    // Called synchronously, so a PayPal tab still opens inside the click.
+    return await work();
+  } finally {
+    if (borrowed && activeOrderTargetId === orderId) {
+      orderTargetStateVersion += 1;
+      activeOrderTargetId = null;
+      cache = null;
+    }
+  }
+}
+
+export function payOwnFoodShare(orderSnapshot, ctx) {
+  return withOrderAsFetchTarget(orderSnapshot.id, () => handleGroupPay(orderSnapshot, getMyId(), ctx));
+}
+
+export function markOwnFoodSharePaid(orderId, ctx) {
+  return withOrderAsFetchTarget(orderId, () => handleGroupPaid(orderId, getMyId(), true, ctx));
+}
+
+// Shared with Home's "Meine To-Dos": dispatch an order nobody sent yet.
+export async function sendFoodOrder(orderId) {
+  if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.', { confirmText: 'Abschicken' }))) return false;
+  try {
+    await api.foodOrders.close(orderId);
+    invalidateFoodOrderCache();
+    showToast('Bestellung abgeschickt.');
+    return true;
+  } catch (err) {
+    showToast(err.message, { error: true });
+    return false;
+  }
+}
+
 async function handleGroupPaid(orderId, playerId, paid, ctx) {
   if (!(await fetchFoodOrders(ctx))) return;
   const order = cache?.find((candidate) => candidate.id === orderId);

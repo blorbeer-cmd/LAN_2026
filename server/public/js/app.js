@@ -985,6 +985,7 @@ function wireSocket() {
     if (refreshVersion !== voteRealtimeRefreshVersion) return;
     const isNewRound = payload.open && payload.round > (lastVoteRound ?? 0);
     if (change?.open === false) invalidateViewCaches(VIEW_REGISTRY, 'votes:closed');
+    invalidateViewCaches(VIEW_REGISTRY, 'votes:changed');
     lastVoteRound = Math.max(lastVoteRound ?? 0, payload.round);
 
     state.votes = payload;
@@ -1167,9 +1168,9 @@ function wireSocket() {
     // Only the two checklist views show this data; the other Orga tabs keep
     // their drafts untouched.
     if (currentView === 'checklist' || currentView === 'checklistPacking') renderCurrent();
-    // Home's "Meine To-Dos" tile visibility itself now depends on this data
-    // (see renderAssignedTodos() in home.js), not just its content, so a
-    // stale cache on an already-open Home view has to trigger a re-render too.
+    // Home's "Meine To-Dos" counts the shared pool's free To-Dos from this
+    // data (see renderMyTodos() in home.js), so a stale cache on an
+    // already-open Home view has to trigger a re-render too.
     // scope: 'items' is someone's private Packliste, which invalidateChecklist
     // deliberately leaves the tasks cache untouched for, so it can't change
     // what the tile shows and doesn't need a Home rebuild either.

@@ -14,14 +14,14 @@ export interface TournamentChampionSummary {
   championPlayerIds: string[];
 }
 
-// All completed tournaments for one event, each resolved down to its
+// All regularly completed tournaments (not ones an admin ended early) for one event, each resolved down to its
 // champion team (bracket: winner of the final round; round-robin: top of
 // the final standings). groupId is redundant with eventId's own group (an
 // event can't belong to two groups) — kept as an explicit filter anyway,
 // matching every other group-owned query in this codebase.
 export function getCompletedTournamentSummaries(eventId: string, groupId: string): TournamentChampionSummary[] {
   const tournamentRows = db
-    .prepare("SELECT id, game_id, name, format FROM tournaments WHERE event_id = ? AND group_id = ? AND status = 'completed'")
+    .prepare("SELECT id, game_id, name, format FROM tournaments WHERE event_id = ? AND group_id = ? AND status = 'completed' AND ended_early = 0")
     .all(eventId, groupId) as Array<{ id: string; game_id: string; name: string; format: string }>;
 
   return tournamentRows.map((t) => {

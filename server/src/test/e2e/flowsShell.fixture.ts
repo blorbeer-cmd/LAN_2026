@@ -241,7 +241,7 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   });
 
   // "Meine To-Dos" only renders once it has something to show (see
-  // renderAssignedTodos() in home.js); the desktop priority-grid layout
+  // renderMyTodos() in home.js); the desktop priority-grid layout
   // check below needs it beside "Aktuell" to exercise the two-column case.
   const createdTodo = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
     method: 'POST',

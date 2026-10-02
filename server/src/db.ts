@@ -5475,6 +5475,31 @@ function addEventDeclineExcuse(): void {
 }
 registerMigration({ version: 117, name: 'add event decline excuse', up: addEventDeclineExcuse });
 
+// Whoever started a Vote round may also end it (Home's "Meine To-Dos" asks
+// them to once a round has been left open too long). Rounds started before
+// this column existed keep NULL and stay admin-only to close. A plain id
+// without a foreign key: players are deactivated rather than deleted, and a
+// stale id simply matches nobody.
+function addVoteRoundCreator(): void {
+  const columns = db.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'created_by')) {
+    db.exec('ALTER TABLE vote_rounds ADD COLUMN created_by TEXT');
+  }
+}
+registerMigration({ version: 118, name: 'add vote round creator', up: addVoteRoundCreator });
+
+// An admin can end a tournament that will never be played out (POST
+// /api/tournaments/:id/finish). It then reads as completed everywhere, but
+// without a champion: the flag keeps the champion lookups from crowning
+// whoever happened to lead an unfinished board.
+function addTournamentEndedEarly(): void {
+  const columns = db.prepare('PRAGMA table_info(tournaments)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'ended_early')) {
+    db.exec('ALTER TABLE tournaments ADD COLUMN ended_early INTEGER NOT NULL DEFAULT 0');
+  }
+}
+registerMigration({ version: 119, name: 'add tournament early end', up: addTournamentEndedEarly });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

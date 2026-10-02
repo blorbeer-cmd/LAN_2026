@@ -470,6 +470,8 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
     .map((r, index) => renderOpenRow(votes, r, mineReady, { columnStart: index === columnRows, showResult, maxPoints, source }))
     .join('');
   const admin = isGroupAdmin();
+  // Whoever started the round may end it too (see routes/votes.ts's close).
+  const canClose = admin || Boolean(votes.createdBy && votes.createdBy === getMyId());
   const answer = mineReady ? answerChipHtml(hasSubmitted) : '';
   return `
     <section class="card event-poll-card vote-round-card" data-vote-round="${votes.round}" aria-labelledby="vote-current-title-${votes.round}">
@@ -486,7 +488,7 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
         </button>
         <div class="event-poll-card-side">
           <span class="event-poll-answer-side">${answer}</span>
-          ${admin ? `<button type="button" class="btn btn-sm" data-votes-close="${votes.round}">Beenden</button>` : ''}
+          ${canClose ? `<button type="button" class="btn btn-sm" data-votes-close="${votes.round}">Beenden</button>` : ''}
           ${admin ? `<button type="button" class="btn btn-sm btn-danger" data-votes-cancel="${votes.round}">Abbrechen</button>` : ''}
         </div>
       </header>

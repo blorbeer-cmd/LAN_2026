@@ -92,8 +92,11 @@ export function createTournamentPresentation(myPlayerId = null) {
   // Every result is entered and edited through one dialog (see
   // openResultDialog in views/tournament.js), so boards stay read-only and the
   // action always sits in the same trailing slot: "+" for an open match,
-  // a pencil for a decided one.
+  // a pencil for a decided one. A tournament an admin ended early accepts no
+  // result at all, not even a correction (see the finish route), so its
+  // board offers neither.
   function canOpenResult(m, t) {
+    if (t.endedEarly) return false;
     if (!m.teamAId || !m.teamBId || m.isBye) return false;
     const decided = m.winnerTeamId !== null || m.isDraw;
     return decided || t.status === 'active';
@@ -193,7 +196,9 @@ export function createTournamentPresentation(myPlayerId = null) {
     const totalRounds = Math.max(...treeMatches.map((m) => m.round));
     const matchesByKey = new Map(treeMatches.map((m) => [`${m.round}:${m.slot}`, m]));
     const final = matchesByKey.get(`${totalRounds}:0`);
-    const champion = final?.winnerTeamId ? teamLabel(teamsById, final.winnerTeamId) : null;
+    // A tournament ended early has no winner even with a decided final (its
+    // third-place match may still be open): the result stays, the crown not.
+    const champion = !t.endedEarly && final?.winnerTeamId ? teamLabel(teamsById, final.winnerTeamId) : null;
 
     const titles = [
       ...Array.from({ length: totalRounds }, (_, i) => `<div>${bracketRoundLabel(i + 1, totalRounds)}</div>`),

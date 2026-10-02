@@ -73,6 +73,55 @@ test('migration 116 removes orphaned Vote rounds but keeps the legacy active rou
   migrated.close();
 });
 
+test('migration 119 keeps existing tournaments as regularly ended and is repeatable', () => {
+  const dbFile = makeTempDbPath('tournament-ended-early');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  const gameId = (fixture.prepare('SELECT id FROM games LIMIT 1').get() as { id: string }).id;
+  fixture.prepare(
+    `INSERT INTO tournaments (id, event_id, game_id, name, format, status, created_at, group_id)
+     VALUES ('legacy-cup', 'instance-base-event', ?, 'Legacy Cup', 'round_robin', 'completed', ?, 'default-group')`,
+  ).run(gameId, Date.now());
+  fixture.exec('ALTER TABLE tournaments DROP COLUMN ended_early');
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 119').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT status, ended_early AS endedEarly FROM tournaments WHERE id = ?').get('legacy-cup'),
+    { status: 'completed', endedEarly: 0 },
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 118 adds the Vote round creator without touching existing rounds and is repeatable', () => {
+  const dbFile = makeTempDbPath('vote-round-creator');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.prepare(
+    `INSERT INTO vote_rounds (group_id, round, event_id, started_at, closed_at, mode)
+     VALUES ('default-group', 1, 'instance-base-event', ?, NULL, 'points')`,
+  ).run(Date.now());
+  // Rebuild the pre-118 shape: SQLite can drop a plain added column.
+  fixture.exec('ALTER TABLE vote_rounds DROP COLUMN created_by');
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 118').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile, { readonly: true });
+  const row = migrated.prepare('SELECT round, created_by AS createdBy FROM vote_rounds').get() as {
+    round: number;
+    createdBy: string | null;
+  };
+  assert.deepEqual(row, { round: 1, createdBy: null });
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 117 adds the decline excuse once and bounds its length', () => {
   const dbFile = makeTempDbPath('decline-excuse');
   runMigrations(dbFile);
@@ -812,10 +861,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 117);
+  assert.equal(migrations.length, 119);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 117 }, (_, index) => index + 1),
+    Array.from({ length: 119 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1417,8 +1466,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 117 }, (_, index) => index + 1),
-    'every version 1..117 runs exactly once',
+    Array.from({ length: 119 }, (_, index) => index + 1),
+    'every version 1..119 runs exactly once',
   );
 });
 

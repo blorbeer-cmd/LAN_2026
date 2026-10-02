@@ -83,9 +83,15 @@ test('every registered view handler is enabled by its lifecycle declaration', ()
   }
 });
 
+test('a test-data visibility switch drops Home\'s To-Dos together with its seating plan', () => {
+  const handler = VIEW_LIFECYCLE_HANDLERS.home['visibility:changed'].toString();
+  assert.match(handler, /invalidateHomeSeating\(/);
+  assert.match(handler, /invalidateMyTodos\(\{ hard: true \}\)/);
+});
+
 test('the event switch still drops every secondary cache and drawn lineup', () => {
   const expectedInvalidators = {
-    home: ['invalidateAktuellStatus', 'invalidateHomeSeating'],
+    home: ['invalidateAktuellStatus', 'invalidateMyTodos', 'invalidateHomeSeating'],
     matchmaking: ['invalidateMatchmakingHistory', 'invalidateMatchmakingDraft', 'invalidateMatchTournaments'],
     votes: ['invalidateVoteEventScope'],
     tournaments: ['invalidateTournaments'],
