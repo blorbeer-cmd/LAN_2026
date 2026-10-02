@@ -380,9 +380,9 @@ function openCalendarDialog(todo, ctx) {
     `<div class="stack">
        <p><strong>${escapeHtml(todo.eventName)}</strong><br><span class="muted">${escapeHtml(eventDateRange(todo))}</span></p>
        <div class="event-calendar-action-buttons" role="group" aria-label="Kalender wählen">
-         <a class="btn btn-sm" href="${escapeHtml(links.google)}" target="_blank" rel="noopener noreferrer">Google Kalender</a>
+         <a class="btn btn-sm" href="${escapeHtml(links.google)}" target="_blank" rel="noopener noreferrer">Google</a>
          <a class="btn btn-sm" href="${escapeHtml(links.outlook)}" target="_blank" rel="noopener noreferrer">Outlook</a>
-         <button type="button" class="btn btn-sm" data-todo-calendar-file>Kalenderdatei</button>
+         <button type="button" class="btn btn-sm" data-todo-calendar-file>Download</button>
        </div>
        <div class="row" style="justify-content:flex-end;">
          <button type="button" class="btn btn-primary btn-sm" data-todo-calendar-confirm>Eingetragen</button>

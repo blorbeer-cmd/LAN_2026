@@ -96,6 +96,9 @@
   /* Fixed width keeps the food-order payment toggle stable beside the PayPal
      action while its label, position count and amount change. */
   --payment-marker-width: 96px;
+  /* Label column of the open Event card's Infos and payment rows, wide enough
+     for "Zeitraum" so every value starts on one vertical line. */
+  --event-info-label-width: 96px;
   /* Stable Arcade creation geometry: mode-capable and fixed-mode games keep
      the primary lobby action in the same column while switching tiles. */
   --arcade-lobby-mode-width: 134px;

@@ -347,7 +347,7 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   in the card header shows the rest. Each row is a compact divided row like „Aktuell“: the row
   itself navigates to where the To-Do lives — switching the workspace first when it belongs to
   another event — and a trailing action slot settles it in place: „Bezahlen“ (PayPal, then „Bezahlt?“)
-  plus the „Bezahlt“ marker, „Eintragen“ (a dialog with Google Kalender, Outlook, Kalenderdatei and
+  plus the „Bezahlt“ marker, „Eintragen“ (a dialog with „Google“, „Outlook“, „Download“ and
   „Eingetragen“), „Ablehnen“/„Annehmen“, „Erledigt“, „Abschicken“ or „Beenden“ behind a
   confirmation. Event-level actions work from any workspace; actions on an event's orders, To-Dos,
   Votes and tournaments are offered only inside that event's workspace, elsewhere the row leads

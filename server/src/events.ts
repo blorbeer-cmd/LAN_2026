@@ -452,6 +452,23 @@ export function getAcceptedEventParticipants(eventId: string): AcceptedEventPart
     .map((participant) => ({ ...participant, paid: Boolean(participant.paid) }));
 }
 
+export type DeclinedEventExcuse = { playerId: string; name: string; excuse: string };
+
+// Declines that came with an excuse. Every participant may see them: the
+// excuse is meant to be read by the others.
+export function getDeclinedEventExcuses(eventId: string): DeclinedEventExcuse[] {
+  return db
+    .prepare(
+      `SELECT ep.player_id AS playerId, p.name, ep.decline_excuse AS excuse
+       FROM event_participants ep
+       JOIN players p ON p.id = ep.player_id
+       WHERE ep.event_id = ? AND ep.status = 'declined' AND ep.decline_excuse IS NOT NULL
+         AND p.deactivated_at IS NULL
+       ORDER BY p.name COLLATE NOCASE, p.id`,
+    )
+    .all(eventId) as DeclinedEventExcuse[];
+}
+
 // Accounting intentionally has a wider lifetime than the visible roster.
 // Paid rows remain part of the settlement after a decline or account
 // deactivation; deleting such rows is rejected by the management routes.
@@ -509,7 +526,7 @@ export function inviteParticipant(eventId: string, playerId: string): InvitePart
       // a re-invited row has explicitly not been answered again yet, so it
       // must not keep claiming a confirmation for the schedule it carries.
       db.prepare(
-        "UPDATE event_participants SET status = 'invited', confirmed_schedule_revision = NULL WHERE event_id = ? AND player_id = ?",
+        "UPDATE event_participants SET status = 'invited', confirmed_schedule_revision = NULL, decline_excuse = NULL WHERE event_id = ? AND player_id = ?",
       ).run(eventId, playerId);
       return { participant: { playerId, status: 'invited', paid: false }, changed: true };
     }
@@ -578,7 +595,10 @@ export function respondToEventInvitation(
   eventId: string,
   playerId: string,
   response: 'accepted' | 'declined',
+  declineExcuse: string | null = null,
 ): RespondToEventInvitationResult {
+  // Only a decline carries an excuse; any other answer clears it.
+  const excuse = response === 'declined' ? declineExcuse : null;
   const transaction = db.transaction((): RespondToEventInvitationResult => {
     const event = db
       .prepare('SELECT schedule_revision, status, starts_at, ended_at FROM events WHERE id = ?')
@@ -592,6 +612,14 @@ export function respondToEventInvitation(
     // idempotent even for an event that has since been locked. Otherwise a
     // client retrying its own last answer would suddenly see a conflict.
     if (existing.status === response) {
+      // Declining again with a (new) excuse only replaces the excuse.
+      if (response === 'declined' && excuse !== null) {
+        db.prepare('UPDATE event_participants SET decline_excuse = ? WHERE event_id = ? AND player_id = ?').run(
+          excuse,
+          eventId,
+          playerId,
+        );
+      }
       return {
         ok: true,
         participant: { playerId, status: response, paid: Boolean(existing.paid) },
@@ -612,10 +640,10 @@ export function respondToEventInvitation(
     // the other reports the identical result as unchanged.
     const updated = db
       .prepare(
-        `UPDATE event_participants SET status = ?, confirmed_schedule_revision = ?
+        `UPDATE event_participants SET status = ?, confirmed_schedule_revision = ?, decline_excuse = ?
          WHERE event_id = ? AND player_id = ? AND status != ?`,
       )
-      .run(response, event.schedule_revision, eventId, playerId, response);
+      .run(response, event.schedule_revision, excuse, eventId, playerId, response);
     const paid = db
       .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
       .get(eventId, playerId) as { paid: number };

@@ -5461,6 +5461,20 @@ function prepareParallelVoteRounds(): void {
 }
 registerMigration({ version: 116, name: 'reconcile open votes and add runoff source', up: prepareParallelVoteRounds });
 
+// A member who declines may leave an excuse that every participant of the
+// event sees next to the declined name (the Ausreden-Generator's payoff). It
+// belongs to the decline itself, so the row carries it and any new answer or
+// re-invitation clears it again.
+function addEventDeclineExcuse(): void {
+  const columns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'decline_excuse')) {
+    db.exec(
+      'ALTER TABLE event_participants ADD COLUMN decline_excuse TEXT CHECK (decline_excuse IS NULL OR length(decline_excuse) BETWEEN 1 AND 300)',
+    );
+  }
+}
+registerMigration({ version: 117, name: 'add event decline excuse', up: addEventDeclineExcuse });
+
 // Whoever started a Vote round may also end it (Home's "Meine To-Dos" asks
 // them to once a round has been left open too long). Rounds started before
 // this column existed keep NULL and stay admin-only to close. A plain id
@@ -5472,7 +5486,7 @@ function addVoteRoundCreator(): void {
     db.exec('ALTER TABLE vote_rounds ADD COLUMN created_by TEXT');
   }
 }
-registerMigration({ version: 117, name: 'add vote round creator', up: addVoteRoundCreator });
+registerMigration({ version: 118, name: 'add vote round creator', up: addVoteRoundCreator });
 
 // An admin can end a tournament that will never be played out (POST
 // /api/tournaments/:id/finish). It then reads as completed everywhere, but
@@ -5484,7 +5498,7 @@ function addTournamentEndedEarly(): void {
     db.exec('ALTER TABLE tournaments ADD COLUMN ended_early INTEGER NOT NULL DEFAULT 0');
   }
 }
-registerMigration({ version: 118, name: 'add tournament early end', up: addTournamentEndedEarly });
+registerMigration({ version: 119, name: 'add tournament early end', up: addTournamentEndedEarly });
 
 runRegisteredMigrations();
 
