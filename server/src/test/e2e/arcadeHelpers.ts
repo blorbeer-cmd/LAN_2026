@@ -34,9 +34,3 @@ export async function openArcadeLobby(page: Page, game: string, options: OpenArc
   await options.configure?.(page);
   await page.click('#arcade-create-form button[type="submit"]');
 }
-
-// Kept for older call sites: the hub has no game tiles any more, so choosing
-// a game means opening a human lobby for it.
-export async function selectArcadeGame(page: Page, game: string): Promise<void> {
-  await openArcadeLobby(page, game);
-}

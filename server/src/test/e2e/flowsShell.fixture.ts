@@ -419,29 +419,15 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   assert.deepEqual(await toolColumnsHandle.jsonValue(), { columns: 2, leftFirst: true });
 
   await page.click('.desktop-nav-btn[data-view="arcade"]');
-  await page.waitForSelector('#arcade-games-title');
+  await page.waitForSelector('#arcade-create-lobby');
   assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), 'arcade');
-  await page.click('[data-game="quiz"]');
-  await page.waitForSelector('#arcade-active-game-title');
-  const arcadeColumnsHandle = await page.waitForFunction(() => {
-    const active = document.querySelector('[aria-labelledby="arcade-active-game-title"]')?.getBoundingClientRect();
-    const picker = document.querySelector('.arcade-game-picker')?.getBoundingClientRect();
-    const tiles = document.querySelector('.arcade-tiles');
-    if (!active || !picker || !tiles) return null;
-    return {
-      activeLeft: Math.round(active.left),
-      activeTop: Math.round(active.top),
-      pickerLeft: Math.round(picker.left),
-      pickerBottom: Math.round(picker.bottom),
-      tileColumns: getComputedStyle(tiles).gridTemplateColumns.split(' ').length,
-    };
-  });
-  const arcadeColumns = await arcadeColumnsHandle.jsonValue();
-  assert.ok(arcadeColumns);
-  assert.ok(arcadeColumns.activeLeft !== null && arcadeColumns.pickerLeft !== null);
-  assert.equal(arcadeColumns.pickerLeft, arcadeColumns.activeLeft);
-  assert.ok(arcadeColumns.pickerBottom < arcadeColumns.activeTop);
-  assert.equal(arcadeColumns.tileColumns, 3);
+  // The Arcade hub is one column of full-width cards: Lobbys, Läuft gerade
+  // and Statistik.
+  const arcadeCards = await page.locator('#view-container .grouped-page-sections > .grouped-page-section').evaluateAll((cards) =>
+    cards.map((card) => { const box = card.getBoundingClientRect(); return [Math.round(box.left), Math.round(box.width)]; }),
+  );
+  assert.ok(arcadeCards.length >= 2);
+  assert.equal(new Set(arcadeCards.map(([left, width]) => `${left}:${width}`)).size, 1);
 
   await page.click('.desktop-nav-btn[data-view="profile"]');
   await page.waitForSelector('#profile-layout');
@@ -465,7 +451,7 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   assert.equal(await page.locator('.desktop-nav').isVisible(), true);
   assert.equal(await page.locator('.bottom-nav').isHidden(), true);
   await page.click('.desktop-nav-btn[data-view="arcade"]');
-  await page.waitForSelector('.arcade-game-picker');
+  await page.waitForSelector('#arcade-create-lobby');
 
   // A separate session verifies a real logout/login without invalidating the
   // fixture's shared admin cookie for the tests that follow. The same account
@@ -515,7 +501,7 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   await page.selectOption('#profile-layout', 'auto');
   await page.waitForFunction(() => document.documentElement.dataset.layoutPreference === 'auto' && document.documentElement.dataset.layoutMode === 'desktop');
   await page.click('.desktop-nav-btn[data-view="arcade"]');
-  await page.waitForSelector('.arcade-game-picker');
+  await page.waitForSelector('#arcade-create-lobby');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
   const mobileShell = await page.evaluate(() => {
@@ -895,7 +881,7 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
       ['events', 'Events & Gruppen', '#orga-events-title'],
       ['profile', 'Mein Profil', '#profile-name'],
       ['admin', 'Admin', '[aria-label="Werkzeuge"]'],
-      ['arcade', 'Arcade', '#arcade-games-title'],
+      ['arcade', 'Arcade', '#arcade-lobbies-title'],
       ['broadcast', 'Durchsage', '#broadcast-new-title'],
       ['music', 'Jam', '#music-setup-title'],
     ] as const) {

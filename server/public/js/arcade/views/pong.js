@@ -3,7 +3,7 @@ import { showToast } from '../../toast.js';
 import { getMyId } from '../../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyHostActionsHtml, arcadeLobbyGuestActionsHtml, arcadeLobbyJoinHtml, arcadeTeamMembersHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyHostActionsHtml, arcadeLobbyGuestActionsHtml, arcadeLobbyJoinHtml, arcadeLobbyTeamJoinHtml, arcadeTeamMembersHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadeResultListHtml, pointsLabel, arcadeScoreboardHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { createRematchController } from '../rematch.js';
 import { playArcadeSound } from '../arcadeSound.js';
@@ -162,7 +162,11 @@ function lobbyEntryHtml(lobby) {
     : joined
       ? arcadeLobbyGuestActionsHtml({ readyHtml: readyToggleHtml(lobby, myId(), 'pong-ready'), leaveAttrs: `data-pong-leave="${lobby.id}"` })
       : '';
-  const joinAction = !joined ? arcadeLobbyJoinHtml(`data-pong-join="${lobby.id}" data-pong-team="auto"`, full) : '';
+  const joinAction = joined
+    ? ''
+    : lobby.mode === 'doubles' && !full
+      ? arcadeLobbyTeamJoinHtml('pong', lobby, 2)
+      : arcadeLobbyJoinHtml(`data-pong-join="${lobby.id}" data-pong-team="auto"`, full);
   const meta = `${modeLabel(lobby.mode)} · ${lobby.players.length}/${lobby.playerLimit}`;
   const membersHtml = lobby.mode === 'doubles' ? arcadeTeamMembersHtml(lobby, 2) : '';
   return arcadeLobbyEntryHtml(lobby, { gameType: 'pong', meta, joinAction, settingsHtml, footerActions, full, capacity: lobby.playerLimit, membersHtml });

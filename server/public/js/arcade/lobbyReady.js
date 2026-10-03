@@ -62,7 +62,7 @@ export function arcadeLobbyEntryHtml(
   const metaLine = [game?.name, meta || `${lobby.players.length}/${seats}`].filter(Boolean).map(escapeHtml).join(' · ');
   const mine = lobby.players.some((player) => player.id === getMyId());
   if (!mine) {
-    return `<div class="arcade-lobby-row">
+    return `<div class="arcade-lobby-row${joinAction.includes('-team="left"') ? ' has-team-join' : ''}">
       ${arcadeGameIconHtml(gameType)}
       <span class="arcade-lobby-row-text"><strong>${title}</strong><span class="arcade-lobby-meta">${metaLine}</span></span>
       ${seatMarkersHtml(lobby)}
@@ -95,6 +95,20 @@ export function arcadeLobbyGuestActionsHtml({ readyHtml = '', leaveAttrs }) {
 
 export function arcadeLobbyJoinHtml(attrs, disabled = false) {
   return `<button type="button" class="btn btn-sm" ${attrs} ${disabled ? 'disabled' : ''}>Beitreten</button>`;
+}
+
+// Doubles lobbies (Pong, Blobby Volley): joining picks the team directly.
+// A full team disables its button; the label names the team in text.
+export function arcadeLobbyTeamJoinHtml(prefix, lobby, perTeam) {
+  return [
+    { team: 'left', label: 'Blau' },
+    { team: 'right', label: 'Pink' },
+  ]
+    .map(({ team, label }) => {
+      const full = lobby.players.filter((player) => player.team === team).length >= perTeam;
+      return `<button type="button" class="btn btn-sm" data-${prefix}-join="${escapeHtml(lobby.id)}" data-${prefix}-team="${team}" aria-label="Team ${label} beitreten" ${full ? 'disabled' : ''}>${label}</button>`;
+    })
+    .join('');
 }
 
 // Every mode-capable arcade lobby uses the same compact segmented switch so
