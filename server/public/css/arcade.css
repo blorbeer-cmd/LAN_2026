@@ -447,8 +447,13 @@
   .arcade-lobby-row {
     grid-template-columns: var(--control-height) minmax(0, 1fr) var(--arcade-row-action-width);
   }
+  /* Team buttons take their own row below the lobby name, so the name stays
+     readable and both buttons get a wide touch target. */
   .arcade-lobby-row.has-team-join {
-    grid-template-columns: var(--control-height) minmax(0, 1fr) var(--arcade-row-team-action-width);
+    grid-template-columns: var(--control-height) minmax(0, 1fr);
+  }
+  .arcade-lobby-row.has-team-join .arcade-lobby-row-action {
+    grid-column: 2;
   }
   .arcade-lobby-row .arcade-lobby-seats {
     display: none;
