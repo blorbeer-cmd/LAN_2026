@@ -1,15 +1,12 @@
 import { connectSocket } from '../../socket.js';
 import { showToast } from '../../toast.js';
 import { getMyId } from '../../whoami.js';
-import { avatarHtml, escapeHtml } from '../../format.js';
-import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyHostActionsHtml, arcadeLobbyGuestActionsHtml, arcadeLobbyJoinHtml, arcadeTeamMembersHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadeResultListHtml, pointsLabel, arcadeScoreboardHtml, wireArcadeToolbar } from '../arcadeUi.js';
+import { createRematchController } from '../rematch.js';
 import { playArcadeSound } from '../arcadeSound.js';
-import { infoTooltipHtml } from '../../infoTooltip.js';
-import { emptyStateHtml } from '../../emptyState.js';
 
 const W = 1000;
 const H = 600;
@@ -33,13 +30,23 @@ const courtBackground = new Image();
 courtBackground.src = '/img/blobby-beach-court.png';
 let targetScore = 7;
 let lobbyMode = 'duel';
-let blobbyOpponent = 'human';
-
 const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
 const navigate = (view) => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
 const emitAck = (event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve));
 const currentView = () => document.getElementById('view-container')?.dataset.view;
+const rematch = createRematchController({
+  prefix: 'blobby',
+  emit: (event, payload) => emitAck(event, payload),
+  myId: () => getMyId(),
+  lobbies: () => lobbies,
+  events: { create: 'blobby:lobby:create', bot: 'blobby:lobby:bot', join: 'blobby:lobby:join', ready: 'blobby:lobby:ready', start: 'blobby:lobby:start', leave: 'blobby:lobby:leave' },
+  startPayload: () => ({ targetScore: match?.targetScore ?? targetScore }),
+  joinPayload: () => ({ team: 'auto' }),
+  playerName: (id) => match?.players.find((player) => player.id === id)?.name ?? 'Spieler',
+  rerender: () => rerender(),
+  onError: (message) => showToast(message, { error: true }),
+});
 
 export function myBlobbyLobby() {
   return lobbies.find((l) => l.players.some((p) => p.id === myId())) ?? null;
@@ -49,11 +56,18 @@ export function blobbyLobbies() { return lobbies; }
 
 export function ensureBlobbySocket() {
   if (socket) return socket;
-  resetArcadeOpponentWhenAiUnavailable(() => { blobbyOpponent = 'human'; });
   socket = connectSocket();
-  socket.on('blobby:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match && currentView() === 'arcade') rerender(); });
+  socket.on('blobby:lobbies', (payload) => {
+    lobbies = payload?.lobbies ?? [];
+    if (!match && currentView() === 'arcade') rerender();
+    if (match?.ended && currentView() === 'blobby') {
+      rematch.onLobbies();
+      rerender();
+    }
+  });
   socket.on('blobby:match:start', (payload) => {
     match = { ...payload, ended: false, winner: null };
+    rematch.reset();
     previous = latest = null;
     navigate('blobby');
     // Let the dedicated game view mount first. This keeps the global overlay
@@ -87,6 +101,7 @@ export function ensureBlobbySocket() {
     match.winners = payload.winners ?? [];
     match.winnerTeam = payload.winnerTeam ?? null;
     match.scores = payload.scores ?? [];
+    rematch.capture(match);
     cancelCountdown();
     if (match.winners?.length) playArcadeSound(match.winners.some((winner) => winner.id === myId()) ? 'blobby-win' : 'blobby-lose');
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
@@ -126,130 +141,56 @@ function modeLabel(mode) {
 function teamLabel(team) {
   return team === 'left' ? 'Team Blau' : 'Team Pink';
 }
-function lobbyMemberRow(player, lobby) {
-  const role = player.id === lobby.host.id ? 'Host' : player.ready ? 'Bereit' : 'Mitspieler';
-  return `<div class="arcade-lobby-member-row">
-    ${avatarHtml(player, 24)}
-    <span class="player-name">${escapeHtml(player.name)}</span>
-    <span class="arcade-lobby-member-role">${role}</span>
-  </div>`;
-}
-function teamLobbyHtml(lobby, team, joined) {
-  const players = lobby.players.filter((player) => player.team === team);
-  const limit = lobby.mode === 'doubles' ? 2 : 1;
-  const free = limit - players.length;
-  const join = !joined && free > 0
-    ? `<button type="button" class="btn btn-sm btn-primary" data-blobby-join="${lobby.id}" data-blobby-team="${team}">Beitreten</button>`
-    : '';
-  return `<div class="stack">
-    <div class="row-between"><strong>${teamLabel(team)}</strong><span class="badge">${players.length}/${limit}</span></div>
-    <div class="arcade-lobby-member-list">
-      ${players.map((player) => lobbyMemberRow(player, lobby)).join('')}
-      ${free > 0 ? `<div class="arcade-lobby-member-row arcade-lobby-free-row">
-        <span class="arcade-lobby-avatar-slot" aria-hidden="true"></span>
-        <span class="muted arcade-lobby-free-label">${free} frei</span>
-        ${join}
-      </div>` : ''}
-    </div>
-  </div>`;
-}
 function startReason(lobby) {
   const missing = lobby.playerLimit - lobby.players.length;
   if (missing > 0) return `${missing} ${missing === 1 ? 'Platz' : 'Plätze'} frei`;
   const waiting = lobby.players.filter((player) => player.id !== lobby.host.id && !player.ready).length;
   return waiting > 0 ? `${waiting} nicht bereit` : '';
 }
-function lobbyList() {
-  if (!lobbies.length) return emptyStateHtml('Noch keine Blobby-Volley-Lobby.', { className: 'empty-state-compact' });
-  return lobbies.map((l) => {
-    const isHost = l.host.id === myId();
-    const joined = l.players.some((p) => p.id === myId());
-    const full = l.players.length >= l.playerLimit && !joined;
-    const ready = l.players.length === l.playerLimit && l.players.every((player) => player.id === l.host.id || player.ready);
-    const reason = startReason(l);
-    const settingsHtml = isHost
-      ? `<label class="arcade-lobby-target-score">
-          <span>Punkte bis Sieg</span>
-          <select name="blobby-target" aria-label="Punkte bis Sieg">
-            ${[5, 7, 10, 15].map((n) => `<option value="${n}" ${n === targetScore ? 'selected' : ''}>${n}</option>`).join('')}
-          </select>
-        </label>`
+function lobbyEntryHtml(lobby) {
+  const isHost = lobby.host.id === myId();
+  const joined = lobby.players.some((player) => player.id === myId());
+  const full = lobby.players.length >= lobby.playerLimit && !joined;
+  const ready = lobby.players.length === lobby.playerLimit && lobby.players.every((player) => player.id === lobby.host.id || player.ready);
+  const settingsHtml = isHost
+    ? `<label class="arcade-lobby-target-score">
+        <span>Punkte bis Sieg</span>
+        <select name="blobby-target" aria-label="Punkte bis Sieg">
+          ${[5, 7, 10, 15].map((score) => `<option value="${score}" ${score === targetScore ? 'selected' : ''}>${score}</option>`).join('')}
+        </select>
+      </label>`
+    : '';
+  const footerActions = isHost
+    ? arcadeLobbyHostActionsHtml({ startAttrs: 'id="blobby-start"', startEnabled: ready, startHint: startReason(lobby), closeAttrs: `data-blobby-close="${lobby.id}"` })
+    : joined
+      ? arcadeLobbyGuestActionsHtml({ readyHtml: readyToggleHtml(lobby, myId(), 'blobby-ready'), leaveAttrs: `data-blobby-leave="${lobby.id}"` })
       : '';
-    const footerActions = isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="blobby-start" ${ready ? '' : 'disabled'}>Start</button>
-          ${reason ? infoTooltipHtml(`blobby-start-${l.id}`, 'Start nicht möglich', reason, 'warning') : ''}
-        <button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-close="${l.id}">Schließen</button>`
-      : joined
-        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-leave="${l.id}">Verlassen</button>
-          ${readyToggleHtml(l, myId(), 'blobby-ready')}`
-        : '';
-    if (l.mode === 'duel') {
-      const joinAction = !joined && !isHost
-        ? `<button type="button" class="btn btn-sm btn-primary" data-blobby-join="${l.id}" data-blobby-team="right" ${full ? 'disabled' : ''}>Beitreten</button>`
-        : '';
-      return `<div class="stack">
-        <div class="row-between"><strong>${modeLabel(l.mode)}</strong><span class="badge">${l.players.length}/${l.playerLimit}</span></div>
-        ${arcadeLobbyEntryHtml(l, { joinAction, settingsHtml, footerActions, full })}
-      </div>`;
-    }
-    return `<div class="card stack arcade-lobby-entry">
-      <div class="arcade-lobby-entry-head">
-        <strong>${escapeHtml(l.host.name)}s Lobby</strong>
-        <span class="badge">${modeLabel(l.mode)} · ${l.players.length}/${l.playerLimit}</span>
-      </div>
-      <div class="two-column-card-grid">
-        ${teamLobbyHtml(l, 'left', joined)}
-        ${teamLobbyHtml(l, 'right', joined)}
-      </div>
-      <div class="arcade-lobby-control-bar">
-        ${settingsHtml ? `<div class="arcade-lobby-settings">${settingsHtml}</div>` : ''}
-        ${footerActions ? `<div class="arcade-lobby-entry-actions">${footerActions}</div>` : ''}
-      </div>
-    </div>`;
-  }).join('');
+  const joinAction = !joined ? arcadeLobbyJoinHtml(`data-blobby-join="${lobby.id}" data-blobby-team="auto"`, full) : '';
+  const meta = `${modeLabel(lobby.mode)} · ${lobby.players.length}/${lobby.playerLimit}`;
+  const membersHtml = lobby.mode === 'doubles' ? arcadeTeamMembersHtml(lobby, 2) : '';
+  return arcadeLobbyEntryHtml(lobby, { gameType: 'blobby', meta, joinAction, settingsHtml, footerActions, full, capacity: lobby.playerLimit, membersHtml });
 }
-export function renderBlobbyLobbyCard() {
-  const lobby = myBlobbyLobby(); const noMe = !myId();
-  const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
-  const mayUseAi = currentPlayerMayUseArcadeAi();
-  return `<div class="card stack arcade-lobby-card">
-    ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
-    <div class="arcade-lobby-create-actions">
-      <div class="arcade-lobby-create-row${lobby ? ' arcade-lobby-create-row--no-mode' : ''}${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}">
-        ${!lobby ? arcadeLobbyModeButtonsHtml('blobby-mode', 'Blobby-Spielmodus', [
-          { value: 'duel', label: 'Duell' },
-          { value: 'doubles', label: 'Doppel' },
-        ], lobbyMode) : ''}
-        <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
-        ${createReason ? infoTooltipHtml('blobby-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
-        ${mayUseAi ? arcadeLobbyOpponentToggleHtml('blobby-opponent', blobbyOpponent, Boolean(match || noMe)) : ''}
-      </div>
-    </div>
-    ${lobbyList()}
-  </div>`;
+
+export function renderBlobbyLobbyEntries() {
+  return lobbies.map((lobby) => ({ id: lobby.id, html: lobbyEntryHtml(lobby) }));
 }
+
+export async function createBlobbyLobby({ mode = 'duel', opponent = 'human' } = {}) {
+  lobbyMode = mode === 'doubles' ? 'doubles' : 'duel';
+  const bot = opponent === 'bot';
+  const result = await emitAck(bot ? 'blobby:lobby:bot' : 'blobby:lobby:create', { playerId: myId(), mode: lobbyMode });
+  if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+  return result;
+}
+
 export async function leaveMyBlobbyLobby() {
   const lobby = myBlobbyLobby();
   if (!lobby) return { ok: true };
   return emitAck('blobby:lobby:leave', { lobbyId: lobby.id, playerId: myId() });
 }
 
-export function wireBlobbyLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
+export function wireBlobbyLobbyCard(container, { beforeJoin } = {}) {
   container.querySelectorAll('select[name="blobby-target"]').forEach((input) => input.addEventListener('change', () => { targetScore = Number(input.value); }));
-  container.querySelectorAll('#blobby-mode [data-arcade-mode]').forEach((button) => button.addEventListener('click', () => {
-    lobbyMode = button.dataset.arcadeMode === 'doubles' ? 'doubles' : 'duel';
-    rerender();
-  }));
-  wireArcadeOpponentToggle(container, 'blobby-opponent', (value) => {
-    blobbyOpponent = value;
-    rerender();
-  });
-  container.querySelector('#blobby-create')?.addEventListener('click', async () => {
-    if (beforeCreate && !(await beforeCreate())) return;
-    const bot = blobbyOpponent === 'bot';
-    const res = await emitAck(bot ? 'blobby:lobby:bot' : 'blobby:lobby:create', { playerId: myId(), mode: lobbyMode });
-    if (!res?.ok) showToast(res?.error || (bot ? 'KI-Lobby konnte nicht erstellt werden.' : 'Lobby konnte nicht erstellt werden.'), { error: true });
-  });
   container.querySelectorAll('[data-blobby-join]').forEach((b) => b.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;
     const res = await emitAck('blobby:lobby:join', { lobbyId: b.dataset.blobbyJoin, playerId: myId(), team: b.dataset.blobbyTeam || 'auto' });
@@ -270,13 +211,13 @@ export function wireBlobbyLobbyCard(container, { beforeCreate, beforeJoin } = {}
 }
 
 function lerp(a, b, t) { return a + (b - a) * t; }
-function interpolatedWorld() {
-  if (!latest?.world) return null;
-  if (!previous?.world) return latest.world;
-  const t = Math.min(1, (performance.now() - latestAt + 50) / 100);
+function interpolatedWorld(current = latest, before = previous, receivedAt = latestAt) {
+  if (!current?.world) return null;
+  if (!before?.world) return current.world;
+  const t = Math.min(1, (performance.now() - receivedAt + 50) / 100);
   return {
-    ball: { x: lerp(previous.world.ball.x, latest.world.ball.x, t), y: lerp(previous.world.ball.y, latest.world.ball.y, t) },
-    blobs: latest.world.blobs.map((b, i) => ({ x: lerp(previous.world.blobs[i].x, b.x, t), y: lerp(previous.world.blobs[i].y, b.y, t), side: b.side })),
+    ball: { x: lerp(before.world.ball.x, current.world.ball.x, t), y: lerp(before.world.ball.y, current.world.ball.y, t) },
+    blobs: current.world.blobs.map((b, i) => ({ x: lerp(before.world.blobs[i]?.x ?? b.x, b.x, t), y: lerp(before.world.blobs[i]?.y ?? b.y, b.y, t), side: b.side })),
   };
 }
 function avatarImage(player) {
@@ -346,10 +287,10 @@ function drawVolleyball(ctx, ball) {
   ctx.stroke();
 }
 
-function paint() {
-  const canvas = document.querySelector('#blobby-canvas');
-  if (!canvas) return stopAnimation();
-  const ctx = canvas.getContext('2d'); const world = interpolatedWorld();
+// One frame of the court from two server snapshots. The match view and the
+// spectator view both draw through here, so both look exactly the same.
+export function drawBlobbyFrame(canvas, current, before, receivedAt, players) {
+  const ctx = canvas.getContext('2d'); const world = interpolatedWorld(current, before, receivedAt);
   ctx.clearRect(0, 0, W, H);
   if (courtBackground.complete && courtBackground.naturalWidth) {
     ctx.drawImage(courtBackground, 0, 0, W, H);
@@ -360,10 +301,18 @@ function paint() {
   ctx.fillStyle = '#dbe4ff'; ctx.fillRect(NET_X - 10, NET_TOP, 20, GROUND - NET_TOP); ctx.beginPath(); ctx.arc(NET_X, NET_TOP, 10, 0, Math.PI * 2); ctx.fill();
   if (world) {
     world.blobs.forEach((blob, index) => {
-      drawBlob(ctx, blob, cssColor(blob.side === 'right' ? '--accent-3' : '--accent'), match?.players?.[index]);
+      drawBlob(ctx, blob, cssColor(blob.side === 'right' ? '--accent-3' : '--accent'), players?.[index]);
     });
     drawVolleyball(ctx, world.ball);
   }
+}
+
+export const BLOBBY_CANVAS_SIZE = [W, H];
+
+function paint() {
+  const canvas = document.querySelector('#blobby-canvas');
+  if (!canvas) return stopAnimation();
+  drawBlobbyFrame(canvas, latest, previous, latestAt, match?.players);
   animation = requestAnimationFrame(paint);
 }
 function startAnimation() { if (!animation) animation = requestAnimationFrame(paint); }
@@ -372,55 +321,81 @@ function flashPoint(name) {
   const el = document.querySelector('#blobby-point'); if (!el) return;
   el.textContent = `Punkt für ${name || 'Spieler'}!`; el.hidden = false; setTimeout(() => { el.hidden = true; }, 900);
 }
+function scoreOf(player) {
+  return (match?.scores ?? latest?.scores ?? []).find((s) => s.playerId === player.id)?.score ?? 0;
+}
+
+function scoreboardHtml() {
+  const side = (team) => {
+    const players = match.players.filter((player) => player.team === team);
+    return { label: teamLabel(team), score: players.length ? scoreOf(players[0]) : 0, players };
+  };
+  return arcadeScoreboardHtml({ left: side('left'), right: side('right'), target: match.targetScore ?? latest?.targetScore ?? targetScore, myId: myId() });
+}
+
 function updateScoreDisplay() {
   const roster = document.querySelector('#blobby-roster');
   if (!roster || !match) return;
-  roster.innerHTML = matchRosterHtml(match.players, {
-    winnerIds: match.winners?.map((winner) => winner.id) ?? [],
-    scoreFor: (player) => {
-      const score = (match?.scores ?? latest?.scores ?? []).find((s) => s.playerId === player.id)?.score ?? 0;
-      return `${score}/${match?.targetScore ?? latest?.targetScore ?? targetScore}`;
-    },
-    detailFor: (player) => teamLabel(player.team),
-  });
+  const html = scoreboardHtml();
+  if (roster.dataset.html !== html) {
+    roster.innerHTML = html;
+    roster.dataset.html = html;
+  }
 }
+
 function resultHtml() {
   if (!match?.ended) return '';
-  const title = match.winnerTeam ? `${teamLabel(match.winnerTeam)} gewinnt` : 'Match beendet';
-  return `<div class="card arcade-winner-card"><strong>${title}</strong><button class="btn btn-primary" id="blobby-back">Zur Arcade</button></div>`;
+  const winnerIds = new Set((match.winners ?? []).map((winner) => winner.id));
+  const rows = [...match.players]
+    .sort((a, b) => scoreOf(b) - scoreOf(a))
+    .map((player) => ({
+      player,
+      winner: winnerIds.has(player.id) || (match.winnerTeam && player.team === match.winnerTeam),
+      value: pointsLabel(scoreOf(player)),
+      detail: match.mode === 'doubles' ? teamLabel(player.team) : '',
+    }));
+  rows.forEach((row, index) => { row.place = index > 0 && scoreOf(rows[index - 1].player) === scoreOf(row.player) ? rows[index - 1].place : index + 1; });
+  return `<section class="card stack grouped-page-section" aria-labelledby="blobby-result-title">
+    <div class="grouped-page-section-title"><h2 id="blobby-result-title">Ergebnis</h2>${rematch.actionHtml()}</div>
+    ${arcadeResultListHtml(rows)}
+  </section>`;
 }
+
+function pauseButtonHtml() {
+  return match.paused
+    ? '<button type="button" class="btn btn-primary btn-sm" id="blobby-resume">Fortsetzen</button>'
+    : '<button type="button" class="btn btn-sm" id="blobby-pause">Pausieren</button>';
+}
+
 function matchControlsHtml(host) {
-  if (!match || match.ended) return '';
+  if (!match) return '';
+  if (match.ended) return arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" id="blobby-back">Schließen</button>');
   if (!host) {
     // A non-host player can't pause (shared timer state, host-only), but
     // must still have a way out instead of only a raw tab close.
     if (!match.players.some((p) => p.id === myId())) return '';
-    return `<div class="arcade-match-controls"><button class="btn btn-sm btn-equal btn-danger" id="blobby-leave-match">Verlassen</button></div>`;
+    return arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" id="blobby-leave-match">Verlassen</button>');
   }
-  return `<div class="arcade-match-controls">${match.paused ? '<button class="btn btn-sm btn-equal btn-primary" id="blobby-resume">Fortsetzen</button>' : '<button class="btn btn-sm btn-equal" id="blobby-pause">Pausieren</button>'}<button class="btn btn-sm btn-equal btn-danger" id="blobby-finish">Beenden</button></div>`;
+  return arcadeMatchControlsHtml(`${pauseButtonHtml()}<button type="button" class="btn btn-sm" id="blobby-finish">Beenden</button>`);
 }
 export function renderBlobby(container) {
   ensureBlobbySocket();
   if (!match) {
-    // A direct or expired-match link lands here without a running match;
-    // show the same named lobby area as opening Blobby Volley from Arcade
-    // instead of a dead end (see Pong/Snake/Battleship's identical fallback).
-    container.innerHTML = `<h1 class="view-title">Blobby Volley</h1>${renderBlobbyLobbyCard()}`;
-    wireBlobbyLobbyCard(container);
+    // Lobbies live on the Arcade hub; a direct or expired match link goes there.
+    window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'arcade' }));
     return;
   }
   const host = match.host?.id === myId();
-  const roster = matchRosterHtml(match.players, {
-    winnerIds: match.winners?.map((winner) => winner.id) ?? [],
-    scoreFor: (player) => {
-      const score = (match?.scores ?? latest?.scores ?? []).find((s) => s.playerId === player.id)?.score ?? 0;
-      return `${score}/${match?.targetScore ?? latest?.targetScore ?? targetScore}`;
-    },
-    detailFor: (player) => teamLabel(player.team),
-  });
-  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Blobby Volley</h1>${arcadeToolbarHtml()}<div id="blobby-roster">${roster}</div>
-    <div class="blobby-court"><canvas id="blobby-canvas" width="${W}" height="${H}"></canvas><div id="blobby-point" class="blobby-point" hidden></div>${match.paused ? '<div class="blobby-pause-overlay">Pause</div>' : ''}</div>
-    ${matchControlsHtml(host)}${resultHtml()}</div>`;
+  container.innerHTML = `<div class="arcade-game-shell${match.ended ? ' is-ended' : ''}">
+    ${arcadeGameHeaderHtml(match.mode === 'doubles' ? 'Blobby Volley Doppel' : 'Blobby Volley', matchControlsHtml(host))}
+    <div class="grouped-page-sections">
+      ${resultHtml()}
+      <section class="card arcade-stage">
+        <div id="blobby-roster">${scoreboardHtml()}</div>
+        <div class="blobby-court" data-countdown-anchor><canvas id="blobby-canvas" width="${W}" height="${H}"></canvas><div id="blobby-point" class="blobby-point" hidden></div>${match.paused ? '<div class="blobby-pause-overlay">Pause</div>' : ''}</div>
+      </section>
+    </div>
+  </div>`;
   wireGame(container); wireArcadeToolbar(container); startAnimation();
 }
 function wireGame(container) {
@@ -435,7 +410,14 @@ function wireGame(container) {
     const res = await emitAck('blobby:match:leave', { matchId: match.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
-  container.querySelector('#blobby-back')?.addEventListener('click', () => { match = null; previous = latest = null; stopAnimation(); navigate('arcade'); });
+  rematch.wire(container);
+  container.querySelector('#blobby-back')?.addEventListener('click', async () => {
+    await rematch.close();
+    match = null;
+    previous = latest = null;
+    stopAnimation();
+    navigate('arcade');
+  });
 }
 
 function wirePauseControl(container) {
@@ -456,9 +438,7 @@ function updatePauseUi() {
   if (match?.paused) court.insertAdjacentHTML('beforeend', '<div class="blobby-pause-overlay">Pause</div>');
   const button = document.querySelector('#blobby-pause, #blobby-resume');
   if (!button) return;
-  button.outerHTML = match.paused
-    ? '<button class="btn btn-sm btn-equal btn-primary" id="blobby-resume">Fortsetzen</button>'
-    : '<button class="btn btn-sm btn-equal" id="blobby-pause">Pausieren</button>';
+  button.outerHTML = pauseButtonHtml();
   wirePauseControl(document);
 }
 function wireCanvasControls(canvas) {

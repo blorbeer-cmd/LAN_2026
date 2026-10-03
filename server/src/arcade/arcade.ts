@@ -198,10 +198,10 @@ function scheduleQuestionTimeout(io: Server, match: MatchState, delayMs: number)
       correctAnswer: firstAcceptedAnswer(match.currentQuestion),
       scores: scorePayload(match),
     }, match);
-    broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'result', scores: scorePayload(match), paused: false });
+    broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'result', scores: scorePayload(match), paused: false, correctAnswer: firstAcceptedAnswer(match.currentQuestion), resultWinner: null });
     setTimeout(() => {
       if (matches.has(match.id)) sendQuestion(io, match);
-    }, 1400);
+    }, arcadeTiming.quizRevealMs);
   }, delayMs);
 }
 
@@ -227,7 +227,7 @@ function sendQuestion(io: Server, match: MatchState) {
     startedAt,
     expiresAt: match.questionExpiresAt,
   }, match);
-  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'playing', category: question.category, scores: scorePayload(match), startedAt, expiresAt: match.questionExpiresAt });
+  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'playing', category: question.category, difficulty: question.difficulty, question: question.question, correctAnswer: null, resultWinner: null, scores: scorePayload(match), startedAt, expiresAt: match.questionExpiresAt });
 
   scheduleQuestionTimeout(io, match, QUESTION_MS);
   const bot = match.players.find((player) => player.id === QUIZ_BOT.id);
@@ -248,9 +248,9 @@ function answerCorrect(io: Server, match: MatchState, player: PlayerRef) {
   markSeen(match, player.id);
   const scores = scorePayload(match);
   emitArcadeRoom(io, match.room, 'arcade:quiz:result', { matchId: match.id, winner: player, correctAnswer: accepted[0], scores }, match);
-  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'result', scores, paused: false });
+  broadcastArcadeKiosk(io, { gameType: 'quiz', matchId: match.id, groupId: match.groupId, eventId: match.eventId, phase: 'result', scores, paused: false, correctAnswer: accepted[0], resultWinner: player.name });
   if ((match.scores.get(player.id) ?? 0) >= match.targetScore) finishMatch(io, match, player);
-  else setTimeout(() => { if (matches.has(match.id)) sendQuestion(io, match); }, 1400);
+  else setTimeout(() => { if (matches.has(match.id)) sendQuestion(io, match); }, arcadeTiming.quizRevealMs);
 }
 
 function removeFromOpenLobbies(io: Server, socketId: string) {

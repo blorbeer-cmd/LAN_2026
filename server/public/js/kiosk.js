@@ -138,6 +138,8 @@ function drawKioskCanvas(canvas, game) {
   drawLegacyKioskCanvas(canvas, game);
 }
 
+const KIOSK_ARCADE_STREAM = false;
+
 function renderArcadeStream(game) {
   const gameView = document.getElementById('kiosk-game');
   const dashboard = document.getElementById('kiosk-dashboard');
@@ -1295,7 +1297,9 @@ async function main() {
   setInterval(refreshAll, KIOSK_REFRESH_INTERVAL_MS);
   const socket = connectSocket({ kiosk: true });
 
-  socket.on('arcade:kiosk:game', renderArcadeStream);
+  // The Arcade full-screen takeover is switched off for now; renderArcadeStream
+  // stays in place so it can be re-enabled by flipping this flag.
+  if (KIOSK_ARCADE_STREAM) socket.on('arcade:kiosk:game', renderArcadeStream);
   socket.on('connect', () => {
     // Socket.IO creates a fresh server-side socket after every reconnect.
     // Replay Arcade state and refetch all REST-backed cards so changes made

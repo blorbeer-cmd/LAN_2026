@@ -320,7 +320,7 @@ export function registerSnakeSockets(io: Server): () => void {
     socket.on('snake:lobby:start', (payload: { lobbyId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
       if (!lobby || !canUseLobby(socket, lobby) || payload.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
-      if (lobby.mode === 'classic' && lobby.players.length !== 2) return ack?.({ ok: false, error: 'Klassisches Snake ist genau 1 gegen 1.' });
+      if (lobby.mode === 'classic' && lobby.players.length !== 2) return ack?.({ ok: false, error: 'Snake Classic ist genau 1 gegen 1.' });
       if (lobby.mode === 'arena' && (lobby.players.length < SNAKE_ARENA_MIN_PLAYERS || lobby.players.length > SNAKE_ARENA_MAX_PLAYERS)) {
         return ack?.({ ok: false, error: 'Snake Arena braucht 3 bis 8 Spieler.' });
       }

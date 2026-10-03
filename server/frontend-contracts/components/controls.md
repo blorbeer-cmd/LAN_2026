@@ -544,13 +544,11 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:payment-state`: Payment state marker inherits its host control geometry.
 
-- `registry:arcade-segment`: Package-1 segment/pill and creation-row contract remains 32px; S stays 188px.
+- `registry:arcade-segment`: Package-1 segment/pill contract remains 32px.
 
 - `registry:arcade-mute`: 44 by 32px mute action beside standard toolbar text buttons.
 
-- `registry:arcade-tile`: Whole game-selection tile retains its name, status and card geometry.
-
-- `registry:battleship-grid`: Permanent 44px game-board cells; ship and hit states do not change geometry.
+- `registry:battleship-grid`: Square game-board cells sized by the grid; ship and shot markers never change the cell geometry.
 
 - `registry:battleship-ship-display`: Ship decoration and orientation markers retain the structural board cell's hit box.
 
@@ -559,6 +557,16 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:scribble-tools`: Internal brush-width and color samples in the drawing palette retain existing dimensions.
 
 - `registry:scribble-word-choice`: Dedicated word-selection game target retains its large type and padded choice surface.
+
+- `registry:arcade-icon-button`: Square 32px icon actions (expand, mute) in the game header beside the compact match buttons.
+
+- `registry:battleship-ship-option`: Ship picker tile with name, length bar and placed check; selected and placed states keep the tile geometry.
+
+- `registry:scribble-thumb`: Thumbs-up action lines up its icon and count; the compact button owns the geometry.
+
+- `registry:battleship-placed-state`: A placed ship in the picker only changes emphasis colors.
+
+- `registry:arcade-stats-filter`: Hook for the statistics game filter; the native select keeps the shared field geometry.
 
 - `registry:music-controls`: Pairing icon and result-type buttons inherit shared control geometry.
 
@@ -665,13 +673,27 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:kiosk-live-dot`: Noninteractive 8px pagination indicator for the TV Live-Status roster rotation, not a control.
 
-- `registry:arcade-create-width`: Creation-row container controls available width and stacking; no CTA interior dimensions.
-
-- `registry:arcade-free-slot-width`: Join action fills its reserved free-player slot.
-
-- `registry:arcade-entry-width`: Whole entry actions yield to their wrapping footer.
-
 - `registry:arcade-setting-row`: Existing composite checkbox setting row, not a standalone text button.
+
+- `registry:arcade-game-icon`: The game symbol in a lobby row is a 20px glyph inside its noninteractive icon tile.
+
+- `registry:arcade-lobby-join-width`: The join action fills the fixed action column of a lobby row so every row aligns.
+
+- `registry:arcade-target-score-field`: The score-target field in a lobby card only needs room for two digits.
+
+- `registry:arcade-create-dialog-segment`: Mode and opponent switches in the create dialog share one row with equal segment widths.
+
+- `registry:arcade-stats-select-width`: The statistics filter sizes to its longest game name instead of the full card width.
+
+- `registry:battleship-selected-cell`: The aimed cell gets an inset accent ring inside the unchanged cell.
+
+- `registry:battleship-ship-check`: The placed check is a 12px glyph inside the ship picker tile.
+
+- `registry:battleship-orientation-segment`: The orientation switch above the board uses wider segments for its longer labels.
+
+- `registry:arcade-header-mute`: In the game header the mute toggle matches the 32px square expand icon beside it.
+
+- `registry:arcade-answer-input`: Answer and guess fields may shrink beside their submit button instead of overflowing on phones.
 
 - `registry:checkbox-in-row`: Native checkbox glyph is an internal 20px part of the labeled selection row.
 
@@ -740,23 +762,11 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:rating-divergence-state`: Divergent suggestion only changes emphasis colors.
 
-- `registry:arcade-soon-state`: Unavailable game tile changes opacity only.
+- `registry:battleship-shot-state`: Ship tiles and shot dots are decoration inside the unchanged cell: markers are sized pseudo-elements, ships drop the cell radius.
 
-- `registry:battleship-shot-state`: Ship/shot colors and sunk outline preserve cell geometry; exact glyph variants own the existing shot typography.
-
-- `registry:battleship-orientation-state`: Orientation marks ship decoration; exact pseudo-element variants own connector dimensions.
+- `registry:battleship-orientation-state`: Orientation rounds only the bow and stern of a continuous ship bar; the cell keeps its geometry.
 
 - `registry:scribble-swatch-state`: Selected swatch changes its border color without resizing the palette control.
-
-- `registry:battleship-miss-glyph`: Existing miss glyph uses the large font token inside the unchanged 44px board cell.
-
-- `registry:battleship-horizontal-connector`: Existing decorative horizontal connector spans one spacing token; it does not resize the cell.
-
-- `registry:battleship-vertical-connector`: Existing decorative vertical connector spans one spacing token; it does not resize the cell.
-
-- `registry:battleship-ship-glyph`: Existing ship letter is an internal pseudo-element, independent of the board target geometry.
-
-- `registry:battleship-hit-glyph`: Existing hit/sunk ship letter shrinks within its decorative pseudo-element; the cell stays unchanged.
 
 - `registry:game-chip-focus-state`: Existing gameChipsHtml in format.js marks focused/background games by color and opacity; these are passive labels, with no protected interior override.
 

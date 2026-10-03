@@ -1,103 +1,53 @@
 import { api } from '../../api.js';
 import { connectSocket } from '../../socket.js';
-import { escapeHtml } from '../../format.js';
-import { showToast } from '../../toast.js';
+import { avatarHtml, escapeHtml } from '../../format.js';
 import { icon } from '../../icons.js';
+import { showToast } from '../../toast.js';
 import { getMyId } from '../../whoami.js';
-import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
-import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby, tetrisLobbies, leaveMyTetrisLobby, hasTetrisMatch } from './tetris.js';
-import {
-  ensureScribbleSocket,
-  renderScribbleLobbyCard,
-  wireScribbleLobbyCard,
-  myScribbleLobby,
-  hasScribbleMatch,
-  scribbleLobbies,
-  leaveMyScribbleLobby,
-  renderScribbleDrawing,
-} from './arcadeScribble.js';
-import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch, blobbyLobbies, leaveMyBlobbyLobby } from './blobby.js';
-import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, hasPongMatch, pongLobbies, leaveMyPongLobby } from './pong.js';
-import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, snakeLobbies, leaveMySnakeLobby } from './snake.js';
-import { ensureBattleshipSocket, renderBattleshipLobbyCard, wireBattleshipLobbyCard, myBattleshipLobby, hasBattleshipMatch, battleshipLobbies } from './battleship.js';
-import { ensureChallengeRushSocket, renderChallengeRushLobbyCard, wireChallengeRushLobbyCard, myChallengeRushLobby, hasChallengeRushMatch, challengeRushLobbies, leaveMyChallengeRushLobby } from './challengeRush.js';
-import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
+import { playerById } from '../../state.js';
+import { currentPlayerMayUseArcadeAi, currentPlayerMaySeeArcadeGame } from '../arcadeAdmin.js';
+import { ARCADE_GAMES, arcadeGame, arcadeGameIconHtml } from '../arcadeGames.js';
+import { ensureTetrisSocket, renderTetrisLobbyEntries, wireTetrisLobbyCard, myTetrisLobby, leaveMyTetrisLobby, hasTetrisMatch, createTetrisLobby } from './tetris.js';
+import { ensureScribbleSocket, renderScribbleLobbyEntries, wireScribbleLobbyCard, myScribbleLobby, hasScribbleMatch, leaveMyScribbleLobby, createScribbleLobby } from './arcadeScribble.js';
+import { ensureBlobbySocket, renderBlobbyLobbyEntries, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch, leaveMyBlobbyLobby, createBlobbyLobby } from './blobby.js';
+import { ensurePongSocket, renderPongLobbyEntries, wirePongLobbyCard, myPongLobby, hasPongMatch, leaveMyPongLobby, createPongLobby } from './pong.js';
+import { ensureSnakeSocket, renderSnakeLobbyEntries, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, leaveMySnakeLobby, createSnakeLobby } from './snake.js';
+import { ensureBattleshipSocket, renderBattleshipLobbyEntries, wireBattleshipLobbyCard, myBattleshipLobby, hasBattleshipMatch, createBattleshipLobby } from './battleship.js';
+import { ensureChallengeRushSocket, renderChallengeRushLobbyEntries, wireChallengeRushLobbyCard, myChallengeRushLobby, hasChallengeRushMatch, leaveMyChallengeRushLobby, createChallengeRushLobby, challengeRushCreateOptionsHtml, wireChallengeRushCreateOptions } from './challengeRush.js';
+import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadePlayerStripHtml, arcadeResultListHtml, arcadeScoreboardHtml, pointsLabel, wireArcadeToolbar } from '../arcadeUi.js';
+import { createRematchController } from '../rematch.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { startArcadeWatch } from './arcadeWatch.js';
-import { confirmDialog } from '../../modal.js';
+import { confirmDialog, openModal } from '../../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
-import { infoTooltipHtml, wireInfoTooltips } from '../../infoTooltip.js';
+import {
+  arcadeLobbyEntryHtml,
+  arcadeLobbyGuestActionsHtml,
+  arcadeLobbyHostActionsHtml,
+  arcadeLobbyJoinHtml,
+  arcadeLobbyModeButtonsHtml,
+  arcadeLobbyOpponentToggleHtml,
+  readyToggleHtml,
+  resetArcadeOpponentWhenAiUnavailable,
+  wireArcadeOpponentToggle,
+  wireReadyToggle,
+} from '../lobbyReady.js';
 import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
-import { searchSelectHtml, wireSearchSelect } from '../../searchSelect.js';
 import { emptyStateHtml } from '../../emptyState.js';
-import { localRouteKey } from '../../appRoute.js';
 import { createDeferredInteractiveRender } from '../../deferredInteractiveRender.js';
 
-// The Arcade opens as a launcher: a compact grid of playable game tiles.
-// Picking one reveals that game's lobby below.
-const GAMES = [
-  {
-    id: 'quiz',
-    icon: icon('brain'),
-    name: 'Gaming-Quiz',
-    help: 'Ziel: Richtige Antworten sammeln. Steuerung: Antwort tippen und senden.',
-  },
-  {
-    id: 'tetris',
-    icon: icon('blocks'),
-    name: 'Tetris',
-    help: 'Ziel: Überleben. Steuerung: Pfeiltasten und Leertaste.',
-  },
-  {
-    id: 'scribble',
-    icon: icon('pencil'),
-    name: 'Scribble',
-    help: 'Ziel: Wörter erraten und Punkte sammeln. Steuerung: Zeichnen und tippen.',
-  },
-  {
-    id: 'pong',
-    icon: icon('gitCommitVertical'),
-    name: 'Pong',
-    help: 'Ziel: Erreiche zuerst die Punktzahl. Steuerung: Pfeiltasten.',
-  },
-  {
-    id: 'blobby',
-    icon: icon('volleyball'),
-    name: 'Blobby Volley',
-    help: 'Duell oder Doppel. Ziel: Erreiche zuerst die Punktzahl. Steuerung: Pfeiltasten.',
-  },
-  {
-    id: 'snake',
-    icon: icon('snake'),
-    name: 'Snake',
-    help: 'Klassisch: 1 gegen 1. Arena: 3 bis 8 Spieler, die sichere Zone schrumpft regelmäßig und die letzte Schlange gewinnt. Steuerung: Pfeiltasten oder Wischen.',
-  },
-  {
-    id: 'battleship',
-    icon: icon('ship'),
-    name: 'Battleship',
-    help: 'Ziel: Versenke die gegnerische Flotte. Zu Beginn ein Schiff wählen und auf das Startfeld tippen, um es zu platzieren; Berührungen zwischen Schiffen sind erlaubt. Steuerung: Raster antippen oder mit der Tastatur bedienen.',
-  },
-  {
-    id: 'challenge-rush',
-    icon: icon('crosshair'),
-    name: 'Challenge Rush',
-    help: 'Ziel: In vier kurzen Mini-Challenges möglichst viele Punkte sammeln. Steuerung: Tippen oder klicken.',
-  },
-];
+// The Arcade hub has three areas: every open lobby of every game in one list
+// (the player's own lobby expanded on top), the matches running right now and
+// one overall ranking across all games. New lobbies open through a dialog
+// that asks for game and mode.
 
 let socket = null;
 let lobbies = [];
 let watchMatches = [];
 let stats = null;
 let statsLoading = false;
-let scribbleGallery = [];
-let activeStatsGame = null;
-let statsGameSyncedFor = undefined; // last top-level game the stats picker was auto-synced to
-let activeGame = null; // which game tile is expanded
-let appliedRouteKey = null;
-let quizOpponent = 'human';
+let statsFilter = 'all';
+let statsOpen = false;
 let match = null;
 let currentQuestion = null;
 let lastResult = null;
@@ -108,6 +58,26 @@ const deferredArcadeRender = createDeferredInteractiveRender({
   shouldTrackPointerInteraction: () => currentView() === 'arcade',
   trackPointerInteractions: true,
 });
+
+// Alphabetical, so the dialog and the stats filter list games in reading order.
+const quizRematch = createRematchController({
+  prefix: 'quiz',
+  emit: (event, payload) => emitWithAck(event, payload),
+  myId: () => getMyId(),
+  lobbies: () => lobbies,
+  events: { create: 'arcade:lobby:create', bot: 'arcade:lobby:bot', join: 'arcade:lobby:join', ready: 'arcade:lobby:ready', start: 'arcade:lobby:start', leave: 'arcade:lobby:close' },
+  createPayload: () => ({ gameType: 'quiz' }),
+  startPayload: () => ({ targetScore: match?.targetScore ?? Number(customTarget) }),
+  playerName: (id) => match?.players?.find((player) => player.id === id)?.name ?? 'Spieler',
+  rerender: () => window.dispatchEvent(new CustomEvent('respawn:rerender')),
+  onError: (message) => showToast(message, { error: true }),
+});
+
+function visibleGames() {
+  return ARCADE_GAMES
+    .filter((game) => currentPlayerMaySeeArcadeGame(game.id))
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+}
 
 function currentView() {
   return document.getElementById('view-container')?.dataset.view;
@@ -120,11 +90,10 @@ function rerenderIfView(ctx, view) {
   ctx.rerender();
 }
 
-// The Tetris view lives in its own module; when one of its matches finishes it
-// fires this so our cached highscores refetch the next time Arcade renders.
+// The game modules fire this when one of their matches finishes so our cached
+// stats refetch the next time Arcade renders.
 window.addEventListener('respawn:arcade-stats-dirty', () => {
   stats = null;
-  scribbleGallery = [];
 });
 
 function stopCountdown() {
@@ -136,9 +105,8 @@ function updateCountdownBadge() {
   const badge = document.querySelector('#quiz-countdown');
   if (!badge) return;
   const left = secondsLeft();
-  badge.textContent = match?.paused ? 'Pause' : `${left}s`;
-  badge.classList.toggle('badge-paused', match?.paused || left <= 5);
-  badge.classList.toggle('badge-playing', !match?.paused && left > 5);
+  badge.textContent = match?.paused ? 'Pause' : `${left} s`;
+  badge.classList.toggle('is-urgent', !match?.paused && left <= 5);
   if (!match?.paused && left > 0 && left <= 5) playArcadeSound('quiz-tick');
 }
 
@@ -152,13 +120,10 @@ async function loadStats(ctx) {
   if (statsLoading) return;
   statsLoading = true;
   try {
-    const [loadedStats, gallery] = await Promise.all([api.arcade.stats(), api.arcade.scribbleGallery()]);
-    stats = loadedStats;
-    scribbleGallery = gallery.drawings ?? [];
+    stats = await api.arcade.stats();
   } catch (err) {
     showToast(err.message, { error: true });
     stats = { games: [] };
-    scribbleGallery = [];
   } finally {
     statsLoading = false;
     rerenderIfView(ctx, 'arcade');
@@ -167,11 +132,15 @@ async function loadStats(ctx) {
 
 function ensureSocket(ctx) {
   if (socket) return socket;
-  resetArcadeOpponentWhenAiUnavailable(() => { quizOpponent = 'human'; });
+  resetArcadeOpponentWhenAiUnavailable(() => { createDraft.opponent = 'human'; });
   socket = connectSocket();
   socket.on('arcade:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
     rerenderIfView(ctx, 'arcade');
+    if (match?.ended && currentView() === 'quizRoom') {
+      quizRematch.onLobbies();
+      rerenderIfView(ctx, 'quizRoom');
+    }
   });
   socket.on('arcade:watch:list', (payload) => {
     watchMatches = payload?.matches ?? [];
@@ -179,6 +148,7 @@ function ensureSocket(ctx) {
   });
   socket.on('arcade:match:start', (payload) => {
     match = { ...payload, scores: payload.players.map((p) => ({ playerId: p.id, name: p.name, score: 0 })), paused: false };
+    quizRematch.reset();
     currentQuestion = null;
     lastResult = null;
     stopCountdown();
@@ -209,6 +179,7 @@ function ensureSocket(ctx) {
   socket.on('arcade:match:end', (payload) => {
     lastResult = payload.winner ? { winner: payload.winner, correctAnswer: 'Match beendet' } : lastResult;
     if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, ended: true, winner: payload.winner };
+    if (match?.players) quizRematch.capture(match);
     currentQuestion = null;
     stopCountdown();
     cancelCountdown();
@@ -255,150 +226,148 @@ function myLobby() {
   return lobbies.find((l) => l.players.some((p) => p.id === myId)) ?? null;
 }
 
-function scribbleArtStatsHtml(game) {
-  const players = game.artPlayers ?? [];
-  const artRows = players.length
-    ? players.map((player, index) => `
-        <div class="lb-row scribble-art-stat-row">
-          <span class="lb-rank">${index + 1}</span>
-          <span class="leaderboard-row-main">
-            <strong class="player-name leaderboard-row-name">${escapeHtml(player.name)}</strong>
-            <span class="muted leaderboard-row-stat">${player.drawings} Bilder · ${player.roundWins} Rundenbilder · ${player.favorites} Favoriten</span>
-            <span class="muted leaderboard-row-stat">Cool ${player.reactionBreakdown.cool} · Kreativ ${player.reactionBreakdown.creative} · Witzig ${player.reactionBreakdown.funny}</span>
-          </span>
-        </div>`).join('')
-    : emptyStateHtml('Noch keine Scribble-Bilder.', { className: 'empty-state-compact' });
-  const galleryHtml = scribbleGallery.length
-    ? `<div class="scribble-gallery-grid">${scribbleGallery.map((drawing) => `
-        <article class="card stack scribble-drawing-card is-winner">
-          <div class="row-between" style="gap:var(--space-2);"><strong>${escapeHtml(drawing.artistName)}</strong><span class="badge">${icon('trophy')} Runde ${drawing.round}</span></div>
-          <div class="scribble-stored-canvas-wrap"><canvas data-arcade-gallery-drawing="${drawing.id}" aria-label="Rundenbild von ${escapeHtml(drawing.artistName)}"></canvas></div>
-          <div class="muted">${escapeHtml(drawing.word)} · ${drawing.favoriteVotes} Favoriten · ${drawing.reactionCount} Reaktionen</div>
-        </article>`).join('')}</div>`
-    : emptyStateHtml('Noch keine Rundenbilder.', { className: 'empty-state-compact' });
-  return `
-    <div class="section-title">Beste Bilder pro Spieler</div>
-    <div class="leaderboard-list-grid">${artRows}</div>
-    <div class="section-title">Rundenbilder-Galerie</div>
-    ${galleryHtml}`;
+// ---------- Statistik: one ranking across all games ----------
+
+// Wins per player and game. Tetris sums its human Duell/Arena variants (its
+// legacy aggregate also counts AI test matches); every other game uses its
+// all-mode aggregate entry.
+function statsEntriesFor(gameId) {
+  const games = stats?.games ?? [];
+  if (gameId === 'tetris') return games.filter((g) => g.baseGameType === 'tetris' && g.mode && !g.mode.endsWith('-ai'));
+  return games.filter((g) => g.gameType === gameId && !g.baseGameType);
 }
 
-function arcadeMatchCountLabel(count) {
-  return `${count} ${count === 1 ? 'Match' : 'Matches'}`;
+function aggregateStats() {
+  const players = new Map();
+  const gamesWithMatches = [];
+  for (const game of visibleGames()) {
+    const entries = statsEntriesFor(game.id);
+    if (!entries.some((entry) => entry.matches > 0)) continue;
+    gamesWithMatches.push(game);
+    for (const entry of entries) {
+      for (const p of entry.players ?? []) {
+        const row = players.get(p.playerId) ?? { playerId: p.playerId, name: p.name, wins: 0, matches: 0, perGame: {} };
+        row.wins += p.wins;
+        row.matches += p.matches;
+        row.perGame[game.id] = (row.perGame[game.id] ?? 0) + p.wins;
+        players.set(p.playerId, row);
+      }
+    }
+  }
+  return { players: [...players.values()], games: gamesWithMatches };
 }
 
-function arcadeResultLabel(wins, losses) {
-  return `${wins} ${wins === 1 ? 'Sieg' : 'Siege'} · ${losses} ${losses === 1 ? 'Niederlage' : 'Niederlagen'}`;
+const GAME_STAT_COLORS = {
+  quiz: 'var(--arcade-stat-quiz)',
+  tetris: 'var(--arcade-stat-tetris)',
+  pong: 'var(--arcade-stat-pong)',
+  blobby: 'var(--arcade-stat-blobby)',
+  snake: 'var(--arcade-stat-snake)',
+  battleship: 'var(--arcade-stat-battleship)',
+  scribble: 'var(--arcade-stat-scribble)',
+  'challenge-rush': 'var(--arcade-stat-challenge-rush)',
+};
+
+function gameColorVar(gameId) {
+  return GAME_STAT_COLORS[gameId] ?? 'var(--text-muted)';
+}
+
+function statsFilterHtml(games) {
+  const options = [{ value: 'all', label: 'Alle Spiele' }, ...games.map((game) => ({ value: game.id, label: game.name }))];
+  return `<select id="arcade-stats-filter" class="arcade-stats-filter" aria-label="Spiel filtern">
+    ${options.map((o) => `<option value="${o.value}" ${o.value === statsFilter ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+  </select>`;
 }
 
 function arcadeStatsHtml() {
-  if (!stats && !statsLoading) return '';
-  if (statsLoading && !stats) return emptyStateHtml('Statistiken laden…', { className: 'empty-state-compact' });
-  const games = stats?.games ?? [];
-  if (!games.length) return emptyStateHtml('Noch keine Arcade-Runden.', { className: 'empty-state-compact' });
-
-  // Picking a game up top should show its stats without a second, redundant
-  // selection here — but only re-sync when the top-level pick actually
-  // changes, so a manual choice in this dropdown isn't clobbered on every
-  // render (e.g. by an unrelated lobby/socket update).
-  const topGame = currentGame();
-  if (topGame !== statsGameSyncedFor) {
-    const topGameStats = games.find((g) => (g.statsKey ?? g.gameType) === topGame);
-    // Only mark this game as synced once a matching stats entry actually exists — a tile
-    // picked before its first completed match keeps retrying on every render until stats
-    // for it show up (e.g. after the next `arcade:match:end` reload), instead of getting
-    // stuck showing an unrelated fallback game forever.
-    if (topGameStats) {
-      activeStatsGame = topGameStats.statsKey ?? topGameStats.gameType;
-      statsGameSyncedFor = topGame;
-    }
-  }
-  if (!games.some((g) => (g.statsKey ?? g.gameType) === activeStatsGame)) activeStatsGame = games[0].statsKey ?? games[0].gameType;
-
-  const statsGameOptions = games.map((g) => ({ value: g.statsKey ?? g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` }));
-  const gameSelect = `
-    <div>
-      <label for="arcade-stats-game-search" class="field-label">Spiel auswählen</label>
-      ${searchSelectHtml('arcade-stats-game', statsGameOptions, activeStatsGame, { placeholder: 'Spiel suchen' })}
-    </div>`;
-
-  const game = games.find((g) => (g.statsKey ?? g.gameType) === activeStatsGame);
-  const isArenaStats = game.mode?.startsWith('arena');
-  const isTetrisArenaStats = isArenaStats && game.baseGameType === 'tetris';
-  const isSnakeArenaStats = isArenaStats && game.baseGameType === 'snake';
-  const rows = game.players
-    .slice(0, 5)
-    .map(
-      (p, i) => `
-        <div class="lb-row">
-          <span class="lb-rank">${i + 1}</span>
-          <span class="leaderboard-row-main">
-            <strong class="player-name leaderboard-row-name">${escapeHtml(p.name)}</strong>
-            <span class="muted leaderboard-row-stat">${
-              isArenaStats
-                ? isSnakeArenaStats
-                  ? `${p.wins} ${p.wins === 1 ? 'Sieg' : 'Siege'} · ${p.matches} ${p.matches === 1 ? 'Match' : 'Matches'}`
-                  : `${p.wins} ${p.wins === 1 ? 'Sieg' : 'Siege'} · ${p.topThree}× Top 3 · Ø Platz ${p.averagePlacement?.toFixed(1) ?? '–'}`
-                : arcadeResultLabel(p.wins, p.losses)
-            }</span>
-            ${isTetrisArenaStats ? `<span class="muted leaderboard-row-stat">${p.garbageSent ?? 0} Zeilen gesendet · ${p.knockouts ?? 0} Spieler besiegt</span>` : ''}
-            ${isSnakeArenaStats ? `<span class="muted leaderboard-row-stat">${p.knockouts ?? 0} Spieler rausgeworfen</span>` : ''}
-          </span>
-          <strong class="lb-points">${isTetrisArenaStats ? `${p.knockouts ?? 0} K.o.` : isSnakeArenaStats ? `${p.knockouts ?? 0} K.o.` : `${Math.round(p.winRate * 100)}%`}</strong>
-        </div>`
-    )
+  if (statsLoading && !stats) return { head: '', body: emptyStateHtml('Statistik lädt', { className: 'empty-state-compact' }) };
+  const { players, games } = aggregateStats();
+  if (!players.length) return { head: '', body: emptyStateHtml('Noch keine Arcade-Runden.', { className: 'empty-state-compact' }) };
+  if (statsFilter !== 'all' && !games.some((game) => game.id === statsFilter)) statsFilter = 'all';
+  const shownGames = statsFilter === 'all' ? games : games.filter((game) => game.id === statsFilter);
+  const rows = players
+    .map((p) => {
+      const wins = statsFilter === 'all' ? p.wins : p.perGame[statsFilter] ?? 0;
+      return { ...p, shownWins: wins };
+    })
+    .filter((p) => statsFilter === 'all' || p.perGame[statsFilter] !== undefined)
+    .sort((a, b) => b.shownWins - a.shownWins || a.name.localeCompare(b.name, 'de'));
+  const maxWins = Math.max(1, ...rows.map((p) => p.shownWins));
+  const matchesFor = (p) => (statsFilter === 'all'
+    ? p.matches
+    : statsEntriesFor(statsFilter).reduce((sum, entry) => sum + (entry.players.find((x) => x.playerId === p.playerId)?.matches ?? 0), 0));
+  const myId = getMyId();
+  const legend = `<div class="arcade-stats-legend">${shownGames.length > 1 ? shownGames.map((game) => `<span><i style="background:${gameColorVar(game.id)}"></i>${escapeHtml(game.name)}</span>`).join('') : ''}</div>`;
+  const list = rows
+    .map((p, index) => {
+      const player = playerById(p.playerId) ?? { name: p.name };
+      const matches = matchesFor(p);
+      const rate = matches > 0 ? Math.round((p.shownWins / matches) * 100) : 0;
+      const segments = shownGames
+        .filter((game) => (p.perGame[game.id] ?? 0) > 0)
+        .map((game) => `<span style="flex:${p.perGame[game.id]};background:${gameColorVar(game.id)}" title="${escapeHtml(game.name)}: ${p.perGame[game.id]}"></span>`)
+        .join('');
+      const barLabel = shownGames
+        .filter((game) => (p.perGame[game.id] ?? 0) > 0)
+        .map((game) => `${game.name} ${p.perGame[game.id]}`)
+        .join(', ');
+      return `<div class="arcade-stats-row">
+        <span class="arcade-stats-rank">${index + 1}</span>
+        <span class="arcade-stats-player">${avatarHtml(player, 20)}<span class="player-name${p.playerId === myId ? ' is-me' : ''}">${escapeHtml(p.name)}</span></span>
+        <span class="arcade-stats-bar-track"><span class="arcade-stats-bar" style="width:${(p.shownWins / maxWins) * 100}%" role="img" aria-label="${escapeHtml(barLabel || 'Keine Siege')}">${segments}</span></span>
+        <span class="arcade-stats-rate">${rate} %</span>
+        <strong class="arcade-stats-wins">${p.shownWins}</strong>
+      </div>`;
+    })
     .join('');
-  return `
-    ${gameSelect}
-    <div class="arcade-stat-game">
-      <div class="leaderboard-list-grid">${rows}</div>
-    </div>
-    ${game.gameType === 'scribble' ? scribbleArtStatsHtml(game) : ''}`;
+  return {
+    head: '',
+    body: `<div class="arcade-stats-toolbar">${legend}${statsFilterHtml(games)}</div><div class="arcade-stats-list">${list}</div>`,
+  };
 }
 
-// The Arcade launcher embeds this card in place of a separate sub-view; the
-// standalone `quizRoom` route reuses it verbatim for a direct or expired-match link.
-function renderQuizLobbyCard() {
-  const createReason = match ? 'Beende zuerst dein aktuelles Spiel.' : '';
-  const mayUseAi = currentPlayerMayUseArcadeAi();
-  return `
-    <div class="card stack arcade-lobby-card">
-      <div class="arcade-lobby-create-actions">
-        <div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}">
-          <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button>
-          ${createReason ? infoTooltipHtml('quiz-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
-          ${mayUseAi ? arcadeLobbyOpponentToggleHtml('quiz-opponent', quizOpponent, Boolean(match)) : ''}
-        </div>
-      </div>
-      ${renderLobbyList()}
-    </div>`;
+// ---------- Gaming-Quiz lobby entries (the quiz lives in this module) ----------
+
+function quizLobbyEntryHtml(l) {
+  const isHost = l.host.id === getMyId();
+  const joined = l.players.some((p) => p.id === getMyId());
+  const settingsHtml = isHost
+    ? `<label class="arcade-lobby-target-score">
+        <span>Punkte bis Sieg</span>
+        <input type="number" id="target-score" min="1" max="100" value="${escapeHtml(customTarget)}" aria-label="Punkte bis Sieg" />
+      </label>`
+    : '';
+  const footerActions = isHost
+    ? arcadeLobbyHostActionsHtml({ startAttrs: 'id="quiz-start-lobby"', startEnabled: l.players.length >= 2, startHint: l.players.length >= 2 ? '' : 'Mindestens 2 Spieler', closeAttrs: `data-close-lobby="${l.id}"` })
+    : joined
+      ? arcadeLobbyGuestActionsHtml({ readyHtml: readyToggleHtml(l, getMyId(), 'quiz-ready'), leaveAttrs: `data-quiz-leave="${l.id}"` })
+      : '';
+  const joinAction = !joined ? arcadeLobbyJoinHtml(`data-join-lobby="${l.id}"`) : '';
+  return arcadeLobbyEntryHtml(l, { gameType: 'quiz', meta: `${l.players.length} Spieler`, joinAction, settingsHtml, footerActions, capacity: l.players.length });
 }
 
-function wireQuizLobbyCard(container, ctx) {
-  wireArcadeOpponentToggle(container, 'quiz-opponent', (value) => {
-    quizOpponent = value;
-    ctx.rerender();
-  });
+async function createQuizLobby({ opponent = 'human' } = {}) {
+  const playerId = getMyId();
+  const res = opponent === 'bot'
+    ? await emitWithAck('arcade:lobby:bot', { playerId })
+    : await emitWithAck('arcade:lobby:create', { gameType: 'quiz', playerId });
+  if (!res?.ok) showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+  return res;
+}
 
-  container.querySelector('#quiz-create-lobby')?.addEventListener('click', async () => {
-    const playerId = getMyId();
-    if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
-    if (!(await leaveCurrentLobbyBeforeAction('quiz', 'create'))) return;
-    if (quizOpponent === 'bot') {
-      const botRes = await emitWithAck('arcade:lobby:bot', { playerId });
-      if (!botRes?.ok) showToast(botRes?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
-      return;
-    }
-    const res = await emitWithAck('arcade:lobby:create', { gameType: 'quiz', playerId });
-    if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
-    showToast('Quiz-Lobby geöffnet.');
-  });
-
+function wireQuizLobbyCard(container) {
   container.querySelectorAll('[data-close-lobby]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const playerId = getMyId();
       const res = await emitWithAck('arcade:lobby:close', { lobbyId: btn.dataset.closeLobby, playerId });
       if (!res?.ok) showToast(res?.error || 'Schließen fehlgeschlagen.', { error: true });
+    });
+  });
+
+  container.querySelectorAll('[data-quiz-leave]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const res = await emitWithAck('arcade:lobby:leave', { lobbyId: btn.dataset.quizLeave, playerId: getMyId() });
+      if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
     });
   });
 
@@ -429,121 +398,110 @@ function wireQuizLobbyCard(container, ctx) {
   });
 }
 
-function renderLobbyList() {
-  if (lobbies.length === 0) return emptyStateHtml('Noch keine Quiz-Lobby.', { className: 'empty-state-compact' });
-  return lobbies
-    .map((l) => {
-      const isHost = l.host.id === getMyId();
-      const joined = l.players.some((p) => p.id === getMyId());
-      const settingsHtml = isHost
-        ? `<label class="arcade-lobby-target-score">
-            <span>Punkte bis Sieg</span>
-            <input type="number" id="target-score" min="1" max="100" value="${escapeHtml(customTarget)}" aria-label="Punkte bis Sieg" />
-          </label>`
-        : '';
-      const startReason = l.players.length < 2 ? 'Noch nicht genug Spieler (mind. 2).' : '';
-      const footerActions = isHost
-        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-start-lobby" ${l.players.length < 2 ? 'disabled' : ''}>Start</button>
-            ${startReason ? infoTooltipHtml(`quiz-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
-          <button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>`
-        : joined
-          ? readyToggleHtml(l, getMyId(), 'quiz-ready')
-          : '';
-      const joinAction = !joined && !isHost
-        ? `<button type="button" class="btn btn-sm btn-primary" data-join-lobby="${l.id}">Beitreten</button>`
-        : '';
-      return arcadeLobbyEntryHtml(l, { joinAction, settingsHtml, footerActions });
-    })
-    .join('');
-}
-
 function secondsLeft() {
   if (match?.paused) return Math.max(0, Math.ceil((match.remainingMs ?? 0) / 1000));
   if (!currentQuestion?.expiresAt) return 0;
   return Math.max(0, Math.ceil((currentQuestion.expiresAt - Date.now()) / 1000));
 }
 
+function quizPauseButtonHtml() {
+  return match.paused
+    ? '<button type="button" class="btn btn-primary btn-sm" id="quiz-resume">Fortsetzen</button>'
+    : '<button type="button" class="btn btn-sm" id="quiz-pause">Pausieren</button>';
+}
+
 function matchControlsHtml() {
-  if (!match || match.ended) return '';
-  const isHost = match.host?.id === getMyId();
-  if (!isHost) {
+  if (!match) return '';
+  if (match.ended) return arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" id="quiz-back">Schließen</button>');
+  if (match.host?.id !== getMyId()) {
     // A non-host player can't pause (shared timer state, host-only), but
     // must still have a way out instead of only a raw tab close.
     if (!match.players.some((p) => p.id === getMyId())) return '';
-    return `
-      <div class="arcade-match-controls">
-        <button type="button" class="btn btn-sm btn-equal btn-danger" id="quiz-leave">Verlassen</button>
-      </div>`;
+    return arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" id="quiz-leave">Verlassen</button>');
   }
-  return `
-    <div class="arcade-match-controls">
-      ${
-        match.paused
-          ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-resume">Fortsetzen</button>`
-          : `<button type="button" class="btn btn-sm btn-equal" id="quiz-pause">Pausieren</button>`
-      }
-      <button type="button" class="btn btn-sm btn-equal btn-danger" id="quiz-finish">Beenden</button>
+  return arcadeMatchControlsHtml(`${quizPauseButtonHtml()}<button type="button" class="btn btn-sm" id="quiz-finish">Beenden</button>`);
+}
+
+function quizScore(player) {
+  return match.scores?.find((s) => s.playerId === player.id)?.score ?? 0;
+}
+
+// Two players face each other on the shared score bar; a bigger round lists
+// everyone in the strip.
+function quizPlayersHtml() {
+  const target = match.targetScore ?? 5;
+  if (match.players.length === 2) {
+    const side = (player) => ({ label: player.id === getMyId() ? 'Du' : '', score: quizScore(player), players: [player] });
+    return arcadeScoreboardHtml({ left: side(match.players[0]), right: side(match.players[1]), target, myId: getMyId() });
+  }
+  return `${quizStripHtml()}<span class="arcade-section-meta">bis ${target} Punkte</span>`;
+}
+
+function quizStripHtml() {
+  return arcadePlayerStripHtml(match.players.map((player) => {
+    const profile = playerById(player.id) ?? player;
+    return {
+      name: player.name,
+      colorVar: profile.color || player.color || 'var(--text-muted)',
+      value: `${quizScore(player)}`,
+      me: player.id === getMyId(),
+    };
+  }));
+}
+
+// The stage keeps one fixed height for question, reveal and waiting state, so
+// nothing below jumps and the start countdown stays centered on it.
+function quizStageHtml() {
+  if (currentQuestion) {
+    return `<form id="quiz-answer-form" class="quiz-stage-body">
+      <div class="quiz-question-meta">
+        <span>${escapeHtml(currentQuestion.category || 'Quiz')}${currentQuestion.difficulty ? ` · ${escapeHtml(currentQuestion.difficulty)}` : ''}</span>
+        <span id="quiz-countdown" class="quiz-timer${!match.paused && secondsLeft() <= 5 ? ' is-urgent' : ''}">${match.paused ? 'Pause' : `${secondsLeft()} s`}</span>
+      </div>
+      <p class="quiz-question">${escapeHtml(currentQuestion.question)}</p>
+      <div class="quiz-answer-row">
+        <input type="text" id="quiz-answer" autocomplete="off" placeholder="Antwort" aria-label="Antwort" ${match.paused ? 'disabled' : ''} />
+        <button type="submit" class="btn btn-primary btn-sm" ${match.paused ? 'disabled' : ''}>Senden</button>
+      </div>
+    </form>`;
+  }
+  if (lastResult && !match.ended) {
+    const who = lastResult.timeout ? 'Zeit abgelaufen' : lastResult.winner?.name ? `${escapeHtml(lastResult.winner.name)} hatte es` : '';
+    return `<div class="quiz-stage-body is-reveal">
+      <span class="quiz-question-meta">${who}</span>
+      <p class="quiz-question">${escapeHtml(lastResult.correctAnswer ?? '')}</p>
+      <span class="quiz-stage-note">Nächste Frage kommt gleich</span>
     </div>`;
+  }
+  return `<div class="quiz-stage-body is-waiting"><span class="quiz-stage-note">${match.ended ? 'Match beendet' : 'Erste Frage kommt gleich'}</span></div>`;
+}
+
+function quizResultHtml() {
+  if (!match?.ended) return '';
+  const winnerId = match.winner?.id ?? null;
+  const rows = [...match.players]
+    .sort((a, b) => quizScore(b) - quizScore(a))
+    .map((player) => ({ player, winner: player.id === winnerId, value: pointsLabel(quizScore(player)) }));
+  rows.forEach((row, index) => { row.place = index > 0 && quizScore(rows[index - 1].player) === quizScore(row.player) ? rows[index - 1].place : index + 1; });
+  return `<section class="card stack grouped-page-section" aria-labelledby="quiz-result-title">
+    <div class="grouped-page-section-title"><h2 id="quiz-result-title">Ergebnis</h2>${quizRematch.actionHtml()}</div>
+    ${arcadeResultListHtml(rows)}
+  </section>`;
 }
 
 function renderMatch() {
   if (!match) return '';
-  const winnerId = match.winner?.id ?? lastResult?.winner?.id ?? null;
-  const roster = matchRosterHtml(match.players, {
-    winnerId,
-    scoreFor: (player) => {
-      const score = match.scores?.find((s) => s.playerId === player.id)?.score ?? 0;
-      return `${score}/${match.targetScore ?? 5}`;
-    },
-  });
-  const result = lastResult && !match.ended
-    ? `<div class="card quiz-stage-card" style="margin-top:var(--space-3);">
-        <div class="quiz-stage-content quiz-round-result"><h2>${escapeHtml(lastResult.correctAnswer ?? '')}</h2></div>
-      </div>`
-    : '';
-  const question = currentQuestion
-    ? `
-      <div class="card quiz-stage-card" style="margin-top:var(--space-3);">
-      <form id="quiz-answer-form" class="stack quiz-stage-content">
-        <div class="row-between">
-          <div class="muted">${escapeHtml(currentQuestion.category || 'Quiz')} · ${escapeHtml(currentQuestion.difficulty || 'offen')}</div>
-          <span id="quiz-countdown" class="badge ${secondsLeft() <= 5 ? 'badge-paused' : 'badge-playing'}">${match.paused ? 'Pause' : `${secondsLeft()}s`}</span>
-        </div>
-        <h2 style="font-size:var(--font-size-lg);margin:0;">${escapeHtml(currentQuestion.question)}</h2>
-        <div class="row">
-          <input type="text" id="quiz-answer" autocomplete="off" placeholder="Antwort" style="flex:1;" aria-label="Antwort" ${match.paused ? 'disabled' : ''} />
-          <button type="submit" class="btn btn-primary" ${match.paused ? 'disabled' : ''}>Senden</button>
-        </div>
-      </form></div>`
-    : match.ended
-      ? emptyStateHtml('Match beendet.', { style: 'margin-top:var(--space-3);' })
-      : emptyStateHtml('Nächste Frage kommt…', { style: 'margin-top:var(--space-3);' });
+  // The quiz has no playfield worth keeping after the end: the result card
+  // already carries the final score.
+  if (match.ended) return quizResultHtml();
   return `
-    ${roster}
-    ${result}
-    ${question}
-    ${matchControlsHtml()}
-  `;
+    <section class="card arcade-stage quiz-stage">
+      <div class="quiz-stage-head">${quizPlayersHtml()}</div>
+      <div class="quiz-stage-area" data-countdown-anchor>${quizStageHtml()}</div>
+    </section>`;
 }
 
-function engagedGame() {
-  if (match || myLobby()) return 'quiz';
-  if (hasTetrisMatch()) return 'tetris';
-  if (myTetrisLobby()) return 'tetris';
-  if (myScribbleLobby() || hasScribbleMatch()) return 'scribble';
-  if (myPongLobby() || hasPongMatch()) return 'pong';
-  if (myBlobbyLobby() || hasBlobbyMatch()) return 'blobby';
-  if (mySnakeLobby() || hasSnakeMatch()) return 'snake';
-  if (myBattleshipLobby() || hasBattleshipMatch()) return 'battleship';
-  if (myChallengeRushLobby() || hasChallengeRushMatch()) return 'challenge-rush';
-  return null;
-}
-
-function currentGame() {
-  return activeGame ?? engagedGame();
-}
-
-async function leaveCurrentLobbyBeforeAction(targetGame, action) {
+async function leaveCurrentLobbyBeforeAction(_targetGame, action) {
   const playerId = getMyId();
   const quizLobby = myLobby();
   const candidates = [
@@ -571,114 +529,170 @@ async function leaveCurrentLobbyBeforeAction(targetGame, action) {
     showToast(result?.error || 'Deine aktuelle Lobby konnte nicht verlassen werden.', { error: true });
     return false;
   }
-  activeGame = targetGame;
   return true;
 }
 
-// The raw open-lobby list for a given game — every xLobbies() getter
-// already returns the same { id, host, players, ... } shape as quiz's own
-// `lobbies`, so this is the one place that maps a game id to it.
-function gameLobbies(gameId) {
-  switch (gameId) {
-    case 'quiz':
-      return lobbies;
-    case 'tetris':
-      return tetrisLobbies();
-    case 'scribble':
-      return scribbleLobbies();
-    case 'pong':
-      return pongLobbies();
-    case 'blobby':
-      return blobbyLobbies();
-    case 'snake':
-      return snakeLobbies();
-    case 'battleship':
-      return battleshipLobbies();
-    case 'challenge-rush':
-      return challengeRushLobbies();
-    default:
-      return [];
+// ---------- Hub: lobbies, running matches, create dialog ----------
+
+const LOBBY_SOURCES = [
+  { id: 'quiz', entries: () => lobbies.map((lobby) => ({ id: lobby.id, html: quizLobbyEntryHtml(lobby) })), mine: () => myLobby(), create: createQuizLobby },
+  { id: 'tetris', entries: renderTetrisLobbyEntries, mine: myTetrisLobby, create: createTetrisLobby },
+  { id: 'scribble', entries: renderScribbleLobbyEntries, mine: myScribbleLobby, create: createScribbleLobby },
+  { id: 'pong', entries: renderPongLobbyEntries, mine: myPongLobby, create: createPongLobby },
+  { id: 'blobby', entries: renderBlobbyLobbyEntries, mine: myBlobbyLobby, create: createBlobbyLobby },
+  { id: 'snake', entries: renderSnakeLobbyEntries, mine: mySnakeLobby, create: createSnakeLobby },
+  { id: 'battleship', entries: renderBattleshipLobbyEntries, mine: myBattleshipLobby, create: createBattleshipLobby },
+  { id: 'challenge-rush', entries: renderChallengeRushLobbyEntries, mine: myChallengeRushLobby, create: createChallengeRushLobby },
+];
+
+function allLobbiesHtml() {
+  const mine = [];
+  const others = [];
+  for (const source of LOBBY_SOURCES) {
+    if (!currentPlayerMaySeeArcadeGame(source.id)) continue;
+    const myLobbyId = source.mine()?.id;
+    for (const entry of source.entries()) (entry.id === myLobbyId ? mine : others).push(entry.html);
   }
+  if (!mine.length && !others.length) return emptyStateHtml('Keine offene Lobby.', { className: 'empty-state-compact' });
+  return `${mine.join('')}${others.length ? `<div class="arcade-lobby-rows">${others.join('')}</div>` : ''}`;
 }
 
-// How many open lobbies exist right now for a given game, so the tile grid
-// and the compact overview below can both show it.
-function openLobbyCount(gameId) {
-  return gameLobbies(gameId).length;
+function hasRunningMatch() {
+  return Boolean(match && !match.ended) || hasTetrisMatch() || hasScribbleMatch() || hasPongMatch() || hasBlobbyMatch() || hasSnakeMatch() || hasBattleshipMatch() || hasChallengeRushMatch();
 }
 
-function gameTileHtml(game, active, count) {
-  return `
-    <button type="button" class="card arcade-tile ${active === game.id ? 'is-active' : ''} ${game.soon ? 'is-soon' : ''}" data-game="${game.id}"${active === game.id ? ' aria-current="page"' : ''}>
-      <span class="arcade-tile-icon" aria-hidden="true">${game.icon}</span>
-      <span class="arcade-tile-name">${escapeHtml(game.name)}</span>
-      ${game.soon ? `<span class="badge arcade-tile-state">Bald</span>` : count > 0 ? `<span class="badge arcade-tile-count">${count} offen</span>` : ''}
-    </button>`;
+const LOCAL_MATCH = {
+  quiz: () => Boolean(match && !match.ended),
+  tetris: hasTetrisMatch,
+  scribble: hasScribbleMatch,
+  pong: hasPongMatch,
+  blobby: hasBlobbyMatch,
+  snake: hasSnakeMatch,
+  battleship: hasBattleshipMatch,
+  'challenge-rush': hasChallengeRushMatch,
+};
+
+function playerNames(live) {
+  const names = (live.players ?? []).map((player) => player.name ?? player.ref?.name).filter(Boolean);
+  // Some games (Challenge Rush) only name their players in the score list.
+  return names.length ? names : (live.scores ?? []).map((score) => score.name).filter(Boolean);
 }
 
-function runningMatchesOverviewHtml() {
+function runningTitle(live) {
+  // Team games may carry the side only on their score entries (Blobby).
+  const players = (live.players ?? []).some((player) => player.team) ? live.players : (live.scores ?? []);
+  if (players.some((player) => player.team === 'left') && players.some((player) => player.team === 'right')) {
+    const side = (team) => players.filter((player) => player.team === team).map((player) => player.name ?? player.ref?.name ?? 'Spieler').join(' und ');
+    return `${side('left')} gegen ${side('right')}`;
+  }
+  const names = playerNames(live);
+  if (names.length === 2) return `${names[0]} gegen ${names[1]}`;
+  return names.join(', ') || 'Spiel läuft';
+}
+
+function runningMeta(live) {
+  const game = arcadeGame(live.gameType);
+  const entries = live.scores ?? [];
+  const teamScore = (team) => entries.find((score) => score.team === team)?.score ?? 0;
+  const scores = entries.some((score) => score.team === 'left') ? [teamScore('left'), teamScore('right')] : entries.map((score) => score.score ?? 0);
+  const parts = [game?.name ?? live.gameType];
+  if (scores.length === 2) parts.push(`${scores[0]} : ${scores[1]}`);
+  if (live.paused) parts.push('Pause');
+  return parts.join(' · ');
+}
+
+function runningMatchesHtml() {
   const myId = getMyId();
-  const matches = watchMatches.filter((live) => !isOwnFinishedMatch(live, myId));
-  if (matches.length === 0) return '';
-  return `
-    <section class="card stack grouped-page-section" aria-labelledby="arcade-running-title">
-      <div class="grouped-page-section-title"><h2 id="arcade-running-title">Laufende Spiele</h2></div>
-      <div class="arcade-watch-list two-column-card-grid">
-        ${matches
-          .map((live) => {
-            const game = GAMES.find((entry) => entry.id === live.gameType);
-            const players = (live.players ?? []).map((player) => escapeHtml(player.name ?? player.ref?.name ?? 'Spieler')).join(' · ');
-            const scoreText = (live.scores ?? []).map((score) => `${escapeHtml(score.name ?? 'Spieler')}: ${score.score ?? 0}`).join(' · ');
-            return `<div class="card arcade-watch-list-row">
-              <div class="stack" style="gap:var(--space-1);min-width:0;">
-                <strong>${game?.icon ?? ''} ${escapeHtml(game?.name ?? live.gameType)}</strong>
-                <span class="muted list-row-desc">${players || 'Spiel läuft'}${scoreText ? ` · ${scoreText}` : ''}</span>
-              </div>
-              <button type="button" class="btn btn-sm btn-primary" data-watch-match="${escapeHtml(live.matchId)}">Zuschauen</button>
-            </div>`;
-          })
-          .join('')}
-      </div>
-    </section>`;
+  const matches = watchMatches.filter((live) => !isOwnFinishedMatch(live, myId) && currentPlayerMaySeeArcadeGame(live.gameType));
+  if (!matches.length) return '';
+  const rows = matches
+    .map((live) => {
+      // Resume only works while this tab still holds the match; after a reload
+      // the own match can only be watched.
+      const own = (live.players ?? []).some((player) => (player.id ?? player.playerId ?? player.ref?.id) === myId);
+      const room = arcadeGame(live.gameType)?.room;
+      const action = own && room && LOCAL_MATCH[live.gameType]?.()
+        ? `<button type="button" class="btn btn-primary btn-sm" data-arcade-resume="${escapeHtml(room)}">Weiterspielen</button>`
+        : `<button type="button" class="btn btn-sm" data-watch-match="${escapeHtml(live.matchId)}">Zuschauen</button>`;
+      return `<div class="arcade-running-row">
+        ${arcadeGameIconHtml(live.gameType)}
+        <span class="arcade-lobby-row-text"><strong>${escapeHtml(runningTitle(live))}</strong><span class="arcade-lobby-meta">${escapeHtml(runningMeta(live))}</span></span>
+        ${action}
+      </div>`;
+    })
+    .join('');
+  return `<section class="card stack grouped-page-section" aria-labelledby="arcade-running-title">
+    <div class="grouped-page-section-title"><h2 id="arcade-running-title">Läuft gerade</h2></div>
+    <div class="arcade-running-list">${rows}</div>
+  </section>`;
 }
 
-// The lobby/match UI for the currently selected game, shown under the tiles.
-// Nothing renders here until a game is picked (or the player is already
-// engaged in one) — that's the whole point of keeping this a launcher.
-function activeGameHtml() {
-  const game = currentGame();
-  if (game === 'quiz') {
-    return renderQuizLobbyCard();
-  }
-  if (game === 'tetris') {
-    return `<div>${renderTetrisLobbyCard()}</div>`;
-  }
-  if (game === 'scribble') {
-    return `<div>${renderScribbleLobbyCard()}</div>`;
-  }
-  if (game === 'pong') return `<div>${renderPongLobbyCard()}</div>`;
-  if (game === 'blobby') return `<div>${renderBlobbyLobbyCard()}</div>`;
-  if (game === 'snake') return `<div>${renderSnakeLobbyCard()}</div>`;
-  if (game === 'battleship') return `<div>${renderBattleshipLobbyCard()}</div>`;
-  if (game === 'challenge-rush') return `<div>${renderChallengeRushLobbyCard()}</div>`;
-  return '';
+let createDraft = { game: 'quiz', mode: null, opponent: 'human' };
+
+function createDialogBodyHtml() {
+  const games = visibleGames();
+  if (!games.some((game) => game.id === createDraft.game)) createDraft.game = games[0]?.id ?? 'quiz';
+  const game = arcadeGame(createDraft.game);
+  if (game.modes && !game.modes.some((mode) => mode.value === createDraft.mode)) createDraft.mode = game.modes[0].value;
+  const mayUseAi = currentPlayerMayUseArcadeAi() && game.id !== 'challenge-rush';
+  return `<form class="stack arcade-create-form" id="arcade-create-form">
+    <label class="field">
+      <span class="field-label">Spiel</span>
+      <select id="arcade-create-game">${games.map((g) => `<option value="${g.id}" ${g.id === game.id ? 'selected' : ''}>${escapeHtml(g.name)}</option>`).join('')}</select>
+    </label>
+    ${game.modes || mayUseAi ? `<div class="arcade-create-options">
+      ${game.modes ? `<div class="field"><span class="field-label">Modus</span>${arcadeLobbyModeButtonsHtml('arcade-create-mode', 'Spielmodus', game.modes, createDraft.mode)}</div>` : ''}
+      ${mayUseAi ? `<div class="field"><span class="field-label">Gegner</span>${arcadeLobbyOpponentToggleHtml('arcade-create-opponent', createDraft.opponent)}</div>` : ''}
+    </div>` : ''}
+    ${game.id === 'challenge-rush' ? challengeRushCreateOptionsHtml() : ''}
+    <div class="arcade-create-actions"><button type="submit" class="btn btn-primary btn-sm">Lobby öffnen</button></div>
+  </form>`;
+}
+
+function openCreateDialog() {
+  if (!getMyId()) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+  if (hasRunningMatch()) return showToast('Beende zuerst dein laufendes Spiel.', { error: true });
+  openModal('Lobby öffnen', createDialogBodyHtml(), {
+    onMount: (backdrop, close) => {
+      const body = backdrop.querySelector('.modal-body');
+      const wire = () => {
+        body.querySelector('#arcade-create-game')?.addEventListener('change', (event) => {
+          createDraft = { ...createDraft, game: event.currentTarget.value, mode: null };
+          body.innerHTML = createDialogBodyHtml();
+          wire();
+          body.querySelector('#arcade-create-game')?.focus();
+        });
+        body.querySelectorAll('#arcade-create-mode [data-arcade-mode]').forEach((button) => button.addEventListener('click', () => {
+          createDraft.mode = button.dataset.arcadeMode;
+          body.innerHTML = createDialogBodyHtml();
+          wire();
+          body.querySelector(`#arcade-create-mode [data-arcade-mode="${createDraft.mode}"]`)?.focus();
+        }));
+        wireChallengeRushCreateOptions(body);
+        wireArcadeOpponentToggle(body, 'arcade-create-opponent', (value) => {
+          createDraft.opponent = value;
+          body.innerHTML = createDialogBodyHtml();
+          wire();
+        });
+        body.querySelector('#arcade-create-form')?.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const source = LOBBY_SOURCES.find((entry) => entry.id === createDraft.game);
+          if (!source) return;
+          close();
+          if (!(await leaveCurrentLobbyBeforeAction(createDraft.game, 'create'))) return;
+          const opponent = currentPlayerMayUseArcadeAi() ? createDraft.opponent : 'human';
+          await source.create({ mode: createDraft.mode, opponent });
+        });
+      };
+      wire();
+    },
+  });
 }
 
 export function renderArcade(container, ctx) {
   deferredArcadeRender.observe(container);
-  const route = ctx.localRoute();
-  const routeKey = localRouteKey(route);
-  // Same-route renders are background refreshes, including those dispatched
-  // by sibling Arcade modules. Route navigation from the click itself must
-  // render immediately and supersede any older deferred refresh.
-  if (routeKey === appliedRouteKey && deferredArcadeRender.deferIfNeeded(container, ctx)) return;
+  if (deferredArcadeRender.deferIfNeeded(container, ctx)) return;
   deferredArcadeRender.clear(container);
-  if (routeKey !== appliedRouteKey) {
-    activeGame = route?.kind === 'game' && GAMES.some((game) => game.id === route.id && !game.soon)
-      ? route.id
-      : null;
-    appliedRouteKey = routeKey;
-  }
   ensureSocket(ctx);
   ensureTetrisSocket();
   ensureScribbleSocket();
@@ -689,8 +703,7 @@ export function renderArcade(container, ctx) {
   ensureChallengeRushSocket();
   if (!stats && !statsLoading) loadStats(ctx);
 
-  const cg = currentGame();
-  const activeGameDefinition = GAMES.find((game) => game.id === cg);
+  const statsView = arcadeStatsHtml();
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
@@ -698,70 +711,54 @@ export function renderArcade(container, ctx) {
       </div>
     </div>
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section arcade-game-picker" aria-labelledby="arcade-games-title">
-        <div class="grouped-page-section-title"><h2 id="arcade-games-title">Spiele</h2></div>
-        <div class="arcade-tiles">
-          ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
+      <section class="card stack grouped-page-section" aria-labelledby="arcade-lobbies-title">
+        <div class="grouped-page-section-title">
+          <h2 id="arcade-lobbies-title">Lobbys</h2>
+          <button type="button" class="btn btn-primary btn-sm" id="arcade-create-lobby" ${getMyId() ? '' : 'disabled'}>Lobby öffnen</button>
         </div>
+        <div class="arcade-lobbies">${allLobbiesHtml()}</div>
       </section>
-      ${
-        activeGameDefinition
-          ? `<section class="card stack grouped-page-section" aria-labelledby="arcade-active-game-title">
-               <div class="grouped-page-section-title">
-                 <div class="row arcade-active-game-title">
-                   <h2 id="arcade-active-game-title" class="title-with-info">
-                     <span>${escapeHtml(activeGameDefinition.name)}</span>
-                     ${infoTooltipHtml(`arcade-${activeGameDefinition.id}-game-info`, activeGameDefinition.name, activeGameDefinition.help)}
-                   </h2>
-                 </div>
-               </div>
-               ${activeGameHtml()}
-             </section>`
-          : ''
-      }
-      ${runningMatchesOverviewHtml()}
-      <section class="card stack grouped-page-section" aria-labelledby="arcade-stats-title">
-        <div class="grouped-page-section-title"><h2 id="arcade-stats-title">Statistiken</h2></div>
-        ${arcadeStatsHtml()}
-      </section>
+      ${runningMatchesHtml()}
+      <details class="card grouped-page-section collapsible-section arcade-stats" aria-labelledby="arcade-stats-title" ${statsOpen ? 'open' : ''}>
+        <summary class="collapsible-section-header"><span class="collapsible-section-chevron">${icon('chevronRight')}</span><h2 id="arcade-stats-title">Statistik</h2></summary>
+        <div class="collapsible-section-content stack">
+          <div id="arcade-stats-body" class="stack">${statsView.body}</div>
+        </div>
+      </details>
     </div>
   `;
 
-  wireInfoTooltips(container);
-  wireTetrisLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('tetris', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('tetris', 'join') });
-  wireScribbleLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('scribble', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('scribble', 'join') });
-  wirePongLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('pong', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('pong', 'join') });
-  wireBlobbyLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('blobby', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('blobby', 'join') });
-  wireSnakeLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('snake', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('snake', 'join') });
-  wireBattleshipLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('battleship', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('battleship', 'join') });
-  wireChallengeRushLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('challenge-rush', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('challenge-rush', 'join') });
+  const beforeJoin = (game) => () => leaveCurrentLobbyBeforeAction(game, 'join');
+  wireTetrisLobbyCard(container, { beforeJoin: beforeJoin('tetris') });
+  wireScribbleLobbyCard(container, { beforeJoin: beforeJoin('scribble') });
+  wirePongLobbyCard(container, { beforeJoin: beforeJoin('pong') });
+  wireBlobbyLobbyCard(container, { beforeJoin: beforeJoin('blobby') });
+  wireSnakeLobbyCard(container, { beforeJoin: beforeJoin('snake') });
+  wireBattleshipLobbyCard(container, { beforeJoin: beforeJoin('battleship') });
+  wireChallengeRushLobbyCard(container, { beforeJoin: beforeJoin('challenge-rush') });
+  wireQuizLobbyCard(container);
 
-  container.querySelectorAll('[data-game]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.game;
-      const def = GAMES.find((g) => g.id === id);
-      if (def?.soon) return showToast(`${def.name} kommt bald!`);
-      ctx.navigateLocal({ kind: 'game', id });
-    });
-  });
+  container.querySelector('#arcade-create-lobby')?.addEventListener('click', openCreateDialog);
   container.querySelectorAll('[data-watch-match]').forEach((btn) => {
     btn.addEventListener('click', () => startArcadeWatch(btn.dataset.watchMatch));
   });
-
-  if (container.querySelector('#arcade-stats-game')) {
-    wireSearchSelect(container, 'arcade-stats-game', (stats?.games ?? []).map((g) => ({ value: g.statsKey ?? g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` })));
-    container.querySelector('#arcade-stats-game').addEventListener('change', (event) => {
-      activeStatsGame = event.currentTarget.value;
-      ctx.rerender();
-    });
-  }
-
-  container.querySelectorAll('canvas[data-arcade-gallery-drawing]').forEach((canvas) => {
-    const drawing = scribbleGallery.find((entry) => entry.id === canvas.dataset.arcadeGalleryDrawing);
-    if (drawing) renderScribbleDrawing(canvas, drawing.strokes ?? []);
+  container.querySelectorAll('[data-arcade-resume]').forEach((btn) => {
+    btn.addEventListener('click', () => navigate(btn.dataset.arcadeResume));
   });
-
-  wireQuizLobbyCard(container, ctx);
+  container.querySelector('details.arcade-stats')?.addEventListener('toggle', (event) => {
+    statsOpen = event.currentTarget.open;
+  });
+  // Swap only the ranking: a full re-render would be deferred while the
+  // select keeps focus, so the new filter would only appear after a click.
+  const wireStatsFilter = () => container.querySelector('#arcade-stats-filter')?.addEventListener('change', (event) => {
+    statsFilter = event.currentTarget.value;
+    const body = container.querySelector('#arcade-stats-body');
+    if (!body) return;
+    body.innerHTML = arcadeStatsHtml().body;
+    wireStatsFilter();
+    body.querySelector('#arcade-stats-filter')?.focus();
+  });
+  wireStatsFilter();
 }
 
 // The live quiz match runs in its own view (like Tetris), so the Arcade page
@@ -772,15 +769,14 @@ export function renderQuizRoom(container, ctx) {
     // A direct or expired-match link lands here without a running match;
     // show the same named lobby area as opening Gaming-Quiz from Arcade
     // instead of a dead end (see Pong/Snake/Battleship's identical fallback).
-    container.innerHTML = `<h1 class="view-title">Gaming-Quiz</h1>${renderQuizLobbyCard()}`;
-    wireQuizLobbyCard(container, ctx);
+    // Lobbies live on the Arcade hub; a direct or expired match link goes there.
+    window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'arcade' }));
     return;
   }
   container.innerHTML = `
-    <div class="arcade-game-shell"><h1 class="view-title">Gaming-Quiz</h1>
-    ${arcadeToolbarHtml()}
-    ${renderMatch()}
-    ${match.ended ? `<button type="button" class="btn btn-primary btn-block" id="quiz-back" style="margin-top:var(--space-4);">Zurück zum Arcade</button>` : ''}
+    <div class="arcade-game-shell${match.ended ? ' is-ended' : ''}">
+      ${arcadeGameHeaderHtml('Gaming-Quiz', matchControlsHtml(), { expand: false })}
+      <div class="grouped-page-sections">${renderMatch()}</div>
     </div>`;
   wireQuizMatch(container);
   wireArcadeToolbar(container);
@@ -819,7 +815,9 @@ function wireQuizMatch(container) {
     if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
 
-  container.querySelector('#quiz-back')?.addEventListener('click', () => {
+  quizRematch.wire(container);
+  container.querySelector('#quiz-back')?.addEventListener('click', async () => {
+    await quizRematch.close();
     match = null;
     currentQuestion = null;
     lastResult = null;
@@ -849,9 +847,7 @@ function updateQuizPauseUi() {
   if (submit) submit.disabled = match.paused;
   const button = document.querySelector('#quiz-pause, #quiz-resume');
   if (button) {
-    button.outerHTML = match.paused
-      ? '<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-resume">Fortsetzen</button>'
-      : '<button type="button" class="btn btn-sm btn-equal" id="quiz-pause">Pausieren</button>';
+    button.outerHTML = quizPauseButtonHtml();
     wireQuizPauseControl(document);
   }
   if (!match.paused && quizAnswerHadFocusBeforePause && answer) {

@@ -74,8 +74,11 @@ function notifyArcadeWatcherChange(server: Server, matchId: unknown): void {
 
 function watchState(payload: Record<string, unknown>): Record<string, unknown> {
   const safe = { ...payload };
-  delete safe.question;
-  delete safe.correctAnswer;
+  // Quiz spectators see the question like the players do, but the correct
+  // answer only once it is revealed (solved or timed out), so a second device
+  // can never leak it during a running question.
+  if (safe.gameType !== 'quiz') delete safe.question;
+  if (!(safe.gameType === 'quiz' && safe.phase === 'result')) delete safe.correctAnswer;
   delete safe.answer;
   delete safe.word;
   delete safe.currentWord;
