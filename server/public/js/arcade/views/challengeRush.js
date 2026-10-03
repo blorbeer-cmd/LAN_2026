@@ -2,13 +2,14 @@ import { escapeHtml } from '../../format.js';
 import { connectSocket } from '../../socket.js';
 import { getMyId } from '../../whoami.js';
 import { showToast } from '../../toast.js';
-import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeMuteControlHtml, wireArcadeMuteControl, playArcadeSound } from '../arcadeSound.js';
-import { infoTooltipHtml } from '../../infoTooltip.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyHostActionsHtml, arcadeLobbyGuestActionsHtml, arcadeLobbyJoinHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { playArcadeSound } from '../arcadeSound.js';
+import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadePlayerStripHtml, arcadeResultListHtml, pointsLabel, wireArcadeToolbar } from '../arcadeUi.js';
+import { playerById } from '../../state.js';
+import { icon } from '../../icons.js';
 import { cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
-import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
-import { emptyStateHtml } from '../../emptyState.js';
+import { currentPlayerMayUseArcadeAi, currentPlayerMaySeeArcadeGame } from '../arcadeAdmin.js';
 
 const PREVIEW_RETRY_MS = 1_000;
 
@@ -17,6 +18,7 @@ let countdownKey = null; let startedKey = null; let presentationKey = null;
 let countdownDeadline = null; let countdownTimer = null;
 const selectedChallengeKeys = new Set();
 let challengeSelectorOpen = false;
+let breakdownOpen = false;
 let currentTrial = null; let trialTimer = null; let previewRetryTimer = null; let interaction = freshInteraction(null);
 // Whether this player has already completed the current challenge — the
 // match itself stays in 'playing' until every player is done, but this
@@ -182,7 +184,7 @@ export function ensureChallengeRushSocket() {
   });
   socket.on('challenge-rush:match:end', (payload) => {
     cancelCountdown(); clearReadingCountdown(); clearTrialTimer(); currentTrial = null;
-    match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true, history: payload.history ?? match?.history ?? [] };
+    match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true, winnerId: payload.winnerId ?? null, history: payload.history ?? match?.history ?? [] };
     if (payload.winnerId) playArcadeSound(payload.winnerId === myId() ? 'challenge-highscore' : 'challenge-gameover');
     else if (!payload.draw) playArcadeSound('challenge-gameover');
     if (currentView() === 'challengeRush') rerender();
@@ -220,7 +222,6 @@ export function hasChallengeRushMatch() {
   return Boolean(match && match.phase !== 'ended' && myScore?.forfeited !== true);
 }
 export function leaveMyChallengeRushLobby() { const lobby = myChallengeRushLobby(); return lobby ? emit('challenge-rush:lobby:leave', { lobbyId: lobby.id, playerId: myId() }) : Promise.resolve({ ok: true }); }
-function scoreText(scores = []) { return [...scores].sort((a, b) => b.score - a.score).map((score, index) => `<div class="challenge-rush-score-row"><span>${index + 1}. ${escapeHtml(score.name)}${score.forfeited ? ' · Forfait' : ''}</span><strong>${score.score}</strong></div>`).join(''); }
 export function orderedChallengeSelection(catalog, selectedKeys) {
   const byKey = new Map(catalog.map((challenge) => [challenge.key, challenge]));
   return [...selectedKeys].map((key) => byKey.get(key)).filter(Boolean);
@@ -243,58 +244,79 @@ function syncChallengeSelectionControls(container) {
   if (countLabel) countLabel.textContent = count ? `${count} Aufgaben` : '10 zufällige Aufgaben';
   if (hint) hint.textContent = count ? 'Die markierten Aufgaben laufen einmal in dieser Reihenfolge.' : 'Ohne Auswahl startet das normale Spiel mit 10 zufälligen Aufgaben.';
 }
-export function renderChallengeRushLobbyCard() {
-  const current = myChallengeRushLobby();
-  const activeMatch = hasChallengeRushMatch();
-  const cards = lobbies.map((lobby) => {
-    const joined = lobby.players.some((p) => p.id === myId());
-    const isHost = lobby.host.id === myId();
-    const startReady = lobby.players.every((p) => p.ready || p.id === lobby.host.id);
-    const startReason = startReady ? '' : 'Nicht alle Mitspieler sind bereit.';
-    const footerActions = isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-cr-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`cr-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}<button type="button" class="btn btn-sm btn-equal btn-danger" data-cr-leave="${lobby.id}">Schließen</button>`
-      : joined
-        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-cr-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'cr-ready')}`
-        : '';
-    const joinDisabled = lobby.players.length >= 15 || activeMatch;
-    const selectedTitles = (lobby.challengeKeys ?? []).map((key) => challengeCatalog.find((challenge) => challenge.key === key)?.title ?? key);
-    const settingsHtml = selectedTitles.length ? `<p class="muted challenge-rush-lobby-selection"><strong>Testlauf:</strong> ${selectedTitles.map(escapeHtml).join(' · ')}</p>` : '';
-    return arcadeLobbyEntryHtml(lobby, { full: lobby.players.length >= 15, joinAction: joined ? '' : `<button type="button" class="btn btn-sm btn-primary" data-cr-join="${lobby.id}" ${joinDisabled ? 'disabled' : ''}>Beitreten</button>`, settingsHtml, footerActions });
-  }).join('');
-  const noMe = !myId();
-  const createReason = noMe
-    ? 'Wähle zuerst aus, wer du bist.'
-    : activeMatch
-      ? 'Beende zuerst dein laufendes Challenge-Rush-Match.'
-      : current
-        ? 'Du hast bereits eine offene Lobby.'
-        : '';
-  const createDisabled = current || activeMatch || noMe;
-  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions">${adminChallengeSelectorHtml(Boolean(createDisabled))}<div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode arcade-lobby-create-row--no-opponent"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${createDisabled ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</div></div>${cards || emptyStateHtml('Noch keine Challenge-Rush-Lobby.', { className: 'empty-state-compact' })}</div>`;
+function lobbyEntryHtml(lobby) {
+  const joined = lobby.players.some((p) => p.id === myId());
+  const isHost = lobby.host.id === myId();
+  const startReady = lobby.players.every((p) => p.ready || p.id === lobby.host.id);
+  const footerActions = isHost
+    ? arcadeLobbyHostActionsHtml({ startAttrs: `data-cr-start="${lobby.id}"`, startEnabled: startReady, startHint: startReady ? '' : 'Noch nicht alle bereit', closeAttrs: `data-cr-leave="${lobby.id}"` })
+    : joined
+      ? arcadeLobbyGuestActionsHtml({ readyHtml: readyToggleHtml(lobby, myId(), 'cr-ready'), leaveAttrs: `data-cr-leave="${lobby.id}"` })
+      : '';
+  const joinDisabled = lobby.players.length >= 15 || hasChallengeRushMatch();
+  const selectedTitles = (lobby.challengeKeys ?? []).map((key) => challengeCatalog.find((challenge) => challenge.key === key)?.title ?? key);
+  const settingsHtml = selectedTitles.length ? `<p class="muted challenge-rush-lobby-selection"><strong>Testlauf:</strong> ${selectedTitles.map(escapeHtml).join(' · ')}</p>` : '';
+  return arcadeLobbyEntryHtml(lobby, { gameType: 'challenge-rush', meta: `${lobby.players.length} Spieler`, full: lobby.players.length >= 15, capacity: lobby.players.length, joinAction: joined ? '' : arcadeLobbyJoinHtml(`data-cr-join="${lobby.id}"`, joinDisabled), settingsHtml, footerActions });
 }
-export function wireChallengeRushLobbyCard(container, { beforeCreate = async () => true, beforeJoin = async () => true } = {}) {
-  const createPayload = () => { const keys = challengeSelectionPayload(); return keys.length ? { playerId: myId(), challengeKeys: keys } : { playerId: myId() }; };
+
+export function renderChallengeRushLobbyEntries() {
+  return lobbies.map((lobby) => ({ id: lobby.id, html: lobbyEntryHtml(lobby) }));
+}
+
+export async function createChallengeRushLobby() {
+  const keys = challengeSelectionPayload();
+  const result = await emit('challenge-rush:lobby:create', keys.length ? { playerId: myId(), challengeKeys: keys } : { playerId: myId() });
+  if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+  return result;
+}
+
+// Admin-only test selection, shown in the "Lobby öffnen" dialog.
+export function challengeRushCreateOptionsHtml() {
+  return adminChallengeSelectorHtml(false);
+}
+export function wireChallengeRushCreateOptions(container) {
   container.querySelector('.challenge-rush-test-selector')?.addEventListener('toggle', (event) => { challengeSelectorOpen = event.currentTarget.open; });
-  container.querySelector('#cr-create')?.addEventListener('click', async () => {
-    if (!(await beforeCreate())) return;
-    const result = await emit('challenge-rush:lobby:create', createPayload());
-    if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
-  });
   container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => checkbox.addEventListener('change', () => { if (checkbox.checked) selectedChallengeKeys.add(checkbox.dataset.crChallengeKey); else selectedChallengeKeys.delete(checkbox.dataset.crChallengeKey); syncChallengeSelectionControls(container); }));
   container.querySelector('[data-cr-select-all]')?.addEventListener('click', () => { challengeCatalog.forEach(({ key }) => selectedChallengeKeys.add(key)); container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => { checkbox.checked = true; }); syncChallengeSelectionControls(container); });
   container.querySelector('[data-cr-select-none]')?.addEventListener('click', () => { selectedChallengeKeys.clear(); container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => { checkbox.checked = false; }); syncChallengeSelectionControls(container); });
+}
+export function wireChallengeRushLobbyCard(container, { beforeJoin = async () => true } = {}) {
   container.querySelectorAll('[data-cr-join]').forEach((button) => button.addEventListener('click', async () => { if (!(await beforeJoin())) return; const result = await emit('challenge-rush:lobby:join', { lobbyId: button.dataset.crJoin, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Beitritt fehlgeschlagen.', { error: true }); }));
   container.querySelectorAll('[data-cr-leave]').forEach((button) => button.addEventListener('click', () => emit('challenge-rush:lobby:leave', { lobbyId: button.dataset.crLeave, playerId: myId() })));
   wireReadyToggle(container, 'cr-ready', async (lobbyId, ready) => { const result = await emit('challenge-rush:lobby:ready', { lobbyId, playerId: myId(), ready }); if (!result?.ok) showToast(result?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true }); });
   container.querySelectorAll('[data-cr-start]').forEach((button) => button.addEventListener('click', async () => { const result = await emit('challenge-rush:lobby:start', { lobbyId: button.dataset.crStart, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Start fehlgeschlagen.', { error: true }); }));
 }
 function matchControlsHtml() {
-  if (!match || match.phase === 'ended') return '';
-  const isHost = match.host?.id === myId();
-  const pause = isHost ? `<button type="button" class="btn btn-sm btn-equal" data-cr-pause>${match.paused ? 'Fortsetzen' : 'Pausieren'}</button>` : '';
-  const finish = isHost ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-cr-finish>Beenden</button>` : '';
-  const leave = !isHost ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-cr-leave-match>Verlassen</button>` : '';
-  return `<div class="arcade-match-controls">${pause}${finish}${leave}</div>`;
+  if (!match) return '';
+  if (match.phase === 'ended') return arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" id="cr-back">Schließen</button>');
+  if (match.host?.id !== myId()) return arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" data-cr-leave-match>Verlassen</button>');
+  return arcadeMatchControlsHtml(`<button type="button" class="btn btn-sm" data-cr-pause>${match.paused ? 'Fortsetzen' : 'Pausieren'}</button><button type="button" class="btn btn-sm" data-cr-finish>Beenden</button>`);
+}
+// Places with ties: equal points share a place.
+function rankedRows(entries, valueOf) {
+  const sorted = [...entries].sort((a, b) => valueOf(b) - valueOf(a));
+  const rows = sorted.map((entry) => ({ entry, place: 1 }));
+  rows.forEach((row, index) => { row.place = index > 0 && valueOf(rows[index - 1].entry) === valueOf(row.entry) ? rows[index - 1].place : index + 1; });
+  return rows;
+}
+function scorePlayer(score) {
+  return { id: score.playerId, name: score.name ?? playerById(score.playerId)?.name ?? 'Spieler' };
+}
+// Current standings above the playfield. A solo run shows the own points only.
+function standingsHtml() {
+  const scores = match?.scores ?? [];
+  if (!scores.length) return '';
+  return arcadePlayerStripHtml(rankedRows(scores, (score) => score.score ?? 0).map(({ entry }) => {
+    const profile = playerById(entry.playerId) ?? {};
+    return {
+      name: entry.name ?? profile.name ?? 'Spieler',
+      colorVar: profile.color || 'var(--text-muted)',
+      value: `${entry.score ?? 0}`,
+      detail: entry.forfeited ? 'Ausgestiegen' : entry.connected === false ? 'Getrennt' : '',
+      me: entry.playerId === myId(),
+      out: entry.forfeited === true,
+    };
+  }));
 }
 function trialGrid(size, selectedCells, attribute, disabled, showOrder = false, disableSelected = false) {
   const selected = new Set(selectedCells);
@@ -313,22 +335,22 @@ function trialOptions(trial, playing) {
 }
 function trialMatrix(trial, playing) {
   const data = trial.data ?? {};
-  if (trial.phase === 'preview') return `${trialGrid(Number(data.size) || 3, data.highlights ?? [], 'preview-cell', true)}<p class="muted">Positionen merken …</p>`;
-  return `${trialGrid(Number(data.size) || 3, interaction.cells, 'matrix-cell', !playing, false, true)}<p class="muted">${interaction.cells.length} / ${Number(data.highlightCount ?? 0)} Felder</p>`;
+  if (trial.phase === 'preview') return `${trialGrid(Number(data.size) || 3, data.highlights ?? [], 'preview-cell', true)}<p class="challenge-rush-note">Positionen merken</p>`;
+  return `${trialGrid(Number(data.size) || 3, interaction.cells, 'matrix-cell', !playing, false, true)}<p class="challenge-rush-note">${interaction.cells.length} von ${Number(data.highlightCount ?? 0)} Feldern</p>`;
 }
 function trialChoice(trial, playing) {
   const data = trial.data ?? {};
   const matrix = Array.isArray(data.matrix) ? `<div class="challenge-rush-logic-matrix" role="grid" aria-label="Zwei mal zwei Zahlenmatrix">${data.matrix.flat().map((value, index) => `<span role="gridcell" aria-label="${index === 3 ? 'Gesuchte Zahl' : `Zahl ${escapeHtml(String(value))}`}">${value === null ? '?' : escapeHtml(String(value))}</span>`).join('')}</div>` : '';
   const letters = data.type === 'letter-choice' && Array.isArray(data.letters) ? `<div class="challenge-rush-letter-row" aria-label="Buchstaben: ${data.letters.map((letter) => escapeHtml(String(letter))).join(', ')}">${data.letters.map((letter) => `<span>${escapeHtml(String(letter))}</span>`).join('')}</div>` : '';
   const prompt = matrix || `<p class="challenge-rush-logic-prompt">${escapeHtml(String(data.prompt ?? ''))}</p>${letters}`;
-  if (trial.phase === 'preview') return `${prompt}<div class="challenge-rush-item-list">${(data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="muted">Merken …</p>`;
+  if (trial.phase === 'preview') return `${prompt}<div class="challenge-rush-item-list">${(data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="challenge-rush-note">Merken</p>`;
   return `${prompt}${trialOptions(trial, playing)}`;
 }
 export function renderChallengeRushTrial(challenge, trial, playing = true) {
-  if (!trial) return '<p class="muted">Der erste Trial erscheint gleich …</p>';
+  if (!trial) return '<p class="challenge-rush-note">Die erste Runde erscheint gleich</p>';
   if (['number-sequence', 'logic-equation', 'pattern-complete', 'category-sort', 'direction-match', 'mental-rotation', 'word-scramble', 'count-shapes', 'logic-order', 'delayed-recall', 'prime-check', 'balance-scale', 'binary-pattern', 'rule-switch', 'matrix-missing', 'coin-change', 'letter-order', 'digit-sum'].includes(challenge.key)) return trialChoice(trial, playing);
   if (challenge.key === 'memory-matrix') return trialMatrix(trial, playing);
-  return '<p class="muted">Trial wird vorbereitet …</p>';
+  return '<p class="challenge-rush-note">Runde wird vorbereitet</p>';
 }
 function challengeView() {
   const challenge = match?.challenge;
@@ -338,59 +360,113 @@ function challengeView() {
   // below the same way the pre-start/paused states already do.
   const playing = match?.phase === 'playing' && !match?.paused && !iCompleted;
   const data = challenge?.data ?? {};
-  let body = '<p class="muted">Bereithalten – gleich geht’s los …</p>';
+  let body = '<p class="challenge-rush-note">Gleich geht es los</p>';
   if (currentTrial) body = renderChallengeRushTrial(challenge, currentTrial, playing);
   // The reaction target's exact position is only rendered once play actually
   // starts, so nobody can pre-aim at it during the countdown (requirement:
   // reaction challenges must stay invisible until "Los!").
-  if (!currentTrial && challenge?.key === 'reaction-circle') body = playing ? `<button type="button" class="challenge-rush-circle" data-cr-x="${data.x}" data-cr-y="${data.y}" style="left:${data.x}%;top:${data.y}%" aria-label="Kreis treffen"></button>` : '<p class="muted">Der Kreis erscheint, sobald es losgeht.</p>';
-  if (challenge?.key === 'timing-10') body = `<button type="button" class="challenge-rush-big-button" data-cr-stop ${playing ? '' : 'disabled'}>STOPP</button><p class="muted">Keine laufende Zeit sichtbar – vertraue deinem Gefühl.</p>`;
-  if (iCompleted && match?.phase === 'playing' && !match?.paused) {
-    body = '<p class="muted">Fertig! Warte auf die anderen Mitspieler …</p>';
-  }
+  if (!currentTrial && challenge?.key === 'reaction-circle') body = playing ? `<button type="button" class="challenge-rush-circle" data-cr-x="${data.x}" data-cr-y="${data.y}" style="left:${data.x}%;top:${data.y}%" aria-label="Kreis treffen"></button>` : '<p class="challenge-rush-note">Der Kreis erscheint, sobald es losgeht</p>';
+  if (challenge?.key === 'timing-10') body = `<button type="button" class="challenge-rush-big-button" data-cr-stop ${playing ? '' : 'disabled'}>Stopp</button><p class="challenge-rush-note">Ohne sichtbare Uhr, vertraue deinem Gefühl</p>`;
+  if (iCompleted && match?.phase === 'playing' && !match?.paused) body = '<p class="challenge-rush-note">Fertig. Warte auf die anderen</p>';
   const playfieldHidden = match?.paused || match?.phase === 'countdown';
   if (playfieldHidden) {
     body = match?.paused
-      ? '<div class="challenge-rush-concealed"><strong>Spiel pausiert</strong><p class="muted">Die Aufgabe bleibt sichtbar. Das Spielfeld erscheint erst nach dem Fortsetzen.</p></div>'
-      : '<div class="challenge-rush-concealed"><strong data-cr-reading-countdown>Start in 5 s</strong><p class="muted">Lies die Aufgabe. Das Spielfeld erscheint bei „Los!“.</p></div>';
+      ? '<div class="challenge-rush-concealed"><strong>Pause</strong><span class="challenge-rush-note">Das Spielfeld erscheint nach dem Fortsetzen</span></div>'
+      : '<div class="challenge-rush-concealed"><strong data-cr-reading-countdown>Start in 5 s</strong><span class="challenge-rush-note">Lies die Aufgabe. Das Spielfeld erscheint bei „Los!“</span></div>';
   }
   const phaseStatus = match?.paused
     ? 'Pause'
     : match?.phase === 'countdown'
       ? '<span data-cr-reading-countdown>Start in 5 s</span>'
       : 'Läuft';
-  return `<section class="card stack challenge-rush-stage" data-match-id="${escapeHtml(match?.matchId ?? '')}" data-challenge-index="${match?.challengeIndex ?? -1}" data-phase="${escapeHtml(match?.phase ?? '')}" data-remaining-ms="${match?.remainingMs ?? ''}" data-reconnected="${match?.reconnected === true}" data-disconnected="${match?.disconnected === true}" data-challenge-key="${escapeHtml(challenge?.key ?? '')}" aria-live="polite"><div class="row-between"><span class="badge badge-playing">Challenge ${(match?.challengeIndex ?? 0) + 1} / ${match?.challengeCount ?? 4}</span><span>${phaseStatus}</span></div><h2>${escapeHtml(challenge?.title ?? 'Mini-Challenge')}</h2><p class="muted">${escapeHtml(challenge?.description ?? '')}</p><div class="challenge-rush-playfield${playfieldHidden ? ' is-concealed' : ''}" data-cr-playfield-hidden="${playfieldHidden}">${body}</div></section>`;
+  return `<section class="card arcade-stage challenge-rush-stage" data-match-id="${escapeHtml(match?.matchId ?? '')}" data-challenge-index="${match?.challengeIndex ?? -1}" data-phase="${escapeHtml(match?.phase ?? '')}" data-remaining-ms="${match?.remainingMs ?? ''}" data-reconnected="${match?.reconnected === true}" data-disconnected="${match?.disconnected === true}" data-challenge-key="${escapeHtml(challenge?.key ?? '')}" aria-live="polite">
+    ${standingsHtml()}
+    <div class="challenge-rush-head">
+      <div class="arcade-section-heading">
+        <h2>${escapeHtml(challenge?.title ?? 'Mini-Challenge')}</h2>
+        <span class="arcade-section-meta">Challenge ${(match?.challengeIndex ?? 0) + 1} von ${match?.challengeCount ?? 4}</span>
+      </div>
+      <span class="challenge-rush-status${match?.paused ? ' is-paused' : ''}">${phaseStatus}</span>
+    </div>
+    ${challenge?.description ? `<p class="challenge-rush-description">${escapeHtml(challenge.description)}</p>` : ''}
+    <div class="challenge-rush-playfield${playfieldHidden ? ' is-concealed' : ''}" data-cr-playfield-hidden="${playfieldHidden}">${body}</div>
+  </section>`;
 }
+// Between two challenges: the points of the challenge just played, and one
+// "Weiter" in the card header. Everyone moves on once all are ready.
 function resultView() {
   const entry = match?.history?.[match.history.length - 1];
   if (!entry) return '';
-  const rows = [...entry.scores].sort((a, b) => b.score - a.score).map((score, index) => `<div class="challenge-rush-score-row"><span>${index + 1}. ${escapeHtml(score.name)}</span><strong>${score.score}</strong></div>`).join('');
+  const rows = rankedRows(entry.scores, (score) => score.score ?? 0);
+  const top = rows[0]?.entry.score ?? 0;
+  const soleWinner = rows.length > 1 && top > 0 && rows.filter((row) => row.place === 1).length === 1;
+  const list = arcadeResultListHtml(rows.map(({ entry: score, place }) => ({
+    player: scorePlayer(score),
+    place,
+    winner: soleWinner && place === 1,
+    value: pointsLabel(score.score ?? 0),
+  })));
   const scores = match?.scores ?? [];
   const pending = scores.filter((score) => score.connected && !score.forfeited);
   const readyIds = new Set(match?.readyNext ?? []);
   const readyCount = pending.filter((score) => readyIds.has(score.playerId)).length;
   const iAmReady = readyIds.has(myId());
-  return `<section class="card stack challenge-rush-result" aria-live="polite"><h2>${escapeHtml(entry.title)} – Ergebnis</h2><div class="challenge-rush-scoreboard">${rows}</div><button type="button" class="btn btn-primary btn-block" id="cr-ready-next" ${iAmReady ? 'disabled' : ''}>${iAmReady ? 'Warte auf Mitspieler …' : 'Bereit für die nächste Challenge'}</button><p class="muted challenge-rush-ready-count">${readyCount}/${pending.length} bereit</p></section>`;
+  const waiting = pending.filter((score) => !readyIds.has(score.playerId)).map((score) => score.name);
+  const action = iAmReady
+    ? `<span class="arcade-rematch-note challenge-rush-ready-count">${waiting.length ? `Wartet auf ${escapeHtml(waiting.join(', '))}` : 'Geht gleich weiter'}</span>`
+    : `<button type="button" class="btn btn-primary btn-sm" id="cr-ready-next">Weiter</button>`;
+  return `<section class="card stack grouped-page-section challenge-rush-result" aria-live="polite" aria-labelledby="cr-result-title">
+    <div class="grouped-page-section-title">
+      <div class="arcade-section-heading"><h2 id="cr-result-title">${escapeHtml(entry.title)}</h2><span class="arcade-section-meta">Challenge ${match.history.length} von ${match?.challengeCount ?? match.history.length}${pending.length > 1 ? ` · ${readyCount} von ${pending.length} bereit` : ''}</span></div>
+      ${action}
+    </div>
+    ${list}
+  </section>`;
 }
+// Final standings plus the points of every challenge in a collapsed table.
 function finalSummaryHtml(scores) {
   const history = match?.history ?? [];
-  const rows = [...scores].sort((a, b) => b.score - a.score).map((score, index) => {
-    const breakdown = history.map((entry) => `${escapeHtml(entry.title)}: ${entry.scores.find((s) => s.playerId === score.playerId)?.score ?? 0}`).join(' · ');
-    return `<div class="challenge-rush-score-row challenge-rush-final-row"><div class="challenge-rush-final-row-main"><span>${index + 1}. ${escapeHtml(score.name)}${score.forfeited ? ' · Forfait' : ''}</span><strong>${score.score}</strong></div>${breakdown ? `<div class="challenge-rush-final-breakdown muted">${breakdown}</div>` : ''}</div>`;
-  }).join('');
-  return `<section class="card stack"><h2>${match?.draw ? 'Unentschieden' : 'Gesamtergebnis'}</h2><div class="challenge-rush-scoreboard">${rows}</div><button type="button" class="btn btn-primary" id="cr-back">Zur Arcade</button></section>`;
+  const rows = rankedRows(scores, (score) => score.score ?? 0);
+  const winnerId = match?.draw || rows.length < 2 ? null : match?.winnerId ?? (rows.filter((row) => row.place === 1).length === 1 && (rows[0]?.entry.score ?? 0) > 0 ? rows[0].entry.playerId : null);
+  const list = arcadeResultListHtml(rows.map(({ entry: score, place }) => ({
+    player: scorePlayer(score),
+    place,
+    winner: score.playerId === winnerId,
+    value: pointsLabel(score.score ?? 0),
+    detail: score.forfeited ? 'Ausgestiegen' : '',
+  })));
+  const players = rows.map(({ entry }) => entry);
+  const table = history.length ? `<details class="card grouped-page-section collapsible-section challenge-rush-breakdown"${breakdownOpen ? ' open' : ''}>
+      <summary class="collapsible-section-header"><span class="collapsible-section-chevron">${icon('chevronRight')}</span><h2>Je Challenge</h2></summary>
+      <div class="collapsible-section-content challenge-rush-breakdown-scroll">
+        <table class="challenge-rush-breakdown-table">
+          <thead><tr><th scope="col">Challenge</th>${players.map((score) => `<th scope="col">${escapeHtml(score.name)}</th>`).join('')}</tr></thead>
+          <tbody>${history.map((entry) => `<tr><th scope="row">${escapeHtml(entry.title)}</th>${players.map((score) => `<td>${entry.scores.find((s) => s.playerId === score.playerId)?.score ?? 0}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </details>` : '';
+  return `<section class="card stack grouped-page-section" aria-labelledby="cr-final-title">
+    <div class="grouped-page-section-title"><h2 id="cr-final-title">${match?.draw ? 'Unentschieden' : 'Ergebnis'}</h2></div>
+    ${list}
+  </section>
+  ${table}`;
 }
 export function renderChallengeRush(container, _ctx) {
   ensureChallengeRushSocket();
+  if (!match && !currentPlayerMaySeeArcadeGame('challenge-rush')) {
+    window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'arcade' }));
+    return;
+  }
   const scores = match?.scores ?? [];
   const body = match?.phase === 'ended'
     ? finalSummaryHtml(scores)
     : match?.phase === 'result'
-      ? `${resultView()}${matchControlsHtml()}`
-      : `${challengeView()}${matchControlsHtml()}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`;
-  container.innerHTML = `<div class="arcade-game-shell"><h1 class="view-title">Challenge Rush</h1><div class="arcade-toolbar">${arcadeMuteControlHtml()}</div>${body}</div>`;
+      ? resultView()
+      : challengeView();
+  container.innerHTML = `<div class="arcade-game-shell${match?.phase === 'ended' ? ' is-ended' : ''}">${arcadeGameHeaderHtml('Challenge Rush', matchControlsHtml(), { expand: false })}<div class="grouped-page-sections">${body}</div></div>`;
   if (match?.phase === 'countdown' && !match?.paused) updateReadingCountdown();
-  wireArcadeMuteControl(container);
+  wireArcadeToolbar(container);
+  container.querySelector('.challenge-rush-breakdown')?.addEventListener('toggle', (event) => { breakdownOpen = event.currentTarget.open; });
   container.querySelector('#cr-back')?.addEventListener('click', () => { clearReadingCountdown(); clearTrialTimer(); currentTrial = null; match = null; navigate('arcade'); });
   container.querySelector('[data-navigate="arcade"]')?.addEventListener('click', () => navigate('arcade'));
   container.querySelector('[data-cr-pause]')?.addEventListener('click', () => socket.emit('challenge-rush:match:pause', { matchId: match.matchId, playerId: myId() }, (result) => { if (!result?.ok) showToast(result?.error || 'Pause konnte nicht geändert werden.', { error: true }); }));

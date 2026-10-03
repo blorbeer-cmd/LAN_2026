@@ -257,7 +257,7 @@ Wiederholungsfall ab.
 `visualCore.e2e.test.ts` gehört zu Core/`flows` und zeigt das ausgefüllte Spielvorschlagsformular
 aus `views/gameCatalog.js`, Match-Setup, Roster, Filter,
 Kartenfooter, Modal und Admin-Datenzeile bei 390 und 1024 px. `visualArcade.e2e.test.ts`
-zeigt die Erstellungszeile bei 320, 390 und 1024 px und gehört auch zu Arcade-Smoke.
+zeigt den Dialog „Lobby öffnen“ bei 320, 390 und 1024 px und gehört auch zu Arcade-Smoke.
 Die Szenen benutzen echte UI-Pfade, feste Browserzeit, `de-DE`, `Europe/Berlin`,
 Gerätefaktor 1, reduzierte Bewegung und Screenshots ohne Animationen/Caret. Vor jeder Aufnahme
 werden Requests, Fonts und Icons sowie passende Inhalts- und Geometrieassertions geprüft.

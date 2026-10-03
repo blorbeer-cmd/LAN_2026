@@ -12,8 +12,9 @@ import {
 } from './authHelpers';
 import { createE2EDiagnosticTest, trackE2EContext, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
-import { assertControlHeights, assertInfoTooltipPlacement, assertNoOverflow } from './visualHelpers';
+import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 import { activateAdminMode } from './navHelpers';
+import { ARCADE_HUB, openArcadeLobby } from './arcadeHelpers';
 
 let BASE_URL: string;
 
@@ -30,7 +31,7 @@ interface Actor {
 
 const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
 
-async function createPlayer(name: string): Promise<{ id: string }> {
+async function createPlayer(name: string): Promise<{ id: string; name: string }> {
   const account = await createE2EAccount(BASE_URL, adminCookie, name);
   playerCookies.set(account.id, account.cookie);
   return account;
@@ -55,9 +56,7 @@ async function openArcadeAs(playerId: string, { adminMode = false } = {}): Promi
     await page.click('.nav-btn[data-view="more"]');
   }
   await page.click('[data-navigate="arcade"]');
-  await page.waitForSelector('.arcade-tiles');
-  await page.click('[data-game="battleship"]');
-  await page.waitForSelector('#battleship-create');
+  await page.waitForSelector(ARCADE_HUB);
   return { context, page };
 }
 
@@ -139,7 +138,7 @@ test('Battleship: two browsers play a complete duel and watch state reveals then
   });
 
   try {
-    await host.page.click('#battleship-create');
+    await openArcadeLobby(host.page, 'battleship');
     await guest.page.waitForSelector('[data-battleship-join]');
     await guest.page.click('[data-battleship-join]');
     await guest.page.waitForSelector('[data-battleship-ready][data-ready="1"]');
@@ -200,7 +199,7 @@ test('Battleship: two browsers play a complete duel and watch state reveals then
 
     await host.page.waitForSelector('#battleship-back');
     await guest.page.waitForSelector('#battleship-back');
-    await host.page.waitForSelector('text=gewinnt!');
+    await host.page.waitForSelector(`.arcade-result-row.is-winner:has-text(${JSON.stringify(hostPlayer.name)})`);
     const revealed = await endedState;
     assert.equal(
       revealed.players.every((player) => player.fleet?.every((ship) => Array.isArray(ship.cells))),
@@ -222,7 +221,7 @@ test('Battleship: ships can be placed manually one at a time, and a sunk ship st
   const guest = await openArcadeAs(guestPlayer.id);
 
   try {
-    await host.page.click('#battleship-create');
+    await openArcadeLobby(host.page, 'battleship');
     await guest.page.waitForSelector('[data-battleship-join]');
     await guest.page.click('[data-battleship-join]');
     await guest.page.waitForSelector('[data-battleship-ready][data-ready="1"]');
@@ -233,16 +232,16 @@ test('Battleship: ships can be placed manually one at a time, and a sunk ship st
     await guest.page.waitForSelector('#battleship-random');
 
     // Placing only the first of five ships one click at a time must leave "Flotte bereit"
-    // disabled with a visible reason (regression test: manual single-ship placement used to be
-    // silently rejected outright, only becoming possible once "Zufällig platzieren" was used).
+    // disabled with a named reason (regression test: manual single-ship placement used to be
+    // silently rejected outright, only becoming possible once "Zufällig" was used).
     await host.page.click(`[data-place-cell="${MANUAL_SHIP_START_CELLS[0]}"]`);
     await host.page.waitForSelector('#battleship-submit-setup:disabled');
-    assert.equal(await host.page.locator('.info-tooltip-trigger--warning').count(), 1);
+    assert.ok(await host.page.locator('#battleship-submit-setup').getAttribute('title'), 'the disabled action names its reason');
     for (const startCell of MANUAL_SHIP_START_CELLS.slice(1)) {
       await host.page.click(`[data-place-cell="${startCell}"]`);
     }
     await host.page.waitForSelector('#battleship-submit-setup:not([disabled])');
-    assert.equal(await host.page.locator('.info-tooltip-trigger--warning').count(), 0);
+    assert.equal(await host.page.locator('#battleship-submit-setup').getAttribute('title'), null);
 
     const adjacentSegments = await host.page
       .locator('[data-place-cell="3"], [data-place-cell="4"], [data-place-cell="5"]')
@@ -290,8 +289,8 @@ test('Battleship: ships can be placed manually one at a time, and a sunk ship st
         // The "battleship:state" broadcast carrying the new lastShot can arrive slightly after
         // the fire acknowledgement the `fire()` helper waits on, so poll for the updated badge
         // instead of reading it immediately.
-        await attacker.page.locator('.battleship-status:has-text("Letzter Schuss: Treffer")').waitFor();
-        const status = await attacker.page.locator('.battleship-status').innerText();
+        await attacker.page.locator('.battleship-status-line:has-text("Letzter Schuss: Treffer")').waitFor();
+        const status = await attacker.page.locator('.battleship-status-line').innerText();
         assert.doesNotMatch(status, /Versenkt/, 'a completed ship must display as a plain hit, not "Versenkt"');
       }
       if (index < attackOrder.length - 1) {
@@ -305,7 +304,7 @@ test('Battleship: ships can be placed manually one at a time, and a sunk ship st
 
     await attacker.page.waitForSelector('#battleship-back');
     await defender.page.waitForSelector('#battleship-back');
-    await attacker.page.waitForSelector('text=gewinnt!');
+    await attacker.page.waitForSelector('.arcade-result-row.is-winner');
 
     const revealedDestroyerClasses = await attacker.page
       .locator(`[data-battleship-reveal="${defenderId}"] [data-reveal-cell="${destroyerCells[0]}"], [data-battleship-reveal="${defenderId}"] [data-reveal-cell="${destroyerCells[1]}"]`)
@@ -326,7 +325,7 @@ test('Battleship: disconnect ends the duel immediately and awards the connected 
   let guestClosed = false;
 
   try {
-    await host.page.click('#battleship-create');
+    await openArcadeLobby(host.page, 'battleship');
     await guest.page.waitForSelector('[data-battleship-join]');
     await guest.page.click('[data-battleship-join]');
     await guest.page.waitForSelector('[data-battleship-ready][data-ready="1"]');
@@ -338,8 +337,8 @@ test('Battleship: disconnect ends the duel immediately and awards the connected 
     await guest.context.close();
     guestClosed = true;
     await host.page.waitForSelector('#battleship-back');
-    await host.page.waitForSelector('text=gewinnt!');
-    assert.match(await host.page.locator('.arcade-winner-card').innerText(), /gewinnt|verlassen/);
+    await host.page.waitForSelector(`.arcade-result-row.is-winner:has-text(${JSON.stringify(hostPlayer.name)})`);
+    await host.page.waitForSelector(`text=${guestPlayer.name} hat das Match verlassen`);
   } finally {
     await host.context.close();
     if (!guestClosed) await guest.context.close();
@@ -352,25 +351,23 @@ test('Battleship: an admin starts a playable match against the AI', async () => 
   const admin = await openArcadeAs(adminPlayer.id, { adminMode: true });
 
   try {
-    await admin.page.waitForSelector('#battleship-opponent');
     // The opponent switch only selects — picking "KI" must not itself open a
     // lobby. "Lobby öffnen" stays the single action that creates one.
-    await admin.page.click('#battleship-opponent [data-arcade-opponent="bot"]');
-    await admin.page.waitForSelector('#battleship-opponent [data-arcade-opponent="bot"][aria-pressed="true"]');
+    await admin.page.click(ARCADE_HUB);
+    await admin.page.selectOption('#arcade-create-game', 'battleship');
+    await admin.page.click('#arcade-create-opponent [data-arcade-opponent="bot"]');
+    await admin.page.waitForSelector('#arcade-create-opponent [data-arcade-opponent="bot"][aria-pressed="true"]');
     assert.equal(await admin.page.locator('[data-battleship-start]').count(), 0);
 
-    await admin.page.click('#battleship-create');
+    await admin.page.click('#arcade-create-form button[type="submit"]');
     await admin.page.waitForSelector('[data-battleship-start]:not([disabled])');
-    assert.match(await admin.page.locator('.arcade-lobby-card').innerText(), /Flotten-Bot/);
+    assert.match(await admin.page.locator('.arcade-lobby-entry').innerText(), /Flotten-Bot/);
     await assertControlHeights(admin.page.locator('[data-battleship-start]'));
-    await assertNoOverflow(admin.page.locator('.arcade-lobby-card'));
+    await assertNoOverflow(admin.page.locator('.arcade-lobby-entry'));
     await admin.page.click('[data-battleship-start]');
     await admin.page.waitForSelector('#battleship-random');
     assert.equal(await admin.page.locator('#battleship-submit-setup').isDisabled(), true);
     await assertControlHeights(admin.page.locator('#battleship-random, #battleship-submit-setup'));
-    // The setup title sits in a section header with space-between: without its
-    // own .title-with-info the help trigger drifts to the far end of that row.
-    await assertInfoTooltipPlacement(admin.page, 1);
     await randomFleet(admin.page);
     assert.equal(await admin.page.locator('#battleship-submit-setup').isEnabled(), true);
     await assertControlHeights(admin.page.locator('#battleship-random, #battleship-submit-setup'));

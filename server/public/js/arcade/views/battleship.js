@@ -5,11 +5,10 @@ import { showToast } from '../../toast.js';
 import { confirmDialog } from '../../modal.js';
 import { getMyId } from '../../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
-import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
-import { arcadeToolbarHtml, wireArcadeToolbar } from '../arcadeUi.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyHostActionsHtml, arcadeLobbyGuestActionsHtml, arcadeLobbyJoinHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadeResultListHtml, wireArcadeToolbar } from '../arcadeUi.js';
+import { createRematchController } from '../rematch.js';
 import { playArcadeSound } from '../arcadeSound.js';
-import { infoTooltipHtml, wireInfoTooltips } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
 
 const SIZE = 10;
@@ -23,7 +22,6 @@ const SHIPS = [
 
 let socket = null;
 let lobbies = [];
-let battleshipOpponent = 'human';
 let match = null;
 let placements = [];
 let selectedShip = SHIPS[0].id;
@@ -57,13 +55,26 @@ const emitAck = (event, payload) => new Promise((resolve) => {
   });
 });
 
+// Revanche emits bypass the single-action guard above: request, ready and
+// start may follow each other while the result screen is shown.
+const rematch = createRematchController({
+  prefix: 'battleship',
+  emit: (event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve)),
+  myId: () => getMyId(),
+  lobbies: () => lobbies,
+  events: { create: 'battleship:lobby:create', bot: 'battleship:lobby:bot', join: 'battleship:lobby:join', ready: 'battleship:lobby:ready', start: 'battleship:lobby:start', leave: 'battleship:lobby:leave' },
+  hostReady: true,
+  playerName: (id) => match?.players.find((player) => player.id === id)?.name ?? 'Spieler',
+  rerender: () => rerender(),
+  onError: (message) => showToast(message, { error: true }),
+});
+
 export function battleshipLobbies() { return lobbies; }
 export function myBattleshipLobby() { return lobbies.find((lobby) => lobby.players.some((player) => player.id === myId())) ?? null; }
 export function hasBattleshipMatch() { return Boolean(match); }
 
 export function ensureBattleshipSocket() {
   if (socket) return socket;
-  resetArcadeOpponentWhenAiUnavailable(() => { battleshipOpponent = 'human'; });
   socket = connectSocket();
   socket.on('connect', () => {
     const returningAfterDisconnect = connectionState === 'offline';
@@ -85,9 +96,14 @@ export function ensureBattleshipSocket() {
   socket.on('battleship:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
     if (!match && currentView() === 'arcade') rerender();
+    if (match?.ended && currentView() === 'battleship') {
+      rematch.onLobbies();
+      rerender();
+    }
   });
   socket.on('battleship:match:start', (payload) => {
     match = { ...payload, phase: 'setup', paused: false, ended: false, players: payload.players ?? [] };
+    rematch.reset();
     placements = [];
     selectedCoordinate = null;
     lastShotKey = null;
@@ -111,6 +127,7 @@ export function ensureBattleshipSocket() {
     if (!match || payload.matchId !== match.matchId) return;
     cancelCountdown();
     match = { ...match, ...payload, phase: 'ended', ended: true };
+    rematch.capture({ mode: 'duel', players: match.players });
     if (match.winnerId) playArcadeSound(match.winnerId === myId() ? 'battleship-win' : 'battleship-lose');
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     if (currentView() === 'battleship' || currentView() === 'arcade') rerender();
@@ -185,34 +202,59 @@ function placementGridHtml() {
   </div>`;
 }
 
+function matchControlsHtml() {
+  if (match.ended) return arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" id="battleship-back">Schließen</button>');
+  // During placement nobody can pause yet, but everyone needs a way out.
+  if (match.phase !== 'playing') return arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" id="battleship-leave">Verlassen</button>');
+  if (match.host?.id === myId()) {
+    const pause = match.paused
+      ? '<button type="button" class="btn btn-primary btn-sm" id="battleship-pause">Fortsetzen</button>'
+      : '<button type="button" class="btn btn-sm" id="battleship-pause">Pausieren</button>';
+    return arcadeMatchControlsHtml(`${pause}<button type="button" class="btn btn-sm" id="battleship-finish">Beenden</button>`);
+  }
+  return arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" id="battleship-leave">Verlassen</button>');
+}
+
+function shellHtml(body) {
+  return `<div class="arcade-game-shell${match.ended ? ' is-ended' : ''}" data-battleship-match="${escapeHtml(match.matchId)}">
+    ${arcadeGameHeaderHtml('Battleship', matchControlsHtml(), { expand: false })}
+    <div class="grouped-page-sections">${body}</div>
+  </div>`;
+}
+
 function renderPlacement() {
   const me = match.players.find((player) => player.id === myId());
   const locked = match.phase !== 'setup' || Boolean(me?.placementReady) || pendingAction;
   const readyPlayers = (match.players ?? []).filter((player) => player.placementReady).length;
   const submitDisabled = locked || !placementValid(placements);
   const missing = SHIPS.length - placements.length;
-  const submitReason = !locked && missing > 0 ? `Es fehlen noch ${missing} von ${SHIPS.length} Schiffen.` : '';
-  return `<div class="arcade-game-shell" data-battleship-match="${escapeHtml(match.matchId)}">
-    <h1 class="view-title">Battleship</h1>
-    ${arcadeToolbarHtml()}
-    <section class="card stack battleship-setup" aria-labelledby="battleship-setup-title">
-      <div class="grouped-page-section-title"><h2 id="battleship-setup-title" class="title-with-info"><span>Flotte platzieren</span>${infoTooltipHtml('battleship-setup-help', 'Flotte platzieren', 'Wähle ein Schiff und tippe auf das Startfeld. Berührungen zwischen Schiffen sind erlaubt.')}</h2></div>
+  const submitHint = !locked && missing > 0 ? `Es fehlen noch ${missing} von ${SHIPS.length} Schiffen` : '';
+  const placed = new Set(placements.map((placement) => placement.shipId));
+  return shellHtml(`
+    <section class="card stack grouped-page-section battleship-setup" aria-labelledby="battleship-setup-title">
+      <div class="grouped-page-section-title">
+        <div class="arcade-section-heading"><h2 id="battleship-setup-title">Flotte platzieren</h2><span class="arcade-section-meta" aria-live="polite">Bereit ${readyPlayers}/${match.players.length}${me?.placementReady ? ' · Deine Flotte steht' : ''}</span></div>
+        <div class="battleship-setup-header-actions">
+          <button type="button" class="btn btn-sm" id="battleship-random" ${locked ? 'disabled' : ''}>Zufällig</button>
+          <button type="button" class="btn btn-sm" id="battleship-clear" ${locked ? 'disabled' : ''}>Zurücksetzen</button>
+          <button type="button" class="btn btn-primary btn-sm" id="battleship-submit-setup" ${submitDisabled ? 'disabled' : ''}${submitHint ? ` title="${submitHint}"` : ''}>${me?.placementReady ? 'Bestätigt' : 'Flotte bereit'}</button>
+        </div>
+      </div>
+      <div class="battleship-setup-column">
       <div class="battleship-ship-picker" role="list" aria-label="Schiffe">
-        ${SHIPS.map((ship) => `<button type="button" class="btn btn-sm ${selectedShip === ship.id ? 'btn-primary' : ''}" data-select-ship="${ship.id}" aria-pressed="${selectedShip === ship.id}" ${locked ? 'disabled' : ''}>${ship.code} · ${escapeHtml(ship.name)} · ${ship.length}</button>`).join('')}
+        ${SHIPS.map((ship) => `<button type="button" class="battleship-ship-option${selectedShip === ship.id ? ' is-selected' : ''}${placed.has(ship.id) ? ' is-placed' : ''}" data-select-ship="${ship.id}" aria-pressed="${selectedShip === ship.id}" ${locked ? 'disabled' : ''}>
+          <span class="battleship-ship-length" aria-hidden="true">${'<i></i>'.repeat(ship.length)}</span>
+          <span>${escapeHtml(ship.name)}</span>
+          ${placed.has(ship.id) ? `<span class="battleship-ship-check">${icon('check', { label: 'platziert' })}</span>` : ''}
+        </button>`).join('')}
       </div>
-      <div class="row battleship-setup-actions">
-        <button type="button" class="btn btn-sm" id="battleship-rotate" aria-pressed="${orientation === 'vertical'}" ${locked ? 'disabled' : ''}>Ausrichtung: ${orientation === 'horizontal' ? 'Waagerecht' : 'Senkrecht'}</button>
-        <button type="button" class="btn btn-sm" id="battleship-random" ${locked ? 'disabled' : ''}>Zufällig platzieren</button>
-        <button type="button" class="btn btn-sm" id="battleship-clear" ${locked ? 'disabled' : ''}>Zurücksetzen</button>
+      <div class="arcade-mode-toggle battleship-orientation" role="group" aria-label="Ausrichtung">
+        <button type="button" class="arcade-mode-toggle-btn${orientation === 'horizontal' ? ' is-active' : ''}" data-orientation="horizontal" aria-pressed="${orientation === 'horizontal'}" ${locked ? 'disabled' : ''}>Waagerecht</button>
+        <button type="button" class="arcade-mode-toggle-btn${orientation === 'vertical' ? ' is-active' : ''}" data-orientation="vertical" aria-pressed="${orientation === 'vertical'}" ${locked ? 'disabled' : ''}>Senkrecht</button>
       </div>
-      <div class="${locked ? 'battleship-placement-locked' : ''}">${placementGridHtml()}</div>
-      <div class="muted" aria-live="polite">Bereit: ${readyPlayers}/${match.players.length}${locked ? ' · Deine Flotte ist bestätigt.' : ''}</div>
-      <div class="row">
-        <button type="button" class="btn btn-primary" style="flex:1;" id="battleship-submit-setup" ${submitDisabled ? 'disabled' : ''}>${locked ? 'Flotte bestätigt' : 'Flotte bereit'}</button>
-        ${submitReason ? infoTooltipHtml('battleship-setup-reason', 'Flotte bereit nicht möglich', submitReason, 'warning') : ''}
+      <div class="${locked ? 'battleship-placement-locked' : ''}" data-countdown-anchor>${placementGridHtml()}</div>
       </div>
-    </section>
-  </div>`;
+    </section>`);
 }
 
 // A sunk ship is intentionally displayed like a plain hit during active play:
@@ -231,7 +273,7 @@ function targetGridHtml(target, ownShots, canFire) {
       const coordinateName = `${String.fromCharCode(65 + col)}${row + 1}`;
       const selected = selectedCoordinate === cell;
       const label = shot === 'miss' ? 'Wasser' : shot === 'hit' ? 'Treffer' : selected ? 'ausgewählt' : 'unbeschossen';
-      return `<button type="button" class="battleship-cell ${shot ? `is-${shot}` : ''} ${selected ? 'is-selected' : ''}" data-fire-cell="${cell}" ${!canFire || shot || pendingAction ? 'disabled' : ''} role="gridcell" aria-label="${coordinateName}, ${label}" aria-selected="${selected}">${shot === 'miss' ? '·' : shot ? '×' : selected ? '•' : ''}</button>`;
+      return `<button type="button" class="battleship-cell ${shot ? `is-${shot}` : ''} ${selected ? 'is-selected' : ''}" data-fire-cell="${cell}" ${!canFire || shot || pendingAction ? 'disabled' : ''} role="gridcell" aria-label="${coordinateName}, ${label}" aria-selected="${selected}"></button>`;
     }).join('')}
   </div>`;
 }
@@ -250,7 +292,7 @@ function ownGridHtml(player) {
       const isMiss = !isHit && misses.has(cell);
       const segment = shipCellPresentation(ships.get(cell), cell);
       const label = isHit ? `Treffer auf ${segment?.name ?? 'Schiff'}` : isMiss ? 'Wasser beschossen' : segment ? segment.name : 'Unbeschossen';
-      return `<div class="battleship-cell ${segment?.className ?? ''} ${isHit ? 'is-hit' : ''} ${isMiss ? 'is-miss' : ''}" data-own-cell="${cell}" ${segment?.attributes ?? ''} role="gridcell" aria-label="${coordinateName}, ${escapeHtml(label)}">${isHit ? '×' : isMiss ? '·' : ''}</div>`;
+      return `<div class="battleship-cell ${segment?.className ?? ''} ${isHit ? 'is-hit' : ''} ${isMiss ? 'is-miss' : ''}" data-own-cell="${cell}" ${segment?.attributes ?? ''} role="gridcell" aria-label="${coordinateName}, ${escapeHtml(label)}"></div>`;
     }).join('')}
   </div>`;
 }
@@ -260,19 +302,32 @@ function renderBattle() {
   const target = match.players.find((player) => player.id !== myId());
   if (!me || !target) return emptyStateHtml('Gegner nicht gefunden.');
   const canFire = match.phase === 'playing' && !match.paused && match.currentPlayerId === myId();
-  const status = match.paused ? 'Pause' : canFire ? 'Du bist am Zug' : `Warte auf ${escapeHtml(match.players.find((player) => player.id === match.currentPlayerId)?.name ?? 'Gegner')}`;
+  const status = connectionState === 'offline'
+    ? 'Verbindung verloren, wird wiederhergestellt'
+    : match.paused ? 'Pause' : canFire ? 'Du bist am Zug' : `${escapeHtml(match.players.find((player) => player.id === match.currentPlayerId)?.name ?? 'Gegner')} ist am Zug`;
   const resultLabels = { miss: 'Wasser', hit: 'Treffer' };
-  const result = match.lastShot ? `<div class="badge badge-playing" aria-live="polite">Letzter Schuss: ${resultLabels[hideSunkDuringPlay(match.lastShot.kind)] ?? 'Aufgelöst'}</div>` : '';
-  return `<div class="arcade-game-shell" data-battleship-match="${escapeHtml(match.matchId)}">
-    <h1 class="view-title">Battleship</h1>
-    ${arcadeToolbarHtml()}
-    <div class="battleship-status card" aria-live="polite"><strong>${connectionState === 'offline' ? 'Verbindung verloren' : status}</strong>${result}${connectionState === 'offline' ? '<span class="muted">Verbindung wird wiederhergestellt …</span>' : ''}</div>
-    <div class="battleship-board-layout">
-      <section class="card stack" aria-labelledby="battleship-target-title"><h2 id="battleship-target-title">Zielraster · ${escapeHtml(target.name)}</h2>${targetGridHtml(target, me.shots ?? [], canFire)}<p class="muted">Treffer: ${17 - (target.segmentsRemaining ?? 17)} · Verbleibend: ${target.segmentsRemaining ?? 17}</p>${canFire && selectedCoordinate !== null ? `<button type="button" class="btn btn-primary btn-block" id="battleship-fire" ${pendingAction ? 'disabled' : ''}>Feuern (${String.fromCharCode(65 + (selectedCoordinate % SIZE))}${Math.floor(selectedCoordinate / SIZE) + 1})</button>` : ''}</section>
-      <section class="card stack" aria-labelledby="battleship-own-title"><h2 id="battleship-own-title">Deine Flotte</h2>${ownGridHtml(me)}<p class="muted">Eigene Schiffe: ${me.shipsRemaining ?? 5} · Felder: ${me.segmentsRemaining ?? 17}</p></section>
-    </div>
-    ${match.host?.id === myId() ? `<div class="arcade-match-controls"><button type="button" class="btn btn-sm" id="battleship-pause">${match.paused ? 'Fortsetzen' : 'Pausieren'}</button><button type="button" class="btn btn-sm btn-danger" id="battleship-finish">Beenden</button></div>` : `<div class="arcade-match-controls"><button type="button" class="btn btn-sm btn-danger" id="battleship-leave">Verlassen</button></div>`}
-  </div>`;
+  const lastShot = match.lastShot ? `Letzter Schuss: ${resultLabels[hideSunkDuringPlay(match.lastShot.kind)] ?? 'Aufgelöst'}` : '';
+  const coordinate = selectedCoordinate !== null ? `${String.fromCharCode(65 + (selectedCoordinate % SIZE))}${Math.floor(selectedCoordinate / SIZE) + 1}` : '';
+  const fire = canFire ? `<button type="button" class="btn btn-primary btn-sm" id="battleship-fire" ${selectedCoordinate === null || pendingAction ? 'disabled' : ''}>${coordinate ? `Feuern auf ${coordinate}` : 'Feld wählen'}</button>` : '';
+  return shellHtml(`
+    <section class="card arcade-stage battleship-stage" aria-live="polite" data-countdown-anchor>
+      <div class="battleship-status-line"><strong class="${canFire ? 'is-turn' : ''}">${status}</strong>${lastShot ? `<span class="arcade-section-meta">${lastShot}</span>` : ''}</div>
+      <div class="battleship-board-layout">
+        <div class="battleship-board">
+          <div class="battleship-board-head">
+            <div class="arcade-section-heading"><h2 id="battleship-target-title">Ziel · ${escapeHtml(target.name)}</h2><span class="arcade-section-meta">${17 - (target.segmentsRemaining ?? 17)} Treffer · ${target.segmentsRemaining ?? 17} Felder übrig</span></div>
+            ${fire}
+          </div>
+          ${targetGridHtml(target, me.shots ?? [], canFire)}
+        </div>
+        <div class="battleship-board">
+          <div class="battleship-board-head">
+            <div class="arcade-section-heading"><h2 id="battleship-own-title">Deine Flotte</h2><span class="arcade-section-meta">${me.shipsRemaining ?? 5} Schiffe · ${me.segmentsRemaining ?? 17} Felder</span></div>
+          </div>
+          ${ownGridHtml(me)}
+        </div>
+      </div>
+    </section>`);
 }
 
 function revealGridHtml(player, fleet, shotsAgainst) {
@@ -291,35 +346,71 @@ function revealGridHtml(player, fleet, shotsAgainst) {
       const isMiss = !isSunk && !isHit && missCells.has(cell);
       const segment = shipCellPresentation(ships.get(cell), cell);
       const label = isSunk ? `${segment?.name ?? 'Schiff'} versenkt` : isHit ? `Treffer auf ${segment?.name ?? 'Schiff'}` : isMiss ? 'Wasser' : segment ? segment.name : 'Unbeschossen';
-      return `<div class="battleship-cell ${segment?.className ?? ''} ${isHit ? 'is-hit' : ''} ${isSunk ? 'is-sunk' : ''} ${isMiss ? 'is-miss' : ''}" data-reveal-cell="${cell}" ${segment?.attributes ?? ''} role="gridcell" aria-label="${coordinateName}, ${escapeHtml(label)}">${isSunk || isHit ? '×' : isMiss ? '·' : ''}</div>`;
+      return `<div class="battleship-cell ${segment?.className ?? ''} ${isHit ? 'is-hit' : ''} ${isSunk ? 'is-sunk' : ''} ${isMiss ? 'is-miss' : ''}" data-reveal-cell="${cell}" ${segment?.attributes ?? ''} role="gridcell" aria-label="${coordinateName}, ${escapeHtml(label)}"></div>`;
     }).join('')}
   </div>`;
 }
 
 function renderResult() {
-  const winner = match.winnerId ? match.players.find((player) => player.id === match.winnerId) : null;
+  // On "player-left" the server names the remaining player as winner, so the
+  // other one is who left.
+  const leaver = match.reason === 'player-left' ? match.players.find((player) => player.id !== match.winnerId) : null;
+  const reason = match.reason === 'aborted'
+    ? 'Match beendet'
+    : leaver
+      ? leaver.id === myId() ? 'Du hast das Match verlassen' : `${escapeHtml(leaver.name)} hat das Match verlassen`
+      : '';
+  const rows = match.players
+    .map((player) => {
+      const opponent = match.players.find((entry) => entry.id !== player.id);
+      const opponentFleet = (match.fleets ?? []).find((entry) => entry.playerId === opponent?.id)?.fleet ?? [];
+      const hits = opponentFleet.reduce((sum, ship) => sum + (ship.hits?.length ?? 0), 0);
+      const sunk = opponentFleet.filter((ship) => ship.sunk).length;
+      const shots = (match.shots ?? []).filter((shot) => shot.playerId === player.id).length;
+      return { player, winner: player.id === match.winnerId, value: `${hits} Treffer`, detail: [`${sunk} ${sunk === 1 ? 'Schiff' : 'Schiffe'} versenkt`, shots ? `${shots} Schüsse` : ''].filter(Boolean).join(' · '), hits };
+    })
+    .sort((a, b) => Number(b.winner) - Number(a.winner) || b.hits - a.hits);
+  rows.forEach((row, index) => { row.place = index + 1; });
   const boards = match.players.map((player) => {
     const fleet = (match.fleets ?? []).find((entry) => entry.playerId === player.id)?.fleet ?? [];
     const shotsAgainst = (match.shots ?? []).filter((shot) => shot.targetId === player.id);
-    return `<section class="card stack" data-battleship-reveal="${escapeHtml(player.id)}" aria-labelledby="battleship-reveal-${escapeHtml(player.id)}"><h2 id="battleship-reveal-${escapeHtml(player.id)}">${escapeHtml(player.name)}${player.id === match.winnerId ? ` ${icon('trophy')}` : ''}</h2>${revealGridHtml(player, fleet, shotsAgainst)}</section>`;
+    return `<div class="battleship-board" data-battleship-reveal="${escapeHtml(player.id)}">
+      <div class="battleship-board-head"><h2 id="battleship-reveal-${escapeHtml(player.id)}">Flotte · ${escapeHtml(player.name)}</h2></div>
+      ${revealGridHtml(player, fleet, shotsAgainst)}
+    </div>`;
   }).join('');
-  return `<div class="arcade-game-shell"><h1 class="view-title">Battleship</h1><section class="card arcade-winner-card stack"><h2>${winner ? `${escapeHtml(winner.name)} gewinnt!` : 'Match beendet'}</h2><p class="muted">${match.reason === 'aborted' ? 'Das Match wurde beendet.' : match.reason === 'player-left' ? 'Ein Spieler hat das Match verlassen.' : 'Alle gegnerischen Schiffe wurden versenkt.'}</p></section><div class="battleship-board-layout">${boards}</div><section class="card"><button type="button" class="btn btn-primary btn-block" id="battleship-back">Zur Arcade</button></section></div>`;
+  return shellHtml(`
+    <section class="card stack grouped-page-section" aria-labelledby="battleship-result-title">
+      <div class="grouped-page-section-title">
+        <div class="arcade-section-heading"><h2 id="battleship-result-title">Ergebnis</h2>${reason ? `<span class="arcade-section-meta">${reason}</span>` : ''}</div>
+        ${rematch.actionHtml()}
+      </div>
+      ${arcadeResultListHtml(rows)}
+    </section>
+    <section class="card arcade-stage"><div class="battleship-board-layout">${boards}</div></section>`);
 }
 
 export function renderBattleship(container) {
   ensureBattleshipSocket();
   if (!match) {
-    container.innerHTML = `<h1 class="view-title">Battleship</h1>${renderBattleshipLobbyCard()}`;
-    wireBattleshipLobbyCard(container);
+    // Lobbies live on the Arcade hub; a direct or expired match link goes there.
+    window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'arcade' }));
     return;
   }
   container.innerHTML = match.ended ? renderResult() : match.phase === 'setup' || match.phase === 'countdown' ? renderPlacement() : renderBattle();
   if (match.phase === 'setup' || match.phase === 'countdown') wirePlacement(container);
   if (!match.ended && match.phase === 'playing') wireBattle(container);
   wireBattleshipGridKeyboard(container);
-  if (!match.ended) wireArcadeToolbar(container);
-  wireInfoTooltips(container);
-  container.querySelector('#battleship-back')?.addEventListener('click', () => {
+  wireArcadeToolbar(container);
+  rematch.wire(container);
+  container.querySelector('#battleship-leave')?.addEventListener('click', async () => {
+    if (await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true })) {
+      const result = await emitAck('battleship:match:leave', { matchId: match.matchId, playerId: myId() });
+      if (!result?.ok) showToast(result?.error || 'Match konnte nicht verlassen werden.', { error: true });
+    }
+  });
+  container.querySelector('#battleship-back')?.addEventListener('click', async () => {
+    await rematch.close();
     match = null;
     cancelCountdown();
     navigate('arcade');
@@ -330,7 +421,7 @@ function wirePlacement(container) {
   const me = match.players.find((player) => player.id === myId());
   if (match.phase !== 'setup' || me?.placementReady || pendingAction) return;
   container.querySelectorAll('[data-select-ship]').forEach((button) => button.addEventListener('click', () => { selectedShip = button.dataset.selectShip; rerender(); }));
-  container.querySelector('#battleship-rotate')?.addEventListener('click', () => { orientation = orientation === 'horizontal' ? 'vertical' : 'horizontal'; rerender(); });
+  container.querySelectorAll('[data-orientation]').forEach((button) => button.addEventListener('click', () => { orientation = button.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal'; rerender(); }));
   container.querySelector('#battleship-clear')?.addEventListener('click', () => { placements = []; rerender(); });
   container.querySelector('#battleship-random')?.addEventListener('click', () => {
     const next = [];
@@ -413,59 +504,37 @@ function wireBattle(container) {
       if (!result?.ok) showToast(result?.error || 'Match konnte nicht beendet werden.', { error: true });
     }
   });
-  container.querySelector('#battleship-leave')?.addEventListener('click', async () => {
-    if (await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true })) {
-      const result = await emitAck('battleship:match:leave', { matchId: match.matchId, playerId: myId() });
-      if (!result?.ok) showToast(result?.error || 'Match konnte nicht verlassen werden.', { error: true });
-    }
-  });
 }
 
-function lobbyList() {
-  if (!lobbies.length) return emptyStateHtml('Noch keine Battleship-Lobby.', { className: 'empty-state-compact' });
-  return lobbies.map((lobby) => {
-    const joined = lobby.players.some((player) => player.id === myId());
-    const isHost = lobby.host.id === myId();
-    const full = lobby.players.length >= (lobby.capacity ?? 2) && !joined;
-    const startReady = lobby.players.length === 2 && lobby.players.every((player) => player.ready);
-    const startReason = startReady
-      ? ''
-      : lobby.players.length < 2
-        ? 'Noch nicht genug Spieler (mind. 2).'
-        : 'Nicht alle Mitspieler sind bereit.';
-    const footerActions = isHost
-      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-battleship-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`battleship-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-close="${lobby.id}">Schließen</button>`
-      : joined
-        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'battleship-ready')}`
-        : '';
-    const joinAction = !joined && !isHost ? `<button type="button" class="btn btn-sm btn-primary" data-battleship-join="${lobby.id}" ${full ? 'disabled' : ''}>Beitreten</button>` : '';
-    return arcadeLobbyEntryHtml(lobby, { joinAction, footerActions, full });
-  }).join('');
+function lobbyEntryHtml(lobby) {
+  const joined = lobby.players.some((player) => player.id === myId());
+  const isHost = lobby.host.id === myId();
+  const capacity = lobby.capacity ?? 2;
+  const full = lobby.players.length >= capacity && !joined;
+  const startReady = lobby.players.length === 2 && lobby.players.every((player) => player.ready);
+  const startHint = startReady ? '' : lobby.players.length < 2 ? 'Mindestens 2 Spieler' : 'Noch nicht alle bereit';
+  const footerActions = isHost
+    ? arcadeLobbyHostActionsHtml({ startAttrs: `data-battleship-start="${lobby.id}"`, startEnabled: startReady, startHint, closeAttrs: `data-battleship-close="${lobby.id}"` })
+    : joined
+      ? arcadeLobbyGuestActionsHtml({ readyHtml: readyToggleHtml(lobby, myId(), 'battleship-ready'), leaveAttrs: `data-battleship-leave="${lobby.id}"` })
+      : '';
+  const joinAction = !joined ? arcadeLobbyJoinHtml(`data-battleship-join="${lobby.id}"`, full) : '';
+  return arcadeLobbyEntryHtml(lobby, { gameType: 'battleship', meta: `Duell · ${lobby.players.length}/${capacity}`, joinAction, footerActions, full, capacity });
 }
 
-export function renderBattleshipLobbyCard() {
-  const noMe = !myId();
-  const hasLobby = Boolean(myBattleshipLobby());
-  const createReason = noMe ? 'Wähle zuerst aus, wer du bist.' : hasLobby ? 'Du hast bereits eine offene Lobby.' : '';
-  const mayUseAi = currentPlayerMayUseArcadeAi();
-  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions"><div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}"><button type="button" class="btn btn-primary btn-sm" id="battleship-create" ${hasLobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('battleship-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}${mayUseAi ? arcadeLobbyOpponentToggleHtml('battleship-opponent', battleshipOpponent, hasLobby || noMe) : ''}</div></div>${lobbyList()}</div>`;
+export function renderBattleshipLobbyEntries() {
+  return lobbies.map((lobby) => ({ id: lobby.id, html: lobbyEntryHtml(lobby) }));
 }
 
-export function wireBattleshipLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
-  wireArcadeOpponentToggle(container, 'battleship-opponent', (value) => {
-    battleshipOpponent = value;
-    rerender();
-  });
-  container.querySelector('#battleship-create')?.addEventListener('click', async () => {
-    if (beforeCreate && !(await beforeCreate())) return;
-    if (battleshipOpponent === 'bot') {
-      const botResult = await emitAck('battleship:lobby:bot', { playerId: myId() });
-      if (!botResult?.ok) showToast(botResult?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
-      return;
-    }
-    const result = await emitAck('battleship:lobby:create', { playerId: myId(), mode: 'duel' });
-    if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
-  });
+export async function createBattleshipLobby({ opponent = 'human' } = {}) {
+  const result = opponent === 'bot'
+    ? await emitAck('battleship:lobby:bot', { playerId: myId() })
+    : await emitAck('battleship:lobby:create', { playerId: myId(), mode: 'duel' });
+  if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+  return result;
+}
+
+export function wireBattleshipLobbyCard(container, { beforeJoin } = {}) {
   container.querySelectorAll('[data-battleship-join]').forEach((button) => button.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;
     const result = await emitAck('battleship:lobby:join', { lobbyId: button.dataset.battleshipJoin, playerId: myId() });
@@ -480,4 +549,34 @@ export function wireBattleshipLobbyCard(container, { beforeCreate, beforeJoin } 
     const result = await emitAck('battleship:lobby:start', { lobbyId: button.dataset.battleshipStart, playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'Start fehlgeschlagen.', { error: true });
   }));
+}
+
+// ---------- Spectator view: both fleets as the players see the boards ----------
+
+function spectatorGridHtml(player) {
+  const shots = new Map((player.shots ?? []).map((shot) => [shot.coordinate, hideSunkDuringPlay(shot.kind)]));
+  return `<div class="battleship-grid" role="grid" aria-label="Raster von ${escapeHtml(player.name)}">
+    ${Array.from({ length: SIZE * SIZE }, (_, cell) => {
+      const shot = shots.get(cell);
+      const coordinateName = `${String.fromCharCode(65 + (cell % SIZE))}${Math.floor(cell / SIZE) + 1}`;
+      const label = shot === 'miss' ? 'Wasser' : shot === 'hit' ? 'Treffer' : 'unbeschossen';
+      return `<div class="battleship-cell ${shot ? `is-${shot}` : ''}" role="gridcell" aria-label="${coordinateName}, ${label}"></div>`;
+    }).join('')}
+  </div>`;
+}
+
+export function battleshipSpectatorHtml(state) {
+  const ended = state.phase === 'ended';
+  const boards = (state.players ?? []).map((player) => {
+    const grid = ended && player.fleet
+      ? revealGridHtml(player, player.fleet, (player.shots ?? []).map((shot) => ({ ...shot, targetId: player.id })))
+      : spectatorGridHtml(player);
+    return `<div class="battleship-board">
+      <div class="battleship-board-head">
+        <div class="arcade-section-heading"><h2>Flotte · ${escapeHtml(player.name)}</h2><span class="arcade-section-meta">${player.shipsRemaining ?? 5} Schiffe · ${player.segmentsRemaining ?? 17} Felder</span></div>
+      </div>
+      ${grid}
+    </div>`;
+  }).join('');
+  return `<div class="battleship-board-layout">${boards}</div>`;
 }

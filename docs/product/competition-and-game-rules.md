@@ -211,114 +211,59 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 
 ## Arcade
 
-- **Arcade** — The launcher follows the grouped-page hierarchy with separate full-width cards for
-  „Spiele“, optional running games, the selected game and „Statistiken“.
-  The game grid remains the first visible group with or without a selection. Once a game is selected,
-  its lobby group follows directly below the grid; there is no separate „Spielauswahl“ back action.
-  The selected game is represented by `#arcade/<spiel>` so browser back/forward, reload and the
-  highlighted game tile agree. That route refines the launcher in place rather than opening a
-  sub-page: the tile grid stays exactly where it is, so switching games keeps the reader's scroll
-  position and focus and does not replay the view-enter animation — on a phone a reset to the top
-  read as a full reload of the page. The Arcade route declares this through `inPlaceLocalRoutes`
-  in `viewManifest.js`; a local route that replaces the whole page (Turniere's list becoming a
-  tournament board) leaves the flag off and keeps entering like any other screen.
-  Selecting a game is not a toggle: clicking the already active tile
-  keeps the selection and route unchanged. The active tile keeps `.is-active` and carries
-  `aria-current="page"` rather than `aria-pressed`; the route `#arcade` via browser back remains
-  the only way to return to the unselected launcher.
-  Game choices are horizontal nested cards with their Lucide game icon, name and an explicit
-  „… offen“ lobby badge; they form one column on phones, exactly two from `--bp-md` and three in
-  desktop mode from `--bp-xl`. Running
-  games reuse the same responsive two-column rhythm. The tile badge is the only separate open-lobby
-  overview; selecting a game reveals all of its lobbies in the dedicated main group. Goal and
-  controls live in one tooltip directly beside that selected game's title instead of a second
-  „Lobby“ heading. Every open lobby is a nested card modeled on the
-  carpool cards, with the host's lobby name in the header, stable player rows with
-  role/readiness at the right, a direct join action in a free-slot row and host/member actions in a
-  separated full-width footer. Host labels, free labels and join actions share an exact three-column
-  grid and row height. A host's game settings belong inside that lobby card; the compact
-  „Punkte bis Sieg“ control shares the separated footer with „Start“ and „Schließen“ from `--bp-md`
-  instead of forming a wide radio-button block. „Start“ precedes „Schließen“ in that footer so the
-  primary action reads first, ahead of the destructive one, and both split the footer evenly so they
-  render at the same width. A disabled „Start“ keeps its red reason tooltip as a direct sibling in
-  that footer rather than wrapping it together with the button: a wrapper claims only its content
-  width while the lone sibling stretches, which left the pair visibly uneven. Readiness is
-  communicated in the player rows without a duplicate status sentence. Tetris exposes a compact Duell/Arena selector before creation.
-  „Lobby öffnen“ precedes the lobby cards at full width, so opening a new lobby never requires
-  scrolling past every existing one first. The mode selector is a small bordered segmented switch
-  (`.arcade-mode-toggle`) with a flat `--accent` fill on the active segment, deliberately distinct
-  from `.btn-primary`'s accent-gradient treatment so the pill reads as a setting rather than a
-  second, equally weighted action next to „Lobby öffnen“ — that primary create action keeps the
-  gradient to itself. Duell keeps two equal boards;
-  Arena accepts three to eight players and keeps the local board large beside a responsive grid of
-  opponent boards. On phones the local board sits above that grid. The current automatic attack
-  target receives a textual „Ziel“ marker in addition to its accent border, while eliminated
-  players remain visibly dimmed for spectating. For admins with active Admin mode the opponent
-  choice is a second `.arcade-mode-toggle` segmented switch („Mensch“/„KI“) directly to the right
-  of „Lobby öffnen“, so the create row reads as [Modus] [Lobby öffnen] [Gegner] and the primary
-  create action keeps its gradient to itself instead of competing with a separate „Gegen KI“
-  button. That switch only selects; „Lobby öffnen“ then opens either a human or an AI lobby, and
-  the AI lobby honors the mode switch beside it — Tetris and Snake Duell use one bot while their
-  Arena fills all seven opponent slots, and Pong and Blobby Volley cover both the AI duel and the
-  Doppel variant with a bot teammate. An empty
-  lobby no longer adds
-  a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
-  as the host's „Schließen“ action, and only render for a member who actually joined that lobby.
-  Guest footers place „Verlassen“ before the readiness toggle;
-  compact score selectors use the smaller shared row height. Create-action containers use the same
-  outer inset as lobby footers. Whichever of the two flanking switches a game or player does not
-  get reserves its width anyway (`.arcade-lobby-create-row--no-mode` /
-  `--no-opponent`), so from `--bp-md` „Lobby öffnen“ keeps one width and equal left and right
-  insets across every game. On phones the primary action forms the full-width first row. The mode
-  and opponent switches form the second row in that order and split its available width evenly;
-  every label stays inside its segment. Below the minimum width documented in the
-  [Controls contract](../../server/frontend-contracts/components/controls.md), each switch receives its own row.
-  Tetris, Pong, Snake and
-  Blobby Volley all select Duell by default. A disabled „Lobby
-  öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
-  formation's „Teams auslosen“/„Draft starten“.
-  Blobby Volley and Pong both offer Duell (1 gegen 1) and Doppel (2 gegen 2) through the same
-  segmented switch, without a separate mode label or explanatory tooltip. Doppel lobbies expose
-  two explicit teams with two slots each, require all four participants to be ready and award the
-  shared team score and win to both teammates. Pong follows Atari's Pong-4 rules: each participant
-  controls a separate paddle that remains in its assigned upper/lower half, player initials and roster
-  lane labels identify all four paddles, and Doppel defaults to 21 points. Each Doppel paddle is
-  shorter than a Duell paddle so four defended lanes do not make rallies automatic. The ball gains
-  speed continuously during a rally as well as on paddle contact; the browser predicts the short
-  interval between authoritative server snapshots so that this higher speed still renders smoothly.
-  Both games reach a Doppel AI match through the same two switches — „Doppel“ plus „KI“ — where
-  the host and one bot teammate play against two bot opponents.
-  Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
-  include each game's match count. Picking a game tile above auto-syncs this dropdown to the same
-  game (matched by its own gameType/statsKey) so its stats show without a second, redundant
-  selection; a manual dropdown choice stays in place until the tile selection above changes again.
-  The selected game is not repeated above its results. Those
-  results follow directly without another enclosing card or accent rail; player rows reuse
-  `.leaderboard-list-grid` for the shared one-/two-column ranking presentation, gain a third column
-  in desktop mode from `--bp-xl` and spell out wins and losses in German. Tetris Duell and Tetris
-  Arena are separate dropdown entries so an Arena's
-  many non-winning placements do not distort the duel win rate. Arena rows instead show wins,
-  Top-3 finishes, average placement, cleared lines, sent garbage and knockouts. Matches containing
-  bots appear as separate „KI-Test“ entries and never alter the human-only Duell/Arena rankings.
-  Mode-capable Arcade lobbies use the shared `.arcade-mode-toggle` segmented switch in the same
-  action row as lobby creation. Snake „Duell“ remains the two-player classic mode; „Arena“ accepts
-  three to eight players and labels every lobby with mode and occupancy. Snake's AI lobby follows
-  that same mode switch: „Duell“ opens a one-on-one against a single bot, „Arena“ fills the lobby
-  with the maximum seven bots. Neither exposes a count selector.
-  Arena matches keep eliminated players visibly in the roster with a textual status, while the
-  canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
-  Numbered head markers and a matching `Schlange N · Name` legend identify every participant
-  without relying on color; the same legend appears in player, spectator and kiosk contexts. The
-  local match view names the current participant's color in a large full-width banner from the start.
-  The same color and snake number appear in the countdown itself, whose translucent overlay leaves the
-  board unblurred so players can orient themselves before movement begins.
-  Snake uses a 48×30 logical field in the existing 8:5 canvas, making cells and snakes smaller in
-  relation to the available play area without shrinking the visible board.
-  Challenge Rush is a human lobby without an AI-opponent switch. Admin mode only adds the exact
-  test-challenge selection. Its deliberately reduced catalog contains 21 challenges: two direct
-  interactions (reaction circle and ten-second stop), eighteen choice-based logic trials and one
-  memory-matrix trial. These three interaction shapes share the same lobby, round, pause,
-  reconnect and result lifecycle.
+- **Hub** — Arcade is one page of full-width cards: „Lobbys“, „Läuft gerade“ (only while a match
+  runs) and „Statistik“. There is no game grid and no per-game sub-route; `#arcade` is the only
+  hub route, and a game room opened without a running match returns there.
+- **Lobbys** — The card header carries the single primary action „Lobby öffnen“. It opens one
+  dialog with „Spiel“ (a select, games sorted alphabetically), „Modus“ for games with modes and,
+  for admins in Admin mode, „Gegner“ („Mensch“/„KI“). Modus and Gegner are `.arcade-mode-toggle`
+  segmented switches that share one row with equal segment widths; on very narrow phones the
+  opponent switch wraps below. The compact submit „Lobby öffnen“ sits at the dialog's right end.
+  Tetris, Pong, Snake and Blobby Volley start on Duell (Snake: „Classic“). Challenge Rush has
+  neither switch; its admin test selection lives in the same dialog.
+  All open lobbies of every game share one list. The current player's own lobby is a card with
+  game icon, „<Host>s Lobby“, a meta line (game, mode, occupancy), the member rows with role
+  („Host“, „Bereit“, „Wartet“) and free seats, host settings such as „Punkte bis Sieg“ and the
+  compact header actions: „Starten“ plus „Schließen“ for the host, the ready toggle plus
+  „Verlassen“ for a guest. A disabled „Starten“ names its reason in the button title. Every other
+  lobby is a flat row with icon, title, meta line, occupied seats and „Beitreten“; a Pong or Blobby
+  Volley Doppel lobby offers „Blau“ and „Pink“ instead, so joining picks the team. Joining or
+  opening another lobby while owning one asks first and closes the own lobby only on confirmation.
+- **Läuft gerade** — Each running match is one row: icon, „A gegen B“ (teams as „A und B gegen
+  C und D“), game and score. A player's own match still held by this tab offers „Weiterspielen“,
+  every other match „Zuschauen“.
+- **Statistik** — A collapsible card, collapsed by default, with one overall ranking across all
+  games and a game filter. Bars use muted per-game colors from the accent gradient.
+- **Game rooms** — Every game uses the same structure: a header with the game title, compact
+  neutral match actions („Pausieren“/„Fortsetzen“, „Beenden“, „Verlassen“) and the mute and
+  expand icons; one stage card with the score bar (two sides) or the player strip (more players)
+  above the playfield; after the end one „Ergebnis“ card. The result lists every player with place
+  and value; the winner's value is green, everyone else is muted. „Revanche“ in the result header
+  opens a lobby in the same mode for the same players; the others accept with „Annehmen“, and the
+  match starts once everyone is back and ready. „Schließen“ leaves the result.
+  The start countdown is centered on the playfield, not on the window, at every size and in the
+  expanded view. It shows no player identity; the own color is named on the score bar
+  („Blau · Deine Farbe“ in Snake).
+- **Game specifics** — Tetris Duell keeps two equal boards; Arena accepts three to eight players
+  and keeps the local board large beside a grid of opponent boards. Pong and Blobby Volley offer
+  Duell and Doppel; Doppel lobbies have two teams with two seats, Pong Doppel defaults to 21 points
+  and follows Atari's Pong-4 lanes. Snake Classic is exactly one against one; Snake Arena accepts
+  three to eight players, shrinks its safe zone and keeps eliminated players in the strip as
+  „Ausgeschieden“. Battleship places the fleet with a ship picker (5 columns, 3 on phones), an
+  orientation switch and „Zufällig“, „Zurücksetzen“ and „Flotte bereit“ in the header; ships are
+  continuous bars, shots are dots. The quiz shows question, category and timer on one stage and
+  keeps the revealed answer for 3.5 seconds.
+- **AI** — Admins in Admin mode may choose „KI“ in the create dialog. Tetris and Snake Duell use one
+  bot, their Arena fills all opponent seats; Pong and Blobby Volley cover the AI duel and Doppel with
+  a bot teammate.
+- **Parked games** — Scribble and Challenge Rush are visible to admins in Admin mode only (dialog,
+  lobby list, running matches, statistics filter). This is a presentation filter, not a security
+  boundary. Challenge Rush keeps its reduced catalog of 21 challenges and has no AI.
+- **Spectating** — „Zuschauen“ opens a read-only view that reuses each game's own player
+  presentation (boards, canvases, score bar). Quiz spectators see the question and, after the
+  reveal, the answer; Scribble spectators never receive the word, the hints or the guesses.
+- **Kiosk** — The kiosk does not take over the screen for Arcade matches; its dashboard stays
+  visible. The takeover logic remains in `kiosk.js` behind `KIOSK_ARCADE_STREAM`.
 
 ## Vote und Turniere
 
