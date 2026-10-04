@@ -11,9 +11,6 @@
 import { icon } from './icons.js';
 
 function step(input, direction) {
-  // stepUp()/stepDown() also act on a disabled or read-only field, so the
-  // buttons must not change a value the field itself refuses to edit.
-  if (input.disabled || input.readOnly) return;
   const before = input.value;
   // `stepUp()`/`stepDown()` throw InvalidStateError on a `step="any"` field
   // (e.g. a free-form "Punktestand" input) since the browser has no fixed

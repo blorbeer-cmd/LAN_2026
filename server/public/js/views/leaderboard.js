@@ -6,7 +6,7 @@ import { state, gamesWithHistory } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { rankedListHtml, sharedRankNumbers } from '../rankedList.js';
+import { rankedListHtml } from '../rankedList.js';
 import { openMatchForm } from './adminResultForm.js';
 
 export function renderLeaderboard(container, ctx) {
@@ -20,12 +20,11 @@ export function renderLeaderboard(container, ctx) {
   ];
 
   const standings = state.leaderboard?.standings || [];
-  // Same order as the server's standings: points, then wins.
-  const ranks = sharedRankNumbers(standings.map((s) => [s.points, s.wins]));
-  const standingItems = standings.map((s, i) => {
+  // Places follow the server's order (points, then wins) by position, the
+  // same numbering as Home's top six.
+  const standingItems = standings.map((s) => {
     const player = state.players.find((p) => p.id === s.playerId);
     return {
-      rank: ranks[i],
       lead: avatarHtml(player || { color: s.color }, 28),
       title: escapeHtml(player ? player.name : s.name),
       meta: `${s.wins} ${s.wins === 1 ? 'Sieg' : 'Siege'} · ${s.matchesPlayed} ${s.matchesPlayed === 1 ? 'Spiel' : 'Spiele'}`,

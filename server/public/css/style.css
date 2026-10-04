@@ -2035,11 +2035,6 @@ select {
 .search-select.has-status-icon .search-select-control > input {
   padding-left: 38px; /* design-token-ok: clears the status icon, mirrors the chevron's own 38px inset */
 }
-/* A selected entry without its own icon („Alle Events“) keeps the plain text
-   inset, so its text lines up with every other dropdown. */
-.search-select.has-status-icon .search-select-control:has(> .search-select-value-icon:empty) > input {
-  padding-left: var(--space-3);
-}
 .search-select-status,
 .search-select-option-icon {
   display: inline-flex;

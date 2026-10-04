@@ -53,7 +53,11 @@ export function normalizeEventContext(eventContext = {}) {
 
 export async function loadAll() {
   const generation = beginDataLoad();
-  const [players, games, skills, preferences, live, votes, matches, leaderboard, eventContext] =
+  const playtimeAllGamesPromise = api.stats.playtime();
+  const playtimePromise = state.selectedGameId
+    ? api.stats.playtime(state.selectedGameId)
+    : playtimeAllGamesPromise;
+  const [players, games, skills, preferences, live, votes, matches, leaderboard, playtime, playtimeAllGames, eventContext] =
     await Promise.all([
       api.players.list(),
       api.games.list(),
@@ -63,6 +67,8 @@ export async function loadAll() {
       api.votes.get(),
       api.matches.list(),
       api.leaderboard.get(state.selectedGameId || undefined),
+      playtimePromise,
+      playtimeAllGamesPromise,
       api.events.list(),
     ]);
   if (!isCurrentDataLoad(generation)) return false;
@@ -81,6 +87,8 @@ export async function loadAll() {
     votes,
     matches,
     leaderboard,
+    playtime,
+    playtimeAllGames,
     ...normalizedEventContext,
   }));
   return true;

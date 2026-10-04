@@ -12,6 +12,8 @@ export const state = {
   votes: null,
   matches: [],
   leaderboard: null,
+  playtime: null,
+  playtimeAllGames: null,
   events: [],
   managedEvents: null, // owner/admin only; null means "no management rights"
   activeEvent: null,

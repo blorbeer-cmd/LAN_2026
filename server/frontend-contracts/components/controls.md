@@ -726,7 +726,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:event-context-search-field`: Compact event switcher reserves its integrated selector action.
 
 - `registry:search-status-reserve`: Searchable select reserves the established status icon inside the field.
-- `registry:search-status-reserve-empty`: A selected entry without its own status icon keeps the plain text inset.
 
 - `registry:number-stepper-reserve`: Native number field reserves the internal half-stepper column.
 

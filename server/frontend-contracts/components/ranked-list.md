@@ -49,7 +49,7 @@ nur die umgebende Karte und den Inhalt der Einträge.
 | Wertliste | `rankedListHtml(items)` | umgesetzt | ohne Rangbedeutung, alphabetisch sortiert, etwa Erfolge |
 | Rangliste | `rankedListHtml(items, { ranked: true })` | umgesetzt | Reihenfolge ist eine Rangfolge; jede Zeile trägt ihre Platznummer |
 | Mit Führungselement | Eintrag mit `lead` | umgesetzt | Avatar oder Spielersymbol vor dem Titel, etwa Spieler-Ranglisten |
-| Geteilte Plätze | Eintrag mit `rank` | umgesetzt | gleicher Wert, gleiche Platznummer, etwa Punkte in der Rangliste |
+| Geteilte Plätze | Eintrag mit `rank` | umgesetzt | gleicher Wert, gleiche Platznummer, etwa Zählungen in Statistiken |
 
 Dieselbe Lese- und Sortierregel gilt für mehrspaltige Kachelraster gleichartiger Einträge, die
 keine RankedList sind: Sie füllen die linke Spalte zuerst. Erster Aufrufer ist der Live-Status auf
@@ -109,8 +109,8 @@ Alphabet.
 - Schmal und breit: „Meine Statistiken“ (`public/js/views/myStats.js`) mit Erfolgen
   (Wertliste), Spielzeit pro Spiel, Spielzeit pro Event und Längsten Sessions (Ranglisten).
 - Mit Führungselement: Karte „Rangliste“ auf Home (`public/js/views/home.js`), Top 6 mit Avatar.
-- Geteilte Plätze: Rangliste (`public/js/views/leaderboard.js`), Hall of Fame
-  (`public/js/views/hallOfFame.js`) und Statistiken (`public/js/views/analytics.js`).
+- Geteilte Plätze: Hall of Fame (`public/js/views/hallOfFame.js`) und die Zähllisten in
+  Statistiken (`public/js/views/analytics.js`).
 - Wertliste mit eigenem `sortKey`: Session-Protokoll in Statistiken, neueste Session zuerst.
 - Vorbild vor diesem Vertrag: „Top 10 nach Bock-Level“ in Vote (`public/js/views/votes.js`,
   `.vote-ranking-columns`); Übernahme im Folgepaket.

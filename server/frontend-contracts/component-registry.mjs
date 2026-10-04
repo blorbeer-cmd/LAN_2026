@@ -2088,17 +2088,6 @@ export const permanentVariants = [
     "reason": "Searchable select reserves the established status icon inside the field."
   },
   {
-    "id": "search-status-reserve-empty",
-    "role": "composite-part",
-    "selector": ".search-select.has-status-icon .search-select-control:has(> .search-select-value-icon:empty) > input",
-    "owner": "public/css/style.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "padding-left"
-    ],
-    "reason": "A selected entry without its own status icon keeps the plain text inset."
-  },
-  {
     "id": "number-stepper-reserve",
     "role": "composite-part",
     "selector": ".number-stepper input[type='number']",

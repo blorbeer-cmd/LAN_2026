@@ -107,7 +107,10 @@ async function loadData(ctx) {
 // event's title plus its state as an icon — the same shape every other event
 // dropdown uses.
 function eventFilterOptions() {
-  return eventSelectOptions(accessibleEvents(), { allEntryLabel: 'Alle Events' });
+  // "Alle Events" carries its own icon, so its text lines up with the event
+  // options instead of sitting in the space reserved for their status icon.
+  const [all, ...events] = eventSelectOptions(accessibleEvents(), { allEntryLabel: 'Alle Events' });
+  return [{ ...all, icon: 'calendar', iconLabel: 'Alle Events' }, ...events];
 }
 
 // Every list section starts collapsed; its open state survives re-renders

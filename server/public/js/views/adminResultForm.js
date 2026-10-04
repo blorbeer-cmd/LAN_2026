@@ -128,8 +128,9 @@ export function openMatchForm(ctx) {
 
   function renderBody() {
     rememberResult();
-    const teamCountInput = el.querySelector('#match-teamcount');
-    teamCountInput.disabled = isFfa;
+    // Frei-für-alle has no teams, so its count field leaves the form.
+    el.querySelector('.match-team-count-field').hidden = isFfa;
+    el.querySelector('.match-form-head').classList.toggle('is-ffa', isFfa);
     const rows = isFfa
       ? state.players.map((player) => `<label class="check-row" data-selection-search="${escapeHtml(player.name)}">
           <input type="checkbox" data-ffa-player="${escapeHtml(player.id)}" ${ffaIds.has(player.id) ? 'checked' : ''} />

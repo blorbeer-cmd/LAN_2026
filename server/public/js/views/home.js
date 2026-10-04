@@ -7,7 +7,7 @@
 // the header bell (see notificationBanner.js), so Home does not duplicate
 // the same content in a second style.
 
-import { rankedListHtml, sharedRankNumbers } from '../rankedList.js';
+import { rankedListHtml } from '../rankedList.js';
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDateTime, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
@@ -567,10 +567,7 @@ function renderLeaderboardTop() {
   if (!isAdmin()) return '';
   const standings = state.leaderboard?.standings || [];
   if (standings.length === 0) return '';
-  // The same shared places as the full Rangliste (points, then wins).
-  const ranks = sharedRankNumbers(standings.map((s) => [s.points, s.wins]));
-  const items = standings.slice(0, 6).map((s, i) => ({
-    rank: ranks[i],
+  const items = standings.slice(0, 6).map((s) => ({
     lead: avatarHtml(s, 28),
     title: escapeHtml(s.name),
     value: `${s.points} P`,
