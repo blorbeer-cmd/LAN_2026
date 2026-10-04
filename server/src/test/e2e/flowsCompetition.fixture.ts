@@ -1536,6 +1536,10 @@ flowTest('Ergebnis eintragen keeps Frei-für-alle usable with more than six peop
   await openAuswertungTab('leaderboard');
   await page.click('#add-match-btn');
   await page.check('#match-ffa');
+  // The team count is disabled for Frei-für-alle; its stepper must not change it.
+  assert.equal(await page.locator('#match-teamcount').isDisabled(), true);
+  await page.locator('#match-teamcount + .number-stepper-steps .number-stepper-btn[aria-label="Wert erhöhen"]').click({ force: true });
+  assert.equal(await page.inputValue('#match-teamcount'), '2');
   const participants = page.locator('[data-ffa-player]');
   assert.ok(await participants.count() > 6);
   await page.locator('.modal label.tournament-result-pick:has(input[value="-1"])').click();

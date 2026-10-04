@@ -152,8 +152,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   focus and the view preserves its internal scroll position instead of flashing a loading state.
 - **Analytics** — the „Statistiken“ tab of the „Auswertung“ area: one page without sub-tabs, so
   only the area tab row sits above the content. The first card „Überblick“ carries the event
-  dropdown („Alle Events“ first) in its header (below `--bp-md` on its own full-width line) and
-  the totals as one row of centered figures, the same overview „Meine Statistiken“ uses: play
+  dropdown („Alle Events“ first) in full width below its title, like the pickers in Rangliste and
+  Hall of Fame, and the totals as one row of centered figures, the same overview „Meine Statistiken“ uses: play
   time, sessions, matches, tournaments, draws and arcade matches. There are no additional date
   controls. Play time and match data use the selected event directly; Arcade internally derives
   the event's date bounds because arcade results have no event assignment. The daily match chart
