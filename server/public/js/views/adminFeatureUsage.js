@@ -128,7 +128,7 @@ export function renderAdminFeatureUsage(container, ctx) {
 
   container.innerHTML = `
     <div class="more-subpage-header">
-      <div class="more-subpage-title-row">
+      <div class="more-subpage-title-row more-subpage-title-row--stack-action">
         <h1 class="view-title">Nutzungsauswertung</h1>
         <button type="button" class="btn btn-sm" id="admin-feature-usage-refresh" ${featureUsageLoading ? 'disabled' : ''}>Aktualisieren</button>
       </div>
