@@ -757,6 +757,14 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(filteredRankingResponse.ok(), true, 'the ranking should follow the selected game');
   await page.click('#add-match-btn');
   await page.waitForSelector('#match-players');
+  // The player search filters the rows and stays usable while typing.
+  const playerRows = page.locator('#match-players [data-match-player-item]');
+  const allPlayerCount = await playerRows.count();
+  await page.fill('#match-player-search', 'zzz-kein-spieler');
+  assert.equal(await page.locator('#match-player-search').isVisible(), true);
+  assert.equal(await page.locator('#match-players [data-match-player-item]:visible').count(), 0);
+  await page.fill('#match-player-search', '');
+  assert.equal(await page.locator('#match-players [data-match-player-item]:visible').count(), allPlayerCount);
   assert.deepEqual(
     await page.locator('#match-form .match-form-section > h3').evaluateAll((titles) =>
       titles.map((title) => title.firstChild?.textContent?.trim())),
@@ -1501,6 +1509,14 @@ flowTest('Ergebnis eintragen keeps a manual team reassignment after changing "An
   await openAuswertungTab('leaderboard');
   await page.click('#add-match-btn');
   await page.waitForSelector('#match-players');
+  // The player search filters the rows and stays usable while typing.
+  const playerRows = page.locator('#match-players [data-match-player-item]');
+  const allPlayerCount = await playerRows.count();
+  await page.fill('#match-player-search', 'zzz-kein-spieler');
+  assert.equal(await page.locator('#match-player-search').isVisible(), true);
+  assert.equal(await page.locator('#match-players [data-match-player-item]:visible').count(), 0);
+  await page.fill('#match-player-search', '');
+  assert.equal(await page.locator('#match-players [data-match-player-item]:visible').count(), allPlayerCount);
 
   await page.click('#match-game-search');
   await page.waitForSelector('#match-game-list:not([hidden])');

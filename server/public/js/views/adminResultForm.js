@@ -132,11 +132,11 @@ export function openMatchForm(ctx) {
     el.querySelector('.match-team-count-field').hidden = isFfa;
     el.querySelector('.match-form-head').classList.toggle('is-ffa', isFfa);
     const rows = isFfa
-      ? state.players.map((player) => `<label class="check-row" data-selection-search="${escapeHtml(player.name)}">
+      ? state.players.map((player) => `<label class="check-row" data-match-player-item data-selection-search="${escapeHtml(player.name)}">
           <input type="checkbox" data-ffa-player="${escapeHtml(player.id)}" ${ffaIds.has(player.id) ? 'checked' : ''} />
           ${avatarHtml(player, 20)}<span class="player-name match-player-name">${escapeHtml(player.name)}</span>
         </label>`)
-      : state.players.map((player) => `<div class="player-assignment-row match-player-row" data-selection-search="${escapeHtml(player.name)}">
+      : state.players.map((player) => `<div class="player-assignment-row match-player-row" data-match-player-item data-selection-search="${escapeHtml(player.name)}">
           ${avatarHtml(player, 20)}<span class="player-name match-player-name">${escapeHtml(player.name)}</span>
           <select data-team-for="${escapeHtml(player.id)}" aria-label="Team für ${escapeHtml(player.name)}">
             <option value="" ${assignment.has(player.id) ? '' : 'selected'}>–</option>
@@ -157,7 +157,8 @@ export function openMatchForm(ctx) {
     renderResult();
     wireSelectionSearch(body, {
       inputId: 'match-player-search',
-      itemSelector: '[data-selection-search]',
+      // Its own marker: the search wrapper itself carries data-selection-search.
+      itemSelector: '[data-match-player-item]',
       emptySelector: '[data-match-player-empty]',
       onQueryChange: (value) => { playerQuery = value; },
     });
