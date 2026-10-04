@@ -100,21 +100,6 @@ export const components = [
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
-        "file": "public/js/views/analytics.js",
-        "source": "class=\"btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/analytics.js",
-        "source": "class=\"btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/analytics.js",
-        "source": "class=\"btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
         "file": "public/js/views/checklist.js",
         "source": "class=\"btn btn-sm${current === value ? ' is-selected' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
@@ -1132,15 +1117,6 @@ export const components = [
     "owner": "public/css/domains.css",
     "contract": "components/empty-state.md#11-permanente-varianten-und-befristete-ausnahmen",
     "purpose": "Centered result/history slot in Vote.",
-    "control": false
-  },
-  {
-    "id": "empty-state-hall-of-fame",
-    "role": "composite-part",
-    "selector": ".hall-of-fame-empty-result",
-    "owner": "public/css/domains.css",
-    "contract": "components/empty-state.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Hall-of-Fame result slot spans the result layout.",
     "control": false
   },
   {

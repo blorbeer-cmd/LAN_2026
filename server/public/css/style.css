@@ -112,6 +112,8 @@
   --search-panel-width: 640px;
   /* Info dialog with two columns of entries from --bp-lg. */
   --info-board-panel-width: 880px;
+  /* Dialogs with two columns of rows from --bp-lg (Ergebnis eintragen). */
+  --wide-dialog-width: 880px;
   --search-select-results-max-height: 320px;
   /* Caps a single Info entry's content so a long entry scrolls internally
      instead of stretching every card in its two-column grid row to match it.
@@ -2482,28 +2484,6 @@ input[type='number']::-webkit-inner-spin-button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
 }
-.analytics-tournament-breakdowns {
-  display: grid;
-  gap: var(--space-3);
-}
-.analytics-tournament-breakdown {
-  position: relative;
-  overflow: hidden;
-  padding-left: var(--space-5);
-}
-.analytics-tournament-breakdown::before {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--space-1);
-  background: var(--accent);
-  content: '';
-}
-.analytics-tournament-breakdown.is-games::before {
-  background: var(--accent-3);
-}
-.analytics-tournament-breakdown > .section-title {
-  margin-top: 0;
-}
 /* Mein Profil: settings as hairline rows, each with one action in a fixed
    right column shared across the page (same slot width in every card). */
 .profile-rows {
@@ -4193,15 +4173,6 @@ button.card {
   align-items: center;
   justify-content: center;
 }
-.award-card {
-  display: flex;
-  flex-direction: column;
-}
-.award-card-player {
-  margin-top: auto;
-  padding-top: var(--space-3);
-}
-
 /* Spiele view (gameCatalog.js): one compact table-like row per game. A real
    <table> would need horizontal scroll on a phone (the lesson from the old
    .catalog-table), so it's a CSS grid: name/Bock/Skill as columns on wide

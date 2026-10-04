@@ -216,6 +216,7 @@ box carries the state.
 viewport-responsive on phones.
 `--search-panel-width` (640px) gives the global search palette enough room for titles and short
 descriptions while the shared modal remains full-width on phones.
+`--wide-dialog-width` (880px) widens „Ergebnis eintragen“ from `--bp-lg` for two columns of players.
 `--info-board-panel-width` (880px) widens the Info dialog from `--bp-lg` so its entries fit in two
 columns; below that it keeps the shared modal width.
 `--search-select-results-max-height` (320px) keeps a long searchable option list usable without

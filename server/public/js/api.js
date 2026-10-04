@@ -315,7 +315,10 @@ export const api = {
   },
 
   stats: {
-    playtime: (gameId) => apiFetch(`/api/stats/playtime${gameId ? `?gameId=${gameId}` : ''}`),
+    playtime: (gameId, params = {}) => {
+      const qs = new URLSearchParams({ ...(gameId ? { gameId } : {}), ...params }).toString();
+      return apiFetch(`/api/stats/playtime${qs ? `?${qs}` : ''}`);
+    },
   },
 
   analytics: {

@@ -1581,8 +1581,7 @@ input[type='number'].tournament-result-score {
   overflow: visible;
 }
 .food-order-meta,
-.food-order-overview,
-.hall-of-fame-empty-result {
+.food-order-overview {
   font-size: var(--font-size-xs);
 }
 .food-order-details {
@@ -2539,18 +2538,11 @@ input.food-order-price-input {
 .hall-of-fame-subtitle {
   margin: 0;
 }
-.hall-of-fame-tournament-winner {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--space-1);
-  text-align: right;
-  overflow-wrap: anywhere;
-}
-.hall-of-fame-tournament-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+.hall-of-fame-champion {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 @media (min-width: 640px) { /* --bp-md */
   .food-order-item-form {
@@ -2594,11 +2586,76 @@ input.food-order-price-input {
   margin-left: auto;
   font-weight: var(--font-weight-bold);
 }
-.match-form-section > .grouped-page-section-title {
-  padding-left: var(--space-2);
+/* Ergebnis eintragen: game and team count share one line; the sections below
+   are flat with a hairline instead of nested accent panels. */
+.match-form-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(var(--space-8) * 2);
+  align-items: end;
+  gap: var(--space-3);
 }
-.match-team-count-field {
-  width: calc(var(--space-8) * 2);
+.match-form-head.is-ffa {
+  grid-template-columns: minmax(0, 1fr);
+}
+.match-form-section {
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.match-form-subtitle {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+}
+.match-form-subtitle .muted {
+  font-weight: var(--font-weight-regular);
+  letter-spacing: 0;
+  text-transform: none;
+}
+/* The shared search grows along a toolbar row; stacked in this column it
+   keeps its natural height instead of that flex basis. */
+.match-form-section > .selection-search {
+  flex: none;
+}
+.match-player-empty {
+  padding: var(--space-2) 0;
+  text-align: center;
+}
+/* Flat hairline rows; one column below --bp-lg, where the dialog is too
+   narrow for two columns of names plus team selects. */
+.match-player-row {
+  min-width: 0;
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border);
+}
+.match-player-row:last-child {
+  border-bottom: none;
+}
+.match-player-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (min-width: 860px) { /* --bp-lg */
+  /* Two columns of players, filled left column first like every list; the
+     wider panel keeps full names next to the team selects. */
+  .match-form-modal .modal {
+    max-width: var(--wide-dialog-width);
+  }
+  .match-player-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(var(--match-player-rows, 1), auto);
+    grid-auto-flow: column;
+    column-gap: var(--space-6);
+  }
+  .match-player-grid > .match-player-row:last-child,
+  .match-player-grid > .check-row:last-child {
+    border-bottom: 1px solid var(--border);
+  }
 }
 .match-result-row {
   display: grid;

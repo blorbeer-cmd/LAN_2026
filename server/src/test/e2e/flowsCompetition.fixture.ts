@@ -732,44 +732,12 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.click('[data-navigate="leaderboard"]');
   await page.waitForSelector('h1:text-is("Auswertung")');
   await page.waitForSelector('[data-section-tab="leaderboard"][aria-current="page"]');
-  assert.equal(
-    await page.locator('section.grouped-page-section:has(> .grouped-page-section-title > h2:text-is("Rangliste & Spielzeit"))').count(),
-    1,
-    'filtered ranking and playtime should share one grouped section'
-  );
-  for (const title of ['Rangliste', 'Spielzeit']) {
-    assert.equal(
-      await page.locator(`section[aria-labelledby="leaderboard-filtered-title"] section.tournament-section-panel:has(h2:text-is("${title}"))`).count(),
-      1,
-      `${title} should remain an accented subsection`
-    );
-  }
-  assert.equal(
-    await page.locator('section.grouped-page-section:has(> .grouped-page-section-title > h2:text-is("Spielzeit pro Spiel"))').count(),
-    1,
-    'per-game playtime should remain a separate grouped section'
-  );
-  assert.equal(
-    await page.locator('section[aria-labelledby="leaderboard-filtered-title"] #lb-filter').count(),
-    1,
-    'the game filter belongs to the shared filtered section'
-  );
-  for (const grid of await page.locator('.leaderboard-list-grid').all()) {
-    assert.equal(
-      await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
-      1,
-      'leaderboard lists should stay single-column on phones'
-    );
-  }
-  await page.setViewportSize({ width: 900, height: 844 });
-  for (const grid of await page.locator('.leaderboard-list-grid').all()) {
-    assert.equal(
-      await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
-      2,
-      'leaderboard lists should use two columns when space is available'
-    );
-  }
-  await page.setViewportSize({ width: 390, height: 844 });
+  // Rangliste holds only the ranking; play time moved to Statistiken. As the
+  // page's only card it stays open, with the primary action in its header.
+  assert.deepEqual(await page.locator('.section-view .grouped-page-section h2').allTextContents(), ['Rangliste']);
+  assert.equal(await page.locator('.section-view details').count(), 0);
+  await page.locator('#lb-filter-search').waitFor();
+  assert.equal(await page.locator('.tournament-section-panel, .leaderboard-list-grid, .lb-row').count(), 0, 'no tiles or accented panels remain');
   // #lb-filter is a searchable combobox (searchSelect.js), not a native
   // <select>: typing an option's exact label into #lb-filter-search resolves
   // the hidden #lb-filter input to that game's id, just like choosing it from
@@ -779,25 +747,31 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   const filteredGame = games[1];
   assert.ok(filteredGame);
   const filteredGameId = filteredGame.id;
-  const [filteredPlaytimeResponse, allPlaytimeResponse] = await Promise.all([
+  const [filteredRankingResponse] = await Promise.all([
     page.waitForResponse((response) => {
       const url = new URL(response.url());
-      return url.pathname === '/api/stats/playtime' && url.searchParams.get('gameId') === filteredGameId;
-    }),
-    page.waitForResponse((response) => {
-      const url = new URL(response.url());
-      return url.pathname === '/api/stats/playtime' && !url.searchParams.has('gameId');
+      return url.pathname === '/api/leaderboard' && url.searchParams.get('gameId') === filteredGameId;
     }),
     page.fill('#lb-filter-search', filteredGame.name),
   ]);
-  assert.equal(filteredPlaytimeResponse.ok(), true, 'per-player playtime should follow the selected game');
-  assert.equal(allPlaytimeResponse.ok(), true, 'per-game playtime should keep loading all games');
+  assert.equal(filteredRankingResponse.ok(), true, 'the ranking should follow the selected game');
   await page.click('#add-match-btn');
   await page.waitForSelector('#match-players');
+  // The player search filters the rows and stays usable while typing.
+  const playerRows = page.locator('#match-players [data-match-player-item]');
+  const allPlayerCount = await playerRows.count();
+  await page.fill('#match-player-search', 'zzz-kein-spieler');
+  assert.equal(await page.locator('#match-player-search').isVisible(), true);
+  assert.equal(await page.locator('#match-players [data-match-player-item]:visible').count(), 0);
+  await page.fill('#match-player-search', '');
+  assert.equal(await page.locator('#match-players [data-match-player-item]:visible').count(), allPlayerCount);
   assert.deepEqual(
-    await page.locator('#match-form .match-form-section h2').allTextContents(),
-    ['Modus', 'Spieler-Zuordnung', 'Ergebnis']
+    await page.locator('#match-form .match-form-section > h3').evaluateAll((titles) =>
+      titles.map((title) => title.firstChild?.textContent?.trim())),
+    ['Spieler', 'Ergebnis']
   );
+  // One flat form: no nested accent panels inside the dialog.
+  assert.equal(await page.locator('#match-form .tournament-section-panel').count(), 0);
   assert.equal(
     await page.locator('#match-form').evaluate((element) => element.scrollWidth <= element.clientWidth),
     true,
@@ -828,8 +802,21 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.click('#match-form [data-result-mode="winner"]');
   await page.locator('#match-form label.tournament-result-pick:has(input[value="0"])').click();
   await page.click('#match-form [data-result-save]');
-  await page.waitForSelector('.lb-row');
-  assert.ok((await page.locator('.lb-row').count()) >= 2);
+  await page.waitForSelector('[aria-labelledby="leaderboard-ranking-title"] .ranked-list-row');
+  assert.ok((await page.locator('[aria-labelledby="leaderboard-ranking-title"] .ranked-list-row').count()) >= 2);
+  const rankingList = page.locator('[aria-labelledby="leaderboard-ranking-title"] .ranked-list');
+  assert.equal(
+    await rankingList.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+    1,
+    'the ranking stays single-column on phones'
+  );
+  await page.setViewportSize({ width: 900, height: 844 });
+  assert.equal(
+    await rankingList.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+    2,
+    'the ranking uses two columns when space is available'
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
   // The app can render its first data view before the stylesheet request has
   // completed on a cold CI browser. Wait for the actual sheet and a resolved
   // body font before comparing typography across views.
@@ -851,8 +838,7 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
         return { family: style.fontFamily, size: style.fontSize, weight: style.fontWeight };
       }, selector)
       .then((result) => result.jsonValue() as Promise<{ family: string; size: string; weight: string }>);
-  const leaderboardNameTypography = await readNameTypography('.lb-row .player-name');
-  await page.waitForSelector('text=Spielzeit');
+  const leaderboardNameTypography = await readNameTypography('[aria-labelledby="leaderboard-ranking-title"] .ranked-list-title');
 
   // Back to Home: should now show both players (offline, since no agent ran).
   await page.click('.nav-btn[data-view="home"]');
@@ -865,8 +851,8 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
       `${title} should be presented as a grouped Home section`
     );
   }
-  const liveNameTypography = await readNameTypography('.player-card .player-name');
-  assert.deepEqual(liveNameTypography, leaderboardNameTypography, 'player names should use one shared typography');
+  const homeRankingTypography = await readNameTypography('[aria-labelledby="home-leaderboard-title"] .ranked-list-title');
+  assert.deepEqual(homeRankingTypography, leaderboardNameTypography, 'both rankings should use the RankedList typography');
   await page.setViewportSize({ width: 900, height: 844 });
   // Home's top six are a RankedList: two columns, left one filled first.
   assert.deepEqual(
@@ -1523,6 +1509,14 @@ flowTest('Ergebnis eintragen keeps a manual team reassignment after changing "An
   await openAuswertungTab('leaderboard');
   await page.click('#add-match-btn');
   await page.waitForSelector('#match-players');
+  // The player search filters the rows and stays usable while typing.
+  const playerRows = page.locator('#match-players [data-match-player-item]');
+  const allPlayerCount = await playerRows.count();
+  await page.fill('#match-player-search', 'zzz-kein-spieler');
+  assert.equal(await page.locator('#match-player-search').isVisible(), true);
+  assert.equal(await page.locator('#match-players [data-match-player-item]:visible').count(), 0);
+  await page.fill('#match-player-search', '');
+  assert.equal(await page.locator('#match-players [data-match-player-item]:visible').count(), allPlayerCount);
 
   await page.click('#match-game-search');
   await page.waitForSelector('#match-game-list:not([hidden])');
@@ -1558,6 +1552,8 @@ flowTest('Ergebnis eintragen keeps Frei-für-alle usable with more than six peop
   await openAuswertungTab('leaderboard');
   await page.click('#add-match-btn');
   await page.check('#match-ffa');
+  // Frei-für-alle has no teams, so the team count leaves the form.
+  assert.equal(await page.locator('#match-teamcount').isVisible(), false);
   const participants = page.locator('[data-ffa-player]');
   assert.ok(await participants.count() > 6);
   await page.locator('.modal label.tournament-result-pick:has(input[value="-1"])').click();
@@ -1641,11 +1637,12 @@ flowTest('Auswertungen (via Mehr) shows a real award and keeps detail logs colla
   await openAuswertungTab('analytics');
   // Earlier tests in this suite recorded their 1v1 results in the permanently
   // open base workspace, while the play session above belongs to the separate
-  // LAN period, because the base workspace is not trackable. "Gesamt (alle
-  // Events)" is the one selection that shows both at once.
+  // LAN period, because the base workspace is not trackable. "Alle Events"
+  // is the one selection that shows both at once.
   await page.click('[data-search-select]:has(#an-event-search) .search-select-toggle');
   await page.click('#an-event-list [data-search-select-value=""]');
-  await page.waitForSelector('text=Marathon-Zocker', { timeout: 5000 });
+  // Awards start collapsed, so the row is attached but not yet visible.
+  await page.waitForSelector('[data-analytics-section="awards"] .ranked-list-title:text-is("Marathon-Zocker")', { state: 'attached', timeout: 5000 });
   assert.ok((await page.textContent('.view-title'))?.includes('Auswertung'));
 
   // The noisy concurrency controls are intentionally gone. The session log
@@ -1653,31 +1650,34 @@ flowTest('Auswertungen (via Mehr) shows a real award and keeps detail logs colla
   assert.equal(await page.locator('#an-concurrency-game').count(), 0);
   const sessionLog = page.locator('details:has(summary:has-text("Session-Protokoll"))');
   assert.equal(await sessionLog.getAttribute('open'), null);
-  await page.waitForSelector('text=Längste individuelle Session pro Spiel');
+  await page.waitForSelector('text=Längste Session pro Spiel');
   assert.equal(await page.locator('#analytics-event-range-help').count(), 0);
   assert.equal(await page.getByText('Event wählen zeigt genau dessen Daten.', { exact: true }).count(), 0);
-  assert.equal(await page.locator('#an-event-search[aria-label="Veranstaltung"]').count(), 1);
+  assert.equal(await page.locator('#an-event-search[aria-label="Event"]').count(), 1);
   assert.equal(await page.locator('[data-dt-field^="an-"]').count(), 0);
 
-  // The "Matches & Turniere" tab (merged in from the old separate Spiele &
-  // Turniere view) shares this same event filter and renders alongside it.
-  await page.click('[data-an-tab="matches"]');
-  await page.waitForSelector('text=Ergebnisse pro Spiel');
+  // One page without sub-tabs: the overview card carries the filter and the
+  // totals, every list below is its own card and starts collapsed.
+  assert.equal(await page.locator('[data-an-tab]').count(), 0);
+  assert.deepEqual(
+    await page.locator('.my-stats-kpi-label').allTextContents(),
+    ['Spielzeit', 'Sessions', 'Matches', 'Turniere', 'Auslosungen', 'Arcade'],
+  );
+  assert.deepEqual(
+    await page.locator('.section-view .grouped-page-section h2').allTextContents(),
+    [
+      'Überblick', 'Spielzeit pro Spieler', 'Beliebteste Spiele', 'Längste Session pro Spiel', 'Awards',
+      'Ergebnisse pro Spiel', 'Turniere pro Spiel', 'Team-Auslosungen', 'Arcade pro Spiel', 'Trivia', 'Session-Protokoll',
+    ],
+  );
+  assert.equal(await page.locator('details[data-analytics-section][open]').count(), 0);
   assert.equal(await page.locator('#analytics-event-help').count(), 0);
-  assert.equal(await page.locator('.analytics-tournament-breakdown').count(), 2);
-  await page.waitForSelector('#analytics-fun-title:text-is("Trivia")');
-  const triviaSection = page.locator('section[aria-labelledby="analytics-fun-title"]');
+  const triviaSection = page.locator('details[data-analytics-section="trivia"]');
   // Earlier tests in this suite already recorded 1v1 results, so the biggest
-  // rivalry card exists and the empty state must be gone.
-  assert.equal(await triviaSection.getByText('Noch nicht genug Ergebnisse.', { exact: true }).count(), 0);
-  assert.ok((await triviaSection.locator('.card').count()) >= 1, 'trivia should show at least one fun record');
+  // rivalry row exists and the empty state must be gone.
+  await triviaSection.locator('summary').click();
+  assert.ok((await triviaSection.locator('.ranked-list-row').count()) >= 1, 'trivia should show at least one fun record');
   assert.equal(await triviaSection.locator('.empty-state-icon').count(), 0);
-  assert.equal(await page.locator('#an-event-search[aria-label="Veranstaltung"]').count(), 1);
-
-  await page.click('[data-an-tab="arcade"]');
-  await page.waitForSelector('#analytics-arcade-total-title');
-  assert.equal(await page.locator('#an-event-search[aria-label="Veranstaltung"]').count(), 1);
-  assert.equal(await page.locator('[data-dt-field^="an-"]').count(), 0);
   assert.equal(await page.locator('#analytics-arcade-range-help').count(), 0);
   assert.equal(await page.getByText('Matches pro Tag', { exact: true }).count(), 0);
 });
