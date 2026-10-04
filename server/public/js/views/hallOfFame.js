@@ -94,12 +94,11 @@ function eventRange(e) {
 
 function renderEvent(e) {
   const standings = e.overallStandings ?? [];
-  // Same order as the server's standings: points, then wins.
-  const ranks = sharedRankNumbers(standings.map((r) => [r.points, r.wins]));
+  // Places follow the server's order (points, then wins) by position, the
+  // same numbering as the Rangliste; its first entry is the overall winner.
   const standingsHtml = standings.length
     ? rankedListHtml(
-        standings.map((r, i) => ({
-          rank: ranks[i],
+        standings.map((r) => ({
           lead: avatarHtml(r, 28),
           title: escapeHtml(r.name),
           meta: `${r.wins} ${r.wins === 1 ? 'Sieg' : 'Siege'} · ${r.matchesPlayed} ${r.matchesPlayed === 1 ? 'Spiel' : 'Spiele'}`,

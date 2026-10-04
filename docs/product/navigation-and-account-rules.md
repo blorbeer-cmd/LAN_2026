@@ -237,7 +237,8 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   collapsible cards that start collapsed and show their row count. The all-time rankings are
   numbered RankedLists with avatars and a short count („4×“), equal counts sharing their place.
   „Nach Event“ opens with one event dropdown („Event suchen“), then the selected event's dates, its
-  overall placements as a RankedList with points and, if any, its tournaments: alphabetically, with
+  overall placements as a RankedList with points, numbered by position like the Rangliste, and,
+  if any, its tournaments: alphabetically, with
   game and champion players as meta line and the champion team in the value column. Both result
   groups sit flat inside the card under plain subheadings and a hairline, without nested cards or
   accent rails; tournament game names have no decorative game symbols. Admin fixtures cover twelve years with full standings and three tournament winners per LAN so dense
