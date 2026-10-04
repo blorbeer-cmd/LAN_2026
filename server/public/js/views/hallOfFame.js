@@ -94,7 +94,8 @@ function eventRange(e) {
 
 function renderEvent(e) {
   const standings = e.overallStandings ?? [];
-  const ranks = sharedRankNumbers(standings.map((r) => r.points));
+  // Same order as the server's standings: points, then wins.
+  const ranks = sharedRankNumbers(standings.map((r) => [r.points, r.wins]));
   const standingsHtml = standings.length
     ? rankedListHtml(
         standings.map((r, i) => ({

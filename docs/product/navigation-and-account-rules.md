@@ -312,7 +312,8 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   stays open because it is the page's only card. „Ergebnis eintragen“ sits in its header; below,
   the game picker („Alle Spiele“ first, placeholder „Spiel suchen“) scopes the ranking. The ranking
   is a numbered RankedList: players lead with their avatar, wins and matches („3 Siege · 4
-  Spiele“) form the meta line, and equal points share their place. An empty ranking is the one-row
+  Spiele“) form the meta line, and equal points and wins share their place, matching the server's
+  order (points, then wins). Home's top six use the same place numbers. An empty ranking is the one-row
   empty card. Play time is not part of the Rangliste; it lives in Statistiken.
   „Ergebnis eintragen“ is one flat dialog like the Match result and tournament dialogs: „Spiel“ and
   „Teams“ share the first line (the team count is disabled for „Frei-für-alle“), then „Spieler“

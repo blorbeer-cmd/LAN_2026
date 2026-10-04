@@ -20,7 +20,8 @@ export function renderLeaderboard(container, ctx) {
   ];
 
   const standings = state.leaderboard?.standings || [];
-  const ranks = sharedRankNumbers(standings.map((s) => s.points));
+  // Same order as the server's standings: points, then wins.
+  const ranks = sharedRankNumbers(standings.map((s) => [s.points, s.wins]));
   const standingItems = standings.map((s, i) => {
     const player = state.players.find((p) => p.id === s.playerId);
     return {
