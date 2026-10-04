@@ -182,8 +182,12 @@ Wiederholungsfall ab.
   Auth-Pfad und `visualArcade.e2e.test.ts` aus; alle drei bleiben Bestandteil der vollständigen
   Arcade-Partition.
 - Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server. Der
-  Runner begrenzt die Dateiparallelität auf sechs, damit zusätzliche Shards nicht unbegrenzt viele
-  Chromium-Prozesse starten. Jeder über `trackE2EContext` registrierte Browser-Kontext erhält
+  Runner begrenzt die Dateiparallelität auf höchstens sechs, damit zusätzliche Shards nicht
+  unbegrenzt viele Chromium-Prozesse starten. CI (`CI=true`) nutzt fest sechs Dateien, den Basiswert
+  der Laufzeitmessung. Lokal teilen sich Worktrees und Agents denselben Rechner; dort leitet der
+  Runner die Dateiparallelität aus freien Kernen ab (`(Kerne - 1-Minuten-Last) / 1,5`, zwischen
+  zwei und sechs) und meldet den gewählten Wert. Eine überlastete CPU macht aus kurzen Arcade-
+  Spielfenstern sonst Timeouts. `E2E_CONCURRENCY=<1-16>` setzt den Wert ausdrücklich. Jeder über `trackE2EContext` registrierte Browser-Kontext erhält
   `E2E_DEFAULT_TIMEOUT_MS` (15 s) statt Playwrights impliziter 30 s: kein Schritt dieser Suite
   braucht so lange, und die 30 s verzögerten echte Fehler nur und reduzierten sie auf ein
   nichtssagendes „Timeout 30000ms exceeded". Das ist ein Diagnosebudget, kein Stabilitätsregler —
@@ -211,6 +215,10 @@ Wiederholungsfall ab.
   beschädigte Metadaten früherer Läufe und parallel gepflegte andere Partitionen beeinflussen die
   Auswahl daher nicht. Dadurch bleibt die gemessene Laufzeit unverfälscht und
   ein reproduzierbarer Fehler erhält zusätzlich Playwright-Traces kurzlebiger Browser-Kontexte.
+  Nach dem Retry ordnet der Runner jeden Fehler des ersten Laufs ein: „Flake“ (im Retry grün),
+  „Reproduziert“ (auch im Retry rot) oder „Nur im Retry rot“. Die Einordnung steht im Log und in
+  CI zusätzlich in der Job-Summary (`GITHUB_STEP_SUMMARY`). Der Job bleibt in jedem Fall rot; ein
+  Flake wird ursächlich behoben, nicht durch den Retry grün gewertet.
   Die absichtlich zustandsbehafteten Cross-View-Owner und der Event-Workspace-Switch teilen
   innerhalb ihres Prozesses veränderlichen Server-, Browser- und Seitenzustand. Nach dem ersten
   Testfehler werden ihre verbleibenden Geschwister deshalb sofort als durch den Primärfehler

@@ -18,6 +18,11 @@ let countdownKey = null; let startedKey = null; let presentationKey = null;
 let countdownDeadline = null; let countdownTimer = null;
 const selectedChallengeKeys = new Set();
 let challengeSelectorOpen = false;
+// The "Lobby öffnen" dialog body that currently shows the admin selector. The
+// catalog arrives with the first lobby payload, which can land after the
+// dialog opened; the selector is then refreshed in place instead of staying
+// on its loading placeholder.
+let createOptionsContainer = null;
 let breakdownOpen = false;
 let currentTrial = null; let trialTimer = null; let previewRetryTimer = null; let interaction = freshInteraction(null);
 // Whether this player has already completed the current challenge — the
@@ -145,7 +150,9 @@ export function ensureChallengeRushSocket() {
   document.addEventListener('visibilitychange', handleVisibilityChange);
   socket.on('challenge-rush:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
+    const catalogArrived = challengeCatalog.length === 0 && (payload?.challenges?.length ?? 0) > 0;
     challengeCatalog = payload?.challenges ?? challengeCatalog;
+    if (catalogArrived) refreshChallengeRushCreateOptions();
     if (!match && currentView() === 'arcade') rerender();
   });
   socket.on('challenge-rush:match:start', (payload) => {
@@ -275,10 +282,17 @@ export function challengeRushCreateOptionsHtml() {
   return adminChallengeSelectorHtml(false);
 }
 export function wireChallengeRushCreateOptions(container) {
+  createOptionsContainer = container;
   container.querySelector('.challenge-rush-test-selector')?.addEventListener('toggle', (event) => { challengeSelectorOpen = event.currentTarget.open; });
   container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => checkbox.addEventListener('change', () => { if (checkbox.checked) selectedChallengeKeys.add(checkbox.dataset.crChallengeKey); else selectedChallengeKeys.delete(checkbox.dataset.crChallengeKey); syncChallengeSelectionControls(container); }));
   container.querySelector('[data-cr-select-all]')?.addEventListener('click', () => { challengeCatalog.forEach(({ key }) => selectedChallengeKeys.add(key)); container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => { checkbox.checked = true; }); syncChallengeSelectionControls(container); });
   container.querySelector('[data-cr-select-none]')?.addEventListener('click', () => { selectedChallengeKeys.clear(); container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => { checkbox.checked = false; }); syncChallengeSelectionControls(container); });
+}
+function refreshChallengeRushCreateOptions() {
+  const selector = createOptionsContainer?.isConnected ? createOptionsContainer.querySelector('.challenge-rush-test-selector') : null;
+  if (!selector) return;
+  selector.outerHTML = adminChallengeSelectorHtml(false);
+  wireChallengeRushCreateOptions(createOptionsContainer);
 }
 export function wireChallengeRushLobbyCard(container, { beforeJoin = async () => true } = {}) {
   container.querySelectorAll('[data-cr-join]').forEach((button) => button.addEventListener('click', async () => { if (!(await beforeJoin())) return; const result = await emit('challenge-rush:lobby:join', { lobbyId: button.dataset.crJoin, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Beitritt fehlgeschlagen.', { error: true }); }));
