@@ -499,11 +499,15 @@ function renderNewsticker(allItems) {
   animateNewsShift(container, previousTops);
 }
 
-function concealedGameLabel(gameId, round) {
+// The label length comes from the game id, so it hides the real name length.
+// A neighbour with the same length is shifted by one: hashes of random ids can
+// collide, and a column of equally long labels would look like a placeholder.
+function concealedGameLabel(gameId, round, previousLength = 0) {
   const seedText = `${round}:${gameId}`;
   let seed = 0;
   for (const character of seedText) seed = (seed * 31 + character.charCodeAt(0)) >>> 0;
-  const length = 5 + (seed % 10);
+  let length = 5 + (seed % 10);
+  if (length === previousLength) length = length === 14 ? 5 : length + 1;
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let label = '';
   for (let index = 0; index < length; index += 1) {
@@ -522,13 +526,18 @@ function renderKioskVoteRows(vote, { concealed = false, highlightLeading = true 
   if (scored.length === 0) return emptyStateHtml('Noch keine Stimmen.', { className: 'kiosk-vote-empty kiosk-empty-state' });
   const maxScore = Math.max(...scored.map((result) => result.score));
   let previousScore = null;
+  let previousLabelLength = 0;
   let rank = 0;
   const rows = scored.map((result, index) => {
     if (previousScore === null || result.score !== previousScore) rank = index + 1;
     previousScore = result.score;
     const highlighted = result.score === maxScore;
     const score = kioskVoteScore(vote, result);
-    const gameName = concealed ? concealedGameLabel(result.gameId, vote.round) : escapeHtml(result.gameName);
+    let gameName = escapeHtml(result.gameName);
+    if (concealed) {
+      gameName = concealedGameLabel(result.gameId, vote.round, previousLabelLength);
+      previousLabelLength = gameName.length;
+    }
     return `<div class="kiosk-vote-result ${highlighted && highlightLeading ? 'is-leading' : ''} ${concealed ? 'is-concealed' : ''}">
         <span class="lb-rank">${rank}</span>
         <strong ${concealed ? 'aria-label="Spiel verborgen"' : ''}>${gameName}</strong>
