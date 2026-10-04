@@ -2634,10 +2634,20 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   assert.equal(testLans.length, 12);
   assert.ok(testLans.every((event) => event.overallStandings.length >= 4 && event.tournamentChampions.length === 3));
   await openAuswertungTab('hallOfFame');
+  // Every section starts collapsed; open all three so the page is long
+  // enough for the scroll invariant below. The open state survives renders.
+  const hallSections = page.locator('details[data-hall-section]');
+  // The Hall of Fame loads its data after the first render.
+  await hallSections.first().waitFor();
+  assert.equal(await hallSections.count(), 3);
+  assert.equal(await page.locator('details[data-hall-section][open]').count(), 0);
+  for (const key of ['overall', 'tournaments', 'events']) {
+    await page.locator(`details[data-hall-section="${key}"] > summary`).click();
+  }
   await page.waitForSelector('#hall-event-select-search');
   assert.equal(await page.getByText('LAN auswählen', { exact: true }).count(), 0);
   assert.equal(await page.locator('.hall-of-fame-event-section').count(), 2);
-  assert.equal(await page.locator('.hall-of-fame-event-section.is-tournaments .hall-of-fame-tournament-row').count(), 3);
+  assert.equal(await page.locator('.hall-of-fame-event-section:has(h3:text-is("Turniere")) .ranked-list-row').count(), 3);
 
   // A lifecycle change for an unrelated event used to hard-invalidate the
   // Hall-of-Fame cache. The long result list collapsed to "Lädt…", clamped
@@ -2659,7 +2669,7 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
       (window as any).__renderStabilityProbe?.observer?.disconnect();
       const observer = new MutationObserver(() => {
         probe.mutations += 1;
-        if (element.textContent?.includes('Lädt…')) probe.loadingFrames += 1;
+        if (element.textContent?.includes('Lädt')) probe.loadingFrames += 1;
       });
       observer.observe(element, { childList: true, subtree: true });
       (window as any).__renderStabilityProbe = { probe, observer };

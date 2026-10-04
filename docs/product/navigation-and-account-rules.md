@@ -55,8 +55,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   their plain label, never a count. Tabs share the full width on phones for a comfortable tap
   target and size to their own label from `--bp-md`, because two tabs stretched across the wide
   content column would read as banners rather than navigation. A primary action belongs in the
-  first relevant card header when that card exists (for example „Ergebnis eintragen“ beside
-  „Rangliste & Spielzeit“), so it does not insert a detached row between tabs and content.
+  first relevant card header when that card exists (for example „Ergebnis eintragen“ in the
+  „Rangliste“ header), so it does not insert a detached row between tabs and content.
   Re-rendering the same tab reuses its existing `.section-view` element instead of rebuilding the
   shell, so a sub-view that reads its own previous DOM before redrawing (the Packliste's add-item
   draft and focus, the same survives-its-own-rerender pattern the Checkliste's To-Do form uses)
@@ -86,11 +86,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   title plus its state as an icon, earliest start first; events without a fixed date follow the
   scheduled events. That covers the topbar workspace switcher
   (`#event-context`), Auswertung's shared filter, „Meine Statistiken“ and Hall of Fame's „Nach
-  LAN“ picker. They previously described the same events in three different ways — one appended
+  Event“ picker. They previously described the same events in three different ways — one appended
   the date range, another showed the bare name, and none showed the state until after a choice had
   been made. The date range is deliberately gone: `eventStatus.js`'s vocabulary is what the reader
   chooses by, and the event cards in Orga remain the place that shows a LAN's exact dates. A filter
-  that also offers „Gesamt (alle Events)“ passes it as `allEntryLabel`; that entry is not an event
+  that also offers „Alle Events“ passes it as `allEntryLabel`; that entry is not an event
   and therefore carries no state icon. Hall of Fame's payload holds results rather than lifecycle
   flags, so it joins its events against `accessibleEvents()` for the state and falls back to a
   plain title for an event that list no longer holds. Its last entry is not a workspace at all:
@@ -233,11 +233,14 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
 
 ## Hall of Fame, Info und Feedback
 
-- **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
-  grid. „Nach Event“ uses one directly labeled event dropdown („Event suchen“) and shows the selected
-  event's dates, then every overall placement, then tournament winners in the same leaderboard-row
-  structure. Both result groups sit flat inside the card under plain subheadings and a hairline,
-  without nested cards or accent rails; tournament game names have no decorative game symbols. Admin fixtures cover twelve years with full standings and three tournament winners per LAN so dense
+- **Hall of Fame and Info** — „Meiste Gesamtsiege“, „Meiste Turniersiege“ and „Nach Event“ are
+  collapsible cards that start collapsed and show their row count. The all-time rankings are
+  numbered RankedLists with avatars and a short count („4×“), equal counts sharing their place.
+  „Nach Event“ opens with one event dropdown („Event suchen“), then the selected event's dates, its
+  overall placements as a RankedList with points and, if any, its tournaments: alphabetically, with
+  game and champion players as meta line and the champion team in the value column. Both result
+  groups sit flat inside the card under plain subheadings and a hairline, without nested cards or
+  accent rails; tournament game names have no decorative game symbols. Admin fixtures cover twelve years with full standings and three tournament winners per LAN so dense
   long-term states remain testable. Hall of Fame is the third tab of the „Auswertung“ area.
   Info is not an area at all: the topbar's „i“ (`#info-btn`, the canonical `info` icon from
   `domainIcons.js`) opens it as a dialog over whatever view is open, because it is reference
@@ -305,18 +308,20 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   numbered, Erfolge alphabetically, and every list fills its left column first. A session period
   reads „29.07., 04:10 bis 10:21“ and names the date only once.
 - **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, reached only
-  through Admin's „Auswertung“ tool card (see „Admin tools“). The filtered „Rangliste“ and per-player
-  „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
-  each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro
-  Spiel“ stays a separate grouped page section. The selected game scopes the two accented sections
-  only; „Spielzeit pro Spiel“ always keeps the all-game totals so the comparison does not collapse
-  to one row.
-  Every section uses `.leaderboard-list-grid`: one column on phones and two columns from `--bp-md`;
-  a single row or empty state spans the full available width.
-  Player and game names truncate safely without pushing points or controls outside the card; wins
-  and matches remain visible as a second text line rather than depending on native hover text.
-  The result dialog reuses `.tournament-section-panel` to separate „Modus“, player assignment and
-  result entry. Team and free-for-all result inputs use the same aligned responsive grid.
+  through Admin's „Auswertung“ tool card (see „Admin tools“). It holds one card „Rangliste“, which
+  stays open because it is the page's only card. „Ergebnis eintragen“ sits in its header; below,
+  the game picker („Alle Spiele“ first, placeholder „Spiel suchen“) scopes the ranking. The ranking
+  is a numbered RankedList: players lead with their avatar, wins and matches („3 Siege · 4
+  Spiele“) form the meta line, and equal points share their place. An empty ranking is the one-row
+  empty card. Play time is not part of the Rangliste; it lives in Statistiken.
+  „Ergebnis eintragen“ is one flat dialog like the Match result and tournament dialogs: „Spiel“ and
+  „Teams“ share the first line (the team count is disabled for „Frei-für-alle“), then „Spieler“
+  (or „Teilnehmende“) with an „N von M zugeordnet“ summary and „Ergebnis“ follow as plain
+  subheadings above a hairline, without nested cards or accent rails. A visible „Spieler suchen“
+  field filters the players. They are hairline rows with avatar, full name and a team select (or a
+  checkbox for „Frei-für-alle“) in a fixed right column: one column below `--bp-lg`, two columns
+  filled left column first from `--bp-lg`, where the dialog widens to `--wide-dialog-width` so the
+  names stay complete. Team and free-for-all result inputs use the same aligned responsive grid.
 - **Home overview** — Home follows the same full-width grouped-card hierarchy as Tournaments,
   Teams and Vote. „Aktuell“, „Live-Status“, „Rangliste“ and „Sitzplan“ are separate main cards with
   their heading inside the surface. „Aktuell“ lists only what is running right now: open Votes,

@@ -150,13 +150,20 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   requests only Spotify reauthorization, never an unnecessary controller reinstall. Realtime
   playback refreshes retain the current Jam DOM while new status is fetched; active controls keep
   focus and the view preserves its internal scroll position instead of flashing a loading state.
-- **Analytics** — the „Statistiken“ tab of the „Auswertung“ area. Its own three datasets
-  (Spielzeit, Matches & Turniere, Arcade) stay an in-card control group under the visible heading
-  „Ansicht“, which is what separates them from the area tab row above. All three share the same
-  event dropdown and show no additional date controls.
-  Playtime and tournament data use the selected event directly; Arcade internally derives the
-  event's date bounds because arcade results have no event assignment. The daily match chart is
-  omitted. Tournament formats and per-game tournament counts are separate nested groups with blue
-  and pink accent rails.
+- **Analytics** — the „Statistiken“ tab of the „Auswertung“ area: one page without sub-tabs, so
+  only the area tab row sits above the content. The first card „Überblick“ carries the event
+  dropdown („Alle Events“ first) in its header (below `--bp-md` on its own full-width line) and
+  the totals as one row of centered figures, the same overview „Meine Statistiken“ uses: play
+  time, sessions, matches, tournaments, draws and arcade matches. There are no additional date
+  controls. Play time and match data use the selected event directly; Arcade internally derives
+  the event's date bounds because arcade results have no event assignment. The daily match chart
+  is omitted. Below follow, each as a collapsible card that starts collapsed, shows its row count
+  and keeps its open state across re-renders and filter changes: „Spielzeit pro Spieler“,
+  „Beliebteste Spiele“, „Längste Session pro Spiel“, „Awards“, „Ergebnisse pro Spiel“, „Turniere
+  pro Spiel“, „Team-Auslosungen“, „Arcade pro Spiel“, „Trivia“ and „Session-Protokoll“. An empty
+  list is the one-row empty card. All lists use the shared RankedList: counts and play times are
+  numbered rankings with shared places for equal values, Awards and Trivia are alphabetical value
+  lists, and the Session-Protokoll lists the newest session first. Trivia also carries the share
+  of draws that set seat neighbours against each other. No section carries an info tooltip.
   The former „Witzige Rekorde“ section uses the concise title „Trivia“.
   Its empty state is symbol-free and avoids repeating that title.

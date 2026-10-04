@@ -159,7 +159,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   automatic game detection on participant computers.
   Below the tabs, the sort buttons and the filter controls share one compact
   `.tournament-section-panel` — the same bordered/accent-rail pattern the Tournament create form
-  and result dialogs use to separate sibling control groups, but one panel instead of two so the
+  uses to separate sibling control groups, but one panel instead of two so the
   combined control area doesn't push the actual list further down than it has to. Neither group
   carries a visible text heading; `.game-catalog-filter-group`'s hairline `border-top` is the only
   visual separator between them, and each group still has an `aria-label` (`role="group"`) so the

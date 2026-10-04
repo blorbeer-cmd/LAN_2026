@@ -4,9 +4,10 @@
 
 Status:
 
-- Wertliste und Rangliste in „Meine Statistiken“: `umgesetzt`.
-- Übrige Ranglisten und Wertlisten (`lb-row` in `leaderboard-list-grid`): `Zielvertrag,
-  Umsetzung im Folgepaket „Ranglisten angleichen“`.
+- Wertliste und Rangliste in „Meine Statistiken“, Rangliste, Statistiken und Hall of Fame:
+  `umgesetzt`.
+- Übrige Ranglisten und Wertlisten (`lb-row` in `leaderboard-list-grid` in Arcade und Vote):
+  `Zielvertrag, Umsetzung im Folgepaket „Ranglisten angleichen“`.
 
 RankedList zeigt eine Liste von Einträgen mit genau einem Wert je Eintrag, etwa Spielzeit, Punkte
 oder Anzahl. Die Liste liest sich von oben nach unten, auch wenn sie zwei Spalten belegt. Ist die
@@ -48,7 +49,7 @@ nur die umgebende Karte und den Inhalt der Einträge.
 | Wertliste | `rankedListHtml(items)` | umgesetzt | ohne Rangbedeutung, alphabetisch sortiert, etwa Erfolge |
 | Rangliste | `rankedListHtml(items, { ranked: true })` | umgesetzt | Reihenfolge ist eine Rangfolge; jede Zeile trägt ihre Platznummer |
 | Mit Führungselement | Eintrag mit `lead` | umgesetzt | Avatar oder Spielersymbol vor dem Titel, etwa Spieler-Ranglisten |
-| Geteilte Plätze | Eintrag mit `rank` | Zielvertrag | gleicher Wert, gleiche Platznummer, etwa Vote-Ergebnisse |
+| Geteilte Plätze | Eintrag mit `rank` | umgesetzt | gleicher Wert, gleiche Platznummer, etwa Punkte in der Rangliste |
 
 Dieselbe Lese- und Sortierregel gilt für mehrspaltige Kachelraster gleichartiger Einträge, die
 keine RankedList sind: Sie füllen die linke Spalte zuerst. Erster Aufrufer ist der Live-Status auf
@@ -108,6 +109,9 @@ Alphabet.
 - Schmal und breit: „Meine Statistiken“ (`public/js/views/myStats.js`) mit Erfolgen
   (Wertliste), Spielzeit pro Spiel, Spielzeit pro Event und Längsten Sessions (Ranglisten).
 - Mit Führungselement: Karte „Rangliste“ auf Home (`public/js/views/home.js`), Top 6 mit Avatar.
+- Geteilte Plätze: Rangliste (`public/js/views/leaderboard.js`), Hall of Fame
+  (`public/js/views/hallOfFame.js`) und Statistiken (`public/js/views/analytics.js`).
+- Wertliste mit eigenem `sortKey`: Session-Protokoll in Statistiken, neueste Session zuerst.
 - Vorbild vor diesem Vertrag: „Top 10 nach Bock-Level“ in Vote (`public/js/views/votes.js`,
   `.vote-ranking-columns`); Übernahme im Folgepaket.
 
@@ -125,6 +129,6 @@ Alphabet.
 ## 11. Permanente Varianten und befristete Ausnahmen
 
 Keine Control-Klassen; die Zeilen sind nicht interaktiv. Befristet bestehen `lb-row` und
-`leaderboard-list-grid` in Rangliste, Statistiken, Hall of Fame, Arcade und Vote weiter.
+`leaderboard-list-grid` in Arcade und Vote weiter.
 Löschkriterium: Umstellung dieser Aufrufer auf RankedList im Folgepaket. Der TV-Kiosk behält
 seine Kacheln bewusst, weil er aus der Ferne gelesen wird.

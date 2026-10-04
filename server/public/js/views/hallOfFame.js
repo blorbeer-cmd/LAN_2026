@@ -7,6 +7,8 @@ import { api } from '../api.js';
 import { escapeHtml, avatarHtml, formatDate } from '../format.js';
 import { showToast } from '../toast.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { icon } from '../icons.js';
+import { rankedListHtml, sharedRankNumbers } from '../rankedList.js';
 import { accessibleEvents } from '../state.js';
 import { eventSelectOption } from '../eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
@@ -16,6 +18,31 @@ let loading = false;
 let cacheStale = false;
 let requestVersion = 0;
 let selectedEventId = null;
+// Every section starts collapsed; its open state survives re-renders.
+const sectionOpen = { overall: false, tournaments: false, events: false };
+
+// A filled section is a collapsible card with its row count; an empty one
+// collapses to the shared one-row empty card (design rule 8).
+function collapsibleSection(key, title, count, emptyText, contentHtml) {
+  if (count === 0) {
+    return `
+      <section class="card stack grouped-page-section" aria-label="${title}">
+        <div class="grouped-page-section-title"><h2>${title}</h2></div>
+        ${emptyStateHtml(emptyText, { className: 'empty-state-compact' })}
+      </section>`;
+  }
+  return `
+    <details class="card grouped-page-section collapsible-section" data-hall-section="${key}" ${sectionOpen[key] ? 'open' : ''}>
+      <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+        <h2>${title}</h2>
+        <span class="collapsible-section-summary-end">
+          <span class="badge badge-offline">${count}</span>
+        </span>
+      </summary>
+      <div class="collapsible-section-content stack">${contentHtml}</div>
+    </details>`;
+}
 
 export function invalidateHallOfFame({ hard = false } = {}) {
   requestVersion += 1;
@@ -44,73 +71,65 @@ async function load(ctx) {
   }
 }
 
-function rankedRows(entries, suffix) {
-  if (entries.length === 0) {
-    return emptyStateHtml('Noch keine Platzierungen.', { className: 'empty-state-compact' });
-  }
-  return entries
-    .map(
-      (r, i) => `
-      <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-        <span class="lb-rank">${i + 1}</span>
-        ${avatarHtml(r, 24)}
-        <span class="player-name" style="flex:1;">${escapeHtml(r.name)}</span>
-        <span class="lb-points">${r.count}× ${suffix}</span>
-      </div>`
-    )
-    .join('');
+// All-time counts as a ranking: equal counts share their place.
+// The card title names what is counted, so the value column only carries
+// "4×" and stays narrow enough for phones.
+function countList(entries, label) {
+  const ranks = sharedRankNumbers(entries.map((r) => r.count));
+  return rankedListHtml(
+    entries.map((r, i) => ({
+      rank: ranks[i],
+      lead: avatarHtml(r, 28),
+      title: escapeHtml(r.name),
+      value: `${r.count}×`,
+    })),
+    { ranked: true, label },
+  );
 }
 
-function renderEventStanding(r, index) {
-  return `
-    <div class="lb-row ${index === 0 ? 'rank-1' : ''}">
-      <span class="lb-rank">${index + 1}</span>
-      ${avatarHtml(r, 24)}
-      <span class="leaderboard-row-main">
-        <strong class="player-name leaderboard-row-name">${escapeHtml(r.name)}</strong>
-        <span class="muted leaderboard-row-stat">${r.wins} ${r.wins === 1 ? 'Sieg' : 'Siege'} · ${r.matchesPlayed} ${r.matchesPlayed === 1 ? 'Spiel' : 'Spiele'}</span>
-      </span>
-      <strong class="lb-points">${r.points} P.</strong>
-    </div>`;
-}
-
-function renderTournamentChampion(t, index) {
-  return `
-    <div class="lb-row hall-of-fame-tournament-row">
-      <span class="lb-rank">${index + 1}</span>
-      <span class="leaderboard-row-main">
-        <strong class="player-name leaderboard-row-name">${escapeHtml(t.name)}</strong>
-        <span class="muted leaderboard-row-stat">${escapeHtml(t.gameName)}</span>
-      </span>
-      <span class="hall-of-fame-tournament-winner">
-        <strong>${escapeHtml(t.championTeamName || '–')}</strong>
-        <span class="muted">${escapeHtml(t.championPlayers.join(', '))}</span>
-      </span>
-    </div>`;
+function eventRange(e) {
+  if (!e.startsAt) return '';
+  return e.endsAt ? `${formatDate(e.startsAt)} bis ${formatDate(e.endsAt)}` : `seit ${formatDate(e.startsAt)}`;
 }
 
 function renderEvent(e) {
-  const range = `${formatDate(e.startsAt)}${e.endsAt ? ` bis ${formatDate(e.endsAt)}` : ' (läuft)'}`;
   const standings = e.overallStandings ?? [];
+  const ranks = sharedRankNumbers(standings.map((r) => r.points));
   const standingsHtml = standings.length
-    ? `<div class="leaderboard-list-grid">${standings.map(renderEventStanding).join('')}</div>`
-    : emptyStateHtml('Noch keine Platzierungen.', { className: 'hall-of-fame-empty-result' });
+    ? rankedListHtml(
+        standings.map((r, i) => ({
+          rank: ranks[i],
+          lead: avatarHtml(r, 28),
+          title: escapeHtml(r.name),
+          meta: `${r.wins} ${r.wins === 1 ? 'Sieg' : 'Siege'} · ${r.matchesPlayed} ${r.matchesPlayed === 1 ? 'Spiel' : 'Spiele'}`,
+          value: `${r.points} P`,
+        })),
+        { ranked: true, label: 'Gesamtplatzierungen' },
+      )
+    : emptyStateHtml('Noch keine Platzierungen', { className: 'empty-state-compact' });
 
+  // Tournaments are no ranking among each other, so they read alphabetically;
+  // the champion team takes the value column, its players the meta line.
   const tournamentsHtml = e.tournamentChampions.length
-    ? `<div class="leaderboard-list-grid">${e.tournamentChampions.map(renderTournamentChampion).join('')}</div>`
+    ? rankedListHtml(
+        e.tournamentChampions.map((t) => ({
+          title: escapeHtml(t.name),
+          sortKey: t.name,
+          meta: [t.gameName, t.championPlayers.join(', ')].filter(Boolean).map(escapeHtml).join(' · '),
+          value: `<span class="hall-of-fame-champion" title="${escapeHtml(t.championTeamName || '')}">${escapeHtml(t.championTeamName || '')}</span>`,
+        })),
+        { label: 'Turniere' },
+      )
     : '';
 
-  // Flat inside the "Nach Event" card: the picker already names the event, so
-  // only its dates follow, then the result lists under plain subheadings.
+  const range = eventRange(e);
   return `
-    <div class="stack hall-of-fame-event">
-      <span class="muted hall-of-fame-event-range">${range}</span>
-      <section class="stack hall-of-fame-event-section is-overall">
-        <div class="section-title hall-of-fame-subtitle">Gesamtplatzierungen</div>
-        ${standingsHtml}
-      </section>
-      ${tournamentsHtml ? `<section class="stack hall-of-fame-event-section is-tournaments"><div class="section-title hall-of-fame-subtitle">Turniere</div>${tournamentsHtml}</section>` : ''}
-    </div>
+    ${range ? `<span class="muted hall-of-fame-event-range">${range}</span>` : ''}
+    <section class="stack hall-of-fame-event-section">
+      <h3 class="section-title hall-of-fame-subtitle">Gesamtplatzierungen</h3>
+      ${standingsHtml}
+    </section>
+    ${tournamentsHtml ? `<section class="stack hall-of-fame-event-section"><h3 class="section-title hall-of-fame-subtitle">Turniere</h3>${tournamentsHtml}</section>` : ''}
   `;
 }
 
@@ -134,40 +153,36 @@ export function renderHallOfFame(container, ctx) {
   if (!events.some((event) => event.eventId === selectedEventId)) selectedEventId = events[0]?.eventId ?? null;
   const selectedEvent = events.find((event) => event.eventId === selectedEventId) ?? null;
 
-  container.innerHTML = `
-    ${
-      cache === null
-        ? emptyStateHtml('Lädt…')
-        : `
+  const eventContent = events.length === 0
+    ? ''
+    : `${searchSelectHtml('hall-event-select', eventPickerOptions(events), selectedEventId, {
+        placeholder: 'Event suchen',
+        ariaLabel: 'Event',
+        label: 'Events mit Ergebnissen',
+      })}
+      ${renderEvent(selectedEvent)}`;
+
+  container.innerHTML =
+    cache === null
+      ? emptyStateHtml('Lädt', { className: 'empty-state-compact' })
+      : `
       <div class="grouped-page-sections">
-        <section class="card stack grouped-page-section" aria-labelledby="hall-overall-title">
-          <div class="grouped-page-section-title"><h2 id="hall-overall-title">Meiste Gesamtsiege</h2></div>
-          <div class="leaderboard-list-grid">${rankedRows(cache.allTime.mostOverallWins, 'Gesamtsieg')}</div>
-        </section>
-        <section class="card stack grouped-page-section" aria-labelledby="hall-tournaments-title">
-          <div class="grouped-page-section-title"><h2 id="hall-tournaments-title">Meiste Turniersiege</h2></div>
-          <div class="leaderboard-list-grid">${rankedRows(cache.allTime.mostTournamentWins, 'Turnier')}</div>
-        </section>
-        <section class="card stack grouped-page-section" aria-labelledby="hall-events-title">
-          <div class="grouped-page-section-title"><h2 id="hall-events-title">Nach Event</h2></div>
-          ${
-            events.length === 0
-              ? emptyStateHtml('Noch keine Events.')
-              : `${searchSelectHtml('hall-event-select', eventPickerOptions(events), selectedEventId, {
-                  placeholder: 'Event suchen',
-                  ariaLabel: 'Event',
-                  label: 'Events mit Ergebnissen',
-                })}
-                 <div class="hall-of-fame-selected-event">${renderEvent(selectedEvent)}</div>`
-          }
-        </section>
+        ${collapsibleSection('overall', 'Meiste Gesamtsiege', cache.allTime.mostOverallWins.length, 'Noch keine Platzierungen',
+          countList(cache.allTime.mostOverallWins, 'Meiste Gesamtsiege'))}
+        ${collapsibleSection('tournaments', 'Meiste Turniersiege', cache.allTime.mostTournamentWins.length, 'Noch keine Platzierungen',
+          countList(cache.allTime.mostTournamentWins, 'Meiste Turniersiege'))}
+        ${collapsibleSection('events', 'Nach Event', events.length, 'Noch keine Events', eventContent)}
       </div>
-    `
-    }
-  `;
+    `;
+
+  container.querySelectorAll('[data-hall-section]').forEach((section) => {
+    section.addEventListener('toggle', () => {
+      sectionOpen[section.dataset.hallSection] = section.open;
+    });
+  });
 
   wireSearchSelect(container, 'hall-event-select', eventPickerOptions(events), {
-    emptyText: 'Kein passendes LAN gefunden.',
+    emptyText: 'Kein passendes Event gefunden',
     onChange: (eventId) => {
       selectedEventId = eventId;
       ctx.rerender();
