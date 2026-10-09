@@ -65,6 +65,19 @@ export function chimpNeighbor(index, key, columnFlow = false) {
   return target;
 }
 
+// Result details of the own finished run. The live chimp:run:end push wins;
+// after a reload only the restored state is left, and a run the server marked
+// invalid stays invalid even when it carries no details.
+export function chimpRunEndDetails(runEnd, me) {
+  const details = runEnd ?? me?.endDetails ?? null;
+  return {
+    invalid: Boolean(details?.invalid) || me?.endReason === 'invalid',
+    previousBest: details?.previousBest ?? null,
+    newBest: Boolean(details?.newBest),
+    rank: details?.rank ?? null,
+  };
+}
+
 export function chimpRatingText(rating) {
   if (!rating) return '';
   const value = rating.beyond > 0 ? `Ayumu übertroffen (+${rating.beyond})` : `${rating.percent ?? 0} %`;

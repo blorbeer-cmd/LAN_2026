@@ -11,7 +11,7 @@ import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadePlayerStripHtml, a
 import { cancelCountdown, showCountdown } from '../countdown.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import {
-  chimpCellLabel, chimpGridModel, chimpNeighbor, chimpNumbersText, chimpRatingText, chimpStageMode, chimpStrikesText, chimpTimeText,
+  chimpCellLabel, chimpGridModel, chimpNeighbor, chimpNumbersText, chimpRatingText, chimpRunEndDetails, chimpStageMode, chimpStrikesText, chimpTimeText,
 } from '../chimpFormat.js';
 
 // Chimp Test: memorize the numbers, tap the 1 and the rest disappear, tap the
@@ -273,11 +273,12 @@ function ownResultHtml() {
   const rating = result.rating ?? { percent: 0, beyond: 0, tier: '' };
   const barValue = rating.beyond > 0 ? 100 : rating.percent ?? 0;
   const facts = [chimpStrikesText(result.strikesAtLevel), chimpTimeText(result.activeMsAtLevel)];
-  const best = runEnd && !runEnd.invalid && runEnd.newBest && runEnd.previousBest !== null
-    ? `<span class="chimp-note">Neuer Bestwert – vorher ${escapeHtml(String(runEnd.previousBest))}</span>`
-    : runEnd?.newBest ? '<span class="chimp-note">Dein erster Bestwert</span>' : '';
-  const rank = runEnd?.rank ? `<span class="chimp-note">Platz ${escapeHtml(String(runEnd.rank))} in der Chimp-Test-Rangliste</span>` : '';
-  const invalid = runEnd?.invalid ? '<span class="chimp-note is-danger">Ungültiger Lauf – zu schnell für einen Menschen, er zählt nicht</span>' : '';
+  const end = chimpRunEndDetails(runEnd, match?.me);
+  const best = end.invalid || !end.newBest ? ''
+    : end.previousBest !== null ? `<span class="chimp-note">Neuer Bestwert – vorher ${escapeHtml(String(end.previousBest))}</span>`
+      : '<span class="chimp-note">Dein erster Bestwert</span>';
+  const rank = end.rank ? `<span class="chimp-note">Platz ${escapeHtml(String(end.rank))} in der Chimp-Test-Rangliste</span>` : '';
+  const invalid = end.invalid ? '<span class="chimp-note is-danger">Ungültiger Lauf – zu schnell für einen Menschen, er zählt nicht</span>' : '';
   return `<div class="chimp-result" data-chimp-result>
     <span class="chimp-result-level">${escapeHtml(chimpNumbersText(result.level))}</span>
     <div class="chimp-rating">

@@ -5,7 +5,7 @@ import { db } from '../db';
 import { broadcastArcadeKiosk } from './realtime';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { recordArcadeResult } from './arcadeData';
-import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope } from './scope';
+import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope, socketCanUseArcadeScope } from './scope';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
@@ -66,6 +66,9 @@ interface Lobby {
   socketIds: Map<string, string>; ready: Set<string>; createdAt: number;
 }
 type RunEndReason = 'strikes' | 'max' | 'time-limit' | 'ended-by-host' | 'left' | 'disconnect' | 'invalid';
+// What the player learns when the own run ends. Kept on the run so a reload
+// during a still running round shows the same result details again.
+interface RunEndDetails { invalid: boolean; previousBest: number | null; newBest: boolean; rank: number | null }
 interface PlayerRun {
   run: ChimpRun;
   levelToken: string;
@@ -73,15 +76,19 @@ interface PlayerRun {
   attemptElapsed: number;
   attemptRunningSince: number;
   firstClickAt: number;
+  // Wall clock of the last completed level: the leaderboard's final tie-break,
+  // frozen together with strikesAtLevel and activeMsAtLevel.
+  levelCompletedAt: number | null;
   timer: NodeJS.Timeout | null;
   ended: RunEndReason | null;
-  previousBest: number | null;
+  endDetails: RunEndDetails | null;
 }
 interface Match {
   id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[];
   socketIds: Map<string, string>; seed: number; phase: 'countdown' | 'playing' | 'ended';
   runs: Map<string, PlayerRun>; startedAt: number; timer: NodeJS.Timeout | null; deadlineAt: number | null;
   paused: boolean; pausedRemainingMs: number | null; reconnectTimers: Map<string, NodeJS.Timeout>;
+  hostWatch: NodeJS.Timeout | null;
   // Set while finishMatch closes the remaining runs, so the last of them does
   // not finish the match a second time with the wrong reason.
   closing: boolean;
@@ -194,7 +201,7 @@ function ownRunPayload(entry: PlayerRun) {
   if (entry.ended === null && run.phase === 'input') {
     return { ...base, hiddenCells: run.layout.slice(run.clicked).sort((a, b) => a - b) };
   }
-  if (entry.ended !== null) return { ...base, result: runResult(entry), endReason: entry.ended };
+  if (entry.ended !== null) return { ...base, result: runResult(entry), endReason: entry.ended, endDetails: entry.endDetails };
   return base;
 }
 
@@ -336,11 +343,11 @@ function endRun(io: Server, match: Match, playerId: string, reason: RunEndReason
   endArcadeSession([playerId], 'chimp', match);
   if (match.phase === 'playing') {
     const result = runResult(entry);
-    entry.previousBest = personalBest(match, playerId);
+    const previousBest = personalBest(match, playerId);
     const score: ChimpRunScore = {
       playerId, name: player.name, mode: 'solo', level: result.level, outcome: reason === 'invalid' ? 'invalid' : 'valid',
       strikesAtLevel: result.strikesAtLevel, activeMsAtLevel: result.activeMsAtLevel,
-      totalStrikes: result.totalStrikes, totalActiveMs: result.totalActiveMs,
+      achievedAt: entry.levelCompletedAt, totalStrikes: result.totalStrikes, totalActiveMs: result.totalActiveMs,
     };
     recordArcadeResult({
       gameType: 'chimp',
@@ -352,18 +359,13 @@ function endRun(io: Server, match: Match, playerId: string, reason: RunEndReason
       matchId: `${match.id}:${playerId}`,
       scope: match,
     });
-    if (match.socketIds.has(playerId) && match.eventId) {
-      const rank = chimpLeaderboard(match.groupId, match.eventId).find((row) => row.playerId === playerId)?.place ?? null;
-      emitToPlayer(io, match, playerId, 'chimp:run:end', {
-        matchId: match.id,
-        reason,
-        result,
-        invalid: reason === 'invalid',
-        previousBest: entry.previousBest,
-        newBest: reason !== 'invalid' && (entry.previousBest === null || result.level > entry.previousBest),
-        rank,
-      });
-    }
+    entry.endDetails = {
+      invalid: reason === 'invalid',
+      previousBest,
+      newBest: reason !== 'invalid' && (previousBest === null || result.level > previousBest),
+      rank: match.eventId ? chimpLeaderboard(match.groupId, match.eventId).find((row) => row.playerId === playerId)?.place ?? null : null,
+    };
+    emitToPlayer(io, match, playerId, 'chimp:run:end', { matchId: match.id, reason, result, ...entry.endDetails });
   }
   emitOwnState(io, match, playerId);
   emitStandings(io, match);
@@ -393,6 +395,7 @@ function finishMatch(io: Server, match: Match, reason: 'completed' | 'time-limit
   match.paused = false;
   match.pausedRemainingMs = null;
   clearMatchTimer(match);
+  stopHostWatch(match);
   for (const timer of match.reconnectTimers.values()) clearTimeout(timer);
   match.reconnectTimers.clear();
   // The round ranking only exists for a shared round, and is never stored.
@@ -404,6 +407,7 @@ function finishMatch(io: Server, match: Match, reason: 'completed' | 'time-limit
 
 function cleanupMatch(io: Server, match: Match): void {
   if (matches.get(match.id) !== match) return;
+  stopHostWatch(match);
   matches.delete(match.id);
   for (const socketId of match.socketIds.values()) io.sockets.sockets.get(socketId)?.leave(match.room);
   broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId });
@@ -445,17 +449,56 @@ function resumeMatch(io: Server, match: Match): void {
   }
 }
 
-// A host who is gone for good (left or past the reconnect grace) must not
-// freeze the round: the controls pass to the first connected player, still
-// playing ones first, and a pause the host left behind is lifted so the match
-// time limit runs again.
+// Whether the player's match socket may still act in the match's group and
+// event. A socket that switched events or lost event access stays connected
+// but can neither pause nor end the round.
+function canReachMatch(io: Server, match: Match, playerId: string): boolean {
+  const socketId = match.socketIds.get(playerId);
+  const socket = socketId ? io.sockets.sockets.get(socketId) : undefined;
+  return Boolean(socket && socketCanUseArcadeScope(socket, match));
+}
+
+// A host who is gone for good (left, past the reconnect grace or without the
+// match scope) must not freeze the round: the controls pass to the first
+// player who can still reach the match, still playing ones first, and a pause
+// the host left behind is lifted so the match time limit runs again.
 function handOverHost(io: Server, match: Match): void {
   if (!isCurrent(match)) return;
-  const connected = match.players.filter((player) => player.id !== match.host.id && match.socketIds.has(player.id));
-  const next = connected.find((player) => match.runs.get(player.id)?.ended === null) ?? connected[0];
+  const reachable = match.players.filter((player) => player.id !== match.host.id && canReachMatch(io, match, player.id));
+  const next = reachable.find((player) => match.runs.get(player.id)?.ended === null) ?? reachable[0];
+  if (!next && !match.paused) return;
   if (next) match.host = next;
   if (match.paused) resumeMatch(io, match);
   emitAllStates(io, match);
+}
+
+function stopHostWatch(match: Match): void {
+  if (match.hostWatch) clearInterval(match.hostWatch);
+  match.hostWatch = null;
+}
+
+// A disconnected host is handled by the reconnect grace in the disconnect
+// handler. A host whose socket stays connected but leaves the match scope
+// (event switch, lost event access) fires no event here, so the match checks
+// that host periodically and hands over after the same grace.
+function watchHost(io: Server, match: Match): void {
+  const graceMs = timing().reconnectGraceMs;
+  let lost: { hostId: string; since: number } | null = null;
+  match.hostWatch = setInterval(() => {
+    if (!isCurrent(match)) return stopHostWatch(match);
+    const hostId = match.host.id;
+    if (!match.socketIds.has(hostId) || canReachMatch(io, match, hostId)) {
+      lost = null;
+      return;
+    }
+    const now = Date.now();
+    if (lost?.hostId !== hostId) lost = { hostId, since: now };
+    else if (now - lost.since >= graceMs) {
+      lost = null;
+      handOverHost(io, match);
+    }
+  }, Math.max(10, Math.round(graceMs / 3)));
+  match.hostWatch.unref();
 }
 
 function attachSocket(io: Server, socket: Socket, match: Match, playerId: string): boolean {
@@ -494,10 +537,10 @@ function startMatch(io: Server, lobby: Lobby): Match {
     socketIds: new Map(lobby.socketIds), seed, phase: 'countdown',
     runs: new Map(lobby.players.map((player) => [player.id, {
       run: startChimpRun(seed, player.id), levelToken: '', attemptElapsed: 0, attemptRunningSince: 0, firstClickAt: 0,
-      timer: null, ended: null, previousBest: null,
+      levelCompletedAt: null, timer: null, ended: null, endDetails: null,
     }])),
     startedAt: Date.now(), timer: null, deadlineAt: null, paused: false, pausedRemainingMs: null, reconnectTimers: new Map(),
-    closing: false,
+    hostWatch: null, closing: false,
   };
   matches.set(id, match);
   releaseLobbyMemberships(lobby.players.map((player) => player.id), 'chimp', lobby.id);
@@ -507,6 +550,7 @@ function startMatch(io: Server, lobby: Lobby): Match {
   startArcadeSession(match.players.map((player) => player.id), 'chimp', match);
   emitArcadeRoom(io, room, 'chimp:match:start', { matchId: id, host: match.host, players: match.players }, match);
   scheduleMatch(match, arcadeTiming.countdownMs, () => beginPlaying(io, match));
+  watchHost(io, match);
   emitAllStates(io, match);
   return match;
 }
@@ -532,6 +576,7 @@ function handleClick(io: Server, match: Match, playerId: string, levelToken: unk
     return { ok: true, result, me: ownRunPayload(entry) };
   }
   // level-complete
+  entry.levelCompletedAt = now;
   if (isImplausibleChimpInput(run.level, now - entry.firstClickAt)) {
     endRun(io, match, playerId, 'invalid');
     return { ok: true, result: 'invalid-run', me: ownRunPayload(entry) };

@@ -262,7 +262,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   three strikes end the run. Each run is stored as a solo result without wins, losses or places;
   a shared round shows a display-only „Rundenrangliste“ once at its end. The own result shows the
   level, the „Affen-Nähe“ against Ayumu (9 numbers = 100 %) with its tier, new personal bests and
-  the rank in the Chimp-Test-Rangliste. Reload, reconnect and pause always return the same attempt.
+  the rank in the Chimp-Test-Rangliste, also after a reload during the round. Reload, reconnect
+  and pause always return the same attempt. When the host leaves, stays away past the 15-second
+  reconnect grace or switches events, the controls pass to a player who can still reach the round
+  and a pause is lifted.
 - **AI** — Admins in Admin mode may choose „KI“ in the create dialog. Tetris and Snake Duell use one
   bot, their Arena fills all opponent seats; Pong and Blobby Volley cover the AI duel and Doppel with
   a bot teammate.

@@ -13,6 +13,9 @@ export interface ChimpRunScore {
   outcome: string;
   strikesAtLevel: number;
   activeMsAtLevel: number;
+  // When the scored level was completed (null for a run without one). The run
+  // may go on afterwards, so this is not the row's ended_at.
+  achievedAt: number | null;
   totalStrikes: number;
   totalActiveMs: number;
 }
@@ -45,6 +48,7 @@ function parseScore(raw: string): ChimpRunScore | null {
       outcome: String(score.outcome ?? ''),
       strikesAtLevel: Number(score.strikesAtLevel) || 0,
       activeMsAtLevel: Number(score.activeMsAtLevel) || 0,
+      achievedAt: Number.isFinite(score.achievedAt) ? Number(score.achievedAt) : null,
       totalStrikes: Number(score.totalStrikes) || 0,
       totalActiveMs: Number(score.totalActiveMs) || 0,
     };
@@ -64,14 +68,18 @@ export function chimpLeaderboard(groupId: string, eventId: string): ChimpLeaderb
     const score = parseScore(row.scores);
     if (!score || score.outcome === 'invalid') continue;
     const current = players.get(score.playerId);
-    const candidate = { level: score.level, strikesAtLevel: score.strikesAtLevel, activeMsAtLevel: score.activeMsAtLevel };
-    // Rows arrive oldest first, so an equal later run keeps the earlier achievement.
-    const better = !current || compareChimpResults(candidate, current) < 0;
-    const base = current ?? { playerId: score.playerId, name: score.name, level: 0, strikesAtLevel: 0, activeMsAtLevel: 0, achievedAt: row.ended_at, runs: 0, levelSum: 0 };
+    const candidate = {
+      level: score.level, strikesAtLevel: score.strikesAtLevel, activeMsAtLevel: score.activeMsAtLevel,
+      achievedAt: score.achievedAt ?? row.ended_at,
+    };
+    // An equal run keeps the earlier achievement.
+    const order = current ? compareChimpResults(candidate, current) : -1;
+    const better = order < 0 || (order === 0 && candidate.achievedAt < current!.achievedAt);
+    const base = current ?? { playerId: score.playerId, name: score.name, level: 0, strikesAtLevel: 0, activeMsAtLevel: 0, achievedAt: candidate.achievedAt, runs: 0, levelSum: 0 };
     base.runs += 1;
     base.levelSum += score.level;
     base.name = score.name;
-    if (better) Object.assign(base, candidate, { achievedAt: row.ended_at });
+    if (better) Object.assign(base, candidate);
     players.set(score.playerId, base);
   }
   return rankChimpResults([...players.values()], { byAchievedAt: true }).map(({ levelSum, ...entry }) => ({

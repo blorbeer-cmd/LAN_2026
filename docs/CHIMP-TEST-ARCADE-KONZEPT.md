@@ -209,6 +209,12 @@ die Logik aus A existiert (Etappe 2). Option C bietet gegenüber A keinen Vortei
   Pause verdeckt ein Overlay das Raster vollständig, und die aktive Zeit steht. Nach dem Fortsetzen
   geht jeder Lauf mit demselben Versuch in derselben Phase weiter. Eine Pause verschafft deshalb
   weder zusätzliche Merkzeit noch einen neuen Versuch.
+- **Host fällt aus:** Verlässt der Host die Runde, kommt er nach einer Trennung nicht innerhalb
+  der 15 Sekunden zurück oder bleibt er zwar verbunden, hat aber das Event gewechselt bzw. den
+  Eventzugriff verloren, geht die Steuerung an die erste Person, die die Runde noch erreicht,
+  bevorzugt an jemanden mit laufendem Lauf. Eine zurückgelassene Pause wird aufgehoben, damit das
+  Match-Zeitlimit wieder läuft. Erreicht niemand die Runde mehr, endet sie spätestens mit dem
+  Zeitlimit.
 - **Verlassen:** Wer die Runde verlässt, beendet den eigenen Lauf; gewertet wird das bis dahin
   geschaffte Level.
 - **Serverneustart:** Der flüchtige Match-State verfällt wie bei allen Arcade-Spielen. Weil jeder
@@ -257,7 +263,9 @@ gespeichert. Grenzen oder Namen lassen sich später ändern, ohne alte Ergebniss
 - Eine Zeile pro Person. Maßgeblich ist der **persönliche Bestlauf**.
 - Sortierung: bestes Level, dann weniger Strikes bis zum Erreichen dieses Levels, dann weniger
   aktive Zeit bis zum Erreichen dieses Levels (beides aus 3.2, beim Levelabschluss festgehalten),
-  dann der frühere Zeitpunkt (wer den Wert zuerst erreicht hat, steht vorn).
+  dann der frühere Zeitpunkt (wer den Wert zuerst erreicht hat, steht vorn). Dieser Zeitpunkt ist
+  der Abschluss des gewerteten Levels, ebenfalls beim Levelabschluss festgehalten und gespeichert,
+  nicht das spätere Laufende.
 - Spalten: Rang, Name, bestes Level, darunter Affen-Nähe mit Stufe, Strikes und aktive Zeit des
   Bestlaufs, Anzahl Läufe und durchschnittliches Level.
 - Die Rangliste lebt in der vorhandenen Arcade-Karte „Statistik“: Der Spielfilter „Chimp Test“
@@ -446,7 +454,7 @@ Server-State pro Person:
 | `chimp:continue` | C→S | Zwischenbildschirm bestätigen und nächstes Level anfordern. |
 | `chimp:standings` | S→C | Öffentlicher Live-Stand bei jeder Änderung von Level, Strike oder Status. |
 | `chimp:reveal` | S→C | Nur an die betroffene Person: Lösung des gerade per Fehlklick beendeten Versuchs. |
-| `chimp:run:end` | S→C | Eigenes Solo-Ergebnis mit Affen-Bewertung, Bestwert-Hinweis und Rang. |
+| `chimp:run:end` | S→C | Eigenes Solo-Ergebnis mit Affen-Bewertung, Bestwert-Hinweis, Rang und Ungültigkeitsstatus. Dieselben Angaben stehen nach Laufende im eigenen `chimp:state`, damit sie ein Neuladen während der Runde überstehen. |
 | `chimp:match:pause` / `finish` / `leave` / `reconnect` | C→S | Pause umschalten (Host), Runde beenden (Host), eigenen Lauf verlassen, Lauf nach Verbindungsabbruch wieder aufnehmen. |
 | `chimp:match:start` | S→C | Rundenstart beziehungsweise Wiederaufnahme. |
 | `chimp:match:end` | S→C | Rundenende; bei mindestens zwei Personen mit der flüchtigen Rundenrangliste. |

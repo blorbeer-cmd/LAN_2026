@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { chimpCellLabel, chimpGridModel, chimpNeighbor, chimpRatingText, chimpStageMode, chimpTimeText } from './chimpFormat.js';
+import { chimpCellLabel, chimpGridModel, chimpNeighbor, chimpRatingText, chimpRunEndDetails, chimpStageMode, chimpTimeText } from './chimpFormat.js';
 
 const memorize = { phase: 'memorize', numbers: [{ cell: 12, number: 1 }, { cell: 3, number: 2 }, { cell: 30, number: 3 }] };
 
@@ -46,6 +46,14 @@ test('a finished run or round shows the result even if the host paused before en
   assert.equal(chimpStageMode({ phase: 'countdown', paused: false, me: null }), 'countdown');
   assert.equal(chimpStageMode({ phase: 'playing', paused: false, me: { phase: 'interstitial' } }), 'interstitial');
   assert.equal(chimpStageMode({ phase: 'playing', paused: false, me: { phase: 'memorize' } }), 'grid');
+});
+
+test('result details survive a reload and an invalid run stays invalid without them', () => {
+  const pushed = { invalid: false, previousBest: 6, newBest: true, rank: 2 };
+  assert.deepEqual(chimpRunEndDetails(pushed, { endReason: 'strikes' }), pushed);
+  // After a reload only the restored state carries the details.
+  assert.deepEqual(chimpRunEndDetails(null, { endReason: 'strikes', endDetails: pushed }), pushed);
+  assert.deepEqual(chimpRunEndDetails(null, { endReason: 'invalid', endDetails: null }), { invalid: true, previousBest: null, newBest: false, rank: null });
 });
 
 test('formats the chimp rating and active time in German', () => {

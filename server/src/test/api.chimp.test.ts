@@ -16,6 +16,7 @@ type Ack = { ok: boolean; error?: string; result?: string; ignored?: boolean; me
 interface Me {
   phase: string; level: number; strikes: number; bestLevel: number; clicked: number; levelToken: string; lastOutcome: string | null;
   numbers?: Array<{ cell: number; number: number }>; hiddenCells?: number[];
+  endReason?: string; endDetails?: { invalid: boolean; previousBest: number | null; newBest: boolean; rank: number | null } | null;
 }
 interface State { matchId: string; phase: string; paused: boolean; me: Me | null; standings: Array<{ playerId: string; status: string; bestLevel: number }> }
 
@@ -88,8 +89,9 @@ function click(socket: ClientSocket, matchId: string, playerId: string, me: Me, 
 test('a shared Chimp round stores every run as a solo result and shows the round ranking only at the end', async () => {
   clearLobbyMemberships();
   const server = await makeServer();
-  const hostSocket = await connect(server.baseUrl);
+  let hostSocket = await connect(server.baseUrl);
   const guestSocket = await connect(server.baseUrl);
+  const sockets = [hostSocket, guestSocket];
   const guestReveals: unknown[] = [];
   const spectatorPayloads: string[] = [];
   guestSocket.on('chimp:reveal', (payload) => guestReveals.push(payload));
@@ -113,7 +115,7 @@ test('a shared Chimp round stores every run as a solo result and shows the round
     assert.equal(completed.me?.phase, 'interstitial');
 
     // Three wrong taps at level 5: every reveal goes to the host only.
-    const hostRunEnd = nextEvent<{ result: { level: number; strikesAtLevel: number; totalStrikes: number; rating: { tier: string } }; newBest: boolean; reason: string }>(hostSocket, 'chimp:run:end');
+    const hostRunEnd = nextEvent<{ result: { level: number; strikesAtLevel: number; totalStrikes: number; rating: { tier: string } }; invalid: boolean; previousBest: number | null; newBest: boolean; rank: number | null; reason: string }>(hostSocket, 'chimp:run:end');
     let current = completed.me!;
     for (let strike = 1; strike <= 3; strike += 1) {
       const memorize = nextState(hostSocket, (state) => state.me?.phase === 'memorize');
@@ -137,6 +139,16 @@ test('a shared Chimp round stores every run as a solo result and shows the round
     assert.ok(spectatorPayloads.length > 0);
     assert.ok(spectatorPayloads.every((payload) => !/"(numbers|layout|hiddenCells|cell|wrongCell)"/.test(payload)));
 
+    // A reload while the guest still plays restores the full result details.
+    hostSocket.close();
+    hostSocket = await connect(server.baseUrl);
+    sockets.push(hostSocket);
+    const reloaded = nextState(hostSocket, () => true);
+    assert.equal((await emitAck(hostSocket, 'chimp:match:reconnect', { matchId, playerId: hostId })).ok, true);
+    const { invalid, previousBest, newBest, rank } = hostRun;
+    assert.equal(typeof rank, 'number');
+    assert.deepEqual((await reloaded).me?.endDetails, { invalid, previousBest, newBest, rank });
+
     // The host ends the round; the guest's open run keeps its level 0.
     const ended = nextEvent<{ reason: string; ranking: Array<{ playerId: string; place: number; level: number }> }>(guestSocket, 'chimp:match:end');
     assert.equal((await emitAck(hostSocket, 'chimp:match:finish', { matchId, playerId: hostId })).ok, true);
@@ -144,12 +156,16 @@ test('a shared Chimp round stores every run as a solo result and shows the round
     assert.equal(end.reason, 'ended-by-host');
     assert.deepEqual(end.ranking.map((entry) => [entry.playerId, entry.place, entry.level]), [[hostId, 1, 4], [guestId, 2, 0]]);
 
-    const rows = db.prepare("SELECT id, winner_id, reason, scores FROM arcade_results WHERE game_type = 'chimp' AND source_match_id LIKE ? ORDER BY ended_at").all(`${matchId}:%`) as Array<{ id: string; winner_id: string | null; reason: string; scores: string }>;
+    const rows = db.prepare("SELECT id, winner_id, reason, scores, ended_at FROM arcade_results WHERE game_type = 'chimp' AND source_match_id LIKE ? ORDER BY ended_at").all(`${matchId}:%`) as Array<{ id: string; winner_id: string | null; reason: string; scores: string; ended_at: number }>;
     assert.deepEqual(rows.map((row) => [row.winner_id, row.reason, JSON.parse(row.scores).length]), [[null, 'strikes', 1], [null, 'ended-by-host', 1]]);
+    // The tie-break time is when level 4 was completed, before the three strikes.
+    const achievedAt = rows.map((row) => JSON.parse(row.scores)[0].achievedAt as number | null);
+    assert.ok(typeof achievedAt[0] === 'number' && achievedAt[0] < rows[0].ended_at);
+    assert.equal(achievedAt[1], null);
     const winners = db.prepare(`SELECT COUNT(*) AS count FROM arcade_result_participants WHERE result_id IN (${rows.map(() => '?').join(',')}) AND is_winner = 1`).get(...rows.map((row) => row.id)) as { count: number };
     assert.equal(winners.count, 0);
   } finally {
-    await closeServer(server, [hostSocket, guestSocket]);
+    await closeServer(server, sockets);
   }
 });
 
@@ -278,5 +294,28 @@ test('a host who is gone for good hands over the controls and lifts a pause', as
   } finally {
     delete process.env.CHIMP_RECONNECT_GRACE_MS;
     await closeServer(server, [hostSocket, guestSocket]);
+  }
+});
+
+test('a host who stays connected but leaves the match scope hands over to a player who can still reach it', async () => {
+  clearLobbyMemberships();
+  process.env.CHIMP_RECONNECT_GRACE_MS = '100';
+  const server = await makeServer();
+  const sockets = await Promise.all([0, 1, 2].map(() => connect(server.baseUrl)));
+  const [hostSocket, awaySocket, guestSocket] = sockets;
+  try {
+    const [hostId, awayId, guestId] = await Promise.all(['Host', 'Away', 'Guest'].map((name) => player(server.baseUrl, `Chimp Scope ${name}`)));
+    const { matchId } = await startRound(sockets, [hostId, awayId, guestId]);
+    const paused = nextState(guestSocket, (state) => state.paused);
+    assert.equal((await emitAck(hostSocket, 'chimp:match:pause', { matchId, playerId: hostId })).paused, true);
+    await paused;
+    // The host and the first guest switch events; both sockets stay connected.
+    for (const socket of [hostSocket, awaySocket]) server.io.sockets.sockets.get(socket.id!)!.data.eventId = 'other-event';
+    const handedOver = nextState(guestSocket, (state) => !state.paused && (state as State & { host: { id: string } }).host.id === guestId);
+    assert.equal((await handedOver).me?.phase, 'memorize');
+    assert.equal((await emitAck(guestSocket, 'chimp:match:finish', { matchId, playerId: guestId })).ok, true);
+  } finally {
+    delete process.env.CHIMP_RECONNECT_GRACE_MS;
+    await closeServer(server, sockets);
   }
 });
