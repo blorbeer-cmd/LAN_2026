@@ -5649,6 +5649,7 @@ export const ARCADE_GAME_DEFS = [
   { key: 'snake', name: 'Snake', icon: '🐍' },
   { key: 'battleship', name: 'Battleship', icon: '⚓' },
   { key: 'challenge-rush', name: 'Challenge Rush', icon: '🎯' },
+  { key: 'chimp', name: 'Chimp Test', icon: '🐒' },
 ] as const;
 
 function seedArcadeGames(): void {

@@ -6,6 +6,7 @@ import { drawBlobbyFrame, BLOBBY_CANVAS_SIZE } from './blobby.js';
 import { drawSnakeBoard } from './snake.js';
 import { tetrisSpectatorHtml, paintTetrisSpectator } from './tetris.js';
 import { battleshipSpectatorHtml } from './battleship.js';
+import { chimpSpectatorHtml } from './chimp.js';
 import { getMyId } from '../../whoami.js';
 import { icon } from '../../icons.js';
 import { showToast } from '../../toast.js';
@@ -21,6 +22,7 @@ const GAME_NAMES = {
   snake: 'Snake',
   battleship: 'Battleship',
   'challenge-rush': 'Challenge Rush',
+  chimp: 'Chimp Test',
 };
 
 let socket = null;
@@ -250,7 +252,7 @@ function paintStage(stage, state) {
   const canvas = stage.querySelector('#arcade-watch-canvas');
   if (state.gameType === 'snake' && canvas && state.world) drawSnakeBoard(canvas, state.world, state.render);
   else if (state.gameType === 'tetris') paintTetrisSpectator(stage, state);
-  else if (canvas && state.gameType !== 'pong' && state.gameType !== 'blobby' && state.gameType !== 'quiz' && state.gameType !== 'challenge-rush') drawArcadeStreamCanvas(canvas, state);
+  else if (canvas && state.gameType !== 'pong' && state.gameType !== 'blobby' && state.gameType !== 'quiz' && state.gameType !== 'challenge-rush' && state.gameType !== 'chimp') drawArcadeStreamCanvas(canvas, state);
 }
 
 function animateStage() {
@@ -292,6 +294,7 @@ function updateWatchMeta(state) {
 function stateHtml(state) {
   if (!state) return '<div class="arcade-watch-placeholder">Verbindung zum Spiel wird hergestellt</div>';
   if (state.gameType === 'quiz') return quizWatchHtml(state);
+  if (state.gameType === 'chimp') return chimpSpectatorHtml(state);
   if (state.gameType === 'challenge-rush') {
     const challenge = typeof state.challenge === 'object' ? state.challenge : null;
     const title = challenge?.title ?? state.challenge ?? 'Mini-Challenge';

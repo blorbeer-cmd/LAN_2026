@@ -74,7 +74,7 @@ const SHARED_ROUTE_FILES = new Set([
 ]);
 
 const ARCADE_TEST_PATTERN =
-  /(?:^|\.)(?:arcade|battleship|blobby|challengeRush|pong|quiz|scribble|snake|tetris)/i;
+  /(?:^|\.)(?:arcade|battleship|blobby|challengeRush|chimp|pong|quiz|scribble|snake|tetris)/i;
 
 function normalize(file) {
   return file.replaceAll("\\", "/").replace(/^\.\//, "");

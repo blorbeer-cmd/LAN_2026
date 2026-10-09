@@ -11,7 +11,8 @@ export type SocketConnectionOwner =
   | 'arcade-pong'
   | 'arcade-snake'
   | 'arcade-battleship'
-  | 'arcade-challenge-rush';
+  | 'arcade-challenge-rush'
+  | 'arcade-chimp';
 
 type SocketConnectionHandler = (socket: Socket) => void;
 

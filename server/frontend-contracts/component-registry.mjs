@@ -952,6 +952,21 @@ export const components = [
     ]
   },
   {
+    "id": "chimp-grid",
+    "role": "structural-target",
+    "selector": ".chimp-cell",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#strukturziele-mit-44-px",
+    "purpose": "Square Chimp Test tiles sized by the grid; number, hidden, revealed and wrong states never change the cell geometry.",
+    "dynamicUses": [
+      {
+        "file": "public/js/arcade/views/chimp.js",
+        "source": "class=\"${classes.join(' ')}\"",
+        "reason": "The Chimp Test grid composes the tile state classes at runtime; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      }
+    ]
+  },
+  {
     "id": "scribble-tools",
     "role": "composite-part",
     "selector": ".scribble-size-btn, .scribble-swatch",
@@ -1233,6 +1248,16 @@ export const components = [
       "box-shadow",
       "border-radius"
     ]
+  },
+  {
+    "id": "chimp-tile-state",
+    "role": "composite-part",
+    "selector": ".is-number, .is-hidden, .is-empty, .is-revealed, .is-wrong",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Chimp Test tile states only change colors and the cursor; the grid cell keeps its geometry.",
+    "control": false,
+    "properties": []
   },
   {
     "id": "battleship-orientation-state",

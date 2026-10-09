@@ -243,6 +243,38 @@ test('GET /api/arcade/stats keeps non-Tetris AI matches out of human rankings', 
   }
 });
 
+test('GET /api/arcade/stats ranks Chimp Test runs by best solo run without counting them as matches', async () => {
+  const steady = await request(app).post('/api/players').send({ name: 'Chimp Statistik Ruhig' });
+  const cheater = await request(app).post('/api/players').send({ name: 'Chimp Statistik Zu Schnell' });
+  const now = Date.now();
+  const run = (id: string, player: { id: string; name: string }, level: number, strikesAtLevel: number, activeMsAtLevel: number, outcome: string, endedAt: number) => {
+    const scores = [{ playerId: player.id, name: player.name, mode: 'solo', level, outcome, strikesAtLevel, activeMsAtLevel, totalStrikes: 3, totalActiveMs: activeMsAtLevel }];
+    db.prepare(
+      `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+       VALUES (?, 'chimp', NULL, ?, ?, ?, ?, ?)`,
+    ).run(id, JSON.stringify([player]), JSON.stringify(scores), outcome === 'invalid' ? 'invalid' : 'strikes', endedAt - 1000, endedAt);
+  };
+  run('chimp-stats-1', steady.body, 7, 2, 40_000, 'valid', now - 3000);
+  run('chimp-stats-2', steady.body, 7, 0, 50_000, 'valid', now - 2000);
+  run('chimp-stats-3', steady.body, 6, 0, 10_000, 'valid', now - 1000);
+  run('chimp-stats-4', cheater.body, 30, 0, 900, 'invalid', now - 1500);
+  run('chimp-stats-5', cheater.body, 5, 1, 9_000, 'valid', now - 500);
+
+  const res = await getArcadeStats();
+  assert.equal(res.status, 200);
+  const chimp = res.body.games.filter((game: { gameType: string }) => game.gameType === 'chimp');
+  assert.equal(chimp.length, 1);
+  assert.equal(chimp[0].kind, 'solo');
+  const rows = chimp[0].players.filter((entry: { playerId: string }) => [steady.body.id, cheater.body.id].includes(entry.playerId));
+  assert.deepEqual(
+    rows.map((entry: { playerId: string; level: number; strikesAtLevel: number; runs: number; averageLevel: number; rating: { tier: string } }) => [entry.playerId, entry.level, entry.strikesAtLevel, entry.runs, entry.averageLevel, entry.rating.tier]),
+    [[steady.body.id, 7, 0, 3, 6.7, 'Kletteraffe'], [cheater.body.id, 5, 1, 1, 5, 'Zoobesucher']],
+  );
+  for (const game of res.body.games.filter((entry: { gameType: string }) => entry.gameType !== 'chimp')) {
+    assert.ok(!game.players.some((entry: { playerId: string }) => entry.playerId === steady.body.id || entry.playerId === cheater.body.id));
+  }
+});
+
 test('GET /api/arcade/stats excludes drawings from non-completed Scribble AI matches', async () => {
   const aiArtist = await request(app).post('/api/players').send({ name: 'KI Scribble Abbruch Künstler' });
   const normalArtist = await request(app).post('/api/players').send({ name: 'Scribble Ranglisten Künstler' });

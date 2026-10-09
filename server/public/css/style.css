@@ -108,6 +108,13 @@
   --challenge-rush-button-min-width: 180px;
   --challenge-rush-button-min-height: 96px;
   --challenge-rush-trial-grid-max-width: 420px;
+  /* Chimp Test: the 8x5 laptop grid stops growing at a size where all tiles
+     stay scannable at a glance; on phones the 5x8 grid also keeps the header,
+     status line and hint visible below it without scrolling. */
+  --chimp-grid-max-width: 560px;
+  --chimp-grid-reserved-height: 20rem;
+  --chimp-playfield-min-height: 280px;
+  --chimp-rating-width: 320px;
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
   /* Info dialog with two columns of entries from --bp-lg. */

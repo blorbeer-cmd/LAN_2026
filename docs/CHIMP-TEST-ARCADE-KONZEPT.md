@@ -2,7 +2,10 @@
 
 Stand: 9. Oktober 2026
 
-**Implementierungsstand:** Nur Konzept. Es gibt noch keinen Code für dieses Spiel.
+**Implementierungsstand:** Etappe 1 ist umgesetzt (`server/src/arcade/chimp*.ts`,
+`server/public/js/arcade/views/chimp.js`, `server/public/js/arcade/chimpFormat.js`). Abweichungen
+vom ursprünglichen Entwurf sind direkt in den betroffenen Abschnitten nachgezogen. Etappe 2 ist
+nicht begonnen.
 
 ## 1. Kurzfazit
 
@@ -253,7 +256,11 @@ gespeichert. Grenzen oder Namen lassen sich später ändern, ohne alte Ergebniss
 - Sortierung: bestes Level, dann weniger Strikes bis zum Erreichen dieses Levels, dann weniger
   aktive Zeit bis zum Erreichen dieses Levels (beides aus 3.2, beim Levelabschluss festgehalten),
   dann der frühere Zeitpunkt (wer den Wert zuerst erreicht hat, steht vorn).
-- Spalten: Rang, Name, bestes Level, Affen-Nähe mit Stufe, Anzahl Läufe, durchschnittliches Level.
+- Spalten: Rang, Name, bestes Level, darunter Affen-Nähe mit Stufe, Strikes und aktive Zeit des
+  Bestlaufs, Anzahl Läufe und durchschnittliches Level.
+- Die Rangliste lebt in der vorhandenen Arcade-Karte „Statistik“: Der Spielfilter „Chimp Test“
+  zeigt sie statt der Siegrangliste. Die Gesamtrangliste „Alle Spiele“ zählt Siege und enthält den
+  Chimp Test deshalb nicht.
 - Läufe, die die Plausibilitätsprüfung nicht bestehen (siehe 5.5), erscheinen nicht in der
   Rangliste.
 - Gezählt werden nur menschliche Läufe; einen KI-Gegner gibt es ohnehin nicht.
@@ -264,20 +271,21 @@ gespeichert. Grenzen oder Namen lassen sich später ändern, ohne alte Ergebniss
 
 ### 4.1 Einstieg im Arcade-Launcher
 
-- Neue Spielkarte „Chimp Test“ mit einem lokalen Lucide-Icon (Vorschlag: `banana`, sonst
-  `grid-3x3`) und dem üblichen Badge „… offen“.
-- Hilfe-Popover neben dem Titel mit drei Regelzeilen: „Merke dir die Zahlen. Klick die 1 – dann
-  werden alle anderen verdeckt. Klick den Rest in der richtigen Reihenfolge. Drei Fehler und du bist
+- „Chimp Test“ steht im Dialog „Lobby öffnen“ in der Spielauswahl und trägt das lokale
+  Lucide-Icon `banana`. Der Arcade-Hub hat keine Spielkacheln mehr; Lobbys erscheinen in der
+  gemeinsamen Lobbyliste.
+- Hilfe-Popover rechts neben dem Titel der Spielansicht: „Merke dir die Zahlen. Tippe die 1 – dann
+  werden alle anderen verdeckt. Tippe den Rest in der richtigen Reihenfolge. Drei Fehler und du bist
   raus.“ Dazu der Hinweis zur Affen-Bewertung aus 3.5.
-- Keine Moduswahl im MVP. Der Button „Lobby öffnen“ öffnet direkt eine Lobby. `modes: null` in
-  `arcadeGames.js`, wie bei Challenge Rush.
+- Keine Moduswahl und kein Gegner-Schalter. `modes: null` in `arcadeGames.js`, wie bei Challenge
+  Rush.
 
 ### 4.2 Lobbykarte
 
 - Lineare Spielerliste mit den vorhandenen Lobby-Primitiven und Belegung `n/15`.
 - Bereitschaft über den bestehenden „Bereit? / Bereit“-Schalter. Der Host gilt als bereit.
-- Start ist ab 1 Person möglich, wenn alle bereit sind. Neben einem deaktivierten Start nennt der
-  Warn-Hilfe-Trigger den Grund, zum Beispiel „Alex ist noch nicht bereit“.
+- Start ist ab 1 Person möglich, wenn alle bereit sind. Ein deaktiviertes „Starten“ nennt seinen
+  Grund wie bei allen Arcade-Lobbys im Button-Titel („Noch nicht alle bereit“).
 
 ### 4.3 Spielansicht
 
@@ -285,8 +293,10 @@ gespeichert. Grenzen oder Namen lassen sich später ändern, ohne alte Ergebniss
 
 - Semantisches CSS-Grid aus `<button>`-Elementen, kein Canvas. Das bringt sichtbaren
   Tastaturfokus und saubere Touch-Ziele.
-- Handy (Hochformat, ab 360 px Breite): 5 Spalten, Kacheln mindestens 52×52 CSS-Pixel, das
-  vollständige Raster passt ohne Scrollen auf den Bildschirm.
+- Handy (unter 640 px Breite): 5 Spalten, die von oben nach unten gefüllt werden. Die Rasterbreite
+  richtet sich nach der Bildschirmhöhe, damit Raster, Statuszeile und Hinweis auf üblichen Handys
+  ohne Scrollen sichtbar sind. Kacheln bleiben mindestens 44×44 CSS-Pixel groß; auf sehr
+  niedrigen Bildschirmen scrollt die Seite deshalb ein wenig.
 - Laptop: 8 Spalten, Kacheln quadratisch und auf eine gut lesbare Maximalgröße begrenzt.
 - **Sichtbare Zahl:** große, kontrastreiche Ziffer auf neutraler Fläche.
 - **Verdeckt:** einheitlich gefüllte Kachel in der Akzentfarbe aus den Design-Tokens, ohne jeden
@@ -298,12 +308,15 @@ gespeichert. Grenzen oder Namen lassen sich später ändern, ohne alte Ergebniss
   („Falsch – die 5 war hier“).
 - Animationen sind kurz und respektieren `prefers-reduced-motion`.
 
-#### Statusleiste über dem Raster
+#### Statuszeile und Live-Stand
 
-- Links: „Level 9 · 9 Zahlen“. Rechts: Strikes als drei Symbole mit Textalternative („1 von 3
-  Strikes“).
-- Darunter eine kompakte Live-Liste der anderen Personen mit Level, Strikes und Status
-  („spielt“, „raus“, „getrennt“). Am Handy einklappbar, am Laptop als schmale Seitenspalte.
+- Über dem Raster links die Zahlenanzahl („9 Zahlen“), rechts die Strikes als drei Symbole mit
+  Textalternative („1 von 3 Strikes“). Darunter steht der Hinweis der aktuellen Phase („Merken,
+  dann mit der 1 beginnen“, „3 von 9“, „Falsch – die 4 war dran“).
+- Unter dem Raster folgt der Live-Stand aller Mitspielenden: geschafftes Level, aktuelle
+  Zahlenanzahl, Strikes und Status („Fertig“, „Ausgestiegen“, „Getrennt“). Er steht bewusst unter
+  dem eigenen Raster, damit auch eine Runde mit 15 Personen das Spielfeld am Handy nicht nach
+  unten schiebt. Neue Fortschritte anderer aktualisieren nur diese Liste, nie das eigene Raster.
 
 #### Zwischenbildschirm
 
@@ -424,7 +437,7 @@ Server-State pro Person:
 
 | Event | Richtung | Zweck |
 | --- | --- | --- |
-| `chimp:lobbies` | S→C | Für den Scope sichtbare Lobbys mit Belegung und Ready-State. |
+| `chimp:lobbies` | S→C | Für den Scope sichtbare Lobbys mit Belegung und Ready-State; `chimp:lobbies:get` fordert sie an. |
 | `chimp:lobby:create` / `join` / `leave` / `ready` / `start` | C→S | Lobbyverwaltung wie bei Challenge Rush. |
 | `chimp:state` | S→C | Personalisierter Zustand: eigenes Level, Phase und Raster sowie der öffentliche Live-Stand. |
 | `chimp:click` | C→S | `{ matchId, playerId, levelToken, cell }` – ein Klick auf Feldindex 0–39. |
@@ -432,7 +445,8 @@ Server-State pro Person:
 | `chimp:standings` | S→C | Öffentlicher Live-Stand bei jeder Änderung von Level, Strike oder Status. |
 | `chimp:reveal` | S→C | Nur an die betroffene Person: Lösung des gerade per Fehlklick beendeten Versuchs. |
 | `chimp:run:end` | S→C | Eigenes Solo-Ergebnis mit Affen-Bewertung, Bestwert-Hinweis und Rang. |
-| `chimp:match:*` | beide | Pause, Fortsetzen, Verlassen, Beenden und Abschluss. |
+| `chimp:match:pause` / `finish` / `leave` / `reconnect` | C→S | Pause umschalten (Host), Runde beenden (Host), eigenen Lauf verlassen, Lauf nach Verbindungsabbruch wieder aufnehmen. |
+| `chimp:match:start` | S→C | Rundenstart beziehungsweise Wiederaufnahme. |
 | `chimp:match:end` | S→C | Rundenende; bei mindestens zwei Personen mit der flüchtigen Rundenrangliste. |
 
 Details:
@@ -463,9 +477,10 @@ Die Zahlen müssen zum Einprägen beim Client angezeigt werden. Ein manipulierte
 also behalten. Vollständig verhindern lässt sich das nicht. Für eine LAN unter Freunden reicht die
 gleiche Schutzstufe wie bei den übrigen Arcade-Spielen: Der Server ist für Ablauf und Wertung
 maßgeblich, Klicks werden einzeln geprüft, und Zuschauer- und Kiosk-Payloads enthalten keine
-Positionen. Eine Plausibilitätsgrenze erkennt offensichtliche Automatisierung, etwa ein ganzes
-Level mit 20 Zahlen in unter 0,5 Sekunden ab dem ersten Klick. Solche Läufe werden als
-„ungültig“ gewertet und nicht in die Rangliste übernommen.
+Positionen. Eine Plausibilitätsgrenze erkennt offensichtliche Automatisierung: Ab 8 Zahlen gilt
+ein Level als unmenschlich schnell, wenn zwischen erstem und letztem Klick weniger als 40 ms pro
+weiterer Zahl liegen (bei 20 Zahlen also unter 0,76 Sekunden). Solche Läufe enden sofort, werden
+als „ungültig“ gespeichert und nicht in die Rangliste übernommen.
 
 ### 5.6 Ergebnisse und Statistiken
 

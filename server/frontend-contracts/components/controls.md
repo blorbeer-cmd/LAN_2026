@@ -67,7 +67,8 @@ cells and the kiosk TV canvas
 (its own device class). Icon-Controls verwenden den Token regelmäßig als Mindestbreite, nicht als
 Standardhöhe. Die Registry-IDs `calendar-days`, `search-options`, `structural-cards`, `player-card`,
 `player-selection-actions`, `structural-disclosure`, `arcade-tile`, `battleship-grid`,
-`battleship-ship-display`, `global-search-result`, `challenge-targets` und `scribble-word-choice`
+`battleship-ship-display`, `global-search-result`, `challenge-targets`, `chimp-grid` und
+`scribble-word-choice`
 erhalten ihre vorhandene Strukturgeometrie.
 Ganze Karten, Spielreaktionsflächen und die große Wortauswahl können größer als 44 px sein;
 die Normalisierung definiert ihre bestehenden Spielmaße nicht neu.
@@ -554,6 +555,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:challenge-targets`: Existing game reaction targets, choice tiles and memory cells keep their dedicated geometry.
 
+- `registry:chimp-grid`: Square Chimp Test tiles sized by the grid; number, hidden, revealed and wrong states never change the cell geometry.
+
 - `registry:scribble-tools`: Internal brush-width and color samples in the drawing palette retain existing dimensions.
 
 - `registry:scribble-word-choice`: Dedicated word-selection game target retains its large type and padded choice surface.
@@ -765,6 +768,8 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:battleship-shot-state`: Ship tiles and shot dots are decoration inside the unchanged cell: markers are sized pseudo-elements, ships drop the cell radius.
 
 - `registry:battleship-orientation-state`: Orientation rounds only the bow and stern of a continuous ship bar; the cell keeps its geometry.
+
+- `registry:chimp-tile-state`: Chimp Test tile states only change colors and the cursor; the grid cell keeps its geometry.
 
 - `registry:scribble-swatch-state`: Selected swatch changes its border color without resizing the palette control.
 

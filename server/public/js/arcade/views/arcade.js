@@ -14,6 +14,8 @@ import { ensurePongSocket, renderPongLobbyEntries, wirePongLobbyCard, myPongLobb
 import { ensureSnakeSocket, renderSnakeLobbyEntries, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, leaveMySnakeLobby, createSnakeLobby } from './snake.js';
 import { ensureBattleshipSocket, renderBattleshipLobbyEntries, wireBattleshipLobbyCard, myBattleshipLobby, hasBattleshipMatch, createBattleshipLobby } from './battleship.js';
 import { ensureChallengeRushSocket, renderChallengeRushLobbyEntries, wireChallengeRushLobbyCard, myChallengeRushLobby, hasChallengeRushMatch, leaveMyChallengeRushLobby, createChallengeRushLobby, challengeRushCreateOptionsHtml, wireChallengeRushCreateOptions } from './challengeRush.js';
+import { ensureChimpSocket, renderChimpLobbyEntries, wireChimpLobbyCard, myChimpLobby, hasChimpMatch, leaveMyChimpLobby, createChimpLobby } from './chimp.js';
+import { chimpRatingText, chimpStrikesText, chimpTimeText } from '../chimpFormat.js';
 import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadePlayerStripHtml, arcadeResultListHtml, arcadeScoreboardHtml, pointsLabel, wireArcadeToolbar } from '../arcadeUi.js';
 import { createRematchController } from '../rematch.js';
 import { playArcadeSound } from '../arcadeSound.js';
@@ -72,6 +74,18 @@ const quizRematch = createRematchController({
   rerender: () => window.dispatchEvent(new CustomEvent('respawn:rerender')),
   onError: (message) => showToast(message, { error: true }),
 });
+
+// A finished Chimp Test run makes the cached statistics stale; its result
+// link additionally opens the statistics card on the Chimp leaderboard.
+if (typeof window !== 'undefined') {
+  window.addEventListener('respawn:arcade-stats', (event) => {
+    if (event.detail?.filter) {
+      statsFilter = event.detail.filter;
+      statsOpen = true;
+    }
+    stats = null;
+  });
+}
 
 function visibleGames() {
   return ARCADE_GAMES
@@ -237,6 +251,8 @@ function statsEntriesFor(gameId) {
   return games.filter((g) => g.gameType === gameId && !g.baseGameType);
 }
 
+// Solo games (Chimp Test) have no wins; they only appear in the filter and
+// show their own leaderboard instead of the overall win ranking.
 function aggregateStats() {
   const players = new Map();
   const gamesWithMatches = [];
@@ -244,6 +260,7 @@ function aggregateStats() {
     const entries = statsEntriesFor(game.id);
     if (!entries.some((entry) => entry.matches > 0)) continue;
     gamesWithMatches.push(game);
+    if (entries.some((entry) => entry.kind === 'solo')) continue;
     for (const entry of entries) {
       for (const p of entry.players ?? []) {
         const row = players.get(p.playerId) ?? { playerId: p.playerId, name: p.name, wins: 0, matches: 0, perGame: {} };
@@ -279,9 +296,33 @@ function statsFilterHtml(games) {
   </select>`;
 }
 
+// The Chimp Test ranks every player's best solo run: level, then strikes and
+// active time up to that level. The value column carries the level.
+function chimpStatsHtml(games) {
+  const entry = statsEntriesFor('chimp')[0];
+  const myId = getMyId();
+  const list = (entry?.players ?? [])
+    .map((p) => {
+      const player = playerById(p.playerId) ?? { name: p.name };
+      const detail = [chimpRatingText(p.rating), chimpStrikesText(p.strikesAtLevel), chimpTimeText(p.activeMsAtLevel), `${p.runs} ${p.runs === 1 ? 'Lauf' : 'Läufe'}`, `Ø ${String(p.averageLevel).replace('.', ',')}`].join(' · ');
+      return `<div class="arcade-stats-row chimp-stats-row">
+        <span class="arcade-stats-rank">${p.place}</span>
+        <span class="arcade-stats-player">${avatarHtml(player, 20)}<span class="chimp-stats-text"><span class="player-name${p.playerId === myId ? ' is-me' : ''}">${escapeHtml(p.name)}</span><span class="chimp-stats-detail">${escapeHtml(detail)}</span></span></span>
+        <strong class="arcade-stats-wins">${p.level}</strong>
+      </div>`;
+    })
+    .join('');
+  return { head: '', body: `<div class="arcade-stats-toolbar"><div class="arcade-stats-legend"></div>${statsFilterHtml(games)}</div><div class="arcade-stats-list">${list}</div>` };
+}
+
 function arcadeStatsHtml() {
   if (statsLoading && !stats) return { head: '', body: emptyStateHtml('Statistik lädt', { className: 'empty-state-compact' }) };
   const { players, games } = aggregateStats();
+  if (statsFilter === 'chimp' && games.some((game) => game.id === 'chimp')) return chimpStatsHtml(games);
+  if (!players.length && games.some((game) => game.id === 'chimp')) {
+    statsFilter = 'all';
+    return { head: '', body: `<div class="arcade-stats-toolbar"><div class="arcade-stats-legend"></div>${statsFilterHtml(games)}</div>${emptyStateHtml('Noch keine Siege.', { className: 'empty-state-compact' })}` };
+  }
   if (!players.length) return { head: '', body: emptyStateHtml('Noch keine Arcade-Runden.', { className: 'empty-state-compact' }) };
   if (statsFilter !== 'all' && !games.some((game) => game.id === statsFilter)) statsFilter = 'all';
   const shownGames = statsFilter === 'all' ? games : games.filter((game) => game.id === statsFilter);
@@ -513,6 +554,7 @@ async function leaveCurrentLobbyBeforeAction(_targetGame, action) {
     { name: 'Snake', lobby: mySnakeLobby(), leave: leaveMySnakeLobby },
     { name: 'Battleship', lobby: myBattleshipLobby(), leave: async (lobby) => emitWithAck('battleship:lobby:leave', { lobbyId: lobby.id, playerId }) },
     { name: 'Challenge Rush', lobby: myChallengeRushLobby(), leave: leaveMyChallengeRushLobby },
+    { name: 'Chimp Test', lobby: myChimpLobby(), leave: leaveMyChimpLobby },
   ];
   const current = candidates.find((entry) => entry.lobby);
   if (!current) return true;
@@ -543,6 +585,7 @@ const LOBBY_SOURCES = [
   { id: 'snake', entries: renderSnakeLobbyEntries, mine: mySnakeLobby, create: createSnakeLobby },
   { id: 'battleship', entries: renderBattleshipLobbyEntries, mine: myBattleshipLobby, create: createBattleshipLobby },
   { id: 'challenge-rush', entries: renderChallengeRushLobbyEntries, mine: myChallengeRushLobby, create: createChallengeRushLobby },
+  { id: 'chimp', entries: renderChimpLobbyEntries, mine: myChimpLobby, create: createChimpLobby },
 ];
 
 function allLobbiesHtml() {
@@ -558,7 +601,7 @@ function allLobbiesHtml() {
 }
 
 function hasRunningMatch() {
-  return Boolean(match && !match.ended) || hasTetrisMatch() || hasScribbleMatch() || hasPongMatch() || hasBlobbyMatch() || hasSnakeMatch() || hasBattleshipMatch() || hasChallengeRushMatch();
+  return Boolean(match && !match.ended) || hasTetrisMatch() || hasScribbleMatch() || hasPongMatch() || hasBlobbyMatch() || hasSnakeMatch() || hasBattleshipMatch() || hasChallengeRushMatch() || hasChimpMatch();
 }
 
 const LOCAL_MATCH = {
@@ -570,6 +613,7 @@ const LOCAL_MATCH = {
   snake: hasSnakeMatch,
   battleship: hasBattleshipMatch,
   'challenge-rush': hasChallengeRushMatch,
+  chimp: hasChimpMatch,
 };
 
 function playerNames(live) {
@@ -634,7 +678,8 @@ function createDialogBodyHtml() {
   if (!games.some((game) => game.id === createDraft.game)) createDraft.game = games[0]?.id ?? 'quiz';
   const game = arcadeGame(createDraft.game);
   if (game.modes && !game.modes.some((mode) => mode.value === createDraft.mode)) createDraft.mode = game.modes[0].value;
-  const mayUseAi = currentPlayerMayUseArcadeAi() && game.id !== 'challenge-rush';
+  // Challenge Rush and the Chimp Test have no AI opponent.
+  const mayUseAi = currentPlayerMayUseArcadeAi() && game.id !== 'challenge-rush' && game.id !== 'chimp';
   return `<form class="stack arcade-create-form" id="arcade-create-form">
     <label class="field">
       <span class="field-label">Spiel</span>
@@ -701,6 +746,7 @@ export function renderArcade(container, ctx) {
   ensureSnakeSocket();
   ensureBattleshipSocket();
   ensureChallengeRushSocket();
+  ensureChimpSocket();
   if (!stats && !statsLoading) loadStats(ctx);
 
   const statsView = arcadeStatsHtml();
@@ -736,6 +782,7 @@ export function renderArcade(container, ctx) {
   wireSnakeLobbyCard(container, { beforeJoin: beforeJoin('snake') });
   wireBattleshipLobbyCard(container, { beforeJoin: beforeJoin('battleship') });
   wireChallengeRushLobbyCard(container, { beforeJoin: beforeJoin('challenge-rush') });
+  wireChimpLobbyCard(container, { beforeJoin: beforeJoin('chimp') });
   wireQuizLobbyCard(container);
 
   container.querySelector('#arcade-create-lobby')?.addEventListener('click', openCreateDialog);

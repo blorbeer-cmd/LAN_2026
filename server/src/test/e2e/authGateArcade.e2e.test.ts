@@ -148,7 +148,7 @@ test('a required-mode member can open an Arcade lobby with a scoped game socket'
   await page.waitForSelector(ARCADE_HUB);
   await openCreateDialog(page);
   // Members neither choose the AI nor see the admin-only games.
-  assert.deepEqual(await dialogGames(page), ['battleship', 'blobby', 'quiz', 'pong', 'snake', 'tetris']);
+  assert.deepEqual(await dialogGames(page), ['battleship', 'blobby', 'chimp', 'quiz', 'pong', 'snake', 'tetris']);
   await page.selectOption('#arcade-create-game', 'tetris');
   await page.waitForSelector('#arcade-create-mode');
   assert.equal(await page.locator('#arcade-create-opponent').count(), 0);
@@ -176,7 +176,7 @@ test('an admin sees AI and test settings only after activation', async () => {
     // Without Admin mode an admin gets the member dialog.
     await openMoreViewEntry(adminPage, '[data-navigate="arcade"]');
     await openCreateDialog(adminPage);
-    assert.deepEqual(await dialogGames(adminPage), ['battleship', 'blobby', 'quiz', 'pong', 'snake', 'tetris']);
+    assert.deepEqual(await dialogGames(adminPage), ['battleship', 'blobby', 'chimp', 'quiz', 'pong', 'snake', 'tetris']);
     await adminPage.selectOption('#arcade-create-game', 'tetris');
     await adminPage.waitForSelector('#arcade-create-mode');
     assert.equal(await adminPage.locator('#arcade-create-opponent').count(), 0);
@@ -189,7 +189,7 @@ test('an admin sees AI and test settings only after activation', async () => {
     await openCreateDialog(adminPage);
     assert.deepEqual(
       await dialogGames(adminPage),
-      ['battleship', 'blobby', 'challenge-rush', 'quiz', 'pong', 'scribble', 'snake', 'tetris'],
+      ['battleship', 'blobby', 'challenge-rush', 'chimp', 'quiz', 'pong', 'scribble', 'snake', 'tetris'],
       'Admin mode adds the parked games in alphabetical order',
     );
 
@@ -305,7 +305,7 @@ test('an admin sees AI and test settings only after activation', async () => {
     await adminPage.evaluate(async () => (await globalThis.eval("import('/js/admin.js')")).setAdmin(false));
     await adminPage.waitForSelector('#admin-indicator', { state: 'hidden' });
     await openCreateDialog(adminPage);
-    assert.deepEqual(await dialogGames(adminPage), ['battleship', 'blobby', 'quiz', 'pong', 'snake', 'tetris']);
+    assert.deepEqual(await dialogGames(adminPage), ['battleship', 'blobby', 'chimp', 'quiz', 'pong', 'snake', 'tetris']);
     await adminPage.selectOption('#arcade-create-game', 'tetris');
     await adminPage.waitForSelector('#arcade-create-mode');
     assert.equal(await adminPage.locator('#arcade-create-opponent').count(), 0);

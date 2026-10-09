@@ -12,6 +12,7 @@ export const ARCADE_GAMES = [
   { id: 'snake', name: 'Snake', iconName: 'snake', modes: [{ value: 'classic', label: 'Classic' }, { value: 'arena', label: 'Arena' }], room: 'snake' },
   { id: 'battleship', name: 'Battleship', iconName: 'ship', modes: null, room: 'battleship' },
   { id: 'challenge-rush', name: 'Challenge Rush', iconName: 'crosshair', modes: null, room: 'challengeRush' },
+  { id: 'chimp', name: 'Chimp Test', iconName: 'banana', modes: null, room: 'chimp' },
 ];
 
 export function arcadeGame(id) {

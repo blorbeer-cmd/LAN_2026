@@ -50,6 +50,7 @@ export const E2E_MANIFEST = Object.freeze({
       "snakeArenaViews.e2e.test.ts",
       "challengeRush.e2e.test.ts",
       "battleship.e2e.test.ts",
+      "chimp.e2e.test.ts",
       "arcadeFlows.e2e.test.ts",
       "arcade.e2e.test.ts",
       "arcadeMultiplayer.e2e.test.ts",
