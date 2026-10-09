@@ -570,9 +570,7 @@ Niederlagen erzeugen. Deshalb:
 
 ## 9. Entscheidungen
 
-### Offen
-
-1. **Affen-Bewertung:** Stufennamen und -grenzen aus 3.5 so übernehmen oder anpassen?
+Alle Entscheidungen für das erste Release sind getroffen.
 
 ### Getroffen (9. Oktober 2026)
 
@@ -584,3 +582,4 @@ Niederlagen erzeugen. Deshalb:
 - Name: **„Chimp Test“**.
 - Anordnung: **eigene Zufallsfolge pro Person**.
 - Umfang: **nur Classic**. Der Blitz-Modus aus 3.4 bleibt eine Idee für später.
+- Affen-Bewertung: **Stufennamen und -grenzen wie in 3.5** („Bananenschale“ bis „Affenkönig“).
