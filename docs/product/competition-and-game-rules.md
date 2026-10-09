@@ -219,8 +219,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   for admins in Admin mode, „Gegner“ („Mensch“/„KI“). Modus and Gegner are `.arcade-mode-toggle`
   segmented switches that share one row with equal segment widths; on very narrow phones the
   opponent switch wraps below. The compact submit „Lobby öffnen“ sits at the dialog's right end.
-  Tetris, Pong, Snake and Blobby Volley start on Duell (Snake: „Classic“). Challenge Rush has
-  neither switch; its admin test selection lives in the same dialog.
+  Tetris, Pong, Snake and Blobby Volley start on Duell (Snake: „Classic“). Challenge Rush and the
+  Chimp Test have neither switch; Challenge Rush's admin test selection lives in the same dialog.
   All open lobbies of every game share one list. The current player's own lobby is a card with
   game icon, „<Host>s Lobby“, a meta line (game, mode, occupancy), the member rows with role
   („Host“, „Bereit“, „Wartet“) and free seats, host settings such as „Punkte bis Sieg“ and the
@@ -233,7 +233,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   C und D“), game and score. A player's own match still held by this tab offers „Weiterspielen“,
   every other match „Zuschauen“.
 - **Statistik** — A collapsible card, collapsed by default, with one overall ranking across all
-  games and a game filter. Bars use muted per-game colors from the accent gradient.
+  games and a game filter. Bars use muted per-game colors from the accent gradient. The Chimp Test
+  has no wins and stays out of the overall ranking; its filter entry shows the Chimp-Test-Rangliste
+  instead: one row per player with the best solo run (level, then strikes and active time up to
+  that level), the chimp rating, the number of runs and the average level.
 - **Game rooms** — Every game uses the same structure: a header with the game title, compact
   neutral match actions („Pausieren“/„Fortsetzen“, „Beenden“, „Verlassen“) and the mute and
   expand icons; one stage card with the score bar (two sides) or the player strip (more players)
@@ -253,15 +256,27 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   orientation switch and „Zufällig“, „Zurücksetzen“ and „Flotte bereit“ in the header; ships are
   continuous bars, shots are dots. The quiz shows question, category and timer on one stage and
   keeps the revealed answer for 3.5 seconds.
+  The Chimp Test accepts one to fifteen players who start together and then each play their own
+  grid (8×5 on laptops, 5×8 filled column by column on phones): the numbers stay visible until the
+  1 is tapped, every mistake is a strike that briefly reveals the solution to that player only, and
+  three strikes end the run. Each run is stored as a solo result without wins, losses or places;
+  a shared round shows a display-only „Rundenrangliste“ once at its end. The own result shows the
+  level, the „Affen-Nähe“ against Ayumu (9 numbers = 100 %) with its tier, new personal bests and
+  the rank in the Chimp-Test-Rangliste, also after a reload during the round. Reload, reconnect
+  and pause always return the same attempt. When the host leaves, stays away past the 15-second
+  reconnect grace or switches events, the controls pass to a player who can still reach the round
+  and a pause is lifted.
 - **AI** — Admins in Admin mode may choose „KI“ in the create dialog. Tetris and Snake Duell use one
   bot, their Arena fills all opponent seats; Pong and Blobby Volley cover the AI duel and Doppel with
   a bot teammate.
-- **Parked games** — Scribble and Challenge Rush are visible to admins in Admin mode only (dialog,
-  lobby list, running matches, statistics filter). This is a presentation filter, not a security
+- **Parked games** — Scribble, Challenge Rush and the Chimp Test are visible to admins in Admin mode
+  only (dialog, lobby list, running matches, statistics filter). The Chimp Test stays parked until it
+  has been tried out on a test system. This is a presentation filter, not a security
   boundary. Challenge Rush keeps its reduced catalog of 21 challenges and has no AI.
 - **Spectating** — „Zuschauen“ opens a read-only view that reuses each game's own player
   presentation (boards, canvases, score bar). Quiz spectators see the question and, after the
   reveal, the answer; Scribble spectators never receive the word, the hints or the guesses.
+  Chimp Test spectators only see each player's progress, never numbers or tile positions.
 - **Kiosk** — The kiosk does not take over the screen for Arcade matches; its dashboard stays
   visible. The takeover logic remains in `kiosk.js` behind `KIOSK_ARCADE_STREAM`.
 

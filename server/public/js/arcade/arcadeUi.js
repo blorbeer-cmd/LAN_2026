@@ -78,9 +78,11 @@ export function arcadeToolbarHtml() {
 // Shared page header of a running game: the title on the left, the match
 // controls (pause, end, leave) and the mute/expand icons on the right. Games
 // replace only `.arcade-match-controls` on pause or host changes.
-export function arcadeGameHeaderHtml(title, controlsHtml = '', { expand = true, mute = true } = {}) {
+// `titleInfoHtml` is an optional InfoTooltip directly right of the title.
+export function arcadeGameHeaderHtml(title, controlsHtml = '', { expand = true, mute = true, titleInfoHtml = '' } = {}) {
+  const heading = `<h1 class="view-title">${escapeHtml(title)}</h1>`;
   return `<div class="arcade-game-header">
-    <h1 class="view-title">${escapeHtml(title)}</h1>
+    ${titleInfoHtml ? `<div class="title-with-info">${heading}${titleInfoHtml}</div>` : heading}
     <div class="arcade-game-header-actions">
       ${controlsHtml}
       ${mute ? arcadeMuteControlHtml() : ''}${expand ? arcadeExpandControlHtml() : ''}
@@ -97,13 +99,14 @@ export function pointsLabel(points) {
 }
 
 // Final standings after a match: place, player and the score in a fixed right
-// column. The winner's score is green, everyone else is muted.
+// column. The winner's score is green, everyone else is muted. `me` marks the
+// own row where a list has no winner (Chimp Test round ranking).
 export function arcadeResultListHtml(rows) {
   const hasWinner = rows.some((row) => row.winner);
   return `<div class="arcade-result-list${hasWinner ? ' has-winner' : ''}">${rows
     .map((row, index) => {
       const player = { ...(playerById(row.player.id) ?? {}), ...row.player };
-      return `<div class="arcade-result-row${row.winner ? ' is-winner' : ''}">
+      return `<div class="arcade-result-row${row.winner ? ' is-winner' : ''}${row.me ? ' is-me' : ''}">
         <span class="arcade-result-rank">${row.place ?? index + 1}</span>
         <span class="arcade-result-player">${row.colorVar ? `<span class="arcade-result-swatch" style="background:${row.colorVar}" aria-hidden="true"></span>` : avatarHtml(player, 24)}<span class="arcade-result-text"><span class="player-name">${escapeHtml(row.player.name)}</span>${row.detail ? `<span class="arcade-result-detail">${escapeHtml(row.detail)}</span>` : ''}</span></span>
         <strong class="arcade-result-value">${escapeHtml(row.value ?? '')}${row.winner ? '<span class="visually-hidden"> · Sieg</span>' : ''}</strong>

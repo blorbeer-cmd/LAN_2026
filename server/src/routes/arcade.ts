@@ -7,7 +7,9 @@ import { openLobbySummaries as blobbyLobbies } from '../arcade/blobby';
 import { openLobbySummaries as pongLobbies } from '../arcade/pong';
 import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
 import { openLobbySummaries as battleshipLobbies } from '../arcade/battleship';
+import { openLobbySummaries as chimpLobbies } from '../arcade/chimp';
 import { isKnownArcadeBotId } from '../arcade/botIds';
+import { chimpLeaderboard } from '../arcade/chimpLeaderboard';
 import {
   requestCanUseEventWorkspace,
   requireGroupEventAccess,
@@ -26,6 +28,7 @@ export const ARCADE_TITLES: Record<string, string> = {
   pong: 'Pong',
   snake: 'Snake',
   battleship: 'Battleship',
+  chimp: 'Chimp Test',
 };
 interface ArcadeResultRow {
   id: string;
@@ -118,6 +121,7 @@ arcadeRouter.get('/lobbies', (req, res) => {
     ...blobbyLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'blobby' })),
     ...snakeLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'snake' })),
     ...battleshipLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'battleship' })),
+    ...chimpLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'chimp' })),
   ]
     .map((l) => ({ ...l, title: ARCADE_TITLES[l.gameType] ?? l.gameType }))
     .sort((a, b) => b.createdAt - a.createdAt);
@@ -229,6 +233,9 @@ arcadeRouter.get('/stats', (req, res) => {
   };
 
   for (const row of rows) {
+    // Chimp Test runs are solo results without wins or losses; they get their
+    // own leaderboard below instead of counting as lost matches here.
+    if (row.game_type === 'chimp') continue;
     const parsed = parseJsonArray(row.scores);
     // Only per-player score entries count. Legacy snake results serialized a
     // bare score array ([12, 8]) with no player attribution — those rows are
@@ -296,8 +303,14 @@ arcadeRouter.get('/stats', (req, res) => {
      ORDER BY round_wins DESC, favorites DESC, reactions DESC, name COLLATE NOCASE`
   ).all(...drawingParams) as ScribbleArtStatsRow[];
 
+  const chimpPlayers = chimpLeaderboard(req.group!.id, selectedEvent.eventId);
+  const chimpRuns = chimpPlayers.reduce((sum, player) => sum + player.runs, 0);
+  const chimpGame = chimpPlayers.length
+    ? [{ gameType: 'chimp', statsKey: 'chimp', mode: null, kind: 'solo', title: ARCADE_TITLES.chimp, matches: chimpRuns, leader: chimpPlayers[0], players: chimpPlayers }]
+    : [];
+
   res.json({
-    games: [...games.values()].map((game) => {
+    games: [...[...games.values()].map((game) => {
       // Everything ranks by win–loss ratio now (highscores retired): most
       // duels won relative to played, ties broken by absolute wins.
       const players = [...game.players.values()]
@@ -345,7 +358,7 @@ arcadeRouter.get('/stats', (req, res) => {
             }
           : {}),
       };
-    }),
+    }), ...chimpGame],
   });
 });
 

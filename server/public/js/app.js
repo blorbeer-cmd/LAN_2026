@@ -1088,7 +1088,7 @@ function wireSocket() {
   // Arcade views consume these payloads themselves; Home just refetches the
   // cross-game summary (GET /api/arcade/lobbies) instead of tracking four
   // different payload shapes.
-  ['arcade:lobbies', 'tetris:lobbies', 'scribble:lobbies', 'pong:lobbies', 'blobby:lobbies', 'snake:lobbies', 'battleship:lobbies', 'challenge-rush:lobbies'].forEach((event) =>
+  ['arcade:lobbies', 'tetris:lobbies', 'scribble:lobbies', 'pong:lobbies', 'blobby:lobbies', 'snake:lobbies', 'battleship:lobbies', 'challenge-rush:lobbies', 'chimp:lobbies'].forEach((event) =>
     socket.on(event, () => {
       invalidateViewCaches(VIEW_REGISTRY, 'arcade:lobbies-changed');
       if (currentView === 'home') renderCurrent();

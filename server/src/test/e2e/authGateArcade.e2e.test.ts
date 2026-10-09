@@ -189,7 +189,7 @@ test('an admin sees AI and test settings only after activation', async () => {
     await openCreateDialog(adminPage);
     assert.deepEqual(
       await dialogGames(adminPage),
-      ['battleship', 'blobby', 'challenge-rush', 'quiz', 'pong', 'scribble', 'snake', 'tetris'],
+      ['battleship', 'blobby', 'challenge-rush', 'chimp', 'quiz', 'pong', 'scribble', 'snake', 'tetris'],
       'Admin mode adds the parked games in alphabetical order',
     );
 

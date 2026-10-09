@@ -25,6 +25,7 @@ import { registerPongSockets } from './arcade/pong';
 import { registerSnakeSockets } from './arcade/snake';
 import { registerBattleshipSockets } from './arcade/battleship';
 import { registerChallengeRushSockets } from './arcade/challengeRush';
+import { registerChimpSockets } from './arcade/chimp';
 import { registerArcadeSockets as registerArcadeRealtimeSockets } from './arcade/realtime';
 import { startPrivacyRetention } from './privacyRetention';
 import { startNewstickerGeneration } from './newsticker';
@@ -42,6 +43,7 @@ const socketFeatureRegistrars = [
   registerSnakeSockets,
   registerBattleshipSockets,
   registerChallengeRushSockets,
+  registerChimpSockets,
   startOfflineSweeper,
   startMusicControllerExpiry,
 ] as const;

@@ -1857,3 +1857,46 @@
 .quiz-stage-note {
   color: var(--text-muted);
 }
+
+/* Chimp Test. One DOM order for both layouts: rows of 8 on laptops, columns
+   of 8 on phones (grid-auto-flow: column), so cell indices never depend on
+   the viewport. */
+.chimp-stage .arcade-player-strip { margin-top: var(--space-4); }
+.chimp-stage [data-chimp-waiting]:not(:empty) { margin-top: var(--space-3); }
+.chimp-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
+.chimp-level { font-size: var(--font-size-lg); font-variant-numeric: tabular-nums; }
+.chimp-strikes { display: inline-flex; gap: var(--space-1); }
+.chimp-strike { display: inline-grid; place-items: center; width: var(--space-6); height: var(--space-6); border: 1px solid var(--border); border-radius: var(--radius-full); color: var(--danger); }
+.chimp-strike svg { width: var(--space-4); height: var(--space-4); }
+.chimp-strike:not(.is-used) svg { visibility: hidden; }
+.chimp-strike.is-used { border-color: var(--danger); background: var(--danger-bg); }
+.chimp-playfield { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); min-height: var(--chimp-playfield-min-height); }
+.chimp-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: var(--space-2); width: min(100%, var(--chimp-grid-max-width)); }
+.chimp-cell { aspect-ratio: 1; min-width: var(--tap-target-size); min-height: var(--tap-target-size); padding: 0; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--text); background: transparent; font: inherit; font-size: var(--font-size-xl); font-weight: var(--font-weight-black); font-variant-numeric: tabular-nums; line-height: var(--line-height-tight); cursor: pointer; transition: background var(--motion-fast), border-color var(--motion-fast); }
+.chimp-cell:disabled, .chimp-cell.is-empty { cursor: default; }
+.chimp-cell:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.chimp-cell.is-number, .chimp-cell.is-revealed { border-color: var(--border); background: var(--bg-elevated-2); }
+.chimp-cell.is-hidden { border-color: var(--accent); background: var(--accent); }
+.chimp-cell.is-wrong { border-color: var(--danger); color: var(--danger); background: var(--danger-bg); }
+.chimp-note { margin: 0; color: var(--text-muted); text-align: center; }
+.chimp-note.is-danger { color: var(--danger); font-weight: var(--font-weight-bold); }
+.chimp-concealed, .chimp-interstitial, .chimp-result { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); width: 100%; text-align: center; }
+.chimp-concealed strong, .chimp-interstitial-title { font-size: var(--font-size-xl); font-weight: var(--font-weight-black); }
+.chimp-result-level { font-size: var(--font-size-3xl); font-weight: var(--font-weight-black); font-variant-numeric: tabular-nums; }
+.chimp-rating { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); width: min(100%, var(--chimp-rating-width)); }
+.chimp-rating-label { font-weight: var(--font-weight-bold); }
+.chimp-rating-track { display: block; width: 100%; height: var(--space-2); overflow: hidden; border-radius: var(--radius-full); background: var(--bg-elevated-2); }
+.chimp-rating-bar { display: block; height: 100%; background: var(--accent-gradient); }
+.chimp-round-note { text-align: left; }
+.arcade-result-row.is-me .player-name { color: var(--accent); font-weight: var(--font-weight-bold); }
+.arcade-stats-row.chimp-stats-row { grid-template-columns: var(--space-6) minmax(0, 1fr) var(--space-7); grid-template-areas: 'rank player wins'; }
+.chimp-stats-text { display: flex; flex-direction: column; min-width: 0; }
+.chimp-stats-detail { color: var(--text-muted); font-size: var(--font-size-xs); }
+@media (max-width: 639px) { /* --bp-md */
+  .chimp-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-rows: repeat(8, auto);
+    grid-auto-flow: column;
+    width: min(100%, max(calc(5 * var(--tap-target-size) + 4 * var(--space-2)), calc((100dvh - var(--chimp-grid-reserved-height)) * 5 / 8)));
+  }
+}
