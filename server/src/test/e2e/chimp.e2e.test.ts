@@ -2,7 +2,8 @@ import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
-import { addSessionCookie, authenticatedServerEnv, createE2EAccount, loginE2EAdmin } from './authHelpers';
+import { addSessionCookie, authenticatedServerEnv, createE2EAccount, loginE2EAdmin, promoteE2EAdmin, waitForPlayerData } from './authHelpers';
+import { activateAdminMode, openMoreViewEntry } from './navHelpers';
 import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { assertNoOverflow } from './visualHelpers';
@@ -25,15 +26,19 @@ async function createPlayer(name: string): Promise<{ id: string; name: string }>
   return account;
 }
 
+// The Chimp Test is parked like Scribble and Challenge Rush: only admins in
+// Admin mode see it, so every participant is promoted and switches it on.
 async function openArcadeAs(playerId: string, viewport: { width: number; height: number }): Promise<Actor> {
+  await promoteE2EAdmin(BASE_URL, adminCookie, playerId);
   const context = await browser.newContext({ viewport });
   await trackE2EContext(context, `chimp-${playerId}`);
   await addSessionCookie(context, BASE_URL, playerCookies.get(playerId)!);
   const page = await context.newPage();
   await page.goto(BASE_URL);
   await page.waitForSelector('.nav-btn[data-view="more"]');
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arcade"]');
+  await activateAdminMode(page);
+  await waitForPlayerData(page);
+  await openMoreViewEntry(page, '[data-navigate="arcade"]');
   await page.waitForSelector(ARCADE_HUB);
   return { context, page };
 }

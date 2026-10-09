@@ -5,7 +5,9 @@ Stand: 9. Oktober 2026
 **Implementierungsstand:** Etappe 1 ist umgesetzt (`server/src/arcade/chimp*.ts`,
 `server/public/js/arcade/views/chimp.js`, `server/public/js/arcade/chimpFormat.js`). Abweichungen
 vom ursprünglichen Entwurf sind direkt in den betroffenen Abschnitten nachgezogen. Etappe 2 ist
-nicht begonnen.
+nicht begonnen. Bis zum ersten Test auf einem Testsystem ist das Spiel wie Scribble und Challenge
+Rush geparkt: Nur Admins im Admin-Modus sehen es im Dialog, in der Lobbyliste, bei laufenden
+Spielen und im Statistikfilter. Das ist ein Darstellungsfilter, keine Sicherheitsgrenze.
 
 ## 1. Kurzfazit
 
