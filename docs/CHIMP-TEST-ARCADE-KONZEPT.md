@@ -162,28 +162,48 @@ die Logik aus A existiert (Etappe 2). Option C bietet gegenüber A keinen Vortei
   Platzierungen werden nie gespeichert.
 - **Rundenrangliste nur zur Anzeige:** Bei mindestens zwei Personen zeigt das Rundenende einmal die
   Ergebnisse aller Mitspielenden als Rangliste mit Rängen (1., 2., 3. …). Sortiert wird wie in der
-  Chimp-Test-Rangliste: Level, dann Strikes, dann aktive Zeit. Bei vollständigem Gleichstand teilen
-  sich Personen denselben Rang. Diese Rundenrangliste ist flüchtig, wird nicht gespeichert und
+  Chimp-Test-Rangliste: Level, dann Strikes und aktive Zeit bis zum Erreichen dieses Levels (siehe
+  nächster Punkt). Bei vollständigem Gleichstand teilen sich Personen denselben Rang. Diese Rundenrangliste ist flüchtig, wird nicht gespeichert und
   fließt weder in Statistik noch Chimp-Test-Rangliste ein.
-- Ein Solo-Ergebnis besteht aus dem höchsten geschafften Level, den Strikes und der aktiven
-  Spielzeit. Als aktive Zeit zählt die Zeit vom Anzeigen eines Levels bis zu dessen Abschluss.
-  Zwischenbildschirme und Pausen zählen nicht.
+- Ein Solo-Ergebnis besteht aus dem höchsten geschafften Level und den beiden **Vergleichswerten zum
+  Zeitpunkt dieses Levels**: Strikes und aktive Spielzeit, die bis zum Abschluss des gewerteten
+  Levels angefallen sind. Als aktive Zeit zählt die Zeit vom Anzeigen eines Levels bis zu dessen
+  Abschluss. Zwischenbildschirme und Pausen zählen nicht.
+- Die Vergleichswerte werden beim Abschluss jedes Levels festgehalten und danach nicht mehr
+  verändert. Fehlversuche am nächsten, nicht geschafften Level verschlechtern sie nicht. Wer nach
+  Level 9 aufhört, steht damit nicht besser da als jemand, der Level 9 ebenso schafft und danach
+  seine Versuche an Level 10 nutzt. Weiterspielen kostet nie etwas.
+- Gesamt-Strikes und Gesamtzeit des Laufs werden zusätzlich gespeichert, aber nur angezeigt, nicht
+  zur Sortierung verwendet.
 
 ### 3.3 Zeitgrenzen und Sonderfälle
 
-- **Kein Merkzeit-Limit** im Classic-Modus. Das ist der Kern des viralen Tests.
-- **Inaktivität:** 60 Sekunden ohne Klick innerhalb eines Levels zählen als Strike. Der Server
-  prüft das, damit kein liegengelassenes Handy das Match endlos offenhält. Am Zwischenbildschirm
-  geht es nach 30 Sekunden automatisch weiter.
+- **Kein eigenes Merkzeit-Limit** im Classic-Modus. Das ist der Kern des viralen Tests. Die
+  Merkphase ist ausdrücklich von der Inaktivitätsregel ausgenommen; ihre einzige Obergrenze ist das
+  Match-Zeitlimit.
+- **Inaktivität in der Eingabe:** Erst nach dem ersten richtigen Klick zählen 60 Sekunden ohne
+  weiteren Klick als Strike. Am Zwischenbildschirm geht es nach 30 Sekunden automatisch weiter.
+  Damit kann ein liegengelassenes Handy einen Lauf höchstens bis zum Match-Zeitlimit offenhalten.
 - **Match-Zeitlimit:** 10 Minuten. Danach endet das Match, und offene Läufe werden mit dem bis dahin
-  geschafften Level gewertet. Bei 40 Zahlen wird diese Grenze praktisch nie erreicht. Sie dient nur
-  als Schutz für die Serverressourcen.
-- **Disconnect:** Der Lauf pausiert für diese Person. Kommt sie innerhalb von 15 Sekunden zurück,
-  geht es mit einer neuen Anordnung desselben Levels weiter, ohne Strike, damit niemand die
-  Merkzeit über einen Reconnect verlängert. Ohne Rückkehr endet ihr Lauf mit dem bis dahin
+  geschafften Level gewertet. Es dient als Schutz für die Serverressourcen und als einzige Grenze
+  für die Merkzeit.
+- **Runde vorzeitig beenden:** Wie bei den bestehenden Spielen kann der Host die Runde beenden.
+  Offene Läufe werden dann ebenfalls mit dem bis dahin geschafften Level gewertet. So muss niemand
+  bis zum Zeitlimit auf ein liegengelassenes Handy warten, um die Rundenrangliste zu sehen. Das
+  eigene Ergebnis sieht jede Person ohnehin sofort nach ihrem Lauf.
+- **Kein kostenloser Neuversuch.** Ein angefangener Versuch wird nie verworfen oder neu gemischt.
+  Weder Neuladen noch Reconnect noch Pause erzeugen eine neue Anordnung. Damit lässt sich ein
+  drohender Fehler nicht umgehen, und die Drei-Strikes-Regel bleibt verbindlich.
+- **Disconnect und Neuladen:** Der Server behält den laufenden Versuch unverändert: dieselbe
+  Anordnung, dieselbe Phase, dieselben bereits geklickten Zahlen. Die aktive Zeit läuft während der
+  Trennung weiter, damit Trennen keinen Zeitvorteil bringt. Kommt die Person innerhalb von
+  15 Sekunden zurück, erhält sie genau diesen Versuch zurück: in der Merkphase mit Zahlen, in der
+  Eingabe nur das verdeckte Restraster (siehe 5.4). Ohne Rückkehr endet ihr Lauf mit dem bis dahin
   geschafften Level. Für alle anderen läuft das Match unverändert weiter.
-- **Pause durch den Host:** Wie bei den bestehenden Spielen pausiert sie alle Läufe. Ein laufendes
-  Level wird danach mit neuer Anordnung ohne Strike neu gestartet.
+- **Pause durch den Host:** Wie bei den bestehenden Spielen pausiert sie alle Läufe. Während der
+  Pause verdeckt ein Overlay das Raster vollständig, und die aktive Zeit steht. Nach dem Fortsetzen
+  geht jeder Lauf mit demselben Versuch in derselben Phase weiter. Eine Pause verschafft deshalb
+  weder zusätzliche Merkzeit noch einen neuen Versuch.
 - **Verlassen:** Wer die Runde verlässt, beendet den eigenen Lauf; gewertet wird das bis dahin
   geschaffte Level.
 - **Serverneustart:** Der flüchtige Match-State verfällt wie bei allen Arcade-Spielen. Weil jeder
@@ -230,8 +250,9 @@ gespeichert. Grenzen oder Namen lassen sich später ändern, ohne alte Ergebniss
 - Die Rangliste ist **eigenständig** und enthält ausschließlich Chimp-Test-Ergebnisse. Sie gehört
   zum gewählten Event wie die übrigen Arcade-Statistiken.
 - Eine Zeile pro Person. Maßgeblich ist der **persönliche Bestlauf**.
-- Sortierung: bestes Level, dann weniger Strikes in diesem Lauf, dann weniger aktive Zeit in diesem
-  Lauf, dann der frühere Zeitpunkt (wer den Wert zuerst erreicht hat, steht vorn).
+- Sortierung: bestes Level, dann weniger Strikes bis zum Erreichen dieses Levels, dann weniger
+  aktive Zeit bis zum Erreichen dieses Levels (beides aus 3.2, beim Levelabschluss festgehalten),
+  dann der frühere Zeitpunkt (wer den Wert zuerst erreicht hat, steht vorn).
 - Spalten: Rang, Name, bestes Level, Affen-Nähe mit Stufe, Anzahl Läufe, durchschnittliches Level.
 - Läufe, die die Plausibilitätsprüfung nicht bestehen (siehe 5.5), erscheinen nicht in der
   Rangliste.
@@ -271,9 +292,10 @@ gespeichert. Grenzen oder Namen lassen sich später ändern, ohne alte Ergebniss
 - **Verdeckt:** einheitlich gefüllte Kachel in der Akzentfarbe aus den Design-Tokens, ohne jeden
   Hinweis auf die Zahl.
 - **Erledigt oder leer:** unsichtbar, aber das Rasterfeld bleibt bestehen, damit nichts verrutscht.
-- **Fehlklick:** Die angeklickte Kachel wird markiert, die richtige Lösung wird für etwa
-  1,5 Sekunden mit Zahlen aufgedeckt, zusätzlich zur Farbe auch mit Text („Falsch – die 5 war
-  hier“).
+- **Fehlklick:** Der Versuch endet, und der Server schickt der betroffenen Person die Lösung
+  (eigene `reveal`-Phase, siehe 5.3 und 5.4). Die angeklickte Kachel wird markiert, die richtige
+  Lösung wird für etwa 1,5 Sekunden mit Zahlen aufgedeckt, zusätzlich zur Farbe auch mit Text
+  („Falsch – die 5 war hier“).
 - Animationen sind kurz und respektieren `prefers-reduced-motion`.
 
 #### Statusleiste über dem Raster
@@ -305,10 +327,11 @@ gespeichert. Grenzen oder Namen lassen sich später ändern, ohne alte Ergebniss
 - Ist es ein neuer persönlicher Bestwert, steht das deutlich dabei („Neuer Bestwert – vorher 7“),
   ebenso der aktuelle Rang in der Chimp-Test-Rangliste.
 - Solange andere noch spielen, sieht man darunter den Live-Stand der Runde („Noch 3 spielen“).
-- **Rundenende mit mehreren Personen:** Sind alle Läufe beendet oder ist das Zeitlimit erreicht,
-  wechselt die Ansicht für alle einmal zur **Rundenrangliste**: Rang, Name, Level, Affen-Nähe mit
-  Stufe, Strikes und aktive Zeit. Die eigene Zeile ist hervorgehoben. Der Hinweis „Nur für diese
-  Runde – gezählt wird dein Solo-Ergebnis“ macht klar, dass hier kein Sieg gespeichert wird.
+- **Rundenende mit mehreren Personen:** Sind alle Läufe beendet, hat der Host die Runde beendet
+  oder ist das Zeitlimit erreicht, wechselt die Ansicht für alle einmal zur **Rundenrangliste**:
+  Rang, Name, Level, Affen-Nähe mit Stufe sowie Strikes und aktive Zeit bis zum gewerteten Level.
+  Die eigene Zeile ist hervorgehoben. Der Hinweis „Nur für diese Runde – gezählt wird dein Solo-Ergebnis“ macht klar,
+  dass hier kein Sieg gespeichert wird.
 - **Allein gespielt:** Es gibt keine Rundenrangliste; das eigene Ergebnis ist die Endansicht.
 - Ein Link führt zur vollständigen Chimp-Test-Rangliste.
 - „Nochmal“ nutzt den vorhandenen Rematch-Baustein (`rematch.js`).
@@ -382,7 +405,7 @@ Lobby
        Merken (Zahlen sichtbar)
          -> erster richtiger Klick -> Eingabe (verdeckt)
               -> alle richtig -> Zwischenbildschirm (Level +1) -> Merken
-              -> Fehlklick    -> Aufdecken -> Zwischenbildschirm (Strike) -> Merken | Aus
+              -> Fehlklick    -> Aufdecken (reveal) -> Zwischenbildschirm (Strike) -> Merken | Aus
   -> Ergebnis (alle aus oder Zeitlimit)
 ```
 
@@ -390,7 +413,9 @@ Server-State pro Person:
 
 - Level (aktuelle Zahlenanzahl), Strikes, höchstes geschafftes Level,
 - aktuelle Anordnung: Feldindex je Zahl, Anzahl geklickter Zahlen und Phase
-  (`memorize | input | interstitial | out`),
+  (`memorize | input | reveal | interstitial | out`),
+- Vergleichswerte des zuletzt geschafften Levels (Strikes und aktive Zeit, eingefroren beim
+  Levelabschluss) sowie Gesamt-Strikes und Gesamtzeit,
 - Versuchszähler pro Level für die deterministische Anordnung,
 - aktive Zeit (Summe abgeschlossener Levels plus laufendes Level) und Zeitpunkt der letzten Eingabe,
 - Socket, Verbindungsstatus und Reconnect-Timer.
@@ -405,6 +430,7 @@ Server-State pro Person:
 | `chimp:click` | C→S | `{ matchId, playerId, levelToken, cell }` – ein Klick auf Feldindex 0–39. |
 | `chimp:continue` | C→S | Zwischenbildschirm bestätigen und nächstes Level anfordern. |
 | `chimp:standings` | S→C | Öffentlicher Live-Stand bei jeder Änderung von Level, Strike oder Status. |
+| `chimp:reveal` | S→C | Nur an die betroffene Person: Lösung des gerade per Fehlklick beendeten Versuchs. |
 | `chimp:run:end` | S→C | Eigenes Solo-Ergebnis mit Affen-Bewertung, Bestwert-Hinweis und Rang. |
 | `chimp:match:*` | beide | Pause, Fortsetzen, Verlassen, Beenden und Abschluss. |
 | `chimp:match:end` | S→C | Rundenende; bei mindestens zwei Personen mit der flüchtigen Rundenrangliste. |
@@ -414,7 +440,14 @@ Details:
 - **Zahlen nur in der Merkphase.** `chimp:state` enthält die Zahlen nur, solange die Person das
   aktuelle Level noch nicht begonnen hat. Ab dem ersten richtigen Klick sendet der Server nur noch
   die verdeckten Feldindizes ohne Zuordnung. Der Client verwirft seine Zahlen-Zuordnung beim
-  Übergang, damit sie nicht im DOM bleibt.
+  Übergang, damit sie nicht im DOM bleibt. Das gilt auch für einen Reconnect während der Eingabe.
+- **Einzige Ausnahme: `reveal`.** Nach einem Fehlklick ist der Versuch abgeschlossen. Erst dann
+  sendet der Server per `chimp:reveal` ausschließlich an die betroffene Person die vollständige
+  Lösung dieses Versuchs: Feldindex je Zahl, den falsch angeklickten Feldindex und die erwartete
+  Zahl. Weil der nächste Versuch eine neue Anordnung erhält, verschafft das keinen Vorteil.
+  Watch-, Kiosk-, Lobby- und `chimp:standings`-Payloads enthalten die Lösung nie. Nach etwa
+  1,5 Sekunden wechselt der Server in den Zwischenbildschirm. Ein Reconnect während `reveal`
+  landet direkt dort.
 - **Optimistisches UI.** Der Client blendet eine angeklickte Kachel sofort aus und wartet nicht auf
   das Ack, damit sich schnelle Klickfolgen im LAN flüssig anfühlen. Der Server entscheidet über
   richtig, falsch und das Levelende. Bei einer Abweichung überschreibt der nächste `chimp:state`
@@ -444,7 +477,11 @@ recordArcadeResult({
   gameType: 'chimp',
   winnerId: null,
   players: [player],
-  scores: [{ playerId, name, mode: 'solo', level, strikes, activeMs, outcome }],
+  scores: [{
+    playerId, name, mode: 'solo', level, outcome,
+    strikesAtLevel, activeMsAtLevel, // eingefroren beim Abschluss von `level`, für die Sortierung
+    totalStrikes, totalActiveMs,     // gesamter Lauf, nur zur Anzeige
+  }],
   reason, // 'strikes' | 'max' | 'time-limit' | 'left' | 'disconnect' | 'invalid'
   startedAt, endedAt, matchId: `${match.id}:${playerId}`, scope,
 });
@@ -458,9 +495,9 @@ Datensatz als Match und jedes Match ohne Sieg als Niederlage. Chimp-Datensätze 
 Niederlagen erzeugen. Deshalb:
 
 - `game_type = 'chimp'` wird **nicht** an `addResultToGame` übergeben.
-- Eine eigene, kleine Aggregation ermittelt pro Person: bestes Level mit Strikes, aktiver Zeit und
-  Zeitpunkt des Bestlaufs, Anzahl Läufe und durchschnittliches Level. Läufe mit `outcome: 'invalid'`
-  werden ignoriert.
+- Eine eigene, kleine Aggregation ermittelt pro Person: bestes Level mit `strikesAtLevel`,
+  `activeMsAtLevel` und Zeitpunkt des Bestlaufs, Anzahl Läufe und durchschnittliches Level. Läufe
+  mit `outcome: 'invalid'` werden ignoriert.
 - Die Antwort von `GET /api/arcade/stats` enthält einen Eintrag
   `{ gameType: 'chimp', title: 'Chimp Test', kind: 'solo', runs, leader, players: [...] }`. Das
   Muster gibt es schon: Scribble ergänzt seinen Eintrag ebenfalls um eigene Felder
@@ -510,11 +547,15 @@ Niederlagen erzeugen. Deshalb:
   ein leeres oder bereits erledigtes Feld ist kein Fehlklick; ein Klick vor der 1 auf eine andere
   Zahl ist ein Fehlklick.
 - Level +1 nach Erfolg, Wiederholung bei Strike, Aus nach 3 Strikes, Obergrenze 40.
+- Vergleichswerte: Strikes und aktive Zeit werden beim Levelabschluss eingefroren. Fehlversuche am
+  nächsten Level verändern sie nicht; Aufhören nach Level 9 und drei Fehlversuche an Level 10
+  ergeben bei gleichem Weg bis Level 9 denselben Rang.
 - Affen-Bewertung: 0 → 0 % „Bananenschale“, 8 → 89 % „Fast Ayumu“, 9 → 100 % „Ayumu-Niveau“,
   10 → „Ayumu übertroffen (+1)“, alle Stufengrenzen aus 3.5.
 - Ranglistensortierung: Level, dann Strikes, dann aktive Zeit, dann früherer Zeitpunkt.
 - Rundenrangliste: gleiche Sortierung, gemeinsame Ränge bei vollständigem Gleichstand.
-- Inaktivität wird als Strike gewertet; Plausibilitätsgrenze greift.
+- Inaktivität wird nur in der Eingabephase als Strike gewertet; eine beliebig lange Merkphase
+  erzeugt keinen Strike. Plausibilitätsgrenze greift.
 
 ### Socket- und Integrationstests
 
@@ -524,6 +565,11 @@ Niederlagen erzeugen. Deshalb:
 - Zwei gleichzeitige Klickpakete auf dieselbe Zahl werden genau einmal gewertet.
 - Ein Disconnect beeinflusst die Läufe anderer nicht; ein Reconnect innerhalb der Frist führt
   weiter, danach endet der Lauf mit dem bis dahin geschafften Level.
+- Reconnect, Neuladen und Pause/Fortsetzen liefern denselben Versuch zurück: gleicher
+  `levelToken`, gleiche Anordnung, gleiche geklickte Zahlen, kein zusätzlicher Versuch. In der
+  Eingabephase enthält der zurückgelieferte Zustand keine Zahlen.
+- Ein Fehlklick in der Eingabe löst genau ein `chimp:reveal` an die betroffene Person aus; andere
+  Mitspielende, Zuschauer und Kiosk erhalten keine Lösung.
 - Watch-, Kiosk- und Lobby-Payloads enthalten weder Zahlen noch Positionen; `chimp:state`
   enthält die Zahlen nach dem ersten richtigen Klick nicht mehr.
 - Jeder Lauf wird genau einmal als eigener Datensatz mit genau einer Person gespeichert, auch wenn
@@ -554,8 +600,11 @@ Niederlagen erzeugen. Deshalb:
 - Regeln wie in Abschnitt 3: Start mit 4 Zahlen, pro Level eine mehr, 3 Strikes, Zahlen sichtbar
   bis zum ersten Klick.
 - Kein Zuschauer-, Kiosk- oder Lobby-Payload enthält Zahlen oder Positionen eines laufenden Levels.
-- Ein getrennter oder inaktiver Client blockiert das Match für niemanden länger als die
-  festgelegten Fristen.
+- Ein getrennter oder inaktiver Client blockiert niemanden: Jede Person sieht ihr Ergebnis sofort
+  nach dem eigenen Lauf. Auf die Rundenrangliste wartet man höchstens, bis der Host die Runde
+  beendet oder das Match-Zeitlimit erreicht ist.
+- Weder Neuladen noch Reconnect noch Pause ergeben einen kostenlosen neuen Versuch, und vorzeitiges
+  Aufhören verbessert keine Ranglistenposition.
 - Jeder Lauf wird als Solo-Ergebnis gewertet, auch in einer Runde mit mehreren Personen. Es gibt
   keine gespeicherten Sieger, Niederlagen oder Platzierungen.
 - Spielen mehrere Personen, sehen alle am Rundenende einmal die Rundenrangliste; gespeichert wird
