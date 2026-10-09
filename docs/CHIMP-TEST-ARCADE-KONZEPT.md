@@ -456,6 +456,7 @@ Server-State pro Person:
 | `chimp:reveal` | S→C | Nur an die betroffene Person: Lösung des gerade per Fehlklick beendeten Versuchs. |
 | `chimp:run:end` | S→C | Eigenes Solo-Ergebnis mit Affen-Bewertung, Bestwert-Hinweis, Rang und Ungültigkeitsstatus. Dieselben Angaben stehen nach Laufende im eigenen `chimp:state`, damit sie ein Neuladen während der Runde überstehen. |
 | `chimp:match:pause` / `finish` / `leave` / `reconnect` | C→S | Pause umschalten (Host), Runde beenden (Host), eigenen Lauf verlassen, Lauf nach Verbindungsabbruch wieder aufnehmen. |
+| `chimp:match:resume` | C→S | `{ playerId }` – die Chimp-Ansicht ohne bekanntes Match (frische Seite, Neuladen) fordert den eigenen laufenden Lauf an. Nur diese ausdrückliche Wiederaufnahme oder `reconnect` übernimmt die persönlichen Pushes; andere Verbindungen derselben Person (Home, andere Features) tun das nie. Schließt eine neuere Spielverbindung, übernimmt eine noch offene ältere ohne Reconnect-Frist. |
 | `chimp:match:start` | S→C | Rundenstart beziehungsweise Wiederaufnahme. |
 | `chimp:match:end` | S→C | Rundenende; bei mindestens zwei Personen mit der flüchtigen Rundenrangliste. |
 

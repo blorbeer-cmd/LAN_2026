@@ -126,7 +126,10 @@ export function ensureChimpSocket() {
   });
   socket.on('disconnect', () => { if (match) { match = { ...match, disconnected: true }; rerenderIfVisible(); } });
   socket.on('connect', () => {
-    if (!match?.matchId || match.phase === 'ended') return;
+    // Without a known match (fresh page, reload) the server hands back the
+    // player's running one; only this Chimp socket ever takes it over.
+    if (!match?.matchId) return socket.emit('chimp:match:resume', { playerId: myId() });
+    if (match.phase === 'ended') return;
     socket.emit('chimp:match:reconnect', { matchId: match.matchId, playerId: myId() }, (result) => {
       if (result?.ok) return;
       const wasVisible = currentView() === 'chimp';

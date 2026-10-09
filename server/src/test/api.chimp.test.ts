@@ -319,3 +319,52 @@ test('a host who stays connected but leaves the match scope hands over to a play
     await closeServer(server, sockets);
   }
 });
+
+test('only an explicit resume takes over a run, and closing a newer game tab falls back to the open one', async () => {
+  clearLobbyMemberships();
+  process.env.CHIMP_RECONNECT_GRACE_MS = '100';
+  const server = await makeServer(true);
+  const playerId = await player(server.baseUrl, 'Chimp Tabs');
+  const gameSocket = await connect(server.baseUrl, playerId);
+  const sockets = [gameSocket];
+  try {
+    const { matchId, states: [state] } = await startRound([gameSocket], [playerId]);
+    // Another connection of the same player (Home, another feature) attaches
+    // to nothing: the reveal of a wrong tap still reaches the game tab only.
+    const homeSocket = await connect(server.baseUrl, playerId);
+    sockets.push(homeSocket);
+    const homeEvents: string[] = [];
+    homeSocket.onAny((event: string) => { if (event.startsWith('chimp:match') || event === 'chimp:state' || event === 'chimp:reveal') homeEvents.push(event); });
+    const reveal = nextEvent(gameSocket, 'chimp:reveal');
+    assert.equal((await click(gameSocket, matchId, playerId, state.me!, layoutOf(state.me!)[1])).result, 'strike');
+    await reveal;
+    // Round trip over the home connection after the server wrote the reveal.
+    assert.equal((await emitAck(homeSocket, 'chimp:match:reconnect', { matchId: 'unknown', playerId })).ok, false);
+    assert.deepEqual(homeEvents, []);
+
+    // A second Chimp tab resumes explicitly and takes over the personal pushes.
+    const secondTab = await connect(server.baseUrl, playerId);
+    sockets.push(secondTab);
+    const resumedState = nextState(secondTab, () => true);
+    const resumed = await emitAck(secondTab, 'chimp:match:resume', { playerId });
+    assert.deepEqual([resumed.ok, resumed.matchId], [true, matchId]);
+    assert.equal((await resumedState).me?.strikes, 1);
+
+    // Closing both extra connections hands the run back to the game tab.
+    const fallbackState = nextState(gameSocket, () => true);
+    homeSocket.close();
+    secondTab.close();
+    await fallbackState;
+    // Lets the real reconnect grace (100 ms in this test) pass: the run must
+    // not end, because the game tab never left.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const paused = nextState(gameSocket, (next) => next.paused);
+    assert.equal((await emitAck(gameSocket, 'chimp:match:pause', { matchId, playerId })).ok, true);
+    const after = await paused;
+    assert.notEqual(after.me?.phase, 'out');
+    assert.equal(after.standings.find((entry) => entry.playerId === playerId)?.status, 'playing');
+  } finally {
+    delete process.env.CHIMP_RECONNECT_GRACE_MS;
+    await closeServer(server, sockets);
+  }
+});

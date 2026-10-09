@@ -88,6 +88,9 @@ interface Match {
   socketIds: Map<string, string>; seed: number; phase: 'countdown' | 'playing' | 'ended';
   runs: Map<string, PlayerRun>; startedAt: number; timer: NodeJS.Timeout | null; deadlineAt: number | null;
   paused: boolean; pausedRemainingMs: number | null; reconnectTimers: Map<string, NodeJS.Timeout>;
+  // Every socket that explicitly joined the run (lobby, resume, reconnect),
+  // so a still open game tab takes over when a newer one closes.
+  attachedSockets: Map<string, Set<string>>;
   hostWatch: NodeJS.Timeout | null;
   // Set while finishMatch closes the remaining runs, so the last of them does
   // not finish the match a second time with the wrong reason.
@@ -501,6 +504,16 @@ function watchHost(io: Server, match: Match): void {
   match.hostWatch.unref();
 }
 
+function rememberSocket(match: Match, playerId: string, socketId: string): void {
+  const sockets = match.attachedSockets.get(playerId) ?? new Set<string>();
+  sockets.add(socketId);
+  match.attachedSockets.set(playerId, sockets);
+}
+
+// Only an explicit resume or reconnect from the Chimp view attaches a socket:
+// every other connection of the same player (Home, other features, a second
+// tab elsewhere) must neither take over the personal pushes nor end the run
+// when it closes.
 function attachSocket(io: Server, socket: Socket, match: Match, playerId: string): boolean {
   const entry = match.runs.get(playerId);
   if (!entry || entry.ended === 'left' || match.phase === 'ended') return false;
@@ -508,6 +521,7 @@ function attachSocket(io: Server, socket: Socket, match: Match, playerId: string
   if (previousTimer) clearTimeout(previousTimer);
   match.reconnectTimers.delete(playerId);
   match.socketIds.set(playerId, socket.id);
+  rememberSocket(match, playerId, socket.id);
   socket.join(match.room);
   // A reconnect during the reveal skips straight to the interstitial; the
   // attempt itself is never replaced.
@@ -540,6 +554,7 @@ function startMatch(io: Server, lobby: Lobby): Match {
       levelCompletedAt: null, timer: null, ended: null, endDetails: null,
     }])),
     startedAt: Date.now(), timer: null, deadlineAt: null, paused: false, pausedRemainingMs: null, reconnectTimers: new Map(),
+    attachedSockets: new Map([...lobby.socketIds].map(([playerId, socketId]) => [playerId, new Set([socketId])])),
     hostWatch: null, closing: false,
   };
   matches.set(id, match);
@@ -618,10 +633,17 @@ export function registerChimpSockets(io: Server): () => void {
     socket.on('chimp:lobbies:get', sendLobbies);
     socket.on('scope:subscribe', sendLobbies);
     socket.on('room:subscribe', sendLobbies);
-    const authPlayerId = socket.data.authPlayerId;
-    if (typeof authPlayerId === 'string') {
-      for (const match of matches.values()) if (match.runs.has(authPlayerId) && canUseLobby(socket, match)) attachSocket(io, socket, match, authPlayerId);
-    }
+
+    // A Chimp view that does not know its match yet (fresh page, reload)
+    // asks for the player's running one.
+    socket.on('chimp:match:resume', (payload: { playerId?: string }, ack: Ack) => {
+      const playerId = payload?.playerId;
+      const match = owns(socket, playerId)
+        ? [...matches.values()].find((candidate) => candidate.phase !== 'ended' && candidate.runs.has(playerId) && canUseLobby(socket, candidate))
+        : undefined;
+      if (!match || !attachSocket(io, socket, match, playerId as string)) return ack?.({ ok: false });
+      ack?.({ ok: true, matchId: match.id });
+    });
 
     socket.on('chimp:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack: Ack) => {
       const match = matchFor(payload);
@@ -731,6 +753,7 @@ export function registerChimpSockets(io: Server): () => void {
       const entry = match && typeof playerId === 'string' ? match.runs.get(playerId) : undefined;
       if (!match || !entry || match.phase === 'ended' || !owns(socket, playerId) || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Verlassen nicht möglich.' });
       if (entry.ended === null) endRun(io, match, playerId as string, 'left');
+      match.attachedSockets.delete(playerId as string);
       if (isCurrent(match)) {
         match.socketIds.delete(playerId as string);
         socket.leave(match.room);
@@ -745,8 +768,16 @@ export function registerChimpSockets(io: Server): () => void {
         if (member && lobbies.get(id) === lobby) removeLobbyMember(io, lobby, member[0]);
       }
       for (const match of matches.values()) {
+        for (const sockets of match.attachedSockets.values()) sockets.delete(socket.id);
         for (const [playerId, socketId] of match.socketIds) {
           if (socketId !== socket.id) continue;
+          // Another game tab of the same player is still open: it takes over.
+          const fallback = [...match.attachedSockets.get(playerId) ?? []].find((id) => io.sockets.sockets.has(id));
+          if (fallback && match.phase !== 'ended') {
+            match.socketIds.set(playerId, fallback);
+            emitOwnState(io, match, playerId);
+            continue;
+          }
           match.socketIds.delete(playerId);
           const entry = match.runs.get(playerId);
           const isHost = playerId === match.host.id;
