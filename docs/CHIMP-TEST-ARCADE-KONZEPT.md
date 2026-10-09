@@ -10,15 +10,18 @@ Der Chimp Test passt gut in den Arcade-Bereich. Die Regeln sind in wenigen Sekun
 Runde dauert meist nur ein bis drei Minuten, und am Handy funktioniert das Spiel ebenso gut wie am
 Laptop. Weil jede Person für sich spielt, blockiert ein langsamer oder getrennter Client niemanden.
 
-Empfohlen wird ein **Parallelrennen für 1–15 Personen**:
+Empfohlen wird ein **gemeinsamer Start für 1–15 Personen mit reiner Solo-Wertung**:
 
 - Alle starten gleichzeitig nach dem gemeinsamen Arcade-Countdown.
 - Jede Person spielt ihr eigenes Raster mit den bekannten Regeln: Start mit 4 Zahlen, pro
   geschafftem Level eine Zahl mehr, nach drei Fehlversuchen („Strikes“) ist der Lauf vorbei.
 - Alle sehen live, welches Level die anderen erreicht haben und wie viele Strikes sie haben, aber
   nie deren Raster.
-- Es gewinnt, wer die meisten Zahlen geschafft hat. Bei Gleichstand gewinnt, wer weniger Strikes
-  hat, danach wer weniger aktive Spielzeit gebraucht hat.
+- **Es gibt keine Sieger, Niederlagen oder Platzierungen.** Jeder Lauf ist ein Solo-Ergebnis, auch
+  wenn mehrere Personen gleichzeitig spielen. Die Ergebnisse fließen in eine eigene
+  **Chimp-Test-Rangliste** nach persönlichem Bestwert.
+- Jedes Ergebnis erhält eine **Affen-Bewertung**: Sie zeigt, wie nah man dem Schimpansen Ayumu aus
+  der Originalstudie gekommen ist (siehe 3.5).
 
 Als Name wird **„Chimp Test“** vorgeschlagen, weil das Spiel unter diesem Namen bekannt ist. Der
 interne Schlüssel ist `chimp`. Wir übernehmen weder Grafiken noch Texte noch die Marke von
@@ -107,7 +110,7 @@ Quellen:
 
 ### 2.4 Bewertete Integrationsoptionen
 
-| Kriterium | A: eigenes Spiel, Parallelrennen | B: nur Challenge-Rush-Aufgabe | C: rundenbasiertes Duell |
+| Kriterium | A: eigenes Spiel, gemeinsamer Start | B: nur Challenge-Rush-Aufgabe | C: rundenbasiertes Duell |
 | --- | --- | --- | --- |
 | Nähe zum bekannten Test | sehr hoch | gering, da 30-Sekunden-Fenster | mittel |
 | Wartezeit für andere | keine während des eigenen Laufs | keine | hoch, weil immer nur eine Person spielt |
@@ -139,7 +142,7 @@ die Logik aus A existiert (Etappe 2). Option C bietet gegenüber A keinen Vortei
 - Ergebnis eines Laufs ist das **höchste geschaffte Level**, also die Zahlenanzahl. Wer schon an
   4 Zahlen scheitert, hat Ergebnis 0.
 
-### 3.2 Parallelrennen mit mehreren Personen
+### 3.2 Gemeinsam spielen, solo gewertet
 
 - Nach dem gemeinsamen Countdown „3 · 2 · 1 · Los!“ spielen alle gleichzeitig und unabhängig
   voneinander.
@@ -149,13 +152,15 @@ die Logik aus A existiert (Etappe 2). Option C bietet gegenüber A keinen Vortei
   zufällig verteilte Zahlen sind praktisch gleich schwer.
 - Zwischen zwei Levels erscheint wie im Original ein kurzer Zwischenbildschirm mit „Weiter“. Jede
   Person bestimmt ihr Tempo selbst und wartet nie auf andere.
-- Wer ausgeschieden ist, sieht die Live-Rangliste der übrigen Personen bis zum Matchende.
+- Wer ausgeschieden ist, sieht den Live-Stand der übrigen Personen bis zum Matchende.
 - Das Match endet, wenn alle Läufe beendet sind oder das Zeitlimit erreicht ist (siehe 3.3).
-- Platzierung: höchstes Level, dann weniger Strikes, dann weniger aktive Spielzeit. Als aktive Zeit
-  zählt die Zeit vom Anzeigen eines Levels bis zu dessen Abschluss. Zwischenbildschirme und Pausen
-  zählen nicht.
-- Sieg: Platz 1 ohne Gleichstand nach allen drei Kriterien. Ist auch die Zeit gleich, ist das Match
-  unentschieden, wie bei Challenge Rush.
+- **Reine Solo-Wertung:** Es gibt weder Sieger noch Niederlagen noch Platzierungen innerhalb einer
+  Runde. Jeder Lauf wird als eigenes Solo-Ergebnis gespeichert, sobald er endet, unabhängig davon,
+  wie viele Personen gleichzeitig gespielt haben. Wer allein spielt, wird genauso gewertet wie in
+  einer Runde mit 15 Personen.
+- Ein Solo-Ergebnis besteht aus dem höchsten geschafften Level, den Strikes und der aktiven
+  Spielzeit. Als aktive Zeit zählt die Zeit vom Anzeigen eines Levels bis zu dessen Abschluss.
+  Zwischenbildschirme und Pausen zählen nicht.
 
 ### 3.3 Zeitgrenzen und Sonderfälle
 
@@ -172,8 +177,11 @@ die Logik aus A existiert (Etappe 2). Option C bietet gegenüber A keinen Vortei
   geschafften Level. Für alle anderen läuft das Match unverändert weiter.
 - **Pause durch den Host:** Wie bei den bestehenden Spielen pausiert sie alle Läufe. Ein laufendes
   Level wird danach mit neuer Anordnung ohne Strike neu gestartet.
-- **Serverneustart:** Der flüchtige Match-State verfällt wie bei allen Arcade-Spielen. Es wird
-  kein unvollständiges Ergebnis gespeichert.
+- **Verlassen:** Wer die Runde verlässt, beendet den eigenen Lauf; gewertet wird das bis dahin
+  geschaffte Level.
+- **Serverneustart:** Der flüchtige Match-State verfällt wie bei allen Arcade-Spielen. Weil jeder
+  Lauf bei seinem Ende sofort gespeichert wird, gehen nur noch laufende Läufe verloren. Sie werden
+  nicht als Ergebnis gespeichert.
 
 ### 3.4 Spätere Variante „Blitz“ (nicht im MVP)
 
@@ -181,6 +189,46 @@ Als Anlehnung an die Limited-Hold-Aufgabe der Originalstudie: Die Zahlen verschw
 festen Zeit automatisch, zum Beispiel 1.000 ms und mit steigendem Level immer weniger. Der Modus
 wird beim Öffnen der Lobby gewählt und gesondert in der Rangliste geführt. Er kommt erst, wenn sich
 der Classic-Modus auf der LAN bewährt hat.
+
+### 3.5 Affen-Bewertung
+
+Jedes Ergebnis erhält eine spielerische Einordnung, wie nah man dem Schimpansen gekommen ist.
+
+**Referenz:** In der Kyoto-Studie lag die Obergrenze der Maskierungsaufgabe bei den Ziffern 1–9,
+also bei **9 Zahlen**. Ayumu war dort der beste Teilnehmer. Respawn setzt deshalb **9 Zahlen = 100 %
+Ayumu** als Bezugspunkt.
+
+Das ist ein Gag, keine Messung. Ayumus Bedingungen waren andere (begrenzte Anzeigezeit, monatelanges
+Training), und die Online-Variante lässt beliebig Zeit zum Einprägen. Das Hilfe-Popover sagt das in
+einem Satz („Ayumu schaffte in der Studie alle 9 Ziffern – der Vergleich ist nur zum Spaß.“).
+
+**Affen-Nähe** = höchstes geschafftes Level ÷ 9, gerundet auf ganze Prozent, höchstens 100 %. Ab
+10 Zahlen wird statt einer Prozentzahl „Ayumu übertroffen (+N)“ angezeigt.
+
+| Bestes Level | Affen-Nähe | Stufe |
+| ---: | ---: | --- |
+| 0 | 0 % | Bananenschale |
+| 4–5 | 44–56 % | Zoobesucher |
+| 6–7 | 67–78 % | Kletteraffe |
+| 8 | 89 % | Fast Ayumu |
+| 9 | 100 % | Ayumu-Niveau |
+| 10–14 | Ayumu übertroffen (+1 bis +5) | Silberrücken |
+| ab 15 | Ayumu übertroffen (+6 und mehr) | Affenkönig |
+
+Stufen und Texte sind reine Anzeige. Sie werden aus dem gespeicherten Level berechnet und nicht
+gespeichert. Grenzen oder Namen lassen sich später ändern, ohne alte Ergebnisse zu migrieren.
+
+### 3.6 Chimp-Test-Rangliste
+
+- Die Rangliste ist **eigenständig** und enthält ausschließlich Chimp-Test-Ergebnisse. Sie gehört
+  zum gewählten Event wie die übrigen Arcade-Statistiken.
+- Eine Zeile pro Person. Maßgeblich ist der **persönliche Bestlauf**.
+- Sortierung: bestes Level, dann weniger Strikes in diesem Lauf, dann weniger aktive Zeit in diesem
+  Lauf, dann der frühere Zeitpunkt (wer den Wert zuerst erreicht hat, steht vorn).
+- Spalten: Rang, Name, bestes Level, Affen-Nähe mit Stufe, Anzahl Läufe, durchschnittliches Level.
+- Läufe, die die Plausibilitätsprüfung nicht bestehen (siehe 5.5), erscheinen nicht in der
+  Rangliste.
+- Gezählt werden nur menschliche Läufe; einen KI-Gegner gibt es ohnehin nicht.
 
 ---
 
@@ -190,9 +238,9 @@ der Classic-Modus auf der LAN bewährt hat.
 
 - Neue Spielkarte „Chimp Test“ mit einem lokalen Lucide-Icon (Vorschlag: `banana`, sonst
   `grid-3x3`) und dem üblichen Badge „… offen“.
-- Hilfe-Popover neben dem Titel mit genau drei Zeilen: „Merke dir die Zahlen. Klick die 1 – dann
+- Hilfe-Popover neben dem Titel mit drei Regelzeilen: „Merke dir die Zahlen. Klick die 1 – dann
   werden alle anderen verdeckt. Klick den Rest in der richtigen Reihenfolge. Drei Fehler und du bist
-  raus.“
+  raus.“ Dazu der Hinweis zur Affen-Bewertung aus 3.5.
 - Keine Moduswahl im MVP. Der Button „Lobby öffnen“ öffnet direkt eine Lobby. `modes: null` in
   `arcadeGames.js`, wie bei Challenge Rush.
 
@@ -244,19 +292,27 @@ der Classic-Modus auf der LAN bewährt hat.
 
 ### 4.4 Ergebnisansicht
 
-- Die vorhandene Ergebnisstruktur mit Platzierung, Level, Strikes und aktiver Zeit.
-- Ein kleiner Gag als Untertitel, angelehnt an den viralen Ursprung, zum Beispiel ab 9 Zahlen:
-  „Ayumu wäre beeindruckt“. Rein kosmetisch und ohne Bewertungsanspruch.
+- Sobald der eigene Lauf endet, erscheint sofort das **eigene Ergebnis**, ohne auf die anderen zu
+  warten: bestes Level groß, darunter Affen-Nähe als Fortschrittsbalken bis 100 % mit Stufenname
+  (zum Beispiel „89 % · Fast Ayumu“), Strikes und aktive Zeit.
+- Ist es ein neuer persönlicher Bestwert, steht das deutlich dabei („Neuer Bestwert – vorher 7“),
+  ebenso der aktuelle Rang in der Chimp-Test-Rangliste.
+- Eine Rundenübersicht listet die Ergebnisse aller Mitspielenden mit ihrer Affen-Bewertung, aber
+  ohne Sieger, Pokal oder Platzziffern. Sortiert wird nur zur Übersicht nach Level.
+- Ein Link führt zur vollständigen Chimp-Test-Rangliste.
 - „Nochmal“ nutzt den vorhandenen Rematch-Baustein (`rematch.js`).
+- Die Ergebnisansicht weicht damit von der gemeinsamen Sieger-Darstellung der übrigen Spiele ab.
+  Wiederverwendet werden Layout und Primitiven, nicht die Sieger-Logik.
 
 ### 4.5 Zuschauer und Kiosk
 
 Zuschauer könnten im LAN-Raum Positionen zurufen. Watch- und Kiosk-Ansicht zeigen deshalb **nie
 das Raster eines laufenden Levels**, sondern nur:
 
-- die Rangliste mit Level, Strikes, Status und gegebenenfalls Fortschritt im aktuellen Level
+- den Live-Stand mit Level, Strikes, Status und gegebenenfalls Fortschritt im aktuellen Level
   („6/11 geklickt“),
-- ein großes „Level 14!“ als Hervorhebung, wenn jemand einen neuen Matchbestwert erreicht.
+- ein großes „Level 14!“ als Hervorhebung, wenn jemand einen neuen persönlichen Bestwert erreicht
+  oder die Spitze der Chimp-Test-Rangliste übernimmt.
 
 Der Server erzeugt dafür einen eigenen, bereinigten Zuschauer-State. Positionen und Zahlen gelangen
 nie in diesen Payload.
@@ -284,7 +340,8 @@ nie in diesen Payload.
 Neu:
 
 - `server/src/arcade/chimpLogic.ts`: reine Logik für Anordnung pro Level und Versuch, Prüfung von
-  Klicks, Level- und Strike-Fortschritt, Platzierung und Siegerermittlung.
+  Klicks, Level- und Strike-Fortschritt, Affen-Bewertung (Prozent und Stufe) und Sortierung der
+  Rangliste.
 - `server/src/arcade/chimpLogic.test.ts`: schnelle Unit-Tests der Spiellogik.
 - `server/src/arcade/chimp.ts`: Lobby-, Match-, Timer-, Disconnect- und Socket-State.
 - `server/public/js/arcade/views/chimp.js`: Lobbykarte, Raster, Zwischenbildschirm und Ergebnis.
@@ -332,10 +389,11 @@ Server-State pro Person:
 | --- | --- | --- |
 | `chimp:lobbies` | S→C | Für den Scope sichtbare Lobbys mit Belegung und Ready-State. |
 | `chimp:lobby:create` / `join` / `leave` / `ready` / `start` | C→S | Lobbyverwaltung wie bei Challenge Rush. |
-| `chimp:state` | S→C | Personalisierter Zustand: eigenes Level, Phase und Raster sowie die öffentliche Rangliste. |
+| `chimp:state` | S→C | Personalisierter Zustand: eigenes Level, Phase und Raster sowie der öffentliche Live-Stand. |
 | `chimp:click` | C→S | `{ matchId, playerId, levelToken, cell }` – ein Klick auf Feldindex 0–39. |
 | `chimp:continue` | C→S | Zwischenbildschirm bestätigen und nächstes Level anfordern. |
-| `chimp:standings` | S→C | Öffentliche Rangliste bei jeder Änderung von Level, Strike oder Status. |
+| `chimp:standings` | S→C | Öffentlicher Live-Stand bei jeder Änderung von Level, Strike oder Status. |
+| `chimp:run:end` | S→C | Eigenes Solo-Ergebnis mit Affen-Bewertung, Bestwert-Hinweis und Rang. |
 | `chimp:match:*` | beide | Pause, Fortsetzen, Verlassen, Beenden und Abschluss. |
 
 Details:
@@ -365,28 +423,54 @@ Level mit 20 Zahlen in unter 0,5 Sekunden ab dem ersten Klick. Solche Läufe wer
 
 ### 5.6 Ergebnisse und Statistiken
 
-- `recordArcadeResult({ gameType: 'chimp', … })` mit Score-Snapshots pro Person:
-  `{ playerId, name, mode: 'arena', placement, level, strikes, activeMs, outcome }`.
-- In der Statistik läuft das Spiel als Arena-Modus. Die vorhandene Sortierung nach Siegen, Top-3,
-  durchschnittlicher Platzierung usw. passt ohne Schemaänderung. Statt Knockouts ist das höchste
-  Level der sinnvollere letzte Gleichstandsbrecher. Das wäre eine kleine, spielspezifische
-  Ergänzung in `routes/arcade.ts`.
-- **Solo-Läufe** (1 Person) würden nach heutiger Logik als Sieg zählen und die Siegquote verzerren.
-  Das betrifft heute schon Challenge Rush. Vorschlag: Solo-Läufe zwar speichern, aber nicht in
-  Siege, Niederlagen oder Platzierungen einrechnen. Persönliche Bestwerte zeigt nur die
-  Chimp-Ansicht an. Siehe offene Entscheidung 2.
+**Speichern – ein Datensatz pro Lauf.** Endet ein Lauf, schreibt der Server sofort genau einen
+Arcade-Datensatz mit genau einer Person:
+
+```ts
+recordArcadeResult({
+  gameType: 'chimp',
+  winnerId: null,
+  players: [player],
+  scores: [{ playerId, name, mode: 'solo', level, strikes, activeMs, outcome }],
+  reason, // 'strikes' | 'max' | 'time-limit' | 'left' | 'disconnect' | 'invalid'
+  startedAt, endedAt, matchId: `${match.id}:${playerId}`, scope,
+});
+```
+
+So braucht es keine Schemaänderung. Die gemeinsame Runde taucht in der Statistik nicht auf; sie
+ist nur der gemeinsame Startpunkt. `isWinner` und `placement` werden nie gesetzt.
+
+**Aus der Sieg-Statistik heraushalten.** Die heutige Aggregation in `routes/arcade.ts` zählt jeden
+Datensatz als Match und jedes Match ohne Sieg als Niederlage. Chimp-Datensätze würden dort lauter
+Niederlagen erzeugen. Deshalb:
+
+- `game_type = 'chimp'` wird **nicht** an `addResultToGame` übergeben.
+- Eine eigene, kleine Aggregation ermittelt pro Person: bestes Level mit Strikes, aktiver Zeit und
+  Zeitpunkt des Bestlaufs, Anzahl Läufe und durchschnittliches Level. Läufe mit `outcome: 'invalid'`
+  werden ignoriert.
+- Die Antwort von `GET /api/arcade/stats` enthält einen Eintrag
+  `{ gameType: 'chimp', title: 'Chimp Test', kind: 'solo', runs, leader, players: [...] }`. Das
+  Muster gibt es schon: Scribble ergänzt seinen Eintrag ebenfalls um eigene Felder
+  (`artPlayers`).
+- Die Ranglistenansicht im Frontend rendert bei `kind: 'solo'` die Spalten aus 3.6 statt Siege,
+  Niederlagen und Siegquote. Prozent und Stufe der Affen-Bewertung berechnet eine gemeinsame
+  Hilfsfunktion, die Ergebnisansicht und Rangliste gleichermaßen nutzen.
+- Bestehende Auswertungen (Nutzungsanalyse, Export, Datenschutz-Löschung) lesen `arcade_results`
+  bereits generisch und brauchen höchstens den Spieltitel.
 
 ---
 
 ## 6. Umsetzung in Etappen
 
-### Etappe 1 – Classic-Parallelrennen (empfohlenes MVP)
+### Etappe 1 – Classic mit Solo-Wertung (empfohlenes MVP)
 
 - `chimpLogic.ts` mit Unit-Tests.
 - Lobby (1–15 Personen), Countdown, parallele Läufe, Inaktivitäts- und Match-Zeitlimit,
   Disconnect- und Reconnect-Behandlung, Pause und Ende.
-- Responsive Spielansicht für Handy und Laptop, Zwischenbildschirm, Ergebnis und Rematch.
-- Arcade-Karte, Lobbyübersicht, Live-Tracking, Statistik, bereinigter Watch- und Kiosk-State.
+- Responsive Spielansicht für Handy und Laptop, Zwischenbildschirm, Solo-Ergebnis mit
+  Affen-Bewertung und Rematch.
+- Solo-Speicherung pro Lauf und eigene Chimp-Test-Rangliste, ohne Einfluss auf die Sieg-Statistik.
+- Arcade-Karte, Lobbyübersicht, Live-Tracking, bereinigter Watch- und Kiosk-State.
 
 ### Etappe 2 – Ergänzungen nach LAN-Feedback
 
@@ -413,8 +497,9 @@ Level mit 20 Zahlen in unter 0,5 Sekunden ab dem ersten Klick. Solche Läufe wer
   ein leeres oder bereits erledigtes Feld ist kein Fehlklick; ein Klick vor der 1 auf eine andere
   Zahl ist ein Fehlklick.
 - Level +1 nach Erfolg, Wiederholung bei Strike, Aus nach 3 Strikes, Obergrenze 40.
-- Platzierung und Sieg: Level, dann Strikes, dann aktive Zeit; vollständiger Gleichstand ergibt
-  kein Siegerergebnis.
+- Affen-Bewertung: 0 → 0 % „Bananenschale“, 8 → 89 % „Fast Ayumu“, 9 → 100 % „Ayumu-Niveau“,
+  10 → „Ayumu übertroffen (+1)“, alle Stufengrenzen aus 3.5.
+- Ranglistensortierung: Level, dann Strikes, dann aktive Zeit, dann früherer Zeitpunkt.
 - Inaktivität wird als Strike gewertet; Plausibilitätsgrenze greift.
 
 ### Socket- und Integrationstests
@@ -427,12 +512,16 @@ Level mit 20 Zahlen in unter 0,5 Sekunden ab dem ersten Klick. Solche Läufe wer
   weiter, danach endet der Lauf mit dem bis dahin geschafften Level.
 - Watch-, Kiosk- und Lobby-Payloads enthalten weder Zahlen noch Positionen; `chimp:state`
   enthält die Zahlen nach dem ersten richtigen Klick nicht mehr.
-- Das Ergebnis wird genau einmal gespeichert und erscheint in der Arcade-Statistik.
+- Jeder Lauf wird genau einmal als eigener Datensatz mit genau einer Person gespeichert, auch wenn
+  mehrere Personen gleichzeitig gespielt haben; ohne Sieger und ohne Platzierung.
+- Die Statistik-API liefert für `chimp` den Solo-Eintrag mit Bestwerten. Chimp-Läufe verändern
+  weder Matches noch Siege oder Niederlagen anderer Spiele und erscheinen nicht als Niederlagen.
+- Ungültige Läufe fehlen in der Rangliste.
 
 ### E2E und UI
 
 - Vollständiges Match mit zwei Browserkontexten: Lobby, Ready, Countdown, Level geschafft, Strike,
-  Aus, Ergebnis und Statistik.
+  Aus, Solo-Ergebnis mit Affen-Bewertung und Eintrag in der Chimp-Test-Rangliste.
 - Handy-Viewport: 5×8-Raster ohne Scrollen, Kacheln mindestens 44×44 CSS-Pixel. Laptop: 8×5.
 - Tastatur: Fokusnavigation und Klick per Enter, sichtbarer Fokus.
 - Lange Spielernamen, leere Lobbyliste, Fehler-Ack, Pause und `prefers-reduced-motion`.
@@ -450,7 +539,11 @@ Level mit 20 Zahlen in unter 0,5 Sekunden ab dem ersten Klick. Solche Läufe wer
 - Kein Zuschauer-, Kiosk- oder Lobby-Payload enthält Zahlen oder Positionen eines laufenden Levels.
 - Ein getrennter oder inaktiver Client blockiert das Match für niemanden länger als die
   festgelegten Fristen.
-- Ergebnisse, Live-Tracking, Lobbyübersicht, Watch/Kiosk und Arcade-Statistik funktionieren.
+- Jeder Lauf wird als Solo-Ergebnis gewertet, auch in einer Runde mit mehreren Personen. Es gibt
+  keine Sieger, Niederlagen oder Platzierungen.
+- Die Chimp-Test-Rangliste zeigt pro Person den Bestlauf mit Affen-Nähe und Stufe; die übrigen
+  Arcade-Ranglisten bleiben unverändert.
+- Live-Tracking, Lobbyübersicht und Watch/Kiosk funktionieren.
 - Keine neue Produktionsabhängigkeit; Lint, Build, Unit- und Integrationstests, Tokenprüfung und
   die relevanten Arcade-E2E-Tests sind grün.
 
@@ -459,8 +552,13 @@ Level mit 20 Zahlen in unter 0,5 Sekunden ab dem ersten Klick. Solche Läufe wer
 ## 9. Offene Entscheidungen
 
 1. **Name:** „Chimp Test“ (bekannt, empfohlen) oder deutsch „Affentest“?
-2. **Solo-Läufe in der Statistik:** nicht in Siege und Niederlagen einrechnen (empfohlen) oder wie
-   bei Challenge Rush als Sieg zählen?
-3. **Anordnung:** eigene Zufallsfolge pro Person (empfohlen, verhindert Abschauen) oder für alle
+2. **Anordnung:** eigene Zufallsfolge pro Person (empfohlen, verhindert Abschauen) oder für alle
    gleich (maximale Vergleichbarkeit)?
-4. **Umfang des MVP:** nur Classic (empfohlen) oder Blitz-Modus direkt mit?
+3. **Umfang des MVP:** nur Classic (empfohlen) oder Blitz-Modus direkt mit?
+4. **Affen-Bewertung:** Stufennamen und -grenzen aus 3.5 so übernehmen oder anpassen?
+
+### Getroffene Entscheidungen
+
+- 9. Oktober 2026: Es gibt ausschließlich Solo-Statistiken, auch wenn mehrere Personen in einer
+  Runde spielen. Alle Läufe fließen in eine eigene Chimp-Test-Rangliste mit einer Bewertung, wie
+  nah man dem Affen ist (Abschnitte 3.2, 3.5, 3.6 und 5.6).
