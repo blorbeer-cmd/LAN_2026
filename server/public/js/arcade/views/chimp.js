@@ -11,7 +11,7 @@ import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadePlayerStripHtml, a
 import { cancelCountdown, showCountdown } from '../countdown.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import {
-  chimpCellLabel, chimpGridModel, chimpNeighbor, chimpNumbersText, chimpRatingText, chimpStrikesText, chimpTimeText,
+  chimpCellLabel, chimpGridModel, chimpNeighbor, chimpNumbersText, chimpRatingText, chimpStageMode, chimpStrikesText, chimpTimeText,
 } from '../chimpFormat.js';
 
 // Chimp Test: memorize the numbers, tap the 1 and the rest disappear, tap the
@@ -81,7 +81,8 @@ export function ensureChimpSocket() {
   socket = connectSocket();
   socket.on('chimp:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
-    if (!match && currentView() === 'arcade') rerender();
+    // The hub stays live even while this tab still keeps a finished run.
+    if (currentView() === 'arcade') rerender();
   });
   socket.on('chimp:match:start', (payload) => {
     const sameMatch = payload?.reconnected === true && match?.matchId === payload.matchId;
@@ -120,7 +121,7 @@ export function ensureChimpSocket() {
     if (!match || payload?.matchId !== match.matchId) return;
     cancelCountdown();
     roundEnd = payload;
-    match = { ...match, phase: 'ended' };
+    match = { ...match, phase: 'ended', paused: false };
     rerenderIfVisible();
   });
   socket.on('disconnect', () => { if (match) { match = { ...match, disconnected: true }; rerenderIfVisible(); } });
@@ -291,10 +292,11 @@ function ownResultHtml() {
 
 function stageBodyHtml() {
   const me = match?.me;
-  if (match?.paused) return '<div class="chimp-concealed"><strong>Pause</strong><span class="chimp-note">Das Spielfeld erscheint nach dem Fortsetzen</span></div>';
-  if (match?.phase === 'countdown' || !me) return `<div class="chimp-concealed" data-countdown-anchor><strong>Gleich geht es los</strong><span class="chimp-note">Merke dir die Zahlen und tippe die 1 zuerst</span></div>`;
-  if (me.phase === 'out' || match.phase === 'ended') return ownResultHtml();
-  if (me.phase === 'interstitial') return interstitialHtml(me);
+  const mode = chimpStageMode(match);
+  if (mode === 'result') return ownResultHtml();
+  if (mode === 'paused') return '<div class="chimp-concealed"><strong>Pause</strong><span class="chimp-note">Das Spielfeld erscheint nach dem Fortsetzen</span></div>';
+  if (mode === 'countdown') return `<div class="chimp-concealed" data-countdown-anchor><strong>Gleich geht es los</strong><span class="chimp-note">Merke dir die Zahlen und tippe die 1 zuerst</span></div>`;
+  if (mode === 'interstitial') return interstitialHtml(me);
   const interactive = !reveal && (me.phase === 'memorize' || me.phase === 'input') && !match.disconnected;
   const hint = reveal ? revealNoteHtml() : me.phase === 'memorize' && !clearedLocally.length
     ? '<p class="chimp-note">Merken, dann mit der 1 beginnen</p>'

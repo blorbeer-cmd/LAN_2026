@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { chimpCellLabel, chimpGridModel, chimpNeighbor, chimpRatingText, chimpTimeText } from './chimpFormat.js';
+import { chimpCellLabel, chimpGridModel, chimpNeighbor, chimpRatingText, chimpStageMode, chimpTimeText } from './chimpFormat.js';
 
 const memorize = { phase: 'memorize', numbers: [{ cell: 12, number: 1 }, { cell: 3, number: 2 }, { cell: 30, number: 3 }] };
 
@@ -37,6 +37,15 @@ test('arrow keys follow the drawn layout and stop at the edges', () => {
   assert.equal(chimpNeighbor(3, 'ArrowRight', true), 11);
   assert.equal(chimpNeighbor(35, 'ArrowRight', true), null);
   assert.equal(chimpNeighbor(3, 'Enter'), null);
+});
+
+test('a finished run or round shows the result even if the host paused before ending', () => {
+  assert.equal(chimpStageMode({ phase: 'ended', paused: true, me: { phase: 'out' } }), 'result');
+  assert.equal(chimpStageMode({ phase: 'playing', paused: true, me: { phase: 'out' } }), 'result');
+  assert.equal(chimpStageMode({ phase: 'playing', paused: true, me: { phase: 'input' } }), 'paused');
+  assert.equal(chimpStageMode({ phase: 'countdown', paused: false, me: null }), 'countdown');
+  assert.equal(chimpStageMode({ phase: 'playing', paused: false, me: { phase: 'interstitial' } }), 'interstitial');
+  assert.equal(chimpStageMode({ phase: 'playing', paused: false, me: { phase: 'memorize' } }), 'grid');
 });
 
 test('formats the chimp rating and active time in German', () => {

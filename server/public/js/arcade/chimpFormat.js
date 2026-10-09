@@ -30,6 +30,17 @@ export function chimpGridModel(me, reveal = null, clearedLocally = []) {
   return cells;
 }
 
+// Which body the stage shows. A finished run or round always wins over a
+// pause the host left behind, so the own result never hides behind it.
+export function chimpStageMode(match) {
+  const me = match?.me;
+  if (match?.phase === 'ended' || me?.phase === 'out') return 'result';
+  if (match?.paused) return 'paused';
+  if (match?.phase === 'countdown' || !me) return 'countdown';
+  if (me.phase === 'interstitial') return 'interstitial';
+  return 'grid';
+}
+
 export function chimpCellLabel(index, cell) {
   const row = Math.floor(index / CHIMP_ROW_LENGTH) + 1;
   const column = (index % CHIMP_ROW_LENGTH) + 1;

@@ -229,3 +229,54 @@ test('parallel taps and continues are applied exactly once', async () => {
     await closeServer(server, [socket]);
   }
 });
+
+test('personal pushes stop as soon as a participant leaves the match scope', async () => {
+  clearLobbyMemberships();
+  const server = await makeServer();
+  const hostSocket = await connect(server.baseUrl);
+  const guestSocket = await connect(server.baseUrl);
+  try {
+    const hostId = await player(server.baseUrl, 'Chimp Scope Host');
+    const guestId = await player(server.baseUrl, 'Chimp Scope Guest');
+    const { matchId } = await startRound([hostSocket, guestSocket], [hostId, guestId]);
+    // The guest switches to another event while the round keeps running.
+    server.io.sockets.sockets.get(guestSocket.id!)!.data.eventId = 'other-event';
+    const guestStates: State[] = [];
+    guestSocket.on('chimp:state', (state: State) => guestStates.push(state));
+    assert.equal((await emitAck(hostSocket, 'chimp:match:pause', { matchId, playerId: hostId })).paused, true);
+    // The pause pushed a personal state to everyone before acking the host. A
+    // round trip over the guest's own connection afterwards proves that no
+    // state was written to it.
+    assert.equal((await emitAck(guestSocket, 'chimp:match:reconnect', { matchId })).ok, false);
+    assert.deepEqual(guestStates, []);
+  } finally {
+    await closeServer(server, [hostSocket, guestSocket]);
+  }
+});
+
+test('a host who is gone for good hands over the controls and lifts a pause', async () => {
+  clearLobbyMemberships();
+  process.env.CHIMP_RECONNECT_GRACE_MS = '100';
+  const server = await makeServer();
+  const hostSocket = await connect(server.baseUrl);
+  const guestSocket = await connect(server.baseUrl);
+  try {
+    const hostId = await player(server.baseUrl, 'Chimp Gone Host');
+    const guestId = await player(server.baseUrl, 'Chimp Gone Guest');
+    const { matchId } = await startRound([hostSocket, guestSocket], [hostId, guestId]);
+    const paused = nextState(guestSocket, (state) => state.paused);
+    assert.equal((await emitAck(hostSocket, 'chimp:match:pause', { matchId, playerId: hostId })).paused, true);
+    await paused;
+    const handedOver = nextState(guestSocket, (state) => !state.paused && (state as State & { host: { id: string } }).host.id === guestId);
+    hostSocket.close();
+    const state = await handedOver;
+    assert.equal(state.me?.phase, 'memorize');
+    assert.equal(state.standings.find((entry) => entry.playerId === hostId)?.status, 'out');
+    // The new host can pause and end the round.
+    assert.equal((await emitAck(guestSocket, 'chimp:match:pause', { matchId, playerId: guestId })).ok, true);
+    assert.equal((await emitAck(guestSocket, 'chimp:match:finish', { matchId, playerId: guestId })).ok, true);
+  } finally {
+    delete process.env.CHIMP_RECONNECT_GRACE_MS;
+    await closeServer(server, [hostSocket, guestSocket]);
+  }
+});

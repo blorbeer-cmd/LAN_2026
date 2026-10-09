@@ -5,7 +5,7 @@ import { db } from '../db';
 import { broadcastArcadeKiosk } from './realtime';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { recordArcadeResult } from './arcadeData';
-import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
+import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope } from './scope';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
@@ -212,9 +212,16 @@ function matchStatePayload(match: Match, playerId: string) {
   };
 }
 
-function emitOwnState(io: Server, match: Match, playerId: string): void {
+// Personal pushes re-check the socket's current group/event scope on every
+// delivery, like room broadcasts: a participant who switched events or lost
+// access keeps a stale socket id in the match but must receive nothing.
+function emitToPlayer(io: Server, match: Match, playerId: string, event: string, payload: unknown): void {
   const socketId = match.socketIds.get(playerId);
-  if (socketId) io.sockets.sockets.get(socketId)?.emit('chimp:state', matchStatePayload(match, playerId));
+  if (socketId) emitArcadeSocket(io, socketId, event, payload, match);
+}
+
+function emitOwnState(io: Server, match: Match, playerId: string): void {
+  emitToPlayer(io, match, playerId, 'chimp:state', matchStatePayload(match, playerId));
 }
 
 function emitAllStates(io: Server, match: Match): void {
@@ -287,9 +294,8 @@ function armRunTimer(io: Server, match: Match, playerId: string, entry: PlayerRu
 
 function afterStrike(io: Server, match: Match, playerId: string, entry: PlayerRun): void {
   const reveal = entry.run.reveal;
-  const socketId = match.socketIds.get(playerId);
   // Only the affected player ever receives the solution of the finished attempt.
-  if (reveal && socketId) io.sockets.sockets.get(socketId)?.emit('chimp:reveal', { matchId: match.id, ...reveal });
+  if (reveal) emitToPlayer(io, match, playerId, 'chimp:reveal', { matchId: match.id, ...reveal });
   armRunTimer(io, match, playerId, entry);
   emitOwnState(io, match, playerId);
   emitStandings(io, match);
@@ -346,10 +352,9 @@ function endRun(io: Server, match: Match, playerId: string, reason: RunEndReason
       matchId: `${match.id}:${playerId}`,
       scope: match,
     });
-    const socketId = match.socketIds.get(playerId);
-    if (socketId && match.eventId) {
+    if (match.socketIds.has(playerId) && match.eventId) {
       const rank = chimpLeaderboard(match.groupId, match.eventId).find((row) => row.playerId === playerId)?.place ?? null;
-      io.sockets.sockets.get(socketId)?.emit('chimp:run:end', {
+      emitToPlayer(io, match, playerId, 'chimp:run:end', {
         matchId: match.id,
         reason,
         result,
@@ -385,6 +390,8 @@ function finishMatch(io: Server, match: Match, reason: 'completed' | 'time-limit
     if (entry.ended === null && reason !== 'completed') endRun(io, match, playerId, reason);
   }
   match.phase = 'ended';
+  match.paused = false;
+  match.pausedRemainingMs = null;
   clearMatchTimer(match);
   for (const timer of match.reconnectTimers.values()) clearTimeout(timer);
   match.reconnectTimers.clear();
@@ -436,6 +443,19 @@ function resumeMatch(io: Server, match: Match): void {
     if (entry.run.phase === 'memorize' || entry.run.phase === 'input') entry.attemptRunningSince = now;
     armRunTimer(io, match, playerId, entry);
   }
+}
+
+// A host who is gone for good (left or past the reconnect grace) must not
+// freeze the round: the controls pass to the first connected player, still
+// playing ones first, and a pause the host left behind is lifted so the match
+// time limit runs again.
+function handOverHost(io: Server, match: Match): void {
+  if (!isCurrent(match)) return;
+  const connected = match.players.filter((player) => player.id !== match.host.id && match.socketIds.has(player.id));
+  const next = connected.find((player) => match.runs.get(player.id)?.ended === null) ?? connected[0];
+  if (next) match.host = next;
+  if (match.paused) resumeMatch(io, match);
+  emitAllStates(io, match);
 }
 
 function attachSocket(io: Server, socket: Socket, match: Match, playerId: string): boolean {
@@ -669,6 +689,7 @@ export function registerChimpSockets(io: Server): () => void {
       if (isCurrent(match)) {
         match.socketIds.delete(playerId as string);
         socket.leave(match.room);
+        if (playerId === match.host.id) handOverHost(io, match);
       }
       ack?.({ ok: true });
     });
@@ -683,13 +704,17 @@ export function registerChimpSockets(io: Server): () => void {
           if (socketId !== socket.id) continue;
           match.socketIds.delete(playerId);
           const entry = match.runs.get(playerId);
-          if (entry?.ended !== null || match.phase === 'ended') continue;
+          const isHost = playerId === match.host.id;
+          if (!entry || match.phase === 'ended' || (entry.ended !== null && !isHost)) continue;
           // The run keeps its attempt and its active time keeps running; only
-          // a player who does not return within the grace period is out.
+          // a player who does not return within the grace period is out. A
+          // host whose own run is already over still holds the controls, so
+          // they are handed over the same way.
           const timer = setTimeout(() => {
             match.reconnectTimers.delete(playerId);
             if (!isCurrent(match) || match.socketIds.has(playerId)) return;
-            endRun(io, match, playerId, 'disconnect');
+            if (entry.ended === null) endRun(io, match, playerId, 'disconnect');
+            if (match.host.id === playerId) handOverHost(io, match);
           }, timing().reconnectGraceMs);
           timer.unref();
           match.reconnectTimers.set(playerId, timer);
