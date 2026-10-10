@@ -217,7 +217,7 @@ function matchControlsHtml() {
 
 function shellHtml(body) {
   return `<div class="arcade-game-shell${match.ended ? ' is-ended' : ''}" data-battleship-match="${escapeHtml(match.matchId)}">
-    ${arcadeGameHeaderHtml('Battleship', matchControlsHtml(), { expand: false })}
+    ${arcadeGameHeaderHtml('Battleship', matchControlsHtml(), { fullscreen: false })}
     <div class="grouped-page-sections">${body}</div>
   </div>`;
 }

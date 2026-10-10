@@ -1307,7 +1307,7 @@ export const components = [
     "selector": ".arcade-icon-btn",
     "owner": "public/css/arcade.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Square 32px icon actions (expand, mute) in the game header beside the compact match buttons."
+    "purpose": "Square 32px icon actions (fullscreen, mute) in the game header beside the compact match buttons."
   },
   {
     "id": "battleship-ship-option",
@@ -2449,7 +2449,7 @@ export const permanentVariants = [
       "min-height",
       "padding"
     ],
-    "reason": "In the game header the mute toggle matches the 32px square expand icon beside it."
+    "reason": "In the game header the mute toggle matches the 32px square fullscreen icon beside it."
   }
 ];
 
