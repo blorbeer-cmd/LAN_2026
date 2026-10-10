@@ -1,9 +1,9 @@
 // Browser E2E tests for the Arcade area: spectating running matches (list
 // lifecycle, auto-redirect on match end, stale history entries), the
-// expandable playfield geometry, and rapid-fire robustness (lobby-create
+// fitted playfield geometry and fullscreen, and rapid-fire robustness (lobby-create
 // bursts, ready-toggle spam). Complements the broader click-through suite in
 // flows.e2e.test.ts — this file owns the Arcade-specific regressions from the
-// spectator/expand work.
+// spectator, fit and fullscreen work.
 
 import { test, before, after, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
@@ -77,7 +77,7 @@ async function createAdminPlayer(name: string): Promise<{ id: string; name: stri
 // Opens a fresh context+page with the player's personal session.
 async function openArcadeAs(
   playerId: string,
-  { viewport = { width: 390, height: 844 }, expanded = false, adminMode = false } = {}
+  { viewport = { width: 390, height: 844 }, adminMode = false } = {}
 ): Promise<Actor> {
   const context = await browser.newContext({ viewport });
   await trackE2EContext(context, `${playerId}-arcade`);
@@ -87,16 +87,6 @@ async function openArcadeAs(
   const page = await context.newPage();
   page.on('pageerror', (err) => console.error('[pageerror]', err.message));
   await page.goto(BASE_URL);
-  await page.evaluate(
-    (expand) => {
-      // The expand preference must already exist before the game view first
-      // renders — that ordering is exactly what the geometry regressions
-      // below are about (see wireArcadeExpandControl).
-      localStorage.setItem('lan-arcade-expanded', String(expand));
-    },
-    expanded
-  );
-  await page.reload();
   await page.waitForFunction(() =>
     Array.from(document.querySelectorAll<HTMLElement>(
       '.desktop-nav-btn[data-view="arcade"], .nav-btn[data-view="more"]',
@@ -704,14 +694,35 @@ arcadeTest('navigation', 'rapid fire: lobby-create burst keeps one lobby, ready 
   }
 });
 
-arcadeTest('multiplayer', 'expanded Tetris keeps the page free of horizontal scroll and the board aligned', async () => {
+// Geometry of the running game room: the fitted board, whether the view
+// scrolls and whether the app chrome is on screen.
+async function readGameRoomFit(page: Page) {
+  return page.evaluate(() => {
+    const view = document.getElementById('view-container') as HTMLElement;
+    const shell = document.querySelector('.arcade-game-shell') as HTMLElement;
+    const board = document.querySelector('.tetris-canvas') as HTMLElement;
+    const topbar = document.querySelector('.topbar') as HTMLElement;
+    return {
+      budget: shell.style.getPropertyValue('--arcade-h-budget').trim(),
+      boardHeight: board.getBoundingClientRect().height,
+      verticalOverflow: view.scrollHeight - view.clientHeight,
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      fullscreenClass: document.documentElement.classList.contains('arcade-fullscreen'),
+      topbarVisible: topbar.getClientRects().length > 0,
+      pressed: document.querySelector('[data-arcade-fullscreen]')?.getAttribute('aria-pressed') ?? null,
+    };
+  });
+}
+
+arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grows the board until the room is left', async () => {
   const hostPlayer = await createPlayer('Tetris Host');
   const guestPlayer = await createPlayer('Tetris Gast');
 
-  // Wide-but-short desktop viewport: exactly the shape where the expanded
-  // layout previously overflowed sideways (decorative glow) and misaligned
-  // its overlays.
-  const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 1280, height: 640 }, expanded: true });
+  // Wide-but-short desktop viewport: exactly the shape where the board used
+  // to overflow below the fold, the layout overflowed sideways (decorative
+  // glow) and the overlays were misaligned.
+  const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 1280, height: 640 } });
   const guest = await openArcadeAs(guestPlayer.id);
   try {
     await openArcadeLobby(host.page, 'tetris', { mode: 'duel' });
@@ -722,21 +733,21 @@ arcadeTest('multiplayer', 'expanded Tetris keeps the page free of horizontal scr
     await host.page.waitForSelector('#tetris-start:not([disabled])');
     await host.page.click('#tetris-start');
 
-    await host.page.waitForSelector('.arcade-game-shell.is-expanded #tetris-boards');
-    // The saved preference applied before the first render — and the page
-    // must not scroll sideways (the ::before glow used to protrude).
-    const scroll = await host.page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth,
-    }));
+    await host.page.waitForSelector('.arcade-game-shell #tetris-boards .tetris-canvas');
+    await host.page.waitForFunction(() =>
+      Boolean((document.querySelector('.arcade-game-shell') as HTMLElement | null)?.style.getPropertyValue('--arcade-h-budget').trim()));
+    const fitted = await readGameRoomFit(host.page);
+    // Without any toggle the board fits the remaining height: header and
+    // match controls stay on screen and nothing scrolls in either direction.
+    assert.ok(fitted.verticalOverflow <= 0, `the fitted game room must not scroll vertically (${fitted.verticalOverflow}px)`);
     assert.ok(
-      scroll.scrollWidth <= scroll.clientWidth,
-      `expanded Tetris must not introduce horizontal page scroll (scrollWidth ${scroll.scrollWidth} > clientWidth ${scroll.clientWidth})`
+      fitted.scrollWidth <= fitted.clientWidth,
+      `the fitted game room must not scroll sideways (scrollWidth ${fitted.scrollWidth} > clientWidth ${fitted.clientWidth})`
     );
+    assert.equal(fitted.pressed, 'false');
 
     // Overlay geometry: the absolute layers (fx/overlay/incoming) position
     // against .tetris-canvas-wrap, so the wrap must hug the visible canvas.
-    await host.page.waitForSelector('.tetris-canvas');
     const alignment = await host.page.evaluate(() => {
       const canvas = document.querySelector('.tetris-canvas') as HTMLElement;
       const wrap = canvas.closest('.tetris-canvas-wrap') as HTMLElement;
@@ -749,6 +760,24 @@ arcadeTest('multiplayer', 'expanded Tetris keeps the page free of horizontal scr
       `overlays anchor to the wrap, so it must match the canvas width (canvas ${alignment.canvasWidth}, wrap ${alignment.wrapWidth})`
     );
 
+    // Fullscreen hides the app chrome and hands its height to the board,
+    // which still fits without scrolling. Toggling back restores the chrome.
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForFunction((before) =>
+      (document.querySelector('.tetris-canvas') as HTMLElement).getBoundingClientRect().height > before + 20, fitted.boardHeight);
+    const fullscreen = await readGameRoomFit(host.page);
+    assert.equal(fullscreen.fullscreenClass, true);
+    assert.equal(fullscreen.topbarVisible, false, 'fullscreen must hide the topbar');
+    assert.equal(fullscreen.pressed, 'true');
+    assert.ok(fullscreen.verticalOverflow <= 0, `the fullscreen game room must not scroll vertically (${fullscreen.verticalOverflow}px)`);
+    assert.ok(fullscreen.scrollWidth <= fullscreen.clientWidth, 'the fullscreen game room must not scroll sideways');
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForSelector('.topbar', { state: 'visible' });
+    const restored = await readGameRoomFit(host.page);
+    assert.equal(restored.fullscreenClass, false);
+    assert.equal(restored.pressed, 'false');
+    assert.ok(restored.verticalOverflow <= 0, 'leaving fullscreen must refit the board below the restored chrome');
+
     // Leaving the Arcade area must not strand an active match. "Läuft gerade"
     // offers the own match as "Weiterspielen" so the host can still finish it.
     await host.page.locator('.desktop-nav-btn[data-view="home"]:visible').click();
@@ -758,10 +787,19 @@ arcadeTest('multiplayer', 'expanded Tetris keeps the page free of horizontal scr
     await host.page.click('[data-arcade-resume="tetris"]');
     await host.page.waitForSelector('#tetris-finish');
 
+    // Fullscreen survives the end of the match (the result stays in the game
+    // room) and ends together with the game room.
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForSelector('html.arcade-fullscreen', { state: 'attached' });
     await host.page.click('#tetris-finish');
     await host.page.click('[data-confirm]');
     await host.page.waitForSelector('#tetris-back');
+    assert.equal(await host.page.evaluate(() => document.documentElement.classList.contains('arcade-fullscreen')), true);
     await host.page.click('#tetris-back');
+    await host.page.waitForSelector(ARCADE_HUB);
+    await host.page.waitForFunction(() =>
+      !document.documentElement.classList.contains('arcade-fullscreen') && !document.fullscreenElement);
+    await host.page.waitForSelector('.topbar', { state: 'visible' });
   } finally {
     await host.context.close();
     await guest.context.close();
@@ -774,7 +812,7 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
   );
   const actors = await Promise.all(players.map((player, index) => openArcadeAs(
     player.id,
-    index === 0 ? { viewport: { width: 1280, height: 1000 }, expanded: true } : undefined,
+    index === 0 ? { viewport: { width: 1280, height: 1000 } } : undefined,
   )));
   const [host, ...guests] = actors;
   let hostClosed = false;
@@ -939,50 +977,61 @@ arcadeTest('multiplayer', 'Pong Doppel: mobile and desktop lobbies assign two fu
   }
 });
 
-arcadeTest('scribble', 'Scribble: expanded canvas keeps 8:5 and its rapid toggle state stays synchronized', async () => {
+arcadeTest('scribble', 'Scribble: the fitted canvas keeps 8:5 beside its tools and rapid fullscreen toggles stay synchronized', async () => {
   const hostPlayer = await createAdminPlayer('Scribble Geometrie Host');
   const guestPlayer = await createAdminPlayer('Scribble Geometrie Gast');
 
-  // Short desktop viewport so the height cap (100dvh - 18rem) is what limits
-  // the expanded playfield — the code path that used to distort the canvas.
-  const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 1280, height: 640 }, expanded: true, adminMode: true });
+  // Short desktop viewport so the remaining height is what limits the
+  // fitted playfield — the code path that used to distort the canvas.
+  const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 1280, height: 640 }, adminMode: true });
   const guest = await openArcadeAs(guestPlayer.id, { adminMode: true });
   try {
     await startScribbleMatch(host.page, [guest.page], 1);
     await host.page.waitForSelector('.scribble-word-choice-btn');
     await host.page.locator('.scribble-word-choice-btn').first().click();
     await host.page.waitForSelector('#scribble-canvas');
+    await host.page.waitForFunction(() =>
+      Boolean((document.querySelector('.arcade-game-shell') as HTMLElement | null)?.style.getPropertyValue('--arcade-h-budget').trim()));
 
     const geometry = await host.page.evaluate(() => {
       const canvas = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
       const wrap = canvas.closest('.scribble-canvas-wrap') as HTMLElement;
+      const tools = document.querySelector('.scribble-toolbar') as HTMLElement;
+      const view = document.getElementById('view-container') as HTMLElement;
       return {
-        expanded: !!canvas.closest('.arcade-game-shell.is-expanded'),
         canvasWidth: canvas.clientWidth,
         canvasHeight: canvas.clientHeight,
-        wrapWidth: wrap.clientWidth,
+        wrapRight: wrap.getBoundingClientRect().right,
         wrapHeight: wrap.clientHeight,
+        toolsLeft: tools.getBoundingClientRect().left,
+        verticalOverflow: view.scrollHeight - view.clientHeight,
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
       };
     });
-    assert.equal(geometry.expanded, true, 'the saved expand preference must apply to the Scribble room');
     assert.ok(
       Math.abs(geometry.canvasHeight - geometry.wrapHeight) <= 2,
       `the canvas must fill the 8:5 wrapper (canvas ${geometry.canvasHeight}px vs wrap ${geometry.wrapHeight}px high)`
     );
     const ratio = geometry.canvasWidth / geometry.canvasHeight;
-    assert.ok(Math.abs(ratio - 1.6) < 0.05, `expanded Scribble canvas must stay at 8:5 (got ${ratio.toFixed(3)})`);
-    assert.ok(geometry.scrollWidth <= geometry.clientWidth, 'expanded Scribble must not scroll sideways');
+    assert.ok(Math.abs(ratio - 1.6) < 0.05, `the fitted Scribble canvas must stay at 8:5 (got ${ratio.toFixed(3)})`);
+    assert.ok(geometry.toolsLeft >= geometry.wrapRight, 'on a laptop the drawing tools sit beside the canvas');
+    assert.ok(geometry.verticalOverflow <= 0, `the fitted Scribble room must not scroll vertically (${geometry.verticalOverflow}px)`);
+    assert.ok(geometry.scrollWidth <= geometry.clientWidth, 'the fitted Scribble room must not scroll sideways');
 
-    for (let i = 0; i < 7; i += 1) await host.page.click('[data-arcade-expand]');
+    // An odd number of rapid clicks ends in fullscreen; the button, the page
+    // state and a pending browser request must all agree afterwards.
+    for (let i = 0; i < 7; i += 1) await host.page.click('[data-arcade-fullscreen]');
     const toggleState = await host.page.evaluate(() => ({
-      pressed: document.querySelector('[data-arcade-expand]')?.getAttribute('aria-pressed'),
-      expanded: !!document.querySelector('.arcade-game-shell.is-expanded'),
-      stored: localStorage.getItem('lan-arcade-expanded'),
+      pressed: document.querySelector('[data-arcade-fullscreen]')?.getAttribute('aria-pressed'),
+      label: document.querySelector('[data-arcade-fullscreen]')?.getAttribute('aria-label'),
+      fullscreen: document.documentElement.classList.contains('arcade-fullscreen'),
     }));
-    assert.equal(toggleState.pressed, String(toggleState.expanded), 'button state must match the shell state');
-    assert.equal(toggleState.stored, String(toggleState.expanded), 'persisted preference must match the shell state');
+    assert.deepEqual(toggleState, { pressed: 'true', label: 'Vollbild beenden', fullscreen: true });
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForFunction(() =>
+      !document.documentElement.classList.contains('arcade-fullscreen') && !document.fullscreenElement);
+    assert.equal(await host.page.getAttribute('[data-arcade-fullscreen]', 'aria-pressed'), 'false');
     await finishScribbleMatch(host.page);
   } finally {
     await Promise.all([host.context.close(), guest.context.close()]);

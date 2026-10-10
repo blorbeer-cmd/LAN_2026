@@ -239,13 +239,21 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   that level), the chimp rating, the number of runs and the average level.
 - **Game rooms** — Every game uses the same structure: a header with the game title, compact
   neutral match actions („Pausieren“/„Fortsetzen“, „Beenden“, „Verlassen“) and the mute and
-  expand icons; one stage card with the score bar (two sides) or the player strip (more players)
-  above the playfield; after the end one „Ergebnis“ card. The result lists every player with place
+  fullscreen icons; one stage card with the score bar (two sides) or the player strip (more players)
+  above the playfield; after the end one „Ergebnis“ card.
+  The playfield of Pong, Blobby Volley, Snake, Tetris and Scribble always fits the screen on its
+  own: as large as width and remaining height allow, with header, score bar, chat and match
+  actions still visible; below a playable minimum the view scrolls instead. The Tetris Arena on
+  phones fits the own board and lists the opponents below it. On laptops and wider screens, and
+  on phones held sideways, Scribble's tools, guess field and chat sit beside the canvas.
+  „Vollbild“ hides the app's topbar, navigation and banners (the connection notice stays) and
+  asks the browser for real fullscreen where it allows it; „Vollbild beenden“, Esc or leaving
+  the game room ends it. Watching such a game offers the same fullscreen. The result lists every player with place
   and value; the winner's value is green, everyone else is muted. „Revanche“ in the result header
   opens a lobby in the same mode for the same players; the others accept with „Annehmen“, and the
   match starts once everyone is back and ready. „Schließen“ leaves the result.
-  The start countdown is centered on the playfield, not on the window, at every size and in the
-  expanded view. It shows no player identity; the own color is named on the score bar
+  The start countdown is centered on the playfield, not on the window, at every size and in
+  fullscreen. It shows no player identity; the own color is named on the score bar
   („Blau · Deine Farbe“ in Snake).
 - **Game specifics** — Tetris Duell keeps two equal boards; Arena accepts three to eight players
   and keeps the local board large beside a grid of opponent boards. Pong and Blobby Volley offer

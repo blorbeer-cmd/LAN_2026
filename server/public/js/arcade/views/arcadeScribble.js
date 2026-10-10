@@ -411,8 +411,8 @@ function endStroke(e) {
 }
 
 // setupCanvas() only reads the canvas's clientWidth/clientHeight once, at
-// mount time. The expand toggle and the arcade-h-budget correction it
-// triggers (see arcadeUi.js) both resize the wrap afterwards via CSS alone,
+// mount time. The screen fit and the fullscreen mode (see arcadePlayfield.js)
+// both resize the wrap afterwards via CSS alone,
 // which left the canvas's own drawing-buffer resolution stale — every
 // fraction-to-pixel stroke conversion then targeted the old, now-wrong pixel
 // grid, which is what made drawing land in the wrong place (and, since a
@@ -608,9 +608,11 @@ function drawingAreaHtml() {
       <div class="scribble-canvas-wrap ${!isDrawer() ? 'scribble-canvas-locked' : ''}">
         <canvas id="scribble-canvas"></canvas>
       </div>
-      ${toolbarHtml()}
-      ${guessFormHtml()}
-      <div class="scribble-chat-log" id="scribble-chat-log"></div>
+      <div class="scribble-side">
+        ${toolbarHtml()}
+        ${guessFormHtml()}
+        <div class="scribble-chat-frame"><div class="scribble-chat-log" id="scribble-chat-log"></div></div>
+      </div>
     </div>`;
 }
 
@@ -1026,7 +1028,7 @@ export function renderScribbleRoom(container) {
 
   if (matchEnded) {
     container.innerHTML = `
-      <div class="arcade-game-shell is-ended">${arcadeGameHeaderHtml('Scribble', matchControlsHtml(), { expand: false })}<div class="grouped-page-sections">${winnerCelebrationHtml()}</div></div>`;
+      <div class="arcade-game-shell is-ended">${arcadeGameHeaderHtml('Scribble', matchControlsHtml(), { fullscreen: false })}<div class="grouped-page-sections">${winnerCelebrationHtml()}</div></div>`;
     wireArcadeToolbar(container);
     renderStoredCanvases(container);
     container.querySelector('#scribble-back')?.addEventListener('click', () => {
