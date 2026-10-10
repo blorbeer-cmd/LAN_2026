@@ -477,7 +477,7 @@ export function renderChallengeRush(container, _ctx) {
     : match?.phase === 'result'
       ? resultView()
       : challengeView();
-  container.innerHTML = `<div class="arcade-game-shell${match?.phase === 'ended' ? ' is-ended' : ''}">${arcadeGameHeaderHtml('Challenge Rush', matchControlsHtml(), { expand: false })}<div class="grouped-page-sections">${body}</div></div>`;
+  container.innerHTML = `<div class="arcade-game-shell${match?.phase === 'ended' ? ' is-ended' : ''}">${arcadeGameHeaderHtml('Challenge Rush', matchControlsHtml(), { fullscreen: false })}<div class="grouped-page-sections">${body}</div></div>`;
   if (match?.phase === 'countdown' && !match?.paused) updateReadingCountdown();
   wireArcadeToolbar(container);
   container.querySelector('.challenge-rush-breakdown')?.addEventListener('toggle', (event) => { breakdownOpen = event.currentTarget.open; });

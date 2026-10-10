@@ -561,7 +561,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:scribble-word-choice`: Dedicated word-selection game target retains its large type and padded choice surface.
 
-- `registry:arcade-icon-button`: Square 32px icon actions (expand, mute) in the game header beside the compact match buttons.
+- `registry:arcade-icon-button`: Square 32px icon actions (fullscreen, mute) in the game header beside the compact match buttons.
 
 - `registry:battleship-ship-option`: Ship picker tile with name, length bar and placed check; selected and placed states keep the tile geometry.
 
@@ -694,7 +694,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:battleship-orientation-segment`: The orientation switch above the board uses wider segments for its longer labels.
 
-- `registry:arcade-header-mute`: In the game header the mute toggle matches the 32px square expand icon beside it.
+- `registry:arcade-header-mute`: In the game header the mute toggle matches the 32px square fullscreen icon beside it.
 
 - `registry:arcade-answer-input`: Answer and guess fields may shrink beside their submit button instead of overflowing on phones.
 

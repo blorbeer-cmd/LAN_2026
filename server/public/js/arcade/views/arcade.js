@@ -822,7 +822,7 @@ export function renderQuizRoom(container, ctx) {
   }
   container.innerHTML = `
     <div class="arcade-game-shell${match.ended ? ' is-ended' : ''}">
-      ${arcadeGameHeaderHtml('Gaming-Quiz', matchControlsHtml(), { expand: false })}
+      ${arcadeGameHeaderHtml('Gaming-Quiz', matchControlsHtml(), { fullscreen: false })}
       <div class="grouped-page-sections">${renderMatch()}</div>
     </div>`;
   wireQuizMatch(container);

@@ -408,7 +408,7 @@ export function renderChimp(container, _ctx) {
   }
   const hadGridFocus = document.activeElement?.matches?.('[data-chimp-cell]');
   container.innerHTML = `<div class="arcade-game-shell${match.phase === 'ended' ? ' is-ended' : ''}">
-    ${arcadeGameHeaderHtml('Chimp Test', matchControlsHtml(), { expand: false, titleInfoHtml: infoTooltipHtml('chimp-rules-help', 'Chimp Test', RULES_HELP) })}
+    ${arcadeGameHeaderHtml('Chimp Test', matchControlsHtml(), { fullscreen: false, titleInfoHtml: infoTooltipHtml('chimp-rules-help', 'Chimp Test', RULES_HELP) })}
     <div class="grouped-page-sections">${roundRankingHtml()}${stageHtml()}</div>
   </div>`;
   wireArcadeToolbar(container);

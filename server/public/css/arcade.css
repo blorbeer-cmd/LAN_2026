@@ -957,118 +957,186 @@
   min-height: var(--control-height);
   padding: 0;
 }
-.arcade-game-shell.is-expanded {
-  width: min(100%, calc(100vw - var(--space-4) - var(--space-4)));
-  max-width: none;
+.arcade-game-shell {
   box-sizing: border-box;
 }
-.arcade-game-shell.is-expanded .blobby-court,
-.arcade-game-shell.is-expanded .pong-arena,
-.arcade-game-shell.is-expanded .snake-game {
-  width: 100%;
+.arcade-game-shell .blobby-court,
+.arcade-game-shell .pong-arena,
+.arcade-game-shell .snake-game {
   max-width: none;
 }
-.arcade-game-shell.is-expanded .tetris-boards {
-  max-width: none;
-}
-/* The height budget every expanded-playfield width formula below is derived
-   from. The default is a fixed guess (fits the least-chrome game); JS
-   (arcadeUi.js's syncExpandedPlayfieldHeight) overrides it with a measured,
-   precise value on the shell's inline style whenever the guess would
-   overflow the scrollable view and clip score/chat/controls below the fold. */
-.arcade-game-shell.is-expanded {
+/* The height budget every playfield width formula below is derived from.
+   The default is a fixed guess that the result view keeps; during a match
+   JS (arcadePlayfield.js's fitArcadePlayfield) replaces it with the height
+   that is actually left in the view, so the playfield grows or shrinks with
+   the screen while score bar, chat and match controls stay visible. */
+.arcade-game-shell {
   --arcade-h-budget: calc(100dvh - 18rem);
 }
-/* Expanded playfields are bounded by the viewport through their width. Their
-   native aspect ratios remain in charge of the height so canvas coordinates,
-   hit testing and overlays keep the same geometry at every scale. */
-.arcade-game-shell.is-expanded .scribble-stage-body,
-.arcade-game-shell.is-expanded .blobby-court,
-.arcade-game-shell.is-expanded .pong-arena,
-.arcade-game-shell.is-expanded .snake-game {
+/* Playfields are bounded by the viewport through their width. Their native
+   aspect ratios remain in charge of the height so canvas coordinates, hit
+   testing and overlays keep the same geometry at every scale. */
+.arcade-game-shell .scribble-stage-body,
+.arcade-game-shell .blobby-court,
+.arcade-game-shell .pong-arena,
+.arcade-game-shell .snake-game {
   width: min(100%, calc(var(--arcade-h-budget) * 1.6));
   max-width: 100%;
   height: auto;
   box-sizing: border-box;
   overflow: hidden;
 }
-.arcade-game-shell.is-expanded .scribble-stage-body {
+.arcade-game-shell .scribble-stage-body {
   overflow: visible;
 }
-.arcade-game-shell.is-expanded .scribble-stage-body.is-center {
+.arcade-game-shell .scribble-stage-body.is-center {
   width: 100%;
 }
-.arcade-game-shell.is-expanded .blobby-court {
+.arcade-game-shell .blobby-court {
   width: min(100%, calc(var(--arcade-h-budget) * 5 / 3));
 }
-.arcade-game-shell.is-expanded .pong-arena {
+.arcade-game-shell .pong-arena {
   width: min(100%, calc(var(--arcade-h-budget) * 16 / 9));
 }
-.arcade-game-shell.is-expanded .snake-game {
+.arcade-game-shell .snake-game {
   width: min(100%, calc((var(--arcade-h-budget) - var(--space-4)) * 1.6 + var(--space-4)));
 }
-.arcade-game-shell.is-expanded .blobby-court canvas,
-.arcade-game-shell.is-expanded .pong-arena canvas,
-.arcade-game-shell.is-expanded .snake-game canvas {
+.arcade-game-shell .blobby-court canvas,
+.arcade-game-shell .pong-arena canvas,
+.arcade-game-shell .snake-game canvas {
   width: 100%;
   height: auto;
 }
-/* The Scribble canvas carries no width/height attributes when the saved
-   expand preference applies before setupCanvas() runs — height:auto would
-   fall back to the canvas default 300×150 (2:1) inside the 8:5 wrapper and
-   distort every replayed stroke. The wrapper's aspect-ratio is the geometry
-   authority, so the canvas must always fill it completely. */
-.arcade-game-shell.is-expanded .scribble-canvas-wrap canvas {
+/* The Scribble canvas carries no width/height attributes before
+   setupCanvas() runs — height:auto would fall back to the canvas default
+   300×150 (2:1) inside the 8:5 wrapper and distort every replayed stroke.
+   The wrapper's aspect-ratio is the geometry authority, so the canvas must
+   always fill it completely. */
+.arcade-game-shell .scribble-canvas-wrap canvas {
   width: 100%;
   height: 100%;
 }
-.arcade-game-shell.is-expanded .tetris-boards {
+.arcade-game-shell .tetris-boards {
   width: min(100%, calc(100vw - var(--space-3)));
   height: auto;
   max-width: none;
   box-sizing: border-box;
 }
-.arcade-game-shell.is-expanded .tetris-board-col {
+.arcade-game-shell .tetris-board-col {
   height: auto;
   align-items: center;
 }
 /* Duel: each column is exactly as wide as its board, so name, score and the
    stat line stay attached to the board instead of spreading over the row. */
-.arcade-game-shell.is-expanded .tetris-boards.is-duel {
+.arcade-game-shell .tetris-boards.is-duel {
   justify-content: center;
   gap: var(--space-7);
 }
-.arcade-game-shell.is-expanded .tetris-boards.is-duel .tetris-board-col {
+.arcade-game-shell .tetris-boards.is-duel .tetris-board-col {
   flex: 0 1 calc(var(--arcade-h-budget) / 2);
   max-width: calc(var(--arcade-h-budget) / 2);
 }
-.arcade-game-shell.is-expanded .tetris-boards.is-duel .tetris-canvas-wrap {
+.arcade-game-shell .tetris-boards.is-duel .tetris-canvas-wrap {
   width: 100%;
 }
-.arcade-game-shell.is-expanded .tetris-canvas-wrap {
+.arcade-game-shell .tetris-canvas-wrap {
   width: min(100%, calc(var(--arcade-h-budget) / 2));
   height: auto;
   display: flex;
   justify-content: center;
 }
-.arcade-game-shell.is-expanded .tetris-primary-board .tetris-canvas-wrap {
+.arcade-game-shell .tetris-primary-board .tetris-canvas-wrap {
   /* The primary Arena board uses half the height budget, so it stays visibly
      larger than the opponent boards while the layout still fits vertically. */
   width: min(100%, calc(var(--arcade-h-budget) / 2));
 }
-.arcade-game-shell.is-expanded .tetris-canvas {
+.arcade-game-shell .tetris-canvas {
   width: 100%;
   height: auto;
   max-width: 100%;
 }
-.arcade-game-shell.is-expanded .tetris-opponent-grid .tetris-canvas-wrap {
+.arcade-game-shell .tetris-opponent-grid .tetris-canvas-wrap {
   /* Three Arena opponents share the other half of the row. Tie their width
      to the same height budget instead of letting them ignore it. */
   width: min(100%, calc(var(--arcade-h-budget) / 3));
 }
-.arcade-game-shell.is-expanded .tetris-opponent-grid.is-spectator .tetris-canvas-wrap {
+.arcade-game-shell .tetris-opponent-grid.is-spectator .tetris-canvas-wrap {
   /* Spectators see four equal boards without a dedicated primary board. */
   width: min(100%, calc(var(--arcade-h-budget) / 4));
+}
+/* Scribble on laptops, wider screens and phones held sideways: tools, guess
+   field and chat sit beside the canvas instead of below it, so a growing chat
+   never pushes the canvas or the guess field out of view and the canvas keeps
+   the full height. */
+.scribble-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+/* Stacked below the canvas, the log keeps its own capped height and an
+   empty log adds no gap. */
+.scribble-chat-frame {
+  display: contents;
+}
+@media (min-width: 860px), (min-width: 640px) and (orientation: landscape) { /* --bp-lg; sideways phones from --bp-md */
+  .scribble-stage {
+    --scribble-side-width: calc(var(--space-8) * 6);
+  }
+  .scribble-stage-body:not(.is-center) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--scribble-side-width);
+    align-items: stretch;
+  }
+  .arcade-game-shell .scribble-stage-body:not(.is-center) {
+    width: min(100%, calc(var(--arcade-h-budget) * 1.6 + var(--scribble-side-width) + var(--space-3)));
+  }
+  .scribble-stage-body:not(.is-center) .scribble-canvas-wrap {
+    align-self: start;
+  }
+  /* The chat fills whatever height the canvas row leaves and scrolls inside
+     it; positioned absolutely, its lines never add height to the row. */
+  .scribble-chat-frame {
+    display: block;
+    position: relative;
+    flex: 1 1 auto;
+    min-height: calc(var(--space-8) * 2);
+  }
+  .scribble-chat-frame .scribble-chat-log {
+    position: absolute;
+    inset: 0;
+    max-height: none;
+  }
+}
+/* ---------- Fullscreen game room ---------- */
+/* arcadePlayfield.js sets `arcade-fullscreen` on <html> while a game room is
+   in fullscreen. The app chrome steps aside so the playfield gets the whole
+   window; the connection strip stays because a lost connection matters most
+   mid-game. `html:root` outranks the desktop rail's own
+   `:root[data-layout-mode]` rules. */
+html:root.arcade-fullscreen {
+  --shell-bottom-inset: 0px;
+}
+html:root.arcade-fullscreen .topbar,
+html:root.arcade-fullscreen .bottom-nav,
+html:root.arcade-fullscreen .desktop-nav,
+html:root.arcade-fullscreen .notification-highlight {
+  display: none;
+}
+html:root.arcade-fullscreen .connection-status {
+  margin-left: 0;
+}
+html:root.arcade-fullscreen .view-container {
+  width: 100%;
+  margin-left: 0;
+  padding: max(var(--space-2), env(safe-area-inset-top)) max(var(--space-3), env(safe-area-inset-right))
+    max(var(--space-2), env(safe-area-inset-bottom)) max(var(--space-3), env(safe-area-inset-left));
+}
+html:root.arcade-fullscreen .arcade-game-header {
+  margin-bottom: var(--space-2);
+}
+html:root.arcade-fullscreen .arcade-stage {
+  padding: var(--space-2) var(--space-3);
 }
 @media (max-width: 639px) { /* --bp-md */
   .tetris-boards.is-arena {

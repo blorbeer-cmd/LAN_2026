@@ -12,6 +12,10 @@ import { icon } from '../../icons.js';
 import { showToast } from '../../toast.js';
 import { snakeColor } from '../shared/snakeColors.js';
 import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadePlayerStripHtml, arcadeScoreboardHtml } from '../arcadeUi.js';
+import { wireArcadeFullscreenControl, wireArcadePlayfieldFit } from '../arcadePlayfield.js';
+
+// Games whose spectator stage scales with the screen like the game room.
+const SCALABLE_WATCH_GAMES = new Set(['pong', 'blobby', 'snake', 'tetris']);
 
 const GAME_NAMES = {
   quiz: 'Gaming-Quiz',
@@ -366,7 +370,7 @@ export function renderArcadeWatch(container) {
     : state?.gameType === 'battleship' ? 'Ungetroffene Schiffe bleiben für Zuschauer verborgen' : '';
   container.innerHTML = `
     <div class="arcade-game-shell arcade-watch-shell">
-      ${arcadeGameHeaderHtml(name, arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" id="arcade-watch-back">Beenden</button>'), { expand: false, mute: false })}
+      ${arcadeGameHeaderHtml(name, arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" id="arcade-watch-back">Beenden</button>'), { fullscreen: SCALABLE_WATCH_GAMES.has(state?.gameType), mute: false })}
       <section class="card arcade-stage">
         <div class="arcade-watch-status"><strong id="arcade-watch-status">${statusText(state)}</strong><span class="arcade-section-meta">Du schaust zu</span></div>
         <div id="arcade-watch-scores">${state ? scoresHtml(state) : ''}</div>
@@ -376,6 +380,8 @@ export function renderArcadeWatch(container) {
       </section>
     </div>`;
   lastRenderSignature = renderSignature(state);
+  wireArcadeFullscreenControl(container);
+  wireArcadePlayfieldFit(container);
   container.querySelector('#arcade-watch-back')?.addEventListener('click', leaveWatch);
   const stage = container.querySelector('#arcade-watch-stage');
   if (state && stage) paintStage(stage, state);
