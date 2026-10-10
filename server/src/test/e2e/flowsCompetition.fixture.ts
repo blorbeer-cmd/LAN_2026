@@ -555,8 +555,14 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   assert.equal(mine.entries.filter((entry: { points: number }) => entry.points === 1).length, 1);
   await roundCard.locator('[data-vote-participation]:text-is("1/2 abgegeben")').waitFor();
 
-  const ballotGradient = await ballotRows.first().locator('.rating-scale-meter-fill').evaluate((fill) =>
-    getComputedStyle(fill).backgroundImage);
+  // The participation update re-renders the round card. A fill detached by
+  // that re-render reports an empty computed style, so the fill is looked up
+  // and read in one synchronous page task until it carries its gradient.
+  const ballotGradient = await (await page.waitForFunction(() => {
+    const fill = document.querySelector('.vote-round-card [data-vote-row] .rating-scale-meter-fill');
+    const gradient = fill ? getComputedStyle(fill).backgroundImage : '';
+    return gradient && gradient !== 'none' ? gradient : null;
+  })).jsonValue();
   await page.click('[data-votes-close]');
   await page.waitForSelector('#votes-new');
   // Closing reveals the result as a collapsed Umfrage card: the header names
