@@ -702,6 +702,7 @@ async function readGameRoomFit(page: Page) {
     const shell = document.querySelector('.arcade-game-shell') as HTMLElement;
     const board = document.querySelector('.tetris-canvas') as HTMLElement;
     const topbar = document.querySelector('.topbar') as HTMLElement;
+    const visible = (selector: string) => (document.querySelector(selector) as HTMLElement).getClientRects().length > 0;
     return {
       budget: shell.style.getPropertyValue('--arcade-h-budget').trim(),
       boardHeight: board.getBoundingClientRect().height,
@@ -710,6 +711,9 @@ async function readGameRoomFit(page: Page) {
       clientWidth: document.documentElement.clientWidth,
       fullscreenClass: document.documentElement.classList.contains('arcade-fullscreen'),
       topbarVisible: topbar.getClientRects().length > 0,
+      titleWidth: (document.querySelector('.arcade-game-header .view-title') as HTMLElement).getBoundingClientRect().width,
+      statLineVisible: visible('.tetris-stats-line'),
+      boardHeadVisible: visible('.tetris-board-head'),
       pressed: document.querySelector('[data-arcade-fullscreen]')?.getAttribute('aria-pressed') ?? null,
     };
   });
@@ -768,6 +772,12 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
     const fullscreen = await readGameRoomFit(host.page);
     assert.equal(fullscreen.fullscreenClass, true);
     assert.equal(fullscreen.topbarVisible, false, 'fullscreen must hide the topbar');
+    // Statistics the game is playable without give their height to the
+    // board; name and points above each board stay.
+    assert.ok(fitted.statLineVisible && fitted.titleWidth > 1, 'outside fullscreen the title and stat lines are shown');
+    assert.equal(fullscreen.statLineVisible, false, 'fullscreen must hide the stat lines below the boards');
+    assert.ok(fullscreen.titleWidth <= 1, 'fullscreen keeps the game title for screen readers only');
+    assert.equal(fullscreen.boardHeadVisible, true, 'fullscreen keeps name and points above each board');
     assert.equal(fullscreen.pressed, 'true');
     assert.ok(fullscreen.verticalOverflow <= 0, `the fullscreen game room must not scroll vertically (${fullscreen.verticalOverflow}px)`);
     assert.ok(fullscreen.scrollWidth <= fullscreen.clientWidth, 'the fullscreen game room must not scroll sideways');
@@ -776,6 +786,7 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
     const restored = await readGameRoomFit(host.page);
     assert.equal(restored.fullscreenClass, false);
     assert.equal(restored.pressed, 'false');
+    assert.equal(restored.statLineVisible, true, 'leaving fullscreen must bring the stat lines back');
     assert.ok(restored.verticalOverflow <= 0, 'leaving fullscreen must refit the board below the restored chrome');
 
     // Leaving the Arcade area must not strand an active match. "Läuft gerade"

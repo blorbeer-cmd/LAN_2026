@@ -372,11 +372,11 @@ export function renderArcadeWatch(container) {
     <div class="arcade-game-shell arcade-watch-shell">
       ${arcadeGameHeaderHtml(name, arcadeMatchControlsHtml('<button type="button" class="btn btn-sm" id="arcade-watch-back">Beenden</button>'), { fullscreen: SCALABLE_WATCH_GAMES.has(state?.gameType), mute: false })}
       <section class="card arcade-stage">
-        <div class="arcade-watch-status"><strong id="arcade-watch-status">${statusText(state)}</strong><span class="arcade-section-meta">Du schaust zu</span></div>
-        <div id="arcade-watch-scores">${state ? scoresHtml(state) : ''}</div>
+        <div class="arcade-watch-status arcade-fullscreen-hidden"><strong id="arcade-watch-status">${statusText(state)}</strong><span class="arcade-section-meta">Du schaust zu</span></div>
+        <div id="arcade-watch-scores"${state?.gameType === 'snake' ? ' class="arcade-fullscreen-hidden"' : ''}>${state ? scoresHtml(state) : ''}</div>
         <div id="arcade-watch-stage">${stateHtml(state)}</div>
         ${state?.gameType === 'scribble' ? scribbleVotingHtml(state) : ''}
-        ${privacyNote ? `<p class="arcade-section-meta arcade-watch-note">${privacyNote}</p>` : ''}
+        ${privacyNote ? `<p class="arcade-section-meta arcade-watch-note arcade-fullscreen-hidden">${privacyNote}</p>` : ''}
       </section>
     </div>`;
   lastRenderSignature = renderSignature(state);

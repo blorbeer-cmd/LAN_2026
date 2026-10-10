@@ -352,7 +352,7 @@ export function renderSnake(container) {
     <div class="grouped-page-sections">
       ${resultHtml()}
       <section class="card arcade-stage">
-        <div id="snake-roster">${stripHtml()}</div>
+        <div id="snake-roster" class="arcade-fullscreen-hidden">${stripHtml()}</div>
         <div class="snake-game" data-countdown-anchor><canvas id="snake-canvas"></canvas>${match.paused ? '<div class="snake-overlay">Pause</div>' : ''}</div>
       </section>
     </div>
