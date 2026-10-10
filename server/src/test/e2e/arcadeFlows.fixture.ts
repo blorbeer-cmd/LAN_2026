@@ -138,13 +138,13 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   await page.waitForSelector(`${ARCADE_HUB}:not([disabled])`);
   await page.waitForSelector('text=Keine offene Lobby.');
 
-  // One dialog opens every lobby. Games are listed alphabetically; Scribble,
-  // Challenge Rush and the Chimp Test stay hidden outside Admin mode.
+  // One dialog opens every lobby. Games are listed alphabetically; Scribble
+  // and Challenge Rush stay hidden outside Admin mode.
   await page.click(ARCADE_HUB);
   await page.waitForSelector('#arcade-create-form');
   assert.deepEqual(
     await page.locator('#arcade-create-game option').allTextContents(),
-    ['Battleship', 'Blobby Volley', 'Gaming-Quiz', 'Pong', 'Snake', 'Tetris'],
+    ['Battleship', 'Blobby Volley', 'Chimp Test', 'Gaming-Quiz', 'Pong', 'Snake', 'Tetris'],
   );
   // Games with modes start on their duel/classic mode.
   for (const [game, mode] of [['tetris', 'duel'], ['pong', 'duel'], ['snake', 'classic'], ['blobby', 'duel']] as const) {

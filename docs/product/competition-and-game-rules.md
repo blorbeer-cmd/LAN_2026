@@ -269,10 +269,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 - **AI** — Admins in Admin mode may choose „KI“ in the create dialog. Tetris and Snake Duell use one
   bot, their Arena fills all opponent seats; Pong and Blobby Volley cover the AI duel and Doppel with
   a bot teammate.
-- **Parked games** — Scribble, Challenge Rush and the Chimp Test are visible to admins in Admin mode
-  only (dialog, lobby list, running matches, statistics filter). The Chimp Test stays parked until it
-  has been tried out on a test system. This is a presentation filter, not a security
-  boundary. Challenge Rush keeps its reduced catalog of 21 challenges and has no AI.
+- **Parked games** — Scribble and Challenge Rush are visible to admins in Admin mode only (dialog,
+  lobby list, running matches, statistics filter). This is a presentation filter, not a security
+  boundary. Challenge Rush keeps its reduced catalog of 21 challenges and has no AI. The Chimp Test
+  is a regular game visible to every member.
 - **Spectating** — „Zuschauen“ opens a read-only view that reuses each game's own player
   presentation (boards, canvases, score bar). Quiz spectators see the question and, after the
   reveal, the answer; Scribble spectators never receive the word, the hints or the guesses.
