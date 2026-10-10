@@ -176,6 +176,16 @@ if (typeof document !== 'undefined') {
   document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement) exitArcadeFullscreen();
   });
+  // Without real fullscreen (no browser support, or a refused request) Esc
+  // never reaches fullscreenchange, so the chrome-free view handles it itself.
+  // An Esc meant for an open dialog or an already handled one (a help panel)
+  // stays with its owner.
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    if (!fullscreenActive || document.fullscreenElement) return;
+    if (document.querySelector('.modal-backdrop')) return;
+    exitArcadeFullscreen();
+  });
 }
 
 export function wireArcadeFullscreenControl(container) {

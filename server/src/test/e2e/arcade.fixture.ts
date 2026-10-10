@@ -787,6 +787,34 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
     await host.page.click('[data-arcade-resume="tetris"]');
     await host.page.waitForSelector('#tetris-finish');
 
+    // Without real browser fullscreen only the app's own mode is active, so
+    // Esc never reaches fullscreenchange and must end that mode directly —
+    // both for a refused request and for a browser without the API.
+    const fullscreenClassActive = () => host.page.evaluate(() => document.documentElement.classList.contains('arcade-fullscreen'));
+    await host.page.evaluate(() => {
+      Element.prototype.requestFullscreen = () => Promise.reject(new Error('denied by the browser'));
+    });
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForSelector('html.arcade-fullscreen', { state: 'attached' });
+    await host.page.keyboard.press('Escape');
+    await host.page.waitForSelector('.topbar', { state: 'visible' });
+    assert.equal(await fullscreenClassActive(), false, 'Esc must end fullscreen after a refused request');
+    assert.equal(await host.page.getAttribute('[data-arcade-fullscreen]', 'aria-pressed'), 'false');
+    await host.page.evaluate(() => {
+      Object.defineProperty(Document.prototype, 'fullscreenEnabled', { configurable: true, get: () => false });
+    });
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForSelector('html.arcade-fullscreen', { state: 'attached' });
+    // Esc inside the confirmation dialog belongs to the dialog only.
+    await host.page.click('#tetris-finish');
+    await host.page.waitForSelector('[data-confirm]');
+    await host.page.keyboard.press('Escape');
+    await host.page.waitForSelector('[data-confirm]', { state: 'detached' });
+    assert.equal(await fullscreenClassActive(), true, 'Esc closing a dialog must keep fullscreen');
+    await host.page.keyboard.press('Escape');
+    await host.page.waitForSelector('.topbar', { state: 'visible' });
+    assert.equal(await fullscreenClassActive(), false, 'Esc must end fullscreen without the browser API');
+
     // Fullscreen survives the end of the match (the result stays in the game
     // room) and ends together with the game room.
     await host.page.click('[data-arcade-fullscreen]');
