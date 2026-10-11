@@ -248,13 +248,18 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   on phones held sideways, Scribble's tools, guess field and chat sit beside the canvas.
   „Vollbild“ hides the app's topbar, navigation and banners (the connection notice stays) and
   asks the browser for real fullscreen where it allows it; „Vollbild beenden“, Esc or leaving
-  the game room ends it. Watching such a game offers the same fullscreen. The result lists every player with place
+  the game room ends it. Watching such a game offers the same fullscreen. Fullscreen also drops
+  what the game is playable without, so phones keep the largest playfield: the game title
+  (only the match actions and icons remain), the player strip or score bar of Snake and Scribble,
+  Tetris' stat lines under each board and the Arena card, and the spectator status line. Pong and
+  Blobby Volley keep only the score itself („3 : 2“); Tetris keeps name and points above each
+  board. Leaving fullscreen brings everything back. The result lists every player with place
   and value; the winner's value is green, everyone else is muted. „Revanche“ in the result header
   opens a lobby in the same mode for the same players; the others accept with „Annehmen“, and the
   match starts once everyone is back and ready. „Schließen“ leaves the result.
   The start countdown is centered on the playfield, not on the window, at every size and in
   fullscreen. It shows no player identity; the own color is named on the score bar
-  („Blau · Deine Farbe“ in Snake).
+  („Blau · Deine Farbe“ in Snake) outside fullscreen.
 - **Game specifics** — Tetris Duell keeps two equal boards; Arena accepts three to eight players
   and keeps the local board large beside a grid of opponent boards. Pong and Blobby Volley offer
   Duell and Doppel; Doppel lobbies have two teams with two seats, Pong Doppel defaults to 21 points

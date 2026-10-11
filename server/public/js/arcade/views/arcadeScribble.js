@@ -645,7 +645,7 @@ function stageHtml() {
   const body = turn?.phase === 'drawing' ? drawingAreaHtml() : turn?.phase === 'choosing' ? wordChoiceHtml() : lastDrawingThumbHtml();
   const thumb = turn?.phase === 'drawing' ? thumbButtonHtml() : '';
   return `<section class="card arcade-stage scribble-stage" data-countdown-anchor>
-    <div id="scribble-roster">${rosterScoreHtml()}</div>
+    <div id="scribble-roster" class="arcade-fullscreen-hidden">${rosterScoreHtml()}</div>
     <div class="scribble-stage-head">
       <div class="arcade-section-heading">${stageHeadingHtml()}<span class="arcade-section-meta">${roundMeta()}</span></div>
       <div class="scribble-stage-head-actions">${thumb}${!turn || turn.phase === 'reveal' ? '' : countdownBadgeHtml()}</div>

@@ -562,7 +562,7 @@ function boardColumn(prefix, label, player, { primary = false } = {}) {
         ${prefix === 'tetris-mine' ? `<div id="tetris-overlay" class="tetris-overlay" hidden></div>` : ''}
         <div id="${prefix}-incoming" class="tetris-incoming"></div>
       </div>
-      <div id="${prefix}-stats" class="muted tetris-stats-line"></div>
+      <div id="${prefix}-stats" class="muted tetris-stats-line arcade-fullscreen-hidden"></div>
     </div>`;
 }
 
@@ -633,7 +633,7 @@ export function renderTetris(container, _ctx) {
           ${boardLayout}
         </div>
       </section>
-      ${match.mode === 'arena' && !match.ended ? '<section class="card stack grouped-page-section tetris-arena-info" aria-labelledby="tetris-arena-info-title"><div class="grouped-page-section-title"><h2 id="tetris-arena-info-title">Arena</h2></div><div id="tetris-arena-info" class="tetris-arena-info-grid" aria-live="polite"></div></section>' : ''}
+      ${match.mode === 'arena' && !match.ended ? '<section class="card stack grouped-page-section tetris-arena-info arcade-fullscreen-hidden" aria-labelledby="tetris-arena-info-title"><div class="grouped-page-section-title"><h2 id="tetris-arena-info-title">Arena</h2></div><div id="tetris-arena-info" class="tetris-arena-info-grid" aria-live="polite"></div></section>' : ''}
     </div></div>`;
   container.querySelector('#tetris-boards').dataset.renderKey = renderKey;
   paint();

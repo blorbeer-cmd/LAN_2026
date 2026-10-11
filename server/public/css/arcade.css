@@ -1138,6 +1138,36 @@ html:root.arcade-fullscreen .arcade-game-header {
 html:root.arcade-fullscreen .arcade-stage {
   padding: var(--space-2) var(--space-3);
 }
+/* Fullscreen is about the playfield. The game title stays for screen
+   readers only, so the match actions fit one row on phones. Views mark
+   statistics the game is playable without (Snake's and Scribble's player
+   lists, Tetris' stat lines and Arena card, the spectator status) with
+   `arcade-fullscreen-hidden`; the two-sided score bar shrinks to the score. */
+html:root.arcade-fullscreen .arcade-game-header .view-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px; /* design-token-ok: standard 1px clip-rect offset of the visually-hidden pattern */
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+html:root.arcade-fullscreen .arcade-game-header-actions {
+  margin-left: auto;
+}
+html:root.arcade-fullscreen .arcade-fullscreen-hidden,
+html:root.arcade-fullscreen .arcade-scoreboard-side,
+html:root.arcade-fullscreen .arcade-scoreboard-score small {
+  display: none;
+}
+html:root.arcade-fullscreen .arcade-scoreboard {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-2);
+}
+html:root.arcade-fullscreen .arcade-scoreboard-score {
+  font-size: var(--font-size-xl);
+}
 @media (max-width: 639px) { /* --bp-md */
   .tetris-boards.is-arena {
     flex-direction: column;
