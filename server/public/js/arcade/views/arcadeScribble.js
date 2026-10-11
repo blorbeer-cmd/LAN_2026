@@ -14,6 +14,7 @@
 
 import { escapeHtml } from '../../format.js';
 import { showToast } from '../../toast.js';
+import { emitWhileConnected } from '../matchReconnect.js';
 import { strokesForScribbleSync } from '../scribbleSync.js';
 import { getMyId } from '../../whoami.js';
 import { currentPlayerMaySeeArcadeGame } from '../arcadeAdmin.js';
@@ -673,6 +674,10 @@ function emitWithAck(event, payload) {
   return new Promise((resolve) => socket.emit(event, payload, resolve));
 }
 
+function emitMatchAction(event) {
+  return emitWhileConnected(socket, event, { matchId: match.matchId, playerId: myId() });
+}
+
 export function ensureScribbleSocket() {
   if (socket) return socket;
   socket = connectSocket();
@@ -1172,12 +1177,12 @@ function wireRoom(container) {
   wirePauseControl(container);
   container.querySelector('#scribble-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
-    const res = await emitWithAck('scribble:match:finish', { matchId: match.matchId, playerId: myId() });
+    const res = await emitMatchAction('scribble:match:finish');
     if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
   });
   container.querySelector('#scribble-leave-match')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
-    const res = await emitWithAck('scribble:match:leave', { matchId: match.matchId, playerId: myId() });
+    const res = await emitMatchAction('scribble:match:leave');
     if (!res?.ok) return showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
     resetMatchState();
     navigate('arcade');
@@ -1186,11 +1191,11 @@ function wireRoom(container) {
 
 function wirePauseControl(container) {
   container.querySelector('#scribble-pause')?.addEventListener('click', async () => {
-    const res = await emitWithAck('scribble:match:pause', { matchId: match.matchId, playerId: myId() });
+    const res = await emitMatchAction('scribble:match:pause');
     if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
   });
   container.querySelector('#scribble-resume')?.addEventListener('click', async () => {
-    const res = await emitWithAck('scribble:match:resume', { matchId: match.matchId, playerId: myId() });
+    const res = await emitMatchAction('scribble:match:resume');
     if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
   });
 }

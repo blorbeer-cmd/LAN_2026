@@ -783,6 +783,10 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
     assert.ok(fullscreen.scrollWidth <= fullscreen.clientWidth, 'the fullscreen game room must not scroll sideways');
     await host.page.click('[data-arcade-fullscreen]');
     await host.page.waitForSelector('.topbar', { state: 'visible' });
+    // The refit follows the restored chrome asynchronously (resize observer
+    // plus animation frame): wait for the shrunken board, as on entry.
+    await host.page.waitForFunction((full) =>
+      (document.querySelector('.tetris-canvas') as HTMLElement).getBoundingClientRect().height < full - 20, fullscreen.boardHeight);
     const restored = await readGameRoomFit(host.page);
     assert.equal(restored.fullscreenClass, false);
     assert.equal(restored.pressed, 'false');
@@ -925,7 +929,7 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
       'pausing must update controls/overlay without replacing the live canvas',
     );
     // Regression guard for #592: the host disconnecting mid-match hands
-    // control to guests[0]. That handover must only swap the control footer
+    // control to guests[0] once the (fast-timer) reconnect grace has passed. That handover must only swap the control footer
     // (Verlassen -> Pausieren/Beenden), never rebuild the mounted canvases.
     await guests[0].page.locator('.tetris-primary-board .tetris-canvas').evaluate((canvas) => {
       canvas.dataset.renderIdentity = 'before-host-handover';

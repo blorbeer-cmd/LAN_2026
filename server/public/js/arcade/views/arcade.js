@@ -37,6 +37,7 @@ import {
 import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 import { emptyStateHtml } from '../../emptyState.js';
 import { createDeferredInteractiveRender } from '../../deferredInteractiveRender.js';
+import { emitWhileConnected, reclaimMatchOnReconnect } from '../matchReconnect.js';
 
 // The Arcade hub has three areas: every open lobby of every game in one list
 // (the player's own lobby expanded on top), the matches running right now and
@@ -171,7 +172,9 @@ function ensureSocket(ctx) {
   });
   socket.on('arcade:quiz:question', (payload) => {
     currentQuestion = payload;
-    if (payload.scores) match = { ...(match ?? {}), matchId: payload.matchId, scores: payload.scores, targetScore: payload.targetScore };
+    // A new (or, after a reconnect, replayed) question always starts unpaused;
+    // a pause still in effect follows as its own event.
+    if (payload.scores) match = { ...(match ?? {}), matchId: payload.matchId, scores: payload.scores, targetScore: payload.targetScore, paused: false };
     lastResult = null;
     startCountdown();
     rerenderIfView(ctx, 'quizRoom');
@@ -215,14 +218,29 @@ function ensureSocket(ctx) {
   });
   socket.on('arcade:match:opponent-left', () => {
     showToast('Ein Spieler hat das Match verlassen.', { error: true });
-    match = null;
-    currentQuestion = null;
-    lastResult = null;
-    stopCountdown();
-    cancelCountdown();
+    dropLocalMatch();
     navigate('arcade');
   });
+  reclaimMatchOnReconnect(socket, {
+    event: 'arcade:match:reconnect',
+    activeMatchId: () => (match?.matchId && !match.ended && match.players?.some((player) => player.id === getMyId()) ? match.matchId : null),
+    playerId: getMyId,
+    onLost: () => {
+      const wasVisible = currentView() === 'quizRoom';
+      dropLocalMatch();
+      if (wasVisible) navigate('arcade');
+      else rerenderIfView(ctx, 'arcade');
+    },
+  });
   return socket;
+}
+
+function dropLocalMatch() {
+  match = null;
+  currentQuestion = null;
+  lastResult = null;
+  stopCountdown();
+  cancelCountdown();
 }
 
 function navigate(view) {
@@ -853,12 +871,12 @@ function wireQuizMatch(container) {
   wireQuizPauseControl(container);
   container.querySelector('#quiz-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
-    const res = await emitWithAck('arcade:match:finish', { matchId: match?.matchId, playerId: getMyId() });
+    const res = await emitWhileConnected(socket, 'arcade:match:finish', { matchId: match?.matchId, playerId: getMyId() });
     if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
   });
   container.querySelector('#quiz-leave')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
-    const res = await emitWithAck('arcade:match:leave', { matchId: match?.matchId, playerId: getMyId() });
+    const res = await emitWhileConnected(socket, 'arcade:match:leave', { matchId: match?.matchId, playerId: getMyId() });
     if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
 
@@ -875,12 +893,12 @@ function wireQuizMatch(container) {
 
 function wireQuizPauseControl(container) {
   container.querySelector('#quiz-pause')?.addEventListener('click', async () => {
-    const res = await emitWithAck('arcade:match:pause', { matchId: match?.matchId, playerId: getMyId() });
+    const res = await emitWhileConnected(socket, 'arcade:match:pause', { matchId: match?.matchId, playerId: getMyId() });
     if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
   });
 
   container.querySelector('#quiz-resume')?.addEventListener('click', async () => {
-    const res = await emitWithAck('arcade:match:resume', { matchId: match?.matchId, playerId: getMyId() });
+    const res = await emitWhileConnected(socket, 'arcade:match:resume', { matchId: match?.matchId, playerId: getMyId() });
     if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
   });
 

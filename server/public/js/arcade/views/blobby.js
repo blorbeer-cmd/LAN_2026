@@ -6,6 +6,7 @@ import { confirmDialog } from '../../modal.js';
 import { arcadeLobbyEntryHtml, arcadeLobbyHostActionsHtml, arcadeLobbyGuestActionsHtml, arcadeLobbyJoinHtml, arcadeLobbyTeamJoinHtml, arcadeTeamMembersHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadeResultListHtml, pointsLabel, arcadeScoreboardHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { createRematchController } from '../rematch.js';
+import { emitWhileConnected, reclaimMatchOnReconnect } from '../matchReconnect.js';
 import { playArcadeSound } from '../arcadeSound.js';
 
 const W = 1000;
@@ -81,7 +82,10 @@ export function ensureBlobbySocket() {
     previous = latest;
     latest = payload;
     latestAt = performance.now();
+    const pausedChanged = Boolean(match) && match.paused !== payload.paused;
     if (match) { match.running = payload.running; match.paused = payload.paused; match.scores = payload.scores; }
+    // A snapshot after a reconnect can carry a pause the player missed.
+    if (pausedChanged && currentView() === 'blobby') updatePauseUi();
     updateScoreDisplay();
     if (!document.querySelector('#blobby-canvas') && currentView() === 'arcade') rerender();
   });
@@ -108,8 +112,26 @@ export function ensureBlobbySocket() {
     stopAnimation();
     if (currentView() === 'blobby' || currentView() === 'arcade') rerender();
   });
+  reclaimMatchOnReconnect(socket, {
+    event: 'blobby:match:reconnect',
+    activeMatchId: () => (match && !match.ended && match.players?.some((player) => player.id === myId()) ? match.matchId : null),
+    playerId: myId,
+    onLost: () => {
+      const wasVisible = currentView() === 'blobby';
+      dropLocalMatch();
+      if (wasVisible) navigate('arcade');
+      else if (currentView() === 'arcade') rerender();
+    },
+  });
   bindKeyboard();
   return socket;
+}
+
+function dropLocalMatch() {
+  match = null;
+  previous = latest = null;
+  cancelCountdown();
+  stopAnimation();
 }
 
 function sendInput(jump = false) {
@@ -407,11 +429,12 @@ function wireGame(container) {
   wirePauseControl(container);
   container.querySelector('#blobby-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
-    await emitAck('blobby:match:finish', { matchId: match.matchId, playerId: myId() });
+    const res = await emitWhileConnected(socket, 'blobby:match:finish', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
   });
   container.querySelector('#blobby-leave-match')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
-    const res = await emitAck('blobby:match:leave', { matchId: match.matchId, playerId: myId() });
+    const res = await emitWhileConnected(socket, 'blobby:match:leave', { matchId: match.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
   rematch.wire(container);
@@ -426,11 +449,11 @@ function wireGame(container) {
 
 function wirePauseControl(container) {
   container.querySelector('#blobby-pause')?.addEventListener('click', async () => {
-    const res = await emitAck('blobby:match:pause', { matchId: match.matchId, playerId: myId() });
+    const res = await emitWhileConnected(socket, 'blobby:match:pause', { matchId: match.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
   });
   container.querySelector('#blobby-resume')?.addEventListener('click', async () => {
-    const res = await emitAck('blobby:match:resume', { matchId: match.matchId, playerId: myId() });
+    const res = await emitWhileConnected(socket, 'blobby:match:resume', { matchId: match.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
   });
 }

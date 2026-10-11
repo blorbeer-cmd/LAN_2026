@@ -24,6 +24,7 @@ import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope, socketCanUseArcadeScope } from './scope';
 import { registerSocketConnection } from '../socketConnections';
+import { RECONNECT_GRACE_MS, ReconnectGrace } from './reconnectGrace';
 import {
   buildHintSchedule,
   HintStep,
@@ -44,7 +45,6 @@ const DEFAULT_TURN_MS = 60_000;
 const MIN_TURN_MS = 20_000;
 const MAX_TURN_MS = 120_000;
 const MAX_STROKE_BATCHES = 4000; // guards memory if a client sends nonstop for a whole turn
-const DEFAULT_RECONNECT_GRACE_MS = 15_000;
 const STREAM_SNAPSHOT_INTERVAL_MS = 100;
 const BOT_ID = 'scribble-bot';
 const BOT = { id: BOT_ID, name: 'Scribble-Bot' };
@@ -105,7 +105,7 @@ interface ScribbleMatchState {
   socketIds: Map<string, string>;
   online: Set<string>;
   departed: Set<string>;
-  reconnectTimers: Map<string, NodeJS.Timeout>;
+  grace: ReconnectGrace;
   scores: Map<string, number>;
   rounds: number;
   turnDurationMs: number;
@@ -174,7 +174,7 @@ function turnDurationValue(value: unknown): number | null {
 
 function reconnectGraceMs(): number {
   const configured = Number(process.env.SCRIBBLE_RECONNECT_GRACE_MS);
-  return Number.isFinite(configured) ? Math.max(50, Math.min(60_000, configured)) : DEFAULT_RECONNECT_GRACE_MS;
+  return Number.isFinite(configured) ? Math.max(50, Math.min(60_000, configured)) : RECONNECT_GRACE_MS;
 }
 
 function publicLobbies(groupId: string, eventId: string | null) {
@@ -302,8 +302,7 @@ function clearAllTimers(match: ScribbleMatchState): void {
 }
 
 function clearReconnectTimers(match: ScribbleMatchState): void {
-  for (const timer of match.reconnectTimers.values()) clearTimeout(timer);
-  match.reconnectTimers.clear();
+  match.grace.clear();
 }
 
 // Test-only teardown, the match-state counterpart to clearLobbyMemberships().
@@ -311,7 +310,7 @@ function clearReconnectTimers(match: ScribbleMatchState): void {
 // module-global map with its timers armed. Closing the Socket.IO and HTTP
 // server does not reach them: the word-choice timer (CHOICE_MS) is ref'd, so
 // it alone keeps the whole test process alive until the unref'd reconnect
-// grace disposes the match ~15 s later - runtime that is pure waiting and
+// grace disposes the match a minute later - runtime that is pure waiting and
 // detects nothing.
 export function clearScribbleState(): void {
   for (const match of matches.values()) {
@@ -843,7 +842,9 @@ export function registerScribbleSockets(io: Server): () => void {
           socketIds: new Map(lobby.socketIds),
           online: new Set(lobby.players.map((p) => p.id)),
           departed: new Set(),
-          reconnectTimers: new Map(),
+          grace: new ReconnectGrace(() => match, (playerId) => playerId === BOT_ID, (playerId) => {
+            if (matches.get(match.id) === match && !match.socketIds.has(playerId) && !match.departed.has(playerId)) handlePlayerLeft(playerId, match, false);
+          }, reconnectGraceMs),
           scores: new Map(lobby.players.map((p) => [p.id, 0])),
           rounds,
           turnDurationMs,
@@ -1128,6 +1129,7 @@ export function registerScribbleSockets(io: Server): () => void {
       match.turnExpiresAt = null;
       match.hintTimers = [];
       match.paused = true;
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'scribble:match:paused', { matchId: match.id, remainingMs, scores: scorePayload(match) }, match);
       kioskSnapshot(io, match);
       ack?.({ ok: true });
@@ -1144,6 +1146,7 @@ export function registerScribbleSockets(io: Server): () => void {
       match.turnRemainingMs = null;
       match.pausedElapsedMs = null;
       match.paused = false;
+      match.grace.rearm();
       startTurnTimers(io, match, remainingMs, elapsedMs);
       emitArcadeRoom(io, match.room, 'scribble:match:resumed', { matchId: match.id, expiresAt: match.turnExpiresAt, scores: scorePayload(match) }, match);
       kioskSnapshot(io, match);
@@ -1165,12 +1168,10 @@ export function registerScribbleSockets(io: Server): () => void {
         return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       }
 
-      const reconnectTimer = match.reconnectTimers.get(player.id);
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      match.reconnectTimers.delete(player.id);
       const previousSocketId = match.socketIds.get(player.id);
       if (previousSocketId && previousSocketId !== socket.id) io.sockets.sockets.get(previousSocketId)?.leave(match.room);
       match.socketIds.set(player.id, socket.id);
+      match.grace.returned(player.id);
       match.online.add(player.id);
       socket.join(match.room);
       emitArcadeRoom(io, match.room, 'scribble:presence', { matchId: match.id, playerId: player.id, online: true }, match);
@@ -1219,10 +1220,8 @@ export function registerScribbleSockets(io: Server): () => void {
     // drawer's turn or end the match once fewer than two players remain).
     function handlePlayerLeft(playerId: string, match: ScribbleMatchState, announce = true) {
       if (matches.get(match.id) !== match || match.departed.has(playerId)) return;
-      const reconnectTimer = match.reconnectTimers.get(playerId);
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      match.reconnectTimers.delete(playerId);
       match.socketIds.delete(playerId);
+      match.grace.left(playerId);
       match.departed.add(playerId);
       match.online.delete(playerId);
       if (announce) emitArcadeRoom(io, match.room, 'scribble:presence', { matchId: match.id, playerId, online: false }, match);
@@ -1262,15 +1261,8 @@ export function registerScribbleSockets(io: Server): () => void {
         const entry = [...match.socketIds.entries()].find(([, sid]) => sid === socket.id);
         if (!entry) continue;
         const playerId = entry[0];
-        match.socketIds.delete(playerId);
+        match.grace.disconnected(playerId);
         emitArcadeRoom(io, match.room, 'scribble:presence', { matchId: match.id, playerId, online: false }, match);
-        if (match.reconnectTimers.has(playerId)) continue;
-        const timer = setTimeout(() => {
-          if (matches.get(match.id) !== match || match.socketIds.has(playerId) || match.departed.has(playerId)) return;
-          handlePlayerLeft(playerId, match, false);
-        }, reconnectGraceMs());
-        timer.unref();
-        match.reconnectTimers.set(playerId, timer);
       }
     });
   });

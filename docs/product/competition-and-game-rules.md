@@ -260,6 +260,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   The start countdown is centered on the playfield, not on the window, at every size and in
   fullscreen. It shows no player identity; the own color is named on the score bar
   („Blau · Deine Farbe“ in Snake) outside fullscreen.
+- **Verbindungsabbruch** — A pause itself has no time limit. A dropped connection (locked phone,
+  app switch, Wi-Fi hiccup) returns to the same match in every game: a player counts as gone only
+  after a one-minute reconnect grace, or after ten minutes while the match is paused and no other
+  player is connected to wait for them (a KI match, or everyone is away). Past the grace the
+  player is out exactly as after „Verlassen“. A match that ended meanwhile is closed with „Das
+  Match ist nicht mehr verfügbar.“, and match actions answer „Keine Verbindung zum Server.“ while
+  the connection is down.
 - **Game specifics** — Tetris Duell keeps two equal boards; Arena accepts three to eight players
   and keeps the local board large beside a grid of opponent boards. Pong and Blobby Volley offer
   Duell and Doppel; Doppel lobbies have two teams with two seats, Pong Doppel defaults to 21 points
@@ -276,8 +283,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   a shared round shows a display-only „Rundenrangliste“ once at its end. The own result shows the
   level, the „Affen-Nähe“ against Ayumu (9 numbers = 100 %) with its tier, new personal bests and
   the rank in the Chimp-Test-Rangliste, also after a reload during the round. Reload, reconnect
-  and pause always return the same attempt. When the host leaves, stays away past the 15-second
-  reconnect grace or switches events, the controls pass to a player who can still reach the round
+  and pause always return the same attempt. When the host leaves, stays away past the reconnect
+  grace or switches events, the controls pass to a player who can still reach the round
   and a pause is lifted.
 - **AI** — Admins in Admin mode may choose „KI“ in the create dialog. Tetris and Snake Duell use one
   bot, their Arena fills all opponent seats; Pong and Blobby Volley cover the AI duel and Doppel with

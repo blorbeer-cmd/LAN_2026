@@ -25,6 +25,7 @@ import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadeResultListHtml, wi
 import { playArcadeSound } from '../arcadeSound.js';
 import { createRematchController } from '../rematch.js';
 import { TETRIS_COLORS } from '../shared/tetrisColors.js';
+import { emitWhileConnected, reclaimMatchOnReconnect } from '../matchReconnect.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -168,12 +169,34 @@ export function ensureTetrisSocket() {
     if (match) showToast(`${payload?.playerName || 'Ein Spieler'} hat das Match verlassen.`, { error: true });
   });
 
+  reclaimMatchOnReconnect(socket, {
+    event: 'tetris:match:reconnect',
+    activeMatchId: () => (match && !match.ended && amPlayer() ? match.matchId : null),
+    playerId: myId,
+    onLost: () => {
+      const wasMounted = tetrisViewMounted();
+      dropLocalMatch();
+      if (wasMounted) navigate('arcade');
+      else if (currentView() === 'arcade') rerender();
+    },
+  });
+
   bindKeyboard();
   return socket;
 }
 
 function emitWithAck(event, payload) {
   return new Promise((resolve) => socket.emit(event, payload, resolve));
+}
+
+function emitMatchAction(event) {
+  return emitWhileConnected(socket, event, { matchId: match?.matchId, playerId: myId() });
+}
+
+function dropLocalMatch() {
+  match = null;
+  latestState = null;
+  cancelCountdown();
 }
 
 function sendInput(action) {
@@ -648,20 +671,18 @@ function wireMatch(container) {
   rematch.wire(container);
   container.querySelector('#tetris-back')?.addEventListener('click', async () => {
     await rematch.close();
-    match = null;
-    latestState = null;
-    cancelCountdown();
+    dropLocalMatch();
     navigate('arcade');
   });
 }
 
 function wirePauseControl(root) {
   root.querySelector('#tetris-pause')?.addEventListener('click', async () => {
-    const res = await emitWithAck('tetris:match:pause', { matchId: match?.matchId, playerId: myId() });
+    const res = await emitMatchAction('tetris:match:pause');
     if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
   });
   root.querySelector('#tetris-resume')?.addEventListener('click', async () => {
-    const res = await emitWithAck('tetris:match:resume', { matchId: match?.matchId, playerId: myId() });
+    const res = await emitMatchAction('tetris:match:resume');
     if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
   });
 }
@@ -670,17 +691,15 @@ function wireMatchControls(root) {
   wirePauseControl(root);
   root.querySelector('#tetris-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
-    const res = await emitWithAck('tetris:match:finish', { matchId: match?.matchId, playerId: myId() });
+    const res = await emitMatchAction('tetris:match:finish');
     if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
   });
   root.querySelector('#tetris-leave')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
-    const res = await emitWithAck('tetris:match:leave', { matchId: match?.matchId, playerId: myId() });
+    const res = await emitMatchAction('tetris:match:leave');
     if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
     else {
-      match = null;
-      latestState = null;
-      cancelCountdown();
+      dropLocalMatch();
       navigate('arcade');
     }
   });

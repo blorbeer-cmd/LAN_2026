@@ -2,6 +2,7 @@ import { escapeHtml } from '../../format.js';
 import { connectSocket } from '../../socket.js';
 import { getMyId } from '../../whoami.js';
 import { showToast } from '../../toast.js';
+import { OFFLINE_MESSAGE, emitWhileConnected } from '../matchReconnect.js';
 import { icon } from '../../icons.js';
 import { confirmDialog } from '../../modal.js';
 import { playerById } from '../../state.js';
@@ -41,6 +42,7 @@ function navigate(view, options = {}) {
   window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view, ...options } }));
 }
 function emit(event, payload) { return new Promise((resolve) => socket?.emit(event, payload, resolve)); }
+const emitMatchAction = (event) => emitWhileConnected(socket, event, { matchId: match.matchId, playerId: myId() });
 
 function resetLocalMatch() {
   match = null; reveal = null; runEnd = null; roundEnd = null; clearedLocally = []; countdownKey = null;
@@ -422,16 +424,17 @@ export function renderChimp(container, _ctx) {
     if (result.me) { applyMe(result.me); focusIndex = 0; rerenderIfVisible(); }
   });
   container.querySelector('[data-chimp-pause]')?.addEventListener('click', async () => {
-    const result = await emit('chimp:match:pause', { matchId: match.matchId, playerId: myId() });
+    const result = await emitMatchAction('chimp:match:pause');
     if (!result?.ok) showToast(result?.error || 'Pause konnte nicht geändert werden.', { error: true });
   });
   container.querySelector('[data-chimp-finish]')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Chimp Test für alle beenden? Offene Läufe zählen mit ihrem erreichten Level.', { confirmText: 'Beenden', danger: true }))) return;
-    const result = await emit('chimp:match:finish', { matchId: match.matchId, playerId: myId() });
+    const result = await emitMatchAction('chimp:match:finish');
     if (!result?.ok) showToast(result?.error || 'Beenden fehlgeschlagen.', { error: true });
   });
   container.querySelector('[data-chimp-leave-match]')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Chimp Test verlassen? Dein Lauf endet mit dem erreichten Level.', { confirmText: 'Verlassen', danger: true }))) return;
+    if (!socket?.connected) return showToast(OFFLINE_MESSAGE, { error: true });
     closeMatch();
   });
   container.querySelectorAll('[data-chimp-close]').forEach((button) => button.addEventListener('click', closeMatch));
