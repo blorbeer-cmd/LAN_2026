@@ -765,6 +765,8 @@ export function registerChimpSockets(io: Server): () => void {
       match.attachedSockets.delete(playerId as string);
       if (isCurrent(match)) {
         match.socketIds.delete(playerId as string);
+        // Whoever is still away may now have nobody left waiting for them.
+        match.grace.left(playerId as string);
         socket.leave(match.room);
         if (playerId === match.host.id) handOverHost(io, match);
       }

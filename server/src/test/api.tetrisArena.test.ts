@@ -368,3 +368,59 @@ test('a host who vanishes during a pause never keeps a connected opponent waitin
     clearLobbyMemberships();
   }
 });
+
+test('an arena host who leaves while everyone else is away hands the controls to a returning player', async () => {
+  clearLobbyMemberships();
+  const httpServer = http.createServer(createTestApp());
+  const io = new Server(httpServer);
+  installTestSocketIdentity(io);
+  registerTetrisSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  const sockets = await Promise.all(Array.from({ length: 3 }, () => connect(baseUrl)));
+  const [hostSocket, secondSocket, thirdSocket] = sockets;
+
+  try {
+    const ids: string[] = [];
+    for (const name of ['Arena Away Host', 'Arena Away Zwei', 'Arena Away Drei']) {
+      ids.push((await request(baseUrl).post('/api/players').send({ name })).body.id as string);
+    }
+    const [hostId, secondId, thirdId] = ids;
+    const created = await emitAck(hostSocket, 'tetris:lobby:create', { playerId: hostId, mode: 'arena' });
+    const lobbyId = created.lobbyId;
+    for (const [socket, playerId] of [[secondSocket, secondId], [thirdSocket, thirdId]] as Array<[ClientSocket, string]>) {
+      assert.equal((await emitAck(socket, 'tetris:lobby:join', { lobbyId, playerId })).ok, true);
+      assert.equal((await emitAck(socket, 'tetris:lobby:ready', { lobbyId, playerId, ready: true })).ok, true);
+    }
+    const startedPromise = waitForEvent<{ matchId: string; beginsAt: number }>(hostSocket, 'tetris:match:start');
+    assert.equal((await emitAck(hostSocket, 'tetris:lobby:start', { lobbyId, playerId: hostId })).ok, true);
+    const { matchId, beginsAt } = await startedPromise;
+    // Lets the real start countdown elapse; pausing is only possible once the match runs.
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, beginsAt - Date.now()) + 25));
+    assert.equal((await emitAck(hostSocket, 'tetris:match:pause', { matchId, playerId: hostId })).ok, true);
+
+    // Both guests drop; the server has handled both disconnects before the
+    // host leaves for good, so nobody connected is left to take over.
+    const handled = [secondSocket, thirdSocket].map((socket) => {
+      const serverSocket = io.sockets.sockets.get(socket.id!);
+      assert.ok(serverSocket);
+      return new Promise((resolve) => serverSocket.once('disconnect', resolve));
+    });
+    secondSocket.close();
+    thirdSocket.close();
+    await Promise.all(handled);
+    assert.equal((await emitAck(hostSocket, 'tetris:match:leave', { matchId, playerId: hostId })).ok, true);
+
+    const returned = await connect(baseUrl);
+    sockets.push(returned);
+    const resynced = waitForEvent<{ host: { id: string }; paused: boolean }>(returned, 'tetris:state');
+    assert.equal((await emitAck(returned, 'tetris:match:reconnect', { matchId, playerId: secondId })).ok, true);
+    assert.partialDeepStrictEqual(await resynced, { host: { id: secondId }, paused: true });
+    assert.equal((await emitAck(returned, 'tetris:match:resume', { matchId, playerId: secondId })).ok, true);
+  } finally {
+    for (const socket of sockets) socket.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearLobbyMemberships();
+  }
+});

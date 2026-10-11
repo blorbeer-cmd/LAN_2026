@@ -697,9 +697,13 @@ function handleMatchDeparture(io: Server, match: TetrisMatch, playerId: string, 
   match.inputQueue = match.inputQueue.filter((input) => input.playerId !== playerId);
   eliminatePlayer(match, state, 'player-left');
   if (match.host.id === playerId) {
-    const nextHost = match.players.find(
-      (player) => !isBotId(player.id) && match.states.get(player.id)?.alive && match.socketIds.has(player.id),
+    // A connected player takes over first; otherwise a player who is only
+    // away within the reconnect grace, so they hold the controls when they
+    // come back instead of returning to a match nobody may resume or end.
+    const candidates = match.players.filter(
+      (player) => !isBotId(player.id) && match.states.get(player.id)?.alive && !match.departed.has(player.id),
     );
+    const nextHost = candidates.find((player) => match.socketIds.has(player.id)) ?? candidates[0];
     const livingBot = match.players.find((player) => isBotId(player.id) && match.states.get(player.id)?.alive);
     if (nextHost) {
       match.host = nextHost;
