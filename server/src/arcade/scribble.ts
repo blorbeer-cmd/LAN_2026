@@ -24,6 +24,7 @@ import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope, socketCanUseArcadeScope } from './scope';
 import { registerSocketConnection } from '../socketConnections';
+import { RECONNECT_GRACE_MS, graceMsFor } from './reconnectGrace';
 import {
   buildHintSchedule,
   HintStep,
@@ -44,7 +45,6 @@ const DEFAULT_TURN_MS = 60_000;
 const MIN_TURN_MS = 20_000;
 const MAX_TURN_MS = 120_000;
 const MAX_STROKE_BATCHES = 4000; // guards memory if a client sends nonstop for a whole turn
-const DEFAULT_RECONNECT_GRACE_MS = 15_000;
 const STREAM_SNAPSHOT_INTERVAL_MS = 100;
 const BOT_ID = 'scribble-bot';
 const BOT = { id: BOT_ID, name: 'Scribble-Bot' };
@@ -174,7 +174,7 @@ function turnDurationValue(value: unknown): number | null {
 
 function reconnectGraceMs(): number {
   const configured = Number(process.env.SCRIBBLE_RECONNECT_GRACE_MS);
-  return Number.isFinite(configured) ? Math.max(50, Math.min(60_000, configured)) : DEFAULT_RECONNECT_GRACE_MS;
+  return Number.isFinite(configured) ? Math.max(50, Math.min(60_000, configured)) : RECONNECT_GRACE_MS;
 }
 
 function publicLobbies(groupId: string, eventId: string | null) {
@@ -311,7 +311,7 @@ function clearReconnectTimers(match: ScribbleMatchState): void {
 // module-global map with its timers armed. Closing the Socket.IO and HTTP
 // server does not reach them: the word-choice timer (CHOICE_MS) is ref'd, so
 // it alone keeps the whole test process alive until the unref'd reconnect
-// grace disposes the match ~15 s later - runtime that is pure waiting and
+// grace disposes the match a minute later - runtime that is pure waiting and
 // detects nothing.
 export function clearScribbleState(): void {
   for (const match of matches.values()) {
@@ -1268,7 +1268,7 @@ export function registerScribbleSockets(io: Server): () => void {
         const timer = setTimeout(() => {
           if (matches.get(match.id) !== match || match.socketIds.has(playerId) || match.departed.has(playerId)) return;
           handlePlayerLeft(playerId, match, false);
-        }, reconnectGraceMs());
+        }, graceMsFor({ paused: match.paused, otherHumanConnected: match.socketIds.size > 0 }, reconnectGraceMs()));
         timer.unref();
         match.reconnectTimers.set(playerId, timer);
       }

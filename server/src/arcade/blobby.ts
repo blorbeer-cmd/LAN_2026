@@ -12,6 +12,7 @@ import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships }
 import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import { registerSocketConnection } from '../socketConnections';
+import { RECONNECT_REFUSED, ReconnectGrace, claimMatchSeat } from './reconnectGrace';
 
 const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 50;
@@ -41,6 +42,7 @@ interface Match {
   loop: NodeJS.Timeout | null; running: boolean; paused: boolean; lastTick: number; lastSnapshot: number; startedAt: number;
   rallyResumeAt: number;
   targetScore: number;
+  grace: ReconnectGrace;
 }
 
 const lobbies = new Map<string, Lobby>();
@@ -139,6 +141,7 @@ function realPlayerIds(players: LobbyPlayer[]): string[] {
 function finish(io: Server, match: Match, winnerTeam: TeamSide | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
+  match.grace.clear();
   const winners = winnerTeam ? match.players.filter((player) => player.team === winnerTeam) : [];
   const winner = winners[0] ?? null;
   const resultScores = scorePayload(match, winnerTeam);
@@ -306,6 +309,12 @@ export function registerBlobbySockets(io: Server): () => void {
         inputs: new Map(lobby.players.map((p) => [p.id, idle()])),
         scores: new Map<TeamSide, number>([['left', 0], ['right', 0]]),
         loop: null, running: false, paused: false, lastTick: Date.now(), lastSnapshot: 0, startedAt: Date.now(), rallyResumeAt: 0, targetScore,
+        // A player who stays away past the reconnect grace loses the match
+        // for their team, exactly like an explicit leave.
+        grace: new ReconnectGrace(() => match, isBotId, (playerId) => {
+          const player = match.players.find((entry) => entry.id === playerId);
+          if (matches.get(id) === match && player) finish(io, match, opposingTeam(player.team), 'player-left');
+        }),
       };
       matches.set(id, match); releaseLobbyMemberships(lobby.players.map((p) => p.id), 'blobby', lobby.id); lobbies.delete(lobby.id); resolveArcadeLobbyPush('blobby', lobby); emitLobbies(io);
       startArcadeSession(realPlayerIds(match.players), 'blobby', match);
@@ -334,6 +343,7 @@ export function registerBlobbySockets(io: Server): () => void {
       if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload.playerId !== match.host.id || !socketControlsPlayer(socket, match, payload.playerId)) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
       match.paused = true;
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'blobby:match:paused', { matchId: match.id }, match);
       snapshot(io, match); ack?.({ ok: true });
     });
@@ -342,6 +352,7 @@ export function registerBlobbySockets(io: Server): () => void {
       if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       if (payload.playerId !== match.host.id || !socketControlsPlayer(socket, match, payload.playerId)) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
       match.paused = false; match.lastTick = Date.now();
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'blobby:match:resumed', { matchId: match.id }, match);
       snapshot(io, match); ack?.({ ok: true });
     });
@@ -362,13 +373,21 @@ export function registerBlobbySockets(io: Server): () => void {
       finish(io, match, opposingTeam(leaver.team), 'player-left');
       ack?.({ ok: true });
     });
+    socket.on('blobby:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match || !claimMatchSeat(socket, match, payload?.playerId, isBotId)) return ack?.({ ok: false, error: RECONNECT_REFUSED });
+      snapshot(io, match);
+      ack?.({ ok: true });
+    });
     socket.on('disconnect', () => {
       removeFromLobbies(io, socket.id);
       for (const match of matches.values()) {
         const leaver = [...match.socketIds].find(([, sid]) => sid === socket.id)?.[0];
         if (!leaver) continue;
-        const player = match.players.find((entry) => entry.id === leaver);
-        finish(io, match, player ? opposingTeam(player.team) : null, 'player-left');
+        // The blob stops instead of following a key held when the connection
+        // dropped; the seat waits for the reconnect grace.
+        match.inputs.set(leaver, idle());
+        match.grace.disconnected(leaver);
       }
     });
   });

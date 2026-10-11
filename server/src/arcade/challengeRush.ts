@@ -11,6 +11,7 @@ import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { challengeRushTiming } from './challengeRushTiming';
 import { playerMayUseArcadeAi } from './adminAccess';
 import { registerSocketConnection } from '../socketConnections';
+import { RECONNECT_GRACE_MS, graceMsFor } from './reconnectGrace';
 import {
   CHALLENGES, challengeOrder, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isReadyForNext,
   isTrialChallenge, remainingUntil, scoreRepeatedTrials, validateTrialInput,
@@ -19,7 +20,6 @@ import {
 } from './challengeRushLogic';
 
 const MAX_PLAYERS = 15;
-const DEFAULT_RECONNECT_GRACE_MS = 15_000;
 const DEFAULT_RESULT_READY_TIMEOUT_MS = 30_000;
 const END_REVEAL_MS = 12_000;
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
@@ -64,7 +64,7 @@ const hasActiveMatch = (playerId: string): boolean => [...matches.values()].some
     && match.players.some((player) => player.id === playerId),
 );
 const publicLobbies = (groupId: string, eventId: string | null) => [...lobbies.values()].filter((l) => l.groupId === groupId && l.eventId === eventId).map((l) => ({ id: l.id, host: l.host, players: l.players.map((p) => ({ ...p, ready: isLobbyReady(l, p.id) })), createdAt: l.createdAt, challengeKeys: l.challengeKeys }));
-const reconnectGraceMs = (): number => { const configured = Number(process.env.CHALLENGE_RUSH_RECONNECT_GRACE_MS); return Number.isFinite(configured) ? Math.max(50, Math.min(60_000, configured)) : DEFAULT_RECONNECT_GRACE_MS; };
+const reconnectGraceMs = (): number => { const configured = Number(process.env.CHALLENGE_RUSH_RECONNECT_GRACE_MS); return Number.isFinite(configured) ? Math.max(50, Math.min(60_000, configured)) : RECONNECT_GRACE_MS; };
 const resultReadyTimeoutMs = (): number => { const configured = Number(process.env.CHALLENGE_RUSH_RESULT_TIMEOUT_MS); return Number.isFinite(configured) ? Math.max(50, Math.min(120_000, configured)) : DEFAULT_RESULT_READY_TIMEOUT_MS; };
 const isE2EFastTest = (): boolean => process.env.NODE_ENV === 'test' && process.env.E2E_FAST_TIMERS === '1';
 const isFastTest = (): boolean => process.env.NODE_ENV === 'test' && (challengeRushTiming().challengeDurationMs !== null || isE2EFastTest());
@@ -642,7 +642,7 @@ export function registerChallengeRushSockets(io: Server): () => void {
     });
     socket.on('disconnect', () => {
       removeDisconnectedLobbySocket(io, socket.id);
-      for (const match of matches.values()) for (const [playerId, socketId] of match.socketIds) if (socketId === socket.id) { match.socketIds.delete(playerId); const timer = setTimeout(() => { if (matches.get(match.id) !== match || match.socketIds.has(playerId) || match.phase === 'ended') return; match.reconnectTimers.delete(playerId); forfeitPlayer(io, match, playerId); }, reconnectGraceMs()); match.reconnectTimers.set(playerId, timer); emitState(io, match); }
+      for (const match of matches.values()) for (const [playerId, socketId] of match.socketIds) if (socketId === socket.id) { match.socketIds.delete(playerId); const timer = setTimeout(() => { if (matches.get(match.id) !== match || match.socketIds.has(playerId) || match.phase === 'ended') return; match.reconnectTimers.delete(playerId); forfeitPlayer(io, match, playerId); }, graceMsFor({ paused: match.paused, otherHumanConnected: match.socketIds.size > 0 }, reconnectGraceMs())); match.reconnectTimers.set(playerId, timer); emitState(io, match); }
     });
   });
 }

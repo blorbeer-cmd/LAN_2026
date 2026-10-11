@@ -12,6 +12,7 @@ import { recordArcadeResult } from './arcadeData';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import { arcadeTiming } from './timing';
 import { registerSocketConnection } from '../socketConnections';
+import { RECONNECT_REFUSED, ReconnectGrace, claimMatchSeat } from './reconnectGrace';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
@@ -61,6 +62,7 @@ interface MatchState {
   paused: boolean;
   answered: boolean;
   startedAt: number;
+  grace: ReconnectGrace;
 }
 
 const lobbies = new Map<string, Lobby>();
@@ -173,6 +175,7 @@ function markSeen(match: MatchState, winnerId: string | null) {
 
 function finishMatch(io: Server, match: MatchState, winner: PlayerRef | null, reason = 'completed') {
   clearQuestionTimer(match);
+  match.grace.clear();
   endArcadeSession(realPlayerIds(match.players), 'quiz', match);
   recordArcadeResult({
     gameType: 'quiz',
@@ -415,6 +418,13 @@ export function registerArcadeSockets(io: Server): () => void {
         paused: false,
         answered: false,
         startedAt: Date.now(),
+        // A player who stays away past the reconnect grace ends the match,
+        // exactly like an explicit leave.
+        grace: new ReconnectGrace(() => match, (playerId) => playerId === QUIZ_BOT.id, (playerId) => {
+          if (matches.get(match.id) !== match) return;
+          emitArcadeRoom(io, match.room, 'arcade:match:opponent-left', { matchId: match.id, playerId }, match);
+          finishMatch(io, match, null, 'player-left');
+        }),
       };
       matches.set(match.id, match);
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
@@ -463,6 +473,7 @@ export function registerArcadeSockets(io: Server): () => void {
       match.questionTimer = null;
       match.questionExpiresAt = null;
       match.paused = true;
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'arcade:match:paused', {
         matchId: match.id,
         scores: scorePayload(match),
@@ -482,6 +493,7 @@ export function registerArcadeSockets(io: Server): () => void {
       match.questionExpiresAt = Date.now() + remainingMs;
       match.questionRemainingMs = null;
       match.paused = false;
+      match.grace.rearm();
       scheduleQuestionTimeout(io, match, remainingMs);
       emitArcadeRoom(io, match.room, 'arcade:match:resumed', {
         matchId: match.id,
@@ -516,13 +528,37 @@ export function registerArcadeSockets(io: Server): () => void {
       ack?.({ ok: true });
     });
 
+    // Hands the seat back and replays the open question (and a pause the
+    // player missed); during a result reveal the next question follows anyway.
+    socket.on('arcade:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      if (!match || !claimMatchSeat(socket, match, payload?.playerId, (playerId) => playerId === QUIZ_BOT.id)) {
+        return ack?.({ ok: false, error: RECONNECT_REFUSED });
+      }
+      const question = match.currentQuestion;
+      if (question && !match.answered) {
+        const remainingMs = match.paused ? match.questionRemainingMs ?? QUESTION_MS : Math.max(0, (match.questionExpiresAt ?? Date.now()) - Date.now());
+        socket.emit('arcade:quiz:question', {
+          matchId: match.id,
+          questionId: question.id,
+          question: question.question,
+          category: question.category,
+          difficulty: question.difficulty,
+          scores: scorePayload(match),
+          targetScore: match.targetScore,
+          startedAt: Date.now(),
+          expiresAt: Date.now() + remainingMs,
+        });
+        if (match.paused) socket.emit('arcade:match:paused', { matchId: match.id, scores: scorePayload(match), remainingMs });
+      }
+      ack?.({ ok: true });
+    });
+
     socket.on('disconnect', () => {
       removeFromOpenLobbies(io, socket.id);
-      for (const [id, match] of matches) {
+      for (const match of matches.values()) {
         const player = [...match.socketIds.entries()].find(([, socketId]) => socketId === socket.id);
-        if (!player) continue;
-        emitArcadeRoom(io, match.room, 'arcade:match:opponent-left', { matchId: id, playerId: player[0] }, match);
-        finishMatch(io, match, null, 'player-left');
+        if (player) match.grace.disconnected(player[0]);
       }
     });
   });

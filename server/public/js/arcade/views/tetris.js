@@ -25,6 +25,7 @@ import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadeResultListHtml, wi
 import { playArcadeSound } from '../arcadeSound.js';
 import { createRematchController } from '../rematch.js';
 import { TETRIS_COLORS } from '../shared/tetrisColors.js';
+import { emitWhileConnected, reclaimMatchOnReconnect } from '../matchReconnect.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -168,20 +169,16 @@ export function ensureTetrisSocket() {
     if (match) showToast(`${payload?.playerName || 'Ein Spieler'} hat das Match verlassen.`, { error: true });
   });
 
-  // A phone that locks its screen or switches apps drops the connection and
-  // comes back on a new socket. The server keeps the match for a grace period
-  // (much longer while paused); hand it back to this socket so pause, resume
-  // and input work again. A refusal means the match ended in the meantime.
-  socket.on('connect', () => {
-    if (!match?.matchId || match.ended || !amPlayer()) return;
-    const matchId = match.matchId;
-    socket.emit('tetris:match:reconnect', { matchId, playerId: myId() }, (result) => {
-      if (result?.ok || match?.matchId !== matchId || match.ended) return;
+  reclaimMatchOnReconnect(socket, {
+    event: 'tetris:match:reconnect',
+    activeMatchId: () => (match && !match.ended && amPlayer() ? match.matchId : null),
+    playerId: myId,
+    onLost: () => {
+      const wasMounted = tetrisViewMounted();
       dropLocalMatch();
-      showToast('Das Match ist nicht mehr verfügbar.', { error: true });
-      if (tetrisViewMounted()) navigate('arcade');
+      if (wasMounted) navigate('arcade');
       else if (currentView() === 'arcade') rerender();
-    });
+    },
   });
 
   bindKeyboard();
@@ -192,11 +189,8 @@ function emitWithAck(event, payload) {
   return new Promise((resolve) => socket.emit(event, payload, resolve));
 }
 
-// Match controls only make sense on a live connection: a buffered pause or
-// resume would reach the server before this socket has taken the match back.
 function emitMatchAction(event) {
-  if (!socket?.connected) return Promise.resolve({ ok: false, error: 'Keine Verbindung zum Server.' });
-  return emitWithAck(event, { matchId: match?.matchId, playerId: myId() });
+  return emitWhileConnected(socket, event, { matchId: match?.matchId, playerId: myId() });
 }
 
 function dropLocalMatch() {

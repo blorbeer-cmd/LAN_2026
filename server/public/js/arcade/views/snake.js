@@ -6,6 +6,7 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, arcadeLobbyHostActionsHtml, arcadeLobbyGuestActionsHtml, arcadeLobbyJoinHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadePlayerStripHtml, arcadeResultListHtml, arcadeScoreboardHtml, pointsLabel, wireArcadeToolbar } from '../arcadeUi.js';
 import { createRematchController } from '../rematch.js';
+import { emitWhileConnected, reclaimMatchOnReconnect } from '../matchReconnect.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { snakeColor } from '../shared/snakeColors.js';
 
@@ -65,6 +66,7 @@ export function ensureSnakeSocket() {
   socket.on('snake:state', (payload) => {
     world = payload.world;
     const hostChanged = Boolean(match && payload.host?.id && payload.host.id !== match.host?.id);
+    const pausedChanged = Boolean(match) && match.paused !== payload.paused;
     if (match) {
       match.running = payload.running;
       match.paused = payload.paused;
@@ -80,6 +82,8 @@ export function ensureSnakeSocket() {
     paintBoard();
     updateRosterDisplay();
     if (hostChanged && currentView() === 'snake') rerender();
+    // A snapshot after a reconnect can carry a pause the player missed.
+    else if (pausedChanged && currentView() === 'snake') updatePauseUi();
     if (!document.querySelector('#snake-canvas') && currentView() === 'arcade') rerender();
   });
   socket.on('snake:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'snake') updatePauseUi(); } });
@@ -95,17 +99,26 @@ export function ensureSnakeSocket() {
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
     if (currentView() === 'snake' || currentView() === 'arcade') rerender();
   });
-  socket.on('disconnect', () => {
-    if (!match || match.ended || !match.players.some((player) => player.id === myId())) return;
-    match = null;
-    world = null;
-    prevMyScore = null;
-    cancelCountdown();
-    showToast('Verbindung verloren. Du bist aus dem Snake-Match ausgeschieden.', { error: true });
-    if (currentView() === 'snake' || currentView() === 'arcade') navigate('arcade');
+  reclaimMatchOnReconnect(socket, {
+    event: 'snake:match:reconnect',
+    activeMatchId: () => (match && !match.ended && match.players?.some((player) => player.id === myId()) ? match.matchId : null),
+    playerId: myId,
+    onLost: () => {
+      const wasVisible = currentView() === 'snake';
+      dropLocalMatch();
+      if (wasVisible) navigate('arcade');
+      else if (currentView() === 'arcade') rerender();
+    },
   });
   bindKeyboard();
   return socket;
+}
+
+function dropLocalMatch() {
+  match = null;
+  world = null;
+  prevMyScore = null;
+  cancelCountdown();
 }
 
 function lobbyEntryHtml(lobby) {
@@ -362,21 +375,20 @@ export function renderSnake(container) {
   rematch.wire(container);
   wireSwipeControls(container.querySelector('#snake-canvas'));
   container.querySelector('#snake-pause')?.addEventListener('click', async () => {
-    await emitAck(match.paused ? 'snake:match:resume' : 'snake:match:pause', { matchId: match.matchId, playerId: myId() });
+    const res = await emitWhileConnected(socket, match.paused ? 'snake:match:resume' : 'snake:match:pause', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || (match?.paused ? 'Fortsetzen fehlgeschlagen.' : 'Pausieren fehlgeschlagen.'), { error: true });
   });
   container.querySelector('#snake-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
-    await emitAck('snake:match:finish', { matchId: match.matchId, playerId: myId() });
+    const res = await emitWhileConnected(socket, 'snake:match:finish', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
   });
   container.querySelector('#snake-leave-match')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
-    const res = await emitAck('snake:match:leave', { matchId: match.matchId, playerId: myId() });
+    const res = await emitWhileConnected(socket, 'snake:match:leave', { matchId: match.matchId, playerId: myId() });
     if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
     else {
-      match = null;
-      world = null;
-      prevMyScore = null;
-      cancelCountdown();
+      dropLocalMatch();
       navigate('arcade');
     }
   });

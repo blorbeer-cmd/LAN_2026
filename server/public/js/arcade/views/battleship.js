@@ -8,6 +8,7 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, arcadeLobbyHostActionsHtml, arcadeLobbyGuestActionsHtml, arcadeLobbyJoinHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadeResultListHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { createRematchController } from '../rematch.js';
+import { OFFLINE_MESSAGE, reclaimMatchOnReconnect } from '../matchReconnect.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { emptyStateHtml } from '../../emptyState.js';
 
@@ -39,6 +40,7 @@ const rerenderIfBattleshipVisible = () => {
   if (currentView() === 'battleship' || currentView() === 'arcade') rerender();
 };
 const emitAck = (event, payload) => new Promise((resolve) => {
+  if (!socket?.connected) return resolve({ ok: false, error: OFFLINE_MESSAGE });
   if (pendingAction) return resolve({ ok: false, error: 'Eine Aktion wird noch verarbeitet.' });
   pendingAction = event;
   rerender();
@@ -77,19 +79,21 @@ export function ensureBattleshipSocket() {
   if (socket) return socket;
   socket = connectSocket();
   socket.on('connect', () => {
-    const returningAfterDisconnect = connectionState === 'offline';
     connectionState = 'connected';
-    if (returningAfterDisconnect && match && !match.ended) {
-      match = {
-        ...match,
-        phase: 'ended',
-        ended: true,
-        reason: 'player-left',
-        winnerId: match.players.find((player) => player.id !== myId())?.id ?? null,
-      };
-      cancelCountdown();
-    }
     rerenderIfBattleshipVisible();
+  });
+  // The server answers a successful reclaim with the personal state.
+  reclaimMatchOnReconnect(socket, {
+    event: 'battleship:match:reconnect',
+    activeMatchId: () => (match && !match.ended && match.players?.some((player) => player.id === myId()) ? match.matchId : null),
+    playerId: myId,
+    onLost: () => {
+      const wasVisible = currentView() === 'battleship';
+      match = null;
+      cancelCountdown();
+      if (wasVisible) navigate('arcade');
+      else if (currentView() === 'arcade') rerender();
+    },
   });
   socket.on('disconnect', () => { connectionState = 'offline'; rerenderIfBattleshipVisible(); });
   socket.on('connect_error', () => { connectionState = 'offline'; rerenderIfBattleshipVisible(); });

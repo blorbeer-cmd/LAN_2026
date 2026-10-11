@@ -11,6 +11,7 @@ import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { arcadeTiming } from './timing';
 import { registerSocketConnection } from '../socketConnections';
+import { RECONNECT_GRACE_MS, graceMsFor } from './reconnectGrace';
 import {
   CHIMP_MAX_STRIKES, applyChimpClick, applyChimpInactivity, chimpRating, continueChimpRun, finishChimpReveal,
   isImplausibleChimpInput, rankChimpResults, startChimpRun, type ChimpRun,
@@ -36,7 +37,7 @@ const PRODUCTION_TIMING: ChimpTiming = {
   inactivityMs: 60_000,
   interstitialMs: 30_000,
   matchLimitMs: 10 * 60_000,
-  reconnectGraceMs: 15_000,
+  reconnectGraceMs: RECONNECT_GRACE_MS,
 };
 
 // The socket suite (ARCADE_FAST_TIMERS) shortens the reveal so strike paths do
@@ -791,7 +792,7 @@ export function registerChimpSockets(io: Server): () => void {
             if (!isCurrent(match) || match.socketIds.has(playerId)) return;
             if (entry.ended === null) endRun(io, match, playerId, 'disconnect');
             if (match.host.id === playerId) handOverHost(io, match);
-          }, timing().reconnectGraceMs);
+          }, graceMsFor({ paused: match.paused, otherHumanConnected: match.socketIds.size > 0 }, timing().reconnectGraceMs));
           timer.unref();
           match.reconnectTimers.set(playerId, timer);
           emitStandings(io, match);

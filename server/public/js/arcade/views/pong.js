@@ -8,6 +8,7 @@ import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadeResultListHtml, po
 import { createRematchController } from '../rematch.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { projectPongWorld } from '../pongPrediction.js';
+import { emitWhileConnected, reclaimMatchOnReconnect } from '../matchReconnect.js';
 
 const W = 960;
 const H = 540;
@@ -87,12 +88,15 @@ export function ensurePongSocket() {
     }
     latest = payload;
     latestAt = performance.now();
+    const pausedChanged = Boolean(match) && match.paused !== payload.paused;
     if (match) {
       match.running = payload.running;
       match.paused = payload.paused;
       match.scores = payload.scores;
       match.targetScore = payload.targetScore;
     }
+    // A snapshot after a reconnect can carry a pause the player missed.
+    if (pausedChanged && currentView() === 'pong') updatePauseUi();
     updateRoster();
     if (!document.querySelector('#pong-canvas') && currentView() === 'arcade') rerender();
   });
@@ -125,8 +129,27 @@ export function ensurePongSocket() {
     stopAnimation();
     if (currentView() === 'pong' || currentView() === 'arcade') rerender();
   });
+  reclaimMatchOnReconnect(socket, {
+    event: 'pong:match:reconnect',
+    activeMatchId: () => (match && !match.ended && match.players?.some((player) => player.id === myId()) ? match.matchId : null),
+    playerId: myId,
+    onLost: () => {
+      const wasVisible = currentView() === 'pong';
+      dropLocalMatch();
+      if (wasVisible) navigate('arcade');
+      else if (currentView() === 'arcade') rerender();
+    },
+  });
   bindKeyboard();
   return socket;
+}
+
+function dropLocalMatch() {
+  match = null;
+  latest = null;
+  trail.length = 0;
+  cancelCountdown();
+  stopAnimation();
 }
 
 function modeLabel(mode) {
@@ -492,11 +515,12 @@ function wireGame(container) {
   wirePauseControl(container);
   container.querySelector('#pong-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
-    await emitAck('pong:match:finish', { matchId: match.matchId, playerId: myId() });
+    const result = await emitWhileConnected(socket, 'pong:match:finish', { matchId: match.matchId, playerId: myId() });
+    if (!result?.ok) showToast(result?.error || 'Beenden fehlgeschlagen.', { error: true });
   });
   container.querySelector('#pong-leave-match')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
-    const result = await emitAck('pong:match:leave', { matchId: match.matchId, playerId: myId() });
+    const result = await emitWhileConnected(socket, 'pong:match:leave', { matchId: match.matchId, playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
   rematch.wire(container);
@@ -512,11 +536,11 @@ function wireGame(container) {
 
 function wirePauseControl(container) {
   container.querySelector('#pong-pause')?.addEventListener('click', async () => {
-    const result = await emitAck('pong:match:pause', { matchId: match.matchId, playerId: myId() });
+    const result = await emitWhileConnected(socket, 'pong:match:pause', { matchId: match.matchId, playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'Pausieren fehlgeschlagen.', { error: true });
   });
   container.querySelector('#pong-resume')?.addEventListener('click', async () => {
-    const result = await emitAck('pong:match:resume', { matchId: match.matchId, playerId: myId() });
+    const result = await emitWhileConnected(socket, 'pong:match:resume', { matchId: match.matchId, playerId: myId() });
     if (!result?.ok) showToast(result?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
   });
 }

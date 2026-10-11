@@ -22,7 +22,8 @@ import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from './realtime';
 import { recordArcadeResult } from './arcadeData';
-import { arcadeTestTimersEnabled, arcadeTiming } from './timing';
+import { arcadeTiming } from './timing';
+import { RECONNECT_REFUSED, ReconnectGrace, claimMatchSeat } from './reconnectGrace';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope } from './scope';
@@ -139,10 +140,9 @@ interface TetrisMatch {
   inputQueue: Array<{ playerId: string; action: InputAction }>;
   startedAt: number;
   // A dropped connection (phone screen off, app switch, Wi-Fi hiccup) only
-  // forfeits after a grace period; an explicit leave is final and can never
-  // be undone by a later reconnect.
-  disconnected: Set<string>;
-  reconnectTimers: Map<string, NodeJS.Timeout>;
+  // forfeits after the reconnect grace; an explicit leave is final and can
+  // never be undone by a later reconnect.
+  grace: ReconnectGrace;
   departed: Set<string>;
 }
 
@@ -154,24 +154,6 @@ interface PendingElimination {
 
 const lobbies = new Map<string, TetrisLobby>();
 const matches = new Map<string, TetrisMatch>();
-
-// The fast test-timer profile shortens only the running grace: the suites
-// close a socket or browser context to make a player vanish and expect the
-// forfeit or host handover right away, but never wait out a paused grace.
-const RECONNECT_GRACE_MS = arcadeTestTimersEnabled(process.env) ? 250 : 30_000;
-// A paused match freezes every board, so when nobody else is waiting (a KI
-// match, or every human is away) a player who locked their phone during the
-// pause loses nothing by coming back later. The cap only stops an abandoned
-// pause from holding the match (and its arcade session) open forever.
-const PAUSED_RECONNECT_GRACE_MS = 10 * 60_000;
-
-function humanStillConnected(match: TetrisMatch, playerId: string): boolean {
-  return match.players.some((player) => player.id !== playerId && !isBotId(player.id) && match.socketIds.has(player.id));
-}
-
-function reconnectGraceMs(match: TetrisMatch, playerId: string): number {
-  return match.paused && !humanStillConnected(match, playerId) ? PAUSED_RECONNECT_GRACE_MS : RECONNECT_GRACE_MS;
-}
 
 function isBotId(playerId: string): boolean {
   return playerId === BOT_ID || playerId.startsWith(BOT_ID_PREFIX);
@@ -409,8 +391,7 @@ export function chooseBotTarget(board: Board, current: Piece): { rotation: numbe
 function finishMatch(io: Server, match: TetrisMatch, winner: PlayerRef | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
-  for (const timer of match.reconnectTimers.values()) clearTimeout(timer);
-  match.reconnectTimers.clear();
+  match.grace.clear();
   match.running = false;
   if (winner) {
     const winnerState = match.states.get(winner.id);
@@ -695,8 +676,6 @@ function handleMatchDeparture(io: Server, match: TetrisMatch, playerId: string, 
   const state = match.states.get(playerId);
   if (!leaver || !state || match.departed.has(playerId)) return;
   match.departed.add(playerId);
-  match.disconnected.delete(playerId);
-  clearReconnectTimer(match, playerId);
 
   emitArcadeRoom(
     io,
@@ -714,6 +693,7 @@ function handleMatchDeparture(io: Server, match: TetrisMatch, playerId: string, 
   }
 
   match.socketIds.delete(playerId);
+  match.grace.left(playerId);
   match.inputQueue = match.inputQueue.filter((input) => input.playerId !== playerId);
   eliminatePlayer(match, state, 'player-left');
   if (match.host.id === playerId) {
@@ -731,42 +711,6 @@ function handleMatchDeparture(io: Server, match: TetrisMatch, playerId: string, 
   }
   match.stateDirty = true;
   if (!checkGameOver(io, match)) broadcastState(io, match);
-}
-
-function clearReconnectTimer(match: TetrisMatch, playerId: string) {
-  const timer = match.reconnectTimers.get(playerId);
-  if (timer) clearTimeout(timer);
-  match.reconnectTimers.delete(playerId);
-}
-
-// (Re)starts the forfeit countdown of every player whose match socket is
-// gone. The length depends on the pause and on who is still connected, so
-// every pause, resume, disconnect and return re-arms all countdowns.
-function rearmReconnectTimers(io: Server, match: TetrisMatch) {
-  for (const playerId of match.disconnected) {
-    clearReconnectTimer(match, playerId);
-    const timer = setTimeout(() => {
-      match.reconnectTimers.delete(playerId);
-      if (matches.get(match.id) !== match || !match.disconnected.has(playerId)) return;
-      handleMatchDeparture(io, match, playerId);
-    }, reconnectGraceMs(match, playerId));
-    timer.unref();
-    match.reconnectTimers.set(playerId, timer);
-  }
-}
-
-// Hands a still-running match back to a player's new socket after a dropped
-// connection and sends that socket the current snapshot, including a pause
-// or host handover it missed while it was away.
-function attachSocket(io: Server, socket: Socket, match: TetrisMatch, playerId: string): boolean {
-  if (isBotId(playerId) || match.departed.has(playerId) || !match.states.has(playerId)) return false;
-  match.disconnected.delete(playerId);
-  clearReconnectTimer(match, playerId);
-  match.socketIds.set(playerId, socket.id);
-  socket.join(match.room);
-  rearmReconnectTimers(io, match);
-  emitArcadeSocket(io, socket.id, 'tetris:state', statePayload(match), match);
-  return true;
 }
 
 export function registerTetrisSockets(io: Server): () => void {
@@ -918,8 +862,9 @@ export function registerTetrisSockets(io: Server): () => void {
         stateDirty: false,
         inputQueue: [],
         startedAt: Date.now(),
-        disconnected: new Set(),
-        reconnectTimers: new Map(),
+        grace: new ReconnectGrace(() => match, isBotId, (playerId) => {
+          if (matches.get(matchId) === match) handleMatchDeparture(io, match, playerId);
+        }),
         departed: new Set(),
       };
       for (const p of lobby.players) {
@@ -1011,7 +956,7 @@ export function registerTetrisSockets(io: Server): () => void {
       if (!match.running || match.paused) return ack?.({ ok: true });
       match.paused = true;
       match.inputQueue = [];
-      rearmReconnectTimers(io, match);
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'tetris:match:paused', { matchId: match.id }, match);
       broadcastState(io, match);
       ack?.({ ok: true });
@@ -1025,7 +970,7 @@ export function registerTetrisSockets(io: Server): () => void {
       if (!match.running || !match.paused) return ack?.({ ok: true });
       match.paused = false;
       match.lastTick = Date.now();
-      rearmReconnectTimers(io, match);
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'tetris:match:resumed', { matchId: match.id }, match);
       broadcastState(io, match);
       ack?.({ ok: true });
@@ -1057,15 +1002,12 @@ export function registerTetrisSockets(io: Server): () => void {
     socket.on('tetris:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       const playerId = payload?.playerId;
-      if (
-        !match ||
-        typeof playerId !== 'string' ||
-        !socketArcadeScope(socket, playerId) ||
-        !canUseLobby(socket, match) ||
-        !attachSocket(io, socket, match, playerId)
-      ) {
-        return ack?.({ ok: false, error: 'Das Match ist nicht mehr verfügbar.' });
+      // A player who left explicitly stays out; everyone else gets the
+      // current snapshot, including a pause or host handover they missed.
+      if (!match || match.departed.has(playerId as string) || !claimMatchSeat(socket, match, playerId, isBotId)) {
+        return ack?.({ ok: false, error: RECONNECT_REFUSED });
       }
+      emitArcadeSocket(io, socket.id, 'tetris:state', statePayload(match), match);
       ack?.({ ok: true });
     });
 
@@ -1076,9 +1018,7 @@ export function registerTetrisSockets(io: Server): () => void {
         if (!entry) continue;
         // The board stays in play; only a player who does not come back
         // within the grace period leaves the match.
-        match.socketIds.delete(entry[0]);
-        match.disconnected.add(entry[0]);
-        rearmReconnectTimers(io, match);
+        match.grace.disconnected(entry[0]);
       }
     });
   });

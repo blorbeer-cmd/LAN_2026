@@ -317,7 +317,7 @@ test('Battleship: ships can be placed manually one at a time, and a sunk ship st
   }
 });
 
-test('Battleship: disconnect ends the duel immediately and awards the connected opponent', async () => {
+test('Battleship: a disconnect past the reconnect grace ends the duel and awards the connected opponent', async () => {
   const hostPlayer = await createPlayer('Battleship Disconnect Host');
   const guestPlayer = await createPlayer('Battleship Disconnect Guest');
   const host = await openArcadeAs(hostPlayer.id);
