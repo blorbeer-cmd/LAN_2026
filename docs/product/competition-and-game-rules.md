@@ -263,7 +263,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 - **Game specifics** — Tetris Duell keeps two equal boards; Arena accepts three to eight players
   and keeps the local board large beside a grid of opponent boards. A dropped Tetris connection
   (locked phone, app switch) returns to the same match: a player counts as gone only after a
-  15-second reconnect grace, or after 10 minutes while the match is paused and no other player
+  30-second reconnect grace, or after 10 minutes while the match is paused and no other player
   is connected to wait for them (a KI match). Pong and Blobby Volley offer
   Duell and Doppel; Doppel lobbies have two teams with two seats, Pong Doppel defaults to 21 points
   and follows Atari's Pong-4 lanes. Snake Classic is exactly one against one; Snake Arena accepts

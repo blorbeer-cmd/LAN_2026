@@ -158,7 +158,7 @@ const matches = new Map<string, TetrisMatch>();
 // The fast test-timer profile shortens only the running grace: the suites
 // close a socket or browser context to make a player vanish and expect the
 // forfeit or host handover right away, but never wait out a paused grace.
-const RECONNECT_GRACE_MS = arcadeTestTimersEnabled(process.env) ? 250 : 15_000;
+const RECONNECT_GRACE_MS = arcadeTestTimersEnabled(process.env) ? 250 : 30_000;
 // A paused match freezes every board, so when nobody else is waiting (a KI
 // match, or every human is away) a player who locked their phone during the
 // pause loses nothing by coming back later. The cap only stops an abandoned
