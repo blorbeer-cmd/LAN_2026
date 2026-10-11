@@ -925,7 +925,7 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
       'pausing must update controls/overlay without replacing the live canvas',
     );
     // Regression guard for #592: the host disconnecting mid-match hands
-    // control to guests[0]. That handover must only swap the control footer
+    // control to guests[0] once the (fast-timer) reconnect grace has passed. That handover must only swap the control footer
     // (Verlassen -> Pausieren/Beenden), never rebuild the mounted canvases.
     await guests[0].page.locator('.tetris-primary-board .tetris-canvas').evaluate((canvas) => {
       canvas.dataset.renderIdentity = 'before-host-handover';
