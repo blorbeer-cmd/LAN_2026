@@ -2,6 +2,7 @@ import { escapeHtml } from '../../format.js';
 import { connectSocket } from '../../socket.js';
 import { getMyId } from '../../whoami.js';
 import { showToast } from '../../toast.js';
+import { emitWhileConnected } from '../matchReconnect.js';
 import { arcadeLobbyEntryHtml, arcadeLobbyHostActionsHtml, arcadeLobbyGuestActionsHtml, arcadeLobbyJoinHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { arcadeGameHeaderHtml, arcadeMatchControlsHtml, arcadePlayerStripHtml, arcadeResultListHtml, pointsLabel, wireArcadeToolbar } from '../arcadeUi.js';
@@ -37,6 +38,7 @@ function navigate(view, options = {}) {
   window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view, ...options } }));
 }
 function emit(event, payload) { return new Promise((resolve) => socket?.emit(event, payload, resolve)); }
+const emitMatchAction = (event) => emitWhileConnected(socket, event, { matchId: match.matchId, playerId: myId() });
 function clearTrialTimer() { if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null; clearPreviewRetry(); }
 function clearPreviewRetry() { if (previewRetryTimer !== null) clearInterval(previewRetryTimer); previewRetryTimer = null; }
 function clearReadingCountdown() { if (countdownTimer !== null) clearInterval(countdownTimer); countdownTimer = null; countdownDeadline = null; }
@@ -483,9 +485,9 @@ export function renderChallengeRush(container, _ctx) {
   container.querySelector('.challenge-rush-breakdown')?.addEventListener('toggle', (event) => { breakdownOpen = event.currentTarget.open; });
   container.querySelector('#cr-back')?.addEventListener('click', () => { clearReadingCountdown(); clearTrialTimer(); currentTrial = null; match = null; navigate('arcade'); });
   container.querySelector('[data-navigate="arcade"]')?.addEventListener('click', () => navigate('arcade'));
-  container.querySelector('[data-cr-pause]')?.addEventListener('click', () => socket.emit('challenge-rush:match:pause', { matchId: match.matchId, playerId: myId() }, (result) => { if (!result?.ok) showToast(result?.error || 'Pause konnte nicht geändert werden.', { error: true }); }));
-  container.querySelector('[data-cr-finish]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich für alle beenden?', { confirmText: 'Beenden', danger: true }))) return; const result = await emit('challenge-rush:match:finish', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Beenden fehlgeschlagen.', { error: true }); });
-  container.querySelector('[data-cr-leave-match]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return; const result = await emit('challenge-rush:match:leave', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) return showToast(result?.error || 'Verlassen fehlgeschlagen.', { error: true }); clearTrialTimer(); currentTrial = null; match = null; navigate('arcade'); });
+  container.querySelector('[data-cr-pause]')?.addEventListener('click', async () => { const result = await emitMatchAction('challenge-rush:match:pause'); if (!result?.ok) showToast(result?.error || 'Pause konnte nicht geändert werden.', { error: true }); });
+  container.querySelector('[data-cr-finish]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich für alle beenden?', { confirmText: 'Beenden', danger: true }))) return; const result = await emitMatchAction('challenge-rush:match:finish'); if (!result?.ok) showToast(result?.error || 'Beenden fehlgeschlagen.', { error: true }); });
+  container.querySelector('[data-cr-leave-match]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return; const result = await emitMatchAction('challenge-rush:match:leave'); if (!result?.ok) return showToast(result?.error || 'Verlassen fehlgeschlagen.', { error: true }); clearTrialTimer(); currentTrial = null; match = null; navigate('arcade'); });
   container.querySelector('#cr-ready-next')?.addEventListener('click', async () => { const result = await emit('challenge-rush:challenge:ready', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Bereit-Status fehlgeschlagen.', { error: true }); });
   const send = (action, value, onAccepted = () => {}) => {
     const sentTrialId = currentTrial?.trialId;
