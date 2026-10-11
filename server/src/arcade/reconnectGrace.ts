@@ -37,27 +37,37 @@ export interface GraceMatch {
   socketIds: Map<string, string>;
 }
 
+interface AwayEntry {
+  since: number;
+  graceMs: number;
+  deadline: number;
+  timer: NodeJS.Timeout | null;
+}
+
 // Tracks the players of one match whose socket is gone. Every change that
-// can alter a grace (a disconnect, a return, a pause or resume) re-arms all
-// pending countdowns, so the length always follows the current situation.
+// can alter a grace (a disconnect, a return, a departure, a pause or resume)
+// re-evaluates all pending countdowns: an unchanged grace keeps its deadline,
+// a longer one counts from the disconnect and a shorter one gives at most
+// the new grace from now.
 export class ReconnectGrace {
-  private readonly timers = new Map<string, NodeJS.Timeout | null>();
+  private readonly away = new Map<string, AwayEntry>();
 
   // The match is read lazily so a match can create its grace inside its own
-  // object literal.
+  // object literal. Games with their own test override pass `runningGraceMs`.
   constructor(
     private readonly match: () => GraceMatch,
     private readonly isBot: (playerId: string) => boolean,
     private readonly onExpire: (playerId: string) => void,
+    private readonly runningGraceMs: () => number = runningReconnectGraceMs,
   ) {}
 
   isAway(playerId: string): boolean {
-    return this.timers.has(playerId);
+    return this.away.has(playerId);
   }
 
   disconnected(playerId: string): void {
     this.match().socketIds.delete(playerId);
-    this.timers.set(playerId, null);
+    if (!this.away.has(playerId)) this.away.set(playerId, { since: Date.now(), graceMs: 0, deadline: Infinity, timer: null });
     this.rearm();
   }
 
@@ -73,33 +83,36 @@ export class ReconnectGrace {
     this.rearm();
   }
 
-  private forget(playerId: string): void {
-    const timer = this.timers.get(playerId);
-    if (timer) clearTimeout(timer);
-    this.timers.delete(playerId);
-  }
-
   rearm(): void {
     const match = this.match();
-    for (const playerId of [...this.timers.keys()]) {
-      const previous = this.timers.get(playerId);
-      if (previous) clearTimeout(previous);
+    const now = Date.now();
+    for (const [playerId, entry] of this.away) {
       const otherHumanConnected = match.players.some(
         (player) => player.id !== playerId && !this.isBot(player.id) && match.socketIds.has(player.id),
       );
-      const timer = setTimeout(() => {
-        if (!this.timers.has(playerId)) return;
-        this.timers.delete(playerId);
+      const graceMs = graceMsFor({ paused: match.paused, otherHumanConnected }, this.runningGraceMs());
+      if (graceMs === entry.graceMs) continue;
+      entry.deadline = graceMs > entry.graceMs ? entry.since + graceMs : Math.min(entry.deadline, now + graceMs);
+      entry.graceMs = graceMs;
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = setTimeout(() => {
+        if (this.away.get(playerId) !== entry) return;
+        this.away.delete(playerId);
         this.onExpire(playerId);
-      }, graceMsFor({ paused: match.paused, otherHumanConnected }));
-      timer.unref();
-      this.timers.set(playerId, timer);
+      }, Math.max(0, entry.deadline - now));
+      entry.timer.unref();
     }
   }
 
   clear(): void {
-    for (const timer of this.timers.values()) if (timer) clearTimeout(timer);
-    this.timers.clear();
+    for (const entry of this.away.values()) if (entry.timer) clearTimeout(entry.timer);
+    this.away.clear();
+  }
+
+  private forget(playerId: string): void {
+    const entry = this.away.get(playerId);
+    if (entry?.timer) clearTimeout(entry.timer);
+    this.away.delete(playerId);
   }
 }
 

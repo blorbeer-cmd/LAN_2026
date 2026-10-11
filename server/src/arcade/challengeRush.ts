@@ -11,7 +11,7 @@ import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { challengeRushTiming } from './challengeRushTiming';
 import { playerMayUseArcadeAi } from './adminAccess';
 import { registerSocketConnection } from '../socketConnections';
-import { RECONNECT_GRACE_MS, graceMsFor } from './reconnectGrace';
+import { RECONNECT_GRACE_MS, ReconnectGrace } from './reconnectGrace';
 import {
   CHALLENGES, challengeOrder, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isReadyForNext,
   isTrialChallenge, remainingUntil, scoreRepeatedTrials, validateTrialInput,
@@ -48,7 +48,7 @@ interface Match {
   order: ChallengeKey[]; index: number; phase: 'countdown' | 'playing' | 'result' | 'ended'; seed: number;
   current: ReturnType<typeof challengePayload>; progress: Map<string, Progress>; scores: Map<string, number>;
   startedAt: number; timer: NodeJS.Timeout | null; deadlineAt: number | null; pausedRemainingMs: number | null; paused: boolean;
-  reconnectTimers: Map<string, NodeJS.Timeout>; forfeited: Set<string>; readyNext: Set<string>; history: HistoryEntry[];
+  grace: ReconnectGrace; forfeited: Set<string>; readyNext: Set<string>; history: HistoryEntry[];
 }
 
 const lobbies = new Map<string, Lobby>();
@@ -337,11 +337,13 @@ function pauseMatch(match: Match): void {
   match.pausedRemainingMs = match.deadlineAt === null ? null : Math.max(0, match.deadlineAt - Date.now());
   clearTimer(match);
   match.paused = true;
+  match.grace.rearm();
 }
 
 function resumeMatch(io: Server, match: Match): void {
   if (!match.paused || match.phase === 'ended') return;
   match.paused = false;
+  match.grace.rearm();
   const remaining = match.pausedRemainingMs ?? 0;
   match.pausedRemainingMs = null;
   if (match.phase === 'playing') {
@@ -457,8 +459,7 @@ function nextChallenge(io: Server, match: Match): void {
 }
 
 function cleanupMatch(io: Server, match: Match): void {
-  for (const timer of match.reconnectTimers.values()) clearTimeout(timer);
-  match.reconnectTimers.clear();
+  match.grace.clear();
   matches.delete(match.id);
   for (const socketId of match.socketIds.values()) io.sockets.sockets.get(socketId)?.leave(match.room);
   broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId });
@@ -483,14 +484,13 @@ function finishMatch(io: Server, match: Match, reason = 'completed'): void {
 // keeps going for everyone else unless they were the last one left.
 function forfeitPlayer(io: Server, match: Match, playerId: string): void {
   if (match.phase === 'ended' || match.forfeited.has(playerId)) return;
-  const timer = match.reconnectTimers.get(playerId);
-  if (timer) { clearTimeout(timer); match.reconnectTimers.delete(playerId); }
   match.forfeited.add(playerId);
   const socketId = match.socketIds.get(playerId);
   if (socketId) {
     match.socketIds.delete(playerId);
     io.sockets.sockets.get(socketId)?.leave(match.room);
   }
+  match.grace.left(playerId);
   const progress = match.progress.get(playerId);
   if (progress) { clearPreviewTimer(progress); if (!progress.completed) { progress.completed = true; progress.score = 0; } }
   if (match.players.every((player) => match.forfeited.has(player.id))) return finishMatch(io, match, 'all-forfeited');
@@ -501,10 +501,8 @@ function forfeitPlayer(io: Server, match: Match, playerId: string): void {
 
 function attachSocket(io: Server, socket: Socket, match: Match, playerId: string): boolean {
   if (match.forfeited.has(playerId)) return false;
-  const previousTimer = match.reconnectTimers.get(playerId);
-  if (previousTimer) clearTimeout(previousTimer);
-  match.reconnectTimers.delete(playerId);
   match.socketIds.set(playerId, socket.id);
+  match.grace.returned(playerId);
   socket.join(match.room);
   socket.emit('challenge-rush:match:start', { matchId: match.id, host: match.host, players: match.players, challengeCount: match.order.length, reconnected: true });
   emitState(io, match, socket, playerId);
@@ -519,7 +517,11 @@ function startMatch(io: Server, lobby: Lobby): Match {
   const order = lobby.challengeKeys
     ? [...lobby.challengeKeys]
     : challengeOrder(seed, isFastTest() ? CHALLENGES.length : 10);
-  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: runtimeChallengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map(), forfeited: new Set(), readyNext: new Set(), history: [] };
+  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: runtimeChallengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false,
+    grace: new ReconnectGrace(() => match, () => false, (playerId) => {
+      if (matches.get(match.id) === match && !match.socketIds.has(playerId) && match.phase !== 'ended') forfeitPlayer(io, match, playerId);
+    }, reconnectGraceMs),
+    forfeited: new Set(), readyNext: new Set(), history: [] };
   matches.set(id, match); releaseLobbyMemberships(lobby.players.map((player) => player.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); resolveArcadeLobbyPush('challenge-rush', lobby); emitLobbies(io);
   startArcadeSession(playerIds(match.players), 'challenge-rush', match); emitArcadeRoom(io, room, 'challenge-rush:match:start', { matchId: id, host: match.host, players: match.players, challengeCount: order.length }, match); nextChallenge(io, match); return match;
 }
@@ -642,7 +644,7 @@ export function registerChallengeRushSockets(io: Server): () => void {
     });
     socket.on('disconnect', () => {
       removeDisconnectedLobbySocket(io, socket.id);
-      for (const match of matches.values()) for (const [playerId, socketId] of match.socketIds) if (socketId === socket.id) { match.socketIds.delete(playerId); const timer = setTimeout(() => { if (matches.get(match.id) !== match || match.socketIds.has(playerId) || match.phase === 'ended') return; match.reconnectTimers.delete(playerId); forfeitPlayer(io, match, playerId); }, graceMsFor({ paused: match.paused, otherHumanConnected: match.socketIds.size > 0 }, reconnectGraceMs())); match.reconnectTimers.set(playerId, timer); emitState(io, match); }
+      for (const match of matches.values()) for (const [playerId, socketId] of match.socketIds) if (socketId === socket.id) { match.grace.disconnected(playerId); emitState(io, match); }
     });
   });
 }

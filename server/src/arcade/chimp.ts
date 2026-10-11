@@ -11,7 +11,7 @@ import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { arcadeTiming } from './timing';
 import { registerSocketConnection } from '../socketConnections';
-import { RECONNECT_GRACE_MS, graceMsFor } from './reconnectGrace';
+import { RECONNECT_GRACE_MS, ReconnectGrace } from './reconnectGrace';
 import {
   CHIMP_MAX_STRIKES, applyChimpClick, applyChimpInactivity, chimpRating, continueChimpRun, finishChimpReveal,
   isImplausibleChimpInput, rankChimpResults, startChimpRun, type ChimpRun,
@@ -88,7 +88,7 @@ interface Match {
   id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[];
   socketIds: Map<string, string>; seed: number; phase: 'countdown' | 'playing' | 'ended';
   runs: Map<string, PlayerRun>; startedAt: number; timer: NodeJS.Timeout | null; deadlineAt: number | null;
-  paused: boolean; pausedRemainingMs: number | null; reconnectTimers: Map<string, NodeJS.Timeout>;
+  paused: boolean; pausedRemainingMs: number | null; grace: ReconnectGrace;
   // Every socket that explicitly joined the run (lobby, resume, reconnect),
   // so a still open game tab takes over when a newer one closes.
   attachedSockets: Map<string, Set<string>>;
@@ -400,8 +400,7 @@ function finishMatch(io: Server, match: Match, reason: 'completed' | 'time-limit
   match.pausedRemainingMs = null;
   clearMatchTimer(match);
   stopHostWatch(match);
-  for (const timer of match.reconnectTimers.values()) clearTimeout(timer);
-  match.reconnectTimers.clear();
+  match.grace.clear();
   // The round ranking only exists for a shared round, and is never stored.
   const ranking = playing && match.players.length > 1 ? roundRanking(match) : null;
   emitArcadeRoom(io, match.room, 'chimp:match:end', { matchId: match.id, reason, ranking }, match);
@@ -435,12 +434,14 @@ function pauseMatch(match: Match): void {
   match.pausedRemainingMs = match.deadlineAt === null ? null : Math.max(0, match.deadlineAt - now);
   clearMatchTimer(match);
   match.paused = true;
+  match.grace.rearm();
 }
 
 // Every run continues with the very same attempt in the same phase.
 function resumeMatch(io: Server, match: Match): void {
   if (!match.paused || match.phase === 'ended') return;
   match.paused = false;
+  match.grace.rearm();
   const remaining = match.pausedRemainingMs ?? 0;
   match.pausedRemainingMs = null;
   if (match.phase === 'countdown') return scheduleMatch(match, remaining, () => beginPlaying(io, match));
@@ -518,10 +519,8 @@ function rememberSocket(match: Match, playerId: string, socketId: string): void 
 function attachSocket(io: Server, socket: Socket, match: Match, playerId: string): boolean {
   const entry = match.runs.get(playerId);
   if (!entry || entry.ended === 'left' || match.phase === 'ended') return false;
-  const previousTimer = match.reconnectTimers.get(playerId);
-  if (previousTimer) clearTimeout(previousTimer);
-  match.reconnectTimers.delete(playerId);
   match.socketIds.set(playerId, socket.id);
+  match.grace.returned(playerId);
   rememberSocket(match, playerId, socket.id);
   socket.join(match.room);
   // A reconnect during the reveal skips straight to the interstitial; the
@@ -554,7 +553,16 @@ function startMatch(io: Server, lobby: Lobby): Match {
       run: startChimpRun(seed, player.id), levelToken: '', attemptElapsed: 0, attemptRunningSince: 0, firstClickAt: 0,
       levelCompletedAt: null, timer: null, ended: null, endDetails: null,
     }])),
-    startedAt: Date.now(), timer: null, deadlineAt: null, paused: false, pausedRemainingMs: null, reconnectTimers: new Map(),
+    startedAt: Date.now(), timer: null, deadlineAt: null, paused: false, pausedRemainingMs: null,
+    // The run keeps its attempt and its active time keeps running; only a
+    // player who does not return within the grace is out. A host whose own
+    // run is already over still holds the controls, so they are handed over
+    // the same way.
+    grace: new ReconnectGrace(() => match, () => false, (playerId) => {
+      if (!isCurrent(match) || match.socketIds.has(playerId)) return;
+      if (match.runs.get(playerId)?.ended === null) endRun(io, match, playerId, 'disconnect');
+      if (match.host.id === playerId) handOverHost(io, match);
+    }, () => timing().reconnectGraceMs),
     attachedSockets: new Map([...lobby.socketIds].map(([playerId, socketId]) => [playerId, new Set([socketId])])),
     hostWatch: null, closing: false,
   };
@@ -779,22 +787,14 @@ export function registerChimpSockets(io: Server): () => void {
             emitOwnState(io, match, playerId);
             continue;
           }
-          match.socketIds.delete(playerId);
           const entry = match.runs.get(playerId);
           const isHost = playerId === match.host.id;
-          if (!entry || match.phase === 'ended' || (entry.ended !== null && !isHost)) continue;
-          // The run keeps its attempt and its active time keeps running; only
-          // a player who does not return within the grace period is out. A
-          // host whose own run is already over still holds the controls, so
-          // they are handed over the same way.
-          const timer = setTimeout(() => {
-            match.reconnectTimers.delete(playerId);
-            if (!isCurrent(match) || match.socketIds.has(playerId)) return;
-            if (entry.ended === null) endRun(io, match, playerId, 'disconnect');
-            if (match.host.id === playerId) handOverHost(io, match);
-          }, graceMsFor({ paused: match.paused, otherHumanConnected: match.socketIds.size > 0 }, timing().reconnectGraceMs));
-          timer.unref();
-          match.reconnectTimers.set(playerId, timer);
+          if (!entry || match.phase === 'ended' || (entry.ended !== null && !isHost)) {
+            match.socketIds.delete(playerId);
+            match.grace.rearm();
+            continue;
+          }
+          match.grace.disconnected(playerId);
           emitStandings(io, match);
         }
       }

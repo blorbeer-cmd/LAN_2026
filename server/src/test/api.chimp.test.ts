@@ -297,6 +297,44 @@ test('a host who is gone for good hands over the controls and lifts a pause', as
   }
 });
 
+test('a player who dropped first keeps the long grace once nobody is left to wait during a pause', async () => {
+  clearLobbyMemberships();
+  process.env.CHIMP_RECONNECT_GRACE_MS = '100';
+  const server = await makeServer();
+  const sockets = [await connect(server.baseUrl), await connect(server.baseUrl)];
+  const [hostSocket, guestSocket] = sockets;
+  try {
+    const hostId = await player(server.baseUrl, 'Chimp Paused Host');
+    const guestId = await player(server.baseUrl, 'Chimp Paused Guest');
+    const { matchId } = await startRound([hostSocket, guestSocket], [hostId, guestId]);
+    assert.equal((await emitAck(hostSocket, 'chimp:match:pause', { matchId, playerId: hostId })).paused, true);
+    // The guest drops while the host still waits (short grace), then the host
+    // drops too: nobody is left waiting, so the guest's grace grows to the
+    // paused ten minutes instead of running out after the short one.
+    const guestAway = nextEvent<{ standings: Array<{ playerId: string; status: string }> }>(
+      hostSocket,
+      'chimp:standings',
+      (payload) => payload.standings.some((entry) => entry.playerId === guestId && entry.status === 'disconnected'),
+    );
+    guestSocket.close();
+    await guestAway;
+    hostSocket.close();
+    // Bounded negative window: four times the shortened 100 ms grace must
+    // pass without the guest's run ending.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const returned = await connect(server.baseUrl);
+    sockets.push(returned);
+    const resynced = nextState(returned, () => true);
+    assert.equal((await emitAck(returned, 'chimp:match:reconnect', { matchId, playerId: guestId })).ok, true);
+    const state = await resynced;
+    assert.equal(state.paused, true);
+    assert.notEqual(state.standings.find((entry) => entry.playerId === guestId)?.status, 'out');
+  } finally {
+    delete process.env.CHIMP_RECONNECT_GRACE_MS;
+    await closeServer(server, sockets);
+  }
+});
+
 test('a host who stays connected but leaves the match scope hands over to a player who can still reach it', async () => {
   clearLobbyMemberships();
   process.env.CHIMP_RECONNECT_GRACE_MS = '100';
