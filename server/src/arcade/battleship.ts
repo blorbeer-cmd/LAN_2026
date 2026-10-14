@@ -12,6 +12,7 @@ import { recordArcadeResult } from './arcadeData';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import { applyShot, chooseBotShot, createRandomPlacements, fleetSnapshot, remainingSegments, remainingShips, ShipState, validatePlacements } from './battleshipLogic';
 import { registerSocketConnection } from '../socketConnections';
+import { RECONNECT_REFUSED, ReconnectGrace, claimMatchSeat } from './reconnectGrace';
 
 const COUNTDOWN_MS = arcadeTiming.countdownMs;
 const END_REVEAL_MS = arcadeTiming.endRevealMs;
@@ -22,7 +23,7 @@ const BOT = { id: BOT_ID, name: 'Flotten-Bot', avatar: null, color: '#9163f5' };
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; mode: 'duel' | 'team'; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; createdAt: number }
 interface ShotRecord { playerId: string; targetId: string; coordinate: number; kind: 'miss' | 'hit' | 'sunk' }
-interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; fleets: Map<string, ShipState[]>; fired: Map<string, Set<number>>; shots: ShotRecord[]; phase: 'setup' | 'countdown' | 'playing' | 'ended'; currentPlayerId: string | null; paused: boolean; startedAt: number; beginsAt: number | null; timers: Set<ReturnType<typeof setTimeout>>; botTurnPending: boolean }
+interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; fleets: Map<string, ShipState[]>; fired: Map<string, Set<number>>; shots: ShotRecord[]; phase: 'setup' | 'countdown' | 'playing' | 'ended'; currentPlayerId: string | null; paused: boolean; startedAt: number; beginsAt: number | null; timers: Set<ReturnType<typeof setTimeout>>; botTurnPending: boolean; grace: ReconnectGrace }
 
 const lobbies = new Map<string, Lobby>();
 const matches = new Map<string, Match>();
@@ -132,6 +133,7 @@ function schedule(match: Match, callback: () => void, delay: number) {
 function cleanupMatch(io: Server, match: Match) {
   for (const timer of match.timers) clearTimeout(timer);
   match.timers.clear();
+  match.grace.clear();
   matches.delete(match.id);
   for (const socketId of match.socketIds.values()) io.sockets.sockets.get(socketId)?.leave(match.room);
 }
@@ -222,6 +224,12 @@ function startMatch(io: Server, lobby: Lobby): Match {
   const match: Match = {
     id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds),
     fleets: new Map(), fired: new Map(lobby.players.map((player) => [player.id, new Set()])), shots: [], phase: 'setup', currentPlayerId: null, paused: false, startedAt: Date.now(), beginsAt: null, timers: new Set(), botTurnPending: false,
+    // A player who stays away past the reconnect grace loses, exactly like
+    // an explicit leave.
+    grace: new ReconnectGrace(() => match, (playerId) => playerId === BOT_ID, (playerId) => {
+      if (matches.get(id) !== match || match.phase === 'ended') return;
+      finish(io, match, match.players.find((entry) => entry.id !== playerId)?.id ?? null, 'player-left');
+    }),
   };
   if (match.players.some((player) => player.id === BOT_ID)) {
     const placement = validatePlacements(createRandomPlacements());
@@ -378,6 +386,7 @@ export function registerBattleshipSockets(io: Server): () => void {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       if (!match || match.phase !== 'playing' || payload.playerId !== match.host.id || !canUseLobby(socket, match) || !socketOwnsPlayer(socket, payload.playerId)) return ack?.({ ok: false, error: 'Pausieren ist nur während des Gefechts möglich.' });
       match.paused = true;
+      match.grace.rearm();
       emitPersonalized(io, match);
       ack?.({ ok: true });
     });
@@ -385,6 +394,7 @@ export function registerBattleshipSockets(io: Server): () => void {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       if (!match || match.phase !== 'playing' || payload.playerId !== match.host.id || !canUseLobby(socket, match) || !socketOwnsPlayer(socket, payload.playerId)) return ack?.({ ok: false, error: 'Fortsetzen ist nur während des Gefechts möglich.' });
       match.paused = false;
+      match.grace.rearm();
       emitPersonalized(io, match);
       queueBotTurn(io, match);
       ack?.({ ok: true });
@@ -402,14 +412,19 @@ export function registerBattleshipSockets(io: Server): () => void {
       finish(io, match, winner, 'player-left');
       ack?.({ ok: true });
     });
+    socket.on('battleship:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
+      const match = payload?.matchId ? matches.get(payload.matchId) : null;
+      if (!match || match.phase === 'ended' || !claimMatchSeat(socket, match, payload?.playerId, (playerId) => playerId === BOT_ID)) {
+        return ack?.({ ok: false, error: RECONNECT_REFUSED });
+      }
+      emitPersonalized(io, match);
+      ack?.({ ok: true });
+    });
     socket.on('disconnect', () => {
       removeFromLobbies(io, socket.id);
       for (const match of matches.values()) {
         const player = [...match.socketIds.entries()].find(([, socketId]) => socketId === socket.id)?.[0];
-        if (player && match.phase !== 'ended') {
-          const winner = match.players.find((entry) => entry.id !== player)?.id ?? null;
-          finish(io, match, winner, 'player-left');
-        }
+        if (player && match.phase !== 'ended') match.grace.disconnected(player);
       }
     });
   });

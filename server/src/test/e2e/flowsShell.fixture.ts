@@ -241,7 +241,7 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   });
 
   // "Meine To-Dos" only renders once it has something to show (see
-  // renderAssignedTodos() in home.js); the desktop priority-grid layout
+  // renderMyTodos() in home.js); the desktop priority-grid layout
   // check below needs it beside "Aktuell" to exercise the two-column case.
   const createdTodo = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
     method: 'POST',
@@ -419,29 +419,15 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   assert.deepEqual(await toolColumnsHandle.jsonValue(), { columns: 2, leftFirst: true });
 
   await page.click('.desktop-nav-btn[data-view="arcade"]');
-  await page.waitForSelector('#arcade-games-title');
+  await page.waitForSelector('#arcade-create-lobby');
   assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), 'arcade');
-  await page.click('[data-game="quiz"]');
-  await page.waitForSelector('#arcade-active-game-title');
-  const arcadeColumnsHandle = await page.waitForFunction(() => {
-    const active = document.querySelector('[aria-labelledby="arcade-active-game-title"]')?.getBoundingClientRect();
-    const picker = document.querySelector('.arcade-game-picker')?.getBoundingClientRect();
-    const tiles = document.querySelector('.arcade-tiles');
-    if (!active || !picker || !tiles) return null;
-    return {
-      activeLeft: Math.round(active.left),
-      activeTop: Math.round(active.top),
-      pickerLeft: Math.round(picker.left),
-      pickerBottom: Math.round(picker.bottom),
-      tileColumns: getComputedStyle(tiles).gridTemplateColumns.split(' ').length,
-    };
-  });
-  const arcadeColumns = await arcadeColumnsHandle.jsonValue();
-  assert.ok(arcadeColumns);
-  assert.ok(arcadeColumns.activeLeft !== null && arcadeColumns.pickerLeft !== null);
-  assert.equal(arcadeColumns.pickerLeft, arcadeColumns.activeLeft);
-  assert.ok(arcadeColumns.pickerBottom < arcadeColumns.activeTop);
-  assert.equal(arcadeColumns.tileColumns, 3);
+  // The Arcade hub is one column of full-width cards: Lobbys, Läuft gerade
+  // and Statistik.
+  const arcadeCards = await page.locator('#view-container .grouped-page-sections > .grouped-page-section').evaluateAll((cards) =>
+    cards.map((card) => { const box = card.getBoundingClientRect(); return [Math.round(box.left), Math.round(box.width)]; }),
+  );
+  assert.ok(arcadeCards.length >= 2);
+  assert.equal(new Set(arcadeCards.map(([left, width]) => `${left}:${width}`)).size, 1);
 
   await page.click('.desktop-nav-btn[data-view="profile"]');
   await page.waitForSelector('#profile-layout');
@@ -465,7 +451,7 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   assert.equal(await page.locator('.desktop-nav').isVisible(), true);
   assert.equal(await page.locator('.bottom-nav').isHidden(), true);
   await page.click('.desktop-nav-btn[data-view="arcade"]');
-  await page.waitForSelector('.arcade-game-picker');
+  await page.waitForSelector('#arcade-create-lobby');
 
   // A separate session verifies a real logout/login without invalidating the
   // fixture's shared admin cookie for the tests that follow. The same account
@@ -515,7 +501,7 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   await page.selectOption('#profile-layout', 'auto');
   await page.waitForFunction(() => document.documentElement.dataset.layoutPreference === 'auto' && document.documentElement.dataset.layoutMode === 'desktop');
   await page.click('.desktop-nav-btn[data-view="arcade"]');
-  await page.waitForSelector('.arcade-game-picker');
+  await page.waitForSelector('#arcade-create-lobby');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
   const mobileShell = await page.evaluate(() => {
@@ -593,15 +579,15 @@ flowTest('standard control variants center single lines and grow for wrapped con
         </summary>
         <div class="collapsible-section-content">Inhalt</div>
       </details>`).join('')}
-      <details class="collapsible-section food-order-group event-card-participants">
-        <summary class="collapsible-section-header"><span class="collapsible-section-chevron"><svg class="ui-icon" aria-hidden="true"></svg></span><span class="event-participant-toggle"><span class="food-order-group-headtext"><strong>Teilnehmende &amp; Einladungen</strong><span class="muted food-order-group-meta">4 Zusagen</span></span></span></summary>
+      <details class="card collapsible-section food-order-group">
+        <summary class="collapsible-section-header"><span class="collapsible-section-chevron"><svg class="ui-icon" aria-hidden="true"></svg></span><span class="event-participant-toggle"><span class="food-order-group-headtext"><strong>Bestellung von Alex</strong><span class="muted food-order-group-meta">2 Positionen</span></span></span></summary>
         <div class="collapsible-section-content">Teilnehmende</div>
       </details>
       <div data-disclosure-background style="background:var(--bg-elevated-2)"></div>
       ${['matchmaking-history-item', 'food-order-card', 'event-card', 'event-poll-card'].map((className) => `<div class="card ${className}" data-disclosure-card>Aufklappbare Karte</div>`).join('')}
       <div class="card" data-nested-surface>
         <div class="card event-card" data-nested-surface>
-          <div class="event-card-participants" data-nested-surface>
+          <div class="card" data-nested-surface>
             <div class="card" data-nested-surface>Vierte Kartenebene</div>
           </div>
         </div>
@@ -704,7 +690,7 @@ flowTest('standard control variants center single lines and grow for wrapped con
           .map((element) => {
             let depth = 0;
             for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-              if (parent.matches('.card, .event-card-participants')) depth += 1;
+              if (parent.matches('.card')) depth += 1;
               if (parent === probe) break;
             }
             return { depth, expected: colors[depth % 2], actual: getComputedStyle(element).backgroundColor };
@@ -895,7 +881,7 @@ flowTest('untabbed areas align compact cards while tabbed areas reserve a second
       ['events', 'Events & Gruppen', '#orga-events-title'],
       ['profile', 'Mein Profil', '#profile-name'],
       ['admin', 'Admin', '[aria-label="Werkzeuge"]'],
-      ['arcade', 'Arcade', '#arcade-games-title'],
+      ['arcade', 'Arcade', '#arcade-lobbies-title'],
       ['broadcast', 'Durchsage', '#broadcast-new-title'],
       ['music', 'Jam', '#music-setup-title'],
     ] as const) {
@@ -1013,23 +999,21 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   const groupCard = page.locator('.event-card', { hasText: GROUP_NAME });
   await groupCard.waitFor();
   assert.equal(
-    await groupCard.locator('.event-card-info').count(),
+    await groupCard.locator('.event-card-section-title', { hasText: 'Infos' }).count(),
     0,
-    'a group without location and note has nothing to show in the information box and renders none',
+    'a group without location and note has nothing to show in Infos and renders no section',
   );
-  // A group offers only Bearbeiten and Beenden, both directly in its header.
-  await groupCard.locator('.event-card-header-side > [data-edit-event]').click();
+  await groupCard.locator('[data-action-menu^="event-manage-"] > summary').click();
+  await groupCard.locator('[data-edit-event]').click();
   const editGroupModal = page.locator('.modal-backdrop', { hasText: 'Gruppe bearbeiten' });
   await editGroupModal.waitFor();
   assert.equal(await editGroupModal.locator('#event-starts-date[required]').count(), 0);
   await editGroupModal.locator('#event-description').fill(GROUP_NOTE);
   await editGroupModal.locator('#event-form-submit').click();
   await editGroupModal.waitFor({ state: 'detached' });
-  await groupCard.locator('.event-card-info', { hasText: GROUP_NOTE }).waitFor();
+  await groupCard.locator('.event-info-row', { hasText: GROUP_NOTE }).waitFor();
 
-  await page.click('[aria-label="Mehr Informationen zu Events"]');
-  await page.waitForSelector('#orga-events-help:not([hidden])');
-  await page.click('[aria-label="Mehr Informationen zu Events"]');
+  assert.equal(await page.locator('[aria-label="Mehr Informationen zu Events"]').count(), 0, 'section titles carry no help tooltip');
   assert.equal((await page.locator('#new-event-btn').textContent())?.trim(), 'Event anlegen');
   await page.click('#new-event-btn');
   assert.equal(await page.getByText('Tracking', { exact: true }).count(), 0);
@@ -2650,10 +2634,20 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   assert.equal(testLans.length, 12);
   assert.ok(testLans.every((event) => event.overallStandings.length >= 4 && event.tournamentChampions.length === 3));
   await openAuswertungTab('hallOfFame');
+  // Every section starts collapsed; open all three so the page is long
+  // enough for the scroll invariant below. The open state survives renders.
+  const hallSections = page.locator('details[data-hall-section]');
+  // The Hall of Fame loads its data after the first render.
+  await hallSections.first().waitFor();
+  assert.equal(await hallSections.count(), 3);
+  assert.equal(await page.locator('details[data-hall-section][open]').count(), 0);
+  for (const key of ['overall', 'tournaments', 'events']) {
+    await page.locator(`details[data-hall-section="${key}"] > summary`).click();
+  }
   await page.waitForSelector('#hall-event-select-search');
   assert.equal(await page.getByText('LAN auswählen', { exact: true }).count(), 0);
   assert.equal(await page.locator('.hall-of-fame-event-section').count(), 2);
-  assert.equal(await page.locator('.hall-of-fame-event-section.is-tournaments .hall-of-fame-tournament-row').count(), 3);
+  assert.equal(await page.locator('.hall-of-fame-event-section:has(h3:text-is("Turniere")) .ranked-list-row').count(), 3);
 
   // A lifecycle change for an unrelated event used to hard-invalidate the
   // Hall-of-Fame cache. The long result list collapsed to "Lädt…", clamped
@@ -2675,7 +2669,7 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
       (window as any).__renderStabilityProbe?.observer?.disconnect();
       const observer = new MutationObserver(() => {
         probe.mutations += 1;
-        if (element.textContent?.includes('Lädt…')) probe.loadingFrames += 1;
+        if (element.textContent?.includes('Lädt')) probe.loadingFrames += 1;
       });
       observer.observe(element, { childList: true, subtree: true });
       (window as any).__renderStabilityProbe = { probe, observer };

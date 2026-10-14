@@ -8,11 +8,6 @@ export const components = [
     "purpose": "Standard text button; meaning and width compose without changing its interior.",
     "dynamicUses": [
       {
-        "file": "public/js/arcade/views/arcadeScribble.js",
-        "source": "class=\"btn ${selected ? 'btn-primary' : ''}\"",
-        "reason": "Concrete button caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
         "file": "public/js/emptyState.js",
         "source": "class=\"${escapeHtml(className)}\"",
         "reason": "Concrete button caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
@@ -90,18 +85,8 @@ export const components = [
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
-        "file": "public/js/arcade/views/arcadeScribble.js",
-        "source": "class=\"btn btn-sm ${myThumbActive ? 'btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
         "file": "public/js/arcade/views/arcadeWatch.js",
         "source": "class=\"btn btn-sm ${watchThumbActive ? 'btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/arcade/views/battleship.js",
-        "source": "class=\"btn btn-sm ${selectedShip === ship.id ? 'btn-primary' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
@@ -112,21 +97,6 @@ export const components = [
       {
         "file": "public/js/feedback.js",
         "source": "class=\"btn btn-sm${selectedSentiment === s.value ? ' is-selected' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/analytics.js",
-        "source": "class=\"btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/analytics.js",
-        "source": "class=\"btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
-        "file": "public/js/views/analytics.js",
-        "source": "class=\"btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
@@ -163,6 +133,11 @@ export const components = [
         "file": "public/js/views/matchmaking.js",
         "source": "class=\"btn btn-sm${teamsMode === 'draft' ? ' btn-primary' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/arcade/views/arcadeScribble.js",
+        "source": "class=\"btn btn-sm ${selected ? 'btn-primary' : ''}\"",
+        "reason": "The final Scribble favorite toggle marks the chosen drawing as primary; the compact button keeps its shared geometry."
       }
     ]
   },
@@ -660,7 +635,7 @@ export const components = [
   {
     "id": "payment-controls",
     "role": "standard-control",
-    "selector": ".payment-paid-marker, .food-order-paid-marker, .payment-paypal-button, .event-paypal-button, .food-order-group-copy, .food-order-group-pay",
+    "selector": ".payment-paid-marker, .food-order-paid-marker, .event-calendar-marker, .payment-paypal-button, .event-paypal-button, .food-order-group-copy, .food-order-group-pay",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#tokens-und-einzeilige-controls",
     "purpose": "32px payment/copy actions; icon actions inherit the shared minimum width.",
@@ -676,11 +651,24 @@ export const components = [
         "reason": "Concrete payment-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
+        "file": "public/js/eventPresentation.js",
+        "source": "class=\"payment-paid-marker event-calendar-marker ${confirmed ? 'is-paid' : ''}\"",
+        "reason": "The Event card's \"Eingetragen\" calendar acknowledgement reuses the payment checkbox marker; the static inventory does not infer the runtime branch. Its wider label keeps the marker's minimum width."
+      },
+      {
         "file": "public/js/views/foodOrders.js",
         "source": "class=\"payment-paid-marker food-order-paid-marker ${allPaid ? 'is-paid' : ''}\"",
         "reason": "Concrete payment-controls caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
     ]
+  },
+  {
+    "id": "event-roster-controls",
+    "role": "composite-part",
+    "selector": ".event-roster-remove, .event-participant-excuse, .event-participant-excuse-toggle, .excuse-dialog-submit",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Event roster parts: the 32px remove icon, the shortened excuse that opens its full text as a text-styled button, and the excuse dialog's full-width submit."
   },
   {
     "id": "food-action-slots",
@@ -889,15 +877,25 @@ export const components = [
   {
     "id": "arcade-segment",
     "role": "composite-part",
-    "selector": ".arcade-mode-toggle, .arcade-mode-toggle-btn, .arcade-lobby-create-row",
+    "selector": ".arcade-mode-toggle, .arcade-mode-toggle-btn",
     "owner": "public/css/arcade.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Package-1 segment/pill and creation-row contract remains 32px; S stays 188px.",
+    "purpose": "Package-1 segment/pill contract remains 32px.",
     "dynamicUses": [
       {
         "file": "public/js/arcade/lobbyReady.js",
         "source": "class=\"arcade-mode-toggle-btn${active ? ' is-active' : ''}\"",
         "reason": "Concrete arcade-segment caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      },
+      {
+        "file": "public/js/arcade/views/battleship.js",
+        "source": "class=\"arcade-mode-toggle-btn${orientation === 'horizontal' ? ' is-active' : ''}\"",
+        "reason": "The Battleship orientation switch reuses the Arcade segment and marks the active orientation at runtime."
+      },
+      {
+        "file": "public/js/arcade/views/battleship.js",
+        "source": "class=\"arcade-mode-toggle-btn${orientation === 'vertical' ? ' is-active' : ''}\"",
+        "reason": "The Battleship orientation switch reuses the Arcade segment and marks the active orientation at runtime."
       }
     ]
   },
@@ -910,27 +908,12 @@ export const components = [
     "purpose": "44 by 32px mute action beside standard toolbar text buttons."
   },
   {
-    "id": "arcade-tile",
-    "role": "structural-target",
-    "selector": ".arcade-tile",
-    "owner": "public/css/arcade.css",
-    "contract": "components/controls.md#strukturziele-mit-44-px",
-    "purpose": "Whole game-selection tile retains its name, status and card geometry.",
-    "dynamicUses": [
-      {
-        "file": "public/js/arcade/views/arcade.js",
-        "source": "class=\"card arcade-tile ${active === game.id ? 'is-active' : ''} ${game.soon ? 'is-soon' : ''}\"",
-        "reason": "Concrete arcade-tile caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      }
-    ]
-  },
-  {
     "id": "battleship-grid",
     "role": "structural-target",
     "selector": ".battleship-cell",
-    "owner": "public/css/style.css",
+    "owner": "public/css/arcade.css",
     "contract": "components/controls.md#strukturziele-mit-44-px",
-    "purpose": "Permanent 44px game-board cells; ship and hit states do not change geometry.",
+    "purpose": "Square game-board cells sized by the grid; ship and shot markers never change the cell geometry.",
     "dynamicUses": [
       {
         "file": "public/js/arcade/views/battleship.js",
@@ -965,6 +948,21 @@ export const components = [
         "file": "public/js/arcade/views/challengeRush.js",
         "source": "class=\"btn challenge-rush-memory-cell${selected.has(index) ? ' is-selected' : ''}\"",
         "reason": "Concrete challenge-targets caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
+      }
+    ]
+  },
+  {
+    "id": "chimp-grid",
+    "role": "structural-target",
+    "selector": ".chimp-cell",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#strukturziele-mit-44-px",
+    "purpose": "Square Chimp Test tiles sized by the grid; number, hidden, revealed and wrong states never change the cell geometry.",
+    "dynamicUses": [
+      {
+        "file": "public/js/arcade/views/chimp.js",
+        "source": "class=\"${classes.join(' ')}\"",
+        "reason": "The Chimp Test grid composes the tile state classes at runtime; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       }
     ]
   },
@@ -1040,7 +1038,6 @@ export const components = [
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "purpose": "Existing native color swatch is a structural picker surface, not a text field."
   },
-
   {
     "id": "poll-option-link",
     "role": "composite-part",
@@ -1138,16 +1135,6 @@ export const components = [
     "control": false
   },
   {
-    "id": "empty-state-hall-of-fame",
-    "role": "composite-part",
-    "selector": ".hall-of-fame-empty-result",
-    "owner": "public/css/domains.css",
-    "contract": "components/empty-state.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "purpose": "Hall-of-Fame result slot spans the result layout.",
-    "control": false
-  },
-
-  {
     "id": "empty-state-notifications",
     "role": "composite-part",
     "selector": ".notification-center-empty",
@@ -1235,7 +1222,6 @@ export const components = [
       "border-bottom-right-radius"
     ]
   },
-
   {
     "id": "rating-divergence-state",
     "role": "composite-part",
@@ -1247,27 +1233,31 @@ export const components = [
     "properties": []
   },
   {
-    "id": "arcade-soon-state",
-    "role": "composite-part",
-    "selector": ".is-soon",
-    "owner": "public/css/arcade.css",
-    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Unavailable game tile changes opacity only.",
-    "control": false,
-    "properties": []
-  },
-  {
     "id": "battleship-shot-state",
     "role": "composite-part",
     "selector": ".is-ship, .is-hit, .is-miss, .is-sunk",
-    "owner": "public/css/style.css",
+    "owner": "public/css/arcade.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Ship/shot colors and sunk outline preserve cell geometry; exact glyph variants own the existing shot typography.",
+    "purpose": "Ship tiles and shot dots are decoration inside the unchanged cell: markers are sized pseudo-elements, ships drop the cell radius.",
     "control": false,
     "properties": [
       "outline",
-      "outline-offset"
+      "outline-offset",
+      "width",
+      "height",
+      "box-shadow",
+      "border-radius"
     ]
+  },
+  {
+    "id": "chimp-tile-state",
+    "role": "composite-part",
+    "selector": ".is-number, .is-hidden, .is-empty, .is-revealed, .is-wrong",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Chimp Test tile states only change colors and the cursor; the grid cell keeps its geometry.",
+    "control": false,
+    "properties": []
   },
   {
     "id": "battleship-orientation-state",
@@ -1275,9 +1265,14 @@ export const components = [
     "selector": ".is-ship-horizontal, .is-ship-vertical, .is-ship-start, .is-ship-end, .has-next-segment",
     "owner": "public/css/arcade.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Orientation marks ship decoration; exact pseudo-element variants own connector dimensions.",
+    "purpose": "Orientation rounds only the bow and stern of a continuous ship bar; the cell keeps its geometry.",
     "control": false,
-    "properties": []
+    "properties": [
+      "border-start-start-radius",
+      "border-start-end-radius",
+      "border-end-start-radius",
+      "border-end-end-radius"
+    ]
   },
   {
     "id": "scribble-swatch-state",
@@ -1305,6 +1300,64 @@ export const components = [
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#gruppen-home-und-kompakte-aktuell-liste",
     "purpose": "Inline group overview action links into group management without a filled button surface."
+  },
+  {
+    "id": "arcade-icon-button",
+    "role": "standard-control",
+    "selector": ".arcade-icon-btn",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Square 32px icon actions (fullscreen, mute) in the game header beside the compact match buttons."
+  },
+  {
+    "id": "battleship-ship-option",
+    "role": "structural-target",
+    "selector": ".battleship-ship-option",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#strukturziele-mit-44-px",
+    "purpose": "Ship picker tile with name, length bar and placed check; selected and placed states keep the tile geometry.",
+    "dynamicUses": [
+      {
+        "file": "public/js/arcade/views/battleship.js",
+        "source": "class=\"battleship-ship-option${selectedShip === ship.id ? ' is-selected' : ''}${placed.has(ship.id) ? ' is-placed' : ''}\"",
+        "reason": "The ship picker marks the selected and the placed ship at runtime; the tile geometry stays owned by this entry."
+      }
+    ]
+  },
+  {
+    "id": "scribble-thumb",
+    "role": "composite-part",
+    "selector": ".scribble-thumb-btn",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Thumbs-up action lines up its icon and count; the compact button owns the geometry.",
+    "properties": [],
+    "dynamicUses": [
+      {
+        "file": "public/js/arcade/views/arcadeScribble.js",
+        "source": "class=\"btn btn-sm scribble-thumb-btn ${myThumbActive ? 'btn-primary' : ''}\"",
+        "reason": "The live thumbs-up marks the own vote as primary at runtime; the compact button keeps its shared geometry."
+      }
+    ]
+  },
+  {
+    "id": "arcade-stats-filter",
+    "role": "composite-part",
+    "selector": ".arcade-stats-filter",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "Hook for the statistics game filter; the native select keeps the shared field geometry.",
+    "properties": []
+  },
+  {
+    "id": "battleship-placed-state",
+    "role": "composite-part",
+    "selector": ".is-placed",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
+    "purpose": "A placed ship in the picker only changes emphasis colors.",
+    "control": false,
+    "properties": []
   }
 ];
 
@@ -1852,40 +1905,6 @@ export const permanentVariants = [
     "reason": "Permanent 44px team row on the dedicated TV canvas."
   },
   {
-    "id": "arcade-create-width",
-    "role": "composite-part",
-    "selector": ".arcade-lobby-create-actions .btn, .arcade-lobby-create-row > .btn, .arcade-lobby-create-row > .arcade-mode-toggle",
-    "owner": "public/css/arcade.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "width",
-      "min-width"
-    ],
-    "reason": "Creation-row container controls available width and stacking; no CTA interior dimensions."
-  },
-  {
-    "id": "arcade-free-slot-width",
-    "role": "composite-part",
-    "selector": ".arcade-lobby-free-row .btn",
-    "owner": "public/css/arcade.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "width"
-    ],
-    "reason": "Join action fills its reserved free-player slot."
-  },
-  {
-    "id": "arcade-entry-width",
-    "role": "composite-part",
-    "selector": ".arcade-lobby-entry-actions > .btn",
-    "owner": "public/css/arcade.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "min-width"
-    ],
-    "reason": "Whole entry actions yield to their wrapping footer."
-  },
-  {
     "id": "arcade-setting-row",
     "role": "composite-part",
     "selector": ".arcade-lobby-setting-options .check-row",
@@ -1909,50 +1928,49 @@ export const permanentVariants = [
     "reason": "Native checkbox glyph is an internal 20px part of the labeled selection row."
   },
   {
-    "id": "event-calendar-actions",
+    "id": "event-card-chevron",
     "role": "composite-part",
-    "selector": ".event-calendar-action-buttons .btn",
+    "selector": ".event-card .food-order-card-chevron .ui-icon",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
-      "min-width",
-      "white-space"
+      "width",
+      "height"
     ],
-    "reason": "Calendar handoff labels may wrap within their equal-width action group."
+    "reason": "A fixed 16px chevron lets the open Event card indent its sections exactly to the title edge."
   },
   {
-    "id": "event-excuse-actions",
+    "id": "event-info-icon-actions",
     "role": "composite-part",
-    "selector": ".event-excuse-actions .btn",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "properties": [
-      "min-width",
-      "white-space"
-    ],
-    "reason": "Parallel excuse actions wrap labels within the available footer."
-  },
-  {
-    "id": "event-card-action-width",
-    "role": "composite-part",
-    "selector": ".event-card-actions .btn",
+    "selector": ".event-info-actions .icon-btn",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
       "min-width"
     ],
-    "reason": "Event card actions yield width to whole-group reflow."
+    "reason": "Copy and map icons sit tight beside the calendar controls in an Infos row."
+  },
+  {
+    "id": "event-roster-slot",
+    "role": "composite-part",
+    "selector": ".event-roster-slot > .btn",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width"
+    ],
+    "reason": "\"Einladen\" fills the same fixed slot as the Bezahlt marker so both align flush right."
   },
   {
     "id": "nested-card-surface",
     "role": "composite-part",
-    "selector": ":is(.card, .event-card-participants) :is(.card, .event-card-participants), :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants), :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants), :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants) :is(.card, .event-card-participants)",
+    "selector": ".card .card, .card .card .card, .card .card .card .card, .card .card .card .card .card",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
     "properties": [
       "box-shadow"
     ],
-    "reason": "Nested card and participant surfaces alternate colors by depth and omit redundant elevation."
+    "reason": "Nested card surfaces alternate colors by depth and omit redundant elevation."
   },
   {
     "id": "tournament-skill-field",
@@ -2259,62 +2277,6 @@ export const permanentVariants = [
     "reason": "Checkbox options share one wrapping row in the compact tournament dialog; the row gap replaces the list-row padding."
   },
   {
-    "id": "battleship-miss-glyph",
-    "role": "composite-part",
-    "selector": ".battleship-cell.is-miss",
-    "owner": "public/css/style.css",
-    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "properties": [
-      "font-size"
-    ],
-    "reason": "Existing miss glyph uses the large font token inside the unchanged 44px board cell."
-  },
-  {
-    "id": "battleship-horizontal-connector",
-    "role": "composite-part",
-    "selector": ".battleship-cell.battleship-ship-segment.is-ship-horizontal.has-next-segment::before",
-    "owner": "public/css/arcade.css",
-    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "properties": [
-      "width"
-    ],
-    "reason": "Existing decorative horizontal connector spans one spacing token; it does not resize the cell."
-  },
-  {
-    "id": "battleship-vertical-connector",
-    "role": "composite-part",
-    "selector": ".battleship-cell.battleship-ship-segment.is-ship-vertical.has-next-segment::before",
-    "owner": "public/css/arcade.css",
-    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "properties": [
-      "height"
-    ],
-    "reason": "Existing decorative vertical connector spans one spacing token; it does not resize the cell."
-  },
-  {
-    "id": "battleship-ship-glyph",
-    "role": "composite-part",
-    "selector": ".battleship-cell.battleship-ship-segment::after",
-    "owner": "public/css/arcade.css",
-    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "properties": [
-      "font-size",
-      "line-height"
-    ],
-    "reason": "Existing ship letter is an internal pseudo-element, independent of the board target geometry."
-  },
-  {
-    "id": "battleship-hit-glyph",
-    "role": "composite-part",
-    "selector": ".battleship-cell.battleship-ship-segment:is(.is-hit, .is-sunk)::after",
-    "owner": "public/css/arcade.css",
-    "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "properties": [
-      "font-size"
-    ],
-    "reason": "Existing hit/sunk ship letter shrinks within its decorative pseudo-element; the cell stays unchanged."
-  },
-  {
     "id": "game-chip-focus-state",
     "role": "composite-part",
     "selector": ".player-card-games .chip.chip-foreground, .player-card-games .chip.chip-background",
@@ -2338,7 +2300,9 @@ export const permanentVariants = [
     "selector": ".card.event-poll-card",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "properties": ["padding"],
+    "properties": [
+      "padding"
+    ],
     "reason": "Poll cards delegate the standard card inset to their header and expanded content, so the outer container must not add it a second time."
   },
   {
@@ -2370,6 +2334,122 @@ export const permanentVariants = [
       "padding"
     ],
     "reason": "Compact current list tightens its existing navigation rows to the tap-target height and inset."
+  },
+  {
+    "id": "arcade-game-icon",
+    "role": "composite-part",
+    "selector": ".arcade-game-icon .ui-icon",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width",
+      "height"
+    ],
+    "reason": "The game symbol in a lobby row is a 20px glyph inside its noninteractive icon tile."
+  },
+  {
+    "id": "arcade-lobby-join-width",
+    "role": "composite-part",
+    "selector": ".arcade-lobby-row-action .btn",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width"
+    ],
+    "reason": "The join action fills the fixed action column of a lobby row so every row aligns."
+  },
+  {
+    "id": "arcade-target-score-field",
+    "role": "composite-part",
+    "selector": ".arcade-lobby-target-score input, .arcade-lobby-target-score select",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width"
+    ],
+    "reason": "The score-target field in a lobby card only needs room for two digits."
+  },
+  {
+    "id": "arcade-create-dialog-segment",
+    "role": "composite-part",
+    "selector": ".arcade-create-form .arcade-mode-toggle, .arcade-create-form .arcade-mode-toggle-btn",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width"
+    ],
+    "reason": "Mode and opponent switches in the create dialog share one row with equal segment widths."
+  },
+  {
+    "id": "arcade-stats-select-width",
+    "role": "composite-part",
+    "selector": ".arcade-stats-toolbar select",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width",
+      "min-width"
+    ],
+    "reason": "The statistics filter sizes to its longest game name instead of the full card width."
+  },
+  {
+    "id": "battleship-selected-cell",
+    "role": "composite-part",
+    "selector": ".battleship-cell.is-selected",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "box-shadow"
+    ],
+    "reason": "The aimed cell gets an inset accent ring inside the unchanged cell."
+  },
+  {
+    "id": "battleship-ship-check",
+    "role": "composite-part",
+    "selector": ".battleship-ship-check .ui-icon",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width",
+      "height"
+    ],
+    "reason": "The placed check is a 12px glyph inside the ship picker tile."
+  },
+  {
+    "id": "battleship-orientation-segment",
+    "role": "composite-part",
+    "selector": ".battleship-setup .arcade-mode-toggle-btn",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "padding-inline"
+    ],
+    "reason": "The orientation switch above the board uses wider segments for its longer labels."
+  },
+  {
+    "id": "arcade-answer-input",
+    "role": "composite-part",
+    "selector": ".quiz-answer-row input, .scribble-guess-row input",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "min-width"
+    ],
+    "reason": "Answer and guess fields may shrink beside their submit button instead of overflowing on phones."
+  },
+  {
+    "id": "arcade-header-mute",
+    "role": "composite-part",
+    "selector": ".arcade-game-header .arcade-mute-btn",
+    "owner": "public/css/arcade.css",
+    "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "properties": [
+      "width",
+      "min-width",
+      "min-height",
+      "padding"
+    ],
+    "reason": "In the game header the mute toggle matches the 32px square fullscreen icon beside it."
   }
 ];
 

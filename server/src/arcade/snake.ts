@@ -25,6 +25,7 @@ import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships }
 import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import { registerSocketConnection } from '../socketConnections';
+import { RECONNECT_REFUSED, ReconnectGrace, claimMatchSeat } from './reconnectGrace';
 
 const TICK_MS = 125;
 const COUNTDOWN_MS = arcadeTiming.countdownMs;
@@ -34,7 +35,7 @@ const BOT_ID_PREFIX = 'snake-bot-';
 
 interface Player { id: string; name: string; avatar: string | null; color: string | null }
 interface Lobby { id: string; groupId: string; eventId: string | null; host: Player; players: Player[]; socketIds: Map<string, string>; ready: Set<string>; mode: SnakeMode; createdAt: number }
-interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; departedPlayerIds: Set<string>; mode: SnakeMode; world: SnakeWorld; loop: NodeJS.Timeout | null; running: boolean; paused: boolean; startedAt: number }
+interface Match { id: string; groupId: string; eventId: string | null; room: string; host: Player; players: Player[]; socketIds: Map<string, string>; departedPlayerIds: Set<string>; mode: SnakeMode; world: SnakeWorld; loop: NodeJS.Timeout | null; running: boolean; paused: boolean; startedAt: number; grace: ReconnectGrace }
 
 const lobbies = new Map<string, Lobby>();
 const matches = new Map<string, Match>();
@@ -119,6 +120,7 @@ function realPlayerIds(players: Player[]): string[] {
 function finish(io: Server, match: Match, winner: Player | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
+  match.grace.clear();
   endArcadeSession(realPlayerIds(match.players).filter((playerId) => !match.departedPlayerIds.has(playerId)), 'snake', match);
   const winnerId = winner && !isSnakeBotId(winner.id) ? winner.id : null;
   const scores = scoreEntries(match);
@@ -143,6 +145,7 @@ function removeMatchPlayer(io: Server, match: Match, playerId: string): void {
   if (leaverIndex < 0) return;
   const socketId = match.socketIds.get(playerId);
   match.socketIds.delete(playerId);
+  match.grace.left(playerId);
   if (socketId) io.sockets.sockets.get(socketId)?.leave(match.room);
   if (match.mode !== 'arena') {
     finish(io, match, match.players.find((player) => player.id !== playerId) ?? null, 'player-left');
@@ -222,6 +225,11 @@ function startMatch(io: Server, lobby: Lobby) {
     running: false,
     paused: false,
     startedAt: Date.now(),
+    // A player who stays away past the reconnect grace is out, exactly like
+    // an explicit leave.
+    grace: new ReconnectGrace(() => match, isSnakeBotId, (playerId) => {
+      if (matches.get(id) === match) removeMatchPlayer(io, match, playerId);
+    }),
   };
   matches.set(id, match);
   releaseLobbyMemberships(lobby.players.map((p) => p.id), 'snake', lobby.id);
@@ -320,7 +328,7 @@ export function registerSnakeSockets(io: Server): () => void {
     socket.on('snake:lobby:start', (payload: { lobbyId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
       if (!lobby || !canUseLobby(socket, lobby) || payload.playerId !== lobby.host.id) return ack?.({ ok: false, error: 'Nur der Host kann starten.' });
-      if (lobby.mode === 'classic' && lobby.players.length !== 2) return ack?.({ ok: false, error: 'Klassisches Snake ist genau 1 gegen 1.' });
+      if (lobby.mode === 'classic' && lobby.players.length !== 2) return ack?.({ ok: false, error: 'Snake Classic ist genau 1 gegen 1.' });
       if (lobby.mode === 'arena' && (lobby.players.length < SNAKE_ARENA_MIN_PLAYERS || lobby.players.length > SNAKE_ARENA_MAX_PLAYERS)) {
         return ack?.({ ok: false, error: 'Snake Arena braucht 3 bis 8 Spieler.' });
       }
@@ -336,6 +344,7 @@ export function registerSnakeSockets(io: Server): () => void {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       if (!match || !canUseLobby(socket, match) || payload.playerId !== matchPlayerIdForSocket(match, socket) || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
       match.paused = true;
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'snake:match:paused', undefined, match);
       snapshot(io, match);
       ack?.({ ok: true });
@@ -344,6 +353,7 @@ export function registerSnakeSockets(io: Server): () => void {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       if (!match || !canUseLobby(socket, match) || payload.playerId !== matchPlayerIdForSocket(match, socket) || payload.playerId !== match.host.id) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
       match.paused = false;
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'snake:match:resumed', undefined, match);
       snapshot(io, match);
       ack?.({ ok: true });
@@ -354,8 +364,8 @@ export function registerSnakeSockets(io: Server): () => void {
       finish(io, match, null, 'aborted');
       ack?.({ ok: true });
     });
-    // Explicit leave and disconnect are both immediate forfeits. Arena
-    // matches continue while at least two snakes remain.
+    // An explicit leave is an immediate forfeit, a disconnect one after the
+    // reconnect grace. Arena matches continue while at least two snakes remain.
     socket.on('snake:match:leave', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
@@ -364,11 +374,19 @@ export function registerSnakeSockets(io: Server): () => void {
       removeMatchPlayer(io, match, socketPlayerId);
       ack?.({ ok: true });
     });
+    socket.on('snake:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
+      const match = payload?.matchId ? matches.get(payload.matchId) : null;
+      if (!match || match.departedPlayerIds.has(payload?.playerId as string) || !claimMatchSeat(socket, match, payload?.playerId, isSnakeBotId)) {
+        return ack?.({ ok: false, error: RECONNECT_REFUSED });
+      }
+      snapshot(io, match);
+      ack?.({ ok: true });
+    });
     socket.on('disconnect', () => {
       removeFromLobbies(io, socket.id);
       for (const match of [...matches.values()]) {
         const playerId = matchPlayerIdForSocket(match, socket);
-        if (playerId) removeMatchPlayer(io, match, playerId);
+        if (playerId) match.grace.disconnected(playerId);
       }
     });
   });

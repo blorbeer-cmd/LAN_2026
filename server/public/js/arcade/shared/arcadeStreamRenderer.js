@@ -1,5 +1,6 @@
 // Static kiosk and lazy Arcade views intentionally share this pure canvas renderer.
 import { snakeColor } from './snakeColors.js';
+import { TETRIS_COLORS } from './tetrisColors.js';
 
 const GAME_CANVAS_SIZES = {
   scribble: [800, 500],
@@ -10,16 +11,6 @@ const GAME_CANVAS_SIZES = {
   battleship: [960, 540],
 };
 
-const TETRIS_COLORS = {
-  1: '#22d3ee', // design-token-ok: classic tetromino hue
-  2: '#eab308', // design-token-ok: classic tetromino hue
-  3: '#22c55e', // design-token-ok: classic tetromino hue
-  4: '#ef4444', // design-token-ok: classic tetromino hue
-  5: '#3b82f6', // design-token-ok: classic tetromino hue
-  6: '#a855f7', // design-token-ok: classic tetromino hue
-  7: '#f97316', // design-token-ok: classic tetromino hue
-  8: '#5b6577', // design-token-ok: garbage block hue
-};
 
 const SCRIBBLE_PAPER_COLOR = '#ffffff'; // design-token-ok: Scribble's drawing paper is intentionally white in every theme
 

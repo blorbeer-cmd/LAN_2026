@@ -16,12 +16,13 @@ außerhalb dieses Menüs.
 - Markup und Verhalten: `public/js/actionMenu.js`
 - Geometrie und offene Kartenlage: `public/css/style.css`
 - Ergänzende bestehende Kartenlage: `public/css/domains.css`
-- Markup-API: `actionMenuHtml(actions, label, { key, inlineMax })`; `actions` ist ein Array mit
+- Markup-API: `actionMenuHtml(actions, label, { key, inlineMax, summary })`; `actions` ist ein Array mit
   einem Eintrag je Aktion, leere Einträge fallen weg. Höchstens `inlineMax` Einträge (Standard `1`)
   werden direkt aneinandergereiht zurückgegeben, erst darüber entsteht das Menü. Der optionale
   `key` setzt
   `data-action-menu` als stabile Identität, damit die Zustandssicherung beim Live-Re-Render
-  (`viewRenderState.js`) Menüs und andere `details`-Elemente nicht verwechselt.
+  (`viewRenderState.js`) Menüs und andere `details`-Elemente nicht verwechselt. `summary` setzt
+  den sichtbaren Triggertext (Standard „Aktion“).
 - Verdrahtung: `wireActionMenus(container)`
 
 Jeder Eintrag in `actions` ist vertrauenswürdiges, vom Aufrufer erzeugtes Button-Markup; Nutzerinhalte darin
@@ -46,6 +47,7 @@ Eintragsgröße erzeugen.
 | Eintrag mit Zusatzcontrol | `.action-menu-row` | umgesetzt | bestehende Zeile, zum Beispiel Aktion plus Infohilfe |
 | Ohne Aktionen | `actionMenuHtml([], label)` | umgesetzt | rendert kein leeres Menü |
 | Direkte Einträge | `actionMenuHtml(actions, label, { inlineMax })` | umgesetzt | bis `inlineMax` Einträge (Standard 1) stehen als normale Buttons im Kopf, ohne Trigger |
+| Benannter Trigger | `actionMenuHtml(actions, label, { summary })` | umgesetzt | bündelt Einträge einer einzigen Aktionsart unter ihrem Namen, etwa „Kalender“ (Google, Outlook, Download) oder „Absagen“ (Absagen, Mit Ausrede absagen) auf Eventkarten |
 
 Eine dauerhaft geöffnete, verschachtelte oder mehrspaltige Variante existiert nicht.
 
@@ -53,7 +55,8 @@ Eine dauerhaft geöffnete, verschachtelte oder mehrspaltige Variante existiert n
 
 - Aufrufer DÜRFEN vorhandene `.btn`-/`.btn-sm`-Bedeutungsvarianten als vertrauenswürdiges
   `actions`-Markup liefern.
-- Der zugängliche Kontext DARF Event- oder Umfragenamen enthalten, MUSS aber mit „Aktion“ beginnen.
+- Der zugängliche Kontext DARF Event- oder Umfragenamen enthalten, MUSS aber mit dem sichtbaren
+  Triggertext beginnen („Aktion“ oder der `summary` eines benannten Triggers).
 - Jeder gerenderte View MUSS genau einmal seinen gemeinsamen Container nach dem Markupaufbau mit
   `wireActionMenus(container)` verdrahten. Ein Re-Render verdrahtet den neuen Container erneut.
 - Aufrufer DÜRFEN persönliche, immer sichtbare Aktionen nicht in das Menü verschieben, nur um
@@ -66,7 +69,9 @@ Eine dauerhaft geöffnete, verschachtelte oder mehrspaltige Variante existiert n
 
 ## 6. Komponenteneigene Invarianten
 
-- Sichtbarer Name und Accessible Name des Triggers MÜSSEN mit „Aktion“ beginnen.
+- Sichtbarer Name und Accessible Name des Triggers MÜSSEN mit „Aktion“ beginnen; ein benannter
+  Trigger beginnt stattdessen mit seinem `summary`. Gemischte Aktionsarten gehören immer unter
+  „Aktion“.
 - Der Trigger verwendet `summary.btn.btn-sm`, besitzt sichtbaren Rahmen und Chevron und misst
   einzeilig 31–33 px.
 - Menüeinträge MÜSSEN mindestens 44 px hoch und breit sein, nach links ausrichten und bei echtem
@@ -107,7 +112,7 @@ Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-
 
 - Native `details`/`summary` liefern Disclosure-Semantik und Tastaturaktivierung über Enter/Space.
 - Trigger und Panelaktionen sind echte Buttons mit sichtbaren deutschen Labels. Der zugängliche
-  Triggername beginnt mit „Aktion“ und ergänzt den fachlichen Kartenkontext.
+  Triggername beginnt mit dem sichtbaren Triggertext und ergänzt den fachlichen Kartenkontext.
 - Escape und Aktionswahl geben Fokus zurück; Außen-Pointer respektiert den vom Pointerpfad
   bestimmten Fokus.
 - Fokusreihenfolge folgt der DOM-Reihenfolge; Reflow und Kartenanhebung verändern sie nicht.
@@ -117,8 +122,9 @@ Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-
 ## 9. Repräsentative Aufrufer
 
 - `public/js/views/eventPolls.js` für offene und beendete Umfragen mit Re-Render
-- `public/js/views/events.js` für einklappbare Eventkarten und rollenabhängige Aktionen
-  (`inlineMax: 2`)
+- `public/js/views/events.js` für einklappbare Eventkarten: „Aktion“ für die Verwaltung
+  (`inlineMax: 0`, immer als Menü) sowie die benannten Trigger „Absagen“ und, über
+  `eventPresentation.js`, „Kalender“
 - `public/js/views/foodOrders.js` für Bestellkarten mit stabilem `key`
 
 ## 10. Prüfungen und Abnahmebeispiele

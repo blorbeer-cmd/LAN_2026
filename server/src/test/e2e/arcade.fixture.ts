@@ -1,9 +1,9 @@
 // Browser E2E tests for the Arcade area: spectating running matches (list
 // lifecycle, auto-redirect on match end, stale history entries), the
-// expandable playfield geometry, and rapid-fire robustness (lobby-create
+// fitted playfield geometry and fullscreen, and rapid-fire robustness (lobby-create
 // bursts, ready-toggle spam). Complements the broader click-through suite in
 // flows.e2e.test.ts — this file owns the Arcade-specific regressions from the
-// spectator/expand work.
+// spectator, fit and fullscreen work.
 
 import { test, before, after, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,8 +16,11 @@ import {
   authenticatedServerEnv,
   createE2EAccount,
   loginE2EAdmin,
+  promoteE2EAdmin,
   waitForPlayerData,
 } from './authHelpers';
+import { ARCADE_HUB, openArcadeLobby } from './arcadeHelpers';
+import { activateAdminMode } from './navHelpers';
 import { runWithE2EDiagnostics, trackE2EContext, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { assertControlHeights, assertNoOverflow } from './visualHelpers';
@@ -63,10 +66,18 @@ async function createPlayer(name: string): Promise<{ id: string; name: string }>
   return account;
 }
 
+// Scribble is visible to admins in Admin mode only; its players and
+// spectators are promoted before their page opens with adminMode: true.
+async function createAdminPlayer(name: string): Promise<{ id: string; name: string }> {
+  const account = await createPlayer(name);
+  await promoteE2EAdmin(BASE_URL, adminCookie, account.id);
+  return account;
+}
+
 // Opens a fresh context+page with the player's personal session.
 async function openArcadeAs(
   playerId: string,
-  { viewport = { width: 390, height: 844 }, expanded = false } = {}
+  { viewport = { width: 390, height: 844 }, adminMode = false } = {}
 ): Promise<Actor> {
   const context = await browser.newContext({ viewport });
   await trackE2EContext(context, `${playerId}-arcade`);
@@ -76,20 +87,11 @@ async function openArcadeAs(
   const page = await context.newPage();
   page.on('pageerror', (err) => console.error('[pageerror]', err.message));
   await page.goto(BASE_URL);
-  await page.evaluate(
-    (expand) => {
-      // The expand preference must already exist before the game view first
-      // renders — that ordering is exactly what the geometry regressions
-      // below are about (see wireArcadeExpandControl).
-      localStorage.setItem('lan-arcade-expanded', String(expand));
-    },
-    expanded
-  );
-  await page.reload();
   await page.waitForFunction(() =>
     Array.from(document.querySelectorAll<HTMLElement>(
       '.desktop-nav-btn[data-view="arcade"], .nav-btn[data-view="more"]',
     )).some((button) => button.getClientRects().length > 0));
+  if (adminMode) await activateAdminMode(page);
   await navigateToArcade(page);
   return { context, page };
 }
@@ -128,27 +130,16 @@ async function clickArcadeDestination(page: Page): Promise<void> {
 async function navigateToArcade(page: Page): Promise<void> {
   await waitForPlayerData(page);
   await clickArcadeDestination(page);
-  await page.waitForSelector('.arcade-tiles');
+  await page.waitForSelector(ARCADE_HUB);
 }
 
 function activeView(page: Page): Promise<string | undefined> {
   return page.evaluate(() => (document.getElementById('view-container') as HTMLElement | null)?.dataset.view);
 }
 
-async function openArcadeGame(page: Page, game: string, readySelector: string): Promise<void> {
-  if ((await page.locator(readySelector).count()) > 0) return;
-  await page.waitForSelector('.arcade-tiles');
-  await page.click(`[data-game="${game}"]`);
-  await page.waitForSelector(readySelector);
-}
-
 async function startQuizMatch(host: Page, guest: Page): Promise<void> {
-  if ((await host.locator('#quiz-create-lobby').count()) === 0) await host.click('[data-game="quiz"]');
-  await host.waitForSelector('#quiz-create-lobby:not([disabled])');
-  await host.click('#quiz-create-lobby');
-  if ((await guest.locator('[data-join-lobby]').count()) === 0 && (await guest.locator('#quiz-create-lobby').count()) === 0) {
-    await guest.click('[data-game="quiz"]');
-  }
+  await openArcadeLobby(host, 'quiz');
+  await host.waitForSelector('[data-close-lobby]');
   await guest.waitForSelector('[data-join-lobby]');
   await guest.click('[data-join-lobby]');
   await guest.waitForSelector('[data-quiz-ready][data-ready="1"]');
@@ -165,15 +156,13 @@ async function finishQuizMatch(host: Page): Promise<void> {
   await host.click('[data-confirm]');
   await host.waitForSelector('#quiz-back');
   await host.click('#quiz-back');
-  await host.waitForSelector('.arcade-tiles');
+  await host.waitForSelector(ARCADE_HUB);
 }
 
 async function startScribbleMatch(host: Page, guests: Page[], rounds: 1 | 2 | 3): Promise<void> {
-  await host.click('[data-game="scribble"]');
-  await host.waitForSelector('#scribble-create:not([disabled])');
-  await host.click('#scribble-create');
+  await openArcadeLobby(host, 'scribble');
+  await host.waitForSelector('[data-scribble-close]');
   for (const guest of guests) {
-    if ((await guest.locator('[data-scribble-join]').count()) === 0) await guest.click('[data-game="scribble"]');
     await guest.waitForSelector('[data-scribble-join]');
     await guest.click('[data-scribble-join]');
   }
@@ -189,7 +178,7 @@ async function startScribbleMatch(host: Page, guests: Page[], rounds: 1 | 2 | 3)
 async function finishScribbleMatch(host: Page): Promise<void> {
   await host.click('#scribble-finish');
   await host.click('[data-confirm]');
-  await host.waitForSelector('text=Match beendet');
+  await host.waitForSelector('#scribble-result-title');
 }
 
 const countPaintedPixels = (page: Page, selector: string) =>
@@ -242,27 +231,15 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
     assert.ok(firstLoad.some((request) => request === '/js/arcade/views/arcade.js'));
     assert.equal(new Set(firstLoad).size, firstLoad.length, 'each Arcade asset should load once');
 
-    await actor.page.click('[data-game="snake"]');
-    await actor.page.waitForSelector('#arcade-active-game-title:has-text("Snake")');
-    assert.equal(new URL(actor.page.url()).hash, '#arcade/snake');
-    assert.equal(
-      await actor.page.locator('#arcade-active-game-title').evaluate((heading) => {
-        const active = heading.closest('.grouped-page-section')?.getBoundingClientRect();
-        const picker = document.querySelector('.arcade-game-picker')?.getBoundingClientRect();
-        return Boolean(active && picker && picker.top < active.top);
-      }),
-      true,
-      'the selected game lobby is placed below the game selection',
-    );
-    assert.equal(await actor.page.locator('#arcade-game-back').count(), 0);
-    await actor.page.goBack();
-    await actor.page.waitForSelector('#arcade-active-game-title', { state: 'detached' });
+    // The hub is one page: opening and closing the create dialog keeps the
+    // route and loads nothing new.
     assert.equal(new URL(actor.page.url()).hash, '#arcade');
-    await actor.page.goForward();
-    await actor.page.waitForSelector('#arcade-active-game-title:has-text("Snake")');
-    await actor.page.click('[data-game="snake"]');
-    await actor.page.waitForSelector('#arcade-active-game-title:has-text("Snake")');
-    assert.equal(new URL(actor.page.url()).hash, '#arcade/snake');
+    await actor.page.click(ARCADE_HUB);
+    await actor.page.waitForSelector('#arcade-create-form');
+    await actor.page.keyboard.press('Escape');
+    await actor.page.waitForSelector('#arcade-create-form', { state: 'detached' });
+    assert.equal(new URL(actor.page.url()).hash, '#arcade');
+    assert.equal(new Set(requests).size, requests.length, 'the create dialog must not reload Arcade assets');
 
     await actor.page.click('.nav-btn[data-view="home"]');
     await actor.page.waitForFunction(() => !document.getElementById('arcade-stylesheet'));
@@ -276,51 +253,34 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
     );
 
     const direct = await actor.context.newPage();
-    await direct.goto(`${BASE_URL}/#arcade/snake`);
-    await direct.waitForSelector('#arcade-active-game-title:has-text("Snake")');
+    await direct.goto(`${BASE_URL}/#arcade`);
+    await direct.waitForSelector(ARCADE_HUB);
     await direct.waitForSelector('#arcade-stylesheet[data-loaded="true"]', { state: 'attached' });
     assert.equal(await activeView(direct), 'arcade');
     await direct.reload();
-    await direct.waitForSelector('#arcade-active-game-title:has-text("Snake")');
-    assert.equal(await direct.locator('#arcade-game-back').count(), 0);
-    await direct.click('[data-game="snake"]');
-    await direct.waitForSelector('#arcade-active-game-title:has-text("Snake")');
-    assert.equal(new URL(direct.url()).hash, '#arcade/snake');
+    await direct.waitForSelector(ARCADE_HUB);
+    assert.equal(await activeView(direct), 'arcade');
     await direct.close();
   } finally {
     await actor.context.close();
   }
 });
 
-arcadeTest('navigation', 'a direct or expired-match link to Tetris, Gaming-Quiz, Scribble or Blobby Volley shows the named lobby instead of a dead end', async () => {
-  // Regression for issue #577: these four routes only render while a match
-  // is live (app.js maps them straight to their game module, unlike the
-  // in-place `#arcade/<game>` launcher route). Without a match they used to
-  // show only free-floating text; they now match Pong,
-  // Snake and Battleship's own standalone-route fallback of a titled,
-  // stable lobby card.
+arcadeTest('navigation', 'a direct or expired-match link to a game room returns to the Arcade hub instead of a dead end', async () => {
+  // Regression for issue #577: game rooms only render while a match is live.
+  // Without a match, every room route now leads to the Arcade hub, where all
+  // open lobbies live, instead of showing free-floating text or an empty room.
   const player = await createPlayer('Arcade Direct Match Link');
   const actor = await openHomeAs(player.id);
   try {
-    const routes: Array<[string, string]> = [
-      ['tetris', 'Tetris'],
-      ['quizRoom', 'Gaming-Quiz'],
-      ['scribbleRoom', 'Scribble'],
-      ['blobby', 'Blobby Volley'],
-    ];
-    for (const [route, title] of routes) {
+    for (const route of ['tetris', 'quizRoom', 'scribbleRoom', 'blobby', 'pong', 'snake', 'battleship']) {
       await actor.page.goto(`${BASE_URL}/#${route}`);
-      await actor.page.waitForSelector(`.view-title:has-text("${title}")`);
-      assert.equal(await activeView(actor.page), route);
+      await actor.page.waitForSelector(ARCADE_HUB);
+      assert.equal(await activeView(actor.page), 'arcade', `${route} without a match must land on the hub`);
       assert.equal(
         await actor.page.locator('#view-container [data-navigate="arcade"]').count(),
         0,
         `${route} carries no back button; the navigation leads back to Arcade`,
-      );
-      assert.equal(
-        await actor.page.locator('.arcade-lobby-card').count(),
-        1,
-        `${route} shows the same named lobby area as Pong/Snake/Battleship`,
       );
     }
   } finally {
@@ -328,12 +288,12 @@ arcadeTest('navigation', 'a direct or expired-match link to Tetris, Gaming-Quiz,
   }
 });
 
-arcadeTest('navigation', 'a deferred background render does not detach an active Arcade tile click', async () => {
+arcadeTest('navigation', 'a deferred background render does not detach an active Arcade create click', async () => {
   const player = await createPlayer('Arcade Pointer Host');
   const host = await openArcadeAs(player.id);
-  await host.page.waitForSelector('text=Noch keine Arcade-Runden.');
+  await host.page.waitForSelector(`${ARCADE_HUB}:not([disabled])`);
   try {
-    const tile = host.page.locator('[data-game="quiz"]');
+    const tile = host.page.locator(ARCADE_HUB);
     await tile.dispatchEvent('pointerdown', {
       button: 0,
       buttons: 1,
@@ -342,7 +302,7 @@ arcadeTest('navigation', 'a deferred background render does not detach an active
       pointerType: 'mouse',
     });
     const tileHandle = await tile.elementHandle();
-    assert.ok(tileHandle, 'Quiz tile must remain present after pointerdown');
+    assert.ok(tileHandle, 'the create button must remain present after pointerdown');
 
     // Trigger the background refresh only after pointerdown so the test
     // deterministically exercises the deferred-render path. Waiting merely
@@ -381,18 +341,18 @@ arcadeTest('navigation', 'a deferred background render does not detach an active
         window.setTimeout = schedule;
         window.clearTimeout = cancel;
       }
-      const title = document.getElementById('arcade-active-game-title');
+      const form = document.getElementById('arcade-create-form');
       for (const callback of pending.values()) callback();
-      return title?.isConnected ?? false;
+      return form?.isConnected ?? false;
     });
 
-    await host.page.waitForSelector('#arcade-active-game-title:has-text("Gaming-Quiz")');
+    await host.page.waitForSelector('#arcade-create-form');
     assert.equal(
       directRenderConnected,
       true,
-      'the click render must supersede the deferred background render',
+      'the click must open the create dialog despite the deferred background render',
     );
-    assert.equal(new URL(host.page.url()).hash, '#arcade/quiz');
+    assert.equal(new URL(host.page.url()).hash, '#arcade');
   } finally {
     await host.context.close();
   }
@@ -416,7 +376,7 @@ arcadeTest('navigation', 'an obsolete or failed Arcade import cannot replace or 
     releaseImport();
     await stale.page.waitForTimeout(250);
     assert.equal(await activeView(stale.page), 'home');
-    assert.equal(await stale.page.locator('.arcade-tiles').count(), 0);
+    assert.equal(await stale.page.locator(ARCADE_HUB).count(), 0);
   } finally {
     releaseImport();
     await stale.context.close();
@@ -444,47 +404,19 @@ arcadeTest('navigation', 'classic Snake guest returns to the Arcade immediately 
   const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 568, height: 320 } });
   const guest = await openArcadeAs(guestPlayer.id);
   try {
-    await host.page.click('[data-game="snake"]');
-    await host.page.waitForSelector('#snake-create:not([disabled])');
-    await host.page.click('#snake-create');
-
-    await guest.page.click('[data-game="snake"]');
+    await openArcadeLobby(host.page, 'snake', { mode: 'classic' });
     await guest.page.waitForSelector('[data-snake-join]');
     await guest.page.click('[data-snake-join]');
     await host.page.waitForSelector('#snake-start:not([disabled])');
     await host.page.click('#snake-start');
     await Promise.all([
-      host.page.waitForSelector('.countdown-player-identity'),
-      guest.page.waitForSelector('.countdown-player-identity'),
-    ]);
-    assert.match(await host.page.locator('.countdown-player-identity').innerText(), /Du bist\s+Blau/);
-    assert.match(await guest.page.locator('.countdown-player-identity').innerText(), /Du bist\s+Pink/);
-    const countdownIdentityBox = await host.page.locator('.countdown-player-identity').boundingBox();
-    const countdownColorBox = await host.page.locator('.countdown-player-color').boundingBox();
-    const viewportHeight = await host.page.evaluate(() => window.innerHeight);
-    assert.ok(
-      countdownIdentityBox
-        && countdownIdentityBox.y >= 0
-        && countdownIdentityBox.y + countdownIdentityBox.height <= viewportHeight,
-      'the Snake player identity must remain fully visible in a short viewport',
-    );
-    assert.ok(
-      countdownColorBox && countdownColorBox.width >= 32,
-      'the countdown player colour must remain prominent',
-    );
-    const countdownBackdropFilter = await host.page.locator('.countdown-overlay').evaluate((element) => {
-      const styles = getComputedStyle(element);
-      return `${styles.backdropFilter} ${styles.getPropertyValue('-webkit-backdrop-filter')}`;
-    });
-    assert.doesNotMatch(countdownBackdropFilter, /blur/i);
-    await Promise.all([
       guest.page.waitForSelector('#snake-canvas'),
       host.page.waitForSelector('#snake-pause'),
     ]);
-    assert.match(await host.page.locator('.snake-player-identity').innerText(), /Deine Farbe\s+Blau/);
-    assert.match(await guest.page.locator('.snake-player-identity').innerText(), /Deine Farbe\s+Pink/);
-    const playerColorBox = await host.page.locator('.snake-player-color').boundingBox();
-    assert.ok(playerColorBox && playerColorBox.width >= 32);
+    // Each player finds the own snake colour on the score bar, in text and
+    // not only as a swatch.
+    assert.match((await host.page.locator('.arcade-scoreboard').textContent()) ?? '', /Blau · Deine Farbe/);
+    assert.match((await guest.page.locator('.arcade-scoreboard').textContent()) ?? '', /Pink · Deine Farbe/);
     // Keep the match alive while the guest handles the confirmation dialog.
     // Under loaded CI runners an unpaused classic round can end first and
     // replace the view, turning this navigation assertion into a timing race.
@@ -493,7 +425,7 @@ arcadeTest('navigation', 'classic Snake guest returns to the Arcade immediately 
 
     await guest.page.click('#snake-leave-match');
     await guest.page.click('[data-confirm]');
-    await guest.page.waitForSelector('.arcade-tiles');
+    await guest.page.waitForSelector(ARCADE_HUB);
     assert.equal(await activeView(guest.page), 'arcade');
     assert.equal(await guest.page.locator('#snake-canvas').count(), 0);
     assert.equal(
@@ -510,18 +442,23 @@ arcadeTest('navigation', 'classic Snake guest returns to the Arcade immediately 
   }
 });
 
-arcadeTest('navigation', 'the kiosk removes stale quiz markup before rendering a canvas game', async () => {
-  const hostPlayer = await createPlayer('Kiosk Transition Host');
-  const guestPlayer = await createPlayer('Kiosk Transition Guest');
+arcadeTest('navigation', 'the kiosk keeps its dashboard while an Arcade match runs', async () => {
+  const hostPlayer = await createPlayer('Kiosk Arcade Host');
+  const guestPlayer = await createPlayer('Kiosk Arcade Guest');
   const host = await openArcadeAs(hostPlayer.id);
   const guest = await openArcadeAs(guestPlayer.id);
   const kiosk = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await trackE2EContext(kiosk.context(), 'kiosk-transition');
+  await trackE2EContext(kiosk.context(), 'kiosk-arcade');
   try {
     await kiosk.goto(`${BASE_URL}/kiosk.html?token=${E2E_KIOSK_TOKEN}`);
     await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
     await startQuizMatch(host.page, guest.page);
-    await kiosk.waitForSelector('#kiosk-game-content .kiosk-game-question');
+    // Negative window: the Arcade full-screen takeover is switched off, so the
+    // running match must never hide the dashboard. The server pushes its kiosk
+    // snapshot right after the match start; 500 ms covers that delivery.
+    await kiosk.waitForTimeout(500);
+    assert.equal(await kiosk.locator('#kiosk-dashboard').isVisible(), true);
+    assert.equal(await kiosk.locator('#kiosk-game').isHidden(), true);
     await assertNoOverflow(kiosk.locator('#kiosk-dashboard'));
     await assertNoOverflow(kiosk.locator('html'));
     const fullscreen = kiosk.locator('#kiosk-fullscreen');
@@ -538,31 +475,6 @@ arcadeTest('navigation', 'the kiosk removes stale quiz markup before rendering a
     assert.equal(await fullscreen.evaluate((element) => document.activeElement === element && element.matches(':focus-visible') && getComputedStyle(element).outlineStyle !== 'none'), true);
 
     await finishQuizMatch(host.page);
-    await guest.page.waitForSelector('#quiz-back');
-    await guest.page.click('#quiz-back');
-    await guest.page.waitForSelector('.arcade-tiles');
-
-    await host.page.click('[data-game="snake"]');
-    await host.page.waitForSelector('#snake-create:not([disabled])');
-    await host.page.click('#snake-create');
-    await guest.page.click('[data-game="snake"]');
-    await guest.page.waitForSelector('[data-snake-join]');
-    await guest.page.click('[data-snake-join]');
-    await host.page.waitForSelector('#snake-start:not([disabled])');
-    await host.page.click('#snake-start');
-    // Freeze the continuously rendered match before asserting the kiosk transition. Otherwise
-    // every game tick can replace the finish button while Playwright is trying to click it.
-    await host.page.dispatchEvent('#snake-pause', 'click');
-    await host.page.waitForSelector('.snake-overlay');
-
-    await kiosk.waitForSelector('#kiosk-game-content canvas');
-    assert.equal(await kiosk.locator('#kiosk-game-content .kiosk-game-question').count(), 0);
-    await assertNoOverflow(kiosk.locator('#kiosk-game-content'));
-    await assertNoOverflow(kiosk.locator('html'));
-
-    await host.page.click('#snake-finish');
-    await host.page.waitForSelector('#snake-back');
-    await host.page.click('#snake-back');
   } finally {
     await deferE2EContextClose(kiosk.context());
     await deferE2EContextClose(host.context);
@@ -570,7 +482,7 @@ arcadeTest('navigation', 'the kiosk removes stale quiz markup before rendering a
   }
 });
 
-arcadeTest('snake-arena', 'Snake Arena elimination status updates in spectator and kiosk legends', async () => {
+arcadeTest('snake-arena', 'Snake Arena elimination status updates in the spectator view', async () => {
   const players = await Promise.all([
     createPlayer('Snake Status Host'),
     createPlayer('Snake Status Zwei'),
@@ -579,17 +491,10 @@ arcadeTest('snake-arena', 'Snake Arena elimination status updates in spectator a
   ]);
   const actors = await Promise.all(players.map((player) => openArcadeAs(player.id)));
   const [host, guest, leaver, spectator] = actors;
-  const kiosk = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   try {
-    await kiosk.goto(`${BASE_URL}/kiosk.html?token=${E2E_KIOSK_TOKEN}`);
-    await kiosk.waitForSelector('#kiosk-dashboard:not([hidden])');
-
-    await openArcadeGame(host.page, 'snake', '#snake-mode [data-arcade-mode="arena"]');
-    await host.page.click('#snake-mode [data-arcade-mode="arena"]');
-    await host.page.click('#snake-create');
+    await openArcadeLobby(host.page, 'snake', { mode: 'arena' });
 
     for (const actor of [guest, leaver]) {
-      await openArcadeGame(actor.page, 'snake', '[data-snake-join]');
       await actor.page.waitForSelector('[data-snake-join]');
       await actor.page.click('[data-snake-join]');
     }
@@ -599,7 +504,6 @@ arcadeTest('snake-arena', 'Snake Arena elimination status updates in spectator a
     await host.page.click('#snake-pause');
     await host.page.waitForSelector('.snake-overlay');
 
-    await kiosk.waitForSelector('#kiosk-game-content .snake-arena-legend');
     await spectator.page.waitForSelector('[data-watch-match]');
     await spectator.page.click('[data-watch-match]');
     await spectator.page.waitForTimeout(500);
@@ -608,14 +512,14 @@ arcadeTest('snake-arena', 'Snake Arena elimination status updates in spectator a
       'arcadeWatch',
       (await spectator.page.locator('.toast').last().textContent().catch(() => null)) ?? 'watch view closed without an error',
     );
-    await spectator.page.waitForSelector('.snake-arena-legend');
+    await spectator.page.waitForSelector('#arcade-watch-scores .arcade-player-strip-item');
 
     // The arena can advance between the 50ms test countdown and the pause
     // button becoming clickable, so either the host or the other guest may be
     // the stable survivor. Capture an actually living non-leaver after the
     // pause, then keep verifying that exact player on every readonly view.
-    const racingPlayerName = await spectator.page.locator('.snake-arena-legend-item').evaluateAll(
-      (items, candidateNames) => candidateNames.find((name) => items.some((item) => item.textContent?.includes(`${name} · Im Rennen`))) ?? null,
+    const racingPlayerName = await spectator.page.locator('#arcade-watch-scores .arcade-player-strip-item').evaluateAll(
+      (items, candidateNames) => candidateNames.find((name) => items.some((item) => item.textContent?.includes(name) && !item.classList.contains('is-out'))) ?? null,
       [players[0].name, players[1].name]
     );
     assert.ok(racingPlayerName, 'expected a paused host or guest to remain in the race');
@@ -624,20 +528,17 @@ arcadeTest('snake-arena', 'Snake Arena elimination status updates in spectator a
     await leaver.page.click('#snake-leave-match');
     await leaver.page.click('[data-confirm]');
 
-    for (const page of [spectator.page, kiosk]) {
-      await page.waitForFunction((playerName) => Array.from(document.querySelectorAll('.snake-arena-legend-item')).some(
-        (item) => item.textContent?.includes(playerName) && item.textContent.includes('Ausgeschieden')
-      ), players[2].name);
-      const legendItems = await page.locator('.snake-arena-legend-item').allTextContents();
-      assert.ok(legendItems.some((item) => item.includes(`${racingPlayerName} · Im Rennen`)));
-      assert.ok(legendItems.some((item) => item.includes(`${players[2].name} · Ausgeschieden`)));
-    }
+    await spectator.page.waitForFunction((playerName) => Array.from(document.querySelectorAll('#arcade-watch-scores .arcade-player-strip-item')).some(
+      (item) => item.textContent?.includes(playerName) && item.classList.contains('is-out') && item.textContent.includes('Ausgeschieden')
+    ), players[2].name);
+    const racing = spectator.page.locator('#arcade-watch-scores .arcade-player-strip-item', { hasText: racingPlayerName });
+    assert.equal(await racing.evaluate((item) => item.classList.contains('is-out')), false);
 
     await host.page.click('#snake-finish');
+    await host.page.click('[data-confirm]');
     await host.page.waitForSelector('#snake-back');
     await host.page.click('#snake-back');
   } finally {
-    await kiosk.close();
     await Promise.all(actors.map((actor) => actor.context.close()));
   }
 });
@@ -653,15 +554,14 @@ arcadeTest('navigation', 'watch list: a finished match disappears and active wat
   try {
     await startQuizMatch(host.page, guest.page);
 
-    // The running match shows up in the compact "Laufende Spiele" overview
-    // with a join-to-watch action; the readonly watch view opens with the
-    // quiz safe note (no question, no answer controls).
-    await spectator.page.waitForSelector('.arcade-watch-list-row');
+    // The running match shows up in "Läuft gerade" with a watch action; the
+    // readonly watch view opens the quiz stage without answer controls.
+    await spectator.page.waitForSelector('.arcade-running-row');
     await spectator.page.setViewportSize({ width: 320, height: 568 });
     await assertControlHeights(spectator.page.locator('[data-watch-match]'));
     await assertNoOverflow(spectator.page.locator('#view-container'));
     await spectator.page.click('[data-watch-match]');
-    await spectator.page.waitForSelector('.arcade-watch-safe-note');
+    await spectator.page.waitForSelector('#arcade-watch-stage .quiz-stage-area');
     assert.equal(await activeView(spectator.page), 'arcadeWatch');
     for (const viewport of [{ width: 320, height: 568 }, { width: 512, height: 384 }, { width: 720, height: 450 }]) {
       await spectator.page.setViewportSize(viewport);
@@ -677,7 +577,7 @@ arcadeTest('navigation', 'watch list: a finished match disappears and active wat
       () => (document.getElementById('view-container') as HTMLElement | null)?.dataset.view === 'arcade'
     );
     // ...and the finished match must vanish from the overview list.
-    await spectator.page.waitForFunction(() => document.querySelectorAll('.arcade-watch-list-row').length === 0);
+    await spectator.page.waitForFunction(() => document.querySelectorAll('.arcade-running-row').length === 0);
   } finally {
     await deferE2EContextClose(host.context);
     await deferE2EContextClose(guest.context);
@@ -698,7 +598,7 @@ arcadeTest('navigation', 'watch history: a stale watch entry redirects to the Ar
 
     await spectator.page.waitForSelector('[data-watch-match]');
     await spectator.page.click('[data-watch-match]');
-    await spectator.page.waitForSelector('.arcade-watch-safe-note');
+    await spectator.page.waitForSelector('#arcade-watch-stage .quiz-stage-area');
 
     // Leave the watch view via the global nav (not its own back button) —
     // the watch history entry stays behind on the stack.
@@ -741,19 +641,19 @@ arcadeTest('navigation', 'rapid fire: lobby-create burst keeps one lobby, ready 
   const host = await openArcadeAs(hostPlayer.id);
   const guest = await openArcadeAs(guestPlayer.id);
   try {
-    await host.page.click('[data-game="quiz"]');
-    await host.page.waitForSelector('#quiz-create-lobby:not([disabled])');
-    // Five clicks as fast as the UI allows, without awaiting the acks in
-    // between — the server-side membership guard must collapse the burst
-    // into exactly one lobby. Depending on broadcast timing a click can hit
-    // the "already in a lobby" confirm dialog instead; both paths are part
+    await host.page.waitForSelector(`${ARCADE_HUB}:not([disabled])`);
+    // Five create submissions as fast as the UI allows, without awaiting the
+    // acks in between: the server-side membership guard must collapse the
+    // burst into exactly one lobby. Depending on broadcast timing a submit can
+    // hit the "already in a lobby" confirm dialog instead; both paths are part
     // of the spam scenario, so short timeouts + catch keep the burst going.
     for (let i = 0; i < 5; i += 1) {
-      await host.page.click('#quiz-create-lobby', { timeout: 500 }).catch(() => undefined);
+      await host.page.click(ARCADE_HUB, { timeout: 500 }).catch(() => undefined);
+      await host.page.click('#arcade-create-form button[type="submit"]', { timeout: 500 }).catch(() => undefined);
     }
-    // Dismiss any leave-confirmations the spam happened to open.
-    while ((await host.page.locator('[data-cancel]').count()) > 0) {
-      await host.page.click('[data-cancel]', { timeout: 500 }).catch(() => undefined);
+    // Dismiss any leave-confirmations or dialogs the spam happened to open.
+    while ((await host.page.locator('[data-cancel], .modal [data-close]').count()) > 0) {
+      await host.page.click('[data-cancel], .modal [data-close]', { timeout: 500 }).catch(() => undefined);
       await host.page.waitForTimeout(100);
     }
     await host.page.waitForSelector('[data-close-lobby]');
@@ -764,7 +664,6 @@ arcadeTest('navigation', 'rapid fire: lobby-create burst keeps one lobby, ready 
     ).json()) as { lobbies: unknown[] };
     assert.equal(lobbies.lobbies.length, 1, 'the server must hold exactly one open lobby after the burst');
 
-    if ((await guest.page.locator('[data-join-lobby]').count()) === 0) await guest.page.click('[data-game="quiz"]');
     await guest.page.waitForSelector('[data-join-lobby]');
     await guest.page.click('[data-join-lobby]');
 
@@ -785,30 +684,52 @@ arcadeTest('navigation', 'rapid fire: lobby-create burst keeps one lobby, ready 
     await host.page.waitForSelector('.arcade-lobby-member-role:has-text("Bereit")');
     await guest.page.waitForSelector('[data-quiz-ready][data-ready="0"]');
     await guest.page.click('[data-quiz-ready][data-ready="0"]');
-    await host.page.waitForSelector('.arcade-lobby-member-role:has-text("Mitspieler")');
+    await host.page.waitForSelector('.arcade-lobby-member-role:has-text("Wartet")');
 
     await host.page.click('[data-close-lobby]');
-    await host.page.waitForSelector('text=Noch keine Quiz-Lobby.');
+    await host.page.waitForSelector('text=Keine offene Lobby.');
   } finally {
     await host.context.close();
     await guest.context.close();
   }
 });
 
-arcadeTest('multiplayer', 'expanded Tetris keeps the page free of horizontal scroll and the board aligned', async () => {
+// Geometry of the running game room: the fitted board, whether the view
+// scrolls and whether the app chrome is on screen.
+async function readGameRoomFit(page: Page) {
+  return page.evaluate(() => {
+    const view = document.getElementById('view-container') as HTMLElement;
+    const shell = document.querySelector('.arcade-game-shell') as HTMLElement;
+    const board = document.querySelector('.tetris-canvas') as HTMLElement;
+    const topbar = document.querySelector('.topbar') as HTMLElement;
+    const visible = (selector: string) => (document.querySelector(selector) as HTMLElement).getClientRects().length > 0;
+    return {
+      budget: shell.style.getPropertyValue('--arcade-h-budget').trim(),
+      boardHeight: board.getBoundingClientRect().height,
+      verticalOverflow: view.scrollHeight - view.clientHeight,
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      fullscreenClass: document.documentElement.classList.contains('arcade-fullscreen'),
+      topbarVisible: topbar.getClientRects().length > 0,
+      titleWidth: (document.querySelector('.arcade-game-header .view-title') as HTMLElement).getBoundingClientRect().width,
+      statLineVisible: visible('.tetris-stats-line'),
+      boardHeadVisible: visible('.tetris-board-head'),
+      pressed: document.querySelector('[data-arcade-fullscreen]')?.getAttribute('aria-pressed') ?? null,
+    };
+  });
+}
+
+arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grows the board until the room is left', async () => {
   const hostPlayer = await createPlayer('Tetris Host');
   const guestPlayer = await createPlayer('Tetris Gast');
 
-  // Wide-but-short desktop viewport: exactly the shape where the expanded
-  // layout previously overflowed sideways (decorative glow) and misaligned
-  // its overlays.
-  const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 1280, height: 640 }, expanded: true });
+  // Wide-but-short desktop viewport: exactly the shape where the board used
+  // to overflow below the fold, the layout overflowed sideways (decorative
+  // glow) and the overlays were misaligned.
+  const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 1280, height: 640 } });
   const guest = await openArcadeAs(guestPlayer.id);
   try {
-    await host.page.click('[data-game="tetris"]');
-    await host.page.waitForSelector('#tetris-create:not([disabled])');
-    await host.page.click('#tetris-create');
-    if ((await guest.page.locator('[data-tetris-join]').count()) === 0) await guest.page.click('[data-game="tetris"]');
+    await openArcadeLobby(host.page, 'tetris', { mode: 'duel' });
     await guest.page.waitForSelector('[data-tetris-join]');
     await guest.page.click('[data-tetris-join]');
     await guest.page.waitForSelector('[data-tetris-ready][data-ready="1"]');
@@ -816,21 +737,21 @@ arcadeTest('multiplayer', 'expanded Tetris keeps the page free of horizontal scr
     await host.page.waitForSelector('#tetris-start:not([disabled])');
     await host.page.click('#tetris-start');
 
-    await host.page.waitForSelector('.arcade-game-shell.is-expanded #tetris-boards');
-    // The saved preference applied before the first render — and the page
-    // must not scroll sideways (the ::before glow used to protrude).
-    const scroll = await host.page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth,
-    }));
+    await host.page.waitForSelector('.arcade-game-shell #tetris-boards .tetris-canvas');
+    await host.page.waitForFunction(() =>
+      Boolean((document.querySelector('.arcade-game-shell') as HTMLElement | null)?.style.getPropertyValue('--arcade-h-budget').trim()));
+    const fitted = await readGameRoomFit(host.page);
+    // Without any toggle the board fits the remaining height: header and
+    // match controls stay on screen and nothing scrolls in either direction.
+    assert.ok(fitted.verticalOverflow <= 0, `the fitted game room must not scroll vertically (${fitted.verticalOverflow}px)`);
     assert.ok(
-      scroll.scrollWidth <= scroll.clientWidth,
-      `expanded Tetris must not introduce horizontal page scroll (scrollWidth ${scroll.scrollWidth} > clientWidth ${scroll.clientWidth})`
+      fitted.scrollWidth <= fitted.clientWidth,
+      `the fitted game room must not scroll sideways (scrollWidth ${fitted.scrollWidth} > clientWidth ${fitted.clientWidth})`
     );
+    assert.equal(fitted.pressed, 'false');
 
     // Overlay geometry: the absolute layers (fx/overlay/incoming) position
     // against .tetris-canvas-wrap, so the wrap must hug the visible canvas.
-    await host.page.waitForSelector('.tetris-canvas');
     const alignment = await host.page.evaluate(() => {
       const canvas = document.querySelector('.tetris-canvas') as HTMLElement;
       const wrap = canvas.closest('.tetris-canvas-wrap') as HTMLElement;
@@ -843,19 +764,85 @@ arcadeTest('multiplayer', 'expanded Tetris keeps the page free of horizontal scr
       `overlays anchor to the wrap, so it must match the canvas width (canvas ${alignment.canvasWidth}, wrap ${alignment.wrapWidth})`
     );
 
-    // Leaving the Arcade area must not strand an active match. The launcher
-    // keeps a direct return action so the host can still finish it explicitly.
+    // Fullscreen hides the app chrome and hands its height to the board,
+    // which still fits without scrolling. Toggling back restores the chrome.
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForFunction((before) =>
+      (document.querySelector('.tetris-canvas') as HTMLElement).getBoundingClientRect().height > before + 20, fitted.boardHeight);
+    const fullscreen = await readGameRoomFit(host.page);
+    assert.equal(fullscreen.fullscreenClass, true);
+    assert.equal(fullscreen.topbarVisible, false, 'fullscreen must hide the topbar');
+    // Statistics the game is playable without give their height to the
+    // board; name and points above each board stay.
+    assert.ok(fitted.statLineVisible && fitted.titleWidth > 1, 'outside fullscreen the title and stat lines are shown');
+    assert.equal(fullscreen.statLineVisible, false, 'fullscreen must hide the stat lines below the boards');
+    assert.ok(fullscreen.titleWidth <= 1, 'fullscreen keeps the game title for screen readers only');
+    assert.equal(fullscreen.boardHeadVisible, true, 'fullscreen keeps name and points above each board');
+    assert.equal(fullscreen.pressed, 'true');
+    assert.ok(fullscreen.verticalOverflow <= 0, `the fullscreen game room must not scroll vertically (${fullscreen.verticalOverflow}px)`);
+    assert.ok(fullscreen.scrollWidth <= fullscreen.clientWidth, 'the fullscreen game room must not scroll sideways');
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForSelector('.topbar', { state: 'visible' });
+    // The refit follows the restored chrome asynchronously (resize observer
+    // plus animation frame): wait for the shrunken board, as on entry.
+    await host.page.waitForFunction((full) =>
+      (document.querySelector('.tetris-canvas') as HTMLElement).getBoundingClientRect().height < full - 20, fullscreen.boardHeight);
+    const restored = await readGameRoomFit(host.page);
+    assert.equal(restored.fullscreenClass, false);
+    assert.equal(restored.pressed, 'false');
+    assert.equal(restored.statLineVisible, true, 'leaving fullscreen must bring the stat lines back');
+    assert.ok(restored.verticalOverflow <= 0, 'leaving fullscreen must refit the board below the restored chrome');
+
+    // Leaving the Arcade area must not strand an active match. "Läuft gerade"
+    // offers the own match as "Weiterspielen" so the host can still finish it.
     await host.page.locator('.desktop-nav-btn[data-view="home"]:visible').click();
     await host.page.waitForFunction(() => (document.getElementById('view-container') as HTMLElement | null)?.dataset.view === 'home');
     await navigateToArcade(host.page);
-    await host.page.waitForSelector('#tetris-return');
-    await host.page.click('#tetris-return');
+    await host.page.waitForSelector('[data-arcade-resume="tetris"]');
+    await host.page.click('[data-arcade-resume="tetris"]');
     await host.page.waitForSelector('#tetris-finish');
 
+    // Without real browser fullscreen only the app's own mode is active, so
+    // Esc never reaches fullscreenchange and must end that mode directly —
+    // both for a refused request and for a browser without the API.
+    const fullscreenClassActive = () => host.page.evaluate(() => document.documentElement.classList.contains('arcade-fullscreen'));
+    await host.page.evaluate(() => {
+      Element.prototype.requestFullscreen = () => Promise.reject(new Error('denied by the browser'));
+    });
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForSelector('html.arcade-fullscreen', { state: 'attached' });
+    await host.page.keyboard.press('Escape');
+    await host.page.waitForSelector('.topbar', { state: 'visible' });
+    assert.equal(await fullscreenClassActive(), false, 'Esc must end fullscreen after a refused request');
+    assert.equal(await host.page.getAttribute('[data-arcade-fullscreen]', 'aria-pressed'), 'false');
+    await host.page.evaluate(() => {
+      Object.defineProperty(Document.prototype, 'fullscreenEnabled', { configurable: true, get: () => false });
+    });
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForSelector('html.arcade-fullscreen', { state: 'attached' });
+    // Esc inside the confirmation dialog belongs to the dialog only.
+    await host.page.click('#tetris-finish');
+    await host.page.waitForSelector('[data-confirm]');
+    await host.page.keyboard.press('Escape');
+    await host.page.waitForSelector('[data-confirm]', { state: 'detached' });
+    assert.equal(await fullscreenClassActive(), true, 'Esc closing a dialog must keep fullscreen');
+    await host.page.keyboard.press('Escape');
+    await host.page.waitForSelector('.topbar', { state: 'visible' });
+    assert.equal(await fullscreenClassActive(), false, 'Esc must end fullscreen without the browser API');
+
+    // Fullscreen survives the end of the match (the result stays in the game
+    // room) and ends together with the game room.
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForSelector('html.arcade-fullscreen', { state: 'attached' });
     await host.page.click('#tetris-finish');
     await host.page.click('[data-confirm]');
     await host.page.waitForSelector('#tetris-back');
+    assert.equal(await host.page.evaluate(() => document.documentElement.classList.contains('arcade-fullscreen')), true);
     await host.page.click('#tetris-back');
+    await host.page.waitForSelector(ARCADE_HUB);
+    await host.page.waitForFunction(() =>
+      !document.documentElement.classList.contains('arcade-fullscreen') && !document.fullscreenElement);
+    await host.page.waitForSelector('.topbar', { state: 'visible' });
   } finally {
     await host.context.close();
     await guest.context.close();
@@ -868,19 +855,14 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
   );
   const actors = await Promise.all(players.map((player, index) => openArcadeAs(
     player.id,
-    index === 0 ? { viewport: { width: 1280, height: 1000 }, expanded: true } : undefined,
+    index === 0 ? { viewport: { width: 1280, height: 1000 } } : undefined,
   )));
   const [host, ...guests] = actors;
   let hostClosed = false;
   try {
-    await host.page.click('[data-game="tetris"]');
-    await host.page.waitForSelector('#tetris-mode [data-arcade-mode="arena"]');
-    await host.page.click('#tetris-mode [data-arcade-mode="arena"]');
-    await host.page.waitForSelector('#tetris-create:not([disabled])');
-    await host.page.click('#tetris-create');
+    await openArcadeLobby(host.page, 'tetris', { mode: 'arena' });
 
     for (const guest of guests) {
-      if ((await guest.page.locator('[data-tetris-join]').count()) === 0) await guest.page.click('[data-game="tetris"]');
       await guest.page.waitForSelector('[data-tetris-join]');
       await guest.page.click('[data-tetris-join]');
       await guest.page.waitForSelector('[data-tetris-ready][data-ready="1"]');
@@ -947,7 +929,7 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
       'pausing must update controls/overlay without replacing the live canvas',
     );
     // Regression guard for #592: the host disconnecting mid-match hands
-    // control to guests[0]. That handover must only swap the control footer
+    // control to guests[0] once the (fast-timer) reconnect grace has passed. That handover must only swap the control footer
     // (Verlassen -> Pausieren/Beenden), never rebuild the mounted canvases.
     await guests[0].page.locator('.tetris-primary-board .tetris-canvas').evaluate((canvas) => {
       canvas.dataset.renderIdentity = 'before-host-handover';
@@ -965,12 +947,11 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
     await guests[0].page.click('#tetris-finish');
     await guests[0].page.click('[data-confirm]');
     await guests[0].page.waitForSelector('#tetris-back');
-    // Regression guard: the end-of-match ranking must reuse the shared roster
-    // tile (avatar + full name) instead of a bare two-column row, which used
-    // to squeeze every name into a 24px avatar-sized column and truncate it
-    // down to a single letter (e.g. "T…", "B…").
+    // Regression guard: the end-of-match ranking lists every player with the
+    // full name instead of squeezing names into an avatar-sized column and
+    // truncating them to a single letter (e.g. "T…", "B…").
     const rosterNames = await guests[0].page
-      .locator('.arcade-winner-card .arcade-player-tile-body strong')
+      .locator('.arcade-result-list .arcade-result-player .player-name')
       .allTextContents();
     assert.equal(rosterNames.length, players.length);
     for (const player of players) assert.ok(rosterNames.includes(player.name), `missing full name for ${player.name}`);
@@ -996,15 +977,12 @@ arcadeTest('multiplayer', 'Pong Doppel: mobile and desktop lobbies assign two fu
   )));
 
   try {
-    for (const actor of actors) {
-      await actor.page.click('[data-game="pong"]');
-      await actor.page.waitForSelector('#pong-create');
-    }
     const [host, blue, pinkA, pinkB] = actors;
-    assert.equal(await host.page.locator('#pong-mode [data-arcade-mode="duel"]').getAttribute('aria-pressed'), 'true');
-    await host.page.click('#pong-mode [data-arcade-mode="doubles"]');
-    assert.equal(await host.page.locator('#pong-mode [data-arcade-mode="doubles"]').getAttribute('aria-pressed'), 'true');
-    await host.page.click('#pong-create');
+    await host.page.click(ARCADE_HUB);
+    await host.page.selectOption('#arcade-create-game', 'pong');
+    await host.page.waitForSelector('#arcade-create-mode [data-arcade-mode="duel"][aria-pressed="true"]');
+    await host.page.keyboard.press('Escape');
+    await openArcadeLobby(host.page, 'pong', { mode: 'doubles' });
     await host.page.waitForSelector('text=Team Blau');
     await host.page.waitForSelector('text=Team Pink');
     await host.page.waitForSelector('#pong-start:disabled');
@@ -1035,57 +1013,68 @@ arcadeTest('multiplayer', 'Pong Doppel: mobile and desktop lobbies assign two fu
 
     for (const actor of actors) {
       await actor.page.waitForSelector('#pong-canvas');
-      assert.equal(await actor.page.locator('.arcade-player-tile').count(), 4);
+      assert.equal(await actor.page.locator('.arcade-scoreboard-player').count(), 4);
     }
   } finally {
     await Promise.all(actors.map((actor) => actor.context.close()));
   }
 });
 
-arcadeTest('scribble', 'Scribble: expanded canvas keeps 8:5 and its rapid toggle state stays synchronized', async () => {
-  const hostPlayer = await createPlayer('Scribble Geometrie Host');
-  const guestPlayer = await createPlayer('Scribble Geometrie Gast');
+arcadeTest('scribble', 'Scribble: the fitted canvas keeps 8:5 beside its tools and rapid fullscreen toggles stay synchronized', async () => {
+  const hostPlayer = await createAdminPlayer('Scribble Geometrie Host');
+  const guestPlayer = await createAdminPlayer('Scribble Geometrie Gast');
 
-  // Short desktop viewport so the height cap (100dvh - 18rem) is what limits
-  // the expanded playfield — the code path that used to distort the canvas.
-  const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 1280, height: 640 }, expanded: true });
-  const guest = await openArcadeAs(guestPlayer.id);
+  // Short desktop viewport so the remaining height is what limits the
+  // fitted playfield — the code path that used to distort the canvas.
+  const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 1280, height: 640 }, adminMode: true });
+  const guest = await openArcadeAs(guestPlayer.id, { adminMode: true });
   try {
     await startScribbleMatch(host.page, [guest.page], 1);
     await host.page.waitForSelector('.scribble-word-choice-btn');
     await host.page.locator('.scribble-word-choice-btn').first().click();
     await host.page.waitForSelector('#scribble-canvas');
+    await host.page.waitForFunction(() =>
+      Boolean((document.querySelector('.arcade-game-shell') as HTMLElement | null)?.style.getPropertyValue('--arcade-h-budget').trim()));
 
     const geometry = await host.page.evaluate(() => {
       const canvas = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
       const wrap = canvas.closest('.scribble-canvas-wrap') as HTMLElement;
+      const tools = document.querySelector('.scribble-toolbar') as HTMLElement;
+      const view = document.getElementById('view-container') as HTMLElement;
       return {
-        expanded: !!canvas.closest('.arcade-game-shell.is-expanded'),
         canvasWidth: canvas.clientWidth,
         canvasHeight: canvas.clientHeight,
-        wrapWidth: wrap.clientWidth,
+        wrapRight: wrap.getBoundingClientRect().right,
         wrapHeight: wrap.clientHeight,
+        toolsLeft: tools.getBoundingClientRect().left,
+        verticalOverflow: view.scrollHeight - view.clientHeight,
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
       };
     });
-    assert.equal(geometry.expanded, true, 'the saved expand preference must apply to the Scribble room');
     assert.ok(
       Math.abs(geometry.canvasHeight - geometry.wrapHeight) <= 2,
       `the canvas must fill the 8:5 wrapper (canvas ${geometry.canvasHeight}px vs wrap ${geometry.wrapHeight}px high)`
     );
     const ratio = geometry.canvasWidth / geometry.canvasHeight;
-    assert.ok(Math.abs(ratio - 1.6) < 0.05, `expanded Scribble canvas must stay at 8:5 (got ${ratio.toFixed(3)})`);
-    assert.ok(geometry.scrollWidth <= geometry.clientWidth, 'expanded Scribble must not scroll sideways');
+    assert.ok(Math.abs(ratio - 1.6) < 0.05, `the fitted Scribble canvas must stay at 8:5 (got ${ratio.toFixed(3)})`);
+    assert.ok(geometry.toolsLeft >= geometry.wrapRight, 'on a laptop the drawing tools sit beside the canvas');
+    assert.ok(geometry.verticalOverflow <= 0, `the fitted Scribble room must not scroll vertically (${geometry.verticalOverflow}px)`);
+    assert.ok(geometry.scrollWidth <= geometry.clientWidth, 'the fitted Scribble room must not scroll sideways');
 
-    for (let i = 0; i < 7; i += 1) await host.page.click('[data-arcade-expand]');
+    // An odd number of rapid clicks ends in fullscreen; the button, the page
+    // state and a pending browser request must all agree afterwards.
+    for (let i = 0; i < 7; i += 1) await host.page.click('[data-arcade-fullscreen]');
     const toggleState = await host.page.evaluate(() => ({
-      pressed: document.querySelector('[data-arcade-expand]')?.getAttribute('aria-pressed'),
-      expanded: !!document.querySelector('.arcade-game-shell.is-expanded'),
-      stored: localStorage.getItem('lan-arcade-expanded'),
+      pressed: document.querySelector('[data-arcade-fullscreen]')?.getAttribute('aria-pressed'),
+      label: document.querySelector('[data-arcade-fullscreen]')?.getAttribute('aria-label'),
+      fullscreen: document.documentElement.classList.contains('arcade-fullscreen'),
     }));
-    assert.equal(toggleState.pressed, String(toggleState.expanded), 'button state must match the shell state');
-    assert.equal(toggleState.stored, String(toggleState.expanded), 'persisted preference must match the shell state');
+    assert.deepEqual(toggleState, { pressed: 'true', label: 'Vollbild beenden', fullscreen: true });
+    await host.page.click('[data-arcade-fullscreen]');
+    await host.page.waitForFunction(() =>
+      !document.documentElement.classList.contains('arcade-fullscreen') && !document.fullscreenElement);
+    assert.equal(await host.page.getAttribute('[data-arcade-fullscreen]', 'aria-pressed'), 'false');
     await finishScribbleMatch(host.page);
   } finally {
     await Promise.all([host.context.close(), guest.context.close()]);
@@ -1093,20 +1082,20 @@ arcadeTest('scribble', 'Scribble: expanded canvas keeps 8:5 and its rapid toggle
 });
 
 arcadeTest('scribble', 'Scribble: live thumbs-up stays synchronized and the next round starts blank', async () => {
-  const hostPlayer = await createPlayer('Scribble Maler');
-  const guestPlayer = await createPlayer('Scribble Rater');
-  const spectatorPlayer = await createPlayer('Scribble Zuschauer');
+  const hostPlayer = await createAdminPlayer('Scribble Maler');
+  const guestPlayer = await createAdminPlayer('Scribble Rater');
+  const spectatorPlayer = await createAdminPlayer('Scribble Zuschauer');
 
-  const host = await openArcadeAs(hostPlayer.id);
-  const guest = await openArcadeAs(guestPlayer.id);
-  const spectator = await openArcadeAs(spectatorPlayer.id);
+  const host = await openArcadeAs(hostPlayer.id, { adminMode: true });
+  const guest = await openArcadeAs(guestPlayer.id, { adminMode: true });
+  const spectator = await openArcadeAs(spectatorPlayer.id, { adminMode: true });
   try {
     await startScribbleMatch(host.page, [guest.page], 2);
 
     // Round 1, turn 1: the host draws.
     await host.page.waitForSelector('.scribble-word-choice-btn');
     await guest.page.waitForSelector('#scribble-countdown');
-    assert.match((await guest.page.locator('#scribble-countdown').textContent()) ?? '', /^\d+s$/);
+    assert.match((await guest.page.locator('#scribble-countdown').textContent()) ?? '', /^\d+ s$/);
     const firstWordBtn = host.page.locator('.scribble-word-choice-btn').first();
     const firstWord = (await firstWordBtn.textContent())!.trim();
     await firstWordBtn.click();

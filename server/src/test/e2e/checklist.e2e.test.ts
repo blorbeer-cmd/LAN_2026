@@ -209,10 +209,10 @@ test('create a To-Do as one member, take it over as another, finish it in the de
   // Orga. The default E2E event is a LAN, so this also guards the LAN path.
   await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('[data-home-assigned-todos]');
-  const homeTask = page.locator('[data-home-assigned-task]', { hasText: 'Mehrfachsteckdosen mitbringen' });
+  const homeTask = page.locator('[data-home-todo^="task:"]', { hasText: 'Mehrfachsteckdosen mitbringen' });
   await homeTask.waitFor();
   assert.match(await homeTask.innerText(), /Fällig heute/);
-  await homeTask.click();
+  await homeTask.locator('.home-todo-navigate').click();
   await page.waitForSelector('.view-title:has-text("Orga")');
   await page.waitForSelector('[data-section-tab="checklist"][aria-current="page"]');
 
@@ -312,7 +312,7 @@ test('the Packliste draft and its focus survive a realtime re-render of the area
 });
 
 test('an already-open Home re-renders when a free To-Do appears and disappears elsewhere', async () => {
-  // Regression for the visibility contract in renderAssignedTodos() (home.js):
+  // Regression for the visibility contract in renderMyTodos() (home.js):
   // the tile's presence, not just its content, now depends on checklist
   // data, so a Home view left open has to react to checklist:changed the
   // same way it already does for foodOrders:changed - not only on the next
@@ -393,4 +393,15 @@ test('an already-open Home re-renders when a free To-Do appears and disappears e
   assert.equal(claimed.status, 200, await claimed.text());
 
   await page.waitForSelector('[data-home-assigned-todos]', { state: 'detached' });
+
+  // Bob finishes the To-Do he took straight from his Home, without opening
+  // the list; the row leaves his "Meine To-Dos" again.
+  await switchAccount(bob);
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'home' })));
+  await page.waitForSelector('#view-container[data-view="home"]');
+  const bobTask = page.locator(`[data-home-todo="task:${tasks[0].id}"]`);
+  await bobTask.waitFor();
+  await bobTask.locator('[data-todo-action="done"]').click();
+  await page.waitForSelector('.toast:has-text("To-Do erledigt")');
+  await bobTask.waitFor({ state: 'detached' });
 });

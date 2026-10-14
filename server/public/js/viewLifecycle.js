@@ -4,6 +4,7 @@
 
 import { state } from './state.js';
 import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
+import { invalidateMyTodos } from './myTodos.js';
 import { invalidateHomeSeating } from './views/home.js';
 import { invalidateMatchmakingHistory, invalidateMatchmakingDraft, invalidateMatchTournaments } from './views/matchmaking.js';
 import { invalidateBroadcasts } from './views/broadcast.js';
@@ -31,11 +32,13 @@ export const VIEW_LIFECYCLE_HANDLERS = Object.freeze({
   home: Object.freeze({
     [EVENT_SCOPE_CHANGE]: () => {
       invalidateAktuellStatus();
+      invalidateMyTodos();
       invalidateHomeSeating({ hard: true });
     },
     [CONNECTION_RESTORED]: () => {
       invalidateMissingSkills();
       invalidateAktuellStatus();
+      invalidateMyTodos();
       invalidateHomeSeating();
     },
     'players:changed': () => {
@@ -45,11 +48,28 @@ export const VIEW_LIFECYCLE_HANDLERS = Object.freeze({
     'games:changed': invalidateMissingSkills,
     'skills:changed': invalidateMissingSkills,
     'live:changed': invalidateMissingSkills,
-    'tournaments:changed': invalidateAktuellStatus,
+    'tournaments:changed': () => {
+      invalidateAktuellStatus();
+      invalidateMyTodos();
+    },
     'push:sent': invalidateAktuellStatus,
-    'foodOrders:changed': invalidateAktuellStatus,
+    'foodOrders:changed': () => {
+      invalidateAktuellStatus();
+      invalidateMyTodos();
+    },
     'arcade:lobbies-changed': invalidateAktuellStatus,
-    'visibility:changed': invalidateHomeSeating,
+    // "Meine To-Dos" spans payments, calendar entries, To-Dos, arrivals and
+    // left-behind Votes, so each of their signals refreshes it.
+    'events:changed': invalidateMyTodos,
+    'votes:changed': invalidateMyTodos,
+    'checklist:changed': invalidateMyTodos,
+    'arrivals:changed': invalidateMyTodos,
+    // Admin mode decides whether test events' To-Dos are visible at all, so
+    // the old list (and any request still answering under it) is dropped.
+    'visibility:changed': () => {
+      invalidateHomeSeating();
+      invalidateMyTodos({ hard: true });
+    },
   }),
   matchmaking: Object.freeze({
     [EVENT_SCOPE_CHANGE]: () => {

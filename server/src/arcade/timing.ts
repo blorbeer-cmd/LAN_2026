@@ -7,6 +7,8 @@ export interface ArcadeTimingEnvironment {
 export interface ArcadeTiming {
   countdownMs: number;
   endRevealMs: number;
+  // How long the quiz shows the correct answer before the next question.
+  quizRevealMs: number;
 }
 
 // Real players must always see the complete 3-2-1 intro and the full end
@@ -30,6 +32,8 @@ export function resolveArcadeTiming(env: ArcadeTimingEnvironment): ArcadeTiming 
   return {
     countdownMs: fastTimers ? 50 : 3000,
     endRevealMs: fastTimers ? 250 : 12_000,
+    // The fast profile keeps the previous 1.4 s so test runs are unchanged.
+    quizRevealMs: fastTimers ? 1400 : 3500,
   };
 }
 

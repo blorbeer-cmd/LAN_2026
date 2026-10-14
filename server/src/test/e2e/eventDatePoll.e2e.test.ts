@@ -197,7 +197,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ownerPage.fill('#event-name', EVENT_NAME);
   await ownerPage.fill('#event-location', 'Bestehender Ort');
   await ownerPage.click('#event-form button[type="submit"]');
-  const participantHandoff = ownerPage.locator('.event-card', { hasText: EVENT_NAME }).locator('[data-event-participants][open]');
+  const participantHandoff = ownerPage.locator('.event-card', { hasText: EVENT_NAME }).locator('[data-event-participants]');
   await participantHandoff.waitFor();
   assert.match((await ownerPage.locator('.toast').last().textContent()) ?? '', /Jetzt Teilnehmende einladen/);
   assert.equal(await ownerPage.locator('.modal-backdrop').count(), 0, 'creation opens the inline roster');
@@ -205,9 +205,9 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await eventCard.waitFor();
   const eventId = (await eventCard.getAttribute('data-event-card')) as string;
 
-  // Undated, the event offers only Bearbeiten and Beenden, both directly in
-  // its header.
-  await eventCard.locator('.event-card-header-side > [data-edit-event]').click();
+  // Management sits behind the card's "Aktion" menu.
+  await eventCard.locator('[data-action-menu^="event-manage-"] > summary').click();
+  await eventCard.locator('[data-edit-event]').click();
   const editEventModal = ownerPage.locator('.modal-backdrop', { hasText: 'Event bearbeiten' });
   await editEventModal.waitFor();
   assert.equal(await editEventModal.locator('#event-starts-date:disabled').count(), 0, 'an undated event can receive its period later');
@@ -219,7 +219,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await editEventModal.waitFor({ state: 'detached' });
   await ownerPage.waitForFunction((name) => {
     const card = Array.from(document.querySelectorAll('.event-card')).find((candidate) => candidate.textContent?.includes(name));
-    return card?.textContent?.includes('8.7.2027') && card?.textContent?.includes('10.7.2027');
+    return card?.textContent?.includes('08.07.') && card?.textContent?.includes('10.07.2027');
   }, EVENT_NAME);
 
   const memberId = await currentPlayerId(memberPage);

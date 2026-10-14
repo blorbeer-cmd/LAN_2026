@@ -1,5 +1,5 @@
-// Unit tests for the pure helpers used by the "Essen bestellen" view. No DOM
-// needed - these are plain string/array functions.
+// Unit tests for the pure helpers used by the "Essen bestellen" view, plus
+// Home's own-share payment entry point with a stubbed API and no real DOM.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,7 +11,11 @@ import {
   groupPaymentState,
   buildConsolidatedRows,
   foodOrderDescriptionSuggestions,
+  markOwnFoodSharePaid,
+  refreshFoodOrders,
 } from './views/foodOrders.js';
+import { api } from './api.js';
+import { lockMyIdToSession } from './whoami.js';
 
 test('addTipToCents adds and rounds the configured percentage', () => {
   assert.equal(addTipToCents(1000, 10), 1100);
@@ -175,4 +179,44 @@ test('foodOrderDescriptionSuggestions sorts alphabetically with the German local
 
 test('foodOrderDescriptionSuggestions returns an empty list for an order without items', () => {
   assert.deepEqual(foodOrderDescriptionSuggestions([]), []);
+});
+
+test("Home's 'Bezahlt' finds an order outside the default list of the ten newest", async () => {
+  const previous = { list: api.foodOrders.list, setGroupPaid: api.foodOrders.setGroupPaid, document: globalThis.document, window: globalThis.window };
+  const oldOrder = {
+    id: 'old-order',
+    createdAt: 1,
+    finalizedAt: null,
+    tipPercent: 0,
+    items: [{ id: 'mine', playerId: 'me', playerName: 'Ich', paid: false, priceCents: 900, quantity: 1 }],
+  };
+  const listedTargets = [];
+  const paidCalls = [];
+  // The server's default list ends before this order; only ?orderId= adds it.
+  api.foodOrders.list = async (orderId = null) => {
+    listedTargets.push(orderId);
+    return { orders: orderId === oldOrder.id ? [structuredClone(oldOrder)] : [] };
+  };
+  api.foodOrders.setGroupPaid = async (orderId, itemIds, paid) => {
+    paidCalls.push({ orderId, itemIds, paid });
+    return {};
+  };
+  globalThis.document = { querySelector: () => null, getElementById: () => null };
+  globalThis.window = new EventTarget();
+  lockMyIdToSession('me');
+  const ctx = { rerender: () => {} };
+  try {
+    await markOwnFoodSharePaid(oldOrder.id, ctx);
+    assert.deepEqual(paidCalls, [{ orderId: oldOrder.id, itemIds: ['mine'], paid: true }]);
+    assert.equal(listedTargets[0], oldOrder.id);
+    // Afterwards the order is no longer the fetch target: the follow-up
+    // refresh, and with it a later plain visit to Essen, asks for the normal list.
+    await refreshFoodOrders(ctx);
+    assert.equal(listedTargets.at(-1), null);
+  } finally {
+    api.foodOrders.list = previous.list;
+    api.foodOrders.setGroupPaid = previous.setGroupPaid;
+    globalThis.document = previous.document;
+    globalThis.window = previous.window;
+  }
 });

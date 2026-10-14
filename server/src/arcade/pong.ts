@@ -11,6 +11,7 @@ import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships }
 import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import { registerSocketConnection } from '../socketConnections';
+import { RECONNECT_REFUSED, ReconnectGrace, claimMatchSeat } from './reconnectGrace';
 
 const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 30;
@@ -44,6 +45,7 @@ interface Match {
   lastTick: number;
   lastSnapshot: number;
   rallyResumeAt: number;
+  grace: ReconnectGrace;
 }
 
 const lobbies = new Map<string, Lobby>();
@@ -165,6 +167,7 @@ function snapshot(io: Server, match: Match) {
 function finish(io: Server, match: Match, winnerTeam: PongTeam | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
+  match.grace.clear();
   const winners = winnerTeam ? match.players.filter((player) => player.team === winnerTeam) : [];
   const winner = winners[0] ?? null;
   const resultScores = scorePayload(match, winnerTeam);
@@ -388,6 +391,12 @@ export function registerPongSockets(io: Server): () => void {
         lastTick: Date.now(),
         lastSnapshot: 0,
         rallyResumeAt: 0,
+        // A player who stays away past the reconnect grace loses the match
+        // for their team, exactly like an explicit leave.
+        grace: new ReconnectGrace(() => match, isBotId, (playerId) => {
+          const player = match.players.find((entry) => entry.id === playerId);
+          if (matches.get(id) === match && player) finish(io, match, opposingTeam(player.team), 'player-left');
+        }),
       };
       matches.set(id, match);
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'pong', lobby.id);
@@ -424,6 +433,7 @@ export function registerPongSockets(io: Server): () => void {
       const match = payload?.matchId ? matches.get(payload.matchId) : null;
       if (!match || !canUseLobby(socket, match) || payload.playerId !== match.host.id || !socketControlsPlayer(socket, match, payload.playerId)) return ack?.({ ok: false, error: 'Nur der Host kann pausieren.' });
       match.paused = true;
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'pong:match:paused', { matchId: match.id }, match);
       snapshot(io, match);
       ack?.({ ok: true });
@@ -434,6 +444,7 @@ export function registerPongSockets(io: Server): () => void {
       if (!match || !canUseLobby(socket, match) || payload.playerId !== match.host.id || !socketControlsPlayer(socket, match, payload.playerId)) return ack?.({ ok: false, error: 'Nur der Host kann fortsetzen.' });
       match.paused = false;
       match.lastTick = Date.now();
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'pong:match:resumed', { matchId: match.id }, match);
       snapshot(io, match);
       ack?.({ ok: true });
@@ -458,13 +469,22 @@ export function registerPongSockets(io: Server): () => void {
       ack?.({ ok: true });
     });
 
+    socket.on('pong:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
+      const match = payload?.matchId ? matches.get(payload.matchId) : null;
+      if (!match || !claimMatchSeat(socket, match, payload?.playerId, isBotId)) return ack?.({ ok: false, error: RECONNECT_REFUSED });
+      snapshot(io, match);
+      ack?.({ ok: true });
+    });
+
     socket.on('disconnect', () => {
       removeFromLobbies(io, socket.id);
       for (const match of matches.values()) {
         const leaver = [...match.socketIds].find(([, sid]) => sid === socket.id)?.[0];
         if (!leaver) continue;
-        const player = match.players.find((entry) => entry.id === leaver);
-        finish(io, match, player ? opposingTeam(player.team) : null, 'player-left');
+        // The paddle stops instead of following a key held when the
+        // connection dropped; the seat waits for the reconnect grace.
+        match.inputs.set(leaver, idle());
+        match.grace.disconnected(leaver);
       }
     });
   });

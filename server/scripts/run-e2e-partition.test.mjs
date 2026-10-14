@@ -18,7 +18,9 @@ import {
   CORE_E2E_DOMAINS,
   E2E_PARTITIONS,
   E2E_SMOKE_FILES,
+  classifyE2ERetry,
   e2eArtifactDirectory,
+  e2eTestConcurrency,
   failedE2EOwnerFiles,
   runE2EPartition,
   selectedCoreDomains,
@@ -29,6 +31,9 @@ import {
 import { visualRunRequired, visualSkipNotice } from './visual-reference.mjs';
 import { E2E_MANIFEST, E2E_VISUAL_FILES, validateE2EManifest } from '../../scripts/e2e-partitions.mjs';
 import { classifyChangedPaths } from '../../scripts/ci-path-classifier.mjs';
+
+// The host test files follow the concurrency flag, whatever value it carries.
+const hostFileArgs = (args) => args.slice(args.findIndex((arg) => arg.startsWith('--test-concurrency=')) + 1);
 
 test('every declared E2E file belongs to exactly one partition', () => {
   const files = [...E2E_PARTITIONS.core, ...E2E_PARTITIONS.arcade].sort();
@@ -168,7 +173,7 @@ function runnerFixture(context, name) {
     compiledDirectory,
     spawnCalls,
     compiled: (files) => files.map((file) => path.join(compiledDirectory, file.replace(/\.ts$/, '.js'))),
-    hostFiles: (call) => call.args.slice(call.args.indexOf('--test-concurrency=6') + 1),
+    hostFiles: (call) => hostFileArgs(call.args),
     options: (partition, overrides = {}) => ({
       argv: ['node', 'run-e2e-partition.mjs', ...partition],
       env: { E2E_ARTIFACT_DIR: artifactRoot },
@@ -214,7 +219,7 @@ test('the retry environment variable controls the final files passed to the test
   assert.equal(path.isAbsolute(currentRunDirectory), true);
   assert.equal(path.dirname(currentRunDirectory), path.join(artifactRoot, 'runs'));
   assert.deepEqual(
-    spawnCalls[0].args.slice(spawnCalls[0].args.indexOf('--test-concurrency=6') + 1),
+    hostFileArgs(spawnCalls[0].args),
     E2E_SMOKE_FILES.filter((file) => !E2E_VISUAL_FILES.includes(file))
       .map((file) => path.join(compiledDirectory, file.replace(/\.ts$/, '.js'))),
   );
@@ -226,7 +231,7 @@ test('the retry environment variable controls the final files passed to the test
   mkdirSync(failureDirectory);
   writeFileSync(
     path.join(failureDirectory, 'metadata.json'),
-    JSON.stringify({ ownerFile: E2E_SMOKE_FILES[1] }),
+    JSON.stringify({ ownerFile: E2E_SMOKE_FILES[1], testName: 'a smoke flow' }),
   );
   const staleDirectory = path.join(artifactRoot, 'stale-other-partition');
   mkdirSync(staleDirectory);
@@ -238,13 +243,19 @@ test('the retry environment variable controls the final files passed to the test
   mkdirSync(brokenStaleDirectory);
   writeFileSync(path.join(brokenStaleDirectory, 'metadata.json'), '{broken old metadata');
 
+  const summaries = [];
   assert.equal(runE2EPartition({
     ...common,
-    env: { E2E_ARTIFACT_DIR: artifactRoot, E2E_RETRY_FAILED_ONLY: '1' },
+    env: { E2E_ARTIFACT_DIR: artifactRoot, E2E_RETRY_FAILED_ONLY: '1', GITHUB_STEP_SUMMARY: 'summary.md' },
+    appendSummary: (file, text) => summaries.push({ file, text }),
   }), 0);
+  assert.equal(summaries.length, 1);
+  assert.equal(summaries[0].file, 'summary.md');
+  assert.match(summaries[0].text, /Flake: Alle Fehler sind im Retry grün/);
+  assert.match(summaries[0].text, new RegExp(`- ${E2E_SMOKE_FILES[1].replace(/\./g, '\\.')} › a smoke flow`));
   assert.equal(spawnCalls[1].options.env.E2E_ARTIFACT_DIR, currentRunDirectory);
   assert.deepEqual(
-    spawnCalls[1].args.slice(spawnCalls[1].args.indexOf('--test-concurrency=6') + 1),
+    hostFileArgs(spawnCalls[1].args),
     [path.join(compiledDirectory, E2E_SMOKE_FILES[1].replace(/\.ts$/, '.js'))],
   );
   assert.equal(visual.calls.length, 1, 'a retry without a visual owner starts no container');
@@ -332,6 +343,37 @@ test('host and container results both decide the run; the container itself runs 
   })), 0);
   assert.deepEqual(runner.hostFiles(runner.spawnCalls.at(-1)), runner.compiled(E2E_SMOKE_FILES));
   assert.equal(inside.calls.length, 0);
+});
+
+test('the retry summary separates flakes from reproduced and retry-only failures', () => {
+  const record = (ownerFile, testName) => ({ file: `${ownerFile}/${testName}`, ownerFile, testName });
+  const processMarker = (ownerFile) => record(ownerFile, 'E2E test process failure');
+  const classification = classifyE2ERetry(
+    [
+      record('a.e2e.test.ts', 'flaky step'),
+      record('a.e2e.test.ts', 'broken step'),
+      processMarker('a.e2e.test.ts'),
+      processMarker('hook.e2e.test.ts'),
+    ],
+    [record('a.e2e.test.ts', 'broken step'), processMarker('a.e2e.test.ts'), record('b.e2e.test.ts', 'new step')],
+  );
+  assert.deepEqual(classification, {
+    // A process marker only counts where its owner left no concrete test failure.
+    flaky: ['a.e2e.test.ts › flaky step', 'hook.e2e.test.ts › E2E test process failure'],
+    reproduced: ['a.e2e.test.ts › broken step'],
+    retryOnly: ['b.e2e.test.ts › new step'],
+  });
+});
+
+test('local E2E concurrency follows the free cores while CI keeps its measured baseline', () => {
+  assert.deepEqual(e2eTestConcurrency({ CI: 'true' }, { cpus: 2, load: 9 }), { value: 6, reason: 'CI-Basiswert' });
+  assert.equal(e2eTestConcurrency({}, { cpus: 10, load: 0 }).value, 6);
+  assert.equal(e2eTestConcurrency({}, { cpus: 10, load: 4 }).value, 4);
+  assert.equal(e2eTestConcurrency({}, { cpus: 10, load: 12 }).value, 2, 'an overloaded machine still runs two files');
+  assert.deepEqual(e2eTestConcurrency({ CI: 'true', E2E_CONCURRENCY: '3' }), { value: 3, reason: 'E2E_CONCURRENCY' });
+  for (const invalid of ['0', '17', '2.5', 'viele']) {
+    assert.throws(() => e2eTestConcurrency({ E2E_CONCURRENCY: invalid }), /E2E_CONCURRENCY muss/);
+  }
 });
 
 test('runner and diagnostic producers share one cwd-independent local artifact default', () => {

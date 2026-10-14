@@ -49,7 +49,9 @@ const probeHtml = `<!doctype html>
       for (const [name, game] of Object.entries(games)) {
         const shell = document.createElement('section');
         shell.className = 'arcade-watch-shell';
+        // Same markup as the watch view's stream stage (arcadeWatch.js).
         const canvas = document.createElement('canvas');
+        canvas.className = 'arcade-watch-stream';
         canvas.dataset.game = name;
         shell.append(canvas);
         document.querySelector('#probe').append(shell);

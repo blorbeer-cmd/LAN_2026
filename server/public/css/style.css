@@ -96,20 +96,31 @@
   /* Fixed width keeps the food-order payment toggle stable beside the PayPal
      action while its label, position count and amount change. */
   --payment-marker-width: 96px;
+  /* Label column of the open Event card's Infos and payment rows, wide enough
+     for "Zeitraum" so every value starts on one vertical line. */
+  --event-info-label-width: 96px;
   /* Stable Arcade creation geometry: mode-capable and fixed-mode games keep
      the primary lobby action in the same column while switching tiles. */
   --arcade-lobby-mode-width: 134px;
   --arcade-lobby-mode-toggle-width: 154px;
   --arcade-lobby-card-min-height: 220px;
-  --challenge-rush-stage-max-width: 760px;
   --challenge-rush-playfield-min-height: 280px;
   --challenge-rush-button-min-width: 180px;
   --challenge-rush-button-min-height: 96px;
   --challenge-rush-trial-grid-max-width: 420px;
+  /* Chimp Test: the 8x5 laptop grid stops growing at a size where all tiles
+     stay scannable at a glance; on phones the 5x8 grid also keeps the header,
+     status line and hint visible below it without scrolling. */
+  --chimp-grid-max-width: 560px;
+  --chimp-grid-reserved-height: 20rem;
+  --chimp-playfield-min-height: 280px;
+  --chimp-rating-width: 320px;
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
   /* Info dialog with two columns of entries from --bp-lg. */
   --info-board-panel-width: 880px;
+  /* Dialogs with two columns of rows from --bp-lg (Ergebnis eintragen). */
+  --wide-dialog-width: 880px;
   --search-select-results-max-height: 320px;
   /* Caps a single Info entry's content so a long entry scrolls internally
      instead of stretching every card in its two-column grid row to match it.
@@ -1425,115 +1436,6 @@ textarea {
   z-index: 40;
 }
 
-/* ---------- Battleship ---------- */
-.battleship-board-layout {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4);
-}
-
-.battleship-grid {
-  display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
-  gap: var(--space-1);
-  width: min(100%, 560px);
-  margin: 0 auto;
-  aspect-ratio: 1;
-}
-
-.battleship-cell {
-  display: grid;
-  place-items: center;
-  min-width: 0;
-  min-height: var(--tap-target-size);
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
-  color: var(--text);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-bold);
-  cursor: pointer;
-}
-
-.battleship-cell.is-ship {
-  background: var(--accent);
-}
-
-.battleship-cell.is-hit,
-.battleship-cell.is-sunk {
-  background: var(--danger-bg);
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
-.battleship-cell.is-sunk {
-  background: var(--danger);
-  color: var(--bg);
-  outline: 2px solid var(--danger);
-  outline-offset: -3px;
-}
-
-.battleship-cell.is-miss {
-  background: var(--state-offline-bg);
-  color: var(--text-muted);
-  border-color: var(--text-muted);
-  font-size: var(--font-size-lg);
-}
-
-.battleship-cell.is-selected {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.battleship-cell:disabled {
-  cursor: default;
-  opacity: 0.9;
-}
-
-.battleship-ship-picker,
-.battleship-setup-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.battleship-setup-actions {
-  justify-content: space-between;
-}
-
-.battleship-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-@media (max-width: 639px) { /* --bp-md */
-  .battleship-board-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .battleship-cell {
-    min-height: var(--tap-target-size);
-  }
-
-  .battleship-board-layout,
-  .battleship-placement-locked,
-  .battleship-setup {
-    min-width: 0;
-  }
-
-  .battleship-board-layout > .card,
-  .battleship-setup {
-    overflow-x: auto;
-  }
-
-  .battleship-setup-actions .btn {
-    flex: 1 1 calc(50% - var(--space-2));
-  }
-}
-
 .icon-btn {
   display: inline-flex;
   min-width: var(--tap-target-size);
@@ -2588,28 +2490,6 @@ input[type='number']::-webkit-inner-spin-button {
   width: 100%;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
-}
-.analytics-tournament-breakdowns {
-  display: grid;
-  gap: var(--space-3);
-}
-.analytics-tournament-breakdown {
-  position: relative;
-  overflow: hidden;
-  padding-left: var(--space-5);
-}
-.analytics-tournament-breakdown::before {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--space-1);
-  background: var(--accent);
-  content: '';
-}
-.analytics-tournament-breakdown.is-games::before {
-  background: var(--accent-3);
-}
-.analytics-tournament-breakdown > .section-title {
-  margin-top: 0;
 }
 /* Mein Profil: settings as hairline rows, each with one action in a fixed
    right column shared across the page (same slot width in every card). */
@@ -4205,6 +4085,29 @@ button.card {
     margin-left: 0;
   }
 }
+/* "Meine To-Dos" rows keep the navigating copy and add a trailing action
+   slot (Bezahlen, Bezahlt, Eintragen, Annehmen, Erledigt, Beenden). On
+   phones the actions move below the copy instead of squeezing the title. */
+.home-todo-row {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.home-todo-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-left: auto;
+  padding: var(--space-1) var(--space-3);
+}
+@media (max-width: 479px) { /* --bp-sm */
+  .home-todo-actions {
+    width: 100%;
+    padding-top: 0;
+  }
+}
 .home-current-navigate {
   display: flex;
   align-items: center;
@@ -4277,15 +4180,6 @@ button.card {
   align-items: center;
   justify-content: center;
 }
-.award-card {
-  display: flex;
-  flex-direction: column;
-}
-.award-card-player {
-  margin-top: auto;
-  padding-top: var(--space-3);
-}
-
 /* Spiele view (gameCatalog.js): one compact table-like row per game. A real
    <table> would need horizontal scroll on a phone (the lesson from the old
    .catalog-table), so it's a CSS grid: name/Bock/Skill as columns on wide

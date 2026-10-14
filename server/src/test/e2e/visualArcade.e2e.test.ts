@@ -5,7 +5,7 @@ import { addSessionCookie, authenticatedServerEnv, loginE2EAdmin, waitForPlayerD
 import { createE2EDiagnosticTest, deferE2EContextClose } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { activateAdminMode, openMoreViewEntry } from './navHelpers';
-import { selectArcadeGame } from './arcadeHelpers';
+import { ARCADE_HUB } from './arcadeHelpers';
 import { VisualScenes, visualContext, assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 let browser: Browser;
@@ -19,7 +19,7 @@ before(async () => {
 });
 after(async () => { await browser?.close(); server?.process.kill(); });
 
-test('Arcade creation row visual references at desktop and both mobile layouts', async () => {
+test('Arcade create dialog visual references at desktop and both mobile layouts', async () => {
   const context = await visualContext(browser);
   await addSessionCookie(context, server.baseUrl, cookie);
   const page = await context.newPage();
@@ -30,33 +30,36 @@ test('Arcade creation row visual references at desktop and both mobile layouts',
     await waitForPlayerData(page);
     await activateAdminMode(page);
     await openMoreViewEntry(page, '[data-navigate="arcade"]');
-    await selectArcadeGame(page, 'tetris');
-    await page.waitForSelector('#tetris-opponent');
-    const row = page.locator('.arcade-lobby-create-row');
+    await page.waitForSelector(`${ARCADE_HUB}:not([disabled])`);
+    await page.click(ARCADE_HUB);
+    await page.waitForSelector('#arcade-create-form');
+    await page.selectOption('#arcade-create-game', 'tetris');
+    await page.waitForSelector('#arcade-create-opponent');
+    const form = page.locator('#arcade-create-form');
     for (const width of [1024, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
-      await scenes.capture(`arcade-create-${width}`, row, async () => {
-        assert.equal(await page.locator('#tetris-create').isEnabled(), true);
-        assert.equal(await row.locator('#tetris-mode [aria-pressed="true"]').innerText(), 'Duell');
-        assert.equal(await row.locator('#tetris-opponent [aria-pressed="true"]').innerText(), 'Mensch');
-        await assertControlHeights(row.locator('button, .arcade-mode-toggle'));
-        const boxes = await row.locator('#tetris-create, #tetris-mode, #tetris-opponent').evaluateAll((elements) => Object.fromEntries(elements.map((element) => {
+      // A switch between the phone sheet and the centered dialog restarts the
+      // entrance animation; capture the settled dialog only.
+      await page.locator('.modal').evaluate((modal) => Promise.all(modal.getAnimations({ subtree: true }).map((animation) => animation.finished)));
+      await scenes.capture(`arcade-create-${width}`, form, async () => {
+        assert.equal(await form.locator('button[type="submit"]').isEnabled(), true);
+        assert.equal(await form.locator('#arcade-create-mode [aria-pressed="true"]').innerText(), 'Duell');
+        assert.equal(await form.locator('#arcade-create-opponent [aria-pressed="true"]').innerText(), 'Mensch');
+        await assertControlHeights(form.locator('button, .arcade-mode-toggle'));
+        const boxes = await form.locator('#arcade-create-mode, #arcade-create-opponent, button[type="submit"]').evaluateAll((elements) => elements.map((element) => {
           const box = element.getBoundingClientRect();
-          return [element.id, { top: box.top, bottom: box.bottom, center: box.top + box.height / 2, width: box.width }];
-        })));
-        const create = boxes['tetris-create'], mode = boxes['tetris-mode'], opponent = boxes['tetris-opponent'];
-        if (width === 1024) {
-          assert.ok(Math.abs(create.center - mode.center) <= 1 && Math.abs(mode.center - opponent.center) <= 1);
-        } else {
-          assert.ok(mode.top >= create.bottom);
-          if (width === 390) assert.ok(Math.abs(mode.center - opponent.center) <= 1);
-          else {
-            assert.ok(opponent.top >= mode.bottom);
-            assert.ok(Math.abs(create.width - mode.width) <= 1 && Math.abs(mode.width - opponent.width) <= 1);
-          }
-        }
-        for (const segment of await row.locator('.arcade-mode-toggle-btn').all()) await assertNoOverflow(segment);
-        await assertNoOverflow(row);
+          return { top: box.top, bottom: box.bottom, center: box.top + box.height / 2, right: box.right };
+        }));
+        const [mode, opponent, submit] = boxes;
+        const formRight = await form.evaluate((element) => element.getBoundingClientRect().right);
+        // Mode and opponent share one row from 390px; the submit closes the
+        // dialog at its right end below them.
+        if (width >= 390) assert.ok(Math.abs(mode.center - opponent.center) <= 1);
+        else assert.ok(opponent.top >= mode.bottom);
+        assert.ok(submit.top >= Math.max(mode.bottom, opponent.bottom));
+        assert.ok(Math.abs(submit.right - formRight) <= 1);
+        for (const segment of await form.locator('.arcade-mode-toggle-btn').all()) await assertNoOverflow(segment);
+        await assertNoOverflow(form);
         await assertNoOverflow(page.locator('html'));
       });
     }

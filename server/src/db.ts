@@ -5461,6 +5461,55 @@ function prepareParallelVoteRounds(): void {
 }
 registerMigration({ version: 116, name: 'reconcile open votes and add runoff source', up: prepareParallelVoteRounds });
 
+// A member who declines may leave an excuse that every participant of the
+// event sees next to the declined name (the Ausreden-Generator's payoff). It
+// belongs to the decline itself, so the row carries it and any new answer or
+// re-invitation clears it again.
+function addEventDeclineExcuse(): void {
+  const columns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'decline_excuse')) {
+    db.exec(
+      'ALTER TABLE event_participants ADD COLUMN decline_excuse TEXT CHECK (decline_excuse IS NULL OR length(decline_excuse) BETWEEN 1 AND 300)',
+    );
+  }
+}
+registerMigration({ version: 117, name: 'add event decline excuse', up: addEventDeclineExcuse });
+
+// Whoever started a Vote round may also end it (Home's "Meine To-Dos" asks
+// them to once a round has been left open too long). Rounds started before
+// this column existed keep NULL and stay admin-only to close. A plain id
+// without a foreign key: players are deactivated rather than deleted, and a
+// stale id simply matches nobody.
+function addVoteRoundCreator(): void {
+  const columns = db.prepare('PRAGMA table_info(vote_rounds)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'created_by')) {
+    db.exec('ALTER TABLE vote_rounds ADD COLUMN created_by TEXT');
+  }
+}
+registerMigration({ version: 118, name: 'add vote round creator', up: addVoteRoundCreator });
+
+// An admin can end a tournament that will never be played out (POST
+// /api/tournaments/:id/finish). It then reads as completed everywhere, but
+// without a champion: the flag keeps the champion lookups from crowning
+// whoever happened to lead an unfinished board.
+function addTournamentEndedEarly(): void {
+  const columns = db.prepare('PRAGMA table_info(tournaments)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'ended_early')) {
+    db.exec('ALTER TABLE tournaments ADD COLUMN ended_early INTEGER NOT NULL DEFAULT 0');
+  }
+}
+registerMigration({ version: 119, name: 'add tournament early end', up: addTournamentEndedEarly });
+
+// The organizers created one event by hand just to try things out, before an
+// event could be marked as test data. Moving it into Admin mode hides it (and
+// its To-Dos) like the generated test events, and "Testdaten aufräumen"
+// removes it with them. The exact, case-sensitive name keeps every real event
+// untouched.
+function markHandmadeTestEvent(): void {
+  db.prepare("UPDATE events SET is_test = 1 WHERE name = 'TestEvent' AND is_test = 0").run();
+}
+registerMigration({ version: 120, name: 'move handmade TestEvent into admin mode', up: markHandmadeTestEvent });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
@@ -5600,6 +5649,7 @@ export const ARCADE_GAME_DEFS = [
   { key: 'snake', name: 'Snake', icon: '🐍' },
   { key: 'battleship', name: 'Battleship', icon: '⚓' },
   { key: 'challenge-rush', name: 'Challenge Rush', icon: '🎯' },
+  { key: 'chimp', name: 'Chimp Test', icon: '🐒' },
 ] as const;
 
 function seedArcadeGames(): void {

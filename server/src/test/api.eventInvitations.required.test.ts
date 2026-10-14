@@ -311,6 +311,21 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal((await call(app, 'post', '/api/events/' + futureEvent.body.id + '/invitation/accept', carol)).status, 200);
       assert.notEqual(withdrawalPush().resolvedAt, null, 're-accepting must resolve the withdrawal notice');
 
+      // A decline may carry an excuse that every participant reads; a new
+      // yes takes it back. Oversized or empty excuses change nothing.
+      const declineUrl = '/api/events/' + futureEvent.body.id + '/invitation/decline';
+      assert.equal((await call(app, 'post', declineUrl, carol).send({ excuse: 'x'.repeat(301) })).status, 400);
+      assert.equal((await call(app, 'post', declineUrl, carol).send({ excuse: '   ' })).status, 400);
+      assert.equal((await call(app, 'get', '/api/events/' + futureEvent.body.id, carol)).body.myParticipation.status, 'accepted');
+      const excuseDecline = await call(app, 'post', declineUrl, carol).send({ excuse: '  Der Marder ist zurück  ' });
+      assert.equal(excuseDecline.status, 200, JSON.stringify(excuseDecline.body));
+      assert.deepEqual(
+        (await call(app, 'get', '/api/events/' + futureEvent.body.id, owner)).body.declinedExcuses,
+        [{ playerId: carol.account.id, name: carol.account.name, excuse: 'Der Marder ist zurück' }],
+      );
+      assert.equal((await call(app, 'post', '/api/events/' + futureEvent.body.id + '/invitation/accept', carol)).status, 200);
+      assert.deepEqual((await call(app, 'get', '/api/events/' + futureEvent.body.id, owner)).body.declinedExcuses, []);
+
       // A recorded payment is the organizer's to reverse, exactly like the
       // removal guard on the same row.
       db.prepare('UPDATE event_participants SET paid = 1 WHERE event_id = ? AND player_id = ?')

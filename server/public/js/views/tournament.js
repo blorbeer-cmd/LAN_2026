@@ -106,6 +106,26 @@ async function loadDetail(id, ctx) {
   }
 }
 
+// Ends a tournament that will not be played out (admin only; the server
+// keeps every recorded result but crowns no champion). Shared with Home's
+// "Meine To-Dos". Resolves true once it ended.
+export async function finishTournament(tournament) {
+  if (
+    !(await confirmDialog(
+      `Turnier „${tournament.name}“ beenden? Offene Spiele werden nicht mehr gewertet und es gibt keinen Sieger.`,
+      { title: 'Turnier beenden', confirmText: 'Beenden', danger: true },
+    ))
+  ) return false;
+  try {
+    await api.tournaments.finish(tournament.id);
+    showToast('Turnier beendet.');
+    return true;
+  } catch (err) {
+    showToast(err.message, { error: true });
+    return false;
+  }
+}
+
 // Called from app.js on every tournaments:changed socket event, so this
 // view's data is never more than one re-render stale.
 export function invalidateTournaments({ hard = false } = {}) {
@@ -180,11 +200,16 @@ function renderDetail(container, ctx) {
   container.innerHTML = `
     <div class="row-between page-title-row">
       <h2 class="view-title">${escapeHtml(t.name)}</h2>
-      ${isGroupAdmin() ? '<button type="button" class="btn btn-sm" id="tourn-delete">Löschen</button>' : ''}
+      ${isGroupAdmin()
+        ? `<span class="row" style="gap:var(--space-2);">
+            ${t.status === 'active' ? '<button type="button" class="btn btn-sm" id="tourn-finish">Beenden</button>' : ''}
+            <button type="button" class="btn btn-sm" id="tourn-delete">Löschen</button>
+          </span>`
+        : ''}
     </div>
     <div class="muted tournament-detail-meta">
       <span>${formatExplanation} · ${t.teams.length} Teams · ${participantCount} Spieler · ${decidedMatches}/${t.matches.length} entschieden</span>
-      <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
+      <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? (t.endedEarly ? 'Vorzeitig beendet' : 'Beendet') : 'Läuft'}</span>
     </div>
     <div class="grouped-page-sections tournament-board">
       ${renderChampion(t)}
@@ -212,6 +237,10 @@ function renderDetail(container, ctx) {
         showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
       }
     });
+  });
+
+  container.querySelector('#tourn-finish')?.addEventListener('click', async () => {
+    if (await finishTournament(t)) await loadDetail(t.id, ctx);
   });
 
   container.querySelector('#tourn-delete')?.addEventListener('click', async () => {

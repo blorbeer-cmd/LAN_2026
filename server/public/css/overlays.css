@@ -46,46 +46,11 @@
   flex-direction: column;
   align-items: center;
 }
-.countdown-player-identity {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: min(420px, calc(100vw - var(--space-8)));
-  box-sizing: border-box;
-  padding: var(--space-3) var(--space-5);
-  border: 1px solid var(--countdown-player-color);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
-  box-shadow: var(--shadow), 0 0 var(--space-5) color-mix(in srgb, var(--countdown-player-color) 45%, transparent);
-}
-.countdown-player-color {
-  width: var(--space-8);
-  height: var(--space-8);
-  flex: 0 0 auto;
-  border: 1px solid var(--text);
-  border-radius: var(--radius-full);
-  background: var(--countdown-player-color);
-  box-shadow: 0 0 var(--space-3) var(--countdown-player-color);
-}
-.countdown-player-identity-copy {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 var(--space-2);
-  line-height: var(--line-height-tight);
-}
-.countdown-player-identity-prompt,
-.countdown-player-identity-detail {
-  color: var(--text-muted);
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-medium);
-}
-.countdown-player-identity-copy strong {
-  color: var(--countdown-player-color);
-  font-size: var(--font-size-3xl);
-  font-weight: var(--font-weight-black);
-  text-shadow: 0 0 var(--space-3) color-mix(in srgb, var(--countdown-player-color) 60%, transparent);
+.countdown-content.is-anchored {
+  position: absolute;
+  top: var(--countdown-y);
+  left: var(--countdown-x);
+  transform: translate(-50%, -50%);
 }
 .countdown-num-wrap {
   position: relative;

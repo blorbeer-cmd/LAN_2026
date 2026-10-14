@@ -23,9 +23,10 @@ import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from './realtime';
 import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
+import { RECONNECT_REFUSED, ReconnectGrace, claimMatchSeat } from './reconnectGrace';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
-import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
+import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope } from './scope';
 import { registerSocketConnection } from '../socketConnections';
 import {
   TetrisMode,
@@ -138,6 +139,11 @@ interface TetrisMatch {
   stateDirty: boolean;
   inputQueue: Array<{ playerId: string; action: InputAction }>;
   startedAt: number;
+  // A dropped connection (phone screen off, app switch, Wi-Fi hiccup) only
+  // forfeits after the reconnect grace; an explicit leave is final and can
+  // never be undone by a later reconnect.
+  grace: ReconnectGrace;
+  departed: Set<string>;
 }
 
 interface PendingElimination {
@@ -244,8 +250,8 @@ function serializeState(match: TetrisMatch, state: PlayerState) {
   };
 }
 
-function broadcastState(io: Server, match: TetrisMatch) {
-  const payload = {
+function statePayload(match: TetrisMatch) {
+  return {
     matchId: match.id,
     running: match.running,
     paused: match.paused,
@@ -254,6 +260,10 @@ function broadcastState(io: Server, match: TetrisMatch) {
     players: match.players.map((p) => serializeState(match, match.states.get(p.id)!)),
     scores: scorePayload(match),
   };
+}
+
+function broadcastState(io: Server, match: TetrisMatch) {
+  const payload = statePayload(match);
   emitArcadeRoom(io, match.room, 'tetris:state', payload, match);
   broadcastArcadeKiosk(io, { gameType: 'tetris', groupId: match.groupId, eventId: match.eventId, ...payload, playerRefs: match.players });
 }
@@ -381,6 +391,7 @@ export function chooseBotTarget(board: Board, current: Piece): { rotation: numbe
 function finishMatch(io: Server, match: TetrisMatch, winner: PlayerRef | null, reason: string) {
   if (match.loop) clearInterval(match.loop);
   match.loop = null;
+  match.grace.clear();
   match.running = false;
   if (winner) {
     const winnerState = match.states.get(winner.id);
@@ -663,7 +674,8 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
 function handleMatchDeparture(io: Server, match: TetrisMatch, playerId: string, excludedSocketId?: string) {
   const leaver = match.players.find((player) => player.id === playerId);
   const state = match.states.get(playerId);
-  if (!leaver || !state) return;
+  if (!leaver || !state || match.departed.has(playerId)) return;
+  match.departed.add(playerId);
 
   emitArcadeRoom(
     io,
@@ -681,12 +693,17 @@ function handleMatchDeparture(io: Server, match: TetrisMatch, playerId: string, 
   }
 
   match.socketIds.delete(playerId);
+  match.grace.left(playerId);
   match.inputQueue = match.inputQueue.filter((input) => input.playerId !== playerId);
   eliminatePlayer(match, state, 'player-left');
   if (match.host.id === playerId) {
-    const nextHost = match.players.find(
-      (player) => !isBotId(player.id) && match.states.get(player.id)?.alive && match.socketIds.has(player.id),
+    // A connected player takes over first; otherwise a player who is only
+    // away within the reconnect grace, so they hold the controls when they
+    // come back instead of returning to a match nobody may resume or end.
+    const candidates = match.players.filter(
+      (player) => !isBotId(player.id) && match.states.get(player.id)?.alive && !match.departed.has(player.id),
     );
+    const nextHost = candidates.find((player) => match.socketIds.has(player.id)) ?? candidates[0];
     const livingBot = match.players.find((player) => isBotId(player.id) && match.states.get(player.id)?.alive);
     if (nextHost) {
       match.host = nextHost;
@@ -849,6 +866,10 @@ export function registerTetrisSockets(io: Server): () => void {
         stateDirty: false,
         inputQueue: [],
         startedAt: Date.now(),
+        grace: new ReconnectGrace(() => match, isBotId, (playerId) => {
+          if (matches.get(matchId) === match) handleMatchDeparture(io, match, playerId);
+        }),
+        departed: new Set(),
       };
       for (const p of lobby.players) {
         const state: PlayerState = {
@@ -939,6 +960,7 @@ export function registerTetrisSockets(io: Server): () => void {
       if (!match.running || match.paused) return ack?.({ ok: true });
       match.paused = true;
       match.inputQueue = [];
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'tetris:match:paused', { matchId: match.id }, match);
       broadcastState(io, match);
       ack?.({ ok: true });
@@ -952,6 +974,7 @@ export function registerTetrisSockets(io: Server): () => void {
       if (!match.running || !match.paused) return ack?.({ ok: true });
       match.paused = false;
       match.lastTick = Date.now();
+      match.grace.rearm();
       emitArcadeRoom(io, match.room, 'tetris:match:resumed', { matchId: match.id }, match);
       broadcastState(io, match);
       ack?.({ ok: true });
@@ -980,12 +1003,26 @@ export function registerTetrisSockets(io: Server): () => void {
       ack?.({ ok: true });
     });
 
+    socket.on('tetris:match:reconnect', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
+      const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
+      const playerId = payload?.playerId;
+      // A player who left explicitly stays out; everyone else gets the
+      // current snapshot, including a pause or host handover they missed.
+      if (!match || match.departed.has(playerId as string) || !claimMatchSeat(socket, match, playerId, isBotId)) {
+        return ack?.({ ok: false, error: RECONNECT_REFUSED });
+      }
+      emitArcadeSocket(io, socket.id, 'tetris:state', statePayload(match), match);
+      ack?.({ ok: true });
+    });
+
     socket.on('disconnect', () => {
       removeFromOpenLobbies(io, socket.id);
       for (const [, match] of matches) {
         const entry = [...match.socketIds.entries()].find(([, sid]) => sid === socket.id);
         if (!entry) continue;
-        handleMatchDeparture(io, match, entry[0]);
+        // The board stays in play; only a player who does not come back
+        // within the grace period leaves the match.
+        match.grace.disconnected(entry[0]);
       }
     });
   });

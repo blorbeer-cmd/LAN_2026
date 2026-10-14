@@ -28,7 +28,7 @@ installDomainIcons();
 setKioskMode(true);
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
-const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake', 'challenge-rush': 'Challenge Rush' };
+const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake', 'challenge-rush': 'Challenge Rush', chimp: 'Chimp Test' };
 const KIOSK_REFRESH_INTERVAL_MS = 60_000;
 const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -138,6 +138,8 @@ function drawKioskCanvas(canvas, game) {
   drawLegacyKioskCanvas(canvas, game);
 }
 
+const KIOSK_ARCADE_STREAM = false;
+
 function renderArcadeStream(game) {
   const gameView = document.getElementById('kiosk-game');
   const dashboard = document.getElementById('kiosk-dashboard');
@@ -153,6 +155,10 @@ function renderArcadeStream(game) {
   const content = document.getElementById('kiosk-game-content');
   if (game.gameType === 'quiz') {
     content.innerHTML = `<div class="kiosk-game-question">${escapeHtml(game.question || 'Nächste Frage kommt gleich.')}</div>`;
+    return;
+  }
+  if (game.gameType === 'chimp') {
+    content.innerHTML = `<div class="kiosk-game-scores">${(game.scores || []).map((score) => `<div>${escapeHtml(score.name || 'Spieler')}: <strong>${score.score || 0}</strong></div>`).join('')}</div>`;
     return;
   }
   if (game.gameType === 'challenge-rush') {
@@ -497,11 +503,15 @@ function renderNewsticker(allItems) {
   animateNewsShift(container, previousTops);
 }
 
-function concealedGameLabel(gameId, round) {
+// The label length comes from the game id, so it hides the real name length.
+// A neighbour with the same length is shifted by one: hashes of random ids can
+// collide, and a column of equally long labels would look like a placeholder.
+function concealedGameLabel(gameId, round, previousLength = 0) {
   const seedText = `${round}:${gameId}`;
   let seed = 0;
   for (const character of seedText) seed = (seed * 31 + character.charCodeAt(0)) >>> 0;
-  const length = 5 + (seed % 10);
+  let length = 5 + (seed % 10);
+  if (length === previousLength) length = length === 14 ? 5 : length + 1;
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let label = '';
   for (let index = 0; index < length; index += 1) {
@@ -520,13 +530,18 @@ function renderKioskVoteRows(vote, { concealed = false, highlightLeading = true 
   if (scored.length === 0) return emptyStateHtml('Noch keine Stimmen.', { className: 'kiosk-vote-empty kiosk-empty-state' });
   const maxScore = Math.max(...scored.map((result) => result.score));
   let previousScore = null;
+  let previousLabelLength = 0;
   let rank = 0;
   const rows = scored.map((result, index) => {
     if (previousScore === null || result.score !== previousScore) rank = index + 1;
     previousScore = result.score;
     const highlighted = result.score === maxScore;
     const score = kioskVoteScore(vote, result);
-    const gameName = concealed ? concealedGameLabel(result.gameId, vote.round) : escapeHtml(result.gameName);
+    let gameName = escapeHtml(result.gameName);
+    if (concealed) {
+      gameName = concealedGameLabel(result.gameId, vote.round, previousLabelLength);
+      previousLabelLength = gameName.length;
+    }
     return `<div class="kiosk-vote-result ${highlighted && highlightLeading ? 'is-leading' : ''} ${concealed ? 'is-concealed' : ''}">
         <span class="lb-rank">${rank}</span>
         <strong ${concealed ? 'aria-label="Spiel verborgen"' : ''}>${gameName}</strong>
@@ -1295,7 +1310,9 @@ async function main() {
   setInterval(refreshAll, KIOSK_REFRESH_INTERVAL_MS);
   const socket = connectSocket({ kiosk: true });
 
-  socket.on('arcade:kiosk:game', renderArcadeStream);
+  // The Arcade full-screen takeover is switched off for now; renderArcadeStream
+  // stays in place so it can be re-enabled by flipping this flag.
+  if (KIOSK_ARCADE_STREAM) socket.on('arcade:kiosk:game', renderArcadeStream);
   socket.on('connect', () => {
     // Socket.IO creates a fresh server-side socket after every reconnect.
     // Replay Arcade state and refetch all REST-backed cards so changes made

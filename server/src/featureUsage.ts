@@ -107,7 +107,7 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
       area: 'Wettkampf',
       players: row.players,
       total: row.total,
-      detail: `${row.rounds} Runde(n)`,
+      detail: `${row.rounds} ${row.rounds === 1 ? 'Runde' : 'Runden'}`,
       eventScoped: true,
     });
   }
@@ -212,7 +212,7 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
       area: 'Orga',
       players: itemRow.players,
       total: itemRow.total,
-      detail: `${orderRow.n} Bestellung(en)`,
+      detail: `${orderRow.n} ${orderRow.n === 1 ? 'Bestellung' : 'Bestellungen'}`,
       eventScoped: true,
     });
   }

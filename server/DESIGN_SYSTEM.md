@@ -216,6 +216,7 @@ box carries the state.
 viewport-responsive on phones.
 `--search-panel-width` (640px) gives the global search palette enough room for titles and short
 descriptions while the shared modal remains full-width on phones.
+`--wide-dialog-width` (880px) widens „Ergebnis eintragen“ from `--bp-lg` for two columns of players.
 `--info-board-panel-width` (880px) widens the Info dialog from `--bp-lg` so its entries fit in two
 columns; below that it keeps the shared modal width.
 `--search-select-results-max-height` (320px) keeps a long searchable option list usable without
@@ -261,8 +262,8 @@ they are next changed, and new work follows them right away.
    `.view-title` of a secondary or untabbed page header — is never repeated verbatim as the first
    card heading directly below it. Where that lead card would only restate the page title, it drops
    its own heading and lets the header be the single heading for that surface: the card's contextual
-   info trigger moves onto the `.view-title` (the `title-with-info` header Sitzplan and
-   Nutzungsauswertung already use) and a refresh-style control moves into the header's trailing-action slot.
+   info trigger moves onto the `.view-title` (a `title-with-info` header) and a refresh-style control
+   moves into the header's trailing-action slot, as „Aktualisieren“ does on Nutzungsauswertung.
    Supporting sibling cards keep their own content-naming headings, so a page never mixes a
    restated title with a bare one.
 2. **Use space deliberately.** Repeated players, games, rankings and comparable cards normally use

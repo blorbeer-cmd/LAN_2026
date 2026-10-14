@@ -1,60 +1,41 @@
-// Auswertungen view: all three tabs share one event filter (awards, longest
-// sessions, a collapsed raw session log; recorded results, tournament
-// counts, team-auslosen history, a few "witzige" head-to-head records).
-// Arcade results aren't tied to an event id, so that tab derives the selected
-// event's date bounds internally. It covers the arcade mini-games specifically:
-// match durations and the most-active player per game — on top of
-// the win/loss leaderboard already shown on the Arcade view's own stats tab.
-// Reached via the "Mehr" hub, not the main bottom nav — this is for browsing
-// after the fact, not something needed mid-game. Playtime/Matches used to be
-// two separate views; merged since both answer
-// "how did the LAN go", just from different angles (see server/CLAUDE.md
-// games reorg) — one entry in the Mehr hub instead of two, and switching
-// angles no longer means re-picking the event from scratch.
+// Statistiken: one page answering "how did the LAN go" for the selected
+// event. A row of key figures opens it; every list below (play time, games,
+// awards, results, tournaments, draws, arcade, trivia, the raw session log)
+// is a collapsible card that starts collapsed, so the page needs no sub-tabs.
+// Arcade results aren't tied to an event id, so their query derives the
+// selected event's date bounds internally.
 //
-// Data is fetched lazily per tab and cached in this module (not the shared
-// `state`, since it's filtered by this view's event selection) —
-// loadPlaytimeData()/loadMatchesData()/loadArcadeData()
-// fetch, then trigger a re-render.
+// Data is fetched for all lists at once and cached in this module (not the
+// shared `state`, since it's filtered by this view's event selection).
 
 import { api } from '../api.js';
 import { accessibleEvents, state } from '../state.js';
 import { escapeHtml, formatDateTime, avatarHtml } from '../format.js';
+import { rankedListHtml, sharedRankNumbers } from '../rankedList.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { eventSelectOptions } from '../eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
-import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
-let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
-
-let cache = null; // playtime tab
+let cache = null;
 let loading = false;
-let matchesCache = null; // matches/tournaments tab
-let matchesLoading = false;
-let arcadeCache = null; // arcade tab
-let arcadeLoading = false;
 
 function defaultFilters() {
   // eventId: 'active' resolves to the currently active event on first
-  // render; '' means "Gesamt, alle Events".
+  // render; '' means "Alle Events".
   return { eventId: 'active' };
 }
 let filters = defaultFilters();
 
-// Every tab's data is filtered by this view's own event selection, so all of
-// it belongs to the event that was active when it was fetched. Switching the
+// All data is filtered by this view's own event selection, so all of it
+// belongs to the event that was active when it was fetched. Switching the
 // workspace has to drop the numbers *and* the selection: the selected event
 // may not even be readable from the new workspace, and re-resolving the
 // 'active' sentinel is what re-points the view at the new event.
 export function invalidateAnalytics() {
   cache = null;
-  matchesCache = null;
-  arcadeCache = null;
   loading = false;
-  matchesLoading = false;
-  arcadeLoading = false;
   filters = defaultFilters();
 }
 
@@ -68,431 +49,293 @@ function resolveEventSelection() {
   filters.eventId = activeId && accessibleEvents().some((e) => e.id === activeId) ? activeId : '';
 }
 
-// Arcade results do not carry an event id. For that tab only, translate the
-// selected event into its date bounds before querying the shared endpoint.
+// Arcade results do not carry an event id, so translate the selected event
+// into its date bounds before querying the shared endpoint.
 function selectedEventRange() {
   const ev = accessibleEvents().find((e) => e.id === filters.eventId);
   if (ev) return { from: ev.startsAt, to: ev.endsAt ?? Date.now() };
   return null;
 }
 
-async function loadPlaytimeData(ctx) {
-  loading = true;
-  ctx.rerender();
-  try {
-    resolveEventSelection();
-    const params = {};
-    if (filters.eventId) params.eventId = filters.eventId;
-
-    const [overview, sessions, awards, popularGames] = await Promise.all([
-      api.analytics.overview(params),
-      api.analytics.sessions(params),
-      api.analytics.awards(params),
-      api.analytics.games(params),
-    ]);
-    cache = { overview, sessions, awards, popularGames };
-  } catch (err) {
-    showToast(err.message, { error: true });
-    cache = { overview: null, sessions: [], awards: { awards: [] }, popularGames: { games: [] } };
-  } finally {
-    loading = false;
-    ctx.rerender();
-  }
-}
-
-const FORMAT_LABELS = {
-  single_elimination: 'K.O.-Turnier',
-  round_robin: 'Liga',
-  group_knockout: 'Gruppenphase + K.O.',
+const EMPTY_MATCHES = {
+  matches: { total: 0, byGame: [] },
+  tournaments: { total: 0, completed: 0, active: 0, byFormat: [], byGame: [] },
+  draws: { total: 0, byGame: [], seatConflictRatePercent: null },
+  fun: { biggestRivalry: null, bestDuo: null, biggestUnderdogWin: null },
+};
+const EMPTY_ARCADE = {
+  totals: { matches: 0, players: 0, totalDurationFormatted: '0s', avgDurationFormatted: '0s' },
+  games: [],
+  timeline: [],
 };
 
-async function loadMatchesData(ctx) {
-  matchesLoading = true;
+// Each request falls back on its own, so one failing dataset leaves the
+// other lists usable; the first error is reported once.
+async function loadData(ctx) {
+  loading = true;
   ctx.rerender();
-  try {
-    resolveEventSelection();
-    const params = filters.eventId ? { eventId: filters.eventId } : {};
-    matchesCache = await api.analytics.gamesTournaments(params);
-  } catch (err) {
-    showToast(err.message, { error: true });
-    matchesCache = {
-      matches: { total: 0, byGame: [] },
-      tournaments: { total: 0, completed: 0, active: 0, byFormat: [], byGame: [] },
-      draws: { total: 0, byGame: [], seatConflictRatePercent: null },
-      fun: { biggestRivalry: null, bestDuo: null, biggestUnderdogWin: null },
-    };
-  } finally {
-    matchesLoading = false;
-    ctx.rerender();
+  resolveEventSelection();
+  const params = filters.eventId ? { eventId: filters.eventId } : {};
+  const arcadeParams = {};
+  const eventRange = selectedEventRange();
+  if (eventRange) {
+    arcadeParams.from = String(eventRange.from);
+    arcadeParams.to = String(eventRange.to);
   }
-}
-
-// Arcade results have no event id, so the selected event's dates filter their
-// stored timestamps. "Gesamt" intentionally sends no range and returns all.
-async function loadArcadeData(ctx) {
-  arcadeLoading = true;
+  let firstError = null;
+  const settle = (promise, fallback) =>
+    promise.catch((err) => {
+      firstError ??= err;
+      return fallback;
+    });
+  const [overview, sessions, awards, popularGames, playtime, matches, arcade] = await Promise.all([
+    settle(api.analytics.overview(params), null),
+    settle(api.analytics.sessions(params), []),
+    settle(api.analytics.awards(params), { awards: [] }),
+    settle(api.analytics.games(params), { games: [] }),
+    settle(api.stats.playtime(undefined, params), { totals: [] }),
+    settle(api.analytics.gamesTournaments(params), EMPTY_MATCHES),
+    settle(api.analytics.arcade(arcadeParams), EMPTY_ARCADE),
+  ]);
+  if (firstError) showToast(firstError.message, { error: true });
+  cache = { overview, sessions, awards, popularGames, playtime, matches, arcade };
+  loading = false;
   ctx.rerender();
-  try {
-    const params = {};
-    const eventRange = selectedEventRange();
-    if (eventRange) {
-      params.from = String(eventRange.from);
-      params.to = String(eventRange.to);
-    }
-    arcadeCache = await api.analytics.arcade(params);
-  } catch (err) {
-    showToast(err.message, { error: true });
-    arcadeCache = { totals: { matches: 0, players: 0, totalDurationFormatted: '0s', avgDurationFormatted: '0s' }, games: [], timeline: [] };
-  } finally {
-    arcadeLoading = false;
-    ctx.rerender();
-  }
 }
 
 // The list spans finished LANs as well as the running one. Each option is the
 // event's title plus its state as an icon — the same shape every other event
-// dropdown uses. The date range this filter used to append is gone: it made
-// this one option list read differently from all the others, and the state
-// the reader is actually choosing by is now visible directly.
+// dropdown uses.
 function eventFilterOptions() {
-  return eventSelectOptions(accessibleEvents(), { allEntryLabel: 'Gesamt (alle Events)' });
+  // "Alle Events" carries its own icon, so its text lines up with the event
+  // options instead of sitting in the space reserved for their status icon.
+  const [all, ...events] = eventSelectOptions(accessibleEvents(), { allEntryLabel: 'Alle Events' });
+  return [{ ...all, icon: 'calendar', iconLabel: 'Alle Events' }, ...events];
+}
+
+// Every list section starts collapsed; its open state survives re-renders
+// and filter changes, the same way "Meine Statistiken" keeps its sections.
+const sectionOpen = {};
+
+// A filled section is a collapsible card with its row count; an empty one
+// collapses to the shared one-row empty card (design rule 8).
+function listSection(key, title, items, emptyText, { ranked = false } = {}) {
+  if (items.length === 0) {
+    return `
+      <section class="card stack grouped-page-section" aria-label="${escapeHtml(title)}">
+        <div class="grouped-page-section-title"><h2>${escapeHtml(title)}</h2></div>
+        ${emptyStateHtml(emptyText, { className: 'empty-state-compact' })}
+      </section>`;
+  }
+  return `
+    <details class="card grouped-page-section collapsible-section" data-analytics-section="${key}" ${sectionOpen[key] ? 'open' : ''}>
+      <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+        <h2>${escapeHtml(title)}</h2>
+        <span class="collapsible-section-summary-end">
+          <span class="badge badge-offline">${items.length}</span>
+        </span>
+      </summary>
+      <div class="collapsible-section-content">${rankedListHtml(items, { ranked, label: title })}</div>
+    </details>`;
+}
+
+// Count lists ("5×") are rankings: highest first, equal counts share a place.
+function rankedByCount(items) {
+  const sorted = [...items].sort((a, b) => b.count - a.count);
+  const ranks = sharedRankNumbers(sorted.map((item) => item.count));
+  return sorted.map(({ count, ...item }, i) => ({ ...item, rank: ranks[i], value: `${count}×` }));
+}
+
+function formatTotalMs(ms) {
+  const minutes = Math.round(ms / 60000);
+  const hours = Math.floor(minutes / 60);
+  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+}
+
+function playerLead(id, color) {
+  return avatarHtml(state.players.find((p) => p.id === id) || { color }, 28);
+}
+
+// The page's first card: the event filter in full width below its title,
+// like the pickers in Rangliste and Hall of Fame, then the totals as one row
+// of figures, the same overview "Meine Statistiken" opens with.
+function overviewCard(filterHtml) {
+  const figures = [];
+  if (cache) {
+    const totalMs = (cache.playtime?.totals || []).reduce((sum, p) => sum + (p.totalMs || 0), 0);
+    figures.push(
+      [escapeHtml(formatTotalMs(totalMs)), 'Spielzeit'],
+      [(cache.sessions || []).length, 'Sessions'],
+      [cache.matches.matches.total, 'Matches'],
+      [cache.matches.tournaments.total, 'Turniere'],
+      [cache.matches.draws.total, 'Auslosungen'],
+      [cache.arcade.totals.matches, 'Arcade'],
+    );
+  }
+  return `
+    <section class="card stack grouped-page-section" aria-labelledby="analytics-overview-title">
+      <div class="grouped-page-section-title"><h2 id="analytics-overview-title">Überblick</h2></div>
+      ${filterHtml}
+      ${figures.length
+        ? `<div class="my-stats-kpis">
+            ${figures.map(([value, text]) => `
+              <div class="my-stats-kpi">
+                <span class="my-stats-kpi-value">${value}</span>
+                <span class="my-stats-kpi-label">${text}</span>
+              </div>`).join('')}
+          </div>`
+        : emptyStateHtml('Lädt', { className: 'empty-state-compact' })}
+    </section>`;
 }
 
 export function renderAnalytics(container, ctx) {
   resolveEventSelection();
-  if (activeTab === 'playtime' && cache === null && !loading) {
-    loadPlaytimeData(ctx);
-  }
-  if (activeTab === 'matches' && matchesCache === null && !matchesLoading) {
-    loadMatchesData(ctx);
-  }
-  if (activeTab === 'arcade' && arcadeCache === null && !arcadeLoading) {
-    loadArcadeData(ctx);
-  }
+  if (cache === null && !loading) loadData(ctx);
+
+  const filterHtml = searchSelectHtml('an-event', eventFilterOptions(), filters.eventId, {
+    placeholder: 'Event suchen',
+    ariaLabel: 'Event',
+    label: 'Auswertbare Events',
+  });
   container.innerHTML = `
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-label="Ansicht">
-        <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">Spielzeit</button>
-          <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">Matches & Turniere</button>
-          <button type="button" class="btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}" data-an-tab="arcade">Arcade</button>
-        </div>
-        ${searchSelectHtml('an-event', eventFilterOptions(), filters.eventId, {
-          placeholder: 'Event suchen',
-          ariaLabel: 'Veranstaltung',
-          label: 'Auswertbare Events',
-        })}
-      </section>
-      <div id="an-content" class="grouped-page-sections">${renderActiveTabContent()}</div>
+      ${overviewCard(filterHtml)}
+      ${cache && !loading ? renderSections() : ''}
     </div>
   `;
 
-  container.querySelectorAll('[data-an-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      activeTab = btn.dataset.anTab;
-      ctx.rerender();
+  container.querySelectorAll('[data-analytics-section]').forEach((section) => {
+    section.addEventListener('toggle', () => {
+      sectionOpen[section.dataset.analyticsSection] = section.open;
     });
   });
 
   wireSearchSelect(container, 'an-event', eventFilterOptions(), {
-    emptyText: 'Kein passendes Event gefunden.',
+    emptyText: 'Kein passendes Event gefunden',
     onChange: (eventId) => {
-      filters.eventId = eventId; // '' selects "Gesamt (alle Events)"
+      filters.eventId = eventId; // '' selects "Alle Events"
       cache = null;
-      matchesCache = null;
-      arcadeCache = null;
       ctx.rerender();
     },
   });
-
-  wireInfoTooltips(container);
-
 }
 
-function renderActiveTabContent() {
-  if (activeTab === 'matches') {
-    return matchesLoading || !matchesCache ? emptyStateHtml('Lädt…') : renderMatchesContent();
-  }
-  if (activeTab === 'arcade') {
-    return arcadeLoading || !arcadeCache ? emptyStateHtml('Lädt…') : renderArcadeContent();
-  }
-  return loading || !cache ? emptyStateHtml('Lädt…') : renderPlaytimeContent();
-}
+function renderSections() {
+  const { overview, sessions, awards, popularGames, playtime, matches, arcade } = cache;
 
-function renderArcadeContent() {
-  const totals = arcadeCache.totals;
-  const games = arcadeCache.games;
+  // Per-player play time, already ordered by the API.
+  const playtimeItems = (playtime?.totals || []).map((p) => ({
+    lead: playerLead(p.playerId, p.playerColor),
+    title: escapeHtml(p.playerName),
+    meta: p.activeMs > 0 && p.activeMs < p.totalMs ? `davon aktiv ${escapeHtml(p.activeFormatted || '0m')}` : '',
+    value: escapeHtml(p.formatted),
+  }));
 
-  const gameRows = games.length
-    ? games
-        .map(
-          (g, i) => `
-        <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-          <span class="lb-rank">${i + 1}</span>
-          <span style="flex:1;">
-            ${escapeHtml(g.title)}
-            <div class="muted" style="font-size:var(--font-size-xs);">
-              ${g.uniquePlayers} Spieler · ⌀ ${escapeHtml(g.avgDurationFormatted)} · längstes Match ${escapeHtml(g.longestDurationFormatted)}
-              ${g.mostActive ? ` · aktivster Spieler: ${escapeHtml(g.mostActive.name)} (${g.mostActive.matches}×)` : ''}
-            </div>
-          </span>
-          <span class="lb-points">${g.matches}×</span>
-        </div>`
-        )
-        .join('')
-    : emptyStateHtml('Noch keine Arcade-Matches.', { className: 'empty-state-compact' });
+  // The API already orders by total play time.
+  const popularItems = (popularGames?.games || []).map((g) => ({
+    title: escapeHtml(g.gameName),
+    meta: `${g.playerCount} Spieler · ${g.sessionCount} ${g.sessionCount === 1 ? 'Session' : 'Sessions'}`,
+    value: escapeHtml(g.totalFormatted),
+  }));
 
-  return `
-    <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-total-title">
-      <div class="grouped-page-section-title"><h2 id="analytics-arcade-total-title">Arcade insgesamt</h2></div>
-      <div class="leaderboard-list-grid">
-        <div class="lb-row"><span style="flex:1;">Matches</span><span class="lb-points">${totals.matches}</span></div>
-        <div class="lb-row"><span style="flex:1;">Beteiligte Spieler</span><span class="lb-points">${totals.players}</span></div>
-        <div class="lb-row"><span style="flex:1;">Ø Matchdauer</span><span class="lb-points">${escapeHtml(totals.avgDurationFormatted)}</span></div>
-        <div class="lb-row"><span style="flex:1;">Gesamte Matchzeit</span><span class="lb-points">${escapeHtml(totals.totalDurationFormatted)}</span></div>
-      </div>
-    </section>
-    <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-games-title">
-      <div class="grouped-page-section-title"><h2 id="analytics-arcade-games-title">Pro Spiel</h2></div>
-      <div class="leaderboard-list-grid">${gameRows}</div>
-    </section>
-  `;
-}
+  const longestItems = [...(overview?.longestSessionsPerGame || [])]
+    .sort((a, b) => b.durationMs - a.durationMs)
+    .map((r) => ({
+      lead: playerLead(r.playerId, r.playerColor),
+      title: escapeHtml(r.gameName),
+      meta: escapeHtml(r.playerName),
+      value: escapeHtml(r.formatted),
+    }));
 
-function renderPlaytimeContent() {
-  const awards = cache.awards?.awards || [];
-  const overview = cache.overview || {
-    longestSessionsPerGame: [],
-  };
-  const sessions = cache.sessions || [];
-  const popularGames = cache.popularGames?.games || [];
+  const awardItems = (awards?.awards || []).map((a) => ({
+    lead: playerLead(a.playerId, a.playerColor),
+    title: escapeHtml(a.title),
+    sortKey: a.title,
+    meta: `${escapeHtml(a.playerName)} · ${escapeHtml(a.description)}`,
+    value: escapeHtml(a.value),
+  }));
 
-  const popularGamesHtml = popularGames.length
-    ? popularGames
-        .map(
-          (g, i) => `
-        <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
-          <span class="lb-rank">${i + 1}</span>
-                    <span style="flex:1;">
-            ${escapeHtml(g.gameName)}
-            <div class="muted" style="font-size:var(--font-size-xs);">${g.playerCount} Spieler · ${g.sessionCount} ${g.sessionCount === 1 ? 'Sitzung' : 'Sitzungen'}</div>
-          </span>
-          <span class="lb-points">${escapeHtml(g.totalFormatted)}</span>
-        </div>`
-        )
-        .join('')
-    : emptyStateHtml('Noch keine Sessions.', { className: 'empty-state-compact' });
+  const matchItems = rankedByCount(
+    matches.matches.byGame.map((g) => ({
+      count: g.count,
+      title: escapeHtml(g.gameName),
+      meta: `${g.decided} entschieden${g.undecided ? ` · ${g.undecided} ohne Sieger` : ''}`,
+    })),
+  );
+  const tournamentItems = rankedByCount(
+    matches.tournaments.byGame.map((g) => ({ count: g.count, title: escapeHtml(g.gameName) })),
+  );
+  const drawItems = rankedByCount(matches.draws.byGame.map((g) => ({ count: g.count, title: escapeHtml(g.gameName) })));
 
-  const awardsHtml = awards.length
-    ? awards
-        .map(
-          (a) => `
-        <div class="card award-card">
-          <div class="row-between">
-            <div class="player-name">${escapeHtml(a.title)}</div>
-            <span class="lb-points">${escapeHtml(a.value)}</span>
-          </div>
-          <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(a.description)}</div>
-          <div class="row award-card-player">
-            ${avatarHtml(state.players.find((p) => p.id === a.playerId) || { color: a.playerColor }, 20)}
-            <span>${escapeHtml(a.playerName)}</span>
-          </div>
-        </div>`
-        )
-        .join('')
-    : emptyStateHtml('Noch keine Awards.', { className: 'empty-state-compact' });
+  const arcadeItems = rankedByCount(
+    arcade.games.map((g) => ({
+      count: g.matches,
+      title: escapeHtml(g.title),
+      meta: [
+        `${g.uniquePlayers} Spieler`,
+        `⌀ ${escapeHtml(g.avgDurationFormatted)}`,
+        `längstes ${escapeHtml(g.longestDurationFormatted)}`,
+        g.mostActive ? `aktivster ${escapeHtml(g.mostActive.name)} (${g.mostActive.matches}×)` : '',
+      ].filter(Boolean).join(' · '),
+    })),
+  );
 
-  const longestPerGameHtml = overview.longestSessionsPerGame.length
-    ? overview.longestSessionsPerGame
-        .map(
-          (r) => `
-        <div class="lb-row">
-          ${avatarHtml(state.players.find((p) => p.id === r.playerId) || { color: r.playerColor }, 20)}
-          <span class="row" style="flex:1;gap:var(--space-2);">${escapeHtml(r.gameName)} — ${escapeHtml(r.playerName)}</span>
-          <span class="lb-points">${escapeHtml(r.formatted)}</span>
-        </div>`
-        )
-        .join('')
-    : emptyStateHtml('Noch keine Sessions.', { className: 'empty-state-compact' });
-
-  const sessionRows = sessions
-    .slice(0, 100)
-    .map(
-      (s) => `
-      <div class="lb-row">
-        ${avatarHtml(state.players.find((p) => p.id === s.playerId) || { color: s.playerColor }, 20)}
-        <span style="flex:1;">
-          ${escapeHtml(s.playerName)} — ${escapeHtml(s.gameName)}
-          <div class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(s.startedAt)} – ${s.endedAt ? formatDateTime(s.endedAt) : 'läuft noch'}</div>
-        </span>
-        <span class="lb-points">${escapeHtml(s.formatted)}</span>
-      </div>`
-    )
-    .join('');
-
-  return `
-    <section class="card stack grouped-page-section" aria-labelledby="analytics-popular-games-title">
-      <div class="grouped-page-section-title"><h2 id="analytics-popular-games-title">Beliebteste Spiele</h2></div>
-      <div class="leaderboard-list-grid">${popularGamesHtml}</div>
-    </section>
-    <section class="card stack grouped-page-section" aria-labelledby="analytics-awards-title">
-      <div class="grouped-page-section-title"><h2 id="analytics-awards-title">Awards</h2></div>
-      <div class="two-column-card-grid">${awardsHtml}</div>
-    </section>
-    <section class="card stack grouped-page-section" aria-labelledby="analytics-longest-title">
-      <div class="grouped-page-section-title"><h2 id="analytics-longest-title">Längste individuelle Session pro Spiel</h2></div>
-      <div class="leaderboard-list-grid">${longestPerGameHtml}</div>
-    </section>
-    <details class="card history-details collapsible-section grouped-page-section">
-      <summary class="collapsible-section-header">
-        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
-        <h2>Session-Protokoll</h2>
-        <span class="collapsible-section-summary-end">
-          <span class="badge badge-offline">${sessions.length}</span>
-        </span>
-      </summary>
-      <div class="collapsible-section-content">
-        <div class="leaderboard-list-grid">
-          ${sessionRows || emptyStateHtml('Noch keine Sessions.', { className: 'empty-state-compact' })}
-        </div>
-      </div>
-    </details>
-  `;
-}
-
-function playerChip(p) {
-  return `${avatarHtml(state.players.find((pl) => pl.id === p.id) || { color: p.color }, 20)} ${escapeHtml(p.name)}`;
-}
-
-function renderMatchesContent() {
-  const matches = matchesCache.matches;
-  const tournaments = matchesCache.tournaments;
-  const draws = matchesCache.draws;
-  const fun = matchesCache.fun;
-
-  const matchRows = matches.byGame.length
-    ? matches.byGame
-        .map(
-          (g) => `
-        <div class="lb-row">
-                    <span style="flex:1;">
-            ${escapeHtml(g.gameName)}
-            <div class="muted" style="font-size:var(--font-size-xs);">${g.decided} entschieden${g.undecided ? ` · ${g.undecided} ohne Sieger/Unentschieden` : ''}</div>
-          </span>
-          <span class="lb-points">${g.count}×</span>
-        </div>`
-        )
-        .join('')
-    : emptyStateHtml('Noch keine Ergebnisse.', { className: 'empty-state-compact' });
-
-  const tournamentByGameRows = tournaments.byGame.length
-    ? tournaments.byGame
-        .map(
-          (g) => `
-        <div class="lb-row">
-                    <span style="flex:1;">${escapeHtml(g.gameName)}</span>
-          <span class="lb-points">${g.count}×</span>
-        </div>`
-        )
-        .join('')
-    : emptyStateHtml('Noch keine Turniere.', { className: 'empty-state-compact' });
-
-  const formatRows = tournaments.byFormat.length
-    ? tournaments.byFormat
-        .map(
-          (f) => `
-        <div class="lb-row">
-          <span style="flex:1;">${FORMAT_LABELS[f.format] || escapeHtml(f.format)}</span>
-          <span class="lb-points">${f.count}×</span>
-        </div>`
-        )
-        .join('')
-    : emptyStateHtml('Noch keine Turnierarten.', { className: 'empty-state-compact' });
-
-  const drawRows = draws.byGame.length
-    ? draws.byGame
-        .map(
-          (g) => `
-        <div class="lb-row">
-                    <span style="flex:1;">${escapeHtml(g.gameName)}</span>
-          <span class="lb-points">${g.count}×</span>
-        </div>`
-        )
-        .join('')
-    : emptyStateHtml('Noch keine Teams.', { className: 'empty-state-compact' });
-
-  const funCards = [];
+  const fun = matches.fun;
+  const trivia = [];
   if (fun.biggestRivalry) {
-    funCards.push(`
-      <div class="card">
-        <div class="row-between">
-          <div class="player-name title-with-info">
-            <span>Größte Rivalität</span>
-            ${infoTooltipHtml('analytics-rivalry-help', 'Größte Rivalität', 'Häufigste Begegnung als Gegner.')}
-          </div>
-          <span class="lb-points">${fun.biggestRivalry.count}×</span>
-        </div>
-        <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
-          <div class="row">${playerChip(fun.biggestRivalry.playerA)}</div>
-          <div class="row">${playerChip(fun.biggestRivalry.playerB)}</div>
-        </div>
-      </div>`);
+    const r = fun.biggestRivalry;
+    trivia.push({
+      title: 'Größte Rivalität',
+      meta: `${escapeHtml(r.playerA.name)} gegen ${escapeHtml(r.playerB.name)}`,
+      value: `${r.count}×`,
+    });
   }
   if (fun.bestDuo) {
-    const winRate = fun.bestDuo.gamesTogether > 0 ? Math.round((fun.bestDuo.winsTogether / fun.bestDuo.gamesTogether) * 100) : 0;
-    funCards.push(`
-      <div class="card">
-        <div class="row-between"><div class="player-name">Bestes Duo</div><span class="lb-points">${winRate}%</span></div>
-        <div class="muted" style="font-size:var(--font-size-xs);">${fun.bestDuo.gamesTogether}× zusammen im Team, ${fun.bestDuo.winsTogether}× gewonnen.</div>
-        <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
-          <div class="row">${playerChip(fun.bestDuo.playerA)}</div>
-          <div class="row">${playerChip(fun.bestDuo.playerB)}</div>
-        </div>
-      </div>`);
+    const d = fun.bestDuo;
+    const winRate = d.gamesTogether > 0 ? Math.round((d.winsTogether / d.gamesTogether) * 100) : 0;
+    trivia.push({
+      title: 'Bestes Duo',
+      meta: `${escapeHtml(d.playerA.name)} und ${escapeHtml(d.playerB.name)} · ${d.winsTogether} von ${d.gamesTogether} gewonnen`,
+      value: `${winRate} %`,
+    });
   }
   if (fun.biggestUnderdogWin) {
     const u = fun.biggestUnderdogWin;
-    funCards.push(`
-      <div class="card">
-        <div class="row-between"><div class="player-name">Krasseste Überraschung</div><span class="lb-points">${u.winnerAvgRating} vs ${u.loserAvgRating}</span></div>
-        <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(u.gameName)} — als klarer Außenseiter gewonnen (Skill-Wertung).</div>
-        <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
-          ${u.winners.map((w) => `<div class="row">${playerChip(w)}</div>`).join('')}
-        </div>
-      </div>`);
+    trivia.push({
+      title: 'Krasseste Überraschung',
+      meta: `${escapeHtml(u.gameName)} · ${u.winners.map((w) => escapeHtml(w.name)).join(', ')}`,
+      value: `${u.winnerAvgRating} vs ${u.loserAvgRating}`,
+    });
   }
-  const funHtml = funCards.length
-    ? `<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));">${funCards.join('')}</div>`
-    : emptyStateHtml('Noch nicht genug Ergebnisse.', { className: 'empty-state-compact' });
+  if (matches.draws.seatConflictRatePercent !== null) {
+    trivia.push({
+      title: 'Sitznachbarn als Gegner',
+      meta: 'Anteil der Auslosungen',
+      value: `${matches.draws.seatConflictRatePercent} %`,
+    });
+  }
+
+  // A log is no ranking, so it is a value list. Its sort key inverts the
+  // start time, so the alphabetical order of the list is newest first.
+  const sessionItems = (sessions || []).slice(0, 100).map((s) => ({
+    lead: playerLead(s.playerId, s.playerColor),
+    title: `${escapeHtml(s.playerName)} · ${escapeHtml(s.gameName)}`,
+    sortKey: String(Number.MAX_SAFE_INTEGER - s.startedAt).padStart(16, '0'),
+    meta: `${formatDateTime(s.startedAt)} bis ${s.endedAt ? formatDateTime(s.endedAt) : 'jetzt'}`,
+    value: escapeHtml(s.formatted),
+  }));
 
   return `
-    <section class="card stack grouped-page-section" aria-labelledby="analytics-match-results-title">
-      <div class="grouped-page-section-title">
-        <h2 id="analytics-match-results-title">Ergebnisse pro Spiel</h2>
-        <span class="muted">${matches.total} insgesamt</span>
-      </div>
-      <div class="leaderboard-list-grid">${matchRows}</div>
-    </section>
-    <section class="card stack grouped-page-section" aria-labelledby="analytics-tournaments-title">
-      <div class="grouped-page-section-title">
-        <h2 id="analytics-tournaments-title">Turniere</h2>
-        <span class="muted">${tournaments.total} insgesamt · ${tournaments.completed} beendet · ${tournaments.active} laufend</span>
-      </div>
-      <div class="analytics-tournament-breakdowns">
-        <section class="card analytics-tournament-breakdown is-formats"><div class="section-title">Turnierarten</div>${formatRows}</section>
-        <section class="card analytics-tournament-breakdown is-games"><div class="section-title">Turniere pro Spiel</div>${tournamentByGameRows}</section>
-      </div>
-    </section>
-    <section class="card stack grouped-page-section" aria-labelledby="analytics-draws-title">
-      <div class="grouped-page-section-title">
-        <h2 id="analytics-draws-title">Team-Auslosungen</h2>
-        <span class="muted">${draws.total} insgesamt${draws.seatConflictRatePercent !== null ? ` · ${draws.seatConflictRatePercent}% Sitznachbarn mussten gegeneinander` : ''}</span>
-      </div>
-      <div class="leaderboard-list-grid">${drawRows}</div>
-    </section>
-    <section class="card stack grouped-page-section" aria-labelledby="analytics-fun-title">
-      <div class="grouped-page-section-title"><h2 id="analytics-fun-title">Trivia</h2></div>
-      ${funHtml}
-    </section>
+    ${listSection('playtime', 'Spielzeit pro Spieler', playtimeItems, 'Noch keine Spielzeit', { ranked: true })}
+    ${listSection('popular', 'Beliebteste Spiele', popularItems, 'Noch keine Sessions', { ranked: true })}
+    ${listSection('longest', 'Längste Session pro Spiel', longestItems, 'Noch keine Sessions', { ranked: true })}
+    ${listSection('awards', 'Awards', awardItems, 'Noch keine Awards')}
+    ${listSection('matchGames', 'Ergebnisse pro Spiel', matchItems, 'Noch keine Ergebnisse', { ranked: true })}
+    ${listSection('tournamentGames', 'Turniere pro Spiel', tournamentItems, 'Noch keine Turniere', { ranked: true })}
+    ${listSection('draws', 'Team-Auslosungen', drawItems, 'Noch keine Auslosungen', { ranked: true })}
+    ${listSection('arcadeGames', 'Arcade pro Spiel', arcadeItems, 'Noch keine Arcade-Matches', { ranked: true })}
+    ${listSection('trivia', 'Trivia', trivia, 'Noch nicht genug Ergebnisse')}
+    ${listSection('sessions', 'Session-Protokoll', sessionItems, 'Noch keine Sessions')}
   `;
 }

@@ -178,6 +178,44 @@ test('both semifinals reported at once fill the final and the third-place match 
   assert.deepEqual([next(true).teamAId, next(true).teamBId], semis.map((semi: { teamBId: string }) => semi.teamBId));
 });
 
+test('simultaneous early finishes end the tournament once, without a champion or further results', async () => {
+  const create = await request(app)
+    .post('/api/tournaments')
+    .send({
+      gameId: gameIds[0],
+      format: 'round_robin',
+      teams: [
+        { name: 'E1', playerIds: [playerIds[0]] },
+        { name: 'E2', playerIds: [playerIds[1]] },
+        { name: 'E3', playerIds: [playerIds[2]] },
+      ],
+    });
+  assert.equal(create.status, 201);
+  const [played, unplayed] = create.body.matches;
+  await request(app)
+    .post(`/api/tournaments/${create.body.id}/matches/${played.id}/result`)
+    .send({ winnerTeamId: played.teamAId });
+
+  const results = await Promise.all(
+    Array.from({ length: 3 }, () => request(app).post(`/api/tournaments/${create.body.id}/finish`)),
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+  assert.equal(counts[409], 2, JSON.stringify(counts));
+
+  const detail = await request(app).get(`/api/tournaments/${create.body.id}`);
+  assert.equal(detail.body.status, 'completed');
+  assert.equal(detail.body.endedEarly, true);
+  // The leader of an unfinished league never actually won it.
+  assert.equal(detail.body.championTeamId, null);
+  const listed = (await request(app).get('/api/tournaments')).body.find((t: { id: string }) => t.id === create.body.id);
+  assert.equal(listed.championName, null);
+  const late = await request(app)
+    .post(`/api/tournaments/${create.body.id}/matches/${unplayed.id}/result`)
+    .send({ winnerTeamId: unplayed.teamAId });
+  assert.equal(late.status, 409);
+});
+
 test('simultaneous tournament corrections accept one current version only', async () => {
   const create = await request(app)
     .post('/api/tournaments')

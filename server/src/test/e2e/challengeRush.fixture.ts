@@ -18,6 +18,7 @@ import {
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { CHALLENGES } from '../../arcade/challengeRushLogic';
 import { activateAdminMode, openMoreViewEntry } from './navHelpers';
+import { ARCADE_HUB, openArcadeLobby } from './arcadeHelpers';
 
 let BASE_URL: string;
 let serverProcess: ChildProcess;
@@ -61,7 +62,10 @@ async function makeAdmin(playerId: string): Promise<void> {
   await promoteE2EAdmin(BASE_URL, adminCookies.get(BASE_URL)!, playerId);
 }
 
-async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminMode = false } = {}): Promise<{ context: BrowserContext; page: Page }> {
+// Challenge Rush is parked: only admins in Admin mode see it, so every
+// participant is promoted and switches the mode on before opening Arcade.
+async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminMode = true } = {}): Promise<{ context: BrowserContext; page: Page }> {
+  if (adminMode) await promoteE2EAdmin(baseUrl, adminCookies.get(baseUrl)!, playerId);
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await trackE2EContext(context, `challenge-rush-${playerId}`);
   await addSessionCookie(context, baseUrl, playerCookies.get(`${baseUrl}:${playerId}`)!);
@@ -76,8 +80,25 @@ async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminM
   // alive across a refresh, so one pass is enough.
   await waitForPlayerData(page);
   await openMoreViewEntry(page, '[data-navigate="arcade"]');
-  await page.waitForSelector('.arcade-tiles');
+  await page.waitForSelector(ARCADE_HUB);
   return { context, page };
+}
+
+// Opens a Challenge Rush lobby through the hub dialog, optionally with an
+// admin test selection in the given order.
+async function openChallengeRushLobby(page: Page, challengeKeys: string[] = []): Promise<void> {
+  await openArcadeLobby(page, 'challenge-rush', {
+    configure: async (dialog) => {
+      if (!challengeKeys.length) return;
+      await dialog.click('.challenge-rush-test-selector > summary');
+      for (const key of challengeKeys) await dialog.check(`[data-cr-challenge-key="${key}"]`);
+    },
+  });
+  await page.waitForSelector('[data-cr-start]');
+}
+
+async function stageMeta(page: Page): Promise<string> {
+  return (await page.locator('.challenge-rush-stage .arcade-section-meta').textContent()) ?? '';
 }
 
 before(async () => {
@@ -94,56 +115,51 @@ after(async () => { await browser?.close(); serverProcess?.kill(); });
 challengeRushTest('scenarios', 'Challenge Rush admin can run selected tasks in checkbox order', async () => {
   const playerId = await createPlayer();
   await makeAdmin(playerId);
-  const actor = await openArcade(playerId, BASE_URL, { adminMode: true });
+  const actor = await openArcade(playerId);
   try {
-    await actor.page.click('[data-game="challenge-rush"]');
-    await actor.page.click('.challenge-rush-test-selector > summary');
-    await actor.page.check('[data-cr-challenge-key="digit-sum"]');
-    await actor.page.check('[data-cr-challenge-key="binary-pattern"]');
-    await actor.page.click('#cr-create');
-    await actor.page.waitForSelector('[data-cr-start]');
+    await openChallengeRushLobby(actor.page, ['digit-sum', 'binary-pattern']);
     const lobbySelection = (await actor.page.locator('.challenge-rush-lobby-selection').textContent()) ?? '';
     const binaryTitle = 'Bin\u00e4rmuster';
     assert.ok(lobbySelection.indexOf('Ziffernsumme') < lobbySelection.indexOf(binaryTitle));
     await actor.page.click('[data-cr-start]');
     await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing');
     assert.equal(await actor.page.locator('.challenge-rush-stage').getAttribute('data-challenge-key'), 'digit-sum');
-    assert.match((await actor.page.locator('.badge-playing').textContent()) ?? '', /1 \/ 2/);
+    assert.match(await stageMeta(actor.page), /Challenge 1 von 2/);
     await playCurrentChallenge(actor.page);
     await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
     await actor.page.click('#cr-ready-next');
     await actor.page.waitForFunction(() => document.querySelector('.challenge-rush-stage')?.getAttribute('data-phase') === 'playing');
     assert.equal(await actor.page.locator('.challenge-rush-stage').getAttribute('data-challenge-key'), 'binary-pattern');
-    assert.match((await actor.page.locator('.badge-playing').textContent()) ?? '', /2 \/ 2/);
+    assert.match(await stageMeta(actor.page), /Challenge 2 von 2/);
     await playCurrentChallenge(actor.page);
     await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
     await actor.page.click('#cr-ready-next');
-    await actor.page.waitForSelector('.challenge-rush-final-breakdown');
-    const finalBreakdown = (await actor.page.locator('.challenge-rush-final-breakdown').textContent()) ?? '';
+    await actor.page.waitForSelector('.challenge-rush-breakdown-table', { state: 'attached' });
+    const finalBreakdown = (await actor.page.locator('.challenge-rush-breakdown-table').textContent()) ?? '';
     assert.ok(finalBreakdown.indexOf('Ziffernsumme') < finalBreakdown.indexOf(binaryTitle));
   } finally {
     await deferE2EContextClose(actor.context);
   }
 });
 
-challengeRushTest('scenarios', 'Challenge Rush drops a hidden admin selection after a session switch', async () => {
+challengeRushTest('scenarios', 'Challenge Rush and its admin selection disappear after a switch to a member session', async () => {
   const adminId = await createPlayer();
   const playerId = await createPlayer();
   await makeAdmin(adminId);
-  const actor = await openArcade(adminId, BASE_URL, { adminMode: true });
+  const actor = await openArcade(adminId);
   try {
-    await actor.page.click('[data-game="challenge-rush"]');
+    await actor.page.click(ARCADE_HUB);
+    await actor.page.selectOption('#arcade-create-game', 'challenge-rush');
     await actor.page.click('.challenge-rush-test-selector > summary');
     await actor.page.check('[data-cr-challenge-key="digit-sum"]');
+    await actor.page.keyboard.press('Escape');
     await addSessionCookie(actor.context, BASE_URL, playerCookies.get(`${BASE_URL}:${playerId}`)!);
     await actor.page.reload();
     await openMoreViewEntry(actor.page, '[data-navigate="arcade"]');
-    await actor.page.click('[data-game="challenge-rush"]');
-    await actor.page.waitForSelector('#cr-create');
+    await actor.page.click(ARCADE_HUB);
+    await actor.page.waitForSelector('#arcade-create-form');
+    assert.equal(await actor.page.locator('#arcade-create-game option[value="challenge-rush"]').count(), 0);
     assert.equal(await actor.page.locator('.challenge-rush-test-selector').count(), 0);
-    await actor.page.click('#cr-create');
-    await actor.page.waitForSelector('[data-cr-start]');
-    assert.equal(await actor.page.locator('.challenge-rush-lobby-selection').count(), 0);
   } finally {
     await deferE2EContextClose(actor.context);
   }
@@ -152,16 +168,14 @@ challengeRushTest('scenarios', 'Challenge Rush drops a hidden admin selection af
 challengeRushTest('scenarios', 'Challenge Rush pauses active time and reconnects the same match', async () => {
   const actor = await openArcade(await createPlayer());
   try {
-    await actor.page.click('[data-game="challenge-rush"]');
-    await actor.page.click('#cr-create');
-    await actor.page.waitForSelector('[data-cr-start]');
+    await openChallengeRushLobby(actor.page);
     await actor.page.click('[data-cr-start]');
     await actor.page.waitForSelector('.challenge-rush-stage');
     await actor.page.waitForSelector('[data-cr-pause]');
     await actor.page.waitForFunction(() => { const node = document.querySelector('.challenge-rush-stage'); return node?.getAttribute('data-phase') === 'playing' && Number(node.getAttribute('data-remaining-ms')) > 0; });
     const beforePause = await actor.page.locator('.challenge-rush-stage').evaluate((node) => ({
       matchId: node.getAttribute('data-match-id'), challengeIndex: node.getAttribute('data-challenge-index'), remainingMs: Number(node.getAttribute('data-remaining-ms')),
-      title: node.querySelector('h2')?.textContent, description: node.querySelector(':scope > p.muted')?.textContent,
+      title: node.querySelector('h2')?.textContent, description: node.querySelector('.challenge-rush-description')?.textContent,
     }));
     await actor.page.click('[data-cr-pause]');
     await actor.page.waitForFunction(() => document.body.textContent?.includes('Pause') === true);
@@ -174,7 +188,7 @@ challengeRushTest('scenarios', 'Challenge Rush pauses active time and reconnects
     assert.equal(await actor.page.locator('.challenge-rush-playfield').getAttribute('data-cr-playfield-hidden'), 'true');
     assert.equal(await actor.page.locator('.challenge-rush-playfield button').count(), 0);
     assert.equal(await actor.page.locator('.challenge-rush-stage h2').textContent(), beforePause.title);
-    assert.equal(await actor.page.locator('.challenge-rush-stage > p.muted').textContent(), beforePause.description);
+    assert.equal(await actor.page.locator('.challenge-rush-stage .challenge-rush-description').textContent(), beforePause.description);
     assert.equal(await actor.page.locator('.challenge-rush-concealed').count(), 1);
     // Negative assertion window (TESTING.md rule 4): the remaining time must
     // *not* move while the match is paused, so there is no state to wait for.
@@ -262,13 +276,9 @@ async function playCurrentChallenge(page: Page): Promise<void> {
 challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until play, gates the next challenge behind a ready click, and ends with a per-challenge summary', async () => {
   const playerId = await createPlayer();
   await makeAdmin(playerId);
-  const actor = await openArcade(playerId, BASE_URL, { adminMode: true });
+  const actor = await openArcade(playerId);
   try {
-    await actor.page.click('[data-game="challenge-rush"]');
-    await actor.page.click('.challenge-rush-test-selector > summary');
-    await actor.page.check('[data-cr-challenge-key="reaction-circle"]');
-    await actor.page.click('#cr-create');
-    await actor.page.waitForSelector('[data-cr-start]');
+    await openChallengeRushLobby(actor.page, ['reaction-circle']);
 
     // The socket suite verifies the 50 ms E2E countdown itself. Under CI load,
     // both socket updates can arrive before the async view renderer paints that
@@ -308,8 +318,7 @@ challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until p
 
     await actor.page.click('[data-cr-start]');
     await actor.page.waitForSelector('.challenge-rush-circle');
-    const challengeCount = Number((await actor.page.locator('.badge-playing').textContent())?.split('/')[1]?.trim());
-    assert.equal(challengeCount, 1);
+    assert.match(await stageMeta(actor.page), /Challenge 1 von 1/);
     assert.equal(await actor.page.locator('.challenge-rush-stage').getAttribute('data-phase'), 'playing');
     assert.equal(await actor.page.evaluate(() => (window as unknown as { __crViolation: boolean }).__crViolation), false);
     await actor.page.click('.challenge-rush-circle');
@@ -320,8 +329,8 @@ challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until p
     assert.equal(await actor.page.locator('.challenge-rush-stage').count(), 0);
     await actor.page.click('#cr-ready-next');
 
-    await actor.page.waitForSelector('.challenge-rush-final-breakdown');
-    const breakdown = await actor.page.locator('.challenge-rush-final-breakdown').first().textContent();
+    await actor.page.waitForSelector('.challenge-rush-breakdown-table', { state: 'attached' });
+    const breakdown = await actor.page.locator('.challenge-rush-breakdown-table').textContent();
     assert.ok(breakdown?.includes('Klick den Kreis'));
   } finally {
     await deferE2EContextClose(actor.context);
@@ -331,9 +340,7 @@ challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until p
 challengeRushTest('lifecycle', 'Challenge Rush plays every retained mini-challenge to a final summary in the browser', async () => {
   const actor = await openArcade(await createPlayer());
   try {
-    await actor.page.click('[data-game="challenge-rush"]');
-    await actor.page.click('#cr-create');
-    await actor.page.waitForSelector('[data-cr-start]');
+    await openChallengeRushLobby(actor.page);
     await actor.page.click('[data-cr-start]');
 
     for (let index = 0; index < CHALLENGES.length; index += 1) {
@@ -349,8 +356,8 @@ challengeRushTest('lifecycle', 'Challenge Rush plays every retained mini-challen
       await actor.page.click('#cr-ready-next');
     }
 
-    await actor.page.waitForSelector('.challenge-rush-final-breakdown');
-    const titles = await actor.page.locator('.challenge-rush-final-breakdown').first().textContent();
+    await actor.page.waitForSelector('.challenge-rush-breakdown-table', { state: 'attached' });
+    const titles = await actor.page.locator('.challenge-rush-breakdown-table').textContent();
     for (const { title } of CHALLENGES) {
       assert.ok(titles?.includes(title), `Ergebnis-Aufschlüsselung sollte "${title}" enthalten`);
     }
@@ -365,9 +372,7 @@ challengeRushTest('scenarios', 'Challenge Rush lets a guest leave a running matc
   const host = await openArcade(hostId);
   const guest = await openArcade(guestId);
   try {
-    await host.page.click('[data-game="challenge-rush"]');
-    await host.page.click('#cr-create');
-    await guest.page.click('[data-game="challenge-rush"]');
+    await openChallengeRushLobby(host.page);
     await guest.page.waitForSelector('[data-cr-join]');
     await guest.page.click('[data-cr-join]');
     await guest.page.waitForSelector('[data-cr-ready]');
@@ -381,7 +386,7 @@ challengeRushTest('scenarios', 'Challenge Rush lets a guest leave a running matc
     await guest.page.click('[data-cr-leave-match]');
     await guest.page.click('.modal [data-confirm]');
 
-    await host.page.waitForFunction(() => document.body.textContent?.includes('Forfait') === true);
+    await host.page.waitForFunction(() => document.querySelector('.challenge-rush-stage .arcade-player-strip-item.is-out')?.textContent?.includes('Ausgestiegen') === true);
     assert.equal(await host.page.locator('.challenge-rush-stage').count(), 1);
   } finally {
     await deferE2EContextClose(host.context);
@@ -402,9 +407,7 @@ challengeRushTest('scenarios', 'Challenge Rush unlocks a new lobby immediately a
     const host = await openArcade(hostId, forfeitBaseUrl);
     const guest = await openArcade(guestId, forfeitBaseUrl);
     try {
-      await host.page.click('[data-game="challenge-rush"]');
-      await host.page.click('#cr-create');
-      await guest.page.click('[data-game="challenge-rush"]');
+      await openChallengeRushLobby(host.page);
       await guest.page.waitForSelector('[data-cr-join]');
       await guest.page.click('[data-cr-join]');
       await guest.page.waitForSelector('[data-cr-ready]');
@@ -418,14 +421,16 @@ challengeRushTest('scenarios', 'Challenge Rush unlocks a new lobby immediately a
       // forfeits it (attachSocket then refuses this player's reconnect,
       // server/src/arcade/challengeRush.ts) before the guest reconnects.
       await guest.page.evaluate(() => window.dispatchEvent(new Event('respawn:challenge-rush-disconnect')));
-      await host.page.waitForFunction(() => document.body.textContent?.includes('Forfait') === true, { timeout: 5_000 });
+      await host.page.waitForFunction(() => document.querySelector('.challenge-rush-stage .arcade-player-strip-item.is-out')?.textContent?.includes('Ausgestiegen') === true, { timeout: 5_000 });
       await guest.page.evaluate(() => window.dispatchEvent(new Event('respawn:challenge-rush-connect')));
 
       // The rejected reconnect must clear the guest's stale local match state
       // and return them to the Arcade view instead of leaving the "Beende
       // zuerst dein laufendes Challenge-Rush-Match" lock in place.
-      await guest.page.waitForSelector('#cr-create:not([disabled])', { timeout: 5_000 });
-      assert.equal(await guest.page.locator('#cr-create').isDisabled(), false);
+      await guest.page.waitForSelector(`${ARCADE_HUB}:not([disabled])`, { timeout: 5_000 });
+      await guest.page.click(ARCADE_HUB);
+      await guest.page.waitForSelector('#arcade-create-form');
+      assert.equal(await guest.page.locator('.toast-error:has-text("Beende zuerst")').count(), 0, 'no "running match" lock remains');
     } finally {
       await deferE2EContextClose(host.context);
       await deferE2EContextClose(guest.context);

@@ -21,6 +21,7 @@ import { exportRouter } from './export';
 import { hallOfFameRouter } from './hallOfFame';
 import { seatingRouter } from './seating';
 import { digestRouter } from './digest';
+import { myTodosRouter } from './myTodos';
 import { pushRouter } from './push';
 import { agentDownloadRouter } from './agentDownload';
 import { draftRouter } from './draft';
@@ -215,6 +216,7 @@ apiRouter.put('/me/active-event', requireUser, (req, res) => {
 });
 
 apiRouter.use('/me/onboarding', onboardingRouter);
+apiRouter.use('/me/todos', requireUser, myTodosRouter);
 apiRouter.use('/privacy', privacyRouter);
 apiRouter.use('/feedback', feedbackRouter);
 

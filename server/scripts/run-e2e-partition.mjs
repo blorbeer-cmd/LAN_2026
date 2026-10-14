@@ -1,4 +1,5 @@
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -8,6 +9,7 @@ import {
 } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { availableParallelism, loadavg } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import artifactDirectoryModule from './e2e-artifact-directory.cjs';
@@ -157,6 +159,103 @@ export function selectedRetrySourceFiles(sourceFiles, artifactDirectory = e2eArt
   return sourceFiles.filter((file) => owners.has(file));
 }
 
+// The process-level owner marker from e2e-owner-diagnostics.mjs. It only names
+// the owner file, so it counts as a failure of its own only when the process
+// left no concrete test failure behind (for example a crash in a file hook).
+const PROCESS_FAILURE_TEST_NAME = 'E2E test process failure';
+
+// Reads every failure record below a run directory. Unlike the retry owner
+// selection, the summary is diagnostic only: unreadable records are skipped
+// instead of failing the run a second time.
+export function e2eFailureRecords(artifactDirectory) {
+  if (!existsSync(artifactDirectory)) return [];
+  return metadataFiles(artifactDirectory).flatMap((file) => {
+    try {
+      const metadata = JSON.parse(readFileSync(file, 'utf8'));
+      if (typeof metadata?.ownerFile !== 'string' || typeof metadata?.testName !== 'string') return [];
+      return [{ file, ownerFile: metadata.ownerFile, testName: metadata.testName }];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function failureKeys(records) {
+  const ownersWithTests = new Set(records
+    .filter((record) => record.testName !== PROCESS_FAILURE_TEST_NAME)
+    .map((record) => record.ownerFile));
+  const keys = records
+    .filter((record) => record.testName !== PROCESS_FAILURE_TEST_NAME || !ownersWithTests.has(record.ownerFile))
+    .map((record) => `${record.ownerFile} › ${record.testName}`);
+  return [...new Set(keys)].sort();
+}
+
+// A failure that the isolated owner retry no longer shows is a flake; one that
+// it shows again is reproducible and most likely a real regression. The job
+// stays red in both cases, the split only tells where to start looking.
+export function classifyE2ERetry(firstRecords, retryRecords) {
+  const first = failureKeys(firstRecords);
+  const retry = new Set(failureKeys(retryRecords));
+  return {
+    flaky: first.filter((key) => !retry.has(key)),
+    reproduced: first.filter((key) => retry.has(key)),
+    retryOnly: [...retry].filter((key) => !first.includes(key)).sort(),
+  };
+}
+
+export function formatE2ERetrySummary(label, classification, retryStatus) {
+  const { flaky, reproduced, retryOnly } = classification;
+  let verdict;
+  if (reproduced.length || retryOnly.length) {
+    verdict = 'Reproduzierbar: Der Retry ist wieder rot. Wahrscheinlich eine echte Regression.';
+  } else if (retryStatus !== 0) {
+    verdict = 'Retry rot ohne zugeordnete Testfehler. Diagnoseartefakte prüfen.';
+  } else if (flaky.length) {
+    verdict = 'Flake: Alle Fehler sind im Retry grün. Der Job bleibt rot, die Ursache muss behoben werden.';
+  } else {
+    verdict = 'Keine Fehler-Metadaten aus dem ersten Lauf gefunden.';
+  }
+  const section = (title, keys) => (keys.length
+    ? [`**${title}**`, '', ...keys.map((key) => `- ${key}`), '']
+    : []);
+  return [
+    `### E2E-Retry ${label}`,
+    '',
+    verdict,
+    '',
+    ...section('Flake (im Retry grün)', flaky),
+    ...section('Reproduziert (auch im Retry rot)', reproduced),
+    ...section('Nur im Retry rot', retryOnly),
+  ].join('\n');
+}
+
+const MAX_E2E_CONCURRENCY = 6;
+const MIN_LOCAL_E2E_CONCURRENCY = 2;
+
+// Every file owns a server and a Chromium, and Arcade files drive several
+// browser contexts with live game loops. CI keeps the fixed six files of the
+// measured baseline on its dedicated runner. Local runs share the machine with
+// other worktrees and agents, so they derive the file count from the free
+// cores; an oversubscribed CPU turns short game windows into timeouts.
+export function e2eTestConcurrency(env, system = {}) {
+  const explicit = `${env.E2E_CONCURRENCY ?? ''}`.trim();
+  if (explicit) {
+    const value = Number(explicit);
+    if (!Number.isInteger(value) || value < 1 || value > 16) {
+      throw new Error(`E2E_CONCURRENCY muss eine ganze Zahl von 1 bis 16 sein: ${explicit}`);
+    }
+    return { value, reason: 'E2E_CONCURRENCY' };
+  }
+  if (/^(1|true)$/i.test(`${env.CI ?? ''}`.trim())) {
+    return { value: MAX_E2E_CONCURRENCY, reason: 'CI-Basiswert' };
+  }
+  const cpus = system.cpus ?? availableParallelism();
+  const load = system.load ?? loadavg()[0];
+  const free = Math.floor((cpus - load) / 1.5);
+  const value = Math.max(MIN_LOCAL_E2E_CONCURRENCY, Math.min(MAX_E2E_CONCURRENCY, free));
+  return { value, reason: `lokal: ${cpus} Kerne, Last ${load.toFixed(1)}` };
+}
+
 export function runE2EPartition({
   argv = process.argv,
   env = process.env,
@@ -167,6 +266,8 @@ export function runE2EPartition({
   log = console.log,
   logError = console.error,
   visual = visualReference,
+  system = {},
+  appendSummary = appendFileSync,
 } = {}) {
   const partition = argv[2] ?? 'all';
   const coreSelection = argv[3] ?? 'all';
@@ -184,6 +285,7 @@ export function runE2EPartition({
   const filesToRun = retryFailedOnly
     ? selectedRetrySourceFiles(selectedFiles, artifactDirectory)
     : selectedFiles;
+  const firstRunFailures = retryFailedOnly ? e2eFailureRecords(artifactDirectory) : [];
   if (retryFailedOnly) {
     log(`[e2e retry] selected owner files: ${filesToRun.join(', ')}`);
   }
@@ -210,13 +312,13 @@ export function runE2EPartition({
 
   let status = 0;
   if (hostFiles.length) {
-    // Every file owns a server and usually a Chromium process. Keep the former
-    // six-file concurrency bounded after splitting the suites into more fixtures.
+    const concurrency = e2eTestConcurrency(env, system);
+    log(`[e2e] Dateiparallelität ${concurrency.value} (${concurrency.reason})`);
     const result = spawn(process.execPath, [
       '--import',
       ownerDiagnosticsImport,
       '--test',
-      '--test-concurrency=6',
+      `--test-concurrency=${concurrency.value}`,
       ...hostFiles.map(compiledFile),
     ], {
       cwd: serverDir,
@@ -242,6 +344,21 @@ export function runE2EPartition({
       }
     }
     if (status === 0) status = visualStatus;
+  }
+  if (retryFailedOnly) {
+    const firstRunFiles = new Set(firstRunFailures.map((record) => record.file));
+    const retryFailures = e2eFailureRecords(artifactDirectory)
+      .filter((record) => !firstRunFiles.has(record.file));
+    const label = partition === 'core' ? `${partition} (${coreSelection})` : partition;
+    const summary = formatE2ERetrySummary(label, classifyE2ERetry(firstRunFailures, retryFailures), status);
+    log(summary);
+    if (env.GITHUB_STEP_SUMMARY) {
+      try {
+        appendSummary(env.GITHUB_STEP_SUMMARY, `${summary}\n`, 'utf8');
+      } catch (error) {
+        logError(`[e2e retry] Job-Summary nicht geschrieben: ${error.message}`);
+      }
+    }
   }
   return status;
 }

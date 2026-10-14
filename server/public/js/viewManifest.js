@@ -106,6 +106,7 @@ export const VIEW_MANIFEST = Object.freeze({
       CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills,
       'live:changed', 'tournaments:changed', 'push:sent', 'foodOrders:changed',
       'arcade:lobbies-changed', 'visibility:changed',
+      CORE_REALTIME_EVENTS.events, 'votes:changed', 'checklist:changed', 'arrivals:changed',
     ] }),
   }),
   matchmaking: defineView({
@@ -318,6 +319,7 @@ export const VIEW_MANIFEST = Object.freeze({
   snake: defineView({ area: 'arcade', label: 'Snake', iconKey: 'joystick', eventFeature: 'arcade', module: './arcade/views/snake.js', exportName: 'renderSnake' }),
   battleship: defineView({ area: 'arcade', label: 'Schiffe versenken', iconKey: 'joystick', eventFeature: 'arcade', module: './arcade/views/battleship.js', exportName: 'renderBattleship' }),
   challengeRush: defineView({ area: 'arcade', label: 'Challenge Rush', iconKey: 'joystick', eventFeature: 'arcade', module: './arcade/views/challengeRush.js', exportName: 'renderChallengeRush' }),
+  chimp: defineView({ area: 'arcade', label: 'Chimp Test', iconKey: 'joystick', eventFeature: 'arcade', module: './arcade/views/chimp.js', exportName: 'renderChimp' }),
 });
 
 // Which navigation profile an event uses. An unknown or missing type falls

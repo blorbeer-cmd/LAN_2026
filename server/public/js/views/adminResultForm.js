@@ -4,6 +4,7 @@ import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
+import { selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
 import { resultFormHtml, resultRanks, resultWinnerIndex, wireResultForm } from '../resultDialog.js';
 
 // The free Admin match keeps its own game and participant setup. Its result
@@ -24,24 +25,33 @@ export function openMatchForm(ctx) {
   const scoresByKey = new Map();
   let winnerKey = null;
   let displayedKeys = [];
+  let playerQuery = '';
   let ffaIds = new Set(state.live.filter((player) => player.state === 'playing').map((player) => player.player_id));
   if (!ffaIds.size) ffaIds = new Set(state.players.map((player) => player.id));
 
+  // One flat form like the Match result and tournament dialogs: game and team
+  // count share the first line, then players and result follow under plain
+  // subheadings and a hairline, without nested cards or accent rails.
   const { el, close } = openModal('Ergebnis eintragen', `
     <div class="stack" id="match-form">
-      <section class="tournament-section-panel stack match-form-section" aria-labelledby="match-mode-title">
-        <div class="grouped-page-section-title"><h2 id="match-mode-title">Modus</h2></div>
+      <div class="match-form-head">
         <div><label class="field-label" for="match-game-search">Spiel</label>
           ${searchSelectHtml('match-game', gameOptions, selectedGameId, { placeholder: 'Spiel suchen' })}</div>
-        <label class="check-row"><input type="checkbox" id="match-ffa" /><span>Frei-für-alle</span></label>
-      </section>
+        <div class="match-team-count-field"><label class="field-label" for="match-teamcount">Teams</label>
+          <input type="number" id="match-teamcount" min="2" max="6" value="${teamCount}" /></div>
+      </div>
+      <div><label class="check-row"><input type="checkbox" id="match-ffa" /><span>Frei-für-alle</span></label></div>
       <div id="match-body"></div>
     </div>`, {
     confirmClose: () => dirty ? 'Die Teamzuordnung und das eingetragene Ergebnis gehen verloren.' : null,
+    // Two columns of players need the wider panel from --bp-lg.
+    onMount: (backdrop) => backdrop.classList.add('match-form-modal'),
   });
   wireSearchSelect(el, 'match-game', gameOptions);
-  el.querySelector('#match-form').addEventListener('input', () => { dirty = true; });
-  el.querySelector('#match-form').addEventListener('change', () => { dirty = true; });
+  // Typing a player search changes nothing worth confirming on close.
+  const markDirty = (event) => { if (event.target.id !== 'match-player-search') dirty = true; };
+  el.querySelector('#match-form').addEventListener('input', markDirty);
+  el.querySelector('#match-form').addEventListener('change', markDirty);
   const body = el.querySelector('#match-body');
 
   function teamEntries() {
@@ -111,50 +121,69 @@ export function openMatchForm(ctx) {
     });
   }
 
+  function participantSummary() {
+    if (isFfa) return `${ffaIds.size} dabei`;
+    return `${assignment.size} von ${state.players.length} zugeordnet`;
+  }
+
   function renderBody() {
     rememberResult();
-    const participants = isFfa
-      ? `<section class="tournament-section-panel stack match-form-section" aria-labelledby="match-participants-title">
-          <div class="grouped-page-section-title"><h2 id="match-participants-title">Teilnehmende</h2></div>
-          <div id="match-ffa-players">${state.players.map((player) => `<label class="check-row">
-            <input type="checkbox" data-ffa-player="${escapeHtml(player.id)}" ${ffaIds.has(player.id) ? 'checked' : ''} />
-            ${avatarHtml(player, 20)}<span class="player-name leaderboard-row-name">${escapeHtml(player.name)}</span>
-          </label>`).join('')}</div>
-        </section>`
-      : `<section class="tournament-section-panel stack match-form-section" aria-labelledby="match-assignment-title">
-          <div class="grouped-page-section-title"><h2 id="match-assignment-title">Spieler-Zuordnung</h2></div>
-          <label class="match-team-count-field"><span class="field-label">Anzahl Teams</span>
-            <input type="number" id="match-teamcount" min="2" max="6" value="${teamCount}" /></label>
-          <div id="match-players">${state.players.map((player) => `<div class="player-assignment-row" style="padding:var(--space-1) 0;">
-            ${avatarHtml(player, 20)}<span class="player-name leaderboard-row-name">${escapeHtml(player.name)}</span>
-            <select data-team-for="${escapeHtml(player.id)}" aria-label="Team für ${escapeHtml(player.name)}">
-              <option value="" ${assignment.has(player.id) ? '' : 'selected'}>–</option>
-              ${Array.from({ length: teamCount }, (_, index) => `<option value="${index}" ${assignment.get(player.id) === index ? 'selected' : ''}>Team ${index + 1}</option>`).join('')}
-            </select></div>`).join('')}</div>
-        </section>`;
-    body.innerHTML = `<div class="stack">${participants}
-      <section class="tournament-section-panel stack match-form-section" aria-labelledby="match-result-title">
-        <div class="grouped-page-section-title"><h2 id="match-result-title">Ergebnis</h2></div>
+    // Frei-für-alle has no teams, so its count field leaves the form.
+    el.querySelector('.match-team-count-field').hidden = isFfa;
+    el.querySelector('.match-form-head').classList.toggle('is-ffa', isFfa);
+    const rows = isFfa
+      ? state.players.map((player) => `<label class="check-row" data-match-player-item data-selection-search="${escapeHtml(player.name)}">
+          <input type="checkbox" data-ffa-player="${escapeHtml(player.id)}" ${ffaIds.has(player.id) ? 'checked' : ''} />
+          ${avatarHtml(player, 20)}<span class="player-name match-player-name">${escapeHtml(player.name)}</span>
+        </label>`)
+      : state.players.map((player) => `<div class="player-assignment-row match-player-row" data-match-player-item data-selection-search="${escapeHtml(player.name)}">
+          ${avatarHtml(player, 20)}<span class="player-name match-player-name">${escapeHtml(player.name)}</span>
+          <select data-team-for="${escapeHtml(player.id)}" aria-label="Team für ${escapeHtml(player.name)}">
+            <option value="" ${assignment.has(player.id) ? '' : 'selected'}>–</option>
+            ${Array.from({ length: teamCount }, (_, index) => `<option value="${index}" ${assignment.get(player.id) === index ? 'selected' : ''}>Team ${index + 1}</option>`).join('')}
+          </select></div>`);
+    body.innerHTML = `<div class="stack">
+      <section class="stack match-form-section" aria-labelledby="match-players-title">
+        <h3 class="section-title match-form-subtitle" id="match-players-title">${isFfa ? 'Teilnehmende' : 'Spieler'}
+          <span class="muted" data-match-participant-summary>${participantSummary()}</span></h3>
+        ${selectionSearchHtml('match-player-search', playerQuery)}
+        <div id="${isFfa ? 'match-ffa-players' : 'match-players'}" class="match-player-grid" style="--match-player-rows:${Math.ceil(rows.length / 2)}">${rows.join('')}</div>
+        <div class="muted match-player-empty" data-match-player-empty hidden>Kein Spieler gefunden</div>
+      </section>
+      <section class="stack match-form-section" aria-labelledby="match-result-title">
+        <h3 class="section-title match-form-subtitle" id="match-result-title">Ergebnis</h3>
         <div id="match-result-entry"></div>
       </section></div>`;
     renderResult();
-    body.querySelector('#match-teamcount')?.addEventListener('change', (event) => {
-      teamCount = Math.min(6, Math.max(2, Number(event.target.value) || 2));
-      for (const [playerId, index] of assignment) if (index >= teamCount) assignment.delete(playerId);
-      renderBody();
-      body.querySelector('#match-teamcount')?.focus();
+    wireSelectionSearch(body, {
+      inputId: 'match-player-search',
+      // Its own marker: the search wrapper itself carries data-selection-search.
+      itemSelector: '[data-match-player-item]',
+      emptySelector: '[data-match-player-empty]',
+      onQueryChange: (value) => { playerQuery = value; },
     });
+    const updateSummary = () => {
+      body.querySelector('[data-match-participant-summary]').textContent = participantSummary();
+    };
     body.querySelectorAll('[data-team-for]').forEach((select) => select.addEventListener('change', () => {
       if (select.value === '') assignment.delete(select.dataset.teamFor);
       else assignment.set(select.dataset.teamFor, Number(select.value));
+      updateSummary();
       renderResult();
     }));
     body.querySelectorAll('[data-ffa-player]').forEach((checkbox) => checkbox.addEventListener('change', () => {
       if (checkbox.checked) ffaIds.add(checkbox.dataset.ffaPlayer);
       else ffaIds.delete(checkbox.dataset.ffaPlayer);
+      updateSummary();
       renderResult();
     }));
   }
+  el.querySelector('#match-teamcount').addEventListener('change', (event) => {
+    teamCount = Math.min(6, Math.max(2, Number(event.target.value) || 2));
+    event.target.value = teamCount;
+    for (const [playerId, index] of assignment) if (index >= teamCount) assignment.delete(playerId);
+    renderBody();
+  });
   el.querySelector('#match-ffa').addEventListener('change', (event) => {
     isFfa = event.target.checked;
     renderBody();

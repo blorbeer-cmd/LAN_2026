@@ -315,7 +315,10 @@ export const api = {
   },
 
   stats: {
-    playtime: (gameId) => apiFetch(`/api/stats/playtime${gameId ? `?gameId=${gameId}` : ''}`),
+    playtime: (gameId, params = {}) => {
+      const qs = new URLSearchParams({ ...(gameId ? { gameId } : {}), ...params }).toString();
+      return apiFetch(`/api/stats/playtime${qs ? `?${qs}` : ''}`);
+    },
   },
 
   analytics: {
@@ -376,13 +379,23 @@ export const api = {
         body: JSON.stringify({ paid }),
       }),
     acceptInvitation: (id) => apiFetch(`/api/events/${id}/invitation/accept`, { method: 'POST' }),
-    declineInvitation: (id) => apiFetch(`/api/events/${id}/invitation/decline`, { method: 'POST' }),
+    declineInvitation: (id, excuse = null) =>
+      apiFetch(`/api/events/${id}/invitation/decline`, {
+        method: 'POST',
+        ...(excuse ? { body: JSON.stringify({ excuse }) } : {}),
+      }),
     setTrackingConsent: (id, granted, textVersion) =>
       apiFetch(`/api/events/${id}/tracking-consent`, {
         method: 'POST',
         body: JSON.stringify({ granted, ...(textVersion ? { textVersion } : {}) }),
       }),
-    confirmCalendar: (id) => apiFetch(`/api/events/${id}/calendar-confirmation`, { method: 'POST' }),
+    // `schedule` ({ startsAt, endsAt }) is the period the caller exported;
+    // the server rejects it with 409 once the event has moved since.
+    confirmCalendar: (id, schedule = null) =>
+      apiFetch(`/api/events/${id}/calendar-confirmation`, {
+        method: 'POST',
+        ...(schedule ? { body: JSON.stringify({ startsAt: schedule.startsAt, endsAt: schedule.endsAt }) } : {}),
+      }),
   },
 
   eventPolls: {
@@ -425,6 +438,8 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(payload),
       }),
+    // Ends a tournament that will not be played out: no champion, no further results.
+    finish: (id) => apiFetch(`/api/tournaments/${id}/finish`, { method: 'POST' }),
     remove: (id) => apiFetch(`/api/tournaments/${id}`, { method: 'DELETE' }),
   },
 
@@ -478,6 +493,11 @@ export const api = {
 
   digest: {
     get: (playerId) => apiFetch(`/api/digest?playerId=${encodeURIComponent(playerId)}`),
+  },
+
+  // Home's "Meine To-Dos" across all open events (see myTodos.js).
+  myTodos: {
+    get: () => apiFetch('/api/me/todos'),
   },
 
   push: {

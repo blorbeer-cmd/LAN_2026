@@ -17,6 +17,7 @@ const LOBBY_GAME_NAMES = {
   snake: 'Snake',
   battleship: 'Battleship',
   'challenge-rush': 'Challenge-Rush',
+  chimp: 'Chimp-Test',
 } as const;
 
 export type LobbyPushGameType = keyof typeof LOBBY_GAME_NAMES;
