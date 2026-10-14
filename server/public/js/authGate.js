@@ -64,10 +64,10 @@ function cardShell(title, subtitle, bodyHtml) {
   `;
 }
 
-function nameField() {
+function nameField(label = 'Name') {
   return `
     <div>
-      <label for="auth-name" class="field-label is-required">Name</label>
+      <label for="auth-name" class="field-label is-required">${escapeHtml(label)}</label>
       <input id="auth-name" type="text" autocomplete="username" required autofocus />
     </div>
   `;
@@ -89,7 +89,7 @@ function renderLoginForm() {
   return cardShell(
     'Respawn',
     '',
-    `${nameField()}${passwordField()}<button type="submit" class="btn btn-primary">Anmelden</button>`
+    `${nameField('Gamertag')}${passwordField()}<button type="submit" class="btn btn-primary">Anmelden</button>`
   );
 }
 
