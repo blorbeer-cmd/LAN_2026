@@ -380,7 +380,7 @@ function openCalendarDialog(todo, ctx) {
        <div class="event-calendar-action-buttons" role="group" aria-label="Kalender wählen">
          <a class="btn btn-sm" href="${escapeHtml(links.google)}" target="_blank" rel="noopener noreferrer">Google</a>
          <a class="btn btn-sm" href="${escapeHtml(links.outlook)}" target="_blank" rel="noopener noreferrer">Outlook</a>
-         <button type="button" class="btn btn-sm" data-todo-calendar-file>Download</button>
+         <button type="button" class="btn btn-sm" data-todo-calendar-file>Download ics file</button>
        </div>
        <div class="row" style="justify-content:flex-end;">
          <button type="button" class="btn btn-primary btn-sm" data-todo-calendar-confirm>Eingetragen</button>

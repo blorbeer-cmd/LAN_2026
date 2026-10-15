@@ -89,7 +89,7 @@ export function renderEventCalendarActions(event, { invitation = false } = {}) {
     [
       `<a class="btn btn-sm" href="${escapeHtml(links.google)}" target="_blank" rel="noopener noreferrer" data-event-calendar="google">Google</a>`,
       `<a class="btn btn-sm" href="${escapeHtml(links.outlook)}" target="_blank" rel="noopener noreferrer" data-event-calendar="outlook">Outlook</a>`,
-      `<button type="button" class="btn btn-sm" data-download-event-calendar="${id}">Download</button>`,
+      `<button type="button" class="btn btn-sm" data-download-event-calendar="${id}">Download ics file</button>`,
     ],
     `Kalender für ${event.name}`,
     { key: `event-calendar-${event.id}`, summary: 'Kalender' },

@@ -347,9 +347,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   multiple events start collapsed, keep their disclosure state through refreshes and preserve keyboard
   focus when toggled. A single event stays expanded without collapse controls. „Infos“ starts with
   „Zeitraum“ (weekday, date and time, joined with „bis“) and „Ort“, the two facts people look up and
-  paste, each with a copy action; the place is a link to its stored web URL or else to a Google Maps
-  search, with a separate open action. A current event with a complete start/end period offers a
-  „Kalender“ menu in the period row with „Google“, „Outlook“ and „Download“; the first two open a
+  paste by selecting the text, without copy buttons; the place is a link to its stored web URL or else
+  to a Google Maps search, without a separate open action. A current event with a complete start/end period offers a
+  „Kalender“ menu in the period row with „Google“, „Outlook“ and „Download ics file“; the first two open a
   prefilled web event, while the RFC-5545 `.ics` download covers native and other compatible calendar
   apps. An accepted participant confirms the handoff with the visible checkbox „Eingetragen“ beside
   that menu, because external providers expose no reliable import callback. Once set it stays set and
@@ -358,7 +358,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   exported; if the event moved in the meantime, the server rejects it (409) instead of acknowledging
   the new period, and Home's open „Eintragen“ dialog closes with a hint to add the new period. Pending invitations, ended events and
   incomplete periods omit the calendar controls. Until confirmed, an upcoming event is also a row in
-  Home's „Meine To-Dos“ whose „Eintragen“ dialog offers the same „Google“, „Outlook“ and „Download“
+  Home's „Meine To-Dos“ whose „Eintragen“ dialog offers the same „Google“, „Outlook“ and „Download ics file“
   and „Eingetragen“. Two-hour and weekly calendar nudges stop after
   confirmation; general one-week and one-day event reminders do not, and a moved period announces
   itself again on its own approach. The
