@@ -725,14 +725,28 @@ function participationLockNote(event) {
 // The own answer stays on the card for as long as it can be changed. A yes is
 // withdrawn through "Absagen", which offers a plain decline and, for an event
 // still ahead, a decline with an excuse everyone gets to read. A no is taken
-// back with "Zusagen". Open invitations use the same answer handler as Profile.
+// back with "Zusagen". Open invitations use the same answer handler as Home.
 export function ownParticipationAction(event, { primary = true } = {}) {
   const participation = event.myParticipation;
   if (!participation) return '';
   const id = escapeHtml(event.id);
   if (participation.status === 'invited') {
+    // An open invitation can be declined plainly or, for an event still
+    // ahead, with an excuse everyone gets to read (same dialog as a yes
+    // that is withdrawn).
+    const withExcuse = !event.isEnded && !eventIsGroup(event);
+    const decline = participation.canDecline
+      ? actionMenuHtml(
+        [
+          `<button type="button" class="btn btn-sm" data-decline-invitation="${id}">Absagen</button>`,
+          withExcuse ? `<button type="button" class="btn btn-sm" data-decline-with-excuse="${id}">Mit Ausrede absagen</button>` : '',
+        ],
+        `Absagen: Einladung zu ${event.name}`,
+        { key: `event-decline-${event.id}`, summary: 'Absagen' },
+      )
+      : '';
     return [
-      participation.canDecline ? `<button type="button" class="btn btn-sm" data-decline-invitation="${id}">Absagen</button>` : '',
+      decline,
       participation.canAccept ? `<button type="button" class="btn${primary ? ' btn-primary' : ''} btn-sm" data-accept-invitation="${id}">Zusagen</button>` : '',
       !participation.canAccept && !participation.canDecline ? participationLockNote(event) : '',
     ].join('');
@@ -1025,77 +1039,6 @@ export function renderEventSection() {
   return `${section(false)}${section(true)}`;
 }
 
-// Profile lists pending invitations as flat rows: name, one meta line and a
-// fixed "Annehmen" slot. Everything else (full name and place, note, cost,
-// the excuse generator and "Ablehnen") lives in the detail dialog the row
-// opens. Home's "Aktuell" list links here (see aktuellStatus.js).
-const INVITATION_TITLE_LIMIT = 40;
-
-function invitationMeta(event) {
-  return [
-    eventTypeTitle(event.eventType, state.eventTypeOptions),
-    // UI copy avoids dashes; the shared range helper joins with one.
-    eventIsGroup(event) ? '' : eventDateRange(event).replace(' – ', ' bis '),
-    event.location,
-  ].filter(Boolean).map((part) => escapeHtml(part)).join(' · ');
-}
-
-export function renderInvitationRow(event) {
-  const id = escapeHtml(event.id);
-  const title = event.name.length > INVITATION_TITLE_LIMIT
-    ? `${event.name.slice(0, INVITATION_TITLE_LIMIT - 1).trimEnd()}…`
-    : event.name;
-  return `
-    <div class="profile-row is-link" data-pending-invitation="${id}">
-      <button type="button" class="profile-row-main profile-row-open" data-open-invitation="${id}" aria-label="${escapeHtml(event.name)} anzeigen">
-        <span class="profile-row-text">
-          <span class="profile-row-title">${escapeHtml(title)}</span>
-          <span class="profile-row-meta">${invitationMeta(event)}</span>
-        </span>
-      </button>
-      <span class="profile-row-action"><button type="button" class="btn btn-sm" data-accept-invitation="${id}">Annehmen</button></span>
-    </div>`;
-}
-
-export function openInvitationDialog(event, ctx) {
-  const facts = [
-    ['Art', escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))],
-    eventIsGroup(event) ? null : ['Zeitraum', escapeHtml(eventDateRange(event).replace(' – ', ' bis '))],
-    event.location ? ['Ort', escapeHtml(event.location)] : null,
-    event.description ? ['Notiz', escapeHtml(event.description)] : null,
-    event.costCents ? ['Kosten', escapeHtml(formatEuroCents(event.costCents))] : null,
-    event.paymentDueAt ? ['Zahlungsziel', escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))] : null,
-  ].filter(Boolean);
-  // An ended event or a group has nothing left to collide with.
-  const excuse = event.isEnded || eventIsGroup(event)
-    ? ''
-    : `<button type="button" class="btn btn-sm" data-event-excuse="${escapeHtml(event.id)}" title="Ausrede für einen Paralleltermin generieren">Ausrede</button>`;
-  const { close } = openModal(
-    event.name,
-    `<div class="stack">
-       <dl class="checklist-detail-facts">
-         ${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
-       </dl>
-       <div class="invitation-detail-footer${excuse ? ' has-excuse' : ''}">
-         ${excuse}
-         <button type="button" class="btn btn-sm" data-decline-invitation="${escapeHtml(event.id)}">Ablehnen</button>
-         <button type="button" class="btn btn-primary btn-sm" data-accept-invitation="${escapeHtml(event.id)}">Annehmen</button>
-       </div>
-     </div>`,
-    {
-      onMount: (el) => {
-        (el.closest('.modal') ?? el.querySelector('.modal'))?.classList.add('checklist-detail-modal');
-        wireEventExcuseActions(el);
-        el.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            if (await answerPendingInvitation(btn, ctx)) close();
-          });
-        });
-      },
-    },
-  );
-}
-
 // A teaser is all an invited account receives, so the invitation list comes
 // from its own payload instead of a participant roster it never sees.
 export function pendingEventInvitations() {
@@ -1179,12 +1122,6 @@ export async function answerPendingInvitation(btn, ctx) {
 export function wirePendingInvitationActions(container, ctx) {
   container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
     btn.addEventListener('click', () => answerPendingInvitation(btn, ctx));
-  });
-  container.querySelectorAll('[data-open-invitation]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const invitation = (state.eventInvitations || []).find((event) => event.id === btn.dataset.openInvitation);
-      if (invitation) openInvitationDialog(invitation, ctx);
-    });
   });
   container.querySelector('[data-open-accepted-event]')?.addEventListener('click', async (event) => {
     const button = event.currentTarget;

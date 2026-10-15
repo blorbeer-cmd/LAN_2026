@@ -626,7 +626,9 @@ function focusPendingSearchTarget() {
     order: [
       ...viewContainer.querySelectorAll('[data-order-card], [data-closed-order]'),
     ].filter((el) => el.dataset.orderCard === id || el.dataset.closedOrder === id),
-    event: [...viewContainer.querySelectorAll('[data-event-card]')].filter((el) => el.dataset.eventCard === id),
+    event: [
+      ...viewContainer.querySelectorAll('[data-event-card], [data-pending-invitation], [data-invited-event], [data-declined-event]'),
+    ].filter((el) => [el.dataset.eventCard, el.dataset.pendingInvitation, el.dataset.invitedEvent, el.dataset.declinedEvent].includes(id)),
     broadcast: [...viewContainer.querySelectorAll('[data-broadcast]')].filter((el) => el.dataset.broadcast === id),
     carpool: [...viewContainer.querySelectorAll('[data-carpool]')].filter((el) => el.dataset.carpool === id),
     poll: [...viewContainer.querySelectorAll('[data-poll-card]')].filter((el) => el.dataset.pollCard === id),
