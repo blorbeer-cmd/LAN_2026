@@ -343,14 +343,40 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       });
       assert.equal(closedEvent.status, 201);
       assert.equal((await call(app, 'post', '/api/events/' + closedEvent.body.id + '/invitations', owner).send({ playerId: bob.account.id })).status, 201);
+      assert.equal((await call(app, 'post', '/api/events/' + closedEvent.body.id + '/invitations', owner).send({ playerId: carol.account.id })).status, 201);
+      assert.equal((await call(app, 'post', '/api/events/' + closedEvent.body.id + '/invitation/decline', carol)).status, 200);
+      async function assertClosedInvitationHistory(reason) {
+        for (const [account, status] of [[bob, 'invited'], [carol, 'declined']]) {
+          const list = (await call(app, 'get', '/api/events', account)).body;
+          const entry = list.endedEvents.find((event) => event.id === closedEvent.body.id);
+          assert.ok(entry, 'a closed invitation remains readable: ' + status + '/' + reason);
+          assert.equal(entry.participationStatus, status);
+          assert.equal(entry.myParticipation.lockReason, reason);
+          assert.equal(entry.myParticipation.canAccept, false);
+          assert.equal(entry.myParticipation.canDecline, false);
+          for (const field of ['participants', 'acceptedParticipants', 'paymentSummary', 'paypalLink']) {
+            assert.equal(field in entry, false, field + ' must stay out of a closed teaser');
+          }
+          for (const collection of [list.invitations, list.declinedEvents, list.availableEvents]) {
+            assert.ok(!collection.some((event) => event.id === closedEvent.body.id));
+          }
+          assert.equal((await call(app, 'get', '/api/events/' + closedEvent.body.id, account)).status, 200);
+          assert.equal((await call(app, 'get', '/api/seating?eventId=' + closedEvent.body.id, account)).status, 404);
+        }
+      }
       db.prepare("UPDATE events SET status = 'cancelled' WHERE id = ?").run(closedEvent.body.id);
+      await assertClosedInvitationHistory('cancelled');
       const cancelledAnswer = await call(app, 'post', '/api/events/' + closedEvent.body.id + '/invitation/accept', bob);
       assert.equal(cancelledAnswer.status, 409, JSON.stringify(cancelledAnswer.body));
       assert.equal(cancelledAnswer.body.reason, 'cancelled');
       db.prepare("UPDATE events SET status = 'ended', ended_at = ? WHERE id = ?").run(Date.now(), closedEvent.body.id);
+      await assertClosedInvitationHistory('ended');
       const endedAnswer = await call(app, 'post', '/api/events/' + closedEvent.body.id + '/invitation/accept', bob);
       assert.equal(endedAnswer.status, 409, JSON.stringify(endedAnswer.body));
       assert.equal(endedAnswer.body.reason, 'ended');
+      assert.equal((await call(app, 'delete', '/api/events/' + closedEvent.body.id + '/participants/' + bob.account.id, owner)).status, 204);
+      assert.ok(!(await call(app, 'get', '/api/events', bob)).body.endedEvents.some((event) => event.id === closedEvent.body.id));
+      assert.equal((await call(app, 'get', '/api/events/' + closedEvent.body.id, bob)).status, 404);
       // Repeating the answer that already stands stays idempotent even then.
       assert.equal((await call(app, 'post', '/api/events/' + futureEvent.body.id + '/invitation/accept', carol)).status, 200);
 

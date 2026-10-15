@@ -89,9 +89,9 @@ folgt verwendet:
 | Zustand | Sichtbarkeit | Erlaubte Aktionen |
 |---|---|---|
 | kein Datensatz | keine | keine |
-| `invited` | Einladungsteaser | annehmen oder ablehnen |
+| `invited` | Einladungsteaser direkt unter „Events & Gruppen“, zusätzlich Home/Profil | zusagen oder absagen |
 | `accepted` | vollständiger Event-Arbeitsraum | lesen, im Rahmen der normalen Rollen schreiben, als Arbeits-Event auswählen, die Zusage bis zum Eventbeginn selbst zurückziehen |
-| `declined` | keine normale Sichtbarkeit, aber weiterhin der Einladungsteaser | in der persönlichen Einladungshistorie sichtbar und jederzeit erneut zusagbar |
+| `declined` | Einladungsteaser unter „Abgesagt“ in „Events & Gruppen“ | Informationen bleiben sichtbar; erneute Zusage, soweit das Event noch offen ist |
 | `removed` | keine operative Sichtbarkeit | eigene rechtmäßig entstandene Historie bleibt in persönlichen Auswertungen erhalten |
 
 Für eine belastbare Historie werden Annahme und Entfernung nicht mehr durch Löschen des einzigen
@@ -101,8 +101,13 @@ eine gleichwertige append-only Historie halten fest, ob eine Person tatsächlich
 Einladungsteaser enthalten ausschließlich:
 
 - Event-ID, Name, Zeitraum, Ort und Beschreibung,
+- Beitrag pro Person und optionales Zahlungsziel,
 - eigenen Einladungsstatus,
-- Aktionen zum Annehmen oder Ablehnen.
+- Aktionen zum Zusagen oder Absagen, soweit der Eventzustand dies erlaubt.
+
+Beendete oder vom Veranstalter abgesagte Events bleiben unter „Historie“ in „Events & Gruppen“
+lesbar, solange die Einladung besteht. Offene und persönlich abgelehnte Einladungen behalten
+dabei denselben Teaserumfang; anstelle von Antwortaktionen erscheint der Abschlussgrund.
 
 Teilnehmerlisten, fremde Einladungsstatus, Trackingzustand, interne Scope-Felder und Fachdaten sind
 kein Teil des Teasers. Normale Teilnehmende sehen nur die für die Fachfunktion nötige
@@ -216,14 +221,18 @@ serverseitig gespeicherte Arbeits-Event.
 
 ### 4.3 Eventlisten
 
-`GET /api/events` liefert vier klar getrennte Mengen:
+`GET /api/events` trennt den persönlichen Arbeitskontext von Einladungen und Historie:
 
 - `activeEvent`: das persönliche Arbeits-Event,
 - `availableEvents`: angenommene und als Arbeitskontext nutzbare Events,
 - `historicalEvents`: die persönliche Teilnahmehistorie einschließlich beendeter Events,
-- `invitations`: offene Einladungsteaser.
+- `invitations`: offene Einladungsteaser für noch nicht abgeschlossene Events,
+- `declinedEvents`: persönlich abgesagte, noch nicht abgeschlossene Events als Teaser,
+- `endedEvents`: abgeschlossene oder veranstalterseitig abgesagte Events mit bestehender
+  Einladung; zugesagte Personen erhalten Mitgliedsdetails, die übrigen nur den Teaser.
 
-Abgelehnte, entfernte und nie eingeladene Events erscheinen nicht in der normalen Liste.
+Persönlich abgesagte Events bleiben unter „Abgesagt“, abgeschlossene unter „Historie“
+einsehbar. Entfernte und nie eingeladene Events erhalten dadurch keinen Zugriff.
 
 `availableEvents` und `historicalEvents` beantworten zwei verschiedene Fragen und dürfen nicht
 gegeneinander ausgetauscht werden. `availableEvents` beantwortet „worin kann ich gerade arbeiten“
@@ -440,7 +449,8 @@ Eine Required-Suite prüft mindestens:
 - Eventwechsel aktualisiert REST, Socket-Rooms, offene Tabs und Agent-Kontext konsistent.
 - Beenden, Absagen, Entfernen und Kontodeaktivierung schließen Livezustand und fallen sicher auf
   das Basis-Event zurück.
-- Offene Einladung zeigt nur den Teaser; Ablehnung entfernt sie aus der normalen Eventliste.
+- Offene Einladung zeigt den Teaser mit Antwortaktionen direkt im Eventbereich; nach einer
+  Absage bleibt er unter „Abgesagt“, nach Eventabschluss unter „Historie“ lesbar.
 - Jede fachliche Mutation speichert die erwartete konkrete `event_id`.
 - Es entstehen keine neuen fachlichen `NULL`- oder Sentinel-Datensätze.
 - Persönliche Gesamtstatistik enthält alle eigenen teilgenommenen Events und kein fremdes Event.

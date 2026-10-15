@@ -457,7 +457,7 @@ function renderParticipantsSection(event, { includeInvitationStatuses = false } 
     let remove = '';
     if (includeInvitationStatuses) {
       if (status === 'accepted') {
-        slot = canManagePayments
+        slot = canManagePayments && (event.status !== 'cancelled' || participant.paid)
           ? `<button type="button" class="payment-paid-marker ${participant.paid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(participant.playerId)}" aria-pressed="${Boolean(participant.paid)}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}"><span class="payment-paid-box" aria-hidden="true">${participant.paid ? icon('check') : ''}</span><span>Bezahlt</span></button>`
           : '';
       } else if (!event.isEnded && (!status || status === 'declined')) {
@@ -583,6 +583,7 @@ function renderEventPayment(event) {
   }
 
   const isPaid = Boolean(myParticipation?.paid);
+  const cancelled = event.status === 'cancelled';
   const due = event.paymentDueAt ? ` · bis ${new Date(event.paymentDueAt).toLocaleDateString('de-DE')}` : '';
   const meta = myParticipation && isPaid ? ` · ${paymentProof(myParticipation)}` : due;
   return `
@@ -592,8 +593,8 @@ function renderEventPayment(event) {
         <span class="event-info-label">Beitrag</span>
         <span class="event-info-value"><strong class="event-info-strong">${escapeHtml(amount)}</strong><span class="muted">${escapeHtml(meta)}</span></span>
         <span class="event-info-actions">
-          ${myParticipation ? `<button type="button" class="payment-paid-marker ${isPaid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(myParticipation.playerId)}" aria-pressed="${isPaid}" title="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}" aria-label="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}"><span class="payment-paid-box" aria-hidden="true">${isPaid ? icon('check') : ''}</span><span>Bezahlt</span></button>` : ''}
-          ${myParticipation && event.paypalLink ? `<button type="button" class="icon-btn payment-paypal-button" data-pay-event="${escapeHtml(event.id)}" ${isPaid ? 'disabled' : ''} title="${escapeHtml(isPaid ? 'Bereits bezahlt' : payTitle)}" aria-label="${escapeHtml(isPaid ? 'Bereits bezahlt' : payTitle)}">${icon('paypal')}</button>` : ''}
+          ${myParticipation && !cancelled ? `<button type="button" class="payment-paid-marker ${isPaid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(myParticipation.playerId)}" aria-pressed="${isPaid}" title="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}" aria-label="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}"><span class="payment-paid-box" aria-hidden="true">${isPaid ? icon('check') : ''}</span><span>Bezahlt</span></button>` : ''}
+          ${myParticipation && !cancelled && event.paypalLink ? `<button type="button" class="icon-btn payment-paypal-button" data-pay-event="${escapeHtml(event.id)}" ${isPaid ? 'disabled' : ''} title="${escapeHtml(isPaid ? 'Bereits bezahlt' : payTitle)}" aria-label="${escapeHtml(isPaid ? 'Bereits bezahlt' : payTitle)}">${icon('paypal')}</button>` : ''}
         </span>
       </div>
     </section>`;
@@ -611,6 +612,11 @@ export async function handleEventPay(eventId, ctx) {
     // immediately before opening PayPal so a stale card cannot charge an old
     // contribution or overwrite a payment somebody just recorded.
     const event = await api.events.get(eventId);
+    if (event.status === 'cancelled') {
+      popup?.close();
+      showToast('Das Event wurde abgesagt. Eine Zahlung ist nicht mehr möglich.', { error: true });
+      return ctx.refresh();
+    }
     const myId = getMyId();
     const participation = acceptedParticipants(event).find((participant) => participant.playerId === myId);
     if (!participation) {
@@ -671,14 +677,14 @@ export async function handleEventPay(eventId, ctx) {
 
 // Infos: period and place first, as the two facts people look up and paste.
 // Each row keeps label, value and actions in fixed columns.
-function renderEventInfoSection(event) {
+function renderEventInfoSection(event, { invitation = false } = {}) {
   const rows = [];
   const schedule = eventScheduleLabel(event);
   if (schedule) {
     rows.push(`<div class="event-info-row">
       <span class="event-info-label">Zeitraum</span>
       <span class="event-info-value event-info-strong">${escapeHtml(schedule)}</span>
-      <span class="event-info-actions">${renderEventCalendarActions(event)}</span>
+      <span class="event-info-actions">${renderEventCalendarActions(event, { invitation: invitation || isClosedEvent(event) })}</span>
     </div>`);
   }
   if (event.location) {
@@ -719,11 +725,18 @@ function participationLockNote(event) {
 // The own answer stays on the card for as long as it can be changed. A yes is
 // withdrawn through "Absagen", which offers a plain decline and, for an event
 // still ahead, a decline with an excuse everyone gets to read. A no is taken
-// back with "Zusagen". A still-open invitation is answered in "Mein Profil".
+// back with "Zusagen". Open invitations use the same answer handler as Profile.
 export function ownParticipationAction(event, { primary = true } = {}) {
   const participation = event.myParticipation;
-  if (!participation || participation.status === 'invited') return '';
+  if (!participation) return '';
   const id = escapeHtml(event.id);
+  if (participation.status === 'invited') {
+    return [
+      participation.canDecline ? `<button type="button" class="btn btn-sm" data-decline-invitation="${id}">Absagen</button>` : '',
+      participation.canAccept ? `<button type="button" class="btn${primary ? ' btn-primary' : ''} btn-sm" data-accept-invitation="${id}">Zusagen</button>` : '',
+      !participation.canAccept && !participation.canDecline ? participationLockNote(event) : '',
+    ].join('');
+  }
   if (participation.status === 'accepted') {
     if (!participation.canDecline) return participationLockNote(event);
     const withExcuse = !event.isEnded && !eventIsGroup(event);
@@ -749,7 +762,9 @@ export function renderOwnParticipationActions(event, { primary = true } = {}) {
 // A management card is the only place an owner/admin sees an event they
 // declined themselves, so the state is spelled out on the card.
 function ownDeclinedBadge(event) {
-  return event.myParticipation?.status === 'declined'
+  return event.myParticipation?.status === 'invited'
+    ? '<span class="badge badge-paused">Eingeladen</span>'
+    : event.myParticipation?.status === 'declined'
     ? '<span class="badge badge-offline">Du: Abgesagt</span>'
     : '';
 }
@@ -818,23 +833,40 @@ function renderMemberEventCard(event, { collapsible = false } = {}) {
   return renderEventCardShell(event, { collapsible, managed: false });
 }
 
-// A declined event keeps exactly the teaser it was answered from, no roster,
-// plus the way back.
-export function renderDeclinedEventCard(event) {
+// Invitations and personal declines disclose all planning facts, including
+// the contribution, without a roster, calendar handoff or payment actions.
+function renderTeaserEventCard(event, { declined = false } = {}) {
+  const closed = isClosedEvent(event);
+  const status = declined ? 'Abgesagt' : 'Eingeladen';
+  const marker = declined ? 'data-declined-event' : closed ? 'data-invited-event' : 'data-pending-invitation';
   return `
-    <article class="card stack event-card event-card-declined" data-declined-event="${escapeHtml(event.id)}">
+    <article class="card stack event-card${declined ? ' event-card-declined' : ''}" ${marker}="${escapeHtml(event.id)}">
       <div class="row-between food-order-card-header event-card-header">
         <span class="event-card-heading">
           <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
           <span class="muted event-card-meta">${escapeHtml([eventTypeTitle(event.eventType, state.eventTypeOptions), eventIsGroup(event) ? '' : eventDateRange(event).replace(' – ', ' bis ')].filter(Boolean).join(' · '))}</span>
         </span>
+        <span class="badge ${declined ? 'badge-offline' : 'badge-paused'}">${status}</span>
       </div>
       <div class="event-card-body">
-        ${renderEventInfoSection({ ...event, myParticipation: null, isEnded: true })}
+        ${renderEventInfoSection(event, { invitation: true })}
+        ${renderEventPayment(event)}
         ${renderOwnParticipationActions(event)}
       </div>
     </article>
   `;
+}
+
+export function renderInvitationCard(event) {
+  return renderTeaserEventCard(event);
+}
+
+export function renderDeclinedEventCard(event) {
+  return renderTeaserEventCard(event, { declined: true });
+}
+
+function isClosedEvent(event) {
+  return event.isEnded || event.status === 'ended' || event.status === 'cancelled';
 }
 
 function renderManagementMenu(event) {
@@ -860,11 +892,8 @@ export function renderEventCard(event, { collapsible = false } = {}) {
   return renderEventCardShell(event, { collapsible, managed: true });
 }
 
-// Events and groups are two different kinds of workspace, so they get two
-// lists rather than one mixed feed: an event is a dated occasion that ends,
-// a group is a permanent circle. Each list owns its own create action, empty
-// text and — for events — the collapsed Abgesagt/Historie sections a group
-// cannot have, since a group never ends.
+// Both workspace kinds keep their own active, personally declined and closed
+// collections. Invitations lead the active collection because they need an answer.
 function renderWorkspaceSection({
   groups: isGroupList,
   events,
@@ -877,8 +906,8 @@ function renderWorkspaceSection({
   const title = isGroupList ? 'Gruppen' : 'Events';
   const createLabel = isGroupList ? 'Gruppe anlegen' : 'Event anlegen';
   const createId = isGroupList ? 'new-group-btn' : 'new-event-btn';
-  const activeEvents = events.filter((e) => !e.isEnded);
-  const endedEvents = events.filter((e) => e.isEnded);
+  const activeEvents = events.filter((e) => !isClosedEvent(e));
+  const endedEvents = events.filter(isClosedEvent);
   // Mirrors foodOrders.js's open/closed cards: a lone card gets no collapse
   // chrome, since there is nothing to declutter yet.
   const activeCollapsible = activeEvents.length > 1;
@@ -905,7 +934,7 @@ function renderWorkspaceSection({
         activeEvents.length === 0
           ? emptyStateHtml(emptyText)
           : `<div class="stack orga-event-grid">${activeEvents
-              .map((event) => renderCard(event, { collapsible: activeCollapsible }))
+              .map((event) => renderCard(event, { collapsible: activeCollapsible && event.myParticipation?.status !== 'invited' }))
               .join('')}</div>`
       }
       ${
@@ -946,7 +975,7 @@ function renderWorkspaceSection({
   `;
 }
 
-function renderEventSection() {
+export function renderEventSection() {
   // Only owner/admin receive `managedEvents`; a member's own accepted events
   // carry accepted participant names but no management roster/status data and
   // must not be rendered through the management card, whose actions they cannot
@@ -959,15 +988,23 @@ function renderEventSection() {
   // rather than state.availableEvents, which deliberately excludes them (see
   // routes/events.ts) — merge both here so the split below can sort them into
   // the active list and the collapsed Historie the same way managedEvents does.
-  // plannedEvents is retained as an empty compatibility field. Only accepted
-  // participation controls whether a member sees an event here.
+  // Include open invitations in the same collection. Closed invitations arrive
+  // through endedEvents and keep teaser access in Historie.
   const memberEvents = canManage
     ? []
-    : [...(state.availableEvents || []), ...(state.endedEvents || []), ...(state.plannedEvents || [])].filter(
+    : [...(state.availableEvents || []), ...(state.eventInvitations || []), ...(state.endedEvents || []), ...(state.plannedEvents || [])].filter(
         (e) => !e.isBase,
       );
-  const events = (canManage ? realEvents : memberEvents).slice().sort(compareEventsByStartAscending);
-  const renderCard = (event, opts) => (canManage ? renderEventCard(event, opts) : renderMemberEventCard(event, opts));
+  const events = (canManage ? realEvents : memberEvents).slice().sort((a, b) =>
+    Number(b.myParticipation?.status === 'invited' && !isClosedEvent(b))
+    - Number(a.myParticipation?.status === 'invited' && !isClosedEvent(a))
+    || compareEventsByStartAscending(a, b));
+  const renderCard = (event, opts) => {
+    if (canManage) return renderEventCard(event, opts);
+    if (event.myParticipation?.status === 'invited') return renderInvitationCard(event);
+    if (event.myParticipation?.status === 'declined') return renderDeclinedEventCard(event);
+    return renderMemberEventCard(event, opts);
+  };
   // An owner/admin already sees every event of the group as a management card,
   // so their own declined ones must not appear a second time down here.
   const renderedIds = new Set(events.map((e) => e.id));
@@ -1101,22 +1138,26 @@ export async function confirmEventCalendarEntry(eventId, { needsExtraCheck = fal
   }
 }
 
-// Shared by the row's "Annehmen" and the detail dialog. The refresh replaces
-// the clicked button's own DOM, so focus moves to a still-present Profile
-// heading instead of falling back to <body>. Resolves true once answered.
+// Shared by Events, Home and Profile. Refresh replaces the clicked button's
+// DOM, so focus moves to a stable heading in the current view.
 export async function answerPendingInvitation(btn, ctx) {
   const accept = Boolean(btn.dataset.acceptInvitation);
   const eventId = btn.dataset.acceptInvitation || btn.dataset.declineInvitation;
   const invitation = (state.eventInvitations || []).find((event) => event.id === eventId);
+  const inEvents = Boolean(btn.closest('#view-container[data-view="events"]'));
   btn.disabled = true;
   try {
     if (accept) await api.events.acceptInvitation(eventId);
     else await api.events.declineInvitation(eventId);
     if (accept) window.dispatchEvent(new CustomEvent('respawn:event-invitation-accepted'));
     await settleNotificationTarget(`event-invitation:${eventId}:${getMyId()}`);
-    acceptedInvitationHandoff = accept
+    acceptedInvitationHandoff = accept && !inEvents
       ? { id: eventId, name: invitation?.name ?? 'diesem Event' }
       : null;
+    if (inEvents && invitation) {
+      if (accept) expandedEventCards.add(eventId);
+      else declinedOpen[eventIsGroup(invitation) ? 'group' : 'event'] = true;
+    }
     await ctx.refresh();
     window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
     (
@@ -1124,6 +1165,7 @@ export async function answerPendingInvitation(btn, ctx) {
       || document.querySelector('#profile-invitations-title')
       || document.querySelector('#profile-view-title')
       || document.querySelector('#home-todos-title')
+      || document.querySelector(invitation && eventIsGroup(invitation) ? '#orga-groups-title' : '#orga-events-title')
     )?.focus();
     showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
     return true;
@@ -1135,7 +1177,7 @@ export async function answerPendingInvitation(btn, ctx) {
 }
 
 export function wirePendingInvitationActions(container, ctx) {
-  container.querySelectorAll('[data-accept-invitation]').forEach((btn) => {
+  container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
     btn.addEventListener('click', () => answerPendingInvitation(btn, ctx));
   });
   container.querySelectorAll('[data-open-invitation]').forEach((btn) => {
@@ -1176,8 +1218,9 @@ export function wireParticipationAnswerActions(container, ctx) {
       btn.disabled = true;
       try {
         await api.events.declineInvitation(eventId);
+        declinedOpen[eventIsGroup(event) ? 'group' : 'event'] = true;
         await ctx.refresh();
-        container.querySelector('#orga-events-title')?.focus();
+        container.querySelector(eventIsGroup(event) ? '#orga-groups-title' : '#orga-events-title')?.focus();
         showToast('Teilnahme abgesagt.');
       } catch (err) {
         btn.disabled = false;
@@ -1195,6 +1238,7 @@ export function wireParticipationAnswerActions(container, ctx) {
         onDecline: async (excuse) => {
           try {
             await api.events.declineInvitation(eventId, excuse);
+            declinedOpen[eventIsGroup(event) ? 'group' : 'event'] = true;
             await ctx.refresh();
             container.querySelector('#orga-events-title')?.focus();
             showToast('Teilnahme abgesagt. Deine Ausrede ist für alle sichtbar.');
@@ -1215,6 +1259,7 @@ export function wireParticipationAnswerActions(container, ctx) {
       try {
         await api.events.acceptInvitation(eventId);
         window.dispatchEvent(new CustomEvent('respawn:event-invitation-accepted'));
+        expandedEventCards.add(eventId);
         await ctx.refresh();
         container.querySelector('#orga-events-title')?.focus();
         showToast('Teilnahme zugesagt.');
@@ -1587,6 +1632,7 @@ export function renderOrgaEvents(container, ctx) {
   wireActionMenus(container);
   wireParticipantActions(container, ctx);
   wireParticipationAnswerActions(container, ctx);
+  wirePendingInvitationActions(container, ctx);
 
   wireEventExcuseActions(container);
   container.querySelectorAll('[data-show-excuse]').forEach((btn) => {

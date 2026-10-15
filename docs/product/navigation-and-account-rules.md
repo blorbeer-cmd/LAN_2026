@@ -290,6 +290,8 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   actions; it has no competing preset palette. Invalid hex input is visibly rejected and cannot be
   applied or copied. The chosen value remains a draft until „Speichern“ persists it. A new account
   starts with a random color whose hue lies as far as possible from the colors already in use.
+  Events & Gruppen shows pending invitations with full planning facts and direct „Zusagen“ /
+  „Absagen“ actions. Profile and Home remain additional entry points to the same answer.
   A leading „Einladungen“ card (present only while pending event invitations exist) lists each
   invitation as a row: the name shortened after 40 characters, a meta line with type, period and
   location, and „Annehmen“. Tapping the row opens a dialog with the full facts including cost and

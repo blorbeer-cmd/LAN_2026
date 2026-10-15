@@ -561,24 +561,22 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
-  // A member's own accepted events that have since ended. `availableEvents`
-  // deliberately excludes these — it answers "where can I switch to right
-  // now", not "what did I finish" (see the dedicated test below) — but the
-  // Events tab's own collapsed "Historie" section needs the same rich
-  // accepted-participant/payment detail `availableEvents` carries, which the
-  // lighter `historicalEvents` summary (built for the analytics event filter)
-  // does not. Hence its own query rather than reusing either.
+  // Closed events remain readable for every invited account, regardless of
+  // its answer. Only accepted participants receive member details; open and
+  // declined invitations retain their teaser. None is a selectable workspace
+  // or an open invitation that Home/Profile should still ask to answer.
   const endedEvents = db
     .prepare(
-      `SELECT e.*
+      `SELECT e.*, ep.status AS participation_status
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
-       WHERE ep.player_id = ? AND ep.status = 'accepted'
-         AND e.id != ? AND e.group_id = ? AND e.status = 'ended'
+       WHERE ep.player_id = ?
+         AND e.id != ? AND e.group_id = ?
+         AND (e.status IN ('ended', 'cancelled') OR e.ended_at IS NOT NULL)
          ${testEventClause}
        ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
-    .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
+    .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as Array<EventRow & { participation_status: string }>;
   // Compatibility field for older clients. Generic polls never grant event
   // visibility, and accepted invitations never become stale because of a
   // poll, so there are no poll-only or reconfirmation-only event cards.
@@ -631,7 +629,9 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
     availableEvents: availableEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
     // Retained as an empty compatibility field for older clients.
     plannedEvents: plannedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
-    endedEvents: endedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
+    endedEvents: endedEvents.map((event) => event.participation_status === 'accepted'
+      ? serializeMemberEvent(event, playerId, req.groupMembership?.role)
+      : serializeTeaserEvent(event, playerId)),
     historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
     invitations: invitations.map((event) => serializeTeaserEvent(event, playerId)),
     declinedEvents: declinedEvents.map((event) => serializeTeaserEvent(event, playerId)),
@@ -957,6 +957,12 @@ eventsRouter.patch('/:id/participants/:playerId/payment', resolveEvent, (req, re
   }
   if (targetPlayerId !== actorId && !canManageEventPayments(event, actorId, req.groupMembership?.role)) {
     return res.status(403).json({ error: 'Du kannst nur deinen eigenen Bezahlstatus ändern.' });
+  }
+
+  // Preserve payment evidence and allow corrections, but never request or
+  // record another contribution for an event that will not take place.
+  if (paid && event.status === 'cancelled') {
+    return res.status(409).json({ error: 'Für abgesagte Events sind keine neuen Zahlungen möglich.', reason: 'cancelled' });
   }
 
   const paidAt = paid ? Date.now() : null;

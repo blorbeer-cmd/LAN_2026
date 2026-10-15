@@ -31,11 +31,8 @@ export function normalizeEventContext(eventContext = {}) {
     // Retained as an empty compatibility field for clients predating generic
     // polls. Polls never grant event visibility or require reconfirmation.
     plannedEvents: eventContext.plannedEvents ?? [],
-    // This account's own accepted events that have since ended. Deliberately
-    // absent from `availableEvents` (that list answers "where can I switch
-    // to", see routes/events.ts), but the Events tab's own Historie section
-    // renders it for a member the same way `managedEvents` already does for
-    // owner/admin.
+    // Closed events this account accepted, declined or was invited to. Teasers
+    // remain teasers in Historie and never become selectable workspaces.
     endedEvents: eventContext.endedEvents ?? [],
     // Personal participation history: the allowlist the analytics endpoints
     // accept, so an event filter can never offer something they answer with

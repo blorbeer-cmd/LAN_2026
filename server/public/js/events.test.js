@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { eventScheduleLabel } from './eventPresentation.js';
+import { state } from './state.js';
+import { getMyId, lockMyIdToSession } from './whoami.js';
 import {
   acceptedParticipantCount,
   eventDateRange,
@@ -10,8 +12,10 @@ import {
   renderEventCalendarActions,
   renderEventLocation,
   renderInvitationRow,
+  renderInvitationCard,
   renderDeclinedEventCard,
   renderEventCard,
+  renderEventSection,
   renderOwnParticipationActions,
 } from './views/events.js';
 
@@ -207,11 +211,11 @@ test('an accepted member card offers the withdrawal, or names why it is blocked'
   assert.doesNotMatch(locked, /data-decline-participation/);
   assert.match(locked, /Zahlung ist bereits erfasst/);
 
-  // A still-open invitation is answered on its own invitation card, not here.
-  assert.equal(
-    renderOwnParticipationActions({ ...event, myParticipation: { status: 'invited', canDecline: true } }),
-    '',
-  );
+  const invited = renderOwnParticipationActions({
+    ...event, myParticipation: { status: 'invited', canDecline: true, canAccept: true },
+  });
+  assert.match(invited, /data-accept-invitation="member-event">Zusagen/);
+  assert.match(invited, /data-decline-invitation="member-event">Absagen/);
 });
 
 test('an organizer answers their own participation on the management card', () => {
@@ -239,20 +243,54 @@ test('an organizer answers their own participation on the management card', () =
 
   // Organizing an event one is not part of offers nothing to answer.
   assert.doesNotMatch(renderEventCard({ ...event, myParticipation: null }), /data-(accept|decline)-participation/);
+
+  const invited = renderEventCard({
+    ...event, myParticipation: { status: 'invited', canAccept: true, canDecline: true },
+  });
+  assert.match(invited, />Eingeladen</);
+  assert.match(invited, /data-accept-invitation="managed-event"/);
+  assert.match(invited, /data-decline-invitation="managed-event"/);
 });
 
-test('a declined event stays a teaser with the way back', () => {
+test('invited and declined event cards keep planning facts and only personal answer actions', () => {
   const event = {
     id: 'declined-event',
     name: 'Sommer LAN',
     startsAt: Date.UTC(2026, 8, 8, 16, 0),
     endsAt: Date.UTC(2026, 8, 10, 10, 0),
+    location: 'Gemeindehaus <West>',
+    description: 'Essen & Übernachtung',
+    costCents: 2550,
+    paymentDueAt: Date.UTC(2026, 8, 1),
     myParticipation: { status: 'declined', canAccept: true, lockReason: null },
   };
   const html = renderDeclinedEventCard(event);
   assert.match(html, /data-accept-participation="declined-event">Zusagen</);
+  assert.match(html, /Abgesagt/);
+  assert.match(html, /Gemeindehaus &lt;West&gt;/);
+  assert.match(html, /Essen &amp; Übernachtung/);
+  assert.match(html, /25,50/);
+  assert.match(html, /bis /);
   // Teaser rules: no roster, and no calendar handoff before acceptance.
-  assert.doesNotMatch(html, /event-participant-list|data-event-calendar=/);
+  assert.doesNotMatch(html, /event-participant-list|data-event-calendar=|data-pay-event=|data-toggle-event-paid=/);
+
+  const pending = renderInvitationCard({
+    ...event,
+    myParticipation: { status: 'invited', canAccept: true, canDecline: true },
+  });
+  assert.match(pending, /data-pending-invitation="declined-event"/);
+  assert.match(pending, />Eingeladen</);
+  assert.match(pending, /25,50/);
+  assert.match(pending, /data-accept-invitation=/);
+  assert.match(pending, /data-decline-invitation=/);
+  assert.doesNotMatch(pending, /event-participant-list|data-event-calendar=|data-pay-event=|data-toggle-event-paid=/);
+
+  const cancelled = renderInvitationCard({
+    ...event, status: 'cancelled',
+    myParticipation: { status: 'invited', canAccept: false, canDecline: false, lockReason: 'cancelled' },
+  });
+  assert.match(cancelled, /Das Event wurde abgesagt/);
+  assert.doesNotMatch(cancelled, /data-pending-invitation=|data-accept-invitation=|data-decline-invitation=/);
 
   const locked = renderDeclinedEventCard({
     ...event,
@@ -353,4 +391,73 @@ test('a group has no period text', () => {
   // The permanent base workspace is not a group and keeps its own wording.
   assert.equal(eventDateRange({ eventType: 'group', isBase: true, startsAt: 1, endsAt: null }), 'Dauerhaft geöffnet');
   assert.equal(eventDateRange({ eventType: 'general', startsAt: null }), 'Termin wird noch abgestimmt');
+});
+
+test('cancelled event cards retain payment evidence without offering new payments', () => {
+  const previous = { document: globalThis.document, window: globalThis.window, playerId: getMyId() };
+  globalThis.document = { querySelector: () => null };
+  globalThis.window = new EventTarget();
+  try {
+    lockMyIdToSession('payment-member');
+    const own = { playerId: 'payment-member', name: 'Payment Member', status: 'accepted', paid: false };
+    const event = {
+      id: 'cancelled-payment', name: 'Bezahlte LAN', status: 'published',
+      canManagePayments: false, costCents: 2550, paypalLink: 'https://paypal.me/test',
+      acceptedParticipants: [own],
+    };
+    const active = renderEventCard(event);
+    assert.match(active, /data-pay-event="cancelled-payment"/);
+    assert.match(active, /data-toggle-event-paid="cancelled-payment"/);
+    for (const paid of [false, true]) {
+      const html = renderEventCard({
+        ...event, status: 'cancelled',
+        myParticipation: { status: 'accepted', canDecline: false, lockReason: 'cancelled' },
+        acceptedParticipants: [{ ...own, paid, paidByName: 'Orga', paidAmountCents: 2550 }],
+      });
+      assert.match(html, /25,50/);
+      assert.doesNotMatch(html, /data-pay-event=|data-toggle-event-paid=/);
+      assert.match(html, paid ? /Bezahlt von Orga/ : /Das Event wurde abgesagt/);
+    }
+    const participants = [
+      { ...own, paid: true },
+      { playerId: 'unpaid-member', name: 'Unpaid Member', status: 'accepted', paid: false },
+    ];
+    const managed = renderEventCard({
+      ...event, status: 'cancelled', canManagePayments: true,
+      acceptedParticipants: participants, participants,
+    });
+    assert.match(managed, /data-toggle-event-paid="cancelled-payment" data-payment-player="payment-member"/);
+    assert.doesNotMatch(managed, /data-toggle-event-paid="cancelled-payment" data-payment-player="unpaid-member"/);
+  } finally {
+    lockMyIdToSession(previous.playerId);
+    globalThis.document = previous.document;
+    globalThis.window = previous.window;
+  }
+});
+
+test('only active invitations lead the overview while Historie stays chronological', () => {
+  const previous = { ...state };
+  const event = (name, startsAt, status, closed = false) => ({
+    id: name, name, startsAt, endsAt: startsAt + 1,
+    status: closed ? 'ended' : 'published', isEnded: closed,
+    myParticipation: { status, canAccept: !closed, canDecline: !closed },
+  });
+  try {
+    Object.assign(state, {
+      managedEvents: null, plannedEvents: [], declinedEvents: [],
+      availableEvents: [event('active-accepted', 100, 'accepted')],
+      eventInvitations: [event('active-invited', 900, 'invited')],
+      endedEvents: [
+        event('past-invited', 3000, 'invited', true),
+        event('past-declined', 2000, 'declined', true),
+        event('past-accepted', 1000, 'accepted', true),
+      ],
+    });
+    const html = renderEventSection();
+    assert.ok(html.indexOf('active-invited') < html.indexOf('active-accepted'));
+    assert.ok(html.indexOf('past-accepted') < html.indexOf('past-declined'));
+    assert.ok(html.indexOf('past-declined') < html.indexOf('past-invited'));
+  } finally {
+    Object.assign(state, previous);
+  }
 });
