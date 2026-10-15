@@ -387,7 +387,7 @@ test('event creation validates name, optional periods and ordering', async () =>
   assert.equal((await request(app).post(`/api/events/${participantsOnly.body.id}/tracking/start`)).status, 400);
   // Entering a period again has to restore exactly what removing it took away:
   // a one-way removal would leave a normal-looking event that offers
-  // "Tracking starten" and is refused every time.
+  // "Spiele-Tracking starten" and is refused every time.
   const rescheduled = await request(app)
     .patch(`/api/events/${participantsOnly.body.id}`)
     .send({ startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS });

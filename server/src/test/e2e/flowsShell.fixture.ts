@@ -1217,7 +1217,7 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   const appliedColor = (await page.inputValue('.profile-color-picker-value')).toLowerCase();
   await page.click('[data-profile-color-apply]');
   assert.equal(await page.inputValue('#profile-color'), appliedColor);
-  assert.equal(await page.getByText('Erweitertes Tracking für diesen Download', { exact: true }).count(), 1);
+  assert.equal(await page.getByText('Erweitertes Spiele-Tracking für diesen Download', { exact: true }).count(), 1);
   const profileSectionKeys = ['agent', 'privacy', 'data'];
   assert.deepEqual(
     await page.locator('[data-profile-section]').evaluateAll((sections) =>

@@ -601,7 +601,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:poll-selected-answer`: The chosen answer is marked by a 1px inset accent outline instead of the gradient; geometry stays with the base or square variant.
 
-- `registry:profile-row-action`: Mein Profil keeps one fixed right-hand action column across all cards, so compact buttons and the view select share one width; the select matches the compact buttons' type size.
+- `registry:profile-row-action`: Mein Profil keeps one fixed right-hand action column across all cards, so compact buttons and the view select share one width; the select matches the compact buttons' type size. A `.has-action-pair` row (Datenschutz: „Daten löschen“ beside the consent toggle) gives both buttons that same width side by side and stacks them on phones.
 - `registry:rating-scale-selected`: On the Bock/Skill scale the chosen number and its inset outline take that scale's saturated color; geometry stays with the square variant.
 - `registry:rating-scale-hint`: On a Vote ballot the viewer's own Bock gets a faint dashed outline as orientation; geometry stays with the square variant.
 
