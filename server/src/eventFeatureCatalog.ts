@@ -104,8 +104,8 @@ export const EVENT_FEATURE_CATALOG: Readonly<Record<EventFeatureKey, EventFeatur
   tracking: {
     key: 'tracking',
     version: 1,
-    title: 'Tracking & Auswertung',
-    description: 'Agent-Tracking, Live-Status, Spielzeit und Ranglisten',
+    title: 'Spiele-Tracking & Auswertung',
+    description: 'Spiele-Tracking per Agent, Live-Status, Spielzeit und Ranglisten',
     requiredFeatureKeys: [],
   },
   kiosk: {

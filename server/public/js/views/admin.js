@@ -421,7 +421,7 @@ async function cleanupTestUsers(ctx) {
 }
 
 async function deletePlayer(player, ctx) {
-  if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen? Alle Tracking-Daten, Sitzungen und persönlichen Kontodaten werden unwiderruflich entfernt.`, { confirmText: 'Löschen', danger: true }))) return;
+  if (!(await confirmDialog(`Spieler "${player.name}" wirklich löschen? Alle Spiele-Tracking-Daten, Sitzungen und persönlichen Kontodaten werden unwiderruflich entfernt.`, { confirmText: 'Löschen', danger: true }))) return;
   try {
     const removed = await withStepUp(() => api.players.remove(player.id), { title: 'Konto löschen' });
     if (removed === undefined) return;

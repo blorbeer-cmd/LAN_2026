@@ -2565,6 +2565,17 @@ button.profile-row-main {
 .profile-row-action > select {
   font-size: var(--font-size-sm);
 }
+/* A row with a second, secondary action (Datenschutz: "Daten löschen"
+   beside the consent toggle) grows its action column to the left, so the
+   right-hand button stays on the shared column edge and keeps its width. */
+.profile-row.has-action-pair {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.profile-row.has-action-pair .profile-row-action {
+  display: grid;
+  grid-template-columns: repeat(2, 10rem);
+  gap: var(--space-2);
+}
 .profile-identity {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
@@ -2703,6 +2714,11 @@ button.profile-row-main {
   .profile-row.is-form .profile-row-action {
     justify-self: end;
     width: 8.5rem;
+  }
+  /* Two 8.5rem buttons side by side would squeeze the title on phones, so
+     the pair stacks inside the regular action column. */
+  .profile-row.has-action-pair .profile-row-action {
+    grid-template-columns: 8.5rem;
   }
   .profile-identity {
     grid-template-columns: auto minmax(0, 1fr);

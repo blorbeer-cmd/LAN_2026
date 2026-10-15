@@ -61,10 +61,10 @@ export {
 // Both the tooltip and confirmation explain the selected-event and consent
 // prerequisites from activeTrackingContexts. Share the sentence to avoid drift.
 const TRACKING_SCOPE_SENTENCE =
-  'Während dieses Event läuft und Tracking aktiviert ist, entstehen aus den Agent-Meldungen Live-Status, Spielzeit und Auswertungen nur für zugesagte Teilnehmende, die dieses Event aktuell in ihrem Konto ausgewählt haben und deren Einwilligung zum Event-Tracking gültig ist. Der Agent meldet nur laufende Spiele aus der Server-Liste, keine anderen Programme. Ohne gültigen Kontext werden keine erkannten Spiele übertragen, gespeichert oder in der Agent-Diagnose angezeigt. Jede Person kann die Einwilligung widerrufen oder das Tracking im eigenen Profil pausieren.';
-const TRACKING_START_CONFIRM = (name) => `Tracking für „${name}“ starten? ${TRACKING_SCOPE_SENTENCE}`;
+  'Während dieses Event läuft und Spiele-Tracking aktiviert ist, entstehen aus den Agent-Meldungen Live-Status, Spielzeit und Auswertungen nur für zugesagte Teilnehmende, die dieses Event aktuell in ihrem Konto ausgewählt haben und deren Einwilligung zum Spiele-Tracking gültig ist. Der Agent meldet nur laufende Spiele aus der Server-Liste, keine anderen Programme. Ohne gültigen Kontext werden keine erkannten Spiele übertragen, gespeichert oder in der Agent-Diagnose angezeigt. Jede Person kann die Einwilligung widerrufen oder das Spiele-Tracking im eigenen Profil pausieren.';
+const TRACKING_START_CONFIRM = (name) => `Spiele-Tracking für „${name}“ starten? ${TRACKING_SCOPE_SENTENCE}`;
 const TRACKING_STOP_CONFIRM = (name) =>
-  `Tracking für „${name}“ stoppen? Laufende Spielzeiten werden abgeschlossen und der Live-Status geleert; bereits erfasste Spielzeit und der Event-Workspace bleiben erhalten.`;
+  `Spiele-Tracking für „${name}“ stoppen? Laufende Spielzeiten werden abgeschlossen und der Live-Status geleert; bereits erfasste Spielzeit und der Event-Workspace bleiben erhalten.`;
 const KIOSK_HELP = 'Verfügbare LAN-Events haben je ein eigenes Broadcast-Konto mit gemeinsamem Passwort. „Broadcast öffnen“ öffnet das gewählte Event in einem eigenen Tab.';
 // Mirrors foodOrders.js's card-header-toggle pattern: an event card becomes
 // collapsible only once its list holds more than one card (a lone card gets
@@ -852,8 +852,8 @@ function renderManagementMenu(event) {
     : event.isEnded
       ? `<button type="button" class="btn btn-sm" data-restart-event="${event.id}">Event wieder starten</button>`
       : event.trackingEnabled
-        ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">Tracking stoppen</button>`
-        : `<button type="button" class="btn btn-sm" data-start-tracking="${event.id}">Tracking starten</button>`;
+        ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">Spiele-Tracking stoppen</button>`
+        : `<button type="button" class="btn btn-sm" data-start-tracking="${event.id}">Spiele-Tracking starten</button>`;
   const endBtn = event.isEnded
     ? ''
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
@@ -1687,11 +1687,11 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.startTracking);
       if (!event) return;
-      if (!(await confirmDialog(TRACKING_START_CONFIRM(event.name), { title: 'Tracking starten', confirmText: 'Tracking starten' }))) return;
+      if (!(await confirmDialog(TRACKING_START_CONFIRM(event.name), { title: 'Spiele-Tracking starten', confirmText: 'Spiele-Tracking starten' }))) return;
       try {
         await api.events.startTracking(event.id);
         await ctx.refresh();
-        showToast('Tracking gestartet.');
+        showToast('Spiele-Tracking gestartet.');
       } catch (err) {
         showToast(err.message, { error: true });
       }
@@ -1701,11 +1701,11 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.stopTracking);
       if (!event) return;
-      if (!(await confirmDialog(TRACKING_STOP_CONFIRM(event.name), { title: 'Tracking stoppen', confirmText: 'Tracking stoppen' }))) return;
+      if (!(await confirmDialog(TRACKING_STOP_CONFIRM(event.name), { title: 'Spiele-Tracking stoppen', confirmText: 'Spiele-Tracking stoppen' }))) return;
       try {
         await api.events.stopTracking(event.id);
         await ctx.refresh();
-        showToast('Tracking gestoppt.');
+        showToast('Spiele-Tracking gestoppt.');
       } catch (err) {
         showToast(err.message, { error: true });
       }
@@ -1734,7 +1734,7 @@ export function renderOrgaEvents(container, ctx) {
         ? `Gruppe „${event.name}“ beenden? Sie wird in die Historie verschoben und ist danach nicht mehr auswählbar.`
         // The action now also reaches events that never tracked — an undated one
         // cannot — so the stopped-tracking half only appears when it is true.
-        : `Event „${event.name}“ beenden? ${event.trackingEnabled ? 'Laufendes Tracking wird gestoppt und das Event wird' : 'Das Event wird'} in die Historie verschoben.`;
+        : `Event „${event.name}“ beenden? ${event.trackingEnabled ? 'Laufendes Spiele-Tracking wird gestoppt und das Event wird' : 'Das Event wird'} in die Historie verschoben.`;
       if (!(await confirmDialog(question, { confirmText: 'Beenden', danger: true }))) return;
       try {
         await api.events.end(event.id);

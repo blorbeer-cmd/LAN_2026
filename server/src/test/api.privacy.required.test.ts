@@ -651,6 +651,86 @@ test('revoking event consent clears the stored diagnostic process snapshot', asy
   assert.deepEqual(JSON.parse(exported.text).activity.agent.processNames, []);
 });
 
+test('an account deletes its own game-tracking data for one event and nothing else', async () => {
+  const app = createTestApp();
+  const member = createMember('Delete Tracking');
+  const other = createMember('Keep Tracking');
+  const event = createEvent('Delete Tracking LAN', {
+    groupId: DEFAULT_GROUP_ID,
+    startsAt: Date.now() - 1_000,
+    endsAt: Date.now() + 3_600_000,
+  });
+  const otherEvent = createEvent('Earlier LAN', {
+    groupId: DEFAULT_GROUP_ID,
+    startsAt: Date.now() - 7_200_000,
+    endsAt: Date.now() - 3_600_000,
+  });
+  enableTestTracking(member.id, event.id);
+  const game = db.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get(DEFAULT_GROUP_ID) as { id: string };
+  db.prepare(
+    'INSERT OR IGNORE INTO game_process_names (id, group_id, game_id, process_name) VALUES (?, ?, ?, ?)',
+  ).run(nanoid(), DEFAULT_GROUP_ID, game.id, 'deltrack.exe');
+  const report = () =>
+    request(app).post('/api/agent/report').set('x-api-key', member.apiKey).send({ processNames: ['deltrack.exe'] });
+  assert.equal((await report()).status, 200);
+  const insertEnded = db.prepare(
+    `INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const now = Date.now();
+  insertEnded.run(nanoid(), member.id, game.id, DEFAULT_GROUP_ID, event.id, now - 3_600_000, now - 1_800_000);
+  insertEnded.run(nanoid(), member.id, game.id, DEFAULT_GROUP_ID, otherEvent.id, now - 7_000_000, now - 6_000_000);
+  insertEnded.run(nanoid(), other.id, game.id, DEFAULT_GROUP_ID, event.id, now - 3_600_000, now - 1_800_000);
+
+  const view = await request(app).get('/api/privacy').set('Cookie', member.cookie);
+  assert.equal(view.status, 200);
+  const summary = (view.body.trackingData as Array<{ eventId: string; sessionCount: number; trackedMs: number; consentActive: boolean }>)
+    .find((row) => row.eventId === event.id);
+  assert.equal(summary?.sessionCount, 2, 'the open and the ended session of this event');
+  assert.ok((summary?.trackedMs ?? 0) >= 1_800_000);
+  assert.equal(summary?.consentActive, true);
+
+  // A double click or a second tab must not turn into an error.
+  const [first, second] = await Promise.all([
+    request(app).delete(`/api/privacy/tracking-data/${event.id}`).set('Cookie', member.cookie),
+    request(app).delete(`/api/privacy/tracking-data/${event.id}`).set('Cookie', member.cookie),
+  ]);
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(second.status, 200, JSON.stringify(second.body));
+  assert.equal(first.body.deletedSessions + second.body.deletedSessions, 2);
+
+  const count = (sql: string, ...params: unknown[]) =>
+    (db.prepare(sql).get(...params) as { count: number }).count;
+  assert.equal(count('SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND event_id = ?', member.id, event.id), 0);
+  assert.equal(count('SELECT COUNT(*) AS count FROM tracking_live_games WHERE player_id = ? AND event_id = ?', member.id, event.id), 0);
+  assert.equal(count('SELECT COUNT(*) AS count FROM tracking_live_contexts WHERE player_id = ? AND event_id = ?', member.id, event.id), 0);
+  assert.equal(count('SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND event_id = ?', member.id, otherEvent.id), 1, 'another event stays');
+  assert.equal(count('SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND event_id = ?', other.id, event.id), 1, 'another account stays');
+  assert.equal(activeTrackingContexts(member.id).length, 1, 'deleting data does not revoke the consent');
+
+  // The game still running starts a fresh session instead of vanishing.
+  assert.equal((await report()).status, 200);
+  assert.equal(
+    count('SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND event_id = ? AND ended_at IS NULL', member.id, event.id),
+    1,
+  );
+
+  const revoked = await request(app)
+    .post(`/api/events/${event.id}/tracking-consent`)
+    .set('Cookie', member.cookie)
+    .send({ granted: false });
+  assert.equal(revoked.status, 200, JSON.stringify(revoked.body));
+  const afterRevoke = await request(app).get('/api/privacy').set('Cookie', member.cookie);
+  assert.equal(
+    (afterRevoke.body.trackingData as Array<{ eventId: string; consentActive: boolean }>)
+      .find((row) => row.eventId === event.id)?.consentActive,
+    false,
+  );
+
+  const unknown = await request(app).delete('/api/privacy/tracking-data/missing-event').set('Cookie', member.cookie);
+  assert.equal(unknown.status, 404);
+});
+
 test('an outdated event consent stays revocable through the privacy view', async () => {
   const app = createTestApp();
   const member = createMember('Legacy Consent');

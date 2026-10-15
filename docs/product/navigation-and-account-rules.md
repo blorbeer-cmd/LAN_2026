@@ -134,9 +134,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   so rows never jump while boxes are ticked. „Live-Status & Agent“, „Datenschutz“ and „Meine
   Daten“ are collapsible cards that start collapsed and keep a manual open state across
   re-renders.
-  „Live-Status & Agent“ shows tracking as a row with „Pausieren“/„Fortsetzen“ and a „Mehr
+  „Live-Status & Agent“ shows „Spiele-Tracking“ as a row with „Pausieren“/„Fortsetzen“ and a „Mehr
   erfahren“ dialog that states what the agent reads on the PC, what reaches the server and what
-  it is used for, followed by three numbered steps: download (with „Erweitertes Tracking für
+  it is used for, followed by three numbered steps: download (with „Erweitertes Spiele-Tracking für
   diesen Download“ as a per-download option), install and „Ohne Windows“ with „Key kopieren“ and
   a quiet „Key erneuern“ whose confirmation stays red. Live status, playtime and derived
   evaluations apply only to the account's currently selected, running event with accepted
@@ -151,6 +151,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   changing event list, a standing pre-authorization („Neue Events und Gruppen vorab erlauben“)
   lets an account agree in advance to events and groups that only become trackable later. It is
   bound to the text version it was set under and never overrides a single event's own decision.
+  An event row whose account still holds playtime data names the recorded time in its meta line
+  and offers „Daten löschen“ directly left of „Erlauben“/„Widerrufen“; an event with data but no
+  consent row keeps a row with only that button. A short red confirmation says that the event's
+  playtime is deleted for good, also from statistics, and — only while a consent for that event
+  has not been withdrawn — that new playtime will be recorded again. Deleting never changes the
+  consent.
   Technical retention rules and operator decisions remain in the documentation rather than the
   member profile. „Meine Daten“ provides a secret-free personal JSON export and a
   reauthentication-protected account deletion with concrete remedies for roles or open

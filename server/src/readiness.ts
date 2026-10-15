@@ -62,7 +62,7 @@ function eventCheck(groupId: string, now: number, includeTestEvents: boolean): R
     id: 'event',
     label: 'Event',
     status: participants > 0 ? 'ready' : 'warning',
-    summary: `${event.name}: ${event.tracking_enabled ? 'Tracking läuft' : 'Tracking noch nicht gestartet'} · ${participants} bestätigt`,
+    summary: `${event.name}: ${event.tracking_enabled ? 'Spiele-Tracking läuft' : 'Spiele-Tracking noch nicht gestartet'} · ${participants} bestätigt`,
     details: participants > 0 ? [] : ['Noch keine bestätigte Person in der Teilnehmerliste.'],
   };
 }

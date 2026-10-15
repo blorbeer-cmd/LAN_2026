@@ -247,6 +247,69 @@ export function closeEventContexts(eventId: string, endedAt = Date.now()): void 
   })();
 }
 
+export interface EventTrackingDataSummary {
+  eventId: string;
+  eventName: string;
+  sessionCount: number;
+  trackedMs: number;
+  consentActive: boolean;
+}
+
+// Every event the account has stored game-tracking data for, so it can delete
+// it again. consentActive counts any consent that was never withdrawn — also an
+// outdated text version — because that is what the account would have to
+// revoke before the event can no longer collect anything new.
+export function listEventTrackingData(playerId: string, now = Date.now()): EventTrackingDataSummary[] {
+  const rows = db
+    .prepare(
+      `SELECT e.id AS eventId, e.name AS eventName, COUNT(ps.id) AS sessionCount,
+              SUM(MAX(0, COALESCE(ps.ended_at, ?) - ps.started_at)) AS trackedMs,
+              EXISTS (
+                SELECT 1 FROM event_tracking_consents c
+                WHERE c.event_id = e.id AND c.player_id = ps.player_id AND c.revoked_at IS NULL
+              ) AS consentActive
+       FROM play_sessions ps
+       JOIN events e ON e.id = ps.event_id
+       WHERE ps.player_id = ?
+       GROUP BY e.id
+       ORDER BY e.starts_at DESC, e.name COLLATE NOCASE`,
+    )
+    .all(now, playerId) as Array<Omit<EventTrackingDataSummary, 'consentActive'> & { consentActive: number }>;
+  return rows.map((row) => ({ ...row, trackedMs: row.trackedMs ?? 0, consentActive: row.consentActive === 1 }));
+}
+
+/**
+ * Removes the account's own game-tracking data for one event: the playtime
+ * history and the current live rows. Open rows go too, so a game that is still
+ * running simply starts a fresh session on the next agent report instead of
+ * accruing onto a row that no longer exists. Consents stay untouched — whether
+ * collection continues is a separate decision of the account.
+ */
+export function deleteEventTrackingData(
+  playerId: string,
+  eventId: string,
+): { deletedSessions: number; groupIds: string[] } {
+  return db.transaction(() => {
+    const groupIds = (
+      db
+        .prepare(
+          `SELECT group_id AS groupId FROM play_sessions WHERE player_id = ? AND event_id = ?
+           UNION SELECT group_id FROM tracking_live_contexts WHERE player_id = ? AND event_id = ?
+           UNION SELECT group_id FROM tracking_live_games WHERE player_id = ? AND event_id = ?`,
+        )
+        .all(playerId, eventId, playerId, eventId, playerId, eventId) as Array<{ groupId: string | null }>
+    )
+      .map((row) => row.groupId)
+      .filter((groupId): groupId is string => Boolean(groupId));
+    const deletedSessions = db
+      .prepare('DELETE FROM play_sessions WHERE player_id = ? AND event_id = ?')
+      .run(playerId, eventId).changes;
+    db.prepare('DELETE FROM tracking_live_games WHERE player_id = ? AND event_id = ?').run(playerId, eventId);
+    db.prepare('DELETE FROM tracking_live_contexts WHERE player_id = ? AND event_id = ?').run(playerId, eventId);
+    return { deletedSessions, groupIds };
+  })();
+}
+
 export function allTrackedContextsForGroup(groupId: string): Array<{ player_id: string; event_id: string | null; last_seen: number; manual_note: string | null; activity_tracked: number }> {
   return db.prepare('SELECT player_id, event_id, last_seen, manual_note, activity_tracked FROM tracking_live_contexts WHERE group_id = ?').all(groupId) as Array<{player_id:string;event_id:string|null;last_seen:number;manual_note:string|null;activity_tracked:number}>;
 }
