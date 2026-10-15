@@ -153,7 +153,7 @@ function suggestionChipHtml(gameId, suggestion, mine) {
 // like the former sliders with a fill line below. No number selected means
 // "not rated yet"; 0 is a deliberate answer, spelled out beside the label
 // because a bare 0 would read like "not rated".
-const ZERO_MEANING = { bock: 'kein Bock', skill: 'kenne ich nicht' };
+const ZERO_MEANING = { bock: 'spiele ich nicht', skill: 'nie gespielt' };
 
 function ratingRowHtml({ label, mine, avg, count, gameId, gameName, kind, disabled, suggestionHtml }) {
   // The meaning shares the Ø note's reserved line, so rows keep one height.
