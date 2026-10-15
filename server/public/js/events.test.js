@@ -10,6 +10,7 @@ import {
   renderEventCalendarActions,
   renderEventLocation,
   renderInvitationRow,
+  renderInvitationCard,
   renderDeclinedEventCard,
   renderEventCard,
   renderOwnParticipationActions,
@@ -207,11 +208,11 @@ test('an accepted member card offers the withdrawal, or names why it is blocked'
   assert.doesNotMatch(locked, /data-decline-participation/);
   assert.match(locked, /Zahlung ist bereits erfasst/);
 
-  // A still-open invitation is answered on its own invitation card, not here.
-  assert.equal(
-    renderOwnParticipationActions({ ...event, myParticipation: { status: 'invited', canDecline: true } }),
-    '',
-  );
+  const invited = renderOwnParticipationActions({
+    ...event, myParticipation: { status: 'invited', canDecline: true, canAccept: true },
+  });
+  assert.match(invited, /data-accept-invitation="member-event">Zusagen/);
+  assert.match(invited, /data-decline-invitation="member-event">Absagen/);
 });
 
 test('an organizer answers their own participation on the management card', () => {
@@ -239,20 +240,54 @@ test('an organizer answers their own participation on the management card', () =
 
   // Organizing an event one is not part of offers nothing to answer.
   assert.doesNotMatch(renderEventCard({ ...event, myParticipation: null }), /data-(accept|decline)-participation/);
+
+  const invited = renderEventCard({
+    ...event, myParticipation: { status: 'invited', canAccept: true, canDecline: true },
+  });
+  assert.match(invited, />Eingeladen</);
+  assert.match(invited, /data-accept-invitation="managed-event"/);
+  assert.match(invited, /data-decline-invitation="managed-event"/);
 });
 
-test('a declined event stays a teaser with the way back', () => {
+test('invited and declined event cards keep planning facts and only personal answer actions', () => {
   const event = {
     id: 'declined-event',
     name: 'Sommer LAN',
     startsAt: Date.UTC(2026, 8, 8, 16, 0),
     endsAt: Date.UTC(2026, 8, 10, 10, 0),
+    location: 'Gemeindehaus <West>',
+    description: 'Essen & Übernachtung',
+    costCents: 2550,
+    paymentDueAt: Date.UTC(2026, 8, 1),
     myParticipation: { status: 'declined', canAccept: true, lockReason: null },
   };
   const html = renderDeclinedEventCard(event);
   assert.match(html, /data-accept-participation="declined-event">Zusagen</);
+  assert.match(html, /Von dir abgesagt/);
+  assert.match(html, /Gemeindehaus &lt;West&gt;/);
+  assert.match(html, /Essen &amp; Übernachtung/);
+  assert.match(html, /25,50/);
+  assert.match(html, /bis /);
   // Teaser rules: no roster, and no calendar handoff before acceptance.
-  assert.doesNotMatch(html, /event-participant-list|data-event-calendar=/);
+  assert.doesNotMatch(html, /event-participant-list|data-event-calendar=|data-pay-event=|data-toggle-event-paid=/);
+
+  const pending = renderInvitationCard({
+    ...event,
+    myParticipation: { status: 'invited', canAccept: true, canDecline: true },
+  });
+  assert.match(pending, /data-pending-invitation="declined-event"/);
+  assert.match(pending, />Eingeladen</);
+  assert.match(pending, /25,50/);
+  assert.match(pending, /data-accept-invitation=/);
+  assert.match(pending, /data-decline-invitation=/);
+  assert.doesNotMatch(pending, /event-participant-list|data-event-calendar=|data-pay-event=|data-toggle-event-paid=/);
+
+  const cancelled = renderInvitationCard({
+    ...event, status: 'cancelled',
+    myParticipation: { status: 'invited', canAccept: false, canDecline: false, lockReason: 'cancelled' },
+  });
+  assert.match(cancelled, /Das Event wurde abgesagt/);
+  assert.doesNotMatch(cancelled, /data-pending-invitation=|data-accept-invitation=|data-decline-invitation=/);
 
   const locked = renderDeclinedEventCard({
     ...event,

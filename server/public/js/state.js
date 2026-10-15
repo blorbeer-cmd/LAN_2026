@@ -17,7 +17,7 @@ export const state = {
   activeEvent: null,
   availableEvents: [],
   plannedEvents: [], // compatibility field; generic polls never add event visibility
-  endedEvents: [], // this account's own accepted events that have since ended (member Historie)
+  endedEvents: [], // closed events this account was invited to, regardless of its answer (Historie)
   historicalEvents: [], // every event this account accepted at some point, ended ones included
   eventInvitations: [],
   declinedEvents: [], // events this account declined; still visible as a teaser, never selectable

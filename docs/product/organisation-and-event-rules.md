@@ -268,7 +268,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   invitation is a personal action. It lists the two workspace kinds in two separate sections —
   „Events“ first, then „Gruppen“ — each with its own create action („Event anlegen“ /
   „Gruppe anlegen“, which preselects that type in the shared dialog), its own empty text and its own
-  „Abgesagt“ section and its own „Historie“.
+  „Von dir abgesagt“ section and its own „Historie“.
   Creating either kind accepts its creator immediately: the roster row is written in the same
   transaction as the event, so a workspace never exists without its author on it and appears in
   their own switcher at once. They can still withdraw that acceptance like anyone else, under
@@ -294,17 +294,21 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   Its roster reads „Mitglieder“ instead of „Teilnehmende“ and its empty state says „Noch keine
   Mitglieder.“ A finished event moves out of the active list into the Events section's own
   „Historie“ (the same collapsible-section pattern as Food orders): it starts collapsed and
-  preserves its open state across live re-renders. Pending invitations for the current identity are
-  deliberately absent from this tab — a teaser sitting directly above the Events cards made it too
-  easy to miss and cluttered the tab with the cards immediately following it. Instead, an
-  invitation surfaces as a personal Home „Meine To-Dos“ row (see [„Home overview“](navigation-and-account-rules.md#mein-profil-auswertung-und-home)) with
+  preserves its open state across live re-renders. Pending invitations for the current identity
+  lead the active collection in „Events & Gruppen“, before accepted events and sorted by start
+  within each answer state. Their expanded cards show name, period (or the open-date notice),
+  location, note, contribution and payment deadline, with „Eingeladen“ and direct „Zusagen“ /
+  „Absagen“ actions (`renderInvitationCard`). Reading never accepts an invitation or changes the
+  active workspace. Owner/admin answer their own invitations on their existing management card,
+  without a duplicate invitation card. An invitation additionally surfaces as a personal Home
+  „Meine To-Dos“ row (see [„Home overview“](navigation-and-account-rules.md#mein-profil-auswertung-und-home)) with
   „Ablehnen“ and „Annehmen“ that also links into „Mein Profil“, and Profile's own leading
   „Einladungen“ section answers it with the full details
   (`renderInvitationRow`/`openInvitationDialog`/`pendingEventInvitations`/`wirePendingInvitationActions`
   in `events.js`, reused by `profile.js` so the row, dialog and accept/decline wiring exist exactly
-  once).
-  An *answered* participation is different: it stays on this tab, because this is where the member
-  already looks at the events they are part of. Every card variant therefore carries the account's
+  once). All entry points share `answerPendingInvitation`; answering in Events stays there,
+  preserves a stable keyboard focus and opens the accepted card or personal-decline section.
+  Every card variant carries the account's
   own answer through `ownParticipationAction`: an „Absagen“ menu with „Absagen“ and, for an event
   still ahead, „Mit Ausrede absagen“ while the server reports `myParticipation.canDecline` (a group
   shows the plain „Absagen“ button), „Zusagen“ while it reports `canAccept`, and otherwise the
@@ -313,15 +317,20 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   personal-participation footer. A management card marks its own decline with „Du: Abgesagt“ in
   its header — organizing an event is not the same as attending it, and administrative removal
   in the participant list only removes a roster row, which is a
-  different act from answering for oneself. A still-open invitation stays out of all of this; it is
-  answered on its invitation card in „Mein Profil“.
-  Declining is not leaving: for a member the event moves into this tab's own „Abgesagt“
+  different act from answering for oneself.
+  Declining is not leaving: for a member the event moves into this tab's own „Von dir abgesagt“
   section — the same collapsible-section pattern as „Historie“, likewise collapsed by default and
-  preserving its open state, where it stays as a teaser card with „Zusagen“
+  preserving its open state, where it stays as a teaser card with all planning facts, including
+  contribution and deadline, and „Zusagen“
   (`renderDeclinedEventCard`). An owner/admin keeps seeing it as a management card instead, since
   that list already holds every event of the group, and it is therefore never listed twice. Only an
   organizer withdrawing the invitation removes the event from someone's app entirely, and that
-  removal notifies them unless they had declined themselves. Event
+  removal notifies them unless they had declined themselves. Ending or cancelling the event
+  moves every retained invitation (open, accepted or personally declined) into „Historie“.
+  Open and declined invitations keep teaser access without participant or payment data; accepted
+  participants keep their existing member details. Personal answer actions are replaced by the
+  explicit ended/cancelled reason. Closed invitations never appear as actionable invitations on
+  Home/Profile or as selectable workspaces. Event
   cards stay in one vertical column at
   phone and laptop widths so payment and participant controls keep enough room. A card has no
   accent rail. Its header is the title with one meta line (type, and while collapsed also period and

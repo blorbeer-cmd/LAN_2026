@@ -236,12 +236,13 @@ test('manager invites a member who accepts and both open clients update', async 
     'an open invitation cannot receive a payment state',
   );
 
-  // A pending invitation is no longer shown on the Events tab at all — it
-  // would otherwise sit directly above the tab's own event cards. Instead it
-  // is a personal Home "Meine To-Dos" row that can be answered right there,
-  // and its row still leads to the full invitation in "Mein Profil" (see
-  // events.js/profile.js/myTodos.js).
-  assert.equal(await memberPage.locator(`[data-pending-invitation="${eventId}"]`).count(), 0);
+  // Events offers the full invitation directly; Home and Profile remain
+  // additional entry points to the same personal answer.
+  const eventInvitation = memberPage.locator(`[data-pending-invitation="${eventId}"]`);
+  await eventInvitation.waitFor();
+  assert.match((await eventInvitation.textContent()) ?? '', /25,50/);
+  assert.equal(await eventInvitation.locator('[data-accept-invitation]').count(), 1);
+  assert.equal(await eventInvitation.locator('[data-decline-invitation]').count(), 1);
   await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'home' })));
   await memberPage.waitForSelector('#view-container[data-view="home"]');
   const homeInvitationRow = memberPage.locator(`[data-home-todo="event-invitation:${eventId}"]`);
@@ -833,4 +834,105 @@ test('starting tracking refreshes a standing consent already shown in the profil
   assert.equal(started.status(), 200, await started.text());
   await memberPage.waitForSelector(`[data-consent-event="${trackingEventId}"][aria-pressed="true"]`);
   assert.equal(await consentPressed(trackingEventId), 'true', 'server-created consent is visible without a page reload');
+});
+
+test('Events answers invitations directly and preserves declined and closed information after reload', async () => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(context, 'events-personal-invitation');
+  const page = await context.newPage();
+  try {
+    await login(page, MEMBER_NAME, MEMBER_PASSWORD);
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
+    await page.waitForSelector('#view-container[data-view="events"]');
+    const originalContext = await page.locator('#event-context-switcher').inputValue();
+    const startsAt = Date.now() + 7 * 24 * 60 * 60_000;
+    const created = await ownerPage.request.post(`${BASE_URL}/api/events`, {
+      data: {
+        name: 'Wochenende mit Übernachtung im Gemeindehaus Oberhausen',
+        eventType: 'general', startsAt, endsAt: startsAt + 24 * 60 * 60_000,
+        location: 'Gemeindehaus Oberhausen', description: 'Essen und Übernachtung sind inklusive.',
+        costCents: 2550, paymentDueAt: startsAt,
+      },
+    });
+    assert.equal(created.status(), 201, await created.text());
+    const id = ((await created.json()) as { id: string }).id;
+    const invited = await ownerPage.request.post(`${BASE_URL}/api/events/${id}/invitations`, { data: { playerId: memberId } });
+    assert.equal(invited.status(), 201, await invited.text());
+    const pending = page.locator(`[data-pending-invitation="${id}"]`);
+    await pending.waitFor();
+    for (const width of [390, 1024, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      assert.match((await pending.textContent()) ?? '', /Eingeladen/);
+      assert.match((await pending.textContent()) ?? '', /25,50/);
+      assert.match((await pending.textContent()) ?? '', /Essen und Übernachtung sind inklusive/);
+      assert.equal(await page.evaluate(() => {
+        const view = document.getElementById('view-container')!;
+        return document.documentElement.scrollWidth <= innerWidth && view.scrollWidth <= view.clientWidth;
+      }), true, 'invitation information and answers fit at width ' + width);
+    }
+    assert.equal(await page.locator('#event-context-switcher').inputValue(), originalContext, 'viewing never accepts or switches the workspace');
+    assert.equal(await pending.locator('[data-pay-event], [data-toggle-event-paid], [data-event-calendar], .event-participant-list').count(), 0);
+
+    // A rejected answer keeps the invitation and its controls usable.
+    await page.route(`**/api/events/${id}/invitation/accept`, (route) => route.fulfill({
+      status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'Einladung wurde gerade geändert.' }),
+    }), { times: 1 });
+    await pending.locator('[data-accept-invitation]').click();
+    await page.locator('.toast-error', { hasText: 'Einladung wurde gerade geändert.' }).waitFor();
+    assert.equal(await pending.locator('[data-accept-invitation]').isEnabled(), true);
+
+    await pending.locator('[data-decline-invitation]').focus();
+    await pending.locator('[data-decline-invitation]').press('Enter');
+    const declined = page.locator(`[data-declined-event="${id}"]`);
+    await declined.waitFor();
+    await page.waitForFunction(() => document.activeElement?.id === 'orga-events-title');
+    assert.equal(await page.locator('#view-container').getAttribute('data-view'), 'events');
+    await page.reload();
+    await page.waitForSelector('#view-container[data-view="events"]');
+    await page.locator('[data-declined-events="event"] > summary').click();
+    await declined.waitFor();
+    assert.match((await declined.textContent()) ?? '', /Gemeindehaus Oberhausen/);
+    assert.match((await declined.textContent()) ?? '', /25,50/);
+    await declined.locator('[data-accept-participation]').click();
+    const accepted = page.locator(`[data-event-card="${id}"]`);
+    await accepted.waitFor();
+    assert.equal(await accepted.locator('.event-card-body').isVisible(), true);
+    assert.equal(await page.locator('#event-context-switcher').inputValue(), originalContext);
+
+    // A withdrawn acceptance remains readable too; accepting the next invitation
+    // then uses the direct Events answer rather than the Profile handoff.
+    await accepted.locator('[data-action-menu^="event-decline-"] > summary').click();
+    await accepted.locator('[data-decline-participation]').click();
+    await page.locator('.modal-backdrop [data-confirm]').click();
+    await declined.waitFor();
+    assert.equal((await ownerPage.request.post(`${BASE_URL}/api/events/${id}/invitations`, { data: { playerId: memberId } })).status(), 201);
+    await pending.waitFor();
+    await pending.locator('[data-accept-invitation]').focus();
+    await pending.locator('[data-accept-invitation]').press('Enter');
+    await accepted.waitFor();
+    await page.waitForFunction(() => document.activeElement?.id === 'orga-events-title');
+    assert.equal(await page.locator('#view-container').getAttribute('data-view'), 'events');
+    assert.equal(await page.locator('[data-open-accepted-event]').count(), 0);
+
+    // Close while personally declined: the same facts move to Historie without
+    // an answer button, and stay there after reconnecting/reloading.
+    await accepted.locator('[data-action-menu^="event-decline-"] > summary').click();
+    await accepted.locator('[data-decline-participation]').click();
+    await page.locator('.modal-backdrop [data-confirm]').click();
+    await declined.waitFor();
+    assert.equal((await ownerPage.request.post(`${BASE_URL}/api/events/${id}/end`)).status(), 200);
+    const history = page.locator('[data-event-history="event"]');
+    await history.waitFor();
+    await history.locator(':scope > summary').click();
+    await history.locator(`[data-declined-event="${id}"]`).waitFor();
+    assert.match((await history.textContent()) ?? '', /Das Event ist beendet/);
+    assert.equal(await history.locator(`[data-declined-event="${id}"] [data-accept-participation]`).count(), 0);
+    await page.reload();
+    await page.waitForSelector('#view-container[data-view="events"]');
+    await history.locator(':scope > summary').click();
+    await history.locator(`[data-declined-event="${id}"]`).waitFor();
+    assert.match((await history.textContent()) ?? '', /25,50/);
+  } finally {
+    await context.close();
+  }
 });
