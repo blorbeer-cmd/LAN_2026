@@ -669,10 +669,6 @@ export async function handleEventPay(eventId, ctx) {
   }
 }
 
-function copyButtonHtml(value, label) {
-  return `<button type="button" class="icon-btn" data-copy-event-value="${escapeHtml(value)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${icon('copy')}</button>`;
-}
-
 // Infos: period and place first, as the two facts people look up and paste.
 // Each row keeps label, value and actions in fixed columns.
 function renderEventInfoSection(event) {
@@ -682,7 +678,7 @@ function renderEventInfoSection(event) {
     rows.push(`<div class="event-info-row">
       <span class="event-info-label">Zeitraum</span>
       <span class="event-info-value event-info-strong">${escapeHtml(schedule)}</span>
-      <span class="event-info-actions">${renderEventCalendarActions(event)}${copyButtonHtml(schedule, 'Zeitraum kopieren')}</span>
+      <span class="event-info-actions">${renderEventCalendarActions(event)}</span>
     </div>`);
   }
   if (event.location) {
@@ -690,10 +686,6 @@ function renderEventInfoSection(event) {
     rows.push(`<div class="event-info-row">
       <span class="event-info-label">Ort</span>
       <span class="event-info-value event-info-strong"><a class="event-location-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(event.location)}</a></span>
-      <span class="event-info-actions">
-        <a class="icon-btn" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" title="In Google Maps öffnen" aria-label="${escapeHtml(`${event.location} in Google Maps öffnen`)}">${icon('squareArrowOutUpRight')}</a>
-        ${copyButtonHtml(event.location, 'Ort kopieren')}
-      </span>
     </div>`);
   }
   if (event.description) {
@@ -1603,16 +1595,6 @@ export function renderOrgaEvents(container, ctx) {
       const entry = (event?.declinedExcuses || []).find((candidate) => candidate.playerId === btn.dataset.showExcuse);
       if (!entry) return;
       openModal(`Ausrede von ${entry.name}`, `<blockquote class="excuse-text excuse-quote">„${escapeHtml(entry.excuse)}“</blockquote>`);
-    });
-  });
-  container.querySelectorAll('[data-copy-event-value]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      try {
-        await copyText(btn.dataset.copyEventValue);
-        showToast('Kopiert.');
-      } catch {
-        showToast('Kopieren nicht möglich, bitte manuell markieren.', { error: true });
-      }
     });
   });
   container.querySelectorAll('[data-download-event-calendar]').forEach((btn) => {
