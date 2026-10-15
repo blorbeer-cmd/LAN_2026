@@ -268,7 +268,14 @@ function serializeDatePoll(
       ? myResponses
       : null,
     canManage,
+    canDelete: canDeleteDatePoll(canManage, viewerRole),
   };
+}
+
+// Deleting is also open to community admins, who may not be accepted
+// participants of the event or the poll's creator.
+function canDeleteDatePoll(canManage: boolean, viewerRole: GroupRole | undefined): boolean {
+  return canManage || viewerRole === 'owner' || viewerRole === 'admin';
 }
 
 function requirePlayerId(req: Request, res: Response): string | undefined {
@@ -957,8 +964,9 @@ eventDatePollsRouter.delete('/:pollId', resolveEventForPolls, (req, res) => {
   if (!playerId) return;
   const poll = loadPollOr404(req, res, event);
   if (!poll) return;
-  if (!canManageDatePoll(poll, event, playerId, req.groupMembership?.role)) {
-    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann löschen.' });
+  const viewerRole = req.groupMembership?.role;
+  if (!canDeleteDatePoll(canManageDatePoll(poll, event, playerId, viewerRole), viewerRole)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder Community-Admins können löschen.' });
   }
   const deletedPollIds = deleteDatePollSeries(poll);
   for (const deletedPollId of deletedPollIds) {

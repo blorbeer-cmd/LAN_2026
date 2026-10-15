@@ -297,6 +297,7 @@ export const api = {
     castPoints: (playerId, entries, round, { adoptPreferences = false } = {}) =>
       apiFetch('/api/votes/points', { method: 'POST', body: JSON.stringify({ playerId, entries, round, adoptPreferences }) }),
     close: (round) => apiFetch('/api/votes/close', { method: 'POST', body: JSON.stringify({ round }) }),
+    deleteRound: (round) => apiFetch(`/api/votes/history/${round}`, { method: 'DELETE' }),
     cancel: (round) => apiFetch('/api/votes/cancel', { method: 'POST', body: JSON.stringify({ round }) }),
   },
 

@@ -638,6 +638,13 @@ function votesButtonHtml(h) {
   return h.anonymous ? '' : `<button type="button" class="btn btn-sm" data-open-vote-round="${escapeHtml(String(h.round))}">Stimmen ansehen</button>`;
 }
 
+// Admins can remove a finished round with all its ballots for good; the
+// button sits at the end of the opened result, away from the header actions.
+function deleteRoundHtml(round) {
+  if (!isGroupAdmin()) return '';
+  return `<div class="row"><button type="button" class="btn btn-sm btn-danger" data-vote-delete="${escapeHtml(String(round))}">Abstimmung löschen</button></div>`;
+}
+
 // Collapsed like an Umfrage card: the header keeps the round, its winner and
 // the actions visible; the full result opens below it.
 function renderLatestVoteCard({ showRunoff }) {
@@ -672,6 +679,7 @@ function renderLatestVoteCard({ showRunoff }) {
       </header>
       <div class="stack event-poll-card-content" ${latestVoteOpen ? '' : 'hidden'}>
         ${h.totalVoters ? renderVoteResultContent(h) : emptyStateHtml('Niemand hat abgestimmt.')}
+        ${deleteRoundHtml(h.round)}
       </div>
     </section>`;
 }
@@ -709,7 +717,7 @@ function renderHistory() {
             <div class="event-poll-card-side">${votesButtonHtml(h)}${matchSelections(h).length ? `<button type="button" class="btn btn-sm" data-generate-vote-match="${round}">Match generieren</button>` : ''}</div>
           </header>
           <div class="stack event-poll-card-content" id="vote-history-result-${round}" ${expanded ? '' : 'hidden'}>
-            ${expanded ? renderVoteResultContent(h) : ''}
+            ${expanded ? renderVoteResultContent(h) + deleteRoundHtml(h.round) : ''}
           </div>
         </article>`;
     })
@@ -1267,6 +1275,22 @@ export function renderVotes(container, ctx) {
         ctx.rerender();
         showToast('Abstimmung beendet.');
       } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-vote-delete]').forEach((deleteBtn) => {
+    deleteBtn.addEventListener('click', async () => {
+      if (!(await confirmDialog('Die Abstimmung wird einschließlich aller abgegebenen Stimmen dauerhaft gelöscht.', { title: 'Abstimmung löschen?', confirmText: 'Löschen', danger: true }))) return;
+      deleteBtn.disabled = true;
+      try {
+        await api.votes.deleteRound(Number(deleteBtn.dataset.voteDelete));
+        invalidateVoteHistory();
+        ctx.rerender();
+        showToast('Abstimmung gelöscht.');
+      } catch (err) {
+        deleteBtn.disabled = false;
         showToast(err.message, { error: true });
       }
     });

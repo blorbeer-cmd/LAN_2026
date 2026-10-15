@@ -220,21 +220,18 @@ test('GET /api/votes/history/:round 404s for a round that never happened, and re
   assert.equal(garbage.status, 400);
 });
 
-test('GET /api/votes/history still lists a round nobody voted in', async () => {
+test('GET /api/votes/history leaves out a round that ended without any ballot', async () => {
   await request(app).post('/api/votes/start');
   const res = await request(app).post('/api/votes/close');
   assert.deepEqual(res.body.winnerGameIds, []);
 
   const history = await request(app).get('/api/votes/history');
-  const entry = history.body.history.find((h: { round: number }) => h.round === res.body.round);
-  assert.ok(entry, 'the empty round should still appear in history');
-  assert.equal(entry.totalVotes, 0);
-  assert.deepEqual(entry.winners, []);
+  assert.equal(history.body.history.some((h: { round: number }) => h.round === res.body.round), false);
 });
 
 test('GET /api/votes/history keeps closed rounds in time order even without votes', async () => {
-  // At this point round 1 (has votes) and round 2 (nobody voted, from the
-  // previous test) are both closed. Close a brand-new round 3 with a vote so
+  // At this point round 1 (has votes) and round 2 (nobody voted, hidden from
+  // history) are both closed. Close a brand-new round 3 with a vote so
   // the newest round in history has a result. Voting for Age of Empires 2 here (rather than CS2)
   // keeps this round's win out of the later "each result row reports its
   // all-time vote win count" assertions, which pin CS2's and Rocket League's
@@ -245,7 +242,27 @@ test('GET /api/votes/history keeps closed rounds in time order even without vote
 
   const history = await request(app).get('/api/votes/history');
   const rounds = history.body.history.map((h: { round: number }) => h.round);
-  assert.deepEqual(rounds, [closed.body.round, 2, 1]);
+  assert.deepEqual(rounds, [closed.body.round, 1]);
+  assert.equal((await request(app).get('/api/votes/history/2')).status, 200);
+});
+
+test('DELETE /api/votes/history/:round removes a closed round with its ballots', async () => {
+  await request(app).post('/api/votes/start').send({ mode: 'single' });
+  await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameCs2 });
+  const closed = await request(app).post('/api/votes/close');
+  const round = closed.body.round;
+
+  assert.equal((await request(app).delete('/api/votes/history/not-a-number')).status, 400);
+  assert.equal((await request(app).delete('/api/votes/history/9999')).status, 404);
+
+  const res = await request(app).delete(`/api/votes/history/${round}`);
+  assert.equal(res.status, 200);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM votes WHERE round = ?').get(round) as { n: number }).n, 0);
+  assert.equal((await request(app).get(`/api/votes/history/${round}`)).status, 404);
+
+  const open = await request(app).post('/api/votes/start').send({ mode: 'single' });
+  assert.equal((await request(app).delete(`/api/votes/history/${open.body.round}`)).status, 404);
+  await request(app).post('/api/votes/cancel').send({});
 });
 
 test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beliebtheit)', async () => {
@@ -685,8 +702,16 @@ test('a cancelled round can reuse its number without reusing its draft identity'
 });
 
 test('the last closed Vote stays current even when an older round ends later', async () => {
-  const older = await request(app).post('/api/votes/start');
-  const newer = await request(app).post('/api/votes/start');
+  const older = await request(app).post('/api/votes/start').send({ gameIds: [gameCs2, gameRl] });
+  const newer = await request(app).post('/api/votes/start').send({ gameIds: [gameCs2, gameRl] });
+  // Rounds without a ballot are not listed in history, so both get one.
+  for (const round of [older.body.round, newer.body.round]) {
+    await request(app).post('/api/votes/points').send({
+      round,
+      playerId: playerA,
+      entries: [{ gameId: gameCs2, points: 3 }, { gameId: gameRl, points: 1 }],
+    });
+  }
   assert.equal((await request(app).post('/api/votes/close').send({ round: newer.body.round })).status, 200);
   assert.equal((await request(app).post('/api/votes/close').send({ round: older.body.round })).status, 200);
 

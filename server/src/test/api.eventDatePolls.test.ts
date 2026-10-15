@@ -577,7 +577,7 @@ test('only a series manager can repeat it, legacy ended states reopen, and delet
   const bob = 'poll-lifecycle-bob';
   createMember(alice, 'Poll Lifecycle Alice');
   createMember(bob, 'Poll Lifecycle Bob');
-  const eventId = await createEvent('Poll Lifecycle Event', [alice, bob]);
+  const eventId = await createEvent('Poll Lifecycle Event', [alice, bob, TEST_ADMIN_ID]);
   const first = await createPoll(eventId, alice, { decisionKey: 'Legacy_Key_AbC', title: 'Gemeinsames Ziel' });
   assert.equal(first.status, 201, JSON.stringify(first.body));
   assert.equal((await request(app).post(`/api/events/${eventId}/polls/${first.body.id}/close`).set('x-test-player-id', alice)).status, 200);
@@ -607,9 +607,10 @@ test('only a series manager can repeat it, legacy ended states reopen, and delet
     .delete(`/api/events/${eventId}/polls/${second.body.id}`)
     .set('x-test-player-id', bob);
   assert.equal(forbiddenDelete.status, 403);
+  // A community admin taking part in the event may delete without being the creator.
   const deleted = await request(app)
     .delete(`/api/events/${eventId}/polls/${second.body.id}`)
-    .set('x-test-player-id', alice);
+    .set('x-test-player-id', TEST_ADMIN_ID);
   assert.equal(deleted.status, 204, JSON.stringify(deleted.body));
   const rows = db.prepare('SELECT id FROM event_date_polls WHERE event_id = ? AND decision_key = ?').all(eventId, 'Legacy_Key_AbC');
   assert.deepEqual(rows, []);

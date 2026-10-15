@@ -477,6 +477,8 @@ function renderPollActions(poll) {
     } else {
       actions.push(`<button type="button" class="btn btn-sm" data-reopen-poll="${escapeHtml(poll.id)}">Wieder öffnen</button>`);
     }
+  }
+  if (poll.canDelete) {
     actions.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
   }
   return actionMenuHtml(actions, `Aktionen für Umfrage ${poll.title}`);
@@ -1143,7 +1145,9 @@ export function renderEventPolls(container, ctx) {
   const waitingKeys = waitingAtLoad.get(event.id) ?? new Set();
   const activeGroups = openGroups
     .sort((left, right) => Number(waitingKeys.has(right.key)) - Number(waitingKeys.has(left.key)));
-  const endedGroups = groups.filter((group) => group.rounds[0]?.status !== 'open');
+  // Ended polls nobody answered in any round are not worth a Historie entry.
+  const endedGroups = groups.filter((group) => group.rounds[0]?.status !== 'open'
+    && group.rounds.some((round) => round.invitees.some((invitee) => invitee.hasAnswered)));
   if (cached?.loaded && !initializedEvents.has(event.id)) {
     initializedEvents.add(event.id);
     const waiting = activeGroups.filter((group) => waitingKeys.has(group.key));
