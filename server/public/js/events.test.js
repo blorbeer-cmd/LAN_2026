@@ -49,7 +49,7 @@ test('scheduled event cards offer Google, Outlook and an ICS calendar file', () 
   assert.match(html, /<summary class="btn btn-sm" aria-label="Kalender für Kalender LAN">Kalender /);
   assert.match(html, />Google</);
   assert.match(html, />Outlook</);
-  assert.match(html, />Download</);
+  assert.match(html, />Download ics file</);
 
   // The own acknowledgement is a visible "Eingetragen" checkbox, not a hidden
   // button with a help tooltip.
@@ -263,7 +263,7 @@ test('invited and declined event cards keep planning facts and only personal ans
   };
   const html = renderDeclinedEventCard(event);
   assert.match(html, /data-accept-participation="declined-event">Zusagen</);
-  assert.match(html, /Von dir abgesagt/);
+  assert.match(html, /Abgesagt/);
   assert.match(html, /Gemeindehaus &lt;West&gt;/);
   assert.match(html, /Essen &amp; Übernachtung/);
   assert.match(html, /25,50/);
@@ -337,7 +337,7 @@ test('a group card drops every dated and paid control instead of disabling it', 
   assert.match(documented, /<h4 class="event-card-section-title">Infos/);
   assert.match(documented, /Jeden Donnerstag/);
   assert.match(documented, /maps\/search\/\?api=1&amp;query=Bei%20Tim/);
-  assert.match(documented, /data-copy-event-value="Bei Tim"/);
+  assert.doesNotMatch(documented, /data-copy-event-value|In Google Maps öffnen/);
   // A circle has members, not attendees.
   assert.match(html, /<h4 class="event-card-section-title">Mitglieder /);
   assert.doesNotMatch(html, /Teilnehmende/);

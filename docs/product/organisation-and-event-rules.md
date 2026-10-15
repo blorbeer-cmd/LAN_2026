@@ -268,7 +268,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   invitation is a personal action. It lists the two workspace kinds in two separate sections —
   „Events“ first, then „Gruppen“ — each with its own create action („Event anlegen“ /
   „Gruppe anlegen“, which preselects that type in the shared dialog), its own empty text and its own
-  „Von dir abgesagt“ section and its own „Historie“.
+  „Abgesagt“ section and its own „Historie“.
   Creating either kind accepts its creator immediately: the roster row is written in the same
   transaction as the event, so a workspace never exists without its author on it and appears in
   their own switcher at once. They can still withdraw that acceptance like anyone else, under
@@ -318,7 +318,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   its header — organizing an event is not the same as attending it, and administrative removal
   in the participant list only removes a roster row, which is a
   different act from answering for oneself.
-  Declining is not leaving: for a member the event moves into this tab's own „Von dir abgesagt“
+  Declining is not leaving: for a member the event moves into this tab's own „Abgesagt“
   section — the same collapsible-section pattern as „Historie“, likewise collapsed by default and
   preserving its open state, where it stays as a teaser card with all planning facts, including
   contribution and deadline, and „Zusagen“
@@ -356,9 +356,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   multiple events start collapsed, keep their disclosure state through refreshes and preserve keyboard
   focus when toggled. A single event stays expanded without collapse controls. „Infos“ starts with
   „Zeitraum“ (weekday, date and time, joined with „bis“) and „Ort“, the two facts people look up and
-  paste, each with a copy action; the place is a link to its stored web URL or else to a Google Maps
-  search, with a separate open action. A current event with a complete start/end period offers a
-  „Kalender“ menu in the period row with „Google“, „Outlook“ and „Download“; the first two open a
+  paste by selecting the text, without copy buttons; the place is a link to its stored web URL or else
+  to a Google Maps search, without a separate open action. A current event with a complete start/end period offers a
+  „Kalender“ menu in the period row with „Google“, „Outlook“ and „Download ics file“; the first two open a
   prefilled web event, while the RFC-5545 `.ics` download covers native and other compatible calendar
   apps. An accepted participant confirms the handoff with the visible checkbox „Eingetragen“ beside
   that menu, because external providers expose no reliable import callback. Once set it stays set and
@@ -367,7 +367,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   exported; if the event moved in the meantime, the server rejects it (409) instead of acknowledging
   the new period, and Home's open „Eintragen“ dialog closes with a hint to add the new period. Pending invitations, ended events and
   incomplete periods omit the calendar controls. Until confirmed, an upcoming event is also a row in
-  Home's „Meine To-Dos“ whose „Eintragen“ dialog offers the same „Google“, „Outlook“ and „Download“
+  Home's „Meine To-Dos“ whose „Eintragen“ dialog offers the same „Google“, „Outlook“ and „Download ics file“
   and „Eingetragen“. Two-hour and weekly calendar nudges stop after
   confirmation; general one-week and one-day event reminders do not, and a moved period announces
   itself again on its own approach. The

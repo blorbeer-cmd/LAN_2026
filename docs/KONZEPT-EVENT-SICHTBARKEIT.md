@@ -91,7 +91,7 @@ folgt verwendet:
 | kein Datensatz | keine | keine |
 | `invited` | Einladungsteaser direkt unter „Events & Gruppen“, zusätzlich Home/Profil | zusagen oder absagen |
 | `accepted` | vollständiger Event-Arbeitsraum | lesen, im Rahmen der normalen Rollen schreiben, als Arbeits-Event auswählen, die Zusage bis zum Eventbeginn selbst zurückziehen |
-| `declined` | Einladungsteaser unter „Von dir abgesagt“ in „Events & Gruppen“ | Informationen bleiben sichtbar; erneute Zusage, soweit das Event noch offen ist |
+| `declined` | Einladungsteaser unter „Abgesagt“ in „Events & Gruppen“ | Informationen bleiben sichtbar; erneute Zusage, soweit das Event noch offen ist |
 | `removed` | keine operative Sichtbarkeit | eigene rechtmäßig entstandene Historie bleibt in persönlichen Auswertungen erhalten |
 
 Für eine belastbare Historie werden Annahme und Entfernung nicht mehr durch Löschen des einzigen
@@ -231,7 +231,7 @@ serverseitig gespeicherte Arbeits-Event.
 - `endedEvents`: abgeschlossene oder veranstalterseitig abgesagte Events mit bestehender
   Einladung; zugesagte Personen erhalten Mitgliedsdetails, die übrigen nur den Teaser.
 
-Persönlich abgesagte Events bleiben unter „Von dir abgesagt“, abgeschlossene unter „Historie“
+Persönlich abgesagte Events bleiben unter „Abgesagt“, abgeschlossene unter „Historie“
 einsehbar. Entfernte und nie eingeladene Events erhalten dadurch keinen Zugriff.
 
 `availableEvents` und `historicalEvents` beantworten zwei verschiedene Fragen und dürfen nicht
@@ -450,7 +450,7 @@ Eine Required-Suite prüft mindestens:
 - Beenden, Absagen, Entfernen und Kontodeaktivierung schließen Livezustand und fallen sicher auf
   das Basis-Event zurück.
 - Offene Einladung zeigt den Teaser mit Antwortaktionen direkt im Eventbereich; nach einer
-  Absage bleibt er unter „Von dir abgesagt“, nach Eventabschluss unter „Historie“ lesbar.
+  Absage bleibt er unter „Abgesagt“, nach Eventabschluss unter „Historie“ lesbar.
 - Jede fachliche Mutation speichert die erwartete konkrete `event_id`.
 - Es entstehen keine neuen fachlichen `NULL`- oder Sentinel-Datensätze.
 - Persönliche Gesamtstatistik enthält alle eigenen teilgenommenen Events und kein fremdes Event.

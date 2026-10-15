@@ -175,7 +175,7 @@ test('manager invites a member who accepts and both open clients update', async 
   );
   const periodRow = ownerEventCard.locator('.event-info-row', { hasText: 'Zeitraum' });
   assert.match((await periodRow.textContent()) ?? '', /\d{2}\.\d{2}\.\d{4}/);
-  assert.equal(await periodRow.locator('[data-copy-event-value]').count(), 1, 'the period can be copied');
+  assert.equal(await periodRow.locator('[data-copy-event-value]').count(), 0, 'the period needs no copy button');
   await ownerEventCard.locator('[data-action-menu^="event-manage-"] > summary').click();
   await ownerEventCard.locator('[data-edit-event]').click();
   const editEventModal = ownerPage.locator('.modal-backdrop', { hasText: 'Event bearbeiten' });
@@ -348,7 +348,8 @@ test('manager invites a member who accepts and both open clients update', async 
     await memberEventCard.locator('a.event-location-link').getAttribute('href'),
     'https://maps.example.test/respawn',
   );
-  assert.equal(await memberEventCard.locator('[data-copy-event-value="https://maps.example.test/respawn"]').count(), 1);
+  assert.equal(await memberEventCard.locator('[data-copy-event-value]').count(), 0);
+  assert.equal(await memberEventCard.locator('[title="In Google Maps öffnen"]').count(), 0);
   const googleCalendarUrl = new URL(
     (await memberEventCard.locator('[data-event-calendar="google"]').getAttribute('href')) as string,
   );
@@ -365,6 +366,7 @@ test('manager invites a member who accepts and both open clients update', async 
   await memberEventCard.locator('.action-menu[data-action-menu^="event-calendar-"] > summary').click();
   const calendarDownload = memberPage.waitForEvent('download');
   const calendarFileButton = memberEventCard.locator(`[data-download-event-calendar="${eventId}"]`);
+  assert.equal(await calendarFileButton.textContent(), 'Download ics file');
   await calendarFileButton.focus();
   await calendarFileButton.press('Enter');
   const downloadedCalendar = await calendarDownload;
