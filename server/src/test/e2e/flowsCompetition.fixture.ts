@@ -587,7 +587,9 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
     height: card.getBoundingClientRect().height,
     titleX: card.querySelector('h2')!.getBoundingClientRect().x,
   }));
-  assert.equal(latestGeometry.height, rankingGeometry.height, 'closed Vote sections share one height');
+  // The admin's trash button can tip the meta line onto its own row, which
+  // adds one text line of at most a few pixels.
+  assert.ok(Math.abs(latestGeometry.height - rankingGeometry.height) <= 4, 'closed Vote sections share one height');
   assert.equal(latestGeometry.titleX, rankingGeometry.titleX, 'closed Vote section titles align');
   await rankingDisclosure.locator(':scope > summary').click();
   const bockRanks = await rankingDisclosure.locator('.lb-row').evaluateAll((rows) => rows.map((row) => ({

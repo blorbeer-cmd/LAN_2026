@@ -639,10 +639,10 @@ function votesButtonHtml(h) {
 }
 
 // Admins can remove a finished round with all its ballots for good; the
-// button sits at the end of the opened result, away from the header actions.
+// trash button stays in the header, visible while the card is collapsed.
 function deleteRoundHtml(round) {
   if (!isGroupAdmin()) return '';
-  return `<div class="row"><button type="button" class="btn btn-sm btn-danger" data-vote-delete="${escapeHtml(String(round))}">Abstimmung löschen</button></div>`;
+  return `<button type="button" class="btn btn-sm btn-square" data-vote-delete="${escapeHtml(String(round))}" aria-label="Abstimmung löschen" title="Abstimmung löschen">${icon('trash')}</button>`;
 }
 
 // Collapsed like an Umfrage card: the header keeps the round, its winner and
@@ -673,13 +673,13 @@ function renderLatestVoteCard({ showRunoff }) {
         </button>
         <div class="event-poll-card-side">
           ${votesButtonHtml(h)}
+          ${deleteRoundHtml(h.round)}
           ${showRunoff ? '<button type="button" class="btn btn-primary btn-sm" id="votes-runoff">Stichwahl starten</button>' : ''}
           ${matchSelections(h).length ? `<button type="button" class="btn btn-primary btn-sm" id="votes-generate-match" data-generate-vote-match="${h.round}">Match generieren</button>` : ''}
         </div>
       </header>
       <div class="stack event-poll-card-content" ${latestVoteOpen ? '' : 'hidden'}>
         ${h.totalVoters ? renderVoteResultContent(h) : emptyStateHtml('Niemand hat abgestimmt.')}
-        ${deleteRoundHtml(h.round)}
       </div>
     </section>`;
 }
@@ -714,10 +714,10 @@ function renderHistory() {
                 ${winners.length ? `<span class="event-poll-history-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : '<span class="muted">Keine Stimmen</span>'}
               </span>
             </button>
-            <div class="event-poll-card-side">${votesButtonHtml(h)}${matchSelections(h).length ? `<button type="button" class="btn btn-sm" data-generate-vote-match="${round}">Match generieren</button>` : ''}</div>
+            <div class="event-poll-card-side">${votesButtonHtml(h)}${deleteRoundHtml(h.round)}${matchSelections(h).length ? `<button type="button" class="btn btn-sm" data-generate-vote-match="${round}">Match generieren</button>` : ''}</div>
           </header>
           <div class="stack event-poll-card-content" id="vote-history-result-${round}" ${expanded ? '' : 'hidden'}>
-            ${expanded ? renderVoteResultContent(h) + deleteRoundHtml(h.round) : ''}
+            ${expanded ? renderVoteResultContent(h) : ''}
           </div>
         </article>`;
     })

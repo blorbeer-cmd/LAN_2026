@@ -464,6 +464,11 @@ function renderPollSideAction(poll) {
   return `<button type="button" class="btn btn-sm" data-new-poll-round="${escapeHtml(poll.id)}">Neue Runde</button>`;
 }
 
+function renderPollDeleteButton(poll) {
+  if (!poll.canDelete) return '';
+  return `<button type="button" class="btn btn-sm btn-square" data-delete-poll="${escapeHtml(poll.id)}" aria-label="Umfrage löschen" title="Umfrage löschen">${icon('trash')}</button>`;
+}
+
 function renderPollActions(poll) {
   const unanswered = poll.invitees.filter((invitee) => !invitee.hasAnswered).length;
   const actions = [];
@@ -477,9 +482,6 @@ function renderPollActions(poll) {
     } else {
       actions.push(`<button type="button" class="btn btn-sm" data-reopen-poll="${escapeHtml(poll.id)}">Wieder öffnen</button>`);
     }
-  }
-  if (poll.canDelete) {
-    actions.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
   }
   return actionMenuHtml(actions, `Aktionen für Umfrage ${poll.title}`);
 }
@@ -585,6 +587,7 @@ function renderPollGroup(group) {
           <span class="event-poll-answer-side">${answerStatusChip(latest)}</span>
           ${renderPollSideAction(latest)}
           ${renderPollActions(latest)}
+          ${renderPollDeleteButton(latest)}
         </div>
       </header>
       <div class="stack event-poll-card-content" ${expanded ? '' : 'hidden'}>
