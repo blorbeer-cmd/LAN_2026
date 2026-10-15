@@ -464,6 +464,24 @@ test('manager invites a member who accepts and both open clients update', async 
       return fake as unknown as Window;
     }) as typeof window.open;
   });
+  // If cancellation arrives after the card rendered, the fresh handoff check
+  // must close its placeholder tab before navigating to a payment provider.
+  await memberPage.route(`${BASE_URL}/api/events/${eventId}`, async (route) => {
+    const response = await route.fetch();
+    const event = await response.json();
+    await route.fulfill({ response, json: { ...event, status: 'cancelled' } });
+  }, { times: 1 });
+  const cancelledPaymentRefresh = memberPage.waitForResponse(
+    (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
+  );
+  await paypalButton.click();
+  await memberPage.waitForFunction(
+    () => (window as unknown as { __eventPaymentPopup?: { closed: boolean } }).__eventPaymentPopup?.closed,
+  );
+  assert.equal(await memberPage.evaluate(
+    () => (window as unknown as { __eventPaymentPopup: { location: string } }).__eventPaymentPopup.location,
+  ), '');
+  await cancelledPaymentRefresh;
   await paypalButton.click();
   await memberPage.waitForFunction(
     () => (window as unknown as { __eventPaymentPopup?: { location: string } }).__eventPaymentPopup?.location,

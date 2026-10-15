@@ -296,7 +296,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   „Historie“ (the same collapsible-section pattern as Food orders): it starts collapsed and
   preserves its open state across live re-renders. Pending invitations for the current identity
   lead the active collection in „Events & Gruppen“, before accepted events and sorted by start
-  within each answer state. Their expanded cards show name, period (or the open-date notice),
+  within each answer state. Historie stays chronological regardless of the account's previous
+  answer. Invitation cards start expanded and show name, period (or the open-date notice),
   location, note, contribution and payment deadline, with „Eingeladen“ and direct „Zusagen“ /
   „Absagen“ actions (`renderInvitationCard`). Reading never accepts an invitation or changes the
   active workspace. Owner/admin answer their own invitations on their existing management card,
@@ -409,7 +410,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   from food orders. The handoff refreshes the event before opening PayPal,
   prefills the EUR amount for PayPal.me, attempts to copy an e-mail recipient for the generic PayPal
   flow and keeps that recipient visible in the confirmation if clipboard access is unavailable. It
-  asks „Bezahlt?“ afterwards; only an affirmative answer records the payment. The recorded event
+  asks „Bezahlt?“ afterwards; only an affirmative answer records the payment.
+  A cancelled event offers no member payment actions; existing payment proof
+  remains readable. A fresh PayPal handoff check rejects a cancellation, and the server rejects
+  every `paid: true` update for cancelled events with 409. Payment managers retain the reset
+  control for existing payments so removal guards can still be cleared. The recorded event
   creator instead receives the aggregate overview and the same checkbox-like `Bezahlt` toggle used by
   food orders on every accepted participant row. There is no bulk-payment action. The edit form can also
   record the accommodation's total invoice separately from the fixed contribution per person. The

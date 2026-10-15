@@ -761,6 +761,34 @@ test('participants may update only themselves while the event creator may update
   );
 });
 
+test('cancelled events reject new payment markers but keep evidence and allow resets', async () => {
+  const memberId = '__cancelled-payment-member__';
+  createMember(memberId, 'Cancelled Payment Member');
+  const created = await createEvent('Cancelled Payment LAN', EVENT_MINIMUM_DURATION_MS, {
+    costCents: 2550, paypalLink: 'https://paypal.me/respawn',
+  });
+  const eventId = created.body.id as string;
+  accept(eventId, memberId);
+  const url = `/api/events/${eventId}/participants/${memberId}/payment`;
+  assert.equal((await request(app).patch(url).set('x-test-player-id', memberId).send({ paid: true })).status, 200);
+  const proof = db.prepare('SELECT paid, paid_at, paid_by, paid_amount_cents FROM event_participants WHERE event_id = ? AND player_id = ?')
+    .get(eventId, memberId);
+  assert.equal((await request(app).delete(`/api/events/${eventId}`)).status, 200);
+  const attempts = await Promise.all([
+    request(app).patch(url).set('x-test-player-id', memberId).send({ paid: true }),
+    request(app).patch(url).send({ paid: true }),
+  ]);
+  for (const response of attempts) {
+    assert.equal(response.status, 409, JSON.stringify(response.body));
+    assert.equal(response.body.reason, 'cancelled');
+  }
+  assert.deepEqual(db.prepare('SELECT paid, paid_at, paid_by, paid_amount_cents FROM event_participants WHERE event_id = ? AND player_id = ?')
+    .get(eventId, memberId), proof, 'cancelled payment attempts must not rewrite payment evidence');
+  assert.equal((await request(app).patch(url).send({ paid: false })).status, 200);
+  assert.equal((await request(app).patch(url).set('x-test-player-id', memberId).send({ paid: true })).status, 409);
+  assert.equal((db.prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?').get(eventId, memberId) as { paid: number }).paid, 0);
+});
+
 test('payment snapshots survive price, roster, status, and account changes', async () => {
   const firstId = '__event-payment-snapshot-first__';
   const secondId = '__event-payment-snapshot-second__';

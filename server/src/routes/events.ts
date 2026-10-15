@@ -959,6 +959,12 @@ eventsRouter.patch('/:id/participants/:playerId/payment', resolveEvent, (req, re
     return res.status(403).json({ error: 'Du kannst nur deinen eigenen Bezahlstatus ändern.' });
   }
 
+  // Preserve payment evidence and allow corrections, but never request or
+  // record another contribution for an event that will not take place.
+  if (paid && event.status === 'cancelled') {
+    return res.status(409).json({ error: 'Für abgesagte Events sind keine neuen Zahlungen möglich.', reason: 'cancelled' });
+  }
+
   const paidAt = paid ? Date.now() : null;
   const updated = db
     .prepare(

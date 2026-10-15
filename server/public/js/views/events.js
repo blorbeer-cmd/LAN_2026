@@ -457,7 +457,7 @@ function renderParticipantsSection(event, { includeInvitationStatuses = false } 
     let remove = '';
     if (includeInvitationStatuses) {
       if (status === 'accepted') {
-        slot = canManagePayments
+        slot = canManagePayments && (event.status !== 'cancelled' || participant.paid)
           ? `<button type="button" class="payment-paid-marker ${participant.paid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(participant.playerId)}" aria-pressed="${Boolean(participant.paid)}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}"><span class="payment-paid-box" aria-hidden="true">${participant.paid ? icon('check') : ''}</span><span>Bezahlt</span></button>`
           : '';
       } else if (!event.isEnded && (!status || status === 'declined')) {
@@ -583,6 +583,7 @@ function renderEventPayment(event) {
   }
 
   const isPaid = Boolean(myParticipation?.paid);
+  const cancelled = event.status === 'cancelled';
   const due = event.paymentDueAt ? ` · bis ${new Date(event.paymentDueAt).toLocaleDateString('de-DE')}` : '';
   const meta = myParticipation && isPaid ? ` · ${paymentProof(myParticipation)}` : due;
   return `
@@ -592,8 +593,8 @@ function renderEventPayment(event) {
         <span class="event-info-label">Beitrag</span>
         <span class="event-info-value"><strong class="event-info-strong">${escapeHtml(amount)}</strong><span class="muted">${escapeHtml(meta)}</span></span>
         <span class="event-info-actions">
-          ${myParticipation ? `<button type="button" class="payment-paid-marker ${isPaid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(myParticipation.playerId)}" aria-pressed="${isPaid}" title="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}" aria-label="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}"><span class="payment-paid-box" aria-hidden="true">${isPaid ? icon('check') : ''}</span><span>Bezahlt</span></button>` : ''}
-          ${myParticipation && event.paypalLink ? `<button type="button" class="icon-btn payment-paypal-button" data-pay-event="${escapeHtml(event.id)}" ${isPaid ? 'disabled' : ''} title="${escapeHtml(isPaid ? 'Bereits bezahlt' : payTitle)}" aria-label="${escapeHtml(isPaid ? 'Bereits bezahlt' : payTitle)}">${icon('paypal')}</button>` : ''}
+          ${myParticipation && !cancelled ? `<button type="button" class="payment-paid-marker ${isPaid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(myParticipation.playerId)}" aria-pressed="${isPaid}" title="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}" aria-label="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}"><span class="payment-paid-box" aria-hidden="true">${isPaid ? icon('check') : ''}</span><span>Bezahlt</span></button>` : ''}
+          ${myParticipation && !cancelled && event.paypalLink ? `<button type="button" class="icon-btn payment-paypal-button" data-pay-event="${escapeHtml(event.id)}" ${isPaid ? 'disabled' : ''} title="${escapeHtml(isPaid ? 'Bereits bezahlt' : payTitle)}" aria-label="${escapeHtml(isPaid ? 'Bereits bezahlt' : payTitle)}">${icon('paypal')}</button>` : ''}
         </span>
       </div>
     </section>`;
@@ -611,6 +612,11 @@ export async function handleEventPay(eventId, ctx) {
     // immediately before opening PayPal so a stale card cannot charge an old
     // contribution or overwrite a payment somebody just recorded.
     const event = await api.events.get(eventId);
+    if (event.status === 'cancelled') {
+      popup?.close();
+      showToast('Das Event wurde abgesagt. Eine Zahlung ist nicht mehr möglich.', { error: true });
+      return ctx.refresh();
+    }
     const myId = getMyId();
     const participation = acceptedParticipants(event).find((participant) => participant.playerId === myId);
     if (!participation) {
@@ -969,7 +975,7 @@ function renderWorkspaceSection({
   `;
 }
 
-function renderEventSection() {
+export function renderEventSection() {
   // Only owner/admin receive `managedEvents`; a member's own accepted events
   // carry accepted participant names but no management roster/status data and
   // must not be rendered through the management card, whose actions they cannot
@@ -990,7 +996,8 @@ function renderEventSection() {
         (e) => !e.isBase,
       );
   const events = (canManage ? realEvents : memberEvents).slice().sort((a, b) =>
-    Number(b.myParticipation?.status === 'invited') - Number(a.myParticipation?.status === 'invited')
+    Number(b.myParticipation?.status === 'invited' && !isClosedEvent(b))
+    - Number(a.myParticipation?.status === 'invited' && !isClosedEvent(a))
     || compareEventsByStartAscending(a, b));
   const renderCard = (event, opts) => {
     if (canManage) return renderEventCard(event, opts);
