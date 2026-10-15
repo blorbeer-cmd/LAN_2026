@@ -673,6 +673,11 @@ test('an account deletes its own game-tracking data for one event and nothing el
   const report = () =>
     request(app).post('/api/agent/report').set('x-api-key', member.apiKey).send({ processNames: ['deltrack.exe'] });
   assert.equal((await report()).status, 200);
+  assert.equal(
+    (db.prepare('SELECT process_names FROM agent_diagnostics WHERE player_id = ?').get(member.id) as { process_names: string })
+      .process_names,
+    JSON.stringify(['deltrack.exe']),
+  );
   const insertEnded = db.prepare(
     `INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -707,6 +712,17 @@ test('an account deletes its own game-tracking data for one event and nothing el
   assert.equal(count('SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND event_id = ?', member.id, otherEvent.id), 1, 'another event stays');
   assert.equal(count('SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND event_id = ?', other.id, event.id), 1, 'another account stays');
   assert.equal(activeTrackingContexts(member.id).length, 1, 'deleting data does not revoke the consent');
+  // Without any further agent report, nothing of the deleted data may still
+  // surface in the personal export.
+  const exported = await request(app).get('/api/privacy/export').set('Cookie', member.cookie);
+  assert.equal(exported.status, 200);
+  const exportedActivity = JSON.parse(exported.text).activity;
+  assert.deepEqual(exportedActivity.agent.processNames, []);
+  assert.equal(exportedActivity.agent.agentVersion !== undefined, true, 'reachability stays');
+  assert.equal(
+    (exportedActivity.playSessions as Array<{ eventId: string }>).some((row) => row.eventId === event.id),
+    false,
+  );
 
   // The game still running starts a fresh session instead of vanishing.
   assert.equal((await report()).status, 200);

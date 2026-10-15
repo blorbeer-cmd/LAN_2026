@@ -280,7 +280,7 @@ export function listEventTrackingData(playerId: string, now = Date.now()): Event
 
 /**
  * Removes the account's own game-tracking data for one event: the playtime
- * history and the current live rows. Open rows go too, so a game that is still
+ * history, the current live rows and the last detected process names. Open rows go too, so a game that is still
  * running simply starts a fresh session on the next agent report instead of
  * accruing onto a row that no longer exists. Consents stay untouched — whether
  * collection continues is a separate decision of the account.
@@ -306,6 +306,13 @@ export function deleteEventTrackingData(
       .run(playerId, eventId).changes;
     db.prepare('DELETE FROM tracking_live_games WHERE player_id = ? AND event_id = ?').run(playerId, eventId);
     db.prepare('DELETE FROM tracking_live_contexts WHERE player_id = ? AND event_id = ?').run(playerId, eventId);
+    // The diagnostic snapshot carries no event of its own, so it cannot be
+    // told apart from this event's data. Clear it: it is refilled by the next
+    // agent report wherever a valid context still exists, while reachability
+    // and version stay untouched.
+    db.prepare("UPDATE agent_diagnostics SET process_names = '[]' WHERE player_id = ? AND process_names != '[]'").run(
+      playerId,
+    );
     return { deletedSessions, groupIds };
   })();
 }
