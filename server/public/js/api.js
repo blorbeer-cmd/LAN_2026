@@ -475,6 +475,8 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ enabled, ...(textVersion ? { textVersion } : {}) }),
       }),
+    deleteTrackingData: (eventId) =>
+      apiFetch(`/api/privacy/tracking-data/${encodeURIComponent(eventId)}`, { method: 'DELETE' }),
   },
 
   backup: {

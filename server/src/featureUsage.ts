@@ -287,7 +287,7 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
       .get(groupId, ...evParam) as { n: number };
     entries.push({
       key: 'tracking_consent',
-      label: 'Tracking-Einwilligung',
+      label: 'Spiele-Tracking-Einwilligung',
       area: 'Sonstiges',
       players: granted.n,
       total: everGranted.n,

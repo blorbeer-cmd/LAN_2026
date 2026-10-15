@@ -678,13 +678,13 @@ function updateEventTrackingConsent(req: Request, res: Response, granted: boolea
   const event = req.groupResource as EventRow;
   if (!event || event.id === OUTSIDE_EVENTS_ID) { res.status(404).json({ error: 'Event nicht gefunden.' }); return; }
   if (granted && (event.id === BASE_EVENT_ID || event.event_type_key === 'general')) {
-    res.status(409).json({ error: 'Für diesen Bereich kann kein Tracking aktiviert werden.' });
+    res.status(409).json({ error: 'Für diesen Bereich kann kein Spiele-Tracking aktiviert werden.' });
     return;
   }
   const playerId = requestPlayerId(req);
   if (!playerId) { res.status(400).json({ error: 'Spieleridentität ist erforderlich.' }); return; }
   if (granted && !isParticipant(event.id, playerId)) {
-    res.status(409).json({ error: 'Tracking kann erst nach Annahme der Event-Einladung aktiviert werden.' });
+    res.status(409).json({ error: 'Spiele-Tracking kann erst nach Annahme der Event-Einladung aktiviert werden.' });
     return;
   }
   const textVersion = req.body?.textVersion;
@@ -1277,7 +1277,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   const periodRemoved = existing.starts_at !== null && effectiveStartsAt === null;
   if (periodRemoved && existing.tracking_enabled) {
     return res.status(409).json({
-      error: 'Solange dieses Event trackt, kann der Zeitraum nicht entfernt werden. Zuerst das Tracking stoppen.',
+      error: 'Solange dieses Event trackt, kann der Zeitraum nicht entfernt werden. Zuerst das Spiele-Tracking stoppen.',
     });
   }
   if (location !== undefined) {
@@ -1384,7 +1384,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
 // tracking window. Overlapping events may track simultaneously.
 eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin'), async (req, res) => {
   if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
-    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+    return res.status(404).json({ error: 'Spiele-Tracking ist für dieses Event nicht aktiviert.' });
   }
   const attempt = await startTrackingWithBackup(req.params.id);
   if ('backupError' in attempt) {
@@ -1416,7 +1416,7 @@ eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin')
 // POST /api/events/:id/restart - reopens an ended event and starts tracking.
 eventsRouter.post('/:id/restart', resolveEvent, requireGroupRole('admin'), async (req, res) => {
   if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
-    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+    return res.status(404).json({ error: 'Spiele-Tracking ist für dieses Event nicht aktiviert.' });
   }
   const attempt = await startTrackingWithBackup(req.params.id, true);
   if ('backupError' in attempt) {
@@ -1449,7 +1449,7 @@ eventsRouter.post('/:id/restart', resolveEvent, requireGroupRole('admin'), async
 // event; can be resumed with .../tracking/start later.
 eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'), async (req, res) => {
   if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
-    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+    return res.status(404).json({ error: 'Spiele-Tracking ist für dieses Event nicht aktiviert.' });
   }
   const updated = await enqueueEventLifecycle(() => stopTracking(req.params.id));
   if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });

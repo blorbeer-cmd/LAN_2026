@@ -32,7 +32,7 @@ export function buildOnboardingSteps() {
     },
     {
       title: 'Mein Profil',
-      text: 'Im Profil verwaltest du Gamertag, Avatar-Farbe und deine Ansicht: Automatisch, Desktop oder Laptop. Hier richtest du bei Bedarf den Tracking-Agent für deinen PC und Push-Mitteilungen ein.',
+      text: 'Im Profil verwaltest du Gamertag, Avatar-Farbe und deine Ansicht: Automatisch, Desktop oder Laptop. Hier richtest du bei Bedarf den Agent für Spiele-Tracking auf deinem PC und Push-Mitteilungen ein.',
       view: 'profile',
       target: navigationTarget('profile', { compactFallback: 'more' }),
     },

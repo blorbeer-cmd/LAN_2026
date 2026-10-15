@@ -4,7 +4,13 @@ import { requireAdmin } from '../auth';
 import { clearSessionCookie, requireRecentReauthentication } from '../sessions';
 import { buildPersonalDataExport, deleteAccount, listDeletionReceipts } from '../privacyService';
 import { previewPrivacyRetention } from '../privacyRetention';
-import { getTrackingConsentDefaultVersion, setTrackingConsentDefault } from '../trackingContexts';
+import {
+  deleteEventTrackingData,
+  getTrackingConsentDefaultVersion,
+  listEventTrackingData,
+  setTrackingConsentDefault,
+} from '../trackingContexts';
+import { getLiveBoard } from '../liveStatus';
 import {
   GROUP_TRACKING_CONSENT_PURPOSE,
   GROUP_TRACKING_CONSENT_TEXT,
@@ -79,7 +85,23 @@ privacyRouter.get('/', (req, res) => {
       text: GROUP_TRACKING_CONSENT_TEXT,
       groups: legacyGroupConsents,
     },
+    trackingData: listEventTrackingData(req.player!.id),
   });
+});
+
+// Deletes the account's own game-tracking data for one event. It is idempotent
+// on purpose: a repeated or parallel request finds nothing left and still
+// succeeds, so a double click cannot surface as an error.
+privacyRouter.delete('/tracking-data/:eventId', (req, res) => {
+  const { eventId } = req.params;
+  if (eventId.length > 64) return res.status(400).json({ error: 'Ungültige Event-ID.' });
+  const event = db.prepare('SELECT 1 FROM events WHERE id = ?').get(eventId);
+  if (!event) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  const { deletedSessions, groupIds } = deleteEventTrackingData(req.player!.id, eventId);
+  for (const groupId of groupIds) {
+    broadcast(Events.liveStatusChanged, getLiveBoard(groupId, eventId), { groupId, eventId });
+  }
+  return res.json({ deletedSessions });
 });
 
 // Setting the standing default is itself the informed decision, so it carries
