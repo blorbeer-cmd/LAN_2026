@@ -212,7 +212,7 @@ export function tourDemoSceneKey(view, step, context, now) {
     events: ['/api/events/'], music: ['/api/music/'], arcade: ['/api/arcade/'] };
   return JSON.stringify({ view: demo.view, state: demo.state,
     responses: Object.fromEntries(Object.entries(demo.responses).filter(([path]) => (paths[demo.view] ?? []).some((prefix) => path.startsWith(prefix)))),
-    open: demo.open, controls: demo.controls, fill: demo.fill, submit: demo.submit,
+    open: demo.open, controls: demo.controls, fill: demo.fill, submit: demo.submit, afterSubmitOpen: demo.afterSubmitOpen,
     socketSnapshots: demo.socketSnapshots, localRoute: demo.localRoute, voteSelection: demo.voteSelection });
 }
 

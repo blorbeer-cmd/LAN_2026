@@ -6,11 +6,11 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
     description: 'Drei Tage gemeinsam spielen', costCents: 3000, accommodationCostCents: 12000,
     paypalLink: 'https://paypal.me/beispiel', paymentDueAt: now + 86_400_000, publishedAt: now,
     createdBy: chapter === 'organise' ? me.id : players[1].id, canManagePayments: chapter === 'organise', isBase: false, isEnded: false, trackingEnabled: false,
-    myParticipation: { status: 'accepted', paid: false, calendarConfirmed: false },
+    myParticipation: { status: 'accepted', paid: false, calendarConfirmed: false, canDecline: true, canAccept: false },
     participants: players.map((p, i) => ({ playerId: p.id, name: p.name, status: 'accepted', paid: i > 0,
       calendarConfirmed: i > 0, invitedAt: now, acceptedAt: now })) };
   const invite = { ...event, id: 'tour-invitation', name: 'Winter-LAN', startsAt: event.startsAt + 28 * 86_400_000,
-    endsAt: event.endsAt + 28 * 86_400_000, participants: [], myParticipation: { status: 'invited', paid: false } };
+    endsAt: event.endsAt + 28 * 86_400_000, participants: [], myParticipation: { status: 'invited', paid: false, canAccept: true, canDecline: true } };
   const group = { ...event, id: 'tour-permanent-group', name: 'Freitagsrunde', eventType: 'group',
     startsAt: null, endsAt: null, costCents: 0, accommodationCostCents: 0, paypalLink: null };
   const notification = { id: 'tour-notification', title: 'Deine Bestellung ist abgeschickt',
@@ -64,7 +64,17 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
       demo.focus = '[data-pending-invitation]';
     } else if (chapter === 'participate') demo.focus = '[data-event-card="tour-event"]';
     if (step === 'create') { demo.open = '#new-event-btn'; demo.fill = { '#event-name': 'Sommer-LAN' }; demo.focus = '#event-name'; }
+    if (step === 'calendar') {
+      demo.controls = ['[data-action-menu="event-calendar-tour-event"] > summary'];
+      demo.focus = '[data-action-menu="event-calendar-tour-event"]';
+    }
+    if (step === 'confirm') demo.focus = '[data-confirm-event-calendar="tour-event"]';
     if (step === 'payment') demo.open = '[data-pay-event="tour-event"]';
+    if (step === 'decline') {
+      demo.controls = ['[data-action-menu="event-decline-tour-event"] > summary'];
+      demo.focus = '[data-action-menu="event-decline-tour-event"]';
+    }
+    if (step === 'excuse') demo.open = '[data-decline-with-excuse="tour-event"]';
   }
   if (view === 'broadcast') {
     demo.fill = { '#broadcast-message': 'Das Abendessen steht ab 19 Uhr in der Küche bereit.' };
@@ -120,6 +130,8 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
       demo.fill = { '#music-search-input': step === 'playlist' ? 'LAN-Abend' : 'Nächste Runde' };
       demo.submit = '#music-search-form'; demo.focus = '#music-search-results';
     }
+    if (step === 'queue') { demo.open = '[data-music-detail="tour-next"]'; demo.focus = ''; }
+    if (step === 'playlist') demo.afterSubmitOpen = '[data-music-playlist="tour-playlist"]';
     if (step === 'device') demo.focus = '#music-device-area';
   }
   if (view === 'arcade') {

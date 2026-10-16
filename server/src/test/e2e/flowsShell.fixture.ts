@@ -192,6 +192,10 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     if (heading === 'Captains auswählen') {
       assert.equal(await example.locator('[data-roster-picker="mm-captain-roster"] input:checked').count(), 2);
     }
+    if (heading === 'Einladung prüfen') assert.equal(await example.locator('[data-accept-invitation="tour-invitation"]').isVisible(), true);
+    if (heading === 'In deinen Kalender übernehmen') assert.equal(await example.locator('[data-event-calendar="google"]').first().isVisible(), true);
+    if (heading === 'Warteschlange bearbeiten') assert.equal(await example.locator('[data-detail-remove]').isVisible(), true);
+    if (heading === 'Playlist starten') assert.match(await example.locator('.modal-backdrop').textContent() ?? '', /Songwünsche werden ersetzt/u);
     const dialog = example.locator('.modal-backdrop .modal').last();
     if (await dialog.count()) {
       const modalBox = await dialog.boundingBox();
@@ -236,7 +240,7 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     { route: 'home', help: 'Home', chapter: 'Überblick: Starten', input: '', value: '', advance: 0 },
     { route: 'home', help: 'Home', chapter: 'Navigation und Event: Starten', input: '', value: '', advance: 0 },
     { route: 'home', help: 'Home', chapter: 'Mitteilungen: Starten', input: '', value: '', advance: 0 },
-    { route: 'events', help: 'Events & Gruppen', chapter: 'Teilnehmen, Kalender und Beitrag: Starten', input: '', value: '', advance: 0 },
+    { route: 'events', help: 'Events & Gruppen', chapter: 'Tour starten', input: '', value: '', advance: 0 },
     { route: 'music', help: 'Jam', chapter: 'Tour starten', input: '', value: '', advance: 0 },
     { route: 'broadcast', help: 'Durchsage', chapter: 'Tour starten', input: '#broadcast-message', value: 'Das Abendessen steht ab 19 Uhr in der Küche bereit.', advance: 0 },
     { route: 'matchmaking', help: 'Match', chapter: 'Turnier spielen: Starten', input: '', value: '', advance: 0 },

@@ -1,7 +1,7 @@
 import { icon } from './icons.js';
 import { domainIcon } from './domainIcons.js';
 import { escapeHtml } from './format.js';
-import { bottomNavItemsForEvent, desktopNavItemsForEvent } from './bottomNav.js';
+import { bottomNavItemsForEvent, desktopNavItemsForEvent, desktopNavTargetForView } from './bottomNav.js';
 import { eventSelectOptions } from './eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from './searchSelect.js';
 
@@ -16,12 +16,16 @@ export async function mountTourDemoShell(demo) {
     document.getElementById(id).insertAdjacentHTML('afterbegin', icon(name));
   }
   const bottom = document.querySelector('.bottom-nav-inner');
-  bottom.innerHTML = bottomNavItemsForEvent(event).map((entry) => `<button type="button" class="nav-btn${entry.view === demo.view ? ' active' : ''}" data-view="${entry.view}" aria-label="${escapeHtml(entry.ariaLabel)}">
+  bottom.innerHTML = bottomNavItemsForEvent(event).map((entry) => `<button type="button" class="nav-btn" data-view="${entry.view}" aria-label="${escapeHtml(entry.ariaLabel)}">
     <span class="nav-icon">${icon(domainIcon(entry.iconKey))}</span><span class="nav-label">${escapeHtml(entry.label)}</span></button>`).join('');
   const rail = desktopNavItemsForEvent(event, { isAdmin: Boolean(demo.me.is_admin) });
-  const entryHtml = (entry) => `<button type="button" class="desktop-nav-btn${entry.view === demo.view ? ' active' : ''}" data-view="${entry.view ?? ''}"><span class="desktop-nav-icon">${icon(domainIcon(entry.iconKey))}</span><span class="desktop-nav-label">${escapeHtml(entry.label)}</span></button>`;
+  const entryHtml = (entry) => `<button type="button" class="desktop-nav-btn" data-view="${entry.view ?? ''}"><span class="desktop-nav-icon">${icon(domainIcon(entry.iconKey))}</span><span class="desktop-nav-label">${escapeHtml(entry.label)}</span></button>`;
   document.getElementById('desktop-nav-main').innerHTML = rail.groups.map((group) => `<div class="desktop-nav-group">${group.label ? `<span class="desktop-nav-heading">${escapeHtml(group.label)}</span>` : ''}${group.entries.map(entryHtml).join('')}</div>`).join('');
   document.getElementById('desktop-nav-utilities').innerHTML = rail.utilities.map(entryHtml).join('');
+  const navigationView = desktopNavTargetForView(demo.view);
+  for (const button of document.querySelectorAll('.nav-btn, .desktop-nav-btn')) {
+    button.classList.toggle('active', button.dataset.view === navigationView);
+  }
   if (demo.view === 'home') {
     const [search, info, notifications] = await Promise.all([
       import('./searchPalette.js'), import('./views/infoBoard.js'), import('./notificationBanner.js'),

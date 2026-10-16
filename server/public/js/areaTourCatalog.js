@@ -136,7 +136,7 @@ export const AREA_TOURS = {
       s('hidden', 'Zwischenstand verstehen', 'Bei verborgenem Zwischenstand bleiben die Verteilung und Einzelstimmen während der Runde verborgen. Nach dem Ende erscheinen Ergebnisse; anonyme Runden nennen keine Personen.', '.event-poll-card'),
     ]),
     c('result', 'Ergebnis, Stichwahl und Match', [
-      s('close', 'Runde beenden', 'Der Starter oder ein Admin kann die Runde beenden. Dann stehen Gewinner, Punkte und Teilnahme fest; Gleichstände teilen sich den Platz.', '.event-poll-card'),
+      s('close', 'Runde beenden', 'Der Ersteller oder ein Admin kann die Runde beenden. Dann stehen Gewinner, Punkte und Teilnahme fest; Gleichstände teilen sich den Platz.', '.event-poll-card'),
       s('players-count', 'Punkte und Mitspieler vergleichen', 'Die Punkte bestimmen den Sieger. Die Anzeige daneben zählt Mitspieler mit mindestens einem Punkt. Ein Spiel kann mehr Punkte sammeln, obwohl weniger Personen mitspielen würden.', '.event-poll-options'),
       s('runoff', 'Stichwahl starten', 'Bei Gleichstand können Admins eine Stichwahl öffnen. Sie fragt nach genau einem Spiel und übernimmt Anonymität und Zwischenstandseinstellung der Vorrunde.', '#votes-runoff'),
       s('match', 'Match vorbereiten', 'Match generieren übernimmt das gewählte Gewinner-Spiel und passende Teilnehmer in die Auslosung. Du kannst die Auswahl noch ändern; die Teams werden nicht sofort ausgelost.', '[data-generate-vote-match], #votes-generate-match'),

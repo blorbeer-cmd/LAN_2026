@@ -112,7 +112,7 @@ window.addEventListener('message', async (event) => {
     // dialogs; mutations are never used to manufacture a demonstration state.
     root.querySelectorAll('details:not(.action-menu)').forEach((element) => { element.open = true; });
     for (const button of root.querySelectorAll('[aria-expanded="false"]')) {
-      if (button.matches('[data-toggle-latest-vote], [data-toggle-poll], [data-group-toggle], [data-order-toggle]')) button.click();
+      if (button.matches('[data-toggle-latest-vote], [data-toggle-poll], [data-group-toggle], [data-order-toggle], [data-event-card-toggle]')) button.click();
     }
     await settled();
     if (demo.open) {
@@ -138,6 +138,13 @@ window.addEventListener('message', async (event) => {
       document.querySelector(demo.submit).requestSubmit();
       await settled();
       if (step.endsWith('/playlist')) document.querySelector('[data-music-result-type="playlists"]')?.click();
+      if (demo.afterSubmitOpen) {
+        const button = document.querySelector(demo.afterSubmitOpen);
+        if (!button) throw new Error(`Missing real example action: ${demo.afterSubmitOpen}`);
+        button.click();
+        await settled();
+        if (!document.querySelector('.modal-backdrop')) throw new Error('Example action did not open its dialog');
+      }
     }
     let highlighted = null;
     const focusStep = async (stepId, selector) => {
