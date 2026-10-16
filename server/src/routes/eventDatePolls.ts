@@ -268,6 +268,9 @@ function serializeDatePoll(
       ? myResponses
       : null,
     canManage,
+    // Any stored answer, independent of completeness and of what this viewer
+    // may see; the client uses it to keep unanswered polls out of the history.
+    hasResponses: allResponses.length > 0,
     canDelete: canDeleteDatePoll(canManage, viewerRole),
   };
 }

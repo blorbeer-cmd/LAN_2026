@@ -623,10 +623,6 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first().locator('[data-poll-option-active]').uncheck();
   await memberPage.click('#event-poll-edit-form button[type="submit"]');
   await memberCreated.locator('.event-poll-option').first().locator('.badge', { hasText: 'Deaktiviert' }).waitFor();
-  // Polls nobody answered are not kept in the Historie, so answer once more.
-  await memberCreated.locator('.event-poll-option').nth(1).locator('[data-poll-choice]').click();
-  await memberCreated.locator('[data-save-poll]').click();
-  await memberPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
   await choosePollAction(memberCreated, '[data-close-poll]');
   await memberPage.locator('.modal-backdrop [data-confirm]').click();
   await memberPage.locator('.toast', { hasText: 'Umfrage beendet' }).waitFor();

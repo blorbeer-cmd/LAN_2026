@@ -265,6 +265,24 @@ test('DELETE /api/votes/history/:round removes a closed round with its ballots',
   await request(app).post('/api/votes/cancel').send({});
 });
 
+test('DELETE /api/votes/history/:round is refused while a runoff still builds on the round', async () => {
+  const source = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes/points').send({
+    round: source.body.round,
+    playerId: playerA,
+    entries: [{ gameId: gameCs2, points: 0 }, { gameId: gameRl, points: 4 }],
+  });
+  await request(app).post('/api/votes/close').send({ round: source.body.round });
+  const runoff = await request(app).post('/api/votes/start').send({
+    mode: 'single', sourceRound: source.body.round, gameIds: [gameCs2, gameRl],
+  });
+  assert.equal(runoff.status, 201, JSON.stringify(runoff.body));
+
+  assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 409);
+  await request(app).post('/api/votes/cancel').send({ round: runoff.body.round });
+  assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 200);
+});
+
 test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beliebtheit)', async () => {
   // Rocket League gets rated much higher than CS2 by both players; with no
   // votes cast yet in the new round, the results order should already

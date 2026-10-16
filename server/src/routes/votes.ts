@@ -1108,6 +1108,14 @@ votesRouter.delete('/history/:round', requireGroupRole('admin'), (req, res) => {
   const groupId = req.group!.id;
   const eventId = requestVoteEventId(req, res);
   if (!eventId) return;
+  // A runoff keeps reading its source round's answers (declines, roster), so
+  // the source stays until every round built on it is gone.
+  const dependent = db
+    .prepare('SELECT 1 FROM vote_rounds WHERE group_id = ? AND source_round = ? LIMIT 1')
+    .get(groupId, round);
+  if (dependent) {
+    return res.status(409).json({ error: 'Diese Abstimmung ist Grundlage einer Stichwahl. Lösche zuerst die Stichwahl.' });
+  }
   // Only a finished round qualifies; an open one is ended via /close or /cancel.
   const deleted = db
     .prepare('DELETE FROM vote_rounds WHERE group_id = ? AND event_id = ? AND round = ? AND closed_at IS NOT NULL')

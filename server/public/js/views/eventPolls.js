@@ -1150,7 +1150,7 @@ export function renderEventPolls(container, ctx) {
     .sort((left, right) => Number(waitingKeys.has(right.key)) - Number(waitingKeys.has(left.key)));
   // Ended polls nobody answered in any round are not worth a Historie entry.
   const endedGroups = groups.filter((group) => group.rounds[0]?.status !== 'open'
-    && group.rounds.some((round) => round.invitees.some((invitee) => invitee.hasAnswered)));
+    && group.rounds.some((round) => round.hasResponses));
   if (cached?.loaded && !initializedEvents.has(event.id)) {
     initializedEvents.add(event.id);
     const waiting = activeGroups.filter((group) => waitingKeys.has(group.key));

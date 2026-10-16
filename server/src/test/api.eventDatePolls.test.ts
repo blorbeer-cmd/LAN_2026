@@ -224,6 +224,7 @@ test('feasibility, choice and 1-5 rating modes enforce their distinct response s
     .send({ responses: [{ optionId: feasibility.body.options[0].id, response: 'can' }] });
   assert.equal(partial.status, 200, JSON.stringify(partial.body));
   assert.equal(partial.body.invitees.find((entry: { playerId: string }) => entry.playerId === bob).hasAnswered, false);
+  assert.equal(partial.body.hasResponses, true, "a partial answer still counts as a stored response");
   assert.deepEqual(partial.body.myResponses, { [feasibility.body.options[0].id]: 'can' });
   assert.equal(partial.body.options[1].counts.open, 2, 'an explicit Open answer remains open and reminder-eligible');
   const rated = await request(app)
