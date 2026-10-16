@@ -172,7 +172,9 @@ flowTest('area tour examples work without live records and keep nested dialogs u
   await tourPage.getByRole('button', { name: 'Bezahlen: Starten', exact: true }).click();
   const overlay = tourPage.locator('.area-tour-backdrop');
   const example = tourPage.frameLocator('[data-area-tour-scene]');
-  const readyScene = async () => {
+  const assertSceneReady = async (tourPage: Page) => {
+    const overlay = tourPage.locator('.area-tour-backdrop');
+    const example = tourPage.frameLocator('[data-area-tour-scene]');
     await tourPage.waitForFunction(() => ['ready', 'error'].includes(
       (document.querySelector('.area-tour-backdrop') as HTMLElement | null)?.dataset.tourSceneStatus ?? '',
     ));
@@ -207,7 +209,7 @@ flowTest('area tour examples work without live records and keep nested dialogs u
       'the highlight belongs to the open native dialog, rather than its covered entry button');
     }
   };
-  await readyScene();
+  await assertSceneReady(tourPage);
   assert.match(await example.locator('body').textContent() ?? '', /Pizza bei Luigi/);
   assert.equal(await overlay.locator('input, iframe').count(), 0, 'the explanation dialog contains no imitation form or embedded example');
   await overlay.locator('[data-tour-end]').click();
@@ -228,15 +230,8 @@ flowTest('area tour examples work without live records and keep nested dialogs u
   // Empty workspaces still explain the actual create forms and example flow.
   // Real forms run in a separate document with no network writes or storage.
   const mutations: string[] = [];
-  let recording = false;
   const demoNetwork: string[] = [];
-  tourPage.on('request', (request) => {
-    if (request.frame() !== tourPage.mainFrame() && request.url().includes('/api/')) demoNetwork.push(request.url());
-    if (recording && request.url().includes('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
-      mutations.push(`${request.method()} ${request.url()}`);
-    }
-  });
-  for (const flow of [
+  const flows = [
     { route: 'home', help: 'Home', chapter: 'Überblick: Starten', input: '', value: '', advance: 0 },
     { route: 'home', help: 'Home', chapter: 'Navigation und Event: Starten', input: '', value: '', advance: 0 },
     { route: 'home', help: 'Home', chapter: 'Mitteilungen: Starten', input: '', value: '', advance: 0 },
@@ -259,8 +254,20 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     { route: 'matchmaking', help: 'Match', chapter: 'Turnier erstellen: Starten', input: '#draw-tournament-format', value: 'single_elimination', advance: 0 },
     { route: 'matchmaking', help: 'Match', chapter: 'Captain Draft: Starten', input: '#mm-game-search', value: 'Rocket League', advance: 0 },
     { route: 'arrivals', help: 'An- & Abreise', chapter: 'Tour starten', input: '', value: '', advance: 2 },
-  ]) {
-    recording = false;
+  ];
+  await tourPage.close();
+  const runFlow = async (flow: typeof flows[number]) => {
+    const tourPage = await context.newPage();
+    const overlay = tourPage.locator('.area-tour-backdrop');
+    const example = tourPage.frameLocator('[data-area-tour-scene]');
+    const readyScene = () => assertSceneReady(tourPage);
+    let recording = false;
+    tourPage.on('request', (request) => {
+      if (request.frame() !== tourPage.mainFrame() && request.url().includes('/api/')) demoNetwork.push(request.url());
+      if (recording && request.url().includes('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
+        mutations.push(`${request.method()} ${request.url()}`);
+      }
+    });
     await tourPage.goto(`${BASE_URL}/#${flow.route}`);
     const help = tourPage.getByRole('button', { name: `${flow.help} kennenlernen`, exact: true });
     await help.waitFor();
@@ -358,6 +365,14 @@ flowTest('area tour examples work without live records and keep nested dialogs u
       assert.equal(await tourPage.locator('#arrival-note').inputValue(), 'Mein ungespeicherter Entwurf');
     }
     recording = false;
+    await tourPage.close();
+  };
+  // These chapters have no server writes and independent page/form state.
+  // Keep every step and assertion while bounding the browser to two tabs.
+  for (let index = 0; index < flows.length; index += 2) {
+    const results = await Promise.allSettled(flows.slice(index, index + 2).map(runFlow));
+    const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failed) throw failed.reason;
   }
   assert.deepEqual(mutations, [], 'example dialogs and rows must not create or change product records');
   assert.deepEqual(demoNetwork, [], 'the real views in a demonstration must not read or write the live API');
