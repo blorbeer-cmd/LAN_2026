@@ -4,6 +4,7 @@
 // Sibling tests here intentionally share that state and run in order.
 
 import assert from 'node:assert/strict';
+import type { Page } from 'playwright';
 import { addSessionCookie, switchSessionCookie, finishE2EOnboarding } from './authHelpers';
 import { trackE2EContext } from './e2eDiagnostics';
 import {
