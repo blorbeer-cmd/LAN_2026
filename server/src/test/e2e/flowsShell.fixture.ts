@@ -72,6 +72,7 @@ flowTest('manual area tours resume, restore focus, survive refresh and never sub
   const help = tourPage.getByRole('button', { name: 'Mein Profil kennenlernen', exact: true });
   await help.waitFor();
   assert.equal(await tourPage.getByRole('heading', { name: 'Mein Profil', exact: true }).count(), 1);
+  const originalScroll = await tourPage.locator('#view-container').evaluate((element) => element.scrollTop);
   assert.equal(await tourPage.locator('.area-tour-backdrop').count(), 0, 'visiting an area does not start a tour');
   const mutations: string[] = [];
   tourPage.on('request', (request) => {
@@ -91,6 +92,7 @@ flowTest('manual area tours resume, restore focus, survive refresh and never sub
   await overlay.waitFor({ state: 'detached' });
   assert.equal(await tourPage.locator('#app').evaluate((element) => (element as HTMLElement).inert), false);
   assert.equal(await help.evaluate((element) => document.activeElement === element), true);
+  assert.equal(await tourPage.locator('#view-container').evaluate((element) => element.scrollTop), originalScroll);
 
   await tourPage.reload();
   await help.click();
@@ -1529,11 +1531,12 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     const title = row.querySelector('h1')?.getBoundingClientRect();
     if (!title) throw new Error('Feedback header title is missing');
     return {
-      buttons: row.querySelectorAll('button').length,
+      tourButtons: row.querySelectorAll('button[data-area-tour-open="adminFeedback"]').length,
+      otherButtons: row.querySelectorAll('button:not([data-area-tour-open])').length,
       titleInset: Math.round(title.left - row.getBoundingClientRect().left),
     };
   });
-  assert.deepEqual(feedbackHeaderLayout, { buttons: 0, titleInset: 0 });
+  assert.deepEqual(feedbackHeaderLayout, { tourButtons: 1, otherButtons: 0, titleInset: 0 });
   await page.setViewportSize({ width: 390, height: 844 });
   // The same role gate applies to the wide-viewport desktop rail, which
   // filters `.desktop-nav-btn` entries independently of the old bottom-nav

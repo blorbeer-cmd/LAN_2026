@@ -136,6 +136,8 @@ export function createAreaTours({ container, getContext }) {
       key, source, trigger, accountId: context.accountId, chapterId, steps,
       index: resumeTourIndex(steps, progress), frozen, openedDetails: new Map(),
       scrollX: window.scrollX, scrollY: window.scrollY, dialog: null, ring: null, shade: null,
+      scrollState: [container, ...document.querySelectorAll('.modal')]
+        .map((element) => ({ element, left: element.scrollLeft, top: element.scrollTop })),
     };
     const handle = openModal(tour.title, '', {
       isolateKeys: true,
@@ -199,7 +201,12 @@ export function createAreaTours({ container, getContext }) {
       for (const candidate of candidates) {
         for (let parent = candidate.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
           if (parent.tagName === 'DETAILS' && !parent.open) {
-            if (!active.openedDetails.has(parent)) active.openedDetails.set(parent, parent.open);
+            if (!active.openedDetails.has(parent)) {
+              const data = [...parent.attributes].find((attribute) => attribute.name.startsWith('data-'));
+              const selector = parent.id ? `#${CSS.escape(parent.id)}`
+                : data ? `[${data.name}="${CSS.escape(data.value)}"]` : null;
+              active.openedDetails.set(parent, { open: parent.open, selector });
+            }
             parent.open = true;
           }
         }
@@ -246,8 +253,14 @@ export function createAreaTours({ container, getContext }) {
     cancelAnimationFrame(frame);
     frame = 0;
     previous.frozen.forEach(({ element, inert }) => { element.inert = inert; });
-    previous.openedDetails.forEach((open, element) => { if (element.isConnected) element.open = open; });
+    previous.openedDetails.forEach(({ open, selector }, element) => {
+      const current = element.isConnected ? element : selector ? previous.source.querySelector(selector) : null;
+      if (current) current.open = open;
+    });
     if (contextKey(getContext()) === scope && previous.source.isConnected) {
+      previous.scrollState.forEach(({ element, left, top }) => {
+        if (element.isConnected) { element.scrollLeft = left; element.scrollTop = top; }
+      });
       window.scrollTo({ left: previous.scrollX, top: previous.scrollY, behavior: 'instant' });
       const trigger = previous.trigger.isConnected ? previous.trigger : previous.source.querySelector('[data-area-tour-open]');
       trigger?.focus({ preventScroll: true });
