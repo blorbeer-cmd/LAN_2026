@@ -171,7 +171,13 @@ flowTest('area tour examples work without live records and keep nested dialogs u
   await tourPage.getByRole('button', { name: 'Essen kennenlernen', exact: true }).click();
   await tourPage.getByRole('button', { name: 'Bezahlen: Starten', exact: true }).click();
   const overlay = tourPage.locator('.area-tour-backdrop');
-  const readyScene = () => tourPage.locator('.area-tour-backdrop[data-tour-scene-status="ready"]').waitFor();
+  const readyScene = async () => {
+    await tourPage.waitForFunction(() => ['ready', 'error'].includes(
+      (document.querySelector('.area-tour-backdrop') as HTMLElement | null)?.dataset.tourSceneStatus ?? '',
+    ));
+    assert.equal(await overlay.getAttribute('data-tour-scene-status'), 'ready',
+      `the actual example view must render: ${await overlay.locator('h2').textContent()}`);
+  };
   await readyScene();
   const example = tourPage.frameLocator('[data-area-tour-scene]');
   assert.match(await example.locator('body').textContent() ?? '', /Pizza bei Luigi/);
@@ -203,12 +209,17 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     }
   });
   for (const flow of [
+    { route: 'gameCatalog', help: 'Spiele', chapter: 'Bock, Skill und Auswahl: Starten', input: '', value: '', advance: 0 },
     { route: 'gameCatalog', help: 'Spiele', chapter: 'Spiele vorschlagen und pflegen: Starten', input: '#suggest-title', value: 'Deep Rock Galactic', advance: 0 },
     { route: 'votes', help: 'Vote', chapter: 'Abstimmen und Bock übernehmen: Starten', input: '#votes-title', value: 'Samstagabend', advance: 0 },
     { route: 'votes', help: 'Vote', chapter: 'Ergebnis, Stichwahl und Match: Starten', input: '', value: '', advance: 0 },
     { route: 'eventPolls', help: 'Umfragen', chapter: 'Umfrage verwalten: Starten', input: '#poll-title', value: 'Was essen wir am Samstag?', advance: 0 },
+    { route: 'eventPolls', help: 'Umfragen', chapter: 'Antworten: Starten', input: '', value: '', advance: 0 },
     { route: 'checklist', help: 'To-Do', chapter: 'Tour starten', input: '#todo-title', value: 'Mehrfachsteckdosen', advance: 1 },
+    { route: 'checklistPacking', help: 'Packliste', chapter: 'Tour starten', input: '', value: '', advance: 0 },
     { route: 'foodOrders', help: 'Essen', chapter: 'Bestellung organisieren: Starten', input: '#order-title', value: 'Pizza bei Luigi', advance: 0 },
+    { route: 'foodOrders', help: 'Essen', chapter: 'Mitbestellen: Starten', input: '', value: '', advance: 0 },
+    { route: 'foodOrders', help: 'Essen', chapter: 'Bezahlen: Starten', input: '', value: '', advance: 0 },
     { route: 'matchmaking', help: 'Match', chapter: 'Teams auslosen: Starten', input: '#mm-game-search', value: 'Rocket League', advance: 0 },
     { route: 'matchmaking', help: 'Match', chapter: 'Turnier erstellen: Starten', input: '#draw-tournament-format', value: 'single_elimination', advance: 0 },
     { route: 'matchmaking', help: 'Match', chapter: 'Captain Draft: Starten', input: '#mm-game-search', value: 'Rocket League', advance: 0 },

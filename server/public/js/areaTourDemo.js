@@ -39,6 +39,7 @@ window.addEventListener('message', async (event) => {
       const before = revision;
       await nextFrame();
       await nextFrame();
+      if (failure) throw failure;
       if (!pending && revision === before) return;
     }
     throw new Error('Example view did not settle');
@@ -50,6 +51,10 @@ window.addEventListener('message', async (event) => {
     Object.assign(state, demo.state);
     identity.lockMyIdToSession(demo.me.id);
     await groups.initGroupContext();
+    if (view === 'gameCatalog') {
+      const { focusGameCatalog } = await import('./views/gameCatalog.js');
+      focusGameCatalog(demo.state.games[0].id);
+    }
     if (demo.voteSelection) {
       const { prepareDrawFromVote } = await import('./views/matchmaking.js');
       prepareDrawFromVote(demo.voteSelection);
@@ -65,7 +70,7 @@ window.addEventListener('message', async (event) => {
     if (failure) throw failure;
     // Expand only disclosure controls. Creation buttons below open the normal
     // dialogs; mutations are never used to manufacture a demonstration state.
-    root.querySelectorAll('details').forEach((element) => { element.open = true; });
+    root.querySelectorAll('details:not(.action-menu)').forEach((element) => { element.open = true; });
     for (const button of root.querySelectorAll('[aria-expanded="false"]')) {
       if (button.matches('[data-toggle-latest-vote], [data-toggle-poll], [data-group-toggle], [data-order-toggle]')) button.click();
     }
@@ -88,13 +93,16 @@ window.addEventListener('message', async (event) => {
     }
     for (const [selector, value] of Object.entries(demo.fill)) {
       const input = document.querySelector(selector);
-      if (!input) continue;
+      if (!input) throw new Error(`Missing example field: ${selector}`);
       input.value = value;
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }
     let highlighted = document.querySelector(demo.focus || target || '.modal-backdrop .modal');
     if (highlighted?.type === 'hidden') highlighted = highlighted.closest('[data-dt-field]') ?? highlighted.parentElement;
     highlighted ??= document.querySelector('.modal-backdrop .modal') ?? root.querySelector('.card') ?? root;
+    for (let ancestor = highlighted; ancestor; ancestor = ancestor.parentElement) {
+      if (ancestor.tagName === 'DETAILS') ancestor.open = true;
+    }
     highlighted.scrollIntoView({ block: 'center', behavior: 'instant' });
     window.areaTourScene = {
       targetRect() {

@@ -11,6 +11,8 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
     genres: index === 0 ? ['Sport'] : [], info: index === 0 ? 'Controller empfohlen' : '',
     isSuggestion: false, considerSeatNeighborsDefault: false, processNames: [], min_team_size: 1, max_team_size: 4,
   }));
+  if (view === 'gameCatalog' && step === 'promote') games[0].isSuggestion = true;
+  if (view === 'gameCatalog' && step === 'process') games[0].processNames = ['RocketLeague.exe'];
   const start = now + 7 * 86_400_000;
   const activeEvent = { ...event, id: 'tour-event', name: 'Beispiel-LAN', type: event?.type ?? 'lan',
     startsAt: start, endsAt: start + 2 * 86_400_000, participantIds: players.map((p) => p.id),
@@ -31,16 +33,22 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
     history.winnerGameIds = games.slice(0, 2).map((game) => game.id);
   }
   const finished = chapter === 'result';
+  const pollClosed = ['result', 'close', 'round'].includes(step);
+  const pollVoters = pollClosed ? players : players.slice(0, 3);
   const poll = { id: 'tour-poll', decisionKey: 'tour-poll', title: 'Was essen wir am Samstag?', note: 'Bitte bis Freitag antworten',
-    responseMode: 'single_choice', status: ['result', 'close', 'round'].includes(step) ? 'closed' : 'open', roundNumber: 1,
+    responseMode: 'single_choice', status: pollClosed ? 'closed' : 'open', roundNumber: 1, maxSelections: null,
     createdBy: me.id, createdByName: me.name, updatedAt: now, createdAt: now - 600_000, responseDueAt: start - 86_400_000,
     isInvitee: true, canManage: true, canDelete: admin, anonymous: false, liveResultsHidden: true,
-    resultsVisible: ['result', 'close', 'round'].includes(step), responseDetailsVisible: true,
+    resultsVisible: true, responseDetailsVisible: true,
     hasResponses: true, myResponses: { 'tour-pizza': 'can', 'tour-burger': 'cannot' },
-    invitees: players.map((p, i) => ({ playerId: p.id, name: p.name, hasAnswered: ['result', 'close', 'round'].includes(step) || i < 3 })),
-    options: ['Pizza', 'Burger'].map((label, i) => ({ id: ['tour-pizza', 'tour-burger'][i], label, title: label,
-      active: true, position: i, note: '', url: null, counts: ['result', 'close', 'round'].includes(step)
-        ? { can: i ? 1 : 3, cannot: i ? 3 : 1, maybe: 0, total: 4 } : null, responses: [] })),
+    invitees: players.map((p, i) => ({ playerId: p.id, name: p.name, hasAnswered: pollClosed || i < 3 })),
+    options: ['Pizza', 'Burger'].map((label, i) => {
+      const voters = pollVoters.filter((_person, voter) => i === (voter === 1 ? 1 : 0));
+      return { id: ['tour-pizza', 'tour-burger'][i], label, active: true, position: i,
+        description: '', payload: {}, isRecommended: pollClosed && i === 0,
+        counts: { can: voters.length, cannot: pollVoters.length - voters.length, ifNeeded: 0, open: players.length - pollVoters.length },
+        people: { can: voters.map((p) => ({ playerId: p.id, name: p.name })), ifNeeded: [], cannot: [], ratings: {} } };
+    }),
   };
   const ownRide = step === 'edit';
   const joined = step === 'join';
@@ -49,11 +57,11 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
     members: [ownRide ? me : players[1], ...(joined ? [me] : [])] };
   const task = { id: 'tour-task', type: 'item_request', title: 'Mehrfachsteckdosen', description: 'Mindestens 6 Steckplätze',
     status: step === 'done' ? 'done' : step === 'release' ? 'taken' : 'open',
-    dueAt: start, createdAt: now, createdBy: me, assignees: ['release', 'done'].includes(step) ? [{ ...me, comment: 'Ich bringe zwei mit' }] : [],
+    dueAt: step === 'due' ? now - 86_400_000 : start, createdAt: now, createdBy: me, assignees: ['release', 'done'].includes(step) ? [{ ...me, comment: 'Ich bringe zwei mit' }] : [],
     doneAt: step === 'done' ? now : null, archivedAt: null };
   const order = { id: 'tour-order', title: 'Pizza bei Luigi', createdBy: me.id, createdByName: me.name, createdAt: now,
     open: (chapter === 'organise' && step !== 'reopen') || (chapter === 'order' && step !== 'freeze'),
-    closedAt: now, finalizedAt: ['close', 'reopen'].includes(step) ? now : null, sendAt: start, notes: 'Bitte rechtzeitig eintragen',
+    closedAt: now - 10_800_000, finalizedAt: ['close', 'reopen'].includes(step) ? now : null, sendAt: start, notes: 'Bitte rechtzeitig eintragen',
     link: 'https://example.invalid/speisekarte', paypalLink: 'https://paypal.me/beispiel', tipPercent: 10,
     items: players.slice(0, 2).map((p, i) => ({ id: `tour-item-${i}`, playerId: p.id, playerName: p.name,
       description: i ? 'Pizza Funghi' : 'Pizza Margherita', quantity: i ? 1 : 2, priceCents: i ? 900 : 800,
@@ -109,6 +117,12 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
     open = '#new-event-poll'; fill = { '#poll-title': poll.title, '#poll-note': poll.note, '#poll-option-0': 'Pizza', '#poll-option-1': 'Burger' };
     controls = ['#poll-mode-search', '#poll-mode-results [data-search-select-value="single_choice"]'];
     focus = ({ mode: '#poll-mode', choices: '#poll-option-rows', privacy: '#poll-anonymous', deadline: '#poll-due' })[step] ?? '#poll-title';
+  }
+  if (view === 'eventPolls') {
+    if (step === 'manual') focus = '[data-remind-poll]';
+    if (chapter === 'manage' && step === 'options') open = '[data-edit-poll]';
+    if (chapter === 'manage' && step === 'round') open = '[data-reopen-poll]';
+    if (step === 'result') open = '[data-view-poll-votes]';
   }
   if (view === 'checklist' && ['create', 'title', 'deadline'].includes(step)) {
     open = '#checklist-new-todo-btn'; fill = { '#todo-title': task.title, '#todo-description': task.description };
