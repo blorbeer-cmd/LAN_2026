@@ -974,8 +974,8 @@ function roundOptions(row: VoteRoundRow): Pick<RoundMeta, 'anonymous' | 'hideLiv
 // GET /api/votes/history - past (closed) rounds for the active event, newest
 // first: when it happened, how many players submitted, the compact per-game
 // ranking, who won and each voter's ballot (names only become visible once a
-// round is closed). Rounds nobody voted in still show up (with an empty
-// winners list) since they come from vote_rounds, not from votes itself.
+// round is closed). Rounds that ended without a single submitted ballot are
+// left out; admins can delete the remaining ones via DELETE /history/:round.
 votesRouter.get('/history', (req, res) => {
   const { eventId, limit } = req.query;
   const groupId = req.group!.id;
@@ -995,10 +995,15 @@ votesRouter.get('/history', (req, res) => {
        FROM vote_rounds vr
        JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
        WHERE vr.group_id = ? AND vr.closed_at IS NOT NULL AND vr.event_id = ?
+         AND EXISTS (
+           SELECT 1 FROM votes v JOIN games g ON g.id = v.game_id
+           WHERE v.group_id = vr.group_id AND v.round = vr.round AND g.group_id = vr.group_id
+             AND (? = 1 OR v.player_id NOT IN (SELECT id FROM players WHERE is_test = 1))
+         )
        ORDER BY vr.closed_at DESC, vr.round DESC
        LIMIT ?`,
     )
-    .all(groupId, filterEventId, limitNum) as VoteRoundRow[];
+    .all(groupId, filterEventId, includesTestPlayers(req) ? 1 : 0, limitNum) as VoteRoundRow[];
 
   const history = rows.map((r) => {
     const winnerIds: string[] = r.winnerGameIdsJson ? JSON.parse(r.winnerGameIdsJson) : [];
@@ -1091,4 +1096,51 @@ votesRouter.get('/history/:round', (req, res) => {
     winnerGameIds,
     ballots: row.anonymous ? [] : roundBallots(req.group!.id, row.round, includeTestData, results.map((r) => r.gameId)),
   });
+});
+
+class VoteRoundInUseError extends Error {}
+
+// DELETE /api/votes/history/:round - admins remove a finished round together
+// with all of its ballots (vote_rounds cascades), e.g. a junk or test round.
+votesRouter.delete('/history/:round', requireGroupRole('admin'), (req, res) => {
+  const round = parseInt(req.params.round, 10);
+  if (!Number.isInteger(round) || round < 1) {
+    return res.status(400).json({ error: 'round muss eine positive Ganzzahl sein.' });
+  }
+  const groupId = req.group!.id;
+  const eventId = requestVoteEventId(req, res);
+  if (!eventId) return;
+  // A runoff keeps reading its source round's answers (declines, roster), so
+  // the source stays until every visible round built on it is gone. Runoffs
+  // from before source_round existed have no link; any later single-mode
+  // round counts as one. A closed runoff without a ballot is invisible in
+  // the history and is simply removed together with its source.
+  const hasBallots = 'EXISTS (SELECT 1 FROM votes v WHERE v.group_id = d.group_id AND v.round = d.round)';
+  const dependentSql = `d.group_id = ? AND d.event_id = ? AND d.round <> ?
+    AND (d.source_round = ? OR (d.source_round IS NULL AND d.mode = 'single' AND d.round > ?))`;
+  const remove = db.transaction((): boolean => {
+    const target = db
+      .prepare('SELECT 1 FROM vote_rounds WHERE group_id = ? AND event_id = ? AND round = ? AND closed_at IS NOT NULL')
+      .get(groupId, eventId, round);
+    if (!target) return false;
+    const blocking = db
+      .prepare(`SELECT 1 FROM vote_rounds d WHERE ${dependentSql} AND (d.closed_at IS NULL OR ${hasBallots}) LIMIT 1`)
+      .get(groupId, eventId, round, round, round);
+    if (blocking) throw new VoteRoundInUseError();
+    db.prepare(`DELETE FROM vote_rounds WHERE rowid IN (
+      SELECT d.rowid FROM vote_rounds d WHERE ${dependentSql} AND d.closed_at IS NOT NULL AND NOT ${hasBallots})`)
+      .run(groupId, eventId, round, round, round);
+    db.prepare('DELETE FROM vote_rounds WHERE group_id = ? AND round = ?').run(groupId, round);
+    return true;
+  });
+  try {
+    if (!remove()) return res.status(404).json({ error: 'Abgeschlossene Abstimmungsrunde nicht gefunden.' });
+  } catch (err) {
+    if (err instanceof VoteRoundInUseError) {
+      return res.status(409).json({ error: 'Diese Abstimmung ist Grundlage einer Stichwahl. Lösche zuerst die Stichwahl.' });
+    }
+    throw err;
+  }
+  broadcast(Events.votesChanged, { round, open: false }, { groupId, eventId });
+  res.json(buildOverviewPayload(groupId, eventId, includesTestPlayers(req)));
 });

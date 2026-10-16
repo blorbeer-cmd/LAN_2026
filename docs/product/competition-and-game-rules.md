@@ -433,7 +433,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   the client tells rounds apart by number and start time and never carries a cancelled round's
   ballot over.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
-  closed and retains its open state across live re-renders.
+  closed and retains its open state across live re-renders. Rounds that ended without a single
+  submitted ballot are not listed there. Community admins can delete a finished round with all of
+  its ballots from „Letzter Vote“ and „Historie“ after confirming.
 - **Tournament overview** — Match lists running tournaments as compact „Aktuell“ style rows above its setup. These whole-row actions highlight on pointer hover and show keyboard focus, without a trailing chevron or „Öffnen“ label. The selected game's „Ohne Ergebnis“ section keeps running tournaments as collapsible history tiles; completed tournaments belong in the history filter. Every tournament starts from a Match draw or Captain
   Draft; there is no separate creation page or tournament tab. Legacy `#tournaments` and
   `#tournaments/new` routes replace themselves with `#matchmaking`. A tournament detail link keeps

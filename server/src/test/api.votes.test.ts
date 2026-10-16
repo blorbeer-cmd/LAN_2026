@@ -220,21 +220,18 @@ test('GET /api/votes/history/:round 404s for a round that never happened, and re
   assert.equal(garbage.status, 400);
 });
 
-test('GET /api/votes/history still lists a round nobody voted in', async () => {
+test('GET /api/votes/history leaves out a round that ended without any ballot', async () => {
   await request(app).post('/api/votes/start');
   const res = await request(app).post('/api/votes/close');
   assert.deepEqual(res.body.winnerGameIds, []);
 
   const history = await request(app).get('/api/votes/history');
-  const entry = history.body.history.find((h: { round: number }) => h.round === res.body.round);
-  assert.ok(entry, 'the empty round should still appear in history');
-  assert.equal(entry.totalVotes, 0);
-  assert.deepEqual(entry.winners, []);
+  assert.equal(history.body.history.some((h: { round: number }) => h.round === res.body.round), false);
 });
 
 test('GET /api/votes/history keeps closed rounds in time order even without votes', async () => {
-  // At this point round 1 (has votes) and round 2 (nobody voted, from the
-  // previous test) are both closed. Close a brand-new round 3 with a vote so
+  // At this point round 1 (has votes) and round 2 (nobody voted, hidden from
+  // history) are both closed. Close a brand-new round 3 with a vote so
   // the newest round in history has a result. Voting for Age of Empires 2 here (rather than CS2)
   // keeps this round's win out of the later "each result row reports its
   // all-time vote win count" assertions, which pin CS2's and Rocket League's
@@ -245,7 +242,88 @@ test('GET /api/votes/history keeps closed rounds in time order even without vote
 
   const history = await request(app).get('/api/votes/history');
   const rounds = history.body.history.map((h: { round: number }) => h.round);
-  assert.deepEqual(rounds, [closed.body.round, 2, 1]);
+  assert.deepEqual(rounds, [closed.body.round, 1]);
+  assert.equal((await request(app).get('/api/votes/history/2')).status, 200);
+});
+
+test('DELETE /api/votes/history/:round removes a closed round with its ballots', async () => {
+  await request(app).post('/api/votes/start').send({ mode: 'single' });
+  await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameCs2 });
+  const closed = await request(app).post('/api/votes/close');
+  const round = closed.body.round;
+
+  assert.equal((await request(app).delete('/api/votes/history/not-a-number')).status, 400);
+  assert.equal((await request(app).delete('/api/votes/history/9999')).status, 404);
+
+  const res = await request(app).delete(`/api/votes/history/${round}`);
+  assert.equal(res.status, 200);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM votes WHERE round = ?').get(round) as { n: number }).n, 0);
+  assert.equal((await request(app).get(`/api/votes/history/${round}`)).status, 404);
+
+  const open = await request(app).post('/api/votes/start').send({ mode: 'single' });
+  assert.equal((await request(app).delete(`/api/votes/history/${open.body.round}`)).status, 404);
+  await request(app).post('/api/votes/cancel').send({});
+});
+
+test('DELETE /api/votes/history/:round is refused while a runoff still builds on the round', async () => {
+  const source = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes/points').send({
+    round: source.body.round,
+    playerId: playerA,
+    entries: [{ gameId: gameCs2, points: 0 }, { gameId: gameRl, points: 4 }],
+  });
+  await request(app).post('/api/votes/close').send({ round: source.body.round });
+  const runoff = await request(app).post('/api/votes/start').send({
+    mode: 'single', sourceRound: source.body.round, gameIds: [gameCs2, gameRl],
+  });
+  assert.equal(runoff.status, 201, JSON.stringify(runoff.body));
+
+  assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 409);
+  // Ended without a ballot, the runoff is invisible and no longer blocks.
+  await request(app).post('/api/votes/close').send({ round: runoff.body.round });
+  assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 200);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM vote_rounds WHERE round = ?').get(runoff.body.round) as { n: number }).n, 0);
+});
+
+test('DELETE /api/votes/history/:round keeps a points round that a legacy runoff without source_round relies on', async () => {
+  const source = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes/points').send({
+    round: source.body.round,
+    playerId: playerA,
+    entries: [{ gameId: gameCs2, points: 0 }, { gameId: gameRl, points: 4 }],
+  });
+  await request(app).post('/api/votes/close').send({ round: source.body.round });
+  const runoff = await request(app).post('/api/votes/start').send({ mode: 'single', gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes').send({ round: runoff.body.round, playerId: playerA, gameId: gameRl });
+  await request(app).post('/api/votes/close').send({ round: runoff.body.round });
+  db.prepare('UPDATE vote_rounds SET source_round = NULL WHERE round = ?').run(runoff.body.round);
+
+  assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 409);
+  assert.equal((await request(app).delete(`/api/votes/history/${runoff.body.round}`)).status, 200);
+  assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 200);
+});
+
+test('DELETE /api/votes/history/:round ignores legacy rounds of another event', async () => {
+  const other = await request(app)
+    .post('/api/events')
+    .send({ name: 'Other event', startsAt: Date.now(), endsAt: Date.now() + 5 * 60_000 });
+  assert.equal(other.status, 201);
+  const source = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes/points').send({
+    round: source.body.round,
+    playerId: playerA,
+    entries: [{ gameId: gameCs2, points: 1 }, { gameId: gameRl, points: 4 }],
+  });
+  await request(app).post('/api/votes/close').send({ round: source.body.round });
+  // A later, empty legacy-style round that belongs to the other event.
+  const foreign = db.prepare(
+    `INSERT INTO vote_rounds (group_id, round, event_id, started_at, closed_at, mode)
+     VALUES (?, (SELECT MAX(round) + 1 FROM vote_rounds), ?, ?, ?, 'single')`,
+  ).run(DEFAULT_GROUP_ID, other.body.id, Date.now(), Date.now());
+  const foreignRound = (db.prepare('SELECT round FROM vote_rounds WHERE rowid = ?').get(foreign.lastInsertRowid) as { round: number }).round;
+
+  assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 200);
+  assert.ok(db.prepare('SELECT 1 FROM vote_rounds WHERE round = ?').get(foreignRound), 'the other event keeps its round');
 });
 
 test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beliebtheit)', async () => {
@@ -685,8 +763,16 @@ test('a cancelled round can reuse its number without reusing its draft identity'
 });
 
 test('the last closed Vote stays current even when an older round ends later', async () => {
-  const older = await request(app).post('/api/votes/start');
-  const newer = await request(app).post('/api/votes/start');
+  const older = await request(app).post('/api/votes/start').send({ gameIds: [gameCs2, gameRl] });
+  const newer = await request(app).post('/api/votes/start').send({ gameIds: [gameCs2, gameRl] });
+  // Rounds without a ballot are not listed in history, so both get one.
+  for (const round of [older.body.round, newer.body.round]) {
+    await request(app).post('/api/votes/points').send({
+      round,
+      playerId: playerA,
+      entries: [{ gameId: gameCs2, points: 3 }, { gameId: gameRl, points: 1 }],
+    });
+  }
   assert.equal((await request(app).post('/api/votes/close').send({ round: newer.body.round })).status, 200);
   assert.equal((await request(app).post('/api/votes/close').send({ round: older.body.round })).status, 200);
 

@@ -464,6 +464,11 @@ function renderPollSideAction(poll) {
   return `<button type="button" class="btn btn-sm" data-new-poll-round="${escapeHtml(poll.id)}">Neue Runde</button>`;
 }
 
+function renderPollDeleteButton(poll) {
+  if (!poll.canDelete) return '';
+  return `<button type="button" class="btn btn-sm btn-square" data-delete-poll="${escapeHtml(poll.id)}" aria-label="Umfrage löschen" title="Umfrage löschen">${icon('trash')}</button>`;
+}
+
 function renderPollActions(poll) {
   const unanswered = poll.invitees.filter((invitee) => !invitee.hasAnswered).length;
   const actions = [];
@@ -477,7 +482,6 @@ function renderPollActions(poll) {
     } else {
       actions.push(`<button type="button" class="btn btn-sm" data-reopen-poll="${escapeHtml(poll.id)}">Wieder öffnen</button>`);
     }
-    actions.push(`<button type="button" class="btn btn-sm btn-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
   }
   return actionMenuHtml(actions, `Aktionen für Umfrage ${poll.title}`);
 }
@@ -583,6 +587,7 @@ function renderPollGroup(group) {
           <span class="event-poll-answer-side">${answerStatusChip(latest)}</span>
           ${renderPollSideAction(latest)}
           ${renderPollActions(latest)}
+          ${renderPollDeleteButton(latest)}
         </div>
       </header>
       <div class="stack event-poll-card-content" ${expanded ? '' : 'hidden'}>
@@ -1143,7 +1148,9 @@ export function renderEventPolls(container, ctx) {
   const waitingKeys = waitingAtLoad.get(event.id) ?? new Set();
   const activeGroups = openGroups
     .sort((left, right) => Number(waitingKeys.has(right.key)) - Number(waitingKeys.has(left.key)));
-  const endedGroups = groups.filter((group) => group.rounds[0]?.status !== 'open');
+  // Ended polls nobody answered in any round are not worth a Historie entry.
+  const endedGroups = groups.filter((group) => group.rounds[0]?.status !== 'open'
+    && group.rounds.some((round) => round.hasResponses));
   if (cached?.loaded && !initializedEvents.has(event.id)) {
     initializedEvents.add(event.id);
     const waiting = activeGroups.filter((group) => waitingKeys.has(group.key));
