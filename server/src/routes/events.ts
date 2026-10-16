@@ -561,24 +561,22 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
-  // A member's own accepted events that have since ended. `availableEvents`
-  // deliberately excludes these — it answers "where can I switch to right
-  // now", not "what did I finish" (see the dedicated test below) — but the
-  // Events tab's own collapsed "Historie" section needs the same rich
-  // accepted-participant/payment detail `availableEvents` carries, which the
-  // lighter `historicalEvents` summary (built for the analytics event filter)
-  // does not. Hence its own query rather than reusing either.
+  // Closed events remain readable for every invited account, regardless of
+  // its answer. Only accepted participants receive member details; open and
+  // declined invitations retain their teaser. None is a selectable workspace
+  // or an open invitation that Home/Profile should still ask to answer.
   const endedEvents = db
     .prepare(
-      `SELECT e.*
+      `SELECT e.*, ep.status AS participation_status
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
-       WHERE ep.player_id = ? AND ep.status = 'accepted'
-         AND e.id != ? AND e.group_id = ? AND e.status = 'ended'
+       WHERE ep.player_id = ?
+         AND e.id != ? AND e.group_id = ?
+         AND (e.status IN ('ended', 'cancelled') OR e.ended_at IS NOT NULL)
          ${testEventClause}
        ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
-    .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
+    .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as Array<EventRow & { participation_status: string }>;
   // Compatibility field for older clients. Generic polls never grant event
   // visibility, and accepted invitations never become stale because of a
   // poll, so there are no poll-only or reconfirmation-only event cards.
@@ -631,7 +629,9 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
     availableEvents: availableEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
     // Retained as an empty compatibility field for older clients.
     plannedEvents: plannedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
-    endedEvents: endedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
+    endedEvents: endedEvents.map((event) => event.participation_status === 'accepted'
+      ? serializeMemberEvent(event, playerId, req.groupMembership?.role)
+      : serializeTeaserEvent(event, playerId)),
     historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
     invitations: invitations.map((event) => serializeTeaserEvent(event, playerId)),
     declinedEvents: declinedEvents.map((event) => serializeTeaserEvent(event, playerId)),
@@ -678,13 +678,13 @@ function updateEventTrackingConsent(req: Request, res: Response, granted: boolea
   const event = req.groupResource as EventRow;
   if (!event || event.id === OUTSIDE_EVENTS_ID) { res.status(404).json({ error: 'Event nicht gefunden.' }); return; }
   if (granted && (event.id === BASE_EVENT_ID || event.event_type_key === 'general')) {
-    res.status(409).json({ error: 'Für diesen Bereich kann kein Tracking aktiviert werden.' });
+    res.status(409).json({ error: 'Für diesen Bereich kann kein Spiele-Tracking aktiviert werden.' });
     return;
   }
   const playerId = requestPlayerId(req);
   if (!playerId) { res.status(400).json({ error: 'Spieleridentität ist erforderlich.' }); return; }
   if (granted && !isParticipant(event.id, playerId)) {
-    res.status(409).json({ error: 'Tracking kann erst nach Annahme der Event-Einladung aktiviert werden.' });
+    res.status(409).json({ error: 'Spiele-Tracking kann erst nach Annahme der Event-Einladung aktiviert werden.' });
     return;
   }
   const textVersion = req.body?.textVersion;
@@ -957,6 +957,12 @@ eventsRouter.patch('/:id/participants/:playerId/payment', resolveEvent, (req, re
   }
   if (targetPlayerId !== actorId && !canManageEventPayments(event, actorId, req.groupMembership?.role)) {
     return res.status(403).json({ error: 'Du kannst nur deinen eigenen Bezahlstatus ändern.' });
+  }
+
+  // Preserve payment evidence and allow corrections, but never request or
+  // record another contribution for an event that will not take place.
+  if (paid && event.status === 'cancelled') {
+    return res.status(409).json({ error: 'Für abgesagte Events sind keine neuen Zahlungen möglich.', reason: 'cancelled' });
   }
 
   const paidAt = paid ? Date.now() : null;
@@ -1271,7 +1277,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   const periodRemoved = existing.starts_at !== null && effectiveStartsAt === null;
   if (periodRemoved && existing.tracking_enabled) {
     return res.status(409).json({
-      error: 'Solange dieses Event trackt, kann der Zeitraum nicht entfernt werden. Zuerst das Tracking stoppen.',
+      error: 'Solange dieses Event trackt, kann der Zeitraum nicht entfernt werden. Zuerst das Spiele-Tracking stoppen.',
     });
   }
   if (location !== undefined) {
@@ -1378,7 +1384,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
 // tracking window. Overlapping events may track simultaneously.
 eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin'), async (req, res) => {
   if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
-    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+    return res.status(404).json({ error: 'Spiele-Tracking ist für dieses Event nicht aktiviert.' });
   }
   const attempt = await startTrackingWithBackup(req.params.id);
   if ('backupError' in attempt) {
@@ -1410,7 +1416,7 @@ eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin')
 // POST /api/events/:id/restart - reopens an ended event and starts tracking.
 eventsRouter.post('/:id/restart', resolveEvent, requireGroupRole('admin'), async (req, res) => {
   if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
-    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+    return res.status(404).json({ error: 'Spiele-Tracking ist für dieses Event nicht aktiviert.' });
   }
   const attempt = await startTrackingWithBackup(req.params.id, true);
   if ('backupError' in attempt) {
@@ -1443,7 +1449,7 @@ eventsRouter.post('/:id/restart', resolveEvent, requireGroupRole('admin'), async
 // event; can be resumed with .../tracking/start later.
 eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'), async (req, res) => {
   if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
-    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+    return res.status(404).json({ error: 'Spiele-Tracking ist für dieses Event nicht aktiviert.' });
   }
   const updated = await enqueueEventLifecycle(() => stopTracking(req.params.id));
   if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });

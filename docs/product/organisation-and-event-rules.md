@@ -276,7 +276,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   their own switcher at once. They can still withdraw that acceptance like anyone else, under
   the same lock rules.
   What it shows depends on the role: owner/admin receive the full
-  management surface — anlegen/bearbeiten, Tracking starten/stoppen (the running/stopping button
+  management surface — anlegen/bearbeiten, Spiele-Tracking starten/stoppen (the running/stopping button
   carries a tooltip naming the collected data and its purpose; its confirmation repeats the same
   scope sentence) and Teilnehmende einladen/entfernen — while a member gets read-only cards for the events they take
   part in, without the create action or administrative invitation/decline controls; the card
@@ -284,7 +284,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   participants. Cards sort from the earliest start date to the latest; events without a fixed date
   follow the scheduled events.
   A group card drops what a group does not have rather than disabling it: no period line, no
-  calendar export, no cost or payment block and no „Tracking starten“. „Beenden“
+  calendar export, no cost or payment block and no „Spiele-Tracking starten“. „Beenden“
   stays, because it is the one lifecycle step a group shares with an event and the only way to
   retire one created by mistake; an ended group moves into the Gruppen section's „Historie“ and
   reports „Beendet“ instead of its own kind.
@@ -296,17 +296,22 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   Its roster reads „Mitglieder“ instead of „Teilnehmende“ and its empty state says „Noch keine
   Mitglieder.“ A finished event moves out of the active list into the Events section's own
   „Historie“ (the same collapsible-section pattern as Food orders): it starts collapsed and
-  preserves its open state across live re-renders. Pending invitations for the current identity are
-  deliberately absent from this tab — a teaser sitting directly above the Events cards made it too
-  easy to miss and cluttered the tab with the cards immediately following it. Instead, an
-  invitation surfaces as a personal Home „Meine To-Dos“ row (see [„Home overview“](navigation-and-account-rules.md#mein-profil-auswertung-und-home)) with
+  preserves its open state across live re-renders. Pending invitations for the current identity
+  lead the active collection in „Events & Gruppen“, before accepted events and sorted by start
+  within each answer state. Historie stays chronological regardless of the account's previous
+  answer. Invitation cards start expanded and show name, period (or the open-date notice),
+  location, note, contribution and payment deadline, with „Eingeladen“ and direct „Zusagen“ /
+  „Absagen“ actions (`renderInvitationCard`). Reading never accepts an invitation or changes the
+  active workspace. Owner/admin answer their own invitations on their existing management card,
+  without a duplicate invitation card. An invitation additionally surfaces as a personal Home
+  „Meine To-Dos“ row (see [„Home overview“](navigation-and-account-rules.md#mein-profil-auswertung-und-home)) with
   „Ablehnen“ and „Annehmen“ that also links into „Mein Profil“, and Profile's own leading
   „Einladungen“ section answers it with the full details
   (`renderInvitationRow`/`openInvitationDialog`/`pendingEventInvitations`/`wirePendingInvitationActions`
   in `events.js`, reused by `profile.js` so the row, dialog and accept/decline wiring exist exactly
-  once).
-  An *answered* participation is different: it stays on this tab, because this is where the member
-  already looks at the events they are part of. Every card variant therefore carries the account's
+  once). All entry points share `answerPendingInvitation`; answering in Events stays there,
+  preserves a stable keyboard focus and opens the accepted card or personal-decline section.
+  Every card variant carries the account's
   own answer through `ownParticipationAction`: an „Absagen“ menu with „Absagen“ and, for an event
   still ahead, „Mit Ausrede absagen“ while the server reports `myParticipation.canDecline` (a group
   shows the plain „Absagen“ button), „Zusagen“ while it reports `canAccept`, and otherwise the
@@ -315,15 +320,20 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   personal-participation footer. A management card marks its own decline with „Du: Abgesagt“ in
   its header — organizing an event is not the same as attending it, and administrative removal
   in the participant list only removes a roster row, which is a
-  different act from answering for oneself. A still-open invitation stays out of all of this; it is
-  answered on its invitation card in „Mein Profil“.
+  different act from answering for oneself.
   Declining is not leaving: for a member the event moves into this tab's own „Abgesagt“
   section — the same collapsible-section pattern as „Historie“, likewise collapsed by default and
-  preserving its open state, where it stays as a teaser card with „Zusagen“
+  preserving its open state, where it stays as a teaser card with all planning facts, including
+  contribution and deadline, and „Zusagen“
   (`renderDeclinedEventCard`). An owner/admin keeps seeing it as a management card instead, since
   that list already holds every event of the group, and it is therefore never listed twice. Only an
   organizer withdrawing the invitation removes the event from someone's app entirely, and that
-  removal notifies them unless they had declined themselves. Event
+  removal notifies them unless they had declined themselves. Ending or cancelling the event
+  moves every retained invitation (open, accepted or personally declined) into „Historie“.
+  Open and declined invitations keep teaser access without participant or payment data; accepted
+  participants keep their existing member details. Personal answer actions are replaced by the
+  explicit ended/cancelled reason. Closed invitations never appear as actionable invitations on
+  Home/Profile or as selectable workspaces. Event
   cards stay in one vertical column at
   phone and laptop widths so payment and participant controls keep enough room. A card has no
   accent rail. Its header is the title with one meta line (type, and while collapsed also period and
@@ -402,7 +412,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   from food orders. The handoff refreshes the event before opening PayPal,
   prefills the EUR amount for PayPal.me, attempts to copy an e-mail recipient for the generic PayPal
   flow and keeps that recipient visible in the confirmation if clipboard access is unavailable. It
-  asks „Bezahlt?“ afterwards; only an affirmative answer records the payment. The recorded event
+  asks „Bezahlt?“ afterwards; only an affirmative answer records the payment.
+  A cancelled event offers no member payment actions; existing payment proof
+  remains readable. A fresh PayPal handoff check rejects a cancellation, and the server rejects
+  every `paid: true` update for cancelled events with 409. Payment managers retain the reset
+  control for existing payments so removal guards can still be cleared. The recorded event
   creator instead receives the aggregate overview and the same checkbox-like `Bezahlt` toggle used by
   food orders on every accepted participant row. There is no bulk-payment action. The edit form can also
   record the accommodation's total invoice separately from the fixed contribution per person. The

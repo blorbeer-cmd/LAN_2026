@@ -1217,7 +1217,7 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   const appliedColor = (await page.inputValue('.profile-color-picker-value')).toLowerCase();
   await page.click('[data-profile-color-apply]');
   assert.equal(await page.inputValue('#profile-color'), appliedColor);
-  assert.equal(await page.getByText('Erweitertes Tracking für diesen Download', { exact: true }).count(), 1);
+  assert.equal(await page.getByText('Erweitertes Spiele-Tracking für diesen Download', { exact: true }).count(), 1);
   const profileSectionKeys = ['agent', 'privacy', 'data'];
   assert.deepEqual(
     await page.locator('[data-profile-section]').evaluateAll((sections) =>
@@ -1969,7 +1969,7 @@ flowTest('Spiele: suggest a game (duplicate name rejected), promote it, then rat
   assert.equal(await skillScale.count(), 6);
   assert.deepEqual(await bockScale.allTextContents(), ['0', '1', '2', '3', '4', '5']);
   assert.equal(await partyspielRow.locator('.skill-row [aria-pressed="true"]').count(), 0);
-  assert.equal(await bockScale.first().getAttribute('aria-label'), '0 von 5, kein Bock');
+  assert.equal(await bockScale.first().getAttribute('aria-label'), '0 von 5, spiele ich nicht');
 
   // Rating filters live inside the collapsed filter menu now.
   await page.click('.game-catalog-filter-trigger');

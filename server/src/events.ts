@@ -212,7 +212,7 @@ export function updateEvent(id: string, fields: UpdateEventFields): EventRow | u
   // Dropping a published event back to draft looked symmetric but is a one-way
   // street: only publishPlanningEventIfScheduled leaves draft, and it needs a
   // roster change to fire, so re-entering a period would strand the event in
-  // draft — visibly offering "Tracking starten" that startTracking then
+  // draft — visibly offering "Spiele-Tracking starten" that startTracking then
   // refuses. The period is what tracking actually depends on, so
   // startTrackingInternal checks the period itself (see below). An undated
   // published event is a legal row since migration 103 and simply cannot

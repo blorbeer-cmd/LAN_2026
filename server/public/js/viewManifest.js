@@ -147,7 +147,7 @@ export const VIEW_MANIFEST = Object.freeze({
   // utility area and reachable straight from the topbar switcher.
   events: defineView({
     label: 'Events & Gruppen', iconKey: 'calendar',
-    search: search('Bereich', 'Events und Gruppen anlegen, Tracking und Teilnehmer verwalten', 'orga einstellungen setup konfiguration tracking teilnehmer einladung gruppe', 85),
+    search: search('Bereich', 'Events und Gruppen anlegen, Spiele-Tracking und Teilnehmer verwalten', 'orga einstellungen setup konfiguration tracking teilnehmer einladung gruppe', 85),
     navigation: Object.freeze({
       more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general', 'group']), order: 0 }),
       desktop: desktopNavigation('utility', 0),
