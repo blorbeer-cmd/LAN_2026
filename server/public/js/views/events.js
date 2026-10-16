@@ -839,7 +839,7 @@ function renderEventCardShell(event, { collapsible, managed }) {
         ${renderEventInfoSection(event)}
         ${renderEventPayment(event)}
         ${renderParticipantsSection(event, { includeInvitationStatuses: managed })}
-        ${renderOwnParticipationActions(event, { primary: false })}
+        ${renderOwnParticipationActions(event)}
       </div>
     </article>
   `;
