@@ -1,5 +1,15 @@
 import { createTourDemo, demoApiResponse } from './areaTourDemoData.js';
 
+// Load only the real renderer used by this scene. Importing viewRegistry
+// would parse every Core view again for every isolated step.
+const renderers = {
+  gameCatalog: ['gameCatalog', 'renderGameCatalog'], votes: ['votes', 'renderVotes'],
+  eventPolls: ['eventPolls', 'renderEventPolls'], arrivals: ['arrivals', 'renderArrivals'],
+  checklist: ['checklist', 'renderChecklist', 'todos'],
+  checklistPacking: ['checklist', 'renderChecklist', 'packliste'],
+  foodOrders: ['foodOrders', 'renderFoodOrders'], matchmaking: ['matchmaking', 'renderMatchmaking'],
+};
+
 function memoryStorage() {
   const values = new Map();
   return { getItem: (key) => values.get(String(key)) ?? null, setItem: (key, value) => values.set(String(key), String(value)),
@@ -45,23 +55,28 @@ window.addEventListener('message', async (event) => {
     throw new Error('Example view did not settle');
   };
   try {
-    const [{ state }, identity, groups, { VIEW_REGISTRY }] = await Promise.all([
-      import('./state.js'), import('./whoami.js'), import('./groupContext.js'), import('./viewRegistry.js'),
+    const [file, exportName, mode] = renderers[demo.view];
+    const [{ state }, identity, groups, viewModule, sections] = await Promise.all([
+      import('./state.js'), import('./whoami.js'), import('./groupContext.js'),
+      import(`./views/${file}.js`), import('./sectionNav.js'),
     ]);
     Object.assign(state, demo.state);
     identity.lockMyIdToSession(demo.me.id);
     await groups.initGroupContext();
     if (view === 'gameCatalog') {
-      const { focusGameCatalog } = await import('./views/gameCatalog.js');
-      focusGameCatalog(demo.state.games[0].id);
+      viewModule.focusGameCatalog(demo.state.games[0].id);
     }
     if (demo.voteSelection) {
-      const { prepareDrawFromVote } = await import('./views/matchmaking.js');
-      prepareDrawFromVote(demo.voteSelection);
+      viewModule.prepareDrawFromVote(demo.voteSelection);
     }
     const root = document.getElementById('view-container');
     const render = () => {
-      try { revision += 1; VIEW_REGISTRY[demo.view].render(root, ctx); }
+      try {
+        revision += 1;
+        const content = sections.sectionForView(demo.view)
+          ? sections.renderSectionShell(root, demo.view, { event: state.activeEvent }) : root;
+        viewModule[exportName](content, ctx, mode);
+      }
       catch (error) { failure = error; }
     };
     const ctx = { rerender: render, refresh: async () => render(), switchView: () => {} };
