@@ -102,6 +102,12 @@ window.addEventListener('message', async (event) => {
         return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
       },
     };
+    // The native dialog may still be animating or reflow after frame resizing.
+    // Keep the parent's highlight aligned with the actual field geometry.
+    const reposition = () => report('area-tour:position');
+    document.addEventListener('animationend', reposition, true);
+    document.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
     report('area-tour:shown');
   } catch (error) {
     report('area-tour:error');

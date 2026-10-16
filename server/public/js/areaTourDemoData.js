@@ -7,9 +7,9 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
   const me = { id: 'tour-alex', name: 'Alex', is_admin: admin ? 1 : 0 };
   const players = [me, ...['Sam', 'Kim', 'Jo'].map((name) => ({ id: `tour-${name.toLowerCase()}`, name, is_admin: 0 }))];
   const games = ['Rocket League', 'Counter-Strike 2', 'Trackmania'].map((name, index) => ({
-    id: `tour-game-${index}`, name, icon: '', platform: 'Steam', platformUrl: null, trailerUrl: null,
+    id: `tour-game-${index}`, name, icon: '', platform: 'Steam', platform_url: null, trailer_url: null,
     genres: index === 0 ? ['Sport'] : [], info: index === 0 ? 'Controller empfohlen' : '',
-    isSuggestion: false, considerSeatNeighborsDefault: false, processes: [],
+    isSuggestion: false, considerSeatNeighborsDefault: false, processNames: [], min_team_size: 1, max_team_size: 4,
   }));
   const start = now + 7 * 86_400_000;
   const activeEvent = { ...event, id: 'tour-event', name: 'Beispiel-LAN', type: event?.type ?? 'lan',

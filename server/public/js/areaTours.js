@@ -263,6 +263,7 @@ export function createAreaTours({ container, getContext }) {
     if (!active?.sceneFrame || event.source !== active.sceneFrame.contentWindow || event.origin !== location.origin
       || event.data?.token !== active.sceneToken) return;
     if (event.data.type === 'area-tour:error') { clearTimeout(active.sceneTimeout); sceneFailed(active.sceneToken); return; }
+    if (event.data.type === 'area-tour:position') { schedulePosition(); return; }
     if (event.data.type !== 'area-tour:shown') return;
     clearTimeout(active.sceneTimeout);
     active.dialog.dataset.tourSceneStatus = 'ready';
