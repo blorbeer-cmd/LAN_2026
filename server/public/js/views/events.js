@@ -854,7 +854,7 @@ function renderTeaserEventCard(event, { declined = false } = {}) {
   const status = declined ? 'Abgesagt' : 'Eingeladen';
   const marker = declined ? 'data-declined-event' : closed ? 'data-invited-event' : 'data-pending-invitation';
   return `
-    <article class="card stack event-card${declined ? ' event-card-declined' : ''}" ${marker}="${escapeHtml(event.id)}">
+    <article class="card stack event-card${declined ? ' event-card-declined' : ''}" ${marker}="${escapeHtml(event.id)}" tabindex="-1">
       <div class="row-between food-order-card-header event-card-header">
         <span class="event-card-heading">
           <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>

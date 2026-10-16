@@ -255,13 +255,38 @@ test('manager invites a member who accepts and both open clients update', async 
     true,
     'the inline invitation answers must fit a phone without horizontal scrolling',
   );
-  assert.equal(await homeInvitationRow.locator(`[data-decline-with-excuse="${eventId}"]`).count(), 1);
+  // The answer menu must stay reachable beyond the row's clipped edge.
+  await homeInvitationRow.locator('[data-action-menu^="event-decline-"] > summary').click();
+  const excuseOption = homeInvitationRow.locator(`[data-decline-with-excuse="${eventId}"]`);
+  const plainOption = homeInvitationRow.locator(`[data-decline-invitation="${eventId}"]`);
+  for (const option of [excuseOption, plainOption]) {
+    await option.waitFor({ state: 'visible' });
+    assert.equal(
+      await option.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return el === hit || el.contains(hit);
+      }),
+      true,
+      'the open answer menu must not be clipped by the Home row',
+    );
+  }
+  await excuseOption.click();
+  const excuseDialog = memberPage.locator('.modal', { hasText: 'Mit Ausrede absagen' });
+  await excuseDialog.waitFor();
+  await memberPage.keyboard.press('Escape');
+  await excuseDialog.waitFor({ state: 'detached' });
   // Opening the row leads to the invitation card in Events, in focus.
   await homeInvitationRow.locator('.home-todo-navigate').click();
   await memberPage.waitForSelector('#view-container[data-view="events"]');
   const pending = memberPage.locator(`[data-pending-invitation="${eventId}"]`);
   await pending.waitFor();
   await memberPage.waitForSelector(`[data-pending-invitation="${eventId}"].search-target-highlight`);
+  assert.equal(
+    await memberPage.evaluate((id) => document.activeElement?.getAttribute('data-pending-invitation') === id, eventId),
+    true,
+    'keyboard focus moves onto the opened invitation card',
+  );
   assert.equal(await pending.locator('.event-card-body').isVisible(), true);
 
   // Profile no longer lists invitations.
