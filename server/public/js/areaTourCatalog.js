@@ -23,7 +23,7 @@ export const AREA_TOURS = {
       s('search', 'Direkt zum richtigen Eintrag', 'Die Suche findet Bereiche und Inhalte. Mit Strg oder Cmd plus K öffnest du sie; ein Treffer führt zum passenden Eintrag.', '#global-search-btn'),
     ]),
     c('notifications', 'Mitteilungen', [
-      s('center', 'Deine Mitteilungen', 'Das Benachrichtigungszentrum sammelt persönliche und gemeinsame Mitteilungen. Push zeigt sie zusätzlich auf erlaubten Geräten; eine kurze Einblendung informiert dich in der App.', '#notifications-btn'),
+      s('center', 'Deine Mitteilungen', 'Unter Mitteilungen findest du persönliche und gemeinsame Nachrichten. Push zeigt sie zusätzlich auf erlaubten Geräten; eine kurze Einblendung informiert dich in der App.', '#notifications-btn'),
       s('open', 'Zum Vorgang springen', 'Öffnen markiert die Nachricht als gelesen und führt zum zugehörigen Vorgang. Bei Bedarf wird zuerst dessen Event ausgewählt.', '#notifications-btn'),
       s('read', 'Gelesen heißt noch offen', 'Eine gelesene Nachricht erledigt keine Zahlung oder Aufgabe. Erst die passende Aktion im Vorgang beendet dessen offenen Zustand.', '#notifications-btn'),
       s('obsolete', 'Obsolet oder abgelaufen', 'Erledigte Themen werden obsolet, zeitlich begrenzte Nachrichten laufen ab. Aufräumen entfernt solche Hinweise; der zugrunde liegende Vorgang bleibt erhalten.', '#notifications-btn'),
@@ -173,7 +173,7 @@ export const AREA_TOURS = {
     ]),
   ]),
   tournaments: t('Turnier', [c('play', 'Mitspielen und Ergebnisse', [
-    s('team', 'Dein Team finden', 'Dein Team ist in Paarungen und Tabellen markiert und steht in der Teamübersicht vorn. Während das Turnier läuft, können Teammitglieder den Namen ändern.', '.tournament-teams-section, [data-tournament-teams]'),
+    s('team', 'Dein Team finden', 'Dein Team ist in Paarungen und Tabellen markiert und steht in der Teamübersicht vorn. Während das Turnier läuft, können Teammitglieder den Namen ändern.', '[data-tournament-teams]'),
     s('lobbies', 'Spielbereite Paarungen', 'Aktive Lobbys zeigt spielbare Begegnungen mit Host-Team und Zugangsdaten. Liga und Gruppen zeigen zunächst die früheste noch offene Runde.', '#tournament-lobbies-title'),
     s('result', 'Ergebnis erfassen', 'Das Plus öffnet die Ergebniseingabe. Speichere einen Sieger oder den konfigurierten Punktestand; K.O.-Matches brauchen einen eindeutigen Sieger.', '[data-open-result]'),
     s('effects', 'Was das Ergebnis auslöst', 'Das Ergebnis aktualisiert Tabelle und Spielplan und zählt auch für die reguläre Rangliste. Neu spielbereite Teilnehmer erhalten die nächste Paarung als Mitteilung.', '.tournament-bracket, .tournament-standings'),
@@ -213,7 +213,7 @@ export const AREA_TOURS = {
     c('account', 'Profil und Einstellungen', [
       s('identity', 'Dein Profil bearbeiten', 'Ändere Gamertag, Namen, Bild und Farbe. Speichern übernimmt deinen Entwurf; das Profil erscheint anschließend mit diesen Angaben in der App.', '#profile-name'),
       s('layout', 'Deine Ansicht wählen', 'Automatisch richtet sich nach der Fensterbreite. Desktop und Laptop wählen deine bevorzugte Navigation auf breiten Bildschirmen; auf schmalen Geräten bleibt die kompakte Ansicht.', '#profile-layout'),
-      s('push', 'Push aktivieren', 'Aktiviere Push und erlaube Mitteilungen im Browser. Die Berechtigung gehört zu diesem Gerät; deine Mitteilungen findest du zusätzlich im Benachrichtigungszentrum.', '#push-toggle, #profile-push'),
+      s('push', 'Push aktivieren', 'Aktiviere Push und erlaube Mitteilungen im Browser. Die Berechtigung gehört zu diesem Gerät; deine Nachrichten findest du zusätzlich unter Mitteilungen.', '#push-toggle, #profile-push'),
       s('ticker', 'Im Newsticker erscheinen', 'Newsticker erlaubt deinen Namen in erfundenen Meldungen auf dem Broadcast-Bildschirm. Deaktivieren entfernt betroffene Zeilen mit der nächsten Aktualisierung.', '#profile-newsticker'),
       s('monitors', 'Sichtbare Monitore angeben', 'Wähle Personen, deren Monitore du sehen kannst. Diese Angaben helfen bei der Teamverteilung, wenn Sitznachbarn berücksichtigt werden.', '#profile-monitors-edit', { feature: 'seating' }),
       s('admin', 'Admin-Modus', 'Admin-Modus zeigt Testdaten und zusätzliche Testaktionen. Er verleiht keine Rechte; deine tatsächliche Kontorolle bestimmt die Verwaltungsfunktionen.', '#profile-admin-mode', { adminOnly: true }),
@@ -285,9 +285,9 @@ export const AREA_TOURS = {
     s('resize', 'Tisch ändern', 'Lege die Platzanzahl je Seite fest. Fallen belegte Plätze weg, landen deren Personen unter Ohne Platz.', '#seating-table-edit'),
     s('neighbors', 'Nachbarn und Teams', 'Nachbarn am Tisch gelten als sichtbare Monitore. Diese Beziehungen können bei einer Team-Auslosung berücksichtigt werden.', '.seating-seat'),
   ])], { adminOnly: true }),
-  kiosk: t('Broadcast', [c('screen', 'TV-Kiosk öffnen', [
+  kiosk: t('Broadcast', [c('screen', 'Broadcast öffnen', [
     s('event', 'Event auswählen', 'Die Verwaltung bietet verfügbare veröffentlichte LAN-Events. Broadcast öffnen startet einen eigenen lesenden Bildschirm für das gewählte Event.', '.kiosk-open-link'),
-    s('login', 'Eigenes Bildschirmkonto', 'Jedes Event besitzt ein eigenes Kiosk-Konto. Das gemeinsame Passwort ist hier kopierbar; dieses Konto wird nie zu einem Spielerprofil.', '.kiosk-open-link'),
+    s('login', 'Eigenes Bildschirmkonto', 'Jedes Event besitzt ein eigenes Broadcast-Konto. Das gemeinsame Passwort ist hier kopierbar; dieses Konto wird nie zu einem Spielerprofil.', '.kiosk-open-link'),
     s('scope', 'Jeder Bildschirm bleibt zugeordnet', 'Ein geöffneter Broadcast behält seine Eventbindung. Ein späterer Aufruf für ein anderes Event verändert bereits geöffnete Bildschirm-Tabs nicht.', '.kiosk-open-link'),
     s('cards', 'Was auf dem Bildschirm steht', 'Live-Status, Newsticker, Vote und Turnier bilden das Dashboard. Gemeinsame Mitteilungen erscheinen als Banner; Jam ergänzt die Musikleiste.', '.kiosk-open-link'),
     s('vote', 'Vote-Ergebnis enthüllen', 'Während einer Abstimmung bleiben die Spiele maskiert. Nach dem Ende folgen Countdown und Ergebnisanzeige, damit der Bildschirm die laufende Wahl nicht beeinflusst.', '.kiosk-open-link'),
@@ -295,8 +295,8 @@ export const AREA_TOURS = {
   ])], { adminOnly: true }),
   admin: t('Admin', [
     c('tools', 'Werkzeuge und Bereitschaft', [
-      s('tools', 'Verwaltungswerkzeuge', 'Hier öffnest du Auswertung, Feedback, Nutzungsauswertung, Sitzplan und TV-Kiosk. Sichtbarkeit und Aktionen richten sich nach Rolle und Eventfunktionen.', '[data-navigate="leaderboard"]'),
-      s('ready', 'LAN-Bereitschaft prüfen', 'Die Bereitschaft prüft Server, Event, Teilnehmer, Agenten, Prozesszuordnungen, Kiosk und Backup. Details und Diagnose erklären auffällige Prüfungen.', '#admin-readiness-title', { feature: 'tracking' }),
+      s('tools', 'Verwaltungswerkzeuge', 'Hier öffnest du Auswertung, Feedback, Nutzungsauswertung, Sitzplan und Broadcast. Sichtbarkeit und Aktionen richten sich nach Rolle und Eventfunktionen.', '[data-navigate="leaderboard"]'),
+      s('ready', 'LAN-Bereitschaft prüfen', 'Die Bereitschaft prüft Server, Event, Teilnehmer, Agenten, Prozesszuordnungen, Broadcast und Backup. Details und Diagnose erklären auffällige Prüfungen.', '#admin-readiness-title', { feature: 'tracking' }),
       s('backup', 'Backup herunterladen', 'Ein Backup erstellt einen geprüften Datenbanksnapshot. Die geschützte Aktion kann erneut nach deinem Passwort fragen.', '#download-backup'),
     ]),
     c('accounts', 'Einladungen und Konten', [

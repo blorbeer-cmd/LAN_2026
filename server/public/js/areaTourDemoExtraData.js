@@ -100,7 +100,7 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
       ] };
     responses['/api/tournaments/tour-tournament'] = detail;
     demo.open = ['result', 'correction'].includes(step) ? '[data-open-result="tour-semi-1"]' : '';
-    demo.focus = ({ team: '.tournament-teams-section', lobbies: '#tournament-lobbies-title',
+    demo.focus = ({ team: '[data-tournament-teams]', lobbies: '#tournament-lobbies-title',
       effects: '.tournament-bracket', complete: '[data-tournament-champion]' })[step] ?? '';
     if (step === 'early') demo.open = '#tourn-finish';
     if (step === 'delete') demo.open = '#tourn-delete';
