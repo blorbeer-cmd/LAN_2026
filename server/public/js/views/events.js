@@ -176,7 +176,7 @@ const DECLINE_EXCUSE_MAX_LENGTH = 300;
 // "Mit Ausrede absagen": a generated excuse can be edited, or an own one
 // written, and "Übernehmen und absagen" hands the final text to onDecline
 // after one confirmation that everyone will read it.
-function openExcuseDialog(event, { onDecline = null } = {}) {
+function openExcuseDialog(event, { onDecline = null, onDeclined = null } = {}) {
   const recentIds = [];
   let category = 'alle';
   let current = null;
@@ -303,7 +303,10 @@ function openExcuseDialog(event, { onDecline = null } = {}) {
           { title: 'Teilnahme absagen', confirmText: 'Absagen', danger: true },
         ))) return;
         declineBtn.disabled = true;
-        if (await onDecline(text)) close();
+        if (await onDecline(text)) {
+          close();
+          onDeclined?.();
+        }
         else declineBtn.disabled = false;
       });
       draw();
@@ -1081,6 +1084,17 @@ export async function confirmEventCalendarEntry(eventId, { needsExtraCheck = fal
   }
 }
 
+// Answering replaces the clicked control, so focus moves to the first of the
+// given headings still on screen, or to the view's own title when the answered
+// section vanished (e.g. Home's last open to-do).
+function focusAnswerTarget(...selectors) {
+  const target = selectors.map((selector) => document.querySelector(selector)).find(Boolean)
+    ?? document.querySelector('#view-container h1');
+  if (!(target instanceof HTMLElement)) return;
+  if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
+  target.focus();
+}
+
 // Shared by Events, Home and Profile. Refresh replaces the clicked button's
 // DOM, so focus moves to a stable heading in the current view.
 export async function answerPendingInvitation(btn, ctx) {
@@ -1103,13 +1117,12 @@ export async function answerPendingInvitation(btn, ctx) {
     }
     await ctx.refresh();
     window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
-    (
-      document.querySelector('#profile-accepted-invitation-title')
-      || document.querySelector('#profile-invitations-title')
-      || document.querySelector('#profile-view-title')
-      || document.querySelector('#home-todos-title')
-      || document.querySelector(invitation && eventIsGroup(invitation) ? '#orga-groups-title' : '#orga-events-title')
-    )?.focus();
+    focusAnswerTarget(
+      '#profile-accepted-invitation-title',
+      '#profile-view-title',
+      '#home-todos-title',
+      invitation && eventIsGroup(invitation) ? '#orga-groups-title' : '#orga-events-title',
+    );
     showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
     return true;
   } catch (err) {
@@ -1177,7 +1190,6 @@ export function wireParticipationAnswerActions(container, ctx) {
             await api.events.declineInvitation(eventId, excuse);
             declinedOpen[eventIsGroup(event) ? 'group' : 'event'] = true;
             await ctx.refresh();
-            container.querySelector('#orga-events-title')?.focus();
             showToast('Teilnahme abgesagt. Deine Ausrede ist für alle sichtbar.');
             return true;
           } catch (err) {
@@ -1185,6 +1197,9 @@ export function wireParticipationAnswerActions(container, ctx) {
             return false;
           }
         },
+        // The dialog's focus is gone once it closes and the refresh replaced
+        // its trigger, so the answer lands on a heading that still exists.
+        onDeclined: () => focusAnswerTarget(eventIsGroup(event) ? '#orga-groups-title' : '#orga-events-title'),
       });
     });
   });

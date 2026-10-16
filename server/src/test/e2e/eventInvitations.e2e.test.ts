@@ -274,8 +274,28 @@ test('manager invites a member who accepts and both open clients update', async 
   await excuseOption.click();
   const excuseDialog = memberPage.locator('.modal', { hasText: 'Mit Ausrede absagen' });
   await excuseDialog.waitFor();
-  await memberPage.keyboard.press('Escape');
+  await excuseDialog.locator('[data-excuse-mode="own"]').click();
+  await excuseDialog.locator('[data-excuse-text]').fill('Oma hat Geburtstag');
+  await excuseDialog.locator('[data-excuse-decline]').click();
+  await memberPage.locator('.modal-backdrop [data-confirm]').click();
   await excuseDialog.waitFor({ state: 'detached' });
+  await homeInvitationRow.waitFor({ state: 'detached' });
+  assert.equal(
+    await memberPage.evaluate(() => {
+      const active = document.activeElement;
+      return Boolean(active && active !== document.body && document.getElementById('view-container')?.contains(active));
+    }),
+    true,
+    'after declining with an excuse the focus stays on a heading of Home',
+  );
+  // The owner invites again so the rest of the flow can answer on Home.
+  assert.equal(
+    (await ownerPage.request.post(`${BASE_URL}/api/events/${eventId}/invitations`, { data: { playerId: memberId } })).status(),
+    201,
+  );
+  await memberPage.reload();
+  await memberPage.waitForSelector('#view-container[data-view="home"]');
+  await homeInvitationRow.waitFor();
   // Opening the row leads to the invitation card in Events, in focus.
   await homeInvitationRow.locator('.home-todo-navigate').click();
   await memberPage.waitForSelector('#view-container[data-view="events"]');
@@ -300,7 +320,8 @@ test('manager invites a member who accepts and both open clients update', async 
   // The invitation also arrives as a personal notification. It is delivered in
   // the base workspace because the member is not a participant of the target
   // event yet, and it deep-links into the Events tab.
-  const invitationNotification = memberPage.locator('[data-notification-entry]', { hasText: EVENT_NAME });
+  // A re-invite leaves the declined invitation's notification as obsolete history.
+  const invitationNotification = memberPage.locator('[data-notification-entry]', { hasText: EVENT_NAME }).first();
   await memberPage.click('#notifications-btn');
   await invitationNotification.waitFor();
   assert.match((await invitationNotification.textContent()) ?? '', /Einladung/);
