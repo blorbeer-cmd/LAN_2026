@@ -768,7 +768,7 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
       {
         title: 'Event-Einladung',
         body: `${event.name}: Du wurdest eingeladen.`,
-        url: '/#profile',
+        url: `/#events/${encodeURIComponent(event.id)}`,
       },
       'direct',
       { key: eventInvitationTopicKey(event.id, playerId) },

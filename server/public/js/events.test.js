@@ -11,7 +11,6 @@ import {
   parseEventCostCents,
   renderEventCalendarActions,
   renderEventLocation,
-  renderInvitationRow,
   renderInvitationCard,
   renderDeclinedEventCard,
   renderEventCard,
@@ -165,24 +164,17 @@ test('accepted participant count follows the visible accepted participant list',
   );
 });
 
-test('a pending invitation is one row: shortened name, meta line and only "Annehmen"', () => {
-  const html = renderInvitationRow({
+test('an open invitation offers Absagen with and without excuse, plus Zusagen', () => {
+  const html = renderOwnParticipationActions({
     id: 'invited-event',
-    name: 'Silvester-LAN im Gemeindehaus Oberhausen mit Übernachtung',
-    eventType: 'lan',
-    startsAt: new Date(2026, 11, 29, 16, 0).getTime(),
-    endsAt: new Date(2027, 0, 1, 12, 0).getTime(),
-    location: 'Gemeindehaus Oberhausen',
+    name: 'Winter LAN',
+    myParticipation: { status: 'invited', canAccept: true, canDecline: true },
   });
-  // The full name stays reachable: it names the row's detail button.
-  assert.match(html, /aria-label="Silvester-LAN im Gemeindehaus Oberhausen mit Übernachtung anzeigen"/);
-  assert.match(html, /<span class="profile-row-title">Silvester-LAN im Gemeindehaus Oberhause…<\/span>/);
-  assert.match(html, /29\.12\.2026 bis 1\.1\.2027 · Gemeindehaus Oberhausen/);
-  assert.match(html, /data-open-invitation="invited-event"/);
-  assert.match(html, /data-accept-invitation="invited-event"/);
-  // Declining, the excuse generator and the calendar live in the dialog.
-  assert.doesNotMatch(html, /data-decline-invitation=|data-event-excuse=|data-event-calendar=/);
-  assert.doesNotMatch(html, / – /);
+  assert.match(html, /<summary class="btn btn-sm" aria-label="Absagen: Einladung zu Winter LAN">Absagen /);
+  assert.match(html, /data-decline-invitation="invited-event">Absagen/);
+  assert.match(html, /data-decline-with-excuse="invited-event">Mit Ausrede absagen/);
+  assert.match(html, /data-accept-invitation="invited-event">Zusagen/);
+  assert.doesNotMatch(html, /Annehmen|Ablehnen/);
 });
 
 test('an accepted member card offers the withdrawal, or names why it is blocked', () => {

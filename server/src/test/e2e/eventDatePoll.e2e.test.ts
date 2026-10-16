@@ -226,7 +226,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   // The owner created this event and is therefore already an accepted
   // participant; only the member still needs an invitation.
   await invitePlayer(ownerPage, eventId, memberId);
-  await navigate(memberPage, 'profile');
+  await navigate(memberPage, 'events');
   const invitation = memberPage.locator('[data-pending-invitation]', { hasText: EVENT_NAME });
   await invitation.waitFor();
   assert.equal(await invitation.locator('[data-interest-invitation]').count(), 0);

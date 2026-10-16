@@ -23,8 +23,6 @@ import { emptyStateHtml } from '../emptyState.js';
 import { createLatestValueLoader } from '../latestValueLoader.js';
 import {
   acceptedInvitationHandoffHtml,
-  pendingEventInvitations,
-  renderInvitationRow,
   wirePendingInvitationActions,
 } from './events.js';
 import { eventHasFeature } from '../eventFeatures.js';
@@ -608,10 +606,6 @@ export function renderProfile(container, ctx) {
     state.skills.some((s) => s.player_id === myId) || state.preferences.some((p) => p.player_id === myId);
   const ratingNudge = gamesEnabled && state.games.length > 0 && !hasAnyRating;
 
-  // Event invitations lead the page: they need a response (see events.js's
-  // renderInvitationRow/pendingEventInvitations, also linked from Home's
-  // "Aktuell" list in aktuellStatus.js).
-  const pendingInvitations = pendingEventInvitations();
   const layoutPreference = layoutModeForPlayer(myId);
   const adminModeActive = isAdmin();
   const eventRows = [
@@ -647,14 +641,6 @@ export function renderProfile(container, ctx) {
     </div>
     <div class="grouped-page-sections">
       ${acceptedInvitationHandoffHtml()}
-      ${
-        pendingInvitations.length > 0
-          ? `<section class="card stack grouped-page-section" aria-labelledby="profile-invitations-title">
-               <div class="grouped-page-section-title"><h2 id="profile-invitations-title" tabindex="-1">Einladungen</h2></div>
-               <div class="profile-rows">${pendingInvitations.map(renderInvitationRow).join('')}</div>
-             </section>`
-          : ''
-      }
       <section class="card grouped-page-section" aria-label="Profildaten">
         <div class="profile-rows">
           <div class="profile-row is-form">
