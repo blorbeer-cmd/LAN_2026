@@ -766,12 +766,18 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
 
     // Fullscreen hides the app chrome and hands its height to the board,
     // which still fits without scrolling. Toggling back restores the chrome.
+    const tourHelp = host.page.getByRole('button', { name: 'Tetris kennenlernen', exact: true, includeHidden: true });
+    await tourHelp.waitFor({ state: 'visible' });
     await host.page.click('[data-arcade-fullscreen]');
     await host.page.waitForFunction((before) =>
       (document.querySelector('.tetris-canvas') as HTMLElement).getBoundingClientRect().height > before + 20, fitted.boardHeight);
     const fullscreen = await readGameRoomFit(host.page);
     assert.equal(fullscreen.fullscreenClass, true);
     assert.equal(fullscreen.topbarVisible, false, 'fullscreen must hide the topbar');
+    assert.equal(await tourHelp.isVisible(), false, 'fullscreen hides help inside the clipped title');
+    await tourHelp.evaluate((element) => (element as HTMLElement).focus());
+    assert.equal(await tourHelp.evaluate((element) => document.activeElement === element), false,
+      'fullscreen help must not be an invisible keyboard target');
     // Statistics the game is playable without give their height to the
     // board; name and points above each board stay.
     assert.ok(fitted.statLineVisible && fitted.titleWidth > 1, 'outside fullscreen the title and stat lines are shown');
@@ -792,6 +798,14 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
     assert.equal(restored.pressed, 'false');
     assert.equal(restored.statLineVisible, true, 'leaving fullscreen must bring the stat lines back');
     assert.ok(restored.verticalOverflow <= 0, 'leaving fullscreen must refit the board below the restored chrome');
+    await tourHelp.waitFor({ state: 'visible' });
+    await tourHelp.focus();
+    await host.page.keyboard.press('Enter');
+    const tourChooser = host.page.getByRole('dialog', { name: 'Tetris kennenlernen', exact: true });
+    await tourChooser.waitFor();
+    await host.page.keyboard.press('Escape');
+    await tourChooser.waitFor({ state: 'detached' });
+    assert.equal(await tourHelp.evaluate((element) => document.activeElement === element), true);
 
     // Leaving the Arcade area must not strand an active match. "Läuft gerade"
     // offers the own match as "Weiterspielen" so the host can still finish it.

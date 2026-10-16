@@ -17,6 +17,8 @@ kurzen Texten. Sie verändern keine Fachdaten und sind getrennt vom Erstlogin-On
 
 `style.css` besitzt die Titelzeile; `overlays.css` die benannte Tourdarstellung. Aufrufer ergänzen
 keine eigene Controlgeometrie. Die Hilfeaktion verwendet den bestehenden `.icon-btn`.
+`arcade.css` blendet den Hilfe-Button im Arcade-Vollbild zusammen mit dem visuell verborgenen
+Spieltitel aus; außerhalb des Vollbilds gilt wieder die normale Titelzeile.
 
 ## 4. Varianten
 
@@ -57,6 +59,8 @@ Fortschritt gegebenenfalls nur für den aktuellen Durchlauf verfügbar.
 
 Der Fragezeichen-Button hat den Namen „Bereich kennenlernen“, konkret mit dem jeweiligen
 Bereichstitel, `aria-haspopup="dialog"` und den bestehenden sichtbaren Tastaturfokus.
+Im Arcade-Vollbild ist er weder sichtbar noch fokussierbar. Nach Verlassen des Vollbilds
+ist er wieder mit der Tastatur erreichbar.
 Die Tour verwendet `openModal` für Escape, X, Backdrop, zyklischen Fokusfang und gestapelte
 Dialoge. Der Appinhalt und darunterliegende Dialoge werden während der Tour inert; ihre vorherigen
 Zustände werden beim Ende wiederhergestellt. Die Erklärung und Schrittzahl werden angekündigt;
@@ -78,6 +82,8 @@ veränderte Schrittlisten und blockierten/ungültigen Speicher.
 Die bestehenden Shell-Browser-Fixtures prüfen Start ohne automatische Anzeige, Wiederaufnahme
 nach Reload, schmale und breite Fenster, Fokusfang/-rückgabe, Hintergrundaktualisierung,
 Beispielzustand und Info-Dialogstapel. Tour-Schritte dürfen keine mutierenden API-Aufrufe senden.
+Der bestehende Tetris-Vollbildfall prüft zusätzlich, dass die Hilfe im Vollbild keinen unsichtbaren
+Fokus erhalten kann und danach wieder per Tastatur geöffnet werden kann.
 
 ## 11. Permanente Varianten und befristete Ausnahmen
 
