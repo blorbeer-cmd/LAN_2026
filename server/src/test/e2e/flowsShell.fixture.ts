@@ -108,7 +108,6 @@ flowTest('manual area tours resume, restore focus, survive refresh and never sub
   await tourPage.getByRole('button', { name: 'Profil und Einstellungen: Starten', exact: true }).click();
   const overlay = tourPage.locator('.area-tour-backdrop');
   await overlay.getByRole('heading', { name: 'Dein Profil bearbeiten', exact: true }).waitFor();
-  await overlay.locator('[data-tour-example]').waitFor();
   await overlay.dispatchEvent('pointerdown');
   await overlay.dispatchEvent('click');
   assert.equal(await overlay.isVisible(), true, 'a backdrop click must not end a running tour');
@@ -172,11 +171,13 @@ flowTest('area tour examples work without live records and keep nested dialogs u
   await tourPage.getByRole('button', { name: 'Essen kennenlernen', exact: true }).click();
   await tourPage.getByRole('button', { name: 'Bezahlen: Starten', exact: true }).click();
   const overlay = tourPage.locator('.area-tour-backdrop');
-  await overlay.locator('[data-tour-example]:not([hidden])').waitFor();
-  assert.match(await overlay.textContent() ?? '', /Beispiel/);
-  assert.match(await overlay.locator('[data-tour-example]').textContent() ?? '', /Pizza bei Luigi/);
+  const readyScene = () => tourPage.locator('.area-tour-backdrop[data-tour-scene-status="ready"]').waitFor();
+  await readyScene();
+  const example = tourPage.frameLocator('[data-area-tour-scene]');
+  assert.match(await example.locator('body').textContent() ?? '', /Pizza bei Luigi/);
+  assert.equal(await overlay.locator('input, iframe').count(), 0, 'the explanation dialog contains no imitation form or embedded example');
   await overlay.locator('[data-tour-end]').click();
-  assert.equal(await tourPage.locator('[data-tour-example]').count(), 0, 'ending the tour removes every example');
+  assert.equal(await tourPage.locator('[data-area-tour-scene]').count(), 0, 'ending the tour removes the demonstration document');
   await tourPage.locator('#info-btn').click();
   const info = tourPage.getByRole('dialog', { name: 'Info', exact: true });
   await info.getByRole('button', { name: 'Info kennenlernen', exact: true }).click();
@@ -191,22 +192,27 @@ flowTest('area tour examples work without live records and keep nested dialogs u
   await info.waitFor({ state: 'detached' });
 
   // Empty workspaces still explain the actual create forms and example flow.
-  // Every scene stays local; none of the disabled example actions can submit.
+  // Real forms run in a separate document with no network writes or storage.
   const mutations: string[] = [];
   let recording = false;
+  const demoNetwork: string[] = [];
   tourPage.on('request', (request) => {
+    if (request.frame() !== tourPage.mainFrame() && request.url().includes('/api/')) demoNetwork.push(request.url());
     if (recording && request.url().includes('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
       mutations.push(`${request.method()} ${request.url()}`);
     }
   });
   for (const flow of [
-    { route: 'gameCatalog', help: 'Spiele', chapter: 'Spiele vorschlagen und pflegen: Starten', example: 'Spiel vorschlagen', label: 'Titel', value: 'Rocket League' },
-    { route: 'votes', help: 'Vote', chapter: 'Abstimmen und Bock übernehmen: Starten', example: 'Abstimmung starten', label: 'Titel', value: 'Samstagabend' },
-    { route: 'eventPolls', help: 'Umfragen', chapter: 'Umfrage verwalten: Starten', example: 'Umfrage starten', label: 'Titel', value: 'Was essen wir am Samstag?' },
-    { route: 'checklist', help: 'To-Do', chapter: 'Tour starten', example: 'To-Do erstellen', label: 'Titel', value: 'Mehrfachsteckdosen' },
-    { route: 'foodOrders', help: 'Essen', chapter: 'Bestellung organisieren: Starten', example: 'Neue Sammelbestellung', label: 'Titel', value: 'Pizza bei Luigi' },
-    { route: 'matchmaking', help: 'Match', chapter: 'Teams auslosen: Starten', example: 'Neue Auslosung', label: 'Spiel auswählen', value: 'Rocket League' },
-    { route: 'arrivals', help: 'An- & Abreise', chapter: 'Tour starten', example: 'Alle Zeiten', label: '', value: '' },
+    { route: 'gameCatalog', help: 'Spiele', chapter: 'Spiele vorschlagen und pflegen: Starten', input: '#suggest-title', value: 'Deep Rock Galactic', advance: 0 },
+    { route: 'votes', help: 'Vote', chapter: 'Abstimmen und Bock übernehmen: Starten', input: '#votes-title', value: 'Samstagabend', advance: 0 },
+    { route: 'votes', help: 'Vote', chapter: 'Ergebnis, Stichwahl und Match: Starten', input: '', value: '', advance: 0 },
+    { route: 'eventPolls', help: 'Umfragen', chapter: 'Umfrage verwalten: Starten', input: '#poll-title', value: 'Was essen wir am Samstag?', advance: 0 },
+    { route: 'checklist', help: 'To-Do', chapter: 'Tour starten', input: '#todo-title', value: 'Mehrfachsteckdosen', advance: 1 },
+    { route: 'foodOrders', help: 'Essen', chapter: 'Bestellung organisieren: Starten', input: '#order-title', value: 'Pizza bei Luigi', advance: 0 },
+    { route: 'matchmaking', help: 'Match', chapter: 'Teams auslosen: Starten', input: '#mm-game-search', value: 'Rocket League', advance: 0 },
+    { route: 'matchmaking', help: 'Match', chapter: 'Turnier erstellen: Starten', input: '#draw-tournament-format', value: 'single_elimination', advance: 0 },
+    { route: 'matchmaking', help: 'Match', chapter: 'Captain Draft: Starten', input: '#mm-game-search', value: 'Rocket League', advance: 0 },
+    { route: 'arrivals', help: 'An- & Abreise', chapter: 'Tour starten', input: '', value: '', advance: 2 },
   ]) {
     recording = false;
     await tourPage.goto(`${BASE_URL}/#${flow.route}`);
@@ -215,42 +221,55 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     if (flow.route === 'arrivals') {
       await tourPage.locator('[data-arrivals-times]').waitFor({ state: 'attached' });
       await tourPage.locator('[data-arrivals-times]').evaluate((element) => { (element as HTMLDetailsElement).open = false; });
+      await tourPage.locator('#arrival-note').fill('Mein ungespeicherter Entwurf');
     }
     recording = true;
     await help.click();
     await tourPage.getByRole('button', { name: flow.chapter, exact: true }).click();
-    await overlay.locator('[data-tour-example]').waitFor();
-    for (let step = 0; step < 15 && await overlay.locator('[data-tour-example] h3').textContent() !== flow.example; step += 1) {
+    await readyScene();
+    for (let step = 0; step < flow.advance; step += 1) {
       await overlay.locator('[data-tour-next]').click();
+      await readyScene();
     }
-    const example = overlay.locator('[data-tour-example]');
-    assert.equal(await example.locator('h3').textContent(), flow.example);
-    if (flow.label) {
-      assert.equal(await example.getByLabel(flow.label, { exact: true }).inputValue(), flow.value);
-      assert.equal(await example.getByLabel(flow.label, { exact: true }).isDisabled(), true);
+    if (flow.input) {
+      assert.equal(await example.locator(flow.input).inputValue(), flow.value);
     }
-    if (flow.route === 'votes') {
-      for (let step = 0; step < 10 && await example.locator('h3').textContent() !== 'Samstagabend · Stimme gespeichert'; step += 1) {
+    if (flow.route === 'votes' && flow.input) {
+      const frame = await tourPage.locator('[data-area-tour-scene]').elementHandle();
+      const demoFrame = await frame!.contentFrame();
+      assert.equal(await demoFrame!.evaluate(async () => (await fetch('/api/votes/start', { method: 'POST' })).status), 405);
+      await demoFrame!.evaluate(() => { localStorage.setItem('area-tour-isolation-test', 'demo'); });
+      assert.equal(await tourPage.evaluate(() => localStorage.getItem('area-tour-isolation-test')), null);
+      for (let step = 0; step < 7; step += 1) {
         await overlay.locator('[data-tour-next]').click();
+        await readyScene();
       }
-      assert.equal(await example.locator('h3').textContent(), 'Samstagabend · Stimme gespeichert');
-      assert.match(await example.textContent() ?? '', /Katalog · Dein Bock/);
+      assert.match(await example.locator('.event-poll-answer-chip').first().textContent() ?? '', /Abgegeben/);
     }
     if (flow.route === 'arrivals') {
-      assert.equal(await tourPage.locator('[data-arrivals-times]').evaluate((element) => (element as HTMLDetailsElement).open), true,
-        'the tour opens the times section even when its summary was already visible');
+      assert.equal(await example.locator('[data-arrivals-times]').evaluate((element) => (element as HTMLDetailsElement).open), true);
+      assert.equal(await tourPage.locator('[data-arrivals-times]').evaluate((element) => (element as HTMLDetailsElement).open), false,
+        'the original section remains unchanged while the example is open');
+    }
+    // Walk every remaining state of this chapter, including real detail,
+    // payment/confirmation, result and tournament dialogs.
+    for (let step = 0; step < 20 && await overlay.locator('[data-tour-next]').textContent() !== 'Abschließen'; step += 1) {
+      await overlay.locator('[data-tour-next]').click();
+      await readyScene();
     }
     await overlay.locator('[data-tour-end]').click();
     await overlay.waitFor({ state: 'detached' });
-    assert.equal(await tourPage.locator('[data-tour-example]').count(), 0);
+    assert.equal(await tourPage.locator('[data-area-tour-scene]').count(), 0);
     assert.equal(await help.evaluate((element) => document.activeElement === element), true);
     if (flow.route === 'arrivals') {
       assert.equal(await tourPage.locator('[data-arrivals-times]').evaluate((element) => (element as HTMLDetailsElement).open), false,
         'ending restores the original collapsed section');
+      assert.equal(await tourPage.locator('#arrival-note').inputValue(), 'Mein ungespeicherter Entwurf');
     }
     recording = false;
   }
   assert.deepEqual(mutations, [], 'example dialogs and rows must not create or change product records');
+  assert.deepEqual(demoNetwork, [], 'the real views in a demonstration must not read or write the live API');
 });
 
 flowTest('openModal treats its title as plain text', async () => {

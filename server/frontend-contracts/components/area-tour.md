@@ -11,7 +11,8 @@ kurzen Texten. Sie verändern keine Fachdaten und sind getrennt vom Erstlogin-On
 - `public/js/areaTourCatalog.js`: Kerntexte, Kapitel und Rollen-/Featurefilter.
 - `public/js/arcade/areaTours.js`: erst beim Arcade-Aufruf geladenes Spielekapitel.
 - `public/js/areaTourProgress.js`: versionierter kontogebundener Gerätespeicher.
-- `public/js/areaTourExamples.js`: lokale Beispielszenen und escaped Formular-/Eintragsdarstellung.
+- `public/area-tour.html`, `public/js/areaTourDemo.js`: getrennte Demo-Instanz der normalen Ansichten.
+- `public/js/areaTourDemoData.js`: lokale Datensätze und Schrittzuordnung, keine eigene UI-Nachbildung.
 - `public/js/modal.js`: gemeinsames Modal mit unverändertem Fokusfang und Schließverhalten.
 
 ## 3. CSS-Eigentümerschaft
@@ -25,30 +26,43 @@ Spieltitel aus; außerhalb des Vollbilds gilt wieder die normale Titelzeile.
 
 Der Einstieg öffnet ein Standardmodal mit Tourstart und bei mehreren Kapiteln deren Auswahl.
 Die laufende Tour verwendet `.area-tour-backdrop`: Dialog oben oder unten und eine separate
-nichtinteraktive Hervorhebung. Jeder Schritt zeigt eine als Beispiel markierte Szene mit
-Formularfeldern oder Einträgen. Schritte desselben Ablaufs zeigen etwa Erstellen, Stimmzettel
-und Ergebnis. Die Beispiele bestehen ausschließlich aus lokalen Daten und deaktivierten
-Controls; sie öffnen keine echten Produktformulare und rufen keine Produktaktionen auf.
-Fehlt das Ziel im aktuellen Arbeitsbereich, bleibt die vollständige Beispielsicht verfügbar.
+nichtinteraktive Hervorhebung. Das Tourmodal enthält nur Erklärung und Navigation.
+Spiele, Vote, Umfragen, An-/Abreise, To-Do/Packliste, Essen und Match zeigen im Seitenbereich
+eine beschriftete Demo der tatsächlichen Ansicht. Sie verwendet dieselben Renderer, Formulare
+und Styles wie das Produkt. Normale Erstellen-/Detailaktionen öffnen dort die echten Dialoge;
+Schrittwechsel wählen passende lokale Datenzustände (Stimmzettel, Ergebnis, Aufstellung usw.).
+Andere Bereiche zeigen weiterhin ihre echten vorhandenen Elemente. Es gibt keine generischen
+Ersatzkarten oder im Tourmodal nachgebauten Formulare.
+
+Die Demo besitzt einen eigenen Modulkontext, Store und flüchtigen Browser-Speicher. Ihr Fetch
+liefert nur bekannte lokale GET-Antworten; alle Schreibmethoden und unbekannten Ziele scheitern.
+Zusätzlich verbietet ihre CSP sämtliche Verbindungen und Formularübermittlungen. Die Frame-
+Sandbox erlaubt weder Formulare, Popups noch Navigation der Elternseite. Es werden keine
+persönlichen Daten oder Zugangsdaten an die Demo übergeben. Entfernen des Frames verwirft
+Datensätze, private View-Caches, Dialoge und Entwürfe gemeinsam.
 
 ## 5. Erlaubte Anpassungen
 
 Ein Kapitel definiert stabile IDs, Klartexttitel, Text und einen Selektor vorhandener Elemente.
 Optionale Rollen- und Featurebedingungen entfernen nicht verfügbare Kapitel und Schritte.
-Produktaktionen werden weder aufgerufen noch durch programmatische Klicks ausgelöst.
+Aktionen der echten Anwendung werden weder aufgerufen noch durch programmatische Klicks
+ausgelöst. Die Demo darf ausschließlich ihre eigenen lokalen Einstiegs- und Disclosure-
+Controls betätigen; Schreibaktionen werden nicht zum Erzeugen von Zuständen benutzt.
 
 ## Geometrie
 
 - `registry:area-tour-heading`: `.area-tour-heading` stellt Titel und Standard-Iconbutton mit
   `--space-1` Abstand nebeneinander. Die 32-px-Höhe und mindestens 44-px-Breite bleiben beim
   bestehenden Iconbutton. Der Titel darf umbrechen.
-- `registry:area-tour-overlay` besitzt die nichtinteraktiven Container, Beispielszenen,
-  Erklärspalte und Aktionszeilen. Die Szene verwendet `--space-3`, Basisrahmen und `--radius-sm`.
-  Das erklärte Feld erhält einen Akzentrahmen am umgebenden Container, nicht am Control.
-- `registry:area-tour-modal`: Der Schrittdialog nutzt maximal `--search-panel-width`, damit
-  Beispiel und Erklärung ab `--bp-md` in zwei gleich breiten Spalten lesbar bleiben.
-  Darunter stehen sie untereinander. Die Beispielszene scrollt lokal mit maximal 32dvh,
-  ab `--bp-md` 55dvh. `--space-4` hält Abstand zu den Viewportkanten; die maximale Dialoghöhe berücksichtigt
+- `registry:area-tour-overlay` besitzt Frame, Demo-Seitencontainer/-Kennzeichnung, Erklärung
+  und Aktionszeilen. Der Frame liegt viewportfest auf dem Rechteck des Seitenbereichs; seine
+  Höhe endet oberhalb des Erklärdialogs. `frame.style.width`/`height` sind die registrierten
+  Aufrufe für diese nichtinteraktive Geometrie. Innerhalb der Demo gelten die normalen Styles
+  der jeweiligen Ansicht und Dialoge. Die Kennzeichnung nutzt `--space-2`/`--space-4`.
+- `registry:area-tour-modal`: Der Schrittdialog behält maximal die Standardbreite von 480 px.
+  Bei einer Demo steht er unten; der reservierte Bereich darüber enthält die echte Beispiel-
+  Ansicht. Sonst entscheidet das Ziel über Platzierung oben oder unten.
+  `--space-4` hält Abstand zu den Viewportkanten; die maximale Dialoghöhe berücksichtigt
   `--space-8`. Lange Inhalte scrollen im Dialog. Das Ziel entscheidet über Platzierung oben oder
   unten. Der Backdrop besitzt weder Unschärfe noch Einblendanimation, damit die Zielstelle sichtbar
   bleibt. Buttons behalten die Basisgeometrie; die Aktionen können als ganze Controls umbrechen.
@@ -71,8 +85,10 @@ Im Arcade-Vollbild ist er weder sichtbar noch fokussierbar. Nach Verlassen des V
 ist er wieder mit der Tastatur erreichbar.
 Die Tour verwendet `openModal` für Escape, X, zyklischen Fokusfang und gestapelte Dialoge.
 Ein Klick außerhalb schließt nur die Auswahl, niemals die laufende Tour. Diese endet bewusst
-über „Tour beenden“, X, Escape oder den letzten Schritt. Beispielcontrols sind deaktiviert und
-damit keine zusätzlichen Tab-Stopps. Die beschriftete Szene bleibt für assistive Technik lesbar.
+über „Tour beenden“, X, Escape oder den letzten Schritt. Der Demoframe ist inert und damit kein
+zusätzlicher Tab-Stopp; die Erklärung bleibt mit Schrittzahl über die stabile Statusregion
+zugänglich. Weiter wird erst nach erfolgreichem Aufbau der Szene freigegeben. Bei Ladefehlern
+bleiben Beenden, Zurück und ein expliziter Neuversuch erreichbar.
 Der Appinhalt und darunterliegende Dialoge werden während der Tour inert; ihre vorherigen
 Zustände werden beim Ende wiederhergestellt. Die Erklärung und Schrittzahl werden angekündigt;
 Weiter erhält nach jedem Schritt den Fokus. Der Ring ist für assistive Technik verborgen.
@@ -95,8 +111,12 @@ veränderte Schrittlisten und blockierten/ungültigen Speicher.
 Die bestehenden Shell-Browser-Fixtures prüfen Start ohne automatische Anzeige, Wiederaufnahme
 nach Reload, schmale und breite Fenster, Fokusfang/-rückgabe, Hintergrundaktualisierung,
 Beispielzustand und Info-Dialogstapel, Erstellen-Beispiele in Spiele/Vote/Umfragen/To-Do,
-Match-Einstieg an h2 sowie Öffnen/Wiederherstellen der Anreise-Details. Ein Backdrop-Klick muss
-die Tour offen halten; Beenden entfernt Beispiele. Tour-Schritte dürfen keine mutierenden API-Aufrufe senden.
+Match-Einstieg an h2, echte Dialoge/Einträge im Demoframe und unveränderte ursprüngliche
+Anreise-Details samt ungespeichertem Formularentwurf. Der Browser versucht zusätzlich einen
+Schreibzugriff in der Demo und erwartet 405 ohne Netzwerkrequest. Ein Backdrop-Klick muss
+die Tour offen halten; Beenden entfernt die gesamte Demo. Tour-Schritte dürfen keine
+mutierenden API-Aufrufe senden. Die Katalogtests prüfen konsistente Beispieldaten und das
+Fail-closed-Verhalten der lokalen GET-Antworten.
 Der bestehende Tetris-Vollbildfall prüft zusätzlich, dass die Hilfe im Vollbild keinen unsichtbaren
 Fokus erhalten kann und danach wieder per Tastatur geöffnet werden kann.
 

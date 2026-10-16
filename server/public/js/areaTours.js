@@ -4,7 +4,7 @@ import { openModal } from './modal.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './format.js';
 import { profileRow } from './profileRow.js';
-import { exampleForTourStep, tourExampleHtml } from './areaTourExamples.js';
+import { DEMO_VIEWS } from './areaTourDemoData.js';
 
 export function stepsForTour(tour, chapterId = 'all') {
   return tour.chapters.filter((chapter) => chapterId === 'all' || chapter.id === chapterId)
@@ -12,7 +12,8 @@ export function stepsForTour(tour, chapterId = 'all') {
 }
 
 // The app supplies its verified account, role, active workspace and route.
-// The tour never calls a product API or clicks a product control.
+// Demonstrations use the actual views in a separate, network-isolated frame.
+// The real application's controls, data and drafts are never used for examples.
 export function createAreaTours({ container, getContext }) {
   let scope = '';
   let chooser = null;
@@ -178,7 +179,7 @@ export function createAreaTours({ container, getContext }) {
     if (!active) return;
     const { steps, index, dialog, accountId, key, chapterId } = active;
     const step = steps[index];
-    const example = exampleForTourStep(key, active.tour, step);
+    clearScene(active);
     active.announcer.textContent = `Schritt ${index + 1} von ${steps.length}: ${step.title}. ${step.text}`;
     saveTourProgress(accountId, key, chapterId, step.id);
     saveTourProgress(accountId, key, 'last', chapterId);
@@ -186,11 +187,12 @@ export function createAreaTours({ container, getContext }) {
     heading.textContent = step.title;
     dialog.querySelector('.modal').setAttribute('aria-label', `${step.title} · Schritt ${index + 1} von ${steps.length}`);
     dialog.querySelector('.modal-body').innerHTML = `
-      ${tourExampleHtml(example)}
       <div class="area-tour-explanation">
         <div>
           <p class="onboarding-progress">Schritt ${index + 1} von ${steps.length}</p>
           <p>${escapeHtml(step.text)}</p>
+          <p class="muted" data-tour-scene-state hidden></p>
+          <button type="button" class="btn btn-sm" data-tour-retry hidden>Erneut versuchen</button>
         </div>
         <div class="area-tour-actions">
           <button type="button" class="btn btn-sm" data-tour-end>Tour beenden</button>
@@ -199,6 +201,7 @@ export function createAreaTours({ container, getContext }) {
         </div>
       </div>`;
     dialog.querySelector('[data-tour-end]').addEventListener('click', () => active.close());
+    dialog.querySelector('[data-tour-retry]').addEventListener('click', renderStep);
     dialog.querySelector('[data-tour-back]').addEventListener('click', () => { active.index -= 1; renderStep(); });
     dialog.querySelector('[data-tour-next]').addEventListener('click', () => {
       if (active.index === active.steps.length - 1) {
@@ -206,14 +209,86 @@ export function createAreaTours({ container, getContext }) {
         active.close();
       } else { active.index += 1; renderStep(); }
     });
-    revealTarget(true);
-    const exampleFocus = dialog.querySelector('[data-tour-example-focus]');
-    if (exampleFocus) exampleFocus.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    if (DEMO_VIEWS.includes(key)) startScene(step);
+    else revealTarget(true);
     dialog.querySelector('[data-tour-next]').focus({ preventScroll: true });
+  }
+
+  function clearScene(tour) {
+    clearTimeout(tour.sceneTimeout);
+    tour.sceneFrame?.remove();
+    tour.sceneFrame = null;
+    tour.sceneToken = null;
+  }
+
+  function startScene(step) {
+    const frame = document.createElement('iframe');
+    frame.className = 'area-tour-scene-frame';
+    frame.dataset.areaTourScene = active.key;
+    frame.title = `Beispielansicht: ${active.tour.title}`;
+    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    frame.tabIndex = -1;
+    frame.inert = true;
+    const token = crypto.randomUUID();
+    active.sceneFrame = frame;
+    active.sceneToken = token;
+    active.dialog.dataset.tourSceneStatus = 'loading';
+    const status = active.dialog.querySelector('[data-tour-scene-state]');
+    status.hidden = false;
+    status.textContent = 'Die Beispielansicht wird vorbereitet …';
+    active.dialog.querySelector('[data-tour-next]').disabled = true;
+    frame.addEventListener('load', () => {
+      if (active?.sceneToken !== token) return;
+      const context = getContext();
+      frame.contentWindow.postMessage({ type: 'area-tour:init', token, view: active.key, step: step.id, target: step.target,
+        context: { admin: context.admin, event: { type: context.event?.type, enabledFeatures: context.event?.enabledFeatures },
+          theme: document.documentElement.dataset.theme, layoutMode: document.documentElement.dataset.layoutMode },
+      }, location.origin);
+    });
+    // Bound a genuinely failed asset/frame load; this is not a render delay.
+    active.sceneTimeout = setTimeout(() => sceneFailed(token), 15000);
+    frame.src = '/area-tour.html';
+    active.dialog.before(frame);
+    positionScene();
+  }
+
+  function sceneFailed(token) {
+    if (active?.sceneToken !== token) return;
+    active.dialog.dataset.tourSceneStatus = 'error';
+    active.dialog.querySelector('[data-tour-scene-state]').textContent = 'Die Beispielansicht konnte nicht geladen werden.';
+    active.dialog.querySelector('[data-tour-retry]').hidden = false;
+  }
+
+  function onSceneMessage(event) {
+    if (!active?.sceneFrame || event.source !== active.sceneFrame.contentWindow || event.origin !== location.origin
+      || event.data?.token !== active.sceneToken) return;
+    if (event.data.type === 'area-tour:error') { clearTimeout(active.sceneTimeout); sceneFailed(active.sceneToken); return; }
+    if (event.data.type !== 'area-tour:shown') return;
+    clearTimeout(active.sceneTimeout);
+    active.dialog.dataset.tourSceneStatus = 'ready';
+    active.dialog.querySelector('[data-tour-scene-state]').textContent = 'Beispielansicht · Es werden keine Daten gespeichert.';
+    active.dialog.querySelector('[data-tour-next]').disabled = false;
+    active.dialog.querySelector('[data-tour-next]').focus({ preventScroll: true });
+    positionTarget();
+  }
+
+  function positionScene() {
+    if (!active?.sceneFrame) return;
+    const rect = container.getBoundingClientRect();
+    const panel = active.dialog.querySelector('.modal');
+    panel.dataset.tourPlacement = 'bottom';
+    const left = Math.max(0, rect.left);
+    const top = Math.max(0, rect.top);
+    const frame = active.sceneFrame;
+    frame.style.left = `${left}px`;
+    frame.style.top = `${top}px`;
+    frame.style.width = `${Math.max(0, Math.min(window.innerWidth, rect.right) - left)}px`;
+    frame.style.height = `${Math.max(0, Math.min(window.innerHeight - panel.getBoundingClientRect().height - 32, rect.bottom) - top)}px`;
   }
 
   function revealTarget(scroll = false) {
     if (!active) return;
+    if (active.sceneFrame) { positionTarget(); return; }
     const step = active.steps[active.index];
     const candidates = step.target ? [...document.querySelectorAll(step.target)]
       .filter((element) => !active.dialog.contains(element) && (active.source.contains(element) || element.closest('.topbar'))) : [];
@@ -243,8 +318,16 @@ export function createAreaTours({ container, getContext }) {
   function positionTarget() {
     if (!active) return;
     const { target, ring, shade, dialog } = active;
-    const rect = target?.isConnected && target.getClientRects().length ? target.getBoundingClientRect() : null;
-    const visible = rect && rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
+    positionScene();
+    let rect = target?.isConnected && target.getClientRects().length ? target.getBoundingClientRect() : null;
+    if (active.sceneFrame) {
+      const frameRect = active.sceneFrame.getBoundingClientRect();
+      const inner = active.sceneFrame.contentWindow.areaTourScene?.targetRect();
+      rect = inner ? { left: Math.max(frameRect.left, frameRect.left + inner.left), top: Math.max(frameRect.top, frameRect.top + inner.top),
+        right: Math.min(frameRect.right, frameRect.left + inner.right), bottom: Math.min(frameRect.bottom, frameRect.top + inner.bottom) } : null;
+    }
+    const visible = rect && rect.right > rect.left && rect.bottom > rect.top
+      && rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
     ring.hidden = !visible;
     shade.hidden = Boolean(visible);
     const panel = dialog.querySelector('.modal');
@@ -255,7 +338,7 @@ export function createAreaTours({ container, getContext }) {
     ring.style.top = `${top}px`;
     ring.style.width = `${Math.min(window.innerWidth, rect.right) - left}px`;
     ring.style.height = `${Math.min(window.innerHeight, rect.bottom) - top}px`;
-    panel.dataset.tourPlacement = rect.bottom > window.innerHeight - panel.getBoundingClientRect().height - 32 ? 'top' : 'bottom';
+    panel.dataset.tourPlacement = !active.sceneFrame && rect.bottom > window.innerHeight - panel.getBoundingClientRect().height - 32 ? 'top' : 'bottom';
   }
 
   function schedulePosition() {
@@ -269,6 +352,7 @@ export function createAreaTours({ container, getContext }) {
   function finish() {
     if (!active) return;
     const previous = active;
+    clearScene(previous);
     active = null;
     cancelAnimationFrame(frame);
     frame = 0;
@@ -303,6 +387,7 @@ export function createAreaTours({ container, getContext }) {
   document.addEventListener('respawn:dialog-opened', onDialogOpened);
   window.addEventListener('resize', schedulePosition);
   window.addEventListener('scroll', schedulePosition, true);
+  window.addEventListener('message', onSceneMessage);
   return {
     sync, stop,
     dispose() {
@@ -311,6 +396,7 @@ export function createAreaTours({ container, getContext }) {
       document.removeEventListener('respawn:dialog-opened', onDialogOpened);
       window.removeEventListener('resize', schedulePosition);
       window.removeEventListener('scroll', schedulePosition, true);
+      window.removeEventListener('message', onSceneMessage);
     },
   };
 }

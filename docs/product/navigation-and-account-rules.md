@@ -403,11 +403,14 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   Durchlauf kann fortgesetzt oder neu gestartet, ein abgeschlossener wiederholt werden.
   Die Wiederaufnahme folgt dem zuletzt begonnenen Kapitel beziehungsweise der gesamten Tour.
 - Ein Schritt enthält höchstens 30 Wörter und erklärt eine Funktion oder Folgeaktion. Die Tour
-  hebt vorhandene Elemente hervor und klappt benötigte Details auf. Jeder Schritt zeigt
-  zusätzlich eine klar markierte lokale Beispielszene, auch in leeren Arbeitsbereichen.
-  Erstellen- und Bestätigungsdialoge erscheinen als Vorschau mit deaktivierten Beispielcontrols;
+  hebt vorhandene Elemente hervor und klappt benötigte Details auf. Das Tourmodal zeigt nur
+  Erklärung und Navigation. Spiele, Vote, Umfragen, An-/Abreise, To-Do/Packliste, Essen und Match
+  führen Beispiele direkt im Seitenbereich vor, auch bei leeren echten Datenbeständen.
+  Die getrennte lokale Demo verwendet die normalen Ansichten und Dialoge mit Beispieldaten;
   zusammengehörige Schritte zeigen Zustandswechsel wie Vote-Anlegen → Stimmzettel → Ergebnis.
-  Die Tour erzeugt keine Fachaktionen,
+  Andere Bereiche zeigen ihre echte vorhandene Oberfläche. Generische Ersatzkarten entfallen.
+  Die Demo hat keinen schreibenden Zugriff auf Server oder persönlichen Browserspeicher.
+  Die Tour erzeugt keine echten Fachaktionen,
   Benachrichtigungen, Bestellungen, Zahlungen oder Ergebnisse.
 - Eine laufende Tour endet über Tour beenden, X, Escape oder Abschließen. Ein Klick außerhalb
   beendet sie nicht. Beenden entfernt sämtliche Beispiele und stellt aufgeklappte Details,

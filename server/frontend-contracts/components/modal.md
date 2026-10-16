@@ -50,7 +50,7 @@ duplizieren.
 | Mobile Darstellung | Basisbackdrop unter `--bp-md` | umgesetzt | Bottom-Sheet |
 | Breite Darstellung | Basisbackdrop ab `--bp-md` | umgesetzt | zentrierter Dialog |
 | Gestapelte Dialoge | mehrere `.modal-backdrop` | umgesetzt | nur oberster Dialog verarbeitet Escape und Tab |
-| Manuelle Bereichstour | `.area-tour-backdrop .modal` | umgesetzt | bestehende Suchpanelbreite für Beispielsicht und Erklärung, viewportfester Dialog; siehe [Bereichstour](area-tour.md) |
+| Manuelle Bereichstour | `.area-tour-backdrop .modal` | umgesetzt | Standardbreite für Erklärung und Navigation; echte Beispielansicht liegt im Seitenbereich, siehe [Bereichstour](area-tour.md) |
 
 Eine allgemeine 640-px-Wide-Variante existiert nicht. Die 640-px-Breite gehört ausschließlich
 den benannten Suchpanels über `--search-panel-width`.
