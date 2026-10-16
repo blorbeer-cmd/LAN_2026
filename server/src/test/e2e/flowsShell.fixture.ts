@@ -335,7 +335,7 @@ flowTest('area tour examples work without live records and keep nested dialogs u
         return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
       });
       const highlight = await example.locator('body').evaluate(() =>
-        (window as Window & { areaTourScene: { targetRect(): typeof target } }).areaTourScene.targetRect());
+        (window as unknown as { areaTourScene: { targetRect(): typeof target } }).areaTourScene.targetRect());
       assert.deepEqual(highlight, target, 'the first tournament step highlights the team overview');
       assert.equal(await example.locator('[data-tournament-teams]').evaluate((element) => (element as HTMLDetailsElement).open), true);
     }
