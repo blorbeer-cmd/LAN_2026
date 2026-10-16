@@ -1116,7 +1116,7 @@ votesRouter.delete('/history/:round', requireGroupRole('admin'), (req, res) => {
   // round counts as one. A closed runoff without a ballot is invisible in
   // the history and is simply removed together with its source.
   const hasBallots = 'EXISTS (SELECT 1 FROM votes v WHERE v.group_id = d.group_id AND v.round = d.round)';
-  const dependentSql = `d.group_id = ? AND d.round <> ?
+  const dependentSql = `d.group_id = ? AND d.event_id = ? AND d.round <> ?
     AND (d.source_round = ? OR (d.source_round IS NULL AND d.mode = 'single' AND d.round > ?))`;
   const remove = db.transaction((): boolean => {
     const target = db
@@ -1125,11 +1125,11 @@ votesRouter.delete('/history/:round', requireGroupRole('admin'), (req, res) => {
     if (!target) return false;
     const blocking = db
       .prepare(`SELECT 1 FROM vote_rounds d WHERE ${dependentSql} AND (d.closed_at IS NULL OR ${hasBallots}) LIMIT 1`)
-      .get(groupId, round, round, round);
+      .get(groupId, eventId, round, round, round);
     if (blocking) throw new VoteRoundInUseError();
     db.prepare(`DELETE FROM vote_rounds WHERE rowid IN (
       SELECT d.rowid FROM vote_rounds d WHERE ${dependentSql} AND d.closed_at IS NOT NULL AND NOT ${hasBallots})`)
-      .run(groupId, round, round, round);
+      .run(groupId, eventId, round, round, round);
     db.prepare('DELETE FROM vote_rounds WHERE group_id = ? AND round = ?').run(groupId, round);
     return true;
   });

@@ -303,6 +303,29 @@ test('DELETE /api/votes/history/:round keeps a points round that a legacy runoff
   assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 200);
 });
 
+test('DELETE /api/votes/history/:round ignores legacy rounds of another event', async () => {
+  const other = await request(app)
+    .post('/api/events')
+    .send({ name: 'Other event', startsAt: Date.now(), endsAt: Date.now() + 5 * 60_000 });
+  assert.equal(other.status, 201);
+  const source = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes/points').send({
+    round: source.body.round,
+    playerId: playerA,
+    entries: [{ gameId: gameCs2, points: 1 }, { gameId: gameRl, points: 4 }],
+  });
+  await request(app).post('/api/votes/close').send({ round: source.body.round });
+  // A later, empty legacy-style round that belongs to the other event.
+  const foreign = db.prepare(
+    `INSERT INTO vote_rounds (group_id, round, event_id, started_at, closed_at, mode)
+     VALUES (?, (SELECT MAX(round) + 1 FROM vote_rounds), ?, ?, ?, 'single')`,
+  ).run(DEFAULT_GROUP_ID, other.body.id, Date.now(), Date.now());
+  const foreignRound = (db.prepare('SELECT round FROM vote_rounds WHERE rowid = ?').get(foreign.lastInsertRowid) as { round: number }).round;
+
+  assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 200);
+  assert.ok(db.prepare('SELECT 1 FROM vote_rounds WHERE round = ?').get(foreignRound), 'the other event keeps its round');
+});
+
 test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beliebtheit)', async () => {
   // Rocket League gets rated much higher than CS2 by both players; with no
   // votes cast yet in the new round, the results order should already
