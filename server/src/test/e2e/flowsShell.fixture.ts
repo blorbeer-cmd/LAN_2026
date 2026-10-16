@@ -80,7 +80,30 @@ flowTest('manual area tours resume, restore focus, survive refresh and never sub
       mutations.push(`${request.method()} ${request.url()}`);
     }
   });
+  await tourPage.evaluate(() => {
+    document.documentElement.dataset.tourKeyCount = '0';
+    const countGameKey = (event: KeyboardEvent) => {
+      if (['ArrowLeft', ' ', 'Escape'].includes(event.key)) {
+        document.documentElement.dataset.tourKeyCount = String(Number(document.documentElement.dataset.tourKeyCount) + 1);
+      }
+    };
+    document.addEventListener('keydown', countGameKey);
+    window.addEventListener('keydown', countGameKey);
+  });
+  const dismissFromText = async (selector: string) => {
+    const dialog = tourPage.locator(selector);
+    await dialog.locator('.modal-body > p').first().click();
+    assert.equal(await tourPage.evaluate(() => document.activeElement === document.body), true);
+    await tourPage.keyboard.press('ArrowLeft');
+    await tourPage.keyboard.press('Space');
+    await tourPage.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached' });
+    assert.equal(await tourPage.evaluate(() => document.documentElement.dataset.tourKeyCount), '0',
+      'chooser and tour keys stay out of document/window game controls after clicking text');
+  };
 
+  await help.click();
+  await dismissFromText('.modal-backdrop');
   await help.click();
   await tourPage.getByRole('button', { name: 'Profil und Einstellungen: Starten', exact: true }).click();
   const overlay = tourPage.locator('.area-tour-backdrop');
@@ -88,8 +111,7 @@ flowTest('manual area tours resume, restore focus, survive refresh and never sub
   assert.equal(await tourPage.locator('#app').evaluate((element) => (element as HTMLElement).inert), true);
   await overlay.locator('[data-tour-next]').click();
   await overlay.getByRole('heading', { name: 'Deine Ansicht wählen', exact: true }).waitFor();
-  await tourPage.keyboard.press('Escape');
-  await overlay.waitFor({ state: 'detached' });
+  await dismissFromText('.area-tour-backdrop');
   assert.equal(await tourPage.locator('#app').evaluate((element) => (element as HTMLElement).inert), false);
   assert.equal(await help.evaluate((element) => document.activeElement === element), true);
   assert.equal(await tourPage.locator('#view-container').evaluate((element) => element.scrollTop), originalScroll);

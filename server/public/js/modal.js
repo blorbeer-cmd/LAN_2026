@@ -52,7 +52,6 @@ function trapTabFocus(event, backdrop) {
 export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, headerAction = '', closeButton = true, tourKey = null, isolateKeys = false } = {}) {
   const previousFocus = document.activeElement;
   const backdrop = document.createElement('div');
-  const keyboardRoot = isolateKeys ? backdrop : document;
   backdrop.className = 'modal-backdrop';
   backdrop.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true">
@@ -73,7 +72,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
   const close = () => {
     if (closed) return;
     closed = true;
-    keyboardRoot.removeEventListener('keydown', onKeydown);
+    document.removeEventListener('keydown', onKeydown, isolateKeys);
     backdrop.remove();
     onClose?.();
     if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
@@ -93,7 +92,8 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
   };
   const onKeydown = (e) => {
     if (!isTopmostModal(backdrop)) return;
-    // Informational tours must not leak game keys to document-level handlers.
+    // Capture isolated keys even after clicking text moves focus to body.
+    // This runs before the document/window bubble listeners used by games.
     if (isolateKeys) e.stopPropagation();
     // An Escape already spent inside the dialog (an open help panel) must
     // not also close the dialog.
@@ -115,7 +115,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
     if (e.target === backdrop && pointerDownOnBackdrop) requestClose();
   });
   backdrop.querySelector('[data-close]')?.addEventListener('click', requestClose);
-  keyboardRoot.addEventListener('keydown', onKeydown);
+  document.addEventListener('keydown', onKeydown, isolateKeys);
 
   if (onMount) onMount(backdrop, close);
   if (!backdrop.contains(document.activeElement)) {

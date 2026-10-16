@@ -58,9 +58,10 @@ den benannten Suchpanels über `--search-panel-width`.
 `openModal` akzeptiert zusätzlich `tourKey`. Nach dem Mount meldet es den eigenen Backdrop mit
 diesem Schlüssel über `respawn:dialog-opened`. Der Bereichstour-Controller ergänzt dadurch den
 Hilfe-Einstieg in Info und Feedback, ohne Formulardaten oder deren Schließverhalten zu ändern.
-Die Option `isolateKeys` verwendet denselben Fokusfang am eigenen Backdrop und hält Tastendrücke
-vom Dokument fern. Sie verhindert, dass die Bedienung der Tour gleichzeitig Arcade-Steuerungen
-auslöst; das Standardverhalten anderer Dialoge bleibt unverändert.
+Die Option `isolateKeys` verarbeitet Tastendrücke in der Capture-Phase am Dokument und stoppt
+deren Weitergabe an Bubble-Listener. Escape und derselbe Fokusfang bleiben dadurch auch nach
+einem Klick auf nicht fokussierbaren Dialogtext aktiv. Die Tour löst keine Arcade-Steuerungen
+aus; das Standardverhalten anderer Dialoge bleibt unverändert.
 
 ## 5. Erlaubte Anpassungen
 
