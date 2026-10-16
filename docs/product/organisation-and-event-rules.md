@@ -202,7 +202,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   card is raised above later siblings while the menu is open. Earlier rounds live in a nested,
   initially collapsed history with one compact row per round (round, end date, answered count and
   winning option) and a „Details“ button that opens the round's result dialog. Ended polls collect
-  in the page's collapsible „Historie“. If no current poll exists, „Aktuelle Umfragen“ shows
+  in the page's collapsible „Historie“; polls that ended without any answer in any round are not
+  listed. Besides the creator, community admins taking part in the event can delete a poll.
+  If no current poll exists, „Aktuelle Umfragen“ shows
   „Keine Aktuelle Umfrage“. Choosing the current feasibility answer again clears it
   back to „offen“, which is also the incomplete-response count. Repeated reminders reuse one stable notification-center
   entry per poll and recipient, moving it to the top; automatic sends run 48 hours and 2 hours before

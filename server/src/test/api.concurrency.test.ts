@@ -74,6 +74,10 @@ test('simultaneous closes plus late casts: one close wins, stragglers are cleanl
 });
 
 test('closing an older open vote makes it the latest result without ending other votes', async () => {
+  // Rounds nobody voted in stay out of the history, so both get a ballot.
+  for (const round of [10, 2]) {
+    assert.equal((await request(app).post('/api/votes').send({ round, playerId: playerIds[0], gameId: gameIds[0] })).status, 200);
+  }
   assert.equal((await request(app).post('/api/votes/close').send({ round: 10 })).status, 200);
   assert.equal((await request(app).post('/api/votes/close').send({ round: 2 })).status, 200);
   const history = await request(app).get('/api/votes/history');
@@ -81,6 +85,15 @@ test('closing an older open vote makes it the latest result without ending other
   const current = await request(app).get('/api/votes');
   assert.equal(current.body.openRounds.length, 7);
   assert.equal(current.body.openRounds.some((round: { round: number }) => round.round === 3), true);
+});
+
+test('simultaneous deletes of a finished vote: exactly one wins', async () => {
+  const results = await Promise.all(
+    Array.from({ length: 4 }, () => request(app).delete('/api/votes/history/10')),
+  );
+  const counts = statusCounts(results.map((r) => r.status));
+  assert.equal(counts[200], 1, JSON.stringify(counts));
+  assert.equal(counts[404], 3, JSON.stringify(counts));
 });
 
 test('simultaneous creates with the same name: exactly one player/game wins', async () => {
