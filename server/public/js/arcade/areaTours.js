@@ -3,6 +3,13 @@
 const s = (id, title, text, target = '') => ({ id, title, text, target });
 const room = (title, rules) => ({
   title,
+  examples: { default: {
+    title: `${title} · Beispielpartie`,
+    rows: title === 'Chimp Test'
+      ? [{ title: 'Alex', detail: '8 Zahlen gemerkt · 1 Strike', badge: 'Versuch läuft' }]
+      : [{ title: 'Alex und Sam', detail: `${title} · Gemeinsame Runde`, badge: 'Läuft' }, { title: 'Spielaktionen', detail: 'Pause · Ton · Vollbild' }],
+    actions: ['Revanche'],
+  } },
   chapters: [{ id: 'play', title: 'Steuerung und Ablauf', steps: [
     ...rules,
     s('pause', 'Pause und Vollbild', 'Die Spielaktionen steuern Pause, Ton und Vollbild. Escape verlässt das Vollbild; eine Pause beendet die Partie nicht.', '.arcade-game-header-actions'),
@@ -14,6 +21,7 @@ const room = (title, rules) => ({
 export const ARCADE_TOURS = {
   arcade: {
     title: 'Arcade',
+    examples: { default: { title: 'Tetris · Lobby', rows: [{ title: 'Alex', detail: 'Host', badge: 'Bereit' }, { title: 'Sam', detail: 'Gast', badge: 'Noch nicht bereit' }], actions: ['Beitreten', 'Bereit', 'Starten'] } },
     chapters: [{ id: 'lobby', title: 'Lobby und Mitspielen', steps: [
       s('open', 'Lobby öffnen', 'Wähle ein Spiel und seinen Modus. Das erstellt zunächst eine Lobby; die Partie beginnt erst nach dem Start.', '#arcade-create-lobby'),
       s('join', 'Mitspielen', 'Beitreten belegt einen freien Platz. Bei Doppel wählst du dein Team. Eine eigene Lobby wird erst nach Bestätigung durch eine andere ersetzt.', '[data-join-lobby]'),
@@ -60,6 +68,7 @@ export const ARCADE_TOURS = {
   ]),
   arcadeWatch: {
     title: 'Arcade-Zuschauen',
+    examples: { default: { title: 'Zuschauen · Beispielpartie', rows: [{ title: 'Alex gegen Sam', detail: 'Gemeinsamer Spielstand', badge: 'Läuft' }, { title: 'Deine Rolle', detail: 'Zuschauer · Keine Spielaktionen' }], actions: ['Zuschauen beenden'] } },
     chapters: [{ id: 'watch', title: 'Zuschauen', steps: [
       s('read', 'Gemeinsam verfolgen', 'Du siehst den Spielstand, kannst aber nicht mitspielen oder das Ergebnis ändern. Die Ansicht verwendet dieselbe Spielfelddarstellung wie die Partie.', 'canvas'),
       s('hidden', 'Geheime Informationen bleiben verborgen', 'Scribble zeigt Zuschauern keine Wörter, Tipps oder Vermutungen. Chimp Test zeigt nur den Fortschritt, keine Zahlenpositionen.', 'canvas'),

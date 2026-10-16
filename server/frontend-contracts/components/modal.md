@@ -50,7 +50,7 @@ duplizieren.
 | Mobile Darstellung | Basisbackdrop unter `--bp-md` | umgesetzt | Bottom-Sheet |
 | Breite Darstellung | Basisbackdrop ab `--bp-md` | umgesetzt | zentrierter Dialog |
 | Gestapelte Dialoge | mehrere `.modal-backdrop` | umgesetzt | nur oberster Dialog verarbeitet Escape und Tab |
-| Manuelle Bereichstour | `.area-tour-backdrop .modal` | umgesetzt | Standardbreite, viewportfester Schritt-Dialog über einer nichtinteraktiven Hervorhebung; siehe [Bereichstour](area-tour.md) |
+| Manuelle Bereichstour | `.area-tour-backdrop .modal` | umgesetzt | bestehende Suchpanelbreite für Beispielsicht und Erklärung, viewportfester Dialog; siehe [Bereichstour](area-tour.md) |
 
 Eine allgemeine 640-px-Wide-Variante existiert nicht. Die 640-px-Breite gehört ausschließlich
 den benannten Suchpanels über `--search-panel-width`.
@@ -62,6 +62,9 @@ Die Option `isolateKeys` verarbeitet Tastendrücke in der Capture-Phase am Dokum
 deren Weitergabe an Bubble-Listener. Escape und derselbe Fokusfang bleiben dadurch auch nach
 einem Klick auf nicht fokussierbaren Dialogtext aktiv. Die Tour löst keine Arcade-Steuerungen
 aus; das Standardverhalten anderer Dialoge bleibt unverändert.
+`closeOnBackdrop` ist standardmäßig `true`. Die laufende Bereichstour setzt es auf `false`,
+damit ein Klick neben den Erklärdialog keine Beispiele oder aufgeklappten Bereiche vorzeitig
+zurücksetzt. X und Escape sowie programmatisches Schließen bleiben verfügbar.
 
 ## 5. Erlaubte Anpassungen
 

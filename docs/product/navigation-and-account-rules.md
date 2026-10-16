@@ -403,9 +403,15 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   Durchlauf kann fortgesetzt oder neu gestartet, ein abgeschlossener wiederholt werden.
   Die Wiederaufnahme folgt dem zuletzt begonnenen Kapitel beziehungsweise der gesamten Tour.
 - Ein Schritt enthält höchstens 30 Wörter und erklärt eine Funktion oder Folgeaktion. Die Tour
-  hebt vorhandene Elemente hervor. Ist eine Funktion im aktuellen Zustand nicht sichtbar,
-  wird der Schritt ausdrücklich als Beispiel gekennzeichnet. Die Tour erzeugt keine Fachaktionen,
+  hebt vorhandene Elemente hervor und klappt benötigte Details auf. Jeder Schritt zeigt
+  zusätzlich eine klar markierte lokale Beispielszene, auch in leeren Arbeitsbereichen.
+  Erstellen- und Bestätigungsdialoge erscheinen als Vorschau mit deaktivierten Beispielcontrols;
+  zusammengehörige Schritte zeigen Zustandswechsel wie Vote-Anlegen → Stimmzettel → Ergebnis.
+  Die Tour erzeugt keine Fachaktionen,
   Benachrichtigungen, Bestellungen, Zahlungen oder Ergebnisse.
+- Eine laufende Tour endet über Tour beenden, X, Escape oder Abschließen. Ein Klick außerhalb
+  beendet sie nicht. Beenden entfernt sämtliche Beispiele und stellt aufgeklappte Details,
+  Scrollposition und Fokus wieder her; echte Formulare werden durch die Beispiele nicht verändert.
 - Rollen, verfügbare Bereiche und Eventfeatures bestimmen die angebotenen Kapitel. Ein Wechsel
   des Kontos, Arbeitsbereichs, der Route oder Rolle schließt den aktuellen Durchlauf. Reine
   Live-Aktualisierungen derselben Ansicht behalten ihn und aktualisieren die Hervorhebung.

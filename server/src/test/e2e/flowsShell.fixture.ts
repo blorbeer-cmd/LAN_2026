@@ -92,7 +92,7 @@ flowTest('manual area tours resume, restore focus, survive refresh and never sub
   });
   const dismissFromText = async (selector: string) => {
     const dialog = tourPage.locator(selector);
-    await dialog.locator('.modal-body > p').first().click();
+    await dialog.locator('.modal-body > p, .area-tour-explanation p').first().click();
     assert.equal(await tourPage.evaluate(() => document.activeElement === document.body), true);
     await tourPage.keyboard.press('ArrowLeft');
     await tourPage.keyboard.press('Space');
@@ -108,6 +108,10 @@ flowTest('manual area tours resume, restore focus, survive refresh and never sub
   await tourPage.getByRole('button', { name: 'Profil und Einstellungen: Starten', exact: true }).click();
   const overlay = tourPage.locator('.area-tour-backdrop');
   await overlay.getByRole('heading', { name: 'Dein Profil bearbeiten', exact: true }).waitFor();
+  await overlay.locator('[data-tour-example]').waitFor();
+  await overlay.dispatchEvent('pointerdown');
+  await overlay.dispatchEvent('click');
+  assert.equal(await overlay.isVisible(), true, 'a backdrop click must not end a running tour');
   assert.equal(await tourPage.locator('#app').evaluate((element) => (element as HTMLElement).inert), true);
   await overlay.locator('[data-tour-next]').click();
   await overlay.getByRole('heading', { name: 'Deine Ansicht wählen', exact: true }).waitFor();
@@ -169,7 +173,9 @@ flowTest('area tour examples work without live records and keep nested dialogs u
   const overlay = tourPage.locator('.area-tour-backdrop');
   await overlay.locator('[data-tour-example]:not([hidden])').waitFor();
   assert.match(await overlay.textContent() ?? '', /Beispiel/);
-  await tourPage.keyboard.press('Escape');
+  assert.match(await overlay.locator('[data-tour-example]').textContent() ?? '', /Pizza bei Luigi/);
+  await overlay.locator('[data-tour-end]').click();
+  assert.equal(await tourPage.locator('[data-tour-example]').count(), 0, 'ending the tour removes every example');
   await tourPage.locator('#info-btn').click();
   const info = tourPage.getByRole('dialog', { name: 'Info', exact: true });
   await info.getByRole('button', { name: 'Info kennenlernen', exact: true }).click();
@@ -182,6 +188,68 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     .evaluate((element) => document.activeElement === element), true);
   await tourPage.keyboard.press('Escape');
   await info.waitFor({ state: 'detached' });
+
+  // Empty workspaces still explain the actual create forms and example flow.
+  // Every scene stays local; none of the disabled example actions can submit.
+  const mutations: string[] = [];
+  let recording = false;
+  tourPage.on('request', (request) => {
+    if (recording && request.url().includes('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
+      mutations.push(`${request.method()} ${request.url()}`);
+    }
+  });
+  for (const flow of [
+    { route: 'gameCatalog', help: 'Spiele', chapter: 'Spiele vorschlagen und pflegen: Starten', example: 'Spiel vorschlagen', label: 'Titel', value: 'Rocket League' },
+    { route: 'votes', help: 'Vote', chapter: 'Abstimmen und Bock übernehmen: Starten', example: 'Abstimmung starten', label: 'Titel', value: 'Samstagabend' },
+    { route: 'eventPolls', help: 'Umfragen', chapter: 'Umfrage verwalten: Starten', example: 'Umfrage starten', label: 'Titel', value: 'Was essen wir am Samstag?' },
+    { route: 'checklist', help: 'To-Do', chapter: 'Tour starten', example: 'To-Do erstellen', label: 'Titel', value: 'Mehrfachsteckdosen' },
+    { route: 'foodOrders', help: 'Essen', chapter: 'Bestellung organisieren: Starten', example: 'Neue Sammelbestellung', label: 'Titel', value: 'Pizza bei Luigi' },
+    { route: 'matchmaking', help: 'Match', chapter: 'Teams auslosen: Starten', example: 'Neue Auslosung', label: 'Spiel auswählen', value: 'Rocket League' },
+    { route: 'arrivals', help: 'An- & Abreise', chapter: 'Tour starten', example: 'Alle Zeiten', label: '', value: '' },
+  ]) {
+    recording = false;
+    await tourPage.goto(`${BASE_URL}/#${flow.route}`);
+    const help = tourPage.getByRole('button', { name: `${flow.help} kennenlernen`, exact: true });
+    await help.waitFor();
+    if (flow.route === 'arrivals') {
+      await tourPage.locator('[data-arrivals-times]').waitFor({ state: 'attached' });
+      await tourPage.locator('[data-arrivals-times]').evaluate((element) => { (element as HTMLDetailsElement).open = false; });
+    }
+    recording = true;
+    await help.click();
+    await tourPage.getByRole('button', { name: flow.chapter, exact: true }).click();
+    await overlay.locator('[data-tour-example]').waitFor();
+    for (let step = 0; step < 15 && await overlay.locator('[data-tour-example] h3').textContent() !== flow.example; step += 1) {
+      await overlay.locator('[data-tour-next]').click();
+    }
+    const example = overlay.locator('[data-tour-example]');
+    assert.equal(await example.locator('h3').textContent(), flow.example);
+    if (flow.label) {
+      assert.equal(await example.getByLabel(flow.label, { exact: true }).inputValue(), flow.value);
+      assert.equal(await example.getByLabel(flow.label, { exact: true }).isDisabled(), true);
+    }
+    if (flow.route === 'votes') {
+      for (let step = 0; step < 10 && await example.locator('h3').textContent() !== 'Samstagabend · Stimme gespeichert'; step += 1) {
+        await overlay.locator('[data-tour-next]').click();
+      }
+      assert.equal(await example.locator('h3').textContent(), 'Samstagabend · Stimme gespeichert');
+      assert.match(await example.textContent() ?? '', /Katalog · Dein Bock/);
+    }
+    if (flow.route === 'arrivals') {
+      assert.equal(await tourPage.locator('[data-arrivals-times]').evaluate((element) => (element as HTMLDetailsElement).open), true,
+        'the tour opens the times section even when its summary was already visible');
+    }
+    await overlay.locator('[data-tour-end]').click();
+    await overlay.waitFor({ state: 'detached' });
+    assert.equal(await tourPage.locator('[data-tour-example]').count(), 0);
+    assert.equal(await help.evaluate((element) => document.activeElement === element), true);
+    if (flow.route === 'arrivals') {
+      assert.equal(await tourPage.locator('[data-arrivals-times]').evaluate((element) => (element as HTMLDetailsElement).open), false,
+        'ending restores the original collapsed section');
+    }
+    recording = false;
+  }
+  assert.deepEqual(mutations, [], 'example dialogs and rows must not create or change product records');
 });
 
 flowTest('openModal treats its title as plain text', async () => {

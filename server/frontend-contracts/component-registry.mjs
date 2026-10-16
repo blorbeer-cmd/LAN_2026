@@ -12,7 +12,7 @@ export const components = [
   {
     "id": "area-tour-overlay",
     "role": "composite-part",
-    "selector": ".area-tour-backdrop, .area-tour-shade, .area-tour-actions, .area-tour-chapters",
+    "selector": ".area-tour-backdrop, .area-tour-shade, .area-tour-actions, .area-tour-chapters, .area-tour-example, .area-tour-explanation, .area-tour-example [data-tour-example-focus], .area-tour-backdrop .modal-body",
     "owner": "public/css/overlays.css",
     "contract": "components/area-tour.md#geometrie",
     "purpose": "The manual tour is a named shared-modal presentation; its containers own positioning and spacing, never product controls.",
@@ -1410,7 +1410,7 @@ export const permanentVariants = [
     "selector": ".area-tour-backdrop .modal, .area-tour-backdrop .modal[data-tour-placement='top']",
     "owner": "public/css/overlays.css",
     "contract": "components/area-tour.md#geometrie",
-    "reason": "Named manual-tour presentation retains the standard modal width and shared interaction while positioning the short explanation clear of its target.",
+    "reason": "Named manual-tour presentation uses the existing search-panel width for a read-only example beside the short explanation, with shared focus and explicit dismissal.",
     "control": false
   },
   {

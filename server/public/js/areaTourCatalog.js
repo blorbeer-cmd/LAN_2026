@@ -1,5 +1,5 @@
-// Short, read-only explanations. Targets are existing controls, never actions
-// to invoke. Missing targets use an explicitly labelled example in the dialog.
+// Short, read-only explanations accompanied by temporary example scenes.
+// Targets are existing controls, never product actions to invoke.
 const s = (id, title, text, target = '', options = {}) => ({ id, title, text, target, ...options });
 const c = (id, title, steps, options = {}) => ({ id, title, steps, ...options });
 const t = (title, chapters, options = {}) => ({ title, chapters, ...options });
@@ -62,6 +62,9 @@ export const AREA_TOURS = {
     ]),
     c('manage', 'Umfrage verwalten', [
       s('start', 'Umfrage starten', 'Bestätigte Teilnehmer dürfen eine Umfrage erstellen. Wähle Antwortart, Optionen, Anonymität und die Sichtbarkeit des Zwischenstands.', '#new-event-poll'),
+      s('mode', 'Antwortart festlegen', 'Im Erstellen-Dialog legst du fest, ob Termine bewertet, eine oder mehrere Optionen gewählt oder Punkte von 0 bis 5 vergeben werden.'),
+      s('choices', 'Optionen eintragen', 'Trage die möglichen Antworten ein. Im Beispiel stehen Pizza und Burger zur Wahl. Zusätzliche Optionen ergänzen die Auswahl.'),
+      s('privacy', 'Sichtbarkeit festlegen', 'Anonymität verbirgt die Namen. Zwischenstand verbergen steuert, wer die Ergebnisse während der laufenden Runde sehen kann.'),
       s('deadline', 'Frist und Erinnerungen', 'Mit einer Frist werden fehlende Antworten 48 und zwei Stunden vorher erinnert. Ohne Frist gibt es diese automatischen Erinnerungen nicht.', '.event-poll-card'),
       s('manual', 'Gezielt erinnern', 'Als Ersteller kannst du ausstehende Antworten manuell erinnern. Wiederholungen aktualisieren den vorhandenen Hinweis pro Person statt neue Einträge anzuhäufen.', '.event-poll-card'),
       s('options', 'Optionen ändern', 'Deaktivieren erhält bisherige Stimmen, verhindert aber neue Antworten und einen Sieg. Löschen entfernt auch die Stimmen dieser Option und benötigt eine Bestätigung.', '.event-poll-card'),
@@ -70,6 +73,7 @@ export const AREA_TOURS = {
     ]),
   ]),
   arrivals: t('An- & Abreise', [c('travel', 'Zeiten und Fahrgemeinschaften', [
+    s('purpose', 'Die Orga kann besser planen', 'Eingetragene Ankunftszeiten, Abfahrtszeiten und Fahrgemeinschaften helfen der Orga beim Planen.', '#arrival-form'),
     s('mine', 'Eigene Zeiten speichern', 'Trage Ankunft, Abreise und eine Notiz ein. Vorbelegte Eventzeiten sind zunächst Formularvorschläge und werden erst mit Speichern übernommen.', '#arrival-form'),
     s('all', 'Alle Zeiten vergleichen', 'Alle Zeiten zeigt die bestätigten Teilnehmer. Fehlende Angaben bleiben offen; mit Fahrername kennzeichnet eine Fahrgemeinschaft.', '#arrivals-times-title'),
     s('offer', 'Fahrt anbieten', 'Anreise und Abreise haben getrennte Fahrgemeinschaften. Freie Plätze zählt nur die Mitfahrer; als Fahrer bist du zusätzlich dabei.', '[data-carpool-direction]'),
@@ -88,6 +92,8 @@ export const AREA_TOURS = {
   checklist: t('To-Do', [c('tasks', 'Aufgaben und Mitbringen', [
     s('pool', 'Gemeinsamer Aufgabenpool', 'Aufgaben und Mitbring-Anfragen gehören zum aktiven Event. Home sammelt daraus deine offenen Verpflichtungen unter Meine To-Dos.', '#checklist-task-search'),
     s('create', 'To-Do erstellen', 'Wähle Aufgabe oder Mitbring-Anfrage, ergänze Titel, Beschreibung und bei Bedarf eine Fälligkeit. Neue Einträge starten ohne zugewiesene Person.', '#checklist-new-todo-btn'),
+    s('title', 'Titel und Beschreibung', 'Im Erstellen-Dialog benennst du die Aufgabe und beschreibst, was gebraucht wird. Im Beispiel werden Mehrfachsteckdosen mit mindestens sechs Steckplätzen gesucht.'),
+    s('deadline', 'Fälligkeit im Dialog', 'Fällig bis ist optional. Das Datum hilft bei der Planung und steuert Hinweise wie Heute oder Überfällig.'),
     s('claim', 'Übernehmen', 'Übernehmen trägt dich mit optionalem Kommentar ein. Mehrere Personen können dieselbe Aufgabe übernehmen; der Ersteller wird über fremde Übernahmen informiert.', '[data-claim-task]'),
     s('release', 'Wieder abgeben', 'Abgeben entfernt nur deine Beteiligung. Gibt die letzte Person ab, steht die Aufgabe wieder offen im gemeinsamen Pool.', '[data-release-task]'),
     s('due', 'Fälligkeit verstehen', 'Die Fälligkeit steuert Hinweise wie Heute oder Überfällig. Sie erzeugt keine allgemeine wiederkehrende Push-Erinnerung.', '[data-checklist-task]'),
@@ -97,14 +103,17 @@ export const AREA_TOURS = {
   gameCatalog: t('Spiele', [
     c('ratings', 'Bock, Skill und Auswahl', [
       s('tabs', 'Katalog oder Vorschlag', 'Katalog enthält freigegebene Spiele. Vorschläge können bereits bewertet werden, stehen aber noch nicht für neue Votes, Auslosungen oder Turniere zur Auswahl.', '[data-tab]'),
-      s('bock', 'Bock bewerten', 'Bock beschreibt deine Lust auf das Spiel. Der Wert beeinflusst Durchschnitt, Top 10 und die Vorbelegung neuer Stimmzettel.', '[data-kind="bock"]'),
+      s('bock', 'Bock bewerten', 'Der Wert zeigt, wie viel Lust du auf das Spiel hast. Er wird in Spiele-Votes vorbelegt. Deinen Bocklevel aus Votes kannst du direkt hier übernehmen.', '[data-kind="bock"]'),
       s('skill', 'Skill bewerten', 'Skill unterstützt die automatische Teamverteilung. 0 bedeutet nie gespielt und zählt als 0; eine fehlende Bewertung verwendet bei der Auslosung den Ersatzwert 3.', '[data-kind="skill"]'),
       s('save', 'Direkt gespeichert', 'Ein Druck auf eine Zahl speichert die persönliche Wertung sofort. Keine Zahl bedeutet noch unbewertet; 0 ist eine bewusste Bewertung.', '[data-rating-value]'),
       s('suggestion', 'Skill-Vorschlag übernehmen', 'Aus erfassten Spielergebnissen kann ein Skill-Vorschlag entstehen. Erst wenn du ihn antippst, ersetzt er deine eigene Wertung.', '[data-apply-suggestion]'),
-      s('filters', 'Offene Bewertungen finden', 'Bock offen und Skill offen zeigen fehlende Wertungen. Beide zusammen verlangen, dass beide Werte fehlen; ausgewählte Genres werden dagegen alternativ berücksichtigt.', '#game-catalog-search'),
     ]),
     c('catalog', 'Spiele vorschlagen und pflegen', [
       s('propose', 'Spiel vorschlagen', 'Ergänze Titel, Plattform, Links, Genres und Hinweise. Die Community kann Bock und Skill bereits vor der Freigabe bewerten.', '#suggest-new'),
+      s('platform', 'Plattform und Gameplay', 'Im Dialog verlinkst du die Plattform und optional ein Gameplay-Video. Ohne YouTube-Link wird eine automatische Suche angeboten.'),
+      s('genres', 'Genres auswählen', 'Wähle die passenden Genres im Dialog. Sie helfen später beim Filtern und Auswählen der Spiele.'),
+      s('notes', 'Besonderheiten notieren', 'Info erklärt, was andere vor dem Spielen wissen sollten, etwa benötigte Controller oder zusätzliche Vorbereitung.'),
+      s('neighbors', 'Sitznachbarn vorbelegen', 'Sitznachbarn bei Auslosung legt die Voreinstellung dieses Spiels fest. Bei einer konkreten Auslosung kannst du sie weiterhin ändern.'),
       s('details', 'Spieldetails ansehen', 'Der Spielname öffnet die Details. Plattform- und Gameplay-Links helfen bei der Entscheidung; zusätzliche Hinweise erklären Besonderheiten des Spiels.', '.game-row-detail-trigger'),
       s('promote', 'Für neue Runden freigeben', 'Berechtigte Personen übernehmen Vorschläge in den Katalog. Danach erscheint das Spiel in den Auswahlen für neue Abstimmungen und Matches.', '.game-row-detail-trigger', { adminOnly: true }),
       s('process', 'Automatische Erkennung', 'Admins pflegen die Prozessnamen zentral. Der Agent erhält diese Zuordnungen vom Server; die Teilnehmer müssen ihre Installation dafür nicht neu einrichten.', '.game-track-indicator', { adminOnly: true, feature: 'tracking' }),
@@ -114,9 +123,13 @@ export const AREA_TOURS = {
   votes: t('Vote', [
     c('vote', 'Abstimmen und Bock übernehmen', [
       s('start', 'Eine Runde starten', 'Jedes Mitglied kann eine Runde starten. Die Spieleauswahl beginnt mit den Top 10 nach Bock; Suche und Filter ändern nur die sichtbaren Zeilen.', '#votes-new'),
+      s('setup-info', 'Titel und Beschreibung', 'Im Dialog Abstimmung starten benennst du die Runde und ergänzt bei Bedarf Hinweise, etwa die gewünschte Spielerzahl.'),
+      s('setup-privacy', 'Anonymität und Zwischenstand', 'Lege im Erstellen-Dialog fest, ob Namen verborgen bleiben und ob Ergebnisse erst nach Rundenende erscheinen.'),
+      s('setup-games', 'Spiele auswählen', 'Wähle die Spiele für diese Runde. Abstimmung starten öffnet anschließend die Runde für die Teilnehmer; es gibt noch keine abgegebenen Stimmen.'),
       s('prefill', 'Bock als Entwurf', 'Deine vorhandenen Bock-Werte sind vorgewählt. Noch zählt keine Stimme: Erst Speichern gibt den vollständigen Stimmzettel ab.', '.event-poll-card'),
       s('zero', 'Jedes Spiel bewerten', 'Bewerte alle Spiele von 0 bis 5. 0 heißt Spiele ich nicht; ohne ausgewählte Zahl fehlt die Antwort.', '.rating-scale'),
       s('adopt', 'Bock übernehmen', 'Mit Bock übernehmen werden die Stimmen zusätzlich als persönliche Bock-Werte im Katalog gespeichert. Ohne Häkchen gelten sie nur für diese Runde.', '[data-vote-adopt-bock]'),
+      s('submitted', 'Beispiel: Stimme gespeichert', 'Nach Speichern zählt dein vollständiger Stimmzettel. Mit gesetztem Bock-Häkchen stehen dieselben Werte jetzt auch bei deinen Spielen im Katalog.'),
       s('anonymous-adopt', 'Anonymität und Bock', 'Auch in einer anonymen Runde kannst du Bock übernehmen. Die Stimmabgabe bleibt anonym; die übernommenen persönlichen Bock-Werte werden im Katalog sichtbar.', '.event-poll-card'),
       s('replace', 'Stimme ändern', 'Solange die Runde läuft, kannst du erneut speichern. Die neue Stimmabgabe ersetzt deine vorherige vollständig.', '.event-poll-card'),
       s('hidden', 'Zwischenstand verstehen', 'Bei verborgenem Zwischenstand bleiben die Verteilung und Einzelstimmen während der Runde verborgen. Nach dem Ende erscheinen Ergebnisse; anonyme Runden nennen keine Personen.', '.event-poll-card'),
@@ -127,7 +140,7 @@ export const AREA_TOURS = {
       s('match', 'Match vorbereiten', 'Match generieren übernimmt das gewählte Gewinner-Spiel und passende Teilnehmer in die Auslosung. Du kannst die Auswahl noch ändern; die Teams werden nicht sofort ausgelost.', '[data-generate-vote-match], #votes-generate-match'),
       s('players', 'Welche Spieler kommen mit?', 'In der Punkterunde werden Personen mit mindestens einem Punkt für den Gewinner übernommen. Nach einer Stichwahl werden dessen Ablehnungen aus der zugehörigen Vorrunde berücksichtigt.', '[data-generate-vote-match], #votes-generate-match'),
       s('limits', 'Grenzen der Übernahme', 'Anonyme Runden bieten keine personenbezogene Match-Übernahme. Ein laufender Captain Draft wird durch einen Vote-Einstieg nicht überschrieben.', '[data-generate-vote-match], #votes-generate-match'),
-      s('history', 'Später wiederfinden', 'Letzter Vote und Historie behalten abgeschlossene Ergebnisse. Top 10 zeigt dagegen die aktuellen Bock-Werte aus dem Katalog.', '.vote-page-section'),
+      s('history', 'Nur abgegebene Stimmen bleiben', 'Nur Votes mit abgegebenen Stimmen bleiben in der Historie erhalten. Eine beendete Runde ohne Stimmen verschwindet. Top 10 zeigt die aktuellen Bock-Werte.', '.vote-page-section'),
     ]),
   ]),
   matchmaking: t('Match', [
@@ -170,6 +183,8 @@ export const AREA_TOURS = {
     c('order', 'Mitbestellen', [
       s('open', 'Offene Bestellung finden', 'Öffne die passende Sammelbestellung. Abgeschickte und geschlossene Bestellungen liegen in der Historie.', '#food-open-title'),
       s('item', 'Deine Position hinzufügen', 'Trage Gericht, Menge und bei Bedarf den Einzelpreis ein. Fehlende Preise werden genannt und verhindern einen vollständigen Zahlungsbetrag.', '[data-add-item-form]'),
+      s('quantity', 'Menge im Beispiel', 'Zwei Margherita erscheinen als eine Position mit Menge 2. Hinzufügen übernimmt diese Position in deine Gruppe innerhalb der Bestellung.'),
+      s('price', 'Einzelpreis und Summe', 'Der Einzelpreis gilt für ein Gericht. Zwei Pizzen zu je 8 Euro ergeben 16 Euro; hinterlegtes Trinkgeld kommt zum persönlichen Anteil hinzu.'),
       s('sum', 'Deinen Anteil prüfen', 'Deine Gruppe sammelt Positionen und Gesamtbetrag. Hinterlegtes Trinkgeld ist bereits in der persönlichen Summe berücksichtigt.', '[data-group-toggle]'),
       s('freeze', 'Nach dem Abschicken', 'Abschicken friert die Positionen ein. Änderungen sind erst nach erneutem Öffnen möglich; deine offene Zahlung erscheint auf Home.', '[data-close-order]'),
     ]),
@@ -182,6 +197,9 @@ export const AREA_TOURS = {
     ]),
     c('organise', 'Bestellung organisieren', [
       s('create', 'Bestellung öffnen', 'Lege Titel, Speisekarte, Hinweise, PayPal und geplanten Versand fest. Das Anlegen informiert die berechtigten Teilnehmer.', '#order-new-btn'),
+      s('links', 'Speisekarte und Zahlung', 'Im Erstellen-Dialog hinterlegst du Speisekarte und PayPal-Empfänger. Der geplante Versand ist eine Zeitangabe und bestellt nichts automatisch.'),
+      s('tip', 'Trinkgeld vorbelegen', 'Trinkgeld in Prozent wird auf die persönlichen Summen angewendet. Im Beispiel werden aus 16 Euro mit zehn Prozent Trinkgeld 17,60 Euro.'),
+      s('edit', 'Bestellinformationen ändern', 'Info bearbeiten öffnet Versandzeit, Hinweise, Speisekarte, PayPal und Trinkgeld erneut. Änderungen können die angezeigten Zahlungsbeträge verändern.', '[data-edit-details]'),
       s('list', 'Bestellübersicht nutzen', 'Bestellübersicht fasst gleiche Gerichte nach Preis zusammen. Die Liste hilft bei der tatsächlichen Bestellung und zeigt keine persönlichen Zahlungsstände.', '[data-open-order-list]'),
       s('send', 'Selbst beim Lieferdienst bestellen', 'Abschicken sperrt hier die Liste. Es sendet keine Bestellung an den Lieferdienst; bestelle anschließend selbst mit der Bestellübersicht.', '[data-close-order]'),
       s('finalise', 'Abrechnung abschließen', 'Schließen sperrt zusätzlich Zahlungen und Bestellinformationen. Prüfe vorher die offenen Beträge und fehlenden Preise.', '[data-finalize-order]'),

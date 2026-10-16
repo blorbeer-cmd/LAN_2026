@@ -4,6 +4,7 @@ import { openModal } from './modal.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './format.js';
 import { profileRow } from './profileRow.js';
+import { exampleForTourStep, tourExampleHtml } from './areaTourExamples.js';
 
 export function stepsForTour(tour, chapterId = 'all') {
   return tour.chapters.filter((chapter) => chapterId === 'all' || chapter.id === chapterId)
@@ -67,7 +68,7 @@ export function createAreaTours({ container, getContext }) {
         .catch(() => { /* A help chunk must not interrupt a playable game. */ })
         .finally(() => { arcadeLoading = null; });
     }
-    attach(container.querySelector('h1'), context.view, container, context);
+    attach(container.querySelector('h1, h2.view-title'), context.view, container, context);
     if (active) {
       if (!active.source.isConnected || !definition(active.key, context)) stop();
       else schedulePosition();
@@ -134,6 +135,7 @@ export function createAreaTours({ container, getContext }) {
       .filter(Boolean).map((element) => ({ element, inert: element.inert }));
     active = {
       key, source, trigger, accountId: context.accountId, chapterId, steps,
+      tour, scope,
       index: resumeTourIndex(steps, progress), frozen, openedDetails: new Map(),
       scrollX: window.scrollX, scrollY: window.scrollY, dialog: null, ring: null, shade: null,
       scrollState: [container, ...document.querySelectorAll('.modal')]
@@ -141,6 +143,7 @@ export function createAreaTours({ container, getContext }) {
     };
     const handle = openModal(tour.title, '', {
       isolateKeys: true,
+      closeOnBackdrop: false,
       onClose: finish,
       onMount: (el) => {
         el.classList.add('area-tour-backdrop');
@@ -155,7 +158,7 @@ export function createAreaTours({ container, getContext }) {
         active.dialog = el;
         active.ring = ring;
         active.shade = shade;
-        el.querySelector('.modal-body').setAttribute('aria-live', 'polite');
+        el.querySelector('[data-close]').setAttribute('aria-label', 'Tour beenden');
       },
     });
     active.close = handle.close;
@@ -167,19 +170,26 @@ export function createAreaTours({ container, getContext }) {
     if (!active) return;
     const { steps, index, dialog, accountId, key, chapterId } = active;
     const step = steps[index];
+    const example = exampleForTourStep(key, active.tour, step);
     saveTourProgress(accountId, key, chapterId, step.id);
     saveTourProgress(accountId, key, 'last', chapterId);
     const heading = dialog.querySelector('.modal-header h2');
     heading.textContent = step.title;
     dialog.querySelector('.modal').setAttribute('aria-label', `${step.title} · Schritt ${index + 1} von ${steps.length}`);
     dialog.querySelector('.modal-body').innerHTML = `
-      <p class="onboarding-progress">Schritt ${index + 1} von ${steps.length}</p>
-      <p>${escapeHtml(step.text)}</p>
-      <p class="muted" data-tour-example hidden>Beispiel: Diese Funktion ist hier gerade nicht sichtbar.</p>
-      <div class="area-tour-actions">
-        <button type="button" class="btn btn-sm" data-tour-back ${index === 0 ? 'disabled' : ''}>Zurück</button>
-        <button type="button" class="btn btn-primary btn-sm" data-tour-next>${index === steps.length - 1 ? 'Abschließen' : 'Weiter'}</button>
+      ${tourExampleHtml(example)}
+      <div class="area-tour-explanation">
+        <div aria-live="polite">
+          <p class="onboarding-progress">Schritt ${index + 1} von ${steps.length}</p>
+          <p>${escapeHtml(step.text)}</p>
+        </div>
+        <div class="area-tour-actions">
+          <button type="button" class="btn btn-sm" data-tour-end>Tour beenden</button>
+          <button type="button" class="btn btn-sm" data-tour-back ${index === 0 ? 'disabled' : ''}>Zurück</button>
+          <button type="button" class="btn btn-primary btn-sm" data-tour-next>${index === steps.length - 1 ? 'Abschließen' : 'Weiter'}</button>
+        </div>
       </div>`;
+    dialog.querySelector('[data-tour-end]').addEventListener('click', () => active.close());
     dialog.querySelector('[data-tour-back]').addEventListener('click', () => { active.index -= 1; renderStep(); });
     dialog.querySelector('[data-tour-next]').addEventListener('click', () => {
       if (active.index === active.steps.length - 1) {
@@ -188,6 +198,8 @@ export function createAreaTours({ container, getContext }) {
       } else { active.index += 1; renderStep(); }
     });
     revealTarget(true);
+    const exampleFocus = dialog.querySelector('[data-tour-example-focus]');
+    if (exampleFocus) exampleFocus.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     dialog.querySelector('[data-tour-next]').focus({ preventScroll: true });
   }
 
@@ -196,24 +208,23 @@ export function createAreaTours({ container, getContext }) {
     const step = active.steps[active.index];
     const candidates = step.target ? [...document.querySelectorAll(step.target)]
       .filter((element) => !active.dialog.contains(element) && (active.source.contains(element) || element.closest('.topbar'))) : [];
-    let target = candidates.find((element) => element.getClientRects().length > 0);
-    if (!target) {
-      for (const candidate of candidates) {
-        for (let parent = candidate.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
-          if (parent.tagName === 'DETAILS' && !parent.open) {
-            if (!active.openedDetails.has(parent)) {
-              const data = [...parent.attributes].find((attribute) => attribute.name.startsWith('data-'));
-              const selector = parent.id ? `#${CSS.escape(parent.id)}`
-                : data ? `[${data.name}="${CSS.escape(data.value)}"]` : null;
-              active.openedDetails.set(parent, { open: parent.open, selector });
-            }
-            parent.open = true;
+    let target = null;
+    for (const candidate of candidates) {
+      // Also open a details target itself and ancestors of a visible summary.
+      // Their headings have a rectangle even while their content is collapsed.
+      for (let parent = candidate; parent && parent !== document.body; parent = parent.parentElement) {
+        if (parent.tagName === 'DETAILS' && !parent.open) {
+          if (!active.openedDetails.has(parent)) {
+            const data = [...parent.attributes].find((attribute) => attribute.name.startsWith('data-'));
+            const selector = parent.id ? `#${CSS.escape(parent.id)}`
+              : data ? `[${data.name}="${CSS.escape(data.value)}"]` : null;
+            active.openedDetails.set(parent, { open: parent.open, selector });
           }
+          parent.open = true;
         }
-        if (candidate.getClientRects().length) { target = candidate; break; }
       }
+      if (candidate.getClientRects().length) { target = candidate; break; }
     }
-    active.dialog.querySelector('[data-tour-example]').hidden = !step.target || Boolean(target);
     if (!target && !step.target) target = active.source.querySelector('h1, h2');
     active.target = target;
     if (target && scroll) target.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -252,12 +263,13 @@ export function createAreaTours({ container, getContext }) {
     active = null;
     cancelAnimationFrame(frame);
     frame = 0;
+    const sameContext = contextKey(getContext()) === previous.scope;
     previous.frozen.forEach(({ element, inert }) => { element.inert = inert; });
     previous.openedDetails.forEach(({ open, selector }, element) => {
-      const current = element.isConnected ? element : selector ? previous.source.querySelector(selector) : null;
+      const current = element.isConnected ? element : sameContext && selector ? previous.source.querySelector(selector) : null;
       if (current) current.open = open;
     });
-    if (contextKey(getContext()) === scope && previous.source.isConnected) {
+    if (sameContext && previous.source.isConnected) {
       previous.scrollState.forEach(({ element, left, top }) => {
         if (element.isConnected) { element.scrollLeft = left; element.scrollTop = top; }
       });

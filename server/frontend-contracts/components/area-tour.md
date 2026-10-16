@@ -11,6 +11,7 @@ kurzen Texten. Sie verändern keine Fachdaten und sind getrennt vom Erstlogin-On
 - `public/js/areaTourCatalog.js`: Kerntexte, Kapitel und Rollen-/Featurefilter.
 - `public/js/arcade/areaTours.js`: erst beim Arcade-Aufruf geladenes Spielekapitel.
 - `public/js/areaTourProgress.js`: versionierter kontogebundener Gerätespeicher.
+- `public/js/areaTourExamples.js`: lokale Beispielszenen und escaped Formular-/Eintragsdarstellung.
 - `public/js/modal.js`: gemeinsames Modal mit unverändertem Fokusfang und Schließverhalten.
 
 ## 3. CSS-Eigentümerschaft
@@ -24,8 +25,11 @@ Spieltitel aus; außerhalb des Vollbilds gilt wieder die normale Titelzeile.
 
 Der Einstieg öffnet ein Standardmodal mit Tourstart und bei mehreren Kapiteln deren Auswahl.
 Die laufende Tour verwendet `.area-tour-backdrop`: Dialog oben oder unten und eine separate
-nichtinteraktive Hervorhebung. Fehlt das benötigte Element, nennt der Dialog ausdrücklich ein
-Beispiel und dimmt den gesamten Hintergrund. Schritte ohne Ziel erklären den Bereich allgemein.
+nichtinteraktive Hervorhebung. Jeder Schritt zeigt eine als Beispiel markierte Szene mit
+Formularfeldern oder Einträgen. Schritte desselben Ablaufs zeigen etwa Erstellen, Stimmzettel
+und Ergebnis. Die Beispiele bestehen ausschließlich aus lokalen Daten und deaktivierten
+Controls; sie öffnen keine echten Produktformulare und rufen keine Produktaktionen auf.
+Fehlt das Ziel im aktuellen Arbeitsbereich, bleibt die vollständige Beispielsicht verfügbar.
 
 ## 5. Erlaubte Anpassungen
 
@@ -38,9 +42,13 @@ Produktaktionen werden weder aufgerufen noch durch programmatische Klicks ausgel
 - `registry:area-tour-heading`: `.area-tour-heading` stellt Titel und Standard-Iconbutton mit
   `--space-1` Abstand nebeneinander. Die 32-px-Höhe und mindestens 44-px-Breite bleiben beim
   bestehenden Iconbutton. Der Titel darf umbrechen.
-- `registry:area-tour-overlay` besitzt die nichtinteraktiven Container und Aktionszeilen.
-- `registry:area-tour-modal`: Der Schrittdialog behält die Standardmodalbreite von maximal
-  480 px. `--space-4` hält Abstand zu den Viewportkanten; seine maximale Höhe berücksichtigt
+- `registry:area-tour-overlay` besitzt die nichtinteraktiven Container, Beispielszenen,
+  Erklärspalte und Aktionszeilen. Die Szene verwendet `--space-3`, Basisrahmen und `--radius-sm`.
+  Das erklärte Feld erhält einen Akzentrahmen am umgebenden Container, nicht am Control.
+- `registry:area-tour-modal`: Der Schrittdialog nutzt maximal `--search-panel-width`, damit
+  Beispiel und Erklärung ab `--bp-md` in zwei gleich breiten Spalten lesbar bleiben.
+  Darunter stehen sie untereinander. Die Beispielszene scrollt lokal mit maximal 32dvh,
+  ab `--bp-md` 55dvh. `--space-4` hält Abstand zu den Viewportkanten; die maximale Dialoghöhe berücksichtigt
   `--space-8`. Lange Inhalte scrollen im Dialog. Das Ziel entscheidet über Platzierung oben oder
   unten. Der Backdrop besitzt weder Unschärfe noch Einblendanimation, damit die Zielstelle sichtbar
   bleibt. Buttons behalten die Basisgeometrie; die Aktionen können als ganze Controls umbrechen.
@@ -61,12 +69,17 @@ Der Fragezeichen-Button hat den Namen „Bereich kennenlernen“, konkret mit de
 Bereichstitel, `aria-haspopup="dialog"` und den bestehenden sichtbaren Tastaturfokus.
 Im Arcade-Vollbild ist er weder sichtbar noch fokussierbar. Nach Verlassen des Vollbilds
 ist er wieder mit der Tastatur erreichbar.
-Die Tour verwendet `openModal` für Escape, X, Backdrop, zyklischen Fokusfang und gestapelte
-Dialoge. Der Appinhalt und darunterliegende Dialoge werden während der Tour inert; ihre vorherigen
+Die Tour verwendet `openModal` für Escape, X, zyklischen Fokusfang und gestapelte Dialoge.
+Ein Klick außerhalb schließt nur die Auswahl, niemals die laufende Tour. Diese endet bewusst
+über „Tour beenden“, X, Escape oder den letzten Schritt. Beispielcontrols sind deaktiviert und
+damit keine zusätzlichen Tab-Stopps. Die beschriftete Szene bleibt für assistive Technik lesbar.
+Der Appinhalt und darunterliegende Dialoge werden während der Tour inert; ihre vorherigen
 Zustände werden beim Ende wiederhergestellt. Die Erklärung und Schrittzahl werden angekündigt;
 Weiter erhält nach jedem Schritt den Fokus. Der Ring ist für assistive Technik verborgen.
 Scrollen zum Ziel benötigt keine Animation. Beim Ende werden die zuvor geschlossenen nativen
-Details und die Scrollposition soweit noch vorhanden wiederhergestellt.
+Details und die Scrollposition soweit noch vorhanden wiederhergestellt. Auch ein Ziel in einem
+sichtbaren Summary öffnet dessen Details-Inhalt. Die Beispielszene verschwindet vollständig.
+Native Formularwerte der echten Ansicht werden durch keine Beispielszene verändert.
 
 ## 9. Repräsentative Aufrufer
 
@@ -81,7 +94,9 @@ Rollen-/Featurefilter. `areaTourProgress.test.js` prüft Kontotrennung, Wiederau
 veränderte Schrittlisten und blockierten/ungültigen Speicher.
 Die bestehenden Shell-Browser-Fixtures prüfen Start ohne automatische Anzeige, Wiederaufnahme
 nach Reload, schmale und breite Fenster, Fokusfang/-rückgabe, Hintergrundaktualisierung,
-Beispielzustand und Info-Dialogstapel. Tour-Schritte dürfen keine mutierenden API-Aufrufe senden.
+Beispielzustand und Info-Dialogstapel, Erstellen-Beispiele in Spiele/Vote/Umfragen/To-Do,
+Match-Einstieg an h2 sowie Öffnen/Wiederherstellen der Anreise-Details. Ein Backdrop-Klick muss
+die Tour offen halten; Beenden entfernt Beispiele. Tour-Schritte dürfen keine mutierenden API-Aufrufe senden.
 Der bestehende Tetris-Vollbildfall prüft zusätzlich, dass die Hilfe im Vollbild keinen unsichtbaren
 Fokus erhalten kann und danach wieder per Tastatur geöffnet werden kann.
 

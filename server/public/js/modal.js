@@ -49,7 +49,7 @@ function trapTabFocus(event, backdrop) {
 // title (a dialog's primary action, e.g. "Eintrag anlegen").
 // closeButton: false drops the header's X for a pure reference dialog;
 // Escape and a tap outside still close it.
-export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, headerAction = '', closeButton = true, tourKey = null, isolateKeys = false } = {}) {
+export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, headerAction = '', closeButton = true, closeOnBackdrop = true, tourKey = null, isolateKeys = false } = {}) {
   const previousFocus = document.activeElement;
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -112,7 +112,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
     pointerDownOnBackdrop = e.target === backdrop;
   });
   backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop && pointerDownOnBackdrop) requestClose();
+    if (closeOnBackdrop && e.target === backdrop && pointerDownOnBackdrop) requestClose();
   });
   backdrop.querySelector('[data-close]')?.addEventListener('click', requestClose);
   document.addEventListener('keydown', onKeydown, isolateKeys);
