@@ -39,14 +39,14 @@ import { withStepUp } from '../reauth.js';
 // valid selected event. Technical reachability and version remain separate;
 // recognized game processes are neither stored nor shown without consent.
 const TRACKING_DETAILS = [
-  ['Was der Agent liest', 'Der Agent fragt deinen PC nur während eines gültigen Tracking-Kontexts nach den Spielen aus der veröffentlichten Spieleliste. Andere Programme, Fenstertitel oder Dateien liest er nicht aus.'],
-  ['Wann daraus Daten entstehen', 'Das ausgewählte Event muss laufen, du musst zugesagt haben, die Orga muss Tracking aktiviert haben und deine Einwilligung muss gültig sein. Ohne diesen Kontext werden keine erkannten Spiele übertragen, gespeichert oder der Administration angezeigt. Technische Erreichbarkeit und Agent-Version bleiben davon getrennt.'],
+  ['Was der Agent liest', 'Der Agent fragt deinen PC nur während eines gültigen Spiele-Tracking-Kontexts nach den Spielen aus der veröffentlichten Spieleliste. Andere Programme, Fenstertitel oder Dateien liest er nicht aus.'],
+  ['Wann daraus Daten entstehen', 'Das ausgewählte Event muss laufen, du musst zugesagt haben, die Orga muss Spiele-Tracking aktiviert haben und deine Einwilligung muss gültig sein. Ohne diesen Kontext werden keine erkannten Spiele übertragen, gespeichert oder der Administration angezeigt. Technische Erreichbarkeit und Agent-Version bleiben davon getrennt.'],
   ['Pausieren', 'Stoppt die Erfassung sofort: Der Agent meldet dann kein laufendes Spiel und keine Spielzeit mehr, und du erscheinst auf dem Board als „pausiert“. Bereits erfasste Spielzeit bleibt erhalten. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.'],
-  ['Erweitertes Tracking', 'Meldet zusätzlich, ob eines dieser Spiele gerade im Vordergrund ist und wie lange du keine Taste und keine Maus benutzt hast. Ab zwei Minuten ohne Eingabe zählt die Zeit nicht mehr als aktiv. So wird echte Spielzeit von einem nur nebenbei offenen Spiel unterschieden. Fenster außerhalb des Spielekatalogs bleiben auch hier ungelesen. Die Wahl gilt für den heruntergeladenen Agent und lässt sich später in der Agent-Steuerung ändern.'],
+  ['Erweitertes Spiele-Tracking', 'Meldet zusätzlich, ob eines dieser Spiele gerade im Vordergrund ist und wie lange du keine Taste und keine Maus benutzt hast. Ab zwei Minuten ohne Eingabe zählt die Zeit nicht mehr als aktiv. So wird echte Spielzeit von einem nur nebenbei offenen Spiel unterschieden. Fenster außerhalb des Spielekatalogs bleiben auch hier ungelesen. Die Wahl gilt für den heruntergeladenen Agent und lässt sich später in der Agent-Steuerung ändern.'],
 ];
 
 const AUTO_CONSENT_HELP =
-  'Deine Zustimmung gilt automatisch, sobald ein neues LAN-Event oder eine Gruppe für die Spielerfassung freigeschaltet wird. Einzelne Zustimmungen kannst du jederzeit widerrufen. Gruppen haben kein Enddatum: Dort läuft die Erfassung bis zum Widerruf. Ändert sich der Einwilligungstext, wirst du erneut gefragt.';
+  'Deine Zustimmung gilt automatisch, sobald ein neues LAN-Event oder eine Gruppe für Spiele-Tracking freigeschaltet wird. Einzelne Zustimmungen kannst du jederzeit widerrufen. Gruppen haben kein Enddatum: Dort läuft die Erfassung bis zum Widerruf. Ändert sich der Einwilligungstext, wirst du erneut gefragt.';
 const PRIVACY_OVERVIEW =
   'Respawn speichert Profil- und Kontodaten für Anmeldung und Teilnahme, Event- und Zahlungsstatus für die Organisation, freiwillige Spiel- und Aktivitätsdaten für Live-Status und Auswertung, Nachrichten und Push-Status für Kommunikation sowie begrenzte technische Protokolle für Betrieb und Sicherheit. Sichtbarkeit richtet sich nach Eventteilnahme und Rolle.';
 const PRIVACY_EXPORT_HELP =
@@ -88,7 +88,7 @@ function openPrivacyDetails(trackingConsent) {
     'Datenschutz',
     `<div class="stack profile-tracking-details">
        <div><strong>Was Respawn speichert</strong><p>${PRIVACY_OVERVIEW}</p></div>
-       <div><strong>Freiwillige Spielerfassung</strong><p>${escapeHtml(trackingConsent.text)}</p></div>
+       <div><strong>Freiwilliges Spiele-Tracking</strong><p>${escapeHtml(trackingConsent.text)}</p></div>
        <div><strong>Vorab-Zustimmung</strong><p>${AUTO_CONSENT_HELP}</p></div>
        <div><strong>Datenexport</strong><p>${PRIVACY_EXPORT_HELP}</p></div>
      </div>`,
@@ -117,6 +117,20 @@ function renderPrivacySection() {
   // anything and is deliberately not listed.
   const { trackingConsent } = privacyState.data;
   const version = escapeHtml(trackingConsent.textVersion);
+  // Stored game-tracking data is deleted right beside the consent decision of
+  // its event. Each event offers the button once, on its first row; an event
+  // that holds data but no longer has a consent row gets a row of its own.
+  const trackingData = new Map((privacyState.data.trackingData ?? []).map((entry) => [entry.eventId, entry]));
+  const withData = (eventId, meta, consentButton) => {
+    const entry = trackingData.get(eventId);
+    if (!entry) return { meta, action: consentButton };
+    trackingData.delete(eventId);
+    return {
+      meta: `${meta} · ${formatTrackedDuration(entry.trackedMs)}`,
+      action: `<button type="button" class="btn btn-sm" data-delete-tracking-data="${escapeHtml(eventId)}">Daten löschen</button>${consentButton}`,
+      className: 'has-action-pair',
+    };
+  };
   // A row only counts as active when the server matched the current purpose
   // and text version, so an active row always carries that version.
   const consentRows = trackingConsent.events
@@ -125,8 +139,11 @@ function renderPrivacySection() {
       const active = Boolean(event.consentId);
       return profileRow({
         title: escapeHtml(event.eventName),
-        meta: active ? `Spielerfassung erlaubt · Text ${escapeHtml(event.textVersion)}` : 'Spielerfassung nicht erlaubt',
-        action: `<button type="button" class="btn btn-sm" data-consent-event="${escapeHtml(event.eventId)}" aria-pressed="${active}">${active ? 'Widerrufen' : 'Erlauben'}</button>`,
+        ...withData(
+          event.eventId,
+          active ? `Spiele-Tracking erlaubt · Text ${escapeHtml(event.textVersion)}` : 'Spiele-Tracking nicht erlaubt',
+          `<button type="button" class="btn btn-sm" data-consent-event="${escapeHtml(event.eventId)}" aria-pressed="${active}">${active ? 'Widerrufen' : 'Erlauben'}</button>`,
+        ),
       });
     });
   const auto = trackingConsent.autoConsent ?? {};
@@ -142,22 +159,46 @@ function renderPrivacySection() {
   const legacyRows = [
     ...(trackingConsent.legacyEvents ?? []).filter((event) => event.eventId !== 'instance-base-event').map((event) => profileRow({
       title: `Frühere Einwilligung: ${escapeHtml(event.eventName)}`,
-      meta: event.textVersion ? `Text ${escapeHtml(event.textVersion)} · aktiviert keine Erfassung` : 'Ohne Textversion · aktiviert keine Erfassung',
-      action: `<button type="button" class="btn btn-sm" data-consent-legacy-event="${escapeHtml(event.eventId)}">Widerrufen</button>`,
+      ...withData(
+        event.eventId,
+        event.textVersion ? `Text ${escapeHtml(event.textVersion)} · aktiviert keine Erfassung` : 'Ohne Textversion · aktiviert keine Erfassung',
+        `<button type="button" class="btn btn-sm" data-consent-legacy-event="${escapeHtml(event.eventId)}">Widerrufen</button>`,
+      ),
     })),
   ];
+  const dataOnlyRows = [...trackingData.values()].map((entry) => profileRow({
+    title: escapeHtml(entry.eventName),
+    meta: `Spiele-Tracking nicht erlaubt · ${formatTrackedDuration(entry.trackedMs)}`,
+    action: `<button type="button" class="btn btn-sm" data-delete-tracking-data="${escapeHtml(entry.eventId)}">Daten löschen</button>`,
+  }));
+  const eventRows = [...consentRows, ...legacyRows, ...dataOnlyRows];
   return section(`
     <p class="profile-note">${escapeHtml(trackingConsent.text)} <button type="button" class="profile-link-btn" id="privacy-details">Mehr erfahren</button></p>
     <div class="profile-rows" role="group" aria-label="Deine Events">${
-      consentRows.length || legacyRows.length
-        ? `${consentRows.join('')}${legacyRows.join('')}`
-        : '<p class="profile-note">Gerade kein Event mit Spielerfassung</p>'
+      eventRows.length ? eventRows.join('') : '<p class="profile-note">Gerade kein Event mit Spiele-Tracking</p>'
     }</div>
     <div class="profile-rows profile-rows-separate">${profileRow({
       title: 'Neue Events und Gruppen vorab erlauben',
       meta: autoMeta,
       action: `<button type="button" class="btn btn-sm" id="privacy-auto-consent" aria-pressed="${Boolean(auto.enabled)}">${auto.enabled ? 'Deaktivieren' : 'Aktivieren'}</button>`,
     })}</div>`);
+}
+
+function formatTrackedDuration(ms) {
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return 'unter 1 Min. erfasst';
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `${hours ? `${hours} Std. ` : ''}${rest || !hours ? `${rest} Min. ` : ''}erfasst`;
+}
+
+// Kept short on purpose. A consent that was never withdrawn lets a running
+// event collect again right away, so only that case gets the extra sentence.
+function trackingDataDeleteWarning(entry) {
+  const base = `Deine Spielzeiten in „${entry.eventName}“ werden endgültig gelöscht, auch aus Statistiken.`;
+  return entry.consentActive
+    ? `${base} Deine Einwilligung gilt weiter, neue Spielzeiten werden also wieder erfasst.`
+    : base;
 }
 
 // Export and deletion need no privacy payload, so this card renders at once.
@@ -662,7 +703,7 @@ export function renderProfile(container, ctx) {
         <summary class="collapsible-section-header"><span class="collapsible-section-chevron">${icon('chevronRight')}</span><h2 id="profile-agent-title">Live-Status &amp; Agent</h2></summary>
         <div class="collapsible-section-content profile-rows">
           ${profileRow({
-            title: 'Tracking',
+            title: 'Spiele-Tracking',
             meta: `${me.tracking_paused ? 'Pausiert' : 'Läuft'} · prüft nur Spiele aus dem Katalog · <button type="button" class="profile-link-btn" id="profile-tracking-details">Mehr erfahren</button>`,
             action: `<button type="button" class="btn btn-sm" id="tracking-paused" aria-pressed="${Boolean(me.tracking_paused)}">${me.tracking_paused ? 'Fortsetzen' : 'Pausieren'}</button>`,
           })}
@@ -670,7 +711,7 @@ export function renderProfile(container, ctx) {
             number: 1,
             title: 'Agent herunterladen',
             meta: `ZIP mit Server-Adresse und deinem Key
-              <label class="profile-check"><input type="checkbox" id="agent-track-activity" />Erweitertes Tracking für diesen Download</label>`,
+              <label class="profile-check"><input type="checkbox" id="agent-track-activity" />Erweitertes Spiele-Tracking für diesen Download</label>`,
             action: '<button type="button" class="btn btn-primary btn-sm" id="agent-download">Herunterladen</button>',
           })}
           ${profileRow({
@@ -737,7 +778,7 @@ export function renderProfile(container, ctx) {
     try {
       await api.players.update(myId, { trackingPaused: pause });
       await ctx.refresh();
-      showToast(pause ? 'Tracking pausiert.' : 'Tracking wieder aktiv.');
+      showToast(pause ? 'Spiele-Tracking pausiert.' : 'Spiele-Tracking wieder aktiv.');
     } catch (err) {
       e.currentTarget.disabled = false;
       showToast(err.message, { error: true });
@@ -880,7 +921,7 @@ function wirePrivacyActions(container, ctx) {
           granted ? privacyState.data.trackingConsent.textVersion : undefined,
         );
         await reload();
-        showToast(granted ? 'Tracking-Einwilligung gespeichert.' : 'Tracking-Einwilligung widerrufen. Weitere Erfassung ist gestoppt.');
+        showToast(granted ? 'Spiele-Tracking-Einwilligung gespeichert.' : 'Spiele-Tracking-Einwilligung widerrufen. Weitere Erfassung ist gestoppt.');
       } catch (error) {
         button.disabled = false;
         showToast(error.message, { error: true });
@@ -916,6 +957,29 @@ function wirePrivacyActions(container, ctx) {
         await api.events.setTrackingConsent(button.dataset.consentLegacyEvent, false);
         await reload();
         showToast('Frühere Event-Einwilligung widerrufen.');
+      } catch (error) {
+        button.disabled = false;
+        showToast(error.message, { error: true });
+      }
+    });
+  });
+  container.querySelectorAll('[data-delete-tracking-data]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const entry = (privacyState?.data?.trackingData ?? []).find(
+        (item) => item.eventId === button.dataset.deleteTrackingData,
+      );
+      if (!entry) return;
+      const confirmed = await confirmDialog(trackingDataDeleteWarning(entry), {
+        title: 'Spiele-Tracking-Daten löschen',
+        confirmText: 'Dauerhaft löschen',
+        danger: true,
+      });
+      if (!confirmed) return;
+      button.disabled = true;
+      try {
+        await api.privacy.deleteTrackingData(entry.eventId);
+        await reload();
+        showToast(`Spiele-Tracking-Daten für „${entry.eventName}“ gelöscht.`);
       } catch (error) {
         button.disabled = false;
         showToast(error.message, { error: true });

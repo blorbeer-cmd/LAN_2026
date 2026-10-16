@@ -46,7 +46,7 @@ export function previewPrivacyRetention(now = Date.now()): RetentionPreview {
         purpose: 'Veraltete technische Agent-Erreichbarkeit entfernen',
         retentionDays: policy.agentDiagnosticsDays,
         candidateCount: count('SELECT COUNT(*) AS count FROM agent_diagnostics WHERE last_report_at < ?', diagnosticsCutoff),
-        protection: 'Aktuelle Agent-Meldungen bleiben erhalten; Prozessnamen existieren nur mit gültigem Tracking-Kontext.',
+        protection: 'Aktuelle Agent-Meldungen bleiben erhalten; Prozessnamen existieren nur mit gültigem Spiele-Tracking-Kontext.',
       },
       {
         key: 'resolved_push',

@@ -1,6 +1,6 @@
 // One settings row (Mein Profil, Admin): title and a muted meta line on the
-// left, the row's single action in the fixed right column shared by every row
-// of the page. Title, meta, action and the optional leading element (an
+// left, the row's action in the fixed right column shared by every row of the
+// page (a `has-action-pair` row adds a second button to its left). Title, meta, action and the optional leading element (an
 // avatar) are already escaped HTML.
 export function profileRow({ title, meta = '', action = '', number = null, lead = '', className = '', attrs = '' }) {
   return `

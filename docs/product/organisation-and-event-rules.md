@@ -274,7 +274,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   their own switcher at once. They can still withdraw that acceptance like anyone else, under
   the same lock rules.
   What it shows depends on the role: owner/admin receive the full
-  management surface — anlegen/bearbeiten, Tracking starten/stoppen (the running/stopping button
+  management surface — anlegen/bearbeiten, Spiele-Tracking starten/stoppen (the running/stopping button
   carries a tooltip naming the collected data and its purpose; its confirmation repeats the same
   scope sentence) and Teilnehmende einladen/entfernen — while a member gets read-only cards for the events they take
   part in, without the create action or administrative invitation/decline controls; the card
@@ -282,7 +282,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   participants. Cards sort from the earliest start date to the latest; events without a fixed date
   follow the scheduled events.
   A group card drops what a group does not have rather than disabling it: no period line, no
-  calendar export, no cost or payment block and no „Tracking starten“. „Beenden“
+  calendar export, no cost or payment block and no „Spiele-Tracking starten“. „Beenden“
   stays, because it is the one lifecycle step a group shares with an event and the only way to
   retire one created by mistake; an ended group moves into the Gruppen section's „Historie“ and
   reports „Beendet“ instead of its own kind.

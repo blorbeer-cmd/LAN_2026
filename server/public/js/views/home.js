@@ -428,7 +428,7 @@ function openCalendarDialog(todo, ctx) {
 
 const END_CONFIRMATIONS = {
   'event-end': (todo) => ({
-    question: `Event „${todo.eventName}“ beenden? Das Event wird in die Historie verschoben, laufendes Tracking endet.`,
+    question: `Event „${todo.eventName}“ beenden? Das Event wird in die Historie verschoben, laufendes Spiele-Tracking endet.`,
     run: () => api.events.end(todo.eventId),
     done: 'Event beendet.',
   }),

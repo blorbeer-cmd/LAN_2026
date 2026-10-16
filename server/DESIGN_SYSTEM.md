@@ -505,6 +505,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
   Profile, Meine Statistiken and Admin are one column of full-width cards on every width: their rows
   carry one action or value each in a fixed right column, so a second page column adds nothing.
+  The one exception is a Datenschutz event row with stored game-tracking data: „Daten löschen“
+  sits left of the consent toggle (`.profile-row.has-action-pair`), which keeps the shared right
+  edge and width; on phones the pair stacks inside the action column.
   Inside a card, a longer list of short rows (Admin's tools, readiness checks, invitation links and
   accounts) may fill two columns from `--bp-lg` with `.profile-rows-columns`, left column first like
   a RankedList. Home uses explicit priority rows whose repeated participant collection becomes three
