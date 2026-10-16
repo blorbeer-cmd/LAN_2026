@@ -120,7 +120,11 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
       open = '#suggest-new';
       fill = { '#suggest-title': 'Deep Rock Galactic', '#suggest-platform': 'Steam', '#suggest-info': 'Koop für vier Personen' };
       focus = ({ platform: '#suggest-platform-url', genres: '#suggest-genre-chips', notes: '#suggest-info', neighbors: '#suggest-consider-seat-neighbors' })[step] ?? '#suggest-title';
-    } else { open = `[data-detail="${games[0].id}"]`; }
+    } else {
+      open = `[data-detail="${games[0].id}"]`;
+      if (step === 'promote') focus = '#edit-promote';
+      if (step === 'process') focus = '#new-process';
+    }
   }
   if (view === 'votes' && chapter === 'vote' && ['start', 'setup-info', 'setup-privacy', 'setup-games'].includes(step)) {
     open = '#votes-new'; fill = { '#votes-title': 'Samstagabend', '#votes-info': 'Was spielen wir als Nächstes?' };
@@ -165,7 +169,10 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
     }
   }
   if (view === 'matchmaking') {
-    if (chapter === 'tournament-setup') open = '[data-draw-tournament]';
+    if (chapter === 'tournament-setup') {
+      open = '[data-draw-tournament]';
+      focus = ({ format: '#draw-tournament-format', names: '.draw-tournament-team-names', lobby: '#draw-tournament-lobby' })[step] ?? '';
+    }
     if (step === 'result') open = '[data-record-draw]';
     if (chapter === 'draft' && step === 'finish') state.lastMatchmaking = { ...draw, source: 'draft' };
     if (chapter === 'draft' && !['mode', 'roster', 'finish'].includes(step)) {

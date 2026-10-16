@@ -171,15 +171,25 @@ flowTest('area tour examples work without live records and keep nested dialogs u
   await tourPage.getByRole('button', { name: 'Essen kennenlernen', exact: true }).click();
   await tourPage.getByRole('button', { name: 'Bezahlen: Starten', exact: true }).click();
   const overlay = tourPage.locator('.area-tour-backdrop');
+  const example = tourPage.frameLocator('[data-area-tour-scene]');
   const readyScene = async () => {
     await tourPage.waitForFunction(() => ['ready', 'error'].includes(
       (document.querySelector('.area-tour-backdrop') as HTMLElement | null)?.dataset.tourSceneStatus ?? '',
     ));
     assert.equal(await overlay.getAttribute('data-tour-scene-status'), 'ready',
       `the actual example view must render: ${await overlay.locator('h2').textContent()}`);
+    const dialog = example.locator('.modal-backdrop .modal').last();
+    if (await dialog.count()) {
+      const modalBox = await dialog.boundingBox();
+      const ringBox = await overlay.locator('.area-tour-target').boundingBox();
+      assert.ok(modalBox && ringBox, 'an open native dialog must have a visible highlight');
+      const center = { x: ringBox.x + ringBox.width / 2, y: ringBox.y + ringBox.height / 2 };
+      assert.ok(center.x >= modalBox.x && center.x <= modalBox.x + modalBox.width
+        && center.y >= modalBox.y && center.y <= modalBox.y + modalBox.height,
+      'the highlight belongs to the open native dialog, rather than its covered entry button');
+    }
   };
   await readyScene();
-  const example = tourPage.frameLocator('[data-area-tour-scene]');
   assert.match(await example.locator('body').textContent() ?? '', /Pizza bei Luigi/);
   assert.equal(await overlay.locator('input, iframe').count(), 0, 'the explanation dialog contains no imitation form or embedded example');
   await overlay.locator('[data-tour-end]').click();

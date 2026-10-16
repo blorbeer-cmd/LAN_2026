@@ -112,7 +112,10 @@ window.addEventListener('message', async (event) => {
       input.value = value;
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }
-    let highlighted = document.querySelector(demo.focus || target || '.modal-backdrop .modal');
+    const nativeDialog = [...document.querySelectorAll('.modal-backdrop .modal')].at(-1);
+    let highlighted = demo.focus ? document.querySelector(demo.focus)
+      : nativeDialog ?? (target ? document.querySelector(target) : null);
+    if (nativeDialog && !nativeDialog.contains(highlighted)) highlighted = nativeDialog;
     if (highlighted?.type === 'hidden') highlighted = highlighted.closest('[data-dt-field]') ?? highlighted.parentElement;
     highlighted ??= document.querySelector('.modal-backdrop .modal') ?? root.querySelector('.card') ?? root;
     for (let ancestor = highlighted; ancestor; ancestor = ancestor.parentElement) {
