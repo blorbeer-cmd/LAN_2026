@@ -91,7 +91,7 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
   if (submitted) preferences[0].rating = 5;
   const state = { players, games, preferences, skills, activeEvent, events: [activeEvent], availableEvents: [activeEvent], historicalEvents: [activeEvent],
     live: [], matches: [], selectedGameId: games[0].id,
-    lastMatchmaking: view === 'matchmaking' && (['teams', 'next', 'result', 'snapshot'].includes(step) || chapter === 'tournament-setup') ? draw : null,
+    lastMatchmaking: view === 'matchmaking' && (['teams', 'next', 'result'].includes(step) || chapter === 'tournament-setup') ? draw : null,
     votes: { ...(finished ? history : round), open: !finished, openRounds: finished ? [] : [round], catalogResults: finished ? results : round.results },
   };
   const responses = {
@@ -172,15 +172,14 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
     if (step === 'send') open = '[data-close-order]';
     if (step === 'finalise') { order.open = false; open = '[data-finalize-order]'; }
     if (['paypal', 'confirm'].includes(step)) open = '[data-group-pay]';
-    if (['item', 'quantity', 'price'].includes(step)) {
+    if (chapter === 'order' && ['open', 'item', 'quantity', 'price', 'sum'].includes(step)) {
       fill = { '[data-add-item-form] [data-item-desc]': 'Pizza Margherita', '[data-add-item-form] [data-item-quantity]': '2', '[data-add-item-form] [data-item-price]': '8,00' };
-      focus = '[data-add-item-form]';
+      if (['item', 'quantity', 'price'].includes(step)) focus = '[data-add-item-form]';
     }
   }
   if (view === 'matchmaking') {
     if (chapter === 'draft' && ['mode', 'roster', 'captains'].includes(step)) {
-      controls = ['[data-mm-mode="draft"]'];
-      if (step === 'captains') controls.push('[data-captain-toggle="tour-alex"]', '[data-captain-toggle="tour-sam"]');
+      controls = ['[data-mm-mode="draft"]', '[data-captain-toggle="tour-alex"]', '[data-captain-toggle="tour-sam"]'];
     }
     if (chapter === 'tournament-setup') {
       open = '[data-draw-tournament]';
@@ -211,7 +210,11 @@ export function tourDemoSceneKey(view, step, context, now) {
     foodOrders: ['/api/food-orders'], matchmaking: ['/api/draft', '/api/matchmaking/', '/api/tournaments'],
     tournaments: ['/api/tournaments'], home: ['/api/me/todos', '/api/push/', '/api/info', '/api/food-orders'],
     events: ['/api/events/'], music: ['/api/music/'], arcade: ['/api/arcade/'] };
-  return JSON.stringify({ view: demo.view, state: demo.state,
+  const { lastMatchmaking, votes, ...sharedState } = demo.state;
+  const state = { ...sharedState,
+    ...(demo.view === 'matchmaking' ? { lastMatchmaking } : {}),
+    ...(['home', 'votes'].includes(demo.view) ? { votes } : {}) };
+  return JSON.stringify({ view: demo.view, state,
     responses: Object.fromEntries(Object.entries(demo.responses).filter(([path]) => (paths[demo.view] ?? []).some((prefix) => path.startsWith(prefix)))),
     open: demo.open, controls: demo.controls, fill: demo.fill, submit: demo.submit, afterSubmitOpen: demo.afterSubmitOpen,
     socketSnapshots: demo.socketSnapshots, localRoute: demo.localRoute, voteSelection: demo.voteSelection });

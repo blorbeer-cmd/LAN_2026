@@ -44,7 +44,7 @@ export const AREA_TOURS = {
     ]),
     c('organise', 'Event organisieren', [
       s('create', 'Event oder Gruppe anlegen', 'Events planen einen Anlass; Gruppen dienen dem dauerhaften Austausch. Lege Name, Zeitraum und die benötigten Bereiche fest. Der Ersteller nimmt zunächst automatisch teil.', '#new-event-btn, #new-group-btn'),
-      s('invite', 'Teilnehmer einladen', 'Einladen versendet eine persönliche Mitteilung. Eingeladen, zugesagt und abgesagt sind unterschiedliche Zustände; vollständige Eventfunktionen setzen eine bestätigte Teilnahme voraus.', '[data-invite-participant]'),
+      s('invite', 'Teilnehmer einladen', 'Einladen versendet eine persönliche Mitteilung. Eingeladen, zugesagt und abgesagt sind unterschiedliche Zustände. Erst nach der Zusage stehen den Teilnehmern die Funktionen des Events zur Verfügung.', '[data-invite-participant]'),
       s('costs', 'Beitrag und Rechnung', 'Der Beitrag pro Person ist getrennt von der gesamten Unterkunftsrechnung. Die Abrechnung vergleicht erfasste Beiträge mit den Kosten und zeigt die erwartete Differenz.', '[data-event-card]'),
       s('paid', 'Zahlungen festhalten', 'Berechtigte Personen bestätigen oder korrigieren Zahlungen. Eine bezahlte Teilnehmerzeile kann erst nach dem Zurücksetzen der Zahlung entfernt werden.', '[data-event-card]'),
       s('changes', 'Änderungen mitteilen', 'Wichtige Änderungen wie Zeitraum, Ort oder Beitrag informieren die Betroffenen. Ein Umfrageergebnis übernimmt diese Änderungen nicht automatisch.', '[data-event-card]'),
@@ -54,16 +54,16 @@ export const AREA_TOURS = {
   ]),
   eventPolls: t('Umfragen', [
     c('answer', 'Antworten', [
-      s('scope', 'Gemeinsam planen', 'Hier beantwortet ihr Fragen zum aktiven Event. Sichtbarkeit und Abstimmen setzen bestätigte Teilnahme voraus, auch für Admins.', '.event-poll-card'),
-      s('modes', 'Die Antwortart beachten', 'Eine Umfrage fragt nach Passt, Notfalls oder Nein, einer Auswahl, mehreren Optionen oder einer Bewertung von 0 bis 5.', '.event-poll-card'),
+      s('scope', 'Gemeinsam planen', 'Teilnehmer des ausgewählten Events können dessen Umfragen sehen und beantworten. Auch Admins müssen dem Event dafür zugesagt haben.', '.event-poll-card'),
+      s('modes', 'Die Antwortart beachten', 'Die Antwortart bestimmt, wie du abstimmst: „Passt / Notfalls / Nein“, Einzelauswahl, Mehrfachauswahl oder eine Bewertung von 0 bis 5.', '.event-poll-card'),
       s('save', 'Antwort speichern', 'Speichere deine vollständige Antwort. Eine 0 ist eine bewusste Bewertung; eine unbeantwortete Option bleibt offen.', '.event-poll-card'),
       s('visibility', 'Anonym und verborgen', 'Anonyme Umfragen zeigen keine Zuordnung zu Personen. Bei verborgenem Zwischenstand sehen während der Runde nur die verwaltenden Personen die Ergebnisse.', '.event-poll-card'),
       s('changed', 'Neue Optionen beachten', 'Neue Optionen können eine vollständige Antwort wieder unvollständig machen. Betroffene erhalten einen Hinweis und können die fehlenden Antworten ergänzen.', '.event-poll-card'),
       s('result', 'Ergebnis und Eventdaten', 'Das Ergebnis hilft bei der Entscheidung. Es ändert keinen Termin, Ort oder Beitrag automatisch; Organisatoren tragen die Entscheidung anschließend beim Event ein.', '.event-poll-card'),
     ]),
     c('manage', 'Umfrage verwalten', [
-      s('start', 'Umfrage starten', 'Bestätigte Teilnehmer dürfen eine Umfrage erstellen. Wähle Antwortart, Optionen, Anonymität und die Sichtbarkeit des Zwischenstands.', '#new-event-poll'),
-      s('mode', 'Antwortart festlegen', 'Im Erstellen-Dialog legst du fest, ob Termine bewertet, eine oder mehrere Optionen gewählt oder Punkte von 0 bis 5 vergeben werden.'),
+      s('start', 'Umfrage starten', 'Teilnehmer des ausgewählten Events dürfen eine Umfrage erstellen. Wähle Antwortart, Optionen, Anonymität und die Sichtbarkeit des Zwischenstands.', '#new-event-poll'),
+      s('mode', 'Antwortart festlegen', 'Wähle im Dialog den Abstimmungstyp: „Passt / Notfalls / Nein“, Einzelauswahl, Mehrfachauswahl oder eine Bewertung von 0 bis 5.'),
       s('choices', 'Optionen eintragen', 'Trage die möglichen Antworten ein. Im Beispiel stehen Pizza und Burger zur Wahl. Zusätzliche Optionen ergänzen die Auswahl.'),
       s('privacy', 'Sichtbarkeit festlegen', 'Anonymität verbirgt die Namen. Zwischenstand verbergen steuert, wer die Ergebnisse während der laufenden Runde sehen kann.'),
       s('deadline', 'Frist und Erinnerungen', 'Mit einer Frist werden fehlende Antworten 48 und zwei Stunden vorher erinnert. Ohne Frist gibt es diese automatischen Erinnerungen nicht.', '.event-poll-card'),
@@ -76,11 +76,11 @@ export const AREA_TOURS = {
   arrivals: t('An- & Abreise', [c('travel', 'Zeiten und Fahrgemeinschaften', [
     s('purpose', 'Die Orga kann besser planen', 'Eingetragene Ankunftszeiten, Abfahrtszeiten und Fahrgemeinschaften helfen der Orga beim Planen.', '#arrival-form'),
     s('mine', 'Eigene Zeiten speichern', 'Ankunft und Abreise sind zunächst aus den Eventzeiten vorbelegt. Passe sie an und ergänze bei Bedarf eine Notiz. Erst Speichern übernimmt deine Angaben.', '#arrival-form'),
-    s('all', 'Alle Zeiten vergleichen', 'Alle Zeiten zeigt die bestätigten Teilnehmer. Fehlende Angaben bleiben offen; mit Fahrername kennzeichnet eine Fahrgemeinschaft.', '#arrivals-times-title'),
+    s('all', 'Alle Zeiten vergleichen', 'Alle Zeiten zeigt die Teilnehmer des ausgewählten Events. Fehlende Angaben bleiben offen; mit Fahrername kennzeichnet eine Fahrgemeinschaft.', '#arrivals-times-title'),
     s('offer', 'Fahrt anbieten', 'Anreise und Abreise haben getrennte Fahrgemeinschaften. Freie Plätze zählt nur die Mitfahrer; als Fahrer bist du zusätzlich dabei.', '[data-carpool-direction]'),
     s('join', 'Einen Platz nehmen', 'Du kannst je Richtung nur eine Fahrt fahren oder mitfahren. Eintragen übernimmt bei der Anreise die Ankunft, bei der Abreise die Startzeit in deine Angaben.', '[data-join-carpool], [data-carpool-direction]'),
     s('edit', 'Fahrtdaten prüfen', 'Der Fahrer kann Zeiten, Startort und Plätze ändern. Prüft danach die persönlichen Angaben; eine nachträgliche Änderung aktualisiert nicht automatisch alle Mitfahrerzeiten.', '[data-edit-carpool], [data-carpool-direction]'),
-    s('leave', 'Austragen oder löschen', 'Austragen leert die entsprechende übernommene Zeit. Löscht der Fahrer die Fahrt, werden die betroffenen Zeitangaben ihrer Mitglieder geleert.', '[data-leave-carpool], [data-carpool-direction]'),
+    s('leave', 'Austragen oder löschen', 'Austragen leert die entsprechende übernommene Zeit. Löscht der Fahrer die Fahrt, werden die betroffenen Zeitangaben der Mitfahrer geleert.', '[data-leave-carpool], [data-carpool-direction]'),
     s('todo', 'Anreise noch offen?', 'Für ein zugesagtes Event innerhalb der nächsten 14 Tage kann Home eine fehlende Anreise als To-Do anzeigen. Speichere deine Zeiten im passenden Event.', '#arrival-form'),
   ])]),
   checklistPacking: t('Packliste', [c('packing', 'Persönlich packen', [
@@ -123,7 +123,7 @@ export const AREA_TOURS = {
   ]),
   votes: t('Vote', [
     c('vote', 'Abstimmen und Bock übernehmen', [
-      s('start', 'Eine Runde starten', 'Jedes Mitglied kann eine Runde starten. Die Spieleauswahl beginnt mit den Top 10 nach Bock; Suche und Filter ändern nur die sichtbaren Zeilen.', '#votes-new'),
+      s('start', 'Eine Runde starten', 'Jeder Teilnehmer des ausgewählten Events kann eine Runde starten. Die Spieleauswahl beginnt mit den Top 10 nach Bock; Suche und Filter ändern nur die sichtbaren Zeilen.', '#votes-new'),
       s('setup-info', 'Titel und Beschreibung', 'Im Dialog Abstimmung starten benennst du die Runde und ergänzt bei Bedarf Hinweise, etwa die gewünschte Spielerzahl.'),
       s('setup-privacy', 'Anonymität und Zwischenstand', 'Lege im Erstellen-Dialog fest, ob Namen verborgen bleiben und ob Ergebnisse erst nach Rundenende erscheinen.'),
       s('setup-games', 'Spiele auswählen', 'Wähle die Spiele für diese Runde. Abstimmung starten öffnet anschließend die Runde für die Teilnehmer; es gibt noch keine abgegebenen Stimmen.'),
@@ -149,11 +149,10 @@ export const AREA_TOURS = {
     c('draw', 'Teams auslosen', [
       s('game', 'Spiel und Teilnehmer', 'Wähle ein Katalogspiel und die Mitspieler. Suche blendet Personen nur aus; bereits ausgewählte Personen bleiben ausgewählt.', '#mm-game, #matchmaking-game'),
       s('balance', 'Nach Skill ausgleichen', 'Die Auslosung verwendet den Skill des gewählten Spiels. Fehlende Werte zählen mit 3, eine eingetragene 0 mit 0.', '.tournament-player-grid'),
-      s('neighbors', 'Sitznachbarn berücksichtigen', 'Sichtbare Monitore und Nachbarn helfen, Einblick in gegnerische Teams zu vermeiden. Verbleibende Konflikte werden nach der Auslosung genannt.', '#mm-avoid-adjacent'),
-      s('teams', 'Aufstellung anpassen', 'Nach dem Auslosen kannst du Spieler verschieben. Auf dem Handy gibt es dafür eine Team-Auswahl; die Teamnamen folgen der aktuellen Besetzung.', '[data-draw-card]'),
+      s('neighbors', 'Sitznachbarn berücksichtigen', 'Sitznachbarn und Personen, die den Monitor des anderen sehen können, landen möglichst im selben Team. Die Skill-Balance hat Vorrang; verbleibende Konflikte werden angezeigt.', '#mm-avoid-adjacent'),
+      s('teams', 'Aufstellung anpassen', 'Du kannst Spieler zwischen Teams verschieben. Ausgeloste Teams heißen Team 1, Team 2 usw.; Einzelteams tragen den Spielernamen. Beim Erstellen und im laufenden Turnier kannst du Teamnamen ändern.', '[data-draw-card]'),
       s('next', 'Ergebnis oder Turnier', 'Eine Aufstellung wird entweder als einzelnes Match gewertet oder für ein Turnier verwendet. Turnier erstellen übernimmt die vorhandenen Teams.', '[data-draw-tournament]'),
       s('result', 'Ergebnis speichern', 'Ein gespeichertes Ergebnis erscheint in Historie und Rangliste und kann spätere Skill-Vorschläge beeinflussen. Ergebnis bearbeiten korrigiert den vorhandenen Eintrag.', '[data-record-draw], [data-edit-draw-result]'),
-      s('snapshot', 'Werte zum Auslosungszeitpunkt', 'Gespeicherte Auslosungen behalten ihre verwendeten Skill-Werte. Eine spätere Selbstbewertung verändert diese historische Aufstellung nicht rückwirkend.', '[data-draw-card]'),
     ]),
     c('draft', 'Captain Draft', [
       s('mode', 'Captains wählen Teams', 'Beim Captain Draft wählen Captains ihre Mitspieler. Skill-Werte helfen bei der Entscheidung, steuern die Auswahl aber nicht automatisch.', '[data-mm-mode="draft"]'),
@@ -161,7 +160,7 @@ export const AREA_TOURS = {
       s('captains', 'Captains auswählen', 'Wähle aus den Mitspielern zwei bis vier Captains. Mindestens eine weitere Person muss im Pool bleiben; die Captains wählen anschließend abwechselnd.', '[data-roster-picker="mm-captain-roster"]'),
       s('order', 'Abwechselnde Richtung', 'Die Auswahlrichtung wechselt nach jeder Runde. Bei zwei Captains lautet die Reihenfolge A, B, B, A; der aktuelle Zug wird angezeigt.', '.draft-pool-player'),
       s('live', 'Ein gemeinsamer Stand', 'Jeder Pick aktualisiert Teams und Spielerpool auf den verbundenen Geräten. Nur der gerade berechtigte Captain kann auswählen.', '.draft-pool-player'),
-      s('finish', 'Aufstellung weiterverwenden', 'Der fertige Draft wird zur neuen Aufstellung. Daraus erfasst ihr ein Ergebnis oder erstellt ein Turnier.', '[data-draw-card]'),
+      s('finish', 'Aufstellung weiterverwenden', 'Der fertige Draft wird zur Aufstellung. Teams heißen nach ihrem Captain, Einzelteams nach dem Spieler. Daraus erfasst ihr ein Ergebnis oder erstellt ein Turnier.', '[data-draw-card]'),
       s('cancel', 'Draft abbrechen', 'Ein laufender Draft blockiert konkurrierende Match-Übernahmen. Abbrechen beendet ihn nach Bestätigung; ein Vote bricht ihn niemals automatisch ab.', '#draft-cancel'),
     ]),
     c('tournament-setup', 'Turnier erstellen', [
@@ -192,7 +191,7 @@ export const AREA_TOURS = {
       s('freeze', 'Nach dem Abschicken', 'Abschicken friert die Positionen ein. Änderungen sind erst nach erneutem Öffnen möglich; deine offene Zahlung erscheint auf Home.', '[data-close-order]'),
     ]),
     c('pay', 'Bezahlen', [
-      s('person', 'Eine Zahlung pro Person', 'Bezahlt gilt für alle Positionen einer Person. Angemeldete Mitglieder können die Markierung setzen oder korrigieren, solange die Bestellung nicht geschlossen ist.', '[data-toggle-group-paid]'),
+      s('person', 'Eine Zahlung pro Person', 'Bezahlt gilt für alle Positionen einer Person. Teilnehmer des ausgewählten Events können die Markierung setzen oder korrigieren, solange die Bestellung nicht geschlossen ist.', '[data-toggle-group-paid]'),
       s('paypal', 'PayPal öffnen', 'PayPal übergibt den hinterlegten Empfänger. Bei einem einfachen PayPal.me-Link wird die vollständige Summe ergänzt; unvollständige Preise verhindern die Übergabe.', '[data-group-pay]'),
       s('confirm', 'Bezahlt bestätigen', 'Antworte erst nach deiner Zahlung auf Bezahlt?. Das Öffnen der PayPal-Seite allein markiert noch keine Position als bezahlt.', '[data-group-pay]'),
       s('remind', 'Zahlungserinnerungen', 'Unbezahlte Positionen werden frühestens zwei Stunden nach Abschicken erinnert. Pro Person und Event werden Erinnerungen höchstens alle zwei Stunden erneut fällig.', '[data-toggle-group-paid]'),
@@ -222,7 +221,7 @@ export const AREA_TOURS = {
       s('purpose', 'Spiele erkennen', 'Der Agent erkennt hinterlegte Spiele auf deinem PC und meldet Live-Status und Spielzeit an Respawn. Die Prozesszuordnungen kommen zentral vom Server.', '#profile-agent-title'),
       s('download', 'Persönliches Paket', 'Lade dein Agent-Paket herunter und führe die Installation aus. Es enthält bereits Serveradresse und deinen persönlichen Key; teile es deshalb nicht mit anderen.', '#agent-download'),
       s('extended', 'Erweitertes Tracking', 'Die Downloadoption ergänzt Aktivitätsdaten wie aktives Fenster und Leerlaufzeit. Mehr erfahren erklärt die erfassten Daten und ihre Verwendung.', '#agent-track-activity'),
-      s('context', 'Wann erfasst wird', 'Erfassung setzt passende Eventeinstellungen, bestätigte Teilnahme und eine gültige Einwilligung voraus. Die Aktivität wird deinem ausgewählten Event zugeordnet.', '#profile-agent-title'),
+      s('context', 'Wann erfasst wird', 'Tracking erfasst deine Aktivität für das ausgewählte Event. Dafür musst du dem Event zugesagt haben, Tracking muss aktiviert sein und deine Einwilligung vorliegen.', '#profile-agent-title'),
       s('pause', 'Erfassung pausieren', 'Pausieren stoppt das Melden des Agenten. Die persönliche Pause auf Home ist eine andere Einstellung und dient deinem sichtbaren Mitspielerstatus.', '#tracking-paused'),
       s('key', 'Key erneuern', 'Key erneuern ersetzt den bisherigen Zugang. Bestehende Agent-Installationen benötigen danach den neuen Key beziehungsweise ein neues persönliches Paket.', '#profile-rotate-key'),
     ], { feature: 'tracking' }),
@@ -244,9 +243,9 @@ export const AREA_TOURS = {
     c('listen', 'Musik gemeinsam steuern', [
       s('now', 'Gemeinsame Musikausgabe', 'Jetzt läuft zeigt Titel, Anfragenden und Fortschritt. Die Wiedergabe erfolgt auf dem ausgewählten Musikgerät, nicht automatisch auf deinem eigenen Gerät.', '#music-now-title'),
       s('add', 'Titel hinzufügen', 'Suche nach Titeln und füge Wünsche der gemeinsamen Warteschlange hinzu. Als Nächstes zeigt die bevorstehende Wiedergabe.', '#music-search-form'),
-      s('queue', 'Warteschlange bearbeiten', 'Im normalen Anfragebetrieb können Mitglieder Wünsche verschieben oder entfernen. Die Reihenfolge wird auch an die Wiedergabe übergeben.', '#music-queue-title'),
+      s('queue', 'Warteschlange bearbeiten', 'Im normalen Anfragebetrieb können Teilnehmer des ausgewählten Events Wünsche verschieben oder entfernen. Die Reihenfolge wird auch an die Wiedergabe übergeben.', '#music-queue-title'),
       s('playlist', 'Playlist starten', 'Eine Playlist ersetzt den bisherigen Wiedergabekontext und ausstehende Wünsche nach Bestätigung. Weitere Titel folgen dann den Möglichkeiten der Spotify-Warteschlange.', '#music-search-form'),
-      s('controls', 'Gemeinsam steuern', 'Mitglieder können pausieren, fortsetzen und überspringen. Eine aktive Jam beenden dürfen der Host und berechtigte Admins.', '#music-toggle-playback'),
+      s('controls', 'Gemeinsam steuern', 'Teilnehmer des ausgewählten Events können pausieren, fortsetzen und überspringen. Eine aktive Jam beenden dürfen der Host und berechtigte Admins.', '#music-toggle-playback'),
     ]),
     c('setup', 'Musikgerät einrichten', [
       s('controller', 'Controller installieren', 'Starte das Paket auf dem Musik-PC oder Raspberry Pi. Der Controller ist das Wiedergabegerät und erscheint nicht als Spieler.', '#music-setup-title'),

@@ -359,6 +359,15 @@ flowTest('area tour examples work without live records and keep nested dialogs u
       assert.equal(await tourPage.locator('[data-arrivals-times]').evaluate((element) => (element as HTMLDetailsElement).open), false,
         'the original section remains unchanged while the example is open');
     }
+    if (flow.route === 'matchmaking' && flow.chapter.startsWith('Captain Draft')) {
+      const roster = await example.locator('[data-roster-picker="mm-draft-roster"]').elementHandle();
+      for (const action of ['next', 'next', 'back', 'next']) {
+        await overlay.locator(`[data-tour-${action}]`).click();
+        await readyScene();
+        assert.equal(await example.locator('[data-roster-picker="mm-draft-roster"]').evaluate((element, original) => element === original, roster), true,
+          'draft preparation preserves the same player roster when moving forward and back');
+      }
+    }
     // Walk every remaining state of this chapter, including real detail,
     // payment/confirmation, result and tournament dialogs.
     for (let step = 0; step < 20 && await overlay.locator('[data-tour-next]').textContent() !== 'Abschließen'; step += 1) {

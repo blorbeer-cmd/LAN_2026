@@ -64,7 +64,7 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
       demo.focus = '[data-pending-invitation]';
     } else if (chapter === 'participate') demo.focus = '[data-event-card="tour-event"]';
     if (step === 'create') { demo.open = '#new-event-btn'; demo.fill = { '#event-name': 'Sommer-LAN' }; demo.focus = '#event-name'; }
-    if (step === 'calendar') {
+    if (['calendar', 'confirm'].includes(step)) {
       demo.controls = ['[data-action-menu="event-calendar-tour-event"] > summary'];
       demo.focus = '[data-action-menu="event-calendar-tour-event"]';
     }
@@ -135,17 +135,21 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
     if (step === 'device') demo.focus = '#music-device-area';
   }
   if (view === 'arcade') {
-    const lobby = { id: 'tour-quiz-lobby', gameType: 'quiz', host: players[1],
-      players: step === 'ready' ? [players[1], me] : [players[1], players[2]], readyPlayerIds: [players[2].id],
-      createdAt: now, targetScore: 5 };
-    demo.socketSnapshots = { 'arcade:lobbies': { lobbies: [lobby] },
+    const lobby = { id: 'tour-pong-lobby', mode: 'doubles', host: players[1], playerLimit: 4,
+      players: players.filter((p) => step === 'ready' || p.id !== me.id).map((p, i) => ({ ...p,
+        team: p.id === me.id || p.id === players[1].id ? 'left' : 'right', ready: i > 0 && p.id !== me.id })),
+      createdAt: now, targetScore: 21 };
+    demo.socketSnapshots = { 'pong:lobbies': { lobbies: [lobby] },
       'arcade:watch:list': { matches: [{ matchId: 'tour-pong-match', gameType: 'pong', players: players.slice(2),
         scores: players.slice(2).map((p, i) => ({ playerId: p.id, name: p.name, score: 3 - i })), paused: false }] } };
-    responses['/api/arcade/stats'] = { games: [{ gameType: 'quiz', matches: 6,
+    responses['/api/arcade/stats'] = { games: [{ gameType: 'pong', matches: 6,
       players: players.map((p, i) => ({ playerId: p.id, name: p.name, wins: [3, 2, 1, 0][i], matches: 6 })) }] };
-    if (step === 'open') demo.open = '#arcade-create-lobby';
+    if (step === 'open') {
+      demo.open = '#arcade-create-lobby';
+      demo.controls = [{ selector: '#arcade-create-game', value: 'pong' }, '#arcade-create-mode [data-arcade-mode="doubles"]'];
+    }
     if (step === 'ready') demo.focus = '[data-ready]';
-    if (step === 'join') demo.focus = '[data-join-lobby]';
+    if (step === 'join') demo.focus = '[data-pong-join]:not([disabled])';
     if (step === 'watch') demo.focus = '[data-watch-match]';
   }
   return demo;

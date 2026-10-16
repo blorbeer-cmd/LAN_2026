@@ -33,6 +33,8 @@ und Styles wie das Produkt. Normale Erstellen-/Detailaktionen öffnen dort die e
 Schrittwechsel wählen passende lokale Datenzustände (Stimmzettel, Ergebnis, Aufstellung usw.).
 Reine Hervorhebungswechsel behalten denselben Frame, dieselben DOM-Elemente und Formulare;
 nur ein Wechsel des Datenzustands oder geöffneten Dialogs erstellt eine neue lokale Szene.
+Das gilt auch für Spieler- und Captain-Auswahl, die Felder einer Bestellposition und die
+Kalenderbestätigung. Die Arcade-Lobby zeigt Pong mit sichtbarer Auswahl Duell/Doppel.
 Andere Bereiche zeigen weiterhin ihre echten vorhandenen Elemente. Es gibt keine generischen
 Ersatzkarten oder im Tourmodal nachgebauten Formulare.
 
@@ -118,6 +120,8 @@ Schreibzugriff in der Demo und erwartet 405 ohne Netzwerkrequest. Ein Backdrop-K
 die Tour offen halten; Beenden entfernt die gesamte Demo. Tour-Schritte dürfen keine
 mutierenden API-Aufrufe senden. Die Katalogtests prüfen konsistente Beispieldaten und das
 Fail-closed-Verhalten der lokalen GET-Antworten.
+Die Draft-Vorbereitung prüft den Erhalt derselben Spielerauswahl bei Weiter und Zurück;
+der Arcade-Browserfall prüft Pong und den ausgewählten Modus Doppel im echten Erstellen-Dialog.
 Der bestehende Tetris-Vollbildfall prüft zusätzlich, dass die Hilfe im Vollbild keinen unsichtbaren
 Fokus erhalten kann und danach wieder per Tastatur geöffnet werden kann.
 

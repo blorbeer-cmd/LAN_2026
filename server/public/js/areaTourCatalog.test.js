@@ -38,6 +38,15 @@ test('real-view demonstration data is consistent, isolated and cannot proxy writ
   const key = (view, step) => tourDemoSceneKey(view, step, {}, now);
   assert.equal(key('gameCatalog', 'ratings/bock'), key('gameCatalog', 'ratings/skill'), 'ratings move the highlight without replacing their view');
   assert.equal(key('gameCatalog', 'catalog/platform'), key('gameCatalog', 'catalog/notes'), 'one creation form stays mounted across its field explanations');
+  for (const [view, steps] of [
+    ['matchmaking', ['draft/mode', 'draft/roster', 'draft/captains']],
+    ['matchmaking', ['draft/order', 'draft/live']],
+    ['foodOrders', ['order/open', 'order/item', 'order/quantity', 'order/price', 'order/sum']],
+    ['events', ['participate/calendar', 'participate/confirm']],
+  ]) {
+    for (const step of steps.slice(1)) assert.equal(key(view, steps[0]), key(view, step),
+      `${view}/${step}: explaining another part of the same example preserves its document`);
+  }
   assert.notEqual(key('votes', 'vote/prefill'), key('votes', 'vote/submitted'), 'a saved ballot is an actual state transition');
   const winner = createTourDemo('votes', 'result/close', {}, now).responses['/api/votes/history'].history[0].results;
   assert.ok(winner[0].points > winner[1].points && winner[0].votes < winner[1].votes,

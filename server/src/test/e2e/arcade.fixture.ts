@@ -277,8 +277,12 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
         document.querySelector<HTMLElement>('.area-tour-backdrop')?.dataset.tourSceneStatus ?? '',
       ));
       assert.equal(await tour.getAttribute('data-tour-scene-status'), 'ready', expected);
-      if (expected === 'Lobby öffnen') assert.equal(await scene.locator('#arcade-create-form').count(), 1);
-      if (expected === 'Mitspielen') assert.equal(await scene.locator('[data-join-lobby]').count(), 1);
+      if (expected === 'Lobby öffnen') {
+        assert.equal(await scene.locator('#arcade-create-game').inputValue(), 'pong');
+        assert.equal(await scene.locator('#arcade-create-mode [data-arcade-mode]').count(), 2);
+        assert.equal(await scene.locator('#arcade-create-mode [data-arcade-mode="doubles"]').getAttribute('aria-pressed'), 'true');
+      }
+      if (expected === 'Mitspielen') assert.equal(await scene.locator('[data-pong-join]:not([disabled])').count(), 1);
       if (expected === 'Bereit melden') assert.equal(await scene.locator('[data-ready]').count(), 1);
       if (expected === 'Weiterspielen oder zuschauen') assert.equal(await scene.locator('[data-watch-match]').count(), 1);
       if (expected === 'Arcade-Statistik') assert.match(await scene.locator('.arcade-stats-list').textContent() ?? '', /Alex/u);

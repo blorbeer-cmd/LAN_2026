@@ -122,10 +122,15 @@ window.addEventListener('message', async (event) => {
       await settled();
       if (!document.querySelector('.modal-backdrop')) throw new Error('Example action did not open its dialog');
     }
-    for (const selector of demo.controls) {
+    for (const action of demo.controls) {
+      const { selector, value } = typeof action === 'string' ? { selector: action } : action;
       const control = document.querySelector(selector);
       if (!control) throw new Error(`Missing example control: ${selector}`);
-      control.click();
+      if (value === undefined) control.click();
+      else {
+        control.value = value;
+        control.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       await settled();
     }
     for (const [selector, value] of Object.entries(demo.fill)) {
