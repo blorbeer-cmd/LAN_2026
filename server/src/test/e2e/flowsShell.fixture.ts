@@ -4,7 +4,7 @@
 // Sibling tests here intentionally share that state and run in order.
 
 import assert from 'node:assert/strict';
-import type { Page } from 'playwright';
+import type { Page, Request } from 'playwright';
 import { addSessionCookie, switchSessionCookie, finishE2EOnboarding } from './authHelpers';
 import { trackE2EContext } from './e2eDiagnostics';
 import {
@@ -257,19 +257,20 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     { route: 'arrivals', help: 'An- & Abreise', chapter: 'Tour starten', input: '', value: '', advance: 2 },
   ];
   await tourPage.close();
-  const runFlow = async (flow: typeof flows[number]) => {
-    const tourPage = await context.newPage();
+  const flowPages = await Promise.all([context.newPage(), context.newPage()]);
+  const runFlow = async (flow: typeof flows[number], tourPage: Page) => {
     const overlay = tourPage.locator('.area-tour-backdrop');
     const example = tourPage.frameLocator('[data-area-tour-scene]');
     const readyScene = () => assertSceneReady(tourPage);
     let recording = false;
-    tourPage.on('request', (request) => {
+    const recordRequest = (request: Request) => {
       if (request.frame() !== tourPage.mainFrame() && request.url().includes('/api/')) demoNetwork.push(request.url());
       if (recording && request.url().includes('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
         mutations.push(`${request.method()} ${request.url()}`);
       }
-    });
-    await tourPage.goto(`${BASE_URL}/#${flow.route}`);
+    };
+    tourPage.on('request', recordRequest);
+    if (new URL(tourPage.url()).hash !== `#${flow.route}`) await tourPage.goto(`${BASE_URL}/#${flow.route}`);
     const help = tourPage.getByRole('button', { name: `${flow.help} kennenlernen`, exact: true });
     await help.waitFor();
     if (flow.route === 'arrivals') {
@@ -366,15 +367,16 @@ flowTest('area tour examples work without live records and keep nested dialogs u
       assert.equal(await tourPage.locator('#arrival-note').inputValue(), 'Mein ungespeicherter Entwurf');
     }
     recording = false;
-    await tourPage.close();
+    tourPage.off('request', recordRequest);
   };
   // These chapters have no server writes and independent page/form state.
-  // Keep every step and assertion while bounding the browser to two tabs.
+  // Reuse two normal SPA tabs instead of bootstrapping the app per chapter.
   for (let index = 0; index < flows.length; index += 2) {
-    const results = await Promise.allSettled(flows.slice(index, index + 2).map(runFlow));
+    const results = await Promise.allSettled(flows.slice(index, index + 2).map((flow, slot) => runFlow(flow, flowPages[slot])));
     const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (failed) throw failed.reason;
   }
+  await Promise.all(flowPages.map((flowPage) => flowPage.close()));
   assert.deepEqual(mutations, [], 'example dialogs and rows must not create or change product records');
   assert.deepEqual(demoNetwork, [], 'the real views in a demonstration must not read or write the live API');
 });
