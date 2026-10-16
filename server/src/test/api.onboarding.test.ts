@@ -7,8 +7,13 @@ import { SESSION_COOKIE_NAME } from '../sessions';
 import { db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { nanoid } from 'nanoid';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { config } from '../config';
 
 const app = createApp();
+const mutableConfig = config as unknown as { welcomeTrailerDir: string };
 
 function sessionCookie(res: request.Response): string {
   const raw = res.headers['set-cookie'] as unknown as string[] | undefined;
@@ -188,4 +193,64 @@ test('new accounts can complete onboarding without catalog ratings', async () =>
   assert.equal(catalog.status, 200, JSON.stringify(catalog.body));
   assert.equal(all.body.ratingCandidateIds.length, catalog.body.filter((game: { isSuggestion: boolean }) => !game.isSuggestion).length);
   assert.deepEqual(all.body.ratingCandidateIds.slice(0, 10), games.slice(1, 11).map((game) => game.id));
+});
+
+test('every account sees the welcome trailer once, only when the operator provided the file', async () => {
+  const playerId = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
+    playerId,
+    'Trailer Veteran',
+    nanoid(24),
+    Date.now(),
+  );
+  ensureDefaultGroupMembership(playerId);
+  const claimInvite = createInvite({ purpose: 'claim', playerId, createdBy: playerId });
+  const claim = await request(app).post('/api/auth/claim').send({ code: claimInvite.code, password: 'veteran password' });
+  assert.equal(claim.status, 200, JSON.stringify(claim.body));
+  const cookie = sessionCookie(claim);
+  // An existing account that already finished the tour still owes the trailer.
+  await request(app).post('/api/me/onboarding/complete').set('Cookie', cookie).expect(200);
+
+  assert.equal((await request(app).get('/api/me/onboarding/trailer')).status, 401);
+  const previousDir = mutableConfig.welcomeTrailerDir;
+  const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-trailer-'));
+  try {
+    mutableConfig.welcomeTrailerDir = mediaDir;
+    const missing = await request(app).get('/api/me/onboarding/trailer').set('Cookie', cookie);
+    assert.deepEqual(missing.body, { available: false, hasPoster: false, seen: false });
+    assert.equal((await request(app).get('/api/me/onboarding/trailer/video').set('Cookie', cookie)).status, 404);
+
+    fs.writeFileSync(path.join(mediaDir, 'welcome-trailer.mp4'), Buffer.alloc(1000, 7));
+    const offered = await request(app).get('/api/me/onboarding/trailer').set('Cookie', cookie);
+    assert.deepEqual(offered.body, { available: true, hasPoster: false, seen: false });
+    assert.equal((await request(app).get('/api/me/onboarding/trailer/video')).status, 401);
+    const partial = await request(app).get('/api/me/onboarding/trailer/video').set('Cookie', cookie).set('Range', 'bytes=0-99');
+    assert.equal(partial.status, 206);
+    assert.equal(partial.headers['content-range'], 'bytes 0-99/1000');
+    assert.match(partial.headers['content-type'], /^video\/mp4/);
+    assert.equal((await request(app).get('/api/me/onboarding/trailer/poster').set('Cookie', cookie)).status, 404);
+
+    // Closing on two devices at once is harmless: both succeed and the first
+    // stored time survives a later close.
+    const closes = await Promise.all([
+      request(app).post('/api/me/onboarding/trailer/seen').set('Cookie', cookie),
+      request(app).post('/api/me/onboarding/trailer/seen').set('Cookie', cookie),
+    ]);
+    for (const response of closes) {
+      assert.equal(response.status, 200);
+      assert.equal(response.body.seen, true);
+    }
+    const seenAt = () => (db.prepare('SELECT welcome_trailer_seen_at AS seenAt FROM players WHERE id = ?').get(playerId) as { seenAt: number }).seenAt;
+    const firstSeenAt = seenAt();
+    await request(app).post('/api/me/onboarding/trailer/seen').set('Cookie', cookie).expect(200);
+    assert.equal(seenAt(), firstSeenAt);
+    assert.equal((await request(app).get('/api/me/onboarding/trailer').set('Cookie', cookie)).body.seen, true);
+
+    // Test players never get the trailer in the way of an admin's test session.
+    db.prepare('UPDATE players SET welcome_trailer_seen_at = NULL, is_test = 1 WHERE id = ?').run(playerId);
+    assert.equal((await request(app).get('/api/me/onboarding/trailer').set('Cookie', cookie)).body.seen, true);
+  } finally {
+    mutableConfig.welcomeTrailerDir = previousDir;
+    fs.rmSync(mediaDir, { recursive: true, force: true });
+  }
 });

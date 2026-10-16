@@ -1,4 +1,7 @@
-import { Router } from 'express';
+import fs from 'fs';
+import path from 'path';
+import { Router, type Response } from 'express';
+import { config } from '../config';
 import { db } from '../db';
 import { requireUser } from '../sessions';
 
@@ -243,6 +246,7 @@ onboardingRouter.post('/complete', requireUser, (req, res) => {
 // test process; production clients use /complete instead.
 onboardingRouter.post('/test-complete', requireUser, (req, res) => {
   if (process.env.NODE_ENV !== 'test') return res.sendStatus(404);
+  markWelcomeTrailerSeen(req.player!.id);
   return res.json(updateState(req.player!.id, {
     status: 'completed',
     lastCoreStep: CORE_STEP_COUNT,
@@ -250,6 +254,78 @@ onboardingRouter.post('/test-complete', requireUser, (req, res) => {
     ratingCandidateIds: [],
     completedAt: Date.now(),
   }));
+});
+
+// ---------- Welcome trailer ----------
+// Shown once per account, independent of the tour. The video file is optional
+// operator data (see config.welcomeTrailerDir); without it nobody is asked.
+
+const WELCOME_TRAILER_VIDEO = 'welcome-trailer.mp4';
+const WELCOME_TRAILER_POSTER = 'welcome-trailer-poster.jpg';
+
+export interface WelcomeTrailerState {
+  available: boolean;
+  hasPoster: boolean;
+  seen: boolean;
+}
+
+function welcomeTrailerFile(name: string): string | null {
+  if (!config.welcomeTrailerDir) return null;
+  const file = path.join(config.welcomeTrailerDir, name);
+  try {
+    return fs.statSync(file).isFile() ? file : null;
+  } catch {
+    return null;
+  }
+}
+
+// Admin-seeded test players count as having seen it: an admin opening a test
+// session wants to check a view, not watch the trailer once per test player.
+function welcomeTrailerState(playerId: string): WelcomeTrailerState {
+  const row = db.prepare('SELECT welcome_trailer_seen_at, is_test FROM players WHERE id = ?').get(playerId) as
+    | { welcome_trailer_seen_at: number | null; is_test: number }
+    | undefined;
+  return {
+    available: welcomeTrailerFile(WELCOME_TRAILER_VIDEO) !== null,
+    hasPoster: welcomeTrailerFile(WELCOME_TRAILER_POSTER) !== null,
+    seen: row?.welcome_trailer_seen_at != null || row?.is_test === 1,
+  };
+}
+
+// COALESCE keeps the first time: repeated or parallel closes from several
+// devices all succeed without overwriting it.
+function markWelcomeTrailerSeen(playerId: string): void {
+  db.prepare('UPDATE players SET welcome_trailer_seen_at = COALESCE(welcome_trailer_seen_at, ?) WHERE id = ?')
+    .run(Date.now(), playerId);
+}
+
+function sendWelcomeTrailerFile(res: Response, name: string, contentType: string): void {
+  const file = welcomeTrailerFile(name);
+  if (!file) {
+    res.status(404).json({ error: 'Trailer nicht gefunden.' });
+    return;
+  }
+  // sendFile answers Range requests, which video seeking relies on. The file
+  // only changes on a deliberate redeploy, so a day of private caching is safe.
+  res.type(contentType);
+  res.sendFile(file, { headers: { 'Cache-Control': 'private, max-age=86400' } });
+}
+
+onboardingRouter.get('/trailer', requireUser, (req, res) => {
+  res.json(welcomeTrailerState(req.player!.id));
+});
+
+onboardingRouter.post('/trailer/seen', requireUser, (req, res) => {
+  markWelcomeTrailerSeen(req.player!.id);
+  res.json(welcomeTrailerState(req.player!.id));
+});
+
+onboardingRouter.get('/trailer/video', requireUser, (_req, res) => {
+  sendWelcomeTrailerFile(res, WELCOME_TRAILER_VIDEO, 'video/mp4');
+});
+
+onboardingRouter.get('/trailer/poster', requireUser, (_req, res) => {
+  sendWelcomeTrailerFile(res, WELCOME_TRAILER_POSTER, 'image/jpeg');
 });
 
 onboardingRouter.post('/rating/start', requireUser, (req, res) => {

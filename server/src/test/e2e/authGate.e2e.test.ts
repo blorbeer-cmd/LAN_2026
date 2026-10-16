@@ -9,6 +9,9 @@
 
 import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
 import { createE2EDiagnosticTest, trackE2EContext, deferE2EContextClose } from './e2eDiagnostics';
@@ -30,6 +33,11 @@ let page: Page;
 let adminCookie: string;
 
 const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
+
+// The welcome trailer is operator data beside the database. A placeholder file
+// is enough here: the test covers when the dialog appears, not video decoding.
+const welcomeTrailerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-e2e-trailer-'));
+fs.writeFileSync(path.join(welcomeTrailerDir, 'welcome-trailer.mp4'), Buffer.alloc(1024));
 
 // Mints a fresh 'register' invite code by bootstrapping one admin account
 // via the recovery code (plain HTTP, no browser involved) and having it
@@ -95,6 +103,7 @@ before(async () => {
     DB_FILE: ':memory:',
     ADMIN_RECOVERY_CODE: RECOVERY_CODE,
     KIOSK_TOKEN: 'e2e-kiosk-token',
+    WELCOME_TRAILER_DIR: welcomeTrailerDir,
   });
   e2eServer = server;
   serverProcess = server.process;
@@ -106,6 +115,7 @@ before(async () => {
 after(async () => {
   await browser?.close();
   serverProcess?.kill();
+  fs.rmSync(welcomeTrailerDir, { recursive: true, force: true });
 });
 
 test('an invite link registers a new account and logs it straight in', async () => {
@@ -148,7 +158,23 @@ test('an invite link registers a new account and logs it straight in', async () 
   const search = new URL(page.url()).search;
   assert.equal(search, '', 'the consumed invite code should be dropped from the URL');
 
+  // A fresh account first sees the server-hosted welcome trailer. Skipping
+  // hands over to the tour and stores the trailer as seen, so a reload resumes
+  // the tour without the video.
+  await page.waitForSelector('.onboarding-trailer');
+  assert.equal(
+    await page.locator('.onboarding-trailer video').getAttribute('src'),
+    '/api/me/onboarding/trailer/video',
+  );
+  assert.equal(await page.locator('[data-onboarding-trailer-next]').textContent(), 'Überspringen');
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith('/api/me/onboarding/trailer/seen') && response.ok()),
+    page.click('[data-onboarding-trailer-next]'),
+  ]);
+  await page.reload();
+  await waitForPlayerData(page);
   await page.waitForSelector('#onboarding-root [role="dialog"]');
+  assert.equal(await page.locator('.onboarding-trailer').count(), 0);
 
   // Regression coverage: the onboarding dialog keeps one stable bottom
   // position even while the spotlight moves between targets. The spotlight

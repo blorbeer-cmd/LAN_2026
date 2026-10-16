@@ -73,6 +73,7 @@ accessibility issues, responsive regressions, shadows and breakpoint decisions.
 | `--state-paused-bg` | `rgba(245, 158, 11, 0.16)` | Background for the "Pause" badge |
 | `--state-offline` | `#9ca3af` | "Offline" status; sufficient contrast for small badge text |
 | `--state-offline-bg` | `rgba(107, 114, 128, 0.16)` | Background for the "Offline" badge |
+| `--media-letterbox` | `#000000` | Letterbox around full-page video (welcome trailer), so the video's black edges meet black |
 
 **Avatar color palette** — a separate, server-side single source of truth
 (`server/src/testUsers.ts`, `COLORS`), used for bulk test-player generation. The profile editor

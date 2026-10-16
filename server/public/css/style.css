@@ -121,6 +121,9 @@
   --info-board-panel-width: 880px;
   /* Dialogs with two columns of rows from --bp-lg (Ergebnis eintragen). */
   --wide-dialog-width: 880px;
+  /* Letterbox around full-page video (welcome trailer): pure black so the
+     video's own black edges do not meet a tinted page background. */
+  --media-letterbox: #000000;
   --search-select-results-max-height: 320px;
   /* Caps a single Info entry's content so a long entry scrolls internally
      instead of stretching every card in its two-column grid row to match it.

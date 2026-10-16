@@ -5,9 +5,17 @@ import { api } from './api.js';
 import { state } from './state.js';
 import { getMyId } from './whoami.js';
 import { escapeHtml } from './format.js';
+import { icon } from './icons.js';
 import { showToast } from './toast.js';
 import { sectionEntryView } from './sectionNav.js';
 import { eventHasFeature, viewIsEnabledForEvent } from './eventFeatures.js';
+
+// Every account sees the LAN trailer once: new accounts right before the
+// tour, existing accounts on their next start. The server streams its own
+// 1440p file, so quality and sound do not depend on YouTube and the video
+// also plays on a LAN without internet.
+const WELCOME_TRAILER_VIDEO_URL = '/api/me/onboarding/trailer/video';
+const WELCOME_TRAILER_POSTER_URL = '/api/me/onboarding/trailer/poster';
 
 // Start with personal orientation, then explain the shared event context and
 // the main LAN flows. The game catalog stays last so the tour ends on the
@@ -241,18 +249,19 @@ async function handleOnboardingError(error) {
 }
 
 function focusableElements(container) {
-  return [...container.querySelectorAll('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+  return [...container.querySelectorAll('button:not([disabled]), [href], input, select, textarea, video[controls], [tabindex]:not([tabindex="-1"])')]
     .filter((element) => !element.hidden && element.getClientRects().length > 0);
 }
 
 function wireDialogFocus() {
   const dialog = root()?.querySelector('[role="dialog"]');
   if (!dialog) return;
-  if (runtime?.mode === 'core') {
+  if (runtime?.mode === 'core' || runtime?.mode === 'trailer') {
+    const onEscape = runtime.mode === 'trailer' ? continueAfterTrailer : skipTour;
     dialog.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        void skipTour().catch(handleOnboardingError);
+        void onEscape().catch(handleOnboardingError);
         return;
       }
       if (event.key !== 'Tab') return;
@@ -309,6 +318,185 @@ function renderCore() {
   wireDialogFocus();
 }
 
+// The trailer fills the whole page and starts at once, muted where the browser
+// refuses sound (agreed with the organizers). Controls stay small and out of
+// the picture: sound bottom left, skip bottom right, fullscreen top right. A
+// large play button only appears when the browser blocks even muted playback.
+const TRAILER_SOUND = {
+  on: { icon: 'volumeOn', label: 'Ton aus' },
+  off: { icon: 'volumeOff', label: 'Ton an' },
+};
+
+function renderTrailer() {
+  root().innerHTML = `
+    <section class="onboarding-trailer" role="dialog" tabindex="-1" aria-modal="true" aria-label="Willkommen bei Respawn: LAN 2026 Trailer" data-state="loading">
+      <video src="${WELCOME_TRAILER_VIDEO_URL}" ${runtime.trailer.hasPoster ? `poster="${WELCOME_TRAILER_POSTER_URL}"` : ''}
+        preload="auto" playsinline aria-hidden="true"></video>
+      <p class="onboarding-trailer-status" role="status"></p>
+      <div class="onboarding-trailer-start-wrap" hidden>
+        <button type="button" class="onboarding-trailer-start" data-onboarding-trailer-start aria-label="Trailer abspielen">${icon('play')}</button>
+        <span class="onboarding-trailer-start-label" aria-hidden="true">Trailer abspielen</span>
+      </div>
+      <button type="button" class="onboarding-trailer-control onboarding-trailer-fullscreen" data-onboarding-trailer-fullscreen hidden></button>
+      <div class="onboarding-trailer-bar">
+        <button type="button" class="onboarding-trailer-control onboarding-trailer-sound" data-onboarding-trailer-sound hidden></button>
+        <span class="onboarding-actions-spacer"></span>
+        <button type="button" class="onboarding-trailer-control" data-onboarding-trailer-next>Überspringen${icon('chevronRight')}</button>
+      </div>
+      <div class="onboarding-trailer-progress" aria-hidden="true"><span></span></div>
+    </section>`;
+  const section = root().querySelector('.onboarding-trailer');
+  const video = section.querySelector('video');
+  section.querySelector('[data-onboarding-trailer-next]').addEventListener('click', () => void continueAfterTrailer().catch(handleOnboardingError));
+  section.querySelector('[data-onboarding-trailer-start]').addEventListener('click', () => void playTrailerWithSound());
+  section.querySelector('[data-onboarding-trailer-sound]').addEventListener('click', toggleTrailerSound);
+  section.querySelector('[data-onboarding-trailer-fullscreen]').addEventListener('click', () => void toggleTrailerFullscreen());
+  // A tap on the picture does the obvious thing: start, or switch the sound on.
+  video.addEventListener('click', () => {
+    if (trailerState() === 'idle') void playTrailerWithSound();
+    else if (video.muted) toggleTrailerSound();
+  });
+  video.addEventListener('timeupdate', () => {
+    const progress = video.duration ? video.currentTime / video.duration : 0;
+    section.querySelector('.onboarding-trailer-progress span').style.transform = `scaleX(${progress})`;
+  });
+  video.addEventListener('volumechange', renderTrailerSound);
+  video.addEventListener('ended', () => void continueAfterTrailer().catch(handleOnboardingError));
+  video.addEventListener('error', () => setTrailerState('error'));
+  document.addEventListener('fullscreenchange', renderTrailerFullscreen);
+  renderTrailerFullscreen();
+  setTrailerState('loading');
+  wireDialogFocus();
+  // Focus the player itself: Escape and Tab work at once, and no control
+  // carries a focus ring before anyone pressed a key.
+  section.focus();
+  // Right after registering the click still counts as a fresh interaction,
+  // which is the only moment a browser lets a page enter real fullscreen.
+  if (navigator.userActivation?.isActive) void toggleTrailerFullscreen();
+  void startTrailer();
+}
+
+function trailerSection() {
+  return root()?.querySelector('.onboarding-trailer') ?? null;
+}
+
+function trailerVideo() {
+  return trailerSection()?.querySelector('video') ?? null;
+}
+
+function trailerState() {
+  return trailerSection()?.dataset.state;
+}
+
+const TRAILER_STATUS = {
+  loading: 'Lädt …',
+  error: 'Video konnte nicht geladen werden',
+};
+
+function setTrailerState(stateName) {
+  const section = trailerSection();
+  if (!section) return;
+  section.dataset.state = stateName;
+  const status = section.querySelector('.onboarding-trailer-status');
+  status.textContent = TRAILER_STATUS[stateName] ?? '';
+  status.hidden = !TRAILER_STATUS[stateName];
+  const start = section.querySelector('[data-onboarding-trailer-start]');
+  const next = section.querySelector('[data-onboarding-trailer-next]');
+  const startHadFocus = document.activeElement === start;
+  start.parentElement.hidden = stateName !== 'idle';
+  start.hidden = stateName !== 'idle';
+  renderTrailerSound();
+  // Keep keyboard focus inside the trailer when the focused control hides.
+  if (!start.hidden && (document.activeElement === next || document.activeElement === section)) start.focus();
+  else if (start.hidden && startHadFocus) next.focus();
+}
+
+function renderTrailerSound() {
+  const section = trailerSection();
+  const video = trailerVideo();
+  if (!section || !video) return;
+  const button = section.querySelector('[data-onboarding-trailer-sound]');
+  button.hidden = trailerState() !== 'playing';
+  const view = video.muted ? TRAILER_SOUND.off : TRAILER_SOUND.on;
+  button.toggleAttribute('data-muted', video.muted);
+  button.innerHTML = `${icon(view.icon)}<span>${view.label}</span>`;
+}
+
+function toggleTrailerSound() {
+  const video = trailerVideo();
+  if (video) video.muted = !video.muted;
+}
+
+function trailerFullscreenElement() {
+  return document.fullscreenElement ?? document.webkitFullscreenElement ?? null;
+}
+
+function renderTrailerFullscreen() {
+  const section = trailerSection();
+  if (!section) {
+    document.removeEventListener('fullscreenchange', renderTrailerFullscreen);
+    return;
+  }
+  const button = section.querySelector('[data-onboarding-trailer-fullscreen]');
+  const supported = Boolean(section.requestFullscreen ?? section.webkitRequestFullscreen);
+  button.hidden = !supported;
+  const active = trailerFullscreenElement() === section;
+  button.innerHTML = icon(active ? 'minimize' : 'maximize');
+  button.setAttribute('aria-label', active ? 'Vollbild beenden' : 'Vollbild');
+  button.title = active ? 'Vollbild beenden' : 'Vollbild';
+}
+
+async function toggleTrailerFullscreen() {
+  const section = trailerSection();
+  if (!section) return;
+  try {
+    if (trailerFullscreenElement() === section) await exitTrailerFullscreen();
+    else await (section.requestFullscreen ?? section.webkitRequestFullscreen)?.call(section);
+  } catch {
+    // Without a fresh click the browser refuses; the page-filling view stays.
+  }
+}
+
+async function exitTrailerFullscreen() {
+  if (!trailerFullscreenElement()) return;
+  try {
+    await (document.exitFullscreen ?? document.webkitExitFullscreen)?.call(document);
+  } catch {
+    // Leaving fullscreen can only fail when it already ended.
+  }
+}
+
+// Sound first where the browser allows it (after registering, or for a site it
+// knows well), otherwise muted. Only if even muted playback is refused does
+// the large play button wait for a click.
+async function startTrailer() {
+  const video = trailerVideo();
+  if (!video) return;
+  if (await tryPlay(video, { muted: false })) return;
+  if (trailerState() === 'error') return;
+  if (await tryPlay(video, { muted: true })) return;
+  if (trailerState() !== 'error') setTrailerState('idle');
+}
+
+async function tryPlay(video, { muted }) {
+  video.muted = muted;
+  try {
+    await video.play();
+  } catch {
+    return false;
+  }
+  setTrailerState('playing');
+  return true;
+}
+
+// A click is the user gesture every browser accepts for sound.
+async function playTrailerWithSound() {
+  const video = trailerVideo();
+  if (!video) return;
+  setTrailerState('loading');
+  if (!(await tryPlay(video, { muted: false })) && trailerState() !== 'error') setTrailerState('idle');
+}
+
 function renderRating() {
   const element = root();
   const progress = onboardingRatingProgress();
@@ -334,9 +522,27 @@ function renderRating() {
 function renderOverlay() {
   if (!runtime?.mode) return;
   const app = document.getElementById('app');
-  if (app) app.inert = runtime.mode === 'core';
-  if (runtime.mode === 'core') renderCore();
+  if (app) app.inert = runtime.mode === 'core' || runtime.mode === 'trailer';
+  if (runtime.mode === 'trailer') renderTrailer();
+  else if (runtime.mode === 'core') renderCore();
   else renderRating();
+}
+
+// Marks the trailer as seen and hands over to the tour, if one is due. A
+// failed save must not trap the player in front of a video, so the dialog
+// closes either way and the trailer simply returns on the next start.
+async function continueAfterTrailer() {
+  if (runtime?.mode !== 'trailer') return;
+  trailerVideo()?.pause();
+  void exitTrailerFullscreen();
+  runtime.trailer = { ...runtime.trailer, seen: true };
+  if (shouldResumeCore()) {
+    runtime.mode = 'core';
+    renderOverlay();
+  } else {
+    closeOverlay();
+  }
+  runtime.trailer = await api.onboarding.trailer.seen();
 }
 
 async function saveCore(patch) {
@@ -405,10 +611,14 @@ export function refreshOnboardingRatingProgress() {
 export async function initOnboarding({ navigate, rerender, getCurrentView }) {
   if (!getMyId()) return;
   try {
-    const onboardingState = await api.onboarding.get();
+    const [onboardingState, trailer] = await Promise.all([
+      api.onboarding.get(),
+      api.onboarding.trailer.get().catch(() => ({ available: false, hasPoster: false, seen: true })),
+    ]);
     const steps = buildSteps();
     runtime = {
       state: onboardingState,
+      trailer,
       mode: null,
       deferredThisSession: false,
       steps,
@@ -429,18 +639,27 @@ export async function initOnboarding({ navigate, rerender, getCurrentView }) {
   }
 }
 
+// The tour ends in the game catalog and is therefore a LAN/game-area flow.
+// A general event must not force people through hidden gaming screens; the
+// pending state remains available when they later enter a LAN workspace.
+function shouldResumeCore() {
+  return eventHasFeature(state.activeEvent, 'games')
+    && (runtime.state.status === 'pending' || runtime.state.status === 'active');
+}
+
+function shouldShowTrailer() {
+  return Boolean(runtime.trailer?.available && !runtime.trailer.seen);
+}
+
 export function maybeStartOnboarding() {
   if (!runtime || runtime.mode || runtime.deferredThisSession) return;
-  // The tour ends in the game catalog and is therefore a LAN/game-area flow.
-  // A general event must not force people through hidden gaming screens; the
-  // pending state remains available when they later enter a LAN workspace.
-  if (!eventHasFeature(state.activeEvent, 'games')) return;
-  const shouldResumeCore = runtime.state.status === 'pending' || runtime.state.status === 'active';
-  if (!shouldResumeCore) return;
+  const showTrailer = shouldShowTrailer();
+  const resumeCore = shouldResumeCore();
+  if (!showTrailer && !resumeCore) return;
   runtime.previousFocus = document.activeElement;
   runtime.steps = buildSteps();
   runtime.step = Math.min(Math.max(runtime.step, 0), runtime.steps.length - 1);
-  runtime.mode = 'core';
-  runtime.navigate(runtime.steps[runtime.step].view);
+  runtime.mode = showTrailer ? 'trailer' : 'core';
+  if (resumeCore) runtime.navigate(runtime.steps[runtime.step].view);
   renderOverlay();
 }

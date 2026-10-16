@@ -97,6 +97,26 @@ test('migration 119 keeps existing tournaments as regularly ended and is repeata
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 121 lets existing accounts see the welcome trailer once and is repeatable', () => {
+  const dbFile = makeTempDbPath('welcome-trailer-seen');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec('ALTER TABLE players DROP COLUMN welcome_trailer_seen_at');
+  fixture.prepare("INSERT INTO players (id, name, api_key, created_at) VALUES ('legacy-player', 'Legacy Player', 'legacy-key', ?)").run(Date.now());
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 121').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT welcome_trailer_seen_at AS seenAt FROM players WHERE id = ?').get('legacy-player'),
+    { seenAt: null },
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 120 moves only the handmade TestEvent into admin mode and is repeatable', () => {
   const dbFile = makeTempDbPath('handmade-test-event');
   runMigrations(dbFile);
@@ -892,10 +912,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 120);
+  assert.equal(migrations.length, 121);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 120 }, (_, index) => index + 1),
+    Array.from({ length: 121 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1497,8 +1517,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 120 }, (_, index) => index + 1),
-    'every version 1..120 runs exactly once',
+    Array.from({ length: 121 }, (_, index) => index + 1),
+    'every version 1..121 runs exactly once',
   );
 });
 

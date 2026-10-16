@@ -262,6 +262,165 @@
   flex: 1 1 auto;
 }
 
+/* The welcome trailer fills the whole page (agreed with the organizers) and
+   becomes real browser fullscreen when the browser allows it. Controls float
+   small and translucent at the edges so the picture stays free. */
+.onboarding-trailer {
+  position: fixed;
+  inset: 0;
+  z-index: 42;
+  display: grid;
+  place-items: center;
+  background: var(--media-letterbox);
+  pointer-events: auto;
+}
+
+.onboarding-trailer:focus {
+  outline: none;
+}
+
+.onboarding-trailer video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: pointer;
+}
+
+.onboarding-trailer-control,
+.onboarding-trailer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-target-size);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.onboarding-trailer-control {
+  cursor: pointer;
+}
+
+.onboarding-trailer-control[hidden],
+.onboarding-trailer-status[hidden] {
+  display: none;
+}
+
+.onboarding-trailer-control .ui-icon {
+  width: var(--space-5);
+  height: var(--space-5);
+}
+
+/* While the sound is off, "Ton an" is the one action that matters. */
+.onboarding-trailer-sound[data-muted] {
+  color: var(--accent-text);
+  background: var(--accent-gradient);
+  border-color: transparent;
+  box-shadow: var(--shadow-glow-accent);
+}
+
+.onboarding-trailer-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) max(var(--space-5), env(safe-area-inset-right)) max(var(--space-6), env(safe-area-inset-bottom)) max(var(--space-5), env(safe-area-inset-left));
+}
+
+.onboarding-trailer-fullscreen {
+  position: absolute;
+  top: max(var(--space-4), env(safe-area-inset-top));
+  right: max(var(--space-4), env(safe-area-inset-right));
+  justify-content: center;
+  width: var(--tap-target-size);
+  padding: 0;
+}
+
+.onboarding-trailer-status {
+  position: absolute;
+  margin: 0;
+}
+
+/* Only when the browser blocks even muted playback. */
+.onboarding-trailer-start-wrap {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.onboarding-trailer-start-wrap[hidden] {
+  display: none;
+}
+
+.onboarding-trailer-start {
+  display: grid;
+  place-items: center;
+  width: calc(var(--tap-target-size) * 1.75);
+  height: calc(var(--tap-target-size) * 1.75);
+  color: var(--accent-text);
+  background: var(--accent-gradient);
+  border: 0;
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-glow-accent), var(--shadow);
+  cursor: pointer;
+}
+
+.onboarding-trailer-start .ui-icon {
+  width: var(--space-7);
+  height: var(--space-7);
+  /* Optical centering: the play triangle's mass sits left of its box. */
+  margin-left: var(--space-1);
+}
+
+.onboarding-trailer-start-label {
+  color: var(--text);
+  font-weight: var(--font-weight-bold);
+}
+
+.onboarding-trailer[data-state='idle'] video {
+  opacity: 0.45;
+}
+
+.onboarding-trailer-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--space-1);
+  background: color-mix(in srgb, var(--text) 18%, transparent);
+}
+
+.onboarding-trailer-progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent-gradient);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+@media (hover: hover) {
+  .onboarding-trailer-control:hover {
+    background: color-mix(in srgb, var(--bg-elevated-2) 80%, transparent);
+  }
+
+  .onboarding-trailer-sound[data-muted]:hover {
+    background: var(--accent-gradient);
+    filter: brightness(1.08);
+  }
+}
+
 .onboarding-rating-dialog {
   /* Only the dialog's own controls stay clickable (see the button rule
      below) - everything else, including its own background, lets clicks
