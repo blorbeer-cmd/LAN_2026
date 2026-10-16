@@ -4,7 +4,7 @@ import { AREA_TOURS, getAreaTour } from './areaTourCatalog.js';
 import { ARCADE_TOURS } from './arcade/areaTours.js';
 import { stepsForTour } from './areaTours.js';
 import { VIEW_MANIFEST } from './viewManifest.js';
-import { createTourDemo, demoApiResponse, DEMO_VIEWS } from './areaTourDemoData.js';
+import { createTourDemo, demoApiResponse, DEMO_VIEWS, tourDemoSceneKey } from './areaTourDemoData.js';
 
 test('every area and game has concise tour copy with stable unambiguous step ids', () => {
   const catalogs = { ...AREA_TOURS, ...ARCADE_TOURS };
@@ -34,6 +34,14 @@ test('every area and game has concise tour copy with stable unambiguous step ids
 });
 
 test('real-view demonstration data is consistent, isolated and cannot proxy writes or unknown reads', () => {
+  const now = 1_800_000_000_000;
+  const key = (view, step) => tourDemoSceneKey(view, step, {}, now);
+  assert.equal(key('gameCatalog', 'ratings/bock'), key('gameCatalog', 'ratings/skill'), 'ratings move the highlight without replacing their view');
+  assert.equal(key('gameCatalog', 'catalog/platform'), key('gameCatalog', 'catalog/notes'), 'one creation form stays mounted across its field explanations');
+  assert.notEqual(key('votes', 'vote/prefill'), key('votes', 'vote/submitted'), 'a saved ballot is an actual state transition');
+  const winner = createTourDemo('votes', 'result/close', {}, now).responses['/api/votes/history'].history[0].results;
+  assert.ok(winner[0].points > winner[1].points && winner[0].votes < winner[1].votes,
+    'the example illustrates that the points winner can have fewer willing players');
   const demo = createTourDemo('votes', 'result/close', {}, 1_800_000_000_000);
   const history = demo.responses['/api/votes/history'].history[0];
   for (const result of history.results) {

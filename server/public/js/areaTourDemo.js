@@ -8,6 +8,9 @@ const renderers = {
   checklist: ['checklist', 'renderChecklist', 'todos'],
   checklistPacking: ['checklist', 'renderChecklist', 'packliste'],
   foodOrders: ['foodOrders', 'renderFoodOrders'], matchmaking: ['matchmaking', 'renderMatchmaking'],
+  home: ['home', 'renderHome'], events: ['events', 'renderOrgaEvents'], music: ['music', 'renderMusic'],
+  broadcast: ['broadcast', 'renderBroadcast'], tournaments: ['tournament', 'renderTournaments'],
+  arcade: ['../arcade/views/arcade', 'renderArcade'],
 };
 
 function memoryStorage() {
@@ -24,10 +27,23 @@ window.open = () => null;
 document.addEventListener('click', (event) => { if (event.target.closest('a')) event.preventDefault(); }, true);
 
 let initialized = false;
+let focusCurrentScene = null;
 window.addEventListener('message', async (event) => {
-  if (initialized || event.source !== parent || event.origin !== location.origin || event.data?.type !== 'area-tour:init') return;
-  const { token, view, step, context, target } = event.data;
-  const demo = createTourDemo(view, step, context);
+  if (event.source !== parent || event.origin !== location.origin) return;
+  if (initialized && event.data?.type === 'area-tour:layout') {
+    for (const key of ['theme', 'layoutMode']) {
+      if (event.data[key]) document.documentElement.dataset[key] = event.data[key];
+    }
+    return;
+  }
+  if (initialized && event.data?.type === 'area-tour:focus') {
+    await focusCurrentScene?.(event.data);
+    return;
+  }
+  if (initialized || event.data?.type !== 'area-tour:init') return;
+  let { token } = event.data;
+  const { view, step, context, target, now } = event.data;
+  const demo = createTourDemo(view, step, context, now);
   if (!demo) return;
   initialized = true;
   if (context.theme) document.documentElement.dataset.theme = context.theme;
@@ -55,6 +71,13 @@ window.addEventListener('message', async (event) => {
     throw new Error('Example view did not settle');
   };
   try {
+    const { mountTourDemoShell, installTourSocket } = await import('./areaTourDemoShell.js');
+    installTourSocket(demo.socketSnapshots);
+    if (view === 'arcade') {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet'; link.href = '/css/arcade.css';
+      await new Promise((resolve, reject) => { link.onload = resolve; link.onerror = reject; document.head.append(link); });
+    }
     const [file, exportName, mode] = renderers[demo.view];
     const [{ state }, identity, groups, viewModule, sections] = await Promise.all([
       import('./state.js'), import('./whoami.js'), import('./groupContext.js'),
@@ -63,6 +86,7 @@ window.addEventListener('message', async (event) => {
     Object.assign(state, demo.state);
     identity.lockMyIdToSession(demo.me.id);
     await groups.initGroupContext();
+    await mountTourDemoShell(demo);
     if (view === 'gameCatalog') {
       viewModule.focusGameCatalog(demo.state.games[0].id);
     }
@@ -70,6 +94,7 @@ window.addEventListener('message', async (event) => {
       viewModule.prepareDrawFromVote(demo.voteSelection);
     }
     const root = document.getElementById('view-container');
+    root.dataset.view = demo.view;
     const render = () => {
       try {
         revision += 1;
@@ -79,7 +104,7 @@ window.addEventListener('message', async (event) => {
       }
       catch (error) { failure = error; }
     };
-    const ctx = { rerender: render, refresh: async () => render(), switchView: () => {} };
+    const ctx = { rerender: render, refresh: async () => render(), switchView: () => {}, localRoute: () => demo.localRoute ?? null };
     render();
     await settled();
     if (failure) throw failure;
@@ -89,12 +114,9 @@ window.addEventListener('message', async (event) => {
     for (const button of root.querySelectorAll('[aria-expanded="false"]')) {
       if (button.matches('[data-toggle-latest-vote], [data-toggle-poll], [data-group-toggle], [data-order-toggle]')) button.click();
     }
-    if (view === 'matchmaking' && step.startsWith('draft/') && ['mode', 'roster'].includes(step.split('/')[1])) {
-      root.querySelector('[data-mm-mode="draft"]')?.click();
-    }
     await settled();
     if (demo.open) {
-      const button = root.querySelector(demo.open);
+      const button = document.querySelector(demo.open);
       if (!button) throw new Error(`Missing real example action: ${demo.open}`);
       button.click();
       await settled();
@@ -112,16 +134,27 @@ window.addEventListener('message', async (event) => {
       input.value = value;
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }
-    const nativeDialog = [...document.querySelectorAll('.modal-backdrop .modal')].at(-1);
-    let highlighted = demo.focus ? document.querySelector(demo.focus)
-      : nativeDialog ?? (target ? document.querySelector(target) : null);
-    if (nativeDialog && !nativeDialog.contains(highlighted)) highlighted = nativeDialog;
-    if (highlighted?.type === 'hidden') highlighted = highlighted.closest('[data-dt-field]') ?? highlighted.parentElement;
-    highlighted ??= document.querySelector('.modal-backdrop .modal') ?? root.querySelector('.card') ?? root;
-    for (let ancestor = highlighted; ancestor; ancestor = ancestor.parentElement) {
-      if (ancestor.tagName === 'DETAILS') ancestor.open = true;
+    if (demo.submit) {
+      document.querySelector(demo.submit).requestSubmit();
+      await settled();
+      if (step.endsWith('/playlist')) document.querySelector('[data-music-result-type="playlists"]')?.click();
     }
-    highlighted.scrollIntoView({ block: 'center', behavior: 'instant' });
+    let highlighted = null;
+    const focusStep = async (stepId, selector) => {
+      const next = createTourDemo(view, stepId, context, now);
+      const nativeDialog = [...document.querySelectorAll('.modal-backdrop .modal')].at(-1);
+      highlighted = next.focus ? document.querySelector(next.focus)
+        : nativeDialog ?? (selector ? document.querySelector(selector) : null);
+      if (nativeDialog && !nativeDialog.contains(highlighted)) highlighted = nativeDialog;
+      if (highlighted?.type === 'hidden') highlighted = highlighted.closest('[data-dt-field]') ?? highlighted.parentElement;
+      highlighted ??= nativeDialog ?? root.querySelector('.card') ?? root;
+      for (let ancestor = highlighted; ancestor; ancestor = ancestor.parentElement) {
+        if (ancestor.tagName === 'DETAILS') ancestor.open = true;
+      }
+      highlighted.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await settled();
+      report('area-tour:shown');
+    };
     window.areaTourScene = {
       targetRect() {
         const rect = highlighted.getBoundingClientRect();
@@ -134,7 +167,12 @@ window.addEventListener('message', async (event) => {
     document.addEventListener('animationend', reposition, true);
     document.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
-    report('area-tour:shown');
+    focusCurrentScene = async (data) => {
+      token = data.token;
+      try { await focusStep(data.step, data.target); }
+      catch (error) { report('area-tour:error'); console.error('Area tour focus failed', error); }
+    };
+    await focusStep(step, target);
   } catch (error) {
     report('area-tour:error');
     console.error(`Area tour example failed (${view}, ${step})`, error);

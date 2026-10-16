@@ -12,25 +12,11 @@ export const components = [
   {
     "id": "area-tour-overlay",
     "role": "composite-part",
-    "selector": ".area-tour-backdrop, .area-tour-shade, .area-tour-actions, .area-tour-chapters, .area-tour-explanation, .area-tour-scene-frame, .area-tour-demo-page, .area-tour-demo-label, .area-tour-demo-page .view-container",
+    "selector": ".area-tour-backdrop, .area-tour-shade, .area-tour-actions, .area-tour-chapters, .area-tour-explanation, .area-tour-scene-frame, .area-tour-demo-page",
     "owner": "public/css/overlays.css",
     "contract": "components/area-tour.md#geometrie",
     "purpose": "The manual tour is a named shared-modal presentation; its containers own positioning and spacing, never product controls.",
-    "control": false,
-    "calls": [
-      {
-        "file": "public/js/areaTours.js",
-        "callKey": "frame.style.width",
-        "property": "width",
-        "value": "`${Math.max(0, Math.min(window.innerWidth, rect.right) - left)}px`"
-      },
-      {
-        "file": "public/js/areaTours.js",
-        "callKey": "frame.style.height",
-        "property": "height",
-        "value": "`${Math.max(0, Math.min(window.innerHeight - panel.getBoundingClientRect().height - 32, rect.bottom) - top)}px`"
-      }
-    ]
+    "control": false
   },
   {
     "id": "area-tour-target",
@@ -1424,7 +1410,7 @@ export const permanentVariants = [
     "selector": ".area-tour-backdrop .modal, .area-tour-backdrop .modal[data-tour-placement='top']",
     "owner": "public/css/overlays.css",
     "contract": "components/area-tour.md#geometrie",
-    "reason": "Named manual-tour presentation retains the standard modal width; actual example views occupy a separate isolated frame above the explanation.",
+    "reason": "Named manual-tour presentation retains the standard modal width; actual example views occupy a separate isolated frame across the viewport.",
     "control": false
   },
   {

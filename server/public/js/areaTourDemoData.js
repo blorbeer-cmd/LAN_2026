@@ -1,5 +1,8 @@
+import { configureTourDemo } from './areaTourDemoExtraData.js';
+
 // Data contracts of the real views, never substitute card/form markup.
-export const DEMO_VIEWS = ['gameCatalog', 'votes', 'eventPolls', 'arrivals', 'checklist', 'checklistPacking', 'foodOrders', 'matchmaking'];
+export const DEMO_VIEWS = ['home', 'events', 'broadcast', 'music', 'arcade', 'tournaments',
+  'gameCatalog', 'votes', 'eventPolls', 'arrivals', 'checklist', 'checklistPacking', 'foodOrders', 'matchmaking'];
 
 export function createTourDemo(view, stepId, { admin = false, event = null } = {}, now = Date.now()) {
   if (!DEMO_VIEWS.includes(view)) return null;
@@ -20,20 +23,20 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
   const preferences = games.map((game, index) => ({ player_id: me.id, game_id: game.id, rating: [4, 2, 0][index] }));
   const skills = players.flatMap((player, index) => games.map((game) => ({ player_id: player.id, game_id: game.id, rating: [4, 3, 2, 3][index] })));
   const results = games.map((game, index) => ({ gameId: game.id, gameName: game.name, icon: '',
-    points: [12, 8, 2][index], score: [12, 8, 2][index], votes: [3, 3, 2][index], declines: [0, 0, 1][index],
+    points: [9, 8, 3][index], score: [9, 8, 3][index], votes: [2, 4, 3][index], declines: [2, 0, 1][index],
     avgPreference: [4, 2, 0][index], preferenceCount: 1, playCount: 0, lastPlayedAt: null,
     totalPlaytimeMs: 0, totalPlaytimeFormatted: '', voteWinCount: 0 }));
   const round = { round: 2, title: 'Samstagabend', info: 'Was spielen wir als Nächstes?', mode: 'points',
     open: true, startedAt: now - 600_000, createdBy: me.id, anonymous: false, hideLiveResults: true,
     selectedGameIds: games.map((g) => g.id), results, totalVoters: 0, sourceRound: null };
-  const history = { ...round, open: false, closedAt: now, totalVoters: 3, winnerGameIds: [games[0].id],
-    ballots: players.slice(0, 3).map((p, voter) => ({ playerId: p.id, name: p.name, submittedAt: now - 60_000,
-      entries: games.map((g, i) => ({ gameId: g.id, points: [[4, 2, 0], [5, 3, 1], [3, 3, 1]][voter][i] })) })) };
+  const history = { ...round, open: false, closedAt: now, totalVoters: 4, winnerGameIds: [games[0].id],
+    ballots: players.map((p, voter) => ({ playerId: p.id, name: p.name, submittedAt: now - 60_000,
+      entries: games.map((g, i) => ({ gameId: g.id, points: [[4, 2, 0], [5, 2, 1], [0, 2, 1], [0, 2, 1]][voter][i] })) })) };
   const submitted = ['submitted', 'replace'].includes(step);
   if (chapter === 'result' && step === 'runoff') {
-    results[1].points = 12;
-    results[1].score = 12;
-    history.ballots.forEach((ballot) => { ballot.entries[1].points = 4; });
+    results[1].points = 9;
+    results[1].score = 9;
+    history.ballots[0].entries[1].points = 3;
     history.winnerGameIds = games.slice(0, 2).map((game) => game.id);
   }
   history.totalPoints = results.reduce((sum, result) => sum + result.points, 0);
@@ -41,7 +44,7 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
   history.winners = results.filter((result) => history.winnerGameIds.includes(result.gameId));
   round.totalVoters = submitted ? 1 : 0;
   round.totalVotes = submitted ? 2 : 0;
-  round.totalPoints = submitted ? 6 : 0;
+  round.totalPoints = submitted ? 7 : 0;
   round.anonymous = step === 'anonymous-adopt';
   round.results = results.map(({ votes: _votes, declines: _declines, points: _points, score: _score, ...metadata }) => metadata);
   const finished = chapter === 'result';
@@ -85,6 +88,7 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
     teams: [[players[0], players[2]], [players[1], players[3]]].map((team, i) => ({ name: `Team ${i + 1}`, skillSnapshot: true,
       players: team.map((p) => ({ ...p, skill: skills.find((s) => s.player_id === p.id).rating })), totalSkill: 6 })),
   };
+  if (submitted) preferences[0].rating = 5;
   const state = { players, games, preferences, skills, activeEvent, events: [activeEvent], availableEvents: [activeEvent], historicalEvents: [activeEvent],
     live: [], matches: [], selectedGameId: games[0].id,
     lastMatchmaking: view === 'matchmaking' && (['teams', 'next', 'result', 'snapshot'].includes(step) || chapter === 'tournament-setup') ? draw : null,
@@ -94,7 +98,7 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
     '/api/groups': [{ id: 'tour-group', name: 'Beispielgruppe', role: admin ? 'owner' : 'member' }],
     '/api/skills/suggestions': { suggestions: [{ gameId: games[0].id, playerId: me.id, rating: 4, matchCount: 6, gamesPlayed: 6, wins: 4 }] },
     '/api/votes/history': { history: finished ? [history] : [] },
-    '/api/votes/mine': { entries: submitted ? games.map((g, i) => ({ gameId: g.id, points: [4, 2, 0][i] })) : [] },
+    '/api/votes/mine': { entries: submitted ? games.map((g, i) => ({ gameId: g.id, points: [5, 2, 0][i] })) : [] },
     '/api/events/tour-event/polls': [poll],
     '/api/checklist/tasks': { tasks: [task] },
     '/api/checklist/items': { items: [{ id: 'tour-cable', label: 'Netzwerkkabel', checked: false }, { id: 'tour-headset', label: 'Headset', checked: true }] },
@@ -149,6 +153,10 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
   if (view === 'checklist' && step === 'claim') open = `[data-claim-task="${task.id}"]`;
   if (view === 'checklist' && step === 'done') open = `[data-task-detail="${task.id}"]`;
   if (view === 'checklistPacking' && step === 'edit') { controls = ['[data-toggle-item-editing]']; focus = '[data-remove-item]'; }
+  if (view === 'votes' && chapter === 'vote' && ['adopt', 'anonymous-adopt'].includes(step)) {
+    controls = ['[data-vote-points="tour-game-0"][data-points-value="5"]'];
+    focus = '.vote-adopt-bock';
+  }
   if (view === 'arrivals' && ['offer', 'edit'].includes(step)) {
     open = step === 'offer' ? '[data-new-carpool="arrival"]' : '[data-edit-carpool]';
     fill = { '#carpool-label': 'Auto Sam', '#carpool-location': 'Hamburg' }; focus = '#carpool-seats';
@@ -169,13 +177,17 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
     }
   }
   if (view === 'matchmaking') {
+    if (chapter === 'draft' && ['mode', 'roster', 'captains'].includes(step)) {
+      controls = ['[data-mm-mode="draft"]'];
+      if (step === 'captains') controls.push('[data-captain-toggle="tour-alex"]', '[data-captain-toggle="tour-sam"]');
+    }
     if (chapter === 'tournament-setup') {
       open = '[data-draw-tournament]';
       focus = ({ format: '#draw-tournament-format', names: '.draw-tournament-team-names', lobby: '#draw-tournament-lobby' })[step] ?? '';
     }
     if (step === 'result') open = '[data-record-draw]';
     if (chapter === 'draft' && step === 'finish') state.lastMatchmaking = { ...draw, source: 'draft' };
-    if (chapter === 'draft' && !['mode', 'roster', 'finish'].includes(step)) {
+    if (chapter === 'draft' && !['mode', 'roster', 'captains', 'finish'].includes(step)) {
       responses['/api/draft'] = { draft: { id: 'tour-draft', status: 'active', gameId: games[0].id, gameName: games[0].name,
         turnCaptainId: me.id, turnCaptainIndex: 0, teams: [0, 1].map((i) => ({ captain: players[i], players: [players[i]] })), pool: players.slice(2) } };
       focus = '.draft-pool-player';
@@ -184,7 +196,24 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
   }
   const voteSelection = view === 'votes' && chapter === 'result' && ['match', 'players'].includes(step)
     ? { gameId: games[0].id, playerIds: history.ballots.filter((ballot) => ballot.entries[0].points > 0).map((ballot) => ballot.playerId) } : null;
-  return { view: voteSelection ? 'matchmaking' : view, me, state, responses, open, controls, fill, focus: voteSelection ? '#mm-game-search' : focus, stepId, voteSelection };
+  return configureTourDemo({ view: voteSelection ? 'matchmaking' : view, me, state, responses, open, controls, fill,
+    focus: voteSelection ? '#mm-game-search' : focus, stepId, voteSelection }, { view, chapter, step, now, admin });
+}
+
+// Focus-only steps share one document, renderer, form and scroll state.
+// Only data and UI changes which affect this particular view create a scene.
+export function tourDemoSceneKey(view, step, context, now) {
+  const demo = createTourDemo(view, step, context, now);
+  if (!demo) return null;
+  const paths = { gameCatalog: ['/api/skills/'], votes: ['/api/votes/'], eventPolls: ['/api/events/'],
+    arrivals: ['/api/arrivals'], checklist: ['/api/checklist/'], checklistPacking: ['/api/checklist/'],
+    foodOrders: ['/api/food-orders'], matchmaking: ['/api/draft', '/api/matchmaking/', '/api/tournaments'],
+    tournaments: ['/api/tournaments'], home: ['/api/me/todos', '/api/push/', '/api/info', '/api/food-orders'],
+    events: ['/api/events/'], music: ['/api/music/'], arcade: ['/api/arcade/'] };
+  return JSON.stringify({ view: demo.view, state: demo.state,
+    responses: Object.fromEntries(Object.entries(demo.responses).filter(([path]) => (paths[demo.view] ?? []).some((prefix) => path.startsWith(prefix)))),
+    open: demo.open, controls: demo.controls, fill: demo.fill, submit: demo.submit,
+    socketSnapshots: demo.socketSnapshots, localRoute: demo.localRoute, voteSelection: demo.voteSelection });
 }
 
 // No caller can turn this into a proxy. Even unknown GETs fail closed.

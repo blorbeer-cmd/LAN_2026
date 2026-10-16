@@ -178,6 +178,20 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     ));
     assert.equal(await overlay.getAttribute('data-tour-scene-status'), 'ready',
       `the actual example view must render: ${await overlay.locator('h2').textContent()}`);
+    const frameBox = await tourPage.locator('[data-area-tour-scene]').boundingBox();
+    const viewport = tourPage.viewportSize()!;
+    assert.ok(frameBox && frameBox.x === 0 && frameBox.y === 0
+      && frameBox.width === viewport.width && frameBox.height === viewport.height,
+    'the example covers the complete viewport without compression or exposing the original page');
+    assert.doesNotMatch(await overlay.textContent() ?? '', /Beispielansicht/u);
+    const heading = await overlay.locator('h2').textContent();
+    if (heading === 'Bock übernehmen' || heading === 'Anonymität und Bock') {
+      assert.equal(await example.locator('[data-vote-adopt-bock]').isVisible(), true);
+      assert.equal(await example.locator('[data-vote-adopt-bock]').isChecked(), true);
+    }
+    if (heading === 'Captains auswählen') {
+      assert.equal(await example.locator('[data-roster-picker="mm-captain-roster"] input:checked').count(), 2);
+    }
     const dialog = example.locator('.modal-backdrop .modal').last();
     if (await dialog.count()) {
       const modalBox = await dialog.boundingBox();
@@ -219,6 +233,13 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     }
   });
   for (const flow of [
+    { route: 'home', help: 'Home', chapter: 'Überblick: Starten', input: '', value: '', advance: 0 },
+    { route: 'home', help: 'Home', chapter: 'Navigation und Event: Starten', input: '', value: '', advance: 0 },
+    { route: 'home', help: 'Home', chapter: 'Mitteilungen: Starten', input: '', value: '', advance: 0 },
+    { route: 'events', help: 'Events & Gruppen', chapter: 'Teilnehmen, Kalender und Beitrag: Starten', input: '', value: '', advance: 0 },
+    { route: 'music', help: 'Jam', chapter: 'Tour starten', input: '', value: '', advance: 0 },
+    { route: 'broadcast', help: 'Durchsage', chapter: 'Tour starten', input: '#broadcast-message', value: 'Das Abendessen steht ab 19 Uhr in der Küche bereit.', advance: 0 },
+    { route: 'matchmaking', help: 'Match', chapter: 'Turnier spielen: Starten', input: '', value: '', advance: 0 },
     { route: 'gameCatalog', help: 'Spiele', chapter: 'Bock, Skill und Auswahl: Starten', input: '', value: '', advance: 0 },
     { route: 'gameCatalog', help: 'Spiele', chapter: 'Spiele vorschlagen und pflegen: Starten', input: '#suggest-title', value: 'Deep Rock Galactic', advance: 0 },
     { route: 'votes', help: 'Vote', chapter: 'Abstimmen und Bock übernehmen: Starten', input: '#votes-title', value: 'Samstagabend', advance: 0 },
@@ -254,6 +275,40 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     }
     if (flow.input) {
       assert.equal(await example.locator(flow.input).inputValue(), flow.value);
+    }
+    if (flow.route === 'gameCatalog') {
+      const node = await tourPage.locator('[data-area-tour-scene]').elementHandle();
+      const scene = await node!.contentFrame();
+      await scene!.evaluate(() => {
+        document.body.dataset.continuity = 'same-document';
+        const input = document.querySelector<HTMLInputElement>('#suggest-title');
+        if (input) input.value = 'Mein Tourentwurf';
+      });
+      await overlay.locator('[data-tour-next]').click();
+      await readyScene();
+      if (!flow.input) {
+        // Bock → Skill only changes the highlight, even after resizing.
+        await tourPage.setViewportSize({ width: 1440, height: 900 });
+        await overlay.locator('[data-tour-next]').click();
+        await readyScene();
+      }
+      assert.equal(await scene!.evaluate(() => document.body.dataset.continuity), 'same-document');
+      assert.equal(await tourPage.locator('[data-area-tour-scene]').evaluate((el, original) => el === original, node), true,
+        'focus-only steps preserve the actual document and its form state');
+      if (flow.input) assert.equal(await example.locator('#suggest-title').inputValue(), 'Mein Tourentwurf');
+      await tourPage.setViewportSize({ width: 390, height: 844 });
+    }
+    if (flow.route === 'home' && flow.chapter.startsWith('Navigation')) {
+      assert.equal(await example.locator('#demo-event-list').isVisible(), true);
+    }
+    if (flow.route === 'home' && flow.chapter.startsWith('Mitteilungen')) {
+      assert.equal(await example.locator('.notification-center-entry').count(), 2);
+    }
+    if (flow.route === 'matchmaking' && flow.chapter.startsWith('Turnier spielen')) {
+      assert.equal(await example.locator('.bracket-match').count(), 3);
+    }
+    if (flow.route === 'music') {
+      assert.match(await example.locator('body').textContent() ?? '', /LAN-Nacht/u);
     }
     if (flow.route === 'votes' && flow.input) {
       const frame = await tourPage.locator('[data-area-tour-scene]').elementHandle();

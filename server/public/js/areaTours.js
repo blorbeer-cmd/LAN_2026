@@ -4,7 +4,7 @@ import { openModal } from './modal.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './format.js';
 import { profileRow } from './profileRow.js';
-import { DEMO_VIEWS } from './areaTourDemoData.js';
+import { DEMO_VIEWS, tourDemoSceneKey } from './areaTourDemoData.js';
 
 export function stepsForTour(tour, chapterId = 'all') {
   return tour.chapters.filter((chapter) => chapterId === 'all' || chapter.id === chapterId)
@@ -137,7 +137,7 @@ export function createAreaTours({ container, getContext }) {
     active = {
       key, source, trigger, accountId: context.accountId, chapterId, steps,
       tour, scope,
-      index: resumeTourIndex(steps, progress), frozen, openedDetails: new Map(),
+      index: resumeTourIndex(steps, progress), frozen, openedDetails: new Map(), demoNow: Date.now(),
       scrollX: window.scrollX, scrollY: window.scrollY, dialog: null, ring: null, shade: null,
       scrollState: [container, ...document.querySelectorAll('.modal')]
         .map((element) => ({ element, left: element.scrollLeft, top: element.scrollTop })),
@@ -179,7 +179,6 @@ export function createAreaTours({ container, getContext }) {
     if (!active) return;
     const { steps, index, dialog, accountId, key, chapterId } = active;
     const step = steps[index];
-    clearScene(active);
     active.announcer.textContent = `Schritt ${index + 1} von ${steps.length}: ${step.title}. ${step.text}`;
     saveTourProgress(accountId, key, chapterId, step.id);
     saveTourProgress(accountId, key, 'last', chapterId);
@@ -201,7 +200,7 @@ export function createAreaTours({ container, getContext }) {
         </div>
       </div>`;
     dialog.querySelector('[data-tour-end]').addEventListener('click', () => active.close());
-    dialog.querySelector('[data-tour-retry]').addEventListener('click', renderStep);
+    dialog.querySelector('[data-tour-retry]').addEventListener('click', () => { clearScene(active); renderStep(); });
     dialog.querySelector('[data-tour-back]').addEventListener('click', () => { active.index -= 1; renderStep(); });
     dialog.querySelector('[data-tour-next]').addEventListener('click', () => {
       if (active.index === active.steps.length - 1) {
@@ -219,34 +218,46 @@ export function createAreaTours({ container, getContext }) {
     tour.sceneFrame?.remove();
     tour.sceneFrame = null;
     tour.sceneToken = null;
+    tour.sceneKey = null;
   }
 
   function startScene(step) {
+    const context = getContext();
+    const demoContext = { admin: context.admin, event: { eventType: context.event?.eventType, enabledFeatures: context.event?.enabledFeatures },
+      theme: document.documentElement.dataset.theme, layoutMode: document.documentElement.dataset.layoutMode };
+    const sceneKey = tourDemoSceneKey(active.key, step.id, demoContext, active.demoNow);
+    const token = crypto.randomUUID();
+    const prepareStep = () => {
+      active.sceneToken = token;
+      active.dialog.dataset.tourSceneStatus = 'loading';
+      active.dialog.querySelector('[data-tour-next]').disabled = true;
+      active.sceneTimeout = setTimeout(() => sceneFailed(token), 15000);
+    };
+    if (active.sceneFrame && active.sceneKey === sceneKey && active.sceneFrame.contentWindow.areaTourScene) {
+      clearTimeout(active.sceneTimeout);
+      prepareStep();
+      active.sceneFrame.contentWindow.postMessage({ type: 'area-tour:focus', token, step: step.id, target: step.target }, location.origin);
+      return;
+    }
+    clearScene(active);
     const frame = document.createElement('iframe');
     frame.className = 'area-tour-scene-frame';
     frame.dataset.areaTourScene = active.key;
-    frame.title = `Beispielansicht: ${active.tour.title}`;
+    frame.title = `Tour: ${active.tour.title}`;
     frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
     frame.tabIndex = -1;
     frame.inert = true;
-    const token = crypto.randomUUID();
     active.sceneFrame = frame;
-    active.sceneToken = token;
-    active.dialog.dataset.tourSceneStatus = 'loading';
-    const status = active.dialog.querySelector('[data-tour-scene-state]');
-    status.hidden = false;
-    status.textContent = 'Die Beispielansicht wird vorbereitet …';
-    active.dialog.querySelector('[data-tour-next]').disabled = true;
+    active.sceneKey = sceneKey;
+    active.sceneLayout = JSON.stringify([demoContext.theme, demoContext.layoutMode]);
+    prepareStep();
     frame.addEventListener('load', () => {
       if (active?.sceneToken !== token) return;
-      const context = getContext();
-      frame.contentWindow.postMessage({ type: 'area-tour:init', token, view: active.key, step: step.id, target: step.target,
-        context: { admin: context.admin, event: { eventType: context.event?.eventType, enabledFeatures: context.event?.enabledFeatures },
-          theme: document.documentElement.dataset.theme, layoutMode: document.documentElement.dataset.layoutMode },
+      frame.contentWindow.postMessage({ type: 'area-tour:init', token, view: active.key, step: step.id, target: step.target, now: active.demoNow,
+        context: demoContext,
       }, location.origin);
     });
     // Bound a genuinely failed asset/frame load; this is not a render delay.
-    active.sceneTimeout = setTimeout(() => sceneFailed(token), 15000);
     frame.src = '/area-tour.html';
     active.dialog.before(frame);
     positionScene();
@@ -255,7 +266,9 @@ export function createAreaTours({ container, getContext }) {
   function sceneFailed(token) {
     if (active?.sceneToken !== token) return;
     active.dialog.dataset.tourSceneStatus = 'error';
-    active.dialog.querySelector('[data-tour-scene-state]').textContent = 'Die Beispielansicht konnte nicht geladen werden.';
+    const status = active.dialog.querySelector('[data-tour-scene-state]');
+    status.hidden = false;
+    status.textContent = 'Die Tour konnte nicht geladen werden.';
     active.dialog.querySelector('[data-tour-retry]').hidden = false;
   }
 
@@ -267,7 +280,7 @@ export function createAreaTours({ container, getContext }) {
     if (event.data.type !== 'area-tour:shown') return;
     clearTimeout(active.sceneTimeout);
     active.dialog.dataset.tourSceneStatus = 'ready';
-    active.dialog.querySelector('[data-tour-scene-state]').textContent = 'Beispielansicht · Es werden keine Daten gespeichert.';
+    active.dialog.querySelector('[data-tour-scene-state]').hidden = true;
     active.dialog.querySelector('[data-tour-next]').disabled = false;
     active.dialog.querySelector('[data-tour-next]').focus({ preventScroll: true });
     positionTarget();
@@ -275,16 +288,14 @@ export function createAreaTours({ container, getContext }) {
 
   function positionScene() {
     if (!active?.sceneFrame) return;
-    const rect = container.getBoundingClientRect();
     const panel = active.dialog.querySelector('.modal');
     panel.dataset.tourPlacement = 'bottom';
-    const left = Math.max(0, rect.left);
-    const top = Math.max(0, rect.top);
-    const frame = active.sceneFrame;
-    frame.style.left = `${left}px`;
-    frame.style.top = `${top}px`;
-    frame.style.width = `${Math.max(0, Math.min(window.innerWidth, rect.right) - left)}px`;
-    frame.style.height = `${Math.max(0, Math.min(window.innerHeight - panel.getBoundingClientRect().height - 32, rect.bottom) - top)}px`;
+    const { theme, layoutMode } = document.documentElement.dataset;
+    const layout = JSON.stringify([theme, layoutMode]);
+    if (active.sceneLayout !== layout) {
+      active.sceneLayout = layout;
+      active.sceneFrame.contentWindow.postMessage({ type: 'area-tour:layout', theme, layoutMode }, location.origin);
+    }
   }
 
   function revealTarget(scroll = false) {
@@ -339,7 +350,7 @@ export function createAreaTours({ container, getContext }) {
     ring.style.top = `${top}px`;
     ring.style.width = `${Math.min(window.innerWidth, rect.right) - left}px`;
     ring.style.height = `${Math.min(window.innerHeight, rect.bottom) - top}px`;
-    panel.dataset.tourPlacement = !active.sceneFrame && rect.bottom > window.innerHeight - panel.getBoundingClientRect().height - 32 ? 'top' : 'bottom';
+    panel.dataset.tourPlacement = rect.bottom > window.innerHeight - panel.getBoundingClientRect().height - 32 ? 'top' : 'bottom';
   }
 
   function schedulePosition() {

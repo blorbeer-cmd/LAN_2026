@@ -261,6 +261,33 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
     await direct.waitForSelector(ARCADE_HUB);
     assert.equal(await activeView(direct), 'arcade');
     await direct.close();
+
+    const demoRequests: string[] = [];
+    actor.page.on('request', (request) => {
+      if (request.frame() !== actor.page.mainFrame() && request.url().includes('/api/')) demoRequests.push(request.url());
+    });
+    const lobbiesBefore = await (await actor.page.request.get(`${BASE_URL}/api/arcade/lobbies`)).json();
+    await actor.page.getByRole('button', { name: 'Arcade kennenlernen', exact: true }).click();
+    await actor.page.getByRole('button', { name: 'Tour starten', exact: true }).click();
+    const tour = actor.page.locator('.area-tour-backdrop');
+    const scene = actor.page.frameLocator('[data-area-tour-scene]');
+    for (const expected of ['Lobby öffnen', 'Mitspielen', 'Bereit melden', 'Weiterspielen oder zuschauen', 'Arcade-Statistik']) {
+      await tour.getByRole('heading', { name: expected, exact: true }).waitFor();
+      await actor.page.waitForFunction(() => ['ready', 'error'].includes(
+        document.querySelector<HTMLElement>('.area-tour-backdrop')?.dataset.tourSceneStatus ?? '',
+      ));
+      assert.equal(await tour.getAttribute('data-tour-scene-status'), 'ready', expected);
+      if (expected === 'Lobby öffnen') assert.equal(await scene.locator('#arcade-create-form').count(), 1);
+      if (expected === 'Mitspielen') assert.equal(await scene.locator('[data-join-lobby]').count(), 1);
+      if (expected === 'Bereit melden') assert.equal(await scene.locator('[data-ready]').count(), 1);
+      if (expected === 'Weiterspielen oder zuschauen') assert.equal(await scene.locator('[data-watch-match]').count(), 1);
+      if (expected === 'Arcade-Statistik') assert.match(await scene.locator('.arcade-stats-list').textContent() ?? '', /Alex/u);
+      if (expected !== 'Arcade-Statistik') await tour.locator('[data-tour-next]').click();
+    }
+    await tour.locator('[data-tour-end]').click();
+    assert.equal(await actor.page.locator('[data-area-tour-scene]').count(), 0);
+    assert.deepEqual(await (await actor.page.request.get(`${BASE_URL}/api/arcade/lobbies`)).json(), lobbiesBefore);
+    assert.deepEqual(demoRequests, [], 'native Arcade examples stay entirely local');
   } finally {
     await actor.context.close();
   }

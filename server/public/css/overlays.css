@@ -251,32 +251,15 @@
 }
 .area-tour-scene-frame {
   position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
   z-index: 49;
   border: 0;
   background: var(--bg);
 }
 .area-tour-demo-page {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
   overflow: hidden;
-}
-.area-tour-demo-page .view-container {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  margin: 0;
-  padding: var(--space-4);
-}
-.area-tour-demo-label {
-  position: relative;
-  z-index: 51;
-  flex: none;
-  margin: 0;
-  padding: var(--space-2) var(--space-4);
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
 }
 
 #onboarding-root {

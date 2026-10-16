@@ -404,11 +404,14 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   Die Wiederaufnahme folgt dem zuletzt begonnenen Kapitel beziehungsweise der gesamten Tour.
 - Ein Schritt enthält höchstens 30 Wörter und erklärt eine Funktion oder Folgeaktion. Die Tour
   hebt vorhandene Elemente hervor und klappt benötigte Details auf. Das Tourmodal zeigt nur
-  Erklärung und Navigation. Spiele, Vote, Umfragen, An-/Abreise, To-Do/Packliste, Essen und Match
-  führen Beispiele direkt im Seitenbereich vor, auch bei leeren echten Datenbeständen.
+  Erklärung und Navigation. Home, Events & Gruppen, Spiele, Vote, Umfragen, An-/Abreise,
+  To-Do/Packliste, Essen, Match/Turnier, Durchsage, Jam und Arcade führen Beispiele direkt in
+  der normalen Oberfläche vor, auch bei leeren echten Datenbeständen.
   Die getrennte lokale Demo verwendet die normalen Ansichten und Dialoge mit Beispieldaten;
   zusammengehörige Schritte zeigen Zustandswechsel wie Vote-Anlegen → Stimmzettel → Ergebnis.
-  Andere Bereiche zeigen ihre echte vorhandene Oberfläche. Generische Ersatzkarten entfallen.
+  Reine Hervorhebungswechsel behalten die Ansicht einschließlich offener Formulare. Die Demo
+  füllt den Viewport mit normalen Abständen und Breakpoints. Andere Bereiche zeigen ihre echte
+  vorhandene Oberfläche. Generische Ersatzkarten entfallen.
   Die Demo hat keinen schreibenden Zugriff auf Server oder persönlichen Browserspeicher.
   Die Tour erzeugt keine echten Fachaktionen,
   Benachrichtigungen, Bestellungen, Zahlungen oder Ergebnisse.
@@ -416,7 +419,7 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   beendet sie nicht. Beenden entfernt sämtliche Beispiele und stellt aufgeklappte Details,
   Scrollposition und Fokus wieder her; echte Formulare werden durch die Beispiele nicht verändert.
 - Rollen, verfügbare Bereiche und Eventfeatures bestimmen die angebotenen Kapitel. Ein Wechsel
-  des Kontos, Arbeitsbereichs, der Route oder Rolle schließt den aktuellen Durchlauf. Reine
+  des Kontos, Events, der Route oder Rolle schließt den aktuellen Durchlauf. Reine
   Live-Aktualisierungen derselben Ansicht behalten ihn und aktualisieren die Hervorhebung.
 - Fortschritt wird versioniert nach Konto, Bereich und Kapitel in diesem Browser gespeichert,
   getrennt vom serverseitigen Erstlogin-Onboarding. Er enthält nur Schritt-ID und Abschlussstatus.
