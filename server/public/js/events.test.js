@@ -230,8 +230,8 @@ test('an organizer answers their own participation on the management card', () =
   });
   assert.match(declined, /badge-offline">Du: Abgesagt</);
   assert.match(declined, /data-accept-participation="managed-event"/);
-  // The management footer keeps its own primary actions to itself.
-  assert.doesNotMatch(declined, /btn-primary btn-sm" data-accept-participation/);
+  // The way back carries the primary gradient on the management card too.
+  assert.match(declined, /btn-primary btn-sm" data-accept-participation/);
 
   // Organizing an event one is not part of offers nothing to answer.
   assert.doesNotMatch(renderEventCard({ ...event, myParticipation: null }), /data-(accept|decline)-participation/);
