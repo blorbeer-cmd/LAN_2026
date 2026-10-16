@@ -4108,6 +4108,11 @@ button.card {
   flex-wrap: wrap;
   align-items: center;
 }
+/* The row clips its hover background; an open answer menu has to reach
+   beyond it. */
+.home-todo-row:has(.action-menu[open]) {
+  overflow: visible;
+}
 .home-todo-actions {
   display: flex;
   flex-shrink: 0;

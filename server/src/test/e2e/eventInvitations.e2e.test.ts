@@ -236,8 +236,8 @@ test('manager invites a member who accepts and both open clients update', async 
     'an open invitation cannot receive a payment state',
   );
 
-  // Events offers the full invitation directly; Home and Profile remain
-  // additional entry points to the same personal answer.
+  // Events offers the full invitation directly; Home is an additional entry
+  // point to the same personal answer.
   const eventInvitation = memberPage.locator(`[data-pending-invitation="${eventId}"]`);
   await eventInvitation.waitFor();
   assert.match((await eventInvitation.textContent()) ?? '', /25,50/);
@@ -255,55 +255,99 @@ test('manager invites a member who accepts and both open clients update', async 
     true,
     'the inline invitation answers must fit a phone without horizontal scrolling',
   );
+  // The answer menu must stay reachable beyond the row's clipped edge.
+  await homeInvitationRow.locator('[data-action-menu^="event-decline-"] > summary').click();
+  const excuseOption = homeInvitationRow.locator(`[data-decline-with-excuse="${eventId}"]`);
+  const plainOption = homeInvitationRow.locator(`[data-decline-invitation="${eventId}"]`);
+  for (const option of [excuseOption, plainOption]) {
+    await option.waitFor({ state: 'visible' });
+    assert.equal(
+      await option.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return el === hit || el.contains(hit);
+      }),
+      true,
+      'the open answer menu must not be clipped by the Home row',
+    );
+  }
+  await excuseOption.click();
+  const excuseDialog = memberPage.locator('.modal', { hasText: 'Mit Ausrede absagen' });
+  await excuseDialog.waitFor();
+  await excuseDialog.locator('[data-excuse-mode="own"]').click();
+  await excuseDialog.locator('[data-excuse-text]').fill('Oma hat Geburtstag');
+  await excuseDialog.locator('[data-excuse-decline]').click();
+  await memberPage.locator('.modal-backdrop [data-confirm]').click();
+  await excuseDialog.waitFor({ state: 'detached' });
+  await homeInvitationRow.waitFor({ state: 'detached' });
+  assert.equal(
+    await memberPage.evaluate(() => {
+      const active = document.activeElement;
+      return Boolean(active && active !== document.body && document.getElementById('view-container')?.contains(active));
+    }),
+    true,
+    'after declining with an excuse the focus stays on a heading of Home',
+  );
+  // The owner invites again so the rest of the flow can answer on Home.
+  assert.equal(
+    (await ownerPage.request.post(`${BASE_URL}/api/events/${eventId}/invitations`, { data: { playerId: memberId } })).status(),
+    201,
+  );
+  await memberPage.reload();
+  await memberPage.waitForSelector('#view-container[data-view="home"]');
+  await homeInvitationRow.waitFor();
+  // Opening the row leads to the invitation card in Events, in focus.
   await homeInvitationRow.locator('.home-todo-navigate').click();
-  await memberPage.waitForSelector('#view-container[data-view="profile"]');
-  await memberPage.locator('#privacy-auto-consent').waitFor({ state: 'attached' });
-  assert.equal(await memberPage.locator(`[data-consent-event="${eventId}"]`).count(), 0);
-
+  await memberPage.waitForSelector('#view-container[data-view="events"]');
   const pending = memberPage.locator(`[data-pending-invitation="${eventId}"]`);
   await pending.waitFor();
+  await memberPage.waitForSelector(`[data-pending-invitation="${eventId}"].search-target-highlight`);
+  assert.equal(
+    await memberPage.evaluate((id) => document.activeElement?.getAttribute('data-pending-invitation') === id, eventId),
+    true,
+    'keyboard focus moves onto the opened invitation card',
+  );
+  assert.equal(await pending.locator('.event-card-body').isVisible(), true);
+
+  // Profile no longer lists invitations.
+  await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'profile' })));
+  await memberPage.waitForSelector('#view-container[data-view="profile"]');
+  await memberPage.locator('#privacy-auto-consent').waitFor({ state: 'attached' });
+  assert.equal(await memberPage.locator(`[data-pending-invitation="${eventId}"]`).count(), 0);
+  assert.equal(await memberPage.locator('#profile-invitations-title').count(), 0);
+  assert.equal(await memberPage.locator(`[data-consent-event="${eventId}"]`).count(), 0);
 
   // The invitation also arrives as a personal notification. It is delivered in
   // the base workspace because the member is not a participant of the target
-  // event yet, and it deep-links back into the profile, where the invitation
-  // is now answered.
-  const invitationNotification = memberPage.locator('[data-notification-entry]', { hasText: EVENT_NAME });
+  // event yet, and it deep-links into the Events tab.
+  // A re-invite leaves the declined invitation's notification as obsolete history.
+  const invitationNotification = memberPage.locator('[data-notification-entry]', { hasText: EVENT_NAME }).first();
   await memberPage.click('#notifications-btn');
   await invitationNotification.waitFor();
   assert.match((await invitationNotification.textContent()) ?? '', /Einladung/);
   assert.equal(
-    await invitationNotification.locator('[data-notification-navigate="profile"]').count(),
+    await invitationNotification.locator('[data-notification-navigate="events"]').count(),
     1,
-    'the notification offers the jump into the profile, where the invitation is answered',
+    'the notification offers the jump into the invitation in Events',
   );
   await memberPage.click('#notifications-btn');
-  assert.match((await pending.textContent()) ?? '', new RegExp(EVENT_NAME));
-  // The row stays short; cost and payment deadline are in its detail dialog.
-  await pending.locator(`[data-open-invitation="${eventId}"]`).click();
-  const invitationDialog = memberPage.locator('.modal');
-  await invitationDialog.waitFor();
-  assert.match(
-    (await invitationDialog.textContent()) ?? '',
-    /25,50/,
-    'the invitation discloses the per-person cost before acceptance',
-  );
-  assert.match((await invitationDialog.textContent()) ?? '', /Zahlungsziel/);
-  assert.equal(await invitationDialog.locator(`[data-decline-invitation="${eventId}"]`).count(), 1);
-  await memberPage.keyboard.press('Escape');
-  await invitationDialog.waitFor({ state: 'detached' });
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,
-    'the invitation actions must remain usable without horizontal scrolling on a phone',
+    'the profile must remain usable without horizontal scrolling on a phone',
   );
+  // Answer inline on Home; the handoff then appears on the profile.
+  await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'home' })));
+  await memberPage.waitForSelector('#view-container[data-view="home"]');
 
   const ownerRefresh = ownerPage.waitForResponse(
     (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
   );
-  const acceptButton = memberPage.locator(`[data-accept-invitation="${eventId}"]`);
+  const acceptButton = memberPage.locator(`[data-home-todo="event-invitation:${eventId}"] [data-accept-invitation]`);
   await acceptButton.focus();
   await acceptButton.press('Enter');
-  await pending.waitFor({ state: 'detached' });
+  await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'profile' })));
+  await memberPage.waitForSelector('#view-container[data-view="profile"]');
   const openAcceptedEvent = memberPage.locator(`[data-open-accepted-event="${eventId}"]`);
   await openAcceptedEvent.waitFor();
   assert.equal(await openAcceptedEvent.textContent(), 'Event öffnen');
@@ -901,8 +945,8 @@ test('Events answers invitations directly and preserves declined and closed info
     await page.locator('.toast-error', { hasText: 'Einladung wurde gerade geändert.' }).waitFor();
     assert.equal(await pending.locator('[data-accept-invitation]').isEnabled(), true);
 
-    await pending.locator('[data-decline-invitation]').focus();
-    await pending.locator('[data-decline-invitation]').press('Enter');
+    await pending.locator('[data-action-menu^="event-decline-"] > summary').click();
+    await pending.locator('[data-decline-invitation]').click();
     const declined = page.locator(`[data-declined-event="${id}"]`);
     await declined.waitFor();
     await page.waitForFunction(() => document.activeElement?.id === 'orga-events-title');

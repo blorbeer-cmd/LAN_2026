@@ -305,11 +305,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   active workspace. Owner/admin answer their own invitations on their existing management card,
   without a duplicate invitation card. An invitation additionally surfaces as a personal Home
   „Meine To-Dos“ row (see [„Home overview“](navigation-and-account-rules.md#mein-profil-auswertung-und-home)) with
-  „Ablehnen“ and „Annehmen“ that also links into „Mein Profil“, and Profile's own leading
-  „Einladungen“ section answers it with the full details
-  (`renderInvitationRow`/`openInvitationDialog`/`pendingEventInvitations`/`wirePendingInvitationActions`
-  in `events.js`, reused by `profile.js` so the row, dialog and accept/decline wiring exist exactly
-  once). All entry points share `answerPendingInvitation`; answering in Events stays there,
+  the same „Absagen“ menu (with or without excuse) and „Zusagen“ as the Events card
+  (`ownParticipationAction`); opening the row, like the invitation notification, leads to the
+  Events tab with the invitation card in focus (`searchTarget` type `event`). „Mein Profil“ no
+  longer lists invitations; it only shows the „Einladung angenommen“ handoff after an answer given
+  on Home (`pendingEventInvitations`/`wirePendingInvitationActions` in `events.js`
+  keeps the wiring once).  All entry points share `answerPendingInvitation`; answering in Events stays there,
   preserves a stable keyboard focus and opens the accepted card or personal-decline section.
   Every card variant carries the account's
   own answer through `ownParticipationAction`: an „Absagen“ menu with „Absagen“ and, for an event

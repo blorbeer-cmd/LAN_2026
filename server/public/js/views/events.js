@@ -176,7 +176,7 @@ const DECLINE_EXCUSE_MAX_LENGTH = 300;
 // "Mit Ausrede absagen": a generated excuse can be edited, or an own one
 // written, and "Übernehmen und absagen" hands the final text to onDecline
 // after one confirmation that everyone will read it.
-function openExcuseDialog(event, { onDecline = null } = {}) {
+function openExcuseDialog(event, { onDecline = null, onDeclined = null } = {}) {
   const recentIds = [];
   let category = 'alle';
   let current = null;
@@ -303,7 +303,10 @@ function openExcuseDialog(event, { onDecline = null } = {}) {
           { title: 'Teilnahme absagen', confirmText: 'Absagen', danger: true },
         ))) return;
         declineBtn.disabled = true;
-        if (await onDecline(text)) close();
+        if (await onDecline(text)) {
+          close();
+          onDeclined?.();
+        }
         else declineBtn.disabled = false;
       });
       draw();
@@ -725,14 +728,28 @@ function participationLockNote(event) {
 // The own answer stays on the card for as long as it can be changed. A yes is
 // withdrawn through "Absagen", which offers a plain decline and, for an event
 // still ahead, a decline with an excuse everyone gets to read. A no is taken
-// back with "Zusagen". Open invitations use the same answer handler as Profile.
+// back with "Zusagen". Open invitations use the same answer handler as Home.
 export function ownParticipationAction(event, { primary = true } = {}) {
   const participation = event.myParticipation;
   if (!participation) return '';
   const id = escapeHtml(event.id);
   if (participation.status === 'invited') {
+    // An open invitation can be declined plainly or, for an event still
+    // ahead, with an excuse everyone gets to read (same dialog as a yes
+    // that is withdrawn).
+    const withExcuse = !event.isEnded && !eventIsGroup(event);
+    const decline = participation.canDecline
+      ? actionMenuHtml(
+        [
+          `<button type="button" class="btn btn-sm" data-decline-invitation="${id}">Absagen</button>`,
+          withExcuse ? `<button type="button" class="btn btn-sm" data-decline-with-excuse="${id}">Mit Ausrede absagen</button>` : '',
+        ],
+        `Absagen: Einladung zu ${event.name}`,
+        { key: `event-decline-${event.id}`, summary: 'Absagen' },
+      )
+      : '';
     return [
-      participation.canDecline ? `<button type="button" class="btn btn-sm" data-decline-invitation="${id}">Absagen</button>` : '',
+      decline,
       participation.canAccept ? `<button type="button" class="btn${primary ? ' btn-primary' : ''} btn-sm" data-accept-invitation="${id}">Zusagen</button>` : '',
       !participation.canAccept && !participation.canDecline ? participationLockNote(event) : '',
     ].join('');
@@ -840,7 +857,7 @@ function renderTeaserEventCard(event, { declined = false } = {}) {
   const status = declined ? 'Abgesagt' : 'Eingeladen';
   const marker = declined ? 'data-declined-event' : closed ? 'data-invited-event' : 'data-pending-invitation';
   return `
-    <article class="card stack event-card${declined ? ' event-card-declined' : ''}" ${marker}="${escapeHtml(event.id)}">
+    <article class="card stack event-card${declined ? ' event-card-declined' : ''}" ${marker}="${escapeHtml(event.id)}" tabindex="-1">
       <div class="row-between food-order-card-header event-card-header">
         <span class="event-card-heading">
           <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
@@ -1025,77 +1042,6 @@ export function renderEventSection() {
   return `${section(false)}${section(true)}`;
 }
 
-// Profile lists pending invitations as flat rows: name, one meta line and a
-// fixed "Annehmen" slot. Everything else (full name and place, note, cost,
-// the excuse generator and "Ablehnen") lives in the detail dialog the row
-// opens. Home's "Aktuell" list links here (see aktuellStatus.js).
-const INVITATION_TITLE_LIMIT = 40;
-
-function invitationMeta(event) {
-  return [
-    eventTypeTitle(event.eventType, state.eventTypeOptions),
-    // UI copy avoids dashes; the shared range helper joins with one.
-    eventIsGroup(event) ? '' : eventDateRange(event).replace(' – ', ' bis '),
-    event.location,
-  ].filter(Boolean).map((part) => escapeHtml(part)).join(' · ');
-}
-
-export function renderInvitationRow(event) {
-  const id = escapeHtml(event.id);
-  const title = event.name.length > INVITATION_TITLE_LIMIT
-    ? `${event.name.slice(0, INVITATION_TITLE_LIMIT - 1).trimEnd()}…`
-    : event.name;
-  return `
-    <div class="profile-row is-link" data-pending-invitation="${id}">
-      <button type="button" class="profile-row-main profile-row-open" data-open-invitation="${id}" aria-label="${escapeHtml(event.name)} anzeigen">
-        <span class="profile-row-text">
-          <span class="profile-row-title">${escapeHtml(title)}</span>
-          <span class="profile-row-meta">${invitationMeta(event)}</span>
-        </span>
-      </button>
-      <span class="profile-row-action"><button type="button" class="btn btn-sm" data-accept-invitation="${id}">Annehmen</button></span>
-    </div>`;
-}
-
-export function openInvitationDialog(event, ctx) {
-  const facts = [
-    ['Art', escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))],
-    eventIsGroup(event) ? null : ['Zeitraum', escapeHtml(eventDateRange(event).replace(' – ', ' bis '))],
-    event.location ? ['Ort', escapeHtml(event.location)] : null,
-    event.description ? ['Notiz', escapeHtml(event.description)] : null,
-    event.costCents ? ['Kosten', escapeHtml(formatEuroCents(event.costCents))] : null,
-    event.paymentDueAt ? ['Zahlungsziel', escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))] : null,
-  ].filter(Boolean);
-  // An ended event or a group has nothing left to collide with.
-  const excuse = event.isEnded || eventIsGroup(event)
-    ? ''
-    : `<button type="button" class="btn btn-sm" data-event-excuse="${escapeHtml(event.id)}" title="Ausrede für einen Paralleltermin generieren">Ausrede</button>`;
-  const { close } = openModal(
-    event.name,
-    `<div class="stack">
-       <dl class="checklist-detail-facts">
-         ${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
-       </dl>
-       <div class="invitation-detail-footer${excuse ? ' has-excuse' : ''}">
-         ${excuse}
-         <button type="button" class="btn btn-sm" data-decline-invitation="${escapeHtml(event.id)}">Ablehnen</button>
-         <button type="button" class="btn btn-primary btn-sm" data-accept-invitation="${escapeHtml(event.id)}">Annehmen</button>
-       </div>
-     </div>`,
-    {
-      onMount: (el) => {
-        (el.closest('.modal') ?? el.querySelector('.modal'))?.classList.add('checklist-detail-modal');
-        wireEventExcuseActions(el);
-        el.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            if (await answerPendingInvitation(btn, ctx)) close();
-          });
-        });
-      },
-    },
-  );
-}
-
 // A teaser is all an invited account receives, so the invitation list comes
 // from its own payload instead of a participant roster it never sees.
 export function pendingEventInvitations() {
@@ -1138,6 +1084,17 @@ export async function confirmEventCalendarEntry(eventId, { needsExtraCheck = fal
   }
 }
 
+// Answering replaces the clicked control, so focus moves to the first of the
+// given headings still on screen, or to the view's own title when the answered
+// section vanished (e.g. Home's last open to-do).
+function focusAnswerTarget(...selectors) {
+  const target = selectors.map((selector) => document.querySelector(selector)).find(Boolean)
+    ?? document.querySelector('#view-container h1');
+  if (!(target instanceof HTMLElement)) return;
+  if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
+  target.focus();
+}
+
 // Shared by Events, Home and Profile. Refresh replaces the clicked button's
 // DOM, so focus moves to a stable heading in the current view.
 export async function answerPendingInvitation(btn, ctx) {
@@ -1160,13 +1117,12 @@ export async function answerPendingInvitation(btn, ctx) {
     }
     await ctx.refresh();
     window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
-    (
-      document.querySelector('#profile-accepted-invitation-title')
-      || document.querySelector('#profile-invitations-title')
-      || document.querySelector('#profile-view-title')
-      || document.querySelector('#home-todos-title')
-      || document.querySelector(invitation && eventIsGroup(invitation) ? '#orga-groups-title' : '#orga-events-title')
-    )?.focus();
+    focusAnswerTarget(
+      '#profile-accepted-invitation-title',
+      '#profile-view-title',
+      '#home-todos-title',
+      invitation && eventIsGroup(invitation) ? '#orga-groups-title' : '#orga-events-title',
+    );
     showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
     return true;
   } catch (err) {
@@ -1179,12 +1135,6 @@ export async function answerPendingInvitation(btn, ctx) {
 export function wirePendingInvitationActions(container, ctx) {
   container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
     btn.addEventListener('click', () => answerPendingInvitation(btn, ctx));
-  });
-  container.querySelectorAll('[data-open-invitation]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const invitation = (state.eventInvitations || []).find((event) => event.id === btn.dataset.openInvitation);
-      if (invitation) openInvitationDialog(invitation, ctx);
-    });
   });
   container.querySelector('[data-open-accepted-event]')?.addEventListener('click', async (event) => {
     const button = event.currentTarget;
@@ -1240,7 +1190,6 @@ export function wireParticipationAnswerActions(container, ctx) {
             await api.events.declineInvitation(eventId, excuse);
             declinedOpen[eventIsGroup(event) ? 'group' : 'event'] = true;
             await ctx.refresh();
-            container.querySelector('#orga-events-title')?.focus();
             showToast('Teilnahme abgesagt. Deine Ausrede ist für alle sichtbar.');
             return true;
           } catch (err) {
@@ -1248,6 +1197,9 @@ export function wireParticipationAnswerActions(container, ctx) {
             return false;
           }
         },
+        // The dialog's focus is gone once it closes and the refresh replaced
+        // its trigger, so the answer lands on a heading that still exists.
+        onDeclined: () => focusAnswerTarget(eventIsGroup(event) ? '#orga-groups-title' : '#orga-events-title'),
       });
     });
   });

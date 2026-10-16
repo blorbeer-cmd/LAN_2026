@@ -34,11 +34,14 @@ import {
   skillRow,
 } from '../myTodos.js';
 import {
-  answerPendingInvitation,
   confirmEventCalendarEntry,
   downloadEventCalendar,
   handleEventPay,
+  ownParticipationAction,
+  wireParticipationAnswerActions,
+  wirePendingInvitationActions,
 } from './events.js';
+import { wireActionMenus } from '../actionMenu.js';
 import { markOwnFoodSharePaid, payOwnFoodShare, sendFoodOrder } from './foodOrders.js';
 import { finishTournament } from './tournament.js';
 
@@ -289,8 +292,11 @@ function todoActionsHtml(row, todo) {
       return `${todo?.hasPaypal ? todoActionButton(row, 'pay', 'Bezahlen', { primary: true }) : ''}${paidMarkerHtml(row)}`;
     case 'event-calendar':
       return todoActionButton(row, 'calendar', 'Eintragen');
-    case 'event-invitation':
-      return `${todoActionButton(row, 'decline', 'Ablehnen', { extra: `data-decline-invitation="${escapeHtml(row.eventId)}"` })}${todoActionButton(row, 'accept', 'Annehmen', { primary: true, extra: `data-accept-invitation="${escapeHtml(row.eventId)}"` })}`;
+    case 'event-invitation': {
+      // Same buttons and labels as the invitation card in Events.
+      const event = (state.eventInvitations || []).find((candidate) => candidate.id === row.eventId);
+      return event ? ownParticipationAction(event) : '';
+    }
     case 'task':
       return todoActionButton(row, 'done', 'Erledigt');
     case 'food-order-send':
@@ -469,7 +475,6 @@ async function runTodoAction(button, ctx) {
     });
   }
   if (action === 'calendar') return openCalendarDialog(todo, ctx);
-  if (action === 'accept' || action === 'decline') return settle(() => answerPendingInvitation(button, ctx));
   if (action === 'done') {
     return settle(async () => {
       try {
@@ -523,6 +528,10 @@ function wireMyTodos(container, ctx) {
       void runTodoAction(button, ctx);
     });
   });
+  // Invitation answers share Events' handlers and action menu.
+  wirePendingInvitationActions(container, ctx);
+  wireParticipationAnswerActions(container, ctx);
+  wireActionMenus(container);
 }
 
 // Groups currently-playing players by game (FR-27): a quick glance at what's

@@ -255,7 +255,7 @@ export function myTodoRow(todo, { activeEventId = state.activeEvent?.id ?? null,
   }
 }
 
-// Pending invitations are answered right here (Annehmen/Ablehnen).
+// Pending invitations are answered right here (Zusagen/Absagen).
 export function invitationRow(invitation) {
   return {
     id: `event-invitation:${invitation.id}`,
@@ -266,7 +266,7 @@ export function invitationRow(invitation) {
     iconName: domainIcon('events'),
     title: `Einladung: ${invitation.name}`,
     sub: [eventDateRange(invitation), invitation.location].filter(Boolean).join(' · '),
-    navigate: { view: 'profile' },
+    navigate: { view: 'events', target: { type: 'event', id: invitation.id } },
     inline: true,
   };
 }
