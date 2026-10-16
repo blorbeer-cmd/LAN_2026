@@ -14,24 +14,36 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
   if (view === 'gameCatalog' && step === 'promote') games[0].isSuggestion = true;
   if (view === 'gameCatalog' && step === 'process') games[0].processNames = ['RocketLeague.exe'];
   const start = now + 7 * 86_400_000;
-  const activeEvent = { ...event, id: 'tour-event', name: 'Beispiel-LAN', type: event?.type ?? 'lan',
+  const activeEvent = { ...event, id: 'tour-event', name: 'Beispiel-LAN', eventType: event?.eventType ?? 'lan',
     startsAt: start, endsAt: start + 2 * 86_400_000, participantIds: players.map((p) => p.id),
     enabledFeatures: event?.enabledFeatures, status: 'published', accepted: true };
   const preferences = games.map((game, index) => ({ player_id: me.id, game_id: game.id, rating: [4, 2, 0][index] }));
   const skills = players.flatMap((player, index) => games.map((game) => ({ player_id: player.id, game_id: game.id, rating: [4, 3, 2, 3][index] })));
-  const results = games.map((game, index) => ({ gameId: game.id, gameName: game.name, gameIcon: '', points: [12, 8, 2][index], votes: [3, 2, 1][index], avgBock: [4, 2, 0][index] }));
-  const round = { round: 1, title: 'Samstagabend', info: 'Was spielen wir als Nächstes?', mode: 'points',
+  const results = games.map((game, index) => ({ gameId: game.id, gameName: game.name, icon: '',
+    points: [12, 8, 2][index], score: [12, 8, 2][index], votes: [3, 3, 2][index], declines: [0, 0, 1][index],
+    avgPreference: [4, 2, 0][index], preferenceCount: 1, playCount: 0, lastPlayedAt: null,
+    totalPlaytimeMs: 0, totalPlaytimeFormatted: '', voteWinCount: 0 }));
+  const round = { round: 2, title: 'Samstagabend', info: 'Was spielen wir als Nächstes?', mode: 'points',
     open: true, startedAt: now - 600_000, createdBy: me.id, anonymous: false, hideLiveResults: true,
-    results, totalVoters: 0, sourceRound: null };
-  const history = { ...round, open: false, endedAt: now, totalVoters: 3, winnerGameIds: [games[0].id],
-    ballots: players.slice(0, 3).map((p, voter) => ({ playerId: p.id, name: p.name,
+    selectedGameIds: games.map((g) => g.id), results, totalVoters: 0, sourceRound: null };
+  const history = { ...round, open: false, closedAt: now, totalVoters: 3, winnerGameIds: [games[0].id],
+    ballots: players.slice(0, 3).map((p, voter) => ({ playerId: p.id, name: p.name, submittedAt: now - 60_000,
       entries: games.map((g, i) => ({ gameId: g.id, points: [[4, 2, 0], [5, 3, 1], [3, 3, 1]][voter][i] })) })) };
   const submitted = ['submitted', 'replace'].includes(step);
   if (chapter === 'result' && step === 'runoff') {
     results[1].points = 12;
+    results[1].score = 12;
     history.ballots.forEach((ballot) => { ballot.entries[1].points = 4; });
     history.winnerGameIds = games.slice(0, 2).map((game) => game.id);
   }
+  history.totalPoints = results.reduce((sum, result) => sum + result.points, 0);
+  history.totalVotes = results.reduce((sum, result) => sum + result.votes, 0);
+  history.winners = results.filter((result) => history.winnerGameIds.includes(result.gameId));
+  round.totalVoters = submitted ? 1 : 0;
+  round.totalVotes = submitted ? 2 : 0;
+  round.totalPoints = submitted ? 6 : 0;
+  round.anonymous = step === 'anonymous-adopt';
+  round.results = results.map(({ votes: _votes, declines: _declines, points: _points, score: _score, ...metadata }) => metadata);
   const finished = chapter === 'result';
   const pollClosed = ['result', 'close', 'round'].includes(step);
   const pollVoters = pollClosed ? players : players.slice(0, 3);
@@ -47,7 +59,8 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
       return { id: ['tour-pizza', 'tour-burger'][i], label, active: true, position: i,
         description: '', payload: {}, isRecommended: pollClosed && i === 0,
         counts: { can: voters.length, cannot: pollVoters.length - voters.length, ifNeeded: 0, open: players.length - pollVoters.length },
-        people: { can: voters.map((p) => ({ playerId: p.id, name: p.name })), ifNeeded: [], cannot: [], ratings: {} } };
+        people: { can: voters.map((p) => ({ playerId: p.id, name: p.name })), ifNeeded: [],
+          cannot: pollVoters.filter((p) => !voters.includes(p)).map((p) => ({ playerId: p.id, name: p.name })), ratings: {} } };
     }),
   };
   const ownRide = step === 'edit';
@@ -75,7 +88,7 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
   const state = { players, games, preferences, skills, activeEvent, events: [activeEvent], availableEvents: [activeEvent], historicalEvents: [activeEvent],
     live: [], matches: [], selectedGameId: games[0].id,
     lastMatchmaking: view === 'matchmaking' && (['teams', 'next', 'result', 'snapshot'].includes(step) || chapter === 'tournament-setup') ? draw : null,
-    votes: { ...round, open: !finished, openRounds: finished ? [] : [round], catalogResults: results },
+    votes: { ...(finished ? history : round), open: !finished, openRounds: finished ? [] : [round], catalogResults: finished ? results : round.results },
   };
   const responses = {
     '/api/groups': [{ id: 'tour-group', name: 'Beispielgruppe', role: admin ? 'owner' : 'member' }],
@@ -95,7 +108,7 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
     history.ballots = [];
   }
   if (view === 'votes' && chapter === 'result' && step === 'history') {
-    responses['/api/votes/history'].history.push({ ...structuredClone(history), round: 0, title: 'Freitagabend', endedAt: now - 86_400_000 });
+    responses['/api/votes/history'].history.push({ ...structuredClone(history), round: 1, title: 'Freitagabend', closedAt: now - 86_400_000 });
   }
   let open = '';
   let controls = [];
@@ -131,6 +144,7 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
   }
   if (view === 'checklist' && step === 'claim') open = `[data-claim-task="${task.id}"]`;
   if (view === 'checklist' && step === 'done') open = `[data-task-detail="${task.id}"]`;
+  if (view === 'checklistPacking' && step === 'edit') { controls = ['[data-toggle-item-editing]']; focus = '[data-remove-item]'; }
   if (view === 'arrivals' && ['offer', 'edit'].includes(step)) {
     open = step === 'offer' ? '[data-new-carpool="arrival"]' : '[data-edit-carpool]';
     fill = { '#carpool-label': 'Auto Sam', '#carpool-location': 'Hamburg' }; focus = '#carpool-seats';

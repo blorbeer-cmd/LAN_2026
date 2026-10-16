@@ -219,7 +219,7 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     { route: 'checklistPacking', help: 'Packliste', chapter: 'Tour starten', input: '', value: '', advance: 0 },
     { route: 'foodOrders', help: 'Essen', chapter: 'Bestellung organisieren: Starten', input: '#order-title', value: 'Pizza bei Luigi', advance: 0 },
     { route: 'foodOrders', help: 'Essen', chapter: 'Mitbestellen: Starten', input: '', value: '', advance: 0 },
-    { route: 'foodOrders', help: 'Essen', chapter: 'Bezahlen: Starten', input: '', value: '', advance: 0 },
+    { route: 'foodOrders', help: 'Essen', chapter: 'Bezahlen: Fortsetzen', input: '', value: '', advance: 0 },
     { route: 'matchmaking', help: 'Match', chapter: 'Teams auslosen: Starten', input: '#mm-game-search', value: 'Rocket League', advance: 0 },
     { route: 'matchmaking', help: 'Match', chapter: 'Turnier erstellen: Starten', input: '#draw-tournament-format', value: 'single_elimination', advance: 0 },
     { route: 'matchmaking', help: 'Match', chapter: 'Captain Draft: Starten', input: '#mm-game-search', value: 'Rocket League', advance: 0 },

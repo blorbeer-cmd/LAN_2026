@@ -38,7 +38,10 @@ test('real-view demonstration data is consistent, isolated and cannot proxy writ
   const history = demo.responses['/api/votes/history'].history[0];
   for (const result of history.results) {
     assert.equal(result.points, history.ballots.reduce((sum, ballot) => sum + ballot.entries.find((entry) => entry.gameId === result.gameId).points, 0));
+    assert.equal(result.votes, history.ballots.filter((ballot) => ballot.entries.some((entry) => entry.gameId === result.gameId && entry.points > 0)).length);
+    assert.equal(result.score, result.points);
   }
+  assert.ok(Number.isFinite(history.closedAt), 'history uses the actual API timestamp field');
   for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
     assert.equal(demoApiResponse(demo, '/api/votes/start', { method }).status, 405);
   }

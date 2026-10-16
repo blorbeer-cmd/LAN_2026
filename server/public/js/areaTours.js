@@ -241,7 +241,7 @@ export function createAreaTours({ container, getContext }) {
       if (active?.sceneToken !== token) return;
       const context = getContext();
       frame.contentWindow.postMessage({ type: 'area-tour:init', token, view: active.key, step: step.id, target: step.target,
-        context: { admin: context.admin, event: { type: context.event?.type, enabledFeatures: context.event?.enabledFeatures },
+        context: { admin: context.admin, event: { eventType: context.event?.eventType, enabledFeatures: context.event?.enabledFeatures },
           theme: document.documentElement.dataset.theme, layoutMode: document.documentElement.dataset.layoutMode },
       }, location.origin);
     });
