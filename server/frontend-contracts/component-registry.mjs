@@ -1,5 +1,47 @@
 export const components = [
   {
+    "id": "area-tour-heading",
+    "role": "composite-part",
+    "selector": ".area-tour-heading",
+    "owner": "public/css/style.css",
+    "contract": "components/area-tour.md#geometrie",
+    "purpose": "Heading layout keeps the standard icon action next to its title without changing the control interior.",
+    "control": false,
+    "properties": []
+  },
+  {
+    "id": "area-tour-overlay",
+    "role": "composite-part",
+    "selector": ".area-tour-backdrop, .area-tour-shade, .area-tour-actions, .area-tour-chapters",
+    "owner": "public/css/overlays.css",
+    "contract": "components/area-tour.md#geometrie",
+    "purpose": "The manual tour is a named shared-modal presentation; its containers own positioning and spacing, never product controls.",
+    "control": false
+  },
+  {
+    "id": "area-tour-target",
+    "role": "composite-part",
+    "selector": ".area-tour-target",
+    "owner": "public/css/overlays.css",
+    "contract": "components/area-tour.md#geometrie",
+    "purpose": "Noninteractive spotlight follows the visible target rectangle without modifying its control.",
+    "control": false,
+    "calls": [
+      {
+        "file": "public/js/areaTours.js",
+        "callKey": "ring.style.width",
+        "property": "width",
+        "value": "`${Math.min(window.innerWidth, rect.right) - left}px`"
+      },
+      {
+        "file": "public/js/areaTours.js",
+        "callKey": "ring.style.height",
+        "property": "height",
+        "value": "`${Math.min(window.innerHeight, rect.bottom) - top}px`"
+      }
+    ]
+  },
+  {
     "id": "button",
     "role": "standard-control",
     "selector": ".btn",
@@ -1362,6 +1404,15 @@ export const components = [
 ];
 
 export const permanentVariants = [
+  {
+    "id": "area-tour-modal",
+    "role": "composite-part",
+    "selector": ".area-tour-backdrop .modal, .area-tour-backdrop .modal[data-tour-placement='top']",
+    "owner": "public/css/overlays.css",
+    "contract": "components/area-tour.md#geometrie",
+    "reason": "Named manual-tour presentation retains the standard modal width and shared interaction while positioning the short explanation clear of its target.",
+    "control": false
+  },
   {
     "id": "readiness-status-glyph",
     "role": "composite-part",

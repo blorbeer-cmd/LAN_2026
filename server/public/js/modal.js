@@ -49,9 +49,10 @@ function trapTabFocus(event, backdrop) {
 // title (a dialog's primary action, e.g. "Eintrag anlegen").
 // closeButton: false drops the header's X for a pure reference dialog;
 // Escape and a tap outside still close it.
-export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, headerAction = '', closeButton = true } = {}) {
+export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, headerAction = '', closeButton = true, tourKey = null, isolateKeys = false } = {}) {
   const previousFocus = document.activeElement;
   const backdrop = document.createElement('div');
+  const keyboardRoot = isolateKeys ? backdrop : document;
   backdrop.className = 'modal-backdrop';
   backdrop.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true">
@@ -72,7 +73,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
   const close = () => {
     if (closed) return;
     closed = true;
-    document.removeEventListener('keydown', onKeydown);
+    keyboardRoot.removeEventListener('keydown', onKeydown);
     backdrop.remove();
     onClose?.();
     if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
@@ -92,6 +93,8 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
   };
   const onKeydown = (e) => {
     if (!isTopmostModal(backdrop)) return;
+    // Informational tours must not leak game keys to document-level handlers.
+    if (isolateKeys) e.stopPropagation();
     // An Escape already spent inside the dialog (an open help panel) must
     // not also close the dialog.
     if (e.key === 'Escape' && !e.defaultPrevented) requestClose();
@@ -112,12 +115,13 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
     if (e.target === backdrop && pointerDownOnBackdrop) requestClose();
   });
   backdrop.querySelector('[data-close]')?.addEventListener('click', requestClose);
-  document.addEventListener('keydown', onKeydown);
+  keyboardRoot.addEventListener('keydown', onKeydown);
 
   if (onMount) onMount(backdrop, close);
   if (!backdrop.contains(document.activeElement)) {
     backdrop.querySelector('input, select, textarea, button, a[href]')?.focus();
   }
+  if (tourKey) document.dispatchEvent(new CustomEvent('respawn:dialog-opened', { detail: { tourKey, el: backdrop } }));
   return { el: backdrop, close };
 }
 

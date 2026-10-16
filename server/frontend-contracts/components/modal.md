@@ -50,9 +50,17 @@ duplizieren.
 | Mobile Darstellung | Basisbackdrop unter `--bp-md` | umgesetzt | Bottom-Sheet |
 | Breite Darstellung | Basisbackdrop ab `--bp-md` | umgesetzt | zentrierter Dialog |
 | Gestapelte Dialoge | mehrere `.modal-backdrop` | umgesetzt | nur oberster Dialog verarbeitet Escape und Tab |
+| Manuelle Bereichstour | `.area-tour-backdrop .modal` | umgesetzt | Standardbreite, viewportfester Schritt-Dialog über einer nichtinteraktiven Hervorhebung; siehe [Bereichstour](area-tour.md) |
 
 Eine allgemeine 640-px-Wide-Variante existiert nicht. Die 640-px-Breite gehört ausschließlich
 den benannten Suchpanels über `--search-panel-width`.
+
+`openModal` akzeptiert zusätzlich `tourKey`. Nach dem Mount meldet es den eigenen Backdrop mit
+diesem Schlüssel über `respawn:dialog-opened`. Der Bereichstour-Controller ergänzt dadurch den
+Hilfe-Einstieg in Info und Feedback, ohne Formulardaten oder deren Schließverhalten zu ändern.
+Die Option `isolateKeys` verwendet denselben Fokusfang am eigenen Backdrop und hält Tastendrücke
+vom Dokument fern. Sie verhindert, dass die Bedienung der Tour gleichzeitig Arcade-Steuerungen
+auslöst; das Standardverhalten anderer Dialoge bleibt unverändert.
 
 ## 5. Erlaubte Anpassungen
 

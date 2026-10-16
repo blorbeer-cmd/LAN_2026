@@ -61,6 +61,105 @@ flowTest('fresh device uses the personal login and reaches the app with its veri
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
+flowTest('manual area tours resume, restore focus, survive refresh and never submit product actions', async (t) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(context, 'area-tours');
+  t.after(async () => context.close());
+  await finishE2EOnboarding(BASE_URL, bob.cookie);
+  await addSessionCookie(context, BASE_URL, bob.cookie);
+  const tourPage = await context.newPage();
+  await tourPage.goto(`${BASE_URL}/#profile`);
+  const help = tourPage.getByRole('button', { name: 'Mein Profil kennenlernen', exact: true });
+  await help.waitFor();
+  assert.equal(await tourPage.getByRole('heading', { name: 'Mein Profil', exact: true }).count(), 1);
+  assert.equal(await tourPage.locator('.area-tour-backdrop').count(), 0, 'visiting an area does not start a tour');
+  const mutations: string[] = [];
+  tourPage.on('request', (request) => {
+    if (request.url().includes('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
+      mutations.push(`${request.method()} ${request.url()}`);
+    }
+  });
+
+  await help.click();
+  await tourPage.getByRole('button', { name: 'Profil und Einstellungen: Starten', exact: true }).click();
+  const overlay = tourPage.locator('.area-tour-backdrop');
+  await overlay.getByRole('heading', { name: 'Dein Profil bearbeiten', exact: true }).waitFor();
+  assert.equal(await tourPage.locator('#app').evaluate((element) => (element as HTMLElement).inert), true);
+  await overlay.locator('[data-tour-next]').click();
+  await overlay.getByRole('heading', { name: 'Deine Ansicht wählen', exact: true }).waitFor();
+  await tourPage.keyboard.press('Escape');
+  await overlay.waitFor({ state: 'detached' });
+  assert.equal(await tourPage.locator('#app').evaluate((element) => (element as HTMLElement).inert), false);
+  assert.equal(await help.evaluate((element) => document.activeElement === element), true);
+
+  await tourPage.reload();
+  await help.click();
+  await tourPage.getByRole('button', { name: 'Profil und Einstellungen: Fortsetzen', exact: true }).click();
+  await overlay.getByRole('heading', { name: 'Deine Ansicht wählen', exact: true }).waitFor();
+  // A real background rerender replaces the highlighted control, not the tour.
+  await tourPage.evaluate(() => window.dispatchEvent(new Event('respawn:rerender')));
+  await tourPage.waitForFunction(() => {
+    const ring = document.querySelector('.area-tour-target');
+    const input = document.querySelector('#profile-layout');
+    return Boolean(ring && !ring.hasAttribute('hidden') && input &&
+      Math.abs(ring.getBoundingClientRect().left - input.getBoundingClientRect().left) < 2);
+  });
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1024, height: 768 }, { width: 512, height: 384 }]) {
+    await tourPage.setViewportSize(viewport);
+    await assertNoOverflow(overlay.locator('.modal'));
+    assert.equal(await tourPage.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+    const next = overlay.locator('[data-tour-next]');
+    await next.focus();
+    await tourPage.keyboard.press('Tab');
+    assert.equal(await overlay.locator('[data-close]').evaluate((element) => document.activeElement === element), true);
+    await tourPage.keyboard.press('Shift+Tab');
+    assert.equal(await next.evaluate((element) => document.activeElement === element), true);
+  }
+  await tourPage.evaluate(() => {
+    document.documentElement.dataset.tourKeyCount = '0';
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowLeft') {
+        document.documentElement.dataset.tourKeyCount = String(Number(document.documentElement.dataset.tourKeyCount) + 1);
+      }
+    });
+  });
+  await tourPage.keyboard.press('ArrowLeft');
+  assert.equal(await tourPage.evaluate(() => document.documentElement.dataset.tourKeyCount), '0', 'tour keys stay out of game controls');
+  assert.deepEqual(mutations, [], 'the explanatory tour must not send any product mutations');
+  // Browser navigation remains available while the underlying app is inert.
+  await tourPage.evaluate(() => { location.hash = '#foodOrders'; });
+  await overlay.waitFor({ state: 'detached' });
+  await tourPage.getByRole('button', { name: 'Essen kennenlernen', exact: true }).waitFor();
+  assert.equal(await tourPage.locator('#app').evaluate((element) => (element as HTMLElement).inert), false);
+});
+
+flowTest('area tour examples work without live records and keep nested dialogs usable', async (t) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(context, 'area-tour-examples');
+  t.after(async () => context.close());
+  await addSessionCookie(context, BASE_URL, bob.cookie);
+  const tourPage = await context.newPage();
+  await tourPage.goto(`${BASE_URL}/#foodOrders`);
+  await tourPage.getByRole('button', { name: 'Essen kennenlernen', exact: true }).click();
+  await tourPage.getByRole('button', { name: 'Bezahlen: Starten', exact: true }).click();
+  const overlay = tourPage.locator('.area-tour-backdrop');
+  await overlay.locator('[data-tour-example]:not([hidden])').waitFor();
+  assert.match(await overlay.textContent() ?? '', /Beispiel/);
+  await tourPage.keyboard.press('Escape');
+  await tourPage.locator('#info-btn').click();
+  const info = tourPage.getByRole('dialog', { name: 'Info', exact: true });
+  await info.getByRole('button', { name: 'Info kennenlernen', exact: true }).click();
+  await tourPage.getByRole('button', { name: 'Tour starten', exact: true }).click();
+  await overlay.locator('[data-tour-next]').waitFor();
+  await tourPage.keyboard.press('Escape');
+  await overlay.waitFor({ state: 'detached' });
+  assert.equal(await info.isVisible(), true, 'closing the tour preserves the reference dialog');
+  assert.equal(await info.getByRole('button', { name: 'Info kennenlernen', exact: true })
+    .evaluate((element) => document.activeElement === element), true);
+  await tourPage.keyboard.press('Escape');
+  await info.waitFor({ state: 'detached' });
+});
+
 flowTest('openModal treats its title as plain text', async () => {
   const rawTitle = `Titel </h2><img data-modal-title-foreign src="x" onerror="window.__modalTitleInjected = true"><script>window.__modalTitleInjected = true</script> "Tom & Jerry's"`;
   const result = await page.evaluate(async (title) => {

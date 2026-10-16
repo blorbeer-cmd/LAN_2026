@@ -198,6 +198,55 @@
 
 /* ---------- First-login onboarding ---------- */
 
+/* Manual area tours use the shared modal's focus and dismissal behavior. */
+.area-tour-backdrop {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  animation: none;
+}
+.area-tour-backdrop .modal {
+  position: fixed;
+  z-index: 1;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: var(--space-4);
+  width: auto;
+  max-height: calc(100dvh - var(--space-8));
+  margin: 0 auto;
+  border-radius: var(--radius-lg);
+  animation: none;
+}
+.area-tour-backdrop .modal[data-tour-placement="top"] {
+  top: var(--space-4);
+  bottom: auto;
+}
+.area-tour-target {
+  position: fixed;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 var(--space-1) var(--accent),
+    0 0 0 9999px color-mix(in srgb, var(--bg) 55%, transparent);
+}
+.area-tour-shade {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  pointer-events: none;
+}
+.area-tour-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.area-tour-chapters {
+  display: grid;
+  gap: var(--space-2);
+  margin-block: var(--space-4);
+}
+
 #onboarding-root {
   position: fixed;
   inset: 0;

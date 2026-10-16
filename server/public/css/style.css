@@ -3869,6 +3869,16 @@ button.draft-pool-player {
   align-items: center;
   gap: var(--space-1);
 }
+
+/* The tour action remains immediately beside its heading at every width. */
+.area-tour-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.area-tour-heading > .icon-btn {
+  flex-shrink: 0;
+}
 .title-with-info .field-label {
   margin: 0;
 }

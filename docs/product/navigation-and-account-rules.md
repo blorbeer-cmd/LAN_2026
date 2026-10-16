@@ -394,6 +394,30 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
 
 ## Erstlogin
 
+### Manuelle Bereichstouren
+
+- Ein Fragezeichen unmittelbar am geöffneten Bereichstitel öffnet ein kompaktes Hilfemodal.
+  Der Besuch eines Bereichs startet keine Tour automatisch. Info und Feedback bieten denselben
+  Einstieg in ihrer Dialogüberschrift; Turnierdetails und Arcade-Spielräume haben eigene Touren.
+- Das Modal bietet die gesamte Tour und bei größeren Bereichen einzelne Kapitel. Ein begonnener
+  Durchlauf kann fortgesetzt oder neu gestartet, ein abgeschlossener wiederholt werden.
+  Die Wiederaufnahme folgt dem zuletzt begonnenen Kapitel beziehungsweise der gesamten Tour.
+- Ein Schritt enthält höchstens 30 Wörter und erklärt eine Funktion oder Folgeaktion. Die Tour
+  hebt vorhandene Elemente hervor. Ist eine Funktion im aktuellen Zustand nicht sichtbar,
+  wird der Schritt ausdrücklich als Beispiel gekennzeichnet. Die Tour erzeugt keine Fachaktionen,
+  Benachrichtigungen, Bestellungen, Zahlungen oder Ergebnisse.
+- Rollen, verfügbare Bereiche und Eventfeatures bestimmen die angebotenen Kapitel. Ein Wechsel
+  des Kontos, Arbeitsbereichs, der Route oder Rolle schließt den aktuellen Durchlauf. Reine
+  Live-Aktualisierungen derselben Ansicht behalten ihn und aktualisieren die Hervorhebung.
+- Fortschritt wird versioniert nach Konto, Bereich und Kapitel in diesem Browser gespeichert,
+  getrennt vom serverseitigen Erstlogin-Onboarding. Er enthält nur Schritt-ID und Abschlussstatus.
+  Ein gelöschter oder gesperrter Browserspeicher verhindert die Hilfe nicht.
+- Die Tour erklärt insbesondere Vote → Bock/Match, Umfragen → manuell gepflegte Eventdaten,
+  Kalenderbestätigung/Terminänderung, Fahrgemeinschaft → persönliche Zeiten, Match/Turnier →
+  Rangliste, Bestellzustände/PayPal-Bestätigung und die jeweiligen Erinnerungsregeln.
+
+### Initiale Orientierung
+
 - The first-login core tour is a true modal: `#app` is inert, focus cycles inside the dialog,
   Escape skips the explanatory steps into the required rating mode, and focus returns to the
   previous control after completion. The rating panel is intentionally non-modal so its rating buttons
