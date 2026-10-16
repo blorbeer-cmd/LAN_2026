@@ -279,7 +279,27 @@ test('DELETE /api/votes/history/:round is refused while a runoff still builds on
   assert.equal(runoff.status, 201, JSON.stringify(runoff.body));
 
   assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 409);
-  await request(app).post('/api/votes/cancel').send({ round: runoff.body.round });
+  // Ended without a ballot, the runoff is invisible and no longer blocks.
+  await request(app).post('/api/votes/close').send({ round: runoff.body.round });
+  assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 200);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM vote_rounds WHERE round = ?').get(runoff.body.round) as { n: number }).n, 0);
+});
+
+test('DELETE /api/votes/history/:round keeps a points round that a legacy runoff without source_round relies on', async () => {
+  const source = await request(app).post('/api/votes/start').send({ mode: 'points', gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes/points').send({
+    round: source.body.round,
+    playerId: playerA,
+    entries: [{ gameId: gameCs2, points: 0 }, { gameId: gameRl, points: 4 }],
+  });
+  await request(app).post('/api/votes/close').send({ round: source.body.round });
+  const runoff = await request(app).post('/api/votes/start').send({ mode: 'single', gameIds: [gameCs2, gameRl] });
+  await request(app).post('/api/votes').send({ round: runoff.body.round, playerId: playerA, gameId: gameRl });
+  await request(app).post('/api/votes/close').send({ round: runoff.body.round });
+  db.prepare('UPDATE vote_rounds SET source_round = NULL WHERE round = ?').run(runoff.body.round);
+
+  assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 409);
+  assert.equal((await request(app).delete(`/api/votes/history/${runoff.body.round}`)).status, 200);
   assert.equal((await request(app).delete(`/api/votes/history/${source.body.round}`)).status, 200);
 });
 
