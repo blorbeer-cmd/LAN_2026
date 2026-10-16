@@ -115,6 +115,7 @@ flowTest('manual area tours resume, restore focus, survive refresh and never sub
   assert.equal(await tourPage.locator('#app').evaluate((element) => (element as HTMLElement).inert), true);
   await overlay.locator('[data-tour-next]').click();
   await overlay.getByRole('heading', { name: 'Deine Ansicht wählen', exact: true }).waitFor();
+  assert.match(await overlay.getByRole('status').textContent() ?? '', /Schritt 2 von .*Deine Ansicht wählen/u);
   await dismissFromText('.area-tour-backdrop');
   assert.equal(await tourPage.locator('#app').evaluate((element) => (element as HTMLElement).inert), false);
   assert.equal(await help.evaluate((element) => document.activeElement === element), true);

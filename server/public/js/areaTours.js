@@ -159,6 +159,14 @@ export function createAreaTours({ container, getContext }) {
         active.ring = ring;
         active.shade = shade;
         el.querySelector('[data-close]').setAttribute('aria-label', 'Tour beenden');
+        // Keep the live region mounted while the visual example is replaced.
+        // Inserting a new prefilled live region each step is not announced
+        // consistently by assistive technology.
+        const announcer = document.createElement('p');
+        announcer.className = 'visually-hidden';
+        announcer.setAttribute('role', 'status');
+        el.querySelector('.modal').append(announcer);
+        active.announcer = announcer;
       },
     });
     active.close = handle.close;
@@ -171,6 +179,7 @@ export function createAreaTours({ container, getContext }) {
     const { steps, index, dialog, accountId, key, chapterId } = active;
     const step = steps[index];
     const example = exampleForTourStep(key, active.tour, step);
+    active.announcer.textContent = `Schritt ${index + 1} von ${steps.length}: ${step.title}. ${step.text}`;
     saveTourProgress(accountId, key, chapterId, step.id);
     saveTourProgress(accountId, key, 'last', chapterId);
     const heading = dialog.querySelector('.modal-header h2');
@@ -179,7 +188,7 @@ export function createAreaTours({ container, getContext }) {
     dialog.querySelector('.modal-body').innerHTML = `
       ${tourExampleHtml(example)}
       <div class="area-tour-explanation">
-        <div aria-live="polite">
+        <div>
           <p class="onboarding-progress">Schritt ${index + 1} von ${steps.length}</p>
           <p>${escapeHtml(step.text)}</p>
         </div>
