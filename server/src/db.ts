@@ -5510,6 +5510,17 @@ function markHandmadeTestEvent(): void {
 }
 registerMigration({ version: 120, name: 'move handmade TestEvent into admin mode', up: markHandmadeTestEvent });
 
+// Every account sees the LAN welcome trailer once, including accounts that
+// finished the onboarding tour before the trailer existed. Existing rows start
+// with NULL ("not seen yet"); the first close stores the time.
+function addWelcomeTrailerSeen(): void {
+  const columns = db.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'welcome_trailer_seen_at')) {
+    db.exec('ALTER TABLE players ADD COLUMN welcome_trailer_seen_at INTEGER');
+  }
+}
+registerMigration({ version: 121, name: 'add welcome trailer seen marker', up: addWelcomeTrailerSeen });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

@@ -1358,10 +1358,56 @@ export const components = [
     "purpose": "A placed ship in the picker only changes emphasis colors.",
     "control": false,
     "properties": []
+  },
+  {
+    "id": "welcome-trailer-control",
+    "role": "composite-part",
+    "selector": ".onboarding-trailer-control, .onboarding-trailer-fullscreen, .onboarding-trailer-sound",
+    "owner": "public/css/overlays.css",
+    "contract": "components/welcome-trailer.md#6-komponenteneigene-invarianten",
+    "purpose": "Translucent pill controls floating over the full-page welcome trailer; the muted sound control carries the accent gradient.",
+    "properties": [
+      "min-height",
+      "padding",
+      "font-size",
+      "border-radius",
+      "width",
+      "box-shadow"
+    ]
+  },
+  {
+    "id": "welcome-trailer-start",
+    "role": "composite-part",
+    "selector": ".onboarding-trailer-start",
+    "owner": "public/css/overlays.css",
+    "contract": "components/welcome-trailer.md#6-komponenteneigene-invarianten",
+    "purpose": "Large round play action, shown only when the browser blocks even muted autoplay.",
+    "properties": [
+      "width",
+      "height",
+      "border-radius",
+      "box-shadow"
+    ]
   }
 ];
 
 export const permanentVariants = [
+  {
+    "id": "welcome-trailer-control-glyph",
+    "role": "composite-part",
+    "selector": ".onboarding-trailer-control .ui-icon",
+    "owner": "public/css/overlays.css",
+    "contract": "components/welcome-trailer.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "Icons inside the floating trailer controls match the control text size."
+  },
+  {
+    "id": "welcome-trailer-start-glyph",
+    "role": "composite-part",
+    "selector": ".onboarding-trailer-start .ui-icon",
+    "owner": "public/css/overlays.css",
+    "contract": "components/welcome-trailer.md#11-permanente-varianten-und-befristete-ausnahmen",
+    "reason": "The play glyph fills the large round start button and is optically centered."
+  },
   {
     "id": "readiness-status-glyph",
     "role": "composite-part",
