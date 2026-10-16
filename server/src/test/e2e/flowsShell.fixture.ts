@@ -295,6 +295,17 @@ flowTest('area tour examples work without live records and keep nested dialogs u
         await tourPage.setViewportSize({ width: 1440, height: 900 });
         await overlay.locator('[data-tour-next]').click();
         await readyScene();
+        const geometry = await tourPage.evaluate(() => {
+          const child = document.querySelector<HTMLIFrameElement>('[data-area-tour-scene]')!.contentWindow!;
+          const properties = ['font-size', 'padding-left', 'padding-right', 'max-width'];
+          const read = (win: Window, selector: string) => properties.map((property) =>
+            win.getComputedStyle(win.document.querySelector(selector)!).getPropertyValue(property));
+          return ['#view-container', '.topbar'].map((selector) => ({
+            original: read(window, selector), example: read(child, selector),
+          }));
+        });
+        for (const values of geometry) assert.deepEqual(values.example, values.original,
+          'the demo uses the same text size, padding and content width as the actual app');
       }
       assert.equal(await scene!.evaluate(() => document.body.dataset.continuity), 'same-document');
       assert.equal(await tourPage.locator('[data-area-tour-scene]').evaluate((el, original) => el === original, node), true,

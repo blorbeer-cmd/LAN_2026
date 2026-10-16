@@ -16,8 +16,14 @@ export async function mountTourDemoShell(demo) {
     document.getElementById(id).insertAdjacentHTML('afterbegin', icon(name));
   }
   const bottom = document.querySelector('.bottom-nav-inner');
-  bottom.innerHTML = bottomNavItemsForEvent(event).map((entry) => `<button type="button" class="nav-btn" data-view="${entry.view}" aria-label="${escapeHtml(entry.ariaLabel)}">
-    <span class="nav-icon">${icon(domainIcon(entry.iconKey))}</span><span class="nav-label">${escapeHtml(entry.label)}</span></button>`).join('');
+  const items = bottomNavItemsForEvent(event);
+  [...bottom.children].forEach((button, index) => {
+    const entry = items[index];
+    button.dataset.view = entry.view;
+    button.setAttribute('aria-label', entry.ariaLabel);
+    button.querySelector('.nav-icon').innerHTML = icon(domainIcon(entry.iconKey));
+    button.querySelector('.nav-label').textContent = entry.label;
+  });
   const rail = desktopNavItemsForEvent(event, { isAdmin: Boolean(demo.me.is_admin) });
   const entryHtml = (entry) => `<button type="button" class="desktop-nav-btn" data-view="${entry.view ?? ''}"><span class="desktop-nav-icon">${icon(domainIcon(entry.iconKey))}</span><span class="desktop-nav-label">${escapeHtml(entry.label)}</span></button>`;
   document.getElementById('desktop-nav-main').innerHTML = rail.groups.map((group) => `<div class="desktop-nav-group">${group.label ? `<span class="desktop-nav-heading">${escapeHtml(group.label)}</span>` : ''}${group.entries.map(entryHtml).join('')}</div>`).join('');

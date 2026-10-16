@@ -135,7 +135,9 @@ window.addEventListener('message', async (event) => {
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }
     if (demo.submit) {
-      document.querySelector(demo.submit).requestSubmit();
+      // Invoke the native read-only search handler without submitting a form.
+      // The frame deliberately has no allow-forms sandbox capability.
+      document.querySelector(demo.submit).dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
       await settled();
       if (step.endsWith('/playlist')) document.querySelector('[data-music-result-type="playlists"]')?.click();
       if (demo.afterSubmitOpen) {

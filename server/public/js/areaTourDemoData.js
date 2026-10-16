@@ -118,7 +118,8 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
   let controls = [];
   let fill = {};
   let focus = '';
-  if (view === 'votes' && chapter === 'result') focus = step === 'history' ? '[data-vote-history]' : '[data-latest-vote]';
+  if (view === 'votes' && chapter === 'result') focus = step === 'history' ? '[data-vote-history]'
+    : step === 'players-count' ? '.event-poll-options' : '[data-latest-vote]';
   if (view === 'gameCatalog' && chapter === 'catalog') {
     if (['propose', 'platform', 'genres', 'notes', 'neighbors'].includes(step)) {
       open = '#suggest-new';
