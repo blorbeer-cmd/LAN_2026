@@ -257,7 +257,7 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     { route: 'arrivals', help: 'An- & Abreise', chapter: 'Tour starten', input: '', value: '', advance: 2 },
   ];
   await tourPage.close();
-  const flowPages = await Promise.all([context.newPage(), context.newPage()]);
+  const flowPages = await Promise.all(Array.from({ length: 3 }, () => context.newPage()));
   const runFlow = async (flow: typeof flows[number], tourPage: Page) => {
     const overlay = tourPage.locator('.area-tour-backdrop');
     const example = tourPage.frameLocator('[data-area-tour-scene]');
@@ -370,9 +370,9 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     tourPage.off('request', recordRequest);
   };
   // These chapters have no server writes and independent page/form state.
-  // Reuse two normal SPA tabs instead of bootstrapping the app per chapter.
-  for (let index = 0; index < flows.length; index += 2) {
-    const results = await Promise.allSettled(flows.slice(index, index + 2).map((flow, slot) => runFlow(flow, flowPages[slot])));
+  // Reuse three normal SPA tabs instead of bootstrapping the app per chapter.
+  for (let index = 0; index < flows.length; index += flowPages.length) {
+    const results = await Promise.allSettled(flows.slice(index, index + flowPages.length).map((flow, slot) => runFlow(flow, flowPages[slot])));
     const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (failed) throw failed.reason;
   }
