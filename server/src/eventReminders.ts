@@ -1,5 +1,6 @@
 import { SCHEDULE_KEY_SQL, db } from './db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
+import { openEventPreparation, type OpenEventPreparation } from './eventPreparation';
 import {
   EVENT_REMINDER_TOPIC_PREFIX,
   notifyPlayers,
@@ -230,19 +231,28 @@ function sendStefanCalendarFollowup(row: ReminderRow, now: number): boolean {
   return true;
 }
 
+// The upcoming reminders also ask for what is still missing before the start,
+// the same items Home's "Meine To-Dos" lists. Nothing open, no extra sentence.
+export function preparationHint({ arrival, skills }: OpenEventPreparation): string {
+  if (arrival && skills) return 'Trag bitte noch deine Ankunftszeit ein und pflege deine Skills im Spielekatalog.';
+  if (arrival) return 'Trag bitte noch deine Ankunftszeit ein.';
+  if (skills) return 'Pflege bitte noch deine Skills im Spielekatalog.';
+  return '';
+}
+
 function sendUpcomingReminder(
   row: ReminderRow,
   kind: 'upcoming_week' | 'upcoming_day',
   now: number,
 ): boolean {
   const isDay = kind === 'upcoming_day';
+  const start = isDay ? `In einem Tag startet „${row.eventName}“.` : `In einer Woche startet „${row.eventName}“.`;
+  const hint = preparationHint(openEventPreparation(row.eventId, row.groupId, row.playerId));
   const delivery = notifyPlayers(
     [row.playerId],
     {
       title: isDay ? 'Morgen geht es los' : 'In einer Woche geht es los',
-      body: isDay
-        ? `In einem Tag startet „${row.eventName}“.`
-        : `In einer Woche startet „${row.eventName}“.`,
+      body: hint ? `${start} ${hint}` : start,
       url: '/#events',
       type: isDay ? 'event-upcoming-day' : 'event-upcoming-week',
       targetId: row.eventId,
