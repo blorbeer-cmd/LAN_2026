@@ -346,6 +346,14 @@ test('manager invites a member who accepts and both open clients update', async 
   const acceptButton = memberPage.locator(`[data-home-todo="event-invitation:${eventId}"] [data-accept-invitation]`);
   await acceptButton.focus();
   await acceptButton.press('Enter');
+  // The accepted, tracking event now asks for the personal tracking decision
+  // on Home; the answer is given on the consent text itself.
+  const trackingTodo = memberPage.locator(`[data-home-todo="tracking-consent:${eventId}"]`);
+  await trackingTodo.locator('[data-todo-action="tracking"]').click();
+  const consentDialog = memberPage.locator('.modal', { hasText: 'Spiele-Tracking entscheiden' });
+  await consentDialog.locator('[data-todo-tracking-answer="decline"]').waitFor();
+  await consentDialog.locator('[data-todo-tracking-answer="grant"]').click();
+  await trackingTodo.waitFor({ state: 'detached' });
   await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'profile' })));
   await memberPage.waitForSelector('#view-container[data-view="profile"]');
   const openAcceptedEvent = memberPage.locator(`[data-open-accepted-event="${eventId}"]`);
@@ -354,10 +362,14 @@ test('manager invites a member who accepts and both open clients update', async 
   const eventConsent = memberPage.locator(`[data-consent-event="${eventId}"]`);
   await eventConsent.waitFor({ state: 'attached' });
   await memberPage.click('[data-profile-section="privacy"] > summary');
-  assert.equal(await eventConsent.isEnabled(), true, 'the accepted event offers consent without reloading the page');
-  await eventConsent.click();
+  // Mein Profil shows the decision made on Home and keeps it changeable.
   await memberPage.waitForSelector(`[data-consent-event="${eventId}"][aria-pressed="true"]`);
   assert.equal(await memberPage.locator(`[data-consent-event="${eventId}"]`).textContent(), 'Widerrufen');
+  await memberPage.locator(`[data-consent-event="${eventId}"]`).click();
+  await memberPage.waitForSelector(`[data-consent-event="${eventId}"][aria-pressed="false"]`);
+  assert.equal(await eventConsent.isEnabled(), true, 'a revoked consent can be granted again without reloading the page');
+  await eventConsent.click();
+  await memberPage.waitForSelector(`[data-consent-event="${eventId}"][aria-pressed="true"]`);
   await memberPage.locator(`[data-consent-event="${eventId}"]`).click();
   await memberPage.waitForSelector(`[data-consent-event="${eventId}"][aria-pressed="false"]`);
   await memberPage.click('#notifications-btn');

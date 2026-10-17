@@ -28,6 +28,7 @@ import {
 import { eventHasFeature } from '../eventFeatures.js';
 import { layoutModeForPlayer, LAYOUT_MODES, setLayoutModeForPlayer } from '../layoutMode.js';
 import { withStepUp } from '../reauth.js';
+import { invalidateMyTodos } from '../myTodos.js';
 
 // Tracking is the one feature that runs on a private PC, so its labels alone
 // ("Tracking pausieren") read like surveillance without saying what leaves the
@@ -899,8 +900,10 @@ export function renderProfile(container, ctx) {
 }
 
 function wirePrivacyActions(container, ctx) {
+  // Every privacy change can settle or reopen Home's tracking To-Do.
   const reload = async () => {
     privacyState = null;
+    invalidateMyTodos();
     await loadPrivacy(ctx, true);
   };
   container.querySelector('#privacy-retry')?.addEventListener('click', () => {

@@ -249,7 +249,8 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
     eventParticipations: rows(
       `SELECT ep.event_id AS eventId, e.name AS eventName, ep.status, ep.paid,
               ep.paid_at AS paidAt, ep.paid_amount_cents AS paidAmountCents,
-              ep.confirmed_schedule_revision AS confirmedScheduleRevision
+              ep.confirmed_schedule_revision AS confirmedScheduleRevision,
+              ep.tracking_consent_declined_at AS trackingConsentDeclinedAt
        FROM event_participants ep JOIN events e ON e.id = ep.event_id
        WHERE ep.player_id = ? ORDER BY e.starts_at`,
       playerId,

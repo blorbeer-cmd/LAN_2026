@@ -5510,6 +5510,18 @@ function markHandmadeTestEvent(): void {
 }
 registerMigration({ version: 120, name: 'move handmade TestEvent into admin mode', up: markHandmadeTestEvent });
 
+// Home's "Meine To-Dos" asks every participant of a trackable event to decide
+// about game tracking. Saying no there records only that the question was
+// answered, never a consent: the consent log stays a record of grants and
+// their revocations. A later grant in Mein Profil still works as before.
+function addTrackingConsentDecline(): void {
+  const columns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'tracking_consent_declined_at')) {
+    db.exec('ALTER TABLE event_participants ADD COLUMN tracking_consent_declined_at INTEGER');
+  }
+}
+registerMigration({ version: 121, name: 'add tracking consent decline', up: addTrackingConsentDecline });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
