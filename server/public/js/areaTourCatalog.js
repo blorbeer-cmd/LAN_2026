@@ -8,24 +8,24 @@ export const AREA_TOURS = {
   home: t('Home', [
     c('overview', 'Überblick', [
       s('current', 'Was läuft gerade?', 'Aktuell führt dich zu laufenden Abstimmungen, Turnieren, Bestellungen und Arcade-Lobbys. Erledigte Vorgänge findest du im jeweiligen Bereich wieder.', '#home-current-title'),
-      s('todos', 'Deine nächsten Schritte', 'Meine To-Dos sammelt offene Einladungen, Zahlungen und Aufgaben aus deinen Events. Eine Zeile führt zum Vorgang; manche Aufgaben kannst du direkt erledigen.', '#home-todos-title'),
+      s('todos', 'Deine nächsten Schritte', 'Meine To-Dos sammelt offene Einladungen, Zahlungen und To-Dos aus deinen Events. Eine Zeile führt zum Vorgang; manche Einträge kannst du direkt erledigen.', '#home-todos-title'),
       s('other-event', 'Auch aus anderen Events', 'Ein Eventname an einem To-Do zeigt dessen Herkunft. Öffnest du den Vorgang, wechselt Respawn bei Bedarf zuerst in dieses Event.', '[data-home-todo]'),
       s('live', 'Wer spielt gerade?', 'Live-Status unterscheidet Spielt, Online, Pause und Offline. Tippe auf eine Person für deren Profil; deine eigene Karte öffnet Mein Profil.', '#home-live-title', { feature: 'tracking' }),
       s('pause', 'Persönliche Pause', 'Pause zeigt den anderen, dass du gerade nicht mitspielst. Bin wieder da hebt sie auf. Spiele-Tracking pausierst du separat im Profil.', '[data-toggle-pause]', { feature: 'tracking' }),
-      s('event', 'Dein Event im Blick', 'Die Eventübersicht zeigt Zeitraum, Ort und Teilnahme. Welche weiteren Karten erscheinen, hängt vom Eventtyp und den aktivierten Bereichen ab.', '[data-home-event-overview]'),
+      s('event', 'Dein Event im Blick', 'Allgemeine Events zeigen Zeitraum, Ort und Teilnehmer in der Eventübersicht. Gruppen haben eine Gruppenübersicht. Bei LAN-Events stehen Live-Status und laufende Vorgänge im Vordergrund.', '[data-home-event-overview]'),
     ]),
     c('context', 'Navigation und Event', [
-      s('workspace', 'Hier arbeitest du gerade', 'Oben wählst du ein Event oder deine Gruppe aus. Bestellungen, Aufgaben und Wettbewerbe zeigen danach die zugehörigen Daten.', '#event-context'),
+      s('workspace', 'Hier arbeitest du gerade', 'Oben wählst du ein Event oder deine Gruppe aus. Bestellungen, To-Dos, Matches und Turniere zeigen danach die zugehörigen Daten.', '#event-context'),
       s('account', 'Eine Auswahl für dein Konto', 'Das ausgewählte Event gilt für dein Konto, auch in anderen Tabs und auf anderen Geräten. Eine Einladung musst du zuerst annehmen.', '#event-context'),
       s('types', 'Passende Bereiche', 'LAN, allgemeines Event und dauerhafte Gruppe bieten unterschiedliche Bereiche. Deine Rolle und die Eventeinstellungen bestimmen, welche Aktionen du siehst.', '#event-context'),
-      s('shared', 'Spielewerte bleiben erhalten', 'Spielekatalog, Bock und Skill gelten für eure ganze Gruppe. Ein Eventwechsel setzt diese Bewertungen nicht zurück.', '#event-context', { feature: 'games' }),
+      s('shared', 'Spielewerte bleiben erhalten', 'Spielekatalog, Bock und Skill gelten in allen Events und Gruppen gemeinsam. Ein Eventwechsel setzt diese Bewertungen nicht zurück.', '#event-context', { feature: 'games' }),
       s('info', 'Info öffnen', 'Info zeigt WLAN, Links, Serveradressen und Hinweise über deiner aktuellen Ansicht. Schließen bringt dich zurück; deine Eingaben bleiben erhalten.', '#info-btn'),
       s('search', 'Direkt zum richtigen Eintrag', 'Die Suche findet Bereiche und Inhalte. Mit Strg oder Cmd plus K öffnest du sie; ein Treffer führt zum passenden Eintrag.', '#global-search-btn'),
     ]),
     c('notifications', 'Mitteilungen', [
       s('center', 'Deine Mitteilungen', 'Unter Mitteilungen findest du persönliche und gemeinsame Mitteilungen. Push-Benachrichtigungen zeigen sie zusätzlich auf erlaubten Geräten; eine kurze Einblendung informiert dich in der App.', '#notifications-btn'),
       s('open', 'Zum Vorgang springen', 'Ein Tipp auf eine Mitteilung markiert sie als gelesen und führt zum zugehörigen Vorgang. Bei Bedarf wird zuerst dessen Event ausgewählt.', '#notifications-btn'),
-      s('read', 'Gelesen heißt noch offen', 'Eine gelesene Mitteilung erledigt keine Zahlung oder Aufgabe. Erst die passende Aktion im Vorgang beendet dessen offenen Zustand.', '#notifications-btn'),
+      s('read', 'Gelesen heißt noch offen', 'Eine gelesene Mitteilung erledigt keine Zahlung und kein To-Do. Erst die passende Aktion im Vorgang beendet dessen offenen Zustand.', '#notifications-btn'),
       s('obsolete', 'Obsolet oder abgelaufen', 'Erledigte Vorgänge machen ihre Mitteilungen obsolet. Zeitlich begrenzte Mitteilungen laufen ab. Aufräumen entfernt diese Mitteilungen; der zugrunde liegende Vorgang bleibt erhalten.', '#notifications-btn'),
       s('push', 'Push erlauben', 'Push-Benachrichtigungen aktivierst du im Profil und erlaubst sie im Browser. Ob sie auf dem Gerät erscheinen, hängt außerdem von dessen Berechtigungen ab.', '#notifications-btn'),
     ]),
@@ -37,7 +37,7 @@ export const AREA_TOURS = {
       s('calendar', 'In deinen Kalender übernehmen', 'Google, Outlook und die ICS-Datei übergeben den Termin an deinen Kalender. Respawn kann nicht automatisch erkennen, ob du ihn dort gespeichert hast.', '[data-event-calendar], [data-event-card]'),
       s('confirm', 'Eingetragen bestätigen', 'Bestätige den gespeicherten Termin mit Eingetragen. Kalender-Erinnerungen beginnen frühestens zwei Stunden nach deiner Zusage und wiederholen sich wöchentlich, bis du bestätigst.', '[data-event-card]'),
       s('moved', 'Bei einem neuen Zeitraum', 'Deine Zusage bleibt bei einer Terminänderung bestehen. Prüfe aber den Kalendereintrag und bestätige den neuen Zeitraum erneut. Eventhinweise vor dem Start bleiben unabhängig davon aktiv.', '[data-event-card]'),
-      s('payment', 'Deinen Beitrag bezahlen', 'PayPal öffnet den hinterlegten Empfänger. Erst deine Antwort auf Bezahlt? erfasst die Zahlung in Respawn; das Öffnen von PayPal allein genügt nicht.', '[data-pay-event], [data-event-card]'),
+      s('payment', 'Deinen Beitrag bezahlen', 'PayPal öffnet den hinterlegten Empfänger. Bestätige nach deiner Zahlung im Dialog „Bezahlt?“ mit „Ja, bezahlt“. Das Öffnen von PayPal allein erfasst keine Zahlung.', '[data-pay-event], [data-event-card]'),
       s('reminders', 'Offener Beitrag', 'Home zeigt deinen offenen Beitrag. Erinnerungen beginnen ab Zahlungsziel, sonst frühestens zwei Stunden nach Zusage. Sie werden höchstens alle zwei Stunden erneut fällig.', '[data-event-card]'),
       s('decline', 'Teilnahme ändern', 'Du kannst eine Teilnahme nach Möglichkeit absagen und später wieder zusagen. Erfasste Zahlungen oder der Eventzustand können das sperren; die Karte nennt den Grund.', '[data-event-card]'),
       s('excuse', 'Mit Ausrede absagen', 'Für kommende Events kannst du eine Ausrede ergänzen. Sie wird mit deiner Absage gespeichert und ist für die entsprechenden Eventteilnehmer sichtbar.', '[data-event-card]'),
@@ -123,7 +123,7 @@ export const AREA_TOURS = {
   ]),
   votes: t('Vote', [
     c('vote', 'Abstimmen und Bock übernehmen', [
-      s('start', 'Eine Runde starten', 'Jeder Teilnehmer des ausgewählten Events kann eine Runde starten. Die Spieleauswahl beginnt mit den Top 10 nach Bock; Suche und Filter ändern nur die sichtbaren Zeilen.', '#votes-new'),
+      s('start', 'Eine Runde starten', 'Jeder Teilnehmer des ausgewählten Events kann eine Runde starten. Die Spieleauswahl beginnt mit den Top 10 nach Bock-Level; Suche und Filter ändern nur die sichtbaren Zeilen.', '#votes-new'),
       s('setup-info', 'Titel und Beschreibung', 'Im Dialog Abstimmung starten benennst du die Runde und ergänzt bei Bedarf Hinweise, etwa die gewünschte Spielerzahl.'),
       s('setup-privacy', 'Anonymität und Zwischenstand', 'Lege im Erstellen-Dialog fest, ob Namen verborgen bleiben und ob Ergebnisse erst nach Rundenende erscheinen.'),
       s('setup-games', 'Spiele auswählen', 'Wähle die Spiele für diese Runde. Abstimmung starten öffnet anschließend die Runde für die Teilnehmer; es gibt noch keine abgegebenen Stimmen.'),
@@ -142,7 +142,7 @@ export const AREA_TOURS = {
       s('match', 'Match vorbereiten', 'Match generieren übernimmt das gewählte Gewinner-Spiel und passende Teilnehmer in die Auslosung. Du kannst die Auswahl noch ändern; die Teams werden nicht sofort ausgelost.', '[data-generate-vote-match], #votes-generate-match'),
       s('players', 'Welche Spieler kommen mit?', 'Punkterunde: Mitspieler haben dem Gewinner mindestens einen Punkt gegeben. Stichwahl: Alle Stichwahl-Teilnehmer kommen mit, außer denen, die dem Gewinner in der Vorrunde 0 gegeben haben.', '[data-generate-vote-match], #votes-generate-match'),
       s('limits', 'Grenzen der Übernahme', 'Anonyme Runden bieten keine personenbezogene Match-Übernahme. Ein laufender Captain Draft wird durch einen Vote-Einstieg nicht überschrieben.', '[data-generate-vote-match], #votes-generate-match'),
-      s('history', 'Nur abgegebene Stimmen bleiben', 'Nur Votes mit abgegebenen Stimmen bleiben in der Historie erhalten. Eine beendete Runde ohne Stimmen verschwindet. Top 10 zeigt die aktuellen Bock-Werte.', '.vote-page-section'),
+      s('history', 'Nur abgegebene Stimmen bleiben', 'Nur Votes mit abgegebenen Stimmen bleiben in der Historie erhalten. Eine beendete Runde ohne Stimmen verschwindet. „Top 10 nach Bock-Level“ zeigt die aktuellen Bock-Werte.', '.vote-page-section'),
     ]),
   ]),
   matchmaking: t('Match', [
@@ -193,7 +193,7 @@ export const AREA_TOURS = {
     c('pay', 'Bezahlen', [
       s('person', 'Eine Zahlung pro Person', 'Bezahlt gilt für alle Positionen einer Person. Teilnehmer des ausgewählten Events können die Markierung setzen oder korrigieren, solange die Bestellung nicht geschlossen ist.', '[data-toggle-group-paid]'),
       s('paypal', 'PayPal öffnen', 'PayPal übergibt den hinterlegten Empfänger. Bei einem einfachen PayPal.me-Link wird die vollständige Summe ergänzt; unvollständige Preise verhindern die Übergabe.', '[data-group-pay]'),
-      s('confirm', 'Bezahlt bestätigen', 'Antworte erst nach deiner Zahlung auf Bezahlt?. Das Öffnen der PayPal-Seite allein markiert noch keine Position als bezahlt.', '[data-group-pay]'),
+      s('confirm', 'Bezahlt bestätigen', 'Bestätige erst nach deiner Zahlung im Dialog „Bezahlt?“ mit „Ja, bezahlt“. Das Öffnen der PayPal-Seite allein markiert noch keine Position als bezahlt.', '[data-group-pay]'),
       s('remind', 'Zahlungserinnerungen', 'Unbezahlte Positionen werden frühestens zwei Stunden nach Abschicken erinnert. Pro Person und Event werden Erinnerungen höchstens alle zwei Stunden erneut fällig.', '[data-toggle-group-paid]'),
       s('close', 'Geschlossene Bestellung', 'Nach Schließen sind Zahlungsmarkierungen und Metadaten gesperrt. Der Ersteller oder ein Admin kann den letzten Sperrschritt wieder zurücknehmen.', '[data-closed-order]'),
     ]),

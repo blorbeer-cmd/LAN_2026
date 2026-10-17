@@ -92,6 +92,15 @@ test('real-view demonstration data is consistent, isolated and cannot proxy writ
   assert.equal(history.title, 'Samstagabend');
   assert.equal(createTourDemo('profile', 'account/identity'), null);
   const home = createTourDemo('home', 'notifications/obsolete', {}, now);
+  const overview = createTourDemo('home', 'overview/event', {}, now);
+  assert.equal(overview.state.activeEvent.eventType, 'general');
+  assert.equal(overview.state.activeEvent.name, 'Sommerfest');
+  for (const events of [overview.state.events, overview.state.availableEvents, overview.state.historicalEvents,
+    [overview.responses['/api/events/tour-event']]]) {
+    assert.deepEqual(events.find((event) => event.id === overview.state.activeEvent.id), overview.state.activeEvent,
+      'the overview, header and API describe the same general event');
+  }
+  assert.equal(overview.state.eventInvitations[0].eventType, 'lan', 'the independent invitation remains a LAN');
   const poll = createTourDemo('eventPolls', 'answer/save', {}, now).responses['/api/events/tour-event/polls'][0];
   assert.equal(poll.responseMode, 'feasibility');
   assert.equal(poll.myResponses['tour-pizza'], 'can');

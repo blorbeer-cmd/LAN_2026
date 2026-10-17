@@ -63,7 +63,7 @@ export function buildOnboardingSteps() {
     },
     {
       title: 'Vote',
-      text: 'Hier startet ihr Abstimmungen, welche Spiele als Nächstes gespielt werden, und seht die Top 10 nach Bock-Werten. Bei Gleichstand lässt sich direkt aus dem letzten Ergebnis eine Stichwahl starten.',
+      text: 'Hier startet ihr Abstimmungen, welche Spiele als Nächstes gespielt werden, und seht die Top 10 nach Bock-Level. Bei Gleichstand lässt sich direkt aus dem letzten Ergebnis eine Stichwahl starten.',
       view: 'votes',
       target: navigationTarget('votes'),
     },

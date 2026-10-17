@@ -13,6 +13,9 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
     endsAt: event.endsAt + 28 * 86_400_000, participants: [], myParticipation: { status: 'invited', paid: false, canAccept: true, canDecline: true } };
   const group = { ...event, id: 'tour-permanent-group', name: 'Freitagsrunde', eventType: 'group',
     startsAt: null, endsAt: null, costCents: 0, accommodationCostCents: 0, paypalLink: null };
+  if (view === 'home' && chapter === 'overview' && step === 'event') {
+    Object.assign(event, { name: 'Sommerfest', eventType: 'general', description: 'Gemeinsam feiern und Zeit verbringen' });
+  }
   const notification = { id: 'tour-notification', title: 'Deine Bestellung ist abgeschickt',
     body: 'Für deine zwei Pizzen sind noch 17,60 € offen.', url: '/#foodOrders', type: 'food-order-payment',
     audience: 'direct', eventId: event.id, eventName: event.name, createdAt: now - 60_000,
@@ -48,7 +51,6 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
       { id: 'tour-todo-task', kind: 'task', audience: 'personal', eventId: group.id, eventName: group.name,
         taskId: 'tour-task', title: 'Mehrfachsteckdosen mitbringen', dueAt: now + 86_400_000 },
     ] };
-    if (step === 'event') state.activeEvent = { ...event, eventType: 'general' };
     if (step === 'other-event') demo.focus = '[data-home-todo="tour-todo-task"]';
     if (chapter === 'context' && ['workspace', 'account', 'types', 'shared'].includes(step)) {
       demo.controls = ['#demo-event-search']; demo.focus = '#demo-event-list';

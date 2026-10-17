@@ -449,6 +449,12 @@ flowTest('area tour examples work without live records and keep nested dialogs u
       await overlay.locator('[data-tour-next]').click();
       await readyScene();
     }
+    if (flow.route === 'home' && flow.chapter.startsWith('Überblick')) {
+      assert.equal(await example.locator('#home-event-overview-title').textContent(), 'Eventübersicht');
+      assert.equal(await example.locator('[data-home-event-overview] strong').first().textContent(), 'Sommerfest');
+      assert.equal(await example.locator('#demo-event-search').inputValue(), 'Sommerfest',
+        'the event overview and selected header event must agree');
+    }
     await overlay.locator('[data-tour-end]').click();
     await overlay.waitFor({ state: 'detached' });
     assert.equal(await tourPage.locator('[data-area-tour-scene]').count(), 0);
