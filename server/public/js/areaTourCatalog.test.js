@@ -31,6 +31,19 @@ test('every area and game has concise tour copy with stable unambiguous step ids
       assert.ok(demo.state.players.length && demo.state.games.length, `${key}/${step.id}: missing demo data`);
     }
   }
+  // Match the native game headers and result actions, including solo Chimp.
+  for (const [key, fullscreen, rematch] of [
+    ['quizRoom', false, true], ['tetris', true, true], ['pong', true, true],
+    ['blobby', true, true], ['snake', true, true], ['battleship', false, true],
+    ['chimp', false, false], ['scribbleRoom', true, false], ['challengeRush', false, false],
+  ]) {
+    const steps = stepsForTour(ARCADE_TOURS[key]);
+    const pause = steps.find((step) => step.id === 'play/pause');
+    const result = steps.find((step) => step.id === 'play/result');
+    assert.equal(/Vollbild/.test(`${pause.title} ${pause.text}`), fullscreen, `${key}: fullscreen availability`);
+    assert.equal(/Revanche/.test(`${result.title} ${result.text}`), rematch, `${key}: rematch availability`);
+    assert.equal(result.target, rematch ? '[data-rematch-request]' : '', `${key}: only highlight an available result action`);
+  }
 });
 
 test('tour explanations avoid targets in shallow windows and scroll in the remaining space', () => {
