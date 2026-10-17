@@ -183,8 +183,7 @@ function startRating(playerId: string, groupId: string, includeAll: boolean): On
 function missingRatings(playerId: string, candidateIds: string[]): string[] {
   const requiredIds = candidateIds.slice(0, Math.min(10, candidateIds.length));
   const hasSkill = db.prepare('SELECT 1 FROM skills WHERE player_id = ? AND game_id = ?').pluck();
-  const hasBock = db.prepare('SELECT 1 FROM preferences WHERE player_id = ? AND game_id = ?').pluck();
-  return requiredIds.filter((gameId) => !hasSkill.get(playerId, gameId) || !hasBock.get(playerId, gameId));
+  return requiredIds.filter((gameId) => !hasSkill.get(playerId, gameId));
 }
 
 onboardingRouter.get('/', requireUser, (req, res) => {
@@ -289,7 +288,7 @@ onboardingRouter.post('/rating/complete', requireUser, (req, res) => {
   }
   const missing = missingRatings(req.player!.id, candidateIds);
   if (missing.length > 0) {
-    return res.status(409).json({ error: 'Bewerte die ersten zehn Spiele vollständig.', code: 'onboarding_ratings_incomplete', missingGameIds: missing });
+    return res.status(409).json({ error: 'Hinterlege den Skill für die ersten zehn Spiele.', code: 'onboarding_ratings_incomplete', missingGameIds: missing });
   }
   return res.json(updateState(req.player!.id, {
     status: 'completed',

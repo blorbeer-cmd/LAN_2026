@@ -18,7 +18,7 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
     audience: 'direct', eventId: event.id, eventName: event.name, createdAt: now - 60_000,
     seen: false, resolvedAt: null, expiresAt: null };
   responses['/api/push/log'] = { entries: [notification, { ...notification, id: 'tour-notification-old',
-    title: 'Mehrfachsteckdosen übernommen', body: 'Die Aufgabe wurde erledigt.', seen: true, resolvedAt: now - 30_000 }] };
+    title: 'Mehrfachsteckdosen übernommen', body: 'Das To-Do wurde erledigt.', seen: true, resolvedAt: now - 30_000 }] };
   responses['/api/push/current'] = { entry: null };
   responses['/api/info'] = { entries: [{ id: 'tour-wlan', title: 'WLAN', content: 'Netz: Respawn · Passwort: GemeinsamSpielen', updatedAt: now },
     { id: 'tour-discord', title: 'Discord', content: 'Sprachkanal: LAN-Lobby', updatedAt: now }] };
@@ -101,7 +101,7 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
     responses['/api/tournaments/tour-tournament'] = detail;
     demo.open = ['result', 'correction'].includes(step) ? '[data-open-result="tour-semi-1"]' : '';
     demo.focus = ({ team: '[data-tournament-teams]', lobbies: '#tournament-lobbies-title',
-      effects: '.tournament-bracket', complete: '[data-tournament-champion]' })[step] ?? '';
+      effects: '.bracket-tree-wrap', complete: '[data-tournament-champion]' })[step] ?? '';
     if (step === 'early') demo.open = '#tourn-finish';
     if (step === 'delete') demo.open = '#tourn-delete';
   }

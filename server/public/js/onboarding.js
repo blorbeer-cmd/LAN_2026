@@ -12,6 +12,7 @@ import { eventHasFeature, viewIsEnabledForEvent } from './eventFeatures.js';
 // Start with personal orientation, then explain the shared event context and
 // the main LAN flows. The game catalog stays last so the tour ends on the
 // page where players can optionally add their first ratings.
+export const ONBOARDING_SKILL_COPY = 'Hinterlege vor der LAN deinen Skill in der Spieleliste für ausgeglichene Teams. Bock ist optional; während der LAN kannst du ihn über „Bock übernehmen“ aus Votes speichern.';
 
 function navigationTarget(view, { compactFallback = view } = {}) {
   return `.desktop-nav-btn[data-view="${view}"], .nav-btn[data-view="${compactFallback}"]`;
@@ -26,31 +27,31 @@ export function buildOnboardingSteps() {
   const steps = [
     {
       title: 'Home',
-      text: 'Hier siehst du auf einen Blick, wer online ist, was gerade gespielt wird und wie die Rangliste steht. Tippe im Live-Status auf eine Person, um ihr Profil mit Bock- und Skill-Werten zu öffnen.',
+      text: 'Home zeigt Live-Status und aktuelle Vorgänge. Über das Fragezeichen neben jedem Bereichstitel öffnest du ausführliche Touren mit Beispielen – auch später jederzeit.',
       view: 'home',
       target: navigationTarget('home'),
     },
     {
       title: 'Mein Profil',
-      text: 'Im Profil verwaltest du Gamertag, Avatar-Farbe und deine Ansicht: Automatisch, Desktop oder Laptop. Hier richtest du bei Bedarf den Agent für Spiele-Tracking auf deinem PC und Push-Mitteilungen ein.',
+      text: 'Im Profil verwaltest du Gamertag, Avatar-Farbe und deine Ansicht: Automatisch, Desktop oder Laptop. Hier richtest du bei Bedarf den Agent für Spiele-Tracking auf deinem PC und Push-Benachrichtigungen ein.',
       view: 'profile',
       target: navigationTarget('profile', { compactFallback: 'more' }),
     },
     {
       title: 'Orga',
-      text: 'Hier plant ihr die LAN: Über Umfragen klärt ihr Termine und andere Fragen. Weitere Reiter zeigen An- und Abreise, Events, Packliste und To-Dos.',
+      text: 'Umfragen, An- & Abreise, Packliste und To-Dos helfen bei der LAN-Planung. Events und Gruppen verwaltest du separat über Events & Gruppen.',
       view: sectionEntryView('orga'),
       target: navigationTarget(sectionEntryView('orga'), { compactFallback: 'more' }),
     },
     {
-      title: 'Aktives Event',
+      title: 'Ausgewähltes Event',
       text: 'Wähle oben im Header über den Eventnamen aus, in welchem Event du gerade bist.',
       view: 'home',
       target: '#event-context .search-select-control',
     },
     {
       title: 'Match',
-      text: 'Hier lost ihr Teams aus, startet Captain-Drafts und legt Turniere an. Die Suchfelder in der Spieler- und Captain-Auswahl helfen euch, bei vielen Teilnehmenden schnell die richtigen Leute zu finden.',
+      text: 'Hier lost ihr ausgeglichene Teams aus und legt Turniere an. Admins können einen Captain Draft starten, bei dem Captains ihre Mitspieler wählen.',
       view: 'matchmaking',
       target: navigationTarget('matchmaking'),
     },
@@ -67,8 +68,8 @@ export function buildOnboardingSteps() {
       target: navigationTarget('foodOrders'),
     },
     {
-      title: 'Spielekatalog',
-      text: 'Bewerte die ersten zehn Spiele mit Bock und Skill. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.',
+      title: 'Spiele',
+      text: ONBOARDING_SKILL_COPY,
       view: 'gameCatalog',
     },
   ];
@@ -130,8 +131,7 @@ export function onboardingRatingProgress() {
   const myId = getMyId();
   if (!myId) return { completed: 0, required: ids.length, ready: false };
   const completed = ids.filter((gameId) =>
-    state.skills.some((row) => row.player_id === myId && row.game_id === gameId)
-      && state.preferences.some((row) => row.player_id === myId && row.game_id === gameId),
+    state.skills.some((row) => row.player_id === myId && row.game_id === gameId),
   ).length;
   return { completed, required: ids.length, ready: ids.length === 0 || completed >= ids.length };
 }
@@ -315,9 +315,9 @@ function renderRating() {
   element.innerHTML = `
     <section class="onboarding-dialog onboarding-rating-dialog" role="dialog" tabindex="-1" aria-modal="false" aria-labelledby="onboarding-rating-title" aria-describedby="onboarding-rating-copy">
       <p class="onboarding-progress">Bewertung</p>
-      <h2 id="onboarding-rating-title">Erste Spiele bewerten</h2>
-      <p id="onboarding-rating-copy">Bewerte Bock und Skill für die ersten zehn Spiele. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.</p>
-      <p class="onboarding-rating-progress" role="status">${progress.completed} von ${progress.required} Pflichtspielen vollständig bewertet.</p>
+      <h2 id="onboarding-rating-title">Skill vor der LAN hinterlegen</h2>
+      <p id="onboarding-rating-copy">${escapeHtml(ONBOARDING_SKILL_COPY)}</p>
+      <p class="onboarding-rating-progress" role="status">${progress.completed} von ${progress.required} Spielen mit Skill bewertet.</p>
       <div class="onboarding-actions onboarding-rating-actions">
         <button type="button" class="btn" data-onboarding-all>Alle bewerten</button>
         <button type="button" class="btn" data-onboarding-later>Später</button>
@@ -396,7 +396,7 @@ export function refreshOnboardingRatingProgress() {
   if (runtime?.mode !== 'rating') return;
   const progress = onboardingRatingProgress();
   const progressEl = root()?.querySelector('.onboarding-rating-progress');
-  if (progressEl) progressEl.textContent = `${progress.completed} von ${progress.required} Pflichtspielen vollständig bewertet.`;
+  if (progressEl) progressEl.textContent = `${progress.completed} von ${progress.required} Spielen mit Skill bewertet.`;
   const finish = root()?.querySelector('[data-onboarding-finish]');
   if (finish) finish.disabled = !progress.ready;
   syncRatingSpacer();

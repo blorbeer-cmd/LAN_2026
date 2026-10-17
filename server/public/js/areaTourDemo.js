@@ -159,6 +159,9 @@ window.addEventListener('message', async (event) => {
       const nativeDialog = [...document.querySelectorAll('.modal-backdrop .modal')].at(-1);
       highlighted = next.focus ? document.querySelector(next.focus)
         : nativeDialog ?? (selector ? document.querySelector(selector) : null);
+      if (!highlighted && (next.focus || selector)) {
+        throw new Error(`Missing example target (${stepId}): ${next.focus || selector}`);
+      }
       if (nativeDialog && !nativeDialog.contains(highlighted)) highlighted = nativeDialog;
       if (highlighted?.type === 'hidden') highlighted = highlighted.closest('[data-dt-field]') ?? highlighted.parentElement;
       highlighted ??= nativeDialog ?? root.querySelector('.card') ?? root;

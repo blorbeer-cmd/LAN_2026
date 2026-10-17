@@ -6,6 +6,22 @@ import { escapeHtml } from './format.js';
 import { profileRow } from './profileRow.js';
 import { DEMO_VIEWS, tourDemoSceneKey } from './areaTourDemoData.js';
 
+export function tourPanelPlacement(target, panel, viewport, inset, minHeight) {
+  const candidates = ['bottom', 'top'].flatMap((placement) => ['center', 'left', 'right'].map((align) => {
+    const left = align === 'left' ? inset : align === 'right' ? viewport.width - inset - panel.width : (viewport.width - panel.width) / 2;
+    const top = placement === 'top' ? inset : viewport.height - inset - panel.height;
+    const overlap = Math.max(0, Math.min(left + panel.width, target.right) - Math.max(left, target.left))
+      * Math.max(0, Math.min(top + panel.height, target.bottom) - Math.max(top, target.top));
+    return { placement, align, overlap, maxHeight: null };
+  }));
+  const free = candidates.find((candidate) => candidate.overlap === 0);
+  if (free) return free;
+  const spaces = [{ placement: 'bottom', height: viewport.height - target.bottom - inset * 2 },
+    { placement: 'top', height: target.top - inset * 2 }].sort((a, b) => b.height - a.height);
+  if (spaces[0].height >= minHeight) return { placement: spaces[0].placement, align: 'center', maxHeight: spaces[0].height };
+  return candidates.reduce((best, candidate) => candidate.overlap < best.overlap ? candidate : best);
+}
+
 export function stepsForTour(tour, chapterId = 'all') {
   return tour.chapters.filter((chapter) => chapterId === 'all' || chapter.id === chapterId)
     .flatMap((chapter) => chapter.steps.map((step) => ({ ...step, id: `${chapter.id}/${step.id}` })));
@@ -281,9 +297,14 @@ export function createAreaTours({ container, getContext }) {
     clearTimeout(active.sceneTimeout);
     active.dialog.dataset.tourSceneStatus = 'ready';
     active.dialog.querySelector('[data-tour-scene-state]').hidden = true;
+    active.dialog.querySelector('[data-tour-retry]').hidden = true;
     active.dialog.querySelector('[data-tour-next]').disabled = false;
-    active.dialog.querySelector('[data-tour-next]').focus({ preventScroll: true });
     positionTarget();
+    const panel = active.dialog.querySelector('.modal');
+    const scrolls = panel.scrollHeight > panel.clientHeight;
+    if (scrolls) panel.scrollTop = 0;
+    const focus = scrolls ? panel.querySelector('[data-close]') : active.dialog.querySelector('[data-tour-next]');
+    focus?.focus({ preventScroll: true });
   }
 
   function positionScene() {
@@ -343,14 +364,23 @@ export function createAreaTours({ container, getContext }) {
     ring.hidden = !visible;
     shade.hidden = Boolean(visible);
     const panel = dialog.querySelector('.modal');
-    if (!visible) { panel.dataset.tourPlacement = 'bottom'; return; }
+    panel.style.removeProperty('--area-tour-available-height');
+    if (!visible) { panel.dataset.tourPlacement = 'bottom'; panel.dataset.tourAlign = 'center'; return; }
     const left = Math.max(0, rect.left);
     const top = Math.max(0, rect.top);
     ring.style.left = `${left}px`;
     ring.style.top = `${top}px`;
     ring.style.width = `${Math.min(window.innerWidth, rect.right) - left}px`;
     ring.style.height = `${Math.min(window.innerHeight, rect.bottom) - top}px`;
-    panel.dataset.tourPlacement = rect.bottom > window.innerHeight - panel.getBoundingClientRect().height - 32 ? 'top' : 'bottom';
+    const style = getComputedStyle(panel);
+    const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-4'));
+    const minimum = panel.querySelector('.modal-header').getBoundingClientRect().height
+      + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + inset * 2;
+    const placement = tourPanelPlacement(rect, panel.getBoundingClientRect(),
+      { width: window.innerWidth, height: window.innerHeight }, inset, minimum);
+    panel.dataset.tourPlacement = placement.placement;
+    panel.dataset.tourAlign = placement.align;
+    if (placement.maxHeight !== null) panel.style.setProperty('--area-tour-available-height', `${placement.maxHeight}px`);
   }
 
   function schedulePosition() {

@@ -16,7 +16,7 @@ export const ARCADE_TOURS = {
     title: 'Arcade',
     chapters: [{ id: 'lobby', title: 'Lobby und Mitspielen', steps: [
       s('open', 'Lobby öffnen', 'Wähle ein Spiel und seinen Modus. Das erstellt zunächst eine Lobby; die Partie beginnt erst nach dem Start.', '#arcade-create-lobby'),
-      s('join', 'Mitspielen', 'Beitreten belegt einen freien Platz. Bei Doppel wählst du dein Team. Eine eigene Lobby wird erst nach Bestätigung durch eine andere ersetzt.', '[data-join-lobby]'),
+      s('join', 'Mitspielen', 'Beitreten belegt einen freien Platz; bei Doppel wählst du dein Team. Bist du schon in einer Lobby, bestätigst du selbst das Verlassen; als Host löst du sie auf.', '[data-join-lobby]'),
       s('ready', 'Bereit melden', 'Gäste melden ihre Bereitschaft. Der Host startet, sobald Teilnehmerzahl und Bereitschaft passen; ein gesperrter Start nennt die fehlende Voraussetzung.', '[data-ready]'),
       s('watch', 'Weiterspielen oder zuschauen', 'Eine laufende eigene Partie bietet Weiterspielen. Zuschauen öffnet eine lesende Ansicht; verborgene Spielinformationen bleiben auch dort verborgen.', '[data-watch-match]'),
       s('statistics', 'Arcade-Statistik', 'Die Statistik wertet Browserpartien aus. Chimp Test besitzt eine eigene Bestwert-Rangliste und zählt keine normalen Siege oder Niederlagen.', '.collapsible-section'),

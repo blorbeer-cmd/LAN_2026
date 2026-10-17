@@ -268,7 +268,7 @@ function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false
     <div class="card game-table-row${isMarkedSuggestion ? ' is-suggestion' : ''}${onboardingRequired ? ' onboarding-required' : ''}" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
       <div class="game-row-name">
         <button type="button" class="btn btn-sm game-row-detail-trigger" data-detail="${game.id}">${escapeHtml(game.name)}</button>
-        ${onboardingRequired ? '<span class="badge badge-playing onboarding-required-badge">Pflicht</span>' : ''}
+        ${onboardingRequired ? '<span class="badge badge-playing onboarding-required-badge">Skill</span>' : ''}
         ${suggestionBadge}
         ${gameRowIconsHtml(game)}
         ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
@@ -681,8 +681,8 @@ export function renderGameCatalog(container, ctx) {
         ${ratingMode ? `
           <div class="onboarding-rating-banner" aria-live="polite">
             <div class="onboarding-rating-banner-copy">
-              <strong>Pflichtbewertung</strong>
-              <span>${onboardingRatingProgress().completed} von ${onboardingRatingProgress().required} Spielen vollständig bewertet. Für jedes Spiel werden Bock und Skill benötigt.</span>
+              <strong>Skill vor der LAN</strong>
+              <span>${onboardingRatingProgress().completed} von ${onboardingRatingProgress().required} Spielen mit Skill bewertet. Bock ist optional und kann aus Votes übernommen werden.</span>
             </div>
           </div>` : ''}
         ${ratingMode ? '' : `<div class="game-catalog-tab-row">

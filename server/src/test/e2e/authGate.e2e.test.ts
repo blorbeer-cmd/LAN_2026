@@ -215,7 +215,7 @@ test('an invite link registers a new account and logs it straight in', async () 
       `the onboarding dialog must keep its bottom position after step ${step + 1}`,
     );
   }
-  assert.deepEqual(titles, ['Home', 'Mein Profil', 'Orga', 'Aktives Event', 'Match', 'Vote', 'Essen', 'Spielekatalog']);
+  assert.deepEqual(titles, ['Home', 'Mein Profil', 'Orga', 'Ausgewähltes Event', 'Match', 'Vote', 'Essen', 'Spiele']);
   await page.waitForSelector('#onboarding-root [role="dialog"]', { state: 'detached' });
   await page.waitForSelector('[data-tab="catalog"]');
   assert.equal(await page.locator('.game-table-row.onboarding-required').count(), 0);
@@ -268,7 +268,7 @@ test('admin onboarding uses the same shared tour without admin-only steps', asyn
     let sawHeaderEvent = false;
     for (let step = 0; step < totalCoreSteps; step += 1) {
       const title = await adminPage.locator('#onboarding-title').textContent();
-      if (title === 'Aktives Event') {
+      if (title === 'Ausgewähltes Event') {
         sawHeaderEvent = true;
         await adminPage.waitForSelector('#event-context:not([hidden]) .search-select-control');
         for (const width of [1920, 1024]) {

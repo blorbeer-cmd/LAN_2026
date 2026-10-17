@@ -187,7 +187,26 @@ flowTest('area tour examples work without live records and keep nested dialogs u
       && frameBox.width === viewport.width && frameBox.height === viewport.height,
     'the example covers the complete viewport without compression or exposing the original page');
     assert.doesNotMatch(await overlay.textContent() ?? '', /Beispielansicht/u);
+    assert.equal(await overlay.locator('[data-tour-retry]').isVisible(), false, 'a ready scene never offers an obsolete retry');
     const heading = await overlay.locator('h2').textContent();
+    if (heading === 'Was das Ergebnis auslöst') {
+      const target = await example.locator('.bracket-tree-wrap').evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+      });
+      const highlight = await example.locator('body').evaluate(() =>
+        (window as unknown as { areaTourScene: { targetRect(): typeof target } }).areaTourScene.targetRect());
+      assert.deepEqual(highlight, target, 'result effects highlight the real tournament bracket');
+    }
+    if (viewport.width === 800 && viewport.height === 500
+      && (heading === 'Info öffnen' || ['Deine Mitteilungen', 'Zum Vorgang springen', 'Gelesen heißt noch offen', 'Obsolet oder abgelaufen', 'Push erlauben'].includes(heading ?? ''))) {
+      const panel = await overlay.locator('.modal').boundingBox();
+      const target = await overlay.locator('.area-tour-target').boundingBox();
+      assert.ok(panel && target);
+      const overlap = Math.max(0, Math.min(panel.x + panel.width, target.x + target.width) - Math.max(panel.x, target.x))
+        * Math.max(0, Math.min(panel.y + panel.height, target.y + target.height) - Math.max(panel.y, target.y));
+      assert.equal(overlap, 0, 'the explanation keeps Info and notifications visible on a shallow screen');
+    }
     if (heading === 'Bock übernehmen' || heading === 'Anonymität und Bock') {
       assert.equal(await example.locator('[data-vote-adopt-bock]').isVisible(), true);
       assert.equal(await example.locator('[data-vote-adopt-bock]').isChecked(), true);
@@ -262,6 +281,7 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     const overlay = tourPage.locator('.area-tour-backdrop');
     const example = tourPage.frameLocator('[data-area-tour-scene]');
     const readyScene = () => assertSceneReady(tourPage);
+    if (flow.route === 'home' && !flow.chapter.startsWith('Überblick')) await tourPage.setViewportSize({ width: 800, height: 500 });
     let recording = false;
     const recordRequest = (request: Request) => {
       if (request.frame() !== tourPage.mainFrame() && request.url().includes('/api/')) demoNetwork.push(request.url());
@@ -288,6 +308,25 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     }
     if (flow.input) {
       assert.equal(await example.locator(flow.input).inputValue(), flow.value);
+    }
+    if (flow.route === 'home' && flow.chapter.startsWith('Überblick')) {
+      await example.locator('body').evaluate(() => {
+        window.addEventListener('message', (event) => {
+          if (event.data?.type === 'area-tour:focus') document.body.dataset.testTourToken = event.data.token;
+        });
+      });
+      await overlay.locator('[data-tour-next]').click();
+      await readyScene();
+      const focusExample = (target: string) => tourPage.evaluate((selector) => {
+        const scene = document.querySelector<HTMLIFrameElement>('[data-area-tour-scene]')!.contentWindow!;
+        scene.postMessage({ type: 'area-tour:focus', token: scene.document.body.dataset.testTourToken,
+          step: 'overview/todos', target: selector }, location.origin);
+      }, target);
+      await focusExample('[data-missing-tour-target]');
+      await tourPage.waitForFunction(() => document.querySelector<HTMLElement>('.area-tour-backdrop')?.dataset.tourSceneStatus === 'error');
+      assert.equal(await overlay.locator('[data-tour-retry]').isVisible(), true, 'a missing target is reported instead of highlighting the first card');
+      await focusExample('#home-todos-title');
+      await readyScene();
     }
     if (flow.route === 'gameCatalog') {
       const node = await tourPage.locator('[data-area-tour-scene]').elementHandle();
@@ -384,6 +423,7 @@ flowTest('area tour examples work without live records and keep nested dialogs u
       assert.equal(await tourPage.locator('#arrival-note').inputValue(), 'Mein ungespeicherter Entwurf');
     }
     recording = false;
+    await tourPage.setViewportSize({ width: 390, height: 844 });
     tourPage.off('request', recordRequest);
   };
   // These chapters have no server writes and independent page/form state.

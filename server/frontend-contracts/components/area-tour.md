@@ -48,6 +48,7 @@ Datensätze, private View-Caches, Dialoge und Entwürfe gemeinsam.
 ## 5. Erlaubte Anpassungen
 
 Ein Kapitel definiert stabile IDs, Klartexttitel, Text und einen Selektor vorhandener Elemente.
+Ein fehlendes explizites Ziel in der Demo meldet einen Ladefehler statt eine andere Karte zu markieren.
 Optionale Rollen- und Featurebedingungen entfernen nicht verfügbare Kapitel und Schritte.
 Aktionen der echten Anwendung werden weder aufgerufen noch durch programmatische Klicks
 ausgelöst. Die Demo darf ausschließlich ihre eigenen lokalen Einstiegs- und Disclosure-
@@ -64,7 +65,10 @@ Controls betätigen; Schreibaktionen werden nicht zum Erzeugen von Zuständen be
   einer Tour. Er überdeckt die ursprüngliche Ansicht vollständig; es gibt keinen reservierten
   Leerraum und keine zusätzliche Kennzeichnung.
 - `registry:area-tour-modal`: Der Schrittdialog behält maximal die Standardbreite von 480 px.
-  Das Ziel entscheidet über Platzierung oben oder unten, auch in der Demo.
+  Das Ziel entscheidet über Platzierung oben oder unten und links, mittig oder rechts, auch in der Demo.
+  In breiten Fenstern unter 560 px Höhe begrenzt `--area-tour-compact-width` die Breite.
+  Reicht der Platz daneben nicht, scrollt die Erklärung im freien Bereich oberhalb oder unterhalb
+  des Ziels. Bei zu wenig Platz für eine bedienbare Kopfzeile gewinnt die geringste Überdeckung.
   `--space-4` hält Abstand zu den Viewportkanten; die maximale Dialoghöhe berücksichtigt
   `--space-8`. Lange Inhalte scrollen im Dialog. Das Ziel entscheidet über Platzierung oben oder
   unten. Der Backdrop besitzt weder Unschärfe noch Einblendanimation, damit die Zielstelle sichtbar
@@ -95,6 +99,8 @@ bleiben Beenden, Zurück und ein expliziter Neuversuch erreichbar.
 Der Appinhalt und darunterliegende Dialoge werden während der Tour inert; ihre vorherigen
 Zustände werden beim Ende wiederhergestellt. Die Erklärung und Schrittzahl werden angekündigt;
 Weiter erhält nach jedem Schritt den Fokus. Der Ring ist für assistive Technik verborgen.
+Bei höhenbegrenzten Erklärungen erhält die sichtbare Schließen-Aktion den Fokus; Tab erreicht
+die weiteren Aktionen und scrollt sie in den sichtbaren Bereich.
 Scrollen zum Ziel benötigt keine Animation. Beim Ende werden die zuvor geschlossenen nativen
 Details und die Scrollposition soweit noch vorhanden wiederhergestellt. Auch ein Ziel in einem
 sichtbaren Summary öffnet dessen Details-Inhalt. Die Beispielszene verschwindet vollständig.
@@ -122,6 +128,8 @@ mutierenden API-Aufrufe senden. Die Katalogtests prüfen konsistente Beispieldat
 Fail-closed-Verhalten der lokalen GET-Antworten.
 Die Draft-Vorbereitung prüft den Erhalt derselben Spielerauswahl bei Weiter und Zurück;
 der Arcade-Browserfall prüft Pong und den ausgewählten Modus Doppel im echten Erstellen-Dialog.
+Der Shell-Fall prüft zudem das tatsächliche Turnierbaum-Ziel, einen explizit fehlenden Zielselektor,
+die erfolgreiche Erholung ohne verbleibenden Retry-Button sowie Info und Mitteilungen bei 800 × 500.
 Der bestehende Tetris-Vollbildfall prüft zusätzlich, dass die Hilfe im Vollbild keinen unsichtbaren
 Fokus erhalten kann und danach wieder per Tastatur geöffnet werden kann.
 

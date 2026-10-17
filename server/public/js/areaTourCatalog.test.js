@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AREA_TOURS, getAreaTour } from './areaTourCatalog.js';
 import { ARCADE_TOURS } from './arcade/areaTours.js';
-import { stepsForTour } from './areaTours.js';
+import { stepsForTour, tourPanelPlacement } from './areaTours.js';
 import { VIEW_MANIFEST } from './viewManifest.js';
 import { createTourDemo, demoApiResponse, DEMO_VIEWS, tourDemoSceneKey } from './areaTourDemoData.js';
 
@@ -31,6 +31,18 @@ test('every area and game has concise tour copy with stable unambiguous step ids
       assert.ok(demo.state.players.length && demo.state.games.length, `${key}/${step.id}: missing demo data`);
     }
   }
+});
+
+test('tour explanations avoid targets in shallow windows and scroll in the remaining space', () => {
+  const viewport = { width: 800, height: 500 };
+  const beside = tourPanelPlacement({ left: 424, right: 784, top: 60, bottom: 460 },
+    { width: 320, height: 280 }, viewport, 16, 100);
+  assert.equal(beside.align, 'left', 'notifications remain visible beside the explanation');
+  assert.equal(beside.maxHeight, null);
+  const below = tourPanelPlacement({ left: 160, right: 640, top: 150, bottom: 350 },
+    { width: 320, height: 280 }, viewport, 16, 100);
+  assert.equal(below.placement, 'bottom');
+  assert.equal(below.maxHeight, 118, 'a centered Info dialog retains its visible area');
 });
 
 test('real-view demonstration data is consistent, isolated and cannot proxy writes or unknown reads', () => {
