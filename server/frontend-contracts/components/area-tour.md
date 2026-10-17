@@ -117,7 +117,7 @@ Die Darstellung gilt für Handy, Laptop und Desktop gleichermaßen.
 `areaTourCatalog.test.js` prüft Bereichsabdeckung, maximal 30 Wörter je Schritt, stabile IDs sowie
 Rollen-/Featurefilter. `areaTourProgress.test.js` prüft Kontotrennung, Wiederaufnahme, Abschluss,
 veränderte Schrittlisten und blockierten/ungültigen Speicher.
-Die bestehenden Shell-Browser-Fixtures prüfen Start ohne automatische Anzeige, Wiederaufnahme
+Der Core-Owner `areaTours.e2e.test.ts` prüft Start ohne automatische Anzeige, Wiederaufnahme
 nach Reload, schmale und breite Fenster, Fokusfang/-rückgabe, Hintergrundaktualisierung,
 Beispielzustand und Info-Dialogstapel, Erstellen-Beispiele in Spiele/Vote/Umfragen/To-Do,
 Match-Einstieg an h2, echte Dialoge/Einträge im Demoframe und unveränderte ursprüngliche
@@ -128,7 +128,7 @@ mutierenden API-Aufrufe senden. Die Katalogtests prüfen konsistente Beispieldat
 Fail-closed-Verhalten der lokalen GET-Antworten.
 Die Draft-Vorbereitung prüft den Erhalt derselben Spielerauswahl bei Weiter und Zurück;
 der Arcade-Browserfall prüft Pong und den ausgewählten Modus Doppel im echten Erstellen-Dialog.
-Der Shell-Fall prüft zudem das Teilnahme-Kapitel als Admin, vollständig lesbaren Erklärungstext und sichtbare Touraktionen auf Handy
+Der Tour-Fall prüft zudem das Teilnahme-Kapitel als Admin, vollständig lesbaren Erklärungstext und sichtbare Touraktionen auf Handy
 und Laptop, die Bestellgruppe ohne verdeckende Gerichtvorschläge und das tatsächliche Turnierbaum-Ziel, einen explizit fehlenden Zielselektor,
 die erfolgreiche Erholung ohne verbleibenden Retry-Button sowie Info und Mitteilungen bei 800 × 500.
 Der bestehende Tetris-Vollbildfall prüft zusätzlich, dass die Hilfe im Vollbild keinen unsichtbaren
