@@ -152,7 +152,7 @@ export const AREA_TOURS = {
       s('neighbors', 'Sitznachbarn berücksichtigen', 'Sitznachbarn und Personen, die den Monitor des anderen sehen können, landen möglichst im selben Team. Die Skill-Balance hat Vorrang; verbleibende Konflikte werden angezeigt.', '#mm-avoid-adjacent'),
       s('teams', 'Auslosung anpassen', 'Verschiebe Spieler zwischen Teams. Ausgeloste Teams heißen Team 1, Team 2 usw.; Einzelteams tragen den Spielernamen. Beim Erstellen eines Turniers und im laufenden Turnier kannst du Teamnamen ändern.', '[data-draw-card]'),
       s('next', 'Ergebnis oder Turnier', 'Eine Auslosung wird entweder als einzelnes Match gewertet oder für ein Turnier verwendet. Turnier erstellen übernimmt die vorhandenen Teams.', '[data-draw-tournament]'),
-      s('result', 'Ergebnis speichern', 'Ein gespeichertes Ergebnis erscheint in Historie und Rangliste und kann spätere Skill-Vorschläge beeinflussen. Ergebnis bearbeiten korrigiert den vorhandenen Eintrag.', '[data-record-draw], [data-edit-draw-result]'),
+      s('result', 'Ergebnis eintragen', 'Ein gespeichertes Ergebnis erscheint in Historie und Rangliste und kann spätere Skill-Vorschläge beeinflussen. Ergebnis bearbeiten korrigiert den vorhandenen Eintrag.', '[data-record-draw], [data-edit-draw-result]'),
     ]),
     c('draft', 'Captain Draft', [
       s('mode', 'Captains wählen Teams', 'Admins starten den Captain Draft. Die ausgewählten Captains wählen ihre Mitspieler. Skill-Werte helfen bei der Entscheidung, steuern die Auswahl aber nicht automatisch.', '[data-mm-mode="draft"]'),
@@ -174,7 +174,7 @@ export const AREA_TOURS = {
   tournaments: t('Turnier', [c('play', 'Mitspielen und Ergebnisse', [
     s('team', 'Dein Team finden', 'Dein Team ist in Paarungen und Tabellen markiert und steht unter Teams vorn. Während das Turnier läuft, können Teammitglieder den Namen ändern.', '[data-tournament-teams]'),
     s('lobbies', 'Spielbereite Paarungen', 'Aktive Lobbys zeigt spielbare Paarungen mit dem eröffnenden Team und den Zugangsdaten. Liga und Gruppen zeigen zunächst die früheste noch offene Runde.', '#tournament-lobbies-title'),
-    s('result', 'Ergebnis erfassen', 'Das Plus öffnet die Ergebniseingabe. Speichere einen Sieger oder den konfigurierten Punktestand; K.O.-Matches brauchen einen eindeutigen Sieger.', '[data-open-result]'),
+    s('result', 'Ergebnis eintragen', 'Das Plus öffnet die Ergebniseingabe. Speichere einen Sieger oder den konfigurierten Punktestand; K.O.-Matches brauchen einen eindeutigen Sieger.', '[data-open-result]'),
     s('effects', 'Was das Ergebnis auslöst', 'Das Ergebnis aktualisiert Tabelle und Spielplan und zählt auch für die reguläre Rangliste. Neu spielbereite Teilnehmer erhalten die nächste Paarung als Mitteilung.', '.bracket-tree-wrap, .tournament-standings'),
     s('correction', 'Früheres Ergebnis ändern', 'Ein geänderter Sieger kann spätere K.O.-Paarungen und deren Ergebnisse zurücksetzen. Die Bestätigung erklärt die Folgen, bevor die Korrektur gespeichert wird.', '[data-open-result]'),
     s('complete', 'Automatisch abschließen', 'Das letzte erforderliche Ergebnis beendet das Turnier. Ein aktiviertes Spiel um Platz 3 gehört dazu; danach steht der Turniersieger fest.', '.bracket-tree-wrap, .tournament-standings'),
@@ -215,7 +215,7 @@ export const AREA_TOURS = {
       s('push', 'Push aktivieren', 'Aktiviere Push-Benachrichtigungen und erlaube Benachrichtigungen im Browser. Die Berechtigung gehört zu diesem Gerät; die Mitteilungen findest du zusätzlich unter Mitteilungen.', '#push-toggle, #profile-push'),
       s('ticker', 'Im Newsticker erscheinen', 'Newsticker erlaubt deinen Namen in erfundenen Meldungen auf dem Broadcast-Bildschirm. Deaktivieren entfernt betroffene Zeilen mit der nächsten Aktualisierung.', '#profile-newsticker'),
       s('monitors', 'Sichtbare Monitore angeben', 'Wähle Personen, deren Monitore du sehen kannst. Diese Angaben helfen bei der Auslosung, wenn Sitznachbarn berücksichtigt werden.', '#profile-monitors-edit', { feature: 'seating' }),
-      s('admin', 'Admin-Modus', 'Admin-Modus zeigt Testdaten und zusätzliche Testaktionen. Er verleiht keine Rechte; deine tatsächliche Kontorolle bestimmt die Verwaltungsfunktionen.', '#profile-admin-mode', { adminOnly: true }),
+      s('admin', 'Admin-Modus', 'Admin-Modus zeigt Testdaten und zusätzliche Testaktionen. Er verleiht keine Rechte; die Rolle deines Kontos bestimmt die Verwaltungsfunktionen.', '#profile-admin-mode', { adminOnly: true }),
     ]),
     c('agent', 'Agent und Live-Status', [
       s('purpose', 'Spiele erkennen', 'Der Agent erkennt hinterlegte Spiele auf deinem PC und meldet Live-Status und Spielzeit an Respawn. Die Prozess-Zuordnung kommt zentral vom Server.', '#profile-agent-title'),
@@ -264,7 +264,7 @@ export const AREA_TOURS = {
   leaderboard: t('Rangliste', [c('ranking', 'Ergebnisse und Punkte', [
     s('sources', 'Woher Ergebnisse kommen', 'Ranglistenwerte entstehen aus erfassten Matches und Turnierergebnissen. Reine Spielzeit gehört in die Statistiken.', '.ranked-list'),
     s('filter', 'Nach Spiel filtern', 'Alle Spiele zeigt die gemeinsame Rangliste. Der Spielfilter grenzt sie auf Ergebnisse dieses Spiels ein.', '.search-select'),
-    s('record', 'Freies Ergebnis erfassen', 'Ergebnis eintragen erlaubt ein Match mit Spiel, Teilnehmern, Teams oder Frei-für-alle. Speichern übernimmt das Ergebnis in die Wertung.', '[id="add-match-btn"]'),
+    s('record', 'Freies Ergebnis eintragen', 'Ergebnis eintragen erlaubt ein Match mit Spiel, Teilnehmern, Teams oder Frei-für-alle. Speichern übernimmt das Ergebnis in die Wertung.', '[id="add-match-btn"]'),
     s('correction', 'Ergebnisse korrigieren', 'Ergebnisse bearbeitest du unter Match in der Historie; Admins können sie dort löschen. Ein gelöschtes Einzelmatch zählt danach nicht mehr in der Rangliste.', '.ranked-list'),
   ])], { adminOnly: true }),
   analytics: t('Statistiken', [c('analytics', 'Gemeinsame Auswertung', [
