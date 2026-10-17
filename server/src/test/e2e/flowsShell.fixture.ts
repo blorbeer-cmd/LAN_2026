@@ -179,27 +179,51 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     await tourPage.waitForFunction(() => ['ready', 'error'].includes(
       (document.querySelector('.area-tour-backdrop') as HTMLElement | null)?.dataset.tourSceneStatus ?? '',
     ));
-    assert.equal(await overlay.getAttribute('data-tour-scene-status'), 'ready',
-      `the actual example view must render: ${await overlay.locator('h2').textContent()}`);
-    const frameBox = await tourPage.locator('[data-area-tour-scene]').boundingBox();
+    // Read one settled DOM snapshot instead of a separate browser round trip
+    // for every property on every step. Keep all geometry and hit checks.
+    const snapshot = await tourPage.evaluate(() => {
+      const overlay = document.querySelector<HTMLElement>('.area-tour-backdrop')!;
+      const frame = document.querySelector<HTMLIFrameElement>('[data-area-tour-scene]')!;
+      const box = (element: Element | null) => {
+        if (!element?.getClientRects().length) return null;
+        const { x, y, width, height } = element.getBoundingClientRect();
+        return { x, y, width, height };
+      };
+      const retry = overlay.querySelector<HTMLElement>('[data-tour-retry]')!;
+      const retryBox = box(retry);
+      const explanation = overlay.querySelector('.area-tour-explanation')!;
+      const nativeDialog = Array.from(frame.contentDocument?.querySelectorAll('.modal-backdrop .modal') ?? []).at(-1) ?? null;
+      return {
+        status: overlay.dataset.tourSceneStatus,
+        heading: overlay.querySelector('h2')!.textContent,
+        text: overlay.textContent ?? '',
+        nextLabel: overlay.querySelector('[data-tour-next]')!.textContent,
+        frameBox: box(frame),
+        retryVisible: Boolean(retryBox?.width && retryBox.height && getComputedStyle(retry).visibility === 'visible'),
+        textFits: explanation.scrollHeight <= explanation.clientHeight + 1,
+        actions: Array.from(overlay.querySelectorAll('.area-tour-actions button')).map((button) => {
+          const rect = button.getBoundingClientRect();
+          const panel = button.closest('.modal')!.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          return rect.top >= panel.top && rect.bottom <= panel.bottom
+            && rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight
+            && (hit === button || button.contains(hit));
+        }),
+        hasNativeDialog: Boolean(nativeDialog),
+        nativeDialogBox: box(nativeDialog),
+        ringBox: box(overlay.querySelector('.area-tour-target')),
+      };
+    });
+    const { heading, frameBox } = snapshot;
+    assert.equal(snapshot.status, 'ready', `the actual example view must render: ${heading}`);
     const viewport = tourPage.viewportSize()!;
     assert.ok(frameBox && frameBox.x === 0 && frameBox.y === 0
       && frameBox.width === viewport.width && frameBox.height === viewport.height,
     'the example covers the complete viewport without compression or exposing the original page');
-    assert.doesNotMatch(await overlay.textContent() ?? '', /Beispielansicht/u);
-    assert.equal(await overlay.locator('[data-tour-retry]').isVisible(), false, 'a ready scene never offers an obsolete retry');
-    const actions = await overlay.locator('.area-tour-actions button').evaluateAll((buttons) => buttons.map((button) => {
-      const rect = button.getBoundingClientRect();
-      const panel = button.closest('.modal')!.getBoundingClientRect();
-      const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-      return rect.top >= panel.top && rect.bottom <= panel.bottom
-        && rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight
-        && (hit === button || button.contains(hit));
-    }));
-    assert.deepEqual(actions, [true, true, true], `all navigation stays visible without scrolling at ${viewport.width} × ${viewport.height}`);
-    const textFits = await overlay.locator('.area-tour-explanation').evaluate((element) => element.scrollHeight <= element.clientHeight + 1);
-    assert.equal(textFits, true, `the entire explanation stays readable at ${viewport.width} × ${viewport.height}`);
-    const heading = await overlay.locator('h2').textContent();
+    assert.doesNotMatch(snapshot.text, /Beispielansicht/u);
+    assert.equal(snapshot.retryVisible, false, 'a ready scene never offers an obsolete retry');
+    assert.deepEqual(snapshot.actions, [true, true, true], `all navigation stays visible without scrolling at ${viewport.width} × ${viewport.height}`);
+    assert.equal(snapshot.textFits, true, `the entire explanation stays readable at ${viewport.width} × ${viewport.height}`);
     if (heading === 'Die Antwortart beachten' || heading === 'Antwort speichern') {
       assert.equal(await example.locator('[data-poll-response="if_needed"]').count(), 2, 'the example demonstrates Passt/Notfalls/Nein');
       assert.equal(await example.locator('[data-save-poll]').isEnabled(), true, 'open feasibility options can be saved');
@@ -252,16 +276,15 @@ flowTest('area tour examples work without live records and keep nested dialogs u
         (window as unknown as { areaTourScene: { targetRect(): typeof target } }).areaTourScene.targetRect());
       assert.deepEqual(highlight, target, 'the amount step highlights the whole own group including its total');
     }
-    const dialog = example.locator('.modal-backdrop .modal').last();
-    if (await dialog.count()) {
-      const modalBox = await dialog.boundingBox();
-      const ringBox = await overlay.locator('.area-tour-target').boundingBox();
+    if (snapshot.hasNativeDialog) {
+      const { nativeDialogBox: modalBox, ringBox } = snapshot;
       assert.ok(modalBox && ringBox, 'an open native dialog must have a visible highlight');
       const center = { x: ringBox.x + ringBox.width / 2, y: ringBox.y + ringBox.height / 2 };
       assert.ok(center.x >= modalBox.x && center.x <= modalBox.x + modalBox.width
         && center.y >= modalBox.y && center.y <= modalBox.y + modalBox.height,
       'the highlight belongs to the open native dialog, rather than its covered entry button');
     }
+    return snapshot.nextLabel;
   };
   await assertSceneReady(tourPage);
   assert.match(await example.locator('body').textContent() ?? '', /Pizza bei Luigi/);
@@ -314,7 +337,8 @@ flowTest('area tour examples work without live records and keep nested dialogs u
   const runFlow = async (flow: typeof flows[number], tourPage: Page) => {
     const overlay = tourPage.locator('.area-tour-backdrop');
     const example = tourPage.frameLocator('[data-area-tour-scene]');
-    const readyScene = () => assertSceneReady(tourPage);
+    let nextLabel: string | null = null;
+    const readyScene = async () => { nextLabel = await assertSceneReady(tourPage); };
     if (flow.route === 'home' && !flow.chapter.startsWith('Überblick')) await tourPage.setViewportSize({ width: 800, height: 500 });
     else if (flow.route === 'eventPolls' && flow.chapter.startsWith('Umfrage verwalten')) await tourPage.setViewportSize({ width: 1024, height: 768 });
     let recording = false;
@@ -445,7 +469,7 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     }
     // Walk every remaining state of this chapter, including real detail,
     // payment/confirmation, result and tournament dialogs.
-    for (let step = 0; step < 20 && await overlay.locator('[data-tour-next]').textContent() !== 'Abschließen'; step += 1) {
+    for (let step = 0; step < 20 && nextLabel !== 'Abschließen'; step += 1) {
       await overlay.locator('[data-tour-next]').click();
       await readyScene();
     }
@@ -469,12 +493,18 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     tourPage.off('request', recordRequest);
   };
   // These chapters have no server writes and independent page/form state.
-  // Reuse three normal SPA tabs instead of bootstrapping the app per chapter.
-  for (let index = 0; index < flows.length; index += flowPages.length) {
-    const results = await Promise.allSettled(flows.slice(index, index + flowPages.length).map((flow, slot) => runFlow(flow, flowPages[slot])));
-    const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
-    if (failed) throw failed.reason;
-  }
+  // Reuse three SPA tabs, giving each its next chapter as soon as it is free
+  // instead of idling behind the longest chapter in a fixed batch.
+  let nextFlow = 0;
+  const results = await Promise.allSettled(flowPages.map(async (tourPage) => {
+    for (;;) {
+      const flow = flows[nextFlow++];
+      if (!flow) return;
+      await runFlow(flow, tourPage);
+    }
+  }));
+  const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+  if (failed) throw failed.reason;
   await Promise.all(flowPages.map((flowPage) => flowPage.close()));
   // Management cards differ from member invitation cards. Reuse the already
   // authenticated admin tab and exercise its whole participation chapter too.
