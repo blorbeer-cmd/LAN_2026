@@ -25,6 +25,24 @@ test('event-level actions run from any workspace, workspace data only inside its
   assert.equal(foodElsewhere.sub, '2 Positionen offen · Winter LAN');
 });
 
+test('the pre-event skill and tracking rows: skills lead into their event, tracking is decided from anywhere', () => {
+  const skills = { id: 'catalog-skills', kind: 'catalog-skills', eventId: 'lan', eventName: 'Winter LAN', startsAt: NOW + 1, unratedCount: 1, overdue: false };
+  const skillsElsewhere = myTodoRow(skills, { activeEventId: 'group', now: NOW });
+  assert.equal(skillsElsewhere.title, 'Skill für 1 Spiel eintragen');
+  assert.equal(skillsElsewhere.switchesEvent, true);
+  assert.equal(myTodoRow({ ...skills, unratedCount: 4 }, { activeEventId: 'lan', now: NOW }).title, 'Skill für 4 Spiele eintragen');
+
+  const tracking = { id: 'tracking-consent:lan', kind: 'tracking-consent', eventId: 'lan', eventName: 'Winter LAN', startsAt: NOW + 1, overdue: false };
+  const ahead = myTodoRow(tracking, { activeEventId: 'group', now: NOW });
+  assert.equal(ahead.title, 'Spiele-Tracking für „Winter LAN“ entscheiden');
+  assert.equal(ahead.inline, true);
+  assert.equal(ahead.switchesEvent, false);
+  assert.match(ahead.sub, /^Beginn /);
+  // Once running (or in an undated group) there is no start left to name.
+  assert.equal(myTodoRow({ ...tracking, startsAt: NOW - 1 }, { activeEventId: 'lan', now: NOW }).sub, '');
+  assert.equal(myTodoRow({ ...tracking, startsAt: null }, { activeEventId: 'lan', now: NOW }).sub, '');
+});
+
 test('an overdue entry says so in text, not only by its position', () => {
   const row = myTodoRow(
     { id: 'event-payment:lan', kind: 'event-payment', eventId: 'lan', eventName: 'LAN', costCents: 1000, paymentDueAt: NOW - 1, overdue: true },

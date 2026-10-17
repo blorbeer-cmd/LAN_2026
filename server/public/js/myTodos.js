@@ -168,6 +168,25 @@ export function myTodoRow(todo, { activeEventId = state.activeEvent?.id ?? null,
         navigate: { view: 'arrivals' },
         inline: false,
       };
+    case 'catalog-skills':
+      return {
+        ...base,
+        iconName: domainIcon('skill'),
+        title: `Skill für ${plural(todo.unratedCount, 'Spiel', 'Spiele')} eintragen`,
+        sub: `Vor ${quote(todo.eventName)} · Beginn ${formatDateTime(todo.startsAt)}`,
+        navigate: { view: 'gameCatalog' },
+        inline: false,
+      };
+    case 'tracking-consent':
+      return {
+        ...base,
+        switchesEvent: false,
+        iconName: domainIcon('tracking'),
+        title: `Spiele-Tracking für ${quote(todo.eventName)} entscheiden`,
+        sub: todo.startsAt && todo.startsAt > now ? `Beginn ${formatDateTime(todo.startsAt)}` : '',
+        navigate: { view: 'profile' },
+        inline: true,
+      };
     case 'task':
       return {
         ...base,

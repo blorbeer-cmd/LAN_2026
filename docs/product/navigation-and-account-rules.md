@@ -347,7 +347,14 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   upcoming accepted event into the calendar until „Eingetragen“ is confirmed, answer a pending
   event invitation, finish a taken To-Do or Mitbring-Anfrage („Überfällig“ once its due day is
   over), enter the arrival for an event starting within 14 days whose An- und Abreise area is
-  enabled, and rate the skill of a game being played right now. While no To-Do of the active event
+  enabled, rate the own skill for the catalog („Skill für n Spiele eintragen“, one row while an
+  event with the Spiele area starts within 14 days and a catalog game has no own rating; „nie
+  gespielt“ counts as rated), decide about game tracking for an event with Spiele-Tracking from 14
+  days before its start until its period is over (a group: while it is open), and rate the skill
+  of a game being played right now. The tracking row's „Entscheiden“ opens the consent text with
+  two equally weighted answers, „Nicht erlauben“ and „Erlauben“; either answer, a revoked consent
+  or the Vorab-Zustimmung (for an event whose tracking has not started yet) settles it, and Mein
+  Profil keeps the decision changeable. While no To-Do of the active event
   is taken, one row points to the shared pool's still-open To-Dos. Left-behind workflows reach only
   the people who can close them: „Event beenden“ for group admins 12 hours after an event's period
   ended; „Sammelbestellung abschicken“ for its creator or group admins 2 hours after the planned
@@ -363,7 +370,7 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   itself navigates to where the To-Do lives — switching the workspace first when it belongs to
   another event — and a trailing action slot settles it in place: „Bezahlen“ (PayPal, then „Bezahlt?“)
   plus the „Bezahlt“ marker, „Eintragen“ (a dialog with „Google“, „Outlook“, „Download“ and
-  „Eingetragen“), „Ablehnen“/„Annehmen“, „Erledigt“, „Abschicken“ or „Beenden“ behind a
+  „Eingetragen“), „Entscheiden“, „Ablehnen“/„Annehmen“, „Erledigt“, „Abschicken“ or „Beenden“ behind a
   confirmation. Event-level actions work from any workspace; actions on an event's orders, To-Dos,
   Votes and tournaments are offered only inside that event's workspace, elsewhere the row leads
   there first. Rows name their event when it is not the active one; overdue is spelled out in text,

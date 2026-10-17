@@ -161,11 +161,19 @@ export function applyTrackingConsentDefault(
     | undefined;
   if (!event || eventId === BASE_EVENT_ID || event.eventType === 'general') return false;
   if (!trackingConsentDefaultApplies(playerId)) return false;
-  // An explicit decision always wins: a revoked row means the account said no
-  // for this event, and re-granting it here would silently reverse that.
+  // An explicit decision always wins: a revoked row or a recorded "Nicht
+  // erlauben" (Home's tracking To-Do) means the account said no for this
+  // event, and re-granting it here would silently reverse that. A manual
+  // grant stays possible through the event's own consent route.
   const decided = db
-    .prepare('SELECT 1 FROM event_tracking_consents WHERE event_id = ? AND player_id = ? LIMIT 1')
-    .get(eventId, playerId);
+    .prepare(
+      `SELECT 1 FROM event_tracking_consents WHERE event_id = @eventId AND player_id = @playerId
+       UNION ALL
+       SELECT 1 FROM event_participants
+       WHERE event_id = @eventId AND player_id = @playerId AND tracking_consent_declined_at IS NOT NULL
+       LIMIT 1`,
+    )
+    .get({ eventId, playerId });
   if (decided) return false;
   setEventTrackingConsent(
     eventId,

@@ -703,6 +703,11 @@ function updateEventTrackingConsent(req: Request, res: Response, granted: boolea
     granted ? { purpose: TRACKING_CONSENT_PURPOSE, textVersion } : undefined,
   );
   if (!granted) {
+    // A "no" is an answer too, even without an earlier grant to revoke: it
+    // settles Home's "Spiele-Tracking entscheiden" To-Do (see myTodos.ts).
+    db.prepare(
+      'UPDATE event_participants SET tracking_consent_declined_at = ? WHERE event_id = ? AND player_id = ?',
+    ).run(Date.now(), event.id, playerId);
     broadcast(Events.liveStatusChanged, getLiveBoard(event.group_id!, event.id), {
       groupId: event.group_id!,
       eventId: event.id,

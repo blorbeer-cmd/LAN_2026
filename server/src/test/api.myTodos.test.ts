@@ -10,6 +10,7 @@ import { createTestApp } from './testApp';
 import { DEFAULT_GROUP_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
+import { TRACKING_CONSENT_TEXT_VERSION } from '../privacyPolicy';
 
 const app = createTestApp();
 const HOUR = 60 * 60 * 1000;
@@ -63,9 +64,40 @@ async function todosOf(playerId: string): Promise<Todo[]> {
 
 const kinds = (todos: Todo[]) => todos.map((todo) => todo.kind).sort();
 
+function createCatalogGame(name: string, status: 'catalog' | 'suggestion' = 'catalog'): string {
+  const id = nanoid();
+  db.prepare('INSERT INTO games (id, name, status, created_at, group_id) VALUES (?, ?, ?, ?, ?)').run(
+    id,
+    name,
+    status,
+    Date.now(),
+    DEFAULT_GROUP_ID,
+  );
+  return id;
+}
+
+const catalogGameIds = () =>
+  (db.prepare("SELECT id FROM games WHERE group_id = ? AND status = 'catalog' AND arcade_key IS NULL").all(DEFAULT_GROUP_ID) as Array<{
+    id: string;
+  }>).map((row) => row.id);
+
+async function rateSkill(playerId: string, gameId: string, rating: number): Promise<void> {
+  const res = await request(app).put('/api/skills').set('x-test-player-id', playerId).send({ playerId, gameId, rating });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+}
+
+async function answerTracking(playerId: string, eventId: string, granted: boolean): Promise<void> {
+  const res = await request(app)
+    .post(`/api/events/${eventId}/tracking-consent`)
+    .set('x-test-player-id', playerId)
+    .send({ granted, ...(granted ? { textVersion: TRACKING_CONSENT_TEXT_VERSION } : {}) });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+}
+
 test('personal obligations across events, in urgency order, and gone once done', async () => {
   const now = Date.now();
   const mia = createPlayer('Todo Mia');
+  createCatalogGame('Todo Catalog Game');
   const event = createEvent('Todo LAN', {
     startsAt: now + 3 * DAY,
     endsAt: now + 4 * DAY,
@@ -90,7 +122,15 @@ test('personal obligations across events, in urgency order, and gone once done',
   db.prepare('INSERT INTO checklist_task_assignees (task_id, player_id, joined_at) VALUES (?, ?, ?)').run(taskId, mia, now - 3 * DAY);
 
   const todos = await todosOf(mia);
-  assert.deepEqual(kinds(todos), ['arrival', 'event-calendar', 'event-payment', 'food-payment', 'task']);
+  assert.deepEqual(kinds(todos), [
+    'arrival',
+    'catalog-skills',
+    'event-calendar',
+    'event-payment',
+    'food-payment',
+    'task',
+    'tracking-consent',
+  ]);
   assert.ok(todos.every((todo) => todo.audience === 'personal' && todo.eventId === event));
   // Overdue first: the contribution past its due date and the To-Do past its own.
   assert.deepEqual(todos.slice(0, 2).map((todo) => todo.kind).sort(), ['event-payment', 'task']);
@@ -104,12 +144,73 @@ test('personal obligations across events, in urgency order, and gone once done',
   db.prepare('UPDATE event_participants SET paid = 1 WHERE event_id = ? AND player_id = ?').run(event, mia);
   db.prepare("UPDATE checklist_tasks SET status = 'done', done_at = ? WHERE id = ?").run(now, taskId);
   db.prepare('INSERT INTO arrivals (event_id, player_id, arrival_at, updated_at) VALUES (?, ?, ?, ?)').run(event, mia, now + 3 * DAY, now);
+  for (const gameId of catalogGameIds()) await rateSkill(mia, gameId, 0);
+  await answerTracking(mia, event, false);
   assert.deepEqual(kinds(await todosOf(mia)), ['food-payment']);
 
   // A switched-off area takes its To-Dos with it.
   const insertFeature = db.prepare('INSERT INTO event_features (event_id, feature_key, enabled, changed_at) VALUES (?, ?, ?, ?)');
   for (const key of EVENT_FEATURE_KEYS) insertFeature.run(event, key, key === 'food' ? 0 : 1, now);
   assert.deepEqual(await todosOf(mia), []);
+});
+
+test('the skill and tracking To-Dos ask once, ahead of the event, and settle with any answer', async () => {
+  const now = Date.now();
+  const ben = createPlayer('Prep Ben');
+  const lea = createPlayer('Prep Lea');
+  const soon = createEvent('Prep LAN', { startsAt: now + 5 * DAY, endsAt: now + 7 * DAY, participants: [ben, lea] });
+  const later = createEvent('Later LAN', { startsAt: now + 10 * DAY, endsAt: now + 12 * DAY, participants: [ben, lea] });
+  createEvent('Far LAN', { startsAt: now + 20 * DAY, endsAt: now + 22 * DAY, participants: [ben, lea] });
+  const party = createEvent('Prep Party', { startsAt: now + 6 * DAY, endsAt: now + 7 * DAY, participants: [ben, lea] });
+  db.prepare("UPDATE events SET event_type_key = 'general' WHERE id = ?").run(party);
+  createCatalogGame('Prep Suggestion', 'suggestion');
+  const gameIds = catalogGameIds();
+  const prep = (todos: Todo[]) => todos.filter((todo) => todo.kind === 'catalog-skills' || todo.kind === 'tracking-consent');
+
+  // One skill row for the whole catalog, named after the next event; tracking
+  // for each event within 14 days that can be tracked at all.
+  const benTodos = prep(await todosOf(ben));
+  const skills = benTodos.filter((todo) => todo.kind === 'catalog-skills');
+  assert.equal(skills.length, 1);
+  assert.equal(skills[0].eventId, soon);
+  assert.equal(skills[0].unratedCount, gameIds.length, 'suggestions are not rated yet, catalog games are');
+  const tracking = benTodos.filter((todo) => todo.kind === 'tracking-consent');
+  assert.deepEqual(tracking.map((todo) => todo.eventName).sort(), ['Later LAN', 'Prep LAN']);
+  assert.equal(tracking[0].textVersion, TRACKING_CONSENT_TEXT_VERSION);
+  assert.ok(String(tracking[0].consentText).length > 0);
+
+  // "nie gespielt" (0) is a rating too; the row counts down and then goes.
+  await rateSkill(ben, gameIds[0], 0);
+  const remaining = (await todosOf(ben)).find((todo) => todo.kind === 'catalog-skills');
+  assert.equal(remaining?.unratedCount, gameIds.length - 1);
+  for (const gameId of gameIds.slice(1)) await rateSkill(ben, gameId, 3);
+  assert.equal((await todosOf(ben)).some((todo) => todo.kind === 'catalog-skills'), false);
+
+  // A grant, a revoked grant and a plain "no" each settle the decision.
+  await answerTracking(ben, soon, true);
+  const trackingEvents = async (playerId: string) =>
+    (await todosOf(playerId)).filter((todo) => todo.kind === 'tracking-consent').map((todo) => todo.eventName);
+  assert.deepEqual(await trackingEvents(ben), ['Later LAN']);
+  await answerTracking(ben, soon, false);
+  assert.deepEqual(await trackingEvents(ben), ['Later LAN']);
+  await answerTracking(lea, soon, false);
+  assert.deepEqual(await trackingEvents(lea), ['Later LAN']);
+  assert.deepEqual(
+    db.prepare('SELECT COUNT(*) AS count FROM event_tracking_consents WHERE player_id = ?').get(lea),
+    { count: 0 },
+    'a "no" is recorded as an answer, never as a consent',
+  );
+
+  // The standing pre-authorization answers for events whose tracking has
+  // not started yet; for a running one it no longer applies by itself.
+  const standing = await request(app)
+    .post('/api/privacy/tracking-default')
+    .set('x-test-player-id', lea)
+    .send({ enabled: true, textVersion: TRACKING_CONSENT_TEXT_VERSION });
+  assert.equal(standing.status, 200, JSON.stringify(standing.body));
+  assert.deepEqual(await trackingEvents(lea), []);
+  db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(later);
+  assert.deepEqual(await trackingEvents(lea), ['Later LAN']);
 });
 
 test('left-behind workflows reach exactly the people who can close them', async () => {

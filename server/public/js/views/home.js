@@ -44,6 +44,7 @@ import {
 import { wireActionMenus } from '../actionMenu.js';
 import { markOwnFoodSharePaid, payOwnFoodShare, sendFoodOrder } from './foodOrders.js';
 import { finishTournament } from './tournament.js';
+import { invalidatePrivacy } from './profile.js';
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 
@@ -292,6 +293,8 @@ function todoActionsHtml(row, todo) {
       return `${todo?.hasPaypal ? todoActionButton(row, 'pay', 'Bezahlen', { primary: true }) : ''}${paidMarkerHtml(row)}`;
     case 'event-calendar':
       return todoActionButton(row, 'calendar', 'Eintragen');
+    case 'tracking-consent':
+      return todoActionButton(row, 'tracking', 'Entscheiden');
     case 'event-invitation': {
       // Same buttons and labels as the invitation card in Events.
       const event = (state.eventInvitations || []).find((candidate) => candidate.id === row.eventId);
@@ -426,6 +429,43 @@ function openCalendarDialog(todo, ctx) {
   });
 }
 
+// The decision is made on the consent text itself, which the To-Do carries
+// with its version. Both answers are equally weighted, neutral buttons: the
+// tracking is voluntary, so the dialog must not steer towards a yes.
+function openTrackingConsentDialog(todo) {
+  const body = `<div class="stack">
+       <p><strong>${escapeHtml(todo.eventName)}</strong></p>
+       <p>${escapeHtml(todo.consentText)}</p>
+       <p class="muted">Später änderbar in Mein Profil unter „Datenschutz“.</p>
+       <div class="row" style="justify-content:flex-end;gap:var(--space-2);">
+         <button type="button" class="btn btn-sm" data-todo-tracking-answer="decline">Nicht erlauben</button>
+         <button type="button" class="btn btn-sm" data-todo-tracking-answer="grant">Erlauben</button>
+       </div>
+     </div>`;
+  const { el, close } = openModal('Spiele-Tracking entscheiden', body);
+  const buttons = [...el.querySelectorAll('[data-todo-tracking-answer]')];
+  for (const button of buttons) {
+    button.addEventListener('click', async () => {
+      const granted = button.dataset.todoTrackingAnswer === 'grant';
+      buttons.forEach((candidate) => { candidate.disabled = true; });
+      try {
+        await api.events.setTrackingConsent(todo.eventId, granted, granted ? todo.textVersion : undefined);
+        close();
+        showToast(granted ? 'Spiele-Tracking-Einwilligung gespeichert.' : 'Spiele-Tracking bleibt für dieses Event aus.');
+      } catch (err) {
+        showToast(err.message, { error: true });
+        // A changed consent text has to be read first: the reloaded To-Do
+        // carries the new wording.
+        if (err.code === 'consent_text_changed') close();
+        else buttons.forEach((candidate) => { candidate.disabled = false; });
+      } finally {
+        invalidatePrivacy();
+        invalidateMyTodos();
+      }
+    });
+  }
+}
+
 const END_CONFIRMATIONS = {
   'event-end': (todo) => ({
     question: `Event „${todo.eventName}“ beenden? Das Event wird in die Historie verschoben, laufendes Spiele-Tracking endet.`,
@@ -475,6 +515,7 @@ async function runTodoAction(button, ctx) {
     });
   }
   if (action === 'calendar') return openCalendarDialog(todo, ctx);
+  if (action === 'tracking') return openTrackingConsentDialog(todo);
   if (action === 'done') {
     return settle(async () => {
       try {

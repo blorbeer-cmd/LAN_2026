@@ -374,7 +374,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   Home's „Meine To-Dos“ whose „Eintragen“ dialog offers the same „Google“, „Outlook“ and „Download ics file“
   and „Eingetragen“. Two-hour and weekly calendar nudges stop after
   confirmation; general one-week and one-day event reminders do not, and a moved period announces
-  itself again on its own approach. The
+  itself again on its own approach. Those two reminders add one sentence for what the participant
+  still has to enter before the start, the same items „Meine To-Dos“ lists: the arrival time (while
+  An- & Abreise is enabled and no arrival is entered) and the own skills in the game catalog (while
+  Spiele is enabled and a catalog game has no own rating; „nie gespielt“ counts). With nothing open
+  the reminder keeps its plain text. The
   account `$t3vYb0y` gets the deliberate Stefan gag: its confirmation opens one additional themed
   safety question, and one week after confirmation it receives one final direct calendar check while
   the event is still upcoming.

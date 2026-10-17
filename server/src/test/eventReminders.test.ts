@@ -318,12 +318,23 @@ test('upcoming reminders send once at one week and one day even after calendar c
     assert.deepEqual(runEventReminderSweepOnce(weekDue - 1), { calendar: 0, upcoming: 0 });
     assert.deepEqual(runEventReminderSweepOnce(weekDue), { calendar: 0, upcoming: 1 });
     assert.deepEqual(runEventReminderSweepOnce(weekDue + 1), { calendar: 0, upcoming: 0 });
+    // Entered after the week reminder, so only that one asks for it.
+    db.prepare('INSERT INTO arrivals (event_id, player_id, arrival_at, updated_at) VALUES (?, ?, ?, ?)').run(
+      fixture.eventId,
+      fixture.playerId,
+      startsAt,
+      now,
+    );
+    db.prepare(
+      `INSERT INTO skills (player_id, game_id, group_id, rating)
+       SELECT ?, id, group_id, 0 FROM games WHERE group_id = ? AND status = 'catalog' AND arcade_key IS NULL`,
+    ).run(fixture.playerId, DEFAULT_GROUP_ID);
     assert.deepEqual(runEventReminderSweepOnce(dayDue), { calendar: 0, upcoming: 1 });
     assert.deepEqual(runEventReminderSweepOnce(dayDue + 1), { calendar: 0, upcoming: 0 });
 
     const pushes = db
       .prepare(
-        `SELECT notification_type AS notificationType, title
+        `SELECT notification_type AS notificationType, title, body
          FROM push_log
          WHERE target_id = ? AND notification_type LIKE 'event-upcoming-%'
          ORDER BY created_at`,
@@ -331,13 +342,20 @@ test('upcoming reminders send once at one week and one day even after calendar c
       .all(fixture.eventId) as Array<{
         notificationType: string;
         title: string;
+        body: string;
       }>;
     assert.deepEqual(
       pushes.map((push) => push.notificationType).sort(),
       ['event-upcoming-day', 'event-upcoming-week'],
     );
-    assert.ok(pushes.some((push) => push.title === 'Morgen geht es los'));
-    assert.ok(pushes.some((push) => push.title === 'In einer Woche geht es los'));
+    const week = pushes.find((push) => push.title === 'In einer Woche geht es los');
+    const day = pushes.find((push) => push.title === 'Morgen geht es los');
+    const eventName = `Reminder Event ${fixture.eventId}`;
+    assert.equal(
+      week?.body,
+      `In einer Woche startet „${eventName}“. Trag bitte noch deine Ankunftszeit ein und pflege deine Skills im Spielekatalog.`,
+    );
+    assert.equal(day?.body, `In einem Tag startet „${eventName}“.`);
   } finally {
     cleanupFixture(fixture.eventId, fixture.playerId);
   }
