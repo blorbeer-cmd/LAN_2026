@@ -10,6 +10,7 @@ export const CORE_E2E_DOMAINS = Object.freeze({
   ]),
   flows: Object.freeze([
     "visualCore.e2e.test.ts",
+    "areaTours.e2e.test.ts",
     "foodOrders.e2e.test.ts",
     "flowsCompetition.e2e.test.ts",
     "flowsCommunity.e2e.test.ts",

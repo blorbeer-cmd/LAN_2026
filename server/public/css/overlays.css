@@ -198,6 +198,95 @@
 
 /* ---------- First-login onboarding ---------- */
 
+/* Manual area tours use the shared modal's focus and dismissal behavior. */
+.area-tour-backdrop {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  animation: none;
+}
+.area-tour-backdrop .modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: fixed;
+  z-index: 1;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: var(--space-4);
+  width: auto;
+  max-height: calc(100dvh - var(--space-8));
+  margin: 0 auto;
+  border-radius: var(--radius-lg);
+  animation: none;
+}
+.area-tour-backdrop .modal-header,
+.area-tour-backdrop .area-tour-actions {
+  flex-shrink: 0;
+}
+.area-tour-backdrop .modal-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.area-tour-backdrop .modal[data-tour-placement="top"] {
+  top: var(--space-4);
+  bottom: auto;
+}
+.area-tour-backdrop .modal[data-tour-align="left"] {
+  margin: 0 auto 0 0;
+}
+.area-tour-backdrop .modal[data-tour-align="right"] {
+  margin: 0 0 0 auto;
+}
+@media (min-width: 640px) and (max-height: 560px) { /* --bp-md; design-token-ok: shallow landscape windows need a narrower narration panel. */
+  .area-tour-backdrop .modal {
+    max-width: var(--area-tour-compact-width);
+  }
+}
+.area-tour-target {
+  position: fixed;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 var(--space-1) var(--accent),
+    0 0 0 9999px color-mix(in srgb, var(--bg) 55%, transparent);
+}
+.area-tour-shade {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  pointer-events: none;
+}
+.area-tour-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.area-tour-chapters {
+  display: grid;
+  gap: var(--space-2);
+  margin-block: var(--space-4);
+}
+.area-tour-explanation {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.area-tour-scene-frame {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  z-index: 49;
+  border: 0;
+  background: var(--bg);
+}
+.area-tour-demo-page {
+  overflow: hidden;
+}
+
 #onboarding-root {
   position: fixed;
   inset: 0;

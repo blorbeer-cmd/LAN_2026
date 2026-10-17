@@ -27,6 +27,7 @@ Control-Selektoren und ihre Zuordnung stehen in der reinen
 | `rosterPicker.js` | [RosterPicker](components/roster-picker.md) | `public/css/style.css`, `public/css/domains.css` |
 | `selectionSearch.js` | [SelectionSearch](components/selection-search.md) | `public/css/style.css` |
 | `modal.js` | [Modal](components/modal.md) | `public/css/overlays.css`; etablierte Präsentationsmodifier in `public/css/style.css` |
+| `areaTours.js`, `area-tour-heading`, `area-tour-overlay`, `area-tour-modal`, `area-tour-target` | [Bereichstour](components/area-tour.md) | `public/css/style.css`, `public/css/overlays.css` |
 | `dateTimeField.js` | [DateTimeField](components/date-time-field.md) | `public/css/style.css`; Modalgrenze in `public/css/overlays.css` |
 | `infoTooltip.js` | [InfoTooltip](components/info-tooltip.md) | `public/css/style.css`; benannter Überschriftenausgleich in `public/css/domains.css` |
 | `emptyState.js` | [EmptyState](components/empty-state.md) | `public/css/style.css` |

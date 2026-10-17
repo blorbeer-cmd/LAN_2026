@@ -1,5 +1,5 @@
-// Shared fixture for the four Core flow shards (flowsShell, flowsCompetition,
-// flowsCommunity, foodOrders). It owns the one server session, browser context
+// Shared fixture for the Core flow shards (flowsShell, flowsCompetition,
+// flowsCommunity, foodOrders) and independent tour owner. It owns the server session, browser context
 // and page that a shard's sibling tests deliberately share, plus the helpers
 // they navigate with. Separate from the fast unit/integration suite
 // (`npm test`) — run via `npm run test:e2e` since it spawns a server process

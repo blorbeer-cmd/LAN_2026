@@ -401,12 +401,52 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
 
 ## Erstlogin
 
+### Manuelle Bereichstouren
+
+- Ein Fragezeichen unmittelbar am geöffneten Bereichstitel öffnet ein kompaktes Hilfemodal.
+  Der Besuch eines Bereichs startet keine Tour automatisch. Info und Feedback bieten denselben
+  Einstieg in ihrer Dialogüberschrift; Turnierdetails und Arcade-Spielräume haben eigene Touren.
+- Das Modal bietet die gesamte Tour und bei größeren Bereichen einzelne Kapitel. Ein begonnener
+  Durchlauf kann fortgesetzt oder neu gestartet, ein abgeschlossener wiederholt werden.
+  Die Wiederaufnahme folgt dem zuletzt begonnenen Kapitel beziehungsweise der gesamten Tour.
+- Ein Schritt enthält höchstens 30 Wörter und erklärt eine Funktion oder Folgeaktion. Die Tour
+  hebt vorhandene Elemente hervor und klappt benötigte Details auf. Das Tourmodal zeigt nur
+  Erklärung und Navigation. Home, Events & Gruppen, Spiele, Vote, Umfragen, An-/Abreise,
+  To-Do/Packliste, Essen, Match/Turnier, Durchsage, Jam und Arcade führen Beispiele direkt in
+  der normalen Oberfläche vor, auch bei leeren echten Datenbeständen.
+  Die getrennte lokale Demo verwendet die normalen Ansichten und Dialoge mit Beispieldaten;
+  zusammengehörige Schritte zeigen Zustandswechsel wie Vote-Anlegen → Stimmzettel → Ergebnis.
+  Reine Hervorhebungswechsel behalten die Ansicht einschließlich offener Formulare. Die Demo
+  füllt den Viewport mit normalen Abständen und Breakpoints. Andere Bereiche zeigen ihre echte
+  vorhandene Oberfläche. Generische Ersatzkarten entfallen.
+  Die Demo hat keinen schreibenden Zugriff auf Server oder persönlichen Browserspeicher.
+  Die Tour erzeugt keine echten Fachaktionen,
+  Benachrichtigungen, Bestellungen, Zahlungen oder Ergebnisse.
+- Eine laufende Tour endet über Tour beenden, X, Escape oder Abschließen. Ein Klick außerhalb
+  beendet sie nicht. Beenden entfernt sämtliche Beispiele und stellt aufgeklappte Details,
+  Scrollposition und Fokus wieder her; echte Formulare werden durch die Beispiele nicht verändert.
+- Rollen, verfügbare Bereiche und Eventfeatures bestimmen die angebotenen Kapitel. Ein Wechsel
+  des Kontos, Events, der Route oder Rolle schließt den aktuellen Durchlauf. Reine
+  Live-Aktualisierungen derselben Ansicht behalten ihn und aktualisieren die Hervorhebung.
+- Fortschritt wird versioniert nach Konto, Bereich und Kapitel in diesem Browser gespeichert,
+  getrennt vom serverseitigen Erstlogin-Onboarding. Er enthält nur Schritt-ID und Abschlussstatus.
+  Ein gelöschter oder gesperrter Browserspeicher verhindert die Hilfe nicht.
+- Die Tour erklärt insbesondere Vote → Bock/Match, Umfragen → manuell gepflegte Eventdaten,
+  Kalenderbestätigung/Terminänderung, Fahrgemeinschaft → persönliche Zeiten, Match/Turnier →
+  Rangliste, Bestellzustände/PayPal-Bestätigung und die jeweiligen Erinnerungsregeln.
+
+### Initiale Orientierung
+
 - The first-login core tour is a true modal: `#app` is inert, focus cycles inside the dialog,
-  Escape skips the explanatory steps into the required rating mode, and focus returns to the
-  previous control after completion. The rating panel is intentionally non-modal so its rating buttons
+  Escape ends the explanatory tour without requiring ratings, and focus returns to the
+  previous control after completion. Home highlights its question mark to introduce the short area tours; navigation is only a fallback
+  when the help control is unavailable. Examples are offered in the documented demo areas. The last step asks players to enter Skill in the game list
+  before the LAN so teams can be balanced. Bock is optional and can be adopted from Votes during
+  the LAN. The legacy optional rating panel requires Skill alone (including 0); its server and
+  browser completion checks never require Bock. The rating panel is intentionally non-modal so its rating buttons
   remain usable; it stays below the shared modal layer so game details and other forms remain
   operable.
-- Immediately after Home, the tour highlights the event switcher in the topbar for members and
+- After the personal profile and Orga, the tour highlights the event switcher in the topbar for members and
   admins. It explains how to select the active event and that this choice scopes available areas,
-  event data and actions. Orga's Events page is the overview and admin management surface; the
+  event data and actions. Events & Gruppen is the separate overview and admin management surface; the
   analytics event filter remains a separate admin-only tour step.

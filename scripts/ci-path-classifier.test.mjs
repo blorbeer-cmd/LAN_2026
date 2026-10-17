@@ -106,6 +106,7 @@ test("isolated Core domains select only their owned browser fixtures", () => {
     ["server/public/js/authGate.js", "auth"],
     ["server/src/routes/checklist.ts", "checklist"],
     ["server/src/test/e2e/eventInvitations.e2e.test.ts", "invitations"],
+    ["server/src/test/e2e/areaTours.e2e.test.ts", "flows"],
     ["server/src/routes/votes.ts", "flows"],
     ["server/src/test/e2e/flowsShared.fixture.ts", "flows"],
     ["server/src/test/e2e/foodOrders.fixture.ts", "flows"],

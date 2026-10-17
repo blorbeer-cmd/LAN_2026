@@ -1155,6 +1155,10 @@ html:root.arcade-fullscreen .arcade-game-header .view-title {
 html:root.arcade-fullscreen .arcade-game-header-actions {
   margin-left: auto;
 }
+/* The clipped title must not retain an invisible keyboard target. */
+html:root.arcade-fullscreen .arcade-game-header [data-area-tour-open] {
+  display: none;
+}
 html:root.arcade-fullscreen .arcade-fullscreen-hidden,
 html:root.arcade-fullscreen .arcade-scoreboard-side,
 html:root.arcade-fullscreen .arcade-scoreboard-score small {
