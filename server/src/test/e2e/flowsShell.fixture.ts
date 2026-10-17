@@ -326,6 +326,7 @@ flowTest('area tour examples work without live records and keep nested dialogs u
       await tourPage.waitForFunction(() => document.querySelector<HTMLElement>('.area-tour-backdrop')?.dataset.tourSceneStatus === 'error');
       assert.equal(await overlay.locator('[data-tour-retry]').isVisible(), true, 'a missing target is reported instead of highlighting the first card');
       await focusExample('#home-todos-title');
+      await tourPage.waitForFunction(() => document.querySelector<HTMLElement>('.area-tour-backdrop')?.dataset.tourSceneStatus === 'ready');
       await readyScene();
     }
     if (flow.route === 'gameCatalog') {
