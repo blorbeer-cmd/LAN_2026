@@ -33,7 +33,7 @@ export const AREA_TOURS = {
   events: t('Events & Gruppen', [
     c('participate', 'Teilnehmen, Kalender und Beitrag', [
       s('invitation', 'Einladung prüfen', 'Prüfe Zeitraum, Ort, Beitrag und Zahlungsziel vor deiner Zusage. Das Öffnen der Einladung nimmt sie noch nicht an.', '[data-accept-invitation], [data-event-card]'),
-      s('accept', 'Zusagen und öffnen', 'Zusagen bestätigt deine Teilnahme. Event öffnen wählt anschließend dieses Event aus. Deine Verwaltungsrolle und deine persönliche Teilnahme sind getrennte Entscheidungen.', '[data-accept-invitation], [data-event-card]'),
+      s('accept', 'Zusagen und öffnen', 'Zusagen bestätigt deine Teilnahme. Event öffnen wählt anschließend dieses Event aus.', '[data-accept-invitation], [data-event-card]'),
       s('calendar', 'In deinen Kalender übernehmen', 'Google, Outlook und die ICS-Datei übergeben den Termin an deinen Kalender. Respawn kann nicht automatisch erkennen, ob du ihn dort gespeichert hast.', '[data-event-calendar], [data-event-card]'),
       s('confirm', 'Eingetragen bestätigen', 'Bestätige den gespeicherten Termin mit Eingetragen. Kalender-Erinnerungen beginnen frühestens zwei Stunden nach deiner Zusage und wiederholen sich wöchentlich, bis du bestätigst.', '[data-event-card]'),
       s('moved', 'Bei einem neuen Zeitraum', 'Deine Zusage bleibt bei einer Terminänderung bestehen. Prüfe aber den Kalendereintrag und bestätige den neuen Zeitraum erneut. Eventhinweise vor dem Start bleiben unabhängig davon aktiv.', '[data-event-card]'),
@@ -43,7 +43,7 @@ export const AREA_TOURS = {
       s('excuse', 'Mit Ausrede absagen', 'Für kommende Events kannst du eine Ausrede ergänzen. Sie wird mit deiner Absage gespeichert und ist für die entsprechenden Eventteilnehmer sichtbar.', '[data-event-card]'),
     ]),
     c('organise', 'Event organisieren', [
-      s('create', 'Event oder Gruppe anlegen', 'Events planen einen Anlass; Gruppen dienen dem dauerhaften Austausch. Lege Name, Zeitraum und die benötigten Bereiche fest. Der Ersteller nimmt zunächst automatisch teil.', '#new-event-btn, #new-group-btn'),
+      s('create', 'Event oder Gruppe anlegen', 'Events planen einen Anlass; Gruppen dienen dem dauerhaften Austausch. Der Ersteller nimmt zunächst automatisch teil. Verwaltung und persönliche Teilnahme sind unabhängig.', '#new-event-btn, #new-group-btn'),
       s('invite', 'Teilnehmer einladen', 'Einladen versendet eine persönliche Mitteilung. Eingeladen, zugesagt und abgesagt sind unterschiedliche Zustände. Erst nach der Zusage stehen den Teilnehmern die Funktionen des Events zur Verfügung.', '[data-invite-participant]'),
       s('costs', 'Beitrag und Rechnung', 'Der Beitrag pro Person ist getrennt vom Gesamtpreis der Unterkunft. Die Abrechnung vergleicht erfasste Beiträge mit den Kosten und zeigt die erwartete Differenz.', '[data-event-card]'),
       s('paid', 'Zahlungen festhalten', 'Der Ersteller oder ein Admin bestätigt oder korrigiert Zahlungen. Eine bezahlte Teilnehmerzeile kann erst nach dem Zurücksetzen der Zahlung entfernt werden.', '[data-event-card]'),
@@ -55,7 +55,7 @@ export const AREA_TOURS = {
   eventPolls: t('Umfragen', [
     c('answer', 'Antworten', [
       s('scope', 'Gemeinsam planen', 'Teilnehmer des ausgewählten Events können dessen Umfragen sehen und beantworten. Auch Admins müssen dem Event dafür zugesagt haben.', '.event-poll-card'),
-      s('modes', 'Die Antwortart beachten', 'Die Antwortart bestimmt deine Abstimmung: „Jede Option bewerten“ mit Passt/Notfalls/Nein, Einzelauswahl, Mehrfachauswahl oder „Bewertung 0 bis 5“. Offen lässt eine Option unbeantwortet.', '.event-poll-card'),
+      s('modes', 'Die Antwortart beachten', 'Antwortarten: „Jede Option bewerten“ mit Passt/Notfalls/Nein, Einzelauswahl, Mehrfachauswahl oder „Bewertung 0 bis 5“. Bei Passt/Notfalls/Nein lässt erneutes Antippen deiner Antwort die Option offen.', '.event-poll-card'),
       s('save', 'Antwort speichern', 'Speichere deine vollständige Antwort. Eine 0 ist eine bewusste Bewertung; eine unbeantwortete Option bleibt offen.', '.event-poll-card'),
       s('visibility', 'Anonym und verborgen', 'Anonyme Umfragen zeigen keine Zuordnung zu Personen. Bei verborgenem Zwischenstand sieht während der Runde nur der Ersteller die Ergebnisse; ist dessen Konto inaktiv, übernimmt der Owner.', '.event-poll-card'),
       s('changed', 'Neue Optionen beachten', 'Neue Optionen können eine vollständige Antwort wieder unvollständig machen. Betroffene erhalten einen Hinweis und können die fehlenden Antworten ergänzen.', '.event-poll-card'),
@@ -78,8 +78,8 @@ export const AREA_TOURS = {
     s('mine', 'Eigene Zeiten speichern', 'Ankunft und Abreise sind zunächst aus den Eventzeiten vorbelegt. Passe sie an und ergänze bei Bedarf eine Notiz. Erst Speichern übernimmt deine Angaben.', '#arrival-form'),
     s('all', 'Alle Zeiten vergleichen', 'Alle Zeiten zeigt die Teilnehmer des ausgewählten Events. Fehlende Angaben bleiben leer. Der Zusatz „mit <Name>“ zeigt, bei wem jemand mitfährt.', '#arrivals-times-title'),
     s('offer', 'Fahrt anlegen', 'Anreise und Abreise haben getrennte Fahrgemeinschaften. Freie Plätze zählt nur die Mitfahrer; als Fahrer bist du zusätzlich dabei.', '[data-carpool-direction]'),
-    s('join', 'Einen Platz nehmen', 'Je Richtung kannst du eine Fahrt anbieten oder mitfahren. Eintragen übernimmt die Ankunft der Hinfahrt beziehungsweise die Zeit aus dem Feld „Start“ der Rückfahrt in deine Angaben.', '[data-join-carpool], [data-carpool-direction]'),
-    s('edit', 'Fahrtdaten prüfen', 'Der Fahrer kann Zeiten, Von wo und Plätze ändern. Prüft danach die persönlichen Angaben; eine nachträgliche Änderung aktualisiert nicht automatisch alle Mitfahrerzeiten.', '[data-edit-carpool], [data-carpool-direction]'),
+    s('join', 'Einen Platz nehmen', 'Je Richtung kannst du eine Fahrt anbieten oder mitfahren. Eintragen übernimmt bei Anreise die Ankunftszeit der Fahrt, bei Abreise die Zeit aus dem Feld „Start“ in deine Angaben.', '[data-join-carpool], [data-carpool-direction]'),
+    s('edit', 'Fahrtdaten prüfen', 'Der Fahrer kann Zeiten, Von wo und Plätze ändern. Prüfe danach deine Angaben; eine nachträgliche Änderung aktualisiert nicht automatisch alle Mitfahrerzeiten.', '[data-edit-carpool], [data-carpool-direction]'),
     s('leave', 'Austragen oder löschen', 'Austragen leert die entsprechende übernommene Zeit. Löscht der Fahrer die Fahrt, werden die betroffenen Zeitangaben der Mitfahrer geleert.', '[data-leave-carpool], [data-carpool-direction]'),
     s('todo', 'Anreise noch offen?', 'Für ein zugesagtes Event innerhalb der nächsten 14 Tage kann Home eine fehlende Anreise als To-Do anzeigen. Speichere deine Zeiten im passenden Event.', '#arrival-form'),
   ])]),
@@ -150,8 +150,8 @@ export const AREA_TOURS = {
       s('game', 'Spiel und Teilnehmer', 'Wähle ein Katalogspiel und die Mitspieler. Suche blendet Personen nur aus; bereits ausgewählte Personen bleiben ausgewählt.', '#mm-game, #matchmaking-game'),
       s('balance', 'Nach Skill ausgleichen', 'Die Auslosung verwendet den Skill des gewählten Spiels. Fehlende Werte zählen mit 3, eine eingetragene 0 mit 0.', '.tournament-player-grid'),
       s('neighbors', 'Sitznachbarn berücksichtigen', 'Sitznachbarn und Personen, die den Monitor des anderen sehen können, landen möglichst im selben Team. Die Skill-Balance hat Vorrang; verbleibende Konflikte werden angezeigt.', '#mm-avoid-adjacent'),
-      s('teams', 'Aufstellung anpassen', 'Du kannst Spieler zwischen Teams verschieben. Ausgeloste Teams heißen Team 1, Team 2 usw.; Einzelteams tragen den Spielernamen. Beim Erstellen und im laufenden Turnier kannst du Teamnamen ändern.', '[data-draw-card]'),
-      s('next', 'Ergebnis oder Turnier', 'Eine Aufstellung wird entweder als einzelnes Match gewertet oder für ein Turnier verwendet. Turnier erstellen übernimmt die vorhandenen Teams.', '[data-draw-tournament]'),
+      s('teams', 'Auslosung anpassen', 'Du kannst Spieler zwischen Teams verschieben. Ausgeloste Teams heißen Team 1, Team 2 usw.; Einzelteams tragen den Spielernamen. Beim Erstellen und im laufenden Turnier kannst du Teamnamen ändern.', '[data-draw-card]'),
+      s('next', 'Ergebnis oder Turnier', 'Eine Auslosung wird entweder als einzelnes Match gewertet oder für ein Turnier verwendet. Turnier erstellen übernimmt die vorhandenen Teams.', '[data-draw-tournament]'),
       s('result', 'Ergebnis speichern', 'Ein gespeichertes Ergebnis erscheint in Historie und Rangliste und kann spätere Skill-Vorschläge beeinflussen. Ergebnis bearbeiten korrigiert den vorhandenen Eintrag.', '[data-record-draw], [data-edit-draw-result]'),
     ]),
     c('draft', 'Captain Draft', [
@@ -160,12 +160,12 @@ export const AREA_TOURS = {
       s('captains', 'Captains auswählen', 'Admins wählen aus den Mitspielern zwei bis vier Captains. Mindestens eine weitere Person muss im Pool bleiben; die Captains wählen anschließend abwechselnd.', '[data-roster-picker="mm-captain-roster"]'),
       s('order', 'Abwechselnde Richtung', 'Die Auswahlrichtung wechselt nach jeder Runde. Bei zwei Captains lautet die Reihenfolge A, B, B, A; der aktuelle Zug wird angezeigt.', '.draft-pool-player'),
       s('live', 'Ein gemeinsamer Stand', 'Jeder Pick aktualisiert Teams und Spielerpool auf den verbundenen Geräten. Nur der gerade berechtigte Captain kann auswählen.', '.draft-pool-player'),
-      s('finish', 'Aufstellung weiterverwenden', 'Der fertige Draft wird zur Aufstellung. Teams heißen nach ihrem Captain, Einzelteams nach dem Spieler. Daraus erfasst ihr ein Ergebnis oder erstellt ein Turnier.', '[data-draw-card]'),
+      s('finish', 'Auslosung weiterverwenden', 'Der fertige Draft wird zur Auslosung. Teams heißen nach ihrem Captain, Einzelteams nach dem Spieler. Daraus erfasst du ein Ergebnis oder erstellst ein Turnier.', '[data-draw-card]'),
       s('cancel', 'Draft abbrechen', 'Admins können einen laufenden Draft nach Bestätigung abbrechen. Bis dahin blockiert er konkurrierende Match-Übernahmen. Ein Vote bricht ihn niemals automatisch ab.', '#draft-cancel'),
     ]),
     c('tournament-setup', 'Turnier erstellen', [
-      s('take', 'Aufstellung übernehmen', 'Turnier erstellen übernimmt Spiel und Teams aus einer Auslosung oder einem fertigen Draft. Die Aufstellung kann anschließend kein separates Einzelresultat mehr erhalten.', '[data-draw-tournament]'),
-      s('format', 'Format und Optionen', 'Wähle K.O., Liga oder Gruppenphase mit K.O. Hin- und Rückrunde sowie Spiel um Platz 3 stehen je nach Format zur Verfügung.', '[data-draw-tournament]'),
+      s('take', 'Auslosung übernehmen', 'Turnier erstellen übernimmt Spiel und Teams aus einer Auslosung oder einem fertigen Draft. Die Auslosung kann anschließend kein separates Einzelresultat mehr erhalten.', '[data-draw-tournament]'),
+      s('format', 'Format und Optionen', 'Wähle unter Turnierformat „K.O.-Turnier“, „Liga“ oder „Gruppenphase + K.O.“. Je nach Format kommen Hin- & Rückrunde und Spiel um Platz 3 hinzu.', '[data-draw-tournament]'),
       s('names', 'Namen und Punktestand', 'Benenne die Teams und entscheide, ob Ergebnisse einen Punktestand erfassen. Die Einstellung legt die Ergebnisformulare des Turniers fest.', '[data-draw-tournament]'),
       s('lobby', 'Lobbyangaben weitergeben', 'Ein Lobby-Basisname erhält pro Paarung einen eindeutigen Zusatz. Die aktive Paarung zeigt Name, Passwort und das eröffnende Team.', '[data-draw-tournament]'),
       s('notify', 'Teilnehmer informieren', 'Nach dem Erstellen erhalten Teilnehmer ihre Teamzuordnung als persönliche Mitteilung. Der Link führt zur eigenen Teamkarte und zur Teamnamenänderung.', '[data-draw-tournament]'),
@@ -177,7 +177,7 @@ export const AREA_TOURS = {
     s('result', 'Ergebnis erfassen', 'Das Plus öffnet die Ergebniseingabe. Speichere einen Sieger oder den konfigurierten Punktestand; K.O.-Matches brauchen einen eindeutigen Sieger.', '[data-open-result]'),
     s('effects', 'Was das Ergebnis auslöst', 'Das Ergebnis aktualisiert Tabelle und Spielplan und zählt auch für die reguläre Rangliste. Neu spielbereite Teilnehmer erhalten die nächste Paarung als Mitteilung.', '.bracket-tree-wrap, .tournament-standings'),
     s('correction', 'Früheres Ergebnis ändern', 'Ein geänderter Sieger kann spätere K.O.-Paarungen und deren Ergebnisse zurücksetzen. Die Bestätigung erklärt die Folgen, bevor die Korrektur gespeichert wird.', '[data-open-result]'),
-    s('complete', 'Automatisch abschließen', 'Das letzte erforderliche Ergebnis beendet das Turnier. Ein aktiviertes Spiel um Platz 3 gehört dazu; danach steht der Champion fest.', '.bracket-tree-wrap, .tournament-standings'),
+    s('complete', 'Automatisch abschließen', 'Das letzte erforderliche Ergebnis beendet das Turnier. Ein aktiviertes Spiel um Platz 3 gehört dazu; danach steht der Turniersieger fest.', '.bracket-tree-wrap, .tournament-standings'),
     s('early', 'Vorzeitig beenden', 'Admins können offene Turniere vorzeitig beenden. Erfasste Ergebnisse bleiben erhalten, aber es gibt keinen Turniersieger.', '#tourn-finish', { adminOnly: true }),
     s('delete', 'Turnier löschen', 'Löschen entfernt das Turnier nach Bestätigung. Bereits erfasste Ergebnisse bleiben in der Rangliste bestehen.', '#tourn-delete', { adminOnly: true }),
   ])]),
@@ -187,7 +187,7 @@ export const AREA_TOURS = {
       s('item', 'Deine Position hinzufügen', 'Trage Gericht, Menge und bei Bedarf den Einzelpreis ein. Fehlende Preise werden genannt und verhindern einen vollständigen Zahlungsbetrag.', '[data-add-item-form]'),
       s('quantity', 'Menge im Beispiel', 'Zwei Margherita erscheinen als eine Position mit Menge 2. Hinzufügen übernimmt diese Position in deine Gruppe innerhalb der Bestellung.'),
       s('price', 'Einzelpreis und Summe', 'Der Einzelpreis gilt für ein Gericht. Zwei Pizzen zu je 8 Euro ergeben 16 Euro; hinterlegtes Trinkgeld kommt zum persönlichen Anteil hinzu.'),
-      s('sum', 'Deinen Anteil prüfen', 'Deine Gruppe sammelt Positionen und Gesamtbetrag. Hinterlegtes Trinkgeld ist bereits in der persönlichen Summe berücksichtigt.', '[data-group-toggle]'),
+      s('sum', 'Deinen Anteil prüfen', 'Deine Gruppe sammelt Positionen und Gesamtbetrag. Hinterlegtes Trinkgeld ist bereits in der persönlichen Summe berücksichtigt.', '.food-order-group'),
       s('freeze', 'Nach dem Abschicken', 'Abschicken friert die Positionen ein. Änderungen sind erst nach erneutem Öffnen möglich; deine offene Zahlung erscheint auf Home.', '[data-closed-order]'),
     ]),
     c('pay', 'Bezahlen', [
@@ -275,8 +275,8 @@ export const AREA_TOURS = {
   ])], { adminOnly: true }),
   hallOfFame: t('Hall of Fame', [c('champions', 'Vergangene Erfolge', [
     s('alltime', 'Siege über mehrere Events', 'Gesamtsiege und Turniersiege zeigen unterschiedliche Erfolge. Gleiche Werte können denselben Rang teilen.', '.collapsible-section'),
-    s('event', 'Ein Event ansehen', 'Nach Event zeigt dessen Platzierungen und Turnierchampions. Der Filter bezieht sich auf historische Ergebnisse.', '.search-select'),
-    s('unfinished', 'Kein Champion ohne Abschluss', 'Vorzeitig beendete Turniere behalten ihre gespielten Ergebnisse, krönen aber keinen Champion. Sie erzeugen deshalb keinen Turniersieg.', '.collapsible-section'),
+    s('event', 'Ein Event ansehen', 'Nach Event zeigt dessen Platzierungen und Turniersieger. Der Filter bezieht sich auf historische Ergebnisse.', '.search-select'),
+    s('unfinished', 'Kein Turniersieger ohne Abschluss', 'Vorzeitig beendete Turniere behalten ihre gespielten Ergebnisse, haben aber keinen Turniersieger. Sie erzeugen deshalb keinen Turniersieg.', '.collapsible-section'),
   ])], { adminOnly: true }),
   seating: t('Sitzplan', [c('seats', 'Plätze verwalten', [
     s('plan', 'Gemeinsamer Tischplan', 'Belegte und freie Plätze bilden den Tisch ab. Der Plan erscheint auch als lesende Ansicht auf Home.', '.seating-layout, .seating-plan'),
@@ -321,7 +321,7 @@ export const AREA_TOURS = {
     s('workspaces', 'Events und Gruppen', 'Unter Events & Gruppen verwaltest du Events und dauerhafte Gruppen. Oben wählst du anschließend das gewünschte Event oder die Gruppe aus.', '[data-navigate="events"]'),
     s('profile', 'Persönliche Einstellungen', 'Mein Profil enthält Identität, Ansicht, Push und persönliche Daten. Deine eigene Live-Status-Karte führt ebenfalls dorthin.', '[data-navigate="profile"]'),
     s('orga', 'Gemeinsam vorbereiten', 'Orga bündelt die Planung passend zum Eventtyp. Allgemeine Events bieten diese Bereiche direkt in der Hauptnavigation.', '[data-navigate="eventPolls"], [data-section="orga"]'),
-    s('tour', 'Hilfe im jeweiligen Bereich', 'Das Fragezeichen am Bereichstitel öffnet die passenden Touren. Du kannst Kapitel einzeln starten und später an derselben Stelle fortsetzen.'),
+    s('tour', 'Tour im jeweiligen Bereich', 'Das Fragezeichen am Bereichstitel öffnet die passenden Touren. Du kannst Kapitel einzeln starten und später an derselben Stelle fortsetzen.'),
   ])]),
   info: t('Info', [c('reference', 'Informationen nachschlagen', [
     s('entries', 'Alles Wichtige nachschlagen', 'Info öffnet WLAN, Links, Serveradressen und Hinweise über deiner aktuellen Ansicht. Dein aktuelles Event und deine Eingaben bleiben erhalten.', '[data-open-entry]'),
@@ -331,7 +331,7 @@ export const AREA_TOURS = {
   feedback: t('Feedback', [c('send', 'Rückmeldung senden', [
     s('kind', 'Art auswählen', 'Positiv, Negativ, Problem oder Idee helfen bei der Einordnung. Schreibe anschließend kurz, was dir aufgefallen ist.', '#feedback-sentiment-toggle'),
     s('context', 'Die Herkunft kommt mit', 'Respawn ergänzt die beim Öffnen aktive Ansicht, das Event und eine Gerätegrößenklasse. So kann die Rückmeldung dem richtigen Bereich zugeordnet werden.', '#feedback-message'),
-    s('submit', 'Bewusst senden', 'Senden übermittelt deine Nachricht an die Admins. Das Öffnen der Hilfe und dieser Tour versendet noch kein Feedback.', '#feedback-form'),
+    s('submit', 'Bewusst senden', 'Senden übermittelt deine Nachricht an die Admins. Das Öffnen dieser Tour versendet noch kein Feedback.', '#feedback-form'),
   ])]),
 };
 

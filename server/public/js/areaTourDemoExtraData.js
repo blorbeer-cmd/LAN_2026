@@ -18,7 +18,7 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
     audience: 'direct', eventId: event.id, eventName: event.name, createdAt: now - 60_000,
     seen: false, resolvedAt: null, expiresAt: null };
   responses['/api/push/log'] = { entries: [notification, { ...notification, id: 'tour-notification-old',
-    title: 'Mehrfachsteckdosen übernommen', body: 'Das To-Do wurde erledigt.', seen: true, resolvedAt: now - 30_000 }] };
+    title: 'Bestellung „Sushi vom Freitag“ bezahlt', body: 'Deine Sushi-Bestellung ist vollständig bezahlt.', seen: true, resolvedAt: now - 30_000 }] };
   responses['/api/push/current'] = { entry: null };
   responses['/api/info'] = { entries: [{ id: 'tour-wlan', title: 'WLAN', content: 'Netz: Respawn · Passwort: GemeinsamSpielen', updatedAt: now },
     { id: 'tour-discord', title: 'Discord', content: 'Sprachkanal: LAN-Lobby', updatedAt: now }] };
@@ -45,7 +45,7 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
     responses['/api/me/todos'] = { pendingVoteRounds: [2], todos: [
       { id: 'tour-todo-payment', kind: 'food-payment', audience: 'personal', eventId: event.id, eventName: event.name,
         orderId: 'tour-order', orderTitle: 'Pizza bei Luigi', unpaidCount: 1 },
-      { id: 'tour-todo-task', kind: 'task', audience: 'personal', eventId: invite.id, eventName: invite.name,
+      { id: 'tour-todo-task', kind: 'task', audience: 'personal', eventId: group.id, eventName: group.name,
         taskId: 'tour-task', title: 'Mehrfachsteckdosen mitbringen', dueAt: now + 86_400_000 },
     ] };
     if (step === 'event') state.activeEvent = { ...event, eventType: 'general' };
@@ -61,7 +61,7 @@ export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
   }
   if (view === 'events') {
     if (chapter === 'participate' && ['invitation', 'accept'].includes(step)) {
-      demo.focus = '[data-pending-invitation]';
+      demo.focus = admin ? '[data-event-card="tour-invitation"]' : '[data-pending-invitation]';
     } else if (chapter === 'participate') demo.focus = '[data-event-card="tour-event"]';
     if (step === 'create') { demo.open = '#new-event-btn'; demo.fill = { '#event-name': 'Sommer-LAN' }; demo.focus = '#event-name'; }
     if (['calendar', 'confirm'].includes(step)) {

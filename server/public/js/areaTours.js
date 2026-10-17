@@ -117,7 +117,7 @@ export function createAreaTours({ container, getContext }) {
       </div>` : '';
     chooser = openModal(`${tour.title} kennenlernen`, `
       <p>Entdecke die Funktionen und was deine Aktionen auslösen.</p>
-      ${context.area === 'arcade' && !['arcade', 'arcadeWatch'].includes(key) ? '<p class="muted">Die Partie läuft während der Hilfe weiter. Pausiere sie bei Bedarf vorher.</p>' : ''}
+      ${context.area === 'arcade' && !['arcade', 'arcadeWatch'].includes(key) ? '<p class="muted">Die Partie läuft während der Tour weiter. Als Host kannst du sie vorher pausieren, wenn die aktuelle Spielphase es erlaubt.</p>' : ''}
       ${chapters}
       <p class="muted">Dein Fortschritt bleibt für dieses Konto auf diesem Gerät gespeichert.</p>
       <div class="area-tour-actions">
@@ -203,17 +203,15 @@ export function createAreaTours({ container, getContext }) {
     dialog.querySelector('.modal').setAttribute('aria-label', `${step.title} · Schritt ${index + 1} von ${steps.length}`);
     dialog.querySelector('.modal-body').innerHTML = `
       <div class="area-tour-explanation">
-        <div>
           <p class="onboarding-progress">Schritt ${index + 1} von ${steps.length}</p>
           <p>${escapeHtml(step.text)}</p>
           <p class="muted" data-tour-scene-state hidden></p>
           <button type="button" class="btn btn-sm" data-tour-retry hidden>Erneut versuchen</button>
-        </div>
-        <div class="area-tour-actions">
+      </div>
+      <div class="area-tour-actions">
           <button type="button" class="btn btn-sm" data-tour-end>Tour beenden</button>
           <button type="button" class="btn btn-sm" data-tour-back ${index === 0 ? 'disabled' : ''}>Zurück</button>
           <button type="button" class="btn btn-primary btn-sm" data-tour-next>${index === steps.length - 1 ? 'Abschließen' : 'Weiter'}</button>
-        </div>
       </div>`;
     dialog.querySelector('[data-tour-end]').addEventListener('click', () => active.close());
     dialog.querySelector('[data-tour-retry]').addEventListener('click', () => { clearScene(active); renderStep(); });
@@ -300,11 +298,8 @@ export function createAreaTours({ container, getContext }) {
     active.dialog.querySelector('[data-tour-retry]').hidden = true;
     active.dialog.querySelector('[data-tour-next]').disabled = false;
     positionTarget();
-    const panel = active.dialog.querySelector('.modal');
-    const scrolls = panel.scrollHeight > panel.clientHeight;
-    if (scrolls) panel.scrollTop = 0;
-    const focus = scrolls ? panel.querySelector('[data-close]') : active.dialog.querySelector('[data-tour-next]');
-    focus?.focus({ preventScroll: true });
+    active.dialog.querySelector('.area-tour-explanation').scrollTop = 0;
+    active.dialog.querySelector('[data-tour-next]').focus({ preventScroll: true });
   }
 
   function positionScene() {
@@ -375,6 +370,9 @@ export function createAreaTours({ container, getContext }) {
     const style = getComputedStyle(panel);
     const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-4'));
     const minimum = panel.querySelector('.modal-header').getBoundingClientRect().height
+      + parseFloat(getComputedStyle(panel.querySelector('.modal-header')).marginBottom)
+      + panel.querySelector('.area-tour-actions').getBoundingClientRect().height
+      + parseFloat(getComputedStyle(panel.querySelector('.area-tour-actions')).marginTop)
       + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + inset * 2;
     const placement = tourPanelPlacement(rect, panel.getBoundingClientRect(),
       { width: window.innerWidth, height: window.innerHeight }, inset, minimum);

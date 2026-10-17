@@ -188,6 +188,15 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     'the example covers the complete viewport without compression or exposing the original page');
     assert.doesNotMatch(await overlay.textContent() ?? '', /Beispielansicht/u);
     assert.equal(await overlay.locator('[data-tour-retry]').isVisible(), false, 'a ready scene never offers an obsolete retry');
+    const actions = await overlay.locator('.area-tour-actions button').evaluateAll((buttons) => buttons.map((button) => {
+      const rect = button.getBoundingClientRect();
+      const panel = button.closest('.modal')!.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      return rect.top >= panel.top && rect.bottom <= panel.bottom
+        && rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight
+        && (hit === button || button.contains(hit));
+    }));
+    assert.deepEqual(actions, [true, true, true], `all navigation stays visible without scrolling at ${viewport.width} × ${viewport.height}`);
     const heading = await overlay.locator('h2').textContent();
     if (heading === 'Was das Ergebnis auslöst') {
       const target = await example.locator('.bracket-tree-wrap').evaluate((element) => {
@@ -205,7 +214,11 @@ flowTest('area tour examples work without live records and keep nested dialogs u
       assert.ok(panel && target);
       const overlap = Math.max(0, Math.min(panel.x + panel.width, target.x + target.width) - Math.max(panel.x, target.x))
         * Math.max(0, Math.min(panel.y + panel.height, target.y + target.height) - Math.max(panel.y, target.y));
-      assert.equal(overlap, 0, 'the explanation keeps Info and notifications visible on a shallow screen');
+      const inset = 16;
+      const room = target.y >= panel.height + inset * 2 || viewport.height - target.y - target.height >= panel.height + inset * 2
+        || target.x >= panel.width + inset * 2 || viewport.width - target.x - target.width >= panel.width + inset * 2;
+      if (room) assert.equal(overlap, 0, 'use free space when it fits the explanation and its navigation');
+      else assert.ok(overlap < target.width * target.height, 'an unavoidable overlap must still leave part of the target visible');
     }
     if (heading === 'Bock übernehmen' || heading === 'Anonymität und Bock') {
       assert.equal(await example.locator('[data-vote-adopt-bock]').isVisible(), true);
@@ -215,9 +228,21 @@ flowTest('area tour examples work without live records and keep nested dialogs u
       assert.equal(await example.locator('[data-roster-picker="mm-captain-roster"] input:checked').count(), 2);
     }
     if (heading === 'Einladung prüfen') assert.equal(await example.locator('[data-accept-invitation="tour-invitation"]').isVisible(), true);
-    if (heading === 'In deinen Kalender übernehmen') assert.equal(await example.locator('[data-event-calendar="google"]').first().isVisible(), true);
+    if (heading === 'In deinen Kalender übernehmen') assert.equal(await example.locator('[data-action-menu="event-calendar-tour-event"] [data-event-calendar="google"]').isVisible(), true);
     if (heading === 'Warteschlange bearbeiten') assert.equal(await example.locator('[data-detail-remove]').isVisible(), true);
     if (heading === 'Playlist starten') assert.match(await example.locator('.modal-backdrop').textContent() ?? '', /Songwünsche werden ersetzt/u);
+    if (heading === 'Deinen Anteil prüfen') {
+      assert.equal(await example.locator('[data-desc-suggest].is-open').count(), 0, 'description suggestions must not cover the group');
+      const group = example.locator('.food-order-group').first();
+      assert.match(await group.textContent() ?? '', /17,60/u);
+      const target = await group.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+      });
+      const highlight = await example.locator('body').evaluate(() =>
+        (window as unknown as { areaTourScene: { targetRect(): typeof target } }).areaTourScene.targetRect());
+      assert.deepEqual(highlight, target, 'the amount step highlights the whole own group including its total');
+    }
     const dialog = example.locator('.modal-backdrop .modal').last();
     if (await dialog.count()) {
       const modalBox = await dialog.boundingBox();
@@ -282,6 +307,7 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     const example = tourPage.frameLocator('[data-area-tour-scene]');
     const readyScene = () => assertSceneReady(tourPage);
     if (flow.route === 'home' && !flow.chapter.startsWith('Überblick')) await tourPage.setViewportSize({ width: 800, height: 500 });
+    else if (flow.route === 'eventPolls' && flow.chapter.startsWith('Umfrage verwalten')) await tourPage.setViewportSize({ width: 1024, height: 768 });
     let recording = false;
     const recordRequest = (request: Request) => {
       if (request.frame() !== tourPage.mainFrame() && request.url().includes('/api/')) demoNetwork.push(request.url());
@@ -435,6 +461,9 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     if (failed) throw failed.reason;
   }
   await Promise.all(flowPages.map((flowPage) => flowPage.close()));
+  // Management cards differ from member invitation cards. Reuse the already
+  // authenticated admin tab and exercise its whole participation chapter too.
+  await runFlow({ route: 'events', help: 'Events & Gruppen', chapter: 'Teilnehmen, Kalender und Beitrag: Starten', input: '', value: '', advance: 0 }, page);
   assert.deepEqual(mutations, [], 'example dialogs and rows must not create or change product records');
   assert.deepEqual(demoNetwork, [], 'the real views in a demonstration must not read or write the live API');
 });

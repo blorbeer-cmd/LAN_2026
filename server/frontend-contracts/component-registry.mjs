@@ -12,7 +12,7 @@ export const components = [
   {
     "id": "area-tour-overlay",
     "role": "composite-part",
-    "selector": ".area-tour-backdrop, .area-tour-shade, .area-tour-actions, .area-tour-chapters, .area-tour-explanation, .area-tour-scene-frame, .area-tour-demo-page",
+    "selector": ".area-tour-backdrop, .area-tour-shade, .area-tour-actions, .area-tour-chapters, .area-tour-backdrop .modal-body, .area-tour-explanation, .area-tour-scene-frame, .area-tour-demo-page",
     "owner": "public/css/overlays.css",
     "contract": "components/area-tour.md#geometrie",
     "purpose": "The manual tour is a named shared-modal presentation; its containers own positioning and spacing, never product controls.",

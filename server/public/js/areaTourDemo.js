@@ -138,6 +138,9 @@ window.addEventListener('message', async (event) => {
       if (!input) throw new Error(`Missing example field: ${selector}`);
       input.value = value;
       input.dispatchEvent(new Event('input', { bubbles: true }));
+      // Keep native value updates, then dismiss description suggestions so
+      // they do not cover the order group throughout the shared form scene.
+      if (input.matches('[data-item-desc]')) input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     }
     if (demo.submit) {
       // Invoke the native read-only search handler without submitting a form.

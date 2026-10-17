@@ -41,6 +41,7 @@ test('every area and game has concise tour copy with stable unambiguous step ids
     const pause = steps.find((step) => step.id === 'play/pause');
     const result = steps.find((step) => step.id === 'play/result');
     assert.equal(/Vollbild/.test(`${pause.title} ${pause.text}`), fullscreen, `${key}: fullscreen availability`);
+    assert.match(pause.text, /Nur der Host kann/, `${key}: pausing requires the host`);
     assert.equal(/Revanche/.test(`${result.title} ${result.text}`), rematch, `${key}: rematch availability`);
     assert.equal(result.target, rematch ? '[data-rematch-request]' : '', `${key}: only highlight an available result action`);
   }
@@ -56,6 +57,9 @@ test('tour explanations avoid targets in shallow windows and scroll in the remai
     { width: 320, height: 280 }, viewport, 16, 100);
   assert.equal(below.placement, 'bottom');
   assert.equal(below.maxHeight, 118, 'a centered Info dialog retains its visible area');
+  const crowded = tourPanelPlacement({ left: 160, right: 640, top: 150, bottom: 350 },
+    { width: 320, height: 280 }, viewport, 16, 180);
+  assert.equal(crowded.maxHeight, null, 'overlap is preferable when the free space cannot fit the header, text and navigation');
 });
 
 test('real-view demonstration data is consistent, isolated and cannot proxy writes or unknown reads', () => {
@@ -92,6 +96,10 @@ test('real-view demonstration data is consistent, isolated and cannot proxy writ
   response.body.history[0].title = 'Changed';
   assert.equal(history.title, 'Samstagabend');
   assert.equal(createTourDemo('profile', 'account/identity'), null);
+  const home = createTourDemo('home', 'notifications/obsolete', {}, now);
+  const task = home.responses['/api/me/todos'].todos.find((todo) => todo.kind === 'task');
+  assert.ok(home.state.availableEvents.some((event) => event.id === task.eventId && event.myParticipation.status === 'accepted'),
+    'an open task belongs to an accepted event, separate from pending invitations');
 });
 
 test('admin and feature-dependent explanations follow the current context', () => {

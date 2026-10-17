@@ -1,13 +1,13 @@
 // Arcade help stays in the lazy Arcade subtree. Core loads this catalog only
 // after an Arcade route is opened; importing it cannot start a lobby or match.
 const s = (id, title, text, target = '') => ({ id, title, text, target });
-const room = (title, rules, { fullscreen = true, rematch = true } = {}) => ({
+const room = (title, rules, { fullscreen = true, rematch = true, pausePhase = '' } = {}) => ({
   title,
   chapters: [{ id: 'play', title: 'Steuerung und Ablauf', steps: [
     ...rules,
     s('pause', fullscreen ? 'Pause und Vollbild' : 'Pause und Ton', fullscreen
-      ? 'Die Spielaktionen steuern Pause, Ton und Vollbild. Escape verlässt das Vollbild; eine Pause beendet die Partie nicht.'
-      : 'Die Spielaktionen steuern Pause und Ton. Eine Pause unterbricht die Partie, ohne sie zu beenden.', '.arcade-game-header-actions'),
+      ? `Nur der Host kann${pausePhase} pausieren und fortsetzen. Ton und Vollbild steuerst du selbst; Escape verlässt das Vollbild.`
+      : `Nur der Host kann${pausePhase} pausieren und fortsetzen. Den Ton steuerst du selbst. Eine Pause beendet die Partie nicht.`, '.arcade-game-header-actions'),
     s('connection', 'Nach einem Verbindungsabbruch', 'Kehre zur selben Partie zurück. Üblicherweise bleibt eine Minute zum Wiederverbinden; bei pausiertem Spiel ohne wartende Mitspieler sind es zehn Minuten.'),
     s('result', rematch ? 'Ergebnis und Revanche' : 'Ergebnis ansehen', rematch
       ? 'Nach dem Ende zeigt die Ergebniskarte den Ausgang. Revanche öffnet eine neue Lobby; die übrigen Personen müssen wieder beitreten und bereit sein.'
@@ -26,7 +26,7 @@ export const ARCADE_TOURS = {
       s('statistics', 'Arcade-Statistik', 'Die Statistik wertet Browserpartien aus. Chimp Test besitzt eine eigene Bestwert-Rangliste und zählt keine normalen Siege oder Niederlagen.', '.collapsible-section'),
     ] }],
   },
-  quizRoom: room('Quiz', [
+  quizRoom: room('Gaming-Quiz', [
     s('question', 'Frage und Zeit', 'Lies Frage und Kategorie und wähle deine Antwort innerhalb des Zeitlimits. Die Auflösung erscheint nach der Antwortphase.', '.quiz-question'),
     s('answer', 'Auflösung ansehen', 'Die nächste Phase zeigt die richtige Antwort. Der Punktestand entwickelt sich über die Fragen der gemeinsamen Runde.', '.quiz-question'),
   ], { fullscreen: false }),
@@ -46,11 +46,11 @@ export const ARCADE_TOURS = {
     s('move', 'Deine Richtung steuern', 'Lenke deine Schlange mit den angezeigten Tasten oder Touch-Steuerungen. Vermeide Kollisionen und behalte deine Farbe im Blick.', 'canvas'),
     s('arena', 'Classic und Arena', 'Classic ist ein Duell. In der Arena spielen drei bis acht Personen und die sichere Zone schrumpft; ausgeschiedene Personen bleiben gekennzeichnet.', 'canvas'),
   ]),
-  battleship: room('Schiffe versenken', [
+  battleship: room('Battleship', [
     s('fleet', 'Flotte platzieren', 'Wähle ein Schiff und seine Ausrichtung und setze es ins Feld. Zufällig verteilt die Flotte; Zurücksetzen beginnt die Platzierung neu.', '[data-select-ship]'),
     s('ready', 'Flotte bereit melden', 'Prüfe deine Schiffe und bestätige Flotte bereit. Die Schussphase beginnt erst, wenn beide Flotten fertig sind.', '#battleship-submit-setup'),
     s('shoot', 'Schüsse setzen', 'Wähle im gegnerischen Feld ein Ziel, sobald du am Zug bist. Treffer und versenkte Schiffe werden im Spielfeld markiert.', 'canvas'),
-  ], { fullscreen: false }),
+  ], { fullscreen: false, pausePhase: ' in der Schussphase' }),
   chimp: room('Chimp Test', [
     s('remember', 'Zahlen merken', 'Merke dir die Positionen. Mit dem Antippen der 1 verschwinden die übrigen Zahlen; tippe sie anschließend in aufsteigender Reihenfolge an.', '[data-chimp-cell]'),
     s('strikes', 'Drei Fehler beenden den Versuch', 'Ein Fehler zählt als Strike und zeigt dir kurz die Lösung. Nach drei Strikes endet dein persönlicher Versuch.', '[data-chimp-cell]'),
@@ -58,7 +58,7 @@ export const ARCADE_TOURS = {
   ], { fullscreen: false, rematch: false }),
   scribbleRoom: room('Scribble', [
     s('draw', 'Zeichnen oder raten', 'Die zeichnende Person nutzt die Werkzeuge; die übrigen geben ihre Vermutungen im Ratefeld ein. Zuschauer erhalten keine geheimen Wörter oder Tipps.', 'canvas'),
-  ], { rematch: false }),
+  ], { rematch: false, pausePhase: ' während des Zeichnens' }),
   challengeRush: room('Challenge Rush', [
     s('challenge', 'Aufgabe zuerst lesen', 'Jede Challenge hat eine eigene Aufgabe und Zeitgrenze. Merken, Warten und Eingeben sind unterschiedliche Phasen; die Anzeige führt dich durch den Wechsel.', '.challenge-rush-stage'),
   ], { fullscreen: false, rematch: false }),

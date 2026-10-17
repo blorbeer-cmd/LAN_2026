@@ -206,6 +206,9 @@
   animation: none;
 }
 .area-tour-backdrop .modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   position: fixed;
   z-index: 1;
   left: var(--space-4);
@@ -216,6 +219,15 @@
   margin: 0 auto;
   border-radius: var(--radius-lg);
   animation: none;
+}
+.area-tour-backdrop .modal-header,
+.area-tour-backdrop .area-tour-actions {
+  flex-shrink: 0;
+}
+.area-tour-backdrop .modal-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .area-tour-backdrop .modal[data-tour-placement="top"] {
   top: var(--space-4);
@@ -259,6 +271,8 @@
 }
 .area-tour-explanation {
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
 }
 .area-tour-scene-frame {
   position: fixed;

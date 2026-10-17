@@ -12,7 +12,7 @@ import { eventHasFeature, viewIsEnabledForEvent } from './eventFeatures.js';
 // Start with personal orientation, then explain the shared event context and
 // the main LAN flows. The game catalog stays last so the tour ends on the
 // page where players can optionally add their first ratings.
-export const ONBOARDING_SKILL_COPY = 'Hinterlege vor der LAN deinen Skill in der Spieleliste für ausgeglichene Teams. Bock ist optional; während der LAN kannst du ihn über „Bock übernehmen“ aus Votes speichern.';
+export const ONBOARDING_SKILL_COPY = 'Hinterlege vor der LAN unter Spiele deinen Skill für ausgeglichene Teams. Bock ist optional; während der LAN kannst du ihn über „Bock übernehmen“ aus Votes speichern.';
 
 function navigationTarget(view, { compactFallback = view } = {}) {
   return `.desktop-nav-btn[data-view="${view}"], .nav-btn[data-view="${compactFallback}"]`;
