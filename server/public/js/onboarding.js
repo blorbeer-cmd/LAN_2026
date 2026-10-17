@@ -19,17 +19,23 @@ function navigationTarget(view, { compactFallback = view } = {}) {
 }
 
 export function visibleOnboardingTarget(selector, queryRoot = document) {
-  return [...queryRoot.querySelectorAll(selector)]
-    .find((element) => element.getClientRects().length > 0) ?? null;
+  // These target lists are ordered alternatives: prefer the explained
+  // control even when a fallback navigation button precedes it in the DOM.
+  for (const alternative of selector.split(',')) {
+    const visible = [...queryRoot.querySelectorAll(alternative.trim())]
+      .find((element) => element.getClientRects().length > 0);
+    if (visible) return visible;
+  }
+  return null;
 }
 
 export function buildOnboardingSteps() {
   const steps = [
     {
       title: 'Home',
-      text: 'Home zeigt Live-Status und aktuelle Vorgänge. Über das Fragezeichen neben jedem Bereichstitel öffnest du ausführliche Touren mit Beispielen – auch später jederzeit.',
+      text: 'Home zeigt Live-Status und aktuelle Vorgänge. Das Fragezeichen neben jedem Bereichstitel öffnet kurze Touren zu dessen Funktionen – auch später jederzeit.',
       view: 'home',
-      target: navigationTarget('home'),
+      target: `#view-container [data-area-tour-open="home"], ${navigationTarget('home')}`,
     },
     {
       title: 'Mein Profil',
@@ -57,7 +63,7 @@ export function buildOnboardingSteps() {
     },
     {
       title: 'Vote',
-      text: 'Hier startet ihr Abstimmungen, welche Spiele als Nächstes gespielt werden, und seht die Top 10 nach Bock-Level. Bei Gleichstand lässt sich direkt aus dem letzten Ergebnis eine Stichwahl starten.',
+      text: 'Hier startet ihr Abstimmungen, welche Spiele als Nächstes gespielt werden, und seht die Top 10 nach Bock-Werten. Bei Gleichstand lässt sich direkt aus dem letzten Ergebnis eine Stichwahl starten.',
       view: 'votes',
       target: navigationTarget('votes'),
     },

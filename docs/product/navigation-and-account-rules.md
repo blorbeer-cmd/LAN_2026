@@ -439,8 +439,8 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
 
 - The first-login core tour is a true modal: `#app` is inert, focus cycles inside the dialog,
   Escape ends the explanatory tour without requiring ratings, and focus returns to the
-  previous control after completion. Home points to the question mark beside each area title
-  for detailed tours with examples. The last step asks players to enter Skill in the game list
+  previous control after completion. Home highlights its question mark to introduce the short area tours; navigation is only a fallback
+  when the help control is unavailable. Examples are offered in the documented demo areas. The last step asks players to enter Skill in the game list
   before the LAN so teams can be balanced. Bock is optional and can be adopted from Votes during
   the LAN. The legacy optional rating panel requires Skill alone (including 0); its server and
   browser completion checks never require Bock. The rating panel is intentionally non-modal so its rating buttons

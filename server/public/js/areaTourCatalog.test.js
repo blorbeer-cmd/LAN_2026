@@ -47,19 +47,14 @@ test('every area and game has concise tour copy with stable unambiguous step ids
   }
 });
 
-test('tour explanations avoid targets in shallow windows and scroll in the remaining space', () => {
+test('tour explanations use free space and otherwise preserve their full height with minimum overlap', () => {
   const viewport = { width: 800, height: 500 };
   const beside = tourPanelPlacement({ left: 424, right: 784, top: 60, bottom: 460 },
-    { width: 320, height: 280 }, viewport, 16, 100);
+    { width: 320, height: 280 }, viewport, 16);
   assert.equal(beside.align, 'left', 'notifications remain visible beside the explanation');
-  assert.equal(beside.maxHeight, null);
-  const below = tourPanelPlacement({ left: 160, right: 640, top: 150, bottom: 350 },
-    { width: 320, height: 280 }, viewport, 16, 100);
-  assert.equal(below.placement, 'bottom');
-  assert.equal(below.maxHeight, 118, 'a centered Info dialog retains its visible area');
   const crowded = tourPanelPlacement({ left: 160, right: 640, top: 150, bottom: 350 },
-    { width: 320, height: 280 }, viewport, 16, 180);
-  assert.equal(crowded.maxHeight, null, 'overlap is preferable when the free space cannot fit the header, text and navigation');
+    { width: 320, height: 280 }, viewport, 16);
+  assert.equal(crowded.align, 'left', 'a large central target is overlapped as little as possible without shortening the explanation');
 });
 
 test('real-view demonstration data is consistent, isolated and cannot proxy writes or unknown reads', () => {
@@ -97,6 +92,12 @@ test('real-view demonstration data is consistent, isolated and cannot proxy writ
   assert.equal(history.title, 'Samstagabend');
   assert.equal(createTourDemo('profile', 'account/identity'), null);
   const home = createTourDemo('home', 'notifications/obsolete', {}, now);
+  const poll = createTourDemo('eventPolls', 'answer/save', {}, now).responses['/api/events/tour-event/polls'][0];
+  assert.equal(poll.responseMode, 'feasibility');
+  assert.equal(poll.myResponses['tour-pizza'], 'can');
+  assert.equal(poll.myResponses['tour-burger'], undefined, 'the open option is omitted, as in the actual API');
+  assert.equal(poll.invitees.find((person) => person.playerId === 'tour-alex').hasAnswered, false);
+  for (const option of poll.options) assert.equal(option.counts.can + option.counts.cannot + option.counts.open, poll.invitees.length);
   const task = home.responses['/api/me/todos'].todos.find((todo) => todo.kind === 'task');
   assert.ok(home.state.availableEvents.some((event) => event.id === task.eventId && event.myParticipation.status === 'accepted'),
     'an open task belongs to an accepted event, separate from pending invitations');

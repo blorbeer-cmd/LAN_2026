@@ -67,10 +67,10 @@ Controls betätigen; Schreibaktionen werden nicht zum Erzeugen von Zuständen be
 - `registry:area-tour-modal`: Der Schrittdialog behält maximal die Standardbreite von 480 px.
   Das Ziel entscheidet über Platzierung oben oder unten und links, mittig oder rechts, auch in der Demo.
   In breiten Fenstern unter 560 px Höhe begrenzt `--area-tour-compact-width` die Breite.
-  Reicht der Platz daneben nicht, scrollt die Erklärung im freien Bereich oberhalb oder unterhalb
-  des Ziels. Bei zu wenig Platz für Kopfzeile, Text und Navigation gewinnt die geringste Überdeckung.
+  Die Platzierung reserviert die vollständige natürliche Höhe von Kopfzeile, Text und Navigation.
+  Reicht kein freier Bereich dafür aus, gewinnt die geringste Überdeckung des Ziels.
   `--space-4` hält Abstand zu den Viewportkanten; die maximale Dialoghöhe berücksichtigt
-  `--space-8`. Nur der Erklärungstext scrollt; Kopfzeile und Aktionen bleiben sichtbar. Das Ziel entscheidet über Platzierung oben oder
+  `--space-8`. Nur wenn der Viewport selbst zu niedrig ist, scrollt der Erklärungstext; Kopfzeile und Aktionen bleiben sichtbar. Das Ziel entscheidet über Platzierung oben oder
   unten. Der Backdrop besitzt weder Unschärfe noch Einblendanimation, damit die Zielstelle sichtbar
   bleibt. Buttons behalten die Basisgeometrie; die Aktionen können als ganze Controls umbrechen.
 - `registry:area-tour-target`: Der Ring ist nicht interaktiv und folgt der auf den Viewport
@@ -128,7 +128,7 @@ mutierenden API-Aufrufe senden. Die Katalogtests prüfen konsistente Beispieldat
 Fail-closed-Verhalten der lokalen GET-Antworten.
 Die Draft-Vorbereitung prüft den Erhalt derselben Spielerauswahl bei Weiter und Zurück;
 der Arcade-Browserfall prüft Pong und den ausgewählten Modus Doppel im echten Erstellen-Dialog.
-Der Shell-Fall prüft zudem das Teilnahme-Kapitel als Admin, sichtbare Touraktionen auf Handy
+Der Shell-Fall prüft zudem das Teilnahme-Kapitel als Admin, vollständig lesbaren Erklärungstext und sichtbare Touraktionen auf Handy
 und Laptop, die Bestellgruppe ohne verdeckende Gerichtvorschläge und das tatsächliche Turnierbaum-Ziel, einen explizit fehlenden Zielselektor,
 die erfolgreiche Erholung ohne verbleibenden Retry-Button sowie Info und Mitteilungen bei 800 × 500.
 Der bestehende Tetris-Vollbildfall prüft zusätzlich, dass die Hilfe im Vollbild keinen unsichtbaren

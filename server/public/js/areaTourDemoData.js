@@ -50,20 +50,24 @@ export function createTourDemo(view, stepId, { admin = false, event = null } = {
   const finished = chapter === 'result';
   const pollClosed = ['result', 'close', 'round'].includes(step);
   const pollVoters = pollClosed ? players : players.slice(0, 3);
+  const feasibility = chapter === 'answer';
+  const partialAnswer = feasibility && !pollClosed;
   const poll = { id: 'tour-poll', decisionKey: 'tour-poll', title: 'Was essen wir am Samstag?', note: 'Bitte bis Freitag antworten',
-    responseMode: 'single_choice', status: pollClosed ? 'closed' : 'open', roundNumber: 1, maxSelections: null,
+    responseMode: feasibility ? 'feasibility' : 'single_choice', status: pollClosed ? 'closed' : 'open', roundNumber: 1, maxSelections: null,
     createdBy: me.id, createdByName: me.name, updatedAt: now, createdAt: now - 600_000, responseDueAt: start - 86_400_000,
     isInvitee: true, canManage: true, canDelete: admin, anonymous: false, liveResultsHidden: true,
     resultsVisible: true, responseDetailsVisible: true,
-    hasResponses: true, myResponses: { 'tour-pizza': 'can', 'tour-burger': 'cannot' },
-    invitees: players.map((p, i) => ({ playerId: p.id, name: p.name, hasAnswered: pollClosed || i < 3 })),
+    // Open feasibility options are omitted by the real response API too.
+    hasResponses: true, myResponses: partialAnswer ? { 'tour-pizza': 'can' } : { 'tour-pizza': 'can', 'tour-burger': 'cannot' },
+    invitees: players.map((p, i) => ({ playerId: p.id, name: p.name, hasAnswered: pollClosed || (i < 3 && (!partialAnswer || i > 0)) })),
     options: ['Pizza', 'Burger'].map((label, i) => {
       const voters = pollVoters.filter((_person, voter) => i === (voter === 1 ? 1 : 0));
+      const missingOwnResponse = partialAnswer && i === 1 ? 1 : 0;
       return { id: ['tour-pizza', 'tour-burger'][i], label, active: true, position: i,
         description: '', payload: {}, isRecommended: pollClosed && i === 0,
-        counts: { can: voters.length, cannot: pollVoters.length - voters.length, ifNeeded: 0, open: players.length - pollVoters.length },
+        counts: { can: voters.length, cannot: pollVoters.length - voters.length - missingOwnResponse, ifNeeded: 0, open: players.length - pollVoters.length + missingOwnResponse },
         people: { can: voters.map((p) => ({ playerId: p.id, name: p.name })), ifNeeded: [],
-          cannot: pollVoters.filter((p) => !voters.includes(p)).map((p) => ({ playerId: p.id, name: p.name })), ratings: {} } };
+          cannot: pollVoters.filter((p) => !voters.includes(p) && (!missingOwnResponse || p.id !== me.id)).map((p) => ({ playerId: p.id, name: p.name })), ratings: {} } };
     }),
   };
   const ownRide = step === 'edit';

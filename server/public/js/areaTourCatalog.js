@@ -19,7 +19,7 @@ export const AREA_TOURS = {
       s('account', 'Eine Auswahl für dein Konto', 'Das ausgewählte Event gilt für dein Konto, auch in anderen Tabs und auf anderen Geräten. Eine Einladung musst du zuerst annehmen.', '#event-context'),
       s('types', 'Passende Bereiche', 'LAN, allgemeines Event und dauerhafte Gruppe bieten unterschiedliche Bereiche. Deine Rolle und die Eventeinstellungen bestimmen, welche Aktionen du siehst.', '#event-context'),
       s('shared', 'Spielewerte bleiben erhalten', 'Spielekatalog, Bock und Skill gelten für eure ganze Gruppe. Ein Eventwechsel setzt diese Bewertungen nicht zurück.', '#event-context', { feature: 'games' }),
-      s('info', 'Info öffnen', 'Info zeigt WLAN, Links, Serveradressen und Hausregeln über deiner aktuellen Ansicht. Schließen bringt dich zurück; deine Eingaben bleiben erhalten.', '#info-btn'),
+      s('info', 'Info öffnen', 'Info zeigt WLAN, Links, Serveradressen und Hinweise über deiner aktuellen Ansicht. Schließen bringt dich zurück; deine Eingaben bleiben erhalten.', '#info-btn'),
       s('search', 'Direkt zum richtigen Eintrag', 'Die Suche findet Bereiche und Inhalte. Mit Strg oder Cmd plus K öffnest du sie; ein Treffer führt zum passenden Eintrag.', '#global-search-btn'),
     ]),
     c('notifications', 'Mitteilungen', [
@@ -56,7 +56,7 @@ export const AREA_TOURS = {
     c('answer', 'Antworten', [
       s('scope', 'Gemeinsam planen', 'Teilnehmer des ausgewählten Events können dessen Umfragen sehen und beantworten. Auch Admins müssen dem Event dafür zugesagt haben.', '.event-poll-card'),
       s('modes', 'Die Antwortart beachten', 'Antwortarten: „Jede Option bewerten“ mit Passt/Notfalls/Nein, Einzelauswahl, Mehrfachauswahl oder „Bewertung 0 bis 5“. Bei Passt/Notfalls/Nein lässt erneutes Antippen deiner Antwort die Option offen.', '.event-poll-card'),
-      s('save', 'Antwort speichern', 'Speichere deine vollständige Antwort. Eine 0 ist eine bewusste Bewertung; eine unbeantwortete Option bleibt offen.', '.event-poll-card'),
+      s('save', 'Antwort speichern', 'Bei Passt/Notfalls/Nein kannst du offene Optionen speichern. Die Karte zeigt dann weiter „Deine Antwort fehlt“. Bei „Bewertung 0 bis 5“ muss jede Option bewertet sein.', '.event-poll-card'),
       s('visibility', 'Anonym und verborgen', 'Anonyme Umfragen zeigen keine Zuordnung zu Personen. Bei verborgenem Zwischenstand sieht während der Runde nur der Ersteller die Ergebnisse; ist dessen Konto inaktiv, übernimmt der Owner.', '.event-poll-card'),
       s('changed', 'Neue Optionen beachten', 'Neue Optionen können eine vollständige Antwort wieder unvollständig machen. Betroffene erhalten einen Hinweis und können die fehlenden Antworten ergänzen.', '.event-poll-card'),
       s('result', 'Ergebnis und Eventdaten', 'Das Ergebnis hilft bei der Entscheidung. Es ändert keinen Termin, Ort oder Beitrag automatisch; Admins tragen die Entscheidung anschließend beim Event ein.', '.event-poll-card'),
@@ -105,7 +105,7 @@ export const AREA_TOURS = {
     c('ratings', 'Bock, Skill und Auswahl', [
       s('tabs', 'Katalog oder Vorschlag', 'Katalog enthält freigegebene Spiele. Vorschläge können bereits bewertet werden, stehen aber noch nicht für neue Votes, Auslosungen oder Turniere zur Auswahl.', '[data-tab]'),
       s('bock', 'Bock bewerten', 'Der Wert zeigt deine Lust auf das Spiel und wird in Votes vorbelegt. Im Vote speichert „Bock übernehmen“ deine Stimmen zusätzlich als Bock-Werte.', '[data-kind="bock"]'),
-      s('skill', 'Skill bewerten', 'Skill unterstützt die automatische Teamverteilung. 0 bedeutet nie gespielt und zählt als 0; eine fehlende Bewertung verwendet bei der Auslosung den Ersatzwert 3.', '[data-kind="skill"]'),
+      s('skill', 'Skill bewerten', 'Skill unterstützt die Auslosung ausgeglichener Teams. 0 bedeutet nie gespielt und zählt als 0; eine fehlende Bewertung verwendet bei der Auslosung den Ersatzwert 3.', '[data-kind="skill"]'),
       s('save', 'Direkt gespeichert', 'Ein Druck auf eine Zahl speichert die persönliche Wertung sofort. Keine Zahl bedeutet noch unbewertet; 0 ist eine bewusste Bewertung.', '[data-rating-value]'),
       s('suggestion', 'Skill-Vorschlag übernehmen', 'Aus erfassten Spielergebnissen kann ein Skill-Vorschlag entstehen. Erst wenn du ihn antippst, ersetzt er deine eigene Wertung.', '[data-apply-suggestion]'),
     ]),
@@ -117,7 +117,7 @@ export const AREA_TOURS = {
       s('neighbors', 'Sitznachbarn vorbelegen', 'Sitznachbarn bei Auslosung legt die Voreinstellung dieses Spiels fest. Bei einer konkreten Auslosung kannst du sie weiterhin ändern.'),
       s('details', 'Spieldetails ansehen', 'Der Spielname öffnet die Details. Plattform- und Gameplay-Links helfen bei der Entscheidung; zusätzliche Hinweise erklären Besonderheiten des Spiels.', '.game-row-detail-trigger'),
       s('promote', 'Für neue Runden freigeben', 'Admins geben Vorschläge frei. Freigegebene Spiele stehen für neue Votes, Auslosungen und Turniere zur Auswahl. Zurückstufen entfernt keine vorhandenen Bewertungen.', '.game-row-detail-trigger', { adminOnly: true }),
-      s('process', 'Automatische Erkennung', 'Admins pflegen die Prozessnamen zentral. Der Agent erhält diese Zuordnungen vom Server; die Teilnehmer müssen ihre Installation dafür nicht neu einrichten.', '.game-track-indicator', { adminOnly: true, feature: 'tracking' }),
+      s('process', 'Spielerkennung', 'Admins pflegen die Prozess-Zuordnung zentral: Prozessnamen bestimmen das erkannte Spiel. Der Agent erhält diese Einträge vom Server; Teilnehmer müssen ihre Installation dafür nicht neu einrichten.', '.game-track-indicator', { adminOnly: true, feature: 'tracking' }),
       s('history', 'Historie bleibt zugeordnet', 'Ein zurückgestuftes Spiel behält seine bestehenden Ergebnisse. Laufende Votes behalten ihre ursprüngliche Spieleauswahl; neue Runden verwenden den aktuellen Katalog.', '.game-row-detail-trigger'),
     ]),
   ]),
@@ -172,7 +172,7 @@ export const AREA_TOURS = {
     ]),
   ]),
   tournaments: t('Turnier', [c('play', 'Mitspielen und Ergebnisse', [
-    s('team', 'Dein Team finden', 'Dein Team ist in Paarungen und Tabellen markiert und steht in der Teamübersicht vorn. Während das Turnier läuft, können Teammitglieder den Namen ändern.', '[data-tournament-teams]'),
+    s('team', 'Dein Team finden', 'Dein Team ist in Paarungen und Tabellen markiert und steht unter Teams vorn. Während das Turnier läuft, können Teammitglieder den Namen ändern.', '[data-tournament-teams]'),
     s('lobbies', 'Spielbereite Paarungen', 'Aktive Lobbys zeigt spielbare Paarungen mit dem eröffnenden Team und den Zugangsdaten. Liga und Gruppen zeigen zunächst die früheste noch offene Runde.', '#tournament-lobbies-title'),
     s('result', 'Ergebnis erfassen', 'Das Plus öffnet die Ergebniseingabe. Speichere einen Sieger oder den konfigurierten Punktestand; K.O.-Matches brauchen einen eindeutigen Sieger.', '[data-open-result]'),
     s('effects', 'Was das Ergebnis auslöst', 'Das Ergebnis aktualisiert Tabelle und Spielplan und zählt auch für die reguläre Rangliste. Neu spielbereite Teilnehmer erhalten die nächste Paarung als Mitteilung.', '.bracket-tree-wrap, .tournament-standings'),
@@ -214,15 +214,15 @@ export const AREA_TOURS = {
       s('layout', 'Deine Ansicht wählen', 'Automatisch richtet sich nach der Fensterbreite. Desktop und Laptop wählen deine bevorzugte Navigation auf breiten Bildschirmen; auf schmalen Geräten bleibt die kompakte Ansicht.', '#profile-layout'),
       s('push', 'Push aktivieren', 'Aktiviere Push-Benachrichtigungen und erlaube Benachrichtigungen im Browser. Die Berechtigung gehört zu diesem Gerät; die Mitteilungen findest du zusätzlich unter Mitteilungen.', '#push-toggle, #profile-push'),
       s('ticker', 'Im Newsticker erscheinen', 'Newsticker erlaubt deinen Namen in erfundenen Meldungen auf dem Broadcast-Bildschirm. Deaktivieren entfernt betroffene Zeilen mit der nächsten Aktualisierung.', '#profile-newsticker'),
-      s('monitors', 'Sichtbare Monitore angeben', 'Wähle Personen, deren Monitore du sehen kannst. Diese Angaben helfen bei der Teamverteilung, wenn Sitznachbarn berücksichtigt werden.', '#profile-monitors-edit', { feature: 'seating' }),
+      s('monitors', 'Sichtbare Monitore angeben', 'Wähle Personen, deren Monitore du sehen kannst. Diese Angaben helfen bei der Auslosung, wenn Sitznachbarn berücksichtigt werden.', '#profile-monitors-edit', { feature: 'seating' }),
       s('admin', 'Admin-Modus', 'Admin-Modus zeigt Testdaten und zusätzliche Testaktionen. Er verleiht keine Rechte; deine tatsächliche Kontorolle bestimmt die Verwaltungsfunktionen.', '#profile-admin-mode', { adminOnly: true }),
     ]),
     c('agent', 'Agent und Live-Status', [
-      s('purpose', 'Spiele erkennen', 'Der Agent erkennt hinterlegte Spiele auf deinem PC und meldet Live-Status und Spielzeit an Respawn. Die Prozesszuordnungen kommen zentral vom Server.', '#profile-agent-title'),
+      s('purpose', 'Spiele erkennen', 'Der Agent erkennt hinterlegte Spiele auf deinem PC und meldet Live-Status und Spielzeit an Respawn. Die Prozess-Zuordnung kommt zentral vom Server.', '#profile-agent-title'),
       s('download', 'Persönliches Paket', 'Lade dein Agent-Paket herunter und führe die Installation aus. Es enthält bereits Serveradresse und deinen persönlichen Key; teile es deshalb nicht mit anderen.', '#agent-download'),
       s('extended', 'Erweitertes Spiele-Tracking', 'Die Option Erweitertes Spiele-Tracking ergänzt Aktivitätsdaten wie aktives Fenster und Leerlaufzeit. Mehr erfahren erklärt die erfassten Daten und ihre Verwendung.', '#agent-track-activity'),
       s('context', 'Wann erfasst wird', 'Spiele-Tracking erfasst deine Aktivität für das ausgewählte Event. Dafür musst du zugesagt haben, Spiele-Tracking muss aktiviert sein und deine Einwilligung vorliegen.', '#profile-agent-title'),
-      s('pause', 'Spiele-Tracking pausieren', 'Pausieren stoppt dein Spiele-Tracking. Die persönliche Pause auf Home ist eine andere Einstellung und dient deinem sichtbaren Mitspielerstatus.', '#tracking-paused'),
+      s('pause', 'Spiele-Tracking pausieren', 'Pausieren stoppt dein Spiele-Tracking. Die persönliche Pause auf Home ist eine andere Einstellung und zeigt deinen Live-Status als Pause.', '#tracking-paused'),
       s('key', 'Key erneuern', 'Key erneuern ersetzt den bisherigen Zugang. Bestehende Agent-Installationen benötigen danach den neuen Key beziehungsweise ein neues persönliches Paket.', '#profile-rotate-key'),
     ], { feature: 'tracking' }),
     c('privacy', 'Einwilligungen und Daten', [
@@ -282,7 +282,7 @@ export const AREA_TOURS = {
     s('plan', 'Gemeinsamer Tischplan', 'Belegte und freie Plätze bilden den Tisch ab. Der Plan erscheint auch als lesende Ansicht auf Home.', '.seating-layout, .seating-plan'),
     s('assign', 'Platz zuweisen', 'Tippe einen Sitz an und wähle eine Person. Sitzt sie bereits anderswo, werden die beiden Plätze getauscht. Desktop bietet zusätzlich Drag-and-drop.', '.seating-seat'),
     s('resize', 'Tisch ändern', 'Lege die Platzanzahl je Seite fest. Fallen belegte Plätze weg, landen deren Personen unter Ohne Platz.', '#seating-table-edit'),
-    s('neighbors', 'Nachbarn und Teams', 'Nachbarn am Tisch gelten als sichtbare Monitore. Diese Beziehungen können bei einer Team-Auslosung berücksichtigt werden.', '.seating-seat'),
+    s('neighbors', 'Nachbarn und Teams', 'Nachbarn am Tisch gelten als sichtbare Monitore. Diese Beziehungen können bei einer Auslosung berücksichtigt werden.', '.seating-seat'),
   ])], { adminOnly: true }),
   kiosk: t('Broadcast', [c('screen', 'Broadcast öffnen', [
     s('event', 'Event auswählen', 'Die Verwaltung bietet verfügbare veröffentlichte LAN-Events. Broadcast öffnen startet einen eigenen lesenden Bildschirm für das gewählte Event.', '.kiosk-open-link'),
@@ -295,7 +295,7 @@ export const AREA_TOURS = {
   admin: t('Admin', [
     c('tools', 'Werkzeuge und Bereitschaft', [
       s('tools', 'Verwaltungswerkzeuge', 'Hier öffnest du Auswertung, Feedback, Nutzungsauswertung, Sitzplan und Broadcast. Sichtbarkeit und Aktionen richten sich nach Rolle und Eventfunktionen.', '[data-navigate="leaderboard"]'),
-      s('ready', 'LAN-Bereitschaft prüfen', 'Die Bereitschaft prüft Server, Event, Teilnehmer, Agenten, Prozesszuordnungen, Broadcast und Backup. Details und Diagnose erklären auffällige Prüfungen.', '#admin-readiness-title', { feature: 'tracking' }),
+      s('ready', 'LAN-Bereitschaft prüfen', 'Die Bereitschaft prüft Server & Datenbank, Event mit Zusagen, Agenten, Spielerkennung, Broadcast und Backup. Details und Diagnose erklären auffällige Prüfungen.', '#admin-readiness-title', { feature: 'tracking' }),
       s('backup', 'Backup herunterladen', 'Ein Backup erstellt einen geprüften Datenbanksnapshot. Die geschützte Aktion kann erneut nach deinem Passwort fragen.', '#download-backup'),
     ]),
     c('accounts', 'Einladungen und Konten', [
@@ -324,7 +324,7 @@ export const AREA_TOURS = {
     s('tour', 'Tour im jeweiligen Bereich', 'Das Fragezeichen am Bereichstitel öffnet die passenden Touren. Du kannst Kapitel einzeln starten und später an derselben Stelle fortsetzen.'),
   ])]),
   info: t('Info', [c('reference', 'Informationen nachschlagen', [
-    s('entries', 'Alles Wichtige nachschlagen', 'Info öffnet WLAN, Links, Serveradressen und Hinweise über deiner aktuellen Ansicht. Dein aktuelles Event und deine Eingaben bleiben erhalten.', '[data-open-entry]'),
+    s('entries', 'Alles Wichtige nachschlagen', 'Info öffnet WLAN, Links, Serveradressen und Hinweise über deiner aktuellen Ansicht. Dein ausgewähltes Event und deine Eingaben bleiben erhalten.', '[data-open-entry]'),
     s('copy', 'Öffnen oder kopieren', 'Die Zeile öffnet den vollständigen Inhalt mit Links. Das Kopiersymbol übernimmt den Inhalt direkt in die Zwischenablage.', '[data-copy-entry]'),
     s('manage', 'Informationen pflegen', 'Admins erstellen, bearbeiten und löschen Einträge. Änderungen aktualisieren die geöffnete Übersicht.', '#info-new-btn', { adminOnly: true }),
   ])]),

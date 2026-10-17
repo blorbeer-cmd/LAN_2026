@@ -197,7 +197,14 @@ flowTest('area tour examples work without live records and keep nested dialogs u
         && (hit === button || button.contains(hit));
     }));
     assert.deepEqual(actions, [true, true, true], `all navigation stays visible without scrolling at ${viewport.width} × ${viewport.height}`);
+    const textFits = await overlay.locator('.area-tour-explanation').evaluate((element) => element.scrollHeight <= element.clientHeight + 1);
+    assert.equal(textFits, true, `the entire explanation stays readable at ${viewport.width} × ${viewport.height}`);
     const heading = await overlay.locator('h2').textContent();
+    if (heading === 'Die Antwortart beachten' || heading === 'Antwort speichern') {
+      assert.equal(await example.locator('[data-poll-response="if_needed"]').count(), 2, 'the example demonstrates Passt/Notfalls/Nein');
+      assert.equal(await example.locator('[data-save-poll]').isEnabled(), true, 'open feasibility options can be saved');
+      assert.match(await example.locator('.event-poll-answer-chip').textContent() ?? '', /Deine Antwort fehlt/u);
+    }
     if (heading === 'Was das Ergebnis auslöst') {
       const target = await example.locator('.bracket-tree-wrap').evaluate((element) => {
         const rect = element.getBoundingClientRect();

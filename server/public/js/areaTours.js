@@ -6,19 +6,16 @@ import { escapeHtml } from './format.js';
 import { profileRow } from './profileRow.js';
 import { DEMO_VIEWS, tourDemoSceneKey } from './areaTourDemoData.js';
 
-export function tourPanelPlacement(target, panel, viewport, inset, minHeight) {
+export function tourPanelPlacement(target, panel, viewport, inset) {
   const candidates = ['bottom', 'top'].flatMap((placement) => ['center', 'left', 'right'].map((align) => {
     const left = align === 'left' ? inset : align === 'right' ? viewport.width - inset - panel.width : (viewport.width - panel.width) / 2;
     const top = placement === 'top' ? inset : viewport.height - inset - panel.height;
     const overlap = Math.max(0, Math.min(left + panel.width, target.right) - Math.max(left, target.left))
       * Math.max(0, Math.min(top + panel.height, target.bottom) - Math.max(top, target.top));
-    return { placement, align, overlap, maxHeight: null };
+    return { placement, align, overlap };
   }));
   const free = candidates.find((candidate) => candidate.overlap === 0);
   if (free) return free;
-  const spaces = [{ placement: 'bottom', height: viewport.height - target.bottom - inset * 2 },
-    { placement: 'top', height: target.top - inset * 2 }].sort((a, b) => b.height - a.height);
-  if (spaces[0].height >= minHeight) return { placement: spaces[0].placement, align: 'center', maxHeight: spaces[0].height };
   return candidates.reduce((best, candidate) => candidate.overlap < best.overlap ? candidate : best);
 }
 
@@ -359,7 +356,6 @@ export function createAreaTours({ container, getContext }) {
     ring.hidden = !visible;
     shade.hidden = Boolean(visible);
     const panel = dialog.querySelector('.modal');
-    panel.style.removeProperty('--area-tour-available-height');
     if (!visible) { panel.dataset.tourPlacement = 'bottom'; panel.dataset.tourAlign = 'center'; return; }
     const left = Math.max(0, rect.left);
     const top = Math.max(0, rect.top);
@@ -367,18 +363,13 @@ export function createAreaTours({ container, getContext }) {
     ring.style.top = `${top}px`;
     ring.style.width = `${Math.min(window.innerWidth, rect.right) - left}px`;
     ring.style.height = `${Math.min(window.innerHeight, rect.bottom) - top}px`;
-    const style = getComputedStyle(panel);
     const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-4'));
-    const minimum = panel.querySelector('.modal-header').getBoundingClientRect().height
-      + parseFloat(getComputedStyle(panel.querySelector('.modal-header')).marginBottom)
-      + panel.querySelector('.area-tour-actions').getBoundingClientRect().height
-      + parseFloat(getComputedStyle(panel.querySelector('.area-tour-actions')).marginTop)
-      + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + inset * 2;
+    // Keep the whole explanation at its natural height. A small gap around
+    // a large target must not clip its text just to avoid an overlap.
     const placement = tourPanelPlacement(rect, panel.getBoundingClientRect(),
-      { width: window.innerWidth, height: window.innerHeight }, inset, minimum);
+      { width: window.innerWidth, height: window.innerHeight }, inset);
     panel.dataset.tourPlacement = placement.placement;
     panel.dataset.tourAlign = placement.align;
-    if (placement.maxHeight !== null) panel.style.setProperty('--area-tour-available-height', `${placement.maxHeight}px`);
   }
 
   function schedulePosition() {

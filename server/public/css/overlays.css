@@ -215,7 +215,7 @@
   right: var(--space-4);
   bottom: var(--space-4);
   width: auto;
-  max-height: min(calc(100dvh - var(--space-8)), var(--area-tour-available-height, 100dvh));
+  max-height: calc(100dvh - var(--space-8));
   margin: 0 auto;
   border-radius: var(--radius-lg);
   animation: none;

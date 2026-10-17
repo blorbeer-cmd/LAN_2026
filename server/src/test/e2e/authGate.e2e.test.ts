@@ -157,6 +157,12 @@ test('an invite link registers a new account and logs it straight in', async () 
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.waitForSelector('.onboarding-dialog');
   await page.waitForSelector('.onboarding-target-ring');
+  await page.waitForFunction(() => {
+    const help = document.querySelector('[data-area-tour-open="home"]')?.getBoundingClientRect();
+    const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
+    return help && ring && Math.abs(help.left - ring.left) < 1 && Math.abs(help.top - ring.top) < 1
+      && Math.abs(help.width - ring.width) < 1 && Math.abs(help.height - ring.height) < 1;
+  });
   const onboardingLayers = await page.evaluate(() => {
     const dialog = document.querySelector('.onboarding-dialog');
     const ring = document.querySelector('.onboarding-target-ring');
@@ -256,7 +262,7 @@ test('admin onboarding uses the same shared tour without admin-only steps', asyn
     await adminPage.waitForSelector('.desktop-nav-btn[data-view="home"]:visible');
     await adminPage.waitForSelector('.onboarding-target-ring');
     await adminPage.waitForFunction(() => {
-      const target = document.querySelector('.desktop-nav-btn[data-view="home"]')?.getBoundingClientRect();
+      const target = document.querySelector('[data-area-tour-open="home"]')?.getBoundingClientRect();
       const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
       return Boolean(target && ring && target.width > 0 && target.height > 0)
         && Math.abs(target!.left - ring!.left) < 1
