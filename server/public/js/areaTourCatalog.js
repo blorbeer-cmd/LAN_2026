@@ -188,14 +188,14 @@ export const AREA_TOURS = {
       s('quantity', 'Menge im Beispiel', 'Zwei Margherita erscheinen als eine Position mit Menge 2. Hinzufügen übernimmt diese Position in deine Gruppe innerhalb der Bestellung.'),
       s('price', 'Einzelpreis und Summe', 'Der Einzelpreis gilt für ein Gericht. Zwei Pizzen zu je 8 Euro ergeben 16 Euro; hinterlegtes Trinkgeld kommt zum persönlichen Anteil hinzu.'),
       s('sum', 'Deinen Anteil prüfen', 'Deine Gruppe sammelt Positionen und Gesamtbetrag. Hinterlegtes Trinkgeld ist bereits in der persönlichen Summe berücksichtigt.', '[data-group-toggle]'),
-      s('freeze', 'Nach dem Abschicken', 'Abschicken friert die Positionen ein. Änderungen sind erst nach erneutem Öffnen möglich; deine offene Zahlung erscheint auf Home.', '[data-close-order]'),
+      s('freeze', 'Nach dem Abschicken', 'Abschicken friert die Positionen ein. Änderungen sind erst nach erneutem Öffnen möglich; deine offene Zahlung erscheint auf Home.', '[data-closed-order]'),
     ]),
     c('pay', 'Bezahlen', [
       s('person', 'Eine Zahlung pro Person', 'Bezahlt gilt für alle Positionen einer Person. Teilnehmer des ausgewählten Events können die Markierung setzen oder korrigieren, solange die Bestellung nicht geschlossen ist.', '[data-toggle-group-paid]'),
       s('paypal', 'PayPal öffnen', 'PayPal übergibt den hinterlegten Empfänger. Bei einem einfachen PayPal.me-Link wird die vollständige Summe ergänzt; unvollständige Preise verhindern die Übergabe.', '[data-group-pay]'),
       s('confirm', 'Bezahlt bestätigen', 'Antworte erst nach deiner Zahlung auf Bezahlt?. Das Öffnen der PayPal-Seite allein markiert noch keine Position als bezahlt.', '[data-group-pay]'),
       s('remind', 'Zahlungserinnerungen', 'Unbezahlte Positionen werden frühestens zwei Stunden nach Abschicken erinnert. Pro Person und Event werden Erinnerungen höchstens alle zwei Stunden erneut fällig.', '[data-toggle-group-paid]'),
-      s('close', 'Geschlossene Bestellung', 'Nach Schließen sind Zahlungsmarkierungen und Metadaten gesperrt. Der Ersteller oder ein Admin kann den letzten Sperrschritt wieder zurücknehmen.', '[data-finalize-order]'),
+      s('close', 'Geschlossene Bestellung', 'Nach Schließen sind Zahlungsmarkierungen und Metadaten gesperrt. Der Ersteller oder ein Admin kann den letzten Sperrschritt wieder zurücknehmen.', '[data-closed-order]'),
     ]),
     c('organise', 'Bestellung organisieren', [
       s('create', 'Bestellung öffnen', 'Lege Titel, Speisekarte, Hinweise, PayPal und geplanten Versand fest. Das Anlegen informiert die berechtigten Teilnehmer.', '#order-new-btn'),
