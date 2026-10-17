@@ -203,7 +203,9 @@ flowTest('area tour examples work without live records and keep nested dialogs u
     if (heading === 'Die Antwortart beachten' || heading === 'Antwort speichern') {
       assert.equal(await example.locator('[data-poll-response="if_needed"]').count(), 2, 'the example demonstrates Passt/Notfalls/Nein');
       assert.equal(await example.locator('[data-save-poll]').isEnabled(), true, 'open feasibility options can be saved');
-      assert.match(await example.locator('.event-poll-answer-chip').textContent() ?? '', /Deine Antwort fehlt/u);
+      const statuses = await example.locator('.event-poll-answer-chip').allTextContents();
+      assert.ok(statuses.length > 0 && statuses.every((text) => /Deine Antwort fehlt/u.test(text)),
+        'header and expanded card both report the incomplete answer');
     }
     if (heading === 'Was das Ergebnis auslöst') {
       const target = await example.locator('.bracket-tree-wrap').evaluate((element) => {
