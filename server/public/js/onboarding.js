@@ -199,7 +199,7 @@ function syncTarget() {
 // (see .onboarding-rating-list in style.css) by mirroring the dialog's own
 // rendered height into a CSS custom property. Re-measured on resize and
 // whenever the dialog's content can change height (progress text digits,
-// "Alle bewerten" widening the list).
+// "Alle Spiele zeigen" widening the list).
 function syncRatingSpacer() {
   const dialog = runtime?.mode === 'rating' ? root()?.querySelector('.onboarding-rating-dialog') : null;
   const height = dialog ? Math.ceil(dialog.getBoundingClientRect().height) : 0;
@@ -325,7 +325,7 @@ function renderRating() {
       <p id="onboarding-rating-copy">${escapeHtml(ONBOARDING_SKILL_COPY)}</p>
       <p class="onboarding-rating-progress" role="status">${progress.completed} von ${progress.required} Spielen mit Skill bewertet.</p>
       <div class="onboarding-actions onboarding-rating-actions">
-        <button type="button" class="btn" data-onboarding-all>Alle bewerten</button>
+        <button type="button" class="btn" data-onboarding-all>Alle Spiele zeigen</button>
         <button type="button" class="btn" data-onboarding-later>Später</button>
         <button type="button" class="btn btn-primary" data-onboarding-finish ${progress.ready ? '' : 'disabled'}>Abschließen</button>
       </div>
