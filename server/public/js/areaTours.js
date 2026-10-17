@@ -116,7 +116,7 @@ export function createAreaTours({ container, getContext }) {
       <p>Entdecke die Funktionen und was deine Aktionen auslösen.</p>
       ${context.area === 'arcade' && !['arcade', 'arcadeWatch'].includes(key) ? '<p class="muted">Die Partie läuft während der Tour weiter. Als Host kannst du sie vorher pausieren, wenn die aktuelle Spielphase es erlaubt.</p>' : ''}
       ${chapters}
-      <p class="muted">Dein Fortschritt bleibt für dieses Konto auf diesem Gerät gespeichert.</p>
+      <p class="muted">Dein Fortschritt bleibt für dieses Konto in diesem Browser gespeichert.</p>
       <div class="area-tour-actions">
         ${resumable ? '<button type="button" class="btn btn-sm" data-tour-restart>Neu starten</button>' : ''}
         <button type="button" class="btn btn-primary btn-sm" data-tour-start>${resumable ? 'Fortsetzen' : progress?.completed ? 'Tour wiederholen' : 'Tour starten'}</button>

@@ -91,6 +91,11 @@ test('real-view demonstration data is consistent, isolated and cannot proxy writ
   response.body.history[0].title = 'Changed';
   assert.equal(history.title, 'Samstagabend');
   assert.equal(createTourDemo('profile', 'account/identity'), null);
+  for (const view of DEMO_VIEWS) {
+    const first = stepsForTour(AREA_TOURS[view] ?? ARCADE_TOURS[view])[0];
+    assert.equal(createTourDemo(view, first.id, {}, now).state.activeEvent.name, demo.state.activeEvent.name,
+      `${view}: the selected example LAN has the same name across all areas`);
+  }
   const home = createTourDemo('home', 'notifications/obsolete', {}, now);
   const overview = createTourDemo('home', 'overview/event', {}, now);
   assert.equal(overview.state.activeEvent.eventType, 'general');

@@ -2,7 +2,7 @@
 export function configureTourDemo(demo, { view, chapter, step, now, admin }) {
   const { state, responses, me } = demo;
   const { players, games, activeEvent } = state;
-  const event = { ...activeEvent, name: 'Herbst-LAN', eventType: 'lan', location: 'Vereinshaus Hamburg',
+  const event = { ...activeEvent, eventType: 'lan', location: 'Vereinshaus Hamburg',
     description: 'Drei Tage gemeinsam spielen', costCents: 3000, accommodationCostCents: 12000,
     paypalLink: 'https://paypal.me/beispiel', paymentDueAt: now + 86_400_000, publishedAt: now,
     createdBy: chapter === 'organise' ? me.id : players[1].id, canManagePayments: chapter === 'organise', isBase: false, isEnded: false, trackingEnabled: false,

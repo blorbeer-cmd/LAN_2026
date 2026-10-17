@@ -23,7 +23,7 @@ export const ARCADE_TOURS = {
       s('join', 'Mitspielen', 'Beitreten belegt einen freien Platz; bei Doppel wählst du dein Team. Bist du schon in einer Lobby, bestätigst du selbst das Verlassen; als Host löst du sie auf.', '[data-join-lobby]'),
       s('ready', 'Bereit melden', 'Gäste melden ihre Bereitschaft. Der Host startet, sobald Teilnehmerzahl und Bereitschaft passen; ein gesperrter Start nennt die fehlende Voraussetzung.', '[data-ready]'),
       s('watch', 'Weiterspielen oder zuschauen', 'Eine laufende eigene Partie bietet Weiterspielen. Zuschauen öffnet eine lesende Ansicht; verborgene Spielinformationen bleiben auch dort verborgen.', '[data-watch-match]'),
-      s('statistics', 'Arcade-Statistik', 'Die Statistik wertet Browserpartien aus. Chimp Test besitzt eine eigene Bestwert-Rangliste und zählt keine normalen Siege oder Niederlagen.', '.collapsible-section'),
+      s('statistics', 'Arcade-Statistik', 'Die Statistik wertet Arcade-Partien aus. Chimp Test besitzt eine eigene Bestwert-Rangliste und zählt keine normalen Siege oder Niederlagen.', '.collapsible-section'),
     ] }],
   },
   quizRoom: room('Gaming-Quiz', [

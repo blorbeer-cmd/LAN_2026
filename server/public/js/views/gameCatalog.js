@@ -221,11 +221,12 @@ function gameRowIconsHtml(game) {
   return `<span class="game-row-links">${linkIcons}${trackIndicator}</span>`;
 }
 
-function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false) {
+export function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false) {
   const bockStats = ratingStats(state.preferences, game.id);
   const skillStats = ratingStats(state.skills, game.id);
   const myBock = myId ? myRating(state.preferences, myId, game.id) : null;
   const mySkill = myId ? myRating(state.skills, myId, game.id) : null;
+  const needsSkill = onboardingRequired && mySkill === null;
 
   const bockRow = ratingRowHtml({
     label: `${icon('flame')} Bock`,
@@ -265,10 +266,10 @@ function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false
     : '';
 
   return `
-    <div class="card game-table-row${isMarkedSuggestion ? ' is-suggestion' : ''}${onboardingRequired ? ' onboarding-required' : ''}" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
+    <div class="card game-table-row${isMarkedSuggestion ? ' is-suggestion' : ''}${needsSkill ? ' onboarding-required' : ''}" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
       <div class="game-row-name">
         <button type="button" class="btn btn-sm game-row-detail-trigger" data-detail="${game.id}">${escapeHtml(game.name)}</button>
-        ${onboardingRequired ? '<span class="badge badge-playing onboarding-required-badge">Skill</span>' : ''}
+        ${needsSkill ? '<span class="badge badge-paused onboarding-required-badge">Skill nötig</span>' : ''}
         ${suggestionBadge}
         ${gameRowIconsHtml(game)}
         ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
