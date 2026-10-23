@@ -17,8 +17,11 @@ import { createKioskHandoff } from '../kioskHandoffs';
 import { getOrRepairActiveEvent } from '../eventContext';
 import { computeFeatureUsage } from '../featureUsage';
 import { isAdminTestMode } from '../testDataVisibility';
+import { welcomeTrailerAdminRouter } from './welcomeTrailerAdmin';
 
 export const adminRouter = Router();
+
+adminRouter.use('/welcome-trailer', requireAdmin, welcomeTrailerAdminRouter);
 
 adminRouter.post('/kiosk-handoff', requireAdmin, (req, res) => {
   const eventId = req.query.eventId;

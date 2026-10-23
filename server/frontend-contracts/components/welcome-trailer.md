@@ -12,9 +12,14 @@ des Modals.
 ## 2. Quelle
 
 - `public/js/onboarding.js`: `renderTrailer()`, `setTrailerState()`, `renderTrailerSound()`,
-  `renderTrailerFullscreen()`, `startTrailer()`, `continueAfterTrailer()`.
+  `renderTrailerFullscreen()`, `startTrailer()`, `continueAfterTrailer()` und
+  `previewWelcomeTrailer()` für die Admin-Vorschau, die weder als gesehen zählt noch die Tour
+  startet.
 - Server: `GET /api/me/onboarding/trailer`, `POST /api/me/onboarding/trailer/seen`,
-  `GET /api/me/onboarding/trailer/video` und `/poster` in `src/routes/onboarding.ts`.
+  `GET /api/me/onboarding/trailer/video` und `/poster` in `src/routes/onboarding.ts`; Dateien,
+  Schalter und Zählung in `src/welcomeTrailer.ts`.
+- Verwaltung: Admin-Karte „Willkommens-Trailer“ in `public/js/views/admin.js` mit den Routen unter
+  `/api/admin/welcome-trailer` (`src/routes/welcomeTrailerAdmin.ts`).
 
 ## 3. CSS-Eigentümerschaft
 

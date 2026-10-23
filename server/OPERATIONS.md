@@ -133,18 +133,29 @@ Jeder Account sieht den LAN-Trailer einmal: neue Accounts direkt vor der Einfüh
 bestehende Accounts beim nächsten Öffnen der App. Test-Spieler sind ausgenommen. Der Server liefert
 das Video selbst aus, damit es in 1440p und auch ohne Internet läuft.
 
-Das Video ist zu groß für das Repository. Es liegt im Ordner `media` neben `DB_FILE`, im
-Docker-Setup also unter `/opt/respawn/data/media/`. `WELCOME_TRAILER_DIR` kann einen anderen Pfad
-setzen. Erwartete Dateien:
+Admins verwalten den Trailer in der App unter Admin → „Willkommens-Trailer“: Video und Standbild
+hochladen oder ersetzen, den Trailer ein- und ausschalten, ihn allen erneut zeigen, eine Vorschau
+ansehen und die Dateien entfernen. Server-Zugang ist dafür nicht nötig.
+
+Die Dateien sind zu groß für das Repository. Sie liegen im Ordner `media` neben `DB_FILE`, im
+Docker-Setup also unter `/opt/respawn/data/media/` auf dem gesicherten Datenvolume.
+`WELCOME_TRAILER_DIR` kann einen anderen Pfad setzen. Dateien:
 
 - `welcome-trailer.mp4`: H.264 und AAC mit `+faststart`, damit die Wiedergabe vor dem vollständigen
-  Download beginnt. Pflicht.
-- `welcome-trailer-poster.jpg`: Standbild vor dem Abspielen. Optional.
+  Download beginnt. Höchstens 95 MB, damit der Upload unter dem 100-MB-Limit des Cloudflare-Tunnels
+  bleibt.
+- `welcome-trailer-poster.jpg`: Standbild vor dem Abspielen. Optional, höchstens 5 MB.
 
-Fehlt `welcome-trailer.mp4`, zeigt die App keinen Trailer und niemand verpasst ihn: Der Status
-„gesehen“ entsteht erst beim Schließen. Eine neue Datei unter demselben Namen ersetzt den Trailer
-ohne Neustart; Browser halten die alte Datei bis zu einen Tag im Cache. Wer den Trailer bereits
-gesehen hat, sieht ihn danach nicht erneut.
+Ein Upload schreibt zuerst in eine temporäre Datei im selben Ordner und ersetzt die alte Datei erst
+nach vollständigem Empfang und Formatprüfung. Ein abgebrochener Upload lässt den laufenden Trailer
+unverändert. Ohne Video zeigt die App keinen Trailer und niemand verpasst ihn: Der Status
+„gesehen“ entsteht erst beim Schließen. Der Schalter „Anzeige“ liegt in `app_state`
+(`welcome_trailer_enabled`); fehlt der Eintrag, gilt „an“. Browser prüfen die Datei bei jedem
+Abspielen per ETag, ein ersetztes Video wirkt also sofort. Wer den Trailer bereits gesehen hat,
+sieht ihn erst nach „Allen erneut zeigen“ wieder.
+
+Reverse-Proxy oder Tunnel vor der App müssen Request-Bodys in Videogröße durchlassen. Der
+Cloudflare-Tunnel erlaubt im kostenlosen Tarif bis 100 MB pro Request; daher die Grenze oben.
 
 ## Produktions-Deployment
 

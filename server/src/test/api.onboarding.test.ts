@@ -249,3 +249,126 @@ test('every account sees the welcome trailer once, only when the operator provid
     fs.rmSync(mediaDir, { recursive: true, force: true });
   }
 });
+
+// A minimal MP4 header ("ftyp" at byte 4) followed by filler bytes.
+function fakeMp4(fill: number, length = 64 * 1024): Buffer {
+  const body = Buffer.alloc(length, fill);
+  Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]).copy(body);
+  return body;
+}
+
+async function claimAccount(name: string, { admin = false } = {}): Promise<{ id: string; cookie: string }> {
+  const id = nanoid();
+  db.prepare('INSERT INTO players (id, name, api_key, is_admin, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    id,
+    name,
+    nanoid(24),
+    admin ? 1 : 0,
+    Date.now(),
+  );
+  ensureDefaultGroupMembership(id, { bootstrapAdmin: admin });
+  const invite = createInvite({ purpose: 'claim', playerId: id, createdBy: id });
+  const claim = await request(app).post('/api/auth/claim').send({ code: invite.code, password: `${name} password` });
+  assert.equal(claim.status, 200, JSON.stringify(claim.body));
+  return { id, cookie: sessionCookie(claim) };
+}
+
+test('admins manage the welcome trailer in the app: upload, switch, show again, remove', async () => {
+  const admin = await claimAccount('Trailer Admin', { admin: true });
+  const member = await claimAccount('Trailer Member');
+  const previousDir = mutableConfig.welcomeTrailerDir;
+  const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-trailer-admin-'));
+  const upload = (asset: string, body: Buffer, type: string) =>
+    request(app).put(`/api/admin/welcome-trailer/${asset}`).set('Cookie', admin.cookie).set('Content-Type', type).send(body);
+  try {
+    mutableConfig.welcomeTrailerDir = mediaDir;
+    assert.equal((await request(app).get('/api/admin/welcome-trailer').set('Cookie', member.cookie)).status, 403);
+    assert.equal(
+      (await request(app).put('/api/admin/welcome-trailer/video').set('Cookie', member.cookie)
+        .set('Content-Type', 'video/mp4').send(fakeMp4(1))).status,
+      403,
+    );
+
+    // A large upload asks for the password before the file is sent.
+    const check = await request(app).post('/api/admin/welcome-trailer/upload-check').set('Cookie', admin.cookie);
+    assert.equal(check.body.code, 'reauth_required');
+    assert.equal((await upload('video', fakeMp4(1), 'video/mp4')).body.code, 'reauth_required');
+    await request(app).post('/api/auth/reauth').set('Cookie', admin.cookie)
+      .send({ password: 'Trailer Admin password' }).expect(204);
+    await request(app).post('/api/admin/welcome-trailer/upload-check').set('Cookie', admin.cookie).expect(204);
+
+    assert.equal((await upload('video', fakeMp4(1), 'application/octet-stream')).status, 415);
+    const notMp4 = await upload('video', Buffer.from('definitely not a video'), 'video/mp4');
+    assert.equal(notMp4.status, 400);
+    assert.equal((await upload('video', Buffer.alloc(0), 'video/mp4')).status, 400);
+    assert.deepEqual(fs.readdirSync(mediaDir), [], 'a rejected upload leaves nothing behind');
+
+    // Two admins replacing the video at once both succeed; the live file is
+    // always one complete upload, never a mix, and no temporary file stays.
+    const first = fakeMp4(1);
+    const second = fakeMp4(2);
+    const [a, b] = await Promise.all([upload('video', first, 'video/mp4'), upload('video', second, 'video/mp4')]);
+    assert.equal(a.status, 200, JSON.stringify(a.body));
+    assert.equal(b.status, 200, JSON.stringify(b.body));
+    const stored = fs.readFileSync(path.join(mediaDir, 'welcome-trailer.mp4'));
+    assert.ok(stored.equals(first) || stored.equals(second));
+    assert.deepEqual(fs.readdirSync(mediaDir), ['welcome-trailer.mp4']);
+
+    assert.equal((await upload('poster', Buffer.from('not a jpeg'), 'image/jpeg')).status, 400);
+    const poster = await upload('poster', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]), 'image/jpeg');
+    assert.equal(poster.status, 200);
+    assert.equal(poster.body.poster.size, 7);
+    assert.equal(poster.body.video.size, 64 * 1024);
+    assert.equal(poster.body.enabled, true);
+
+    const memberTrailer = () => request(app).get('/api/me/onboarding/trailer').set('Cookie', member.cookie);
+    assert.deepEqual((await memberTrailer()).body, { available: true, hasPoster: true, seen: false });
+
+    // Switched off, nobody is asked; the video stays available for previews.
+    const off = await request(app).put('/api/admin/welcome-trailer/settings').set('Cookie', admin.cookie).send({ enabled: false });
+    assert.equal(off.body.enabled, false);
+    assert.equal((await memberTrailer()).body.available, false);
+    assert.equal((await request(app).get('/api/me/onboarding/trailer/video').set('Cookie', admin.cookie)).status, 200);
+    assert.equal(
+      (await request(app).put('/api/admin/welcome-trailer/settings').set('Cookie', admin.cookie).send({ enabled: 'no' })).status,
+      400,
+    );
+    await request(app).put('/api/admin/welcome-trailer/settings').set('Cookie', admin.cookie).send({ enabled: true }).expect(200);
+
+    await request(app).post('/api/me/onboarding/trailer/seen').set('Cookie', member.cookie).expect(200);
+    const counted = await request(app).get('/api/admin/welcome-trailer').set('Cookie', admin.cookie);
+    assert.ok(counted.body.seenCount >= 1);
+    const reset = await request(app).post('/api/admin/welcome-trailer/seen/reset').set('Cookie', admin.cookie);
+    assert.equal(reset.status, 200);
+    assert.ok(reset.body.reset >= 1);
+    assert.equal(reset.body.seenCount, 0);
+    assert.equal((await memberTrailer()).body.seen, false);
+
+    const removed = await request(app).delete('/api/admin/welcome-trailer').set('Cookie', admin.cookie);
+    assert.equal(removed.status, 200);
+    assert.equal(removed.body.video, null);
+    assert.equal(removed.body.poster, null);
+    assert.deepEqual(fs.readdirSync(mediaDir), []);
+    assert.equal((await memberTrailer()).body.available, false);
+  } finally {
+    mutableConfig.welcomeTrailerDir = previousDir;
+    fs.rmSync(mediaDir, { recursive: true, force: true });
+  }
+});
+
+test('without a media folder the trailer admin explains instead of failing', async () => {
+  const admin = await claimAccount('Storage Admin', { admin: true });
+  const previousDir = mutableConfig.welcomeTrailerDir;
+  try {
+    mutableConfig.welcomeTrailerDir = '';
+    await request(app).post('/api/auth/reauth').set('Cookie', admin.cookie)
+      .send({ password: 'Storage Admin password' }).expect(204);
+    const status = await request(app).get('/api/admin/welcome-trailer').set('Cookie', admin.cookie);
+    assert.equal(status.body.storage, false);
+    const upload = await request(app).put('/api/admin/welcome-trailer/video').set('Cookie', admin.cookie)
+      .set('Content-Type', 'video/mp4').send(fakeMp4(3));
+    assert.equal(upload.status, 409);
+  } finally {
+    mutableConfig.welcomeTrailerDir = previousDir;
+  }
+});
