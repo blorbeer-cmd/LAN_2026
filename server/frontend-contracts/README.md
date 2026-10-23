@@ -35,6 +35,7 @@ Control-Selektoren und ihre Zuordnung stehen in der reinen
 | `rankedList.js` | [RankedList](components/ranked-list.md) | `public/css/style.css` |
 | `resultDialog.js` | [Ergebnisformular](components/result-form.md) | `public/css/domains.css` |
 | `match-history-disclosure` | [Match-Historienkachel](components/match-history-tile.md) | `public/css/style.css` |
+| `welcome-trailer-control`, `welcome-trailer-control-glyph`, `welcome-trailer-start` | [Willkommens-Trailer](components/welcome-trailer.md) | `public/css/overlays.css` |
 
 Neue Komponenten oder Varianten verwenden
 [`_contract-template.md`](_contract-template.md). Vertrag, repräsentatives Beispiel und

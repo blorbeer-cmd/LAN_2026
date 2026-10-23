@@ -60,6 +60,16 @@ export const config = {
       : path.join(path.dirname(configuredDbFile), 'backups'),
   backupRetention: Math.max(1, intFromEnv('BACKUP_RETENTION', 20)),
 
+  // The welcome trailer (welcome-trailer.mp4 plus an optional
+  // welcome-trailer-poster.jpg) is too large for the repository. It lives
+  // beside the database, i.e. on the mounted /app/data volume in production;
+  // without the file the app simply skips the trailer.
+  welcomeTrailerDir: process.env.WELCOME_TRAILER_DIR
+    ? path.resolve(process.env.WELCOME_TRAILER_DIR)
+    : configuredDbFile === ':memory:'
+      ? ''
+      : path.join(path.dirname(configuredDbFile), 'media'),
+
   // Append-only, hash-only erasure ledger. Production startup requires an
   // explicit path so operators deliberately place it on storage independent
   // from the SQLite database and its backups.

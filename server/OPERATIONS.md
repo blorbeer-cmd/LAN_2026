@@ -127,6 +127,25 @@ operativen Restore-Pfad.
 Das vollständige Dateninventar, die vorgeschlagenen Fristen und die vor Produktion offenen
 Betreiberentscheidungen stehen in [`docs/privacy-and-retention.md`](../docs/privacy-and-retention.md).
 
+## Willkommens-Trailer
+
+Jeder Account sieht den LAN-Trailer einmal: neue Accounts direkt vor der Einführungstour,
+bestehende Accounts beim nächsten Öffnen der App. Test-Spieler sind ausgenommen. Der Server liefert
+das Video selbst aus, damit es in 1440p und auch ohne Internet läuft.
+
+Das Video ist zu groß für das Repository. Es liegt im Ordner `media` neben `DB_FILE`, im
+Docker-Setup also unter `/opt/respawn/data/media/`. `WELCOME_TRAILER_DIR` kann einen anderen Pfad
+setzen. Erwartete Dateien:
+
+- `welcome-trailer.mp4`: H.264 und AAC mit `+faststart`, damit die Wiedergabe vor dem vollständigen
+  Download beginnt. Pflicht.
+- `welcome-trailer-poster.jpg`: Standbild vor dem Abspielen. Optional.
+
+Fehlt `welcome-trailer.mp4`, zeigt die App keinen Trailer und niemand verpasst ihn: Der Status
+„gesehen“ entsteht erst beim Schließen. Eine neue Datei unter demselben Namen ersetzt den Trailer
+ohne Neustart; Browser halten die alte Datei bis zu einen Tag im Cache. Wer den Trailer bereits
+gesehen hat, sieht ihn danach nicht erneut.
+
 ## Produktions-Deployment
 
 Der Workflow `.github/workflows/deploy.yml` baut bereits in jedem Pull Request das vollständige

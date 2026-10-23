@@ -538,6 +538,10 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
          FROM player_onboarding WHERE player_id = ?`,
         playerId,
       )[0] ?? null,
+      welcomeTrailerSeenAt: rows(
+        'SELECT welcome_trailer_seen_at AS seenAt FROM players WHERE id = ?',
+        playerId,
+      )[0]?.seenAt ?? null,
       notificationState: {
         seen: rows(
           `SELECT push_id AS pushId, seen_at AS seenAt
