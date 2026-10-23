@@ -101,6 +101,39 @@ export async function apiFetch(path, options = {}) {
   return filterTestUsers(body);
 }
 
+// Sends a file as the raw request body with upload progress, which fetch()
+// cannot report. Resolves and rejects like apiFetch (error.status/code).
+function uploadFile(path, file, { contentType, onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('PUT', path);
+    request.setRequestHeader('Content-Type', contentType || file.type || 'application/octet-stream');
+    request.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) onProgress?.(event.loaded / event.total);
+    });
+    request.addEventListener('load', () => {
+      let body = null;
+      try {
+        body = request.responseText ? JSON.parse(request.responseText) : null;
+      } catch {
+        body = null;
+      }
+      if (request.status >= 200 && request.status < 300) {
+        resolve(body);
+        return;
+      }
+      const error = new Error(body?.error || `Fehler ${request.status}`);
+      error.status = request.status;
+      error.code = body?.code;
+      reject(error);
+    });
+    const failed = (message) => () => reject(Object.assign(new Error(message), { status: 0 }));
+    request.addEventListener('error', failed('Der Upload ist fehlgeschlagen. Prüfe die Verbindung.'));
+    request.addEventListener('abort', failed('Der Upload wurde abgebrochen.'));
+    request.send(file);
+  });
+}
+
 // For endpoints that don't return JSON (e.g. the QR code SVG) — apiFetch
 // always tries to JSON.parse the body, which would silently swallow a
 // non-JSON response.
@@ -576,6 +609,18 @@ export const api = {
     cleanupTestUsers: () => apiFetch('/api/admin/test-users', { method: 'DELETE' }),
     featureUsage: (eventId) =>
       apiFetch(`/api/admin/feature-usage${eventId ? `?eventId=${encodeURIComponent(eventId)}` : ''}`),
+    welcomeTrailer: {
+      status: () => apiFetch('/api/admin/welcome-trailer'),
+      uploadCheck: () => apiFetch('/api/admin/welcome-trailer/upload-check', { method: 'POST' }),
+      upload: (asset, file, onProgress) => uploadFile(`/api/admin/welcome-trailer/${asset}`, file, {
+        contentType: asset === 'video' ? 'video/mp4' : 'image/jpeg',
+        onProgress,
+      }),
+      setEnabled: (enabled) =>
+        apiFetch('/api/admin/welcome-trailer/settings', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+      resetSeen: () => apiFetch('/api/admin/welcome-trailer/seen/reset', { method: 'POST' }),
+      remove: () => apiFetch('/api/admin/welcome-trailer', { method: 'DELETE' }),
+    },
   },
 
   feedback: {

@@ -541,6 +541,13 @@ async function continueAfterTrailer() {
   if (runtime?.mode !== 'trailer') return;
   trailerVideo()?.pause();
   void exitTrailerFullscreen();
+  if (runtime.trailerPreview) {
+    // An admin preview only shows the video: it neither counts as seen nor
+    // starts the tour.
+    runtime.trailerPreview = false;
+    closeOverlay();
+    return;
+  }
   runtime.trailer = { ...runtime.trailer, seen: true };
   if (shouldResumeCore()) {
     runtime.mode = 'core';
@@ -655,6 +662,18 @@ function shouldResumeCore() {
 
 function shouldShowTrailer() {
   return Boolean(runtime.trailer?.available && !runtime.trailer.seen);
+}
+
+// Admin preview from the Admin page: plays the current upload right away, also
+// while the trailer is switched off for everyone else.
+export function previewWelcomeTrailer({ hasPoster = false } = {}) {
+  if (!runtime || runtime.mode) return false;
+  runtime.previousFocus = document.activeElement;
+  runtime.trailer = { ...runtime.trailer, hasPoster };
+  runtime.trailerPreview = true;
+  runtime.mode = 'trailer';
+  renderOverlay();
+  return true;
 }
 
 export function maybeStartOnboarding() {

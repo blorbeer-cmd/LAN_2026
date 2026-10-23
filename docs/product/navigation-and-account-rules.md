@@ -179,7 +179,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   under „Owner“, „Admins“ and „Mitglieder“ (members, test players, deactivated accounts), each
   group alphabetical; a row's „Aktion“ menu offers role changes, claim/reset link or test session,
   deactivation or reactivation and deletion. The own account never offers deactivation or deletion
-  there; that stays in Mein Profil. „Testdaten“ creates test players through a small dialog and
+  there; that stays in Mein Profil. „Willkommens-Trailer“ shows „Aktiv“, „Aus“ or „Kein Video“
+  beside the chevron and offers six rows: „Anzeige“ switches the trailer on or off for everyone,
+  „Video“ (MP4) and „Standbild“ (JPEG) upload or replace the files with a progress line,
+  „Gesehen“ counts real accounts that closed it and „Erneut zeigen“ shows it to all of them
+  again, „Vorschau“ plays it for the admin without counting as seen (also while switched off), and
+  „Entfernen“ deletes both files after a confirmation. Uploads, the reset and removal ask for the
+  password first. „Testdaten“ creates test players through a small dialog and
   cleans up every marked test player and test event after a confirmation.
   Admin settings and tools remain visible to owners/admins without the device-local Admin mode.
   That mode is switched in Mein Profil (row „Admin-Modus“ below „Passwort“, admins only) and shown

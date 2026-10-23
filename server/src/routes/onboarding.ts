@@ -1,9 +1,13 @@
-import fs from 'fs';
-import path from 'path';
 import { Router, type Response } from 'express';
-import { config } from '../config';
 import { db } from '../db';
 import { requireUser } from '../sessions';
+import {
+  markWelcomeTrailerSeen,
+  WELCOME_TRAILER_ASSETS,
+  welcomeTrailerFile,
+  welcomeTrailerState,
+  type WelcomeTrailerAsset,
+} from '../welcomeTrailer';
 
 export const onboardingRouter = Router();
 
@@ -256,58 +260,19 @@ onboardingRouter.post('/test-complete', requireUser, (req, res) => {
 });
 
 // ---------- Welcome trailer ----------
-// Shown once per account, independent of the tour. The video file is optional
-// operator data (see config.welcomeTrailerDir); without it nobody is asked.
+// Shown once per account, independent of the tour (see welcomeTrailer.ts).
 
-const WELCOME_TRAILER_VIDEO = 'welcome-trailer.mp4';
-const WELCOME_TRAILER_POSTER = 'welcome-trailer-poster.jpg';
-
-export interface WelcomeTrailerState {
-  available: boolean;
-  hasPoster: boolean;
-  seen: boolean;
-}
-
-function welcomeTrailerFile(name: string): string | null {
-  if (!config.welcomeTrailerDir) return null;
-  const file = path.join(config.welcomeTrailerDir, name);
-  try {
-    return fs.statSync(file).isFile() ? file : null;
-  } catch {
-    return null;
-  }
-}
-
-// Admin-seeded test players count as having seen it: an admin opening a test
-// session wants to check a view, not watch the trailer once per test player.
-function welcomeTrailerState(playerId: string): WelcomeTrailerState {
-  const row = db.prepare('SELECT welcome_trailer_seen_at, is_test FROM players WHERE id = ?').get(playerId) as
-    | { welcome_trailer_seen_at: number | null; is_test: number }
-    | undefined;
-  return {
-    available: welcomeTrailerFile(WELCOME_TRAILER_VIDEO) !== null,
-    hasPoster: welcomeTrailerFile(WELCOME_TRAILER_POSTER) !== null,
-    seen: row?.welcome_trailer_seen_at != null || row?.is_test === 1,
-  };
-}
-
-// COALESCE keeps the first time: repeated or parallel closes from several
-// devices all succeed without overwriting it.
-function markWelcomeTrailerSeen(playerId: string): void {
-  db.prepare('UPDATE players SET welcome_trailer_seen_at = COALESCE(welcome_trailer_seen_at, ?) WHERE id = ?')
-    .run(Date.now(), playerId);
-}
-
-function sendWelcomeTrailerFile(res: Response, name: string, contentType: string): void {
-  const file = welcomeTrailerFile(name);
+function sendWelcomeTrailerFile(res: Response, asset: WelcomeTrailerAsset): void {
+  const file = welcomeTrailerFile(asset);
   if (!file) {
     res.status(404).json({ error: 'Trailer nicht gefunden.' });
     return;
   }
-  // sendFile answers Range requests, which video seeking relies on. The file
-  // only changes on a deliberate redeploy, so a day of private caching is safe.
-  res.type(contentType);
-  res.sendFile(file, { headers: { 'Cache-Control': 'private, max-age=86400' } });
+  // sendFile answers Range requests, which video seeking relies on. Admins can
+  // replace the file at any time, so browsers revalidate via ETag instead of
+  // keeping an old trailer for a day.
+  res.type(WELCOME_TRAILER_ASSETS[asset].contentType);
+  res.sendFile(file, { headers: { 'Cache-Control': 'private, no-cache' } });
 }
 
 onboardingRouter.get('/trailer', requireUser, (req, res) => {
@@ -319,12 +284,14 @@ onboardingRouter.post('/trailer/seen', requireUser, (req, res) => {
   res.json(welcomeTrailerState(req.player!.id));
 });
 
+// Served whenever the file exists, also while the trailer is switched off,
+// so admins can preview an upload before they switch it on.
 onboardingRouter.get('/trailer/video', requireUser, (_req, res) => {
-  sendWelcomeTrailerFile(res, WELCOME_TRAILER_VIDEO, 'video/mp4');
+  sendWelcomeTrailerFile(res, 'video');
 });
 
 onboardingRouter.get('/trailer/poster', requireUser, (_req, res) => {
-  sendWelcomeTrailerFile(res, WELCOME_TRAILER_POSTER, 'image/jpeg');
+  sendWelcomeTrailerFile(res, 'poster');
 });
 
 onboardingRouter.post('/rating/start', requireUser, (req, res) => {

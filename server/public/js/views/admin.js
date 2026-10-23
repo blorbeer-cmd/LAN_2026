@@ -16,6 +16,7 @@ import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 import { getMyId } from '../whoami.js';
 import { currentGroup, refreshGroupContext } from '../groupContext.js';
 import { eventSelectOptions } from '../eventStatus.js';
+import { previewWelcomeTrailer } from '../onboarding.js';
 
 export const REGISTER_INVITE_DURATION_OPTIONS = Object.freeze([
   { value: 24 * 60 * 60 * 1000, label: '24 Stunden' },
@@ -41,7 +42,11 @@ let activeInvitesLoading = false;
 let readiness = null;
 let readinessLoading = false;
 let readinessError = null;
-const adminSectionOpen = { readiness: false, invites: false, accounts: false, test: false };
+let trailerStatus = null;
+let trailerLoading = false;
+let trailerUpload = null;
+let trailerBusy = false;
+const adminSectionOpen = { readiness: false, invites: false, accounts: false, test: false, trailer: false };
 
 const READINESS_STATUS = {
   ready: { label: 'Bereit', icon: 'circleCheck' },
@@ -452,6 +457,215 @@ async function downloadBackup(ctx) {
   }
 }
 
+// ---------- Welcome trailer ----------
+
+const TRAILER_UPLOAD = {
+  video: {
+    label: 'Video',
+    accept: 'video/mp4',
+    maxBytes: 95 * 1024 * 1024,
+    kind: 'MP4-Video',
+    matches: (file) => file.type === 'video/mp4' || /\.mp4$/i.test(file.name),
+  },
+  poster: {
+    label: 'Standbild',
+    accept: 'image/jpeg',
+    maxBytes: 5 * 1024 * 1024,
+    kind: 'JPEG-Bild',
+    matches: (file) => file.type === 'image/jpeg' || /\.jpe?g$/i.test(file.name),
+  },
+};
+
+function formatFileSize(bytes) {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString('de-DE')} KB`;
+}
+
+async function loadTrailerStatus(ctx, force = false) {
+  if (trailerLoading || (trailerStatus && !force)) return;
+  trailerLoading = true;
+  try {
+    trailerStatus = await api.admin.welcomeTrailer.status();
+  } catch (error) {
+    showToast(error.message, { error: true });
+  } finally {
+    trailerLoading = false;
+    ctx.rerender();
+  }
+}
+
+function trailerUploadMeta() {
+  return `Lädt hoch: ${Math.round((trailerUpload?.progress ?? 0) * 100)} %`;
+}
+
+async function uploadTrailerAsset(asset, file, ctx) {
+  const rule = TRAILER_UPLOAD[asset];
+  if (!rule.matches(file)) {
+    showToast(`Bitte ein ${rule.kind} auswählen.`, { error: true });
+    return;
+  }
+  if (file.size > rule.maxBytes) {
+    showToast(`Die Datei ist zu groß (höchstens ${formatFileSize(rule.maxBytes)}).`, { error: true });
+    return;
+  }
+  try {
+    // Ask for the password before the large upload starts, not after it.
+    const allowed = await withStepUp(() => api.admin.welcomeTrailer.uploadCheck(), { title: `${rule.label} hochladen` });
+    if (allowed === undefined) return;
+    trailerUpload = { asset, progress: 0 };
+    ctx.rerender();
+    trailerStatus = await api.admin.welcomeTrailer.upload(asset, file, (progress) => {
+      trailerUpload = { asset, progress };
+      const meta = document.querySelector(`[data-trailer-meta="${asset}"]`);
+      if (meta) meta.textContent = trailerUploadMeta();
+    });
+    showToast(`${rule.label} hochgeladen.`);
+  } catch (error) {
+    showToast(error.message, { error: true });
+  } finally {
+    trailerUpload = null;
+    ctx.rerender();
+  }
+}
+
+async function runTrailerAction(ctx, action, { success, stepUpTitle = '' } = {}) {
+  if (trailerBusy) return;
+  trailerBusy = true;
+  ctx.rerender();
+  try {
+    const result = stepUpTitle ? await withStepUp(action, { title: stepUpTitle }) : await action();
+    if (result === undefined) return;
+    trailerStatus = result;
+    if (success) showToast(typeof success === 'function' ? success(result) : success);
+  } catch (error) {
+    showToast(error.message, { error: true });
+  } finally {
+    trailerBusy = false;
+    ctx.rerender();
+  }
+}
+
+async function resetTrailerSeen(ctx) {
+  if (!(await confirmDialog('Alle Konten sehen den Trailer beim nächsten Öffnen der App noch einmal.', {
+    title: 'Trailer allen erneut zeigen',
+    confirmText: 'Erneut zeigen',
+  }))) return;
+  await runTrailerAction(ctx, () => api.admin.welcomeTrailer.resetSeen(), {
+    stepUpTitle: 'Trailer allen erneut zeigen',
+    success: (result) => (result.reset === 1 ? '1 Konto sieht den Trailer erneut.' : `${result.reset} Konten sehen den Trailer erneut.`),
+  });
+}
+
+async function removeTrailer(ctx) {
+  if (!(await confirmDialog('Video und Standbild werden vom Server gelöscht. Danach sieht niemand mehr den Trailer.', {
+    title: 'Trailer entfernen',
+    confirmText: 'Entfernen',
+    danger: true,
+  }))) return;
+  await runTrailerAction(ctx, () => api.admin.welcomeTrailer.remove(), {
+    stepUpTitle: 'Trailer entfernen',
+    success: 'Trailer entfernt.',
+  });
+}
+
+function trailerFileMeta(asset, info, emptyText) {
+  if (trailerUpload?.asset === asset) return trailerUploadMeta();
+  if (!info) return emptyText;
+  return `${formatFileSize(info.size)} · ${formatDateTime(info.updatedAt)} Uhr`;
+}
+
+function trailerSectionHtml() {
+  const status = trailerStatus;
+  const summary = !status
+    ? ''
+    : !status.video
+      ? '<span class="badge badge-offline">Kein Video</span>'
+      : status.enabled
+        ? '<span class="badge badge-online">Aktiv</span>'
+        : '<span class="badge badge-offline">Aus</span>';
+  let rows;
+  if (!status) {
+    rows = `<div class="profile-rows">${profileRow({ title: 'Status', meta: 'Lädt' })}</div>`;
+  } else if (!status.storage) {
+    rows = `<div class="profile-rows">${profileRow({ title: 'Speicherort', meta: 'Auf diesem Server ist kein Ablageort für Medien eingerichtet' })}</div>`;
+  } else {
+    const busy = trailerBusy || Boolean(trailerUpload);
+    const disabled = busy ? 'disabled' : '';
+    const fileButton = (asset, info) => `<button type="button" class="btn btn-sm" data-trailer-upload="${asset}" ${disabled}>${info ? 'Ersetzen' : 'Hochladen'}</button>
+      <input type="file" hidden accept="${TRAILER_UPLOAD[asset].accept}" data-trailer-file="${asset}" />`;
+    const entries = [
+      {
+        title: 'Anzeige',
+        meta: status.enabled
+          ? (status.video ? 'Jedes Konto sieht ihn einmal beim Öffnen der App' : 'Eingeschaltet, sobald ein Video da ist')
+          : 'Ausgeschaltet, niemand sieht ihn',
+        action: `<button type="button" class="btn btn-sm" data-trailer-enabled="${status.enabled ? 'false' : 'true'}" ${disabled}>${status.enabled ? 'Ausschalten' : 'Einschalten'}</button>`,
+      },
+      {
+        title: 'Video',
+        meta: `<span data-trailer-meta="video">${escapeHtml(trailerFileMeta('video', status.video, 'MP4, noch keins hochgeladen'))}</span>`,
+        action: fileButton('video', status.video),
+      },
+      {
+        title: 'Standbild',
+        meta: `<span data-trailer-meta="poster">${escapeHtml(trailerFileMeta('poster', status.poster, 'Optional, JPEG vor dem Abspielen'))}</span>`,
+        action: fileButton('poster', status.poster),
+      },
+      {
+        title: 'Gesehen',
+        meta: `${status.seenCount} von ${status.accountCount} ${status.accountCount === 1 ? 'Konto' : 'Konten'}`,
+        action: `<button type="button" class="btn btn-sm" id="admin-trailer-reset" ${busy || status.seenCount === 0 ? 'disabled' : ''}>Erneut zeigen</button>`,
+      },
+      {
+        title: 'Vorschau',
+        meta: 'Spielt ihn für dich ab, zählt nicht als gesehen',
+        action: `<button type="button" class="btn btn-sm" id="admin-trailer-preview" ${busy || !status.video ? 'disabled' : ''}>Ansehen</button>`,
+      },
+      {
+        title: 'Entfernen',
+        meta: 'Löscht Video und Standbild vom Server',
+        action: `<button type="button" class="btn btn-sm" id="admin-trailer-remove" ${busy || (!status.video && !status.poster) ? 'disabled' : ''}>Entfernen</button>`,
+      },
+    ];
+    rows = `<div class="profile-rows profile-rows-columns" style="--profile-rows-count:${Math.ceil(entries.length / 2)};">${
+      entries.map((entry, index) => profileRow({ ...entry, className: columnRowClass(index, entries.length) })).join('')
+    }</div>`;
+  }
+  return `<details class="card grouped-page-section collapsible-section" data-admin-section="trailer" aria-labelledby="admin-trailer-title" ${adminSectionOpen.trailer ? 'open' : ''}>
+      <summary class="collapsible-section-header">
+        <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+        <h2 id="admin-trailer-title">Willkommens-Trailer</h2>
+        <span class="collapsible-section-summary-end">${summary}</span>
+      </summary>
+      <div class="collapsible-section-content">${rows}</div>
+    </details>`;
+}
+
+function wireTrailerSection(container, ctx) {
+  container.querySelectorAll('[data-trailer-upload]').forEach((button) => {
+    const input = container.querySelector(`[data-trailer-file="${button.dataset.trailerUpload}"]`);
+    button.addEventListener('click', () => input?.click());
+    input?.addEventListener('change', () => {
+      const file = input.files?.[0];
+      input.value = '';
+      if (file) void uploadTrailerAsset(button.dataset.trailerUpload, file, ctx);
+    });
+  });
+  container.querySelector('[data-trailer-enabled]')?.addEventListener('click', (event) => {
+    const enabled = event.currentTarget.dataset.trailerEnabled === 'true';
+    void runTrailerAction(ctx, () => api.admin.welcomeTrailer.setEnabled(enabled), {
+      success: enabled ? 'Trailer eingeschaltet.' : 'Trailer ausgeschaltet.',
+    });
+  });
+  container.querySelector('#admin-trailer-reset')?.addEventListener('click', () => void resetTrailerSeen(ctx));
+  container.querySelector('#admin-trailer-remove')?.addEventListener('click', () => void removeTrailer(ctx));
+  container.querySelector('#admin-trailer-preview')?.addEventListener('click', () => {
+    if (!previewWelcomeTrailer({ hasPoster: Boolean(trailerStatus?.poster) })) {
+      showToast('Die Vorschau startet, sobald die Einführung beendet ist.', { error: true });
+    }
+  });
+}
+
 async function deactivatePlayer(player, ctx) {
   if (!(await confirmDialog(`Konto „${player.name}“ deaktivieren? Login, Agent, Push und offene Sitzungen werden sofort beendet; Historie und Statistiken bleiben erhalten.`, {
     title: 'Konto deaktivieren',
@@ -655,6 +869,7 @@ function renderPanel(container, ctx) {
   if (adminPlayers === null && !adminPlayersLoading) loadAdminPlayers(ctx);
   if (adminMembers === null && !adminMembersLoading && !adminMembersError) loadAdminMembers(ctx);
   if (activeInvites === null && !activeInvitesLoading) loadActiveInvites(ctx);
+  if (trailerStatus === null && !trailerLoading) loadTrailerStatus(ctx);
   const adminModeActive = isAdmin();
   const trackingEnabled = eventHasFeature(state.activeEvent, 'tracking');
   const seatingEnabled = eventHasFeature(state.activeEvent, 'seating');
@@ -800,13 +1015,20 @@ function renderPanel(container, ctx) {
           ${adminPlayers === null ? emptyStateHtml('Lädt') : accountRows ? `<div class="admin-account-groups">${accountRows}</div>` : emptyStateHtml('Noch keine Spieler')}
         </div>
       </details>
+      ${trailerSectionHtml()}
       ${testSectionHtml}
     </div>
   `;
 
   container.querySelectorAll('[data-admin-section]').forEach((section) => {
     section.addEventListener('toggle', () => {
-      adminSectionOpen[section.dataset.adminSection] = section.open;
+      const key = section.dataset.adminSection;
+      // A re-rendered open <details> fires "toggle" again; only a real
+      // closed-to-open change may reload, or the reload would loop.
+      const opened = section.open && !adminSectionOpen[key];
+      adminSectionOpen[key] = section.open;
+      // The seen count changes whenever someone closes the trailer elsewhere.
+      if (opened && key === 'trailer') loadTrailerStatus(ctx, true);
     });
   });
   container.querySelector('#admin-register-link')?.addEventListener('click', () => openRegisterInviteDialog(ctx));
@@ -845,6 +1067,7 @@ function renderPanel(container, ctx) {
   container.querySelector('#admin-readiness-retry')?.addEventListener('click', (event) =>
     loadReadiness(ctx, true, event.currentTarget.id));
   container.querySelector('#admin-members-retry')?.addEventListener('click', () => loadAdminMembers(ctx, true));
+  wireTrailerSection(container, ctx);
 }
 
 export function renderAdmin(container, ctx) {
