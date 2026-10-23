@@ -869,6 +869,47 @@ test('a permanently open group can be tracked once the organizer starts it', () 
   ]);
 });
 
+test('a first-time "Nicht erlauben" survives a later standing default and tracking start', async () => {
+  const app = createTestApp();
+  const member = createMember('Declined First');
+  const event = createEvent('Abgelehntes LAN', {
+    groupId: DEFAULT_GROUP_ID,
+    startsAt: Date.now() - 1_000,
+    endsAt: Date.now() + 3_600_000,
+  });
+  db.prepare(
+    `INSERT OR REPLACE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')`,
+  ).run(event.id, member.id);
+  ensureAccountEventContext(member.id, event.id);
+
+  const declined = await request(app)
+    .post(`/api/events/${event.id}/tracking-consent`)
+    .set('Cookie', member.cookie)
+    .send({ granted: false });
+  assert.equal(declined.status, 200, JSON.stringify(declined.body));
+  const standing = await request(app)
+    .post('/api/privacy/tracking-default')
+    .set('Cookie', member.cookie)
+    .send({ enabled: true, textVersion: TRACKING_CONSENT_TEXT_VERSION });
+  assert.equal(standing.status, 200, JSON.stringify(standing.body));
+
+  assert.equal(startTracking(event.id).ok, true);
+  assert.equal(
+    db.prepare('SELECT 1 FROM event_tracking_consents WHERE event_id = ? AND player_id = ?').get(event.id, member.id),
+    undefined,
+    'the default never answers an event the account already declined',
+  );
+  assert.deepEqual(activeTrackingContexts(member.id), []);
+
+  // Changing one's mind stays a manual grant away.
+  const granted = await request(app)
+    .post(`/api/events/${event.id}/tracking-consent`)
+    .set('Cookie', member.cookie)
+    .send({ granted: true, textVersion: TRACKING_CONSENT_TEXT_VERSION });
+  assert.equal(granted.status, 200, JSON.stringify(granted.body));
+  assert.deepEqual(activeTrackingContexts(member.id), [{ groupId: DEFAULT_GROUP_ID, eventId: event.id, weight: 1 }]);
+});
+
 test('the standing consent default only applies to the wording it was agreed under', async () => {
   const app = createTestApp();
   const member = createMember('Auto Consent');

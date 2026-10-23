@@ -638,6 +638,13 @@ function votesButtonHtml(h) {
   return h.anonymous ? '' : `<button type="button" class="btn btn-sm" data-open-vote-round="${escapeHtml(String(h.round))}">Stimmen ansehen</button>`;
 }
 
+// Admins can remove a finished round with all its ballots for good; the
+// trash button stays in the header, visible while the card is collapsed.
+function deleteRoundHtml(round) {
+  if (!isGroupAdmin()) return '';
+  return `<button type="button" class="btn btn-sm btn-square" data-vote-delete="${escapeHtml(String(round))}" aria-label="Abstimmung löschen" title="Abstimmung löschen">${icon('trash')}</button>`;
+}
+
 // Collapsed like an Umfrage card: the header keeps the round, its winner and
 // the actions visible; the full result opens below it.
 function renderLatestVoteCard({ showRunoff }) {
@@ -666,6 +673,7 @@ function renderLatestVoteCard({ showRunoff }) {
         </button>
         <div class="event-poll-card-side">
           ${votesButtonHtml(h)}
+          ${deleteRoundHtml(h.round)}
           ${showRunoff ? '<button type="button" class="btn btn-primary btn-sm" id="votes-runoff">Stichwahl starten</button>' : ''}
           ${matchSelections(h).length ? `<button type="button" class="btn btn-primary btn-sm" id="votes-generate-match" data-generate-vote-match="${h.round}">Match generieren</button>` : ''}
         </div>
@@ -706,7 +714,7 @@ function renderHistory() {
                 ${winners.length ? `<span class="event-poll-history-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : '<span class="muted">Keine Stimmen</span>'}
               </span>
             </button>
-            <div class="event-poll-card-side">${votesButtonHtml(h)}${matchSelections(h).length ? `<button type="button" class="btn btn-sm" data-generate-vote-match="${round}">Match generieren</button>` : ''}</div>
+            <div class="event-poll-card-side">${votesButtonHtml(h)}${deleteRoundHtml(h.round)}${matchSelections(h).length ? `<button type="button" class="btn btn-sm" data-generate-vote-match="${round}">Match generieren</button>` : ''}</div>
           </header>
           <div class="stack event-poll-card-content" id="vote-history-result-${round}" ${expanded ? '' : 'hidden'}>
             ${expanded ? renderVoteResultContent(h) : ''}
@@ -1267,6 +1275,22 @@ export function renderVotes(container, ctx) {
         ctx.rerender();
         showToast('Abstimmung beendet.');
       } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-vote-delete]').forEach((deleteBtn) => {
+    deleteBtn.addEventListener('click', async () => {
+      if (!(await confirmDialog('Die Abstimmung wird einschließlich aller abgegebenen Stimmen dauerhaft gelöscht.', { title: 'Abstimmung löschen?', confirmText: 'Löschen', danger: true }))) return;
+      deleteBtn.disabled = true;
+      try {
+        await api.votes.deleteRound(Number(deleteBtn.dataset.voteDelete));
+        invalidateVoteHistory();
+        ctx.rerender();
+        showToast('Abstimmung gelöscht.');
+      } catch (err) {
+        deleteBtn.disabled = false;
         showToast(err.message, { error: true });
       }
     });

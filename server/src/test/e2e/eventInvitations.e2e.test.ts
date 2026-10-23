@@ -346,6 +346,14 @@ test('manager invites a member who accepts and both open clients update', async 
   const acceptButton = memberPage.locator(`[data-home-todo="event-invitation:${eventId}"] [data-accept-invitation]`);
   await acceptButton.focus();
   await acceptButton.press('Enter');
+  // The accepted, tracking event now asks for the personal tracking decision
+  // on Home; the answer is given on the consent text itself.
+  const trackingTodo = memberPage.locator(`[data-home-todo="tracking-consent:${eventId}"]`);
+  await trackingTodo.locator('[data-todo-action="tracking"]').click();
+  const consentDialog = memberPage.locator('.modal', { hasText: 'Spiele-Tracking entscheiden' });
+  await consentDialog.locator('[data-todo-tracking-answer="decline"]').waitFor();
+  await consentDialog.locator('[data-todo-tracking-answer="grant"]').click();
+  await trackingTodo.waitFor({ state: 'detached' });
   await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'profile' })));
   await memberPage.waitForSelector('#view-container[data-view="profile"]');
   const openAcceptedEvent = memberPage.locator(`[data-open-accepted-event="${eventId}"]`);
@@ -354,10 +362,14 @@ test('manager invites a member who accepts and both open clients update', async 
   const eventConsent = memberPage.locator(`[data-consent-event="${eventId}"]`);
   await eventConsent.waitFor({ state: 'attached' });
   await memberPage.click('[data-profile-section="privacy"] > summary');
-  assert.equal(await eventConsent.isEnabled(), true, 'the accepted event offers consent without reloading the page');
-  await eventConsent.click();
+  // Mein Profil shows the decision made on Home and keeps it changeable.
   await memberPage.waitForSelector(`[data-consent-event="${eventId}"][aria-pressed="true"]`);
   assert.equal(await memberPage.locator(`[data-consent-event="${eventId}"]`).textContent(), 'Widerrufen');
+  await memberPage.locator(`[data-consent-event="${eventId}"]`).click();
+  await memberPage.waitForSelector(`[data-consent-event="${eventId}"][aria-pressed="false"]`);
+  assert.equal(await eventConsent.isEnabled(), true, 'a revoked consent can be granted again without reloading the page');
+  await eventConsent.click();
+  await memberPage.waitForSelector(`[data-consent-event="${eventId}"][aria-pressed="true"]`);
   await memberPage.locator(`[data-consent-event="${eventId}"]`).click();
   await memberPage.waitForSelector(`[data-consent-event="${eventId}"][aria-pressed="false"]`);
   await memberPage.click('#notifications-btn');
@@ -510,11 +522,14 @@ test('manager invites a member who accepts and both open clients update', async 
   });
   // If cancellation arrives after the card rendered, the fresh handoff check
   // must close its placeholder tab before navigating to a payment provider.
-  await memberPage.route(`${BASE_URL}/api/events/${eventId}`, async (route) => {
-    const response = await route.fetch();
-    const event = await response.json();
-    await route.fulfill({ response, json: { ...event, status: 'cancelled' } });
-  }, { times: 1 });
+  // Read the real contract before intercepting: an extra server request from
+  // inside a paused browser request must not hold the handoff open.
+  const paymentEventResponse = await memberPage.request.get(`${BASE_URL}/api/events/${eventId}`);
+  assert.equal(paymentEventResponse.status(), 200, await paymentEventResponse.text());
+  const paymentEvent = await paymentEventResponse.json();
+  await memberPage.route(`${BASE_URL}/api/events/${eventId}`, (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ ...paymentEvent, status: 'cancelled' }),
+  }), { times: 1 });
   const cancelledPaymentRefresh = memberPage.waitForResponse(
     (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
   );
@@ -525,6 +540,7 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.equal(await memberPage.evaluate(
     () => (window as unknown as { __eventPaymentPopup: { location: string } }).__eventPaymentPopup.location,
   ), '');
+  await memberPage.locator('.toast-error', { hasText: 'Das Event wurde abgesagt. Eine Zahlung ist nicht mehr möglich.' }).waitFor();
   await cancelledPaymentRefresh;
   await paypalButton.click();
   await memberPage.waitForFunction(
@@ -888,7 +904,10 @@ test('starting tracking refreshes a standing consent already shown in the profil
   await memberPage.waitForSelector('#view-container[data-view="profile"]');
   const consentPressed = (id: string) => memberPage.locator(`[data-consent-event="${id}"]`).getAttribute('aria-pressed');
   await memberPage.locator(`[data-consent-event="${trackingEventId}"]`).waitFor({ state: 'attached' });
-  await memberPage.click('[data-profile-section="privacy"] > summary');
+  const privacy = memberPage.locator('[data-profile-section="privacy"]');
+  if (!(await privacy.evaluate((element) => (element as HTMLDetailsElement).open))) {
+    await privacy.locator('summary').click();
+  }
   assert.equal(await consentPressed(trackingEventId), 'false');
   await memberPage.click('#privacy-auto-consent');
   await memberPage.waitForSelector('#privacy-auto-consent[aria-pressed="true"]');

@@ -149,11 +149,6 @@ test('new accounts can complete onboarding without catalog ratings', async () =>
   assert.equal(demoted.status, 200, JSON.stringify(demoted.body));
 
   for (const game of games.slice(1, 10)) {
-    const bock = await request(app)
-      .put('/api/preferences')
-      .set('Cookie', memberCookie)
-      .send({ playerId: memberRegister.body.id, gameId: game.id, rating: 5 });
-    assert.equal(bock.status, 200, JSON.stringify(bock.body));
     const skill = await request(app)
       .put('/api/skills')
       .set('Cookie', memberCookie)
@@ -168,13 +163,11 @@ test('new accounts can complete onboarding without catalog ratings', async () =>
   assert.equal(replacementRequired.status, 409, JSON.stringify(replacementRequired.body));
   assert.deepEqual(replacementRequired.body.missingGameIds, [games[10].id]);
 
-  for (const kind of ['preferences', 'skills']) {
-    const rating = await request(app)
-      .put(`/api/${kind}`)
-      .set('Cookie', memberCookie)
-      .send({ playerId: memberRegister.body.id, gameId: games[10].id, rating: 5 });
-    assert.equal(rating.status, 200, JSON.stringify(rating.body));
-  }
+  const rating = await request(app)
+    .put('/api/skills')
+    .set('Cookie', memberCookie)
+    .send({ playerId: memberRegister.body.id, gameId: games[10].id, rating: 0 });
+  assert.equal(rating.status, 200, JSON.stringify(rating.body));
 
   const completed = await request(app)
     .post('/api/me/onboarding/rating/complete')
@@ -183,6 +176,8 @@ test('new accounts can complete onboarding without catalog ratings', async () =>
   assert.equal(completed.status, 200, JSON.stringify(completed.body));
   assert.equal(completed.body.status, 'completed');
   assert.equal(completed.body.ratingStatus, 'completed');
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM preferences WHERE player_id = ?').get(memberRegister.body.id) as { count: number }).count, 0,
+    'Skill alone completes the optional rating round; Bock is not required');
 
   const all = await request(app)
     .post('/api/me/onboarding/rating/start')

@@ -55,6 +55,7 @@ export function openFeedbackModal(view) {
       </div>
     </form>`,
     {
+      tourKey: 'feedback',
       onMount: (el) => {
         modalEl = el;
         const toggle = el.querySelector('#feedback-sentiment-toggle');

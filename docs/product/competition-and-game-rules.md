@@ -200,14 +200,18 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   filters, „Bock offen“ and „Skill offen“, narrow the list to games the current identity hasn't
   rated yet on that facet; both active at once is an AND, unlike the genre chips'
   OR-within-one-facet semantics.
-  The first-login onboarding uses the same catalog rows in a temporary rating mode. The first ten
-  required games are marked with the textual `Pflicht` badge and an accent rail; the list can be
-  expanded to all catalog games, but completion still requires both ratings for the required set.
+  The first-login tour completes without ratings. It recommends entering Skill before the LAN
+  for balanced teams; Bock stays optional and can be adopted from Votes. The retained optional
+  rating mode uses the same catalog rows. Among its first ten games, only games missing the
+  player's own Skill carry the amber `Skill nötig` badge and the required-row highlight. Both
+  disappear once Skill is saved, including a deliberate 0; Bock alone does not remove them.
+  The list can be expanded to all catalog games, but completion requires only Skill for the
+  first ten games, including 0. The initial keyboard focus points to a missing Skill scale.
   If a required game is demoted or removed while the round is open, the server reconciles the
   candidate list against the current catalog and fills the vacancy from the next ranked game.
   Test-player ratings are excluded from this ranking because those players are hidden in normal
   member views. `Später` persists a deferred round, restores the normal catalog for the current
-  session and resumes the rating panel on the next login.
+  session.
 
 ## Arcade
 
@@ -433,7 +437,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   the client tells rounds apart by number and start time and never carries a cancelled round's
   ballot over.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
-  closed and retains its open state across live re-renders.
+  closed and retains its open state across live re-renders. Rounds that ended without a single
+  submitted ballot are not listed there. Community admins can delete a finished round with all of
+  its ballots from „Letzter Vote“ and „Historie“ after confirming.
 - **Tournament overview** — Match lists running tournaments as compact „Aktuell“ style rows above its setup. These whole-row actions highlight on pointer hover and show keyboard focus, without a trailing chevron or „Öffnen“ label. The selected game's „Ohne Ergebnis“ section keeps running tournaments as collapsible history tiles; completed tournaments belong in the history filter. Every tournament starts from a Match draw or Captain
   Draft; there is no separate creation page or tournament tab. Legacy `#tournaments` and
   `#tournaments/new` routes replace themselves with `#matchmaking`. A tournament detail link keeps

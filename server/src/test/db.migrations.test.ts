@@ -97,13 +97,13 @@ test('migration 119 keeps existing tournaments as regularly ended and is repeata
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 121 lets existing accounts see the welcome trailer once and is repeatable', () => {
+test('migration 122 lets existing accounts see the welcome trailer once and is repeatable', () => {
   const dbFile = makeTempDbPath('welcome-trailer-seen');
   runMigrations(dbFile);
   const fixture = new Database(dbFile);
   fixture.exec('ALTER TABLE players DROP COLUMN welcome_trailer_seen_at');
   fixture.prepare("INSERT INTO players (id, name, api_key, created_at) VALUES ('legacy-player', 'Legacy Player', 'legacy-key', ?)").run(Date.now());
-  fixture.prepare('DELETE FROM schema_migrations WHERE version = 121').run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 122').run();
   fixture.close();
 
   runMigrations(dbFile);
@@ -169,6 +169,29 @@ test('migration 118 adds the Vote round creator without touching existing rounds
     createdBy: string | null;
   };
   assert.deepEqual(row, { round: 1, createdBy: null });
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 121 adds the tracking decline once and leaves existing participants undecided', () => {
+  const dbFile = makeTempDbPath('tracking-decline');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.prepare("INSERT INTO players (id, name, api_key, created_at) VALUES ('decline-player', 'Decline', 'decline-key', 1)").run();
+  fixture.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES ('instance-base-event', 'decline-player', 'accepted')").run();
+  fixture.exec('ALTER TABLE event_participants DROP COLUMN tracking_consent_declined_at');
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 121').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  const columns = migrated.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  assert.equal(columns.filter((column) => column.name === 'tracking_consent_declined_at').length, 1);
+  assert.deepEqual(
+    migrated.prepare("SELECT tracking_consent_declined_at AS declinedAt FROM event_participants WHERE player_id = 'decline-player'").get(),
+    { declinedAt: null },
+  );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
@@ -912,10 +935,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 121);
+  assert.equal(migrations.length, 122);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 121 }, (_, index) => index + 1),
+    Array.from({ length: 122 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1517,8 +1540,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 121 }, (_, index) => index + 1),
-    'every version 1..121 runs exactly once',
+    Array.from({ length: 122 }, (_, index) => index + 1),
+    'every version 1..122 runs exactly once',
   );
 });
 

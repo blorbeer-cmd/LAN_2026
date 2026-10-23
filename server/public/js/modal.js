@@ -49,7 +49,7 @@ function trapTabFocus(event, backdrop) {
 // title (a dialog's primary action, e.g. "Eintrag anlegen").
 // closeButton: false drops the header's X for a pure reference dialog;
 // Escape and a tap outside still close it.
-export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, headerAction = '', closeButton = true } = {}) {
+export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, headerAction = '', closeButton = true, closeOnBackdrop = true, tourKey = null, isolateKeys = false } = {}) {
   const previousFocus = document.activeElement;
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -72,7 +72,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
   const close = () => {
     if (closed) return;
     closed = true;
-    document.removeEventListener('keydown', onKeydown);
+    document.removeEventListener('keydown', onKeydown, isolateKeys);
     backdrop.remove();
     onClose?.();
     if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
@@ -92,6 +92,9 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
   };
   const onKeydown = (e) => {
     if (!isTopmostModal(backdrop)) return;
+    // Capture isolated keys even after clicking text moves focus to body.
+    // This runs before the document/window bubble listeners used by games.
+    if (isolateKeys) e.stopPropagation();
     // An Escape already spent inside the dialog (an open help panel) must
     // not also close the dialog.
     if (e.key === 'Escape' && !e.defaultPrevented) requestClose();
@@ -109,15 +112,16 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
     pointerDownOnBackdrop = e.target === backdrop;
   });
   backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop && pointerDownOnBackdrop) requestClose();
+    if (closeOnBackdrop && e.target === backdrop && pointerDownOnBackdrop) requestClose();
   });
   backdrop.querySelector('[data-close]')?.addEventListener('click', requestClose);
-  document.addEventListener('keydown', onKeydown);
+  document.addEventListener('keydown', onKeydown, isolateKeys);
 
   if (onMount) onMount(backdrop, close);
   if (!backdrop.contains(document.activeElement)) {
     backdrop.querySelector('input, select, textarea, button, a[href]')?.focus();
   }
+  if (tourKey) document.dispatchEvent(new CustomEvent('respawn:dialog-opened', { detail: { tourKey, el: backdrop } }));
   return { el: backdrop, close };
 }
 

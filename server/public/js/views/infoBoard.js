@@ -273,6 +273,7 @@ export function openInfoBoard({ focusEntryId = null } = {}) {
   if (cache === null) load();
   const canEdit = isGroupAdmin();
   const { el } = openModal('Info', bodyHtml(), {
+    tourKey: 'info',
     headerAction: canEdit ? '<button type="button" class="btn btn-primary btn-sm" id="info-new-btn">Eintrag anlegen</button>' : '',
     closeButton: false,
     onClose: () => {

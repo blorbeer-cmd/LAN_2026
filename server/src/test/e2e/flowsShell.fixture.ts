@@ -1430,11 +1430,12 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     const title = row.querySelector('h1')?.getBoundingClientRect();
     if (!title) throw new Error('Feedback header title is missing');
     return {
-      buttons: row.querySelectorAll('button').length,
+      tourButtons: row.querySelectorAll('button[data-area-tour-open="adminFeedback"]').length,
+      otherButtons: row.querySelectorAll('button:not([data-area-tour-open])').length,
       titleInset: Math.round(title.left - row.getBoundingClientRect().left),
     };
   });
-  assert.deepEqual(feedbackHeaderLayout, { buttons: 0, titleInset: 0 });
+  assert.deepEqual(feedbackHeaderLayout, { tourButtons: 1, otherButtons: 0, titleInset: 0 });
   await page.setViewportSize({ width: 390, height: 844 });
   // The same role gate applies to the wide-viewport desktop rail, which
   // filters `.desktop-nav-btn` entries independently of the old bottom-nav

@@ -347,7 +347,14 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   upcoming accepted event into the calendar until „Eingetragen“ is confirmed, answer a pending
   event invitation, finish a taken To-Do or Mitbring-Anfrage („Überfällig“ once its due day is
   over), enter the arrival for an event starting within 14 days whose An- und Abreise area is
-  enabled, and rate the skill of a game being played right now. While no To-Do of the active event
+  enabled, rate the own skill for the catalog („Skill für n Spiele eintragen“, one row while an
+  event with the Spiele area starts within 14 days and a catalog game has no own rating; „nie
+  gespielt“ counts as rated), decide about game tracking for an event with Spiele-Tracking from 14
+  days before its start until its period is over (a group: while it is open), and rate the skill
+  of a game being played right now. The tracking row's „Entscheiden“ opens the consent text with
+  two equally weighted answers, „Nicht erlauben“ and „Erlauben“; either answer, a revoked consent
+  or the Vorab-Zustimmung (for an event whose tracking has not started yet) settles it, and Mein
+  Profil keeps the decision changeable. While no To-Do of the active event
   is taken, one row points to the shared pool's still-open To-Dos. Left-behind workflows reach only
   the people who can close them: „Event beenden“ for group admins 12 hours after an event's period
   ended; „Sammelbestellung abschicken“ for its creator or group admins 2 hours after the planned
@@ -363,7 +370,7 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   itself navigates to where the To-Do lives — switching the workspace first when it belongs to
   another event — and a trailing action slot settles it in place: „Bezahlen“ (PayPal, then „Bezahlt?“)
   plus the „Bezahlt“ marker, „Eintragen“ (a dialog with „Google“, „Outlook“, „Download“ and
-  „Eingetragen“), „Ablehnen“/„Annehmen“, „Erledigt“, „Abschicken“ or „Beenden“ behind a
+  „Eingetragen“), „Entscheiden“, „Ablehnen“/„Annehmen“, „Erledigt“, „Abschicken“ or „Beenden“ behind a
   confirmation. Event-level actions work from any workspace; actions on an event's orders, To-Dos,
   Votes and tournaments are offered only inside that event's workspace, elsewhere the row leads
   there first. Rows name their event when it is not the active one; overdue is spelled out in text,
@@ -394,12 +401,52 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
 
 ## Erstlogin
 
+### Manuelle Bereichstouren
+
+- Ein Fragezeichen unmittelbar am geöffneten Bereichstitel öffnet ein kompaktes Hilfemodal.
+  Der Besuch eines Bereichs startet keine Tour automatisch. Info und Feedback bieten denselben
+  Einstieg in ihrer Dialogüberschrift; Turnierdetails und Arcade-Spielräume haben eigene Touren.
+- Das Modal bietet die gesamte Tour und bei größeren Bereichen einzelne Kapitel. Ein begonnener
+  Durchlauf kann fortgesetzt oder neu gestartet, ein abgeschlossener wiederholt werden.
+  Die Wiederaufnahme folgt dem zuletzt begonnenen Kapitel beziehungsweise der gesamten Tour.
+- Ein Schritt enthält höchstens 30 Wörter und erklärt eine Funktion oder Folgeaktion. Die Tour
+  hebt vorhandene Elemente hervor und klappt benötigte Details auf. Das Tourmodal zeigt nur
+  Erklärung und Navigation. Home, Events & Gruppen, Spiele, Vote, Umfragen, An-/Abreise,
+  To-Do/Packliste, Essen, Match/Turnier, Durchsage, Jam und Arcade führen Beispiele direkt in
+  der normalen Oberfläche vor, auch bei leeren echten Datenbeständen.
+  Die getrennte lokale Demo verwendet die normalen Ansichten und Dialoge mit Beispieldaten;
+  zusammengehörige Schritte zeigen Zustandswechsel wie Vote-Anlegen → Stimmzettel → Ergebnis.
+  Reine Hervorhebungswechsel behalten die Ansicht einschließlich offener Formulare. Die Demo
+  füllt den Viewport mit normalen Abständen und Breakpoints. Andere Bereiche zeigen ihre echte
+  vorhandene Oberfläche. Generische Ersatzkarten entfallen.
+  Die Demo hat keinen schreibenden Zugriff auf Server oder persönlichen Browserspeicher.
+  Die Tour erzeugt keine echten Fachaktionen,
+  Benachrichtigungen, Bestellungen, Zahlungen oder Ergebnisse.
+- Eine laufende Tour endet über Tour beenden, X, Escape oder Abschließen. Ein Klick außerhalb
+  beendet sie nicht. Beenden entfernt sämtliche Beispiele und stellt aufgeklappte Details,
+  Scrollposition und Fokus wieder her; echte Formulare werden durch die Beispiele nicht verändert.
+- Rollen, verfügbare Bereiche und Eventfeatures bestimmen die angebotenen Kapitel. Ein Wechsel
+  des Kontos, Events, der Route oder Rolle schließt den aktuellen Durchlauf. Reine
+  Live-Aktualisierungen derselben Ansicht behalten ihn und aktualisieren die Hervorhebung.
+- Fortschritt wird versioniert nach Konto, Bereich und Kapitel in diesem Browser gespeichert,
+  getrennt vom serverseitigen Erstlogin-Onboarding. Er enthält nur Schritt-ID und Abschlussstatus.
+  Ein gelöschter oder gesperrter Browserspeicher verhindert die Hilfe nicht.
+- Die Tour erklärt insbesondere Vote → Bock/Match, Umfragen → manuell gepflegte Eventdaten,
+  Kalenderbestätigung/Terminänderung, Fahrgemeinschaft → persönliche Zeiten, Match/Turnier →
+  Rangliste, Bestellzustände/PayPal-Bestätigung und die jeweiligen Erinnerungsregeln.
+
+### Initiale Orientierung
+
 - The first-login core tour is a true modal: `#app` is inert, focus cycles inside the dialog,
-  Escape skips the explanatory steps into the required rating mode, and focus returns to the
-  previous control after completion. The rating panel is intentionally non-modal so its rating buttons
+  Escape ends the explanatory tour without requiring ratings, and focus returns to the
+  previous control after completion. Home highlights its question mark to introduce the short area tours; navigation is only a fallback
+  when the help control is unavailable. Examples are offered in the documented demo areas. The last step asks players to enter Skill in the game list
+  before the LAN so teams can be balanced. Bock is optional and can be adopted from Votes during
+  the LAN. The legacy optional rating panel requires Skill alone (including 0); its server and
+  browser completion checks never require Bock. The rating panel is intentionally non-modal so its rating buttons
   remain usable; it stays below the shared modal layer so game details and other forms remain
   operable.
-- Immediately after Home, the tour highlights the event switcher in the topbar for members and
+- After the personal profile and Orga, the tour highlights the event switcher in the topbar for members and
   admins. It explains how to select the active event and that this choice scopes available areas,
-  event data and actions. Orga's Events page is the overview and admin management surface; the
+  event data and actions. Events & Gruppen is the separate overview and admin management surface; the
   analytics event filter remains a separate admin-only tour step.

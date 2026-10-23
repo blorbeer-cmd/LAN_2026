@@ -11,6 +11,9 @@ const SHARED_DOMAIN_ICONS = Object.freeze({
   infoBoard: 'info',
   live: 'radioTower',
   skill: 'activity',
+  // The personal game-tracking decision is a privacy question, not the live
+  // board itself.
+  tracking: 'shield',
   feedback: 'messageSquare',
   // The Broadcast newsticker is playful invented news, deliberately not the
   // megaphone of a real Durchsage.

@@ -33,6 +33,7 @@ import { initGroupContext, refreshGroupContext } from './groupContext.js';
 import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
 import { navGroupForView } from './sectionNav.js';
 import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
+import { createAreaTours } from './areaTours.js';
 import { captureViewRenderState, restoreViewRenderState } from './viewRenderState.js';
 import { realtimeEventAffectsView } from './realtimeRefreshPolicy.js';
 import { viewIsEnabledForEvent } from './eventFeatures.js';
@@ -69,6 +70,20 @@ let sharedRefreshPromise = null;
 let sharedRefreshDirty = false;
 let sharedRefreshShouldRender = false;
 let pendingEventActivations = 0;
+
+const areaTours = createAreaTours({
+  container: viewContainer,
+  getContext: () => ({
+    view: currentView,
+    route: currentLocalRoute,
+    area: viewDefinition(currentView)?.area,
+    accountId: getMyId(),
+    event: state.activeEvent,
+    admin: currentPlayerHasAdminRole(),
+    enabled: viewIsEnabledForEvent(currentView, state.activeEvent)
+      && (!viewRequiresAdminRole(currentView) || currentPlayerHasAdminRole()),
+  }),
+});
 
 function syncArcadeStylesheet(entry) {
   const linkId = 'arcade-stylesheet';
@@ -559,6 +574,7 @@ function wireEventContextSwitcher() {
 }
 
 function renderCurrent({ preserveState = true } = {}) {
+  areaTours.sync();
   if (startupData.ready && !viewIsEnabledForEvent(currentView, state.activeEvent)) {
     switchView('home', { replace: true });
     showToast('Dieser Bereich ist für das aktive Event nicht aktiviert.');
@@ -609,6 +625,7 @@ function focusPendingViewHeading() {
 }
 
 function finishRenderedViewFocus() {
+  areaTours.sync();
   if (!focusPendingSearchTarget()) focusPendingViewHeading();
 }
 

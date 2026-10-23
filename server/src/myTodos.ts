@@ -2,7 +2,8 @@
 // across every open event of the group, in one read. Two audiences:
 //
 // - personal: obligations of this account (pay, add the date to the
-//   calendar, finish a taken To-Do, enter the arrival).
+//   calendar, finish a taken To-Do, and before an event: enter the arrival,
+//   rate the own skill for the catalog, decide about game tracking).
 // - orga: workflows that only this account can unblock because it started
 //   them or moderates the group, and that have been left open too long
 //   ("liegengeblieben").
@@ -10,9 +11,10 @@
 // The payment and calendar items follow the same eligibility as the push
 // reminders in foodOrderReminders.ts, eventPaymentReminders.ts and
 // eventReminders.ts, minus their delivery delay: a reminder is a delayed
-// nudge, the To-Do is the open obligation itself. Event invitations and
-// skill ratings are not part of this payload; the client already holds
-// both (state.eventInvitations, the digest) and renders them alongside.
+// nudge, the To-Do is the open obligation itself. Event invitations and the
+// live skill nudges (a game being played right now) are not part of this
+// payload; the client already holds both (state.eventInvitations, the
+// digest) and renders them alongside.
 //
 // The payload carries data, not copy: the client formats dates locally and
 // owns the German wording, like Home's "Aktuell" list.
@@ -22,6 +24,8 @@ import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import { isEventFeatureEnabled } from './eventFeatures';
 import type { EventFeatureKey } from './eventFeatureCatalog';
 import { STEFAN_CALENDAR_GAG_USERNAME } from './eventReminders';
+import { unratedCatalogGameCount } from './eventPreparation';
+import { TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT, TRACKING_CONSENT_TEXT_VERSION } from './privacyPolicy';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -33,9 +37,10 @@ export const STALE_FOOD_ORDER_WITHOUT_SEND_AT_MS = 24 * HOUR_MS;
 export const STALE_FOOD_ORDER_SETTLEMENT_MS = 24 * HOUR_MS;
 export const STALE_EVENT_AFTER_END_MS = 12 * HOUR_MS;
 export const STALE_VOTE_ROUND_MS = 3 * HOUR_MS;
-// Arrival times only matter once the event is close; a LAN months ahead
-// should not open with a To-Do nobody can answer yet.
-export const ARRIVAL_TODO_LEAD_MS = 14 * DAY_MS;
+// Arrival times, skills and the tracking decision only matter once the event
+// is close; a LAN months ahead should not open with To-Dos nobody thinks
+// about yet.
+export const PREPARATION_TODO_LEAD_MS = 14 * DAY_MS;
 
 export type MyTodoAudience = 'personal' | 'orga';
 
@@ -216,7 +221,7 @@ function arrivals(ctx: Required<MyTodosContext>): MyTodo[] {
          )
        ORDER BY e.starts_at`,
     )
-    .all({ groupId: ctx.groupId, playerId: ctx.playerId, now: ctx.now, lead: ARRIVAL_TODO_LEAD_MS }) as Array<
+    .all({ groupId: ctx.groupId, playerId: ctx.playerId, now: ctx.now, lead: PREPARATION_TODO_LEAD_MS }) as Array<
     EventRef & { startsAt: number }
   >;
   return featureFilter(rows, 'travel').map((row) => ({
@@ -228,6 +233,89 @@ function arrivals(ctx: Required<MyTodosContext>): MyTodo[] {
     overdue: false,
     sortAt: row.startsAt,
     startsAt: row.startsAt,
+  }));
+}
+
+// Skills belong to the group, not to an event, so the whole catalog gets one
+// row: ahead of the next event that uses the Spiele area, until every catalog
+// game carries an own rating ("nie gespielt" counts). During the event the
+// client's live nudges take over for the games actually being played.
+function catalogSkills(ctx: Required<MyTodosContext>): MyTodo[] {
+  const rows = db
+    .prepare(
+      `SELECT e.id AS eventId, e.name AS eventName, e.starts_at AS startsAt
+       ${acceptedPublishedEventsSql(ctx.includeTestEvents)}
+         AND e.starts_at IS NOT NULL AND e.starts_at > @now AND e.starts_at - @now <= @lead
+       ORDER BY e.starts_at`,
+    )
+    .all({ groupId: ctx.groupId, playerId: ctx.playerId, now: ctx.now, lead: PREPARATION_TODO_LEAD_MS }) as Array<
+    EventRef & { startsAt: number }
+  >;
+  const next = featureFilter(rows, 'games')[0];
+  if (!next) return [];
+  const unratedCount = unratedCatalogGameCount(ctx.groupId, ctx.playerId);
+  if (unratedCount === 0) return [];
+  return [
+    {
+      id: 'catalog-skills',
+      kind: 'catalog-skills',
+      audience: 'personal',
+      eventId: next.eventId,
+      eventName: next.eventName,
+      overdue: false,
+      sortAt: next.startsAt,
+      startsAt: next.startsAt,
+      unratedCount,
+    },
+  ];
+}
+
+// Game tracking needs each participant's own decision (routes/events.ts).
+// Asked from PREPARATION_TODO_LEAD_MS before the start until the period is
+// over, in an undated group for as long as it is open. Settled by a grant
+// under the current text, by a "no" (an explicit decline or a revoked grant)
+// or by the standing pre-authorization, which grants it once tracking starts.
+// The row carries the consent text so the decision is made on that wording.
+function trackingConsents(ctx: Required<MyTodosContext>): MyTodo[] {
+  const rows = db
+    .prepare(
+      `SELECT e.id AS eventId, e.name AS eventName, e.starts_at AS startsAt
+       ${acceptedPublishedEventsSql(ctx.includeTestEvents)}
+         AND e.event_type_key != 'general'
+         AND (e.starts_at IS NULL OR e.starts_at - @now <= @lead)
+         AND (e.ends_at IS NULL OR e.ends_at > @now)
+         AND ep.tracking_consent_declined_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM event_tracking_consents c
+           WHERE c.event_id = e.id AND c.player_id = ep.player_id
+             AND (c.revoked_at IS NOT NULL OR (c.purpose = @purpose AND c.text_version = @textVersion))
+         )
+         AND NOT (
+           e.tracking_enabled = 0 AND EXISTS (
+             SELECT 1 FROM players p WHERE p.id = ep.player_id AND p.tracking_consent_default_version = @textVersion
+           )
+         )
+       ORDER BY e.starts_at`,
+    )
+    .all({
+      groupId: ctx.groupId,
+      playerId: ctx.playerId,
+      now: ctx.now,
+      lead: PREPARATION_TODO_LEAD_MS,
+      purpose: TRACKING_CONSENT_PURPOSE,
+      textVersion: TRACKING_CONSENT_TEXT_VERSION,
+    }) as Array<EventRef & { startsAt: number | null }>;
+  return featureFilter(rows, 'tracking').map((row) => ({
+    id: `tracking-consent:${row.eventId}`,
+    kind: 'tracking-consent',
+    audience: 'personal',
+    eventId: row.eventId,
+    eventName: row.eventName,
+    overdue: false,
+    sortAt: row.startsAt,
+    startsAt: row.startsAt,
+    consentText: TRACKING_CONSENT_TEXT,
+    textVersion: TRACKING_CONSENT_TEXT_VERSION,
   }));
 }
 
@@ -521,6 +609,8 @@ export function buildMyTodos(context: MyTodosContext): MyTodosResult {
     ...eventPayments(ctx),
     ...calendarEntries(ctx),
     ...arrivals(ctx),
+    ...catalogSkills(ctx),
+    ...trackingConsents(ctx),
     ...tasks(ctx),
     ...staleEvents(ctx),
     ...openContributions(ctx),

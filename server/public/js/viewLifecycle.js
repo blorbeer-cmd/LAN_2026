@@ -45,8 +45,16 @@ export const VIEW_LIFECYCLE_HANDLERS = Object.freeze({
       invalidateMissingSkills();
       invalidateHomeSeating();
     },
-    'games:changed': invalidateMissingSkills,
-    'skills:changed': invalidateMissingSkills,
+    // The catalog's skill To-Do counts the games still without an own
+    // rating, so a changed catalog or rating refreshes it as well.
+    'games:changed': () => {
+      invalidateMissingSkills();
+      invalidateMyTodos();
+    },
+    'skills:changed': () => {
+      invalidateMissingSkills();
+      invalidateMyTodos();
+    },
     'live:changed': invalidateMissingSkills,
     'tournaments:changed': () => {
       invalidateAktuellStatus();

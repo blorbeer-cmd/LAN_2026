@@ -183,6 +183,12 @@ test('an invite link registers a new account and logs it straight in', async () 
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.waitForSelector('.onboarding-dialog');
   await page.waitForSelector('.onboarding-target-ring');
+  await page.waitForFunction(() => {
+    const help = document.querySelector('[data-area-tour-open="home"]')?.getBoundingClientRect();
+    const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
+    return help && ring && Math.abs(help.left - ring.left) < 1 && Math.abs(help.top - ring.top) < 1
+      && Math.abs(help.width - ring.width) < 1 && Math.abs(help.height - ring.height) < 1;
+  });
   const onboardingLayers = await page.evaluate(() => {
     const dialog = document.querySelector('.onboarding-dialog');
     const ring = document.querySelector('.onboarding-target-ring');
@@ -241,7 +247,7 @@ test('an invite link registers a new account and logs it straight in', async () 
       `the onboarding dialog must keep its bottom position after step ${step + 1}`,
     );
   }
-  assert.deepEqual(titles, ['Home', 'Mein Profil', 'Orga', 'Aktives Event', 'Match', 'Vote', 'Essen', 'Spielekatalog']);
+  assert.deepEqual(titles, ['Home', 'Mein Profil', 'Orga', 'Ausgewähltes Event', 'Match', 'Vote', 'Essen', 'Spiele']);
   await page.waitForSelector('#onboarding-root [role="dialog"]', { state: 'detached' });
   await page.waitForSelector('[data-tab="catalog"]');
   assert.equal(await page.locator('.game-table-row.onboarding-required').count(), 0);
@@ -282,7 +288,7 @@ test('admin onboarding uses the same shared tour without admin-only steps', asyn
     await adminPage.waitForSelector('.desktop-nav-btn[data-view="home"]:visible');
     await adminPage.waitForSelector('.onboarding-target-ring');
     await adminPage.waitForFunction(() => {
-      const target = document.querySelector('.desktop-nav-btn[data-view="home"]')?.getBoundingClientRect();
+      const target = document.querySelector('[data-area-tour-open="home"]')?.getBoundingClientRect();
       const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
       return Boolean(target && ring && target.width > 0 && target.height > 0)
         && Math.abs(target!.left - ring!.left) < 1
@@ -294,7 +300,7 @@ test('admin onboarding uses the same shared tour without admin-only steps', asyn
     let sawHeaderEvent = false;
     for (let step = 0; step < totalCoreSteps; step += 1) {
       const title = await adminPage.locator('#onboarding-title').textContent();
-      if (title === 'Aktives Event') {
+      if (title === 'Ausgewähltes Event') {
         sawHeaderEvent = true;
         await adminPage.waitForSelector('#event-context:not([hidden]) .search-select-control');
         for (const width of [1920, 1024]) {

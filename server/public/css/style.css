@@ -88,6 +88,7 @@
   --control-height: 32px; /* design-token-ok: shared compact control height, matched by the field padding below */
   --control-line-height: 1.25;
   --info-popover-max-width: 320px;
+  --area-tour-compact-width: 320px;
   --date-picker-width: 360px;
   --selection-card-min-width: 160px;
   --seating-seat-width: var(--selection-card-min-width);
@@ -3871,6 +3872,16 @@ button.draft-pool-player {
   display: flex;
   align-items: center;
   gap: var(--space-1);
+}
+
+/* The tour action remains immediately beside its heading at every width. */
+.area-tour-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.area-tour-heading > .icon-btn {
+  flex-shrink: 0;
 }
 .title-with-info .field-label {
   margin: 0;

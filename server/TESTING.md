@@ -174,6 +174,10 @@ Wiederholungsfall ab.
   unabhängigen Prozessen für Shell, Wettbewerb, Community und Essensbestellungen. Der eigene
   Food-Order-Owner hält deren umfangreiche, zustandsbehaftete Lebenszyklus-Szenarien aus dem
   Community-Prozess heraus und startet sie mit einem frischen Server, Browser und Datenbestand.
+  Die unabhängigen Bereichstouren laufen ebenfalls in einem eigenen Core-Owner
+  (`areaTours.e2e.test.ts`) mit frischem Server und Browser. Sie verwenden dieselbe Kontofixur
+  wie Shell, verlängern aber nicht mehr dessen sequenzielle Geschwistertests. Die Dateiparallelität
+  und der geprüfte Tourumfang bleiben unverändert.
   Arcade enthält die Arcade-, Stream-Renderer-,
   Battleship- und Challenge-Rush-Suiten sowie den eigenständig authentifizierten Arcade-Auth-Pfad
   und die Arcade-Partition der Cross-View-Flows. Der vollständige Challenge-Rush-Lifecycle, die
