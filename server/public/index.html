@@ -14,7 +14,9 @@
        shortcut with no manifest/apple-touch-icon support). -->
   <link rel="icon" type="image/png" sizes="192x192" href="/img/logo-192.png" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
+  <!-- Opaque, full-bleed icon: iOS paints transparency black and rounds the
+       corners itself. Bump ?v= when the icon changes, iOS caches it per URL. -->
+  <link rel="apple-touch-icon" sizes="180x180" href="/img/apple-touch-icon.png?v=2" />
   <!-- bump ?v= when the stylesheet changes so no cached copy survives a reload -->
   <link rel="stylesheet" href="/css/style.css?v=55" />
   <link rel="stylesheet" href="/css/domains.css?v=10" />

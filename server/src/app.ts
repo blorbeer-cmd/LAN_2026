@@ -51,6 +51,13 @@ export function createApp(): express.Express {
     })
   );
 
+  // iOS also probes these root paths for the home-screen icon. Without this
+  // route the SPA fallback below would answer them with HTML.
+  app.get(['/apple-touch-icon.png', '/apple-touch-icon-precomposed.png'], (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(publicDir, 'img', 'apple-touch-icon.png'));
+  });
+
   // SPA fallback: any non-API route serves the app shell.
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
