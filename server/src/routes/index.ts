@@ -2,6 +2,7 @@
 // they are built (players, games, skills, live, votes, matches).
 
 import { Router, type Request } from 'express';
+import { pointsRouter } from './points';
 import { playersRouter } from './players';
 import { gamesRouter } from './games';
 import { skillsRouter } from './skills';
@@ -230,6 +231,7 @@ apiRouter.use('/live', requireActiveEventFeatureMutation('tracking'), liveRouter
 apiRouter.use('/matchmaking', requireActiveEventFeatureMutation('competition'), matchmakingRouter);
 apiRouter.use('/votes', requireActiveEventFeatureMutation('games'), votesRouter);
 apiRouter.use('/matches', requireActiveEventFeatureMutation('competition'), matchesRouter);
+apiRouter.use('/points', pointsRouter);
 apiRouter.use('/leaderboard', leaderboardRouter);
 apiRouter.use('/stats', statsRouter);
 apiRouter.use('/analytics', analyticsRouter);

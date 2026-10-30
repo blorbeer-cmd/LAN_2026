@@ -1,3 +1,4 @@
+import { pointsSettings, pointStandings } from '../points';
 // Mehrjahres-Hall-of-Fame (FR-36): per-event champions (overall leaderboard
 // + tournament winners) across every LAN ever thrown, plus an all-time
 // "who's won the most" ranking built from those same per-event results.
@@ -66,7 +67,7 @@ hallOfFameRouter.get('/', (req, res) => {
     const matches: MatchForScoring[] = matchRows
       .filter((row) => !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
       .map((r) => JSON.parse(r.result));
-    const standings = computeStandings(matches);
+    const standings = (pointsSettings(e.id) ? pointStandings(e.id) : computeStandings(matches));
     const overallStandings = standings.map((standing) => ({
       ...playerSummary(playerById, standing.playerId),
       points: standing.points,

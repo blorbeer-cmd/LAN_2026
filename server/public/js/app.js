@@ -698,6 +698,10 @@ function switchView(
   view,
   { fromHistory = false, replace = false, searchTarget = null, localRoute = undefined } = {},
 ) {
+  if (view === 'points' && searchTarget?.type === 'betting-round') {
+    localRoute = { kind: 'round', id: searchTarget.id };
+    searchTarget = null;
+  }
   if (view === 'tournaments' && (searchTarget?.type === 'tournament' || searchTarget?.type === 'tournament-team')) {
     localRoute = { kind: 'detail', id: searchTarget.id };
     // "tournament-team" (the start push's #tournaments/<id>/teams) keeps a
@@ -1064,7 +1068,7 @@ function wireSocket() {
   });
   socket.on('tournaments:changed', (payload) => {
     invalidateViewCaches(VIEW_REGISTRY, 'tournaments:changed');
-    if (currentView === 'tournaments' || currentView === 'home' || currentView === 'matchmaking') renderCurrent();
+    if (['tournaments', 'home', 'matchmaking', 'points', 'pointsAdmin'].includes(currentView)) renderCurrent();
 
     // Same pattern as the vote nudge: only the players actually named in
     // this notification see it, and not if they're already looking at the
@@ -1186,7 +1190,7 @@ function wireSocket() {
     invalidateViewCaches(VIEW_REGISTRY, 'checklist:changed', { payload });
     // Only the two checklist views show this data; the other Orga tabs keep
     // their drafts untouched.
-    if (currentView === 'checklist' || currentView === 'checklistPacking') renderCurrent();
+    if (['checklist', 'checklistPacking', 'points', 'pointsAdmin'].includes(currentView)) renderCurrent();
     // Home's "Meine To-Dos" counts the shared pool's free To-Dos from this
     // data (see renderMyTodos() in home.js), so a stale cache on an
     // already-open Home view has to trigger a re-render too.

@@ -1,3 +1,5 @@
+import { competitionBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
+let pointsContext = null;
 // Matchmaking view (FR-16..18): pick a game + present players, draw balanced
 // teams. Results are stored in shared state (updated live via the
 // matchmaking:generated socket event) so everyone at the party sees the same
@@ -378,7 +380,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
     const cardActions = `${actions}${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>` : ''}`;
     return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, cardActions,
-      `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
+      `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { canOpen: editable && draw.teams.length === 2 })}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
   }
 
   return `
@@ -394,6 +396,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       </div>
       <div class="tournament-team-preview-grid">${teamsHtml}</div>
       ${seatingNote}
+      ${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { canOpen: editable && draw.teams.length === 2 })}
     </div>`;
 }
 
@@ -402,8 +405,10 @@ function openDrawResultDialog(draw, ctx) {
   const recorded = Boolean(draw.matchId);
   const hasValues = recorded && draw.teams.some((team) => team.score != null);
   const teams = draw.teams.map((team, index) => ({ name: defaultDrawTeamName(draw, team, index), players: team.players.map((player) => player.name) }));
+  const correction = competitionCorrection('draw', draw.id);
   const { close, el } = openModal('Ergebnis', `
     <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
+    ${recorded ? correction.html : ''}
     ${resultFormHtml({ teams, prefix: 'draw-result', mode: hasValues ? 'score' : 'winner', winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? -1 : undefined, scores: draw.teams.map((team) => team.score) })}`);
   wireResultForm(el, {
     teams,
@@ -415,7 +420,7 @@ function openDrawResultDialog(draw, ctx) {
         rank: mode === 'score' ? ranks[index] : null,
       }));
       if (recorded) {
-        await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex });
+        await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex, ...correction.payload(el) });
       } else {
         await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams: payloadTeams, winnerTeamIndex: winnerIndex });
         if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
@@ -794,7 +799,7 @@ function historyMatchHtml(draw) {
   const seating = draw.seatConflicts > 0
     ? `<div class="muted">${icon('armchair')} ${draw.seatConflicts} von ${draw.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten.</div>` : '';
   return historyItemHtml(draw.id, draw.gameName, meta, actions,
-    `<div class="matchmaking-history-teams">${teams}</div>${seating}`, '', drawIncludesMe(draw));
+    `<div class="matchmaking-history-teams">${teams}</div>${seating}${competitionBettingHtml('draw', draw.id, pointsContext, { canOpen: false })}`, '', drawIncludesMe(draw));
 }
 
 function historyTournamentDetailHtml(tournament) {
@@ -950,6 +955,7 @@ function wireOpenDraws(container, selectedGameId, ctx) {
     openPanel.dataset.rendered = 'true';
     wireHistoryItemToggles(openPanel, ctx);
     wireDrawCards(openPanel, ctx);
+    wireCompetitionBetting(openPanel, ctx);
     openPanel.querySelectorAll('[data-history-toggle^="t-"][aria-expanded="true"]').forEach((button) =>
       loadHistoryTournamentDetail(button.dataset.historyToggle.slice(2), ctx));
     openPanel.querySelectorAll('[data-retry-tournament-detail]').forEach((button) => button.addEventListener('click', () => {
@@ -1091,6 +1097,7 @@ function wireDraftBoard(container, ctx) {
 }
 
 export function renderMatchmaking(container, ctx) {
+  pointsContext = ctx;
   if (((tournamentCache === null && !tournamentError) || tournamentStale) && !tournamentLoading) loadMatchTournaments(ctx);
   const leading = `<h2 class="view-title">Match</h2>${renderActiveTournaments()}`;
   // Only accepted games can be drawn/drafted for — an open suggestion is not
@@ -1296,6 +1303,7 @@ export function renderMatchmaking(container, ctx) {
 
   wireInfoTooltips(container);
   wireDrawCards(container, ctx);
+  wireCompetitionBetting(container, ctx);
   wireOpenDraws(container, selectedGameId, ctx);
   wireHistory(container, selectedGameId, ctx);
   wireRosterPicker(container, {

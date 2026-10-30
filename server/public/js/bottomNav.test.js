@@ -35,7 +35,7 @@ function compactDestinationSet(eventType) {
       ? sectionViews(entry.section)
         .map((sectionEntry) => sectionEntry.view)
         .filter((view) => viewIsEnabledForEvent(view, event))
-      : [entry.view]);
+      : [entry.view]).filter((view) => viewIsEnabledForEvent(view, event));
   return [...new Set([...bottom, ...more])].sort();
 }
 

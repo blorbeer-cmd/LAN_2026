@@ -3234,3 +3234,26 @@ input.food-order-price-input {
   display: flex;
   justify-content: flex-end;
 }
+/* LAN points: journal and pooled bets retain the shared card/control layout. */
+.points-actions { flex-wrap: wrap; gap: var(--space-2); }
+.points-round { padding-block: var(--space-4); border-top: 1px solid var(--border); min-width: 0; }
+.points-round h2, .points-round h3 { overflow-wrap: anywhere; }
+.points-outcomes, .points-journal { margin: 0; padding: 0; list-style: none; }
+.points-outcomes li { display: flex; justify-content: space-between; gap: var(--space-3); padding-block: var(--space-1); }
+.points-outcomes li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.points-outcomes li > span:last-child { flex-shrink: 0; }
+.points-journal li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-3); padding-block: var(--space-3); border-bottom: 1px solid var(--border); }
+.points-journal li[hidden] { display: none; }
+.points-journal li > div { min-width: 0; overflow-wrap: anywhere; }
+.points-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
+.points-chart { margin: 0; min-width: 0; }
+.points-chart svg { display: block; width: 100%; height: auto; }
+.points-chart text { fill: var(--text-muted); font-family: var(--font); font-size: var(--font-size-sm); }
+.points-chart-line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.points-chart-baseline { fill: none; stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.points-chart figcaption { flex-wrap: wrap; gap: var(--space-2); font-size: var(--font-size-xs); }
+@media (max-width: 479px) { /* --bp-sm */
+  .points-filters { grid-template-columns: minmax(0, 1fr); }
+  .points-journal li { grid-template-columns: minmax(0, 1fr) auto; }
+  .points-journal li > .btn { grid-column: 2; }
+}

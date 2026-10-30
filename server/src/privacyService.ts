@@ -413,6 +413,9 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
       ),
     },
     organisation: {
+      pointEntries: rows('SELECT event_id AS eventId,amount,source,title,details,created_at AS createdAt FROM point_entries WHERE player_id = ? ORDER BY created_at,rowid', playerId),
+      bettingTips: rows(`SELECT r.event_id AS eventId,r.title,t.outcome_id AS outcomeId,t.stake,t.payout,t.created_at AS createdAt
+        FROM betting_tips t JOIN betting_rounds r ON r.id = t.round_id WHERE t.player_id = ? ORDER BY t.created_at`, playerId),
       foodOrderItems: rows(
         `SELECT i.id, i.order_id AS orderId, o.title AS orderTitle, i.description, i.quantity,
                 i.price_cents AS priceCents, i.paid, i.paid_at AS paidAt, i.created_at AS createdAt
@@ -900,6 +903,20 @@ function scrubAccountCopies(playerId: string, names: Set<string>): void {
   for (const column of ['captain_ids', 'pool_ids', 'picks']) redactJsonColumn('drafts', 'id', column, playerId, names);
   redactJsonColumn('matches', 'id', 'result', playerId, names);
   redactJsonColumn('matchmaking_draws', 'id', 'teams', playerId, names);
+  const bettingOutcomes = db.prepare('SELECT id,outcomes FROM betting_rounds').all() as Array<{ id: string; outcomes: string }>;
+  for (const round of bettingOutcomes) {
+    const outcomes = parseJson(round.outcomes, []) as Array<{ label: string; playerIds: string[] }>;
+    let changed = false;
+    for (const outcome of outcomes) {
+      if (!outcome.playerIds.includes(playerId)) continue;
+      outcome.label = 'Team mit gelöschtem Konto';
+      outcome.playerIds = outcome.playerIds.filter((id) => id !== playerId);
+      changed = true;
+    }
+    if (changed) db.prepare('UPDATE betting_rounds SET outcomes = ? WHERE id = ?').run(JSON.stringify(outcomes), round.id);
+  }
+  redactJsonColumn('points_snapshots', 'rowid', 'standings', playerId, names);
+  redactJsonColumn('point_entries', 'id', 'details', playerId, names);
   removePlayerAssignments(playerId);
   redactJsonColumn('arcade_results', 'id', 'players', playerId, names);
   redactJsonColumn('arcade_results', 'id', 'scores', playerId, names);

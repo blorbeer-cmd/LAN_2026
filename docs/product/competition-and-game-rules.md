@@ -1,5 +1,9 @@
 # Produktregeln: Wettbewerb und Spiele
 
+Die optionale neue LAN-Wertung ist unter [LAN-Punkte und Sieger-Tipps](lan-points-and-betting-rules.md)
+beschrieben. In aktivierten LANs ersetzen Orga-Gutschriften und nullsummige Tipps die bisherigen
+Siegpunkte in der Eventwertung; sportliche Turniertabellen bleiben für den Turnierverlauf erhalten.
+
 Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spielen, Vote und Turnieren. Gemeinsame Control-, Modal- und Auswahlverträge bleiben unter [Frontend-Verträgen](../../server/frontend-contracts/README.md).
 
 ## Auswahlentscheidungen

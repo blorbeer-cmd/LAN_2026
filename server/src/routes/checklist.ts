@@ -33,6 +33,7 @@
 // its row through resolveGroupResource, so a retained group_id mismatch stays
 // hidden behind a 404.
 
+import { awardTaskPoints, claimTaskPoints, releaseTaskPoints, taskReward, PointsError } from '../points';
 import { Router, type Request, type Response } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
@@ -175,6 +176,7 @@ function serializeTask(row: TaskRow) {
     claimComment: row.claim_comment,
     dueAt: row.due_at,
     archivedAt: row.archived_at,
+    reward: taskReward(row.id),
   };
 }
 
@@ -690,6 +692,7 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
     if (!current || (current.status !== 'open' && current.status !== 'taken')) return 'closed';
     const inserted = insertParticipant().run(task.id, playerId, trimmedComment, now);
     if (inserted.changes !== 1) return 'duplicate';
+    claimTaskPoints(task.id, playerId);
     syncTaskAssignee(task.id);
     return 'ok';
   })();
@@ -736,6 +739,7 @@ checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlay
 
   db.transaction(() => {
     db.prepare('DELETE FROM checklist_task_assignees WHERE task_id = ? AND player_id = ?').run(task.id, playerId);
+    releaseTaskPoints(task.id, playerId);
     syncTaskAssignee(task.id);
   })();
   // The create-with-assigneePlayerIds path records an active "you were
@@ -763,7 +767,12 @@ checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayer
   }
 
   const doneAt = Date.now();
-  db.prepare(`UPDATE checklist_tasks SET status = 'done', done_at = ? WHERE id = ? AND status = 'taken'`).run(doneAt, task.id);
+  db.transaction(() => {
+    const updated = db.prepare(`UPDATE checklist_tasks SET status = 'done', done_at = ? WHERE id = ? AND status = 'taken'`).run(doneAt, task.id);
+    if (updated.changes !== 1) throw new PointsError('Diese Aufgabe ist bereits abgeschlossen.');
+    awardTaskPoints(task.id, playerId);
+  })();
+  broadcast(Events.leaderboardChanged, null, { groupId: task.group_id, eventId: task.event_id });
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
   res.json(serializeTask({ ...task, status: 'done', done_at: doneAt }));

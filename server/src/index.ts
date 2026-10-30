@@ -2,6 +2,7 @@
 // with Socket.IO (realtime push) and the offline sweeper, then listens.
 
 import http from 'http';
+import { startBettingSweep } from './routes/points';
 import { Server } from 'socket.io';
 
 import { config, productionConfigError, productionConfigWarning, startupAccessConfigError } from './config';
@@ -45,6 +46,7 @@ const socketFeatureRegistrars = [
   registerChallengeRushSockets,
   registerChimpSockets,
   startOfflineSweeper,
+  startBettingSweep,
   startMusicControllerExpiry,
 ] as const;
 

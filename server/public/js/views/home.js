@@ -1,3 +1,4 @@
+import { pointsHomeHtml, currentPointStandings } from './points.js';
 // Home (formerly "Live-Status"): the landing view and the page everyone
 // keeps coming back to during the party. Stacks, in order of urgency: what's
 // currently running (open vote / active tournament / open food order /
@@ -7,7 +8,7 @@
 // the header bell (see notificationBanner.js), so Home does not duplicate
 // the same content in a second style.
 
-import { rankedListHtml } from '../rankedList.js';
+import { rankedListHtml, sharedRankNumbers } from '../rankedList.js';
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDateTime, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
@@ -615,9 +616,12 @@ function renderLeaderboardTop() {
   // preview here would otherwise offer a "Gesamte Rangliste" link that
   // silently redirects a regular member to Essen instead.
   if (!isAdmin()) return '';
-  const standings = state.leaderboard?.standings || [];
+  const lanStandings = currentPointStandings();
+  const standings = lanStandings ?? state.leaderboard?.standings ?? [];
   if (standings.length === 0) return '';
-  const items = standings.slice(0, 6).map((s) => ({
+  const ranks = sharedRankNumbers(standings.map((s) => s.points));
+  const items = standings.slice(0, 6).map((s, index) => ({
+    ...(lanStandings ? { rank: ranks[index] } : {}),
     lead: avatarHtml(s, 28),
     title: escapeHtml(s.name),
     value: `${s.points} P`,
@@ -626,7 +630,7 @@ function renderLeaderboardTop() {
     <section class="card grouped-page-section stack" aria-labelledby="home-leaderboard-title">
       <div class="grouped-page-section-title">
         <h2 id="home-leaderboard-title">Rangliste</h2>
-        <button type="button" class="btn btn-sm" data-navigate="leaderboard">Alle ansehen</button>
+        <button type="button" class="btn btn-sm" data-navigate="${lanStandings ? 'points' : 'leaderboard'}">Alle ansehen</button>
       </div>
       ${rankedListHtml(items, { ranked: true, label: 'Rangliste' })}
     </section>
@@ -674,6 +678,7 @@ export function renderHome(container, ctx) {
       <div class="grouped-page-sections home-desktop-layout">
         ${renderStatus()}
         ${renderMyTodos()}
+        ${pointsHomeHtml(ctx)}
         ${emptyStateHtml({
           text: 'Noch keine Spieler.',
           illustration: { src: '/img/mascot.svg', alt: '', width: 72, height: 66, className: 'mascot' },
@@ -735,7 +740,7 @@ export function renderHome(container, ctx) {
     <h1 class="view-title">Home</h1>
     <div class="grouped-page-sections home-desktop-layout">
       ${renderGeneralEventOverview()}
-      ${isEventlessGroup ? `${renderMyTodos()}${renderGroupMembers()}` : `${renderStatus()}${renderMyTodos()}`}
+      ${isEventlessGroup ? `${renderMyTodos()}${renderGroupMembers()}` : `${renderStatus()}${renderMyTodos()}${pointsHomeHtml(ctx)}`}
       ${
         trackingEnabled
           ? `<section class="card grouped-page-section stack" aria-labelledby="home-live-title">

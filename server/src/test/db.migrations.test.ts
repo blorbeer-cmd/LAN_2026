@@ -20,6 +20,22 @@ import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 const BOOTSTRAP_ADMINS_JS_PATH = path.join(__dirname, '..', 'bootstrapAdmins.js');
 
+test('migration 123 creates opt-in points tables idempotently without activating or crediting legacy events', () => {
+  const dbFile = makeTempDbPath('points-opt-in');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  assert.equal(fixture.prepare('SELECT COUNT(*) AS n FROM points_settings').get() && (fixture.prepare('SELECT COUNT(*) AS n FROM points_settings').get() as { n: number }).n, 0);
+  assert.equal((fixture.prepare('SELECT COUNT(*) AS n FROM point_entries').get() as { n: number }).n, 0);
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 123').run();
+  fixture.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const restarted = new Database(dbFile);
+  assert.deepEqual(restarted.prepare('PRAGMA foreign_key_check').all(), []);
+  assert.equal((restarted.prepare('SELECT COUNT(*) AS n FROM point_entries').get() as { n: number }).n, 0);
+  restarted.close();
+});
+
 function makeTempDbPath(name: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-migration-test-'));
   return path.join(dir, `${name}.db`);
@@ -935,10 +951,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 122);
+  assert.equal(migrations.length, 123);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 122 }, (_, index) => index + 1),
+    Array.from({ length: 123 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1540,8 +1556,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 122 }, (_, index) => index + 1),
-    'every version 1..122 runs exactly once',
+    Array.from({ length: 123 }, (_, index) => index + 1),
+    'every version 1..123 runs exactly once',
   );
 });
 

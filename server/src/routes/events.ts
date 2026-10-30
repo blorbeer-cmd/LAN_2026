@@ -483,6 +483,7 @@ function serializeEventSummary(
     eventType: event.event_type_key,
     presetVersion: event.preset_version,
     enabledFeatures: getEnabledEventFeatures(event.id),
+    pointsEnabled: Boolean(db.prepare('SELECT 1 FROM points_settings WHERE event_id = ?').get(event.id)),
     isTest: Boolean(event.is_test),
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),

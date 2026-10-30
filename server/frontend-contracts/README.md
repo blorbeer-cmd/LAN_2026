@@ -33,6 +33,7 @@ Control-Selektoren und ihre Zuordnung stehen in der reinen
 | `emptyState.js` | [EmptyState](components/empty-state.md) | `public/css/style.css` |
 | `actionMenu.js` | [ActionMenu](components/action-menu.md) | `public/css/style.css`; bestehende Kartenlage in `public/css/domains.css` |
 | `rankedList.js` | [RankedList](components/ranked-list.md) | `public/css/style.css` |
+| `pointsPresentation.js` | [Punkteverlauf](components/points-history.md) | `public/css/domains.css` |
 | `resultDialog.js` | [Ergebnisformular](components/result-form.md) | `public/css/domains.css` |
 | `match-history-disclosure` | [Match-Historienkachel](components/match-history-tile.md) | `public/css/style.css` |
 | `welcome-trailer-control`, `welcome-trailer-control-glyph`, `welcome-trailer-start` | [Willkommens-Trailer](components/welcome-trailer.md) | `public/css/overlays.css` |

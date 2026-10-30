@@ -1,6 +1,7 @@
 // Aggregated leaderboard (FR-23, FR-24): overall standings, or filtered to one
 // game via ?gameId=.
 
+import { pointsSettings, pointStandings } from '../points';
 import { Router } from 'express';
 import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
@@ -28,22 +29,31 @@ leaderboardRouter.get('/', (req, res) => {
 
   const rows = (
     filterGameId
-      ? db.prepare(`SELECT result FROM matches WHERE group_id = ? AND game_id = ? AND ${eventFilter.clause}`).all(
+      ? db.prepare(`SELECT result,event_id FROM matches WHERE group_id = ? AND game_id = ? AND ${eventFilter.clause}`).all(
           req.group!.id,
           filterGameId,
           ...eventFilter.params,
         )
-      : db.prepare(`SELECT result FROM matches WHERE group_id = ? AND ${eventFilter.clause}`).all(
+      : db.prepare(`SELECT result,event_id FROM matches WHERE group_id = ? AND ${eventFilter.clause}`).all(
           req.group!.id,
           ...eventFilter.params,
         )
-  ) as Array<{ result: string }>;
+  ) as Array<{ result: string; event_id: string }>;
 
   const hiddenPlayerIds = includesTestPlayers(req) ? new Set<string>() : testPlayerIds();
   const matches: MatchForScoring[] = rows
-    .filter((row) => !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
+    .filter((row) => !pointsSettings(row.event_id) && !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
     .map((r) => JSON.parse(r.result));
-  const standings = computeStandings(matches);
+  const combined = computeStandings(matches);
+  for (const event of scope.eventIds) {
+    if (pointsSettings(event)?.group_id !== req.group!.id) continue;
+    for (const row of pointStandings(event)) {
+      const existing = combined.find((p) => p.playerId === row.playerId);
+      if (existing) existing.points += row.points;
+      else combined.push(row);
+    }
+  }
+  const standings = combined.sort((a, b) => b.points - a.points || b.wins - a.wins);
 
   const playerIds = standings.map((s) => s.playerId);
   let players: PlayerRow[] = [];

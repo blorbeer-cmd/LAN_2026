@@ -1,3 +1,4 @@
+import { reconcileBetting, assertCompetitionEditable } from '../betting';
 // Matchmaking endpoint (FR-16..18): draws balanced teams for a game from a
 // set of present players, using their skill ratings. Stateless — every call
 // is a fresh draw, so "re-roll" is just calling it again. The result is
@@ -25,6 +26,10 @@ import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 
 export const matchmakingRouter = Router();
+matchmakingRouter.use((req, _res, next) => {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) reconcileBetting();
+  next();
+});
 
 // Neutral middle rating for players without one. It is what balanceTeams
 // works with, but a stored teams snapshot keeps `rating: null` for such a
@@ -263,6 +268,7 @@ matchmakingRouter.post('/', (req, res) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
 
+  reconcileBetting(eventId);
   broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
   res.json(result);
 });
@@ -338,6 +344,7 @@ matchmakingRouter.post('/rematch', (req, res) => {
      VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'rematch')`
   ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), result.generatedAt);
 
+  reconcileBetting(eventId);
   broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
   res.json(result);
 });
@@ -502,6 +509,8 @@ matchmakingRouter.delete('/draws/:id', requireGroupRole('admin'), requireRecentR
     return res.status(409).json({ error: 'Diese Auslosung gehört zu einem Turnier. Bitte das Turnier separat löschen.' });
   }
 
+  assertCompetitionEditable(req.group!.id, draw.event_id, 'draw', draw.id);
+
   db.transaction(() => {
     if (draw.match_id) db.prepare('DELETE FROM matches WHERE id = ? AND group_id = ?').run(draw.match_id, req.group!.id);
     db.prepare('DELETE FROM matchmaking_draws WHERE id = ? AND group_id = ?').run(draw.id, req.group!.id);
@@ -514,6 +523,7 @@ matchmakingRouter.delete('/draws/:id', requireGroupRole('admin'), requireRecentR
       details: { hadResult: Boolean(draw.match_id) },
     });
   })();
+  reconcileBetting(draw.event_id);
   broadcast(Events.matchmakingDrawsChanged, { id: draw.id, deleted: true }, { groupId: req.group!.id, eventId: draw.event_id });
   if (draw.match_id) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: draw.event_id });
   res.status(204).end();
@@ -610,6 +620,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
     .get(row.id) as DrawRow;
 
   const draw = parseDrawRow(updated);
+  reconcileBetting(row.event_id);
   broadcast(Events.matchmakingDrawsChanged, draw, {
     groupId: req.group!.id,
     eventId: deliveryEventId(row.event_id),

@@ -12,6 +12,7 @@ Diese Dokumentation ist die normative Quelle für produktbezogene Routen, Rollen
 
 - [Navigation und Konto](navigation-and-account-rules.md)
 - [Wettbewerb und Spiele](competition-and-game-rules.md)
+- [LAN-Punkte und Sieger-Tipps](lan-points-and-betting-rules.md)
 - [Orga und Events](organisation-and-event-rules.md)
 - [Medien und Dashboards](media-and-dashboard-rules.md)
 

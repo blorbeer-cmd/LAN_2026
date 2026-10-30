@@ -1477,7 +1477,8 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.locator('[data-navigate="adminFeedback"]').count(), 1);
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
-  assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 5);
+  assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 6);
+  assert.equal(await page.locator('[data-navigate="pointsAdmin"]').count(), 1);
   await page.click('[data-navigate="adminFeatureUsage"]');
   await page.waitForSelector('#admin-feature-usage-refresh');
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);

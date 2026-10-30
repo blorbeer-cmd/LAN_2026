@@ -22,6 +22,7 @@ const DESKTOP_LAN_GROUP_LABEL = Object.freeze({ general: 'Event', group: 'Gruppe
 const FEEDBACK_UTILITY = Object.freeze({ action: 'feedback', label: 'Feedback', iconKey: 'feedback' });
 
 const DESKTOP_PARENT_BY_VIEW = Object.freeze({
+  pointsAdmin: 'admin',
   tournaments: 'matchmaking',
   myStats: 'profile',
   leaderboard: 'admin',

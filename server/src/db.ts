@@ -5533,6 +5533,117 @@ function addWelcomeTrailerSeen(): void {
 }
 registerMigration({ version: 122, name: 'add welcome trailer seen marker', up: addWelcomeTrailerSeen });
 
+// Points are opt-in per event; legacy leaderboards keep their original model.
+registerMigration({ version: 123, name: 'add event points journal and betting pools', up: () => {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS points_settings (
+      event_id TEXT PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+      group_id TEXT NOT NULL REFERENCES groups(id),
+      initial_points INTEGER NOT NULL CHECK(initial_points BETWEEN 0 AND 10000),
+      orga_budget INTEGER NOT NULL CHECK(orga_budget BETWEEN 0 AND 1000000),
+      orga_allocated INTEGER NOT NULL DEFAULT 0 CHECK(orga_allocated BETWEEN 0 AND 1000000),
+      prize_info TEXT NOT NULL DEFAULT '',
+      max_stake INTEGER NOT NULL DEFAULT 10 CHECK(max_stake BETWEEN 1 AND 1000),
+      daily_limit INTEGER NOT NULL DEFAULT 30 CHECK(daily_limit BETWEEN 1 AND 10000),
+      max_rounds INTEGER NOT NULL DEFAULT 6 CHECK(max_rounds BETWEEN 0 AND 100),
+      created_at INTEGER NOT NULL,
+      closed_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS point_entries (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL REFERENCES groups(id),
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      amount INTEGER NOT NULL CHECK(amount BETWEEN -1000000000 AND 1000000000),
+      source TEXT NOT NULL CHECK(source IN ('start','task','tip','refund','correction','reversal')),
+      source_key TEXT NOT NULL,
+      title TEXT NOT NULL,
+      details TEXT NOT NULL DEFAULT '{}',
+      actor_id TEXT REFERENCES players(id) ON DELETE SET NULL,
+      original_id TEXT REFERENCES point_entries(id),
+      created_at INTEGER NOT NULL,
+      UNIQUE(event_id, source_key)
+    );
+    CREATE INDEX IF NOT EXISTS point_entries_wallet ON point_entries(event_id,player_id,created_at);
+    CREATE TABLE IF NOT EXISTS points_snapshots (
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      revision INTEGER NOT NULL,
+      standings TEXT NOT NULL,
+      actor_id TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY(event_id,revision)
+    );
+    CREATE TRIGGER IF NOT EXISTS points_participant_start_insert AFTER INSERT ON event_participants
+    WHEN NEW.status = 'accepted' BEGIN
+      INSERT OR IGNORE INTO point_entries
+      (id,group_id,event_id,player_id,amount,source,source_key,title,created_at)
+      SELECT lower(hex(randomblob(16))),s.group_id,s.event_id,NEW.player_id,s.initial_points,
+        'start','start:' || NEW.player_id,'Grundstock zur LAN',CAST(unixepoch('subsec')*1000 AS INTEGER)
+      FROM points_settings s JOIN players p ON p.id = NEW.player_id
+      JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = s.group_id AND gm.status = 'active'
+      WHERE s.event_id = NEW.event_id AND s.closed_at IS NULL AND p.deactivated_at IS NULL AND p.is_test = 0
+        AND NOT EXISTS (SELECT 1 FROM point_entries WHERE event_id = NEW.event_id AND source_key = 'start:' || NEW.player_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS points_participant_start_update AFTER UPDATE OF status ON event_participants
+    WHEN NEW.status = 'accepted' BEGIN
+      INSERT OR IGNORE INTO point_entries
+      (id,group_id,event_id,player_id,amount,source,source_key,title,created_at)
+      SELECT lower(hex(randomblob(16))),s.group_id,s.event_id,NEW.player_id,s.initial_points,
+        'start','start:' || NEW.player_id,'Grundstock zur LAN',CAST(unixepoch('subsec')*1000 AS INTEGER)
+      FROM points_settings s JOIN players p ON p.id = NEW.player_id
+      JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = s.group_id AND gm.status = 'active'
+      WHERE s.event_id = NEW.event_id AND s.closed_at IS NULL AND p.deactivated_at IS NULL AND p.is_test = 0
+        AND NOT EXISTS (SELECT 1 FROM point_entries WHERE event_id = NEW.event_id AND source_key = 'start:' || NEW.player_id);
+    END;
+    CREATE TABLE IF NOT EXISTS points_task_rewards (
+      task_id TEXT PRIMARY KEY REFERENCES checklist_tasks(id) ON DELETE CASCADE,
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      group_id TEXT NOT NULL REFERENCES groups(id),
+      per_person INTEGER NOT NULL CHECK(per_person BETWEEN 1 AND 1000),
+      slots INTEGER NOT NULL CHECK(slots BETWEEN 1 AND 30),
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS points_task_claims (
+      task_id TEXT NOT NULL REFERENCES points_task_rewards(task_id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      PRIMARY KEY(task_id,player_id)
+    );
+    CREATE TABLE IF NOT EXISTS betting_rounds (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL REFERENCES groups(id),
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      source_type TEXT NOT NULL CHECK(source_type IN ('draw','tournament_match','tournament')),
+      source_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      outcomes TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('open','locked','settled','refunded')),
+      closes_at INTEGER NOT NULL,
+      locked_at INTEGER,
+      settled_at INTEGER,
+      result_key TEXT,
+      revision INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      notice_sent INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(event_id,source_type,source_id)
+    );
+    CREATE INDEX IF NOT EXISTS betting_rounds_event ON betting_rounds(event_id,status);
+    CREATE TABLE IF NOT EXISTS betting_tips (
+      id TEXT PRIMARY KEY,
+      round_id TEXT NOT NULL REFERENCES betting_rounds(id) ON DELETE CASCADE,
+      player_id TEXT REFERENCES players(id) ON DELETE SET NULL,
+      outcome_id TEXT NOT NULL,
+      stake INTEGER NOT NULL CHECK(stake BETWEEN 1 AND 1000),
+      day TEXT NOT NULL,
+      counts_daily INTEGER NOT NULL DEFAULT 1,
+      payout INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(round_id,player_id)
+    );
+  `);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

@@ -17,6 +17,8 @@ import { dateTimeFieldHtml, wireDateTimeField, parseDatetimeLocalMs } from '../d
 import { dueDiffDays, dueText } from '../checklistDue.js';
 import { wireSelectionSearch } from '../selectionSearch.js';
 import { wireActionMenus } from '../actionMenu.js';
+import { isGroupAdmin } from '../groupContext.js';
+import { openTaskReward } from './points.js';
 
 let tasksCache = null;
 let itemsCache = null;
@@ -307,6 +309,7 @@ function renderTaskRow(tasks, myId, mode) {
     <div class="checklist-table-row${isDone ? ' is-done' : ''}" role="row" data-checklist-task="${task.id}" data-checklist-task-item data-selection-search="${escapeHtml(`${task.title} ${who}`)}">
       <div class="checklist-table-task" role="cell">
         <button type="button" class="checklist-task-title" data-task-detail="${task.id}" title="${escapeHtml(task.title)}">${escapeHtml(shortTitle(task.title))}</button>
+        ${task.reward ? `<div class="muted">${task.reward.perPerson} P. pro Helfer · ${task.reward.remaining} belohnte Plätze frei${task.reward.beneficiaryIds.includes(myId) ? ' · Dein Punkteplatz ist gesichert' : ''}</div>` : ''}
       </div>
       <div class="checklist-table-who" role="cell">${who ? whoCellHtml(tasks, who, myId) : '<span class="muted">offen</span>'}</div>
       <div class="checklist-table-due" role="cell">${
@@ -489,10 +492,12 @@ function openTaskDetail(ctx, myId, taskId) {
     commentLines.length ? ['Kommentare', commentLines.join('')] : null,
     !isDone && task.dueAt ? ['Fällig', dueDetailText(task.dueAt)] : null,
     isDone ? ['Erledigt', escapeHtml(formatDateTime(task.doneAt))] : null,
+    task.reward ? ['Orga-Punkte', `${task.reward.perPerson} P. pro Helfer · ${task.reward.remaining}/${task.reward.slots} belohnte Plätze frei${task.reward.beneficiaryIds.includes(myId) ? ' · Du erhältst die Punkte beim Erledigen automatisch.' : ''}`] : null,
   ].filter(Boolean);
   const canManage = isOwn && !isDone;
   const canArchive = mode === 'done' && (isOwn || joined);
   const secondary = [
+    isGroupAdmin() && !isDone && !task.reward && !people.length ? '<button type="button" class="btn btn-sm" data-detail-reward>Orga-Punkte festlegen</button>' : '',
     canManage ? '<button type="button" class="btn btn-sm" data-detail-delete>Löschen</button>' : '',
     joined && !isDone ? '<button type="button" class="btn btn-sm" data-detail-return>Abgeben</button>' : '',
     canManage ? '<button type="button" class="btn btn-sm" data-detail-edit>Bearbeiten</button>' : '',
@@ -516,6 +521,10 @@ function openTaskDetail(ctx, myId, taskId) {
      </div>`,
     {
       onMount: (el) => {
+        el.querySelector('[data-detail-reward]')?.addEventListener('click', () => {
+          close();
+          openTaskReward(task, ctx, () => { invalidateChecklist({ scope: 'tasks' }); });
+        });
         (el.closest('.modal') ?? el.querySelector('.modal'))?.classList.add('checklist-detail-modal');
         el.querySelector('[data-detail-done]')?.addEventListener('click', async () => {
           if (await markTaskDone(ctx, myId, task.id)) close();

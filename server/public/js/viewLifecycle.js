@@ -24,6 +24,7 @@ import { invalidateMusic } from './views/music.js';
 import { invalidateAnalytics } from './views/analytics.js';
 import { invalidateMyStats } from './views/myStats.js';
 import { invalidatePrivacy, invalidateSeatNeighbors } from './views/profile.js';
+import { invalidatePoints } from './views/points.js';
 
 const EVENT_SCOPE_CHANGE = 'event-context:changed';
 const CONNECTION_RESTORED = 'connection:restored';
@@ -183,9 +184,14 @@ export const VIEW_LIFECYCLE_HANDLERS = Object.freeze({
 export const APP_LIFECYCLE_HANDLERS = Object.freeze({
   [EVENT_SCOPE_CHANGE]: () => {
     invalidateInfoBoard();
+    invalidatePoints();
     state.lastMatchmaking = null;
   },
-  [CONNECTION_RESTORED]: invalidateInfoBoard,
+  [CONNECTION_RESTORED]: () => { invalidateInfoBoard(); invalidatePoints(); },
+  'leaderboard:changed': invalidatePoints,
+  'checklist:changed': invalidatePoints,
+  'tournaments:changed': invalidatePoints,
+  'matchmaking:draws-changed': invalidatePoints,
   'info:changed': invalidateInfoBoard,
 });
 

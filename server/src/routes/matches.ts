@@ -1,3 +1,4 @@
+import { reconcileBetting, assertMatchEditable, settledDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
 // Recorded match results (FR-22, FR-25). Result details (teams + winner) are
 // stored as JSON since the leaderboard scoring rules are still being decided
 // and this keeps the schema stable while that's worked out. Each match is
@@ -18,6 +19,10 @@ import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 
 export const matchesRouter = Router();
+matchesRouter.use((req, _res, next) => {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) reconcileBetting();
+  next();
+});
 
 interface DrawLinkRow {
   id: string;
@@ -266,6 +271,7 @@ matchesRouter.post('/', (req, res) => {
     throw error;
   }
 
+  reconcileBetting(eventId);
   if (drawId) {
     broadcast(
       Events.matchmakingDrawsChanged,
@@ -335,13 +341,15 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
   }
 
   const nextResult = JSON.stringify(nextResultObj);
-  db.prepare('UPDATE matches SET game_id = ?, played_at = ?, result = ? WHERE id = ?').run(
-    nextGameId,
-    nextPlayedAt,
-    nextResult,
-    existing.id
-  );
+  db.transaction(() => {
+    const rounds = settledDrawRounds(req.group!.id, existing.id);
+    if (!rounds.length) assertMatchEditable(req.group!.id, existing.id);
+    const correction = validateBettingCorrection(req, rounds);
+    db.prepare('UPDATE matches SET game_id = ?, played_at = ?, result = ? WHERE id = ?').run(nextGameId, nextPlayedAt, nextResult, existing.id);
+    rebookCorrectedRounds(rounds, correction);
+  })();
 
+  reconcileBetting(existing.event_id);
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: existing.event_id });
   res.json(
     parseMatch({
@@ -359,6 +367,7 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
 matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
   const existing = req.groupResource as MatchRow;
   if (!requireGroupEventAccess(req, res, existing.event_id)) return;
+  assertMatchEditable(req.group!.id, existing.id);
   db.prepare('DELETE FROM matches WHERE id = ?').run(existing.id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -367,6 +376,7 @@ matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRec
     targetType: 'match',
     targetId: existing.id,
   });
+  reconcileBetting(existing.event_id);
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: existing.event_id });
   res.status(204).end();
 });
