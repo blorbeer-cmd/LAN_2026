@@ -1,5 +1,11 @@
 # LAN-Punkte und Sieger-Tipps
 
+Diese Datei beschreibt die bisherige sichtbare LAN-Funktion. Das neue
+[Zielkonzept](../KONZEPT-PUNKTE-WERTUNG.md) ersetzt ihre gemeinsame Wetten-/Orga-Wertung
+schrittweise durch drei Kategorien und eine Gesamtwertung. Die [Journalbasis](points-journal.md)
+ist bereits vorhanden; Fachhandler und Ansichten sind noch daran anzubinden. Bestehende
+Vorgabewerte und Grenzen der bisherigen Funktion entscheiden keine offenen Konzeptregeln.
+
 Veröffentlichte LAN-Events sammeln Punkte automatisch im Hintergrund, unabhängig von der Anzeige
 und vom Spiele-Tracking. Neue Wertungen sind zunächst ausgeblendet. Bereits eingerichtete Wertungen
 bleiben bei einem Upgrade sichtbar; bisherige Konten, Regeln und Buchungen bleiben erhalten.

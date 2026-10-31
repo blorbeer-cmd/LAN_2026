@@ -117,6 +117,62 @@ function readMigrationRunOrder(): number[] {
   return JSON.parse(stdout.toString()) as number[];
 }
 
+function removeCategoryPointsSchema(fixture: Database.Database): void {
+  fixture.exec(`DROP TRIGGER points_accounts_participant_insert;
+    DROP TRIGGER points_accounts_participant_update;
+    DROP TABLE points_journal;
+    DROP TABLE points_sources;
+    DROP TABLE points_accounts;
+    DELETE FROM schema_migrations WHERE version = 125;`);
+}
+
+test('migration 125 backfills only accepted participants without minting points and preserves history on restart', () => {
+  const dbFile = makeTempDbPath('category-points');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  removeCategoryPointsSchema(fixture);
+  fixture.exec(`INSERT INTO players(id,name,api_key,created_at) VALUES ('points-old','Old','points-old-key',1),('points-invited','Invited','points-invited-key',1);
+    INSERT INTO event_participants(event_id,player_id,status) VALUES ('instance-base-event','points-old','accepted'),('instance-base-event','points-invited','invited');`);
+  fixture.close();
+  runMigrations(dbFile);
+  const upgraded = new Database(dbFile);
+  assert.deepEqual(upgraded.prepare('SELECT player_id, account FROM points_accounts ORDER BY account').all(),
+    ['betting', 'orga', 'playing', 'wallet'].map((account) => ({ player_id: 'points-old', account })));
+  assert.equal((upgraded.prepare('SELECT COUNT(*) AS n FROM points_journal').get() as { n: number }).n, 0);
+  upgraded.exec(`INSERT INTO points_sources(id,event_id,player_id,account,source_key) VALUES ('legacy-claim','instance-base-event','points-old','orga','todo:old');
+    INSERT INTO points_journal(id,source_id,revision,amount,title,created_at) VALUES ('legacy-entry','legacy-claim',1,5,'Erledigt',1);`);
+  upgraded.close();
+  runMigrations(dbFile);
+  const restarted = new Database(dbFile, { readonly: true });
+  assert.deepEqual(restarted.prepare('SELECT id, amount FROM points_journal').all(), [{ id: 'legacy-entry', amount: 5 }]);
+  assert.deepEqual(restarted.prepare('PRAGMA foreign_key_check').all(), []);
+  restarted.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 125 rolls back its new tables and retries after a mid-migration failure', () => {
+  const dbFile = makeTempDbPath('category-points-rollback');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  removeCategoryPointsSchema(fixture);
+  fixture.exec(`CREATE TABLE points_accounts_player(blocker INTEGER);
+    INSERT INTO players(id,name,api_key,created_at) VALUES ('points-kept','Kept','points-kept-key',1);`);
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /points_accounts_player/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version = 125').get(), undefined);
+  assert.deepEqual(failed.prepare("SELECT name FROM sqlite_master WHERE name IN ('points_accounts','points_sources')").all(), []);
+  assert.deepEqual(failed.prepare("SELECT name FROM players WHERE id = 'points-kept'").get(), { name: 'Kept' });
+  failed.exec('DROP TABLE points_accounts_player');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const retried = new Database(dbFile, { readonly: true });
+  assert.ok(retried.prepare('SELECT 1 FROM schema_migrations WHERE version = 125').get());
+  retried.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 116 removes orphaned Vote rounds but keeps the legacy active round', () => {
   const dbFile = makeTempDbPath('parallel-votes');
   runMigrations(dbFile);
@@ -1005,10 +1061,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 124);
+  assert.equal(migrations.length, 125);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 124 }, (_, index) => index + 1),
+    Array.from({ length: 125 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1610,8 +1666,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 124 }, (_, index) => index + 1),
-    'every version 1..124 runs exactly once',
+    Array.from({ length: 125 }, (_, index) => index + 1),
+    'every version 1..125 runs exactly once',
   );
 });
 
@@ -3401,6 +3457,8 @@ test('migration 82 adds accommodation accounting, leaves legacy paid amounts unk
 // as "foreign key mismatch" despite the finished schema being perfectly
 // valid a few statements later.
 function downgradeToPre83Shape(fixture: Database.Database): void {
+  // A pre-83 fixture must not retain future account triggers or their data.
+  removeCategoryPointsSchema(fixture);
   fixture.pragma('foreign_keys = OFF');
   fixture.exec(`
     CREATE TABLE events_legacy_stage AS SELECT * FROM events;

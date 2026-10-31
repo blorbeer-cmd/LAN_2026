@@ -42,8 +42,8 @@ interface TeamInput {
   // Both optional and independent of winnerTeamIndex/each other: a game with
   // a real score (Punktestand) can carry `score`, a placement-only game
   // (Mario Kart, ein Rennen) can carry `rank` instead, some games want both.
-  // Neither feeds the leaderboard's win/loss scoring (see leaderboard.ts) —
-  // that still only reads winnerTeamIndex — they're purely for display.
+  // Complete ranks feed placement scoring (see leaderboard.ts). Scores are
+  // display values; different games need not share the same score direction.
   score?: number | null;
   rank?: number | null; // 1 = first place; ties allowed (same rank twice)
 }

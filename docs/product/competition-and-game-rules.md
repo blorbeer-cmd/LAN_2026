@@ -8,11 +8,27 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 
 ## Ranglistenpunkte
 
-- Pro Spieler zählt ein Sieg insgesamt 3 Punkte, eine Niederlage 1 Punkt und ein ausdrücklich
-  eingetragenes Unentschieden 2 Punkte. Spiele ohne Ergebnis zählen weder als
-  gespieltes Match noch für Punkte. Ein fehlender Sieger allein gilt nicht als Unentschieden.
+Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
+[Respawn – Punkte und Wertung](../KONZEPT-PUNKTE-WERTUNG.md).
+
+- Pro Spieler zählt Platz 1 insgesamt 4 Punkte, Platz 2 zählt 3 und Platz 3 zählt 2 Punkte.
+  Der letzte Platz und alle Plätze ab dem vierten zählen immer 1 Punkt. Bei zwei Teams ergibt
+  das 4/1, bei drei Teams 4/3/1, bei vier Teams 4/3/2/1 und bei acht Teams 4/3/2/1/1/1/1/1.
+- Gleichplatzierte erhalten den abgerundeten Durchschnitt der Punkte ihrer belegten Plätze:
+  ein 1v1-Unentschieden ergibt 2/2; zwei geteilte erste Plätze bei vier Teams ergeben je 3 Punkte.
+  Vollständige Platzierungen (`teams[].rank`) bestimmen die Reihenfolge und haben Vorrang vor
+  einem zusätzlich gespeicherten Sieger. Sie zählen auch ohne einzelnen Sieger als Ergebnis.
+  Ein geteilter erster Platz zählt nicht als einzelner Sieg in der Siege-Statistik.
+- Ist nur ein Sieger bekannt, erhält er 4 und jedes andere Team 1 Punkt. Ohne vollständige
+  Platzierung gilt ein ausdrücklich eingetragenes Unentschieden für alle Teams; sie teilen
+  die Punkte aller belegten Plätze. Ein fehlender Sieger allein gilt nicht als Unentschieden.
+  Unvollständige Platzierungen ohne Sieger oder Remis und reine Spielstände ohne Platzierung
+  beziehungsweise Sieger zählen nicht als Ergebnis; aus Zahlenständen wird keine Richtung abgeleitet.
+  Spiele ohne Ergebnis zählen weder als gespieltes Match noch für Punkte.
 - Jedes Teammitglied erhält die vollen Punkte. Spielstand, Teamgröße und Spieldauer verändern
-  die Wertung nicht. Sortiert wird nach Punkten, danach nach Siegen.
+  die Wertung nicht. Alle dokumentierten Ergebnisse zählen, auch wiederholte Begegnungen;
+  es gibt keine Freigaben oder Spielkontingente. Die bestehende Spielrangliste sortiert nach Punkten,
+  danach nach Siegen. Die geplanten Kategorie-Platzpunkte und deren geteilte Ränge folgen separat.
 - Regulär abgeschlossene Turniere geben zusätzlich pro Teammitglied 5 Punkte für Platz 1,
   3 für Platz 2 und 1 für Platz 3. Diese Boni erhöhen weder Siege noch Matchanzahl.
   In K.-o.-Turnieren gelten die durch Finale und Spiel um Platz 3 entschiedenen Plätze;
@@ -23,8 +39,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   nächsten regulären Abschluss. Löschen entfernt die Boni, lässt vorhandene Matchpunkte bestehen.
 - Rangliste, Hall of Fame und Export verwenden dieselbe Berechnung. Spiel- und Eventfilter
   gelten auch für die Boni. Bereits gespeicherte Ergebnisse werden nach diesen Regeln neu
-  berechnet. Ältere freie Matches ohne Sieger und ohne ausdrückliches Remis-Kennzeichen werden
-  als ohne Ergebnis behandelt; ältere Turnier-Remis bleiben anhand ihres Turnierergebnisses erkennbar.
+  berechnet; historische Punktestände können sich dadurch ändern. Ältere freie Matches ohne
+  vollständige Platzierung, Sieger oder ausdrückliches Remis-Kennzeichen werden als ohne Ergebnis
+  behandelt; ältere Turnier-Remis bleiben anhand ihres Turnierergebnisses erkennbar.
+- Die interne Basis für [getrennte Kategorie-Konten und Punktejournal](points-journal.md) ist
+  ebenfalls vorhanden. Fachliche Gutschriften und bisherige Ansichten werden in den folgenden
+  Paketen daran angebunden; Gesamtwertung aus Platzpunkten, Kiosk-Feed und Meldefunktion folgen.
+  Die Ligatabelle innerhalb eines Turniers behält ihre eigene 3/1/0-Regel für Sieg/Remis/Niederlage.
 
 ## Auswahlentscheidungen
 

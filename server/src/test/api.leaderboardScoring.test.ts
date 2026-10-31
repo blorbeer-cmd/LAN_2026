@@ -28,6 +28,59 @@ interface Standing {
   matchesPlayed: number;
 }
 
+test('rank-only results and their corrections agree across leaderboard, Hall of Fame and export', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Scoring placements' });
+  const players: string[] = [];
+  for (let index = 0; index < 4; index++) {
+    const response = await request(app)
+      .post('/api/players')
+      .send({ name: `Placement ${index}` });
+    assert.equal(response.status, 201);
+    players.push(response.body.id);
+  }
+  const teams = (ranks: number[]) => players.map((id, index) => ({ playerIds: [id], rank: ranks[index] }));
+  const created = await request(app)
+    .post('/api/matches')
+    .send({
+      gameId: game.body.id,
+      teams: teams([1, 1, 3, 4]),
+    });
+  assert.equal(created.status, 201);
+  const verifyViews = async (points: number[], winnerIndex: number | null) => {
+    const leaderboard = await request(app).get(`/api/leaderboard?eventId=${BASE_EVENT_ID}&gameId=${game.body.id}`);
+    const hall = await request(app).get(`/api/hall-of-fame?eventId=${BASE_EVENT_ID}`);
+    const exported = await request(app).get(`/api/export?eventId=${BASE_EVENT_ID}`);
+    for (const response of [leaderboard, hall, exported]) assert.equal(response.status, 200);
+    for (const rows of [
+      leaderboard.body.standings,
+      hall.body.events[0].overallStandings,
+      exported.body.leaderboard,
+    ] as Standing[][]) {
+      const actual = rows
+        .filter((row) => players.includes(row.playerId))
+        .sort((a, b) => players.indexOf(a.playerId) - players.indexOf(b.playerId));
+      assert.deepEqual(
+        actual.map(({ playerId, points, wins, matchesPlayed }) => ({ playerId, points, wins, matchesPlayed })),
+        points.map((value, index) => ({
+          playerId: players[index],
+          points: value,
+          wins: index === winnerIndex ? 1 : 0,
+          matchesPlayed: 1,
+        })),
+      );
+    }
+  };
+  await verifyViews([3, 3, 2, 1], null);
+  const corrected = await request(app)
+    .patch(`/api/matches/${created.body.id}`)
+    .send({ teams: teams([2, 3, 1, 4]) });
+  assert.equal(corrected.status, 200);
+  await verifyViews([3, 2, 4, 1], 2);
+  const deleted = await request(app).delete(`/api/matches/${created.body.id}`);
+  assert.equal(deleted.status, 204);
+  await verifyViews([], null);
+});
+
 test('placement bonuses follow completed tournaments, filters, corrections and deletion in every points view', async () => {
   const players: string[] = [];
   for (let index = 0; index < 8; index++) {
@@ -66,7 +119,7 @@ test('placement bonuses follow completed tournaments, filters, corrections and d
     assert.equal(response.status, 200);
     board = response.body;
     for (const [teamId, points] of [
-      [fixture.teamAId!, 3],
+      [fixture.teamAId!, 4],
       [fixture.teamBId!, 1],
     ] as const) {
       for (const player of teamById.get(teamId)!.players)
@@ -88,7 +141,8 @@ test('placement bonuses follow completed tournaments, filters, corrections and d
   const hall = await request(app).get(`/api/hall-of-fame?eventId=${BASE_EVENT_ID}`);
   const exported = await request(app).get(`/api/export?eventId=${BASE_EVENT_ID}`);
   const scores = (rows: Standing[]) =>
-    rows.filter((row) => players.includes(row.playerId))
+    rows
+      .filter((row) => players.includes(row.playerId))
       .map(({ playerId, points, wins, matchesPlayed }) => ({ playerId, points, wins, matchesPlayed }));
   assert.deepEqual(scores(hall.body.events[0].overallStandings), scores(completed));
   assert.deepEqual(scores(exported.body.leaderboard), scores(completed));
@@ -98,7 +152,7 @@ test('placement bonuses follow completed tournaments, filters, corrections and d
   db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(players[0]);
   const hidden = await leaderboard();
   assert.ok(
-    hidden.every((standing) => standing.points <= 6),
+    hidden.every((standing) => standing.points <= 8),
     'hidden test participation cannot yield tournament bonuses',
   );
   const admin = await request(app).get(`/api/leaderboard?gameId=${game.body.id}`).set('x-admin-mode', '1');
@@ -113,7 +167,7 @@ test('placement bonuses follow completed tournaments, filters, corrections and d
   assert.equal(correction.body.status, 'active');
   const reopened = await leaderboard();
   assert.ok(
-    reopened.every((standing) => standing.points <= 3 && standing.matchesPlayed === 1),
+    reopened.every((standing) => standing.points <= 4 && standing.matchesPlayed === 1),
     'reopened tournament loses all placement bonuses',
   );
   // Deleting a tournament keeps its recorded match points, with no bonus.
@@ -211,6 +265,6 @@ test('group stages award match points and only the final knockout placements awa
   const leaderboard = await request(app).get(`/api/leaderboard?gameId=${game.body.id}`);
   assert.deepEqual(
     leaderboard.body.standings.map((standing: Standing) => standing.points),
-    [11, 7, 1, 1],
+    [13, 8, 1, 1],
   );
 });

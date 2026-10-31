@@ -239,6 +239,18 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
     exportedAt: Date.now(),
     notice: 'Zugangsdaten und fremde private Daten sind absichtlich nicht enthalten.',
     profile,
+    pointsAccounts: rows(
+      `SELECT event_id AS eventId, account, created_at AS createdAt
+       FROM points_accounts WHERE player_id = ? ORDER BY event_id, account`,
+      playerId,
+    ),
+    pointsJournal: rows(
+      `SELECT j.id, s.event_id AS eventId, s.account, s.source_key AS sourceKey,
+              j.revision, j.amount, j.title, j.reason, j.created_at AS createdAt
+       FROM points_journal j JOIN points_sources s ON s.id = j.source_id
+       WHERE s.player_id = ? ORDER BY j.created_at, j.rowid`,
+      playerId,
+    ),
     memberships: rows(
       `SELECT gm.group_id AS groupId, g.name AS groupName, gm.role, gm.status,
               gm.joined_at AS joinedAt, gm.ended_at AS endedAt

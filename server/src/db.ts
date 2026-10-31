@@ -5686,6 +5686,74 @@ registerMigration({ version: 124, name: 'collect LAN points independently of par
   `);
 } });
 
+// Versions 123/124 retain the existing LAN account and wagering implementation.
+// This journal keeps category scores separate from the spendable betting wallet.
+registerMigration({ version: 125, name: 'add category points accounts and journal', up: () => {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS points_accounts (
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      account TEXT NOT NULL CHECK(account IN ('betting', 'orga', 'playing', 'wallet')),
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY(event_id, player_id, account)
+    );
+    CREATE TABLE IF NOT EXISTS points_sources (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      player_id TEXT NOT NULL,
+      account TEXT NOT NULL,
+      source_key TEXT NOT NULL CHECK(length(source_key) BETWEEN 1 AND 200),
+      UNIQUE(event_id, player_id, account, source_key),
+      FOREIGN KEY(event_id, player_id, account)
+        REFERENCES points_accounts(event_id, player_id, account) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS points_journal (
+      id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL REFERENCES points_sources(id) ON DELETE CASCADE,
+      revision INTEGER NOT NULL CHECK(revision > 0),
+      amount INTEGER NOT NULL CHECK(typeof(amount) = 'integer' AND amount != 0 AND abs(amount) <= 9007199254740991),
+      title TEXT NOT NULL CHECK(length(trim(title)) BETWEEN 1 AND 200),
+      reason TEXT CHECK(reason IS NULL OR length(trim(reason)) BETWEEN 1 AND 500),
+      created_at INTEGER NOT NULL,
+      UNIQUE(source_id, revision),
+      CHECK(revision = 1 OR reason IS NOT NULL)
+    );
+    CREATE INDEX IF NOT EXISTS points_accounts_player ON points_accounts(player_id, event_id);
+    CREATE TRIGGER IF NOT EXISTS points_journal_immutable_update BEFORE UPDATE ON points_journal
+      BEGIN SELECT RAISE(ABORT, 'Points journal entries are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS points_journal_immutable_delete BEFORE DELETE ON points_journal
+      WHEN EXISTS(SELECT 1 FROM points_sources WHERE id = OLD.source_id)
+      BEGIN SELECT RAISE(ABORT, 'Points journal entries are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS points_sources_immutable_update BEFORE UPDATE ON points_sources
+      BEGIN SELECT RAISE(ABORT, 'Points sources are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS points_sources_immutable_delete BEFORE DELETE ON points_sources
+      WHEN EXISTS(SELECT 1 FROM points_accounts
+        WHERE event_id = OLD.event_id AND player_id = OLD.player_id AND account = OLD.account)
+      BEGIN SELECT RAISE(ABORT, 'Points sources are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS points_accounts_retained BEFORE DELETE ON points_accounts
+      WHEN EXISTS(SELECT 1 FROM events WHERE id = OLD.event_id)
+       AND EXISTS(SELECT 1 FROM players WHERE id = OLD.player_id)
+      BEGIN SELECT RAISE(ABORT, 'Points accounts remain until event or account erasure'); END;
+  `);
+  const accountKinds = `(SELECT 'betting' AS account UNION ALL SELECT 'orga' UNION ALL SELECT 'playing' UNION ALL SELECT 'wallet')`;
+  for (const operation of ['INSERT', 'UPDATE OF status'] as const) {
+    db.exec(`CREATE TRIGGER IF NOT EXISTS points_accounts_participant_${operation === 'INSERT' ? 'insert' : 'update'}
+      AFTER ${operation} ON event_participants
+      WHEN NEW.status = 'accepted' AND NEW.event_id != '${OUTSIDE_EVENTS_ID}' BEGIN
+        INSERT OR IGNORE INTO points_accounts(event_id, player_id, account, created_at)
+        SELECT NEW.event_id, NEW.player_id, kinds.account, CAST(unixepoch('subsec') * 1000 AS INTEGER)
+        FROM ${accountKinds} kinds WHERE NOT EXISTS (
+          SELECT 1 FROM points_accounts a WHERE a.event_id = NEW.event_id
+            AND a.player_id = NEW.player_id AND a.account = kinds.account
+        );
+      END;`);
+  }
+  db.prepare(`INSERT OR IGNORE INTO points_accounts(event_id, player_id, account, created_at)
+    SELECT ep.event_id, ep.player_id, kinds.account, ? FROM event_participants ep
+    CROSS JOIN ${accountKinds} kinds WHERE ep.status = 'accepted' AND ep.event_id != ?`
+  ).run(Date.now(), OUTSIDE_EVENTS_ID);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

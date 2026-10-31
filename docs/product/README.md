@@ -15,8 +15,16 @@ Diese Dokumentation ist die normative Quelle für produktbezogene Routen, Rollen
 - [LAN-Punkte und Sieger-Tipps](lan-points-and-betting-rules.md)
 - [Orga und Events](organisation-and-event-rules.md)
 - [Medien und Dashboards](media-and-dashboard-rules.md)
+- [Punktejournal und Kategorie-Konten](points-journal.md)
 
 UI-Arbeiten lesen nur die Produktregeldatei(en), die den betroffenen fachlichen Ablauf beschreiben.
+
+## Geplante Konzepte
+
+- [Respawn – Punkte und Wertung](../KONZEPT-PUNKTE-WERTUNG.md): beschlossenes Zielkonzept
+  für Wetten, Orga, Spielen und die Gesamtwertung mit ausdrücklich offenen Entscheidungen.
+  Es dokumentiert Folgeänderungen und ersetzt nicht die Beschreibung des aktuell implementierten
+  Verhaltens in den Produktregeldateien.
 
 ## Migrationsnachweis
 
