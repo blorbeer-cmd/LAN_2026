@@ -4,6 +4,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 
 ## Ranglistenpunkte
 
+Die folgenden Regeln beschreiben den implementierten Stand. Das Zielkonzept
+[Respawn – Punkte und Wertung](../KONZEPT-PUNKTE-WERTUNG.md) sieht künftig die Platzregel
+4/3/2/1 für Rangliste und Hall of Fame vor; die Turnierboni bleiben 5/3/1.
+Diese Folgeänderung ist hier ausschließlich dokumentiert und noch nicht umgesetzt.
+
 - Pro Spieler zählt ein Sieg insgesamt 3 Punkte, eine Niederlage 1 Punkt und ein ausdrücklich
   eingetragenes Unentschieden 2 Punkte. Spiele ohne Ergebnis zählen weder als
   gespieltes Match noch für Punkte. Ein fehlender Sieger allein gilt nicht als Unentschieden.
