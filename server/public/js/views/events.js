@@ -86,6 +86,13 @@ const historyOpen = { event: false, group: false };
 // Same pattern for the declined workspaces: present enough to come back from,
 // quiet enough not to compete with the ones actually being planned.
 const declinedOpen = { event: false, group: false };
+function openDeclinedSection(event) {
+  const kind = eventIsGroup(event) ? 'group' : 'event';
+  declinedOpen[kind] = true;
+  // The shared render-state restorer captures the live DOM before refresh.
+  // Update it too, so it cannot restore the previous collapsed section.
+  document.querySelectorAll(`[data-declined-events="${kind}"]`).forEach((details) => { details.open = true; });
+}
 let acceptedInvitationHandoff = null;
 // Fetched once per session (the shared kiosk password is stable once
 // generated — see server/src/kioskAccounts.ts) and cached across successful
@@ -1119,7 +1126,7 @@ export async function answerPendingInvitation(btn, ctx) {
       : null;
     if (inEvents && invitation) {
       if (accept) expandedEventCards.add(eventId);
-      else declinedOpen[eventIsGroup(invitation) ? 'group' : 'event'] = true;
+      else openDeclinedSection(invitation);
     }
     await ctx.refresh();
     window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
@@ -1174,7 +1181,7 @@ export function wireParticipationAnswerActions(container, ctx) {
       btn.disabled = true;
       try {
         await api.events.declineInvitation(eventId);
-        declinedOpen[eventIsGroup(event) ? 'group' : 'event'] = true;
+        openDeclinedSection(event);
         await ctx.refresh();
         container.querySelector(eventIsGroup(event) ? '#orga-groups-title' : '#orga-events-title')?.focus();
         showToast('Teilnahme abgesagt.');
@@ -1194,7 +1201,7 @@ export function wireParticipationAnswerActions(container, ctx) {
         onDecline: async (excuse) => {
           try {
             await api.events.declineInvitation(eventId, excuse);
-            declinedOpen[eventIsGroup(event) ? 'group' : 'event'] = true;
+            openDeclinedSection(event);
             await ctx.refresh();
             showToast('Teilnahme abgesagt. Deine Ausrede ist für alle sichtbar.');
             return true;
@@ -1574,6 +1581,9 @@ export function renderOrgaEvents(container, ctx) {
   ]) {
     container.querySelectorAll(selector).forEach((details) => {
       details.addEventListener('toggle', (e) => {
+        // Queued events from a replaced section must not overwrite its
+        // current open state after a shared refresh.
+        if (!e.currentTarget.isConnected) return;
         const kind = e.currentTarget.dataset.eventHistory ?? e.currentTarget.dataset.declinedEvents;
         state[kind] = e.currentTarget.open;
       });
