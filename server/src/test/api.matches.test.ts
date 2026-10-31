@@ -72,8 +72,32 @@ test('GET /api/leaderboard reflects points from the recorded match', async () =>
   const byId = new Map(res.body.standings.map((s: { playerId: string }) => [s.playerId, s]));
   assert.ok((byId.get(playerB) as { wins: number }).wins === 1);
   assert.ok((byId.get(playerA) as { wins: number }).wins === 0);
-  // Winner's points should be strictly higher than the loser's.
-  assert.ok((byId.get(playerB) as { points: number }).points > (byId.get(playerA) as { points: number }).points);
+  assert.equal((byId.get(playerB) as { points: number }).points, 3);
+  assert.equal((byId.get(playerA) as { points: number }).points, 1);
+});
+
+test('missing results earn nothing; explicit draws survive editing and winners earn three total points', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Unscored matches' });
+  const created = await request(app).post('/api/matches').send({
+    gameId: game.body.id, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }],
+  });
+  assert.equal(created.status, 201);
+  const leaderboard = () => request(app).get(`/api/leaderboard?gameId=${game.body.id}`);
+  assert.deepEqual((await leaderboard()).body.standings, []);
+  for (const payload of [{ isDraw: 'true' }, { isDraw: true, winnerTeamIndex: 0 }]) {
+    const invalid = await request(app).patch(`/api/matches/${created.body.id}`).send(payload);
+    assert.equal(invalid.status, 400);
+  }
+  const draw = await request(app).patch(`/api/matches/${created.body.id}`).send({ isDraw: true });
+  assert.equal(draw.status, 200);
+  const metadataEdit = await request(app).patch(`/api/matches/${created.body.id}`).send({ teams: draw.body.teams });
+  assert.equal(metadataEdit.body.isDraw, true);
+  assert.deepEqual((await leaderboard()).body.standings.map((s: { points: number }) => s.points), [2, 2]);
+  const winner = await request(app).patch(`/api/matches/${created.body.id}`).send({ winnerTeamIndex: 0 });
+  assert.equal(winner.body.isDraw, false);
+  assert.deepEqual((await leaderboard()).body.standings.map((s: { points: number }) => s.points), [3, 1]);
+  await request(app).patch(`/api/matches/${created.body.id}`).send({ winnerTeamIndex: null });
+  assert.deepEqual((await leaderboard()).body.standings, []);
 });
 
 test('PATCH /api/matches/:id corrects a mistaken winner', async () => {

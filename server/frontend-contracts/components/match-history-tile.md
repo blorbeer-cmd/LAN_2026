@@ -56,7 +56,9 @@ Der zusätzliche Schalter „Meine“ lässt sich mit jeder Art kombinieren und 
 Teamteilnahme des angemeldeten Spielers, auch bei älteren nachgeladenen Ergebnissen. Filterwechsel
 erhalten die geöffneten Abschnitte und Kacheln; ein leerer Treffer entfernt nie die Filterzeile.
 Ein gelöschter Match-Datensatz verschwindet auch aus der Rangliste. Turniere nutzen den bestehenden
-Löschweg, der bereits gespeicherte Match-Ergebnisse in der Rangliste belässt; die Rückfrage nennt dies.
+Löschweg, der bereits gespeicherte Match-Ergebnisse in der Rangliste belässt und Platzierungsboni
+entfernt; die Rückfrage nennt beides. Nur ein ausdrücklich erfasstes Unentschieden heißt „Remis“;
+ein gespeicherter Eintrag ohne Sieger und ohne Remis-Kennzeichen heißt „Ohne Ergebnis“.
 Nach dem Öffnen des Abschnitts beginnen die einzelnen Auslosungen geschlossen. Ihre Teamdetails
 lassen sich unabhängig voneinander öffnen und wieder schließen; dieser Zustand bleibt beim
 Neuzeichnen erhalten.

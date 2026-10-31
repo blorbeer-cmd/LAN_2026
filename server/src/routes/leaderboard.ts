@@ -3,11 +3,10 @@
 
 import { Router } from 'express';
 import { db } from '../db';
-import { computeStandings, type MatchForScoring } from '../leaderboard';
-import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
+import { readStandings } from '../leaderboardData';
+import { resolveAnalyticsEvents } from '../analyticsEventScope';
 import {
   includesTestPlayers,
-  matchResultContainsPlayerIds,
   testPlayerIds,
 } from '../testDataVisibility';
 
@@ -24,26 +23,8 @@ leaderboardRouter.get('/', (req, res) => {
   const filterGameId = typeof gameId === 'string' ? gameId : null;
   const scope = resolveAnalyticsEvents(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  const eventFilter = eventIdSql('event_id', scope.eventIds);
-
-  const rows = (
-    filterGameId
-      ? db.prepare(`SELECT result FROM matches WHERE group_id = ? AND game_id = ? AND ${eventFilter.clause}`).all(
-          req.group!.id,
-          filterGameId,
-          ...eventFilter.params,
-        )
-      : db.prepare(`SELECT result FROM matches WHERE group_id = ? AND ${eventFilter.clause}`).all(
-          req.group!.id,
-          ...eventFilter.params,
-        )
-  ) as Array<{ result: string }>;
-
   const hiddenPlayerIds = includesTestPlayers(req) ? new Set<string>() : testPlayerIds();
-  const matches: MatchForScoring[] = rows
-    .filter((row) => !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
-    .map((r) => JSON.parse(r.result));
-  const standings = computeStandings(matches);
+  const standings = readStandings(req.group!.id, scope.eventIds, filterGameId, hiddenPlayerIds);
 
   const playerIds = standings.map((s) => s.playerId);
   let players: PlayerRow[] = [];

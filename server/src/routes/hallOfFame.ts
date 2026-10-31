@@ -4,12 +4,11 @@
 
 import { Router } from 'express';
 import { db } from '../db';
-import { computeStandings, type MatchForScoring } from '../leaderboard';
+import { readStandings } from '../leaderboardData';
 import { getCompletedTournamentSummaries } from './tournamentChampion';
 import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
 import {
   includesTestPlayers,
-  matchResultContainsPlayerIds,
   testPlayerIds,
 } from '../testDataVisibility';
 
@@ -60,13 +59,7 @@ hallOfFameRouter.get('/', (req, res) => {
   const tournamentWinCounts = new Map<string, number>();
 
   const eventSummaries = events.map((e) => {
-    const matchRows = db.prepare('SELECT result FROM matches WHERE event_id = ? AND group_id = ?').all(e.id, req.group!.id) as Array<{
-      result: string;
-    }>;
-    const matches: MatchForScoring[] = matchRows
-      .filter((row) => !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
-      .map((r) => JSON.parse(r.result));
-    const standings = computeStandings(matches);
+    const standings = readStandings(req.group!.id, [e.id], null, hiddenPlayerIds);
     const overallStandings = standings.map((standing) => ({
       ...playerSummary(playerById, standing.playerId),
       points: standing.points,

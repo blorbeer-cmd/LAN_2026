@@ -837,6 +837,7 @@ function saveTournamentResult(req: Request, res: Response) {
     const leaderboardResult = JSON.stringify({
       teams: [{ playerIds: JSON.parse(teamA.player_ids) }, { playerIds: JSON.parse(teamB.player_ids) }],
       winnerTeamIndex,
+      isDraw: winnerTeamId === null,
       ...(scoreA !== null ? { score: [scoreA, scoreB] } : {}),
     });
     if (isCorrection) {
@@ -1229,7 +1230,15 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
     .get(req.params.id, req.group!.id) as { event_id: string } | undefined;
   if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   if (!requireGroupEventAccess(req, res, tournament.event_id)) return;
-  const result = db.prepare('DELETE FROM tournaments WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
+  const result = db.transaction(() => {
+    // Preserve explicit draws from the older JSON format before their
+    // fixture rows disappear. Recorded match points outlive the tournament.
+    db.prepare(`UPDATE matches SET result = json_set(result, '$.isDraw', json('true'))
+      WHERE group_id = ? AND json_type(result, '$.isDraw') IS NULL AND id IN (
+        SELECT match_id FROM tournament_matches WHERE tournament_id = ? AND is_draw = 1
+      )`).run(req.group!.id, req.params.id);
+    return db.prepare('DELETE FROM tournaments WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
+  })();
   if (result.changes === 0) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -1247,5 +1256,6 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
     { type: 'deleted', tournamentId: req.params.id },
     { groupId: req.group!.id, eventId: communicationEventId(tournament.event_id) },
   );
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: tournament.event_id });
   res.status(204).end();
 });

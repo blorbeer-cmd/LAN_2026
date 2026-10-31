@@ -394,7 +394,7 @@ function attachMatchResults(draws: ReturnType<typeof parseDrawRow>[]): void {
     .prepare(`SELECT id, result FROM matches WHERE id IN (${placeholders})`)
     .all(...matchIds) as MatchResultRow[];
   const resultById = new Map(
-    matchRows.map((m) => [m.id, JSON.parse(m.result) as { teams: Array<{ score?: number | null; rank?: number | null }>; winnerTeamIndex: number | null }])
+    matchRows.map((m) => [m.id, JSON.parse(m.result) as { teams: Array<{ score?: number | null; rank?: number | null }>; winnerTeamIndex: number | null; isDraw?: boolean }])
   );
 
   for (const draw of draws) {
@@ -406,6 +406,7 @@ function attachMatchResults(draws: ReturnType<typeof parseDrawRow>[]): void {
       t.rank = matchResult.teams[i].rank ?? null;
     });
     (draw as { winnerTeamIndex?: number | null }).winnerTeamIndex = matchResult.winnerTeamIndex ?? null;
+    (draw as { isDraw?: boolean }).isDraw = matchResult.isDraw === true;
   }
 }
 

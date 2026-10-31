@@ -2,6 +2,26 @@
 
 Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spielen, Vote und Turnieren. Gemeinsame Control-, Modal- und Auswahlverträge bleiben unter [Frontend-Verträgen](../../server/frontend-contracts/README.md).
 
+## Ranglistenpunkte
+
+- Pro Spieler zählt ein Sieg insgesamt 3 Punkte, eine Niederlage 1 Punkt und ein ausdrücklich
+  eingetragenes Unentschieden 2 Punkte. Spiele ohne Ergebnis zählen weder als
+  gespieltes Match noch für Punkte. Ein fehlender Sieger allein gilt nicht als Unentschieden.
+- Jedes Teammitglied erhält die vollen Punkte. Spielstand, Teamgröße und Spieldauer verändern
+  die Wertung nicht. Sortiert wird nach Punkten, danach nach Siegen.
+- Regulär abgeschlossene Turniere geben zusätzlich pro Teammitglied 5 Punkte für Platz 1,
+  3 für Platz 2 und 1 für Platz 3. Diese Boni erhöhen weder Siege noch Matchanzahl.
+  In K.-o.-Turnieren gelten die durch Finale und Spiel um Platz 3 entschiedenen Plätze;
+  ohne Spiel um Platz 3 gibt es keinen Drittplatzbonus. In Ligen teilen Teams mit gleicher
+  Punktzahl und gleicher Anzahl Siege Platz und Bonus (etwa 1, 1, 3).
+- Laufende oder vorzeitig beendete Turniere geben keine Platzierungsboni. Eine Korrektur
+  berechnet die Punkte neu; wird das Turnier wieder geöffnet, entfallen seine Boni bis zum
+  nächsten regulären Abschluss. Löschen entfernt die Boni, lässt vorhandene Matchpunkte bestehen.
+- Rangliste, Hall of Fame und Export verwenden dieselbe Berechnung. Spiel- und Eventfilter
+  gelten auch für die Boni. Bereits gespeicherte Ergebnisse werden nach diesen Regeln neu
+  berechnet. Ältere freie Matches ohne Sieger und ohne ausdrückliches Remis-Kennzeichen werden
+  als ohne Ergebnis behandelt; ältere Turnier-Remis bleiben anhand ihres Turnierergebnisses erkennbar.
+
 ## Auswahlentscheidungen
 
 - **Mode / setting choice** — pick the widget by the shape of the decision, not by habit: a
