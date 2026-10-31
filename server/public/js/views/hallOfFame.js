@@ -94,14 +94,15 @@ function eventRange(e) {
 
 function renderEvent(e) {
   const standings = e.overallStandings ?? [];
-  // Places follow the server's order (points, then wins) by position, the
-  // same numbering as the Rangliste; its first entry is the overall winner.
+  // The API supplies shared places for LAN points. Positional ranks remain
+  // the fallback for legacy payloads and their original match scoring.
   const standingsHtml = standings.length
     ? rankedListHtml(
-        standings.map((r) => ({
+        standings.map((r, index) => ({
+          rank: r.rank ?? index + 1,
           lead: avatarHtml(r, 28),
           title: escapeHtml(r.name),
-          meta: `${r.wins} ${r.wins === 1 ? 'Sieg' : 'Siege'} · ${r.matchesPlayed} ${r.matchesPlayed === 1 ? 'Spiel' : 'Spiele'}`,
+          meta: e.scoringModel === 'lan_points' ? 'LAN-Punkte' : `${r.wins} ${r.wins === 1 ? 'Sieg' : 'Siege'} · ${r.matchesPlayed} ${r.matchesPlayed === 1 ? 'Spiel' : 'Spiele'}`,
           value: `${r.points} P`,
         })),
         { ranked: true, label: 'Gesamtplatzierungen' },

@@ -3,7 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp, TEST_ADMIN_ID } from './testApp';
+import { createTestApp, TEST_ADMIN_ID, DEFAULT_GROUP_ID } from './testApp';
+import { createEvent, setParticipants } from '../events';
+import { setActiveEventForPlayer } from '../eventContext';
 
 const app = createTestApp();
 let gameId: string;
@@ -44,7 +46,10 @@ test('setup: a game, two players, a match, and a completed tournament', async ()
     .send({
       gameId,
       format: 'single_elimination',
-      teams: [{ name: 'Alice Squad', playerIds: [playerA] }, { name: 'Bob Squad', playerIds: [playerB] }],
+      teams: [
+        { name: 'Alice Squad', playerIds: [playerA] },
+        { name: 'Bob Squad', playerIds: [playerB] },
+      ],
     });
   const final = created.body.matches[0];
   // Bracket sides are drawn at random, so pick Alice's team by name.
@@ -65,7 +70,9 @@ test('GET /api/hall-of-fame includes this event with the right overall + tournam
   assert.equal(entry.overallStandings[1].playerId, playerB);
   assert.ok(entry.overallStandings[0].points > entry.overallStandings[1].points);
   assert.equal(entry.overallStandings[0].matchesPlayed, 2);
-  assert.ok(entry.tournamentChampions.some((t: { championPlayers: string[] }) => t.championPlayers.includes('HoF Alice')));
+  assert.ok(
+    entry.tournamentChampions.some((t: { championPlayers: string[] }) => t.championPlayers.includes('HoF Alice')),
+  );
 });
 
 test('GET /api/hall-of-fame all-time rankings credit the champion', async () => {
@@ -91,4 +98,55 @@ test('GET /api/hall-of-fame reports no champion for an event with no matches', a
   assert.equal(entry.overallChampion, null);
   assert.deepEqual(entry.overallStandings, []);
   assert.deepEqual(entry.tournamentChampions, []);
+});
+
+test('frozen LAN points retain shared champions, shared places and equal all-time credits, including zero balances', async () => {
+  const players = [TEST_ADMIN_ID];
+  for (const name of ['AAA Shared Alice', 'ZZZ Shared Bob', 'Middle Lower']) {
+    players.push((await request(app).post('/api/players').send({ name })).body.id);
+  }
+  for (const initialPoints of [100, 0]) {
+    const event = createEvent(`Shared points ${initialPoints}`, {
+      groupId: DEFAULT_GROUP_ID,
+      startsAt: Date.now(),
+      endsAt: Date.now() + 86400000,
+    });
+    setParticipants(event.id, players);
+    setActiveEventForPlayer(TEST_ADMIN_ID, event.id);
+    assert.equal((await request(app).put('/api/points/settings').send({ initialPoints })).status, 200);
+    if (initialPoints > 0) {
+      const entries = (await request(app).get('/api/points/admin/entries')).body.entries;
+      const lowerCredit = entries.find(
+        (entry: { player_id: string; source: string }) => entry.player_id === players[3] && entry.source === 'start',
+      );
+      assert.equal(
+        (
+          await request(app)
+            .post(`/api/points/entries/${lowerCredit.id}/deduct`)
+            .send({ amount: 10, reason: 'Lower fourth place', requestId: 'hof-lower' })
+        ).status,
+        200,
+      );
+    }
+    assert.equal((await request(app).post('/api/points/close').send({})).status, 200);
+    const response = await request(app).get(`/api/hall-of-fame?eventId=${event.id}`);
+    assert.equal(response.status, 200);
+    const summary = response.body.events[0];
+    const champions = initialPoints > 0 ? players.slice(0, 3) : players;
+    assert.equal(summary.scoringModel, 'lan_points');
+    assert.equal(summary.overallChampion, null, 'there is no sole champion in a tied points event');
+    assert.deepEqual(
+      summary.overallChampions.map((p: { playerId: string }) => p.playerId).sort(),
+      [...champions].sort(),
+    );
+    assert.deepEqual(
+      summary.overallStandings.map((p: { rank: number }) => p.rank),
+      initialPoints > 0 ? [1, 1, 1, 4] : [1, 1, 1, 1],
+    );
+    assert.deepEqual(
+      response.body.allTime.mostOverallWins.map((p: { playerId: string }) => p.playerId).sort(),
+      [...champions].sort(),
+    );
+    assert.ok(response.body.allTime.mostOverallWins.every((p: { count: number }) => p.count === 1));
+  }
 });

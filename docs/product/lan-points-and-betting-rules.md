@@ -13,6 +13,8 @@ Spiele-Tracking über Mehr, die Desktop-Navigation und das eigene Konto auf Home
   eine Korrekturschuld. Der Verlauf enthält Zeitpunkt, Quelle, Betrag und Details jeder Buchung.
 - Die Kurve zeigt immer die vollständige Kontohistorie. Suche und Quellenfilter verändern nur die Liste.
 - Gleiche Punktestände teilen sich den Rang. Es gibt keinen Skill- oder Siege-Tiebreaker.
+- Auch die Hall of Fame erhält geteilte Plätze und zählt jeden gemeinsamen Gesamtsieg für alle
+  Erstplatzierten. Alphabetische Namensreihenfolge bestimmt ausschließlich die Darstellung.
 - Die Verwaltung kann Preis und Sachpreisvergabe bei Gleichstand vor Beginn ankündigen; die
   Preisinfo erscheint am Punktekonto. Die tatsächliche Preisübergabe erfolgt durch die Orga.
 - Ein Admin schreibt die Endwertung bewusst fest; offene oder laufende Tipprunden verhindern den
@@ -91,8 +93,9 @@ Turniersiegerentscheidung behält ihren gesperrten ursprünglichen Pool bis zum 
 Unveränderte Abrechnungen bleiben erhalten. Parallele Korrekturen derselben Version werden abgewiesen.
 
 Alternativ kann ein Admin eine Abrechnung vollständig mit Begründung stornieren, beispielsweise vor
-dem Entfernen eines ungültigen Wettbewerbs. Das kehrt die ursprünglichen Nettotransfers um; es gibt
-keine neue Wette auf denselben Wettbewerb. Ein bereits weiterverwendeter Gewinn kann durch Korrektur
+dem Entfernen eines ungültigen Wettbewerbs. Das kehrt die ursprünglichen Nettotransfers um. Der Schutz
+gilt auch beim Löschen des zugehörigen Katalogspiels samt dessen Wettbewerben. Es gibt keine neue Wette
+auf denselben Wettbewerb. Ein bereits weiterverwendeter Gewinn kann durch Korrektur
 zu negativem Guthaben führen. Fremde Wetten bleiben bestehen; neue Einsätze benötigen wieder Deckung.
 
 ## Grenzen und spätere Erweiterungen

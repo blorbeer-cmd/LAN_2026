@@ -610,3 +610,114 @@ test('account erasure keeps other helpers credited, retains committed budget and
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('catalog deletion protects paid draw, fixture and outright pools until an explicit void, then deletes once', async () => {
+  for (const sourceType of ['draw', 'tournament_match', 'tournament'] as const) {
+    const f = await fixture();
+    let tournamentId = '',
+      fixtureId = '',
+      drawId = '',
+      roundId: string;
+    let outcomes: Array<{ id: string; playerIds: string[] }>;
+    if (sourceType === 'draw') {
+      const opened = await round(f);
+      drawId = opened.drawId;
+      roundId = opened.id;
+      outcomes = opened.outcomes;
+    } else {
+      const created = await request(app)
+        .post('/api/tournaments')
+        .send({
+          gameId: f.gameId,
+          format: 'single_elimination',
+          teams: f.players.slice(0, 2).map((playerId) => ({ playerIds: [playerId] })),
+        });
+      assert.equal(created.status, 201, JSON.stringify(created.body));
+      tournamentId = created.body.id;
+      fixtureId = created.body.matches.find((match: { isBye: boolean }) => !match.isBye).id;
+      const opened = await request(app)
+        .post('/api/points/rounds')
+        .send({
+          sourceType,
+          sourceId: sourceType === 'tournament' ? tournamentId : fixtureId,
+          closesAt: Date.now() + 60000,
+        });
+      assert.equal(opened.status, 201, JSON.stringify(opened.body));
+      roundId = opened.body.id;
+      outcomes = opened.body.outcomes;
+    }
+    for (let i = 0; i < 2; i++) {
+      assert.equal(
+        (
+          await request(app)
+            .put(`/api/points/rounds/${roundId}/tip`)
+            .set('x-test-player-id', f.players[i])
+            .send({ outcomeId: outcomes[i].id, stake: 5 })
+        ).status,
+        200,
+      );
+    }
+    assert.equal((await request(app).post(`/api/points/rounds/${roundId}/lock`).send({})).status, 200);
+    const result =
+      sourceType === 'draw'
+        ? await request(app)
+            .post('/api/matches')
+            .send({
+              gameId: f.gameId,
+              drawId,
+              teams: outcomes.map((o) => ({ playerIds: o.playerIds })),
+              winnerTeamIndex: 0,
+            })
+        : await request(app)
+            .post(`/api/tournaments/${tournamentId}/matches/${fixtureId}/result`)
+            .send({ winnerTeamId: outcomes[0].id });
+    assert.equal(result.status, sourceType === 'draw' ? 201 : 200, JSON.stringify(result.body));
+    assert.deepEqual(
+      f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total),
+      [105, 95],
+    );
+
+    const blocked = await Promise.all([0, 1].map(() => request(app).delete(`/api/games/${f.gameId}`)));
+    assert.deepEqual(
+      blocked.map((response) => response.status),
+      [409, 409],
+      sourceType,
+    );
+    assert.ok(db.prepare('SELECT 1 FROM games WHERE id = ?').get(f.gameId), 'a rejected cascade keeps its source');
+    assert.equal((await request(app).get('/api/points')).body.rounds[0].status, 'settled');
+    assert.deepEqual(
+      f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total),
+      [105, 95],
+    );
+
+    assert.equal(
+      (
+        await request(app)
+          .post(`/api/points/rounds/${roundId}/void`)
+          .send({ reason: 'Remove invalid competition', revision: 0 })
+      ).status,
+      200,
+    );
+    const deletions = await Promise.all([0, 1].map(() => request(app).delete(`/api/games/${f.gameId}`)));
+    assert.deepEqual(deletions.map((response) => response.status).sort(), [204, 404]);
+    assert.deepEqual(
+      f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total),
+      [100, 100],
+    );
+    assert.equal((await request(app).get('/api/points')).body.rounds[0].status, 'refunded');
+  }
+
+  const f = await fixture();
+  const pending = await round(f);
+  await request(app)
+    .put(`/api/points/rounds/${pending.id}/tip`)
+    .set('x-test-player-id', f.players[0])
+    .send({ outcomeId: '0', stake: 5 });
+  assert.equal(wallet(f.eventId, f.players[0]).held, 5);
+  assert.equal((await request(app).delete(`/api/games/${f.gameId}`)).status, 204);
+  assert.equal(
+    wallet(f.eventId, f.players[0]).held,
+    0,
+    'an unpaid deleted pool refunds immediately without a later GET or timer',
+  );
+});

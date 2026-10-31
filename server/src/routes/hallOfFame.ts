@@ -8,11 +8,7 @@ import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
 import { getCompletedTournamentSummaries } from './tournamentChampion';
 import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
-import {
-  includesTestPlayers,
-  matchResultContainsPlayerIds,
-  testPlayerIds,
-} from '../testDataVisibility';
+import { includesTestPlayers, matchResultContainsPlayerIds, testPlayerIds } from '../testDataVisibility';
 
 export const hallOfFameRouter = Router();
 
@@ -61,25 +57,43 @@ hallOfFameRouter.get('/', (req, res) => {
   const tournamentWinCounts = new Map<string, number>();
 
   const eventSummaries = events.map((e) => {
-    const matchRows = db.prepare('SELECT result FROM matches WHERE event_id = ? AND group_id = ?').all(e.id, req.group!.id) as Array<{
+    const matchRows = db
+      .prepare('SELECT result FROM matches WHERE event_id = ? AND group_id = ?')
+      .all(e.id, req.group!.id) as Array<{
       result: string;
     }>;
     const matches: MatchForScoring[] = matchRows
       .filter((row) => !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
       .map((r) => JSON.parse(r.result));
-    const standings = (pointsSettings(e.id) ? pointStandings(e.id) : computeStandings(matches));
-    const overallStandings = standings.map((standing) => ({
-      ...playerSummary(playerById, standing.playerId),
-      points: standing.points,
-      wins: standing.wins,
-      matchesPlayed: standing.matchesPlayed,
-    }));
+    const lanPoints = Boolean(pointsSettings(e.id));
+    const standings = lanPoints ? pointStandings(e.id) : computeStandings(matches);
+    const firstRankByPoints = new Map<number, number>();
+    const overallStandings = standings.map((standing, index) => {
+      if (!firstRankByPoints.has(standing.points)) firstRankByPoints.set(standing.points, index + 1);
+      return {
+        ...playerSummary(playerById, standing.playerId),
+        points: standing.points,
+        wins: standing.wins,
+        matchesPlayed: standing.matchesPlayed,
+        rank: lanPoints ? firstRankByPoints.get(standing.points)! : index + 1,
+      };
+    });
     const top = standings[0];
-    // Only crown a champion if someone actually scored — an event with no
-    // recorded matches has no "Gesamtsieger" to speak of.
-    const overallChampion = top && top.points > 0 ? { ...playerSummary(playerById, top.playerId), points: top.points } : null;
-    if (overallChampion) {
-      overallWinCounts.set(overallChampion.playerId, (overallWinCounts.get(overallChampion.playerId) ?? 0) + 1);
+    // LAN points share first place solely by points, including zero/negative
+    // final balances. Legacy match scoring still needs an actual scored win.
+    const overallChampions =
+      top && (lanPoints || top.points > 0)
+        ? overallStandings
+            .filter((standing) => standing.rank === 1)
+            .map((standing) => ({
+              ...playerSummary(playerById, standing.playerId),
+              points: standing.points,
+            }))
+        : [];
+    // Retain the singular field for consumers of uniquely decided events.
+    const overallChampion = overallChampions.length === 1 ? overallChampions[0] : null;
+    for (const champion of overallChampions) {
+      overallWinCounts.set(champion.playerId, (overallWinCounts.get(champion.playerId) ?? 0) + 1);
     }
 
     const tournamentChampions = getCompletedTournamentSummaries(e.id, req.group!.id)
@@ -103,7 +117,9 @@ hallOfFameRouter.get('/', (req, res) => {
       eventName: e.name,
       startsAt: e.starts_at,
       endsAt: e.ends_at,
+      scoringModel: lanPoints ? 'lan_points' : 'match_results',
       overallChampion,
+      overallChampions,
       overallStandings,
       tournamentChampions,
     };

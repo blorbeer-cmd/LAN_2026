@@ -542,6 +542,7 @@ export function renderPointsAdmin(container, ctx) {
     );
   });
   container.querySelector('[data-points-close]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
     if (closed)
       return reasonDialog(
         'Wertung wieder öffnen',
@@ -556,7 +557,7 @@ export function renderPointsAdmin(container, ctx) {
     )
       return;
     perform(
-      event.currentTarget,
+      button,
       () => pointsRequest('/close', json('POST', {})),
       () => refreshPoints(ctx),
     );

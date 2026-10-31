@@ -538,6 +538,22 @@ export function assertMatchEditable(groupId: string, matchId: string): void {
     assertTournamentEditable(groupId, row.id);
   }
 }
+
+// Removing a catalog game cascades through its draws, matches and tournaments.
+// Apply the same settlement guards before any of those sources can disappear.
+export function assertGameEditable(groupId: string, gameId: string): void {
+  for (const draw of db
+    .prepare('SELECT id,event_id FROM matchmaking_draws WHERE group_id = ? AND game_id = ?')
+    .all(groupId, gameId) as Array<{ id: string; event_id: string }>) {
+    assertCompetitionEditable(groupId, draw.event_id, 'draw', draw.id);
+  }
+  for (const tournament of db
+    .prepare('SELECT id FROM tournaments WHERE group_id = ? AND game_id = ?')
+    .all(groupId, gameId) as Array<{ id: string }>) {
+    assertTournamentEditable(groupId, tournament.id);
+  }
+}
+
 export function assertTournamentEditable(groupId: string, tournamentId: string): void {
   if (settledTournamentRounds(groupId, tournamentId).length)
     throw new PointsError(

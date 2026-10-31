@@ -13,6 +13,7 @@ import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication, withBodyPlayerIdentity } from '../sessions';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { broadcastLiveBoards } from '../liveStatus';
+import { assertGameEditable, reconcileBetting } from '../betting';
 
 export const gamesRouter = Router();
 
@@ -493,7 +494,11 @@ gamesRouter.delete(
   requireRecentReauthentication,
   (req, res) => {
     const existing = req.groupResource as GameRow;
-    db.prepare('DELETE FROM games WHERE id = ?').run(existing.id);
+    db.transaction(() => {
+      assertGameEditable(req.group!.id, existing.id);
+      db.prepare('DELETE FROM games WHERE id = ?').run(existing.id);
+    })();
+    reconcileBetting();
     writeAdminAudit({
       actorPlayerId: req.player?.id,
       groupId: req.group!.id,

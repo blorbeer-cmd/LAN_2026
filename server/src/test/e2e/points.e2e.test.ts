@@ -183,4 +183,42 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.locator('[data-points-source]').selectOption('correction');
   await member.locator('[data-point-entry]').click();
   await member.getByRole('dialog').getByText('Nur teilweise erledigt', { exact: true }).waitFor();
+  await member.keyboard.press('Escape');
+
+  // Arrange three equal final balances. Neither names nor sports wins may
+  // choose a sole champion when the LAN points are tied.
+  const entries = (await api(`/api/points/admin/entries?eventId=${eventId}`)).entries;
+  for (const [playerId, amount] of [
+    [alice.id, 13],
+    [myId, 5],
+  ] as const) {
+    const start = entries.find(
+      (entry: { source: string; player_id: string }) => entry.source === 'start' && entry.player_id === playerId,
+    );
+    await api(`/api/points/entries/${start.id}/deduct?eventId=${eventId}`, 'POST', {
+      amount,
+      reason: 'Arrange tied final standings',
+      requestId: `tie-${playerId}`,
+    });
+  }
+  await admin.locator('[data-points-close]').click();
+  await admin.getByRole('alertdialog').getByRole('button', { name: 'Endwertung festschreiben', exact: true }).click();
+  await admin.getByRole('button', { name: 'Wertung wieder öffnen', exact: true }).waitFor();
+  await member.getByText('Endstand', { exact: true }).waitFor();
+  const final = await api(`/api/points?eventId=${eventId}`);
+  assert.equal(typeof final.settings.closed_at, 'number', 'confirming the dialog must persist the final snapshot');
+  assert.deepEqual(
+    final.standings.map((row: { points: number }) => row.points),
+    [95, 95, 95],
+  );
+
+  await navigate(admin, 'hallOfFame');
+  await admin.locator('[data-hall-section="events"] > summary').click();
+  const placements = admin.getByRole('list', { name: 'Gesamtplatzierungen', exact: true });
+  await placements.waitFor();
+  assert.deepEqual(await placements.locator('.ranked-list-rank').allTextContents(), ['1', '1', '1']);
+  await admin.locator('[data-hall-section="overall"] > summary').click();
+  const champions = admin.getByRole('list', { name: 'Meiste Gesamtsiege', exact: true });
+  assert.equal(await champions.locator('.ranked-list-row').count(), 3);
+  assert.deepEqual(await champions.locator('.ranked-list-rank').allTextContents(), ['1', '1', '1']);
 });
