@@ -5,7 +5,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 ## Ranglistenpunkte
 
 - Pro Spieler zählt ein Sieg insgesamt 3 Punkte, eine Niederlage 1 Punkt und ein ausdrücklich
-  eingetragenes Unentschieden 3 Punkte. Spiele ohne Ergebnis zählen weder als
+  eingetragenes Unentschieden 2 Punkte. Spiele ohne Ergebnis zählen weder als
   gespieltes Match noch für Punkte. Ein fehlender Sieger allein gilt nicht als Unentschieden.
 - Jedes Teammitglied erhält die vollen Punkte. Spielstand, Teamgröße und Spieldauer verändern
   die Wertung nicht. Sortiert wird nach Punkten, danach nach Siegen.

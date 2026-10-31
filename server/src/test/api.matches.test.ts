@@ -92,7 +92,7 @@ test('missing results earn nothing; explicit draws survive editing and winners e
   assert.equal(draw.status, 200);
   const metadataEdit = await request(app).patch(`/api/matches/${created.body.id}`).send({ teams: draw.body.teams });
   assert.equal(metadataEdit.body.isDraw, true);
-  assert.deepEqual((await leaderboard()).body.standings.map((s: { points: number }) => s.points), [3, 3]);
+  assert.deepEqual((await leaderboard()).body.standings.map((s: { points: number }) => s.points), [2, 2]);
   const winner = await request(app).patch(`/api/matches/${created.body.id}`).send({ winnerTeamIndex: 0 });
   assert.equal(winner.body.isDraw, false);
   assert.deepEqual((await leaderboard()).body.standings.map((s: { points: number }) => s.points), [3, 1]);

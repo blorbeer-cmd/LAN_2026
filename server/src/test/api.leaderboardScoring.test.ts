@@ -150,7 +150,7 @@ test('league ties share bonuses; legacy tournament draws count and early endings
   const complete = await request(app).get(`/api/leaderboard?gameId=${game.body.id}`);
   assert.equal(complete.body.standings.length, 3);
   for (const standing of complete.body.standings as Standing[])
-    assert.equal(standing.points, 11, 'two three-point draws plus shared first-place bonus');
+    assert.equal(standing.points, 9, 'two two-point draws plus shared first-place bonus');
 
   const deletes = await Promise.all([
     request(app).delete(`/api/tournaments/${created.body.id}`),
@@ -160,7 +160,7 @@ test('league ties share bonuses; legacy tournament draws count and early endings
   const deleted = await request(app).get(`/api/leaderboard?gameId=${game.body.id}`);
   assert.equal(deleted.body.standings.length, 3);
   for (const standing of deleted.body.standings as Standing[])
-    assert.equal(standing.points, 6, 'deletion removes bonuses but preserves legacy draw points');
+    assert.equal(standing.points, 4, 'deletion removes bonuses but preserves legacy draw points');
 
   const unfinished = await request(app)
     .post('/api/tournaments')

@@ -20,8 +20,8 @@ test('computeStandings ignores missing results but counts explicit draws', () =>
   assert.deepEqual(computeStandings([{ teams, winnerTeamIndex: null }]), []);
   assert.deepEqual(computeStandings([{ teams, winnerTeamIndex: null, isDraw: false }]), []);
   assert.deepEqual(computeStandings([{ teams, winnerTeamIndex: null, isDraw: true }]), [
-    { playerId: 'a', points: 3, wins: 0, matchesPlayed: 1 },
-    { playerId: 'b', points: 3, wins: 0, matchesPlayed: 1 },
+    { playerId: 'a', points: 2, wins: 0, matchesPlayed: 1 },
+    { playerId: 'b', points: 2, wins: 0, matchesPlayed: 1 },
   ]);
 });
 

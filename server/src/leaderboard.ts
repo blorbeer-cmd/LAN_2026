@@ -1,7 +1,7 @@
 // Pure scoring logic shared by the leaderboard, Hall of Fame and export.
 
 export const WIN_POINTS = 3;
-export const DRAW_POINTS = 3;
+export const DRAW_POINTS = 2;
 export const PARTICIPATION_POINTS = 1;
 export const TOURNAMENT_PLACEMENT_POINTS: Readonly<Record<number, number>> = { 1: 5, 2: 3, 3: 1 };
 
