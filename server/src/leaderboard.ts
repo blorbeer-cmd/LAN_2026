@@ -1,14 +1,19 @@
-// Pure scoring logic for the leaderboard (FR-23), kept separate from the
-// route/DB so it's directly unit-testable. The point values are a placeholder
-// — the exact scoring rules are still to be decided; change the two
-// constants below once that's settled, nothing else needs to move.
+// Pure scoring logic shared by the leaderboard, Hall of Fame and export.
 
 export const WIN_POINTS = 3;
+export const DRAW_POINTS = 2;
 export const PARTICIPATION_POINTS = 1;
+export const TOURNAMENT_PLACEMENT_POINTS: Readonly<Record<number, number>> = { 1: 5, 2: 3, 3: 1 };
 
 export interface MatchForScoring {
   teams: Array<{ playerIds: string[] }>;
   winnerTeamIndex: number | null;
+  isDraw?: boolean;
+}
+
+export interface TournamentPlacementForScoring {
+  playerIds: string[];
+  place: number;
 }
 
 export interface PlayerStanding {
@@ -18,7 +23,10 @@ export interface PlayerStanding {
   matchesPlayed: number;
 }
 
-export function computeStandings(matches: MatchForScoring[]): PlayerStanding[] {
+export function computeStandings(
+  matches: MatchForScoring[],
+  placements: TournamentPlacementForScoring[] = [],
+): PlayerStanding[] {
   const byPlayer = new Map<string, PlayerStanding>();
 
   function ensure(playerId: string): PlayerStanding {
@@ -31,18 +39,25 @@ export function computeStandings(matches: MatchForScoring[]): PlayerStanding[] {
   }
 
   for (const match of matches) {
+    // A missing winner alone does not establish a draw or a played result.
+    if (match.winnerTeamIndex === null && !match.isDraw) continue;
     match.teams.forEach((team, teamIndex) => {
       const isWinner = match.winnerTeamIndex === teamIndex;
       for (const playerId of team.playerIds) {
         const standing = ensure(playerId);
         standing.matchesPlayed += 1;
-        standing.points += PARTICIPATION_POINTS;
+        standing.points += match.winnerTeamIndex === null ? DRAW_POINTS : isWinner ? WIN_POINTS : PARTICIPATION_POINTS;
         if (isWinner) {
-          standing.points += WIN_POINTS;
           standing.wins += 1;
         }
       }
     });
+  }
+
+  for (const placement of placements) {
+    const points = TOURNAMENT_PLACEMENT_POINTS[placement.place] ?? 0;
+    if (!points) continue;
+    for (const playerId of placement.playerIds) ensure(playerId).points += points;
   }
 
   return [...byPlayer.values()].sort((a, b) => b.points - a.points || b.wins - a.wins);

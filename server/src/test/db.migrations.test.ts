@@ -2562,6 +2562,8 @@ test('migration 53 preserves legacy event participants as accepted and is restar
     )
     .run('legacy-event', 'Legacy Event', Date.now(), Date.now() + 60_000);
   fixture.exec(`
+    -- This fixture predates points triggers that reference event_participants.
+    DROP TRIGGER points_settings_start_accounts;
     CREATE TABLE event_participants_legacy (
       event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
       player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
@@ -2571,7 +2573,7 @@ test('migration 53 preserves legacy event participants as accepted and is restar
       VALUES ('legacy-event', 'legacy-event-player');
     DROP TABLE event_participants;
     ALTER TABLE event_participants_legacy RENAME TO event_participants;
-    DELETE FROM schema_migrations WHERE version = 53;
+    DELETE FROM schema_migrations WHERE version IN (53,123,124);
   `);
   fixture.close();
 
@@ -3619,11 +3621,14 @@ test('migrations 89 through 91 add event types, collapse legacy presets and enab
     .run('legacy-feature-event', 'Legacy Feature Event', now, now + 60_000);
   legacy.exec(`
     DROP TRIGGER create_kiosk_account_for_lan_event;
+    -- The pre-event-types schema cannot contain these later LAN triggers.
+    DROP TRIGGER points_event_insert;
+    DROP TRIGGER points_event_publish;
     DROP TABLE kiosk_accounts;
     DROP TABLE event_features;
     ALTER TABLE events DROP COLUMN event_type_key;
     ALTER TABLE events DROP COLUMN preset_version;
-    DELETE FROM schema_migrations WHERE version IN (89, 90, 91, 95);
+    DELETE FROM schema_migrations WHERE version IN (89, 90, 91, 95, 124);
   `);
   legacy.close();
 

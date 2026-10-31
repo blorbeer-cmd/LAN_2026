@@ -4,11 +4,10 @@
 import { pointsSettings, pointStandings, pointsAreVisible } from '../points';
 import { Router } from 'express';
 import { db } from '../db';
-import { computeStandings, type MatchForScoring } from '../leaderboard';
-import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
+import { readStandings } from '../leaderboardData';
+import { resolveAnalyticsEvents } from '../analyticsEventScope';
 import {
   includesTestPlayers,
-  matchResultContainsPlayerIds,
   testPlayerIds,
 } from '../testDataVisibility';
 
@@ -25,26 +24,9 @@ leaderboardRouter.get('/', (req, res) => {
   const filterGameId = typeof gameId === 'string' ? gameId : null;
   const scope = resolveAnalyticsEvents(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  const eventFilter = eventIdSql('event_id', scope.eventIds);
-
-  const rows = (
-    filterGameId
-      ? db.prepare(`SELECT result,event_id FROM matches WHERE group_id = ? AND game_id = ? AND ${eventFilter.clause}`).all(
-          req.group!.id,
-          filterGameId,
-          ...eventFilter.params,
-        )
-      : db.prepare(`SELECT result,event_id FROM matches WHERE group_id = ? AND ${eventFilter.clause}`).all(
-          req.group!.id,
-          ...eventFilter.params,
-        )
-  ) as Array<{ result: string; event_id: string }>;
-
   const hiddenPlayerIds = includesTestPlayers(req) ? new Set<string>() : testPlayerIds();
-  const matches: MatchForScoring[] = rows
-    .filter((row) => pointsSettings(row.event_id)?.configured_at == null && !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
-    .map((r) => JSON.parse(r.result));
-  const combined = computeStandings(matches);
+  const legacyEvents = scope.eventIds.filter((eventId) => pointsSettings(eventId)?.configured_at == null);
+  const combined = readStandings(req.group!.id, legacyEvents, filterGameId, hiddenPlayerIds);
   for (const event of scope.eventIds) {
     if (pointsSettings(event)?.group_id !== req.group!.id || !pointsAreVisible(event)) continue;
     for (const row of pointStandings(event)) {

@@ -390,7 +390,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
           ${showGame ? `<span class="player-name">${drawIncludesMe(draw) ? `<strong>${escapeHtml(draw.gameName)}</strong>` : escapeHtml(draw.gameName)}</span>` : ''}
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</span>
           ${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}
-          ${draw.matchId && draw.winnerTeamIndex === null ? '<span class="tournament-fixture-score">Remis</span>' : ''}
+          ${draw.matchId && draw.isDraw ? '<span class="tournament-fixture-score">Remis</span>' : ''}
         </div>
         ${actions ? `<div class="matchmaking-draw-actions">${actions}</div>` : ''}
       </div>
@@ -409,7 +409,7 @@ function openDrawResultDialog(draw, ctx) {
   const { close, el } = openModal('Ergebnis', `
     <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
     ${recorded ? correction.html : ''}
-    ${resultFormHtml({ teams, prefix: 'draw-result', mode: hasValues ? 'score' : 'winner', winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? -1 : undefined, scores: draw.teams.map((team) => team.score) })}`);
+    ${resultFormHtml({ teams, prefix: 'draw-result', mode: hasValues ? 'score' : 'winner', winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? (draw.isDraw ? -1 : undefined) : undefined, scores: draw.teams.map((team) => team.score) })}`);
   wireResultForm(el, {
     teams,
     mode: hasValues ? 'score' : 'winner',
@@ -420,9 +420,9 @@ function openDrawResultDialog(draw, ctx) {
         rank: mode === 'score' ? ranks[index] : null,
       }));
       if (recorded) {
-        await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex, ...correction.payload(el) });
+        await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, ...correction.payload(el) });
       } else {
-        await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams: payloadTeams, winnerTeamIndex: winnerIndex });
+        await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null });
         if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
       }
       expandedHistoryIds.add(draw.id);
@@ -578,7 +578,7 @@ function wireDrawCards(container, ctx) {
     const id = btn.dataset.deleteTournament;
     const tournament = (tournamentCache ?? []).find((entry) => entry.id === id);
     if (!tournament) return;
-    if (!(await confirmDialog(`Turnier „${tournament.name}“ löschen? Bereits gespeicherte Match-Ergebnisse bleiben in der Rangliste.`, {
+    if (!(await confirmDialog(`Turnier „${tournament.name}“ löschen? Bereits gespeicherte Match-Ergebnisse bleiben in der Rangliste. Platzierungsboni entfallen.`, {
       title: 'Turnier löschen', confirmText: 'Löschen', danger: true,
     }))) return;
     try {
@@ -771,7 +771,7 @@ function historyMatchHtml(draw) {
     : '';
   const result = winner
     ? `<span class="tournament-fixture-score is-pick">Win</span> <strong>${escapeHtml(winnerName)}${winner.score != null && draw.teams.length !== 2 ? ` · <span class="is-win">${winner.score}</span>` : ''}</strong> ${scoreChip}`
-    : '<span class="tournament-fixture-score">Remis</span>';
+    : `<span class="tournament-fixture-score">${draw.isDraw ? 'Remis' : 'Ohne Ergebnis'}</span>`;
   const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span> ${result} <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
   const actions = `<button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>
     <button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>

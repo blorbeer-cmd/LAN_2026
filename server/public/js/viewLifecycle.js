@@ -163,7 +163,7 @@ export const VIEW_LIFECYCLE_HANDLERS = Object.freeze({
     [CONNECTION_RESTORED]: invalidateHallOfFame,
     'games:changed': invalidateHallOfFame,
     'leaderboard:changed': invalidateHallOfFame,
-    'events:changed': () => invalidateHallOfFame({ hard: true }),
+    'events:changed': invalidateHallOfFame,
   }),
   admin: Object.freeze({
     [EVENT_SCOPE_CHANGE]: invalidateAdminReadiness,

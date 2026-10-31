@@ -254,7 +254,7 @@ function renderDetail(container, ctx) {
   });
 
   container.querySelector('#tourn-delete')?.addEventListener('click', async () => {
-    if (!(await confirmDialog(`Turnier "${t.name}" wirklich löschen?`, { confirmText: 'Löschen', danger: true }))) return;
+    if (!(await confirmDialog(`Turnier "${t.name}" wirklich löschen? Match-Ergebnisse bleiben in der Rangliste. Platzierungsboni entfallen.`, { confirmText: 'Löschen', danger: true }))) return;
     try {
       const removed = await withStepUp(() => api.tournaments.remove(t.id));
       if (removed === undefined) return;

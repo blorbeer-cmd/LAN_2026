@@ -113,6 +113,7 @@ export function openMatchForm(ctx) {
             rank: savedMode === 'score' ? ranks[index] : null,
           })),
           winnerTeamIndex: resolvedWinner,
+          isDraw: resolvedWinner === null,
         });
         close();
         await ctx.refresh();

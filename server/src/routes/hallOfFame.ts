@@ -5,10 +5,13 @@ import { pointsSettings, pointStandings, pointsAreVisible } from '../points';
 
 import { Router } from 'express';
 import { db } from '../db';
-import { computeStandings, type MatchForScoring } from '../leaderboard';
+import { readStandings } from '../leaderboardData';
 import { getCompletedTournamentSummaries } from './tournamentChampion';
 import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
-import { includesTestPlayers, matchResultContainsPlayerIds, testPlayerIds } from '../testDataVisibility';
+import {
+  includesTestPlayers,
+  testPlayerIds,
+} from '../testDataVisibility';
 
 export const hallOfFameRouter = Router();
 
@@ -57,16 +60,8 @@ hallOfFameRouter.get('/', (req, res) => {
   const tournamentWinCounts = new Map<string, number>();
 
   const eventSummaries = events.map((e) => {
-    const matchRows = db
-      .prepare('SELECT result FROM matches WHERE event_id = ? AND group_id = ?')
-      .all(e.id, req.group!.id) as Array<{
-      result: string;
-    }>;
-    const matches: MatchForScoring[] = matchRows
-      .filter((row) => !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
-      .map((r) => JSON.parse(r.result));
     const lanPoints = pointsSettings(e.id)?.configured_at != null;
-    const standings = lanPoints ? (pointsAreVisible(e.id) ? pointStandings(e.id) : []) : computeStandings(matches);
+    const standings = lanPoints ? (pointsAreVisible(e.id) ? pointStandings(e.id) : []) : readStandings(req.group!.id, [e.id], null, hiddenPlayerIds);
     const firstRankByPoints = new Map<number, number>();
     const overallStandings = standings.map((standing, index) => {
       if (!firstRankByPoints.has(standing.points)) firstRankByPoints.set(standing.points, index + 1);
