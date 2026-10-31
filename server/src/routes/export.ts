@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 import { db } from '../db';
-import { computeStandings, type MatchForScoring } from '../leaderboard';
+import { readStandings } from '../leaderboardData';
 import { computePlaytime, aggregateByGame, formatDurationMs, type PlaySession } from '../playtime';
 import { computeAwards } from '../awards';
 import { getOrRepairActiveEvent } from '../eventContext';
@@ -120,13 +120,7 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
   const now = Date.now();
 
   // ---------- Leaderboard, scoped to this event's matches ----------
-  const matchRows = db
-    .prepare('SELECT result FROM matches WHERE event_id = ? AND group_id = ?')
-    .all(filterEventId, groupId) as Array<{
-    result: string;
-  }>;
-  const matches: MatchForScoring[] = matchRows.map((r) => JSON.parse(r.result));
-  const leaderboard = computeStandings(matches).map((s) => ({
+  const leaderboard = readStandings(groupId, [filterEventId]).map((s) => ({
     playerId: s.playerId,
     name: playerById.get(s.playerId)?.name ?? 'Unbekannt',
     points: s.points,

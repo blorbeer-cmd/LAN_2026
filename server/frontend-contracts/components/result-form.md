@@ -41,6 +41,8 @@ stabil. Zahlenfelder nutzen die registrierte `result-fields`-Höhe. Gleiche Punk
 die goldene Rangzahl. Ein eindeutiger Höchstwert gewinnt. Leere Felder zählen als null;
 alle Felder leer sperrt das Speichern mit einer verständlichen Meldung. Während der Anfrage
 ist „Speichern“ gesperrt; ein Fehler erhält den Formularzustand.
+Beim Speichern eines Unentschiedens setzen Match- und Admin-Aufrufer ausdrücklich `isDraw: true`;
+ein fehlender Sieger ohne dieses Kennzeichen zählt als fehlendes Ergebnis.
 
 ## 7. Erreichbare Zustände
 

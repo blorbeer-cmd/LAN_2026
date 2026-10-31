@@ -1,6 +1,6 @@
 // Recorded match results (FR-22, FR-25). Result details (teams + winner) are
-// stored as JSON since the leaderboard scoring rules are still being decided
-// and this keeps the schema stable while that's worked out. Each match is
+// stored as JSON with an explicit draw flag so missing results stay unscored.
+// Each match is
 // tagged with the event that was active when it was recorded, so results can
 // be viewed per LAN afterwards; editing a match never moves it to a
 // different event.
@@ -46,6 +46,7 @@ interface TeamInput {
 interface MatchResult {
   teams: TeamInput[];
   winnerTeamIndex: number | null;
+  isDraw: boolean;
 }
 
 interface MatchRow {
@@ -69,7 +70,8 @@ function parseMatch(row: MatchRow) {
 
 function validateTeams(
   teams: unknown,
-  winnerTeamIndex: unknown
+  winnerTeamIndex: unknown,
+  isDraw: unknown = false,
 ): MatchResult | { error: string } {
   if (!Array.isArray(teams) || teams.length < 2) {
     return { error: 'teams muss ein Array mit mindestens 2 Teams sein.' };
@@ -121,7 +123,10 @@ function validateTeams(
     winner = winnerTeamIndex;
   }
 
-  return { teams: normalizedTeams, winnerTeamIndex: winner };
+  if (typeof isDraw !== 'boolean' || (isDraw && winner !== null)) {
+    return { error: 'isDraw muss ein Boolean sein und darf nicht zusammen mit einem Sieger gesetzt werden.' };
+  }
+  return { teams: normalizedTeams, winnerTeamIndex: winner, isDraw };
 }
 
 // GET /api/matches - list, newest first, optionally filtered by ?gameId=
@@ -148,7 +153,7 @@ matchesRouter.get('/', (req, res) => {
 // "Teams auslosen" / draft lineup), moving it from Team-Historie to
 // Ergebnis-Historie — optional since results can also be entered ad-hoc.
 matchesRouter.post('/', (req, res) => {
-  const { gameId, teams, winnerTeamIndex, playedAt, drawId } = req.body ?? {};
+  const { gameId, teams, winnerTeamIndex, isDraw, playedAt, drawId } = req.body ?? {};
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -172,7 +177,7 @@ matchesRouter.post('/', (req, res) => {
     if (!drawForGame) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
   }
 
-  const validated = validateTeams(teams, winnerTeamIndex);
+  const validated = validateTeams(teams, winnerTeamIndex, isDraw);
   if ('error' in validated) return res.status(400).json({ error: validated.error });
 
   const scope = resolveRequestGroupEventScope(req, undefined);
@@ -205,7 +210,7 @@ matchesRouter.post('/', (req, res) => {
     game_id: gameId,
     event_id: eventId,
     played_at: playedAt ?? Date.now(),
-    result: JSON.stringify({ teams: validated.teams, winnerTeamIndex: validated.winnerTeamIndex }),
+    result: JSON.stringify(validated),
     group_id: req.group!.id,
   };
   try {
@@ -292,7 +297,7 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
   const existing = req.groupResource as MatchRow;
   if (!requireGroupEventAccess(req, res, existing.event_id)) return;
 
-  const { gameId, teams, winnerTeamIndex, playedAt } = req.body ?? {};
+  const { gameId, teams, winnerTeamIndex, isDraw, playedAt } = req.body ?? {};
   const prevResult = JSON.parse(existing.result) as MatchResult;
 
   let nextGameId = existing.game_id;
@@ -314,10 +319,11 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
   }
 
   let nextResultObj = prevResult;
-  if (teams !== undefined || winnerTeamIndex !== undefined) {
+  if (teams !== undefined || winnerTeamIndex !== undefined || isDraw !== undefined) {
     const validated = validateTeams(
       teams ?? prevResult.teams,
-      winnerTeamIndex !== undefined ? winnerTeamIndex : prevResult.winnerTeamIndex
+      winnerTeamIndex !== undefined ? winnerTeamIndex : prevResult.winnerTeamIndex,
+      isDraw !== undefined ? isDraw : winnerTeamIndex !== undefined ? false : prevResult.isDraw ?? false,
     );
     if ('error' in validated) return res.status(400).json({ error: validated.error });
     if (!competitionPlayersBelongToGroup(req.group!.id, existing.event_id, validated.teams.flatMap((t) => t.playerIds))) {
