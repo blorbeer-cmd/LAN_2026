@@ -33,7 +33,7 @@
 // its row through resolveGroupResource, so a retained group_id mismatch stays
 // hidden behind a 404.
 
-import { awardTaskPoints, claimTaskPoints, releaseTaskPoints, taskReward, PointsError } from '../points';
+import { awardTaskPoints, claimTaskPoints, releaseTaskPoints, taskReward, pointsAreVisible, PointsError } from '../points';
 import { Router, type Request, type Response } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
@@ -154,7 +154,7 @@ function syncTaskAssignee(taskId: string): void {
   }
 }
 
-function serializeTask(row: TaskRow) {
+function serializeTask(row: TaskRow, forAdmin = false) {
   const assignees = taskParticipants(row.id).flatMap((participant) => {
     const ref = playerRef(participant.player_id);
     return ref ? [{ ...ref, comment: participant.comment, joinedAt: participant.joined_at }] : [];
@@ -176,8 +176,11 @@ function serializeTask(row: TaskRow) {
     claimComment: row.claim_comment,
     dueAt: row.due_at,
     archivedAt: row.archived_at,
-    reward: taskReward(row.id),
+    reward: forAdmin || pointsAreVisible(row.event_id) ? taskReward(row.id) : null,
   };
+}
+function serializeTaskFor(req: import('express').Request, row: TaskRow) {
+  return serializeTask(row, ['owner', 'admin'].includes(req.groupMembership!.role));
 }
 
 // Optional due date (epoch ms), same shape/convention as events.ts's own
@@ -384,7 +387,7 @@ checklistRouter.get('/tasks', (req, res) => {
   const groupId = req.group!.id;
   const scope = currentEventScope(req, res);
   if (!scope) return;
-  res.json({ tasks: listTasks(groupId, scope.eventId).map(serializeTask) });
+  res.json({ tasks: listTasks(groupId, scope.eventId).map((row) => serializeTaskFor(req, row)) });
 });
 
 // POST /api/checklist/tasks - body: { playerId, title, description?,
@@ -521,7 +524,7 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
   }
 
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId });
-  res.status(201).json({ tasks: rows.map(serializeTask) });
+  res.status(201).json({ tasks: rows.map((row) => serializeTaskFor(req, row)) });
 });
 
 // POST /api/checklist/tasks/todo - body: { playerId, title, description?,
@@ -657,7 +660,7 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
   }
 
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId });
-  res.status(201).json({ tasks: rows.map(serializeTask) });
+  res.status(201).json({ tasks: rows.map((row) => serializeTaskFor(req, row)) });
 });
 
 // POST /api/checklist/tasks/:id/claim - body: { playerId, comment? }. Signs
@@ -719,7 +722,7 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
     );
   }
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask(getTask(task.id)!));
+  res.json(serializeTaskFor(req, getTask(task.id)!));
 });
 
 // POST /api/checklist/tasks/:id/release - body: { playerId }. A participant
@@ -748,7 +751,7 @@ checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlay
   // task that's back in the open pool.
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask(getTask(task.id)!));
+  res.json(serializeTaskFor(req, getTask(task.id)!));
 });
 
 // PATCH /api/checklist/tasks/:id/done - body: { playerId }. Any participant,
@@ -775,7 +778,7 @@ checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayer
   broadcast(Events.leaderboardChanged, null, { groupId: task.group_id, eventId: task.event_id });
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask({ ...task, status: 'done', done_at: doneAt }));
+  res.json(serializeTaskFor(req, { ...task, status: 'done', done_at: doneAt }));
 });
 
 // POST /api/checklist/tasks/:id/archive - body: { playerId }. A done task
@@ -798,7 +801,7 @@ checklistRouter.post('/tasks/:id/archive', resolveChecklistTask, ...withBodyPlay
     return res.status(409).json({ error: 'Nur erledigte, noch nicht archivierte Aufgaben können archiviert werden.' });
   }
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask({ ...task, archived_at: archivedAt }));
+  res.json(serializeTaskFor(req, { ...task, archived_at: archivedAt }));
 });
 
 // PATCH /api/checklist/tasks/:id - body: { playerId, type?, title?,
@@ -858,7 +861,7 @@ checklistRouter.patch('/tasks/:id', resolveChecklistTask, ...withBodyPlayerIdent
           .all(task.batch_id, task.group_id)
       : [getTask(task.id)]
   ) as TaskRow[];
-  res.json({ tasks: rows.map(serializeTask) });
+  res.json({ tasks: rows.map((row) => serializeTaskFor(req, row)) });
 });
 
 // DELETE /api/checklist/tasks/:id - body: { playerId }. Creator or group

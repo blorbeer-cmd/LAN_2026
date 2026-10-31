@@ -1,7 +1,7 @@
 // Aggregated leaderboard (FR-23, FR-24): overall standings, or filtered to one
 // game via ?gameId=.
 
-import { pointsSettings, pointStandings } from '../points';
+import { pointsSettings, pointStandings, pointsAreVisible } from '../points';
 import { Router } from 'express';
 import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
@@ -42,11 +42,11 @@ leaderboardRouter.get('/', (req, res) => {
 
   const hiddenPlayerIds = includesTestPlayers(req) ? new Set<string>() : testPlayerIds();
   const matches: MatchForScoring[] = rows
-    .filter((row) => !pointsSettings(row.event_id) && !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
+    .filter((row) => pointsSettings(row.event_id)?.configured_at == null && !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
     .map((r) => JSON.parse(r.result));
   const combined = computeStandings(matches);
   for (const event of scope.eventIds) {
-    if (pointsSettings(event)?.group_id !== req.group!.id) continue;
+    if (pointsSettings(event)?.group_id !== req.group!.id || !pointsAreVisible(event)) continue;
     for (const row of pointStandings(event)) {
       const existing = combined.find((p) => p.playerId === row.playerId);
       if (existing) existing.points += row.points;

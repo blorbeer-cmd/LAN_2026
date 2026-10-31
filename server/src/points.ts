@@ -22,6 +22,9 @@ export interface PointsSettings {
   prize_info: string;
   created_at: number;
   closed_at: number | null;
+  visible: number;
+  visibility_revision: number;
+  configured_at: number | null;
 }
 export interface PointEntry {
   id: string;
@@ -37,6 +40,14 @@ export interface PointEntry {
 }
 export function pointsSettings(eventId: string): PointsSettings | undefined {
   return db.prepare('SELECT * FROM points_settings WHERE event_id = ?').get(eventId) as PointsSettings | undefined;
+}
+export function pointsAreVisible(eventId: string | null): boolean {
+  if (!eventId) return false;
+  return Boolean(db.prepare(`SELECT 1 FROM points_settings s JOIN events e ON e.id = s.event_id
+    WHERE s.event_id = ? AND s.visible = 1 AND e.event_type_key = 'lan'`).get(eventId));
+}
+export function requirePointsVisible(eventId: string): void {
+  if (!pointsAreVisible(eventId)) throw new PointsError('LAN-Punkte sind für dieses Event ausgeblendet.', 403);
 }
 export function requirePointsOpen(eventId: string): PointsSettings {
   const settings = pointsSettings(eventId);

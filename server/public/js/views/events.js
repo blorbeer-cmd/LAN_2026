@@ -14,7 +14,7 @@
 // Sitzplan uses (see seating.js).
 
 import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
-import { api } from '../api.js';
+import { api, apiFetch } from '../api.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { state } from '../state.js';
 import { icon } from '../icons.js';
@@ -824,6 +824,11 @@ function trackingChip(event) {
     : '';
 }
 
+function renderEventPointsVisibility(event) {
+  if (!event.pointsAvailable || event.eventType !== 'lan' || (!isGroupAdmin() && !isEventCreator(event))) return '';
+  return `<section class="event-card-section stack"><h3>LAN-Punkte</h3><p>${event.pointsEnabled ? 'Punkteübersichten und Wetten sind für alle Teilnehmer sichtbar.' : 'Punkteübersichten und Wetten sind für Teilnehmer ausgeblendet.'} Punkte werden im Hintergrund weiter gesammelt. Bereits laufende Runden werden weiter abgewickelt.</p><button type="button" class="btn btn-sm" data-points-visibility="${escapeHtml(event.id)}" data-points-visible="${event.pointsEnabled ? 'false' : 'true'}" data-points-revision="${event.pointsVisibilityRevision ?? 0}">${event.pointsEnabled ? 'Für Teilnehmer ausblenden' : 'Für Teilnehmer anzeigen'}</button></section>`;
+}
+
 function renderEventCardShell(event, { collapsible, managed }) {
   const expanded = !collapsible || expandedEventCards.has(event.id);
   const metaParts = eventHeaderMeta(event, { withDateRange: !expanded });
@@ -838,6 +843,7 @@ function renderEventCardShell(event, { collapsible, managed }) {
       <div class="food-order-card-body event-card-body" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
         ${renderEventInfoSection(event)}
         ${renderEventPayment(event)}
+        ${renderEventPointsVisibility(event)}
         ${renderParticipantsSection(event, { includeInvitationStatuses: managed })}
         ${renderOwnParticipationActions(event)}
       </div>
@@ -1545,6 +1551,8 @@ export function renderOrgaKiosk(container, ctx) {
 // No longer an Orga tab, so this view owns its own page title and the way back
 // to "Mehr", like every other destination reached directly from the hub.
 export function renderOrgaEvents(container, ctx) {
+  const listed = new Set([...(state.managedEvents ?? []), ...(state.availableEvents ?? []), ...(state.endedEvents ?? [])].map((event) => event.id));
+  const creatorControls = (state.pointsVisibilityEvents ?? []).filter((event) => !listed.has(event.id));
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
@@ -1553,6 +1561,7 @@ export function renderOrgaEvents(container, ctx) {
     </div>
     <div class="grouped-page-sections">
       ${renderEventSection()}
+      ${creatorControls.map((event) => `<article class="card stack"><h2>${escapeHtml(event.name)}</h2>${renderEventPointsVisibility(event)}</article>`).join('')}
     </div>
   `;
 
@@ -1582,6 +1591,22 @@ export function renderOrgaEvents(container, ctx) {
   });
 
   wireActionMenus(container);
+  container.querySelectorAll('[data-points-visibility]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        await apiFetch(`/api/events/${encodeURIComponent(button.dataset.pointsVisibility)}/points-visibility`, {
+          method: 'PATCH',
+          body: JSON.stringify({ visible: button.dataset.pointsVisible === 'true', revision: Number(button.dataset.pointsRevision) }),
+        });
+        await ctx.refresh();
+      } catch (error) {
+        showToast(error.message, { error: true });
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
   wireParticipantActions(container, ctx);
   wireParticipationAnswerActions(container, ctx);
   wirePendingInvitationActions(container, ctx);

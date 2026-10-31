@@ -5,7 +5,7 @@ export const POINT_SOURCES = Object.freeze({
   task: 'Orga-Aufgabe',
   tip: 'Wette',
   refund: 'Erstattung',
-  correction: 'Punkteentzug',
+  correction: 'Korrektur',
   reversal: 'Storno',
 });
 export const signedPoints = (value) => `${value > 0 ? '+' : ''}${value}`;

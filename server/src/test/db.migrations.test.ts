@@ -20,19 +20,20 @@ import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 const BOOTSTRAP_ADMINS_JS_PATH = path.join(__dirname, '..', 'bootstrapAdmins.js');
 
-test('migration 123 creates opt-in points tables idempotently without activating or crediting legacy events', () => {
+test('points migrations leave legacy LANs hidden and preserve background balances across replay', () => {
   const dbFile = makeTempDbPath('points-opt-in');
   runMigrations(dbFile);
   const fixture = new Database(dbFile);
-  assert.equal(fixture.prepare('SELECT COUNT(*) AS n FROM points_settings').get() && (fixture.prepare('SELECT COUNT(*) AS n FROM points_settings').get() as { n: number }).n, 0);
-  assert.equal((fixture.prepare('SELECT COUNT(*) AS n FROM point_entries').get() as { n: number }).n, 0);
+  assert.equal((fixture.prepare('SELECT COUNT(*) AS n FROM points_settings WHERE visible = 1').get() as { n: number }).n, 0);
+  const entries = fixture.prepare('SELECT * FROM point_entries ORDER BY id').all();
   fixture.prepare('DELETE FROM schema_migrations WHERE version = 123').run();
   fixture.close();
   runMigrations(dbFile);
   runMigrations(dbFile);
   const restarted = new Database(dbFile);
   assert.deepEqual(restarted.prepare('PRAGMA foreign_key_check').all(), []);
-  assert.equal((restarted.prepare('SELECT COUNT(*) AS n FROM point_entries').get() as { n: number }).n, 0);
+  assert.deepEqual(restarted.prepare('SELECT * FROM point_entries ORDER BY id').all(), entries);
+  assert.equal((restarted.prepare('SELECT COUNT(*) AS n FROM points_settings WHERE visible = 1').get() as { n: number }).n, 0);
   restarted.close();
 });
 
@@ -40,6 +41,59 @@ function makeTempDbPath(name: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-migration-test-'));
   return path.join(dir, `${name}.db`);
 }
+
+test('migration 124 preserves visible accounts, backfills hidden LANs, rolls back failures and survives restarts', () => {
+  const dbFile = makeTempDbPath('points-visibility');
+  runMigrations(dbFile);
+  const legacy = new Database(dbFile);
+  legacy.exec(`
+    INSERT INTO players (id,name,api_key,created_at) VALUES ('points-helper','Helper','points-helper-key',1);
+    INSERT INTO group_memberships (group_id,player_id,role,status) VALUES ('default-group','points-helper','member','active');
+    INSERT INTO events (id,name,starts_at,ends_at,group_id,status,event_type_key) VALUES
+      ('points-visible','Visible LAN',1,9999999999999,'default-group','published','lan'),
+      ('points-hidden','Hidden LAN',1,9999999999999,'default-group','published','lan'),
+      ('points-general','General event',1,9999999999999,'default-group','published','general');
+    INSERT INTO event_participants (event_id,player_id,status) VALUES
+      ('points-visible','points-helper','accepted'),('points-hidden','points-helper','accepted');
+    UPDATE points_settings SET orga_budget=200,orga_allocated=20,prize_info='Existing prize' WHERE event_id='points-visible';
+    UPDATE point_entries SET amount=73 WHERE event_id='points-visible';
+    DELETE FROM point_entries WHERE event_id='points-hidden';
+    DELETE FROM points_settings WHERE event_id='points-hidden';
+    DROP TRIGGER points_event_insert;
+    DROP TRIGGER points_event_publish;
+    DROP TRIGGER points_settings_start_accounts;
+    ALTER TABLE points_settings DROP COLUMN visible;
+    ALTER TABLE points_settings DROP COLUMN visibility_revision;
+    ALTER TABLE points_settings DROP COLUMN configured_at;
+    DELETE FROM schema_migrations WHERE version=124;
+    CREATE TRIGGER fail_points_backfill BEFORE INSERT ON points_settings
+      WHEN NEW.event_id='points-hidden' BEGIN SELECT RAISE(ABORT,'backfill failure'); END;
+  `);
+  legacy.close();
+  assert.throws(() => runMigrations(dbFile), /backfill failure/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=124').get(), undefined);
+  assert.equal((failed.prepare('PRAGMA table_info(points_settings)').all() as Array<{name: string}>).some((c) => c.name === 'visible'), false);
+  failed.exec('DROP TRIGGER fail_points_backfill');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  assert.deepEqual(migrated.prepare('SELECT visible,orga_budget,orga_allocated,prize_info FROM points_settings WHERE event_id=?').get('points-visible'),
+    { visible: 1, orga_budget: 200, orga_allocated: 20, prize_info: 'Existing prize' });
+  assert.deepEqual(migrated.prepare('SELECT amount FROM point_entries WHERE event_id=?').all('points-visible'), [{ amount: 73 }]);
+  assert.deepEqual(migrated.prepare('SELECT visible,configured_at FROM points_settings WHERE event_id=?').get('points-hidden'), { visible: 0, configured_at: null });
+  assert.deepEqual(migrated.prepare('SELECT amount FROM point_entries WHERE event_id=?').all('points-hidden'), [{ amount: 100 }]);
+  assert.equal(migrated.prepare('SELECT 1 FROM points_settings WHERE event_id=?').get('points-general'), undefined);
+  migrated.exec(`INSERT INTO events (id,name,starts_at,ends_at,group_id,status,event_type_key)
+    VALUES ('points-draft','Draft LAN',NULL,NULL,'default-group','draft','lan');
+    INSERT INTO event_participants (event_id,player_id,status) VALUES ('points-draft','points-helper','accepted');`);
+  assert.equal(migrated.prepare('SELECT 1 FROM points_settings WHERE event_id=?').get('points-draft'), undefined);
+  migrated.exec("UPDATE events SET status='published',starts_at=1 WHERE id='points-draft'");
+  assert.deepEqual(migrated.prepare('SELECT amount FROM point_entries WHERE event_id=?').all('points-draft'), [{ amount: 100 }]);
+  assert.deepEqual(migrated.prepare('PRAGMA foreign_key_check').all(), []);
+  migrated.close();
+});
 
 // Runs the real db.ts module (compiled) against the given file in a fresh
 // node process, so its module-level migrations execute exactly once against
@@ -951,10 +1005,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 123);
+  assert.equal(migrations.length, 124);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 123 }, (_, index) => index + 1),
+    Array.from({ length: 124 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1556,8 +1610,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 123 }, (_, index) => index + 1),
-    'every version 1..123 runs exactly once',
+    Array.from({ length: 124 }, (_, index) => index + 1),
+    'every version 1..124 runs exactly once',
   );
 });
 

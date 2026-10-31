@@ -4,6 +4,7 @@ import { requireGroupRole } from '../groupAuthorization';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 import {
   configureTaskReward,
+  addPointEntry,
   deductPoints,
   ensurePointAccounts,
   pointParticipants,
@@ -11,6 +12,7 @@ import {
   PointsError,
   pointsSettings,
   requirePointsOpen,
+  requirePointsVisible,
   rewardBudget,
   taskReward,
   wallet,
@@ -64,6 +66,7 @@ function text(value: unknown, label: string, max = 300): string {
 }
 pointsRouter.get('/', (req, res) => {
   const eventId = res.locals.eventId as string;
+  if (!['owner', 'admin'].includes(req.groupMembership!.role)) requirePointsVisible(eventId);
   ensurePointAccounts(eventId);
   reconcileBetting(eventId);
   const settings = pointsSettings(eventId) ?? null;
@@ -112,7 +115,7 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
   db.transaction(() => {
     const previous = pointsSettings(eventId);
     if (previous && previous.closed_at !== null) throw new PointsError('Die Punktewertung ist abgeschlossen.');
-    if (previous && initial !== previous.initial_points)
+    if (previous?.configured_at != null && initial !== previous.initial_points)
       throw new PointsError('Der Grundstock kann nach Aktivierung nicht geändert werden.');
     const used = rewardBudget(eventId);
     if (budget < used.issued + used.reserved) throw new PointsError('Das Budget ist bereits durch Aufgaben gebunden.');
@@ -126,8 +129,15 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
     db.prepare(
       `INSERT INTO points_settings (event_id,group_id,initial_points,orga_budget,max_stake,daily_limit,max_rounds,created_at,prize_info)
       VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET orga_budget=excluded.orga_budget,
+      initial_points=excluded.initial_points,configured_at=COALESCE(points_settings.configured_at,excluded.created_at),
       max_stake=excluded.max_stake,daily_limit=excluded.daily_limit,max_rounds=excluded.max_rounds,prize_info=excluded.prize_info`,
     ).run(eventId, req.group!.id, initial, budget, maxStake, daily, rounds, Date.now(), prizeInfo.trim());
+    if (previous && initial !== previous.initial_points) {
+      for (const entry of db.prepare("SELECT id,player_id FROM point_entries WHERE event_id = ? AND source = 'start'").all(eventId) as Array<{id: string; player_id: string}>) {
+        addPointEntry(eventId, entry.player_id, initial - previous.initial_points, 'correction', `initial-config:${entry.player_id}`,
+          'Grundstock angepasst', req.player!.id, { previous: previous.initial_points, initial }, entry.id);
+      }
+    }
     ensurePointAccounts(eventId);
   })();
   writeAdminAudit({
@@ -198,6 +208,7 @@ pointsRouter.post('/entries/:id/deduct', requireGroupRole('admin'), (req, res) =
 });
 pointsRouter.post('/rounds', requireGroupRole('admin'), (req, res) => {
   const eventId = res.locals.eventId as string;
+  requirePointsVisible(eventId);
   const type = req.body?.sourceType;
   if (!['draw', 'tournament_match', 'tournament'].includes(type)) throw new PointsError('Ungültige Wettart.', 400);
   const closesAt = integer(req.body?.closesAt, 'Tippschluss', Date.now() + 1000, Date.now() + 7 * 86400000);
@@ -234,12 +245,14 @@ pointsRouter.put('/rounds/:id/tip', (req, res) => {
   res.json(roundView(getBettingRound(req.group!.id, eventId, req.params.id), req.player!.id));
 });
 pointsRouter.delete('/rounds/:id/tip', (req, res) => {
+  requirePointsVisible(res.locals.eventId);
   removeTip(req.group!.id, res.locals.eventId, req.params.id, req.player!.id);
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: res.locals.eventId });
   res.json({ ok: true });
 });
 pointsRouter.post('/rounds/:id/lock', (req, res) => {
   const eventId = res.locals.eventId as string;
+  if (!['owner', 'admin'].includes(req.groupMembership!.role)) requirePointsVisible(eventId);
   const round = getBettingRound(req.group!.id, eventId, req.params.id);
   const participating = (JSON.parse(round.outcomes) as Array<{ playerIds: string[] }>).some((o) =>
     o.playerIds.includes(req.player!.id),

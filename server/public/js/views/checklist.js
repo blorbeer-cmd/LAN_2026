@@ -18,7 +18,8 @@ import { dueDiffDays, dueText } from '../checklistDue.js';
 import { wireSelectionSearch } from '../selectionSearch.js';
 import { wireActionMenus } from '../actionMenu.js';
 import { isGroupAdmin } from '../groupContext.js';
-import { openTaskReward } from './points.js';
+import { openTaskReward, openPointsModal } from './points.js';
+import { state } from '../state.js';
 
 let tasksCache = null;
 let itemsCache = null;
@@ -510,7 +511,7 @@ function openTaskDetail(ctx, myId, taskId) {
         : canArchive
           ? '<button type="button" class="btn btn-primary btn-sm" data-detail-archive>Archivieren</button>'
           : '';
-  const { close } = openModal(
+  const { close } = (task.reward && state.activeEvent?.pointsEnabled ? openPointsModal : openModal)(
     task.title,
     `<div class="stack">
        ${task.description ? `<p class="checklist-detail-description">${escapeHtml(task.description)}</p>` : ''}

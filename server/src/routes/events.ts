@@ -56,6 +56,7 @@ import {
 } from '../eventFeatureCatalog';
 import { includesTestEvents } from '../testDataVisibility';
 import { confirmEventCalendar, eventScheduleKey, STEFAN_CALENDAR_GAG_USERNAME } from '../eventReminders';
+import { pointsAreVisible, pointsSettings } from '../points';
 
 export const eventsRouter = Router();
 
@@ -483,7 +484,9 @@ function serializeEventSummary(
     eventType: event.event_type_key,
     presetVersion: event.preset_version,
     enabledFeatures: getEnabledEventFeatures(event.id),
-    pointsEnabled: Boolean(db.prepare('SELECT 1 FROM points_settings WHERE event_id = ?').get(event.id)),
+    pointsEnabled: pointsAreVisible(event.id),
+    pointsAvailable: Boolean(pointsSettings(event.id)),
+    pointsVisibilityRevision: pointsSettings(event.id)?.visibility_revision ?? 0,
     isTest: Boolean(event.is_test),
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),
@@ -615,6 +618,9 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
     : undefined;
   res.json({
     eventTypeOptions: eventTypeOptions(),
+    pointsVisibilityEvents: listEvents(req.group!.id)
+      .filter((event) => event.created_by === playerId && event.event_type_key === 'lan' && Boolean(pointsSettings(event.id)) && (includeTestEvents || !event.is_test))
+      .map((event) => ({ ...serializeEventSummary(event), createdBy: event.created_by })),
     activeEvent: {
       ...serializeEventSummary(activeEvent as EventRow),
       // Every picker that draws teams or starts a draft must offer only
@@ -638,6 +644,33 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
     declinedEvents: declinedEvents.map((event) => serializeTeaserEvent(event, playerId)),
     ...(managedEvents ? { managedEvents } : {}),
   });
+});
+
+// Visibility management does not grant operational access to the event.
+eventsRouter.patch('/:id/points-visibility', resolveEvent, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const admin = ['owner', 'admin'].includes(req.groupMembership!.role);
+  if (!admin && event.created_by !== req.player!.id) return res.status(403).json({ error: 'Nur Admins oder der Event-Ersteller können die Punkteanzeige ändern.' });
+  const { visible, revision } = req.body ?? {};
+  if (typeof visible !== 'boolean' || !Number.isSafeInteger(revision) || revision < 0)
+    return res.status(400).json({ error: 'Sichtbarkeit und aktuelle Version sind erforderlich.' });
+  if (event.event_type_key !== 'lan' || !pointsSettings(event.id))
+    return res.status(409).json({ error: 'LAN-Punkte stehen nach Veröffentlichung eines LAN-Events bereit.' });
+  const changed = db.transaction(() => {
+    const result = db.prepare(`UPDATE points_settings SET visible = ?, visibility_revision = visibility_revision + 1,
+      configured_at = CASE WHEN ? = 1 THEN COALESCE(configured_at,?) ELSE configured_at END
+      WHERE event_id = ? AND visibility_revision = ?`).run(Number(visible), Number(visible), Date.now(), event.id, revision);
+    if (!result.changes) return false;
+    writeAdminAudit({ actorPlayerId: req.player!.id, groupId: req.group!.id, action: 'points_visibility_changed',
+      targetType: 'event', targetId: event.id, details: { visible, revision: revision + 1 } });
+    return true;
+  })();
+  if (!changed) return res.status(409).json({ error: 'Die Punkteanzeige wurde inzwischen geändert. Bitte neu laden.' });
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: req.group!.id, eventId: event.id });
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: event.id });
+  broadcast(Events.pushChanged, { groupId: req.group!.id }, { groupId: req.group!.id });
+  res.json({ visible, revision: revision + 1 });
 });
 
 // GET /api/events/active - this account's persisted workspace.

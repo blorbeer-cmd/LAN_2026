@@ -8,6 +8,8 @@ import {
   pointParticipants,
   PointsError,
   requirePointsOpen,
+  pointsAreVisible,
+  requirePointsVisible,
   wallet,
 } from './points';
 import { notifyPlayers, resolvePushTopic } from './push';
@@ -186,7 +188,7 @@ function tipsFor(id: string): TipRow[] {
   return db.prepare('SELECT * FROM betting_tips WHERE round_id = ? ORDER BY id').all(id) as TipRow[];
 }
 export function notifyBettingRound(round: BettingRound): void {
-  if (round.notice_sent || round.closes_at <= Date.now() || round.status !== 'open') return;
+  if (round.notice_sent || round.closes_at <= Date.now() || round.status !== 'open' || !pointsAreVisible(round.event_id)) return;
   const recipients = pointParticipants(round.group_id, round.event_id).map((p) => p.id);
   notifyPlayers(
     recipients,
@@ -212,6 +214,7 @@ export function createBettingRound(
   actorId: string,
 ): string {
   const id = db.transaction(() => {
+    requirePointsVisible(eventId);
     const settings = requirePointsOpen(eventId);
     const source = betSourceState(groupId, eventId, type, sourceId);
     if (
@@ -420,6 +423,7 @@ export function putTip(
 ): void {
   reconcileBetting(eventId);
   db.transaction(() => {
+    requirePointsVisible(eventId);
     const settings = requirePointsOpen(eventId);
     ensurePointAccounts(eventId);
     const round = getBettingRound(groupId, eventId, roundId);

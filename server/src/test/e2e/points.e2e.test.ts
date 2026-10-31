@@ -23,6 +23,7 @@ let alice: E2EAccount;
 let bob: E2EAccount;
 let eventId: string;
 let myId: string;
+const pageErrors: string[] = [];
 const test = createE2EDiagnosticTest(() => ({ browser, server }));
 
 async function api(path: string, method = 'GET', body?: unknown, session = cookie): Promise<any> {
@@ -40,6 +41,15 @@ async function navigate(page: Page, view: string) {
     view,
   );
   await page.waitForSelector(`#view-container[data-view="${view}"]`);
+}
+async function setPointsVisibility(visible: boolean) {
+  await navigate(admin, 'events');
+  const card = admin.locator(`[data-event-card="${eventId}"]`);
+  const expand = card.locator('[data-event-card-toggle]');
+  if (await expand.count() && await expand.getAttribute('aria-expanded') === 'false') await expand.click();
+  await card.getByRole('button', { name: visible ? 'Für Teilnehmer anzeigen' : 'Für Teilnehmer ausblenden', exact: true }).click();
+  await card.getByRole('button', { name: visible ? 'Für Teilnehmer ausblenden' : 'Für Teilnehmer anzeigen', exact: true }).waitFor();
+  await member.locator('.desktop-nav-btn[data-view="points"]').waitFor({ state: visible ? 'attached' : 'detached' });
 }
 
 before(async () => {
@@ -78,7 +88,7 @@ before(async () => {
   admin = await adminContext.newPage();
   member = await memberContext.newPage();
   for (const page of [admin, member]) {
-    page.on('pageerror', (error) => console.error('[points pageerror]', error));
+    page.on('pageerror', (error) => pageErrors.push(error.message));
     await page.goto(`${page === admin ? adminBaseUrl : server.baseUrl}/#points`);
     await waitForPlayerData(page);
   }
@@ -93,7 +103,7 @@ after(async () => {
 test('real LAN account, automatic orga credits, own-game betting notification, history and administrative deduction work on phone and desktop', async () => {
   await navigate(admin, 'pointsAdmin');
   await admin.locator('[name="prizeInfo"]').fill('Respawn-Pokal; bei Gleichstand Losentscheid.');
-  await admin.getByRole('button', { name: 'Punktewertung aktivieren', exact: true }).click();
+  await admin.getByRole('button', { name: 'Regeln speichern', exact: true }).click();
   await admin.getByText('Budget verfügbar', { exact: true }).waitFor();
   for (const width of [320, 390, 1440]) {
     await admin.setViewportSize({ width, height: 900 });
@@ -102,17 +112,8 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     );
     assert.equal(fits, true, `points administration at ${width}px`);
   }
-  await member.waitForSelector('.desktop-nav-btn[data-view="points"]', { state: 'attached' });
-  await navigate(member, 'points');
-  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
-  await member.getByText('Preis & Vergabe: Respawn-Pokal; bei Gleichstand Losentscheid.', { exact: true }).waitFor();
-
-  const standings = member.getByRole('list', { name: 'LAN-Rangliste', exact: true });
-  await standings.getByText('Points Bob', { exact: true }).waitFor();
-  await api(`/api/players/${bob.id}`, 'PATCH', { name: 'AAA Points Bob' }, bob.cookie);
-  await standings.getByText('AAA Points Bob', { exact: true }).waitFor();
-  assert.match(await standings.locator('.ranked-list-row').first().innerText(), /AAA Points Bob/);
-  assert.equal(await standings.getByText('Points Bob', { exact: true }).count(), 0);
+  assert.equal(await member.locator('.desktop-nav-btn[data-view="points"]').count(), 0);
+  assert.equal((await api(`/api/points?eventId=${eventId}`)).wallet.total, 100);
 
   const task = await api('/api/checklist/tasks/todo', 'POST', {
     playerId: myId,
@@ -130,9 +131,28 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.locator('#checklist-claim-form [type="submit"]').click();
   await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
   await member.locator(`[data-task-detail="${taskId}"]`).click();
-  await member.getByText(/Du erhältst die Punkte beim Erledigen automatisch/).waitFor();
+  assert.equal(await member.getByText(/Du erhältst die Punkte beim Erledigen automatisch/).count(), 0);
   await member.locator('[data-detail-done]').click();
   await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
+  const hidden = await api(`/api/points?eventId=${eventId}`);
+  assert.equal(hidden.standings.find((row: { playerId: string }) => row.playerId === alice.id).points, 105);
+  await setPointsVisibility(true);
+  await navigate(member, 'points');
+  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('105', { exact: true }).first().waitFor();
+  await member.getByText('Preis & Vergabe: Respawn-Pokal; bei Gleichstand Losentscheid.', { exact: true }).waitFor();
+  const standings = member.getByRole('list', { name: 'LAN-Rangliste', exact: true });
+  await standings.getByText('Points Bob', { exact: true }).waitFor();
+  await api(`/api/players/${bob.id}`, 'PATCH', { name: 'AAA Points Bob' }, bob.cookie);
+  await standings.getByText('AAA Points Bob', { exact: true }).waitFor();
+  assert.match(await standings.locator('.ranked-list-row').nth(1).innerText(), /AAA Points Bob/);
+  assert.equal(await standings.getByText('Points Bob', { exact: true }).count(), 0);
+  await member.locator('[data-point-entry]').first().click();
+  await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).waitFor();
+  await setPointsVisibility(false);
+  await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).waitFor({ state: 'detached' });
+  await member.getByRole('region', { name: 'Mein Punktekonto' }).waitFor({ state: 'detached' });
+  assert.equal(await member.locator('.desktop-nav-btn[data-view="points"]').count(), 0);
+  await setPointsVisibility(true);
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('105', { exact: true }).first().waitFor();
   await member.locator('[data-points-source]').selectOption('task');
@@ -243,4 +263,5 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const champions = admin.getByRole('list', { name: 'Meiste Gesamtsiege', exact: true });
   assert.equal(await champions.locator('.ranked-list-row').count(), 3);
   assert.deepEqual(await champions.locator('.ranked-list-rank').allTextContents(), ['1', '1', '1']);
+  assert.deepEqual(pageErrors, [], 'visibility updates and point actions must not raise browser errors');
 });

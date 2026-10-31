@@ -114,6 +114,7 @@ test('frozen LAN points retain shared champions, shared places and equal all-tim
     setParticipants(event.id, players);
     setActiveEventForPlayer(TEST_ADMIN_ID, event.id);
     assert.equal((await request(app).put('/api/points/settings').send({ initialPoints })).status, 200);
+    assert.equal((await request(app).patch(`/api/events/${event.id}/points-visibility`).send({ visible: true, revision: 0 })).status, 200);
     if (initialPoints > 0) {
       const entries = (await request(app).get('/api/points/admin/entries')).body.entries;
       const lowerCredit = entries.find(

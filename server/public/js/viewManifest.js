@@ -206,7 +206,7 @@ export const VIEW_MANIFEST = Object.freeze({
   hallOfFame: defineView({
     label: 'Hall of Fame', section: 'insights', sectionOrder: 2, iconKey: 'landmark', requiresRole: 'admin', deniedView: 'foodOrders', eventFeature: 'tracking',
     search: search('Auswertung', 'Champions vergangener Events', 'auswertung champions sieger historie ruhmeshalle', 61),
-    lifecycle: lifecycle('hallOfFame', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard] }),
+    lifecycle: lifecycle('hallOfFame', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events] }),
   }),
   seating: defineView({
     label: 'Sitzplan', iconKey: 'armchair', requiresRole: 'admin', eventFeature: 'seating',

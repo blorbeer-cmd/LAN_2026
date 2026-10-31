@@ -21,6 +21,7 @@ import { openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
 import { prepareEventTarget } from './views/events.js';
+import { syncPointsDialogVisibility } from './views/points.js';
 import { focusGameCatalog } from './views/gameCatalog.js';
 import { clearTournamentTeamTarget, prepareTournamentTeamTarget } from './views/tournament.js';
 import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
@@ -141,7 +142,9 @@ const startupData = createStartupDataGate((state) => {
 // per call site instead left the barrier waiting forever whenever a winner
 // without that line (the event-context signal below) committed first.
 async function loadAllAndPublish() {
-  return startupData.loadAndPublish(loadAll);
+  const committed = await startupData.loadAndPublish(loadAll);
+  if (committed) syncPointsDialogVisibility();
+  return committed;
 }
 
 async function runSharedRefresh() {

@@ -19,6 +19,20 @@ let historyQuery = '';
 let adminEntries = null;
 let adminLoading = false;
 let adminError = '';
+const participantDialogs = new Map();
+export function openPointsModal(title, body, options = {}) {
+  const dialog = openModal(title, body, { ...options, onClose() {
+    participantDialogs.delete(dialog.close);
+    options.onClose?.();
+  } });
+  participantDialogs.set(dialog.close, state.activeEvent?.id);
+  return dialog;
+}
+export function syncPointsDialogVisibility() {
+  for (const [close, eventId] of participantDialogs) {
+    if (eventId !== state.activeEvent?.id || !state.activeEvent?.pointsEnabled) close();
+  }
+}
 const statusLabels = {
   open: 'Tipps offen',
   locked: 'Tipps geschlossen',
@@ -44,6 +58,7 @@ export function pointsRequest(path = '', options = {}, eventId = state.activeEve
 }
 export function ensurePoints(ctx) {
   if (state.activeEvent?.eventType !== 'lan') return;
+  if (!state.activeEvent?.pointsEnabled && !isGroupAdmin()) return;
   const key = scopeKey();
   if (cacheKey !== key) {
     invalidatePoints();
@@ -69,6 +84,7 @@ function currentData() {
   return cacheKey === scopeKey() ? cached : null;
 }
 export function currentPointStandings() {
+  if (!state.activeEvent?.pointsEnabled) return null;
   return currentData()?.settings ? currentData().standings : null;
 }
 export function pointsRankingHtml(ctx) {
@@ -119,6 +135,7 @@ function overviewHtml(data) {
   </section>`;
 }
 export function pointsHomeHtml(ctx) {
+  if (!state.activeEvent?.pointsEnabled) return '';
   ensurePoints(ctx);
   const data = currentData();
   if (!data?.settings) return '';
@@ -146,6 +163,7 @@ function roundHtml(round, compact = false) {
 
 export function competitionBettingHtml(type, id, ctx, { canOpen = true } = {}) {
   ensurePoints(ctx);
+  if (!state.activeEvent?.pointsEnabled) return '';
   const data = currentData();
   if (!data?.settings) return '';
   const round = data.rounds.find((r) => r.sourceType === type && r.sourceId === id);
@@ -157,7 +175,7 @@ export function competitionBettingHtml(type, id, ctx, { canOpen = true } = {}) {
 function openTip(round, ctx) {
   const data = currentData();
   const editable = round.status === 'open' && !data.settings.closed_at;
-  const { close } = openModal(
+  const { close } = openPointsModal(
     editable ? 'Sieger tippen' : 'Dein Tipp',
     `<form class="stack" data-tip-form>
     <p>${e(round.title)}</p>
@@ -343,7 +361,7 @@ function entryDetails(entry, allEntries) {
     /* Legacy entries may carry no details. */
   }
   const original = allEntries.find((r) => r.id === entry.original_id);
-  openModal(
+  (state.activeEvent?.pointsEnabled ? openPointsModal : openModal)(
     'Punktebuchung',
     `<dl class="checklist-detail-facts">
     <dt>Buchung</dt><dd>${e(entry.title)}</dd><dt>Zeitpunkt</dt><dd>${e(formatDateTime(entry.created_at))}</dd>
@@ -387,6 +405,10 @@ function historyHtml(data) {
 }
 
 export function renderPoints(container, ctx) {
+  if (!state.activeEvent?.pointsEnabled) {
+    container.innerHTML = emptyStateHtml('LAN-Punkte sind für dieses Event ausgeblendet.');
+    return;
+  }
   ensurePoints(ctx);
   const data = currentData();
   const header = `<div class="row-between page-title-row points-actions"><h1 class="view-title">Meine LAN-Punkte</h1>${isGroupAdmin() ? '<button type="button" class="btn btn-sm" data-navigate="pointsAdmin">Punkte verwalten</button>' : ''}</div>`;
@@ -507,13 +529,14 @@ export function renderPointsAdmin(container, ctx) {
     (adminEntries ?? [])
       .filter((r) => r.original_id === entry.id && r.source === 'correction')
       .reduce((sum, r) => sum + r.amount, 0);
-  container.innerHTML = `<div class="row-between page-title-row points-actions"><h1 class="view-title">LAN-Punkte verwalten</h1><button type="button" class="btn btn-sm" data-navigate="points">Mein Punktekonto</button></div>
+  container.innerHTML = `<div class="row-between page-title-row points-actions"><h1 class="view-title">LAN-Punkte verwalten</h1>${state.activeEvent?.pointsEnabled ? '<button type="button" class="btn btn-sm" data-navigate="points">Mein Punktekonto</button>' : ''}</div>
+    <section class="card stack"><h2>Anzeige für Teilnehmer</h2><p>${state.activeEvent?.pointsEnabled ? 'LAN-Punkte, Verlauf und Wetten sind für alle Teilnehmer sichtbar.' : 'LAN-Punkte, Verlauf und Wetten sind für Teilnehmer ausgeblendet.'} Punkte werden unabhängig davon im Hintergrund gesammelt. Die Anzeige steuerst du jederzeit direkt am Event.</p><button type="button" class="btn btn-sm" data-navigate="events">Zur Eventverwaltung</button></section>
     <div class="grouped-page-sections"><section class="card stack"><h2>${s ? 'Regeln & Budget' : 'Punktewertung aktivieren'}</h2>
     <p>Orga-Aufgaben werden beim Erledigen automatisch gutgeschrieben. Es gibt keinen Freigabeprozess. Spielsiege geben keine Punkte.</p>
     <form class="stack" data-points-settings>
       <label class="stack"><span class="field-label">Preis & Vergabe bei Gleichstand (optional)</span><textarea name="prizeInfo" maxlength="300" ${closed ? 'disabled' : ''}>${e(s?.prize_info ?? '')}</textarea></label>
       <p class="muted">Kündige Preis und Sachpreisvergabe bei gleichem Punktestand vor Beginn an. Die Rangliste teilt gleiche Plätze ohne Skill-Tiebreaker.</p>
-      ${numberField('initialPoints', 'Grundstock pro Teilnehmer', s?.initial_points ?? 100, 0, 10000, Boolean(s))}
+      ${numberField('initialPoints', 'Grundstock pro Teilnehmer', s?.initial_points ?? 100, 0, 10000, s?.configured_at != null)}
       ${numberField('orgaBudget', 'Orga-Gesamtbudget', s?.orga_budget ?? 400, 0, 1000000, closed)}
       ${numberField('maxStake', 'Maximaler Einsatz je Runde', s?.max_stake ?? 10, 1, 1000, closed || data.rounds.length > 0)}
       ${numberField('dailyLimit', 'Tageskontingent pro Teilnehmer', s?.daily_limit ?? 30, 1, 10000, closed || data.rounds.length > 0)}
@@ -529,7 +552,7 @@ export function renderPointsAdmin(container, ctx) {
     const form = event.currentTarget;
     const values = new FormData(form);
     const body = {
-      initialPoints: s?.initial_points ?? Number(values.get('initialPoints')),
+      initialPoints: s?.configured_at != null ? s.initial_points : Number(values.get('initialPoints')),
       orgaBudget: Number(values.get('orgaBudget')),
       maxStake: data.rounds.length ? s.max_stake : Number(values.get('maxStake')),
       dailyLimit: data.rounds.length ? s.daily_limit : Number(values.get('dailyLimit')),

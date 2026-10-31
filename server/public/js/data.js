@@ -28,6 +28,7 @@ export function normalizeEventContext(eventContext = {}) {
     managedEvents: canManage ? managedEvents : null,
     activeEvent: eventContext.activeEvent ?? null,
     availableEvents,
+    pointsVisibilityEvents: eventContext.pointsVisibilityEvents ?? [],
     // Retained as an empty compatibility field for clients predating generic
     // polls. Polls never grant event visibility or require reconfirmation.
     plannedEvents: eventContext.plannedEvents ?? [],

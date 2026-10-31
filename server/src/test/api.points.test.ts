@@ -14,7 +14,7 @@ import path from 'node:path';
 
 const app = createTestApp();
 let sequence = 0;
-async function fixture(config: object = {}) {
+async function fixture(config: object = {}, visible = true) {
   sequence++;
   const players: string[] = [];
   for (let i = 0; i < 3; i++)
@@ -34,6 +34,9 @@ async function fixture(config: object = {}) {
   for (const id of [TEST_ADMIN_ID, ...players]) setActiveEventForPlayer(id, event.id);
   const settings = await request(app).put('/api/points/settings').send(config);
   assert.equal(settings.status, 200, JSON.stringify(settings.body));
+  if (visible) {
+    assert.equal((await request(app).patch(`/api/events/${event.id}/points-visibility`).send({ visible: true, revision: 0 })).status, 200);
+  }
   const game = await request(app)
     .post('/api/games')
     .send({ name: `Points Game ${sequence}` });
@@ -59,6 +62,17 @@ async function round(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 test('points start once per accepted participant, preserve event access, and block member administration', async () => {
+  const background = createEvent('Unconfigured background LAN', { groupId: DEFAULT_GROUP_ID, startsAt: Date.now(), endsAt: Date.now() + 86400000 });
+  setParticipants(background.id, [TEST_ADMIN_ID]);
+  assert.equal(wallet(background.id, TEST_ADMIN_ID).total, 100, 'start points exist before any points API call');
+  assert.deepEqual(db.prepare('SELECT visible,configured_at FROM points_settings WHERE event_id = ?').get(background.id), { visible: 0, configured_at: null });
+  const configurations = await Promise.all([10, 20].map((initialPoints) => request(app)
+    .put(`/api/points/settings?eventId=${background.id}`).send({ initialPoints })));
+  assert.deepEqual(configurations.map((r) => r.status).sort(), [200, 409]);
+  const configured = configurations.find((r) => r.status === 200)!;
+  assert.equal(wallet(background.id, TEST_ADMIN_ID).total, configured.body.initial_points);
+  const adjustments = db.prepare("SELECT COUNT(*) AS n FROM point_entries WHERE event_id = ? AND source = 'correction'").get(background.id) as { n: number };
+  assert.equal(adjustments.n, 1);
   const f = await fixture();
   await Promise.all([
     request(app).put('/api/points/settings').send({}),
@@ -87,6 +101,61 @@ test('points start once per accepted participant, preserve event access, and blo
     .send({ gameId: f.gameId, teams: f.players.slice(0, 2).map((p) => ({ playerIds: [p] })), winnerTeamIndex: 0 });
   assert.equal(match.status, 201);
   assert.equal(wallet(f.eventId, f.players[0]).total, before, 'a sports win creates no points');
+});
+
+test('admins and event creators toggle visibility without interrupting hidden credits or settled pools', async () => {
+  const f = await fixture({}, false);
+  const [creator, opponent] = f.players;
+  db.prepare('UPDATE events SET created_by = ? WHERE id = ?').run(creator, f.eventId);
+  const visibility = (visible: unknown, revision: number, actor = TEST_ADMIN_ID) =>
+    request(app).patch(`/api/events/${f.eventId}/points-visibility`).set('x-test-player-id', actor).send({ visible, revision });
+  assert.equal(wallet(f.eventId, creator).total, 100);
+  assert.equal((await request(app).get('/api/events')).body.activeEvent.pointsEnabled, false);
+  assert.equal((await request(app).get('/api/points').set('x-test-player-id', creator)).status, 403);
+  assert.equal((await visibility(true, 0, opponent)).status, 403);
+  assert.equal((await visibility('true', 0)).status, 400);
+  const task = await request(app).post('/api/checklist/tasks/todo').send({ playerId: TEST_ADMIN_ID, type: 'todo', title: 'Hidden helper task' });
+  const taskId = task.body.tasks[0].id;
+  assert.equal((await request(app).post(`/api/points/tasks/${taskId}/reward`).send({ perPerson: 5, slots: 1 })).status, 201);
+  await request(app).post(`/api/checklist/tasks/${taskId}/claim`).set('x-test-player-id', creator).send({ playerId: creator });
+  const done = await request(app).patch(`/api/checklist/tasks/${taskId}/done`).set('x-test-player-id', creator).send({ playerId: creator });
+  assert.equal(done.status, 200);
+  assert.equal(done.body.reward, null, 'a hidden reward is not disclosed by a task mutation');
+  assert.equal(wallet(f.eventId, creator).total, 105, 'completion credits without any participant viewing points');
+  const reveals = await Promise.all([0, 1].map(() => visibility(true, 0, creator)));
+  assert.deepEqual(reveals.map((r) => r.status).sort(), [200, 409]);
+  assert.equal((await request(app).get('/api/points').set('x-test-player-id', creator)).body.wallet.total, 105);
+  const r = await round(f);
+  for (const [index, playerId] of [creator, opponent].entries()) {
+    assert.equal((await request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', playerId)
+      .send({ outcomeId: r.outcomes[index].id, stake: 5 })).status, 200);
+  }
+  await request(app).post(`/api/points/rounds/${r.id}/lock`).send({});
+  assert.equal((await visibility(false, 1)).status, 200);
+  assert.equal(wallet(f.eventId, creator).held, 5, 'hiding retains existing reservations');
+  assert.equal((await request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', creator)
+    .send({ outcomeId: r.outcomes[0].id, stake: 5 })).status, 403);
+  assert.equal((await request(app).get('/api/push/log').set('x-test-player-id', creator)).body.entries.some(
+    (entry: { notificationType: string }) => entry.notificationType === 'betting-open'), false);
+  const result = await request(app).post('/api/matches').send({ gameId: f.gameId, drawId: r.drawId,
+    teams: r.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 0 });
+  assert.equal(result.status, 201, JSON.stringify(result.body));
+  assert.deepEqual([wallet(f.eventId, creator).total, wallet(f.eventId, opponent).total], [110, 95]);
+  const hidden = await request(app).get('/api/points');
+  assert.equal(hidden.body.rounds[0].status, 'settled', 'reconciliation continues while hidden');
+  assert.deepEqual((await request(app).get(`/api/export?eventId=${f.eventId}`)).body.leaderboard, [], 'keepsake exports do not disclose hidden standings');
+  assert.equal((await request(app).get('/api/points').set('x-test-player-id', creator)).status, 403);
+  assert.equal((await visibility(true, 2, creator)).status, 200);
+  const restored = await request(app).get('/api/points').set('x-test-player-id', creator);
+  assert.equal(restored.body.wallet.total, 110);
+  assert.deepEqual(restored.body.entries.map((entry: { source: string }) => entry.source), ['start', 'task', 'tip']);
+  assert.equal((await visibility(false, 2)).status, 409, 'a stale toggle cannot overwrite a newer choice');
+  db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(f.eventId, creator);
+  const creatorContext = (await request(app).get('/api/events').set('x-test-player-id', creator)).body;
+  const creatorControl = creatorContext.pointsVisibilityEvents.find((event: { id: string }) => event.id === f.eventId);
+  assert.ok(creatorControl, 'the creator retains the visibility control without participation');
+  assert.equal(creatorControl.acceptedParticipants, undefined, 'the visibility exception does not expose a roster');
+  assert.equal((await visibility(false, 3, creator)).status, 200);
 });
 
 test('task completion awards promised slots immediately and once, with atomic budget and partial administrative deductions', async () => {
@@ -356,10 +425,10 @@ test('tournament participants can bet on themselves and opponents, including the
     300,
   );
   const exported = buildPersonalDataExport(winningPlayer)! as {
-    organisation: { bettingTips: unknown[]; pointEntries: unknown[] };
+    organisation: { bettingTips: unknown[]; pointEntries: Array<{ eventId: string }> };
   };
   assert.equal(exported.organisation.bettingTips.length, 2);
-  assert.equal(exported.organisation.pointEntries.length, 7);
+  assert.equal(exported.organisation.pointEntries.filter((entry) => entry.eventId === f.eventId).length, 7);
 });
 
 test('late accepted participants get exactly one starting credit; final standings remain frozen until an audited reopening', async () => {

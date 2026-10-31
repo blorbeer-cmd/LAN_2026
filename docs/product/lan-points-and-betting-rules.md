@@ -1,8 +1,29 @@
 # LAN-Punkte und Sieger-Tipps
 
-Die Punktewertung wird pro veröffentlichtem LAN-Event von einem Admin unter **LAN-Punkte verwalten**
-aktiviert (Admin → LAN-Punkte → Öffnen). Andere Events behalten ihre bisherige Wertung. Nach Aktivierung ist der neue Bereich unabhängig vom
-Spiele-Tracking über Mehr, die Desktop-Navigation und das eigene Konto auf Home erreichbar.
+Veröffentlichte LAN-Events sammeln Punkte automatisch im Hintergrund, unabhängig von der Anzeige
+und vom Spiele-Tracking. Neue Wertungen sind zunächst ausgeblendet. Bereits eingerichtete Wertungen
+bleiben bei einem Upgrade sichtbar; bisherige Konten, Regeln und Buchungen bleiben erhalten.
+
+## Anzeige während des Events steuern
+
+Admins und der gespeicherte Event-Ersteller steuern unter **Events & Gruppen → Event → LAN-Punkte**
+mit **Für Teilnehmer anzeigen / ausblenden** die Anzeige für alle Teilnehmer. Der Ersteller darf dies
+auch ohne Adminrolle oder eigene Teilnahme; dafür erhält er nur Event-Metadaten und den Schalter,
+keine zusätzlichen Teilnehmer-, Konto- oder Finanzrechte. Regelwerk, Belohnungen, Punkteentzug und
+Endwertung bleiben Adminaufgaben. Gleichzeitige Änderungen derselben Version werden abgewiesen.
+
+Ausblenden entfernt Punktekonto, Verlauf, LAN-Ranglisten, Home-/Profil-Verweise, Wettbereiche an
+Matches und Turnieren sowie Wettmitteilungen. Direkte Teilnehmer-API-Zugriffe sind ebenfalls gesperrt.
+Die administrative Punkteverwaltung bleibt verfügbar. Konfigurierte Orga-Belohnungen werden weiterhin
+automatisch gebucht; Startguthaben entsteht auch ohne Aufruf einer Punkteansicht. Aufgaben zeigen
+Teilnehmern währenddessen keine Belohnungsbeträge oder Punkteplätze.
+
+Neue Tipps, Tippänderungen und neue Tipprunden sind während des Ausblendens gesperrt. Vorhandene
+Tipps, Reservierungen, Fristen, Abrechnungen und begründete Korrekturen bleiben erhalten und werden
+weiter abgewickelt. Es gibt keinen Reset und kein zusätzliches Wettkontingent. Beim erneuten Anzeigen
+steht sofort das aktuelle Konto mit dem vollständigen Verlauf bereit. Bereits ausgelieferte Web-Push-
+Nachrichten lassen sich auf Geräten nicht zurückrufen; ihr Link zeigt währenddessen keine Punkteansicht.
+Sichtbarkeit und bewusstes Festschreiben beziehungsweise Wiederöffnen der Endwertung sind getrennt.
 
 ## Konto und Rangliste
 
@@ -37,7 +58,10 @@ Entzug, Aufgabenrücknahme und Kontolöschung füllen das bereits gebundene Orga
 
 Pilotwerte: 100 Startpunkte, 400 Orga-Punkte, maximal 10 Punkte pro Tipp, 30 Einsatzpunkte pro Tag und
 sechs offizielle Tipprunden. Alle Werte stehen in der Verwaltung. **Tipprunden = 0** ermöglicht zuerst
-eine LAN ausschließlich mit Orga-Punkten. Der Grundstock ist nach Aktivierung unveränderlich;
+eine LAN ausschließlich mit Orga-Punkten. Der Grundstock ist nach der ersten Regelkonfiguration oder
+dem ersten Einblenden unveränderlich. Davor kann ein Admin den anfänglichen Standard von 100 Punkten
+einmal konfigurieren; bereits gebuchte Grundstöcke werden durch eine nachvollziehbare Differenzbuchung
+angepasst, verdiente Orga-Punkte bleiben erhalten.
 Einsatzregeln sind nach Öffnung der ersten Runde fest. Gebundene Budgets können nicht unterschritten werden.
 
 ## Wetten am Match und Turnier

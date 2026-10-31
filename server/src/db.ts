@@ -5644,6 +5644,48 @@ registerMigration({ version: 123, name: 'add event points journal and betting po
   `);
 } });
 
+registerMigration({ version: 124, name: 'collect LAN points independently of participant visibility', up: () => {
+  const columns = db.prepare('PRAGMA table_info(points_settings)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'visible')) {
+    db.exec('ALTER TABLE points_settings ADD COLUMN visible INTEGER NOT NULL DEFAULT 1 CHECK(visible IN (0,1))');
+  }
+  if (!columns.some((column) => column.name === 'visibility_revision')) {
+    db.exec('ALTER TABLE points_settings ADD COLUMN visibility_revision INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!columns.some((column) => column.name === 'configured_at')) {
+    db.exec('ALTER TABLE points_settings ADD COLUMN configured_at INTEGER');
+    db.exec('UPDATE points_settings SET configured_at = created_at');
+  }
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS points_settings_start_accounts AFTER INSERT ON points_settings BEGIN
+      INSERT OR IGNORE INTO point_entries
+      (id,group_id,event_id,player_id,amount,source,source_key,title,created_at)
+      SELECT lower(hex(randomblob(16))),NEW.group_id,NEW.event_id,p.id,NEW.initial_points,
+        'start','start:' || p.id,'Grundstock zur LAN',NEW.created_at
+      FROM event_participants ep JOIN players p ON p.id = ep.player_id
+      JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = NEW.group_id AND gm.status = 'active'
+      WHERE ep.event_id = NEW.event_id AND ep.status = 'accepted'
+        AND NEW.closed_at IS NULL AND p.deactivated_at IS NULL AND p.is_test = 0;
+    END;
+    CREATE TRIGGER IF NOT EXISTS points_event_insert AFTER INSERT ON events
+    WHEN NEW.event_type_key = 'lan' AND NEW.status = 'published' AND NEW.group_id IS NOT NULL BEGIN
+      INSERT OR IGNORE INTO points_settings
+      (event_id,group_id,initial_points,orga_budget,created_at,visible)
+      VALUES (NEW.id,NEW.group_id,100,400,CAST(unixepoch('subsec')*1000 AS INTEGER),0);
+    END;
+    CREATE TRIGGER IF NOT EXISTS points_event_publish AFTER UPDATE OF status,event_type_key ON events
+    WHEN NEW.event_type_key = 'lan' AND NEW.status = 'published' AND NEW.group_id IS NOT NULL BEGIN
+      INSERT OR IGNORE INTO points_settings
+      (event_id,group_id,initial_points,orga_budget,created_at,visible)
+      VALUES (NEW.id,NEW.group_id,100,400,CAST(unixepoch('subsec')*1000 AS INTEGER),0);
+    END;
+    INSERT OR IGNORE INTO points_settings
+    (event_id,group_id,initial_points,orga_budget,created_at,visible)
+    SELECT id,group_id,100,400,CAST(unixepoch('subsec')*1000 AS INTEGER),0 FROM events
+    WHERE event_type_key = 'lan' AND status = 'published' AND ended_at IS NULL AND group_id IS NOT NULL;
+  `);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

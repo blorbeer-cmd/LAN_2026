@@ -14,6 +14,7 @@ export const state = {
   leaderboard: null,
   events: [],
   managedEvents: null, // owner/admin only; null means "no management rights"
+  pointsVisibilityEvents: [], // creator-owned, summary-only visibility controls
   activeEvent: null,
   availableEvents: [],
   plannedEvents: [], // compatibility field; generic polls never add event visibility

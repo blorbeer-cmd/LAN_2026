@@ -99,8 +99,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   marker; „Aktuell“ shows only orders that are still open. The
   reminder uses the same order deep link and a durable per-player/event send timestamp independent of
   the bounded push history.
-- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
-  are „Umfragen“, „An- & Abreise“, „Packliste“ and
+- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“.
+  LAN point visibility is controlled separately on the event card in „Events & Gruppen“ by an
+  admin or the recorded event creator, including creators without current participation. This
+  control never grants roster or financial access; see [LAN-Punkte](lan-points-and-betting-rules.md).
+  Its four area tabs are „Umfragen“, „An- & Abreise“, „Packliste“ and
   „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;
   docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9 records the earlier „Packliste“→„Checkliste“
   rename). „Events & Gruppen“ is deliberately not an Orga tab either: Orga organises work *inside*
