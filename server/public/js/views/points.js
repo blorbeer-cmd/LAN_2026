@@ -452,7 +452,8 @@ function loadAdmin(ctx) {
 }
 function deductDialog(entry, remaining, ctx) {
   const eventId = state.activeEvent.id;
-  const requestId = crypto.randomUUID();
+  // getRandomValues also works on HTTP LAN origins, unlike randomUUID.
+  const requestId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
   const { close } = openModal(
     'Punkte entziehen',
     `<form class="stack"><p>${e(entry.playerName)} · ${e(entry.title)} · noch ${remaining} P. entziehbar</p>

@@ -677,6 +677,28 @@ test('catalog deletion protects paid draw, fixture and outright pools until an e
       [105, 95],
     );
 
+    // A corrected result can belong to another catalog game than its draw.
+    // Deleting either catalog game must still protect the paid result.
+    let resultGameId = f.gameId;
+    if (sourceType === 'draw') {
+      const otherGame = await request(app).post('/api/games').send({ name: 'Corrected result game' });
+      assert.equal(otherGame.status, 201);
+      resultGameId = otherGame.body.id;
+      const remapped = await request(app)
+        .patch(`/api/matches/${result.body.id}`)
+        .send({
+          gameId: resultGameId,
+          bettingCorrection: { reason: 'Correct catalog assignment', revisions: [{ id: roundId, revision: 0 }] },
+        });
+      assert.equal(remapped.status, 200, JSON.stringify(remapped.body));
+      const linked = db.prepare('SELECT game_id,match_id FROM matchmaking_draws WHERE id = ?').get(drawId);
+      assert.deepEqual(linked, { game_id: f.gameId, match_id: result.body.id });
+      const cascades = await Promise.all([0, 1].map(() => request(app).delete(`/api/games/${resultGameId}`)));
+      assert.deepEqual(cascades.map((response) => response.status), [409, 409]);
+      assert.ok(db.prepare('SELECT 1 FROM matches WHERE id = ?').get(result.body.id));
+      assert.deepEqual(db.prepare('SELECT game_id,match_id FROM matchmaking_draws WHERE id = ?').get(drawId), linked);
+    }
+
     const blocked = await Promise.all([0, 1].map(() => request(app).delete(`/api/games/${f.gameId}`)));
     assert.deepEqual(
       blocked.map((response) => response.status),
@@ -698,8 +720,12 @@ test('catalog deletion protects paid draw, fixture and outright pools until an e
       ).status,
       200,
     );
-    const deletions = await Promise.all([0, 1].map(() => request(app).delete(`/api/games/${f.gameId}`)));
+    const deletions = await Promise.all([0, 1].map(() => request(app).delete(`/api/games/${resultGameId}`)));
     assert.deepEqual(deletions.map((response) => response.status).sort(), [204, 404]);
+    if (sourceType === 'draw') {
+      assert.equal(db.prepare('SELECT 1 FROM matches WHERE id = ?').get(result.body.id), undefined);
+      assert.deepEqual(db.prepare('SELECT match_id FROM matchmaking_draws WHERE id = ?').get(drawId), { match_id: null });
+    }
     assert.deepEqual(
       f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total),
       [100, 100],

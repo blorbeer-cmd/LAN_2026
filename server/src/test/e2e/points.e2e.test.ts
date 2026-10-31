@@ -61,21 +61,31 @@ before(async () => {
     await api(`/api/events/${eventId}/invitation/accept`, 'POST', {}, session);
     await api('/api/me/active-event', 'PUT', { eventId }, session);
   }
+  // A LAN hostname is not a secure context. Exercise admin actions there as
+  // localhost would hide failures in secure-context-only browser APIs.
   browser = await chromium.launch();
+  const adminBaseUrl = server.baseUrl.replace('localhost', 'respawn.test');
   const adminContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const memberContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
-  await addSessionCookie(adminContext, server.baseUrl, cookie);
+  // Serve the synthetic origin exclusively from the isolated local server.
+  await adminContext.route(`${adminBaseUrl}/**`, async (route) => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `${server.baseUrl}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await addSessionCookie(adminContext, adminBaseUrl, cookie);
   await addSessionCookie(memberContext, server.baseUrl, alice.cookie);
   admin = await adminContext.newPage();
   member = await memberContext.newPage();
   for (const page of [admin, member]) {
     page.on('pageerror', (error) => console.error('[points pageerror]', error));
-    await page.goto(`${server.baseUrl}/#points`);
+    await page.goto(`${page === admin ? adminBaseUrl : server.baseUrl}/#points`);
     await waitForPlayerData(page);
   }
   await activateAdminMode(admin);
 });
 after(async () => {
+  await admin?.context().unrouteAll({ behavior: 'ignoreErrors' });
   await browser?.close();
   server?.process.kill();
 });
@@ -96,6 +106,13 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
   await member.getByText('Preis & Vergabe: Respawn-Pokal; bei Gleichstand Losentscheid.', { exact: true }).waitFor();
+
+  const standings = member.getByRole('list', { name: 'LAN-Rangliste', exact: true });
+  await standings.getByText('Points Bob', { exact: true }).waitFor();
+  await api(`/api/players/${bob.id}`, 'PATCH', { name: 'AAA Points Bob' }, bob.cookie);
+  await standings.getByText('AAA Points Bob', { exact: true }).waitFor();
+  assert.match(await standings.locator('.ranked-list-row').first().innerText(), /AAA Points Bob/);
+  assert.equal(await standings.getByText('Points Bob', { exact: true }).count(), 0);
 
   const task = await api('/api/checklist/tasks/todo', 'POST', {
     playerId: myId,
@@ -173,6 +190,11 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await navigate(admin, 'pointsAdmin');
   const credit = (await api(`/api/points/admin/entries?eventId=${eventId}`)).entries.find(
     (entry: { source: string; player_id: string }) => entry.source === 'task' && entry.player_id === alice.id,
+  );
+  assert.deepEqual(
+    await admin.evaluate(() => ({ secure: isSecureContext, uuid: typeof crypto.randomUUID })),
+    { secure: false, uuid: 'undefined' },
+    'deduction must work on a plain HTTP LAN origin without randomUUID',
   );
   await admin.locator(`[data-deduct-entry="${credit.id}"]`).click();
   await admin.getByRole('dialog').locator('[name="amount"]').fill('2');
