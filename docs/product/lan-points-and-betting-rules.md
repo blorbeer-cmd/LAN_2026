@@ -58,6 +58,8 @@ einmalig und atomar mit dem Aufgabenstatus. Es gibt keine Warteschlange zur Punk
 
 Admins können eine positive Gutschrift ganz oder teilweise mit Begründung entziehen. Die ursprüngliche
 Buchung bleibt erhalten, der Entzug ist eine verknüpfte negative Buchung mit Admin und Zeitpunkt.
+Das gilt ausdrücklich auch für die eigenen Gutschriften. Buchung und Admin-Protokoll werden
+gemeinsam gespeichert; ein identischer Wiederholungsversuch erzeugt keine weiteren Einträge.
 Der insgesamt entzogene Betrag überschreitet die ursprüngliche Gutschrift nicht. Ein identischer
 Wiederholungsversuch ist wirkungslos; dieselbe Vorgangskennung mit anderem Inhalt wird abgewiesen.
 Entzug, Aufgabenrücknahme und Kontolöschung füllen das bereits gebundene Orga-Budget nicht erneut auf.
@@ -115,8 +117,9 @@ bei Abrechnung wird genau Auszahlung minus Einsatz gebucht.
 
 ## Ergebniskorrekturen
 
-Normale Ergebnis-Editoren überschreiben keine ausgezahlte Runde still. Ein Admin kann im bestehenden
-Ergebnisdialog mit Begründung und den angezeigten Abrechnungsversionen korrigieren. Spielergebnis,
+Normale Ergebnis-Editoren überschreiben keine ausgezahlte Runde still. Ein Admin kann auch bei eigenen
+Einsätzen im bestehenden Ergebnisdialog mit Begründung und den angezeigten Abrechnungsversionen
+korrigieren. Spielergebnis,
 Gegenbuchung und neue Verteilung werden in einer gemeinsamen Datenbanktransaktion geschrieben.
 Betroffene nachfolgende Begegnungen mit geänderten Teams werden erstattet. Eine wieder offene
 Turniersiegerentscheidung behält ihren gesperrten ursprünglichen Pool bis zum neuen Endergebnis.

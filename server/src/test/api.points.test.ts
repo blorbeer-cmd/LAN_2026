@@ -5,7 +5,9 @@ import { createTestApp, TEST_ADMIN_ID, DEFAULT_GROUP_ID } from './testApp';
 import { createEvent, setParticipants } from '../events';
 import { setActiveEventForPlayer } from '../eventContext';
 import { db } from '../db';
-import { wallet } from '../points';
+import { wallet, PointsError } from '../points';
+import { correctJournalEntry } from '../pointsAdministration';
+import { readPointsBalances, readPointsSource, recordPointsEntitlements } from '../pointsJournal';
 import { buildPersonalDataExport, deleteAccount } from '../privacyService';
 import { config } from '../config';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -60,6 +62,58 @@ async function round(f: Awaited<ReturnType<typeof fixture>>) {
     outcomes: created.body.outcomes as Array<{ id: string; playerIds: string[] }>,
   };
 }
+
+test('category journal corrections require admin rights and reason, allow own changes and commit with their audit', async () => {
+  const f = await fixture({}, false);
+  const sources = [TEST_ADMIN_ID, f.players[0]].map((playerId) => ({ groupId: DEFAULT_GROUP_ID,
+    eventId: f.eventId, playerId, account: 'orga' as const, sourceKey: 'todo:admin-correction' }));
+  const originals = recordPointsEntitlements(sources.map((source) => ({ ...source, total: 3,
+    expectedRevision: 0, title: 'Aufgabe erledigt' })));
+  db.prepare('UPDATE events SET created_by = ? WHERE id = ?').run(f.players[0], f.eventId);
+  const correct = (index: number, total: unknown, revision: unknown, reason: unknown, actor = TEST_ADMIN_ID) =>
+    request(app).post(`/api/points/admin/journal/${originals[index].entryId}/correct?eventId=${f.eventId}`)
+      .set('x-test-player-id', actor).send({ total, revision, reason, actorId: f.players[1] });
+  assert.equal((await request(app).get('/api/points/admin/journal').set('x-test-player-id', f.players[0])).status, 403);
+  assert.equal((await correct(1, 2, 1, 'Ersteller ohne Adminrolle', f.players[0])).status, 403);
+  assert.throws(() => correctJournalEntry({ groupId: DEFAULT_GROUP_ID, eventId: f.eventId,
+    actorId: f.players[0], entryId: originals[1].entryId!, total: 2, expectedRevision: 1, reason: 'Kein Admin' }),
+    (error: unknown) => error instanceof PointsError && error.status === 403);
+  assert.equal((await correct(0, 5, 1, '')).status, 400);
+  assert.equal((await correct(0, 1.5, 1, 'Keine ganzen Punkte')).status, 400);
+  const own = await correct(0, 5, 1, 'Fehlende eigene Punkte ergänzt');
+  assert.equal(own.status, 200, JSON.stringify(own.body));
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID)!.orga, 5);
+  const ownAudit = db.prepare("SELECT actor_player_id, details FROM admin_log WHERE target_id = ? AND action = 'category_points_corrected'").get(own.body.entryId) as { actor_player_id: string; details: string };
+  assert.equal(ownAudit.actor_player_id, TEST_ADMIN_ID, 'the session actor cannot be overridden by request input');
+  assert.equal(JSON.parse(ownAudit.details).before, 3);
+  assert.equal(JSON.parse(ownAudit.details).after, 5);
+  assert.equal((await correct(0, 5, 1, 'Veralteter Stand')).status, 409);
+  const auditCount = () => (db.prepare("SELECT COUNT(*) AS n FROM admin_log WHERE action = 'category_points_corrected' AND json_extract(details,'$.eventId') = ?").get(f.eventId) as { n: number }).n;
+  assert.equal((await correct(0, 5, 2, 'Unverändert')).body.changed, false);
+  assert.equal(auditCount(), 1);
+  const parallel = await Promise.all([1, 2].map((total) => correct(1, total, 1, 'Tatsächlichen Anspruch korrigiert')));
+  assert.deepEqual(parallel.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(readPointsSource(sources[1])!.revision, 2);
+  assert.equal(readPointsSource(sources[1])!.total, parallel.find((r) => r.status === 200)!.body.total);
+  assert.equal(auditCount(), 2);
+  const journal = await request(app).get(`/api/points/admin/journal?eventId=${f.eventId}`);
+  assert.equal(journal.status, 200);
+  assert.equal(journal.body.entries.find((entry: { id: string }) => entry.id === own.body.entryId).actorId, TEST_ADMIN_ID);
+  const otherEvent = createEvent(`Other journal scope ${sequence}`, { groupId: DEFAULT_GROUP_ID, startsAt: Date.now(), endsAt: null });
+  setParticipants(otherEvent.id, [TEST_ADMIN_ID]);
+  const foreign = recordPointsEntitlements([{ ...sources[0], eventId: otherEvent.id, total: 2, expectedRevision: 0, title: 'Anderes Event' }])[0];
+  assert.equal((await request(app).post(`/api/points/admin/journal/${foreign.entryId}/correct?eventId=${f.eventId}`).send({ total: 1, revision: 1, reason: 'Falsches Event' })).status, 404);
+  db.exec(`CREATE TEMP TRIGGER fail_category_audit BEFORE INSERT ON admin_log
+    WHEN NEW.action = 'category_points_corrected' BEGIN SELECT RAISE(ABORT, 'test audit failure'); END;`);
+  try {
+    assert.equal((await correct(0, 4, 2, 'Audit muss atomar sein')).status, 500);
+    assert.deepEqual(readPointsSource(sources[0]), { total: 5, revision: 2 });
+  } finally {
+    db.exec('DROP TRIGGER fail_category_audit');
+  }
+  assert.equal((await request(app).post(`/api/points/close?eventId=${f.eventId}`).send({})).status, 200);
+  assert.equal((await correct(0, 4, 2, 'Festgeschrieben')).status, 409);
+});
 
 test('points start once per accepted participant, preserve event access, and block member administration', async () => {
   const background = createEvent('Unconfigured background LAN', { groupId: DEFAULT_GROUP_ID, startsAt: Date.now(), endsAt: Date.now() + 86400000 });
@@ -205,9 +259,25 @@ test('task completion awards promised slots immediately and once, with atomic bu
   const view = await request(app).get('/api/points');
   assert.equal(view.body.budget.issued, 10);
   assert.equal(view.body.budget.available, 0, 'deductions do not create a new task budget');
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM admin_log WHERE action = 'points_deducted' AND target_id = ?").get(entry.id) as { n: number }).n, 1,
+    'an idempotent retry creates neither a second deduction nor a second audit');
+  db.exec(`CREATE TEMP TRIGGER fail_deduction_audit BEFORE INSERT ON admin_log
+    WHEN NEW.action = 'points_deducted' BEGIN SELECT RAISE(ABORT, 'test deduction audit failure'); END;`);
+  try {
+    assert.equal((await request(app).post(`/api/points/entries/${entry.id}/deduct`)
+      .send({ amount: 1, reason: 'Audit muss atomar sein', requestId: 'audit-failure' })).status, 500);
+    assert.equal(wallet(f.eventId, entry.player_id).total, 102);
+  } finally {
+    db.exec('DROP TRIGGER fail_deduction_audit');
+  }
+  const ownEntry = db.prepare("SELECT id FROM point_entries WHERE event_id = ? AND player_id = ? AND source = 'start'").get(f.eventId, TEST_ADMIN_ID) as { id: string };
+  const ownDeduction = await request(app).post(`/api/points/entries/${ownEntry.id}/deduct`)
+    .send({ amount: 1, reason: 'Eigenen Anspruch berichtigt', requestId: 'own-deduction' });
+  assert.equal(ownDeduction.status, 200, JSON.stringify(ownDeduction.body));
+  assert.equal(wallet(f.eventId, TEST_ADMIN_ID).total, 99);
 });
 
-test('players bet on their own games; hidden tips lock and settle zero-sum, once, with a personal notification', async () => {
+test('players bet on their own games; hidden tips lock and settle zero-sum, once, with a personal notification', async (t) => {
   const f = await fixture();
   const r = await round(f);
   const a = f.players[0],
@@ -278,10 +348,13 @@ test('players bet on their own games; hidden tips lock and settle zero-sum, once
     409,
     'paid pools prevent silently changing a result',
   );
+  db.prepare("UPDATE group_memberships SET role = 'admin' WHERE group_id = ? AND player_id = ?").run(DEFAULT_GROUP_ID, a);
+  t.after(() => db.prepare("UPDATE group_memberships SET role = 'member' WHERE group_id = ? AND player_id = ?").run(DEFAULT_GROUP_ID, a));
   const corrections = await Promise.all(
     [0, 1].map(() =>
       request(app)
         .patch(`/api/matches/${result.body.id}`)
+        .set('x-test-player-id', a)
         .send({
           winnerTeamIndex: 1,
           bettingCorrection: { reason: 'Actually the other team won', revisions: [{ id: r.id, revision: 0 }] },
@@ -292,9 +365,19 @@ test('players bet on their own games; hidden tips lock and settle zero-sum, once
   assert.equal(wallet(f.eventId, a).total, 90);
   assert.equal(wallet(f.eventId, b).total, 110);
   assert.equal((await request(app).get('/api/points')).body.rounds[0].revision, 1);
+  db.exec(`CREATE TEMP TRIGGER fail_void_audit BEFORE INSERT ON admin_log
+    WHEN NEW.action = 'betting_settlement_voided' BEGIN SELECT RAISE(ABORT, 'test void audit failure'); END;`);
+  try {
+    assert.equal((await request(app).post(`/api/points/rounds/${r.id}/void`).set('x-test-player-id', a)
+      .send({ reason: 'Audit muss atomar sein', revision: 1 })).status, 500);
+    assert.deepEqual([wallet(f.eventId, a).total, wallet(f.eventId, b).total], [90, 110]);
+    assert.equal((await request(app).get('/api/points')).body.rounds[0].revision, 1);
+  } finally {
+    db.exec('DROP TRIGGER fail_void_audit');
+  }
   const voids = await Promise.all(
     [0, 1].map(() =>
-      request(app).post(`/api/points/rounds/${r.id}/void`).send({ reason: 'Invalid game', revision: 1 }),
+      request(app).post(`/api/points/rounds/${r.id}/void`).set('x-test-player-id', a).send({ reason: 'Invalid game', revision: 1 }),
     ),
   );
   assert.deepEqual(voids.map((v) => v.status).sort(), [200, 409]);

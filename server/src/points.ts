@@ -1,14 +1,8 @@
 import { nanoid } from 'nanoid';
 import { db } from './db';
-
-export class PointsError extends Error {
-  constructor(
-    message: string,
-    public status: 400 | 403 | 404 | 409 = 409,
-  ) {
-    super(message);
-  }
-}
+import { writeAdminAudit } from './adminAudit';
+import { PointsError, requirePointsAdmin } from './pointsAccess';
+export { PointsError } from './pointsAccess';
 
 export interface PointsSettings {
   event_id: string;
@@ -268,9 +262,14 @@ export function deductPoints(
   reason: string,
   actorId: string,
   requestId: string,
-): void {
-  db.transaction(() => {
-    requirePointsOpen(eventId);
+): boolean {
+  return db.transaction(() => {
+    const settings = requirePointsOpen(eventId);
+    const original = db
+      .prepare('SELECT * FROM point_entries WHERE id = ? AND event_id = ? AND amount > 0')
+      .get(entryId, eventId) as PointEntry | undefined;
+    if (!original) throw new PointsError('Gutschrift nicht gefunden.', 404);
+    requirePointsAdmin(settings.group_id, actorId);
     const previous = db
       .prepare('SELECT original_id,amount,details FROM point_entries WHERE event_id = ? AND source_key = ?')
       .get(eventId, `deduct:${requestId}`) as Pick<PointEntry, 'original_id' | 'amount' | 'details'> | undefined;
@@ -281,12 +280,8 @@ export function deductPoints(
         JSON.parse(previous.details).reason !== reason
       )
         throw new PointsError('Vorgangskennung wurde bereits für einen anderen Entzug verwendet.');
-      return;
+      return false;
     }
-    const original = db
-      .prepare('SELECT * FROM point_entries WHERE id = ? AND event_id = ? AND amount > 0')
-      .get(entryId, eventId) as PointEntry | undefined;
-    if (!original) throw new PointsError('Gutschrift nicht gefunden.', 404);
     const { deducted } = db
       .prepare(
         "SELECT COALESCE(SUM(amount),0) AS deducted FROM point_entries WHERE original_id = ? AND source = 'correction'",
@@ -305,5 +300,8 @@ export function deductPoints(
       { reason, originalId: original.id },
       original.id,
     );
-  })();
+    writeAdminAudit({ actorPlayerId: actorId, groupId: settings.group_id, action: 'points_deducted',
+      targetType: 'point_entry', targetId: entryId, details: { amount, reason, requestId } });
+    return true;
+  }).immediate();
 }

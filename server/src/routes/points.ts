@@ -34,6 +34,7 @@ import {
 import { broadcast, Events } from '../realtime';
 import { writeAdminAudit } from '../adminAudit';
 import { resolvePushTopic } from '../push';
+import { correctJournalEntry } from '../pointsAdministration';
 
 export const pointsRouter = Router();
 pointsRouter.use((req, res, next) => {
@@ -189,21 +190,30 @@ pointsRouter.get('/admin/entries', requireGroupRole('admin'), (req, res) => {
     .all(eventId);
   res.json({ entries, participants: pointParticipants(req.group!.id, eventId), budget: rewardBudget(eventId) });
 });
+pointsRouter.get('/admin/journal', requireGroupRole('admin'), (req, res) => {
+  const entries = db.prepare(`SELECT j.*, s.player_id AS playerId, p.name AS playerName,
+      s.account, s.source_key AS sourceKey, a.actor_player_id AS actorId, actor.name AS actorName
+    FROM points_journal j JOIN points_sources s ON s.id = j.source_id JOIN players p ON p.id = s.player_id
+    JOIN events event ON event.id = s.event_id AND event.group_id = ?
+    LEFT JOIN admin_log a ON a.target_id = j.id AND a.target_type = 'points_journal' AND a.action = 'category_points_corrected'
+    LEFT JOIN players actor ON actor.id = a.actor_player_id
+    WHERE s.event_id = ? ORDER BY j.created_at DESC, j.rowid DESC`).all(req.group!.id, res.locals.eventId);
+  res.json({ entries });
+});
+pointsRouter.post('/admin/journal/:id/correct', requireGroupRole('admin'), (req, res) => {
+  const eventId = res.locals.eventId as string;
+  const result = correctJournalEntry({ groupId: req.group!.id, eventId, actorId: req.player!.id, entryId: req.params.id,
+    total: req.body?.total, expectedRevision: req.body?.revision, reason: req.body?.reason });
+  if (result.changed) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
+  res.json(result);
+});
 pointsRouter.post('/entries/:id/deduct', requireGroupRole('admin'), (req, res) => {
   const eventId = res.locals.eventId as string;
   const amount = integer(req.body?.amount, 'Punkte', 1, 1000000);
   const reason = text(req.body?.reason, 'Begründung');
   const requestId = text(req.body?.requestId, 'Vorgangskennung', 100);
-  deductPoints(eventId, req.params.id, amount, reason, req.player!.id, requestId);
-  writeAdminAudit({
-    actorPlayerId: req.player!.id,
-    groupId: req.group!.id,
-    action: 'points_deducted',
-    targetType: 'point_entry',
-    targetId: req.params.id,
-    details: { amount, reason, requestId },
-  });
-  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
+  const changed = deductPoints(eventId, req.params.id, amount, reason, req.player!.id, requestId);
+  if (changed) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json({ ok: true });
 });
 pointsRouter.post('/rounds', requireGroupRole('admin'), (req, res) => {
@@ -309,14 +319,6 @@ pointsRouter.post('/rounds/:id/void', requireGroupRole('admin'), (req, res) => {
     reason,
     integer(req.body?.revision, 'Abrechnungsversion', 0, 1000000),
   );
-  writeAdminAudit({
-    actorPlayerId: req.player!.id,
-    groupId: req.group!.id,
-    action: 'betting_settlement_voided',
-    targetType: 'betting_round',
-    targetId: req.params.id,
-    details: { reason },
-  });
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json({ ok: true });
 });

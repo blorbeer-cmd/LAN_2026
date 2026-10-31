@@ -25,9 +25,9 @@ Gesamtwertung mit einem zusätzlichen Gesamtsieger. Mehrere Titel pro Person sin
   Nachweis nicht zuverlässig erkennen. Die kleine Runde setzt bewusst auf Vertrauen.
 - Die nachträglichen Gegenmaßnahmen sind transparente Ergebnisse im Kiosk, Meldungen und
   begründete administrative Punktekorrekturen. Eine Meldung hält keine Gutschrift auf.
-- Admins und Event-Ersteller sind voll wertungsberechtigt. Kein Admin korrigiert oder
-  entzieht Punkte in eigener Sache. Reguläre Ersteingaben und daraus folgende automatische
-  Gutschriften bleiben auch für sie möglich.
+- Admins und Event-Ersteller sind voll wertungsberechtigt. Admins dürfen auch eigene Punkte
+  korrigieren oder entziehen. Dafür gelten dieselben Begründungs-, Journal- und Revisionsregeln
+  wie bei fremden Punkten; es gibt keine zusätzliche Freigabe.
 - Das Ein- oder Ausblenden der Punkteansichten verändert keine Ansprüche und setzt keine
   Punkte zurück. Die Erfassung läuft immer im Hintergrund.
 
@@ -52,9 +52,9 @@ Eintragen eines fremden Ergebnisses erzeugt keine weitere Organisationsbelohnung
 Ausführende Helfer erhalten ihre To-do-Punkte nach Abschnitt 5.1. Persönliche Angaben und
 eigene Bestellungen belohnen die jeweils betreffende Person.
 
-Administrative Entzüge und Korrekturen benötigen eine Begründung und eine unbefangene
-Adminperson. Eine Korrektur mit Auswirkung auf die eigene Wertung darf ein Admin nicht
-selbst vornehmen. Der Event-Ersteller erhält durch die Erstellerrolle allein keine
+Administrative Entzüge und Korrekturen benötigen eine Begründung und eine aktive Adminrolle.
+Korrekturen mit Auswirkung auf die eigene Wertung sind ausdrücklich erlaubt und werden
+ebenso nachvollziehbar protokolliert. Der Event-Ersteller erhält durch die Erstellerrolle allein keine
 zusätzlichen administrativen Korrekturrechte.
 
 ## 3. Spielen
@@ -363,7 +363,7 @@ Teilnehmer können **Journaleinträge, Spielergebnisse, Wetten und To-dos** meld
 Grund ist optional. Pro meldender Person und Eintrag gibt es höchstens eine offene Meldung.
 
 Eine Meldung ändert nichts automatisch: keine Sperre, kein Einfrieren und keine Freigabe.
-Punkte bleiben bestehen, bis eine unbefangene Adminperson begründet korrigiert oder entzieht.
+Punkte bleiben bestehen, bis eine Adminperson begründet korrigiert oder entzieht.
 Eine solche Änderung erscheint nachvollziehbar im Journal.
 
 ### 8.2 Sichtbarkeit und Zuständigkeit
@@ -376,8 +376,8 @@ Eine solche Änderung erscheint nachvollziehbar im Journal.
   die Identität des Meldenden nicht indirekt offenlegen.
 - Der Event-Ersteller ohne Adminrolle kann Meldungen sehen; die Punkteentscheidung und
   der Abschluss der Meldung liegen bei einem Admin.
-- Kein Admin korrigiert oder entzieht Punkte in eigener Sache. Ein eigener Vorteil darf
-  nicht durch den Wechsel zwischen Admin- und Erstellerrolle ermöglicht werden.
+- Admins dürfen eigene Punkte korrigieren oder entziehen. Das erweitert weder den Zugriff
+  auf Meldungen über sie selbst noch die Sichtbarkeit der Identität des Meldenden.
 
 ### 8.3 Bearbeitung und Abschluss
 
@@ -388,10 +388,10 @@ Gemeldet werden kann bis zur Festschreibung. Festgeschrieben wird erst, wenn **k
 Meldung mehr offen** ist. Dies ist eine Abschlussbedingung und kein Freigabeprozess für
 die laufende Punktevergabe.
 
-**OFFEN – Befangenheitsrandfälle:** Der Umgang mit Meldungen gegen einen nicht als Admin
-handelnden Event-Ersteller sowie mit Fällen ohne verfügbare unbefangene Adminperson ist
+**OFFEN – Meldungsempfänger und Bearbeitung:** Der Umgang mit Meldungen gegen einen nicht als Admin
+handelnden Event-Ersteller sowie mit Fällen ohne verfügbare empfangsberechtigte Adminperson ist
 noch zu präzisieren. Die Identität des Meldenden bleibt geschützt; es werden hier keine
-Selbstkorrektur- oder zusätzlichen Korrekturrechte vergeben.
+zusätzlichen Meldungszugriffe oder Korrekturrechte für Nicht-Admins vergeben.
 
 ## 9. Sichtbarkeit und Festschreibung
 
@@ -424,8 +424,8 @@ nicht abschließend entschieden. Es wird keine zusätzliche automatische Behandl
 - Wer später anreist, ist in Orga und Spielen strukturell im Nachteil. Das wird akzeptiert;
   es wird kein Zeit- oder Nachzüglerausgleich eingeführt.
 - Ein Rage-Quit-Token-Bonus bleibt **optional** und würde ausschließlich durch einen Admin
-  vergeben. Punktehöhe und konkrete Ausgestaltung sind nicht beschlossen. Auch dafür gilt
-  das Verbot von Korrekturen oder Entzügen in eigener Sache.
+  vergeben. Punktehöhe und konkrete Ausgestaltung sind nicht beschlossen. Auch eigene
+  Korrekturen oder Entzüge bleiben mit Begründung und Protokollierung erlaubt.
 
 ## 11. Offene Entscheidungen
 
@@ -440,7 +440,7 @@ Die folgenden vier Entscheidungen sind ausdrücklich **nicht getroffen**:
 
 Weitere ausdrücklich offene Randfälle sind die widersprüchliche Durchschnittsaussage zur
 Teamzahl, die Teilnehmerbasis für N, gleich große größte Gewinner-Einsätze bei der
-Restverteilung, mehrere To-do-Helfer, Stichtagsdetails der Reiseboni, Befangenheitsrandfälle
+Restverteilung, mehrere To-do-Helfer, Stichtagsdetails der Reiseboni, Meldungsbearbeitungsrandfälle
 bei Meldungen und gesperrte, noch nicht abgerechnete Wettmärkte. Sie dürfen nicht durch
 unbemerkte Implementierungsannahmen entschieden werden.
 
@@ -456,14 +456,14 @@ dieses Zielkonzepts.
 |---|---|
 | Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet die Platzregel 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln. Die Turnierboni bleiben 5/3/1. |
 | Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
-| Journal und Wettkonto | Umgesetzt: [interne Kategorie-Konten und Journalbasis](product/points-journal.md), eindeutige Vorgänge, Differenzkorrekturen, Journalsummen und negative Stände. Offen für die Folgepakete: Fachhandler, bestehende Ansichten und Markt-Abrechnungen daran anbinden und Kategorie-Platzpunkte berechnen. |
+| Journal und Wettkonto | Umgesetzt: [interne Kategorie-Konten und Journalbasis](product/points-journal.md), eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Offen für die Folgepakete: Fachhandler, bestehende Ansichten und Markt-Abrechnungen daran anbinden und Kategorie-Platzpunkte berechnen. |
 | Wettmärkte | Vorläufige Pool-Quoten sichtbar machen, formatabhängige Remis-Auswahl anbieten, die beschlossenen Erstattungen und Restverteilung umsetzen. W1, W2 und die offenen Randfälle nicht vorwegnehmen. |
 | Orga | Fremde To-dos mit 1–5 Punkten, einmalige Auszahlung, Sammelbestellstaffel und Stornokorrekturen, dauerhafte persönliche Boni mit Reisestichtag sowie eindeutige Organisatorzuordnung und Turnier-Deduplizierung abbilden. |
 | Kiosk | [server/public/js/kiosk.js](../server/public/js/kiosk.js) um den Ergebnis-Feed mit Korrekturhinweis erweitern. Bei ausgeblendeten Punkteansichten Ergebnisse weiter zeigen, Punkte und Ranglisten verbergen. Nur Anzeigenamen verwenden. |
-| Meldefunktion | Meldbare Quellen, optionalen Grund, eine offene Meldung pro Person/Eintrag, Empfängerfilter, Identitätsschutz, Status und begründete Korrekturen ergänzen. Eigene administrative Korrekturen verhindern. |
+| Meldefunktion | Meldbare Quellen, optionalen Grund, eine offene Meldung pro Person/Eintrag, Empfängerfilter, Identitätsschutz, Status und begründete Korrekturen ergänzen. Eigene administrative Korrekturen bleiben erlaubt. |
 | Abschluss und Sichtbarkeit | Hintergrundvergabe von der Anzeige trennen; neue Tipps bei ausgeblendeter Anzeige sperren. Festschreibung gegen gleichzeitig eingehende Meldungen absichern und bei offenen Meldungen verhindern. Den endgültigen Stand nachvollziehbar festhalten. |
 
 Für die spätere Umsetzung sind mindestens die hier aufgeführten Rechenbeispiele,
-Korrektur- und Rückerstattungsfälle, gleichzeitige Wiederholungsversuche, Befangenheitsfälle
+Korrektur- und Rückerstattungsfälle, gleichzeitige Wiederholungsversuche, Rollen- und Meldungszugriffe
 und die Sichtbarkeit des Kiosk-Feeds zu prüfen. Das ist eine Prüfplanung, keine in diesem
 Auftrag ausgeführte Produktänderung.

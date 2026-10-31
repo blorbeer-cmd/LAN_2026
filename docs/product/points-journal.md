@@ -59,6 +59,28 @@ Die Ausnahme ist die vollständige Löschung des Events oder Benutzerkontos: Dan
 zugehörigen Konten, Ansprüche und Journaleinträge kaskadierend gelöscht. Der persönliche
 Datenschutzexport enthält ausschließlich die eigenen Konten und Buchungen.
 
+## Administrative Korrekturen
+
+Aktive Community-Admins und Owner können bestehende Ansprüche begründet korrigieren,
+auch die eigenen. Die Event-Erstellerrolle allein gewährt keine Korrekturrechte.
+
+- `GET /api/points/admin/journal` liefert das Journal des gewählten Events einschließlich
+  Empfänger und protokollierendem Admin bei manuellen Korrekturen.
+- `POST /api/points/admin/journal/:id/correct` erwartet `total` (neuer Gesamtanspruch dieses
+  Vorgangs), `revision` (aktuelle Vorgangsrevision) und `reason`. Der Empfänger, das Konto
+  und der Vorgang stammen aus dem vorhandenen Eintrag; der handelnde Admin aus der Sitzung.
+
+Eine aktuelle Revision ist auch bei eigenen Korrekturen erforderlich. Von zwei gleichzeitigen
+Änderungen derselben Revision gewinnt höchstens eine; die andere erhält 409 und muss neu laden.
+Unveränderte Ansprüche erzeugen keine weitere Buchung oder Protokollzeile. Eine wirksame
+Änderung schreibt die Differenz und den Admin-Protokolleintrag in derselben Transaktion.
+Scheitert das Protokoll, wird auch die Buchung zurückgerollt. Eine festgeschriebene Wertung
+blockiert neue Korrekturen bis zum bestehenden begründeten Wiederöffnen.
+
+Die bisherigen LAN-Entzüge und finanziellen Wettkorrekturen prüfen ebenfalls die aktive
+Adminrolle; eigene Entzüge, Korrekturen und Stornos sind erlaubt. Ein wiederholter LAN-Entzug
+mit derselben Vorgangskennung erzeugt weder eine zweite Buchung noch ein zweites Protokoll.
+
 ## Migration und nächste Pakete
 
 Migration 125 legt die Tabellen an, übernimmt vorhandene Teilnahmen ohne Punkte zu erfinden
@@ -67,10 +89,10 @@ und ist wiederholbar. Die Migrationen 123/124 enthalten die bisherige Punkte-/We
 Eine Zusammenführung der älteren gemeinsamen Konten mit den neuen Konten ist kein Bestandteil
 dieses Pakets; vor einer gemeinsamen Nutzung müssen deren Erzeuger und Leser umgestellt werden.
 
-Die neue Journalbasis hat keinen öffentlichen Schreibendpunkt und keine eigene Punkteansicht.
+Die neue Journalbasis hat geschützte Administrationsendpunkte und noch keine eigene Punkteansicht.
 Die bisherige [LAN-Punkteansicht](lan-points-and-betting-rules.md) nutzt noch das bisherige Konto. Die späteren
 Fachhandler prüfen Berechtigungen, leiten Ansprüche aus Aktivitäten ab und rufen das Journal
-auf. Es folgen administrative Korrekturen mit Befangenheitsprüfung, Anbindung der Spiel- und
+auf. Die administrativen Korrekturen sind umgesetzt; es folgen die Anbindung der Spiel- und
 Orga-Vorgänge, Wetten, Kategorie-Platzpunkte, Kontoansichten, Kiosk und Meldungen. Die bestehende
 klassische Rangliste wird in diesem Paket nicht aus den neuen Konten gelesen.
 

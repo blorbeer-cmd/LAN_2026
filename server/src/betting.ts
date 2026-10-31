@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { db } from './db';
+import { requirePointsAdmin } from './pointsAccess';
 import { computeRoundRobinStandings } from './tournament';
 import { distributePool } from './bettingMath';
 import {
@@ -473,6 +474,7 @@ export function lockBettingRound(round: BettingRound): void {
 export function refundBettingRound(round: BettingRound, actorId: string, reason: string): void {
   db.transaction(() => {
     requirePointsOpen(round.event_id);
+    requirePointsAdmin(round.group_id, actorId);
     const fresh = getBettingRound(round.group_id, round.event_id, round.id);
     if (fresh.status !== 'open' && fresh.status !== 'locked')
       throw new PointsError('Diese Runde ist bereits abgerechnet.');
@@ -487,6 +489,7 @@ export function voidBettingRound(round: BettingRound, actorId: string, reason: s
     const fresh = getBettingRound(round.group_id, round.event_id, round.id);
     if (fresh.revision !== expectedRevision || fresh.status !== 'settled')
       throw new PointsError('Abrechnung inzwischen geändert oder nicht korrigierbar.');
+    requirePointsAdmin(fresh.group_id, actorId);
     const old = db
       .prepare(
         "SELECT * FROM point_entries WHERE event_id = ? AND json_extract(details,'$.roundId') = ? AND json_extract(details,'$.revision') = ? AND source = 'tip'",
@@ -514,7 +517,9 @@ export function voidBettingRound(round: BettingRound, actorId: string, reason: s
       Date.now(),
       round.id,
     );
-  })();
+    writeAdminAudit({ actorPlayerId: actorId, groupId: fresh.group_id, action: 'betting_settlement_voided',
+      targetType: 'betting_round', targetId: fresh.id, details: { reason } });
+  }).immediate();
 }
 export function assertCompetitionEditable(groupId: string, eventId: string, type: BetSource, sourceId: string): void {
   const affected = db
@@ -636,6 +641,7 @@ export function rebookCorrectedRounds(rounds: BettingRound[], correction: Bettin
       source.winner === round.result_key
     )
       continue;
+    requirePointsAdmin(round.group_id, correction.actorId);
     const previous = db
       .prepare(
         "SELECT id,player_id,amount FROM point_entries WHERE event_id = ? AND json_extract(details,'$.roundId') = ? AND json_extract(details,'$.revision') = ? AND source = 'tip'",
