@@ -14,6 +14,7 @@ Diese Dokumentation ist die normative Quelle für produktbezogene Routen, Rollen
 - [Wettbewerb und Spiele](competition-and-game-rules.md)
 - [Orga und Events](organisation-and-event-rules.md)
 - [Medien und Dashboards](media-and-dashboard-rules.md)
+- [Punktejournal und Kategorie-Konten](points-journal.md)
 
 UI-Arbeiten lesen nur die Produktregeldatei(en), die den betroffenen fachlichen Ablauf beschreiben.
 
