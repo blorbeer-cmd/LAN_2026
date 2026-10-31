@@ -1,6 +1,7 @@
 // Pure scoring logic shared by the leaderboard, Hall of Fame and export.
 
 export const WIN_POINTS = 3;
+export const DRAW_POINTS = 3;
 export const PARTICIPATION_POINTS = 1;
 export const TOURNAMENT_PLACEMENT_POINTS: Readonly<Record<number, number>> = { 1: 5, 2: 3, 3: 1 };
 
@@ -45,7 +46,7 @@ export function computeStandings(
       for (const playerId of team.playerIds) {
         const standing = ensure(playerId);
         standing.matchesPlayed += 1;
-        standing.points += isWinner ? WIN_POINTS : PARTICIPATION_POINTS;
+        standing.points += match.winnerTeamIndex === null ? DRAW_POINTS : isWinner ? WIN_POINTS : PARTICIPATION_POINTS;
         if (isWinner) {
           standing.wins += 1;
         }
