@@ -17,7 +17,7 @@ keine allgemeine Wide-Variante.
 - Basisgeometrie und Suchpanelvarianten: `public/css/overlays.css`
 - Etablierte zentrierte Profilfarb- und QR-Präsentation: `public/css/style.css`
 - Öffentliche API:
-  `openModal(title, bodyHtml, { onMount, onClose, confirmClose })`
+  `openModal(title, bodyHtml, { onMount, onClose, confirmClose, restoreFocus = true })`
 - Rückgabe von `openModal`: `{ el, close }`
 - Bestätigung:
   `confirmDialog(message, { title = 'Bestätigen', confirmText = 'OK',
@@ -66,6 +66,10 @@ aus; das Standardverhalten anderer Dialoge bleibt unverändert.
 damit ein Klick neben den Erklärdialog keine Beispiele oder aufgeklappten Bereiche vorzeitig
 zurücksetzt. X und Escape sowie programmatisches Schließen bleiben verfügbar.
 
+`restoreFocus` ist standardmäßig `true`. Ein Aufrufer mit eigener Fokusrückgabe in `onClose`
+kann es auf `false` setzen. Die Bereichstour verwendet dies, damit ihre Rückgabe an den
+Hilfe-Auslöser nicht durch ein zuvor fokussiertes Formularfeld überschrieben wird.
+
 ## 5. Erlaubte Anpassungen
 
 - Aufrufer DÜRFEN vertrauenswürdiges Body-Markup, `onMount`, `onClose` und eine synchrone
@@ -84,7 +88,8 @@ zurücksetzt. X und Escape sowie programmatisches Schließen bleiben verfügbar.
   interpretiert werden. Body-Markup bleibt vertrauenswürdig und wird nicht automatisch escaped.
 - Öffnen merkt das zuvor fokussierte Element, hängt den Backdrop an `document.body`, fokussiert das
   erste sichtbare Dialogcontrol und gibt beim Schließen den Fokus an das noch verbundene vorige
-  Element zurück.
+  Element zurück, sofern `restoreFocus` nicht ausdrücklich deaktiviert ist. Dann ist der
+  Aufrufer für die Fokusrückgabe zuständig.
 - Tab und Shift+Tab MÜSSEN im jeweils obersten Dialog zyklisch zwischen sichtbaren, nicht
   deaktivierten Controls laufen.
 - Escape wirkt ausschließlich auf den obersten Backdrop. Ein geschlossener Bestätigungsdialog darf
@@ -142,6 +147,8 @@ Registry-Bezüge für Dialogcontrols: `button`, `button-small`, `button-meaning`
   `openModal` und einen gestapelten Dialog.
 - Reale Flows prüfen zusätzlich Profil-, Spielkatalog-, globale Such-, Event- und
   Verwerfen-Dialoge.
+- `areaTours.e2e.test.ts` aktiviert die Tour bei weiter fokussiertem Profilfeld und prüft,
+  dass allein die Tour den Fokus an ihren Hilfe-Auslöser zurückgibt.
 - Bei 320×568 und 390×844 sitzt der Standarddialog als Bottom-Sheet ohne Seitenoverflow. Bei
   640 px und breiter ist er zentriert und höchstens 480 px breit; Suchpanels dürfen ausschließlich
   in ihren benannten Varianten bis `--search-panel-width` wachsen.
