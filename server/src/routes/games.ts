@@ -14,6 +14,7 @@ import { requireRecentReauthentication, withBodyPlayerIdentity } from '../sessio
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { broadcastLiveBoards } from '../liveStatus';
 import { assertGameEditable, reconcileBetting } from '../betting';
+import { syncPlayingPoints } from '../playingPoints';
 
 export const gamesRouter = Router();
 
@@ -494,11 +495,17 @@ gamesRouter.delete(
   requireRecentReauthentication,
   (req, res) => {
     const existing = req.groupResource as GameRow;
-    db.transaction(() => {
+    const affectedEvents = db.transaction(() => {
       assertGameEditable(req.group!.id, existing.id);
+      const events = db.prepare(`SELECT event_id FROM matches WHERE game_id = ? AND group_id = ?
+        UNION SELECT event_id FROM tournaments WHERE game_id = ? AND group_id = ?`)
+        .all(existing.id, req.group!.id, existing.id, req.group!.id) as Array<{ event_id: string }>;
       db.prepare('DELETE FROM games WHERE id = ?').run(existing.id);
+      for (const event of events) syncPlayingPoints(req.group!.id, event.event_id);
+      return events;
     })();
     reconcileBetting();
+    for (const event of affectedEvents) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: event.event_id });
     writeAdminAudit({
       actorPlayerId: req.player?.id,
       groupId: req.group!.id,

@@ -18,6 +18,7 @@ import { notifyPlayers, resolvePushTopic } from '../push';
 import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupRole } from '../groupAuthorization';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
+import { syncPlayingPoints } from '../playingPoints';
 import { shuffle } from '../matchmaking';
 import {
   generateBracket,
@@ -994,6 +995,7 @@ function saveTournamentResult(req: Request, res: Response) {
       }
     }
     rebookCorrectedRounds(correctedRounds, correction);
+    syncPlayingPoints(req.group!.id, tournament.event_id);
   });
   record();
   reconcileBetting(tournament.event_id);
@@ -1250,7 +1252,9 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
       WHERE group_id = ? AND json_type(result, '$.isDraw') IS NULL AND id IN (
         SELECT match_id FROM tournament_matches WHERE tournament_id = ? AND is_draw = 1
       )`).run(req.group!.id, req.params.id);
-    return db.prepare('DELETE FROM tournaments WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
+    const deleted = db.prepare('DELETE FROM tournaments WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
+    syncPlayingPoints(req.group!.id, tournament.event_id);
+    return deleted;
   })();
   if (result.changes === 0) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   writeAdminAudit({

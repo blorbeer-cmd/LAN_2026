@@ -155,6 +155,8 @@ test('points start once per accepted participant, preserve event access, and blo
     .send({ gameId: f.gameId, teams: f.players.slice(0, 2).map((p) => ({ playerIds: [p] })), winnerTeamIndex: 0 });
   assert.equal(match.status, 201);
   assert.equal(wallet(f.eventId, f.players[0]).total, before, 'a sports win creates no points');
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[0])!.playing, 4,
+    'a sports win earns playing points independently of the legacy wallet');
 });
 
 test('admins and event creators toggle visibility without interrupting hidden credits or settled pools', async () => {

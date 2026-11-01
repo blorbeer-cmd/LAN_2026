@@ -1,4 +1,5 @@
 import { reconcileBetting, assertCompetitionEditable } from '../betting';
+import { syncPlayingPoints } from '../playingPoints';
 // Matchmaking endpoint (FR-16..18): draws balanced teams for a game from a
 // set of present players, using their skill ratings. Stateless — every call
 // is a fresh draw, so "re-roll" is just calling it again. The result is
@@ -515,6 +516,7 @@ matchmakingRouter.delete('/draws/:id', requireGroupRole('admin'), requireRecentR
   db.transaction(() => {
     if (draw.match_id) db.prepare('DELETE FROM matches WHERE id = ? AND group_id = ?').run(draw.match_id, req.group!.id);
     db.prepare('DELETE FROM matchmaking_draws WHERE id = ? AND group_id = ?').run(draw.id, req.group!.id);
+    syncPlayingPoints(req.group!.id, draw.event_id);
     writeAdminAudit({
       actorPlayerId: req.player?.id,
       groupId: req.group!.id,

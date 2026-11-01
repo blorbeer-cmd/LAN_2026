@@ -244,6 +244,11 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
        FROM points_accounts WHERE player_id = ? ORDER BY event_id, account`,
       playerId,
     ),
+    automaticPlayingState: rows(
+      `SELECT event_id AS eventId, source_key AS sourceKey, amount
+       FROM points_playing_awards WHERE player_id = ? ORDER BY event_id, source_key`,
+      playerId,
+    ),
     pointsJournal: rows(
       `SELECT j.id, s.event_id AS eventId, s.account, s.source_key AS sourceKey,
               j.revision, j.amount, j.title, j.reason, j.created_at AS createdAt

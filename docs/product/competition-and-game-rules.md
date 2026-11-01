@@ -42,9 +42,11 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   berechnet; historische Punktestände können sich dadurch ändern. Ältere freie Matches ohne
   vollständige Platzierung, Sieger oder ausdrückliches Remis-Kennzeichen werden als ohne Ergebnis
   behandelt; ältere Turnier-Remis bleiben anhand ihres Turnierergebnisses erkennbar.
-- Die interne Basis für [getrennte Kategorie-Konten und Punktejournal](points-journal.md) ist
-  ebenfalls vorhanden. Fachliche Gutschriften und bisherige Ansichten werden in den folgenden
-  Paketen daran angebunden; Gesamtwertung aus Platzpunkten, Kiosk-Feed und Meldefunktion folgen.
+- Gültige Spielergebnisse und Turnierplatzierungen werden automatisch im
+  [Kategorie-Journal](points-journal.md) verbucht; Änderungen und Löschungen berechnen die
+  Ansprüche neu. Vorhandene Ergebnisse werden beim Start nachgetragen, Wiederholungen zahlen
+  nicht erneut aus. Weitere Orga-/Wett-Anbindungen, Kategorieansichten, Gesamtwertung aus
+  Platzpunkten, Kiosk-Feed und Meldefunktion folgen.
   Die Ligatabelle innerhalb eines Turniers behält ihre eigene 3/1/0-Regel für Sieg/Remis/Niederlage.
 
 ## Auswahlentscheidungen

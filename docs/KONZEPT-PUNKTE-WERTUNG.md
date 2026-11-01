@@ -108,6 +108,12 @@ zusätzlich als Spiele. Freilose erzeugen keine Punkte für ein gespieltes Match
 Eine Änderung des Turnierergebnisses berechnet die Wertung neu. Sie erzeugt keinen
 zweiten Platzierungsbonus.
 
+**Entschieden für manuelle Spielpunkte-Korrekturen:** Ändert sich später der tatsächliche
+Punkteanspruch aus einem Spiel oder einer Turnierplatzierung, wird er aus dem neuen Ergebnis
+neu berechnet und ersetzt den vorherigen, auch manuell korrigierten Anspruch. Eine Löschung
+setzt ihn auf 0. Unveränderte Ansprüche, erneutes Speichern und Neustarts setzen manuelle
+Korrekturen nicht zurück.
+
 ### 3.4 Bewusst akzeptierte Auswirkungen
 
 Es gibt weder eine Zeitgewichtung noch einen Abschlag für wiederholte Begegnungen.
@@ -446,7 +452,8 @@ unbemerkte Implementierungsannahmen entschieden werden.
 
 ## 12. Umsetzungsstand und verbleibende Folgearbeiten
 
-Die Spielberechnung und die interne Journalbasis sind umgesetzt. Die bisherige sichtbare
+Die Spielberechnung, automatische Spielgutschriften und die Journalbasis mit Admin-Korrekturen
+sind umgesetzt. Die bisherige sichtbare
 LAN-Punkte-/Wettfunktion verwendet noch ihr gemeinsames Konto. Ihre Umstellung auf die drei
 Kategorien, das separate Wallet und die weiteren Fachregeln erfolgt in den folgenden Paketen.
 Bestehende Grenzen und Vorgabewerte der bisherigen Funktion entscheiden keine offenen Regeln
@@ -454,9 +461,9 @@ dieses Zielkonzepts.
 
 | Bereich | Vermerkte Folgeänderung |
 |---|---|
-| Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet die Platzregel 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln. Die Turnierboni bleiben 5/3/1. |
+| Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln, Turnierboni bleiben 5/3/1. [Automatische Journalbuchungen](../server/src/playingPoints.ts) erfolgen bei Ergebnissen, Korrekturen, Löschungen und beim Nachtragen bestehender Ergebnisse. |
 | Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
-| Journal und Wettkonto | Umgesetzt: [interne Kategorie-Konten und Journalbasis](product/points-journal.md), eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Offen für die Folgepakete: Fachhandler, bestehende Ansichten und Markt-Abrechnungen daran anbinden und Kategorie-Platzpunkte berechnen. |
+| Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler und Ansichten anbinden sowie Kategorie-Platzpunkte berechnen. |
 | Wettmärkte | Vorläufige Pool-Quoten sichtbar machen, formatabhängige Remis-Auswahl anbieten, die beschlossenen Erstattungen und Restverteilung umsetzen. W1, W2 und die offenen Randfälle nicht vorwegnehmen. |
 | Orga | Fremde To-dos mit 1–5 Punkten, einmalige Auszahlung, Sammelbestellstaffel und Stornokorrekturen, dauerhafte persönliche Boni mit Reisestichtag sowie eindeutige Organisatorzuordnung und Turnier-Deduplizierung abbilden. |
 | Kiosk | [server/public/js/kiosk.js](../server/public/js/kiosk.js) um den Ergebnis-Feed mit Korrekturhinweis erweitern. Bei ausgeblendeten Punkteansichten Ergebnisse weiter zeigen, Punkte und Ranglisten verbergen. Nur Anzeigenamen verwenden. |
@@ -465,5 +472,5 @@ dieses Zielkonzepts.
 
 Für die spätere Umsetzung sind mindestens die hier aufgeführten Rechenbeispiele,
 Korrektur- und Rückerstattungsfälle, gleichzeitige Wiederholungsversuche, Rollen- und Meldungszugriffe
-und die Sichtbarkeit des Kiosk-Feeds zu prüfen. Das ist eine Prüfplanung, keine in diesem
-Auftrag ausgeführte Produktänderung.
+und die Sichtbarkeit des Kiosk-Feeds zu prüfen. Noch offene Fachfälle werden in den Folgepaketen
+entsprechend abgesichert.

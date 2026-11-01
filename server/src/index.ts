@@ -30,6 +30,7 @@ import { registerChimpSockets } from './arcade/chimp';
 import { registerArcadeSockets as registerArcadeRealtimeSockets } from './arcade/realtime';
 import { startPrivacyRetention } from './privacyRetention';
 import { startNewstickerGeneration } from './newsticker';
+import { backfillPlayingPoints } from './playingPoints';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -98,6 +99,7 @@ function start(): void {
   }
   const showLocalRecoveryInfo = !claimedAdminExists && process.env.LOCAL_GENERATED_RECOVERY_CODE === '1';
 
+  backfillPlayingPoints();
   const app = createApp();
   const server = http.createServer(app);
   const io = new Server(server);

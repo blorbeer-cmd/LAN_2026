@@ -5754,6 +5754,20 @@ registerMigration({ version: 125, name: 'add category points accounts and journa
   ).run(Date.now(), OUTSIDE_EVENTS_ID);
 } });
 
+registerMigration({ version: 126, name: 'track automatic playing entitlements', up: () => {
+  db.exec(`CREATE TABLE IF NOT EXISTS points_playing_awards (
+    event_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    account TEXT NOT NULL DEFAULT 'playing' CHECK(account = 'playing'),
+    source_key TEXT NOT NULL,
+    amount INTEGER NOT NULL CHECK(typeof(amount) = 'integer' AND amount >= 0),
+    PRIMARY KEY(event_id, player_id, source_key),
+    FOREIGN KEY(event_id, player_id, account)
+      REFERENCES points_accounts(event_id, player_id, account) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS points_playing_awards_player ON points_playing_awards(player_id, event_id);`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

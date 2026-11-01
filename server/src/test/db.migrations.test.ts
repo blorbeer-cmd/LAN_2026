@@ -117,8 +117,58 @@ function readMigrationRunOrder(): number[] {
   return JSON.parse(stdout.toString()) as number[];
 }
 
+test('migration 126 retains existing journal entries and creates repeatable automatic playing state', () => {
+  const dbFile = makeTempDbPath('playing-state');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`DROP TABLE points_playing_awards; DELETE FROM schema_migrations WHERE version = 126;
+    INSERT INTO players(id,name,api_key,created_at) VALUES ('playing-old','Old player','playing-old-key',1);
+    INSERT INTO event_participants(event_id,player_id,status) VALUES ('instance-base-event','playing-old','accepted');
+    INSERT INTO points_sources(id,event_id,player_id,account,source_key)
+      VALUES ('playing-source','instance-base-event','playing-old','playing','match:legacy');
+    INSERT INTO points_journal(id,source_id,revision,amount,title,created_at)
+      VALUES ('playing-entry','playing-source',1,4,'Spiel beendet',1);`);
+  fixture.close();
+  runMigrations(dbFile);
+  const upgraded = new Database(dbFile);
+  assert.deepEqual(upgraded.prepare('SELECT id,amount FROM points_journal').all(), [{ id: 'playing-entry', amount: 4 }]);
+  assert.deepEqual(upgraded.prepare('SELECT * FROM points_playing_awards').all(), []);
+  upgraded.exec(`INSERT INTO points_playing_awards(event_id,player_id,source_key,amount)
+    VALUES ('instance-base-event','playing-old','match:legacy',4);`);
+  upgraded.close();
+  runMigrations(dbFile);
+  const restarted = new Database(dbFile, { readonly: true });
+  assert.deepEqual(restarted.prepare('SELECT source_key,amount FROM points_playing_awards').all(), [{ source_key: 'match:legacy', amount: 4 }]);
+  assert.deepEqual(restarted.prepare('PRAGMA foreign_key_check').all(), []);
+  restarted.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 126 rolls back the playing state table on failure and retries without changing balances', () => {
+  const dbFile = makeTempDbPath('playing-state-rollback');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`DROP TABLE points_playing_awards; DELETE FROM schema_migrations WHERE version = 126;
+    CREATE TABLE points_playing_awards_player(blocker INTEGER);`);
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /points_playing_awards_player/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version = 126').get(), undefined);
+  assert.equal(failed.prepare("SELECT 1 FROM sqlite_master WHERE name = 'points_playing_awards'").get(), undefined);
+  failed.exec('DROP TABLE points_playing_awards_player');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const retried = new Database(dbFile, { readonly: true });
+  assert.ok(retried.prepare('SELECT 1 FROM schema_migrations WHERE version = 126').get());
+  retried.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 function removeCategoryPointsSchema(fixture: Database.Database): void {
-  fixture.exec(`DROP TRIGGER points_accounts_participant_insert;
+  fixture.exec(`DROP TABLE points_playing_awards;
+    DELETE FROM schema_migrations WHERE version = 126;
+    DROP TRIGGER points_accounts_participant_insert;
     DROP TRIGGER points_accounts_participant_update;
     DROP TABLE points_journal;
     DROP TABLE points_sources;
@@ -1061,10 +1111,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 125);
+  assert.equal(migrations.length, 126);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 125 }, (_, index) => index + 1),
+    Array.from({ length: 126 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1666,8 +1716,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 125 }, (_, index) => index + 1),
-    'every version 1..125 runs exactly once',
+    Array.from({ length: 126 }, (_, index) => index + 1),
+    'every version 1..126 runs exactly once',
   );
 });
 

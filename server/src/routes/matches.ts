@@ -17,6 +17,7 @@ import { applySeatConflicts, buildTeamsSnapshot } from './matchmaking';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
+import { syncPlayingPoints } from '../playingPoints';
 
 export const matchesRouter = Router();
 matchesRouter.use((req, _res, next) => {
@@ -268,6 +269,7 @@ matchesRouter.post('/', (req, res) => {
         drawId,
       );
       }
+      syncPlayingPoints(req.group!.id, eventId);
     })();
   } catch (error) {
     if (error instanceof DrawAlreadyClaimedError) {
@@ -353,6 +355,7 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
     const correction = validateBettingCorrection(req, rounds);
     db.prepare('UPDATE matches SET game_id = ?, played_at = ?, result = ? WHERE id = ?').run(nextGameId, nextPlayedAt, nextResult, existing.id);
     rebookCorrectedRounds(rounds, correction);
+    syncPlayingPoints(req.group!.id, existing.event_id);
   })();
 
   reconcileBetting(existing.event_id);
@@ -373,8 +376,11 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
 matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
   const existing = req.groupResource as MatchRow;
   if (!requireGroupEventAccess(req, res, existing.event_id)) return;
-  assertMatchEditable(req.group!.id, existing.id);
-  db.prepare('DELETE FROM matches WHERE id = ?').run(existing.id);
+  db.transaction(() => {
+    assertMatchEditable(req.group!.id, existing.id);
+    db.prepare('DELETE FROM matches WHERE id = ?').run(existing.id);
+    syncPlayingPoints(req.group!.id, existing.event_id);
+  })();
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.group!.id,
