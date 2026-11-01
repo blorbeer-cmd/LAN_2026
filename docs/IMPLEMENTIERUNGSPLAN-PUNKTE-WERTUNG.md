@@ -75,12 +75,12 @@ Bereits erledigte Aufgaben erhalten keinen erfundenen Punktwert. Vorhandene Guts
 explizite alte Belohnungszusagen, offene Einsätze und Endstände werden erhalten.
 
 Die Umstellung erfolgt je Quelltyp: Neue Aufgaben tragen `points_model = category`;
-historische Aufgaben tragen `legacy`. Neue To-dos speichern `points_value` (1–5) und buchen
-ausschließlich `orga`; der alte Aufgabenpfad nimmt diese Aufgaben nicht an. Historische Aufgaben
-haben 0, können bestehende alte Zusagen weiter erfüllen und werden nicht zusätzlich im
-Kategorie-Journal vergütet. Bei noch nicht übernommenen historischen Aufgaben ohne Zusage kann
-der Ersteller ausdrücklich einen neuen Punktwert festlegen. Bereits erledigte Aufgaben bleiben
-unverändert. Eine Direktzuweisungs-Serie verwendet einen gemeinsamen Kategorie-Vorgang.
+historische Aufgaben tragen `legacy`. Neue To-dos haben fest 3 Punkte und buchen
+ausschließlich `orga`; der alte Aufgabenpfad nimmt diese Aufgaben nicht an. Bereits erledigte, bisher unvergütete Altaufgaben
+bleiben ohne neue Gutschrift. Offene oder übernommene Altaufgaben ohne Zusage wechseln durch
+Migration 130 ebenfalls ins neue Modell mit 3 Punkten. Bestehende alte Zusagen bleiben im alten
+Pfad erhalten; neue Einzelzusagen und die Punkteauswahl entfallen. Bereits vorhandene
+Kategorie-Ansprüche werden nach der festen 3-Punkte-Regel abgeglichen. Eine Direktzuweisungs-Serie verwendet einen gemeinsamen Kategorie-Vorgang.
 Auch neue Mitbring-Anfragen sind dem neuen Modell zugeordnet und können keine alte
 Budgetbelohnung erhalten, obwohl ihr Orga-Punktwert 0 ist.
 
@@ -136,13 +136,14 @@ den Wallet-/Gesamtwertungs-Paketen zugeordnet.
 
 ## Pakete 2–4 – weitere Orga-Erzeuger
 
-**Paket 2 umgesetzt:** Neue Aufgaben haben 1–5 Punkte (Vorgabe 1), keine Budget-/Helferplatz-
+**Paket 2 umgesetzt:** Neue Aufgaben bringen immer 3 Punkte, keine Budget-/Helferplatz-
 Reservierung und eine Auszahlung an den ersten angemeldeten fremden Helfer. Direkte Zuweisung
 zählt; eine Serie direkter Zuweisungen zahlt zusammen einmal aus. Mitbring-Anfragen zahlen keine
 neuen Orga-Punkte. Ersteller, eingetragene Helfer und Admins können neue Aufgaben wieder öffnen;
 die Gutschrift wird im selben Commit zurückgerechnet. Erneutes Erledigen stellt den Anspruch
-wieder her. Punktwertänderungen sind vor Übernahme und ohne alte Zusage möglich, mit Schutz
-gegen veraltete Änderungen. Höhere Admin-Werte bleiben offen. Historische Aufgaben mit alter
+wieder her. Eine Punkteauswahl oder höhere automatische Admin-Werte gibt es nicht.
+Migration 130 übernimmt noch offene, unvergütete Aufgaben; erledigte unvergütete Altaufgaben
+bleiben ohne rückwirkenden Bonus. Historische Aufgaben mit alter
 LAN-Belohnung behalten ihren bisherigen Abschlussweg und können bis zur finanziellen Ablösung
 nicht wieder geöffnet werden; deren bereits gezahlte Beträge werden nicht umgedeutet.
 

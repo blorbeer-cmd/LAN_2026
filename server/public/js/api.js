@@ -683,10 +683,10 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ playerId, title, description, assigneePlayerIds, dueAt }),
       }),
-    createTodo: (playerId, title, description, assigneePlayerIds, dueAt, pointsValue) =>
+    createTodo: (playerId, title, description, assigneePlayerIds, dueAt) =>
       apiFetch('/api/checklist/tasks/todo', {
         method: 'POST',
-        body: JSON.stringify({ playerId, title, description, assigneePlayerIds, dueAt, pointsValue }),
+        body: JSON.stringify({ playerId, title, description, assigneePlayerIds, dueAt }),
       }),
     claim: (taskId, playerId, comment) =>
       apiFetch(`/api/checklist/tasks/${taskId}/claim`, { method: 'POST', body: JSON.stringify({ playerId, comment }) }),

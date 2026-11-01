@@ -165,6 +165,76 @@ test('migration 126 rolls back the playing state table on failure and retries wi
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 130 adopts unfinished unpromised tasks, keeps historical work and recalculates old category rewards once', () => {
+  const dbFile = makeTempDbPath('fixed-todo-reward');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`DELETE FROM schema_migrations WHERE version=130;
+    INSERT INTO players(id,name,api_key,created_at) VALUES ('flat-creator','Creator','flat-creator-key',1),('flat-helper','Helper','flat-helper-key',1);
+    INSERT INTO checklist_tasks(id,group_id,event_id,type,title,created_by,status,created_at,points_value,points_model) VALUES
+      ('flat-history','default-group','instance-base-event','todo','Historical done','flat-creator','done',1,0,'legacy'),
+      ('flat-open','default-group','instance-base-event','todo','Still open','flat-creator','open',1,0,'legacy'),
+      ('flat-promise','default-group','instance-base-event','todo','Old promise','flat-creator','taken',1,0,'legacy'),
+      ('flat-current','default-group','instance-base-event','todo','Previously five','flat-creator','done',1,5,'category');
+    INSERT INTO checklist_task_assignees(task_id,player_id,joined_at) VALUES ('flat-current','flat-helper',1);
+    INSERT INTO points_task_rewards(task_id,event_id,group_id,per_person,slots,created_at)
+      VALUES ('flat-promise','instance-base-event','default-group',7,1,1);
+    INSERT INTO points_accounts(event_id,player_id,account,created_at) VALUES ('instance-base-event','flat-helper','orga',1);
+    INSERT INTO points_sources(id,event_id,player_id,account,source_key)
+      VALUES ('flat-source','instance-base-event','flat-helper','orga','todo:flat-current');
+    INSERT INTO points_journal(id,source_id,revision,amount,title,created_at) VALUES ('flat-journal','flat-source',1,5,'Old category amount',1);
+    INSERT INTO points_orga_awards(event_id,player_id,source_key,amount) VALUES ('instance-base-event','flat-helper','todo:flat-current',5);`);
+  fixture.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const upgraded = new Database(dbFile);
+  assert.deepEqual(upgraded.prepare('SELECT id,points_value,points_model FROM checklist_tasks ORDER BY id').all(), [
+    { id: 'flat-current', points_value: 3, points_model: 'category' },
+    { id: 'flat-history', points_value: 0, points_model: 'legacy' },
+    { id: 'flat-open', points_value: 3, points_model: 'category' },
+    { id: 'flat-promise', points_value: 0, points_model: 'legacy' },
+  ]);
+  assert.equal((upgraded.prepare('SELECT per_person FROM points_task_rewards').get() as { per_person: number }).per_person, 7);
+  assert.deepEqual(upgraded.prepare('SELECT amount FROM points_journal ORDER BY revision').all(), [{ amount: 5 }], 'migration never rewrites financial entries');
+  upgraded.close();
+  const orgaModule = path.join(__dirname, '..', 'orgaPoints.js');
+  const synchronize = () => execFileSync(process.execPath, ['-e', `require(${JSON.stringify(orgaModule)}).syncOrgaPoints('default-group','instance-base-event')`],
+    { env: { ...process.env, DB_FILE: dbFile, NODE_ENV: 'test' }, stdio: 'pipe' });
+  synchronize();
+  synchronize();
+  const restarted = new Database(dbFile, { readonly: true });
+  assert.deepEqual(restarted.prepare('SELECT amount FROM points_journal ORDER BY revision').all(), [{ amount: 5 }, { amount: -2 }]);
+  assert.equal((restarted.prepare('SELECT SUM(amount) AS total FROM points_journal').get() as { total: number }).total, 3);
+  assert.deepEqual(restarted.prepare('PRAGMA foreign_key_check').all(), []);
+  restarted.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 130 rolls back all task conversions on failure and retries', () => {
+  const dbFile = makeTempDbPath('fixed-todo-rollback');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`DELETE FROM schema_migrations WHERE version=130;
+    INSERT INTO players(id,name,api_key,created_at) VALUES ('flat-blocker','Blocker','flat-blocker-key',1);
+    INSERT INTO checklist_tasks(id,group_id,event_id,type,title,created_by,status,created_at,points_model) VALUES
+      ('flat-first','default-group','instance-base-event','todo','First','flat-blocker','open',1,'legacy'),
+      ('flat-blocked','default-group','instance-base-event','todo','Blocked','flat-blocker','taken',1,'legacy');
+    CREATE TRIGGER fail_flat_conversion BEFORE UPDATE ON checklist_tasks WHEN NEW.id='flat-blocked'
+      BEGIN SELECT RAISE(ABORT,'fixed reward failure'); END;`);
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /fixed reward failure/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=130').get(), undefined);
+  assert.ok((failed.prepare('SELECT points_value,points_model FROM checklist_tasks').all() as Array<{ points_value: number; points_model: string }>).every((t) => t.points_value === 0 && t.points_model === 'legacy'));
+  failed.exec('DROP TRIGGER fail_flat_conversion');
+  failed.close();
+  runMigrations(dbFile);
+  const retried = new Database(dbFile, { readonly: true });
+  assert.ok((retried.prepare('SELECT points_value,points_model FROM checklist_tasks').all() as Array<{ points_value: number; points_model: string }>).every((t) => t.points_value === 3 && t.points_model === 'category'));
+  retried.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 function removeTodoPointsSchema(fixture: Database.Database): void {
   fixture.exec(`DROP INDEX checklist_tasks_points;
     ALTER TABLE checklist_tasks DROP COLUMN points_value;
@@ -1314,10 +1384,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 129);
+  assert.equal(migrations.length, 130);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 129 }, (_, index) => index + 1),
+    Array.from({ length: 130 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1919,8 +1989,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 129 }, (_, index) => index + 1),
-    'every version 1..129 runs exactly once',
+    Array.from({ length: 130 }, (_, index) => index + 1),
+    'every version 1..130 runs exactly once',
   );
 });
 

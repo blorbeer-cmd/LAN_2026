@@ -5814,6 +5814,16 @@ registerMigration({ version: 129, name: 'add prospective todo category rewards',
   db.exec('CREATE INDEX IF NOT EXISTS checklist_tasks_points ON checklist_tasks(event_id, points_value, batch_id)');
 } });
 
+registerMigration({ version: 130, name: 'use a fixed three point todo reward', up: () => {
+  // Completed historical work and explicit old promises stay in their old
+  // model. Unrewarded work that is still open can join the new scoring now.
+  db.exec(`UPDATE checklist_tasks SET points_model='category',points_value=3
+    WHERE type='todo' AND status IN ('open','taken')
+      AND NOT EXISTS (SELECT 1 FROM points_task_rewards r WHERE r.task_id=checklist_tasks.id);
+    UPDATE checklist_tasks SET points_value=CASE WHEN type='todo' THEN 3 ELSE 0 END
+      WHERE points_model='category';`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

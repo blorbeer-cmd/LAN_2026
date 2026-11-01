@@ -3,7 +3,6 @@ import { db } from '../db';
 import { requireGroupRole } from '../groupAuthorization';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 import {
-  configureTaskReward,
   addPointEntry,
   deductPoints,
   ensurePointAccounts,
@@ -14,7 +13,6 @@ import {
   requirePointsOpen,
   requirePointsVisible,
   rewardBudget,
-  taskReward,
   wallet,
 } from '../points';
 import {
@@ -165,25 +163,8 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json(pointsSettings(eventId));
 });
-pointsRouter.post('/tasks/:id/reward', requireGroupRole('admin'), (req, res) => {
-  const eventId = res.locals.eventId as string;
-  configureTaskReward(
-    req.group!.id,
-    eventId,
-    req.params.id,
-    integer(req.body?.perPerson, 'Punkte pro Person', 1, 1000),
-    integer(req.body?.slots, 'Helferplätze', 1, 30),
-  );
-  writeAdminAudit({
-    actorPlayerId: req.player!.id,
-    groupId: req.group!.id,
-    action: 'points_reward_configured',
-    targetType: 'checklist_task',
-    targetId: req.params.id,
-    details: { perPerson: req.body.perPerson, slots: req.body.slots },
-  });
-  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: req.group!.id, eventId });
-  res.status(201).json(taskReward(req.params.id, req.player!.id));
+pointsRouter.post('/tasks/:id/reward', requireGroupRole('admin'), (_req, res) => {
+  res.status(409).json({ error: 'To-dos bringen fest 3 Orga-Punkte. Einzelne Belohnungen werden nicht mehr festgelegt.' });
 });
 pointsRouter.get('/admin/entries', requireGroupRole('admin'), (req, res) => {
   const eventId = res.locals.eventId as string;

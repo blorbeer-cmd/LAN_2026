@@ -6,9 +6,10 @@ schrittweise durch drei Kategorien und eine Gesamtwertung. Die [Journalbasis](po
 ist bereits vorhanden; Kategorie-Rohwerte, Verlauf und Admin-Journal sind sichtbar. Weitere
 Fachhandler, Wallet-Abrechnung und die endgültige Gesamtwertung folgen. Bestehende
 Vorgabewerte und Grenzen der bisherigen Funktion entscheiden keine offenen Konzeptregeln.
-Neue To-dos sammeln bereits getrennte Orga-Punkte nach dem Zielkonzept. Historische Aufgaben
-mit Wert 0 können noch den ausdrücklich als „Alte LAN-Belohnung“ markierten bisherigen Pfad
-verwenden; beide Vergütungswege schließen sich für dieselbe Aufgabe aus. Bereits erledigte
+Neue To-dos sammeln fest 3 getrennte Orga-Punkte ohne Punkteauswahl. Noch offene Altaufgaben
+ohne Zusage wechseln ebenfalls zu dieser Regel. Nur bestehende historische Belohnungszusagen
+verwenden weiterhin ihren alten Auszahlungspfad; neue Einzelzusagen sind gesperrt und beide
+Vergütungswege schließen sich für dieselbe Aufgabe aus. Bereits erledigte
 Aufgaben bekommen keinen rückwirkenden Punktwert. Laufende Events werden unterstützt.
 
 Veröffentlichte LAN-Events sammeln Punkte automatisch im Hintergrund, unabhängig von der Anzeige

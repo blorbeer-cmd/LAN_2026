@@ -162,36 +162,6 @@ export function rewardBudget(eventId: string) {
     available: (settings?.orga_budget ?? 0) - allocated,
   };
 }
-export function configureTaskReward(
-  groupId: string,
-  eventId: string,
-  taskId: string,
-  perPerson: number,
-  slots: number,
-): void {
-  db.transaction(() => {
-    requirePointsOpen(eventId);
-    const task = db
-      .prepare('SELECT status, points_value, points_model FROM checklist_tasks WHERE id = ? AND group_id = ? AND event_id = ?')
-      .get(taskId, groupId, eventId) as { status: string; points_value: number; points_model: string } | undefined;
-    if (!task) throw new PointsError('Aufgabe nicht gefunden.', 404);
-    if (task.points_model !== 'legacy' || task.points_value > 0) throw new PointsError('Neue Aufgaben verwenden ausschließlich die neue Orga-Wertung.');
-    if (task.status !== 'open' || db.prepare('SELECT 1 FROM checklist_task_assignees WHERE task_id = ?').get(taskId)) {
-      throw new PointsError('Belohnungen müssen vor der Übernahme festgelegt werden.');
-    }
-    if (db.prepare('SELECT 1 FROM points_task_rewards WHERE task_id = ?').get(taskId)) {
-      throw new PointsError('Die zugesagte Belohnung ist bereits festgelegt.');
-    }
-    if (perPerson * slots > rewardBudget(eventId).available) throw new PointsError('Das Orga-Budget reicht nicht aus.');
-    db.prepare(
-      'INSERT INTO points_task_rewards (task_id,event_id,group_id,per_person,slots,created_at) VALUES (?,?,?,?,?,?)',
-    ).run(taskId, eventId, groupId, perPerson, slots, Date.now());
-    db.prepare('UPDATE points_settings SET orga_allocated = orga_allocated + ? WHERE event_id = ?').run(
-      perPerson * slots,
-      eventId,
-    );
-  })();
-}
 export function taskReward(taskId: string, playerId?: string) {
   const reward = db
     .prepare('SELECT per_person AS perPerson, slots FROM points_task_rewards WHERE task_id = ?')

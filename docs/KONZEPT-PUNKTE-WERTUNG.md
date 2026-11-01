@@ -211,27 +211,24 @@ abweichen. Die übrigen Werte bleiben erhalten.
 
 ### 5.1 To-dos
 
-- Teilnehmer vergeben beim Anlegen **1–5 Punkte**.
+- Jedes berechtigte To-do bringt **fest 3 Orga-Punkte**, unabhängig von Aufwand und Aufgabe. Es gibt keine Punkteauswahl und keine höheren automatischen Admin-Werte.
 - Punkte entstehen nur für das Übernehmen **und** Erledigen eines To-dos, das jemand
   anderes angelegt hat. Das Anlegen allein und das Erledigen eigener To-dos bringen nichts.
 - Ein To-do zahlt höchstens einmal aus. Wird es wieder geöffnet, wird die Gutschrift
   korrigiert. Erneutes Erledigen erzeugt keinen zusätzlichen Auszahlungsanspruch.
 - Es gibt keine Freigabe der Erledigung und keine Gegenbestätigung.
 
-**OFFEN O1:** Dürfen Admins oder Event-Ersteller höhere Werte vergeben, und falls ja bis
-zu welchem Höchstwert? Die früheren 5–30 Punkte sind nur der Ausgangsvorschlag für diese
-offene Ausnahme, kein allgemein geltender To-do-Wert.
-
 **Erste Umsetzung:** Der erste angemeldete Helfer, der nicht der Ersteller ist, erhält den
 festgelegten Wert beim Erledigen. Direkte Zuweisung zählt als Übernahme. Ein gemeinsamer Auftrag
 mit mehreren Direktzuweisungen wird zusammen einmal belohnt; weitere Helfer erzeugen keine
 zusätzliche Auszahlung. Mitbring-Anfragen sind keine vergüteten Aufgaben.
 Ersteller, eingetragene Helfer und Admins dürfen wieder öffnen; die Gutschrift wird dabei
-zurückgerechnet. Ein Punktwert kann vor der Übernahme mit Prüfung des bisherigen Werts geändert
-werden. Höhere Admin-/Erstellerwerte bleiben ausdrücklich offen.
+zurückgerechnet. Der feste Wert ist weder beim Anlegen noch beim Bearbeiten konfigurierbar.
+Administrative Journal-Korrekturen bleiben davon unabhängig möglich.
 
-Laufende Events werden ab der Umstellung unterstützt. Historische Aufgaben erhalten zunächst
-0 statt eines erfundenen Werts; bereits erledigte Aufgaben werden nicht nachträglich vergütet.
+Laufende Events werden ab der Umstellung unterstützt. Offene oder übernommene Altaufgaben ohne zugesagte Belohnung wechseln ebenfalls zu festen 3 Punkten.
+Bereits erledigte, bisher unvergütete Altaufgaben werden nicht nachträglich vergütet. Bereits im
+Kategorie-Modell gewertete Aufgaben werden dagegen nach der neuen festen Regel neu berechnet.
 Vorhandene alte Belohnungszusagen und Gutschriften bleiben im bisherigen Konto erhalten. Solche
 alten belohnten Aufgaben behalten vorerst ihren bisherigen Abschlussweg ohne Wiederöffnen.
 
@@ -451,7 +448,6 @@ Die folgenden vier ursprünglichen Entscheidungen sind weiterhin ausdrücklich *
 |---|---|---|
 | W1 | Einsatzgrenze pro Wettmarkt | 10–20 % des gleichen Startguthabens |
 | W2 | Mindestzahl abgerechneter Tipps für eine Wettplatzierung | 3–5; Zählweise erstatteter Märkte ebenfalls klären |
-| O1 | Höhere To-do-Werte durch Admins oder Event-Ersteller und deren Höchstwert | Frühere 5–30 als Ausgangsvorschlag; Teilnehmergrenze bleibt 1–5 |
 | O2 | Kontingente vergüteter Umfragen und Spieleabstimmungen pro Ersteller und Event | 2–3; genaue Zuordnung der Boni klären |
 
 Das Review des bisherigen Codes ergänzt folgende offene Entscheidungen. Bestehende technische
@@ -501,7 +497,7 @@ dieses Zielkonzepts.
 | Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Spielfilter und eventübergreifende Auswertungen verwenden ausschließlich Spielpunkte. Eine ausdrücklich gewählte einzelne konfigurierte LAN ohne Spielfilter, Hall of Fame und Event-Export nutzen bis zum Umstellungspaket noch das alte gemeinsame Konto. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
 | Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Umgesetzt sind außerdem persönliche Kategorie-Rohwerte, Verlauf und Admin-Korrektur-Oberfläche. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler anbinden sowie Kategorie-Platzpunkte berechnen. |
 | Wettmärkte | Vorläufige Pool-Quoten sichtbar machen, formatabhängige Remis-Auswahl anbieten, die beschlossenen Erstattungen und Restverteilung umsetzen. W1, W2 und die offenen Randfälle nicht vorwegnehmen. |
-| Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit 1–5 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Offen für Folgepakete: Umfragen/Spieleabstimmungen sowie Ankunft und Abreise mit Reisestichtag. Die ausdrücklich offenen Regeln bleiben offen. |
+| Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit festen 3 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Offen für Folgepakete: Umfragen/Spieleabstimmungen sowie Ankunft und Abreise mit Reisestichtag. Die ausdrücklich offenen Regeln bleiben offen. |
 | Kiosk | Umgesetzt: [Ergebnis-Feed](product/media-and-dashboard-rules.md#tv-kiosk) mit Anzeigenamen, Platzierungen und tatsächlich gebuchten Spielpunkten, Korrekturhinweis auch bei reinen Score-Änderungen. Bei ausgeblendeten Punkteansichten bleiben Ergebnisse ohne Punkte sichtbar. Die zehn jüngsten Ergebnisse wechseln in der bestehenden Turnierkachel; alle Teilnehmer werden automatisch durchgeblättert. Migration 128 ergänzt Erfassungszeit, Änderungszeit und Ergebnisrevision, ohne Punktebestände zu verändern. |
 | Meldefunktion | Meldbare Quellen, optionalen Grund, eine offene Meldung pro Person/Eintrag, Empfängerfilter, Identitätsschutz, Status und begründete Korrekturen ergänzen. Eigene administrative Korrekturen bleiben erlaubt. |
 | Abschluss und Sichtbarkeit | Hintergrundvergabe von der Anzeige trennen; neue Tipps bei ausgeblendeter Anzeige sperren. Festschreibung gegen gleichzeitig eingehende Meldungen absichern und bei offenen Meldungen verhindern. Den endgültigen Stand nachvollziehbar festhalten. |

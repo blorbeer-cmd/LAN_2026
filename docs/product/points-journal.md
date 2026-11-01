@@ -254,18 +254,21 @@ Journals lassen sich über dessen Aktualisieren-Aktion erneut versuchen.
 Migration 129 ergänzt `checklist_tasks.points_value` mit 0 und `points_model = legacy` für den
 Bestand. Später angelegte Aufgaben verwenden standardmäßig `category`, auch Mitbring-Anfragen
 ohne Punktwert; sie können deshalb keine alten Budgetbelohnungen erhalten. Neue Aufgaben
-erhalten 1–5 Punkte und buchen als `todo:<id>` beziehungsweise gemeinsam als
+erhalten fest 3 Punkte und buchen als `todo:<id>` beziehungsweise gemeinsam als
 `todo:batch:<batchId>` ausschließlich ins Orga-Konto. Der erste angemeldete fremde Helfer
 erhält den Wert, auch bei Direktzuweisung; Mitbring-Anfragen sind ausgeschlossen. Neue
-Aufgaben können nicht zusätzlich mit einer alten LAN-Belohnung versehen werden. Eine Änderung
-des Werts benötigt vor Übernahme den bisherigen `expectedPointsValue`; bestehende alte Zusagen
-werden dabei nicht überschrieben. Erledigen, Wiederöffnen und ein möglicher Empfängerwechsel
+Aufgaben können nicht zusätzlich mit einer alten LAN-Belohnung versehen werden. Der Wert ist nicht konfigurierbar; alte Client-Felder für Wunschwerte ändern ihn nicht.
+Neue Einzelzusagen über den alten Belohnungsendpunkt sind gesperrt, bestehende Zusagen
+werden erhalten. Erledigen, Wiederöffnen und ein möglicher Empfängerwechsel
 werden atomar mit dem gemeinsamen Orga-Abgleich gespeichert. Unveränderte Ansprüche erhalten
 manuelle Korrekturen. Festgeschriebene Wertungen blockieren keine Aufgabenstatusänderungen,
 erhalten aber keine neuen Buchungen. Realtime-Signale folgen nach dem Commit.
 
 Laufende Events unterstützen diese neue Quelle ohne rückwirkende Vergütung bereits erledigter
-Aufgaben. Alte Guthaben, explizite Zusagen und Einsätze bleiben unverändert; historische Aufgaben
+Aufgaben. Migration 130 übernimmt noch offene/übernommene Altaufgaben ohne Zusage in das
+neue Modell und vereinheitlicht dessen Aufgabenwerte auf 3. Bereits vorhandene Kategorie-
+Ansprüche werden über den normalen Journalabgleich neu berechnet; die Migration selbst schreibt
+keine finanziellen Buchungen um. Alte Guthaben, explizite Zusagen und Einsätze bleiben unverändert; historische Aufgaben
 mit alten Zusagen verwenden ausschließlich ihren alten Auszahlungspfad und können vor dessen
 finanzieller Ablösung nicht wieder geöffnet werden. Die Migration und wiederholtes Anzeigen
 erzeugen keine neuen To-do-Ansprüche. Neue Werte und Quellen sind im persönlichen Datenschutzexport enthalten.
@@ -289,8 +292,7 @@ auf. Spielvorgänge, Wettbewerbsorganisation und administrative Korrekturen sind
 Orga-Vorgänge, Wetten, Kategorie-Platzpunkte und Meldungen. Der Kiosk-Ergebnisfeed ist bereits angebunden. Die bestehende
 klassische Rangliste wird in diesem Paket nicht aus den neuen Konten gelesen.
 
-**Offen bleiben:** Wett-Einsatzgrenze je Markt, Mindestzahl abgerechneter Tipps, erhöhte
-To-do-Werte für Admins/Ersteller und Kontingente für Umfragen/Spieleabstimmungen. Dieses Paket
+**Offen bleiben:** Wett-Einsatzgrenze je Markt, Mindestzahl abgerechneter Tipps, Kontingente für Umfragen/Spieleabstimmungen. Dieses Paket
 setzt dafür keine Vorgabewerte und entscheidet keine offenen Regeln zur Teilnehmerzahl der
 Gesamtwertung oder zu persönlichen Bonus-Stichtagen.
 

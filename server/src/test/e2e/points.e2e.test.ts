@@ -135,12 +135,17 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const taskId = task.id ?? task.tasks[0].id;
   // Exercise an explicit pre-upgrade promise alongside the new category model.
   const legacyFixture = new Database(fixtureDb);
-  legacyFixture.prepare("UPDATE checklist_tasks SET points_value=0, points_model='legacy' WHERE id=?").run(taskId);
+  legacyFixture.transaction(() => {
+    legacyFixture.prepare("UPDATE checklist_tasks SET points_value=0, points_model='legacy' WHERE id=?").run(taskId);
+    legacyFixture.prepare(`INSERT INTO points_task_rewards(task_id,event_id,group_id,per_person,slots,created_at)
+      SELECT id,event_id,group_id,5,1,created_at FROM checklist_tasks WHERE id=?`).run(taskId);
+    legacyFixture.prepare('UPDATE points_settings SET orga_allocated=orga_allocated+5 WHERE event_id=?').run(eventId);
+  })();
   legacyFixture.close();
   await navigate(admin, 'checklist');
   await admin.locator(`[data-task-detail="${taskId}"]`).click();
-  await admin.locator('[data-detail-reward]').click();
-  await admin.getByRole('button', { name: 'Belohnung festlegen', exact: true }).click();
+  assert.equal(await admin.locator('[data-detail-reward]').count(), 0, 'per-task reward setup is retired');
+  await admin.keyboard.press('Escape');
   await admin.locator('.modal-backdrop').waitFor({ state: 'detached' });
   await navigate(member, 'checklist');
   await member.locator(`[data-claim-task="${taskId}"]`).click();
@@ -457,14 +462,15 @@ test('category history and reasoned own and foreign corrections stay consistent 
     await navigate(admin, 'checklist');
     await admin.locator('#checklist-new-todo-btn').click();
     await admin.locator('#todo-title').fill('Switch nach der LAN einpacken');
-    await admin.locator('#todo-points').selectOption('4');
+    assert.equal(await admin.locator('#todo-points').count(), 0);
+    await admin.getByText('Beim Erledigen erhält der erste fremde Helfer einmalig 3 Orga-Punkte.', { exact: true }).waitFor();
     await admin.setViewportSize({ width: 390, height: 844 });
     await admin.locator('#toast-container .toast').waitFor({ state: 'detached' });
     await admin.screenshot({ path: 'test-results/todo-points-form-phone.png', animations: 'disabled' });
     await admin.locator('#checklist-todo-form [type=submit]').click();
     await admin.locator('#checklist-todo-form').waitFor({ state: 'detached' });
     const todo = (await api('/api/checklist/tasks')).tasks.find((task: any) => task.title === 'Switch nach der LAN einpacken');
-    assert.equal(todo.pointsValue, 4);
+    assert.equal(todo.pointsValue, 3);
     await navigate(member, 'checklist');
     await member.setViewportSize({ width: 320, height: 568 });
     assert.equal(await member.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
@@ -472,11 +478,11 @@ test('category history and reasoned own and foreign corrections stay consistent 
     await member.locator('#checklist-claim-form [type=submit]').click();
     await member.locator('#checklist-claim-form').waitFor({ state: 'detached' });
     await member.locator(`[data-task-detail="${todo.id}"]`).click();
-    await member.getByText('4 P. einmalig für den ersten Helfer, der nicht der Ersteller ist.', { exact: true }).waitFor();
+    await member.getByText('3 P. einmalig für den ersten Helfer, der nicht der Ersteller ist.', { exact: true }).waitFor();
     await member.locator('[data-detail-done]').click();
     await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
     await navigate(member, 'points');
-    await personal.locator('[data-category-balance="orga"]').filter({ hasText: /^4$/ }).waitFor();
+    await personal.locator('[data-category-balance="orga"]').filter({ hasText: /^3$/ }).waitFor();
     assert.equal((await api(`/api/points?eventId=${event.id}`, 'GET', undefined, alice.cookie)).wallet.total, 100);
     await navigate(admin, 'pointsAdmin');
     for (const page of [admin, member]) {
@@ -509,7 +515,7 @@ test('category history and reasoned own and foreign corrections stay consistent 
     await member.locator(`[data-task-detail="${todo.id}"]`).click();
     await member.locator('[data-detail-done]').click();
     await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
-    assert.equal(await todoClaim(), 4, 'hidden recompletion restores the claim exactly once');
+    assert.equal(await todoClaim(), 3, 'hidden recompletion restores the claim exactly once');
     assert.deepEqual(pageErrors, []);
   } finally {
     await admin.unrouteAll({ behavior: 'wait' });

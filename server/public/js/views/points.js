@@ -145,7 +145,7 @@ function overviewHtml(data) {
     ${data.settings.prize_info ? `<p><strong>Preis &amp; Vergabe:</strong> ${e(data.settings.prize_info)}</p>` : ''}
     <div class="my-stats-kpis">${kpi(data.wallet.total, 'Punkte gesamt')}${kpi(Math.max(0, data.wallet.available), 'Frei verfügbar')}${kpi(data.wallet.held, 'Für Wetten reserviert')}${data.wallet.available < 0 ? kpi(-data.wallet.available, 'Korrekturschuld') : ''}</div>
     ${data.wallet.available < 0 ? '<p role="status">Eine Korrektur hat dein verfügbares Guthaben reduziert. Neue Einsätze sind erst wieder mit ausreichendem Guthaben möglich.</p>' : ''}
-    <p class="muted">Ergebnisse zählen in der Kategorie Spielen. Spielpunkte erhöhen dein Wettguthaben nicht.</p>
+    <p class="muted">Orga- und Spielpunkte werden getrennt gesammelt und erhöhen dieses bisherige Wettguthaben nicht.</p>
     <div class="row points-actions"><button type="button" class="btn btn-sm" data-navigate="checklist">Mit Orga-Aufgaben Punkte verdienen</button></div>
   </section>`;
 }
@@ -615,7 +615,7 @@ export function renderPointsAdmin(container, ctx) {
   container.innerHTML = `<div class="row-between page-title-row points-actions"><h1 class="view-title">LAN-Punkte verwalten</h1>${state.activeEvent?.pointsEnabled ? '<button type="button" class="btn btn-sm" data-navigate="points">Mein Punktekonto</button>' : ''}</div>
     <div class="grouped-page-sections"><section class="card stack"><div class="row-between points-actions"><h2>Anzeige für Teilnehmer</h2><button type="button" class="btn btn-sm" data-navigate="events">Zur Eventverwaltung</button></div><p>${state.activeEvent?.pointsEnabled ? 'LAN-Punkte, Verlauf und Wetten sind für alle Teilnehmer sichtbar.' : 'LAN-Punkte, Verlauf und Wetten sind für Teilnehmer ausgeblendet.'} Punkte werden unabhängig davon im Hintergrund gesammelt. Die Anzeige steuerst du jederzeit direkt am Event.</p></section>
     ${adminCategoryJournalHtml(adminCategoryEntries, { account: adminCategoryAccount, query: adminCategoryQuery, loading: adminCategoryLoading, error: adminCategoryError })}<section class="card stack"><h2>${s ? 'Regeln & Budget' : 'Punktewertung aktivieren'}</h2>
-    <p>Orga-Aufgaben werden beim Erledigen automatisch gutgeschrieben. Es gibt keinen Freigabeprozess. Spielpunkte erhöhen kein Wettguthaben.</p>
+    <p>Neue To-dos bringen beim Erledigen automatisch 3 Orga-Punkte, ohne Freigabe und ohne Budget. Das bisherige Budget gilt nur für alte Zusagen. Orga- und Spielpunkte erhöhen kein Wettguthaben.</p>
     <form class="stack" data-points-settings>
       <label class="stack"><span class="field-label">Preis & Vergabe bei Gleichstand (optional)</span><textarea name="prizeInfo" maxlength="300" ${closed ? 'disabled' : ''}>${e(s?.prize_info ?? '')}</textarea></label>
       <p class="muted">Kündige Preis und Sachpreisvergabe bei gleichem Punktestand vor Beginn an. Die Rangliste teilt gleiche Plätze ohne Skill-Tiebreaker.</p>
@@ -701,41 +701,5 @@ export function renderPointsAdmin(container, ctx) {
       const entry = adminEntries.find((r) => r.id === button.dataset.deductEntry);
       deductDialog(entry, remaining(entry), ctx);
     }),
-  );
-}
-
-export function openTaskReward(task, ctx, onSaved) {
-  const eventId = state.activeEvent.id;
-  const { close } = openModal(
-    'Alte LAN-Belohnung festlegen',
-    `<form class="stack"><p>${e(task.title)}</p>
-    <p class="muted">Diese historische Aufgabe verwendet das bisherige LAN-Konto und dessen Budget. Neue Aufgaben sammeln stattdessen getrennte Orga-Punkte.</p>
-    ${numberField('perPerson', 'Punkte pro Helfer', 5, 1, 1000)}${numberField('slots', 'Belohnte Helferplätze', 1, 1, 30)}
-    <p class="muted">Die ersten Helfer sichern sich die Plätze. Weitere Helfer können ohne Punkte mitmachen. Die Belohnung ist danach verbindlich; beim Erledigen wird automatisch gebucht.</p>
-    <button type="submit" class="btn btn-primary">Belohnung festlegen</button></form>`,
-    {
-      onMount(el) {
-        el.querySelector('form').addEventListener('submit', (event) => {
-          event.preventDefault();
-          const form = event.currentTarget;
-          const values = new FormData(form);
-          perform(
-            form.querySelector('button'),
-            () =>
-              pointsRequest(
-                `/tasks/${encodeURIComponent(task.id)}/reward`,
-                json('POST', { perPerson: Number(values.get('perPerson')), slots: Number(values.get('slots')) }),
-                eventId,
-              ),
-            () => {
-              close();
-              invalidatePoints();
-              onSaved?.();
-              ctx.rerender();
-            },
-          );
-        });
-      },
-    },
   );
 }

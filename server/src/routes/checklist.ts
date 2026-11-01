@@ -34,6 +34,7 @@
 // hidden behind a 404.
 
 import { awardTaskPoints, claimTaskPoints, releaseTaskPoints, taskReward, pointsAreVisible, PointsError } from '../points';
+import { TODO_POINTS } from '../todoPoints';
 import { syncOrgaPoints } from '../orgaPoints';
 import { Router, type Request, type Response } from 'express';
 import { nanoid } from 'nanoid';
@@ -180,9 +181,10 @@ function serializeTask(row: TaskRow, forAdmin = false) {
     claimComment: row.claim_comment,
     dueAt: row.due_at,
     archivedAt: row.archived_at,
-    pointsValue: forAdmin || pointsAreVisible(row.event_id) ? row.points_value : null,
+    pointsValue: forAdmin || pointsAreVisible(row.event_id)
+      ? row.points_model === 'category' && row.type === 'todo' ? TODO_POINTS : row.points_value
+      : null,
     canReopen: !legacyReward,
-    legacyRewardAvailable: forAdmin && row.points_model === 'legacy',
     reward: forAdmin || pointsAreVisible(row.event_id) ? legacyReward : null,
   };
 }
@@ -546,7 +548,7 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
 // person right away instead (skips the pool entirely) and pushes each of
 // them a direct notification.
 checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole('member'), (req, res) => {
-  const { playerId, title, description, assigneePlayerIds, dueAt, pointsValue = 1 } = req.body ?? {};
+  const { playerId, title, description, assigneePlayerIds, dueAt } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
@@ -555,9 +557,6 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
   }
   if (description !== undefined && description !== null && !isNonEmptyString(description, MAX_TASK_DESCRIPTION)) {
     return res.status(400).json({ error: `Beschreibung darf höchstens ${MAX_TASK_DESCRIPTION} Zeichen lang sein.` });
-  }
-  if (!Number.isInteger(pointsValue) || pointsValue < 1 || pointsValue > 5) {
-    return res.status(400).json({ error: 'Orga-Punkte müssen zwischen 1 und 5 liegen.' });
   }
   const parsedDueAt = parseOptionalDueAt(dueAt);
   if (!parsedDueAt.ok) return res.status(400).json({ error: parsedDueAt.error });
@@ -619,7 +618,7 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
             claim_comment: null,
             due_at: parsedDueAt.value,
             archived_at: null,
-            points_value: pointsValue,
+            points_value: TODO_POINTS,
             points_model: 'category',
           },
         ]
@@ -641,7 +640,7 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
           claim_comment: null,
           due_at: parsedDueAt.value,
           archived_at: null,
-          points_value: pointsValue,
+          points_value: TODO_POINTS,
           points_model: 'category' as const,
         }));
 
@@ -819,10 +818,11 @@ checklistRouter.patch('/tasks/:id/reopen', resolveChecklistTask, ...withBodyPlay
   if (taskReward(task.id)) return res.status(409).json({ error: 'Aufgaben mit alter LAN-Belohnung können noch nicht wieder geöffnet werden.' });
   db.transaction(() => {
     const status = taskParticipants(task.id).length ? 'taken' : 'open';
-    const changed = db.prepare(`UPDATE checklist_tasks SET status = ?, done_at = NULL, archived_at = NULL
-      WHERE id = ? AND status = 'done'`).run(status, task.id);
+    const changed = db.prepare(`UPDATE checklist_tasks SET status = ?, done_at = NULL, archived_at = NULL,
+      points_model='category',points_value=CASE WHEN type='todo' THEN ? ELSE 0 END
+      WHERE id = ? AND status = 'done'`).run(status, TODO_POINTS, task.id);
     if (changed.changes !== 1) throw new PointsError('Diese Aufgabe ist nicht mehr erledigt.');
-    if (task.points_value > 0 && task.event_id) syncOrgaPoints(task.group_id, task.event_id);
+    if (task.event_id) syncOrgaPoints(task.group_id, task.event_id);
   })();
   broadcast(Events.leaderboardChanged, null, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
@@ -862,7 +862,7 @@ checklistRouter.patch('/tasks/:id', resolveChecklistTask, ...withBodyPlayerIdent
   const scope = currentEventScope(req, res);
   if (!scope) return;
   if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
-  const { playerId, type, title, description, dueAt, pointsValue } = req.body ?? {};
+  const { playerId, type, title, description, dueAt } = req.body ?? {};
   if (playerId !== task.created_by && !isChecklistModerator(req)) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann dies bearbeiten.' });
   }
@@ -878,53 +878,27 @@ checklistRouter.patch('/tasks/:id', resolveChecklistTask, ...withBodyPlayerIdent
   const parsedDueAt = parseOptionalDueAt(dueAt);
   if (!parsedDueAt.ok) return res.status(400).json({ error: parsedDueAt.error });
 
-  if (pointsValue !== undefined && (!Number.isInteger(pointsValue) || pointsValue < 1 || pointsValue > 5)) {
-    return res.status(400).json({ error: 'Orga-Punkte müssen zwischen 1 und 5 liegen.' });
-  }
-
   const next = {
     type: type ?? task.type,
     title: title !== undefined ? title.trim() : task.title,
     description: description === undefined ? task.description : description ? description.trim() : null,
     due_at: dueAt === undefined ? task.due_at : parsedDueAt.value,
-    points_value: pointsValue ?? task.points_value,
+    points_value: (type ?? task.type) === 'todo' ? TODO_POINTS : 0,
   };
   const update = db.transaction(() => {
-    const current = getTask(task.id);
-    if (!current) throw new PointsError('Diese Aufgabe wurde bereits entfernt.');
-    next.points_value = pointsValue ?? current.points_value;
-    if (next.points_value !== current.points_value) {
-      if (req.body?.expectedPointsValue !== current.points_value) {
-        throw new PointsError('Der Punktwert wurde zwischenzeitlich geändert. Bitte lade die Aufgabe neu.');
-      }
-      const related = task.batch_id
-        ? db.prepare('SELECT id FROM checklist_tasks WHERE batch_id = ? AND group_id = ?').all(task.batch_id, task.group_id)
-        : [{ id: task.id }];
-      for (const { id } of related as Array<{ id: string }>) {
-        if (taskParticipants(id).length || taskReward(id)) {
-          throw new PointsError('Punkte müssen vor der Übernahme festgelegt werden. Bestehende Belohnungszusagen bleiben erhalten.');
-        }
-      }
-    }
     const changed = task.batch_id
     ? db
         .prepare(
-          `UPDATE checklist_tasks SET type = ?, title = ?, description = ?, due_at = ?, points_value = ?
+          `UPDATE checklist_tasks SET type = ?, title = ?, description = ?, due_at = ?, points_value = CASE WHEN points_model='category' THEN ? ELSE points_value END
            WHERE batch_id = ? AND group_id = ? AND status IN ('open', 'taken')`,
         )
         .run(next.type, next.title, next.description, next.due_at, next.points_value, task.batch_id, task.group_id)
     : db
         .prepare(
-          `UPDATE checklist_tasks SET type = ?, title = ?, description = ?, due_at = ?, points_value = ?
+          `UPDATE checklist_tasks SET type = ?, title = ?, description = ?, due_at = ?, points_value = CASE WHEN points_model='category' THEN ? ELSE points_value END
            WHERE id = ? AND status IN ('open', 'taken')`,
         )
         .run(next.type, next.title, next.description, next.due_at, next.points_value, task.id);
-    if (changed.changes && next.points_value > 0) {
-      if (task.batch_id) {
-        db.prepare("UPDATE checklist_tasks SET points_model='category' WHERE batch_id=? AND group_id=? AND points_value>0")
-          .run(task.batch_id, task.group_id);
-      } else db.prepare("UPDATE checklist_tasks SET points_model='category' WHERE id=?").run(task.id);
-    }
     if (changed.changes && task.event_id && (task.points_value > 0 || next.points_value > 0)) {
       syncOrgaPoints(task.group_id, task.event_id);
     }

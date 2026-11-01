@@ -16,6 +16,17 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const app = createTestApp();
+// Explicit pre-upgrade promises still have to be honored. No public endpoint
+// can create these after fixed To-do rewards have replaced task configuration.
+function legacyPromise(taskId: string, perPerson = 5, slots = 1) {
+  db.transaction(() => {
+    db.prepare("UPDATE checklist_tasks SET points_value=0,points_model='legacy' WHERE id=?").run(taskId);
+    db.prepare(`INSERT INTO points_task_rewards(task_id,event_id,group_id,per_person,slots,created_at)
+      SELECT id,event_id,group_id,?,?,created_at FROM checklist_tasks WHERE id=?`).run(perPerson, slots, taskId);
+    db.prepare(`UPDATE points_settings SET orga_allocated=orga_allocated+?
+      WHERE event_id=(SELECT event_id FROM checklist_tasks WHERE id=?)`).run(perPerson * slots, taskId);
+  })();
+}
 let sequence = 0;
 async function fixture(config: object = {}, visible = true) {
   sequence++;
@@ -214,7 +225,7 @@ test('admins and event creators toggle visibility without interrupting hidden cr
   const task = await request(app).post('/api/checklist/tasks/todo').send({ playerId: TEST_ADMIN_ID, type: 'todo', title: 'Hidden helper task' });
   const taskId = task.body.tasks[0].id;
   db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(taskId); // pre-upgrade task
-  assert.equal((await request(app).post(`/api/points/tasks/${taskId}/reward`).send({ perPerson: 5, slots: 1 })).status, 201);
+  legacyPromise(taskId);
   await request(app).post(`/api/checklist/tasks/${taskId}/claim`).set('x-test-player-id', creator).send({ playerId: creator });
   const done = await request(app).patch(`/api/checklist/tasks/${taskId}/done`).set('x-test-player-id', creator).send({ playerId: creator });
   assert.equal(done.status, 200);
@@ -260,7 +271,9 @@ test('new todo rewards use one foreign helper, preserve corrections until reopen
   const f = await fixture();
   const [a, b] = f.players;
   for (const pointsValue of [0, 6, 1.5, '3']) {
-    assert.equal((await request(app).post('/api/checklist/tasks/todo').send({ title: 'Invalid reward', pointsValue })).status, 400);
+    const fixed = await request(app).post('/api/checklist/tasks/todo').send({ title: 'Ignored old amount', pointsValue });
+    assert.equal(fixed.status, 201);
+    assert.equal(fixed.body.tasks[0].pointsValue, 3);
   }
   const created = await request(app).post('/api/checklist/tasks/todo').send({ title: 'New category task', pointsValue: 5 });
   assert.equal(created.status, 201);
@@ -274,11 +287,13 @@ test('new todo rewards use one foreign helper, preserve corrections until reopen
   assert.equal((await claim(a)).status, 200);
   const claims = await Promise.all([claim(a), claim(b)]);
   assert.deepEqual(claims.map((r) => r.status).sort(), [200, 409]);
-  assert.equal((await request(app).patch(`/api/checklist/tasks/${id}`).send({ pointsValue: 4, expectedPointsValue: 5 })).status, 409);
+  const attemptedChange = await request(app).patch(`/api/checklist/tasks/${id}`).send({ pointsValue: 4 });
+  assert.equal(attemptedChange.status, 200);
+  assert.equal(attemptedChange.body.tasks[0].pointsValue, 3);
   const done = () => request(app).patch(`/api/checklist/tasks/${id}/done`).send({ playerId: b });
   const completions = await Promise.all([done(), done()]);
   assert.deepEqual(completions.map((r) => r.status).sort(), [200, 409]);
-  assert.equal(readPointsSource(source)!.total, 5);
+  assert.equal(readPointsSource(source)!.total, 3);
   assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID)!.orga, 0);
   assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, b)!.orga, 0);
   assert.equal(wallet(f.eventId, a).total, 100);
@@ -294,7 +309,7 @@ test('new todo rewards use one foreign helper, preserve corrections until reopen
   assert.deepEqual(reopened.map((r) => r.status).sort(), [200, 409]);
   assert.equal(readPointsSource(source)!.total, 0);
   assert.equal((await done()).status, 200);
-  assert.equal(readPointsSource(source)!.total, 5, 'recompletion replaces the claim instead of adding another reward');
+  assert.equal(readPointsSource(source)!.total, 3, 'recompletion replaces the claim instead of adding another reward');
   const ownExport = buildPersonalDataExport(a);
   assert.ok(JSON.stringify(ownExport).includes(source.sourceKey));
   assert.ok(JSON.stringify(ownExport).includes('"pointsModel":"category"'));
@@ -339,12 +354,11 @@ test('todo batches pay once, preserve historical work and promises, and roll bac
   assert.equal(readPointsSource(source)!.total, 0, 'a batch never pays two people at once');
   const old = await request(app).post('/api/checklist/tasks/todo').send({ title: 'Historical completed task', assigneePlayerIds: [a] });
   const oldId = old.body.tasks[0].id;
-  db.prepare("UPDATE checklist_tasks SET points_value=0,status='done',done_at=1 WHERE id=?").run(oldId);
+  db.prepare("UPDATE checklist_tasks SET points_value=0,points_model='legacy',status='done',done_at=1 WHERE id=?").run(oldId);
   syncOrgaPoints(DEFAULT_GROUP_ID, f.eventId);
   assert.equal(readPointsSource({ ...source, sourceKey: `todo:${oldId}` })!.total, 0);
   const requestTask = await request(app).post('/api/checklist/tasks').send({ title: 'Bring a cable', assigneePlayerIds: [a], pointsValue: 5 });
   const requestId = requestTask.body.tasks[0].id;
-  assert.equal(requestTask.body.tasks[0].legacyRewardAvailable, false);
   assert.equal((await request(app).post(`/api/points/tasks/${requestId}/reward`).send({ perPerson: 5, slots: 1 })).status, 409);
   assert.equal((await request(app).patch(`/api/checklist/tasks/${requestId}/done`).send({ playerId: a })).status, 200);
   assert.equal(readPointsSource({ ...source, sourceKey: `todo:${requestId}` })!.total, 0);
@@ -354,7 +368,8 @@ test('todo batches pay once, preserve historical work and promises, and roll bac
   const unclaimed = await request(app).post('/api/checklist/tasks/todo').send({ title: 'Change before claiming' });
   const id = unclaimed.body.tasks[0].id;
   const edits = await Promise.all([2, 4].map((pointsValue) => request(app).patch(`/api/checklist/tasks/${id}`).send({ pointsValue, expectedPointsValue: 1 })));
-  assert.deepEqual(edits.map((r) => r.status).sort(), [200, 409], 'a stale point-value edit cannot overwrite a concurrent change');
+  assert.ok(edits.every((r) => r.status === 200));
+  assert.ok(edits.every((r) => r.body.tasks[0].pointsValue === 3), 'old client choices cannot change the fixed reward');
   assert.equal((await request(app).post(`/api/checklist/tasks/${id}/claim`).send({ playerId: a })).status, 200);
   const releases = await Promise.all([a, a].map((playerId) => request(app).post(`/api/checklist/tasks/${id}/release`).send({ playerId })));
   assert.deepEqual(releases.map((r) => r.status).sort(), [200, 403]);
@@ -362,7 +377,6 @@ test('todo batches pay once, preserve historical work and promises, and roll bac
   assert.deepEqual(cancellations.map((r) => r.status).sort(), [204, 409]);
   const transition = await request(app).post('/api/checklist/tasks/todo').send({ title: 'Historical open task at cutover' });
   const transitionId = transition.body.tasks[0].id;
-  db.prepare("UPDATE checklist_tasks SET points_value=0, points_model='legacy' WHERE id=?").run(transitionId);
   const producers = await Promise.all([
     request(app).post(`/api/points/tasks/${transitionId}/reward`).send({ perPerson: 5, slots: 1 }),
     request(app).patch(`/api/checklist/tasks/${transitionId}`).send({ pointsValue: 3, expectedPointsValue: 0 }),
@@ -383,7 +397,7 @@ test('todo batches pay once, preserve historical work and promises, and roll bac
   assert.deepEqual(db.prepare('SELECT * FROM points_journal ORDER BY id').all(), frozen);
 });
 
-test('task completion awards promised slots immediately and once, with atomic budget and partial administrative deductions', async () => {
+test('historical task promises still pay their original slots once and retain budget and deductions', async () => {
   const f = await fixture({ orgaBudget: 10 });
   const task = await request(app)
     .post('/api/checklist/tasks/todo')
@@ -392,8 +406,7 @@ test('task completion awards promised slots immediately and once, with atomic bu
   const id = task.body.id ?? task.body.tasks?.[0]?.id;
   assert.ok(id, JSON.stringify(task.body));
   db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(id); // pre-upgrade task
-  const reward = await request(app).post(`/api/points/tasks/${id}/reward`).send({ perPerson: 5, slots: 2 });
-  assert.equal(reward.status, 201, JSON.stringify(reward.body));
+  legacyPromise(id, 5, 2);
   const claims = await Promise.all(
     f.players.map((p) => request(app).post(`/api/checklist/tasks/${id}/claim`).send({ playerId: p })),
   );
@@ -586,8 +599,7 @@ test('parallel reservations obey available funds and event limits; closing preve
     const taskId = created.body.id ?? created.body.tasks[0].id;
     taskIds.push(taskId);
     db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(taskId); // pre-upgrade task
-    if (rewarded) assert.equal((await request(app).post(`/api/points/tasks/${taskId}/reward`)
-      .send({ perPerson: 5, slots: 1 })).status, 201);
+    if (rewarded) legacyPromise(taskId);
     assert.equal((await request(app).post(`/api/checklist/tasks/${taskId}/claim`).send({ playerId: a })).status, 200);
   }
   assert.equal((await request(app).post('/api/points/close').send({})).status, 200);
@@ -872,7 +884,7 @@ test('result corrections keep original pools zero-sum even when the old winnings
   );
 });
 
-test('an orga-only LAN cannot open betting pools; simultaneous reward promises cannot overspend the budget', async () => {
+test('an orga-only LAN cannot open pools or configure legacy rewards; fixed todos ignore the old budget', async () => {
   const f = await fixture({ maxRounds: 0, orgaBudget: 5 });
   const tasks = [];
   for (const title of ['Setup', 'Cleanup'])
@@ -880,11 +892,14 @@ test('an orga-only LAN cannot open betting pools; simultaneous reward promises c
       (await request(app).post('/api/checklist/tasks/todo').send({ playerId: TEST_ADMIN_ID, type: 'todo', title })).body
         .tasks[0].id as string,
     );
-  for (const id of tasks) db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(id); // pre-upgrade tasks
-  const rewards = await Promise.all(
-    tasks.map((id) => request(app).post(`/api/points/tasks/${id}/reward`).send({ perPerson: 5, slots: 1 })),
-  );
-  assert.deepEqual(rewards.map((r) => r.status).sort(), [201, 409]);
+  const rewards = await Promise.all(tasks.map((id) => request(app).post(`/api/points/tasks/${id}/reward`).send({ perPerson: 5, slots: 1 })));
+  assert.deepEqual(rewards.map((r) => r.status), [409, 409]);
+  for (const id of tasks) {
+    assert.equal((await request(app).post(`/api/checklist/tasks/${id}/claim`).send({ playerId: f.players[0] })).status, 200);
+    assert.equal((await request(app).patch(`/api/checklist/tasks/${id}/done`).send({ playerId: f.players[0] })).status, 200);
+  }
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[0])!.orga, 6, 'fixed rewards do not depend on the old budget');
+  assert.equal((db.prepare('SELECT orga_allocated FROM points_settings WHERE event_id=?').get(f.eventId) as { orga_allocated: number }).orga_allocated, 0);
   const draw = (
     await request(app)
       .post('/api/matchmaking')
@@ -898,7 +913,7 @@ test('an orga-only LAN cannot open betting pools; simultaneous reward promises c
     ).status,
     409,
   );
-  assert.equal((await request(app).get('/api/points')).body.budget.available, 0);
+  assert.equal((await request(app).get('/api/points')).body.budget.available, 5);
 });
 
 test('account erasure keeps other helpers credited, retains committed budget and anonymizes historical pool stakes', async () => {
@@ -909,7 +924,7 @@ test('account erasure keeps other helpers credited, retains committed budget and
     .send({ playerId: f.players[0], type: 'todo', title: 'Completed shared task' });
   const taskId = task.body.tasks[0].id;
   db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(taskId); // pre-upgrade task
-  await request(app).post(`/api/points/tasks/${taskId}/reward`).send({ perPerson: 5, slots: 1 });
+  legacyPromise(taskId);
   await request(app)
     .post(`/api/checklist/tasks/${taskId}/claim`)
     .set('x-test-player-id', f.players[1])
