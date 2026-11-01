@@ -5790,6 +5790,16 @@ registerMigration({ version: 127, name: 'track competition organizers and automa
   CREATE INDEX IF NOT EXISTS points_orga_awards_player ON points_orga_awards(player_id, event_id);`);
 } });
 
+registerMigration({ version: 128, name: 'track recorded result activity for the kiosk feed', up: () => {
+  const columns = db.prepare('PRAGMA table_info(matches)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'recorded_at')) db.exec('ALTER TABLE matches ADD COLUMN recorded_at INTEGER NOT NULL DEFAULT 0');
+  if (!columns.some((column) => column.name === 'updated_at')) db.exec('ALTER TABLE matches ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0');
+  if (!columns.some((column) => column.name === 'result_revision')) db.exec('ALTER TABLE matches ADD COLUMN result_revision INTEGER NOT NULL DEFAULT 1 CHECK(result_revision >= 1)');
+  db.exec(`UPDATE matches SET recorded_at = played_at WHERE recorded_at = 0;
+    UPDATE matches SET updated_at = recorded_at WHERE updated_at = 0;
+    CREATE INDEX IF NOT EXISTS matches_event_activity ON matches(group_id, event_id, updated_at DESC);`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

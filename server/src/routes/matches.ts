@@ -224,7 +224,7 @@ matchesRouter.post('/', (req, res) => {
   };
   try {
     db.transaction(() => {
-      db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by, recorded_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
         row.id,
         row.game_id,
         row.event_id,
@@ -232,6 +232,8 @@ matchesRouter.post('/', (req, res) => {
         row.result,
         row.group_id,
         row.created_by,
+        Date.now(),
+        Date.now(),
       );
 
       if (drawId && draw) {
@@ -357,7 +359,10 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
     const rounds = settledDrawRounds(req.group!.id, existing.id);
     if (!rounds.length) assertMatchEditable(req.group!.id, existing.id);
     const correction = validateBettingCorrection(req, rounds);
-    db.prepare('UPDATE matches SET game_id = ?, played_at = ?, result = ? WHERE id = ?').run(nextGameId, nextPlayedAt, nextResult, existing.id);
+    if (nextGameId !== existing.game_id || nextPlayedAt !== existing.played_at || nextResult !== existing.result) {
+      db.prepare('UPDATE matches SET game_id = ?, played_at = ?, result = ?, updated_at = ?, result_revision = result_revision + 1 WHERE id = ?')
+        .run(nextGameId, nextPlayedAt, nextResult, Date.now(), existing.id);
+    }
     rebookCorrectedRounds(rounds, correction);
     syncCompetitionPoints(req.group!.id, existing.event_id);
   })();

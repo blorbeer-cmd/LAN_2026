@@ -725,3 +725,79 @@ test('tournament organizers earn one point per played match and five on regular 
   assert.equal((await request(app).delete(`/api/games/${game}`)).status, 204);
   assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.orga, 0);
 });
+
+
+test('result feed is read-only, shows actual match credits and redacts points when visibility is disabled', async () => {
+  const players: string[] = [];
+  for (const name of ['Feed Alpha', 'Feed Beta']) players.push((await request(app).post('/api/players').send({ name })).body.id);
+  db.prepare('UPDATE players SET real_name = ? WHERE id = ?').run('Private feed identity', players[0]);
+  const event = createEvent('Result feed LAN', { groupId: DEFAULT_GROUP_ID, startsAt: Date.now(), endsAt: null });
+  setParticipants(event.id, [TEST_ADMIN_ID, ...players]);
+  assert.equal((await request(app).put('/api/me/active-event').send({ eventId: event.id })).status, 200);
+  try {
+    const game = (await request(app).post('/api/games').send({ name: 'Result feed game' })).body.id;
+    const payload = { gameId: game, teams: players.map((id) => ({ playerIds: [id] })), winnerTeamIndex: 0, playedAt: 1 };
+    const created = await request(app).post('/api/matches').send(payload);
+    assert.equal(created.status, 201);
+    const url = `/api/results/feed?eventId=${event.id}`;
+    const hidden = await request(app).get(url);
+    assert.equal(hidden.status, 200);
+    assert.equal(hidden.body.showPoints, false);
+    assert.equal(hidden.body.items.length, 1);
+    assert.equal(hidden.body.items[0].id, created.body.id);
+    assert.equal(hidden.body.items[0].corrected, false);
+    assert.equal(hidden.body.items[0].revision, 1);
+    assert.ok(hidden.body.items[0].activityAt > 1, 'backdated results are new when actually recorded');
+    assert.deepEqual(hidden.body.items[0].teams.map((team: { place: number }) => team.place), [1, 2]);
+    for (const team of hidden.body.items[0].teams) for (const player of team.players) assert.deepEqual(Object.keys(player), ['name']);
+    const serialized = JSON.stringify(hidden.body);
+    for (const privateValue of [...players, 'Private feed identity', 'real_name', 'avatar', 'color', 'api_key']) assert.equal(serialized.includes(privateValue), false);
+    db.prepare('UPDATE points_settings SET visible = 1 WHERE event_id = ?').run(event.id);
+    const journalCount = () => (db.prepare('SELECT COUNT(*) AS n FROM points_journal').get() as { n: number }).n;
+    const before = journalCount();
+    const visible = await request(app).get(url);
+    assert.equal(visible.body.showPoints, true);
+    assert.deepEqual(visible.body.items[0].teams.map((team: { players: Array<{ points: number }> }) => team.players[0].points), [4, 1]);
+    assert.equal(journalCount(), before, 'reading the feed never books points');
+    assert.equal((await request(app).patch(`/api/matches/${created.body.id}`).send({ winnerTeamIndex: 0 })).status, 200);
+    assert.equal((await request(app).get(url)).body.items[0].revision, 1, 'identical saves are not new corrections');
+    const correctedTeams = players.map((id, index) => ({ playerIds: [id], score: index ? 5 : 10 }));
+    const corrections = await Promise.all([0, 1].map(() => request(app).patch(`/api/matches/${created.body.id}`).send({ teams: correctedTeams })));
+    assert.deepEqual(corrections.map((res) => res.status), [200, 200]);
+    const corrected = (await request(app).get(url)).body.items[0];
+    assert.equal(corrected.revision, 2);
+    assert.equal(corrected.corrected, true, 'score-only corrections are visible even without a points change');
+    assert.equal(journalCount(), before);
+    const entry = readPointsJournal(DEFAULT_GROUP_ID, event.id, players[0]).find((row) => row.account === 'playing' && row.sourceKey === `match:${created.body.id}`)!;
+    assert.equal((await request(app).post(`/api/points/admin/journal/${entry.id}/correct?eventId=${event.id}`)
+      .send({ total: 2, revision: entry.revision, reason: 'Spielpunkte berichtigt' })).status, 200);
+    assert.equal((await request(app).get(url)).body.items[0].teams[0].players[0].points, 2, 'feed displays credited journal points, not the uncorrected scoring formula');
+    const cup = await request(app).post('/api/tournaments').send({ gameId: game, format: 'single_elimination',
+      teams: players.map((id, index) => ({ name: `Feed team ${index}`, playerIds: [id] })) });
+    assert.equal(cup.status, 201);
+    const fixture = cup.body.matches.find((row: Fixture) => !row.isBye);
+    const results = await Promise.all([0, 1].map(() => request(app).post(`/api/tournaments/${cup.body.id}/matches/${fixture.id}/result`)
+      .send({ winnerTeamId: fixture.teamAId })));
+    assert.deepEqual(results.map((res) => res.status).sort(), [200, 409]);
+    const withCup = (await request(app).get(url)).body.items;
+    assert.equal(withCup.length, 2);
+    assert.ok(withCup.some((item: { teams: Array<{ name: string }> }) => item.teams.some((team) => team.name === 'Feed team 0')));
+    const unscored = await request(app).post('/api/matches').send({ gameId: game, teams: payload.teams });
+    assert.equal(unscored.status, 201);
+    assert.equal((await request(app).get(url)).body.items.length, 2, 'unscored games are absent');
+    db.prepare('UPDATE points_settings SET visible = 0 WHERE event_id = ?').run(event.id);
+    const disabled = (await request(app).get(url)).body;
+    assert.equal(disabled.showPoints, false);
+    for (const item of disabled.items) for (const team of item.teams) for (const player of team.players) assert.equal('points' in player, false);
+    db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(players[0]);
+    assert.equal((await request(app).get(url)).body.items.length, 0, 'hidden fixture players do not reach the public screen');
+    db.prepare('UPDATE players SET is_test = 0 WHERE id = ?').run(players[0]);
+    const deleted = await Promise.all([0, 1].map(() => request(app).delete(`/api/matches/${created.body.id}`)));
+    assert.deepEqual(deleted.map((res) => res.status).sort(), [204, 404]);
+    assert.equal((await request(app).get(url)).body.items.some((item: { id: string }) => item.id === created.body.id), false);
+  } finally {
+    db.prepare('UPDATE players SET is_test = 0 WHERE id = ?').run(players[0]);
+    await request(app).put('/api/me/active-event').send({ eventId: BASE_EVENT_ID });
+    db.prepare('DELETE FROM events WHERE id = ?').run(event.id);
+  }
+});

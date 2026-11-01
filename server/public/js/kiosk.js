@@ -10,10 +10,11 @@ import { escapeHtml, stateLabel, avatarHtml } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcade/shared/arcadeStreamRenderer.js';
-import { domainIcon, installDomainIcons } from './domainIcons.js';
+import { installDomainIcons } from './domainIcons.js';
 import { snakeArenaLegendHtml } from './arcade/shared/snakeArenaLegend.js';
 import { emptyStateHtml } from './emptyState.js';
 import { kioskMusicQueueHtml, kioskMusicQueueKey } from './kioskMusic.js';
+import { createKioskResultsPanel } from './kioskResults.js';
 import {
   connectLocalSpotifyPlayer,
   localSpotifyPlaybackStatus,
@@ -1047,6 +1048,25 @@ function logRefreshFailure(scope, error) {
   console.error(`Kiosk ${scope} refresh failed:`, error);
 }
 
+const resultsPanel = createKioskResultsPanel({
+  results: document.getElementById('kiosk-results'),
+  tournament: document.getElementById('kiosk-tournament'),
+  title: document.getElementById('kiosk-tournament-title'),
+});
+
+async function refreshResults(hidePoints = false) {
+  const requestVersion = nextRefreshVersion('results');
+  if (hidePoints) resultsPanel.hidePoints();
+  try {
+    const feed = await api.kiosk.results();
+    if (isLatestRefresh('results', requestVersion)) resultsPanel.update(feed);
+  } catch (error) {
+    if (!isLatestRefresh('results', requestVersion)) return;
+    resultsPanel.error();
+    logRefreshFailure('results', error);
+  }
+}
+
 const refreshVersions = new Map();
 
 function nextRefreshVersion(scope) {
@@ -1110,7 +1130,7 @@ async function refreshTournament() {
     const tournaments = await api.tournaments.list();
     if (!isLatestRefresh('tournament', requestVersion)) return;
     const active = tournaments.find((t) => t.status === 'active') || tournaments[0] || null;
-    updateHtml('kiosk-tournament-title', `${icon(domainIcon('tournaments'))} ${active ? escapeHtml(active.name) : 'Turnier'}`);
+    resultsPanel.setTournament(active?.name, Boolean(active));
     if (active) {
       const detail = await api.tournaments.get(active.id);
       if (!isLatestRefresh('tournament', requestVersion)) return;
@@ -1139,6 +1159,7 @@ async function refreshAll() {
   await refreshVotes();
   await refreshNewsticker();
   await refreshTournament();
+  await refreshResults();
 }
 
 // Kiosk screens are set up once (someone opens the browser, maybe clicks
@@ -1328,9 +1349,11 @@ async function main() {
     // Sequential for the same reason as refreshAll above.
     await refreshLive();
     await refreshTournament();
+    await refreshResults();
   });
   socket.on('votes:changed', refreshVotes);
-  socket.on('events:changed', refreshVotes);
+  socket.on('events:changed', () => { void refreshVotes(); void refreshResults(true); });
+  socket.on('leaderboard:changed', () => { void refreshResults(true); });
   socket.on('tournaments:changed', refreshTournament);
   socket.on('music:changed', refreshMusic);
 

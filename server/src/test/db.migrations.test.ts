@@ -165,6 +165,63 @@ test('migration 126 rolls back the playing state table on failure and retries wi
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+function removeMatchActivitySchema(fixture: Database.Database): void {
+  fixture.exec(`DROP INDEX matches_event_activity;
+    ALTER TABLE matches DROP COLUMN recorded_at;
+    ALTER TABLE matches DROP COLUMN updated_at;
+    ALTER TABLE matches DROP COLUMN result_revision;
+    DELETE FROM schema_migrations WHERE version = 128;`);
+}
+
+test('migration 128 retains historical results and journal balances while backfilling result activity', () => {
+  const dbFile = makeTempDbPath('result-activity');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  removeMatchActivitySchema(fixture);
+  fixture.exec(`INSERT INTO matches(id,game_id,event_id,group_id,played_at,result)
+    SELECT 'old-feed-match',id,'instance-base-event','default-group',123,'{}' FROM games
+      WHERE group_id = 'default-group' AND arcade_key IS NULL LIMIT 1;`);
+  const journal = fixture.prepare('SELECT * FROM points_journal').all();
+  fixture.close();
+  runMigrations(dbFile);
+  const upgraded = new Database(dbFile);
+  assert.deepEqual(upgraded.prepare("SELECT played_at,recorded_at,updated_at,result_revision FROM matches WHERE id = 'old-feed-match'").get(),
+    { played_at: 123, recorded_at: 123, updated_at: 123, result_revision: 1 });
+  assert.deepEqual(upgraded.prepare('SELECT * FROM points_journal').all(), journal);
+  upgraded.exec("UPDATE matches SET updated_at = 222, result_revision = 2 WHERE id = 'old-feed-match'; DELETE FROM schema_migrations WHERE version = 128;");
+  upgraded.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const restarted = new Database(dbFile, { readonly: true });
+  assert.deepEqual(restarted.prepare("SELECT recorded_at,updated_at,result_revision FROM matches WHERE id = 'old-feed-match'").get(),
+    { recorded_at: 123, updated_at: 222, result_revision: 2 });
+  assert.deepEqual(restarted.prepare('PRAGMA foreign_key_check').all(), []);
+  restarted.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 128 rolls back result metadata and retries after an index failure', () => {
+  const dbFile = makeTempDbPath('result-activity-rollback');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  removeMatchActivitySchema(fixture);
+  fixture.exec('CREATE TABLE matches_event_activity(blocker INTEGER)');
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /matches_event_activity/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version = 128').get(), undefined);
+  const columns = failed.prepare('PRAGMA table_info(matches)').all() as Array<{ name: string }>;
+  assert.equal(columns.some((column) => ['recorded_at','updated_at','result_revision'].includes(column.name)), false);
+  failed.exec('DROP TABLE matches_event_activity');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const retried = new Database(dbFile, { readonly: true });
+  assert.ok(retried.prepare('SELECT 1 FROM schema_migrations WHERE version = 128').get());
+  retried.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 function removeCompetitionOrgaSchema(fixture: Database.Database): void {
   fixture.exec('DROP TABLE points_orga_awards; DELETE FROM schema_migrations WHERE version = 127;');
   for (const table of ['matches', 'tournaments', 'matchmaking_draws', 'drafts']) fixture.exec(`ALTER TABLE ${table} DROP COLUMN created_by`);
@@ -231,6 +288,7 @@ test('migration 127 rolls back organizer columns and state together after a part
 });
 
 function removeCategoryPointsSchema(fixture: Database.Database): void {
+  removeMatchActivitySchema(fixture);
   removeCompetitionOrgaSchema(fixture);
   fixture.exec(`DROP TABLE points_playing_awards;
     DELETE FROM schema_migrations WHERE version = 126;
@@ -1177,10 +1235,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 127);
+  assert.equal(migrations.length, 128);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 127 }, (_, index) => index + 1),
+    Array.from({ length: 128 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1782,8 +1840,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 127 }, (_, index) => index + 1),
-    'every version 1..127 runs exactly once',
+    Array.from({ length: 128 }, (_, index) => index + 1),
+    'every version 1..128 runs exactly once',
   );
 });
 

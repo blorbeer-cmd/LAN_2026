@@ -852,7 +852,8 @@ function saveTournamentResult(req: Request, res: Response) {
       ...(scoreA !== null ? { score: [scoreA, scoreB] } : {}),
     });
     if (isCorrection) {
-      db.prepare('UPDATE matches SET result = ? WHERE id = ?').run(leaderboardResult, leaderboardMatchId);
+      db.prepare('UPDATE matches SET result = ?, updated_at = ?, result_revision = result_revision + 1 WHERE id = ? AND result != ?')
+        .run(leaderboardResult, now, leaderboardMatchId, leaderboardResult);
 
       if (outcomeChanged && (tournament.format === 'single_elimination' || match.stage === 'knockout')) {
         const bracketRows = db
@@ -869,8 +870,8 @@ function saveTournamentResult(req: Request, res: Response) {
       }
     } else {
       db.prepare(
-        'INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).run(leaderboardMatchId, tournament.game_id, tournament.event_id, now, leaderboardResult, tournament.group_id, tournament.created_by);
+        'INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by, recorded_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(leaderboardMatchId, tournament.game_id, tournament.event_id, now, leaderboardResult, tournament.group_id, tournament.created_by, now, now);
     }
 
     db.prepare(

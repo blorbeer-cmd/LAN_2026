@@ -28,7 +28,7 @@ function pointsForPosition(position: number, teamCount: number): number {
   return [WIN_POINTS, 3, 2][position] ?? PARTICIPATION_POINTS;
 }
 
-function computeMatchPoints(match: MatchForScoring): number[] | null {
+export function computeMatchPlacements(match: MatchForScoring): Array<{ place: number; points: number }> | null {
   const { teams, winnerTeamIndex } = match;
   if (teams.length < 2) return null;
 
@@ -36,14 +36,14 @@ function computeMatchPoints(match: MatchForScoring): number[] | null {
   // places with no single winner. Scores alone have no universal sort direction.
   if (teams.every((team) => Number.isInteger(team.rank) && team.rank! >= 1)) {
     const order = teams.map((_, index) => index).sort((a, b) => teams[a].rank! - teams[b].rank!);
-    const points = teams.map(() => 0);
+    const points = teams.map(() => ({ place: 0, points: 0 }));
     for (let start = 0; start < order.length;) {
       let end = start + 1;
       while (end < order.length && teams[order[end]].rank === teams[order[start]].rank) end++;
       let total = 0;
       for (let position = start; position < end; position++) total += pointsForPosition(position, teams.length);
       const shared = Math.floor(total / (end - start));
-      for (let position = start; position < end; position++) points[order[position]] = shared;
+      for (let position = start; position < end; position++) points[order[position]] = { place: start + 1, points: shared };
       start = end;
     }
     return points;
@@ -56,11 +56,11 @@ function computeMatchPoints(match: MatchForScoring): number[] | null {
     winnerTeamIndex >= 0 &&
     winnerTeamIndex < teams.length
   ) {
-    return teams.map((_, index) => (index === winnerTeamIndex ? WIN_POINTS : PARTICIPATION_POINTS));
+    return teams.map((_, index) => ({ place: index === winnerTeamIndex ? 1 : teams.length, points: index === winnerTeamIndex ? WIN_POINTS : PARTICIPATION_POINTS }));
   }
   if (match.isDraw) {
     const total = teams.reduce((sum, _, index) => sum + pointsForPosition(index, teams.length), 0);
-    return teams.map(() => Math.floor(total / teams.length));
+    return teams.map(() => ({ place: 1, points: Math.floor(total / teams.length) }));
   }
   return null;
 }
@@ -81,16 +81,16 @@ export function computeStandings(
   }
 
   for (const match of matches) {
-    const points = computeMatchPoints(match);
+    const points = computeMatchPlacements(match);
     if (!points) continue;
     match.teams.forEach((team, teamIndex) => {
       // Only an outright first place earns four points; tied first places do not
       // count as individual wins, even when a legacy winner field is present.
-      const isWinner = points[teamIndex] === WIN_POINTS;
+      const isWinner = points[teamIndex].points === WIN_POINTS;
       for (const playerId of team.playerIds) {
         const standing = ensure(playerId);
         standing.matchesPlayed += 1;
-        standing.points += points[teamIndex];
+        standing.points += points[teamIndex].points;
         if (isWinner) {
           standing.wins += 1;
         }
