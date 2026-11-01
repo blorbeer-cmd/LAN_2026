@@ -195,7 +195,7 @@ async function round(f: Awaited<ReturnType<typeof fixture>>) {
   return {
     id: created.body.id as string,
     drawId: id as string,
-    outcomes: created.body.outcomes as Array<{ id: string; playerIds: string[] }>,
+    outcomes: (created.body.outcomes as Array<{ id: string; playerIds: string[] }>).filter((o) => o.playerIds.length),
   };
 }
 
@@ -553,7 +553,7 @@ test('retired task rewards and entry deductions cannot mint or remove wallet fun
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM point_entries WHERE event_id=?').get(f.eventId) as { n: number }).n, 0);
 });
 
-test('players bet on their own games; hidden tips lock and settle zero-sum, once, with a personal notification', async (t) => {
+test('players bet on their own games; visible pools lock and settle zero-sum, once, with a personal notification', async (t) => {
   const f = await fixture();
   const r = await round(f);
   const a = f.players[0],
@@ -574,8 +574,11 @@ test('players bet on their own games; hidden tips lock and settle zero-sum, once
     bets.every((v) => v.status === 200),
     JSON.stringify(bets.map((v) => v.body)),
   );
-  assert.equal(bets[0].body.pot, null);
-  assert.equal(bets[0].body.outcomes[1].stake, null);
+  const preview = (await request(app).get('/api/points')).body.rounds[0];
+  assert.equal(preview.pot, 15);
+  assert.equal(preview.tipCount, 2);
+  assert.deepEqual(preview.outcomes.map((o: { stake: number; odds: number | null }) => [o.stake, o.odds]),
+    [[10, 1.5], [5, 3], [0, null]]);
   assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 10, available: 90 });
   const messages = db
     .prepare("SELECT player_ids,url FROM push_log WHERE notification_type = 'betting-open' AND target_id = ?")
@@ -750,6 +753,7 @@ test('tournament participants can bet on themselves and opponents, including the
       .post('/api/points/rounds')
       .send({ sourceType, sourceId, closesAt: Date.now() + 60000 });
     assert.equal(opened.status, 201, JSON.stringify(opened.body));
+    assert.equal(opened.body.outcomes.length, 2, 'knockout and champion markets do not offer a draw');
     rounds.push(opened.body);
     const tips = await Promise.all(
       f.players
@@ -823,6 +827,50 @@ test('tournament participants can bet on themselves and opponents, including the
   };
   assert.equal(exported.organisation.bettingTips.length, 2);
   assert.equal(exported.organisation.pointEntries.filter((entry) => entry.eventId === f.eventId).length, 7);
+});
+
+test('selectable draws win free-match and league pools; a legacy market without a draw choice refunds', async () => {
+  for (const mode of ['draw', 'league', 'legacy'] as const) {
+    const f = await fixture();
+    let roundId: string;
+    let sideId: string;
+    let finish: () => PromiseLike<{ status: number; body: unknown }>;
+    if (mode === 'league') {
+      const tournament = await request(app).post('/api/tournaments').send({ gameId: f.gameId,
+        format: 'round_robin', teams: f.players.slice(0, 2).map((id) => ({ playerIds: [id] })) });
+      assert.equal(tournament.status, 201);
+      const matchId = tournament.body.matches[0].id;
+      const market = await request(app).post('/api/points/rounds').send({ sourceType: 'tournament_match',
+        sourceId: matchId, closesAt: Date.now() + 60000 });
+      assert.equal(market.status, 201);
+      assert.ok(market.body.outcomes.some((o: { id: string }) => o.id === '__draw__'));
+      roundId = market.body.id;
+      sideId = market.body.outcomes[0].id;
+      finish = () => request(app).post(`/api/tournaments/${tournament.body.id}/matches/${matchId}/result`)
+        .send({ winnerTeamId: null });
+    } else {
+      const r = await round(f);
+      roundId = r.id;
+      sideId = r.outcomes[0].id;
+      if (mode === 'legacy') {
+        db.prepare('UPDATE betting_rounds SET outcomes=? WHERE id=?').run(JSON.stringify(r.outcomes), roundId);
+      }
+      finish = () => request(app).post('/api/matches').send({ gameId: f.gameId, drawId: r.drawId,
+        teams: r.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: null, isDraw: true });
+    }
+    const tips = await Promise.all(f.players.slice(0, 2).map((playerId, index) => request(app)
+      .put(`/api/points/rounds/${roundId}/tip`).set('x-test-player-id', playerId)
+      .send({ outcomeId: index === 0 && mode !== 'legacy' ? '__draw__' : index === 0 ? '1' : sideId, stake: 5 })));
+    assert.ok(tips.every((r) => r.status === 200), JSON.stringify(tips.map((r) => r.body)));
+    assert.equal((await request(app).post(`/api/points/rounds/${roundId}/lock`).send({})).status, 200);
+    const result = await finish();
+    assert.equal(result.status, mode === 'league' ? 200 : 201, JSON.stringify(result.body));
+    const market = (await request(app).get('/api/points')).body.rounds[0];
+    assert.equal(market.status, mode === 'legacy' ? 'refunded' : 'settled');
+    assert.equal(market.result, mode === 'legacy' ? null : '__draw__');
+    assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total),
+      mode === 'legacy' ? [100, 100] : [105, 95]);
+  }
 });
 
 test('late accepted participants get exactly one starting credit; final standings remain frozen until an audited reopening', async () => {

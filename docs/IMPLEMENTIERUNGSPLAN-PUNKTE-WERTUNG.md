@@ -155,7 +155,14 @@ Rücknahmen, Ergebnisänderungen mit bereits eingesetzten Gewinnen, negative Mit
 Finanz-/Sport-Rollback und Datenschutz. Browser prüfen 320/390/1440 Pixel, Sichtbarkeit,
 Journal, feste Startvergabe, Marktstorno und Kategorie-Korrekturen.
 
-## Paket 5b – vollständige Marktregeln (offen)
+## Paket 5b – vollständige Marktregeln (teilweise umgesetzt)
+
+**Umgesetzt:** Vorläufiger Topf, Anzahl Tipps, Einsätze je Ausgang und Pool-Quoten sind
+bereits vor Tippschluss sichtbar. Ein nicht belegter Ausgang hat keine berechenbare Quote.
+Freie Zweiermatches, Ligaspiele und Gruppenspiele bieten einen regulär gewinnenden Remis-Tipp;
+K.-o.-Spiele und Turniersieger-Märkte bieten ihn nicht. Bei älteren Märkten ohne Remis-Auswahl
+wird ein eingetretenes Remis weiterhin vollständig erstattet. Die Auswahl erweitert nicht die
+gespeicherten Teilnehmerseiten eines Wettbewerbs.
 
 Vorläufig bleiben die bisherigen konfigurierten Marktgrenzen und die bisherige
 Pool-Verteilung aktiv. Dies ist ausdrücklich keine Entscheidung über die Zielregeln.
@@ -170,6 +177,10 @@ Pool-Verteilung aktiv. Dies ist ausdrücklich keine Entscheidung über die Zielr
 ## Pakete 6/7 – Wertung und vollständige Ansichten
 
 Paket 6 berechnet positive Rohwerte, geteilte Ränge und N-basierte Platzpunkte gemäß Konzept.
+Die reine Berechnung liegt in `server/src/categoryScoring.ts` und ist anhand der Konzeptbeispiele
+geprüft. Ihre Eingaben sind die extern bestimmte Teilnehmermenge und Wettberechtigung; sie trifft
+keine Auswahl nach Eventstatus, Teilnehmerstatus oder Mindestzahl von Tipps. API, Auswertungen
+und Oberfläche verwenden diese Berechnung erst nach Entscheidung der folgenden Fachfragen.
 Wett-Mindestzahl, N samt Stichtag, ehemalige/späte Teilnehmer, Testkonten und Eventumfang sind
 Eingaben, die zuerst entschieden werden müssen. Die Kontenmenge darf nicht als N verwendet werden.
 Der Umgang mit geteilten Turnierboni ist ebenfalls ausdrücklich offen; der Ist-Code vergibt in

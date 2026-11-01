@@ -187,6 +187,8 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.locator('[data-tip-round]').click();
   const ownOutcome = round.outcomes.find((outcome: { playerIds: string[] }) => outcome.playerIds.includes(alice.id)).id;
   const otherOutcome = round.outcomes.find((outcome: { id: string }) => outcome.id !== ownOutcome).id;
+  assert.equal(await member.locator('[data-tip-form] option[value="__draw__"]').count(), 1,
+    'a free-match market offers a selectable draw');
   await member.locator('[data-tip-form] select').selectOption(ownOutcome);
   await member.locator('[data-tip-form] [name="stake"]').fill('10');
   await member.getByRole('button', { name: 'Tipp speichern', exact: true }).click();
@@ -198,6 +200,9 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     { outcomeId: otherOutcome, stake: 5 },
     bob.cookie,
   );
+  await member.getByText(/Topf: 15 Punkte · 2 Tipps/).waitFor();
+  await member.getByText('10 P. · Vorläufige Quote 1.50', { exact: true }).waitFor();
+  await member.getByText('5 P. · Vorläufige Quote 3.00', { exact: true }).waitFor();
   await member.locator('[data-lock-round]').click();
   await member.getByRole('button', { name: 'Tipps schließen', exact: true }).click();
   await member.getByText('Topf: 15 Punkte · 2 Tipps', { exact: true }).waitFor();

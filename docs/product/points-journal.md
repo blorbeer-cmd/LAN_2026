@@ -291,7 +291,8 @@ schreiben weder Grundstock, To-do-Abschluss noch Wettabschluss in `point_entries
 Das alte Budget und einseitige Wallet-Entzüge sind als Finanzpfade abgeschaltet.
 
 Die Journalbasis, Wallet-Abrechnung, Kategorie-Rohwerte und Admin-Korrekturen sind angebunden.
-Paket 5b ergänzt die vollständigen Marktregeln; Einsatzgrenze, Mindestzahl, Markteröffnung,
+Paket 5b bietet bereits vorläufige Pool-Quoten und eine formatabhängige, regulär gewinnende
+Remis-Auswahl. Es ergänzt noch die vollständigen Marktregeln; Einsatzgrenze, Mindestzahl, Markteröffnung,
 Ablösung alter Grenzen und gleiche größte Gewinner-Einsätze bleiben offen. Kategorieplätze,
 Teilnehmerbasis N, Gesamtwertung, Meldefunktion und einheitliche Festschreibung folgen gemäß
 [Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md). Die vorläufigen Auswertungen

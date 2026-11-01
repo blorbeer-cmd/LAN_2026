@@ -165,8 +165,8 @@ function roundHtml(round, compact = false) {
   const pick = round.outcomes.find((o) => o.id === mine?.outcomeId);
   return `<div class="stack points-round" data-points-round="${e(round.id)}">
     <div class="row-between"><${compact ? 'h3' : 'h2'}>${e(round.title)}</${compact ? 'h3' : 'h2'}><span class="badge">${statusLabels[round.status]}</span></div>
-    <p class="muted">${round.status === 'open' ? `Tipps bis ${e(formatDateTime(round.closesAt))} · Einsätze bleiben bis Tippschluss verborgen.` : `Topf: ${round.pot} Punkte · ${round.tipCount} Tipps`}</p>
-    ${round.status !== 'open' ? `<ul class="points-outcomes">${round.outcomes.map((o) => `<li><span>${e(o.label)}${round.result === o.id ? ' · Sieger' : ''}</span><span>${o.stake} P.${o.odds ? ` · Quote ${o.odds.toFixed(2)}` : ''}</span></li>`).join('')}</ul>` : ''}
+    <p class="muted">${round.status === 'open' ? `Tipps bis ${e(formatDateTime(round.closesAt))} · ` : ''}Topf: ${round.pot} Punkte · ${round.tipCount} Tipps</p>
+    <ul class="points-outcomes">${round.outcomes.map((o) => `<li><span>${e(o.label)}${round.result === o.id ? ' · Sieger' : ''}</span><span>${o.stake} P. · ${round.status === 'open' ? 'Vorläufige Quote' : 'Quote'} ${o.odds ? o.odds.toFixed(2) : '–'}</span></li>`).join('')}</ul>
     ${mine ? `<p>Dein Tipp: <strong>${e(pick?.label ?? '')}</strong> · Einsatz ${mine.stake} P.${mine.payout !== null ? ` · Auszahlung ${mine.payout} P. · Netto ${signedPoints(mine.net)} P.` : ' · reserviert'}</p>` : '<p class="muted">Du hast noch keinen Tipp abgegeben.</p>'}
     <div class="row points-actions">
       ${round.status === 'open' && !currentData()?.settings.closed_at ? `<button type="button" class="btn btn-primary btn-sm" data-tip-round="${e(round.id)}">${mine ? 'Tipp ändern' : 'Jetzt tippen'}</button>` : `<button type="button" class="btn btn-sm" data-tip-round="${e(round.id)}">Details</button>`}
@@ -191,18 +191,18 @@ function openTip(round, ctx) {
   const data = currentData();
   const editable = round.status === 'open' && !data.settings.closed_at;
   const { close } = openPointsModal(
-    editable ? 'Sieger tippen' : 'Dein Tipp',
+    editable ? 'Ergebnis tippen' : 'Dein Tipp',
     `<form class="stack" data-tip-form>
     <p>${e(round.title)}</p>
     ${
       editable
-        ? `<label class="stack"><span class="field-label">Dein Sieger</span><select name="outcomeId" required>${round.outcomes.map((o) => `<option value="${e(o.id)}" ${round.mine?.outcomeId === o.id ? 'selected' : ''}>${e(o.label)}</option>`).join('')}</select></label>
+        ? `<label class="stack"><span class="field-label">Dein Ergebnis</span><select name="outcomeId" required>${round.outcomes.map((o) => `<option value="${e(o.id)}" ${round.mine?.outcomeId === o.id ? 'selected' : ''}>${e(o.label)} · Quote ${o.odds ? o.odds.toFixed(2) : '–'}</option>`).join('')}</select></label>
     ${numberField('stake', `Einsatz · maximal ${data.settings.max_stake} Punkte`, round.mine?.stake ?? 1, 1, data.settings.max_stake)}
-    <p class="muted">${data.wallet.available + (round.mine?.stake ?? 0)} Punkte verfügbar für diesen Tipp. Tageslimit: ${data.settings.daily_limit} Punkte (Europe/Berlin). Auch Tipps auf das eigene Team oder den Gegner sind erlaubt. Der Topf wird nur umverteilt.</p>
+    <p class="muted">${data.wallet.available + (round.mine?.stake ?? 0)} Punkte verfügbar für diesen Tipp. Tageslimit: ${data.settings.daily_limit} Punkte (Europe/Berlin). Die Quoten ändern sich bis Tippschluss mit den Einsätzen. Auch Tipps auf das eigene Team oder den Gegner sind erlaubt.</p>
     <div class="row points-actions">${round.mine ? '<button type="button" class="btn" data-remove-tip>Tipp zurücknehmen</button>' : ''}<button type="submit" class="btn btn-primary">Tipp speichern</button></div>`
         : `<p>${round.mine ? `Einsatz ${round.mine.stake} P. · ${round.mine.payout === null ? 'Auszahlung steht noch aus' : `Auszahlung ${round.mine.payout} P. · Netto ${signedPoints(round.mine.net)} P.`}` : 'Du hast in dieser Runde keinen Tipp abgegeben.'}</p>
     <ul class="points-outcomes">${round.outcomes.map((o) => `<li><span>${e(o.label)}</span><span>${o.stake} P.${o.odds ? ` · Quote ${o.odds.toFixed(2)}` : ''}</span></li>`).join('')}</ul>
-    <p class="muted">Auszahlung enthält den Einsatz. Rundungen werden nach dem größten Rest verteilt. Bei ungültigem Topf, Abbruch oder Unentschieden wird erstattet.</p>`
+    <p class="muted">Auszahlung enthält den Einsatz. Rundungen werden nach dem größten Rest verteilt. Bei ungültigem Topf, Abbruch oder einem nicht wählbaren Unentschieden wird erstattet.</p>`
     }
     </form>`,
     {

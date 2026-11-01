@@ -19,6 +19,7 @@ import type { Request } from 'express';
 import { writeAdminAudit } from './adminAudit';
 
 export type BetSource = 'draw' | 'tournament_match' | 'tournament';
+export const DRAW_BET_OUTCOME = '__draw__';
 export interface BetOutcome {
   id: string;
   label: string;
@@ -95,7 +96,7 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
       { teams: string; match_id: string | null; tournament_id: string | null; name: string } | undefined;
     if (!draw) throw new PointsError('Match nicht gefunden.', 404);
     const teams = JSON.parse(draw.teams) as Array<{ players: Array<{ id: string; name: string }> }>;
-    const outcomes = teams.map((t, i) => ({
+    const sides: BetOutcome[] = teams.map((t, i) => ({
       id: String(i),
       label: t.players.map((p) => p.name).join(', '),
       playerIds: t.players.map((p) => p.id),
@@ -104,18 +105,18 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
       ? (db.prepare('SELECT result FROM matches WHERE id = ?').get(draw.match_id) as { result: string } | undefined)
       : undefined;
     const data = result
-      ? (JSON.parse(result.result) as { winnerTeamIndex: number | null; teams: Array<{ playerIds: string[] }> })
+      ? (JSON.parse(result.result) as { winnerTeamIndex: number | null; isDraw?: boolean; teams: Array<{ playerIds: string[] }> })
       : null;
     const mismatch =
       data &&
       JSON.stringify(data.teams.map((t) => [...t.playerIds].sort())) !==
-        JSON.stringify(outcomes.map((t) => [...t.playerIds].sort()));
+        JSON.stringify(sides.map((t) => [...t.playerIds].sort()));
     return {
       title: draw.name,
-      outcomes,
+      outcomes: [...sides, { id: DRAW_BET_OUTCOME, label: 'Unentschieden', playerIds: [] }],
       started: Boolean(result),
       finished: Boolean(result),
-      winner: data?.winnerTeamIndex == null ? null : String(data.winnerTeamIndex),
+      winner: data?.isDraw ? DRAW_BET_OUTCOME : data?.winnerTeamIndex == null ? null : String(data.winnerTeamIndex),
       invalid: Boolean(draw.tournament_id || mismatch),
     };
   }
@@ -142,12 +143,16 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
   if (type === 'tournament_match') {
     if (!fixture || !fixture.team_a_id || !fixture.team_b_id)
       throw new PointsError('Die Gegner stehen noch nicht fest.');
+    const allowsDraw = tournament.format === 'round_robin' ||
+      (tournament.format === 'group_knockout' && fixture.stage === 'group');
+    const outcomes = [fixture.team_a_id, fixture.team_b_id].map((teamId) => teams.find((t) => t.id === teamId)!);
+    if (allowsDraw) outcomes.push({ id: DRAW_BET_OUTCOME, label: 'Unentschieden', playerIds: [] });
     return {
       title: `${tournament.name} · Match`,
-      outcomes: [fixture.team_a_id, fixture.team_b_id].map((teamId) => teams.find((t) => t.id === teamId)!),
+      outcomes,
       started: fixture.played_at !== null,
       finished: Boolean(fixture.winner_team_id || fixture.is_draw),
-      winner: fixture.winner_team_id,
+      winner: fixture.is_draw && allowsDraw ? DRAW_BET_OUTCOME : fixture.winner_team_id,
       invalid: Boolean(fixture.is_bye || tournament.ended_early),
     };
   }
@@ -223,11 +228,11 @@ export function createBettingRound(
       source.finished ||
       source.invalid ||
       source.outcomes.length < 2 ||
-      source.outcomes.some((o) => !o?.playerIds.length)
+      source.outcomes.some((o) => o?.id !== DRAW_BET_OUTCOME && !o?.playerIds.length)
     ) {
       throw new PointsError('Für diesen Wettbewerb kann keine neue Tipprunde geöffnet werden.');
     }
-    if (type !== 'tournament' && source.outcomes.length !== 2)
+    if (type !== 'tournament' && source.outcomes.filter((o) => o.id !== DRAW_BET_OUTCOME).length !== 2)
       throw new PointsError('Match-Tipps benötigen genau zwei Seiten.');
     const { count } = db.prepare('SELECT COUNT(*) AS count FROM betting_rounds WHERE event_id = ?').get(eventId) as {
       count: number;
@@ -264,7 +269,6 @@ export function createBettingRound(
 export function roundView(round: BettingRound, playerId: string) {
   const tips = tipsFor(round.id);
   const mine = tips.find((tip) => tip.player_id === playerId);
-  const reveal = round.status !== 'open';
   const pot = tips.reduce((sum, t) => sum + t.stake, 0);
   return {
     id: round.id,
@@ -277,8 +281,8 @@ export function roundView(round: BettingRound, playerId: string) {
     settledAt: round.settled_at,
     revision: round.revision,
     result: round.result_key,
-    pot: reveal ? pot : null,
-    tipCount: reveal ? tips.length : null,
+    pot,
+    tipCount: tips.length,
     outcomes: (JSON.parse(round.outcomes) as BetOutcome[]).map((outcome) => {
       const stake = tips.filter((t) => t.outcome_id === outcome.id).reduce((sum, t) => sum + t.stake, 0);
       const preview = mine
@@ -289,9 +293,9 @@ export function roundView(round: BettingRound, playerId: string) {
         : undefined;
       return {
         ...outcome,
-        stake: reveal ? stake : null,
-        odds: reveal && stake ? pot / stake : null,
-        myPossiblePayout: reveal && mine?.outcome_id === outcome.id ? preview : null,
+        stake,
+        odds: stake ? pot / stake : null,
+        myPossiblePayout: mine?.outcome_id === outcome.id ? preview : null,
       };
     }),
     mine: mine
@@ -305,7 +309,10 @@ export function roundView(round: BettingRound, playerId: string) {
   };
 }
 function sourceChanged(round: BettingRound, source: SourceState): boolean {
-  const signature = (outcomes: BetOutcome[]) => outcomes.map((o) => ({ id: o.id, players: [...o.playerIds].sort() }));
+  // Optional draw selection is not a participant. Older markets without it
+  // retain their original choices and refund an unselectable draw result.
+  const signature = (outcomes: BetOutcome[]) => outcomes.filter((o) => o.id !== DRAW_BET_OUTCOME)
+    .map((o) => ({ id: o.id, players: [...o.playerIds].sort() }));
   return JSON.stringify(signature(JSON.parse(round.outcomes))) !== JSON.stringify(signature(source.outcomes));
 }
 function closeRound(round: BettingRound, now: number): void {

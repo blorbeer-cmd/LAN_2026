@@ -60,9 +60,14 @@ Alle berechtigten Teilnehmer dürfen auf sich, ihr Team oder den Gegner tippen.
 
 Die bisherigen konfigurierbaren Einsatz-/Tages-/Rundengrenzen bleiben vorläufig aktiv
 (technische Anfangswerte 10/30/6). Die Tagesgrenze gilt pro Event in Europe/Berlin.
-**Diese Werte entscheiden keine offenen Zielregeln W1/W2/W4/W5.** Vorläufig bleiben Tipps und
-Poolverteilung bis Tippschluss verborgen; auch Remis-Auswahl und neue Restverteilung gehören
-noch zu Paket 5b. Eine Runde verbraucht dauerhaft einen Kontingentplatz. `maxRounds=0`
+**Diese Werte entscheiden keine offenen Zielregeln W1/W2/W4/W5.** Topf, Anzahl Tipps,
+Einsätze je Ausgang und vorläufige Pool-Quoten sind schon vor Tippschluss sichtbar. Eine Quote
+ist nur bei einem Einsatz auf diesen Ausgang berechenbar; neue Einsätze können sie verändern.
+Die API veröffentlicht dabei keine individuellen fremden Tipps. Freie Zweiermatches sowie
+Liga- und Gruppenspiele bieten „Unentschieden“ als regulär gewinnenden Tipp. K.-o.-Spiele und
+Turniersieger-Märkte bieten ihn nicht; ältere Märkte behalten ihre ursprüngliche Auswahl.
+Die neue Restverteilung bleibt der offenen Entscheidung in Paket 5b zugeordnet.
+Eine Runde verbraucht dauerhaft einen Kontingentplatz. `maxRounds=0`
 deaktiviert neue Wettrunden, ohne Kategorie-Gutschriften zu verhindern.
 
 Pro Person und Runde gibt es einen Tipp. Bis zum Schließen lassen sich Auswahl und Einsatz
@@ -89,6 +94,10 @@ in Summe exakt dem Pool entsprechen, einschließlich anonymisierter Tipps gelös
 Ein Markt behält seinen kanonischen Journalvorgang über alle Revisionen; Wiederholung zahlt
 nicht erneut aus. Wettstatus, Sportergebnis und Buchungen werden gemeinsam zurückgerollt,
 wenn eine Teilbuchung scheitert.
+
+Ein nicht am Markt wählbares Remis, fehlende Tipps auf das eingetretene Ergebnis, Einsätze
+auf nur einen Ausgang und ein abgebrochener Wettbewerb führen zur vollständigen Erstattung.
+Ein angebotenes Remis kann dagegen regulär gewinnen und wird genauso abgerechnet wie ein Sieger-Tipp.
 
 **W6:** Finanzkorrekturen erfolgen ausschließlich über begründete Markt-Neuberechnung oder
 Storno. Einseitige Wallet-/Wettänderungen über die allgemeine Journal-Korrektur oder den alten
