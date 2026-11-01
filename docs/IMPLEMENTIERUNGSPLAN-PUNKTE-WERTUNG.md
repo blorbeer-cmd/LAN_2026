@@ -165,11 +165,14 @@ wird ein eingetretenes Remis weiterhin vollständig erstattet. Die Auswahl erwei
 gespeicherten Teilnehmerseiten eines Wettbewerbs.
 
 Vorläufig bleiben die bisherigen konfigurierten Marktgrenzen und die bisherige
-Pool-Verteilung aktiv. Dies ist ausdrücklich keine Entscheidung über die Zielregeln.
+Pool-Verteilung aktiv. **W1 ist inzwischen entschieden:** maximal 20 Punkte pro Person und
+Wettmarkt. Die technische Umstellung auf diese feste Grenze steht noch aus; die Entscheidung
+legt weder Tages-/Rundenlimits noch eine Mindestzahl gewerteter Tipps fest.
 
 - Zielregeln ersetzen die alten Regeln: sichtbare vorläufige Pool-Quoten, formatabhängiger
   Remis-Tipp, vollständige Erstattungen und Abrunden mit Rest an den größten richtigen Einsatz.
-- W1, W2, W4, W5 und W7 bleiben offen: Einsatzgrenze, Mindestzahl einschließlich Erstattungszählung,
+- W1 umsetzen: maximal 20 Punkte pro Person und Wettmarkt.
+- W2, W4, W5 und W7 bleiben offen: Mindestzahl einschließlich Erstattungszählung,
   Markteröffnung, Ablösung alter Tages-/Rundenlimits, gleiche größte Einsätze und gesperrte,
   unabgerechnete Märkte bei der Festschreibung. Alte Werte 10/30/6 sind keine Zielvorgaben.
 - Eigenwetten, Mitteilungen und die Anzeige direkt an Match/Turnier bleiben erhalten.

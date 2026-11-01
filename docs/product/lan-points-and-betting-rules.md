@@ -60,7 +60,9 @@ Alle berechtigten Teilnehmer dürfen auf sich, ihr Team oder den Gegner tippen.
 
 Die bisherigen konfigurierbaren Einsatz-/Tages-/Rundengrenzen bleiben vorläufig aktiv
 (technische Anfangswerte 10/30/6). Die Tagesgrenze gilt pro Event in Europe/Berlin.
-**Diese Werte entscheiden keine offenen Zielregeln W1/W2/W4/W5.** Topf, Anzahl Tipps,
+**Beschlossen ist inzwischen W1: maximal 20 Punkte pro Person und Wettmarkt.** Die feste
+Grenze ist technisch noch umzusetzen. W2/W4/W5 bleiben offen; aus den alten Konfigurationswerten
+folgt keine Entscheidung über Mindestzahl, Eröffnung oder Tages-/Rundenlimits. Topf, Anzahl Tipps,
 Einsätze je Ausgang und vorläufige Pool-Quoten sind schon vor Tippschluss sichtbar. Eine Quote
 ist nur bei einem Einsatz auf diesen Ausgang berechenbar; neue Einsätze können sie verändern.
 Die API veröffentlicht dabei keine individuellen fremden Tipps. Freie Zweiermatches sowie

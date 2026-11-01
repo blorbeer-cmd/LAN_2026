@@ -198,17 +198,18 @@ Für die Kategorie zählt der **Nettogewinn** aus gültig abgerechneten Tipps: A
 minus Einsatz. Verluste werden mit Gewinnen verrechnet. Negative oder ausgeglichene
 Bilanzen erhalten keine Platzierung und 0 Platzpunkte.
 
-**OFFEN W1 – Einsatzgrenze je Markt:** Review-Vorschlag 10–20 % des Startguthabens.
-Ein verbindlicher Wert ist nicht entschieden.
+**Entschieden W1 – Einsatzgrenze je Markt:** Maximal **20 Wettpunkte** pro Person und
+Wettmarkt. Der Nutzer hat diesen Vorschlag ausdrücklich bestätigt. Bei 100 Punkten
+Startguthaben begrenzt das den Einsatz einer einzelnen Wette auf ein Fünftel des Grundstocks.
 
 **OFFEN W2 – Mindestzahl abgerechneter Tipps für eine Wettplatzierung:** Review-Vorschlag
 3–5. Weder die Zahl noch die genaue Behandlung erstatteter Märkte bei dieser Mindestzahl
 sind entschieden. Die bisher beschlossene positive Nettobilanz bleibt notwendige Bedingung.
 
 Begründung: Weil negative Bilanzen nicht zu negativen Platzpunkten führen, kosten riskante
-Alles-oder-nichts-Tipps in der Gesamtwertung nach unten nichts. Die beiden vorgeschlagenen
-Grenzen sollen diesen Anreiz mildern. Der Nutzer kann die angemessenen Werte derzeit nicht
-beurteilen; die Vorschläge sind ausdrücklich keine beschlossenen Standardwerte.
+Alles-oder-nichts-Tipps in der Gesamtwertung nach unten nichts. Die beschlossene Einsatzgrenze
+und eine mögliche Mindestzahl von Tipps sollen diesen Anreiz mildern. Nur die Einsatzgrenze
+ist entschieden; für die Mindestzahl bleibt der Review-Vorschlag unverbindlich.
 
 ## 5. Orga und organisatorische Mitwirkung
 
@@ -431,8 +432,8 @@ nicht abschließend entschieden. Es wird keine zusätzliche automatische Behandl
   Das Vertrauen der kleinen Runde, öffentliche Ergebnisse, Meldungen und begründete
   nachträgliche Korrekturen sind die gewählten Gegenmaßnahmen.
 - Positive Nettogewinne können durch riskante Tipps entstehen, während negative Bilanzen
-  0 Platzpunkte liefern. Einsatzgrenze und Mindestzahl Tipps sollen diesen Anreiz begrenzen,
-  sind aber ausdrücklich noch offen.
+  0 Platzpunkte liefern. Die Einsatzgrenze beträgt beschlossen 20 Punkte pro Markt;
+  die Mindestzahl von Tipps bleibt offen.
 - Werden Skill-Einschätzungen neben Wettmärkten angezeigt oder für Teamaufteilungen genutzt,
   kann Tiefstapeln lohnen. **Empfehlung aus dem Review:** Skills nicht neben Wettmärkten
   anzeigen. Bei skillbasierter Teamaufteilung bleibt das Manipulationsrisiko dennoch bestehen.
@@ -444,11 +445,11 @@ nicht abschließend entschieden. Es wird keine zusätzliche automatische Behandl
 
 ## 11. Offene Entscheidungen
 
-Die folgenden vier ursprünglichen Entscheidungen sind weiterhin ausdrücklich **nicht getroffen**:
+Stand der ursprünglichen Wettgrenzen:
 
 | Kennung | Offene Entscheidung | Review-Vorschlag, kein beschlossener Wert |
 |---|---|---|
-| W1 | Einsatzgrenze pro Wettmarkt | 10–20 % des gleichen Startguthabens |
+| W1 (entschieden) | Einsatzgrenze pro Person und Wettmarkt | Maximal 20 Wettpunkte; ausdrücklich vom Nutzer bestätigt |
 | W2 | Mindestzahl abgerechneter Tipps für eine Wettplatzierung | 3–5; Zählweise erstatteter Märkte ebenfalls klären |
 
 Das Review des bisherigen Codes ergänzt folgende offene Entscheidungen. Bestehende technische
@@ -461,7 +462,7 @@ Vorgabewerte sind dafür keine Entscheidung:
 | E2 | Wertungsberechtigte Teilnehmer, Testkonten und Teilnehmerbasis N samt Stichtag, späten Zusagen und Austritten. Vorhandene Konten sind nicht gleich N. |
 | W3 (entschieden) | Fest 100 separate Wettpunkte einmal pro Event und berechtigtem Teilnehmer, auch bei später Zusage. Nicht konfigurierbar; erneute Zusage zahlt nicht erneut. |
 | W4 | Wer offizielle Wettmärkte eröffnen darf. Die bestehende Adminrolle ist noch keine beschlossene Zielregel. |
-| W5 | Abschaltung beziehungsweise Übergang alter Tages-/Rundenlimits und Einsatzgrenzen; die bisherigen Werte 10/30/6 sind keine Zielvorgaben. |
+| W5 | Abschaltung beziehungsweise Übergang alter Tages-/Rundenlimits. Die Einsatzgrenze ist mit W1 auf 20 Punkte entschieden; die bisherigen Werte 10/30/6 sind keine Zielvorgaben. |
 | W6 (entschieden) | Ausschließlich begründete Markt-Neuberechnung oder Storno unter Erhaltung der Nullsumme. Keine einseitigen Wallet-/Wett-Journalkorrekturen; eigene Marktkorrekturen bleiben erlaubt. |
 | W7 | Feste Restverteilung bei gleich großen größten richtigen Einsätzen und Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
 | O3 (umgesetzt) | Neue Aufgaben verwenden kein Orga-Budget und keine vergüteten Helferplätze. Alte Zusagen und der alte Finanzpfad entfallen mit dem beschlossenen Neustart. |
@@ -495,7 +496,7 @@ dieses Zielkonzepts.
 | Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln, Turnierboni bleiben 5/3/1. [Automatische Journalbuchungen](../server/src/playingPoints.ts) erfolgen bei Ergebnissen, Korrekturen, Löschungen und beim Nachtragen bestehender Ergebnisse. |
 | Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Spielfilter und eventübergreifende Auswertungen verwenden ausschließlich Spielpunkte. Die einzelne konfigurierte LAN ohne Spielfilter, Hall of Fame und Event-Export verwenden seit Paket 5a vorläufig Spiel-Rohwerte; die Wallet-Summe wird nicht als Gesamtwertung ausgegeben. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
 | Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Umgesetzt sind außerdem persönliche Kategorie-Rohwerte, Verlauf und Admin-Korrektur-Oberfläche. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler anbinden sowie Kategorie-Platzpunkte berechnen. |
-| Wettmärkte | Umgesetzt: sichtbare vorläufige Pool-Quoten und formatabhängige Remis-Auswahl; freie Zweiermatches sowie Liga-/Gruppenspiele können über Remis regulär abrechnen. K.-o.- und Turniersieger-Märkte bieten kein Remis. Offen bleiben insbesondere Restverteilung und die Entscheidungen W1/W2/W4/W5/W7. |
+| Wettmärkte | Umgesetzt: sichtbare vorläufige Pool-Quoten und formatabhängige Remis-Auswahl; freie Zweiermatches sowie Liga-/Gruppenspiele können über Remis regulär abrechnen. K.-o.- und Turniersieger-Märkte bieten kein Remis. W1 ist mit maximal 20 Punkten entschieden, technisch aber noch umzusetzen. Offen bleiben insbesondere Restverteilung und die Entscheidungen W2/W4/W5/W7. |
 | Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit festen 3 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Ebenfalls umgesetzt: 2 Punkte je eingetragener Ankunft/Abreise beim Eventstart sowie 3 Punkte für abgeschlossene Umfragen und 2 Punkte für abgeschlossene Spieleabstimmungen mit jeweils mindestens drei Teilnehmenden. Die ausdrücklich offenen Regeln bleiben offen. |
 | Kiosk | Umgesetzt: [Ergebnis-Feed](product/media-and-dashboard-rules.md#tv-kiosk) mit Anzeigenamen, Platzierungen und tatsächlich gebuchten Spielpunkten, Korrekturhinweis auch bei reinen Score-Änderungen. Bei ausgeblendeten Punkteansichten bleiben Ergebnisse ohne Punkte sichtbar. Die zehn jüngsten Ergebnisse wechseln in der bestehenden Turnierkachel; alle Teilnehmer werden automatisch durchgeblättert. Migration 128 ergänzt Erfassungszeit, Änderungszeit und Ergebnisrevision, ohne Punktebestände zu verändern. |
 | Meldefunktion | Meldbare Quellen, optionalen Grund, eine offene Meldung pro Person/Eintrag, Empfängerfilter, Identitätsschutz, Status und begründete Korrekturen ergänzen. Eigene administrative Korrekturen bleiben erlaubt. |
