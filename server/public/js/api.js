@@ -683,10 +683,10 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ playerId, title, description, assigneePlayerIds, dueAt }),
       }),
-    createTodo: (playerId, title, description, assigneePlayerIds, dueAt) =>
+    createTodo: (playerId, title, description, assigneePlayerIds, dueAt, pointsValue) =>
       apiFetch('/api/checklist/tasks/todo', {
         method: 'POST',
-        body: JSON.stringify({ playerId, title, description, assigneePlayerIds, dueAt }),
+        body: JSON.stringify({ playerId, title, description, assigneePlayerIds, dueAt, pointsValue }),
       }),
     claim: (taskId, playerId, comment) =>
       apiFetch(`/api/checklist/tasks/${taskId}/claim`, { method: 'POST', body: JSON.stringify({ playerId, comment }) }),
@@ -694,6 +694,8 @@ export const api = {
       apiFetch(`/api/checklist/tasks/${taskId}/release`, { method: 'POST', body: JSON.stringify({ playerId }) }),
     setDone: (taskId, playerId) =>
       apiFetch(`/api/checklist/tasks/${taskId}/done`, { method: 'PATCH', body: JSON.stringify({ playerId }) }),
+    reopen: (taskId, playerId) =>
+      apiFetch(`/api/checklist/tasks/${taskId}/reopen`, { method: 'PATCH', body: JSON.stringify({ playerId }) }),
     cancel: (taskId, playerId) =>
       apiFetch(`/api/checklist/tasks/${taskId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
     archive: (taskId, playerId) =>

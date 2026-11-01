@@ -222,9 +222,18 @@ abweichen. Die übrigen Werte bleiben erhalten.
 zu welchem Höchstwert? Die früheren 5–30 Punkte sind nur der Ausgangsvorschlag für diese
 offene Ausnahme, kein allgemein geltender To-do-Wert.
 
-**OFFEN – mehrere Helfer:** Wie der Anspruch bei mehreren ausführenden Helfern zugeordnet
-oder aufgeteilt wird, ist nicht entschieden. Die Obergrenze von einer Auszahlung je
-To-do bleibt bestehen; es wird keine zusätzliche Auszahlung pro Helfer angenommen.
+**Erste Umsetzung:** Der erste angemeldete Helfer, der nicht der Ersteller ist, erhält den
+festgelegten Wert beim Erledigen. Direkte Zuweisung zählt als Übernahme. Ein gemeinsamer Auftrag
+mit mehreren Direktzuweisungen wird zusammen einmal belohnt; weitere Helfer erzeugen keine
+zusätzliche Auszahlung. Mitbring-Anfragen sind keine vergüteten Aufgaben.
+Ersteller, eingetragene Helfer und Admins dürfen wieder öffnen; die Gutschrift wird dabei
+zurückgerechnet. Ein Punktwert kann vor der Übernahme mit Prüfung des bisherigen Werts geändert
+werden. Höhere Admin-/Erstellerwerte bleiben ausdrücklich offen.
+
+Laufende Events werden ab der Umstellung unterstützt. Historische Aufgaben erhalten zunächst
+0 statt eines erfundenen Werts; bereits erledigte Aufgaben werden nicht nachträglich vergütet.
+Vorhandene alte Belohnungszusagen und Gutschriften bleiben im bisherigen Konto erhalten. Solche
+alten belohnten Aufgaben behalten vorerst ihren bisherigen Abschlussweg ohne Wiederöffnen.
 
 ### 5.2 Sammelbestellungen
 
@@ -450,16 +459,16 @@ Vorgabewerte sind dafür keine Entscheidung:
 
 | Kennung | Offene Entscheidung / betroffene Umsetzung |
 |---|---|
-| U1 | Vollständige Ablösung des alten Kontos vor erster Auslieferung oder kontrollierte Umstellung je Event; Umgang mit vorhandenen Buchungen, Zusagen und Reservierungen. Der tatsächliche produktive Datenbestand ist nicht geprüft. |
-| E1 | Wertungsumfang: Eventtypen, unveröffentlichte und beendete Events sowie nachträgliche Gutschriften. Aktuelle Backfills können auch historische beziehungsweise nicht für LAN-Punkte konfigurierte Events erreichen. |
+| U1 | Laufende Events sind eingeschlossen; bereits erledigte Aufgaben benötigen keine nachträgliche Vergütung, vorhandene Buchungen/Zusagen bleiben erhalten. Offen bleibt die finanzielle Übernahme alter Guthaben und Reservierungen beim späteren Wallet-Wechsel. |
+| E1 | Laufende Events werden unterstützt. Offen bleiben die endgültige Abgrenzung nach Eventtyp sowie unveröffentlichte/beendete Events. Vorhandene Spiel-/Orga-Backfills werden durch das To-do-Paket nicht verändert. |
 | E2 | Wertungsberechtigte Teilnehmer, Testkonten und Teilnehmerbasis N samt Stichtag, späten Zusagen und Austritten. Vorhandene Konten sind nicht gleich N. |
 | W3 | Höhe und Konfigurierbarkeit des gleichen Wett-Startguthabens und dessen Vergabe bei später Zusage. |
 | W4 | Wer offizielle Wettmärkte eröffnen darf. Die bestehende Adminrolle ist noch keine beschlossene Zielregel. |
 | W5 | Abschaltung beziehungsweise Übergang alter Tages-/Rundenlimits und Einsatzgrenzen; die bisherigen Werte 10/30/6 sind keine Zielvorgaben. |
 | W6 | Korrekturweg für Wallet und Wett-Nettokonto unter Erhaltung der Nullsumme; Wechselwirkung mit einer späteren Markt-Neuberechnung. Eigene Admin-Korrekturen bleiben erlaubt, eine Ausnahme von der Nullsumme ist nicht beschlossen. |
 | W7 | Feste Restverteilung bei gleich großen größten richtigen Einsätzen und Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
-| O3 | Übergang des bisherigen Orga-Budgets und festgelegter Helferplätze; deren Fortführung ist nicht beschlossen. |
-| O4 | Mehrere To-do-Helfer, Direktzuweisung als Übernahme, `item_request`, Übernahme bestehender Belohnungszusagen und Rechte/Ablauf beim noch zu bauenden Wiederöffnen. |
+| O3 | Neue Aufgaben verwenden keine alten Orga-Budgets oder vergüteten Helferplätze. Alte Zusagen bleiben im bisherigen Pfad; dessen vollständige finanzielle Ablösung folgt mit dem Wallet. |
+| O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben mit expliziter LAN-Belohnung behalten vorerst ihren bisherigen Abschlussweg ohne Wiederöffnen. |
 | O5 | Welche Funktion als allgemeine Umfrage zählt: vorhandene Terminumfrage oder neues generisches Umfragemodul; Abgrenzung von Veröffentlichung, Abschluss und Stichwahlen. |
 | O6 | Vollständigkeit von Reiseangaben, Vorabgutschriften, Löschung vor dem Stichtag und verschobener Eventstart. Bestellpunkte bleiben ausdrücklich ohne Fristprüfung. |
 | S1 | Turnierplatzierungsbonus bei geteilten Plätzen. Der Ist-Code vergibt in Ligen den vollen Bonus des geteilten Rangs (beispielsweise 5/5/1); die Zielregel ist noch nicht ausdrücklich festgelegt. |
@@ -479,7 +488,7 @@ Kategorie-/Gesamtberechnung. Die beiden Code-Findings (To-do-Abschluss nach Fest
 Einheitenmix im Spielfilter beziehungsweise über Events) sind im Review-Fix adressiert.
 
 
-Die Spielberechnung, automatische Spiel- und Orga-Gutschriften für Wettbewerbe, Bestellungen und vollständige Skill-Einschätzungen sowie die Journalbasis mit Admin-Korrekturen
+Die Spielberechnung, automatische Spiel- und Orga-Gutschriften für Wettbewerbe, Bestellungen und vollständige Skill-Einschätzungen sowie die Journalbasis mit Admin-Korrekturen, persönliche Kategorie-Rohwerte/Verläufe und die neue To-do-Vergütung
 sind umgesetzt. Die bisherige sichtbare
 LAN-Punkte-/Wettfunktion verwendet noch ihr gemeinsames Konto. Ihre Umstellung auf die drei
 Kategorien, das separate Wallet und die weiteren Fachregeln erfolgt in den folgenden Paketen.
@@ -490,9 +499,9 @@ dieses Zielkonzepts.
 |---|---|
 | Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln, Turnierboni bleiben 5/3/1. [Automatische Journalbuchungen](../server/src/playingPoints.ts) erfolgen bei Ergebnissen, Korrekturen, Löschungen und beim Nachtragen bestehender Ergebnisse. |
 | Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Spielfilter und eventübergreifende Auswertungen verwenden ausschließlich Spielpunkte. Eine ausdrücklich gewählte einzelne konfigurierte LAN ohne Spielfilter, Hall of Fame und Event-Export nutzen bis zum Umstellungspaket noch das alte gemeinsame Konto. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
-| Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler und Ansichten anbinden sowie Kategorie-Platzpunkte berechnen. |
+| Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Umgesetzt sind außerdem persönliche Kategorie-Rohwerte, Verlauf und Admin-Korrektur-Oberfläche. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler anbinden sowie Kategorie-Platzpunkte berechnen. |
 | Wettmärkte | Vorläufige Pool-Quoten sichtbar machen, formatabhängige Remis-Auswahl anbieten, die beschlossenen Erstattungen und Restverteilung umsetzen. W1, W2 und die offenen Randfälle nicht vorwegnehmen. |
-| Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Offen für Folgepakete: fremde To-dos mit 1–5 Punkten, einmalige Auszahlung, Umfragen/Spieleabstimmungen sowie Ankunft und Abreise mit Reisestichtag. Die ausdrücklich offenen Regeln bleiben offen. |
+| Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit 1–5 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Offen für Folgepakete: Umfragen/Spieleabstimmungen sowie Ankunft und Abreise mit Reisestichtag. Die ausdrücklich offenen Regeln bleiben offen. |
 | Kiosk | Umgesetzt: [Ergebnis-Feed](product/media-and-dashboard-rules.md#tv-kiosk) mit Anzeigenamen, Platzierungen und tatsächlich gebuchten Spielpunkten, Korrekturhinweis auch bei reinen Score-Änderungen. Bei ausgeblendeten Punkteansichten bleiben Ergebnisse ohne Punkte sichtbar. Die zehn jüngsten Ergebnisse wechseln in der bestehenden Turnierkachel; alle Teilnehmer werden automatisch durchgeblättert. Migration 128 ergänzt Erfassungszeit, Änderungszeit und Ergebnisrevision, ohne Punktebestände zu verändern. |
 | Meldefunktion | Meldbare Quellen, optionalen Grund, eine offene Meldung pro Person/Eintrag, Empfängerfilter, Identitätsschutz, Status und begründete Korrekturen ergänzen. Eigene administrative Korrekturen bleiben erlaubt. |
 | Abschluss und Sichtbarkeit | Hintergrundvergabe von der Anzeige trennen; neue Tipps bei ausgeblendeter Anzeige sperren. Festschreibung gegen gleichzeitig eingehende Meldungen absichern und bei offenen Meldungen verhindern. Den endgültigen Stand nachvollziehbar festhalten. |

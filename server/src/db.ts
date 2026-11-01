@@ -5800,6 +5800,20 @@ registerMigration({ version: 128, name: 'track recorded result activity for the 
     CREATE INDEX IF NOT EXISTS matches_event_activity ON matches(group_id, event_id, updated_at DESC);`);
 } });
 
+registerMigration({ version: 129, name: 'add prospective todo category rewards', up: () => {
+  const columns = db.prepare('PRAGMA table_info(checklist_tasks)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'points_model')) {
+    db.exec(`ALTER TABLE checklist_tasks ADD COLUMN points_model TEXT NOT NULL DEFAULT 'category' CHECK(points_model IN ('legacy','category'));
+      UPDATE checklist_tasks SET points_model = 'legacy';`);
+  }
+  if (!columns.some((column) => column.name === 'points_value')) {
+    // Historical tasks keep their existing promises; never invent a reward for
+    // already completed work. New tasks explicitly choose their category value.
+    db.exec(`ALTER TABLE checklist_tasks ADD COLUMN points_value INTEGER NOT NULL DEFAULT 0 CHECK(typeof(points_value) = 'integer' AND points_value BETWEEN 0 AND 5)`);
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS checklist_tasks_points ON checklist_tasks(event_id, points_value, batch_id)');
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

@@ -12,7 +12,7 @@ Wettbewerbs-/Bestell-Orga, dauerhafter Skill-Bonus, Event-Sichtbarkeit und Kiosk
 Kategorie-Rohwerte und Verlauf sind jetzt auch im persönlichen Konto sichtbar. Das Admin-Journal
 erlaubt begründete, revisionsgeschützte Orga-/Spielkorrekturen einschließlich eigener Ansprüche;
 Wallet und Wett-Nettowert bleiben dort bis zur Klärung des Korrekturwegs schreibgeschützt.
-Sichtbare LAN-Punkte, To-do-Belohnungen, Wetten und Endwertungs-Snapshots verwenden dagegen noch
+Die bisherige LAN-Summe, historische To-do-Belohnungen, Wetten und Endwertungs-Snapshots verwenden dagegen noch
 das gemeinsame alte Konto. Der bestehende Wettumfang ist keine vollständige Umsetzung des Ziels.
 
 Die beiden Code-Findings sind berechtigt und gehören vor die nächsten Fachpakete:
@@ -69,14 +69,34 @@ Summen ungeprüft als neue Kategorie- oder Wallet-Werte zu übernehmen.
 | `points_settings.closed_at`, `points_snapshots` | Einheitlicher Abschluss für den definierten Wertungsumfang und alle Kategorien |
 | Kiosk-Ergebnisfeed | Bereits am Spieljournal; weiter keine Kontenanlage oder Buchung durch Anzeigen |
 
-**Offen U1 – Übergangsweg:** Empfehlung des Reviews ist, das Altmodell innerhalb dieses PRs
-vollständig abzulösen und den fertigen Umfang gemeinsam auszuliefern. Alternativ ist bei früherer
-Auslieferung eine kontrollierte Umstellung je Event nötig. Diese Auswahl ist noch nicht getroffen.
-Ein ungemergter PR und übersprungene CI-Deployments belegen nicht den tatsächlichen produktiven
-Datenbestand; dieser muss vor einer Datenmigration geprüft werden. Weder Tabellenlöschung noch
-die Annahme „es gibt keine alten Nutzerdaten“ sind durch das Review autorisiert.
+**Beschlossen: laufende Events unterstützen, keine rückwirkende Vergütung voraussetzen.**
+Ab der Umstellung können neue Vorgänge auch in einem bereits laufenden Event Punkte erzeugen.
+Bereits erledigte Aufgaben erhalten keinen erfundenen Punktwert. Vorhandene Gutschriften,
+explizite alte Belohnungszusagen, offene Einsätze und Endstände werden erhalten.
 
-Für den gewählten Weg muss die Umsetzung nachweisen:
+Die Umstellung erfolgt je Quelltyp: Neue Aufgaben tragen `points_model = category`;
+historische Aufgaben tragen `legacy`. Neue To-dos speichern `points_value` (1–5) und buchen
+ausschließlich `orga`; der alte Aufgabenpfad nimmt diese Aufgaben nicht an. Historische Aufgaben
+haben 0, können bestehende alte Zusagen weiter erfüllen und werden nicht zusätzlich im
+Kategorie-Journal vergütet. Bei noch nicht übernommenen historischen Aufgaben ohne Zusage kann
+der Ersteller ausdrücklich einen neuen Punktwert festlegen. Bereits erledigte Aufgaben bleiben
+unverändert. Eine Direktzuweisungs-Serie verwendet einen gemeinsamen Kategorie-Vorgang.
+Auch neue Mitbring-Anfragen sind dem neuen Modell zugeordnet und können keine alte
+Budgetbelohnung erhalten, obwohl ihr Orga-Punktwert 0 ist.
+
+Alte Konten, Reservierungen und Abrechnungen bleiben bis Paket 5a/5b in ihrem bisherigen Pfad.
+Ihre Summen werden weder ins Wallet kopiert noch zu Kategorie-Rohwerten addiert. Die neue
+Kategorieansicht und das Admin-Journal lesen bereits ausschließlich das neue Journal; die alte
+LAN-Übersicht bleibt separat. Rangliste, Hall of Fame und Export wechseln erst mit Paket 6,
+die einheitliche Festschreibung mit Paket 9. Damit wird kein halb migriertes Event als fertige
+Gesamtwertung ausgegeben. Eine produktive Datenmigration wurde nicht ausgeführt.
+
+**Weiter offen:** endgültiger Umgang mit alten Guthaben und offenen Märkten beim Wallet-Wechsel,
+Eventtypen/unveröffentlichte/beendete Events und die Teilnehmerbasis. Laufende Events sind
+ausdrücklich eingeschlossen. Vorhandene Spiel-/Orga-Backfills werden nicht rückwirkend geändert;
+für die neue To-do-Quelle gibt es keinen historischen Vergütungsbackfill.
+
+Für die weitere finanzielle Ablösung in Paket 5a/5b muss die Umsetzung nachweisen:
 
 1. Pro Quelle gibt es genau einen finanziell wirksamen Erzeuger. Alte und neue Schlüssel werden
    eindeutig zugeordnet; Wiederholung, Neustart und Abbruch erzeugen keine zweite Auszahlung.
@@ -91,9 +111,9 @@ Für den gewählten Weg muss die Umsetzung nachweisen:
 5. Ein Wiederholungslauf verändert den übernommenen Bestand nicht. Fehler rollen den betroffenen
    Wechsel zurück; es gibt keinen stillen Verlust von Ansprüchen oder Einsätzen.
 
-Abnahme: Fixtures für ausschließlich alte, ausschließlich neue und bereits teilweise gebuchte
+Abnahme der finanziellen Ablösung: Fixtures für ausschließlich alte, ausschließlich neue und bereits teilweise gebuchte
 Quellen, offene Märkte, Alt-Orga im Wetteinsatz, negative Korrekturen und festgeschriebene Events.
-Das Paket definiert auch, welche Events teilnehmen dürfen und wann diese Entscheidung greift.
+Der endgültige Wertungsumfang wird vor der Kategorie-/Gesamtwertung festgelegt.
 Historische Endstände werden nicht ohne eine festgelegte Übernahmeregel neu interpretiert.
 
 ## Paket 1 – Rohwerte und Journal zuerst
@@ -103,7 +123,8 @@ Wetten bleiben separat sichtbar; es wurden keine Guthaben übertragen und keine 
 umgestellt. Der Browserfall prüft eigene und fremde Korrekturen, negative Ansprüche, die Bearbeitung
 älterer Buchungen, einen Revisionskonflikt, Ladefehler mit erneutem Versuch, Realtime und die
 Sichtbarkeit auf Telefon und Desktop. Kategorienränge und Platzpunkte folgen weiterhin später.
-Pakete 0 und 2 bleiben bis zur Entscheidung über U1, E1 und die To-do-Regeln offen.
+Der Umstellungsvertrag für diese Stufe steht in Paket 0; finanzielle Restentscheidungen bleiben
+den Wallet-/Gesamtwertungs-Paketen zugeordnet.
 
 - Eigenes Konto mit Orga-, Spiel- und Wett-Rohwert sowie Verlauf aus dem Journal anzeigen.
 - Admin-Journal mit Begründung und Revisionsschutz bedienbar machen; eigene Korrekturen bleiben
@@ -115,13 +136,15 @@ Pakete 0 und 2 bleiben bis zur Entscheidung über U1, E1 und die To-do-Regeln of
 
 ## Pakete 2–4 – weitere Orga-Erzeuger
 
-**To-dos:** Punktwert am To-do speichern, Übernahme und Erledigung durch eine andere Person
-nach den beschlossenen Regeln vergüten. Vorhandene explizite Belohnungen müssen im Übergang
-zugeordnet werden; ein historisch unbekannter Wert darf nicht als neuer Anspruch erfunden werden.
-Ein eigenes Wiederöffnen existiert bisher nicht und muss einschließlich Rechten und Rückbuchung
-gebaut werden. Alte Helferplätze und das Orga-Budget sind keine beschlossenen Zielregeln.
-Offen bleiben höhere Werte, mehrere Helfer, Direktzuweisung als Übernahme, `item_request`
-und die Übernahme bisheriger Zusagen. Die neue Quelle ersetzt den alten Belohnungspfad.
+**Paket 2 umgesetzt:** Neue Aufgaben haben 1–5 Punkte (Vorgabe 1), keine Budget-/Helferplatz-
+Reservierung und eine Auszahlung an den ersten angemeldeten fremden Helfer. Direkte Zuweisung
+zählt; eine Serie direkter Zuweisungen zahlt zusammen einmal aus. Mitbring-Anfragen zahlen keine
+neuen Orga-Punkte. Ersteller, eingetragene Helfer und Admins können neue Aufgaben wieder öffnen;
+die Gutschrift wird im selben Commit zurückgerechnet. Erneutes Erledigen stellt den Anspruch
+wieder her. Punktwertänderungen sind vor Übernahme und ohne alte Zusage möglich, mit Schutz
+gegen veraltete Änderungen. Höhere Admin-Werte bleiben offen. Historische Aufgaben mit alter
+LAN-Belohnung behalten ihren bisherigen Abschlussweg und können bis zur finanziellen Ablösung
+nicht wieder geöffnet werden; deren bereits gezahlte Beträge werden nicht umgedeutet.
 
 **Ankunft/Abreise:** Anspruch mit dauerhaftem Zustand wie beim Skill-Bonus speichern.
 `arrival_at` und `departure_at` sind vorhanden; ob `note` oder weitere Angaben zur Vollständigkeit

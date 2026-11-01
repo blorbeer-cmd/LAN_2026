@@ -99,9 +99,9 @@ ersatzweise angenommen. `points_orga_awards` speichert nur den letzten automatis
 das Journal bleibt die Grundlage aller Salden. Der persönliche Export enthält eigene Ansprüche
 und eigene Organisatorzuordnungen. Bei Kontolöschung werden diese Zuordnungen auf `NULL` gesetzt.
 
-Die Kategorie-API zeigt diese Buchungen bereits im eigenen Saldo und Verlauf sowie im
-Admin-Journal. Die sichtbare Kategorieansicht folgt später. To-dos,
-Abstimmungen sowie Ankunfts-/Abreiseboni sind weitere Pakete. Offene Grenzen und
+Die Kategorieansicht zeigt diese Buchungen im eigenen Saldo und Verlauf sowie im
+Admin-Journal. Neue To-dos sind ebenfalls angebunden; Abstimmungen sowie Ankunfts-/Abreiseboni
+sind weitere Pakete. Offene Grenzen und
 Zuordnungsregeln aus dem Konzept werden dadurch nicht festgelegt.
 
 ## Orga-Punkte für Sammelbestellungen
@@ -251,6 +251,25 @@ Journals lassen sich über dessen Aktualisieren-Aktion erneut versuchen.
 
 ## Migration und nächste Pakete
 
+Migration 129 ergänzt `checklist_tasks.points_value` mit 0 und `points_model = legacy` für den
+Bestand. Später angelegte Aufgaben verwenden standardmäßig `category`, auch Mitbring-Anfragen
+ohne Punktwert; sie können deshalb keine alten Budgetbelohnungen erhalten. Neue Aufgaben
+erhalten 1–5 Punkte und buchen als `todo:<id>` beziehungsweise gemeinsam als
+`todo:batch:<batchId>` ausschließlich ins Orga-Konto. Der erste angemeldete fremde Helfer
+erhält den Wert, auch bei Direktzuweisung; Mitbring-Anfragen sind ausgeschlossen. Neue
+Aufgaben können nicht zusätzlich mit einer alten LAN-Belohnung versehen werden. Eine Änderung
+des Werts benötigt vor Übernahme den bisherigen `expectedPointsValue`; bestehende alte Zusagen
+werden dabei nicht überschrieben. Erledigen, Wiederöffnen und ein möglicher Empfängerwechsel
+werden atomar mit dem gemeinsamen Orga-Abgleich gespeichert. Unveränderte Ansprüche erhalten
+manuelle Korrekturen. Festgeschriebene Wertungen blockieren keine Aufgabenstatusänderungen,
+erhalten aber keine neuen Buchungen. Realtime-Signale folgen nach dem Commit.
+
+Laufende Events unterstützen diese neue Quelle ohne rückwirkende Vergütung bereits erledigter
+Aufgaben. Alte Guthaben, explizite Zusagen und Einsätze bleiben unverändert; historische Aufgaben
+mit alten Zusagen verwenden ausschließlich ihren alten Auszahlungspfad und können vor dessen
+finanzieller Ablösung nicht wieder geöffnet werden. Die Migration und wiederholtes Anzeigen
+erzeugen keine neuen To-do-Ansprüche. Neue Werte und Quellen sind im persönlichen Datenschutzexport enthalten.
+
 Migration 125 legt die Tabellen an, übernimmt vorhandene Teilnahmen ohne Punkte zu erfinden
 und ist wiederholbar. Die Migrationen 123/124 enthalten die bisherige Punkte-/Wettfunktion;
 125 ergänzt die getrennte Journalbasis. Die bisherigen Tabellen werden nicht umgedeutet oder gelöscht.
@@ -279,7 +298,7 @@ Gesamtwertung oder zu persönlichen Bonus-Stichtagen.
 Der [Restplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) enthält ein
 eigenes Umstellungspaket: alte Grundstock-, To-do- und Wett-Erzeuger, Reservierungen, Leser und
 Snapshots müssen gemeinsam abgelöst werden. Eine pauschale Übernahme alter Gesamtsummen ins
-Wallet ist nicht definiert. Der Übergangsweg und die relevanten Fachentscheidungen bleiben offen.
+Wallet ist nicht definiert. Laufende Events sind ausdrücklich eingeschlossen; historische To-dos werden nicht nachträglich vergütet. Offen bleiben insbesondere die finanzielle Übernahme alter Guthaben/Reservierungen und der endgültige Eventumfang.
 Rohwerte/Verlauf und die Admin-Korrektur-Oberfläche kommen vor den weiteren Erzeugern; Ränge und
 Platzpunkte folgen nach der Gesamtberechnung. Aktuell können Konten auch für frühere oder nicht
 mehr bestätigte Spiel-/Bestellteilnehmer und Testkonten existieren; sie definieren weder N noch

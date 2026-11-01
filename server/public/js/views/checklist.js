@@ -310,6 +310,7 @@ function renderTaskRow(tasks, myId, mode) {
     <div class="checklist-table-row${isDone ? ' is-done' : ''}" role="row" data-checklist-task="${task.id}" data-checklist-task-item data-selection-search="${escapeHtml(`${task.title} ${who}`)}">
       <div class="checklist-table-task" role="cell">
         <button type="button" class="checklist-task-title" data-task-detail="${task.id}" title="${escapeHtml(task.title)}">${escapeHtml(shortTitle(task.title))}</button>
+        ${task.pointsValue > 0 ? `<div class="muted">${task.pointsValue} Orga-Punkte · einmalig für den ersten fremden Helfer</div>` : ''}
         ${task.reward ? `<div class="muted">${task.reward.perPerson} P. pro Helfer · ${task.reward.remaining} belohnte Plätze frei${task.reward.beneficiaryIds.includes(myId) ? ' · Dein Punkteplatz ist gesichert' : ''}</div>` : ''}
       </div>
       <div class="checklist-table-who" role="cell">${who ? whoCellHtml(tasks, who, myId) : '<span class="muted">offen</span>'}</div>
@@ -493,12 +494,14 @@ function openTaskDetail(ctx, myId, taskId) {
     commentLines.length ? ['Kommentare', commentLines.join('')] : null,
     !isDone && task.dueAt ? ['Fällig', dueDetailText(task.dueAt)] : null,
     isDone ? ['Erledigt', escapeHtml(formatDateTime(task.doneAt))] : null,
-    task.reward ? ['Orga-Punkte', `${task.reward.perPerson} P. pro Helfer · ${task.reward.remaining}/${task.reward.slots} belohnte Plätze frei${task.reward.beneficiaryIds.includes(myId) ? ' · Du erhältst die Punkte beim Erledigen automatisch.' : ''}`] : null,
+    task.pointsValue > 0 ? ['Orga-Punkte', `${task.pointsValue} P. einmalig für den ersten Helfer, der nicht der Ersteller ist.`] : null,
+    task.reward ? ['Bisherige LAN-Belohnung', `${task.reward.perPerson} P. pro Helfer · ${task.reward.remaining}/${task.reward.slots} belohnte Plätze frei${task.reward.beneficiaryIds.includes(myId) ? ' · Du erhältst die Punkte beim Erledigen automatisch.' : ''}`] : null,
   ].filter(Boolean);
   const canManage = isOwn && !isDone;
   const canArchive = mode === 'done' && (isOwn || joined);
   const secondary = [
-    isGroupAdmin() && !isDone && !task.reward && !people.length ? '<button type="button" class="btn btn-sm" data-detail-reward>Orga-Punkte festlegen</button>' : '',
+    isDone && task.canReopen && (isOwn || joined || isGroupAdmin()) ? '<button type="button" class="btn btn-sm" data-detail-reopen>Wieder öffnen</button>' : '',
+    isGroupAdmin() && !isDone && task.legacyRewardAvailable && !task.reward && !people.length ? '<button type="button" class="btn btn-sm" data-detail-reward>Alte LAN-Belohnung</button>' : '',
     canManage ? '<button type="button" class="btn btn-sm" data-detail-delete>Löschen</button>' : '',
     joined && !isDone ? '<button type="button" class="btn btn-sm" data-detail-return>Abgeben</button>' : '',
     canManage ? '<button type="button" class="btn btn-sm" data-detail-edit>Bearbeiten</button>' : '',
@@ -511,7 +514,7 @@ function openTaskDetail(ctx, myId, taskId) {
         : canArchive
           ? '<button type="button" class="btn btn-primary btn-sm" data-detail-archive>Archivieren</button>'
           : '';
-  const { close } = (task.reward && state.activeEvent?.pointsEnabled ? openPointsModal : openModal)(
+  const { close } = ((task.reward || task.pointsValue > 0) && state.activeEvent?.pointsEnabled ? openPointsModal : openModal)(
     task.title,
     `<div class="stack">
        ${task.description ? `<p class="checklist-detail-description">${escapeHtml(task.description)}</p>` : ''}
@@ -527,6 +530,14 @@ function openTaskDetail(ctx, myId, taskId) {
           openTaskReward(task, ctx, () => { invalidateChecklist({ scope: 'tasks' }); });
         });
         (el.closest('.modal') ?? el.querySelector('.modal'))?.classList.add('checklist-detail-modal');
+        el.querySelector('[data-detail-reopen]')?.addEventListener('click', async () => {
+          try {
+            reconcileTasks(await api.checklist.reopen(task.id, myId));
+            close();
+            showToast('Aufgabe wieder geöffnet.');
+            ctx.rerender();
+          } catch (error) { showToast(error.message, { error: true }); }
+        });
         el.querySelector('[data-detail-done]')?.addEventListener('click', async () => {
           if (await markTaskDone(ctx, myId, task.id)) close();
         });
@@ -599,7 +610,8 @@ function openClaimForm(ctx, myId, taskId) {
 // same pattern renderChecklist() uses to survive its own re-renders.
 // `existing` (a task) turns the same form into "To-Do bearbeiten".
 async function openCreateTodoForm(ctx, myId, existing = null) {
-  const form = { kind: existing?.type ?? 'todo' };
+  const form = { kind: existing?.type ?? 'todo', pointsValue: existing?.pointsValue ?? 1 };
+  const pointsVisible = Boolean(state.activeEvent?.id && (state.activeEvent.pointsEnabled || isGroupAdmin()));
 
   let bodyEl;
   let anyFieldEverTouched = false;
@@ -609,7 +621,7 @@ async function openCreateTodoForm(ctx, myId, existing = null) {
     const description = bodyEl.querySelector('#todo-description')?.value ?? '';
     const dueHidden = bodyEl.querySelector('#todo-due');
     const dueAtMs = dueHidden?.value ? parseDatetimeLocalMs(dueHidden.value) : null;
-    return { title, description, dueAtMs };
+    return { title, description, dueAtMs, pointsValue: Number(bodyEl.querySelector('#todo-points')?.value ?? form.pointsValue) };
   }
 
   // A selector that will match the *replacement* of a toggle button after
@@ -629,6 +641,7 @@ async function openCreateTodoForm(ctx, myId, existing = null) {
       : existing
         ? { title: existing.title, description: existing.description ?? '', dueAtMs: existing.dueAt ?? null }
         : { title: '', description: '', dueAtMs: null };
+    form.pointsValue = prev.pointsValue ?? form.pointsValue;
     const restoreSelector = isFreshOpen
       ? null
       : focusRestoreSelector(bodyEl.contains(document.activeElement) ? document.activeElement : null);
@@ -661,6 +674,11 @@ async function openCreateTodoForm(ctx, myId, existing = null) {
           <label for="todo-due-date" class="field-label">Fällig bis</label>
           ${dateTimeFieldHtml('todo-due', prev.dueAtMs, { dateOnly: true, clearable: true, label: 'Fällig bis' })}
         </div>
+        ${form.kind === 'todo' && pointsVisible ? `<label class="stack"><span class="field-label">Orga-Punkte</span>
+          <select id="todo-points"${existing && (taskPeople([existing]).length || existing.reward) ? ' disabled' : ''}>
+            ${existing?.pointsValue === 0 ? '<option value="0">Keine Punkte (Bestand)</option>' : ''}
+            ${[1, 2, 3, 4, 5].map((value) => `<option value="${value}"${value === form.pointsValue ? ' selected' : ''}>${value} ${value === 1 ? 'Punkt' : 'Punkte'}</option>`).join('')}
+          </select><span class="muted">Einmalig für den ersten fremden Helfer beim Erledigen. Der Wert gilt ab der Übernahme.</span></label>` : ''}
         <div class="checklist-form-footer">
           <button type="submit" class="btn btn-primary btn-sm">${existing ? 'Speichern' : 'To-Do erstellen'}</button>
         </div>
@@ -676,7 +694,7 @@ async function openCreateTodoForm(ctx, myId, existing = null) {
     });
     bodyEl.querySelector('#checklist-todo-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const { title, description, dueAtMs } = fieldValues();
+      const { title, description, dueAtMs, pointsValue } = fieldValues();
       const trimmedTitle = title.trim();
       if (!trimmedTitle) return;
       const trimmedDescription = description.trim() || undefined;
@@ -687,6 +705,7 @@ async function openCreateTodoForm(ctx, myId, existing = null) {
             title: trimmedTitle,
             description: trimmedDescription ?? null,
             dueAt: dueAtMs ?? null,
+            ...(form.kind === 'todo' && pointsVisible && pointsValue > 0 ? { pointsValue, expectedPointsValue: existing.pointsValue } : {}),
           });
           reconcileTasks(updated);
           close();
@@ -699,7 +718,7 @@ async function openCreateTodoForm(ctx, myId, existing = null) {
       }
       try {
         const created = form.kind === 'todo'
-          ? await api.checklist.createTodo(myId, trimmedTitle, trimmedDescription, undefined, dueAtMs ?? undefined)
+          ? await api.checklist.createTodo(myId, trimmedTitle, trimmedDescription, undefined, dueAtMs ?? undefined, pointsValue || 1)
           : await api.checklist.createRequest(myId, trimmedTitle, trimmedDescription, undefined, dueAtMs ?? undefined);
         reconcileTasks(created);
         close();
@@ -717,7 +736,7 @@ async function openCreateTodoForm(ctx, myId, existing = null) {
     }
   }
 
-  const { close } = openModal(existing ? 'To-Do bearbeiten' : 'To-Do erstellen', '<div data-todo-form-body></div>', {
+  const { close } = (state.activeEvent?.pointsEnabled && !isGroupAdmin() ? openPointsModal : openModal)(existing ? 'To-Do bearbeiten' : 'To-Do erstellen', '<div data-todo-form-body></div>', {
     confirmClose: () =>
       anyFieldEverTouched ? (existing ? 'Die Änderungen gehen verloren.' : 'Das To-Do mit den bisherigen Angaben geht verloren.') : null,
     onMount: (el) => {

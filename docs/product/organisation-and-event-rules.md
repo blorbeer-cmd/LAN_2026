@@ -145,6 +145,17 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   creation; switching Art mid-form keeps already-typed values. The creator can later edit Art,
   Titel, Beschreibung and Fälligkeit („To-Do bearbeiten“, `PATCH /api/checklist/tasks/:id`) or
   delete the To-Do until it is done.
+  For ordinary tasks the dialog also chooses 1–5 Orga points (default 1), visible under the
+  event's points visibility rules. The first signed-up helper other than the creator receives
+  this value when the task is completed; direct assignment counts, a shared assignment batch
+  pays only once, and bring-item requests earn no new category reward. The value can change
+  before anyone signs up, using the previously displayed value as a concurrency guard.
+  Creator, signed-up helpers and admins can reopen a completed task and atomically reverse its
+  category reward; recompletion restores the entitlement instead of adding another one.
+  Existing tasks migrate with value 0, without retrospective awards for completed tasks.
+  Explicit legacy LAN promises remain intact and use their existing completion path; these
+  legacy rewarded tasks cannot yet be reopened. New category rewards never fund the old wallet
+  or reserve its old task budget. Points continue accumulating while their display is hidden.
   All To-Dos form one table in one card without a card heading: a toolbar with „To-Do suchen“,
   a sort menu (Fälligkeit, Titel · A–Z, Wer · A–Z), a filter menu (Wer: Alle/Meine/Offen/Unterwegs/
   Erledigt/Von mir erstellt; Art: Alle/Aufgaben/Mitbring-Anfragen) and the compact gradient

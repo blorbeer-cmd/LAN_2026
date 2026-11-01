@@ -172,9 +172,10 @@ export function configureTaskReward(
   db.transaction(() => {
     requirePointsOpen(eventId);
     const task = db
-      .prepare('SELECT status FROM checklist_tasks WHERE id = ? AND group_id = ? AND event_id = ?')
-      .get(taskId, groupId, eventId) as { status: string } | undefined;
+      .prepare('SELECT status, points_value, points_model FROM checklist_tasks WHERE id = ? AND group_id = ? AND event_id = ?')
+      .get(taskId, groupId, eventId) as { status: string; points_value: number; points_model: string } | undefined;
     if (!task) throw new PointsError('Aufgabe nicht gefunden.', 404);
+    if (task.points_model !== 'legacy' || task.points_value > 0) throw new PointsError('Neue Aufgaben verwenden ausschließlich die neue Orga-Wertung.');
     if (task.status !== 'open' || db.prepare('SELECT 1 FROM checklist_task_assignees WHERE task_id = ?').get(taskId)) {
       throw new PointsError('Belohnungen müssen vor der Übernahme festgelegt werden.');
     }
@@ -227,7 +228,7 @@ export function awardTaskPoints(taskId: string, actorId: string): void {
   const task = db
     .prepare(
       `SELECT t.title, r.event_id, r.per_person FROM checklist_tasks t
-    JOIN points_task_rewards r ON r.task_id = t.id WHERE t.id = ?`,
+    JOIN points_task_rewards r ON r.task_id = t.id WHERE t.id = ? AND t.points_model = 'legacy'`,
     )
     .get(taskId) as { title: string; event_id: string; per_person: number } | undefined;
   if (!task) return;

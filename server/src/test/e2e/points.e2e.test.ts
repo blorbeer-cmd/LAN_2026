@@ -13,6 +13,11 @@ import {
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { createE2EDiagnosticTest } from './e2eDiagnostics';
 import { activateAdminMode } from './navHelpers';
+import Database from 'better-sqlite3';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { once } from 'node:events';
 
 let server: E2EServer;
 let browser: Browser;
@@ -23,6 +28,8 @@ let alice: E2EAccount;
 let bob: E2EAccount;
 let eventId: string;
 let myId: string;
+const fixtureDir = mkdtempSync(path.join(tmpdir(), 'respawn-points-browser-'));
+const fixtureDb = path.join(fixtureDir, 'points.db');
 const pageErrors: string[] = [];
 const test = createE2EDiagnosticTest(() => ({ browser, server }));
 
@@ -53,7 +60,7 @@ async function setPointsVisibility(visible: boolean) {
 }
 
 before(async () => {
-  server = await startE2EServer(authenticatedServerEnv());
+  server = await startE2EServer({ ...authenticatedServerEnv(), DB_FILE: fixtureDb });
   cookie = await loginE2EAdmin(server.baseUrl);
   await finishE2EOnboarding(server.baseUrl, cookie);
   myId = (await api('/api/me')).id;
@@ -97,7 +104,12 @@ before(async () => {
 after(async () => {
   await admin?.context().unrouteAll({ behavior: 'ignoreErrors' });
   await browser?.close();
-  server?.process.kill();
+  if (server && server.process.exitCode === null && server.process.signalCode === null) {
+    const exited = once(server.process, 'exit');
+    server.process.kill();
+    await exited;
+  }
+  rmSync(fixtureDir, { recursive: true, force: true });
 });
 
 test('real LAN account, automatic orga credits, own-game betting notification, history and administrative deduction work on phone and desktop', async () => {
@@ -121,6 +133,10 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     title: 'Netzwerkkabel einsammeln',
   });
   const taskId = task.id ?? task.tasks[0].id;
+  // Exercise an explicit pre-upgrade promise alongside the new category model.
+  const legacyFixture = new Database(fixtureDb);
+  legacyFixture.prepare("UPDATE checklist_tasks SET points_value=0, points_model='legacy' WHERE id=?").run(taskId);
+  legacyFixture.close();
   await navigate(admin, 'checklist');
   await admin.locator(`[data-task-detail="${taskId}"]`).click();
   await admin.locator('[data-detail-reward]').click();
@@ -381,11 +397,9 @@ test('category history and reasoned own and foreign corrections stay consistent 
   const foreign = initialJournal.find((entry: any) => entry.playerId === alice.id && entry.account === 'playing' && entry.sourceKey === `match:${match.id}`);
   assert.ok(own && foreign);
   const adminOrigin = new URL(admin.url()).origin;
-  let failJournal = true;
   const journalRoute = '**/api/points/admin/journal?*';
   await admin.route(journalRoute, async (route) => {
-    if (failJournal) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Journal vorübergehend nicht erreichbar' }) });
-    await route.fallback();
+    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Journal vorübergehend nicht erreichbar' }) });
   });
   try {
     await admin.goto(`${adminOrigin}/?eventId=${event.id}#pointsAdmin`);
@@ -400,7 +414,9 @@ test('category history and reasoned own and foreign corrections stay consistent 
     await personal.locator('[data-category-balance=\"playing\"]').filter({ hasText: /^4$/ }).waitFor();
     await history.getByText('Noch keine Buchungen.', { exact: true }).waitFor();
     await administration.getByText('Journal vorübergehend nicht erreichbar', { exact: true }).waitFor();
-    failJournal = false;
+    // The failed response is complete. Remove its interceptor before retrying,
+    // so subsequent requests use only the ordinary synthetic-HTTP forwarding.
+    await admin.unrouteAll({ behavior: 'wait' });
     await administration.locator('[data-category-admin-refresh]').click();
     await administration.locator(`[data-admin-category-entry="${own.id}"]`).waitFor();
     await history.locator('[data-category-account]').selectOption('playing');
@@ -438,6 +454,31 @@ test('category history and reasoned own and foreign corrections stay consistent 
     await admin.locator('[data-category-correction]').waitFor({ state: 'detached' });
     await personal.locator('[data-category-balance=\"playing\"]').filter({ hasText: /^2$/ }).waitFor();
     assert.equal((await api(`/api/points?eventId=${event.id}`, 'GET', undefined, alice.cookie)).categoryBalances.playing, 2);
+    await navigate(admin, 'checklist');
+    await admin.locator('#checklist-new-todo-btn').click();
+    await admin.locator('#todo-title').fill('Switch nach der LAN einpacken');
+    await admin.locator('#todo-points').selectOption('4');
+    await admin.setViewportSize({ width: 390, height: 844 });
+    await admin.locator('#toast-container .toast').waitFor({ state: 'detached' });
+    await admin.screenshot({ path: 'test-results/todo-points-form-phone.png', animations: 'disabled' });
+    await admin.locator('#checklist-todo-form [type=submit]').click();
+    await admin.locator('#checklist-todo-form').waitFor({ state: 'detached' });
+    const todo = (await api('/api/checklist/tasks')).tasks.find((task: any) => task.title === 'Switch nach der LAN einpacken');
+    assert.equal(todo.pointsValue, 4);
+    await navigate(member, 'checklist');
+    await member.setViewportSize({ width: 320, height: 568 });
+    assert.equal(await member.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+    await member.locator(`[data-claim-task="${todo.id}"]`).click();
+    await member.locator('#checklist-claim-form [type=submit]').click();
+    await member.locator('#checklist-claim-form').waitFor({ state: 'detached' });
+    await member.locator(`[data-task-detail="${todo.id}"]`).click();
+    await member.getByText('4 P. einmalig für den ersten Helfer, der nicht der Ersteller ist.', { exact: true }).waitFor();
+    await member.locator('[data-detail-done]').click();
+    await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
+    await navigate(member, 'points');
+    await personal.locator('[data-category-balance="orga"]').filter({ hasText: /^4$/ }).waitFor();
+    assert.equal((await api(`/api/points?eventId=${event.id}`, 'GET', undefined, alice.cookie)).wallet.total, 100);
+    await navigate(admin, 'pointsAdmin');
     for (const page of [admin, member]) {
       for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 512, height: 384 }, { width: 1440, height: 900 }]) {
         await page.setViewportSize(viewport);
@@ -456,9 +497,22 @@ test('category history and reasoned own and foreign corrections stay consistent 
     assert.equal((await api(`/api/points?eventId=${event.id}`)).categoryBalances.orga, -1);
     await administration.getByText('Eigene Korrektur bei ausgeblendeter Teilnehmeransicht', { exact: true }).waitFor();
     await admin.screenshot({ path: 'test-results/category-points-admin.png', fullPage: true });
+    await navigate(member, 'checklist');
+    await member.locator(`[data-task-detail="${todo.id}"]`).click();
+    assert.equal(await member.getByText('Orga-Punkte', { exact: true }).count(), 0);
+    await member.locator('[data-detail-reopen]').click();
+    await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
+    const todoClaim = async () => (await api(journalUrl)).entries
+      .filter((entry: any) => entry.playerId === alice.id && entry.sourceKey === `todo:${todo.id}`)
+      .reduce((sum: number, entry: any) => sum + entry.amount, 0);
+    assert.equal(await todoClaim(), 0, 'reopening reverses the reward even while points are hidden');
+    await member.locator(`[data-task-detail="${todo.id}"]`).click();
+    await member.locator('[data-detail-done]').click();
+    await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
+    assert.equal(await todoClaim(), 4, 'hidden recompletion restores the claim exactly once');
     assert.deepEqual(pageErrors, []);
   } finally {
-    await admin.unroute(journalRoute);
+    await admin.unrouteAll({ behavior: 'wait' });
     for (const session of [cookie, alice.cookie, bob.cookie]) await api('/api/me/active-event', 'PUT', { eventId }, session);
   }
 });

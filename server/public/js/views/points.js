@@ -707,8 +707,9 @@ export function renderPointsAdmin(container, ctx) {
 export function openTaskReward(task, ctx, onSaved) {
   const eventId = state.activeEvent.id;
   const { close } = openModal(
-    'Orga-Punkte festlegen',
+    'Alte LAN-Belohnung festlegen',
     `<form class="stack"><p>${e(task.title)}</p>
+    <p class="muted">Diese historische Aufgabe verwendet das bisherige LAN-Konto und dessen Budget. Neue Aufgaben sammeln stattdessen getrennte Orga-Punkte.</p>
     ${numberField('perPerson', 'Punkte pro Helfer', 5, 1, 1000)}${numberField('slots', 'Belohnte Helferplätze', 1, 1, 30)}
     <p class="muted">Die ersten Helfer sichern sich die Plätze. Weitere Helfer können ohne Punkte mitmachen. Die Belohnung ist danach verbindlich; beim Erledigen wird automatisch gebucht.</p>
     <button type="submit" class="btn btn-primary">Belohnung festlegen</button></form>`,

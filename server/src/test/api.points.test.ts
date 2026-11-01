@@ -9,6 +9,7 @@ import { wallet, PointsError } from '../points';
 import { correctJournalEntry } from '../pointsAdministration';
 import { readPointsBalances, readPointsSource, recordPointsEntitlements } from '../pointsJournal';
 import { buildPersonalDataExport, deleteAccount } from '../privacyService';
+import { syncOrgaPoints } from '../orgaPoints';
 import { config } from '../config';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -212,6 +213,7 @@ test('admins and event creators toggle visibility without interrupting hidden cr
   assert.equal((await visibility('true', 0)).status, 400);
   const task = await request(app).post('/api/checklist/tasks/todo').send({ playerId: TEST_ADMIN_ID, type: 'todo', title: 'Hidden helper task' });
   const taskId = task.body.tasks[0].id;
+  db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(taskId); // pre-upgrade task
   assert.equal((await request(app).post(`/api/points/tasks/${taskId}/reward`).send({ perPerson: 5, slots: 1 })).status, 201);
   await request(app).post(`/api/checklist/tasks/${taskId}/claim`).set('x-test-player-id', creator).send({ playerId: creator });
   const done = await request(app).patch(`/api/checklist/tasks/${taskId}/done`).set('x-test-player-id', creator).send({ playerId: creator });
@@ -254,6 +256,133 @@ test('admins and event creators toggle visibility without interrupting hidden cr
   assert.equal((await visibility(false, 3, creator)).status, 200);
 });
 
+test('new todo rewards use one foreign helper, preserve corrections until reopening, and never fund the wallet', async () => {
+  const f = await fixture();
+  const [a, b] = f.players;
+  for (const pointsValue of [0, 6, 1.5, '3']) {
+    assert.equal((await request(app).post('/api/checklist/tasks/todo').send({ title: 'Invalid reward', pointsValue })).status, 400);
+  }
+  const created = await request(app).post('/api/checklist/tasks/todo').send({ title: 'New category task', pointsValue: 5 });
+  assert.equal(created.status, 201);
+  const id = created.body.tasks[0].id;
+  const market = await round(f);
+  assert.equal((await request(app).put(`/api/points/rounds/${market.id}/tip`).set('x-test-player-id', a).send({ outcomeId: market.outcomes[0].id, stake: 5 })).status, 200);
+  const source = { groupId: DEFAULT_GROUP_ID, eventId: f.eventId, playerId: a, account: 'orga' as const, sourceKey: `todo:${id}` };
+  assert.equal((await request(app).post(`/api/points/tasks/${id}/reward`).send({ perPerson: 5, slots: 2 })).status, 409);
+  const claim = (playerId: string) => request(app).post(`/api/checklist/tasks/${id}/claim`).send({ playerId });
+  assert.equal((await claim(TEST_ADMIN_ID)).status, 200, 'creators may help but receive no reward');
+  assert.equal((await claim(a)).status, 200);
+  const claims = await Promise.all([claim(a), claim(b)]);
+  assert.deepEqual(claims.map((r) => r.status).sort(), [200, 409]);
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${id}`).send({ pointsValue: 4, expectedPointsValue: 5 })).status, 409);
+  const done = () => request(app).patch(`/api/checklist/tasks/${id}/done`).send({ playerId: b });
+  const completions = await Promise.all([done(), done()]);
+  assert.deepEqual(completions.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(readPointsSource(source)!.total, 5);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID)!.orga, 0);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, b)!.orga, 0);
+  assert.equal(wallet(f.eventId, a).total, 100);
+  assert.equal(wallet(f.eventId, a).held, 5, 'an existing market reservation survives the new todo credit unchanged');
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM point_entries WHERE event_id = ? AND source = 'task'").get(f.eventId) as { n: number }).n, 0);
+  const entry = db.prepare(`SELECT j.id FROM points_journal j JOIN points_sources s ON s.id=j.source_id
+    WHERE s.event_id=? AND s.source_key=? AND s.player_id=?`).get(f.eventId, source.sourceKey, a) as { id: string };
+  assert.equal((await request(app).post(`/api/points/admin/journal/${entry.id}/correct`).send({ total: 2, revision: 1, reason: 'Manuell korrigiert' })).status, 200);
+  syncOrgaPoints(DEFAULT_GROUP_ID, f.eventId);
+  assert.equal(readPointsSource(source)!.total, 2, 'unchanged work retains the manual correction');
+  const reopen = () => request(app).patch(`/api/checklist/tasks/${id}/reopen`).send({ playerId: a });
+  const reopened = await Promise.all([reopen(), reopen()]);
+  assert.deepEqual(reopened.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(readPointsSource(source)!.total, 0);
+  assert.equal((await done()).status, 200);
+  assert.equal(readPointsSource(source)!.total, 5, 'recompletion replaces the claim instead of adding another reward');
+  const ownExport = buildPersonalDataExport(a);
+  assert.ok(JSON.stringify(ownExport).includes(source.sourceKey));
+  assert.ok(JSON.stringify(ownExport).includes('"pointsModel":"category"'));
+  assert.equal((await request(app).post(`/api/points/rounds/${market.id}/refund`).send({ reason: 'Bestehenden Einsatz vollständig erhalten' })).status, 200);
+  assert.equal((await request(app).patch(`/api/events/${f.eventId}/points-visibility`).send({ visible: false, revision: 1 })).status, 200);
+  const hidden = await request(app).get('/api/checklist/tasks').set('x-test-player-id', a);
+  assert.equal(hidden.body.tasks.find((t: { id: string }) => t.id === id).pointsValue, null);
+});
+
+test('todo batches pay once, preserve historical work and promises, and roll back checklist state on journal errors', async () => {
+  const f = await fixture();
+  const [a, b] = f.players;
+  const created = await request(app).post('/api/checklist/tasks/todo').send({ title: 'Direct batch', pointsValue: 3, assigneePlayerIds: [TEST_ADMIN_ID, a, b] });
+  assert.equal(created.status, 201);
+  const tasks = created.body.tasks as Array<{ id: string; assignee: { id: string }; batchId: string }>;
+  const taskA = tasks.find((t) => t.assignee.id === a)!;
+  const taskB = tasks.find((t) => t.assignee.id === b)!;
+  const key = `todo:batch:${taskA.batchId}`;
+  const source = { groupId: DEFAULT_GROUP_ID, eventId: f.eventId, playerId: a, account: 'orga' as const, sourceKey: key };
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${taskB.id}/done`).send({ playerId: b })).status, 200);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, b)!.orga, 0, 'the second direct assignee cannot take the first helper reward');
+  db.exec(`CREATE TEMP TRIGGER fail_todo_booking BEFORE INSERT ON points_journal
+    WHEN NEW.title LIKE 'Aufgabe erledigt:%' BEGIN SELECT RAISE(ABORT,'todo journal failure'); END`);
+  try {
+    assert.equal((await request(app).patch(`/api/checklist/tasks/${taskA.id}/done`).send({ playerId: a })).status, 500);
+    assert.equal((db.prepare('SELECT status FROM checklist_tasks WHERE id=?').get(taskA.id) as { status: string }).status, 'taken');
+    assert.equal(readPointsSource(source)!.total, 0);
+  } finally { db.exec('DROP TRIGGER fail_todo_booking'); }
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${taskA.id}/done`).send({ playerId: a })).status, 200);
+  assert.equal(readPointsSource(source)!.total, 3);
+  db.exec(`CREATE TEMP TRIGGER fail_todo_reopen BEFORE INSERT ON points_journal
+    WHEN NEW.amount < 0 BEGIN SELECT RAISE(ABORT,'todo reversal failure'); END`);
+  try {
+    assert.equal((await request(app).patch(`/api/checklist/tasks/${taskA.id}/reopen`).send({ playerId: a })).status, 500);
+    assert.equal((db.prepare('SELECT status FROM checklist_tasks WHERE id=?').get(taskA.id) as { status: string }).status, 'done');
+    assert.equal(readPointsSource(source)!.total, 3);
+  } finally { db.exec('DROP TRIGGER fail_todo_reopen'); }
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${taskA.id}/reopen`).send({ playerId: a })).status, 200);
+  assert.equal(readPointsSource(source)!.total, 0);
+  assert.equal((await request(app).post(`/api/checklist/tasks/${taskA.id}/release`).send({ playerId: a })).status, 200);
+  assert.equal(readPointsSource({ ...source, playerId: b })!.total, 3);
+  assert.equal(readPointsSource(source)!.total, 0, 'a batch never pays two people at once');
+  const old = await request(app).post('/api/checklist/tasks/todo').send({ title: 'Historical completed task', assigneePlayerIds: [a] });
+  const oldId = old.body.tasks[0].id;
+  db.prepare("UPDATE checklist_tasks SET points_value=0,status='done',done_at=1 WHERE id=?").run(oldId);
+  syncOrgaPoints(DEFAULT_GROUP_ID, f.eventId);
+  assert.equal(readPointsSource({ ...source, sourceKey: `todo:${oldId}` })!.total, 0);
+  const requestTask = await request(app).post('/api/checklist/tasks').send({ title: 'Bring a cable', assigneePlayerIds: [a], pointsValue: 5 });
+  const requestId = requestTask.body.tasks[0].id;
+  assert.equal(requestTask.body.tasks[0].legacyRewardAvailable, false);
+  assert.equal((await request(app).post(`/api/points/tasks/${requestId}/reward`).send({ perPerson: 5, slots: 1 })).status, 409);
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${requestId}/done`).send({ playerId: a })).status, 200);
+  assert.equal(readPointsSource({ ...source, sourceKey: `todo:${requestId}` })!.total, 0);
+  const own = await request(app).post('/api/checklist/tasks/todo').send({ title: 'My own task', assigneePlayerIds: [TEST_ADMIN_ID], pointsValue: 5 });
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${own.body.tasks[0].id}/done`).send({})).status, 200);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID)!.orga, 0);
+  const unclaimed = await request(app).post('/api/checklist/tasks/todo').send({ title: 'Change before claiming' });
+  const id = unclaimed.body.tasks[0].id;
+  const edits = await Promise.all([2, 4].map((pointsValue) => request(app).patch(`/api/checklist/tasks/${id}`).send({ pointsValue, expectedPointsValue: 1 })));
+  assert.deepEqual(edits.map((r) => r.status).sort(), [200, 409], 'a stale point-value edit cannot overwrite a concurrent change');
+  assert.equal((await request(app).post(`/api/checklist/tasks/${id}/claim`).send({ playerId: a })).status, 200);
+  const releases = await Promise.all([a, a].map((playerId) => request(app).post(`/api/checklist/tasks/${id}/release`).send({ playerId })));
+  assert.deepEqual(releases.map((r) => r.status).sort(), [200, 403]);
+  const cancellations = await Promise.all([0, 1].map(() => request(app).delete(`/api/checklist/tasks/${id}`).send({})));
+  assert.deepEqual(cancellations.map((r) => r.status).sort(), [204, 409]);
+  const transition = await request(app).post('/api/checklist/tasks/todo').send({ title: 'Historical open task at cutover' });
+  const transitionId = transition.body.tasks[0].id;
+  db.prepare("UPDATE checklist_tasks SET points_value=0, points_model='legacy' WHERE id=?").run(transitionId);
+  const producers = await Promise.all([
+    request(app).post(`/api/points/tasks/${transitionId}/reward`).send({ perPerson: 5, slots: 1 }),
+    request(app).patch(`/api/checklist/tasks/${transitionId}`).send({ pointsValue: 3, expectedPointsValue: 0 }),
+  ]);
+  assert.equal(producers.filter((r) => r.status >= 200 && r.status < 300).length, 1);
+  assert.equal(producers.filter((r) => r.status === 409).length, 1, 'old and category promises are mutually exclusive');
+  assert.equal((await request(app).post(`/api/checklist/tasks/${transitionId}/claim`).send({ playerId: a })).status, 200);
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${transitionId}/done`).send({ playerId: a })).status, 200);
+  const newModel = producers[1].status === 200;
+  assert.equal(readPointsSource({ ...source, sourceKey: `todo:${transitionId}` })!.total, newModel ? 3 : 0);
+  assert.equal(wallet(f.eventId, a).total, newModel ? 100 : 105);
+  const closedTask = await request(app).post('/api/checklist/tasks/todo').send({ title: 'Complete while valuation is frozen', assigneePlayerIds: [a], pointsValue: 2 });
+  const closedId = closedTask.body.tasks[0].id;
+  assert.equal((await request(app).post('/api/points/close').send({})).status, 200);
+  const frozen = db.prepare('SELECT * FROM points_journal ORDER BY id').all();
+  const closedCompletions = await Promise.all([0, 1].map(() => request(app).patch(`/api/checklist/tasks/${closedId}/done`).send({ playerId: a })));
+  assert.deepEqual(closedCompletions.map((r) => r.status).sort(), [200, 409]);
+  assert.deepEqual(db.prepare('SELECT * FROM points_journal ORDER BY id').all(), frozen);
+});
+
 test('task completion awards promised slots immediately and once, with atomic budget and partial administrative deductions', async () => {
   const f = await fixture({ orgaBudget: 10 });
   const task = await request(app)
@@ -262,6 +391,7 @@ test('task completion awards promised slots immediately and once, with atomic bu
   assert.equal(task.status, 201, JSON.stringify(task.body));
   const id = task.body.id ?? task.body.tasks?.[0]?.id;
   assert.ok(id, JSON.stringify(task.body));
+  db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(id); // pre-upgrade task
   const reward = await request(app).post(`/api/points/tasks/${id}/reward`).send({ perPerson: 5, slots: 2 });
   assert.equal(reward.status, 201, JSON.stringify(reward.body));
   const claims = await Promise.all(
@@ -455,6 +585,7 @@ test('parallel reservations obey available funds and event limits; closing preve
     assert.equal(created.status, 201);
     const taskId = created.body.id ?? created.body.tasks[0].id;
     taskIds.push(taskId);
+    db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(taskId); // pre-upgrade task
     if (rewarded) assert.equal((await request(app).post(`/api/points/tasks/${taskId}/reward`)
       .send({ perPerson: 5, slots: 1 })).status, 201);
     assert.equal((await request(app).post(`/api/checklist/tasks/${taskId}/claim`).send({ playerId: a })).status, 200);
@@ -749,6 +880,7 @@ test('an orga-only LAN cannot open betting pools; simultaneous reward promises c
       (await request(app).post('/api/checklist/tasks/todo').send({ playerId: TEST_ADMIN_ID, type: 'todo', title })).body
         .tasks[0].id as string,
     );
+  for (const id of tasks) db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(id); // pre-upgrade tasks
   const rewards = await Promise.all(
     tasks.map((id) => request(app).post(`/api/points/tasks/${id}/reward`).send({ perPerson: 5, slots: 1 })),
   );
@@ -776,6 +908,7 @@ test('account erasure keeps other helpers credited, retains committed budget and
     .set('x-test-player-id', f.players[0])
     .send({ playerId: f.players[0], type: 'todo', title: 'Completed shared task' });
   const taskId = task.body.tasks[0].id;
+  db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(taskId); // pre-upgrade task
   await request(app).post(`/api/points/tasks/${taskId}/reward`).send({ perPerson: 5, slots: 1 });
   await request(app)
     .post(`/api/checklist/tasks/${taskId}/claim`)

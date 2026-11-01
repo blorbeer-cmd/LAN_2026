@@ -6,6 +6,7 @@ import { computeStandings } from './leaderboard';
 import { readScoringInputs } from './leaderboardData';
 import { syncPlayingPoints } from './playingPoints';
 import { grantSkillCompletionBonus, SKILL_BONUS_SOURCE, SKILL_BONUS_POINTS } from './skillBonus';
+import { todoAwards } from './todoPoints';
 
 export function syncOrgaPoints(groupId: string, eventId: string): boolean {
   return db
@@ -15,7 +16,7 @@ export function syncOrgaPoints(groupId: string, eventId: string): boolean {
       const skillChanged = grantSkillCompletionBonus(eventId);
       const otherChanged = syncAutomaticPoints(groupId, eventId, 'orga', () => {
         const { matches } = readScoringInputs(groupId, [eventId]);
-        const awards: AutomaticAward[] = [];
+        const awards: AutomaticAward[] = todoAwards(groupId, eventId);
         for (const match of matches) {
           if (!match.createdBy || computeStandings([match]).length === 0) continue;
           // A tournament result is already one canonical match. Its organizer was

@@ -165,6 +165,85 @@ test('migration 126 rolls back the playing state table on failure and retries wi
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+function removeTodoPointsSchema(fixture: Database.Database): void {
+  fixture.exec(`DROP INDEX checklist_tasks_points;
+    ALTER TABLE checklist_tasks DROP COLUMN points_value;
+    ALTER TABLE checklist_tasks DROP COLUMN points_model;
+    DELETE FROM schema_migrations WHERE version = 129;`);
+}
+
+test('migration 129 keeps historical tasks unpaid and preserves old financial state across replay', () => {
+  const dbFile = makeTempDbPath('todo-points');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  removeTodoPointsSchema(fixture);
+  fixture.exec(`INSERT INTO players(id,name,api_key,created_at) VALUES ('old-todo-player','Old helper','old-todo-key',1);
+    INSERT INTO checklist_tasks(id,group_id,event_id,type,title,created_by,status,created_at,done_at)
+      VALUES ('old-todo','default-group','instance-base-event','todo','Already done','old-todo-player','done',1,2);
+    INSERT OR IGNORE INTO points_settings(event_id,group_id,initial_points,orga_budget,created_at)
+      VALUES ('instance-base-event','default-group',100,400,1);
+    UPDATE points_settings SET orga_allocated=5,closed_at=2 WHERE event_id='instance-base-event';
+    INSERT INTO points_task_rewards(task_id,event_id,group_id,per_person,slots,created_at)
+      VALUES ('old-todo','instance-base-event','default-group',5,1,1);
+    INSERT INTO point_entries(id,group_id,event_id,player_id,amount,source,source_key,title,created_at)
+      VALUES ('old-todo-credit','default-group','instance-base-event','old-todo-player',5,'task','task:old-todo:old-todo-player','Already credited',2);
+    INSERT INTO point_entries(id,group_id,event_id,player_id,amount,source,source_key,title,original_id,created_at)
+      VALUES ('old-todo-correction','default-group','instance-base-event','old-todo-player',-8,'correction','deduct:old-todo','Historical correction','old-todo-credit',3);
+    INSERT INTO points_accounts(event_id,player_id,account,created_at)
+      VALUES ('instance-base-event','old-todo-player','orga',1);
+    INSERT INTO points_sources(id,event_id,player_id,account,source_key)
+      VALUES ('old-todo-source','instance-base-event','old-todo-player','orga','other:existing');
+    INSERT INTO points_journal(id,source_id,revision,amount,title,created_at)
+      VALUES ('old-todo-journal','old-todo-source',1,4,'Existing independent claim',1);`);
+  const entries = fixture.prepare('SELECT * FROM point_entries ORDER BY id').all();
+  const journal = fixture.prepare('SELECT * FROM points_journal ORDER BY id').all();
+  fixture.close();
+  runMigrations(dbFile);
+  const upgraded = new Database(dbFile);
+  assert.deepEqual(upgraded.prepare("SELECT status,done_at,points_value,points_model FROM checklist_tasks WHERE id='old-todo'").get(),
+    { status: 'done', done_at: 2, points_value: 0, points_model: 'legacy' });
+  upgraded.exec(`INSERT INTO checklist_tasks(id,group_id,event_id,type,title,created_by,status,created_at,points_value)
+    VALUES ('new-todo','default-group','instance-base-event','todo','New task','old-todo-player','open',4,4);
+    DELETE FROM schema_migrations WHERE version=129;`);
+  upgraded.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const restarted = new Database(dbFile, { readonly: true });
+  assert.deepEqual(restarted.prepare('SELECT * FROM point_entries ORDER BY id').all(), entries);
+  assert.deepEqual(restarted.prepare('SELECT * FROM points_journal ORDER BY id').all(), journal);
+  assert.deepEqual(restarted.prepare('SELECT id,points_value,points_model FROM checklist_tasks ORDER BY id').all(), [
+    { id: 'new-todo', points_value: 4, points_model: 'category' },
+    { id: 'old-todo', points_value: 0, points_model: 'legacy' },
+  ]);
+  assert.deepEqual(restarted.prepare('SELECT per_person,slots FROM points_task_rewards').all(), [{ per_person: 5, slots: 1 }]);
+  assert.equal((restarted.prepare("SELECT SUM(amount) AS total FROM point_entries WHERE player_id='old-todo-player'").get() as { total: number }).total, -3);
+  assert.deepEqual(restarted.prepare("SELECT orga_allocated,closed_at FROM points_settings WHERE event_id='instance-base-event'").get(), { orga_allocated: 5, closed_at: 2 });
+  assert.deepEqual(restarted.prepare('PRAGMA foreign_key_check').all(), []);
+  restarted.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 129 rolls back its task column after an index failure and retries', () => {
+  const dbFile = makeTempDbPath('todo-points-rollback');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  removeTodoPointsSchema(fixture);
+  fixture.exec('CREATE TABLE checklist_tasks_points(blocker INTEGER)');
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /checklist_tasks_points/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=129').get(), undefined);
+  assert.equal((failed.prepare('PRAGMA table_info(checklist_tasks)').all() as Array<{ name: string }>).some((c) => ['points_value', 'points_model'].includes(c.name)), false);
+  failed.exec('DROP TABLE checklist_tasks_points');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const retried = new Database(dbFile, { readonly: true });
+  assert.ok(retried.prepare('SELECT 1 FROM schema_migrations WHERE version=129').get());
+  retried.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 function removeMatchActivitySchema(fixture: Database.Database): void {
   fixture.exec(`DROP INDEX matches_event_activity;
     ALTER TABLE matches DROP COLUMN recorded_at;
@@ -1235,10 +1314,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 128);
+  assert.equal(migrations.length, 129);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 128 }, (_, index) => index + 1),
+    Array.from({ length: 129 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1840,8 +1919,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 128 }, (_, index) => index + 1),
-    'every version 1..128 runs exactly once',
+    Array.from({ length: 129 }, (_, index) => index + 1),
+    'every version 1..129 runs exactly once',
   );
 });
 

@@ -477,6 +477,7 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
         `SELECT t.id, t.event_id AS eventId, t.type, t.title, t.description, t.status,
                 CASE WHEN a.player_id IS NOT NULL THEN a.comment ELSE t.claim_comment END AS claimComment,
                 t.due_at AS dueAt, t.created_at AS createdAt, t.taken_at AS takenAt, t.done_at AS doneAt,
+                t.points_value AS pointsValue, t.points_model AS pointsModel,
                 CASE WHEN t.created_by = ? THEN 1 ELSE 0 END AS createdByMe,
                 CASE WHEN a.player_id IS NOT NULL OR t.assignee_id = ? THEN 1 ELSE 0 END AS assignedToMe
          FROM checklist_tasks t
