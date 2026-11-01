@@ -3,8 +3,8 @@ import { db } from './db';
 import { requirePointsAdmin } from './pointsAccess';
 import { computeRoundRobinStandings } from './tournament';
 import { distributePool } from './bettingMath';
+import { bookBettingMarket } from './bettingAccounting';
 import {
-  addPointEntry,
   ensurePointAccounts,
   pointParticipants,
   PointsError,
@@ -257,7 +257,7 @@ export function createBettingRound(
       Date.now(),
     );
     return roundId;
-  })();
+  }).immediate();
   notifyBettingRound(getBettingRound(groupId, eventId, id));
   return id;
 }
@@ -335,25 +335,6 @@ function settleRound(
   );
   for (const tip of tips) {
     const payout = payouts.get(tip.id)!;
-    if (tip.player_id)
-      addPointEntry(
-        round.event_id,
-        tip.player_id,
-        payout - tip.stake,
-        valid ? 'tip' : 'refund',
-        `bet:${round.id}:${round.revision}:${tip.player_id}`,
-        round.title,
-        actorId,
-        {
-          roundId: round.id,
-          stake: tip.stake,
-          payout,
-          outcomeId: tip.outcome_id,
-          winner,
-          reason,
-          revision: round.revision,
-        },
-      );
     db.prepare('UPDATE betting_tips SET payout = ? WHERE id = ?').run(payout, tip.id);
   }
   db.prepare('UPDATE betting_rounds SET status = ?, result_key = ?, settled_at = ? WHERE id = ?').run(
@@ -362,10 +343,11 @@ function settleRound(
     now,
     round.id,
   );
+  bookBettingMarket(round.group_id, round.event_id, round.id, reason, actorId);
 }
 // Invoked after competition writes, on reads, and by the deadline sweeper.
 // Result corrections are handled by the explicit administrative path only.
-export function reconcileBetting(eventId?: string): void {
+export function reconcileBetting(eventId?: string, publish = true): BettingRound[] {
   const rounds = (
     eventId
       ? db.prepare("SELECT * FROM betting_rounds WHERE event_id = ? AND status IN ('open','locked')").all(eventId)
@@ -375,6 +357,7 @@ export function reconcileBetting(eventId?: string): void {
   db.transaction(() => {
     for (const row of rounds) {
       let round = getBettingRound(row.group_id, row.event_id, row.id);
+      if (!['open', 'locked'].includes(round.status)) continue;
       let source: SourceState;
       try {
         source = betSourceState(round.group_id, round.event_id, round.source_type, round.source_id);
@@ -406,13 +389,29 @@ export function reconcileBetting(eventId?: string): void {
         changed.push(round);
       }
     }
-  })();
+  }).immediate();
+  if (publish) publishBettingChanges(changed);
+  return changed;
+}
+function publishBettingChanges(changed: BettingRound[]): void {
   for (const round of changed) {
     const fresh = getBettingRound(round.group_id, round.event_id, round.id);
     if (fresh.status !== 'open')
       resolvePushTopic(`betting-open:${round.id}`, false, { groupId: round.group_id, eventId: round.event_id });
     broadcast(Events.leaderboardChanged, null, { groupId: round.group_id, eventId: round.event_id });
   }
+}
+
+// Competition writes and the resulting settlements/refunds commit together.
+// Realtime and notification delivery are deferred until the outer commit.
+export function withBettingAccounting<T>(eventId: string | undefined, change: () => T): T {
+  const committed = db.transaction(() => {
+    const result = change();
+    const rounds = reconcileBetting(eventId, false);
+    return { result, rounds };
+  }).immediate();
+  publishBettingChanges(committed.rounds);
+  return committed.result;
 }
 export function putTip(
   groupId: string,
@@ -434,6 +433,7 @@ export function putTip(
     if (!(JSON.parse(round.outcomes) as BetOutcome[]).some((o) => o.id === outcomeId))
       throw new PointsError('Ungültiger Sieger-Tipp.', 400);
     if (stake > settings.max_stake) throw new PointsError(`Höchstens ${settings.max_stake} Punkte je Runde.`, 400);
+    if (wallet(eventId, playerId).available < 0) throw new PointsError('Dein verfügbares Wettguthaben ist negativ.');
     const previous = tipsFor(round.id).find((t) => t.player_id === playerId);
     if (wallet(eventId, playerId).available + (previous?.stake ?? 0) < stake)
       throw new PointsError('Nicht genügend frei verfügbare Punkte.');
@@ -449,7 +449,8 @@ export function putTip(
       `INSERT INTO betting_tips (id,round_id,player_id,outcome_id,stake,day,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)
       ON CONFLICT(round_id,player_id) DO UPDATE SET outcome_id=excluded.outcome_id, stake=excluded.stake, day=excluded.day, updated_at=excluded.updated_at`,
     ).run(previous?.id ?? nanoid(), round.id, playerId, outcomeId, stake, day, Date.now(), Date.now());
-  })();
+    bookBettingMarket(groupId, eventId, round.id, 'Tippeinsatz reserviert');
+  }).immediate();
 }
 export function removeTip(groupId: string, eventId: string, roundId: string, playerId: string): void {
   reconcileBetting(eventId);
@@ -458,7 +459,8 @@ export function removeTip(groupId: string, eventId: string, roundId: string, pla
     const round = getBettingRound(groupId, eventId, roundId);
     if (round.status !== 'open' || round.closes_at <= Date.now()) throw new PointsError('Die Tipps sind geschlossen.');
     db.prepare('DELETE FROM betting_tips WHERE round_id = ? AND player_id = ?').run(round.id, playerId);
-  })();
+    bookBettingMarket(groupId, eventId, round.id, 'Tipp zurückgenommen');
+  }).immediate();
 }
 export function lockBettingRound(round: BettingRound): void {
   db.transaction(() => {
@@ -469,7 +471,7 @@ export function lockBettingRound(round: BettingRound): void {
     if (source.started || source.invalid || sourceChanged(round, source))
       throw new PointsError('Der Wettbewerb hat bereits begonnen oder wurde geändert.');
     closeRound(fresh, Date.now());
-  })();
+  }).immediate();
 }
 export function refundBettingRound(round: BettingRound, actorId: string, reason: string): void {
   db.transaction(() => {
@@ -479,7 +481,9 @@ export function refundBettingRound(round: BettingRound, actorId: string, reason:
     if (fresh.status !== 'open' && fresh.status !== 'locked')
       throw new PointsError('Diese Runde ist bereits abgerechnet.');
     settleRound(fresh, null, `Admin-Erstattung: ${reason}`, Date.now(), actorId);
-  })();
+    writeAdminAudit({ actorPlayerId: actorId, groupId: fresh.group_id, action: 'betting_round_refunded',
+      targetType: 'betting_round', targetId: fresh.id, details: { reason } });
+  }).immediate();
 }
 // Explicitly void an invalid settlement while retaining its original tips,
 // credits and reason. Result edits use the atomic rebooking path below.
@@ -490,33 +494,13 @@ export function voidBettingRound(round: BettingRound, actorId: string, reason: s
     if (fresh.revision !== expectedRevision || fresh.status !== 'settled')
       throw new PointsError('Abrechnung inzwischen geändert oder nicht korrigierbar.');
     requirePointsAdmin(fresh.group_id, actorId);
-    const old = db
-      .prepare(
-        "SELECT * FROM point_entries WHERE event_id = ? AND json_extract(details,'$.roundId') = ? AND json_extract(details,'$.revision') = ? AND source = 'tip'",
-      )
-      .all(round.event_id, round.id, round.revision) as Array<{
-      id: string;
-      player_id: string;
-      amount: number;
-    }>;
-    for (const entry of old)
-      addPointEntry(
-        round.event_id,
-        entry.player_id,
-        -entry.amount,
-        'reversal',
-        `reverse:${entry.id}`,
-        `Korrektur: ${round.title}`,
-        actorId,
-        { reason, roundId: round.id },
-        entry.id,
-      );
     db.prepare('UPDATE betting_rounds SET revision = revision + 1 WHERE id = ?').run(round.id);
     db.prepare('UPDATE betting_tips SET payout = stake WHERE round_id = ?').run(round.id);
     db.prepare("UPDATE betting_rounds SET status = 'refunded', result_key = NULL, settled_at = ? WHERE id = ?").run(
       Date.now(),
       round.id,
     );
+    bookBettingMarket(fresh.group_id, fresh.event_id, fresh.id, `Storno: ${reason}`, actorId);
     writeAdminAudit({ actorPlayerId: actorId, groupId: fresh.group_id, action: 'betting_settlement_voided',
       targetType: 'betting_round', targetId: fresh.id, details: { reason } });
   }).immediate();
@@ -642,27 +626,6 @@ export function rebookCorrectedRounds(rounds: BettingRound[], correction: Bettin
     )
       continue;
     requirePointsAdmin(round.group_id, correction.actorId);
-    const previous = db
-      .prepare(
-        "SELECT id,player_id,amount FROM point_entries WHERE event_id = ? AND json_extract(details,'$.roundId') = ? AND json_extract(details,'$.revision') = ? AND source = 'tip'",
-      )
-      .all(round.event_id, round.id, round.revision) as Array<{
-      id: string;
-      player_id: string;
-      amount: number;
-    }>;
-    for (const entry of previous)
-      addPointEntry(
-        round.event_id,
-        entry.player_id,
-        -entry.amount,
-        'reversal',
-        `reverse:${entry.id}`,
-        `Korrektur: ${round.title}`,
-        correction.actorId,
-        { reason: correction.reason, roundId: round.id, revision: round.revision },
-        entry.id,
-      );
     db.prepare(
       "UPDATE betting_rounds SET revision = revision + 1, status = 'locked', result_key = NULL, settled_at = NULL WHERE id = ?",
     ).run(round.id);
@@ -672,6 +635,7 @@ export function rebookCorrectedRounds(rounds: BettingRound[], correction: Bettin
       settleRound(fresh, null, `Korrektur: ${correction.reason}`, Date.now(), correction.actorId);
     else if (source.finished)
       settleRound(fresh, source.winner, `Korrektur: ${correction.reason}`, Date.now(), correction.actorId);
+    else bookBettingMarket(fresh.group_id, fresh.event_id, fresh.id, `Korrektur: ${correction.reason}`, correction.actorId);
     // If a corrected semifinal reopens the tournament, the unchanged outright
     // pool waits for the new final with its original, immutable stakes.
     writeAdminAudit({

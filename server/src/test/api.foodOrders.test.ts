@@ -655,7 +655,7 @@ test('order Orga rewards count distinct other buyers, follow every tier and reve
     orga: 6,
     playing: 0,
     betting: 0,
-    wallet: 0,
+    wallet: 100,
   });
   const journal = readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer);
   backfillCompetitionPoints();

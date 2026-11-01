@@ -3,8 +3,6 @@ import { db } from '../db';
 import { requireGroupRole } from '../groupAuthorization';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 import {
-  addPointEntry,
-  deductPoints,
   ensurePointAccounts,
   pointParticipants,
   pointStandings,
@@ -12,8 +10,9 @@ import {
   pointsSettings,
   requirePointsOpen,
   requirePointsVisible,
-  rewardBudget,
   wallet,
+  walletEntries,
+  BETTING_START_POINTS,
 } from '../points';
 import {
   createBettingRound,
@@ -73,22 +72,12 @@ pointsRouter.get('/', (req, res) => {
   ensurePointAccounts(eventId);
   reconcileBetting(eventId);
   const settings = pointsSettings(eventId) ?? null;
-  const entries = db
-    .prepare(
-      `SELECT e.*, p.name AS actorName FROM point_entries e LEFT JOIN players p ON p.id = e.actor_id
-    WHERE e.event_id = ? AND e.player_id = ? ORDER BY e.created_at, e.rowid`,
-    )
-    .all(eventId, req.player!.id);
+  const entries = walletEntries(eventId, req.player!.id);
   const rounds = (
     db
       .prepare('SELECT * FROM betting_rounds WHERE event_id = ? ORDER BY created_at DESC')
       .all(eventId) as BettingRound[]
   ).map((r) => roundView(r, req.player!.id));
-  const rewards = db
-    .prepare(
-      `SELECT r.*, t.title, t.status FROM points_task_rewards r JOIN checklist_tasks t ON t.id = r.task_id WHERE r.event_id = ?`,
-    )
-    .all(eventId);
   res.json({
     eventId,
     categoryBalances: readPointsBalances(req.group!.id, eventId, req.player!.id),
@@ -97,16 +86,15 @@ pointsRouter.get('/', (req, res) => {
     wallet: wallet(eventId, req.player!.id),
     entries,
     rounds,
-    rewards,
-    budget: rewardBudget(eventId),
     standings: pointStandings(eventId),
   });
 });
 pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
   const eventId = res.locals.eventId as string;
   const body = req.body ?? {};
-  const initial = integer(body.initialPoints ?? 100, 'Grundstock', 0, 10000);
-  const budget = integer(body.orgaBudget ?? 400, 'Orga-Budget', 0, 1000000);
+  const initial = BETTING_START_POINTS;
+  if (body.initialPoints !== undefined && body.initialPoints !== initial)
+    throw new PointsError('Das Wett-Startguthaben beträgt fest 100 Punkte.', 400);
   const maxStake = integer(body.maxStake ?? 10, 'Maximaler Einsatz', 1, 1000);
   const daily = integer(body.dailyLimit ?? 30, 'Tageskontingent', maxStake, 10000);
   const rounds = integer(body.maxRounds ?? 6, 'Tipprunden', 0, 100);
@@ -122,8 +110,6 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
     if (previous && previous.closed_at !== null) throw new PointsError('Die Punktewertung ist abgeschlossen.');
     if (previous?.configured_at != null && initial !== previous.initial_points)
       throw new PointsError('Der Grundstock kann nach Aktivierung nicht geändert werden.');
-    const used = rewardBudget(eventId);
-    if (budget < used.issued + used.reserved) throw new PointsError('Das Budget ist bereits durch Aufgaben gebunden.');
     const { count } = db.prepare('SELECT COUNT(*) AS count FROM betting_rounds WHERE event_id = ?').get(eventId) as {
       count: number;
     };
@@ -136,13 +122,7 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
       VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET orga_budget=excluded.orga_budget,
       initial_points=excluded.initial_points,configured_at=COALESCE(points_settings.configured_at,excluded.created_at),
       max_stake=excluded.max_stake,daily_limit=excluded.daily_limit,max_rounds=excluded.max_rounds,prize_info=excluded.prize_info`,
-    ).run(eventId, req.group!.id, initial, budget, maxStake, daily, rounds, Date.now(), prizeInfo.trim());
-    if (previous && initial !== previous.initial_points) {
-      for (const entry of db.prepare("SELECT id,player_id FROM point_entries WHERE event_id = ? AND source = 'start'").all(eventId) as Array<{id: string; player_id: string}>) {
-        addPointEntry(eventId, entry.player_id, initial - previous.initial_points, 'correction', `initial-config:${entry.player_id}`,
-          'Grundstock angepasst', req.player!.id, { previous: previous.initial_points, initial }, entry.id);
-      }
-    }
+    ).run(eventId, req.group!.id, initial, 0, maxStake, daily, rounds, Date.now(), prizeInfo.trim());
     ensurePointAccounts(eventId);
   })();
   writeAdminAudit({
@@ -153,7 +133,6 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
     targetId: eventId,
     details: {
       initialPoints: initial,
-      orgaBudget: budget,
       maxStake,
       dailyLimit: daily,
       maxRounds: rounds,
@@ -169,13 +148,7 @@ pointsRouter.post('/tasks/:id/reward', requireGroupRole('admin'), (_req, res) =>
 });
 pointsRouter.get('/admin/entries', requireGroupRole('admin'), (req, res) => {
   const eventId = res.locals.eventId as string;
-  const entries = db
-    .prepare(
-      `SELECT e.*,p.name AS playerName,a.name AS actorName FROM point_entries e JOIN players p ON p.id = e.player_id LEFT JOIN players a ON a.id = e.actor_id
-    WHERE e.event_id = ? ORDER BY e.created_at DESC,e.rowid DESC`,
-    )
-    .all(eventId);
-  res.json({ entries, participants: pointParticipants(req.group!.id, eventId), budget: rewardBudget(eventId) });
+  res.json({ entries: walletEntries(eventId), participants: pointParticipants(req.group!.id, eventId) });
 });
 pointsRouter.get('/admin/journal', requireGroupRole('admin'), (req, res) => {
   if (syncCompetitionPoints(req.group!.id, res.locals.eventId))
@@ -184,7 +157,7 @@ pointsRouter.get('/admin/journal', requireGroupRole('admin'), (req, res) => {
       s.account, s.source_key AS sourceKey, a.actor_player_id AS actorId, actor.name AS actorName
     FROM points_journal j JOIN points_sources s ON s.id = j.source_id JOIN players p ON p.id = s.player_id
     JOIN events event ON event.id = s.event_id AND event.group_id = ?
-    LEFT JOIN admin_log a ON a.target_id = j.id AND a.target_type = 'points_journal' AND a.action = 'category_points_corrected'
+    LEFT JOIN admin_log a ON a.target_id = j.id AND a.target_type = 'points_journal' AND a.action IN ('category_points_corrected','betting_journal_corrected')
     LEFT JOIN players actor ON actor.id = a.actor_player_id
     WHERE s.event_id = ? ORDER BY j.created_at DESC, j.rowid DESC`).all(req.group!.id, res.locals.eventId);
   res.json({ entries });
@@ -196,14 +169,8 @@ pointsRouter.post('/admin/journal/:id/correct', requireGroupRole('admin'), (req,
   if (result.changed) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json(result);
 });
-pointsRouter.post('/entries/:id/deduct', requireGroupRole('admin'), (req, res) => {
-  const eventId = res.locals.eventId as string;
-  const amount = integer(req.body?.amount, 'Punkte', 1, 1000000);
-  const reason = text(req.body?.reason, 'Begründung');
-  const requestId = text(req.body?.requestId, 'Vorgangskennung', 100);
-  const changed = deductPoints(eventId, req.params.id, amount, reason, req.player!.id, requestId);
-  if (changed) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
-  res.json({ ok: true });
+pointsRouter.post('/entries/:id/deduct', requireGroupRole('admin'), (_req, res) => {
+  res.status(409).json({ error: 'Wettguthaben wird ausschließlich durch Marktkorrektur oder Storno korrigiert.' });
 });
 pointsRouter.post('/rounds', requireGroupRole('admin'), (req, res) => {
   const eventId = res.locals.eventId as string;
@@ -270,14 +237,6 @@ pointsRouter.post('/rounds/:id/refund', requireGroupRole('admin'), (req, res) =>
     req.player!.id,
     text(req.body?.reason, 'Begründung'),
   );
-  writeAdminAudit({
-    actorPlayerId: req.player!.id,
-    groupId: req.group!.id,
-    action: 'betting_round_refunded',
-    targetType: 'betting_round',
-    targetId: req.params.id,
-    details: { reason: req.body.reason },
-  });
   resolvePushTopic(`betting-open:${req.params.id}`, false, { groupId: req.group!.id, eventId });
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json({ ok: true });

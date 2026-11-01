@@ -1,4 +1,4 @@
-import { reconcileBetting, assertCompetitionEditable } from '../betting';
+import { withBettingAccounting, reconcileBetting, assertCompetitionEditable } from '../betting';
 import { syncCompetitionPoints } from '../orgaPoints';
 // Matchmaking endpoint (FR-16..18): draws balanced teams for a game from a
 // set of present players, using their skill ratings. Stateless — every call
@@ -513,7 +513,7 @@ matchmakingRouter.delete('/draws/:id', requireGroupRole('admin'), requireRecentR
 
   assertCompetitionEditable(req.group!.id, draw.event_id, 'draw', draw.id);
 
-  db.transaction(() => {
+  withBettingAccounting(draw.event_id, () => {
     if (draw.match_id) db.prepare('DELETE FROM matches WHERE id = ? AND group_id = ?').run(draw.match_id, req.group!.id);
     db.prepare('DELETE FROM matchmaking_draws WHERE id = ? AND group_id = ?').run(draw.id, req.group!.id);
     syncCompetitionPoints(req.group!.id, draw.event_id);
@@ -525,8 +525,7 @@ matchmakingRouter.delete('/draws/:id', requireGroupRole('admin'), requireRecentR
       targetId: draw.id,
       details: { hadResult: Boolean(draw.match_id) },
     });
-  })();
-  reconcileBetting(draw.event_id);
+  });
   broadcast(Events.matchmakingDrawsChanged, { id: draw.id, deleted: true }, { groupId: req.group!.id, eventId: draw.event_id });
   if (draw.match_id) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: draw.event_id });
   res.status(204).end();
@@ -604,11 +603,13 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   // neighbors in the first place (avoidAdjacentOpponents was on for it).
   const seatConflicts = row.seat_pairs_considered > 0 ? applySeatConflicts(req.group!.id, row.event_id, teams) : 0;
 
-  db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?').run(
-    JSON.stringify(teams),
-    seatConflicts,
-    row.id
-  );
+  withBettingAccounting(row.event_id, () => {
+    db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?').run(
+      JSON.stringify(teams),
+      seatConflicts,
+      row.id
+    );
+  });
 
   const updated = db
     .prepare(
@@ -623,7 +624,6 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
     .get(row.id) as DrawRow;
 
   const draw = parseDrawRow(updated);
-  reconcileBetting(row.event_id);
   broadcast(Events.matchmakingDrawsChanged, draw, {
     groupId: req.group!.id,
     eventId: deliveryEventId(row.event_id),

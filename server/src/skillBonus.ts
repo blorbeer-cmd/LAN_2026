@@ -2,6 +2,7 @@
 // entitlement state. Journal sums remain the only financial balances.
 import { db, OUTSIDE_EVENTS_ID } from './db';
 import { POINTS_ACCOUNTS, readPointsSource, recordPointsEntitlements } from './pointsJournal';
+import { isResetPointsSource } from './pointsReset';
 
 export const SKILL_BONUS_SOURCE = 'bonus:skills';
 export const SKILL_BONUS_POINTS = 5;
@@ -40,6 +41,7 @@ export function grantSkillCompletionBonus(eventId: string): boolean {
         .all(eventId, SKILL_BONUS_SOURCE, SKILL_BONUS_POINTS, event.group_id) as Array<{ player_id: string }>;
       let changed = false;
       for (const { player_id: playerId } of eligible) {
+        if (isResetPointsSource(eventId, playerId, SKILL_BONUS_SOURCE)) continue;
         for (const account of POINTS_ACCOUNTS)
           db.prepare(
             `INSERT OR IGNORE INTO points_accounts

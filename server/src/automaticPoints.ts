@@ -1,6 +1,7 @@
 // Reconcile automatic domain entitlements without treating cached amounts as balances.
 import { db, OUTSIDE_EVENTS_ID } from './db';
 import { readPointsSource, recordPointsEntitlements, POINTS_ACCOUNTS } from './pointsJournal';
+import { isResetPointsSource } from './pointsReset';
 
 export interface AutomaticAward {
   playerId: string;
@@ -31,7 +32,7 @@ export function syncAutomaticPoints(
       const key = (playerId: string, sourceKey: string) => JSON.stringify([playerId, sourceKey]);
       const desired = new Map(
         deriveAwards()
-          .filter((award) => knownPlayers.has(award.playerId))
+          .filter((award) => knownPlayers.has(award.playerId) && !isResetPointsSource(eventId, award.playerId, award.sourceKey))
           .map((award) => [
             key(award.playerId, award.sourceKey),
             {

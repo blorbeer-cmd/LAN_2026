@@ -30,7 +30,9 @@ Der Aufrufer darf Außenplatzierung und verfügbare Breite bestimmen. Keine gefi
 
 Die Eingabe folgt der aufsteigenden Journalreihenfolge einschließlich stabiler Reihenfolge bei gleicher
 Zeit. Die Summe beginnt bei null; jede Buchung verändert die Höhe an ihrem tatsächlichen Zeitpunkt.
-Reservierte Einsätze sind kein Punkteverlust. Auszahlungen werden als Nettoänderung gebucht.
+Der Wallet-Verlauf zeigt verfügbare Mittel: Reservierungen senken sie, Freigaben erhöhen sie;
+dies ist kein Wett-Nettogewinn. Die getrennte Wettkategorie enthält ausschließlich Nettoänderungen
+gültiger Abrechnungen.
 Negative Konten bleiben darstellbar. Die API-Zeitnamen `createdAt` und `created_at` sind gleichwertig. Ein einzelner Zeitpunkt erzeugt keine Division durch null.
 Linie: `--accent`; Grundlinie: `--border`; Beschriftung: `--text-muted`, `--font`, `--font-size-sm`.
 Die SVG-Koordinaten beschreiben ausschließlich Datengeometrie, keine Controlmaße. Grenzen
@@ -39,7 +41,7 @@ Telefonen in der normalen Textgröße lesbar bleiben.
 
 ## 7. Erreichbare Zustände
 
-Grundstock allein; zusätzliche Orga-Buchungen; Gewinne und Verluste; Erstattungen mit Netto null;
+Startguthaben allein; Reservierungen/Freigaben im Wallet und getrennte Kategorie-Gutschriften; Gewinne und Verluste; Erstattungen mit Netto null;
 negative Korrektur; abgeschlossenes Konto.
 
 ## 8. Accessibility
@@ -67,4 +69,4 @@ Dialoggeometrie. Controls folgen dem Controls-Vertrag; keine neuen Controlvarian
 CSS-Eigentümer oder befristeten Ausnahmen. Kategorie-Details schließen bei Wechsel des
 Kontos/Events oder ausgeblendeten Teilnehmeransichten. Admin-Details bleiben beim Ausblenden
 verfügbar und schließen bei Rollen-/Kontextwechsel. Orga-/Spiel-Ansprüche können mit Begründung
-und aktueller Revision korrigiert werden, auch eigene; Wett-/Wallet-Korrekturwege bleiben offen.
+und aktueller Revision korrigiert werden, auch eigene; Wett-/Wallet-Korrekturen erfolgen ausschließlich als begründete Markt-Neuberechnung oder Storno.

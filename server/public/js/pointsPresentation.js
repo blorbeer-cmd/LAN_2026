@@ -1,8 +1,9 @@
 import { escapeHtml } from './format.js';
 
 export const POINT_SOURCES = Object.freeze({
-  start: 'Grundstock',
-  task: 'Orga-Aufgabe',
+  start: 'Wett-Startguthaben',
+  reservation: 'Reservierung',
+  release: 'Freigabe',
   tip: 'Wette',
   refund: 'Erstattung',
   correction: 'Korrektur',

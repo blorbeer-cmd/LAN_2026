@@ -134,7 +134,9 @@ für eine eigenmächtig geänderte Formel.
 
 ### 4.1 Wettguthaben, Märkte und Quoten
 
-Alle starten mit demselben separaten Wettguthaben. Es gehört nicht zur Gesamtwertung.
+Alle starten mit demselben separaten Wettguthaben: **fest 100 Wettpunkte pro Event**, einmalig
+auch bei später Zusage und ohne Konfiguration. Austritt und erneute Zusage erzeugen keinen
+zweiten Grundstock. Es gehört nicht zur Gesamtwertung.
 Orga- und Spielpunkte erhöhen das Wettguthaben nicht. Wetten verteilen vorhandene Einsätze
 ohne Gebühr oder Hausanteil um; es entstehen und verschwinden keine Guthabenpunkte.
 
@@ -234,8 +236,8 @@ Administrative Journal-Korrekturen bleiben davon unabhängig möglich.
 Laufende Events werden ab der Umstellung unterstützt. Offene oder übernommene Altaufgaben ohne zugesagte Belohnung wechseln ebenfalls zu festen 3 Punkten.
 Bereits erledigte, bisher unvergütete Altaufgaben werden nicht nachträglich vergütet. Bereits im
 Kategorie-Modell gewertete Aufgaben werden dagegen nach der neuen festen Regel neu berechnet.
-Vorhandene alte Belohnungszusagen und Gutschriften bleiben im bisherigen Konto erhalten. Solche
-alten belohnten Aufgaben behalten vorerst ihren bisherigen Abschlussweg ohne Wiederöffnen.
+Mit dem beschlossenen Neustart in Paket 5a werden keine alten Belohnungszusagen oder Gutschriften
+übernommen. Vorher abgeschlossene Aufgaben bleiben ohne rückwirkende Vergütung.
 
 ### 5.2 Sammelbestellungen
 
@@ -454,16 +456,16 @@ Vorgabewerte sind dafür keine Entscheidung:
 
 | Kennung | Offene Entscheidung / betroffene Umsetzung |
 |---|---|
-| U1 | Laufende Events sind eingeschlossen; bereits erledigte Aufgaben benötigen keine nachträgliche Vergütung, vorhandene Buchungen/Zusagen bleiben erhalten. Offen bleibt die finanzielle Übernahme alter Guthaben und Reservierungen beim späteren Wallet-Wechsel. |
+| U1 (entschieden) | Keine Übernahme bisheriger Orga-, Spiel- oder Wettpunkte für bestehende Events. Einmaliger Neustart einschließlich alter Reservierungen, Belohnungszusagen und Punkte-Endstände; Fachdaten bleiben erhalten. Historische Ansprüche werden nicht erneut nachgetragen. |
 | E1 | Laufende Events werden unterstützt. Offen bleiben die endgültige Abgrenzung nach Eventtyp sowie unveröffentlichte/beendete Events. Vorhandene Spiel-/Orga-Backfills werden durch das To-do-Paket nicht verändert. |
 | E2 | Wertungsberechtigte Teilnehmer, Testkonten und Teilnehmerbasis N samt Stichtag, späten Zusagen und Austritten. Vorhandene Konten sind nicht gleich N. |
-| W3 | Höhe und Konfigurierbarkeit des gleichen Wett-Startguthabens und dessen Vergabe bei später Zusage. |
+| W3 (entschieden) | Fest 100 separate Wettpunkte einmal pro Event und berechtigtem Teilnehmer, auch bei später Zusage. Nicht konfigurierbar; erneute Zusage zahlt nicht erneut. |
 | W4 | Wer offizielle Wettmärkte eröffnen darf. Die bestehende Adminrolle ist noch keine beschlossene Zielregel. |
 | W5 | Abschaltung beziehungsweise Übergang alter Tages-/Rundenlimits und Einsatzgrenzen; die bisherigen Werte 10/30/6 sind keine Zielvorgaben. |
 | W6 (entschieden) | Ausschließlich begründete Markt-Neuberechnung oder Storno unter Erhaltung der Nullsumme. Keine einseitigen Wallet-/Wett-Journalkorrekturen; eigene Marktkorrekturen bleiben erlaubt. |
 | W7 | Feste Restverteilung bei gleich großen größten richtigen Einsätzen und Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
-| O3 | Neue Aufgaben verwenden keine alten Orga-Budgets oder vergüteten Helferplätze. Alte Zusagen bleiben im bisherigen Pfad; dessen vollständige finanzielle Ablösung folgt mit dem Wallet. |
-| O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben mit expliziter LAN-Belohnung behalten vorerst ihren bisherigen Abschlussweg ohne Wiederöffnen. |
+| O3 (umgesetzt) | Neue Aufgaben verwenden kein Orga-Budget und keine vergüteten Helferplätze. Alte Zusagen und der alte Finanzpfad entfallen mit dem beschlossenen Neustart. |
+| O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben erhalten keine alten LAN-Auszahlungen mehr. |
 | S1 | Turnierplatzierungsbonus bei geteilten Plätzen. Der Ist-Code vergibt in Ligen den vollen Bonus des geteilten Rangs (beispielsweise 5/5/1); die Zielregel ist noch nicht ausdrücklich festgelegt. |
 | M1 | Meldungen gegen Event-Ersteller ohne Adminrolle oder bei fehlendem zuständigen Admin; Vertretung und Bearbeitung. |
 | H1 | Korrektur des rechnerisch nicht allgemein zutreffenden Teamzahl-Durchschnittshinweises aus Abschnitt 3.4. |
@@ -483,15 +485,15 @@ Einheitenmix im Spielfilter beziehungsweise über Events) sind im Review-Fix adr
 
 Die Spielberechnung, automatische Spiel- und Orga-Gutschriften für Wettbewerbe, Bestellungen und vollständige Skill-Einschätzungen sowie die Journalbasis mit Admin-Korrekturen, persönliche Kategorie-Rohwerte/Verläufe und die neue To-do-Vergütung
 sind umgesetzt. Die bisherige sichtbare
-LAN-Punkte-/Wettfunktion verwendet noch ihr gemeinsames Konto. Ihre Umstellung auf die drei
-Kategorien, das separate Wallet und die weiteren Fachregeln erfolgt in den folgenden Paketen.
+LAN-Punkte-/Wettfunktion verwendet jetzt das separate Wallet und das Wettjournal. Vorherige Punktebestände
+werden nicht übernommen. Die vollständigen Marktregeln und die Kategorie-/Gesamtwertung folgen weiter.
 Bestehende Grenzen und Vorgabewerte der bisherigen Funktion entscheiden keine offenen Regeln
 dieses Zielkonzepts.
 
 | Bereich | Vermerkte Folgeänderung |
 |---|---|
 | Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln, Turnierboni bleiben 5/3/1. [Automatische Journalbuchungen](../server/src/playingPoints.ts) erfolgen bei Ergebnissen, Korrekturen, Löschungen und beim Nachtragen bestehender Ergebnisse. |
-| Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Spielfilter und eventübergreifende Auswertungen verwenden ausschließlich Spielpunkte. Eine ausdrücklich gewählte einzelne konfigurierte LAN ohne Spielfilter, Hall of Fame und Event-Export nutzen bis zum Umstellungspaket noch das alte gemeinsame Konto. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
+| Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Spielfilter und eventübergreifende Auswertungen verwenden ausschließlich Spielpunkte. Die einzelne konfigurierte LAN ohne Spielfilter, Hall of Fame und Event-Export verwenden seit Paket 5a vorläufig Spiel-Rohwerte; die Wallet-Summe wird nicht als Gesamtwertung ausgegeben. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
 | Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Umgesetzt sind außerdem persönliche Kategorie-Rohwerte, Verlauf und Admin-Korrektur-Oberfläche. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler anbinden sowie Kategorie-Platzpunkte berechnen. |
 | Wettmärkte | Vorläufige Pool-Quoten sichtbar machen, formatabhängige Remis-Auswahl anbieten, die beschlossenen Erstattungen und Restverteilung umsetzen. W1, W2 und die offenen Randfälle nicht vorwegnehmen. |
 | Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit festen 3 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Ebenfalls umgesetzt: 2 Punkte je eingetragener Ankunft/Abreise beim Eventstart sowie 3 Punkte für abgeschlossene Umfragen und 2 Punkte für abgeschlossene Spieleabstimmungen mit jeweils mindestens drei Teilnehmenden. Die ausdrücklich offenen Regeln bleiben offen. |

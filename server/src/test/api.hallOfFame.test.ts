@@ -6,6 +6,7 @@ import request from 'supertest';
 import { createTestApp, TEST_ADMIN_ID, DEFAULT_GROUP_ID } from './testApp';
 import { createEvent, setParticipants } from '../events';
 import { setActiveEventForPlayer } from '../eventContext';
+import { recordPointsEntitlements } from '../pointsJournal';
 
 const app = createTestApp();
 let gameId: string;
@@ -113,22 +114,13 @@ test('frozen LAN points retain shared champions, shared places and equal all-tim
     });
     setParticipants(event.id, players);
     setActiveEventForPlayer(TEST_ADMIN_ID, event.id);
-    assert.equal((await request(app).put('/api/points/settings').send({ initialPoints })).status, 200);
+    assert.equal((await request(app).put('/api/points/settings').send({ initialPoints: 100 })).status, 200);
     assert.equal((await request(app).patch(`/api/events/${event.id}/points-visibility`).send({ visible: true, revision: 0 })).status, 200);
-    if (initialPoints > 0) {
-      const entries = (await request(app).get('/api/points/admin/entries')).body.entries;
-      const lowerCredit = entries.find(
-        (entry: { player_id: string; source: string }) => entry.player_id === players[3] && entry.source === 'start',
-      );
-      assert.equal(
-        (
-          await request(app)
-            .post(`/api/points/entries/${lowerCredit.id}/deduct`)
-            .send({ amount: 10, reason: 'Lower fourth place', requestId: 'hof-lower' })
-        ).status,
-        200,
-      );
-    }
+    if (initialPoints > 0) recordPointsEntitlements(players.map((playerId, index) => ({
+      groupId: DEFAULT_GROUP_ID, eventId: event.id, playerId, account: 'playing' as const,
+      sourceKey: 'fixture:shared-standings', title: 'Shared playing raw scores', expectedRevision: 0,
+      total: index === 3 ? 90 : 100,
+    })));
     assert.equal((await request(app).post('/api/points/close').send({})).status, 200);
     const response = await request(app).get(`/api/hall-of-fame?eventId=${event.id}`);
     assert.equal(response.status, 200);

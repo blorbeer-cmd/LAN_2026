@@ -13,7 +13,7 @@ import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication, withBodyPlayerIdentity } from '../sessions';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { broadcastLiveBoards } from '../liveStatus';
-import { assertGameEditable, reconcileBetting } from '../betting';
+import { assertGameEditable, withBettingAccounting } from '../betting';
 import { syncCompetitionPoints } from '../orgaPoints';
 import { grantGroupSkillBonuses } from '../skillBonus';
 
@@ -529,7 +529,7 @@ gamesRouter.delete(
   requireRecentReauthentication,
   (req, res) => {
     const existing = req.groupResource as GameRow;
-    const affectedEvents = db.transaction(() => {
+    const affectedEvents = withBettingAccounting(undefined, () => {
       assertGameEditable(req.group!.id, existing.id);
       const creditedBefore = grantGroupSkillBonuses(req.group!.id);
       const events = db.prepare(`SELECT event_id FROM matches WHERE game_id = ? AND group_id = ?
@@ -540,8 +540,7 @@ gamesRouter.delete(
       const creditedAfter = grantGroupSkillBonuses(req.group!.id);
       return [...new Set([...events.map((event) => event.event_id), ...creditedBefore, ...creditedAfter])]
         .map((event_id) => ({ event_id }));
-    })();
-    reconcileBetting();
+    });
     for (const event of affectedEvents) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: event.event_id });
     writeAdminAudit({
       actorPlayerId: req.player?.id,

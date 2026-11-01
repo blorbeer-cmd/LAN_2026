@@ -112,11 +112,11 @@ after(async () => {
   rmSync(fixtureDir, { recursive: true, force: true });
 });
 
-test('real LAN account, automatic orga credits, own-game betting notification, history and administrative deduction work on phone and desktop', async () => {
+test('real LAN account, automatic orga credits, own-game betting notification, history and market voids work on phone and desktop', async () => {
   await navigate(admin, 'pointsAdmin');
   await admin.locator('[name="prizeInfo"]').fill('Respawn-Pokal; bei Gleichstand Losentscheid.');
   await admin.getByRole('button', { name: 'Regeln speichern', exact: true }).click();
-  await admin.getByText('Budget verfügbar', { exact: true }).waitFor();
+  await admin.getByText('Jeder Teilnehmer erhält einmalig 100 Wettpunkte pro Event, auch bei später Zusage. Orga- und Spielpunkte erhöhen das Wettguthaben nicht.', { exact: true }).waitFor();
   for (const width of [320, 390, 1440]) {
     await admin.setViewportSize({ width, height: 900 });
     const fits = await admin.evaluate(
@@ -133,15 +133,6 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     title: 'Netzwerkkabel einsammeln',
   });
   const taskId = task.id ?? task.tasks[0].id;
-  // Exercise an explicit pre-upgrade promise alongside the new category model.
-  const legacyFixture = new Database(fixtureDb);
-  legacyFixture.transaction(() => {
-    legacyFixture.prepare("UPDATE checklist_tasks SET points_value=0, points_model='legacy' WHERE id=?").run(taskId);
-    legacyFixture.prepare(`INSERT INTO points_task_rewards(task_id,event_id,group_id,per_person,slots,created_at)
-      SELECT id,event_id,group_id,5,1,created_at FROM checklist_tasks WHERE id=?`).run(taskId);
-    legacyFixture.prepare('UPDATE points_settings SET orga_allocated=orga_allocated+5 WHERE event_id=?').run(eventId);
-  })();
-  legacyFixture.close();
   await navigate(admin, 'checklist');
   await admin.locator(`[data-task-detail="${taskId}"]`).click();
   assert.equal(await admin.locator('[data-detail-reward]').count(), 0, 'per-task reward setup is retired');
@@ -156,16 +147,16 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.locator('[data-detail-done]').click();
   await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
   const hidden = await api(`/api/points?eventId=${eventId}`);
-  assert.equal(hidden.standings.find((row: { playerId: string }) => row.playerId === alice.id).points, 105);
+  assert.equal(hidden.wallet.total, 100);
   await setPointsVisibility(true);
   await navigate(member, 'points');
-  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('105', { exact: true }).first().waitFor();
+  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
   await member.getByText('Preis & Vergabe: Respawn-Pokal; bei Gleichstand Losentscheid.', { exact: true }).waitFor();
   const standings = member.getByRole('list', { name: 'LAN-Rangliste', exact: true });
   await standings.getByText('Points Bob', { exact: true }).waitFor();
   await api(`/api/players/${bob.id}`, 'PATCH', { name: 'AAA Points Bob' }, bob.cookie);
   await standings.getByText('AAA Points Bob', { exact: true }).waitFor();
-  assert.match(await standings.locator('.ranked-list-row').nth(1).innerText(), /AAA Points Bob/);
+  assert.match(await standings.locator('.ranked-list-row').first().innerText(), /AAA Points Bob/);
   assert.equal(await standings.getByText('Points Bob', { exact: true }).count(), 0);
   await member.locator('[data-point-entry]').first().click();
   await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).waitFor();
@@ -175,11 +166,11 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   assert.equal(await member.locator('.desktop-nav-btn[data-view="points"]').count(), 0);
   await setPointsVisibility(true);
   await navigate(member, 'points');
-  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('105', { exact: true }).first().waitFor();
-  await member.locator('[data-points-source]').selectOption('task');
+  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
+  await member.locator('[data-points-source]').selectOption('start');
   assert.equal(await member.getByRole('region', { name: 'Punkteverlauf', exact: true }).locator('.points-journal li').count(), 1);
   await member.locator('[data-point-entry]').click();
-  await member.getByRole('dialog').getByText('Orga-Aufgabe', { exact: true }).waitFor();
+  await member.getByRole('dialog').getByText('Wett-Startguthaben', { exact: true }).first().waitFor();
   await member.keyboard.press('Escape');
   await member.locator('[data-points-source]').selectOption('');
 
@@ -216,7 +207,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     teams: draw.teams.map((team: { players: Array<{ id: string }> }) => ({ playerIds: team.players.map((p) => p.id) })),
     winnerTeamIndex: Number(ownOutcome),
   });
-  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('110', { exact: true }).first().waitFor();
+  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('105', { exact: true }).first().waitFor();
   await member.getByText(/Auszahlung 15 P. · Netto \+5 P./).waitFor();
 
   for (const width of [320, 390, 1440]) {
@@ -228,42 +219,22 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     assert.ok(geometry.scroll <= geometry.viewport, `points at ${width}px: ${JSON.stringify(geometry)}`);
     assert.equal(await member.getByRole('region', { name: 'Punkteverlauf', exact: true }).locator('.points-chart svg[role="img"]').count(), 1);
   }
-  await navigate(admin, 'pointsAdmin');
-  const credit = (await api(`/api/points/admin/entries?eventId=${eventId}`)).entries.find(
-    (entry: { source: string; player_id: string }) => entry.source === 'task' && entry.player_id === alice.id,
-  );
-  assert.deepEqual(
-    await admin.evaluate(() => ({ secure: isSecureContext, uuid: typeof crypto.randomUUID })),
-    { secure: false, uuid: 'undefined' },
-    'deduction must work on a plain HTTP LAN origin without randomUUID',
-  );
-  await admin.locator(`[data-deduct-entry="${credit.id}"]`).click();
-  await admin.getByRole('dialog').locator('[name="amount"]').fill('2');
-  await admin.getByRole('dialog').locator('[name="reason"]').fill('Nur teilweise erledigt');
-  await admin.getByRole('dialog').getByRole('button', { name: 'Punkte entziehen', exact: true }).click();
+  await navigate(admin, 'points');
+  assert.deepEqual(await admin.evaluate(() => ({ secure: isSecureContext, uuid: typeof crypto.randomUUID })),
+    { secure: false, uuid: 'undefined' }, 'market corrections also work on HTTP LAN origins');
+  await admin.locator(`[data-refund-round="${round.id}"]`).click();
+  await admin.getByRole('dialog').locator('textarea').fill('Ungültiges Spielergebnis');
+  await admin.getByRole('dialog').getByRole('button', { name: 'Abrechnung stornieren', exact: true }).click();
   await admin.locator('.modal-backdrop').waitFor({ state: 'detached' });
-  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('108', { exact: true }).first().waitFor();
-  await member.locator('[data-points-source]').selectOption('correction');
-  await member.locator('[data-point-entry]').click();
-  await member.getByRole('dialog').getByText('Nur teilweise erledigt', { exact: true }).waitFor();
-  await member.keyboard.press('Escape');
-
-  // Arrange three equal final balances. Neither names nor sports wins may
-  // choose a sole champion when the LAN points are tied.
-  const entries = (await api(`/api/points/admin/entries?eventId=${eventId}`)).entries;
-  for (const [playerId, amount] of [
-    [alice.id, 13],
-    [myId, 5],
-  ] as const) {
-    const start = entries.find(
-      (entry: { source: string; player_id: string }) => entry.source === 'start' && entry.player_id === playerId,
-    );
-    await api(`/api/points/entries/${start.id}/deduct?eventId=${eventId}`, 'POST', {
-      amount,
-      reason: 'Arrange tied final standings',
-      requestId: `tie-${playerId}`,
-    });
-  }
+  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
+  assert.equal((await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie)).categoryBalances.betting, 0);
+  // The interim standings show playing raw scores. Prepare a shared zero score
+  // through the supported category correction API, without editing any wallet.
+  const entries = (await api(`/api/points/admin/journal?eventId=${eventId}`)).entries;
+  for (const entry of entries.filter((row: { account: string; amount: number }) => row.account === 'playing' && row.amount > 0))
+    await api(`/api/points/admin/journal/${entry.id}/correct?eventId=${eventId}`, 'POST',
+      { total: 0, revision: entry.revision, reason: 'Arrange tied playing raw scores' });
+  await navigate(admin, 'pointsAdmin');
   await admin.locator('[data-points-close]').click();
   await admin.getByRole('alertdialog').getByRole('button', { name: 'Endwertung festschreiben', exact: true }).click();
   await admin.getByRole('button', { name: 'Wertung wieder öffnen', exact: true }).waitFor();
@@ -272,7 +243,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   assert.equal(typeof final.settings.closed_at, 'number', 'confirming the dialog must persist the final snapshot');
   assert.deepEqual(
     final.standings.map((row: { points: number }) => row.points),
-    [95, 95, 95],
+    [0, 0, 0],
   );
 
   await navigate(admin, 'hallOfFame');

@@ -1,12 +1,14 @@
 import { db } from './db';
-import { PointsError } from './pointsAccess';
+import { PointsError, requirePointsAdmin } from './pointsAccess';
+import { writeAdminAudit } from './adminAudit';
 import { readPointsSource, recordPointsEntitlements, type PointsEntitlement } from './pointsJournal';
 
 // A market has one canonical claim per player and account throughout its
 // lifecycle. Reservations debit only the wallet; settlement replaces that
 // claim with payout minus stake and records the same net in the betting score.
-export function bookBettingMarket(groupId: string, eventId: string, roundId: string, reason: string): void {
+export function bookBettingMarket(groupId: string, eventId: string, roundId: string, reason: string, actorId: string | null = null): void {
   db.transaction(() => {
+    if (actorId) requirePointsAdmin(groupId, actorId);
     const round = db.prepare(`SELECT r.title,r.status,s.closed_at FROM betting_rounds r
       JOIN points_settings s ON s.event_id=r.event_id
       WHERE r.id=? AND r.group_id=? AND r.event_id=?`).get(roundId, groupId, eventId) as
@@ -46,6 +48,9 @@ export function bookBettingMarket(groupId: string, eventId: string, roundId: str
           expectedRevision: current.revision, title: round.title.replace(/\0/g, '').slice(0, 200), reason });
       }
     }
-    recordPointsEntitlements(changes);
+    const results = recordPointsEntitlements(changes);
+    if (actorId) for (const result of results) if (result.changed)
+      writeAdminAudit({ actorPlayerId: actorId, groupId, action: 'betting_journal_corrected',
+        targetType: 'points_journal', targetId: result.entryId!, details: { eventId, roundId, reason } });
   }).immediate();
 }

@@ -1,4 +1,4 @@
-import { reconcileBetting, assertTournamentEditable, settledTournamentRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
+import { withBettingAccounting, reconcileBetting, assertTournamentEditable, settledTournamentRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
 // Tournaments (FR-33): pick a game, group present players into teams, and
 // get either a single-elimination bracket ("Turnierbaum", optionally with a
 // third-place match) or a round-robin
@@ -579,7 +579,7 @@ tournamentsRouter.post('/', (req, res) => {
   const resolvedLobbyName = isNonEmptyString(lobbyName, 60) ? (lobbyName as string).trim() : null;
   const resolvedLobbyPassword = isNonEmptyString(lobbyPassword, 60) ? (lobbyPassword as string).trim() : null;
 
-  const create = db.transaction(() => {
+  const create = () => withBettingAccounting(eventId, () => {
     db.prepare(
       `INSERT INTO tournaments
          (id, event_id, game_id, name, format, two_legged, track_score, third_place_match, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password, group_id, created_by)
@@ -688,7 +688,6 @@ tournamentsRouter.post('/', (req, res) => {
     }
     throw error;
   }
-  reconcileBetting(eventId);
   if (drawId) {
     broadcast(
       Events.matchmakingDrawsChanged,
@@ -842,7 +841,7 @@ function saveTournamentResult(req: Request, res: Response) {
   // semifinal also readies the third-place match, which is added here too.
   let readyNextRoundMatchIds: string[] = [];
 
-  const record = db.transaction(() => {
+  const record = () => withBettingAccounting(tournament.event_id, () => {
     const correctedRounds = isCorrection ? settledTournamentRounds(req.group!.id, tournament.id) : [];
     const correction = validateBettingCorrection(req, correctedRounds);
     const leaderboardResult = JSON.stringify({
@@ -1001,7 +1000,6 @@ function saveTournamentResult(req: Request, res: Response) {
     syncCompetitionPoints(req.group!.id, tournament.event_id);
   });
   record();
-  reconcileBetting(tournament.event_id);
   const notificationScope = {
     groupId: tournament.group_id!,
     eventId: communicationEventId(tournament.event_id),
@@ -1219,9 +1217,9 @@ tournamentsRouter.post('/:id/finish', requireGroupRole('admin'), (req, res) => {
     .get(req.params.id, req.group!.id) as { event_id: string; name: string } | undefined;
   if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   if (!requireGroupEventAccess(req, res, tournament.event_id)) return;
-  const result = db
+  const result = withBettingAccounting(tournament.event_id, () => db
     .prepare("UPDATE tournaments SET status = 'completed', ended_early = 1 WHERE id = ? AND group_id = ? AND status = 'active'")
-    .run(req.params.id, req.group!.id);
+    .run(req.params.id, req.group!.id));
   if (result.changes === 0) return res.status(409).json({ error: 'Das Turnier ist bereits beendet.' });
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -1247,7 +1245,7 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
     .get(req.params.id, req.group!.id) as { event_id: string } | undefined;
   if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   if (!requireGroupEventAccess(req, res, tournament.event_id)) return;
-  const result = db.transaction(() => {
+  const result = withBettingAccounting(tournament.event_id, () => {
     assertTournamentEditable(req.group!.id, req.params.id);
     // Preserve explicit draws from the older JSON format before their
     // fixture rows disappear. Recorded match points outlive the tournament.
@@ -1258,7 +1256,7 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
     const deleted = db.prepare('DELETE FROM tournaments WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
     syncCompetitionPoints(req.group!.id, tournament.event_id);
     return deleted;
-  })();
+  });
   if (result.changes === 0) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -1271,7 +1269,6 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
     groupId: req.group!.id,
     eventId: communicationEventId(tournament.event_id),
   });
-  reconcileBetting(tournament.event_id);
   broadcast(
     Events.tournamentsChanged,
     { type: 'deleted', tournamentId: req.params.id },

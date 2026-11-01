@@ -1,7 +1,6 @@
-import { nanoid } from 'nanoid';
 import { db } from './db';
-import { writeAdminAudit } from './adminAudit';
-import { PointsError, requirePointsAdmin } from './pointsAccess';
+import { PointsError } from './pointsAccess';
+import { readPointsBalances, readPointsSource, recordPointsEntitlements } from './pointsJournal';
 export { PointsError } from './pointsAccess';
 
 export interface PointsSettings {
@@ -19,18 +18,6 @@ export interface PointsSettings {
   visible: number;
   visibility_revision: number;
   configured_at: number | null;
-}
-export interface PointEntry {
-  id: string;
-  player_id: string;
-  amount: number;
-  source: string;
-  source_key: string;
-  title: string;
-  details: string;
-  actor_id: string | null;
-  original_id: string | null;
-  created_at: number;
 }
 export function pointsSettings(eventId: string): PointsSettings | undefined {
   return db.prepare('SELECT * FROM points_settings WHERE event_id = ?').get(eventId) as PointsSettings | undefined;
@@ -62,64 +49,52 @@ export function pointParticipants(
     )
     .all(groupId, eventId) as Array<{ id: string; name: string; color: string }>;
 }
-export function addPointEntry(
-  eventId: string,
-  playerId: string,
-  amount: number,
-  source: string,
-  key: string,
-  title: string,
-  actorId: string | null = null,
-  details: object = {},
-  originalId: string | null = null,
-): boolean {
-  const settings = pointsSettings(eventId);
-  if (!settings) throw new PointsError('Punktewertung nicht gefunden.', 404);
-  if (!Number.isSafeInteger(amount) || Math.abs(amount) > 1_000_000_000)
-    throw new PointsError('Ungültiger Punktebetrag.', 400);
-  return (
-    db
-      .prepare(
-        `INSERT OR IGNORE INTO point_entries
-    (id, group_id, event_id, player_id, amount, source, source_key, title, details, actor_id, original_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        nanoid(),
-        settings.group_id,
-        eventId,
-        playerId,
-        amount,
-        source,
-        key,
-        title,
-        JSON.stringify(details),
-        actorId,
-        originalId,
-        Date.now(),
-      ).changes === 1
-  );
-}
+export const BETTING_START_POINTS = 100;
 export function ensurePointAccounts(eventId: string): void {
   const settings = pointsSettings(eventId);
   if (!settings || settings.closed_at !== null) return;
   db.transaction(() => {
     for (const player of pointParticipants(settings.group_id, eventId)) {
-      addPointEntry(eventId, player.id, settings.initial_points, 'start', `start:${player.id}`, 'Grundstock zur LAN');
+      for (const account of ['orga', 'playing', 'betting', 'wallet'])
+        db.prepare('INSERT OR IGNORE INTO points_accounts(event_id,player_id,account,created_at) VALUES (?,?,?,?)')
+          .run(eventId, player.id, account, Date.now());
+      const source = { groupId: settings.group_id, eventId, playerId: player.id, account: 'wallet' as const, sourceKey: 'wallet:start' };
+      const current = readPointsSource(source)!;
+      if (current.revision === 0) recordPointsEntitlements([{ ...source, total: BETTING_START_POINTS,
+        expectedRevision: 0, title: 'Wett-Startguthaben' }]);
     }
-  })();
+  }).immediate();
+}
+
+export function walletEntries(eventId: string, playerId?: string) {
+  return db.prepare(`SELECT j.id,s.player_id,j.amount,s.source_key,j.title,j.created_at,
+      CASE WHEN s.source_key='wallet:start' THEN 'start'
+        WHEN j.reason='Tippeinsatz reserviert' THEN 'reservation'
+        WHEN j.reason='Tipp zurückgenommen' THEN 'release'
+        WHEN j.reason LIKE 'Storno:%' THEN 'reversal'
+        WHEN j.reason LIKE 'Korrektur:%' THEN 'correction'
+        WHEN j.reason LIKE 'Admin-Erstattung:%' OR j.reason IN ('Ungültiger Tipptopf','Wettbewerb entfernt',
+          'Wettbewerb geändert oder abgebrochen','Spiel vor Tippschluss gestartet') THEN 'refund'
+        ELSE 'tip' END AS source,
+      json_object('reason',j.reason,'roundId',CASE WHEN s.source_key LIKE 'bet:%' THEN substr(s.source_key,5) END) AS details,
+      a.actor_player_id AS actor_id,actor.name AS actorName,NULL AS original_id,
+      p.name AS playerName
+    FROM points_journal j JOIN points_sources s ON s.id=j.source_id JOIN players p ON p.id=s.player_id
+    LEFT JOIN admin_log a ON a.target_id=j.id AND a.target_type='points_journal' AND a.action='betting_journal_corrected'
+    LEFT JOIN players actor ON actor.id=a.actor_player_id
+    WHERE s.event_id=? AND s.account='wallet' ${playerId ? 'AND s.player_id=?' : ''}
+    ORDER BY j.created_at,j.rowid`).all(eventId, ...(playerId ? [playerId] : []));
 }
 export function wallet(eventId: string, playerId: string) {
-  const { total } = db
-    .prepare('SELECT COALESCE(SUM(amount),0) AS total FROM point_entries WHERE event_id = ? AND player_id = ?')
-    .get(eventId, playerId) as { total: number };
+  const settings = pointsSettings(eventId);
+  const available = settings ? readPointsBalances(settings.group_id, eventId, playerId)?.wallet ?? 0 : 0;
   const { held } = db
     .prepare(
       `SELECT COALESCE(SUM(t.stake),0) AS held FROM betting_tips t
     JOIN betting_rounds r ON r.id = t.round_id WHERE r.event_id = ? AND t.player_id = ? AND r.status IN ('open','locked')`,
     )
     .get(eventId, playerId) as { held: number };
-  return { total, held, available: total - held };
+  return { total: available + held, held, available };
 }
 export function pointStandings(eventId: string) {
   const settings = pointsSettings(eventId);
@@ -143,137 +118,9 @@ export function pointStandings(eventId: string) {
       playerId: p.id,
       name: p.name,
       color: p.color,
-      points: wallet(eventId, p.id).total,
+      points: readPointsBalances(settings.group_id, eventId, p.id)?.playing ?? 0,
       wins: 0,
       matchesPlayed: 0,
     }))
     .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'de'));
-}
-export function rewardBudget(eventId: string) {
-  const settings = pointsSettings(eventId);
-  const allocated = settings?.orga_allocated ?? 0;
-  const { issued } = db
-    .prepare("SELECT COALESCE(SUM(amount),0) AS issued FROM point_entries WHERE event_id = ? AND source = 'task'")
-    .get(eventId) as { issued: number };
-  return {
-    total: settings?.orga_budget ?? 0,
-    issued,
-    reserved: allocated - issued,
-    available: (settings?.orga_budget ?? 0) - allocated,
-  };
-}
-export function taskReward(taskId: string, playerId?: string) {
-  const reward = db
-    .prepare('SELECT per_person AS perPerson, slots FROM points_task_rewards WHERE task_id = ?')
-    .get(taskId) as { perPerson: number; slots: number } | undefined;
-  if (!reward) return null;
-  const { count } = db.prepare('SELECT COUNT(*) AS count FROM points_task_claims WHERE task_id = ?').get(taskId) as {
-    count: number;
-  };
-  const beneficiaryIds = (
-    db.prepare('SELECT player_id FROM points_task_claims WHERE task_id = ?').all(taskId) as Array<{ player_id: string }>
-  ).map((p) => p.player_id);
-  return {
-    ...reward,
-    beneficiaryIds,
-    remaining: Math.max(0, reward.slots - count),
-    mine: Boolean(
-      playerId &&
-      db.prepare('SELECT 1 FROM points_task_claims WHERE task_id = ? AND player_id = ?').get(taskId, playerId),
-    ),
-  };
-}
-// Called within the checklist mutation transaction, so a helper and their
-// promised amount cannot diverge under simultaneous claims/releases.
-export function claimTaskPoints(taskId: string, playerId: string): void {
-  const reward = taskReward(taskId);
-  if (reward && reward.remaining > 0) {
-    db.prepare('INSERT OR IGNORE INTO points_task_claims (task_id,player_id) VALUES (?,?)').run(taskId, playerId);
-  }
-}
-export function releaseTaskPoints(taskId: string, playerId: string): void {
-  db.prepare('DELETE FROM points_task_claims WHERE task_id = ? AND player_id = ?').run(taskId, playerId);
-}
-export function awardTaskPoints(taskId: string, actorId: string): void {
-  const task = db
-    .prepare(
-      `SELECT t.title, r.event_id, r.per_person FROM checklist_tasks t
-    JOIN points_task_rewards r ON r.task_id = t.id WHERE t.id = ? AND t.points_model = 'legacy'`,
-    )
-    .get(taskId) as { title: string; event_id: string; per_person: number } | undefined;
-  if (!task) return;
-  // A frozen valuation stops credits, not the checklist's own lifecycle.
-  if (pointsSettings(task.event_id)?.closed_at != null) return;
-  const settings = requirePointsOpen(task.event_id);
-  ensurePointAccounts(task.event_id);
-  const helpers = db
-    .prepare(
-      `SELECT c.player_id FROM points_task_claims c
-    JOIN checklist_task_assignees a ON a.task_id = c.task_id AND a.player_id = c.player_id WHERE c.task_id = ?`,
-    )
-    .all(taskId) as Array<{ player_id: string }>;
-  const eligible = new Set(pointParticipants(settings.group_id, task.event_id).map((p) => p.id));
-  for (const helper of helpers) {
-    if (eligible.has(helper.player_id))
-      addPointEntry(
-        task.event_id,
-        helper.player_id,
-        task.per_person,
-        'task',
-        `task:${taskId}:${helper.player_id}`,
-        task.title,
-        actorId,
-        { taskId, automatic: true },
-      );
-  }
-}
-export function deductPoints(
-  eventId: string,
-  entryId: string,
-  amount: number,
-  reason: string,
-  actorId: string,
-  requestId: string,
-): boolean {
-  return db.transaction(() => {
-    const settings = requirePointsOpen(eventId);
-    const original = db
-      .prepare('SELECT * FROM point_entries WHERE id = ? AND event_id = ? AND amount > 0')
-      .get(entryId, eventId) as PointEntry | undefined;
-    if (!original) throw new PointsError('Gutschrift nicht gefunden.', 404);
-    requirePointsAdmin(settings.group_id, actorId);
-    const previous = db
-      .prepare('SELECT original_id,amount,details FROM point_entries WHERE event_id = ? AND source_key = ?')
-      .get(eventId, `deduct:${requestId}`) as Pick<PointEntry, 'original_id' | 'amount' | 'details'> | undefined;
-    if (previous) {
-      if (
-        previous.original_id !== entryId ||
-        previous.amount !== -amount ||
-        JSON.parse(previous.details).reason !== reason
-      )
-        throw new PointsError('Vorgangskennung wurde bereits für einen anderen Entzug verwendet.');
-      return false;
-    }
-    const { deducted } = db
-      .prepare(
-        "SELECT COALESCE(SUM(amount),0) AS deducted FROM point_entries WHERE original_id = ? AND source = 'correction'",
-      )
-      .get(original.id) as { deducted: number };
-    if (amount > original.amount + deducted)
-      throw new PointsError('Der Betrag übersteigt die verbleibende Gutschrift.');
-    addPointEntry(
-      eventId,
-      original.player_id,
-      -amount,
-      'correction',
-      `deduct:${requestId}`,
-      `Punkteentzug: ${original.title}`,
-      actorId,
-      { reason, originalId: original.id },
-      original.id,
-    );
-    writeAdminAudit({ actorPlayerId: actorId, groupId: settings.group_id, action: 'points_deducted',
-      targetType: 'point_entry', targetId: entryId, details: { amount, reason, requestId } });
-    return true;
-  }).immediate();
 }

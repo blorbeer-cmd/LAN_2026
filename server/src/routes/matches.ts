@@ -1,4 +1,4 @@
-import { reconcileBetting, assertMatchEditable, settledDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
+import { withBettingAccounting, reconcileBetting, assertMatchEditable, settledDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
 // Recorded match results (FR-22, FR-25). Result details (teams + winner) are
 // stored as JSON with an explicit draw flag so missing results stay unscored.
 // Each match is
@@ -223,7 +223,7 @@ matchesRouter.post('/', (req, res) => {
     group_id: req.group!.id,
   };
   try {
-    db.transaction(() => {
+    withBettingAccounting(eventId, () => {
       db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by, recorded_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
         row.id,
         row.game_id,
@@ -276,7 +276,7 @@ matchesRouter.post('/', (req, res) => {
       );
       }
       syncCompetitionPoints(req.group!.id, eventId);
-    })();
+    });
   } catch (error) {
     if (error instanceof DrawAlreadyClaimedError) {
       return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
@@ -284,7 +284,6 @@ matchesRouter.post('/', (req, res) => {
     throw error;
   }
 
-  reconcileBetting(eventId);
   if (drawId) {
     broadcast(
       Events.matchmakingDrawsChanged,
@@ -355,7 +354,7 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
   }
 
   const nextResult = JSON.stringify(nextResultObj);
-  db.transaction(() => {
+  withBettingAccounting(existing.event_id, () => {
     const rounds = settledDrawRounds(req.group!.id, existing.id);
     if (!rounds.length) assertMatchEditable(req.group!.id, existing.id);
     const correction = validateBettingCorrection(req, rounds);
@@ -365,9 +364,8 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
     }
     rebookCorrectedRounds(rounds, correction);
     syncCompetitionPoints(req.group!.id, existing.event_id);
-  })();
+  });
 
-  reconcileBetting(existing.event_id);
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: existing.event_id });
   res.json(
     parseMatch({
@@ -386,11 +384,11 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
 matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
   const existing = req.groupResource as MatchRow;
   if (!requireGroupEventAccess(req, res, existing.event_id)) return;
-  db.transaction(() => {
+  withBettingAccounting(existing.event_id, () => {
     assertMatchEditable(req.group!.id, existing.id);
     db.prepare('DELETE FROM matches WHERE id = ?').run(existing.id);
     syncCompetitionPoints(req.group!.id, existing.event_id);
-  })();
+  });
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.group!.id,
@@ -398,7 +396,6 @@ matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRec
     targetType: 'match',
     targetId: existing.id,
   });
-  reconcileBetting(existing.event_id);
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: existing.event_id });
   res.status(204).end();
 });

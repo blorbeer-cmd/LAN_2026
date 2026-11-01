@@ -63,7 +63,7 @@ test('rank-only results and their corrections agree across leaderboard, Hall of 
           playing: points[index] ?? 0,
           betting: 0,
           orga: 0,
-          wallet: 0,
+          wallet: 100,
         },
         'game awards are journaled without increasing the betting bankroll',
       );
@@ -396,7 +396,7 @@ test('startup backfill retains existing claims, freezes with the event and catch
   );
   const own = await request(app).get(`/api/points?eventId=${event.id}`);
   assert.equal(own.body.categoryBalances.playing, 3);
-  assert.equal(own.body.categoryBalances.wallet, 0);
+  assert.equal(own.body.categoryBalances.wallet, 100);
   db.prepare('DELETE FROM events WHERE id = ?').run(event.id);
   assert.equal(readPointsBalances(DEFAULT_GROUP_ID, event.id, TEST_ADMIN_ID), undefined);
   assert.deepEqual(db.prepare('SELECT * FROM points_playing_awards WHERE event_id = ?').all(event.id), []);
@@ -549,8 +549,8 @@ test('competition Orga awards follow the original organizer, survive unchanged s
     0,
     'result entry is not organization',
   );
-  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.wallet, 0);
-  const journal = readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.wallet, 100);
+  const journal = readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer).filter((entry) => entry.account === 'orga');
   assert.deepEqual(
     journal.map((entry) => [entry.account, entry.sourceKey, entry.amount]),
     [['orga', `match:${matchId}`, 1]],
@@ -692,7 +692,7 @@ test('tournament organizers earn one point per played match and five on regular 
   }
   assert.equal(played, 2, 'three-team bracket has one bye and only two played matches');
   assert.deepEqual(readPointsSource(completion), { total: 5, revision: 1 });
-  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.wallet, 0);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.wallet, 100);
   const entries = readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer);
   assert.equal(
     entries.filter((entry) => entry.account === 'orga').length,

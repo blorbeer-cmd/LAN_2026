@@ -108,7 +108,7 @@ export function pointsRankingHtml(ctx) {
   if (!standings) return '';
   const ranks = sharedRankNumbers(standings.map((p) => p.points));
   return `<section class="card stack"><div class="row-between"><h2>LAN-Punkte</h2><button type="button" class="btn btn-sm" data-navigate="points">Punktekonto & Verlauf</button></div>
-    <p class="muted">Wertung dieser LAN aus Orga-Punkten und Sieger-Tipps. Gleiche Punkte teilen sich den Platz.</p>
+    <p class="muted">Spiel-Rohwerte dieser LAN. Gleiche Punkte teilen sich den Platz.</p>
     ${rankedListHtml(
       standings.map((p, i) => ({ rank: ranks[i], title: e(p.name), value: `${p.points} P.` })),
       { ranked: true, label: 'LAN-Punkte' },
@@ -143,9 +143,9 @@ function overviewHtml(data) {
   return `<section class="card stack" aria-label="Mein Punktekonto">
     <div class="row-between"><h2>Mein Punktekonto</h2><span class="badge">${data.settings.closed_at ? 'Endstand' : 'LAN-Wertung'}</span></div>
     ${data.settings.prize_info ? `<p><strong>Preis &amp; Vergabe:</strong> ${e(data.settings.prize_info)}</p>` : ''}
-    <div class="my-stats-kpis">${kpi(data.wallet.total, 'Punkte gesamt')}${kpi(Math.max(0, data.wallet.available), 'Frei verfügbar')}${kpi(data.wallet.held, 'Für Wetten reserviert')}${data.wallet.available < 0 ? kpi(-data.wallet.available, 'Korrekturschuld') : ''}</div>
+    <div class="my-stats-kpis">${kpi(data.wallet.total, 'Wettguthaben')}${kpi(Math.max(0, data.wallet.available), 'Frei verfügbar')}${kpi(data.wallet.held, 'Für Wetten reserviert')}${data.wallet.available < 0 ? kpi(-data.wallet.available, 'Korrekturschuld') : ''}</div>
     ${data.wallet.available < 0 ? '<p role="status">Eine Korrektur hat dein verfügbares Guthaben reduziert. Neue Einsätze sind erst wieder mit ausreichendem Guthaben möglich.</p>' : ''}
-    <p class="muted">Orga- und Spielpunkte werden getrennt gesammelt und erhöhen dieses bisherige Wettguthaben nicht.</p>
+    <p class="muted">Orga- und Spielpunkte werden getrennt gesammelt und erhöhen das Wettguthaben nicht.</p>
     <div class="row points-actions"><button type="button" class="btn btn-sm" data-navigate="checklist">Mit Orga-Aufgaben Punkte verdienen</button></div>
   </section>`;
 }
@@ -156,8 +156,8 @@ export function pointsHomeHtml(ctx) {
   if (!data?.settings) return '';
   const open = data.rounds.filter((r) => r.status === 'open');
   return `<section class="card stack" aria-label="Meine LAN-Punkte"><div class="row-between"><h2>Meine LAN-Punkte</h2><button type="button" class="btn btn-sm" data-navigate="points">Punktekonto öffnen</button></div>
-    <div class="my-stats-kpis">${kpi(data.wallet.total, 'Punkte')}${kpi(Math.max(0, data.wallet.available), 'Verfügbar')}${kpi(open.length, 'Offene Tipprunden')}</div>
-    <p class="muted">${data.settings.closed_at ? 'Die Endwertung steht fest.' : 'Orga übernehmen, Punkte verdienen und auf Sieger tippen.'}</p></section>`;
+    <div class="my-stats-kpis">${kpi(data.wallet.total, 'Wettguthaben')}${kpi(Math.max(0, data.wallet.available), 'Verfügbar')}${kpi(open.length, 'Offene Tipprunden')}</div>
+    <p class="muted">${data.settings.closed_at ? 'Die Endwertung steht fest.' : 'Orga- und Spielpunkte sammeln und mit separatem Wettguthaben tippen.'}</p></section>`;
 }
 
 function roundHtml(round, compact = false) {
@@ -397,14 +397,14 @@ function historyHtml(data) {
         .toLocaleLowerCase('de')
         .includes(historyQuery.toLocaleLowerCase('de')),
   );
-  return `<section class="card stack" aria-label="Punkteverlauf"><h2>Punkteverlauf</h2>${pointsChartHtml(data.entries)}
-    <div class="points-filters"><label class="stack"><span class="field-label">Buchungen durchsuchen</span><input type="search" data-points-query value="${e(historyQuery)}" placeholder="Aufgabe oder Wette suchen"></label>
+  return `<section class="card stack" aria-label="Punkteverlauf"><h2>Wettguthaben-Verlauf</h2>${pointsChartHtml(data.entries, { label: 'Verfügbares Wettguthaben' })}
+    <div class="points-filters"><label class="stack"><span class="field-label">Buchungen durchsuchen</span><input type="search" data-points-query value="${e(historyQuery)}" placeholder="Wette suchen"></label>
     <label class="stack"><span class="field-label">Buchungsart</span><select data-points-source><option value="">Alle Buchungen</option>${Object.entries(
       POINT_SOURCES,
     )
       .map(([id, label]) => `<option value="${id}" ${id === historySource ? 'selected' : ''}>${label}</option>`)
       .join('')}</select></label></div>
-    <p class="muted">${entries.length} von ${data.entries.length} Buchungen · neueste zuerst. Die Kurve zeigt immer das vollständige Konto.</p>
+    <p class="muted">${entries.length} von ${data.entries.length} Buchungen · neueste zuerst. Die Kurve zeigt das vollständige verfügbare Wettguthaben einschließlich Reservierungen.</p>
     ${
       entries.length
         ? `<ol class="points-journal">${[...entries]
@@ -438,9 +438,9 @@ export function renderPoints(container, ctx) {
   container.innerHTML = `${header}<div class="grouped-page-sections">${categoryPointsHtml(data, { account: categoryAccount, query: categoryQuery })}${overviewHtml(data)}
     <section class="card stack" aria-label="Tipprunden"><div class="row-between"><h2>${selected ? 'Tipprunde' : 'Spiele & Turniere tippen'}</h2>${selected ? '<button type="button" class="btn btn-sm" data-all-rounds>Alle Runden</button>' : ''}</div>
       <p class="muted">Max. ${data.settings.max_stake} P. pro Runde · ${data.settings.daily_limit} P. pro Tag · ${data.rounds.length}/${data.settings.max_rounds} offizielle Runden. Auch eigene Spiele und Turniere sind erlaubt.</p>
-      ${rounds.length ? rounds.map((r) => roundHtml(r)).join('') : emptyStateHtml(selected ? 'Diese Tipprunde wurde nicht gefunden.' : data.settings.max_rounds === 0 ? 'Diese LAN startet ausschließlich mit Orga-Punkten. Wetten sind deaktiviert.' : 'Noch keine offiziellen Tipprunden. Admins öffnen sie direkt am Match oder Turnier.')}</section>
+      ${rounds.length ? rounds.map((r) => roundHtml(r)).join('') : emptyStateHtml(selected ? 'Diese Tipprunde wurde nicht gefunden.' : data.settings.max_rounds === 0 ? 'Wetten sind für dieses Event deaktiviert.' : 'Noch keine offiziellen Tipprunden. Admins öffnen sie direkt am Match oder Turnier.')}</section>
     ${historyHtml(data)}
-    <section class="card stack" aria-label="LAN-Rangliste"><h2>${data.settings.closed_at ? 'Endwertung' : 'LAN-Rangliste'}</h2><p class="muted">Bei gleichem Punktestand wird der Platz geteilt. Spiel-Skill und Siege entscheiden keinen Gleichstand.</p>${rankedListHtml(
+    <section class="card stack" aria-label="LAN-Rangliste"><h2>${data.settings.closed_at ? 'Spielpunkte-Endstand' : 'Spielpunkte'}</h2><p class="muted">Bei gleichem Punktestand wird der Platz geteilt. Spiel-Skill und Siege entscheiden keinen Gleichstand.</p>${rankedListHtml(
       data.standings.map((p, i) => ({
         rank: ranks[i],
         title: e(p.name),
@@ -554,39 +554,6 @@ function loadAdmin(ctx) {
       ctx.rerender();
     });
 }
-function deductDialog(entry, remaining, ctx) {
-  const eventId = state.activeEvent.id;
-  // getRandomValues also works on HTTP LAN origins, unlike randomUUID.
-  const requestId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
-  const { close } = openModal(
-    'Punkte entziehen',
-    `<form class="stack"><p>${e(entry.playerName)} · ${e(entry.title)} · noch ${remaining} P. entziehbar</p>
-    ${numberField('amount', 'Punkte', remaining, 1, remaining)}<label class="stack"><span class="field-label">Begründung</span><textarea name="reason" maxlength="300" required></textarea></label>
-    <p class="muted">Der Entzug erscheint als eigene Buchung. Das Orga-Budget wird dadurch nicht erneut aufgefüllt.</p><button type="submit" class="btn btn-primary">Punkte entziehen</button></form>`,
-    {
-      onMount(el) {
-        el.querySelector('form').addEventListener('submit', (event) => {
-          event.preventDefault();
-          const form = event.currentTarget;
-          const values = new FormData(form);
-          perform(
-            form.querySelector('button'),
-            () =>
-              pointsRequest(
-                `/entries/${encodeURIComponent(entry.id)}/deduct`,
-                json('POST', { amount: Number(values.get('amount')), reason: values.get('reason'), requestId }),
-                eventId,
-              ),
-            () => {
-              close();
-              refreshPoints(ctx);
-            },
-          );
-        });
-      },
-    },
-  );
-}
 export function renderPointsAdmin(container, ctx) {
   if (!isGroupAdmin()) {
     container.innerHTML = emptyStateHtml('Nur Admins können Punkte verwalten.');
@@ -607,28 +574,21 @@ export function renderPointsAdmin(container, ctx) {
   loadAdminCategories(ctx);
   const s = data.settings;
   const closed = Boolean(s?.closed_at);
-  const remaining = (entry) =>
-    entry.amount +
-    (adminEntries ?? [])
-      .filter((r) => r.original_id === entry.id && r.source === 'correction')
-      .reduce((sum, r) => sum + r.amount, 0);
   container.innerHTML = `<div class="row-between page-title-row points-actions"><h1 class="view-title">LAN-Punkte verwalten</h1>${state.activeEvent?.pointsEnabled ? '<button type="button" class="btn btn-sm" data-navigate="points">Mein Punktekonto</button>' : ''}</div>
     <div class="grouped-page-sections"><section class="card stack"><div class="row-between points-actions"><h2>Anzeige für Teilnehmer</h2><button type="button" class="btn btn-sm" data-navigate="events">Zur Eventverwaltung</button></div><p>${state.activeEvent?.pointsEnabled ? 'LAN-Punkte, Verlauf und Wetten sind für alle Teilnehmer sichtbar.' : 'LAN-Punkte, Verlauf und Wetten sind für Teilnehmer ausgeblendet.'} Punkte werden unabhängig davon im Hintergrund gesammelt. Die Anzeige steuerst du jederzeit direkt am Event.</p></section>
-    ${adminCategoryJournalHtml(adminCategoryEntries, { account: adminCategoryAccount, query: adminCategoryQuery, loading: adminCategoryLoading, error: adminCategoryError })}<section class="card stack"><h2>${s ? 'Regeln & Budget' : 'Punktewertung aktivieren'}</h2>
-    <p>Neue To-dos bringen beim Erledigen automatisch 3 Orga-Punkte, ohne Freigabe und ohne Budget. Das bisherige Budget gilt nur für alte Zusagen. Orga- und Spielpunkte erhöhen kein Wettguthaben.</p>
+    ${adminCategoryJournalHtml(adminCategoryEntries, { account: adminCategoryAccount, query: adminCategoryQuery, loading: adminCategoryLoading, error: adminCategoryError })}<section class="card stack"><h2>${s ? 'Wettregeln' : 'Punktewertung aktivieren'}</h2>
+    <p>Jeder Teilnehmer erhält einmalig 100 Wettpunkte pro Event, auch bei später Zusage. Orga- und Spielpunkte erhöhen das Wettguthaben nicht.</p>
     <form class="stack" data-points-settings>
       <label class="stack"><span class="field-label">Preis & Vergabe bei Gleichstand (optional)</span><textarea name="prizeInfo" maxlength="300" ${closed ? 'disabled' : ''}>${e(s?.prize_info ?? '')}</textarea></label>
       <p class="muted">Kündige Preis und Sachpreisvergabe bei gleichem Punktestand vor Beginn an. Die Rangliste teilt gleiche Plätze ohne Skill-Tiebreaker.</p>
-      ${numberField('initialPoints', 'Grundstock pro Teilnehmer', s?.initial_points ?? 100, 0, 10000, s?.configured_at != null)}
-      ${numberField('orgaBudget', 'Orga-Gesamtbudget', s?.orga_budget ?? 400, 0, 1000000, closed)}
       ${numberField('maxStake', 'Maximaler Einsatz je Runde', s?.max_stake ?? 10, 1, 1000, closed || data.rounds.length > 0)}
       ${numberField('dailyLimit', 'Tageskontingent pro Teilnehmer', s?.daily_limit ?? 30, 1, 10000, closed || data.rounds.length > 0)}
-      ${numberField('maxRounds', 'Offizielle Tipprunden insgesamt (0 = nur Orga-Punkte)', s?.max_rounds ?? 6, 0, 100, closed)}
+      ${numberField('maxRounds', 'Offizielle Tipprunden insgesamt (0 = keine Wetten)', s?.max_rounds ?? 6, 0, 100, closed)}
       ${closed ? '' : `<button type="submit" class="btn btn-primary">${s ? 'Regeln speichern' : 'Punktewertung aktivieren'}</button>`}
     </form>
-    ${s ? `<div class="my-stats-kpis">${kpi(data.budget.available, 'Budget verfügbar')}${kpi(data.budget.reserved, 'Für Aufgaben gebunden')}${kpi(data.budget.issued, 'Bereits vergeben')}</div><p class="muted">Belohnungen direkt am offenen To-Do festlegen, bevor jemand übernimmt. Tipprunden direkt am Match oder Turnier öffnen.</p><div class="row points-actions"><button type="button" class="btn btn-sm" data-navigate="checklist">Zu den To-Dos</button><button type="button" class="btn btn-sm" data-points-close>${closed ? 'Wertung wieder öffnen' : 'LAN-Endwertung festschreiben'}</button></div>` : ''}
+    ${s ? `<p class="muted">Neue To-dos bringen fest 3 Orga-Punkte. Tipprunden direkt am Match oder Turnier öffnen.</p><div class="row points-actions"><button type="button" class="btn btn-sm" data-navigate="checklist">Zu den To-Dos</button><button type="button" class="btn btn-sm" data-points-close>${closed ? 'Wertung wieder öffnen' : 'LAN-Endwertung festschreiben'}</button></div>` : ''}
     </section>
-    ${s ? `<section class="card stack"><h2>Buchungen aller Teilnehmer</h2><p class="muted">Eine Originalbuchung bleibt erhalten. Jeder Entzug braucht eine Begründung.</p>${adminEntries ? `<label class="stack"><span class="field-label">Teilnehmer oder Buchung suchen</span><input type="search" data-admin-entry-query></label><ol class="points-journal">${adminEntries.map((entry) => `<li data-admin-entry-text="${e(`${entry.playerName} ${entry.title}`.toLocaleLowerCase('de'))}"><div><strong>${e(entry.playerName)}</strong><div>${e(entry.title)} · ${signedPoints(entry.amount)} P.</div><div class="muted">${e(formatDateTime(entry.created_at))}</div></div><button type="button" class="btn btn-sm" data-admin-entry-details="${e(entry.id)}">Details</button>${!closed && entry.amount > 0 && remaining(entry) > 0 ? `<button type="button" class="btn btn-sm" data-deduct-entry="${e(entry.id)}">Entziehen</button>` : '<span class="muted">Journal</span>'}</li>`).join('')}</ol>` : emptyStateHtml(adminError || 'Buchungen werden geladen…')}</section>` : ''}
+    ${s ? `<section class="card stack"><h2>Wettguthaben aller Teilnehmer</h2><p class="muted">Korrekturen erfolgen mit Begründung direkt an der Tipprunde oder am Spielergebnis.</p>${adminEntries ? `<label class="stack"><span class="field-label">Teilnehmer oder Buchung suchen</span><input type="search" data-admin-entry-query></label><ol class="points-journal">${adminEntries.map((entry) => `<li data-admin-entry-text="${e(`${entry.playerName} ${entry.title}`.toLocaleLowerCase('de'))}"><div><strong>${e(entry.playerName)}</strong><div>${e(entry.title)} · ${signedPoints(entry.amount)} P.</div><div class="muted">${e(formatDateTime(entry.created_at))}</div></div><button type="button" class="btn btn-sm" data-admin-entry-details="${e(entry.id)}">Details</button></li>`).join('')}</ol>` : emptyStateHtml(adminError || 'Buchungen werden geladen…')}</section>` : ''}
     </div>`;
   container.querySelector('[data-category-admin-refresh]').addEventListener('click', () => refreshPoints(ctx));
   container.querySelector('[data-admin-category-account]').addEventListener('change', (event) => {
@@ -648,8 +608,7 @@ export function renderPointsAdmin(container, ctx) {
     const form = event.currentTarget;
     const values = new FormData(form);
     const body = {
-      initialPoints: s?.configured_at != null ? s.initial_points : Number(values.get('initialPoints')),
-      orgaBudget: Number(values.get('orgaBudget')),
+      initialPoints: 100,
       maxStake: data.rounds.length ? s.max_stake : Number(values.get('maxStake')),
       dailyLimit: data.rounds.length ? s.daily_limit : Number(values.get('dailyLimit')),
       maxRounds: Number(values.get('maxRounds')),
@@ -696,10 +655,5 @@ export function renderPointsAdmin(container, ctx) {
       ),
     ),
   );
-  container.querySelectorAll('[data-deduct-entry]').forEach((button) =>
-    button.addEventListener('click', () => {
-      const entry = adminEntries.find((r) => r.id === button.dataset.deductEntry);
-      deductDialog(entry, remaining(entry), ctx);
-    }),
-  );
+
 }

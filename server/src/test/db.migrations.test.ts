@@ -42,6 +42,116 @@ function makeTempDbPath(name: string): string {
   return path.join(dir, `${name}.db`);
 }
 
+test('migration 131 restarts every points account, discards pools and snapshots, and prevents historical backfills', () => {
+  const dbFile = makeTempDbPath('wallet-reset');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`INSERT INTO players(id,name,api_key,created_at) VALUES
+      ('reset-a','Reset Alice','reset-a-key',1),('reset-b','Reset Bob','reset-b-key',1);
+    INSERT INTO group_memberships(group_id,player_id,role,status) VALUES
+      ('default-group','reset-a','member','active'),('default-group','reset-b','member','active');
+    INSERT INTO events(id,name,starts_at,group_id,status,event_type_key)
+      VALUES('reset-event','Existing event',1,'default-group','published','lan');
+    INSERT INTO event_participants(event_id,player_id,status) VALUES
+      ('reset-event','reset-a','accepted'),('reset-event','reset-b','accepted');
+    INSERT INTO games(id,name,created_at,group_id,status) VALUES('reset-game','Reset game',1,'default-group','catalog');
+    INSERT INTO skills(player_id,game_id,group_id,rating)
+      SELECT 'reset-a',id,group_id,1 FROM games WHERE group_id='default-group' AND status='catalog' AND arcade_key IS NULL;
+    INSERT INTO matches(id,event_id,group_id,game_id,result,played_at,recorded_at,created_by)
+      VALUES('reset-match','reset-event','default-group','reset-game',
+        '{"teams":[{"playerIds":["reset-a"]},{"playerIds":["reset-b"]}],"winnerTeamIndex":0}',1,1,'reset-b');
+    INSERT INTO checklist_tasks(id,group_id,event_id,type,title,created_by,status,created_at,done_at,points_value)
+      VALUES('reset-todo','default-group','reset-event','todo','Already completed','reset-b','done',1,2,3);
+    INSERT INTO checklist_task_assignees(task_id,player_id,joined_at) VALUES('reset-todo','reset-a',1);
+    INSERT INTO arrivals(event_id,player_id,arrival_at,departure_at,updated_at) VALUES('reset-event','reset-a',1,2,1);
+    INSERT INTO points_sources(id,event_id,player_id,account,source_key) VALUES
+      ('reset-orga','reset-event','reset-a','orga','todo:reset-todo'),
+      ('reset-playing','reset-event','reset-a','playing','match:reset-match'),
+      ('reset-betting','reset-event','reset-a','betting','bet:old-settled'),
+      ('reset-negative-wallet','reset-event','reset-a','wallet','old-correction');
+    INSERT INTO points_journal(id,source_id,revision,amount,title,created_at) VALUES
+      ('reset-j1','reset-orga',1,3,'Old task',1),('reset-j2','reset-playing',1,-7,'Old correction',1),
+      ('reset-j3','reset-betting',1,10,'Old win',1),('reset-j4','reset-negative-wallet',1,-180,'Negative wallet',1);
+    INSERT INTO point_entries(id,group_id,event_id,player_id,amount,source,source_key,title,created_at)
+      VALUES('reset-old-entry','default-group','reset-event','reset-a',999,'task','task:old','Old account',1);
+    INSERT INTO points_snapshots(event_id,revision,standings,created_at)
+      VALUES('reset-event',1,'[{"playerId":"reset-a","points":999}]',1);
+    UPDATE points_settings SET closed_at=1 WHERE event_id='reset-event';
+    INSERT INTO betting_rounds(id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_at) VALUES
+      ('reset-open','default-group','reset-event','draw','open','Open','[]','open',10,1),
+      ('reset-locked','default-group','reset-event','draw','locked','Locked','[]','locked',10,1),
+      ('reset-settled','default-group','reset-event','draw','settled','Settled','[]','settled',10,1);
+    INSERT INTO betting_tips(id,round_id,player_id,outcome_id,stake,day,created_at,updated_at)
+      SELECT id,id,'reset-a','0',5,'2026-11-01',1,1 FROM betting_rounds WHERE event_id='reset-event';
+    DELETE FROM points_wallet_reset;
+    DELETE FROM schema_migrations WHERE version=131;`);
+  fixture.close();
+  runMigrations(dbFile);
+  // Run the real background producers, rather than merely asserting empty tables.
+  const backfill = () => execFileSync(process.execPath, ['-e',
+    `require(${JSON.stringify(path.join(__dirname, '..', 'orgaPoints.js'))}).backfillCompetitionPoints()`],
+    { env: { ...process.env, DB_FILE: dbFile }, stdio: 'pipe' });
+  backfill();
+  const migrated = new Database(dbFile);
+  assert.deepEqual(migrated.prepare(`SELECT s.player_id,s.account,SUM(j.amount) AS total FROM points_sources s
+    JOIN points_journal j ON j.source_id=s.id WHERE s.event_id='reset-event' GROUP BY s.player_id,s.account ORDER BY s.player_id`).all(),
+  [{ player_id: 'reset-a', account: 'wallet', total: 100 }, { player_id: 'reset-b', account: 'wallet', total: 100 }]);
+  for (const table of ['point_entries', 'points_snapshots', 'betting_rounds', 'betting_tips'])
+    assert.equal((migrated.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n, 0, table);
+  assert.equal((migrated.prepare("SELECT closed_at FROM points_settings WHERE event_id='reset-event'").get() as { closed_at: number | null }).closed_at, null);
+  assert.equal((migrated.prepare("SELECT COUNT(*) AS n FROM matches WHERE id='reset-match'").get() as { n: number }).n, 1);
+  assert.throws(() => migrated.exec("UPDATE points_journal SET amount=101"), /immutable/);
+  migrated.exec(`INSERT INTO checklist_tasks(id,group_id,event_id,type,title,created_by,status,created_at,done_at,points_value)
+    VALUES('post-reset-todo','default-group','reset-event','todo','New completion','reset-b','done',3,4,3);
+    INSERT INTO checklist_task_assignees(task_id,player_id,joined_at) VALUES('post-reset-todo','reset-a',3);`);
+  migrated.close();
+  backfill();
+  const earned = new Database(dbFile);
+  assert.equal((earned.prepare(`SELECT SUM(j.amount) AS total FROM points_journal j JOIN points_sources s ON s.id=j.source_id
+    WHERE s.event_id='reset-event' AND s.player_id='reset-a' AND s.account='orga'`).get() as { total: number }).total, 3);
+  const journal = earned.prepare('SELECT * FROM points_journal ORDER BY id').all();
+  earned.exec('DELETE FROM schema_migrations WHERE version=131');
+  earned.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  backfill();
+  const restarted = new Database(dbFile);
+  assert.deepEqual(restarted.prepare('SELECT * FROM points_journal ORDER BY id').all(), journal);
+  assert.deepEqual(restarted.pragma('foreign_key_check'), []);
+  restarted.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 131 rolls the entire reset back if wallet funding fails and retries once', () => {
+  const dbFile = makeTempDbPath('wallet-reset-rollback');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`INSERT INTO players(id,name,api_key,created_at) VALUES('rollback-wallet','Rollback','rollback-wallet-key',1);
+    INSERT INTO group_memberships(group_id,player_id,role,status) VALUES('default-group','rollback-wallet','member','active');
+    INSERT INTO events(id,name,starts_at,group_id,status,event_type_key) VALUES('rollback-wallet-event','Rollback event',1,'default-group','published','lan');
+    INSERT INTO event_participants(event_id,player_id,status) VALUES('rollback-wallet-event','rollback-wallet','accepted');
+    DELETE FROM points_wallet_reset;
+    DELETE FROM schema_migrations WHERE version=131;
+    CREATE TRIGGER fail_wallet_reset BEFORE INSERT ON points_journal
+      WHEN NEW.title='Wett-Startguthaben' BEGIN SELECT RAISE(ABORT,'wallet reset failed'); END;`);
+  const journal = fixture.prepare('SELECT * FROM points_journal ORDER BY id').all();
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /wallet reset failed/);
+  const failed = new Database(dbFile);
+  assert.deepEqual(failed.prepare('SELECT * FROM points_journal ORDER BY id').all(), journal);
+  assert.equal(failed.prepare('SELECT 1 FROM points_wallet_reset').get(), undefined);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=131').get(), undefined);
+  failed.exec('DROP TRIGGER fail_wallet_reset');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const retried = new Database(dbFile);
+  assert.equal((retried.prepare('SELECT SUM(amount) AS total FROM points_journal').get() as { total: number }).total, 100);
+  assert.deepEqual(retried.pragma('foreign_key_check'), []);
+  retried.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 124 preserves visible accounts, backfills hidden LANs, rolls back failures and survives restarts', () => {
   const dbFile = makeTempDbPath('points-visibility');
   runMigrations(dbFile);
@@ -56,7 +166,8 @@ test('migration 124 preserves visible accounts, backfills hidden LANs, rolls bac
     INSERT INTO event_participants (event_id,player_id,status) VALUES
       ('points-visible','points-helper','accepted'),('points-hidden','points-helper','accepted');
     UPDATE points_settings SET orga_budget=200,orga_allocated=20,prize_info='Existing prize' WHERE event_id='points-visible';
-    UPDATE point_entries SET amount=73 WHERE event_id='points-visible';
+    INSERT INTO point_entries(id,group_id,event_id,player_id,amount,source,source_key,title,created_at)
+      VALUES('old-visible-start','default-group','points-visible','points-helper',73,'start','start:points-helper','Legacy start',1);
     DELETE FROM point_entries WHERE event_id='points-hidden';
     DELETE FROM points_settings WHERE event_id='points-hidden';
     DROP TRIGGER points_event_insert;
@@ -121,7 +232,11 @@ test('migration 126 retains existing journal entries and creates repeatable auto
   const dbFile = makeTempDbPath('playing-state');
   runMigrations(dbFile);
   const fixture = new Database(dbFile);
-  fixture.exec(`DROP TABLE points_playing_awards; DELETE FROM schema_migrations WHERE version = 126;
+  fixture.exec(`DROP TRIGGER points_participant_start_insert;
+    DROP TRIGGER points_participant_start_update;
+    DROP TRIGGER points_settings_start_accounts;
+    DELETE FROM schema_migrations WHERE version=131;
+    DROP TABLE points_playing_awards; DELETE FROM schema_migrations WHERE version = 126;
     INSERT INTO players(id,name,api_key,created_at) VALUES ('playing-old','Old player','playing-old-key',1);
     INSERT INTO event_participants(event_id,player_id,status) VALUES ('instance-base-event','playing-old','accepted');
     INSERT INTO points_sources(id,event_id,player_id,account,source_key)
@@ -148,7 +263,11 @@ test('migration 126 rolls back the playing state table on failure and retries wi
   const dbFile = makeTempDbPath('playing-state-rollback');
   runMigrations(dbFile);
   const fixture = new Database(dbFile);
-  fixture.exec(`DROP TABLE points_playing_awards; DELETE FROM schema_migrations WHERE version = 126;
+  fixture.exec(`DROP TRIGGER points_participant_start_insert;
+    DROP TRIGGER points_participant_start_update;
+    DROP TRIGGER points_settings_start_accounts;
+    DELETE FROM schema_migrations WHERE version=131;
+    DROP TABLE points_playing_awards; DELETE FROM schema_migrations WHERE version = 126;
     CREATE TABLE points_playing_awards_player(blocker INTEGER);`);
   fixture.close();
   assert.throws(() => runMigrations(dbFile), /points_playing_awards_player/);
@@ -439,7 +558,11 @@ test('migration 127 rolls back organizer columns and state together after a part
 function removeCategoryPointsSchema(fixture: Database.Database): void {
   removeMatchActivitySchema(fixture);
   removeCompetitionOrgaSchema(fixture);
-  fixture.exec(`DROP TABLE points_playing_awards;
+  fixture.exec(`DROP TRIGGER points_participant_start_insert;
+    DROP TRIGGER points_participant_start_update;
+    DROP TRIGGER points_settings_start_accounts;
+    DELETE FROM schema_migrations WHERE version=131;
+    DROP TABLE points_playing_awards;
     DELETE FROM schema_migrations WHERE version = 126;
     DROP TRIGGER points_accounts_participant_insert;
     DROP TRIGGER points_accounts_participant_update;
@@ -1384,10 +1507,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 130);
+  assert.equal(migrations.length, 131);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 130 }, (_, index) => index + 1),
+    Array.from({ length: 131 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1989,8 +2112,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 130 }, (_, index) => index + 1),
-    'every version 1..130 runs exactly once',
+    Array.from({ length: 131 }, (_, index) => index + 1),
+    'every version 1..131 runs exactly once',
   );
 });
 

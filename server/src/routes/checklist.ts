@@ -33,7 +33,7 @@
 // its row through resolveGroupResource, so a retained group_id mismatch stays
 // hidden behind a 404.
 
-import { awardTaskPoints, claimTaskPoints, releaseTaskPoints, taskReward, pointsAreVisible, PointsError } from '../points';
+import { pointsAreVisible, PointsError } from '../points';
 import { TODO_POINTS } from '../todoPoints';
 import { syncOrgaPoints } from '../orgaPoints';
 import { Router, type Request, type Response } from 'express';
@@ -159,7 +159,6 @@ function syncTaskAssignee(taskId: string): void {
 }
 
 function serializeTask(row: TaskRow, forAdmin = false) {
-  const legacyReward = taskReward(row.id);
   const assignees = taskParticipants(row.id).flatMap((participant) => {
     const ref = playerRef(participant.player_id);
     return ref ? [{ ...ref, comment: participant.comment, joinedAt: participant.joined_at }] : [];
@@ -184,8 +183,8 @@ function serializeTask(row: TaskRow, forAdmin = false) {
     pointsValue: forAdmin || pointsAreVisible(row.event_id)
       ? row.points_model === 'category' && row.type === 'todo' ? TODO_POINTS : row.points_value
       : null,
-    canReopen: !legacyReward,
-    reward: forAdmin || pointsAreVisible(row.event_id) ? legacyReward : null,
+    canReopen: true,
+    reward: null,
   };
 }
 function serializeTaskFor(req: import('express').Request, row: TaskRow) {
@@ -712,7 +711,6 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
     if (!current || (current.status !== 'open' && current.status !== 'taken')) return 'closed';
     const inserted = insertParticipant().run(task.id, playerId, trimmedComment, now);
     if (inserted.changes !== 1) return 'duplicate';
-    claimTaskPoints(task.id, playerId);
     syncTaskAssignee(task.id);
     if (task.points_value > 0 && task.event_id) syncOrgaPoints(task.group_id, task.event_id);
     return 'ok';
@@ -763,7 +761,6 @@ checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlay
     const removed = db.prepare(`DELETE FROM checklist_task_assignees WHERE task_id = ? AND player_id = ?
       AND EXISTS (SELECT 1 FROM checklist_tasks WHERE id = ? AND status = 'taken')`).run(task.id, playerId, task.id);
     if (removed.changes !== 1) throw new PointsError('Diese Übernahme hat sich bereits geändert.');
-    releaseTaskPoints(task.id, playerId);
     syncTaskAssignee(task.id);
     if (task.points_value > 0 && task.event_id) syncOrgaPoints(task.group_id, task.event_id);
   })();
@@ -797,7 +794,6 @@ checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayer
     const updated = db.prepare(`UPDATE checklist_tasks SET status = 'done', done_at = ? WHERE id = ? AND status = 'taken'`).run(doneAt, task.id);
     if (updated.changes !== 1) throw new PointsError('Diese Aufgabe ist bereits abgeschlossen.');
     if (task.points_value > 0 && task.event_id) syncOrgaPoints(task.group_id, task.event_id);
-    else awardTaskPoints(task.id, playerId);
   })();
   broadcast(Events.leaderboardChanged, null, { groupId: task.group_id, eventId: task.event_id });
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
@@ -815,7 +811,6 @@ checklistRouter.patch('/tasks/:id/reopen', resolveChecklistTask, ...withBodyPlay
   if (!isTaskParticipant(task.id, playerId) && playerId !== task.created_by && !isChecklistModerator(req)) {
     return res.status(403).json({ error: 'Nur Helfer, Ersteller oder Admins können die Aufgabe wieder öffnen.' });
   }
-  if (taskReward(task.id)) return res.status(409).json({ error: 'Aufgaben mit alter LAN-Belohnung können noch nicht wieder geöffnet werden.' });
   db.transaction(() => {
     const status = taskParticipants(task.id).length ? 'taken' : 'open';
     const changed = db.prepare(`UPDATE checklist_tasks SET status = ?, done_at = NULL, archived_at = NULL

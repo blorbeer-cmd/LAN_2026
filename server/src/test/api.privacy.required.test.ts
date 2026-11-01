@@ -155,11 +155,11 @@ test('personal export is self-scoped and excludes every reusable access secret',
   assert.deepEqual(response.body.automaticOrgaState, [{ eventId: BASE_EVENT_ID, sourceKey: `match:privacy-${own.id}`, amount: 1 }]);
   assert.deepEqual(response.body.organizedCompetitions.matches, [{ id: recordedMatchId, eventId: exportEventId }]);
   assert.deepEqual(response.body.organizedCompetitions.tournaments, []);
-  assert.equal(response.body.pointsJournal.length, 1);
+  assert.equal(response.body.pointsJournal.length, 2);
   const ownPointEntry = db.prepare(`SELECT j.id FROM points_journal j JOIN points_sources s ON s.id = j.source_id
-    WHERE s.player_id = ?`).get(own.id) as { id: string };
-  assert.equal(response.body.pointsJournal[0].id, ownPointEntry.id);
-  assert.equal(response.body.pointsJournal[0].amount, 3);
+    WHERE s.player_id = ? AND s.account='orga'`).get(own.id) as { id: string };
+  assert.equal(response.body.pointsJournal.find((entry: { account: string }) => entry.account === 'orga').id, ownPointEntry.id);
+  assert.equal(response.body.pointsJournal.find((entry: { account: string }) => entry.account === 'orga').amount, 3);
   assert.match(response.headers['content-disposition'], /respawn-meine-daten/);
   const serialized = JSON.stringify(response.body);
   assert.match(serialized, new RegExp(ownMessage));

@@ -5824,6 +5824,126 @@ registerMigration({ version: 130, name: 'use a fixed three point todo reward', u
       WHERE points_model='category';`);
 } });
 
+registerMigration({ version: 131, name: 'restart points without balances and activate the separate betting wallet', up: () => {
+  db.exec(`CREATE TABLE IF NOT EXISTS points_wallet_reset (
+      id INTEGER PRIMARY KEY CHECK(id=1), reset_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS points_reset_sources (
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      source_key TEXT NOT NULL,
+      player_id TEXT REFERENCES players(id) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS points_reset_source_identity
+      ON points_reset_sources(event_id,source_key,COALESCE(player_id,''));`);
+  // The user explicitly chose a fresh start for every existing event, including
+  // category scores and snapshots. Replay must never erase post-reset earnings.
+  if (!db.prepare('SELECT 1 FROM points_wallet_reset WHERE id=1').get()) {
+    db.exec(`INSERT OR IGNORE INTO points_reset_sources(event_id,source_key,player_id)
+        SELECT event_id,source_key,player_id FROM points_sources;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,'match:' || id FROM matches;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,'tournament:' || id || ':placement' FROM tournaments WHERE status='completed';
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,'tournament:' || id || ':completion' FROM tournaments WHERE status='completed';
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,CASE WHEN batch_id IS NULL THEN 'todo:' || id ELSE 'todo:batch:' || batch_id END
+        FROM checklist_tasks WHERE event_id IS NOT NULL AND status='done';
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,'food-order:' || id || ':organization' FROM food_orders WHERE closed_at IS NOT NULL;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,'food-order:' || id || ':participation' FROM food_orders WHERE closed_at IS NOT NULL;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        WITH RECURSIVE decisions(event_id,group_id,round,root,started_at) AS (
+          SELECT event_id,group_id,round,round,started_at FROM vote_rounds WHERE source_round IS NULL
+          UNION ALL SELECT child.event_id,child.group_id,child.round,d.root,d.started_at
+            FROM vote_rounds child JOIN decisions d ON child.source_round=d.round
+              AND child.event_id=d.event_id AND child.group_id=d.group_id
+        ) SELECT d.event_id,'vote:' || d.root || ':' || d.started_at || ':organization'
+          FROM decisions d JOIN vote_rounds v ON v.event_id=d.event_id AND v.group_id=d.group_id
+            AND v.round=d.round WHERE v.closed_at IS NOT NULL;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT p.event_id,'poll:' || (SELECT original.id FROM event_date_polls original
+          WHERE original.event_id=p.event_id AND original.decision_key=p.decision_key
+          ORDER BY original.round_number LIMIT 1) || ':organization'
+        FROM event_date_polls p WHERE p.status IN ('closed','scheduled','superseded');
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key,player_id)
+        SELECT event_id,source_key,player_id FROM points_orga_awards;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key,player_id)
+        SELECT ep.event_id,'bonus:skills',ep.player_id FROM event_participants ep
+        JOIN events e ON e.id=ep.event_id WHERE ep.status='accepted'
+          AND EXISTS(SELECT 1 FROM games g WHERE g.group_id=e.group_id AND g.status='catalog' AND g.arcade_key IS NULL)
+          AND NOT EXISTS(SELECT 1 FROM games g WHERE g.group_id=e.group_id AND g.status='catalog' AND g.arcade_key IS NULL
+            AND NOT EXISTS(SELECT 1 FROM skills s WHERE s.player_id=ep.player_id AND s.game_id=g.id
+              AND s.group_id=g.group_id AND s.rating BETWEEN 0 AND 5));
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key,player_id)
+        SELECT a.event_id,'bonus:arrival',a.player_id FROM arrivals a JOIN events e ON e.id=a.event_id
+        WHERE e.starts_at<=CAST(unixepoch('subsec')*1000 AS INTEGER) AND a.updated_at<=e.starts_at AND a.arrival_at IS NOT NULL;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key,player_id)
+        SELECT a.event_id,'bonus:departure',a.player_id FROM arrivals a JOIN events e ON e.id=a.event_id
+        WHERE e.starts_at<=CAST(unixepoch('subsec')*1000 AS INTEGER) AND a.updated_at<=e.starts_at AND a.departure_at IS NOT NULL;
+      DROP TRIGGER IF EXISTS points_journal_immutable_delete;
+      DROP TRIGGER IF EXISTS points_sources_immutable_delete;
+      DELETE FROM points_journal;
+      DELETE FROM points_sources;
+      DELETE FROM points_playing_awards;
+      DELETE FROM points_orga_awards;
+      DELETE FROM point_entries;
+      DELETE FROM points_snapshots;
+      DELETE FROM betting_rounds;
+      DELETE FROM points_task_claims;
+      DELETE FROM points_task_rewards;
+      UPDATE points_settings SET initial_points=100,orga_budget=0,orga_allocated=0,closed_at=NULL;
+      UPDATE checklist_tasks SET points_model='category',points_value=3 WHERE type='todo' AND status IN ('open','taken');
+      UPDATE push_log SET resolved_at=CAST(unixepoch('subsec')*1000 AS INTEGER)
+        WHERE notification_type='betting-open' AND resolved_at IS NULL;
+      CREATE TRIGGER points_journal_immutable_delete BEFORE DELETE ON points_journal
+        WHEN EXISTS(SELECT 1 FROM points_sources WHERE id=OLD.source_id)
+        BEGIN SELECT RAISE(ABORT,'Points journal entries are immutable'); END;
+      CREATE TRIGGER points_sources_immutable_delete BEFORE DELETE ON points_sources
+        WHEN EXISTS(SELECT 1 FROM points_accounts WHERE event_id=OLD.event_id AND player_id=OLD.player_id AND account=OLD.account)
+        BEGIN SELECT RAISE(ABORT,'Points sources are immutable'); END;`);
+    db.prepare('INSERT INTO points_wallet_reset(id,reset_at) VALUES(1,?)').run(Date.now());
+  }
+  // Funding is driven by participation/settings writes, including late acceptance
+  // and event publication. Reading a wallet is never needed to mint its start.
+  const fund = (event: string, player?: string) => `
+    INSERT OR IGNORE INTO points_accounts(event_id,player_id,account,created_at)
+      SELECT ep.event_id,ep.player_id,'wallet',CAST(unixepoch('subsec')*1000 AS INTEGER)
+      FROM event_participants ep JOIN points_settings s ON s.event_id=ep.event_id
+      JOIN players p ON p.id=ep.player_id JOIN group_memberships gm ON gm.group_id=s.group_id AND gm.player_id=p.id
+      WHERE ep.event_id=${event} ${player ? `AND ep.player_id=${player}` : ''}
+        AND ep.status='accepted' AND gm.status='active' AND p.deactivated_at IS NULL AND p.is_test=0
+        AND s.closed_at IS NULL AND ep.event_id!='${OUTSIDE_EVENTS_ID}'
+        AND NOT EXISTS(SELECT 1 FROM points_accounts a WHERE a.event_id=ep.event_id AND a.player_id=ep.player_id AND a.account='wallet');
+    INSERT OR IGNORE INTO points_sources(id,event_id,player_id,account,source_key)
+      SELECT lower(hex(randomblob(16))),ep.event_id,ep.player_id,'wallet','wallet:start'
+      FROM event_participants ep JOIN points_settings s ON s.event_id=ep.event_id
+      JOIN players p ON p.id=ep.player_id JOIN group_memberships gm ON gm.group_id=s.group_id AND gm.player_id=p.id
+      WHERE ep.event_id=${event} ${player ? `AND ep.player_id=${player}` : ''}
+        AND ep.status='accepted' AND gm.status='active' AND p.deactivated_at IS NULL AND p.is_test=0
+        AND s.closed_at IS NULL AND ep.event_id!='${OUTSIDE_EVENTS_ID}'
+        AND NOT EXISTS(SELECT 1 FROM points_sources a WHERE a.event_id=ep.event_id AND a.player_id=ep.player_id AND a.account='wallet' AND a.source_key='wallet:start');
+    INSERT OR IGNORE INTO points_journal(id,source_id,revision,amount,title,created_at)
+      SELECT lower(hex(randomblob(16))),s.id,1,100,'Wett-Startguthaben',CAST(unixepoch('subsec')*1000 AS INTEGER)
+      FROM points_sources s WHERE s.event_id=${event} ${player ? `AND s.player_id=${player}` : ''}
+        AND s.account='wallet' AND s.source_key='wallet:start'
+        AND NOT EXISTS(SELECT 1 FROM points_journal j WHERE j.source_id=s.id);`;
+  db.exec(`DROP TRIGGER IF EXISTS points_participant_start_insert;
+    DROP TRIGGER IF EXISTS points_participant_start_update;
+    DROP TRIGGER IF EXISTS points_settings_start_accounts;
+    CREATE TRIGGER points_participant_start_insert AFTER INSERT ON event_participants WHEN NEW.status='accepted'
+      BEGIN ${fund('NEW.event_id', 'NEW.player_id')} END;
+    CREATE TRIGGER points_participant_start_update AFTER UPDATE OF status ON event_participants WHEN NEW.status='accepted'
+      BEGIN ${fund('NEW.event_id', 'NEW.player_id')} END;
+    CREATE TRIGGER points_settings_start_accounts AFTER INSERT ON points_settings
+      BEGIN ${fund('NEW.event_id')} END;`);
+  for (const event of db.prepare('SELECT event_id FROM points_settings').all() as Array<{ event_id: string }>) {
+    // Internal identifiers only; actual event IDs remain bound SQL values.
+    db.prepare(`UPDATE event_participants SET status=status WHERE event_id=? AND status='accepted'`).run(event.event_id);
+  }
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

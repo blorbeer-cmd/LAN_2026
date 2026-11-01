@@ -7,7 +7,7 @@ import { setActiveEventForPlayer } from '../eventContext';
 import { db } from '../db';
 import { wallet, PointsError } from '../points';
 import { correctJournalEntry } from '../pointsAdministration';
-import { readPointsBalances, readPointsSource, recordPointsEntitlements } from '../pointsJournal';
+import { readPointsBalances, readPointsSource, readPointsJournal, recordPointsEntitlements } from '../pointsJournal';
 import { buildPersonalDataExport, deleteAccount } from '../privacyService';
 import { syncOrgaPoints } from '../orgaPoints';
 import { grantTravelPoints } from '../travelPoints';
@@ -266,11 +266,9 @@ test('points start once per accepted participant, preserve event access, and blo
   assert.deepEqual(db.prepare('SELECT visible,configured_at FROM points_settings WHERE event_id = ?').get(background.id), { visible: 0, configured_at: null });
   const configurations = await Promise.all([10, 20].map((initialPoints) => request(app)
     .put(`/api/points/settings?eventId=${background.id}`).send({ initialPoints })));
-  assert.deepEqual(configurations.map((r) => r.status).sort(), [200, 409]);
-  const configured = configurations.find((r) => r.status === 200)!;
-  assert.equal(wallet(background.id, TEST_ADMIN_ID).total, configured.body.initial_points);
-  const adjustments = db.prepare("SELECT COUNT(*) AS n FROM point_entries WHERE event_id = ? AND source = 'correction'").get(background.id) as { n: number };
-  assert.equal(adjustments.n, 1);
+  assert.deepEqual(configurations.map((r) => r.status), [400, 400]);
+  assert.equal(wallet(background.id, TEST_ADMIN_ID).total, 100, 'the fixed start cannot be reconfigured');
+  assert.equal((await request(app).put(`/api/points/settings?eventId=${background.id}`).send({ initialPoints: 100 })).status, 200);
   const f = await fixture();
   await Promise.all([
     request(app).put('/api/points/settings').send({}),
@@ -334,8 +332,8 @@ test('leaderboard filters and cross-event totals use game points without mixing 
   assert.deepEqual((await scores(`?gameId=${secondGame.body.id}`)).map((row: { points: number }) => row.points), [1, 4]);
   assert.deepEqual((await scores('')).map((row: { points: number; wins: number; matchesPlayed: number }) =>
     [row.points, row.wins, row.matchesPlayed]), [[5, 1, 2], [5, 1, 2]]);
-  assert.deepEqual((await scores(`?eventId=${f.eventId}`)).map((row: { points: number }) => row.points), [100, 100, 100],
-    'the explicit unfiltered LAN view keeps its legacy account until the model transition');
+  assert.deepEqual((await scores(`?eventId=${f.eventId}`)).map((row: { points: number }) => row.points), [4, 1, 0],
+    'the explicit LAN view shows playing raw scores, never spendable wallet balances');
   assert.equal((await request(app).patch(`/api/events/${f.eventId}/points-visibility`)
     .send({ visible: false, revision: 1 })).status, 200);
   assert.deepEqual(await scores(`?eventId=${f.eventId}&gameId=${f.gameId}`), []);
@@ -356,16 +354,15 @@ test('admins and event creators toggle visibility without interrupting hidden cr
   assert.equal((await visibility('true', 0)).status, 400);
   const task = await request(app).post('/api/checklist/tasks/todo').send({ playerId: TEST_ADMIN_ID, type: 'todo', title: 'Hidden helper task' });
   const taskId = task.body.tasks[0].id;
-  db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(taskId); // pre-upgrade task
-  legacyPromise(taskId);
   await request(app).post(`/api/checklist/tasks/${taskId}/claim`).set('x-test-player-id', creator).send({ playerId: creator });
   const done = await request(app).patch(`/api/checklist/tasks/${taskId}/done`).set('x-test-player-id', creator).send({ playerId: creator });
   assert.equal(done.status, 200);
   assert.equal(done.body.reward, null, 'a hidden reward is not disclosed by a task mutation');
-  assert.equal(wallet(f.eventId, creator).total, 105, 'completion credits without any participant viewing points');
+  assert.equal(wallet(f.eventId, creator).total, 100, 'orga credits never fund the wallet');
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, creator)!.orga, 3, 'hidden tasks credit the category immediately');
   const reveals = await Promise.all([0, 1].map(() => visibility(true, 0, creator)));
   assert.deepEqual(reveals.map((r) => r.status).sort(), [200, 409]);
-  assert.equal((await request(app).get('/api/points').set('x-test-player-id', creator)).body.wallet.total, 105);
+  assert.equal((await request(app).get('/api/points').set('x-test-player-id', creator)).body.wallet.total, 100);
   const r = await round(f);
   for (const [index, playerId] of [creator, opponent].entries()) {
     assert.equal((await request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', playerId)
@@ -381,15 +378,15 @@ test('admins and event creators toggle visibility without interrupting hidden cr
   const result = await request(app).post('/api/matches').send({ gameId: f.gameId, drawId: r.drawId,
     teams: r.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 0 });
   assert.equal(result.status, 201, JSON.stringify(result.body));
-  assert.deepEqual([wallet(f.eventId, creator).total, wallet(f.eventId, opponent).total], [110, 95]);
+  assert.deepEqual([wallet(f.eventId, creator).total, wallet(f.eventId, opponent).total], [105, 95]);
   const hidden = await request(app).get('/api/points');
   assert.equal(hidden.body.rounds[0].status, 'settled', 'reconciliation continues while hidden');
   assert.deepEqual((await request(app).get(`/api/export?eventId=${f.eventId}`)).body.leaderboard, [], 'keepsake exports do not disclose hidden standings');
   assert.equal((await request(app).get('/api/points').set('x-test-player-id', creator)).status, 403);
   assert.equal((await visibility(true, 2, creator)).status, 200);
   const restored = await request(app).get('/api/points').set('x-test-player-id', creator);
-  assert.equal(restored.body.wallet.total, 110);
-  assert.deepEqual(restored.body.entries.map((entry: { source: string }) => entry.source), ['start', 'task', 'tip']);
+  assert.equal(restored.body.wallet.total, 105);
+  assert.deepEqual(restored.body.entries.map((entry: { source: string }) => entry.source), ['start', 'reservation', 'tip']);
   assert.equal((await visibility(false, 2)).status, 409, 'a stale toggle cannot overwrite a newer choice');
   db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(f.eventId, creator);
   const creatorContext = (await request(app).get('/api/events').set('x-test-player-id', creator)).body;
@@ -534,69 +531,26 @@ test('todo batches pay once, preserve historical work and promises, and roll bac
   assert.deepEqual(db.prepare('SELECT * FROM points_journal ORDER BY id').all(), frozen);
 });
 
-test('historical task promises still pay their original slots once and retain budget and deductions', async () => {
-  const f = await fixture({ orgaBudget: 10 });
-  const task = await request(app)
-    .post('/api/checklist/tasks/todo')
-    .send({ playerId: TEST_ADMIN_ID, type: 'todo', title: 'Cable cleanup' });
-  assert.equal(task.status, 201, JSON.stringify(task.body));
-  const id = task.body.id ?? task.body.tasks?.[0]?.id;
-  assert.ok(id, JSON.stringify(task.body));
-  db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(id); // pre-upgrade task
+test('retired task rewards and entry deductions cannot mint or remove wallet funds', async () => {
+  const f = await fixture();
+  const task = await request(app).post('/api/checklist/tasks/todo').send({ title: 'Old financial client' });
+  const id = task.body.tasks[0].id;
   legacyPromise(id, 5, 2);
-  const claims = await Promise.all(
-    f.players.map((p) => request(app).post(`/api/checklist/tasks/${id}/claim`).send({ playerId: p })),
-  );
-  assert.ok(claims.every((r) => r.status === 200));
-  const completions = await Promise.all(
-    [0, 1].map(() => request(app).patch(`/api/checklist/tasks/${id}/done`).send({ playerId: f.players[0] })),
-  );
-  assert.deepEqual(completions.map((r) => r.status).sort(), [200, 409]);
-  const balances = f.players.map((p) => wallet(f.eventId, p).total).sort();
-  assert.deepEqual(balances, [100, 105, 105]);
-  const entry = db
-    .prepare("SELECT id,player_id FROM point_entries WHERE event_id = ? AND source = 'task' LIMIT 1")
-    .get(f.eventId) as { id: string; player_id: string };
-  const bad = await request(app)
-    .post(`/api/points/entries/${entry.id}/deduct`)
-    .send({ amount: 1, reason: '', requestId: 'bad' });
-  assert.equal(bad.status, 400);
-  const attempts = await Promise.all(
-    [0, 1].map(() =>
-      request(app)
-        .post(`/api/points/entries/${entry.id}/deduct`)
-        .send({ amount: 3, reason: 'Only part completed', requestId: 'same-deduction' }),
-    ),
-  );
-  assert.ok(attempts.every((r) => r.status === 200));
-  assert.equal(wallet(f.eventId, entry.player_id).total, 102);
-  assert.equal(
-    (
-      await request(app)
-        .post(`/api/points/entries/${entry.id}/deduct`)
-        .send({ amount: 3, reason: 'Too much', requestId: 'new-deduction' })
-    ).status,
-    409,
-  );
-  const view = await request(app).get('/api/points');
-  assert.equal(view.body.budget.issued, 10);
-  assert.equal(view.body.budget.available, 0, 'deductions do not create a new task budget');
-  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM admin_log WHERE action = 'points_deducted' AND target_id = ?").get(entry.id) as { n: number }).n, 1,
-    'an idempotent retry creates neither a second deduction nor a second audit');
-  db.exec(`CREATE TEMP TRIGGER fail_deduction_audit BEFORE INSERT ON admin_log
-    WHEN NEW.action = 'points_deducted' BEGIN SELECT RAISE(ABORT, 'test deduction audit failure'); END;`);
-  try {
-    assert.equal((await request(app).post(`/api/points/entries/${entry.id}/deduct`)
-      .send({ amount: 1, reason: 'Audit muss atomar sein', requestId: 'audit-failure' })).status, 500);
-    assert.equal(wallet(f.eventId, entry.player_id).total, 102);
-  } finally {
-    db.exec('DROP TRIGGER fail_deduction_audit');
-  }
-  const ownEntry = db.prepare("SELECT id FROM point_entries WHERE event_id = ? AND player_id = ? AND source = 'start'").get(f.eventId, TEST_ADMIN_ID) as { id: string };
-  const ownDeduction = await request(app).post(`/api/points/entries/${ownEntry.id}/deduct`)
-    .send({ amount: 1, reason: 'Eigenen Anspruch berichtigt', requestId: 'own-deduction' });
-  assert.equal(ownDeduction.status, 200, JSON.stringify(ownDeduction.body));
-  assert.equal(wallet(f.eventId, TEST_ADMIN_ID).total, 99);
+  const claims = await Promise.all(f.players.map((playerId) =>
+    request(app).post(`/api/checklist/tasks/${id}/claim`).send({ playerId })));
+  assert.ok(claims.every((response) => response.status === 200));
+  const done = await Promise.all([0, 1].map(() => request(app).patch(`/api/checklist/tasks/${id}/done`).send({ playerId: f.players[0] })));
+  assert.deepEqual(done.map((response) => response.status).sort(), [200, 409]);
+  assert.deepEqual(f.players.map((playerId) => wallet(f.eventId, playerId).total), [100, 100, 100]);
+  const entry = readPointsJournal(DEFAULT_GROUP_ID, f.eventId, f.players[0]).find((entry) => entry.account === 'wallet')!;
+  const deductions = await Promise.all([0, 1].map(() => request(app).post(`/api/points/entries/${entry.id}/deduct`)
+    .send({ amount: 3, reason: 'Old financial route', requestId: 'same' })));
+  assert.deepEqual(deductions.map((response) => response.status), [409, 409]);
+  assert.equal((await request(app).post(`/api/points/entries/${entry.id}/deduct`).set('x-test-player-id', f.players[0])
+    .send({ amount: 3, reason: 'Member' })).status, 403);
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${id}/reopen`).send({ playerId: f.players[0] })).status, 200);
+  assert.equal((await request(app).post(`/api/points/tasks/${id}/reward`).send({ perPerson: 5, slots: 1 })).status, 409);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM point_entries WHERE event_id=?').get(f.eventId) as { n: number }).n, 0);
 });
 
 test('players bet on their own games; hidden tips lock and settle zero-sum, once, with a personal notification', async (t) => {
@@ -604,6 +558,14 @@ test('players bet on their own games; hidden tips lock and settle zero-sum, once
   const r = await round(f);
   const a = f.players[0],
     b = f.players[1];
+  db.exec(`CREATE TEMP TRIGGER fail_tip_wallet BEFORE INSERT ON points_journal
+    WHEN NEW.amount<0 BEGIN SELECT RAISE(ABORT,'tip wallet failed'); END;`);
+  try {
+    assert.equal((await request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', a)
+      .send({ outcomeId: '0', stake: 10 })).status, 500);
+    assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 0, available: 100 });
+    assert.equal(db.prepare('SELECT 1 FROM betting_tips WHERE round_id=? AND player_id=?').get(r.id, a), undefined);
+  } finally { db.exec('DROP TRIGGER fail_tip_wallet'); }
   const bets = await Promise.all([
     request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', a).send({ outcomeId: '0', stake: 10 }),
     request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', b).send({ outcomeId: '1', stake: 5 }),
@@ -635,6 +597,16 @@ test('players bet on their own games; hidden tips lock and settle zero-sum, once
     ).status,
     409,
   );
+  db.exec(`CREATE TEMP TRIGGER fail_settlement_net BEFORE INSERT ON points_journal
+    WHEN (SELECT account FROM points_sources WHERE id=NEW.source_id)='betting'
+    BEGIN SELECT RAISE(ABORT,'settlement net failed'); END;`);
+  try {
+    assert.equal((await request(app).post('/api/matches').send({ gameId: f.gameId, drawId: r.drawId,
+      teams: r.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 0 })).status, 500);
+    assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 10, available: 90 });
+    assert.equal((await request(app).get('/api/points')).body.rounds[0].status, 'locked');
+    assert.equal(db.prepare('SELECT 1 FROM matches WHERE id=(SELECT match_id FROM matchmaking_draws WHERE id=?)').get(r.drawId), undefined);
+  } finally { db.exec('DROP TRIGGER fail_settlement_net'); }
   const result = await request(app)
     .post('/api/matches')
     .send({
@@ -648,15 +620,9 @@ test('players bet on their own games; hidden tips lock and settle zero-sum, once
   assert.equal(wallet(f.eventId, a).total, 105);
   assert.equal(wallet(f.eventId, b).total, 95);
   assert.equal(wallet(f.eventId, a).held, 0);
-  assert.equal(
-    db.prepare("SELECT COUNT(*) AS n FROM point_entries WHERE event_id = ? AND source = 'tip'").get(f.eventId) &&
-      (
-        db.prepare("SELECT COUNT(*) AS n FROM point_entries WHERE event_id = ? AND source = 'tip'").get(f.eventId) as {
-          n: number;
-        }
-      ).n,
-    2,
-  );
+  assert.deepEqual([a, b].map((playerId) => readPointsBalances(DEFAULT_GROUP_ID, f.eventId, playerId)!.betting), [5, -5]);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM point_entries WHERE event_id=?').get(f.eventId) as { n: number }).n, 0,
+    'settlement has exactly one financial producer');
   assert.equal(
     (
       await request(app)
@@ -710,19 +676,19 @@ test('players bet on their own games; hidden tips lock and settle zero-sum, once
 });
 
 test('parallel reservations obey available funds and event limits; closing prevents bets but keeps To-dos usable without credits', async () => {
-  const f = await fixture({ initialPoints: 10, dailyLimit: 10 });
+  const f = await fixture({ maxStake: 100, dailyLimit: 200 });
   const a = f.players[0],
     first = await round(f),
     second = await round(f);
   const attempts = await Promise.all(
     [first, second].map((r) =>
-      request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', a).send({ outcomeId: '0', stake: 10 }),
+      request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', a).send({ outcomeId: '0', stake: 100 }),
     ),
   );
   assert.deepEqual(attempts.map((r) => r.status).sort(), [200, 409]);
   const accepted = attempts[0].status === 200 ? first : second;
   assert.equal((await request(app).post(`/api/points/rounds/${accepted.id}/lock`).send({})).status, 200);
-  assert.deepEqual(wallet(f.eventId, a), { total: 10, held: 0, available: 10 });
+  assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 0, available: 100 });
   const other = accepted.id === first.id ? second : first;
   assert.equal(
     (await request(app).post(`/api/points/rounds/${other.id}/refund`).send({ reason: 'Not played' })).status,
@@ -875,9 +841,7 @@ test('late accepted participants get exactly one starting credit; final standing
   const frozen = (await request(app).get('/api/points')).body.standings;
   setParticipants(f.eventId, [TEST_ADMIN_ID, f.players[0], late]);
   assert.deepEqual((await request(app).get('/api/points')).body.standings, frozen);
-  const entry = db
-    .prepare("SELECT id FROM point_entries WHERE event_id = ? AND player_id = ? AND source = 'start'")
-    .get(f.eventId, late) as { id: string };
+  const entry = readPointsJournal(DEFAULT_GROUP_ID, f.eventId, late).find((row) => row.account === 'wallet')!;
   assert.equal(
     (
       await request(app)
@@ -894,7 +858,7 @@ test('late accepted participants get exactly one starting credit; final standing
         .post(`/api/points/entries/${entry.id}/deduct`)
         .send({ amount: 1, reason: 'Correction', requestId: 'reopened-deduct' })
     ).status,
-    200,
+    409,
   );
   assert.equal((await request(app).post('/api/points/close').send({})).status, 200);
   assert.equal(
@@ -961,7 +925,7 @@ test('deadlines and pre-start changes refund unsafe pools; official round limits
 });
 
 test('result corrections keep original pools zero-sum even when the old winnings are already reserved elsewhere', async () => {
-  const f = await fixture({ initialPoints: 10, maxStake: 20, dailyLimit: 40 });
+  const f = await fixture({ maxStake: 200, dailyLimit: 400 });
   const first = await round(f);
   for (let i = 0; i < 2; i++)
     assert.equal(
@@ -969,7 +933,7 @@ test('result corrections keep original pools zero-sum even when the old winnings
         await request(app)
           .put(`/api/points/rounds/${first.id}/tip`)
           .set('x-test-player-id', f.players[i])
-          .send({ outcomeId: String(i), stake: 10 })
+          .send({ outcomeId: String(i), stake: 100 })
       ).status,
       200,
     );
@@ -988,7 +952,7 @@ test('result corrections keep original pools zero-sum even when the old winnings
       await request(app)
         .put(`/api/points/rounds/${second.id}/tip`)
         .set('x-test-player-id', f.players[0])
-        .send({ outcomeId: '0', stake: 20 })
+        .send({ outcomeId: '0', stake: 200 })
     ).status,
     200,
   );
@@ -999,8 +963,8 @@ test('result corrections keep original pools zero-sum even when the old winnings
       bettingCorrection: { reason: 'Score reversed', revisions: [{ id: first.id, revision: 0 }] },
     });
   assert.equal(corrected.status, 200, JSON.stringify(corrected.body));
-  assert.deepEqual(wallet(f.eventId, f.players[0]), { total: 0, held: 20, available: -20 });
-  assert.equal(wallet(f.eventId, f.players[1]).total, 20);
+  assert.deepEqual(wallet(f.eventId, f.players[0]), { total: 0, held: 200, available: -200 });
+  assert.equal(wallet(f.eventId, f.players[1]).total, 200);
   assert.equal(
     (
       await request(app)
@@ -1016,7 +980,7 @@ test('result corrections keep original pools zero-sum even when the old winnings
         .prepare('SELECT stake FROM betting_tips WHERE round_id = ? AND player_id = ?')
         .get(second.id, f.players[0]) as { stake: number }
     ).stake,
-    20,
+    200,
     'unrelated reservations are not silently changed',
   );
 });
@@ -1050,18 +1014,16 @@ test('an orga-only LAN cannot open pools or configure legacy rewards; fixed todo
     ).status,
     409,
   );
-  assert.equal((await request(app).get('/api/points')).body.budget.available, 5);
+  assert.equal((await request(app).get('/api/points')).body.budget, undefined);
 });
 
-test('account erasure keeps other helpers credited, retains committed budget and anonymizes historical pool stakes', async () => {
+test('account erasure keeps other category credits and anonymizes historical pool stakes', async () => {
   const f = await fixture({ orgaBudget: 5 });
   const task = await request(app)
     .post('/api/checklist/tasks/todo')
-    .set('x-test-player-id', f.players[0])
-    .send({ playerId: f.players[0], type: 'todo', title: 'Completed shared task' });
+    .set('x-test-player-id', TEST_ADMIN_ID)
+    .send({ playerId: TEST_ADMIN_ID, type: 'todo', title: 'Completed shared task' });
   const taskId = task.body.tasks[0].id;
-  db.prepare("UPDATE checklist_tasks SET points_value = 0, points_model = 'legacy' WHERE id = ?").run(taskId); // pre-upgrade task
-  legacyPromise(taskId);
   await request(app)
     .post(`/api/checklist/tasks/${taskId}/claim`)
     .set('x-test-player-id', f.players[1])
@@ -1094,11 +1056,12 @@ test('account erasure keeps other helpers credited, retains committed budget and
     assert.equal(result.ok, true, JSON.stringify(result));
     assert.equal(
       wallet(f.eventId, f.players[1]).total,
-      100,
-      'task reward survives erasing its creator; lost bet remains',
+      95,
+      'the lost bet remains separate from the helper category credit',
     );
     const view = (await request(app).get('/api/points')).body;
-    assert.equal(view.budget.available, 0, 'deleting the task creator cannot recycle the reward budget');
+    assert.equal(view.categoryBalances.wallet, 100);
+    assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[1])!.orga, 3, 'the helper keeps their category credit');
     assert.equal(view.rounds[0].pot, 10, 'historic pool totals stay intact');
     assert.equal(view.rounds[0].tipCount, 2);
     assert.ok(!JSON.stringify(view.rounds[0]).includes(f.players[0]));

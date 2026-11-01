@@ -1,5 +1,6 @@
 import { db, OUTSIDE_EVENTS_ID } from './db';
 import { POINTS_ACCOUNTS, readPointsSource, recordPointsEntitlements } from './pointsJournal';
+import { isResetPointsSource } from './pointsReset';
 
 // A recorded travel award is permanent even if a participant later changes or
 // removes their travel details. Journal corrections remain independent.
@@ -18,7 +19,7 @@ export function grantTravelPoints(groupId: string, eventId: string, now = Date.n
       ['arrival_at', 'bonus:arrival', 'Ankunft eingetragen'],
       ['departure_at', 'bonus:departure', 'Abreise eingetragen'],
     ] as const) {
-      if (row[field] === null || db.prepare('SELECT 1 FROM points_orga_awards WHERE event_id=? AND player_id=? AND source_key=?')
+      if (row[field] === null || isResetPointsSource(eventId, row.player_id, sourceKey) || db.prepare('SELECT 1 FROM points_orga_awards WHERE event_id=? AND player_id=? AND source_key=?')
         .get(eventId, row.player_id, sourceKey)) continue;
       for (const account of POINTS_ACCOUNTS) db.prepare(`INSERT OR IGNORE INTO points_accounts
         (event_id,player_id,account,created_at) VALUES (?,?,?,?)`).run(eventId, row.player_id, account, now);

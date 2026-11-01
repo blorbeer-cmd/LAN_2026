@@ -124,8 +124,8 @@ test('complete catalog skills grant five points once, survive data changes and r
     [200, 200],
   );
   assert.deepEqual(readPointsSource(source), { total: 5, revision: 1 }, 'never played (0) is a valid assessment');
-  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, event.id, player)!.wallet, 0);
-  const journal = readPointsJournal(DEFAULT_GROUP_ID, event.id, player);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, event.id, player)!.wallet, 100);
+  const journal = readPointsJournal(DEFAULT_GROUP_ID, event.id, player).filter((entry) => entry.account === 'orga');
   assert.equal(journal.length, 1);
   assert.match(journal[0].title, new RegExp(`${games.length} Katalogspiele`));
   assert.equal(
