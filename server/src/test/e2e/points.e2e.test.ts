@@ -156,7 +156,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('105', { exact: true }).first().waitFor();
   await member.locator('[data-points-source]').selectOption('task');
-  assert.equal(await member.locator('.points-journal li').count(), 1);
+  assert.equal(await member.getByRole('region', { name: 'Punkteverlauf', exact: true }).locator('.points-journal li').count(), 1);
   await member.locator('[data-point-entry]').click();
   await member.getByRole('dialog').getByText('Orga-Aufgabe', { exact: true }).waitFor();
   await member.keyboard.press('Escape');
@@ -205,7 +205,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
       scroll: document.documentElement.scrollWidth,
     }));
     assert.ok(geometry.scroll <= geometry.viewport, `points at ${width}px: ${JSON.stringify(geometry)}`);
-    assert.equal(await member.locator('.points-chart svg[role="img"]').count(), 1);
+    assert.equal(await member.getByRole('region', { name: 'Punkteverlauf', exact: true }).locator('.points-chart svg[role="img"]').count(), 1);
   }
   await navigate(admin, 'pointsAdmin');
   const credit = (await api(`/api/points/admin/entries?eventId=${eventId}`)).entries.find(
@@ -303,6 +303,13 @@ test('token-only kiosk pages every result participant and removes point columns 
 
     for (const viewport of [{ width: 320, height: 900 }, { width: 390, height: 900 }, { width: 1280, height: 720 }, { width: 1440, height: 900 }]) {
       await kiosk.setViewportSize(viewport);
+      // The ResizeObserver must finish fitting before sampling the next page.
+      await kiosk.waitForFunction(() => {
+        const panel = document.querySelector('#kiosk-results')!;
+        const bottom = panel.getBoundingClientRect().bottom;
+        const rows = Array.from(panel.querySelectorAll('tbody tr')).filter((row) => !(row as HTMLElement).hidden);
+        return rows.length > 0 && rows.every((row) => row.getBoundingClientRect().bottom <= bottom + 1);
+      });
       const names = new Set<string>();
       for (let turn = 0; turn < 8; turn++) {
         const measured = await results.evaluate((element) => {
@@ -351,5 +358,107 @@ test('token-only kiosk pages every result participant and removes point columns 
   } finally {
     await context.close();
     await api('/api/me/active-event', 'PUT', { eventId });
+  }
+});
+
+test('category history and reasoned own and foreign corrections stay consistent across phone, desktop and hidden points', async () => {
+  const event = await api('/api/events', 'POST', {
+    name: 'Kategorie-Journal-LAN', eventType: 'lan', startsAt: Date.now(), endsAt: Date.now() + 86400000,
+  });
+  await api(`/api/events/${event.id}/participants`, 'PUT', { playerIds: [myId, alice.id, bob.id] });
+  for (const session of [cookie, alice.cookie, bob.cookie]) {
+    await api(`/api/events/${event.id}/invitation/accept`, 'POST', {}, session);
+    await api('/api/me/active-event', 'PUT', { eventId: event.id }, session);
+  }
+  const game = await api('/api/games', 'POST', { name: 'Kategorie-Spiel mit einem langen Namen für den Verlauf' });
+  const match = await api('/api/matches', 'POST', {
+    gameId: game.id, teams: [{ playerIds: [myId] }, { playerIds: [alice.id] }], winnerTeamIndex: 1,
+  });
+  await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: true, revision: 0 });
+  const journalUrl = `/api/points/admin/journal?eventId=${event.id}`;
+  const initialJournal = (await api(journalUrl)).entries;
+  const own = initialJournal.find((entry: any) => entry.playerId === myId && entry.account === 'orga' && entry.sourceKey === `match:${match.id}`);
+  const foreign = initialJournal.find((entry: any) => entry.playerId === alice.id && entry.account === 'playing' && entry.sourceKey === `match:${match.id}`);
+  assert.ok(own && foreign);
+  const adminOrigin = new URL(admin.url()).origin;
+  let failJournal = true;
+  const journalRoute = '**/api/points/admin/journal?*';
+  await admin.route(journalRoute, async (route) => {
+    if (failJournal) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Journal vorübergehend nicht erreichbar' }) });
+    await route.fallback();
+  });
+  try {
+    await admin.goto(`${adminOrigin}/?eventId=${event.id}#pointsAdmin`);
+    await member.goto(`${server.baseUrl}/?eventId=${event.id}#points`);
+    await Promise.all([waitForPlayerData(admin), waitForPlayerData(member)]);
+    await activateAdminMode(admin);
+    await navigate(admin, 'pointsAdmin');
+    await navigate(member, 'points');
+    const personal = member.getByRole('region', { name: 'Meine Kategorien', exact: true });
+    const history = member.getByRole('region', { name: 'Kategorie-Verlauf', exact: true });
+    const administration = admin.getByRole('region', { name: 'Kategorie-Journal', exact: true });
+    await personal.locator('[data-category-balance=\"playing\"]').filter({ hasText: /^4$/ }).waitFor();
+    await history.getByText('Noch keine Buchungen.', { exact: true }).waitFor();
+    await administration.getByText('Journal vorübergehend nicht erreichbar', { exact: true }).waitFor();
+    failJournal = false;
+    await administration.locator('[data-category-admin-refresh]').click();
+    await administration.locator(`[data-admin-category-entry="${own.id}"]`).waitFor();
+    await history.locator('[data-category-account]').selectOption('playing');
+    await history.getByRole('img', { name: /Spielen-Punkteverlauf: 1 Buchungen, aktuell 4 Punkte/ }).waitFor();
+    await history.locator('[data-category-entry]').click();
+    await member.getByRole('dialog', { name: 'Kategorie-Buchung', exact: true }).getByText('+4 P.', { exact: true }).waitFor();
+    await member.keyboard.press('Escape');
+    assert.equal((await api(journalUrl)).entries.length, initialJournal.length, 'opening either journal never adds an award');
+    async function correctInUi(id: string, total: number, reason: string) {
+      await administration.locator(`[data-admin-category-entry="${id}"]`).click();
+      const form = admin.locator('[data-category-correction]');
+      await form.locator('[name="total"]').fill(String(total));
+      await form.locator('[name="reason"]').fill(reason);
+      await form.getByRole('button', { name: 'Korrektur speichern', exact: true }).click();
+      await form.waitFor({ state: 'detached' });
+    }
+    await correctInUi(own.id, -2, 'Eigene Orga-Punkte begründet korrigiert');
+    assert.equal((await api(`/api/points?eventId=${event.id}`)).categoryBalances.orga, -2);
+    await administration.locator(`[data-admin-category-entry="${own.id}"]`).click();
+    assert.equal(await admin.locator('[data-category-correction] [name="total"]').inputValue(), '-2', 'an old booking opens the full current source claim');
+    await admin.keyboard.press('Escape');
+    await correctInUi(own.id, 0, 'Eigenen Anspruch auf null setzen');
+    await correctInUi(foreign.id, 3, 'Spielpunkte eines Teilnehmers korrigiert');
+    await personal.locator('[data-category-balance=\"playing\"]').filter({ hasText: /^3$/ }).waitFor();
+    await history.getByText('Spielpunkte eines Teilnehmers korrigiert', { exact: true }).waitFor();
+    // Keep an edit open across a real concurrent source correction. The stale
+    // form must close and refresh after 409 instead of overwriting the change.
+    await administration.locator(`[data-admin-category-entry="${foreign.id}"]`).click();
+    await api(`/api/points/admin/journal/${foreign.id}/correct?eventId=${event.id}`, 'POST', {
+      total: 2, revision: 2, reason: 'Zwischenzeitliche Korrektur aus anderer Sitzung',
+    });
+    await admin.locator('[data-category-correction] [name="total"]').fill('1');
+    await admin.locator('[data-category-correction] [name="reason"]').fill('Veralteter Bearbeitungsstand');
+    await admin.getByRole('button', { name: 'Korrektur speichern', exact: true }).click();
+    await admin.locator('[data-category-correction]').waitFor({ state: 'detached' });
+    await personal.locator('[data-category-balance=\"playing\"]').filter({ hasText: /^2$/ }).waitFor();
+    assert.equal((await api(`/api/points?eventId=${event.id}`, 'GET', undefined, alice.cookie)).categoryBalances.playing, 2);
+    for (const page of [admin, member]) {
+      for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 512, height: 384 }, { width: 1440, height: 900 }]) {
+        await page.setViewportSize(viewport);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+      }
+    }
+    await member.setViewportSize({ width: 390, height: 844 });
+    await member.screenshot({ path: 'test-results/category-points-phone.png', fullPage: true });
+    await history.locator('[data-category-entry]').first().click();
+    await member.getByRole('dialog', { name: 'Kategorie-Buchung', exact: true }).waitFor();
+    await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 1 });
+    await member.getByRole('dialog', { name: 'Kategorie-Buchung', exact: true }).waitFor({ state: 'detached' });
+    await personal.waitFor({ state: 'detached' });
+    await administration.waitFor();
+    await correctInUi(own.id, -1, 'Eigene Korrektur bei ausgeblendeter Teilnehmeransicht');
+    assert.equal((await api(`/api/points?eventId=${event.id}`)).categoryBalances.orga, -1);
+    await administration.getByText('Eigene Korrektur bei ausgeblendeter Teilnehmeransicht', { exact: true }).waitFor();
+    await admin.screenshot({ path: 'test-results/category-points-admin.png', fullPage: true });
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    await admin.unroute(journalRoute);
+    for (const session of [cookie, alice.cookie, bob.cookie]) await api('/api/me/active-event', 'PUT', { eventId }, session);
   }
 });

@@ -3,7 +3,8 @@
 Diese Datei beschreibt die bisherige sichtbare LAN-Funktion. Das neue
 [Zielkonzept](../KONZEPT-PUNKTE-WERTUNG.md) ersetzt ihre gemeinsame Wetten-/Orga-Wertung
 schrittweise durch drei Kategorien und eine Gesamtwertung. Die [Journalbasis](points-journal.md)
-ist bereits vorhanden; Fachhandler und Ansichten sind noch daran anzubinden. Bestehende
+ist bereits vorhanden; Kategorie-Rohwerte, Verlauf und Admin-Journal sind sichtbar. Weitere
+Fachhandler, Wallet-Abrechnung und die endgültige Gesamtwertung folgen. Bestehende
 Vorgabewerte und Grenzen der bisherigen Funktion entscheiden keine offenen Konzeptregeln.
 
 Veröffentlichte LAN-Events sammeln Punkte automatisch im Hintergrund, unabhängig von der Anzeige

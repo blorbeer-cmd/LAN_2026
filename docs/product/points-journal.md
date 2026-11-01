@@ -58,8 +58,8 @@ Wiederöffnen werden zwischenzeitliche Änderungen einmal nachgezogen. Der pers�
 Datenschutzexport enthält auch den eigenen automatischen Abgleichstand.
 
 `GET /api/points` liefert zusätzlich `categoryBalances` und `categoryJournal` der angemeldeten
-Person. Die vorhandenen Sichtbarkeitsregeln gelten auch für diese Daten. Die sichtbare
-LAN-Ansicht bleibt bis zum Ansichtenpaket beim bisherigen Konto; Spielpunkte erhöhen dessen
+Person. Die vorhandenen Sichtbarkeitsregeln gelten auch für diese Daten. Die LAN-Ansicht zeigt die drei Kategorie-Rohwerte mit eigenem Verlauf. Das bisherige
+Wettkonto und dessen Tipps bleiben bis zur Umstellung separat; Spielpunkte erhöhen dessen
 Wettguthaben nicht.
 
 ## Orga-Punkte für Wettbewerbe
@@ -137,7 +137,7 @@ Die Vergabe läuft unabhängig von der Sichtbarkeit. Historische abgeschickte Be
 Wertungen werden über den vorhandenen Startabgleich nachgetragen. Festgeschriebene Wertungen
 bleiben unverändert, Wiederöffnen der Wertung zieht zwischenzeitliche Änderungen nach.
 Die eigene Punkte-API (`categoryBalances`, `categoryJournal`) und der Datenschutzexport enthalten
-die neuen Orga-Einträge. Die sichtbare Kategorieoberfläche folgt im Ansichtenpaket. Dieses Paket benötigt
+die neuen Orga-Einträge. Die Kategorieoberfläche zeigt diese Buchungen mit Zeitpunkt, Anlass und Betrag. Dieses Paket benötigt
 keine weitere Migration und entscheidet keine offenen To-do-, Abstimmungs- oder Wettregeln.
 
 ## Dauerhafter Skill-Bonus
@@ -169,7 +169,7 @@ ein Buchungsfehler rollt auch die Skill-, Katalog- oder Teilnahmeänderung zurü
 Der Startabgleich trägt fehlende Boni offener Wertungen nach. Ausgeblendete Punkteansichten
 verhindern keine Vergabe. Festgeschriebene Wertungen bleiben unverändert; nach ihrem begründeten
 Wiederöffnen werden dann vollständige Einschätzungen berücksichtigt. Eigene Kategorie-API und
-Datenschutzexport enthalten Bonus und Verlauf. Die sichtbare Kategorieoberfläche folgt separat.
+Datenschutzexport enthalten Bonus und Verlauf. Die Kategorieoberfläche zeigt Bonus und Verlauf.
 Es wird kein Wettguthaben erzeugt. Reiseboni und ihre offenen Stichtagsregeln gehören in ein Folgepaket.
 
 ## Buchung und Korrektur
@@ -228,6 +228,27 @@ Die bisherigen LAN-Entzüge und finanziellen Wettkorrekturen prüfen ebenfalls d
 Adminrolle; eigene Entzüge, Korrekturen und Stornos sind erlaubt. Ein wiederholter LAN-Entzug
 mit derselben Vorgangskennung erzeugt weder eine zweite Buchung noch ein zweites Protokoll.
 
+## Kategorieansicht und administratives Journal
+
+Die Punkteansicht zeigt Orga, Spielen und Wetten als getrennte Rohwerte; sie werden nicht zu
+vorläufigen Gesamtplatzpunkten addiert. Der Verlauf zeigt jeweils die ausgewählte Kategorie.
+Die Suche filtert ausschließlich die Liste, die Kurve behält den vollständigen Kategorienverlauf.
+Buchungsdetails nennen Kategorie, Zeitpunkt, Anlass, Betrag und gegebenenfalls Begründung.
+
+In der Punkteverwaltung steht zusätzlich das Kategorie-Journal aller Teilnehmer mit Konto-
+und Textfilter zur Verfügung. Orga- und Spielansprüche können aus jeder zugehörigen Buchung
+korrigiert werden. Der Dialog verwendet den aktuellen Gesamtanspruch und die jüngste Revision
+aller Buchungen dieses Vorgangs, auch wenn eine ältere Buchung ausgewählt wurde. Eigene
+Korrekturen bleiben erlaubt. Mit 0 wird der ganze Anspruch entzogen; negative Ansprüche sind
+möglich. Ein veralteter Bearbeitungsstand wird nicht überschrieben: Der Dialog schließt nach
+409 und lädt den aktuellen Stand. Weitere Eingabefehler bleiben im offenen Dialog korrigierbar.
+
+Ausblenden entfernt Kategorieansichten und offene Teilnehmerdetails. Das Admin-Journal bleibt
+zugänglich; Admin-Dialoge schließen bei Event-, Konto- oder Rollenwechsel. Nach Festschreibung
+ist das Journal lesbar, Korrekturen bleiben gesperrt. Wett-/Wallet-Korrekturen werden in dieser
+Oberfläche bis zur Klärung von W6 ausschließlich lesend angeboten. Fehler beim Laden des
+Journals lassen sich über dessen Aktualisieren-Aktion erneut versuchen.
+
 ## Migration und nächste Pakete
 
 Migration 125 legt die Tabellen an, übernimmt vorhandene Teilnahmen ohne Punkte zu erfinden
@@ -241,11 +262,12 @@ aus Wettbewerben. Beide Kategorien nutzen denselben Abgleich der automatischen A
 Eine Zusammenführung der älteren gemeinsamen Konten mit den neuen Konten ist kein Bestandteil
 dieses Pakets; vor einer gemeinsamen Nutzung müssen deren Erzeuger und Leser umgestellt werden.
 
-Die neue Journalbasis hat geschützte Administrationsendpunkte und noch keine eigene Punkteansicht.
+Die Journalbasis besitzt geschützte Administrationsendpunkte und eine eigene Kategorieansicht
+mit Rohwerten, kategorieweisem Verlauf und Buchungsdetails.
 Die bisherige [LAN-Punkteansicht](lan-points-and-betting-rules.md) nutzt noch das bisherige Konto. Die späteren
 Fachhandler prüfen Berechtigungen, leiten Ansprüche aus Aktivitäten ab und rufen das Journal
 auf. Spielvorgänge, Wettbewerbsorganisation und administrative Korrekturen sind angebunden; es folgen zusätzliche
-Orga-Vorgänge, Wetten, Kategorie-Platzpunkte, Kontoansichten und Meldungen. Der Kiosk-Ergebnisfeed ist bereits angebunden. Die bestehende
+Orga-Vorgänge, Wetten, Kategorie-Platzpunkte und Meldungen. Der Kiosk-Ergebnisfeed ist bereits angebunden. Die bestehende
 klassische Rangliste wird in diesem Paket nicht aus den neuen Konten gelesen.
 
 **Offen bleiben:** Wett-Einsatzgrenze je Markt, Mindestzahl abgerechneter Tipps, erhöhte

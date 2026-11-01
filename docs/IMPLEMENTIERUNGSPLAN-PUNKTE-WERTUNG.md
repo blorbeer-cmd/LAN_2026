@@ -9,6 +9,9 @@ Dieses Dokument ersetzt die bisherige Aufteilung in acht Restpakete.
 
 Vorhanden sind Kategorie-Journal und Konten, Admin-Korrektur-API, automatische Spielpunkte,
 Wettbewerbs-/Bestell-Orga, dauerhafter Skill-Bonus, Event-Sichtbarkeit und Kiosk-Ergebnisfeed.
+Kategorie-Rohwerte und Verlauf sind jetzt auch im persönlichen Konto sichtbar. Das Admin-Journal
+erlaubt begründete, revisionsgeschützte Orga-/Spielkorrekturen einschließlich eigener Ansprüche;
+Wallet und Wett-Nettowert bleiben dort bis zur Klärung des Korrekturwegs schreibgeschützt.
 Sichtbare LAN-Punkte, To-do-Belohnungen, Wetten und Endwertungs-Snapshots verwenden dagegen noch
 das gemeinsame alte Konto. Der bestehende Wettumfang ist keine vollständige Umsetzung des Ziels.
 
@@ -94,6 +97,13 @@ Das Paket definiert auch, welche Events teilnehmen dürfen und wann diese Entsch
 Historische Endstände werden nicht ohne eine festgelegte Übernahmeregel neu interpretiert.
 
 ## Paket 1 – Rohwerte und Journal zuerst
+
+**Umgesetzt als additive Oberfläche auf dem bestehenden Journal.** Die bisherige LAN-Summe und
+Wetten bleiben separat sichtbar; es wurden keine Guthaben übertragen und keine Erzeuger
+umgestellt. Der Browserfall prüft eigene und fremde Korrekturen, negative Ansprüche, die Bearbeitung
+älterer Buchungen, einen Revisionskonflikt, Ladefehler mit erneutem Versuch, Realtime und die
+Sichtbarkeit auf Telefon und Desktop. Kategorienränge und Platzpunkte folgen weiterhin später.
+Pakete 0 und 2 bleiben bis zur Entscheidung über U1, E1 und die To-do-Regeln offen.
 
 - Eigenes Konto mit Orga-, Spiel- und Wett-Rohwert sowie Verlauf aus dem Journal anzeigen.
 - Admin-Journal mit Begründung und Revisionsschutz bedienbar machen; eigene Korrekturen bleiben

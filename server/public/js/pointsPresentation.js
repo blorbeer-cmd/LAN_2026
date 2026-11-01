@@ -10,14 +10,24 @@ export const POINT_SOURCES = Object.freeze({
 });
 export const signedPoints = (value) => `${value > 0 ? '+' : ''}${value}`;
 
-// Preserve journal order for bookings sharing a millisecond. The curve shows
+export const POINT_CATEGORIES = Object.freeze({ orga: 'Orga', playing: 'Spielen', betting: 'Wetten' });
+
+// Corrections affect the entire source, even when an older booking is selected.
+export function journalSourceState(entries, sourceId) {
+  return entries.filter((entry) => entry.source_id === sourceId).reduce(
+    (source, entry) => ({ total: source.total + entry.amount, revision: Math.max(source.revision, entry.revision) }),
+    { total: 0, revision: 0 },
+  );
+}
+
+// Both APIs' timestamp names retain the journal order for a shared millisecond. The curve shows
 // the complete balance; filtering the journal must never change this history.
 export function pointTimeline(entries) {
   let balance = 0;
-  return entries.map((entry) => ({ id: entry.id, time: entry.created_at, balance: (balance += entry.amount) }));
+  return entries.map((entry) => ({ id: entry.id, time: entry.createdAt ?? entry.created_at, balance: (balance += entry.amount) }));
 }
 
-export function pointsChartHtml(entries) {
+export function pointsChartHtml(entries, { label: chartLabel = 'Punkteverlauf' } = {}) {
   const timeline = pointTimeline(entries);
   if (!timeline.length) return '';
   const start = timeline[0].time;
@@ -29,13 +39,13 @@ export function pointsChartHtml(entries) {
   let path = `M 24 ${y(0)}`;
   for (const point of timeline) path += ` H ${x(point.time)} V ${y(point.balance)}`;
   path += ' H 576';
-  const label = `Punkteverlauf: ${timeline.length} Buchungen, aktuell ${timeline.at(-1).balance} Punkte. Alle Werte stehen im Buchungsverlauf.`;
+  const label = `${chartLabel}: ${timeline.length} Buchungen, aktuell ${timeline.at(-1).balance} Punkte. Alle Werte stehen im Buchungsverlauf.`;
   return `<figure class="points-chart">
     <svg viewBox="0 0 600 180" role="img" aria-label="${escapeHtml(label)}">
       <path class="points-chart-baseline" d="M 24 ${y(0)} H 576" />
       <path class="points-chart-line" d="${path}" />
-      <text x="24" y="16">${high} P.</text><text x="24" y="176">${low} P.</text>
     </svg>
-    <figcaption class="row-between muted"><span>${escapeHtml(new Date(start).toLocaleString('de-DE'))}</span><span>${escapeHtml(new Date(timeline.at(-1).time).toLocaleString('de-DE'))}</span></figcaption>
+    <figcaption class="stack muted"><div class="row-between"><span>${low} P.</span><span>${high} P.</span></div>
+      <div class="row-between"><span>${escapeHtml(new Date(start).toLocaleString('de-DE'))}</span><span>${escapeHtml(new Date(timeline.at(-1).time).toLocaleString('de-DE'))}</span></div></figcaption>
   </figure>`;
 }
