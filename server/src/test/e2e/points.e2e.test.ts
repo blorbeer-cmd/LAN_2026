@@ -87,8 +87,8 @@ before(async () => {
   const adminContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const memberContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   // Serve the insecure LAN origin exclusively from the isolated local server.
-  // Drain complete callbacks, including their cancellation cleanup, before
-  // disposing the request context or stopping the real server.
+  // Track complete callbacks so cancelled proxies finish before the browser
+  // and real server are released.
   await adminContext.route(`${adminBaseUrl}/**`, (route) => {
     const completion = (async () => {
       try {
@@ -121,15 +121,28 @@ before(async () => {
 });
 after(async () => {
   closingHttpRoutes = true;
-  await admin?.context().unrouteAll({ behavior: 'wait' });
-  await Promise.all([...pendingHttpRoutes]);
-  await browser?.close();
-  if (server && server.process.exitCode === null && server.process.signalCode === null) {
-    const exited = once(server.process, 'exit');
-    server.process.kill();
-    await exited;
+  try {
+    const context = admin?.context();
+    await context?.unrouteAll();
+    const pending = [...pendingHttpRoutes];
+    // Socket polling can still be waiting for a future server event. Cancel
+    // the fixture's HTTP client before joining callbacks, rather than waiting
+    // for those responses or leaking the server when a proxy fails.
+    await context?.request.dispose();
+    await Promise.all(pending);
+  } finally {
+    try {
+      await browser?.close();
+    } finally {
+      await Promise.allSettled([...pendingHttpRoutes]);
+      if (server && server.process.exitCode === null && server.process.signalCode === null) {
+        const exited = once(server.process, 'exit');
+        server.process.kill();
+        await exited;
+      }
+      rmSync(fixtureDir, { recursive: true, force: true });
+    }
   }
-  rmSync(fixtureDir, { recursive: true, force: true });
 });
 
 test('real LAN account, automatic orga credits, own-game betting notification, history and market voids work on phone and desktop', async () => {
