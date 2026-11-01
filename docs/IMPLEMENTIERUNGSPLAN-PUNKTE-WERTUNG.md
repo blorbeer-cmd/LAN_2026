@@ -179,7 +179,9 @@ noch aus; die Auszahlung ist von der Mindestzahl unabhängig.
 - W4 für Matches umsetzen: Der Ersteller wählt direkt beim Anlegen vor Spielbeginn „Wetten
   zulassen“. Keine zusätzliche Adminrolle; eine ausgeschaltete Option darf nicht über die
   separate Markt-API umgangen werden. Die Auswahl gehört nicht in die spätere Ergebniseingabe.
-- W4 für Turniere und W7 bleiben offen: Turniermärkte, gleiche größte Einsätze und gesperrte,
+- W4 für Turniere umsetzen: Wetten auf Turniersieger und einzelne Turnierspiele immer ohne
+  optionalen Freischalter anbieten. Bestehende Start-/Tippschluss- und Sichtbarkeitsregeln gelten.
+- W7 bleibt offen: gleiche größte Einsätze und gesperrte,
   unabgerechnete Märkte bei der Festschreibung. Alte Werte 10/30/6 sind keine Zielvorgaben.
 - Eigenwetten, Mitteilungen und die Anzeige direkt an Match/Turnier bleiben erhalten.
 

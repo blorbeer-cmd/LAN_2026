@@ -67,8 +67,10 @@ zurückgenommene Tipps zählen nicht zur Mindestzahl; Gewinne werden unabhängig
 Diese Regeln sind technisch noch umzusetzen. Für Matches ist W4 ebenfalls beschlossen:
 Der Ersteller entscheidet direkt beim Anlegen vor Spielbeginn über „Wetten zulassen“, ohne
 zusätzliche Adminrolle. Bei ausgeschalteter Option darf kein anderer einen Markt für dieses
-Match eröffnen. Die Regel für Turniermärkte bleibt offen; auch die Match-Auswahl ist technisch
-noch anzubinden. Topf, Anzahl Tipps,
+Match eröffnen. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer
+ohne optionalen Freischalter angeboten. Die bestehenden Regeln zu Sichtbarkeit, feststehenden
+Gegnern, Tippschluss und Spielbeginn gelten weiterhin. Auch diese Anbindungen stehen technisch
+noch aus. Topf, Anzahl Tipps,
 Einsätze je Ausgang und vorläufige Pool-Quoten sind schon vor Tippschluss sichtbar. Eine Quote
 ist nur bei einem Einsatz auf diesen Ausgang berechenbar; neue Einsätze können sie verändern.
 Die API veröffentlicht dabei keine individuellen fremden Tipps. Freie Zweiermatches sowie

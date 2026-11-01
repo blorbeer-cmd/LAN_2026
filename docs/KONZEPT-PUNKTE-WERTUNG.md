@@ -144,16 +144,19 @@ Tipps auf das eigene Spiel, das eigene Team, den Gegner und den Turniersieger bl
 erlaubt. Auch Ergebniseintrager und Organisatoren dürfen tippen. Das Risiko absichtlicher
 Niederlagen und abgesprochener Ergebnisse wird im Rahmen des Vertrauensprinzips akzeptiert.
 
-Es gibt nur bewusst eröffnete offizielle Wettrunden mit ausdrücklichem Start beziehungsweise
-Tippschluss. Eine neue Auslosung oder ein neues Spiel eröffnet nicht automatisch einen Markt.
-Das betrifft ausschließlich Wetten; alle gültigen Spiele zählen weiterhin zur Spielwertung.
+Offizielle Wettrunden haben einen ausdrücklichen Start beziehungsweise Tippschluss.
+Ihre Verfügbarkeit richtet sich nach der folgenden Entscheidung W4. Alle gültigen Spiele
+zählen weiterhin unabhängig vom Wettangebot zur Spielwertung.
 
-**Entschieden W4 für Matches:** Der Match-Ersteller wählt direkt beim Anlegen vor Spielbeginn,
+**Entschieden W4:** Der Match-Ersteller wählt direkt beim Anlegen vor Spielbeginn,
 ob auf dieses Match gewettet werden darf, etwa über „Wetten zulassen“. Dafür braucht er keine
 zusätzliche Adminrolle. Eine ausgeschaltete Option eröffnet keinen Wettmarkt; andere Personen
-dürfen diese Entscheidung nicht durch eine separate Markteröffnung umgehen. Die entsprechende
-Regel für Turniere und Turniersieger-Märkte bleibt noch offen. Die technische Anbindung folgt
-in Paket 5b.
+dürfen diese Entscheidung nicht durch eine separate Markteröffnung umgehen.
+
+Bei Turnieren werden Wetten immer angeboten, sowohl auf den Turniersieger als auch auf
+einzelne Turnierspiele. Dafür gibt es keinen optionalen Freischalter. Die bestehenden Regeln
+zu Sichtbarkeit, feststehenden Gegnern, Tippschluss und Spielbeginn gelten weiterhin.
+Die technische Anbindung folgt in Paket 5b.
 
 Es gelten Pool-Quoten. Vorläufige Quoten sind am Markt sichtbar und können sich mit den
 Einsätzen verändern. Maßgeblich für die Abrechnung ist der Pool zum Tippschluss. Für einen
@@ -474,7 +477,7 @@ Vorgabewerte sind dafür keine Entscheidung:
 | E1 | Laufende Events werden unterstützt. Offen bleiben die endgültige Abgrenzung nach Eventtyp sowie unveröffentlichte/beendete Events. Vorhandene Spiel-/Orga-Backfills werden durch das To-do-Paket nicht verändert. |
 | E2 | Wertungsberechtigte Teilnehmer, Testkonten und Teilnehmerbasis N samt Stichtag, späten Zusagen und Austritten. Vorhandene Konten sind nicht gleich N. |
 | W3 (entschieden) | Fest 100 separate Wettpunkte einmal pro Event und berechtigtem Teilnehmer, auch bei später Zusage. Nicht konfigurierbar; erneute Zusage zahlt nicht erneut. |
-| W4 (für Matches entschieden) | Der Match-Ersteller entscheidet direkt beim Anlegen, ob auf sein Match gewettet werden darf; keine zusätzliche Adminrolle erforderlich. Die Regel für Turniere und Turniersieger-Märkte bleibt offen. |
+| W4 (entschieden) | Der Match-Ersteller entscheidet direkt beim Anlegen, ob auf sein Match gewettet werden darf; keine zusätzliche Adminrolle erforderlich. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bestehenden Start-/Tippschlussregeln gelten weiterhin. |
 | W5 (entschieden) | Keine zusätzlichen Tageslimits und keine Höchstzahl offizieller Wettrunden pro Event. Ausreichendes verfügbares Guthaben und die feste Einsatzgrenze von 20 Punkten gelten weiterhin. |
 | W6 (entschieden) | Ausschließlich begründete Markt-Neuberechnung oder Storno unter Erhaltung der Nullsumme. Keine einseitigen Wallet-/Wett-Journalkorrekturen; eigene Marktkorrekturen bleiben erlaubt. |
 | W7 | Feste Restverteilung bei gleich großen größten richtigen Einsätzen und Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
@@ -509,7 +512,7 @@ dieses Zielkonzepts.
 | Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln, Turnierboni bleiben 5/3/1. [Automatische Journalbuchungen](../server/src/playingPoints.ts) erfolgen bei Ergebnissen, Korrekturen, Löschungen und beim Nachtragen bestehender Ergebnisse. |
 | Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Spielfilter und eventübergreifende Auswertungen verwenden ausschließlich Spielpunkte. Die einzelne konfigurierte LAN ohne Spielfilter, Hall of Fame und Event-Export verwenden seit Paket 5a vorläufig Spiel-Rohwerte; die Wallet-Summe wird nicht als Gesamtwertung ausgegeben. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
 | Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Umgesetzt sind außerdem persönliche Kategorie-Rohwerte, Verlauf und Admin-Korrektur-Oberfläche. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler anbinden sowie Kategorie-Platzpunkte berechnen. |
-| Wettmärkte | Umgesetzt: sichtbare vorläufige Pool-Quoten und formatabhängige Remis-Auswahl; freie Zweiermatches sowie Liga-/Gruppenspiele können über Remis regulär abrechnen. K.-o.- und Turniersieger-Märkte bieten kein Remis. W1/W2/W5 sind entschieden: maximal 20 Punkte, mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung und keine zusätzlichen Tages-/Rundenlimits. Die technische Anbindung steht noch aus. Offen bleiben insbesondere Restverteilung und die Entscheidungen W4/W7. |
+| Wettmärkte | Umgesetzt: sichtbare vorläufige Pool-Quoten und formatabhängige Remis-Auswahl; freie Zweiermatches sowie Liga-/Gruppenspiele können über Remis regulär abrechnen. K.-o.- und Turniersieger-Märkte bieten kein Remis. W1/W2/W4/W5 sind entschieden: maximal 20 Punkte, mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung, Ersteller-Auswahl beim Match, Wetten bei Turnieren immer angeboten und keine zusätzlichen Tages-/Rundenlimits. Die technische Anbindung steht noch aus. Offen bleibt W7 zur Restverteilung und Festschreibung. |
 | Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit festen 3 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Ebenfalls umgesetzt: 2 Punkte je eingetragener Ankunft/Abreise beim Eventstart sowie 3 Punkte für abgeschlossene Umfragen und 2 Punkte für abgeschlossene Spieleabstimmungen mit jeweils mindestens drei Teilnehmenden. Die ausdrücklich offenen Regeln bleiben offen. |
 | Kiosk | Umgesetzt: [Ergebnis-Feed](product/media-and-dashboard-rules.md#tv-kiosk) mit Anzeigenamen, Platzierungen und tatsächlich gebuchten Spielpunkten, Korrekturhinweis auch bei reinen Score-Änderungen. Bei ausgeblendeten Punkteansichten bleiben Ergebnisse ohne Punkte sichtbar. Die zehn jüngsten Ergebnisse wechseln in der bestehenden Turnierkachel; alle Teilnehmer werden automatisch durchgeblättert. Migration 128 ergänzt Erfassungszeit, Änderungszeit und Ergebnisrevision, ohne Punktebestände zu verändern. |
 | Meldefunktion | Meldbare Quellen, optionalen Grund, eine offene Meldung pro Person/Eintrag, Empfängerfilter, Identitätsschutz, Status und begründete Korrekturen ergänzen. Eigene administrative Korrekturen bleiben erlaubt. |
