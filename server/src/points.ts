@@ -231,7 +231,9 @@ export function awardTaskPoints(taskId: string, actorId: string): void {
     )
     .get(taskId) as { title: string; event_id: string; per_person: number } | undefined;
   if (!task) return;
-  requirePointsOpen(task.event_id);
+  // A frozen valuation stops credits, not the checklist's own lifecycle.
+  if (pointsSettings(task.event_id)?.closed_at != null) return;
+  const settings = requirePointsOpen(task.event_id);
   ensurePointAccounts(task.event_id);
   const helpers = db
     .prepare(
@@ -239,7 +241,6 @@ export function awardTaskPoints(taskId: string, actorId: string): void {
     JOIN checklist_task_assignees a ON a.task_id = c.task_id AND a.player_id = c.player_id WHERE c.task_id = ?`,
     )
     .all(taskId) as Array<{ player_id: string }>;
-  const settings = pointsSettings(task.event_id)!;
   const eligible = new Set(pointParticipants(settings.group_id, task.event_id).map((p) => p.id));
   for (const helper of helpers) {
     if (eligible.has(helper.player_id))

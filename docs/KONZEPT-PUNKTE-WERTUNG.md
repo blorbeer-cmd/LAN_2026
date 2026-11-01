@@ -436,7 +436,7 @@ nicht abschließend entschieden. Es wird keine zusätzliche automatische Behandl
 
 ## 11. Offene Entscheidungen
 
-Die folgenden vier Entscheidungen sind ausdrücklich **nicht getroffen**:
+Die folgenden vier ursprünglichen Entscheidungen sind weiterhin ausdrücklich **nicht getroffen**:
 
 | Kennung | Offene Entscheidung | Review-Vorschlag, kein beschlossener Wert |
 |---|---|---|
@@ -445,13 +445,39 @@ Die folgenden vier Entscheidungen sind ausdrücklich **nicht getroffen**:
 | O1 | Höhere To-do-Werte durch Admins oder Event-Ersteller und deren Höchstwert | Frühere 5–30 als Ausgangsvorschlag; Teilnehmergrenze bleibt 1–5 |
 | O2 | Kontingente vergüteter Umfragen und Spieleabstimmungen pro Ersteller und Event | 2–3; genaue Zuordnung der Boni klären |
 
-Weitere ausdrücklich offene Randfälle sind die widersprüchliche Durchschnittsaussage zur
-Teamzahl, die Teilnehmerbasis für N, gleich große größte Gewinner-Einsätze bei der
-Restverteilung, mehrere To-do-Helfer, Stichtagsdetails der Reiseboni, Meldungsbearbeitungsrandfälle
-bei Meldungen und gesperrte, noch nicht abgerechnete Wettmärkte. Sie dürfen nicht durch
-unbemerkte Implementierungsannahmen entschieden werden.
+Das Review des bisherigen Codes ergänzt folgende offene Entscheidungen. Bestehende technische
+Vorgabewerte sind dafür keine Entscheidung:
+
+| Kennung | Offene Entscheidung / betroffene Umsetzung |
+|---|---|
+| U1 | Vollständige Ablösung des alten Kontos vor erster Auslieferung oder kontrollierte Umstellung je Event; Umgang mit vorhandenen Buchungen, Zusagen und Reservierungen. Der tatsächliche produktive Datenbestand ist nicht geprüft. |
+| E1 | Wertungsumfang: Eventtypen, unveröffentlichte und beendete Events sowie nachträgliche Gutschriften. Aktuelle Backfills können auch historische beziehungsweise nicht für LAN-Punkte konfigurierte Events erreichen. |
+| E2 | Wertungsberechtigte Teilnehmer, Testkonten und Teilnehmerbasis N samt Stichtag, späten Zusagen und Austritten. Vorhandene Konten sind nicht gleich N. |
+| W3 | Höhe und Konfigurierbarkeit des gleichen Wett-Startguthabens und dessen Vergabe bei später Zusage. |
+| W4 | Wer offizielle Wettmärkte eröffnen darf. Die bestehende Adminrolle ist noch keine beschlossene Zielregel. |
+| W5 | Abschaltung beziehungsweise Übergang alter Tages-/Rundenlimits und Einsatzgrenzen; die bisherigen Werte 10/30/6 sind keine Zielvorgaben. |
+| W6 | Korrekturweg für Wallet und Wett-Nettokonto unter Erhaltung der Nullsumme; Wechselwirkung mit einer späteren Markt-Neuberechnung. Eigene Admin-Korrekturen bleiben erlaubt, eine Ausnahme von der Nullsumme ist nicht beschlossen. |
+| W7 | Feste Restverteilung bei gleich großen größten richtigen Einsätzen und Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
+| O3 | Übergang des bisherigen Orga-Budgets und festgelegter Helferplätze; deren Fortführung ist nicht beschlossen. |
+| O4 | Mehrere To-do-Helfer, Direktzuweisung als Übernahme, `item_request`, Übernahme bestehender Belohnungszusagen und Rechte/Ablauf beim noch zu bauenden Wiederöffnen. |
+| O5 | Welche Funktion als allgemeine Umfrage zählt: vorhandene Terminumfrage oder neues generisches Umfragemodul; Abgrenzung von Veröffentlichung, Abschluss und Stichwahlen. |
+| O6 | Vollständigkeit von Reiseangaben, Vorabgutschriften, Löschung vor dem Stichtag und verschobener Eventstart. Bestellpunkte bleiben ausdrücklich ohne Fristprüfung. |
+| S1 | Turnierplatzierungsbonus bei geteilten Plätzen. Der Ist-Code vergibt in Ligen den vollen Bonus des geteilten Rangs (beispielsweise 5/5/1); die Zielregel ist noch nicht ausdrücklich festgelegt. |
+| M1 | Meldungen gegen Event-Ersteller ohne Adminrolle oder bei fehlendem zuständigen Admin; Vertretung und Bearbeitung. |
+| H1 | Korrektur des rechnerisch nicht allgemein zutreffenden Teamzahl-Durchschnittshinweises aus Abschnitt 3.4. |
+
+Die [überarbeitete Paketfolge](IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) ordnet diese Entscheidungen
+konkreten Schritten zu. Keine davon wird allein durch die Reihenfolge entschieden.
 
 ## 12. Umsetzungsstand und verbleibende Folgearbeiten
+
+Der [Implementierungsplan](IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) ersetzt nach dem Review
+vom 1. November 2026 die bisherige Liste aus acht Restpaketen. Neu ist ein eigenes
+Umstellungspaket für alte Erzeuger, Leser, Reservierungen und Endstände. Rohwerte, Verlauf
+und die Admin-Korrektur-Oberfläche werden vorgezogen; Ränge und Platzpunkte folgen nach der
+Kategorie-/Gesamtberechnung. Die beiden Code-Findings (To-do-Abschluss nach Festschreibung und
+Einheitenmix im Spielfilter beziehungsweise über Events) sind im Review-Fix adressiert.
+
 
 Die Spielberechnung, automatische Spiel- und Orga-Gutschriften für Wettbewerbe, Bestellungen und vollständige Skill-Einschätzungen sowie die Journalbasis mit Admin-Korrekturen
 sind umgesetzt. Die bisherige sichtbare
@@ -463,7 +489,7 @@ dieses Zielkonzepts.
 | Bereich | Vermerkte Folgeänderung |
 |---|---|
 | Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln, Turnierboni bleiben 5/3/1. [Automatische Journalbuchungen](../server/src/playingPoints.ts) erfolgen bei Ergebnissen, Korrekturen, Löschungen und beim Nachtragen bestehender Ergebnisse. |
-| Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
+| Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Spielfilter und eventübergreifende Auswertungen verwenden ausschließlich Spielpunkte. Eine ausdrücklich gewählte einzelne konfigurierte LAN ohne Spielfilter, Hall of Fame und Event-Export nutzen bis zum Umstellungspaket noch das alte gemeinsame Konto. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
 | Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler und Ansichten anbinden sowie Kategorie-Platzpunkte berechnen. |
 | Wettmärkte | Vorläufige Pool-Quoten sichtbar machen, formatabhängige Remis-Auswahl anbieten, die beschlossenen Erstattungen und Restverteilung umsetzen. W1, W2 und die offenen Randfälle nicht vorwegnehmen. |
 | Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Offen für Folgepakete: fremde To-dos mit 1–5 Punkten, einmalige Auszahlung, Umfragen/Spieleabstimmungen sowie Ankunft und Abreise mit Reisestichtag. Die ausdrücklich offenen Regeln bleiben offen. |

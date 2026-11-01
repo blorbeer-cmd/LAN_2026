@@ -1,8 +1,11 @@
 # Produktregeln: Wettbewerb und Spiele
 
 Die optionale neue LAN-Wertung ist unter [LAN-Punkte und Sieger-Tipps](lan-points-and-betting-rules.md)
-beschrieben. In aktivierten LANs ersetzen Orga-Gutschriften und nullsummige Tipps die bisherigen
-Siegpunkte in der Eventwertung; sportliche Turniertabellen bleiben für den Turnierverlauf erhalten.
+beschrieben. Eine ausdrücklich gewählte konfigurierte LAN ohne Spielfilter verwendet bis zur Umstellung
+noch deren alte Orga-/Wett-Kontosumme. Spielfilter und eventübergreifende Auswertungen verwenden
+stets Spielpunkte. Die neue Kategorie-/Gesamtwertung folgt im
+[Restplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md); sportliche Turniertabellen bleiben für den
+Turnierverlauf erhalten.
 
 Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spielen, Vote und Turnieren. Gemeinsame Control-, Modal- und Auswahlverträge bleiben unter [Frontend-Verträgen](../../server/frontend-contracts/README.md).
 
@@ -37,7 +40,9 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
 - Laufende oder vorzeitig beendete Turniere geben keine Platzierungsboni. Eine Korrektur
   berechnet die Punkte neu; wird das Turnier wieder geöffnet, entfallen seine Boni bis zum
   nächsten regulären Abschluss. Löschen entfernt die Boni, lässt vorhandene Matchpunkte bestehen.
-- Rangliste, Hall of Fame und Export verwenden dieselbe Berechnung. Spiel- und Eventfilter
+- Die Spielauswertungen von Rangliste, Hall of Fame und Export verwenden dieselbe Berechnung.
+  Bis zum Umstellungspaket verwenden Hall of Fame und Event-Export für konfigurierte LANs sowie
+  deren ausdrücklich gewählte Rangliste ohne Spielfilter noch das alte Konto. Spiel- und Eventfilter
   gelten auch für die Boni. Bereits gespeicherte Ergebnisse werden nach diesen Regeln neu
   berechnet; historische Punktestände können sich dadurch ändern. Ältere freie Matches ohne
   vollständige Platzierung, Sieger oder ausdrückliches Remis-Kennzeichen werden als ohne Ergebnis
@@ -49,7 +54,7 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   zusätzlich 5 für den regulären Turnierabschluss. Die gespeicherte Erstellerzuordnung verhindert,
   dass bloße Ergebniseintrager oder Freilose belohnt werden; Turnierspiele werden nicht zusätzlich
   als Auslosung belohnt. Weitere Orga-/Wett-Anbindungen, Kategorieansichten, Gesamtwertung aus
-  Platzpunkten, Kiosk-Feed und Meldefunktion folgen.
+  Platzpunkten und Meldefunktion folgen. Der Kiosk-Ergebnisfeed ist bereits umgesetzt.
   Die Ligatabelle innerhalb eines Turniers behält ihre eigene 3/1/0-Regel für Sieg/Remis/Niederlage.
 
 ## Auswahlentscheidungen

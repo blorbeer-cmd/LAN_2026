@@ -25,16 +25,16 @@ leaderboardRouter.get('/', (req, res) => {
   const scope = resolveAnalyticsEvents(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   const hiddenPlayerIds = includesTestPlayers(req) ? new Set<string>() : testPlayerIds();
-  const legacyEvents = scope.eventIds.filter((eventId) => pointsSettings(eventId)?.configured_at == null);
-  const combined = readStandings(req.group!.id, legacyEvents, filterGameId, hiddenPlayerIds);
-  for (const event of scope.eventIds) {
-    if (pointsSettings(event)?.group_id !== req.group!.id || !pointsAreVisible(event)) continue;
-    for (const row of pointStandings(event)) {
-      const existing = combined.find((p) => p.playerId === row.playerId);
-      if (existing) existing.points += row.points;
-      else combined.push(row);
-    }
-  }
+  const visibleEvents = scope.eventIds.filter((eventId) =>
+    pointsSettings(eventId)?.configured_at == null || pointsAreVisible(eventId));
+  // The explicit, unfiltered LAN keeps its old event account until cutover.
+  // Game filters and cross-event analytics always compare game points only.
+  const event = scope.explicitEventId;
+  const settings = event ? pointsSettings(event) : undefined;
+  const lanAccount = !filterGameId && event && settings?.group_id === req.group!.id && settings.configured_at != null;
+  const combined = lanAccount
+    ? (pointsAreVisible(event) ? pointStandings(event) : [])
+    : readStandings(req.group!.id, visibleEvents, filterGameId, hiddenPlayerIds);
   const standings = combined.sort((a, b) => b.points - a.points || b.wins - a.wins);
 
   const playerIds = standings.map((s) => s.playerId);

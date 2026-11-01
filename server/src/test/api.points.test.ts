@@ -159,6 +159,46 @@ test('points start once per accepted participant, preserve event access, and blo
     'a sports win earns playing points independently of the legacy wallet');
 });
 
+test('leaderboard filters and cross-event totals use game points without mixing configured LAN wallets', async () => {
+  const f = await fixture();
+  const gameMatch = async (gameId: string, winnerTeamIndex: number) => {
+    const response = await request(app).post('/api/matches').send({
+      gameId, teams: f.players.slice(0, 2).map((id) => ({ playerIds: [id] })), winnerTeamIndex,
+    });
+    assert.equal(response.status, 201);
+  };
+  await gameMatch(f.gameId, 0);
+  const neverPlayed = await request(app).post('/api/games').send({ name: `Unplayed points filter ${sequence}` });
+  assert.equal(neverPlayed.status, 201);
+  const secondEvent = createEvent(`Unconfigured scoring ${sequence}`, {
+    groupId: DEFAULT_GROUP_ID, startsAt: Date.now(), endsAt: Date.now() + 86400000,
+  });
+  setParticipants(secondEvent.id, [TEST_ADMIN_ID, ...f.players]);
+  setActiveEventForPlayer(TEST_ADMIN_ID, secondEvent.id);
+  const secondGame = await request(app).post('/api/games').send({ name: `Second scoring game ${sequence}` });
+  assert.equal(secondGame.status, 201);
+  await gameMatch(secondGame.body.id, 1);
+  const scores = async (query: string) => {
+    const response = await request(app).get(`/api/leaderboard${query}`).set('x-test-player-id', f.players[0]);
+    assert.equal(response.status, 200);
+    return response.body.standings.filter((row: { playerId: string }) => f.players.includes(row.playerId))
+      .sort((a: { playerId: string }, b: { playerId: string }) => f.players.indexOf(a.playerId) - f.players.indexOf(b.playerId));
+  };
+  assert.deepEqual(await scores(`?eventId=${f.eventId}&gameId=${neverPlayed.body.id}`), []);
+  assert.deepEqual((await scores(`?eventId=${f.eventId}&gameId=${f.gameId}`)).map((row: { points: number }) => row.points), [4, 1]);
+  assert.deepEqual((await scores(`?gameId=${f.gameId}`)).map((row: { points: number }) => row.points), [4, 1]);
+  assert.deepEqual((await scores(`?gameId=${secondGame.body.id}`)).map((row: { points: number }) => row.points), [1, 4]);
+  assert.deepEqual((await scores('')).map((row: { points: number; wins: number; matchesPlayed: number }) =>
+    [row.points, row.wins, row.matchesPlayed]), [[5, 1, 2], [5, 1, 2]]);
+  assert.deepEqual((await scores(`?eventId=${f.eventId}`)).map((row: { points: number }) => row.points), [100, 100, 100],
+    'the explicit unfiltered LAN view keeps its legacy account until the model transition');
+  assert.equal((await request(app).patch(`/api/events/${f.eventId}/points-visibility`)
+    .send({ visible: false, revision: 1 })).status, 200);
+  assert.deepEqual(await scores(`?eventId=${f.eventId}&gameId=${f.gameId}`), []);
+  assert.deepEqual(await scores(`?gameId=${f.gameId}`), []);
+  assert.deepEqual((await scores('')).map((row: { points: number }) => row.points), [1, 4]);
+});
+
 test('admins and event creators toggle visibility without interrupting hidden credits or settled pools', async () => {
   const f = await fixture({}, false);
   const [creator, opponent] = f.players;
@@ -389,7 +429,7 @@ test('players bet on their own games; hidden tips lock and settle zero-sum, once
   assert.equal((await request(app).get('/api/points')).body.rounds[0].status, 'refunded');
 });
 
-test('parallel reservations obey available funds and event limits; empty opposition refunds, and closing prevents new bets', async () => {
+test('parallel reservations obey available funds and event limits; closing prevents bets but keeps To-dos usable without credits', async () => {
   const f = await fixture({ initialPoints: 10, dailyLimit: 10 });
   const a = f.players[0],
     first = await round(f),
@@ -408,7 +448,30 @@ test('parallel reservations obey available funds and event limits; empty opposit
     (await request(app).post(`/api/points/rounds/${other.id}/refund`).send({ reason: 'Not played' })).status,
     200,
   );
+  const taskIds: string[] = [];
+  for (const rewarded of [true, false]) {
+    const created = await request(app).post('/api/checklist/tasks/todo')
+      .send({ playerId: TEST_ADMIN_ID, type: 'todo', title: rewarded ? 'Rewarded after closure' : 'Unrewarded after closure' });
+    assert.equal(created.status, 201);
+    const taskId = created.body.id ?? created.body.tasks[0].id;
+    taskIds.push(taskId);
+    if (rewarded) assert.equal((await request(app).post(`/api/points/tasks/${taskId}/reward`)
+      .send({ perPerson: 5, slots: 1 })).status, 201);
+    assert.equal((await request(app).post(`/api/checklist/tasks/${taskId}/claim`).send({ playerId: a })).status, 200);
+  }
   assert.equal((await request(app).post('/api/points/close').send({})).status, 200);
+  const frozenEntries = db.prepare('SELECT * FROM point_entries WHERE event_id = ? ORDER BY id').all(f.eventId);
+  const frozenSnapshots = db.prepare('SELECT * FROM points_snapshots WHERE event_id = ? ORDER BY revision').all(f.eventId);
+  const frozenWallet = wallet(f.eventId, a);
+  const completions = await Promise.all([0, 1].map(() => request(app)
+    .patch(`/api/checklist/tasks/${taskIds[0]}/done`).send({ playerId: a })));
+  assert.deepEqual(completions.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(completions.find((r) => r.status === 200)!.body.status, 'done');
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${taskIds[1]}/done`).send({ playerId: a })).status, 200);
+  assert.equal((db.prepare('SELECT status FROM checklist_tasks WHERE id = ?').get(taskIds[0]) as { status: string }).status, 'done');
+  assert.deepEqual(db.prepare('SELECT * FROM point_entries WHERE event_id = ? ORDER BY id').all(f.eventId), frozenEntries);
+  assert.deepEqual(db.prepare('SELECT * FROM points_snapshots WHERE event_id = ? ORDER BY revision').all(f.eventId), frozenSnapshots);
+  assert.deepEqual(wallet(f.eventId, a), frozenWallet, 'finishing after closure preserves the frozen account');
   assert.equal(
     (
       await request(app)

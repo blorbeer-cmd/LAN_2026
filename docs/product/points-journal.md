@@ -245,10 +245,20 @@ Die neue Journalbasis hat geschützte Administrationsendpunkte und noch keine ei
 Die bisherige [LAN-Punkteansicht](lan-points-and-betting-rules.md) nutzt noch das bisherige Konto. Die späteren
 Fachhandler prüfen Berechtigungen, leiten Ansprüche aus Aktivitäten ab und rufen das Journal
 auf. Spielvorgänge, Wettbewerbsorganisation und administrative Korrekturen sind angebunden; es folgen zusätzliche
-Orga-Vorgänge, Wetten, Kategorie-Platzpunkte, Kontoansichten, Kiosk und Meldungen. Die bestehende
+Orga-Vorgänge, Wetten, Kategorie-Platzpunkte, Kontoansichten und Meldungen. Der Kiosk-Ergebnisfeed ist bereits angebunden. Die bestehende
 klassische Rangliste wird in diesem Paket nicht aus den neuen Konten gelesen.
 
 **Offen bleiben:** Wett-Einsatzgrenze je Markt, Mindestzahl abgerechneter Tipps, erhöhte
 To-do-Werte für Admins/Ersteller und Kontingente für Umfragen/Spieleabstimmungen. Dieses Paket
 setzt dafür keine Vorgabewerte und entscheidet keine offenen Regeln zur Teilnehmerzahl der
 Gesamtwertung oder zu persönlichen Bonus-Stichtagen.
+
+
+Der [Restplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) enthält ein
+eigenes Umstellungspaket: alte Grundstock-, To-do- und Wett-Erzeuger, Reservierungen, Leser und
+Snapshots müssen gemeinsam abgelöst werden. Eine pauschale Übernahme alter Gesamtsummen ins
+Wallet ist nicht definiert. Der Übergangsweg und die relevanten Fachentscheidungen bleiben offen.
+Rohwerte/Verlauf und die Admin-Korrektur-Oberfläche kommen vor den weiteren Erzeugern; Ränge und
+Platzpunkte folgen nach der Gesamtberechnung. Aktuell können Konten auch für frühere oder nicht
+mehr bestätigte Spiel-/Bestellteilnehmer und Testkonten existieren; sie definieren weder N noch
+die endgültige Wertungsberechtigung.

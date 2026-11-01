@@ -33,6 +33,14 @@ Sichtbarkeit und bewusstes Festschreiben beziehungsweise Wiederöffnen der Endwe
 
 ## Konto und Rangliste
 
+Die alte LAN-Kontosumme wird nur bei einer ausdrücklich gewählten konfigurierten LAN ohne
+Spielfilter als Rangliste ausgegeben. Ein Spielfilter und jede eventübergreifende Rangliste
+verwenden ausschließlich 4/3/2/1-Spielpunkte samt 5/3/1-Turnierboni; Grundstock, Orga und Wettnetto
+werden dort nicht addiert. Ausgeblendete konfigurierte LANs liefern auch dort keine Punkte.
+Hall of Fame und Event-Export verwenden bis zum [Umstellungspaket](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md)
+für eine konfigurierte LAN weiterhin deren altes Konto. Das ist noch keine Kategorie-/Gesamtwertung.
+
+
 - Jeder zugesagte, aktive Teilnehmer erhält einmal den konfigurierten Grundstock, auch bei späterer
   Zusage. Austreten und erneutes Zusagen erzeugt keinen weiteren Grundstock. Testkonten zählen nicht.
 - Spielsiege, Platzierungen, Spielzeit, Auslosungen und Ergebniseinträge erzeugen keine LAN-Punkte.
@@ -54,7 +62,9 @@ Ein Admin legt am offenen To-Do vor der ersten Übernahme Punkte pro Helfer und 
 Helferplätze fest. Der Gesamtbetrag bindet das endliche Orga-Budget sofort. Die Zusage ist verbindlich.
 Die ersten Übernahmen sichern die Plätze; weitere Helfer können ausdrücklich ohne Punkte mitmachen.
 Eine Rückgabe vor Abschluss gibt den Helferplatz frei. Erledigen bucht die Belohnung automatisch,
-einmalig und atomar mit dem Aufgabenstatus. Es gibt keine Warteschlange zur Punktefreigabe.
+einmalig und atomar mit dem Aufgabenstatus. Ist die Wertung bereits festgeschrieben, bleibt das
+Erledigen möglich, erzeugt aber keine neue Gutschrift; Konto und Endwertungs-Snapshot bleiben
+unverändert. Es gibt keine Warteschlange zur Punktefreigabe.
 
 Admins können eine positive Gutschrift ganz oder teilweise mit Begründung entziehen. Die ursprüngliche
 Buchung bleibt erhalten, der Entzug ist eine verknüpfte negative Buchung mit Admin und Zeitpunkt.
