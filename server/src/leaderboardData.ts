@@ -15,7 +15,7 @@ export function readScoringInputs(
   const gameFilter = gameId ? ' AND m.game_id = ?' : '';
   const rows = db
     .prepare(
-      `SELECT m.id, m.result, MAX(tm.is_draw) AS is_draw, COALESCE(g.name, 'Unbekanntes Spiel') AS game_name FROM matches m
+      `SELECT m.id, m.created_by, m.result, MAX(tm.is_draw) AS is_draw, COALESCE(g.name, 'Unbekanntes Spiel') AS game_name FROM matches m
      LEFT JOIN tournament_matches tm ON tm.match_id = m.id
      LEFT JOIN games g ON g.id = m.game_id
      WHERE m.group_id = ? AND ${eventFilter.clause}${gameFilter} GROUP BY m.id`,
@@ -24,6 +24,7 @@ export function readScoringInputs(
     result: string;
     is_draw: number | null;
     id: string;
+    created_by: string | null;
     game_name: string;
   }>;
   const matches = rows
@@ -31,7 +32,13 @@ export function readScoringInputs(
     .map((row) => {
       const result = JSON.parse(row.result) as MatchForScoring;
       // Older tournament draws have an explicit flag on their fixture only.
-      return { ...result, id: row.id, gameName: row.game_name, isDraw: result.isDraw ?? row.is_draw === 1 };
+      return {
+        ...result,
+        id: row.id,
+        createdBy: row.created_by,
+        gameName: row.game_name,
+        isDraw: result.isDraw ?? row.is_draw === 1,
+      };
     });
 
   const tournamentFilter = eventIdSql('event_id', eventIds);

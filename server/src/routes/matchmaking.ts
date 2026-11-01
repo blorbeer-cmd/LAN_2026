@@ -1,5 +1,5 @@
 import { reconcileBetting, assertCompetitionEditable } from '../betting';
-import { syncPlayingPoints } from '../playingPoints';
+import { syncCompetitionPoints } from '../orgaPoints';
 // Matchmaking endpoint (FR-16..18): draws balanced teams for a game from a
 // set of present players, using their skill ratings. Stateless — every call
 // is a fresh draw, so "re-roll" is just calling it again. The result is
@@ -265,9 +265,9 @@ matchmakingRouter.post('/', (req, res) => {
   // matchmaking_draws comment in db.ts for why this is separate from the
   // actually-recorded `matches`).
   db.prepare(
-    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt, req.player!.id);
 
   reconcileBetting(eventId);
   broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
@@ -341,9 +341,9 @@ matchmakingRouter.post('/rematch', (req, res) => {
   };
 
   db.prepare(
-    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source)
-     VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'rematch')`
-  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), result.generatedAt);
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source, created_by)
+     VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'rematch', ?)`
+  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), result.generatedAt, req.player!.id);
 
   reconcileBetting(eventId);
   broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
@@ -516,7 +516,7 @@ matchmakingRouter.delete('/draws/:id', requireGroupRole('admin'), requireRecentR
   db.transaction(() => {
     if (draw.match_id) db.prepare('DELETE FROM matches WHERE id = ? AND group_id = ?').run(draw.match_id, req.group!.id);
     db.prepare('DELETE FROM matchmaking_draws WHERE id = ? AND group_id = ?').run(draw.id, req.group!.id);
-    syncPlayingPoints(req.group!.id, draw.event_id);
+    syncCompetitionPoints(req.group!.id, draw.event_id);
     writeAdminAudit({
       actorPlayerId: req.player?.id,
       groupId: req.group!.id,

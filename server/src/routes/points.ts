@@ -35,7 +35,7 @@ import { broadcast, Events } from '../realtime';
 import { writeAdminAudit } from '../adminAudit';
 import { resolvePushTopic } from '../push';
 import { correctJournalEntry } from '../pointsAdministration';
-import { syncPlayingPoints } from '../playingPoints';
+import { syncCompetitionPoints } from '../orgaPoints';
 import { readPointsBalances, readPointsJournal } from '../pointsJournal';
 
 export const pointsRouter = Router();
@@ -70,7 +70,7 @@ function text(value: unknown, label: string, max = 300): string {
 pointsRouter.get('/', (req, res) => {
   const eventId = res.locals.eventId as string;
   if (!['owner', 'admin'].includes(req.groupMembership!.role)) requirePointsVisible(eventId);
-  syncPlayingPoints(req.group!.id, eventId);
+  syncCompetitionPoints(req.group!.id, eventId);
   ensurePointAccounts(eventId);
   reconcileBetting(eventId);
   const settings = pointsSettings(eventId) ?? null;
@@ -196,7 +196,7 @@ pointsRouter.get('/admin/entries', requireGroupRole('admin'), (req, res) => {
   res.json({ entries, participants: pointParticipants(req.group!.id, eventId), budget: rewardBudget(eventId) });
 });
 pointsRouter.get('/admin/journal', requireGroupRole('admin'), (req, res) => {
-  syncPlayingPoints(req.group!.id, res.locals.eventId);
+  syncCompetitionPoints(req.group!.id, res.locals.eventId);
   const entries = db.prepare(`SELECT j.*, s.player_id AS playerId, p.name AS playerName,
       s.account, s.source_key AS sourceKey, a.actor_player_id AS actorId, actor.name AS actorName
     FROM points_journal j JOIN points_sources s ON s.id = j.source_id JOIN players p ON p.id = s.player_id
@@ -305,7 +305,7 @@ pointsRouter.post('/reopen', requireGroupRole('admin'), (req, res) => {
   db.transaction(() => {
     const reopened = db.prepare('UPDATE points_settings SET closed_at = NULL WHERE event_id = ? AND closed_at IS NOT NULL').run(eventId);
     if (!reopened.changes) throw new PointsError('Die Punktewertung ist nicht abgeschlossen.');
-    syncPlayingPoints(req.group!.id, eventId);
+    syncCompetitionPoints(req.group!.id, eventId);
     writeAdminAudit({
     actorPlayerId: req.player!.id,
     groupId: req.group!.id,
@@ -337,7 +337,7 @@ pointsRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   reconcileBetting(eventId);
   db.transaction(() => {
     requirePointsOpen(eventId);
-    syncPlayingPoints(req.group!.id, eventId);
+    syncCompetitionPoints(req.group!.id, eventId);
     if (db.prepare("SELECT 1 FROM betting_rounds WHERE event_id = ? AND status IN ('open','locked')").get(eventId)) {
       throw new PointsError('Bitte offene Tipprunden erst abrechnen oder mit Begründung erstatten.');
     }

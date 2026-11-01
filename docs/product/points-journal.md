@@ -19,7 +19,8 @@ Admins und Event-Ersteller werden wie alle anderen Teilnehmer behandelt.
 | `wallet` | Separates, für Wetten verfügbares Guthaben |
 
 Die neuen Konten beginnen technisch bei 0. Gültige Spiele und Turnierplatzierungen erzeugen
-automatisch Spielpunkte; weitere Orga-Auslöser folgen. Dokumentierte frühere Spielteilnehmer
+automatisch Spielpunkte; organisierte Matches und Turniere erzeugen Orga-Punkte. Weitere
+Orga-Auslöser folgen. Dokumentierte frühere Spielteilnehmer
 erhalten beziehungsweise behalten ihre Konten auch nach einem Austritt. Das legt weder die
 Teilnehmerbasis der Gesamtwertung noch die Höhe eines Wett-Startguthabens fest. Ein späterer Startguthaben-Vorgang
 bucht ausschließlich auf `wallet`. Orga- und Spielpunkte erhöhen dieses Guthaben nicht.
@@ -59,6 +60,48 @@ Datenschutzexport enthält auch den eigenen automatischen Abgleichstand.
 Person. Die vorhandenen Sichtbarkeitsregeln gelten auch für diese Daten. Die sichtbare
 LAN-Ansicht bleibt bis zum Ansichtenpaket beim bisherigen Konto; Spielpunkte erhöhen dessen
 Wettguthaben nicht.
+
+## Orga-Punkte für Wettbewerbe
+
+Ein gültiges Match erzeugt **1 Orga-Punkt** für seinen gespeicherten Organisator. Bei einem
+freien Match ist das der angemeldete Ersteller, bei einem Match aus einer Auslosung deren
+ursprünglicher Ersteller. Auch Rematch-Auslosungen und abgeschlossene Captain-Drafts behalten
+ihren Ersteller. Das bloße Erzeugen von Teams erzeugt keine Gutschrift. Es gelten dieselben
+Kriterien für ein gültiges Ergebnis wie in der Spielwertung, einschließlich ausdrücklicher
+Remis und vollständiger Platzierungen.
+
+Der angemeldete Turnierersteller ist Turnierorganisator, auch wenn eine andere Person die
+vorangehende Auslosung erstellt oder das spätere Ergebnis einträgt. Seine Zuordnung wird auf
+jedes tatsächlich gespielte Turniermatch übernommen. Freilose erzeugen keine Matchpunkte.
+Ein regulärer Abschluss erzeugt zusätzlich **5 Orga-Punkte**; vorzeitig beendete Turniere
+erhalten diesen Abschlussbonus nicht.
+
+Die kanonischen Orga-Quellen sind `match:<id>` und `tournament:<id>:completion`. Das ist pro
+Konto eindeutig: Ein Turnierspiel erzeugt genau eine Matchbelohnung und keine zweite
+Auslosungs- oder Turnierbegegnungsbelohnung. Ergebnisänderungen mit unverändertem Orga-Anspruch
+lassen auch manuelle Korrekturen bestehen. Entfällt ein gültiges Ergebnis oder ein regulärer
+Abschluss, wird der zugehörige Anspruch auf 0 neu berechnet. Bei erneuter Erfüllung gilt wieder
+der fachliche Anspruch, ohne zusätzliche Auszahlung desselben Vorgangs.
+
+Wird ein Turnier gelöscht, entfallen dessen Abschlussbonus und die Turnierverknüpfung;
+weiter dokumentierte Matches behalten ihren ursprünglichen Organisator und genau einen
+Matchpunkt. Werden die Matches selbst gelöscht, werden deren Orga-Punkte zurückgenommen.
+Spiel- und Orga-Gutschriften laufen gemeinsam mit der jeweiligen Datenänderung in einer
+Transaktion. Ausblenden der Punkteansichten hält sie nicht auf; festgeschriebene Wertungen
+bleiben unverändert. Beim Wiederöffnen und Serverstart werden offene Ansprüche abgeglichen.
+
+Migration 127 speichert die vom Server aus der Sitzung ermittelte, anschließend unveränderliche
+Erstellerzuordnung an Matches, Turnieren, Auslosungen und Drafts. Vom Client übermittelte
+Ersteller-IDs werden nicht übernommen. Historische Einträge ohne belegbaren Ersteller bleiben
+ohne automatische Orga-Gutschrift; Event-Ersteller, Ergebniseintrager oder Sieger werden nicht
+ersatzweise angenommen. `points_orga_awards` speichert nur den letzten automatischen Anspruch;
+das Journal bleibt die Grundlage aller Salden. Der persönliche Export enthält eigene Ansprüche
+und eigene Organisatorzuordnungen. Bei Kontolöschung werden diese Zuordnungen auf `NULL` gesetzt.
+
+Die Kategorie-API zeigt diese Buchungen bereits im eigenen Saldo und Verlauf sowie im
+Admin-Journal. Die sichtbare Kategorieansicht folgt später. To-dos, Sammelbestellungen,
+Abstimmungen und dauerhafte persönliche Boni sind weitere Pakete. Offene Grenzen und
+Zuordnungsregeln aus dem Konzept werden dadurch nicht festgelegt.
 
 ## Buchung und Korrektur
 
@@ -124,13 +167,15 @@ und ist wiederholbar. Die Migrationen 123/124 enthalten die bisherige Punkte-/We
 Migration 126 ergänzt den automatischen Abgleich für Spielansprüche. Die Gutschriften erfolgen
 durch die gemeinsame Fachlogik beim Start beziehungsweise bei den jeweiligen Spieländerungen;
 bestehende Journaleinträge werden nicht umgeschrieben.
+Migration 127 ergänzt Erstellerzuordnungen und den entsprechenden Abgleich für Orga-Ansprüche
+aus Wettbewerben. Beide Kategorien nutzen denselben Abgleich der automatischen Ansprüche.
 Eine Zusammenführung der älteren gemeinsamen Konten mit den neuen Konten ist kein Bestandteil
 dieses Pakets; vor einer gemeinsamen Nutzung müssen deren Erzeuger und Leser umgestellt werden.
 
 Die neue Journalbasis hat geschützte Administrationsendpunkte und noch keine eigene Punkteansicht.
 Die bisherige [LAN-Punkteansicht](lan-points-and-betting-rules.md) nutzt noch das bisherige Konto. Die späteren
 Fachhandler prüfen Berechtigungen, leiten Ansprüche aus Aktivitäten ab und rufen das Journal
-auf. Spielvorgänge und administrative Korrekturen sind angebunden; es folgen zusätzliche
+auf. Spielvorgänge, Wettbewerbsorganisation und administrative Korrekturen sind angebunden; es folgen zusätzliche
 Orga-Vorgänge, Wetten, Kategorie-Platzpunkte, Kontoansichten, Kiosk und Meldungen. Die bestehende
 klassische Rangliste wird in diesem Paket nicht aus den neuen Konten gelesen.
 

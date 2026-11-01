@@ -39,6 +39,8 @@ test('personal export is self-scoped and excludes every reusable access secret',
       account: 'orga', sourceKey: 'todo:privacy', total: 3, expectedRevision: 0, title: 'To-do erledigt' }]);
     db.prepare('INSERT INTO points_playing_awards(event_id,player_id,source_key,amount) VALUES (?, ?, ?, 4)')
       .run(BASE_EVENT_ID, player.id, `match:privacy-${player.id}`);
+    db.prepare('INSERT INTO points_orga_awards(event_id,player_id,source_key,amount) VALUES (?, ?, ?, 1)')
+      .run(BASE_EVENT_ID, player.id, `match:privacy-${player.id}`);
   }
   const ownMessage = `own-${nanoid()}`;
   const foreignMessage = `foreign-${nanoid()}`;
@@ -144,10 +146,15 @@ test('personal export is self-scoped and excludes every reusable access secret',
     }),
   );
 
+  db.prepare('UPDATE matches SET created_by = ? WHERE id = ?').run(own.id, recordedMatchId);
+  db.prepare('UPDATE tournaments SET created_by = ? WHERE id = ?').run(other.id, tournamentId);
   const response = await request(app).get('/api/privacy/export').set('Cookie', own.cookie);
   assert.equal(response.status, 200, JSON.stringify(response.body));
   assert.equal(response.body.pointsAccounts.length, 4);
   assert.deepEqual(response.body.automaticPlayingState, [{ eventId: BASE_EVENT_ID, sourceKey: `match:privacy-${own.id}`, amount: 4 }]);
+  assert.deepEqual(response.body.automaticOrgaState, [{ eventId: BASE_EVENT_ID, sourceKey: `match:privacy-${own.id}`, amount: 1 }]);
+  assert.deepEqual(response.body.organizedCompetitions.matches, [{ id: recordedMatchId, eventId: exportEventId }]);
+  assert.deepEqual(response.body.organizedCompetitions.tournaments, []);
   assert.equal(response.body.pointsJournal.length, 1);
   const ownPointEntry = db.prepare(`SELECT j.id FROM points_journal j JOIN points_sources s ON s.id = j.source_id
     WHERE s.player_id = ?`).get(own.id) as { id: string };
@@ -193,6 +200,8 @@ test('self deletion revokes access and scrubs recipient, result and historical n
   const pointEntryId = recordPointsEntitlements([{ groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID, playerId: target.id,
     account: 'orga', sourceKey: 'todo:deletion', total: 3, expectedRevision: 0, title: 'To-do erledigt' }])[0].entryId;
   db.prepare('INSERT INTO points_playing_awards(event_id,player_id,source_key,amount) VALUES (?, ?, ?, 4)')
+    .run(BASE_EVENT_ID, target.id, 'match:deletion');
+  db.prepare('INSERT INTO points_orga_awards(event_id,player_id,source_key,amount) VALUES (?, ?, ?, 1)')
     .run(BASE_EVENT_ID, target.id, 'match:deletion');
   const other = createMember('Delete Other');
   const now = Date.now();
@@ -349,10 +358,15 @@ test('self deletion revokes access and scrubs recipient, result and historical n
              180000, ?, 'Delete Other Gamertag', 'played', ?, ?)`,
   ).run(musicRequestId, musicSessionId, other.id, now - 500, now);
 
+  db.prepare('UPDATE matches SET created_by = ? WHERE id = ?').run(target.id, matchId);
+  db.prepare('UPDATE matchmaking_draws SET created_by = ? WHERE id = ?').run(target.id, drawId);
   const deleted = await request(app).delete('/api/privacy/account').set('Cookie', target.cookie);
   assert.equal(deleted.status, 204, JSON.stringify(deleted.body));
   assert.equal(db.prepare('SELECT 1 FROM points_accounts WHERE player_id = ?').get(target.id), undefined);
   assert.equal(db.prepare('SELECT 1 FROM points_playing_awards WHERE player_id = ?').get(target.id), undefined);
+  assert.equal(db.prepare('SELECT 1 FROM points_orga_awards WHERE player_id = ?').get(target.id), undefined);
+  assert.equal((db.prepare('SELECT created_by FROM matches WHERE id = ?').get(matchId) as { created_by: null }).created_by, null);
+  assert.equal((db.prepare('SELECT created_by FROM matchmaking_draws WHERE id = ?').get(drawId) as { created_by: null }).created_by, null);
   assert.equal(db.prepare('SELECT 1 FROM points_sources WHERE player_id = ?').get(target.id), undefined);
   assert.equal(db.prepare('SELECT 1 FROM points_journal WHERE id = ?').get(pointEntryId), undefined);
   assert.equal(db.prepare('SELECT 1 FROM players WHERE id = ?').get(target.id), undefined);

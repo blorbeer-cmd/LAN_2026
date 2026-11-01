@@ -5,7 +5,8 @@ import { createTestApp, DEFAULT_GROUP_ID, TEST_ADMIN_ID } from './testApp';
 import { BASE_EVENT_ID, db } from '../db';
 import { readScoringInputs } from '../leaderboardData';
 import { readPointsBalances, readPointsJournal, readPointsSource, recordPointsEntitlements } from '../pointsJournal';
-import { backfillPlayingPoints, syncPlayingPoints } from '../playingPoints';
+import { syncPlayingPoints } from '../playingPoints';
+import { backfillCompetitionPoints, syncCompetitionPoints } from '../orgaPoints';
 import { createEvent, setParticipants } from '../events';
 
 const app = createTestApp();
@@ -128,6 +129,13 @@ test('placement bonuses follow completed tournaments, filters, corrections and d
     });
   assert.equal(created.status, 201);
   let board = created.body;
+  const orgaCompletion = {
+    groupId: DEFAULT_GROUP_ID,
+    eventId: BASE_EVENT_ID,
+    playerId: TEST_ADMIN_ID,
+    account: 'orga' as const,
+    sourceKey: `tournament:${board.id}:completion`,
+  };
   const matchPoints = new Map<string, number>();
   const teamById = new Map<string, Team>(board.teams.map((team: Team) => [team.id, team]));
   const leaderboard = async () => {
@@ -159,6 +167,7 @@ test('placement bonuses follow completed tournaments, filters, corrections and d
     }
   }
   const completed = await leaderboard();
+  assert.deepEqual(readPointsSource(orgaCompletion), { total: 5, revision: 1 });
   for (const placement of board.placements as Array<{ teamId: string; place: number }>) {
     const bonus = ({ 1: 5, 2: 3, 3: 1 } as Record<number, number>)[placement.place] ?? 0;
     for (const player of teamById.get(placement.teamId)!.players) {
@@ -195,6 +204,11 @@ test('placement bonuses follow completed tournaments, filters, corrections and d
     .send({ winnerTeamId: semifinal.teamBId, expectedPlayedAt: semifinal.playedAt });
   assert.equal(correction.status, 200);
   assert.equal(correction.body.status, 'active');
+  assert.deepEqual(
+    readPointsSource(orgaCompletion),
+    { total: 0, revision: 2 },
+    'reopening a bracket withdraws the organizer completion bonus',
+  );
   const reopened = await leaderboard();
   for (const playerId of players)
     assert.equal(
@@ -254,7 +268,7 @@ test('automatic awards preserve manual changes until new results, and roll back 
     200,
   );
   assert.equal((await request(app).patch(`/api/matches/${first.body.id}`).send({ winnerTeamIndex: 0 })).status, 200);
-  backfillPlayingPoints();
+  backfillCompetitionPoints();
   assert.deepEqual(
     readPointsSource(source),
     { total: 2, revision: 2 },
@@ -326,6 +340,14 @@ test('startup backfill retains existing claims, freezes with the event and catch
       Date.now(),
       JSON.stringify({ teams, winnerTeamIndex: 0 }),
     );
+  db.prepare('UPDATE matches SET created_by = ? WHERE id = ?').run(TEST_ADMIN_ID, `${event.id}-b`);
+  const orgaSource = {
+    groupId: DEFAULT_GROUP_ID,
+    eventId: event.id,
+    playerId: TEST_ADMIN_ID,
+    account: 'orga' as const,
+    sourceKey: `match:${event.id}-b`,
+  };
   const source = {
     groupId: DEFAULT_GROUP_ID,
     eventId: event.id,
@@ -342,14 +364,23 @@ test('startup backfill retains existing claims, freezes with the event and catch
   assert.equal(correction.status, 200);
   const second = { ...source, sourceKey: `match:${event.id}-b` };
   assert.deepEqual(readPointsSource(second), { total: 0, revision: 0 });
-  backfillPlayingPoints();
-  backfillPlayingPoints();
+  backfillCompetitionPoints();
+  backfillCompetitionPoints();
   assert.deepEqual(readPointsSource(source), { total: 2, revision: 2 }, 'adoption preserves existing manual claims');
   assert.deepEqual(readPointsSource(second), { total: 4, revision: 1 }, 'startup awards missing records exactly once');
+  assert.deepEqual(readPointsSource(orgaSource), { total: 1, revision: 1 });
+  assert.equal(
+    readPointsBalances(DEFAULT_GROUP_ID, event.id, TEST_ADMIN_ID)!.orga,
+    1,
+    'unattributed legacy match mints no Orga points',
+  );
   assert.equal((await request(app).post(`/api/points/close?eventId=${event.id}`).send({})).status, 200);
   const edited = await request(app).patch(`/api/matches/${event.id}-b`).send({ winnerTeamIndex: 1 });
   assert.equal(edited.status, 200);
   assert.deepEqual(readPointsSource(second), { total: 4, revision: 1 }, 'a saved final valuation stays frozen');
+  db.prepare('UPDATE matches SET created_by = NULL WHERE id = ?').run(`${event.id}-b`);
+  syncCompetitionPoints(DEFAULT_GROUP_ID, event.id);
+  assert.deepEqual(readPointsSource(orgaSource), { total: 1, revision: 1 }, 'Orga valuation also stays frozen');
   const reopened = await Promise.all(
     [0, 1].map(() =>
       request(app).post(`/api/points/reopen?eventId=${event.id}`).send({ reason: 'Nachtrag auswerten' }),
@@ -358,12 +389,18 @@ test('startup backfill retains existing claims, freezes with the event and catch
   assert.deepEqual(reopened.map((response) => response.status).sort(), [200, 409]);
   assert.deepEqual(readPointsSource(source), { total: 2, revision: 2 });
   assert.deepEqual(readPointsSource(second), { total: 1, revision: 2 });
+  assert.deepEqual(
+    readPointsSource(orgaSource),
+    { total: 0, revision: 2 },
+    'reopening withdraws the removed organizer claim',
+  );
   const own = await request(app).get(`/api/points?eventId=${event.id}`);
   assert.equal(own.body.categoryBalances.playing, 3);
   assert.equal(own.body.categoryBalances.wallet, 0);
   db.prepare('DELETE FROM events WHERE id = ?').run(event.id);
   assert.equal(readPointsBalances(DEFAULT_GROUP_ID, event.id, TEST_ADMIN_ID), undefined);
   assert.deepEqual(db.prepare('SELECT * FROM points_playing_awards WHERE event_id = ?').all(event.id), []);
+  assert.deepEqual(db.prepare('SELECT * FROM points_orga_awards WHERE event_id = ?').all(event.id), []);
 });
 
 test('league ties share bonuses; legacy tournament draws count and early endings earn no placement bonus', async () => {
@@ -420,6 +457,17 @@ test('league ties share bonuses; legacy tournament draws count and early endings
   const before = await request(app).get(`/api/leaderboard?gameId=${game.body.id}`);
   const ended = await request(app).post(`/api/tournaments/${unfinished.body.id}/finish`).send({});
   assert.equal(ended.status, 200);
+  assert.deepEqual(
+    readPointsSource({
+      groupId: DEFAULT_GROUP_ID,
+      eventId: BASE_EVENT_ID,
+      playerId: TEST_ADMIN_ID,
+      account: 'orga',
+      sourceKey: `tournament:${unfinished.body.id}:completion`,
+    }),
+    { total: 0, revision: 0 },
+    'early finish earns no organizer completion bonus',
+  );
   const after = await request(app).get(`/api/leaderboard?gameId=${game.body.id}`);
   assert.deepEqual(after.body.standings, before.body.standings);
 });
@@ -457,4 +505,223 @@ test('group stages award match points and only the final knockout placements awa
     leaderboard.body.standings.map((standing: Standing) => standing.points),
     [13, 8, 1, 1],
   );
+});
+
+test('competition Orga awards follow the original organizer, survive unchanged saves and reverse deleted results', async () => {
+  const organizer = (await request(app).post('/api/players').send({ name: 'Competition organizer' })).body.id;
+  const recorder = (await request(app).post('/api/players').send({ name: 'Competition recorder' })).body.id;
+  const game = (await request(app).post('/api/games').send({ name: 'Orga competition lifecycle' })).body.id;
+  const payload = {
+    gameId: game,
+    teams: [{ playerIds: [TEST_ADMIN_ID] }, { playerIds: [recorder] }],
+    winnerTeamIndex: 0,
+  };
+  const source = (matchId: string, playerId = organizer) => ({
+    groupId: DEFAULT_GROUP_ID,
+    eventId: BASE_EVENT_ID,
+    playerId,
+    account: 'orga' as const,
+    sourceKey: `match:${matchId}`,
+  });
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .set('x-test-player-id', organizer)
+    .send({ gameId: game, playerIds: [TEST_ADMIN_ID, recorder], teamCount: 2, createdBy: recorder });
+  assert.equal(draw.status, 200);
+  assert.equal(
+    readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)?.orga ?? 0,
+    0,
+    'draw alone earns nothing',
+  );
+  const duplicate = await Promise.all(
+    [0, 1].map(() =>
+      request(app)
+        .post('/api/matches')
+        .set('x-test-player-id', recorder)
+        .send({ ...payload, drawId: draw.body.id, createdBy: recorder }),
+    ),
+  );
+  assert.deepEqual(duplicate.map((res) => res.status).sort(), [201, 409]);
+  const matchId = duplicate.find((res) => res.status === 201)!.body.id;
+  assert.deepEqual(readPointsSource(source(matchId)), { total: 1, revision: 1 });
+  assert.equal(
+    readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, recorder)!.orga,
+    0,
+    'result entry is not organization',
+  );
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.wallet, 0);
+  const journal = readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer);
+  assert.deepEqual(
+    journal.map((entry) => [entry.account, entry.sourceKey, entry.amount]),
+    [['orga', `match:${matchId}`, 1]],
+  );
+  const corrected = await request(app)
+    .post(`/api/points/admin/journal/${journal[0].id}/correct`)
+    .send({ total: 3, revision: 1, reason: 'Orga-Anspruch berichtigt' });
+  assert.equal(corrected.status, 200);
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/matches/${matchId}`)
+        .set('x-test-player-id', recorder)
+        .send({ winnerTeamIndex: 1, createdBy: recorder })
+    ).status,
+    200,
+  );
+  backfillCompetitionPoints();
+  assert.deepEqual(
+    readPointsSource(source(matchId)),
+    { total: 3, revision: 2 },
+    'same one-point entitlement retains correction',
+  );
+  assert.equal((await request(app).patch(`/api/matches/${matchId}`).send({ winnerTeamIndex: null })).status, 200);
+  assert.deepEqual(
+    readPointsSource(source(matchId)),
+    { total: 0, revision: 3 },
+    'no result means no organization reward',
+  );
+  assert.equal((await request(app).patch(`/api/matches/${matchId}`).send({ isDraw: true })).status, 200);
+  assert.deepEqual(readPointsSource(source(matchId)), { total: 1, revision: 4 });
+  const deletions = await Promise.all([0, 1].map(() => request(app).delete(`/api/matchmaking/draws/${draw.body.id}`)));
+  assert.deepEqual(deletions.map((res) => res.status).sort(), [204, 404]);
+  assert.deepEqual(readPointsSource(source(matchId)), { total: 0, revision: 5 });
+
+  const direct = await request(app)
+    .post('/api/matches')
+    .set('x-test-player-id', organizer)
+    .send({ ...payload, createdBy: recorder });
+  assert.equal(direct.status, 201);
+  assert.deepEqual(
+    readPointsSource(source(direct.body.id)),
+    { total: 1, revision: 1 },
+    'ad-hoc result belongs to its authenticated creator',
+  );
+  const rematch = await request(app)
+    .post('/api/matchmaking/rematch')
+    .set('x-test-player-id', organizer)
+    .send({ gameId: game, teams: payload.teams });
+  assert.equal(rematch.status, 200);
+  const replay = await request(app)
+    .post('/api/matches')
+    .set('x-test-player-id', recorder)
+    .send({ ...payload, drawId: rematch.body.id });
+  assert.equal(replay.status, 201);
+  assert.deepEqual(readPointsSource(source(replay.body.id)), { total: 1, revision: 1 });
+  const count = () => (db.prepare('SELECT COUNT(*) AS n FROM matches WHERE game_id = ?').get(game) as { n: number }).n;
+  const beforeCount = count();
+  const beforePlaying = readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, recorder)!.playing;
+  db.exec(`CREATE TEMP TRIGGER fail_orga_journal BEFORE INSERT ON points_journal
+    WHEN EXISTS(SELECT 1 FROM points_sources s WHERE s.id = NEW.source_id AND s.account = 'orga')
+    BEGIN SELECT RAISE(ABORT, 'test orga journal failure'); END;`);
+  try {
+    const failed = await request(app).post('/api/matches').set('x-test-player-id', organizer).send(payload);
+    assert.equal(failed.status, 500);
+    assert.equal(count(), beforeCount, 'Orga failure rolls back the result');
+    assert.equal(
+      readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, recorder)!.playing,
+      beforePlaying,
+      'playing credit rolls back with Orga',
+    );
+  } finally {
+    db.exec('DROP TRIGGER fail_orga_journal');
+  }
+  assert.equal(syncCompetitionPoints(DEFAULT_GROUP_ID, 'unknown-event'), false);
+  assert.equal(syncCompetitionPoints('foreign-group', BASE_EVENT_ID), false);
+  const removed = await Promise.all([0, 1].map(() => request(app).delete(`/api/games/${game}`)));
+  assert.deepEqual(removed.map((res) => res.status).sort(), [204, 404]);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.orga, 0);
+  assert.deepEqual(readPointsSource(source(direct.body.id)), { total: 0, revision: 2 });
+  assert.deepEqual(readPointsSource(source(replay.body.id)), { total: 0, revision: 2 });
+});
+
+test('tournament organizers earn one point per played match and five on regular completion without bye or duplicate rewards', async () => {
+  const players: string[] = [];
+  for (let i = 0; i < 4; i++)
+    players.push(
+      (
+        await request(app)
+          .post('/api/players')
+          .send({ name: `Orga cup ${i}` })
+      ).body.id,
+    );
+  const [organizer, ...competitors] = players;
+  const game = (await request(app).post('/api/games').send({ name: 'Orga three-team cup' })).body.id;
+  const draw = await request(app).post('/api/matchmaking').send({ gameId: game, playerIds: competitors, teamCount: 3 });
+  assert.equal(draw.status, 200);
+  const created = await request(app)
+    .post('/api/tournaments')
+    .set('x-test-player-id', organizer)
+    .send({
+      gameId: game,
+      format: 'single_elimination',
+      drawId: draw.body.id,
+      teams: competitors.map((id) => ({ playerIds: [id] })),
+      createdBy: competitors[0],
+    });
+  assert.equal(created.status, 201);
+  let board = created.body;
+  assert.ok(board.matches.some((fixture: Fixture) => fixture.isBye));
+  const completion = {
+    groupId: DEFAULT_GROUP_ID,
+    eventId: BASE_EVENT_ID,
+    playerId: organizer,
+    account: 'orga' as const,
+    sourceKey: `tournament:${board.id}:completion`,
+  };
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)?.orga ?? 0, 0);
+  let played = 0;
+  while (board.status === 'active') {
+    const fixture = (board.matches as Fixture[]).find(
+      (row) => !row.isBye && !row.winnerTeamId && row.teamAId && row.teamBId,
+    )!;
+    const results = await Promise.all(
+      [0, 1].map(() =>
+        request(app)
+          .post(`/api/tournaments/${board.id}/matches/${fixture.id}/result`)
+          .set('x-test-player-id', competitors[0])
+          .send({ winnerTeamId: fixture.teamAId }),
+      ),
+    );
+    assert.deepEqual(results.map((res) => res.status).sort(), [200, 409]);
+    board = results.find((res) => res.status === 200)!.body;
+    played++;
+    assert.equal(
+      readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.orga,
+      played + (board.status === 'completed' ? 5 : 0),
+    );
+  }
+  assert.equal(played, 2, 'three-team bracket has one bye and only two played matches');
+  assert.deepEqual(readPointsSource(completion), { total: 5, revision: 1 });
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.wallet, 0);
+  const entries = readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer);
+  assert.equal(
+    entries.filter((entry) => entry.account === 'orga').length,
+    3,
+    'two matches plus one completion, no separate draw rewards',
+  );
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, competitors[0])!.orga, 0);
+  backfillCompetitionPoints();
+  assert.deepEqual(readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer), entries);
+  const final = (board.matches as Fixture[]).find((fixture) => !fixture.isBye && fixture.round === 2)!;
+  const correction = await request(app)
+    .put(`/api/tournaments/${board.id}/matches/${final.id}/result`)
+    .send({ winnerTeamId: final.teamBId, expectedPlayedAt: final.playedAt });
+  assert.equal(correction.status, 200);
+  assert.equal(
+    readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.orga,
+    7,
+    'different winner does not create another organization claim',
+  );
+  assert.deepEqual(readPointsSource(completion), { total: 5, revision: 1 });
+  const deleted = await Promise.all([0, 1].map(() => request(app).delete(`/api/tournaments/${board.id}`)));
+  assert.deepEqual(deleted.map((res) => res.status).sort(), [204, 404]);
+  assert.deepEqual(readPointsSource(completion), { total: 0, revision: 2 });
+  assert.equal(
+    readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.orga,
+    2,
+    'retained matches keep their original organizer and single award',
+  );
+  assert.equal(syncCompetitionPoints(DEFAULT_GROUP_ID, BASE_EVENT_ID), false);
+  assert.equal((await request(app).delete(`/api/games/${game}`)).status, 204);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.orga, 0);
 });

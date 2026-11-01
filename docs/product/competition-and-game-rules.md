@@ -45,7 +45,10 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
 - Gültige Spielergebnisse und Turnierplatzierungen werden automatisch im
   [Kategorie-Journal](points-journal.md) verbucht; Änderungen und Löschungen berechnen die
   Ansprüche neu. Vorhandene Ergebnisse werden beim Start nachgetragen, Wiederholungen zahlen
-  nicht erneut aus. Weitere Orga-/Wett-Anbindungen, Kategorieansichten, Gesamtwertung aus
+  nicht erneut aus. Organisatoren erhalten im Orga-Konto 1 Punkt pro gültigem Match und
+  zusätzlich 5 für den regulären Turnierabschluss. Die gespeicherte Erstellerzuordnung verhindert,
+  dass bloße Ergebniseintrager oder Freilose belohnt werden; Turnierspiele werden nicht zusätzlich
+  als Auslosung belohnt. Weitere Orga-/Wett-Anbindungen, Kategorieansichten, Gesamtwertung aus
   Platzpunkten, Kiosk-Feed und Meldefunktion folgen.
   Die Ligatabelle innerhalb eines Turniers behält ihre eigene 3/1/0-Regel für Sieg/Remis/Niederlage.
 

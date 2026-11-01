@@ -14,7 +14,7 @@ import { requireRecentReauthentication, withBodyPlayerIdentity } from '../sessio
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { broadcastLiveBoards } from '../liveStatus';
 import { assertGameEditable, reconcileBetting } from '../betting';
-import { syncPlayingPoints } from '../playingPoints';
+import { syncCompetitionPoints } from '../orgaPoints';
 
 export const gamesRouter = Router();
 
@@ -501,7 +501,7 @@ gamesRouter.delete(
         UNION SELECT event_id FROM tournaments WHERE game_id = ? AND group_id = ?`)
         .all(existing.id, req.group!.id, existing.id, req.group!.id) as Array<{ event_id: string }>;
       db.prepare('DELETE FROM games WHERE id = ?').run(existing.id);
-      for (const event of events) syncPlayingPoints(req.group!.id, event.event_id);
+      for (const event of events) syncCompetitionPoints(req.group!.id, event.event_id);
       return events;
     })();
     reconcileBetting();

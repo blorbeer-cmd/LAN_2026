@@ -18,7 +18,7 @@ import { notifyPlayers, resolvePushTopic } from '../push';
 import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupRole } from '../groupAuthorization';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
-import { syncPlayingPoints } from '../playingPoints';
+import { syncCompetitionPoints } from '../orgaPoints';
 import { shuffle } from '../matchmaking';
 import {
   generateBracket,
@@ -48,6 +48,7 @@ const communicationEventId = (eventId: string): string => eventId;
 
 interface TournamentRow {
   id: string;
+  created_by: string | null;
   event_id: string;
   game_id: string;
   name: string;
@@ -581,8 +582,8 @@ tournamentsRouter.post('/', (req, res) => {
   const create = db.transaction(() => {
     db.prepare(
       `INSERT INTO tournaments
-         (id, event_id, game_id, name, format, two_legged, track_score, third_place_match, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password, group_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
+         (id, event_id, game_id, name, format, two_legged, track_score, third_place_match, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password, group_id, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`
     ).run(
       tournamentId,
       eventId,
@@ -597,7 +598,8 @@ tournamentsRouter.post('/', (req, res) => {
       now,
       resolvedLobbyName,
       resolvedLobbyPassword,
-      req.group!.id
+      req.group!.id,
+      req.player!.id
     );
 
     // Team -> group assignment (group_knockout only) has to happen before
@@ -867,8 +869,8 @@ function saveTournamentResult(req: Request, res: Response) {
       }
     } else {
       db.prepare(
-        'INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(leaderboardMatchId, tournament.game_id, tournament.event_id, now, leaderboardResult, tournament.group_id);
+        'INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(leaderboardMatchId, tournament.game_id, tournament.event_id, now, leaderboardResult, tournament.group_id, tournament.created_by);
     }
 
     db.prepare(
@@ -995,7 +997,7 @@ function saveTournamentResult(req: Request, res: Response) {
       }
     }
     rebookCorrectedRounds(correctedRounds, correction);
-    syncPlayingPoints(req.group!.id, tournament.event_id);
+    syncCompetitionPoints(req.group!.id, tournament.event_id);
   });
   record();
   reconcileBetting(tournament.event_id);
@@ -1253,7 +1255,7 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
         SELECT match_id FROM tournament_matches WHERE tournament_id = ? AND is_draw = 1
       )`).run(req.group!.id, req.params.id);
     const deleted = db.prepare('DELETE FROM tournaments WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
-    syncPlayingPoints(req.group!.id, tournament.event_id);
+    syncCompetitionPoints(req.group!.id, tournament.event_id);
     return deleted;
   })();
   if (result.changes === 0) return res.status(404).json({ error: 'Turnier nicht gefunden.' });

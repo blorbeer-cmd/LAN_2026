@@ -5768,6 +5768,28 @@ registerMigration({ version: 126, name: 'track automatic playing entitlements', 
   CREATE INDEX IF NOT EXISTS points_playing_awards_player ON points_playing_awards(player_id, event_id);`);
 } });
 
+registerMigration({ version: 127, name: 'track competition organizers and automatic orga entitlements', up: () => {
+  // Older competitions have no attributable organizer. Never infer one from
+  // an event owner, participant or whoever happens to edit a historical result.
+  for (const table of ['matches', 'tournaments', 'matchmaking_draws', 'drafts']) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'created_by')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN created_by TEXT REFERENCES players(id) ON DELETE SET NULL`);
+    }
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS points_orga_awards (
+    event_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    account TEXT NOT NULL DEFAULT 'orga' CHECK(account = 'orga'),
+    source_key TEXT NOT NULL,
+    amount INTEGER NOT NULL CHECK(typeof(amount) = 'integer' AND amount >= 0),
+    PRIMARY KEY(event_id, player_id, source_key),
+    FOREIGN KEY(event_id, player_id, account)
+      REFERENCES points_accounts(event_id, player_id, account) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS points_orga_awards_player ON points_orga_awards(player_id, event_id);`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

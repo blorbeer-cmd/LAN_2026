@@ -165,7 +165,73 @@ test('migration 126 rolls back the playing state table on failure and retries wi
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+function removeCompetitionOrgaSchema(fixture: Database.Database): void {
+  fixture.exec('DROP TABLE points_orga_awards; DELETE FROM schema_migrations WHERE version = 127;');
+  for (const table of ['matches', 'tournaments', 'matchmaking_draws', 'drafts']) fixture.exec(`ALTER TABLE ${table} DROP COLUMN created_by`);
+}
+
+test('migration 127 preserves journal balances, leaves legacy organizers unknown and survives replay', () => {
+  const dbFile = makeTempDbPath('competition-orga');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  removeCompetitionOrgaSchema(fixture);
+  fixture.exec(`INSERT INTO players(id,name,api_key,created_at) VALUES ('orga-old','Orga old','orga-old-key',1);
+    INSERT INTO event_participants(event_id,player_id,status) VALUES ('instance-base-event','orga-old','accepted');
+    INSERT INTO points_sources(id,event_id,player_id,account,source_key)
+      VALUES ('orga-source','instance-base-event','orga-old','orga','match:legacy');
+    INSERT INTO points_journal(id,source_id,revision,amount,title,created_at)
+      VALUES ('orga-entry','orga-source',1,1,'Spiel organisiert',1);
+    INSERT INTO matches(id,game_id,event_id,group_id,played_at,result)
+      SELECT 'legacy-orga-match',id,'instance-base-event',group_id,1,'{}' FROM games LIMIT 1;`);
+  fixture.close();
+  runMigrations(dbFile);
+  const upgraded = new Database(dbFile);
+  assert.deepEqual(upgraded.prepare('SELECT id,amount FROM points_journal').all(), [{ id: 'orga-entry', amount: 1 }]);
+  assert.equal((upgraded.prepare("SELECT created_by FROM matches WHERE id = 'legacy-orga-match'").get() as { created_by: null }).created_by, null);
+  assert.deepEqual(upgraded.prepare('SELECT * FROM points_orga_awards').all(), []);
+  upgraded.exec(`INSERT INTO points_orga_awards(event_id,player_id,source_key,amount)
+    VALUES ('instance-base-event','orga-old','match:legacy',1);
+    UPDATE matches SET created_by = 'orga-old' WHERE id = 'legacy-orga-match';`);
+  for (const table of ['matches', 'tournaments', 'matchmaking_draws', 'drafts']) {
+    const foreignKeys = upgraded.prepare(`PRAGMA foreign_key_list(${table})`).all() as Array<{ from: string; on_delete: string }>;
+    assert.ok(foreignKeys.some((key) => key.from === 'created_by' && key.on_delete === 'SET NULL'));
+  }
+  upgraded.close();
+  runMigrations(dbFile);
+  const restarted = new Database(dbFile, { readonly: true });
+  assert.deepEqual(restarted.prepare('SELECT source_key,amount FROM points_orga_awards').all(), [{ source_key: 'match:legacy', amount: 1 }]);
+  assert.equal((restarted.prepare("SELECT created_by FROM matches WHERE id = 'legacy-orga-match'").get() as { created_by: string }).created_by, 'orga-old');
+  assert.deepEqual(restarted.prepare('PRAGMA foreign_key_check').all(), []);
+  restarted.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 127 rolls back organizer columns and state together after a partial failure', () => {
+  const dbFile = makeTempDbPath('competition-orga-rollback');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  removeCompetitionOrgaSchema(fixture);
+  fixture.exec('CREATE TABLE points_orga_awards_player(blocker INTEGER)');
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /points_orga_awards_player/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version = 127').get(), undefined);
+  assert.equal(failed.prepare("SELECT 1 FROM sqlite_master WHERE name = 'points_orga_awards'").get(), undefined);
+  for (const table of ['matches', 'tournaments', 'matchmaking_draws', 'drafts']) {
+    assert.equal((failed.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some((column) => column.name === 'created_by'), false);
+  }
+  failed.exec('DROP TABLE points_orga_awards_player');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const retried = new Database(dbFile, { readonly: true });
+  assert.ok(retried.prepare('SELECT 1 FROM schema_migrations WHERE version = 127').get());
+  retried.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 function removeCategoryPointsSchema(fixture: Database.Database): void {
+  removeCompetitionOrgaSchema(fixture);
   fixture.exec(`DROP TABLE points_playing_awards;
     DELETE FROM schema_migrations WHERE version = 126;
     DROP TRIGGER points_accounts_participant_insert;
@@ -1111,10 +1177,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 126);
+  assert.equal(migrations.length, 127);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 126 }, (_, index) => index + 1),
+    Array.from({ length: 127 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1716,8 +1782,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 126 }, (_, index) => index + 1),
-    'every version 1..126 runs exactly once',
+    Array.from({ length: 127 }, (_, index) => index + 1),
+    'every version 1..127 runs exactly once',
   );
 });
 

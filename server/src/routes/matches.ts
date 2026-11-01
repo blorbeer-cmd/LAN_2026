@@ -17,7 +17,7 @@ import { applySeatConflicts, buildTeamsSnapshot } from './matchmaking';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
-import { syncPlayingPoints } from '../playingPoints';
+import { syncCompetitionPoints } from '../orgaPoints';
 
 export const matchesRouter = Router();
 matchesRouter.use((req, _res, next) => {
@@ -27,6 +27,7 @@ matchesRouter.use((req, _res, next) => {
 
 interface DrawLinkRow {
   id: string;
+  created_by: string | null;
   match_id: string | null;
   tournament_id: string | null;
   event_id: string;
@@ -57,6 +58,7 @@ interface MatchResult {
 
 interface MatchRow {
   id: string;
+  created_by: string | null;
   game_id: string;
   event_id: string;
   played_at: number;
@@ -203,7 +205,7 @@ matchesRouter.post('/', (req, res) => {
   let draw: DrawLinkRow | undefined;
   if (drawId) {
     draw = db
-      .prepare('SELECT id, match_id, tournament_id, event_id, seat_pairs_considered, game_id, source, teams FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+      .prepare('SELECT id, created_by, match_id, tournament_id, event_id, seat_pairs_considered, game_id, source, teams FROM matchmaking_draws WHERE id = ? AND group_id = ?')
       .get(drawId, req.group!.id) as DrawLinkRow | undefined;
     if (!draw) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
     if (draw.match_id) return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
@@ -213,6 +215,7 @@ matchesRouter.post('/', (req, res) => {
 
   const row: MatchRow = {
     id: nanoid(),
+    created_by: draw ? draw.created_by : req.player!.id,
     game_id: gameId,
     event_id: eventId,
     played_at: playedAt ?? Date.now(),
@@ -221,13 +224,14 @@ matchesRouter.post('/', (req, res) => {
   };
   try {
     db.transaction(() => {
-      db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+      db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
         row.id,
         row.game_id,
         row.event_id,
         row.played_at,
         row.result,
         row.group_id,
+        row.created_by,
       );
 
       if (drawId && draw) {
@@ -269,7 +273,7 @@ matchesRouter.post('/', (req, res) => {
         drawId,
       );
       }
-      syncPlayingPoints(req.group!.id, eventId);
+      syncCompetitionPoints(req.group!.id, eventId);
     })();
   } catch (error) {
     if (error instanceof DrawAlreadyClaimedError) {
@@ -355,7 +359,7 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
     const correction = validateBettingCorrection(req, rounds);
     db.prepare('UPDATE matches SET game_id = ?, played_at = ?, result = ? WHERE id = ?').run(nextGameId, nextPlayedAt, nextResult, existing.id);
     rebookCorrectedRounds(rounds, correction);
-    syncPlayingPoints(req.group!.id, existing.event_id);
+    syncCompetitionPoints(req.group!.id, existing.event_id);
   })();
 
   reconcileBetting(existing.event_id);
@@ -363,6 +367,7 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
   res.json(
     parseMatch({
       id: existing.id,
+      created_by: existing.created_by,
       game_id: nextGameId,
       event_id: existing.event_id,
       played_at: nextPlayedAt,
@@ -379,7 +384,7 @@ matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRec
   db.transaction(() => {
     assertMatchEditable(req.group!.id, existing.id);
     db.prepare('DELETE FROM matches WHERE id = ?').run(existing.id);
-    syncPlayingPoints(req.group!.id, existing.event_id);
+    syncCompetitionPoints(req.group!.id, existing.event_id);
   })();
   writeAdminAudit({
     actorPlayerId: req.player?.id,

@@ -249,6 +249,17 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
        FROM points_playing_awards WHERE player_id = ? ORDER BY event_id, source_key`,
       playerId,
     ),
+    automaticOrgaState: rows(
+      `SELECT event_id AS eventId, source_key AS sourceKey, amount
+       FROM points_orga_awards WHERE player_id = ? ORDER BY event_id, source_key`,
+      playerId,
+    ),
+    organizedCompetitions: {
+      matches: rows('SELECT id, event_id AS eventId FROM matches WHERE created_by = ?', playerId),
+      tournaments: rows('SELECT id, event_id AS eventId FROM tournaments WHERE created_by = ?', playerId),
+      draws: rows('SELECT id, event_id AS eventId FROM matchmaking_draws WHERE created_by = ?', playerId),
+      drafts: rows('SELECT id, event_id AS eventId FROM drafts WHERE created_by = ?', playerId),
+    },
     pointsJournal: rows(
       `SELECT j.id, s.event_id AS eventId, s.account, s.source_key AS sourceKey,
               j.revision, j.amount, j.title, j.reason, j.created_at AS createdAt
