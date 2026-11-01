@@ -243,8 +243,9 @@ Spätere Stornos korrigieren die Gutschrift anhand dieser Staffel. Sinkt die Zah
 beispielsweise von 6 auf 5, wird aus der Gutschrift von 4 eine Gutschrift von 3 Punkten;
 der Verlauf zeigt die Differenz von −1.
 
-Der bisherige persönliche Bonus für eine vollständig und fristgerecht abgegebene eigene
-Bestellung bleibt bei **1 Punkt**. Die Staffel der Sammelbestellung ersetzt nur die
+Der persönliche Bonus für eine abgegebene eigene Bestellung beträgt **1 Punkt**.
+Eine fristgerechte Abgabe ist weder für diesen Bonus noch für die Organisatorstaffel erforderlich.
+Die Staffel der Sammelbestellung ersetzt nur die
 früher pauschal vorgeschlagenen 3–5 Organisatorpunkte.
 
 ### 5.3 Dauerhafte persönliche Boni
@@ -465,7 +466,7 @@ dieses Zielkonzepts.
 | Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
 | Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler und Ansichten anbinden sowie Kategorie-Platzpunkte berechnen. |
 | Wettmärkte | Vorläufige Pool-Quoten sichtbar machen, formatabhängige Remis-Auswahl anbieten, die beschlossenen Erstattungen und Restverteilung umsetzen. W1, W2 und die offenen Randfälle nicht vorwegnehmen. |
-| Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) mit Fristprüfung, Stornokorrekturen und gemeinsamem Rollback. Offen für Folgepakete: fremde To-dos mit 1–5 Punkten, einmalige Auszahlung, Umfragen/Spieleabstimmungen sowie dauerhafte persönliche Boni mit Reisestichtag. Die ausdrücklich offenen Regeln bleiben offen. |
+| Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung, mit Stornokorrekturen und gemeinsamem Rollback. Offen für Folgepakete: fremde To-dos mit 1–5 Punkten, einmalige Auszahlung, Umfragen/Spieleabstimmungen sowie dauerhafte persönliche Boni mit Reisestichtag. Die ausdrücklich offenen Regeln bleiben offen. |
 | Kiosk | [server/public/js/kiosk.js](../server/public/js/kiosk.js) um den Ergebnis-Feed mit Korrekturhinweis erweitern. Bei ausgeblendeten Punkteansichten Ergebnisse weiter zeigen, Punkte und Ranglisten verbergen. Nur Anzeigenamen verwenden. |
 | Meldefunktion | Meldbare Quellen, optionalen Grund, eine offene Meldung pro Person/Eintrag, Empfängerfilter, Identitätsschutz, Status und begründete Korrekturen ergänzen. Eigene administrative Korrekturen bleiben erlaubt. |
 | Abschluss und Sichtbarkeit | Hintergrundvergabe von der Anzeige trennen; neue Tipps bei ausgeblendeter Anzeige sperren. Festschreibung gegen gleichzeitig eingehende Meldungen absichern und bei offenen Meldungen verhindern. Den endgültigen Stand nachvollziehbar festhalten. |

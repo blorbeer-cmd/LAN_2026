@@ -49,9 +49,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   sits at the bottom right below quantity and price.
 
   Beim Abschicken werden automatisch [Orga-Punkte im Kategorie-Journal](points-journal.md#orga-punkte-für-sammelbestellungen)
-  verbucht: 3/4/5 für den Organisator ab 3/6/9 anderen Bestellern und je 1 pro rechtzeitig
-  abgegebener eigener Bestellung. Mehrere Positionen derselben Person zählen nur einmal.
-  Wiederöffnen, Fristkorrekturen und Löschen passen die Ansprüche nachvollziehbar an.
+  verbucht: 3/4/5 für den Organisator ab 3/6/9 anderen Bestellern und je 1 pro
+  abgegebener eigener Bestellung, unabhängig von der Bestellfrist. Mehrere Positionen derselben Person zählen nur einmal.
+  Wiederöffnen und Löschen passen die Ansprüche nachvollziehbar an; Friständerungen verändern keine Punkte.
   Die sichtbare Kategorieansicht folgt separat; das bisherige Wettguthaben wird nicht erhöht.
 
   Payment is a per-person handoff, never a per-position action. The card reads like an invoice:

@@ -712,7 +712,7 @@ test('order Orga rewards count distinct other buyers, follow every tier and reve
   );
 });
 
-test('order deadlines exclude late positions and deadline corrections update awards atomically', async () => {
+test('submitted orders earn points regardless of deadlines and deadline edits preserve all claims', async () => {
   const organizer = (await request(app).post('/api/players').send({ name: 'Deadline organizer' })).body.id;
   const buyers: string[] = [];
   for (let i = 0; i < 4; i++)
@@ -725,20 +725,22 @@ test('order deadlines exclude late positions and deadline corrections update awa
     );
   const created = await request(app).post('/api/food-orders').send({ playerId: organizer, title: 'Frist-Pizza' });
   const id = created.body.id;
-  for (const playerId of buyers)
+  const deadline = created.body.createdAt - 1000;
+  assert.equal((await request(app).patch(`/api/food-orders/${id}`).send({ sendAt: deadline })).status, 200);
+  for (const [index, playerId] of buyers.entries()) {
     assert.equal(
       (await request(app).post(`/api/food-orders/${id}/items`).send({ playerId, description: 'Pizza' })).status,
       201,
     );
+    // Explicit fixture timestamps before, at and after the configured deadline.
+    db.prepare('UPDATE food_order_items SET created_at = ? WHERE order_id = ? AND player_id = ?').run(
+      deadline + (index === 0 ? -1 : index === 1 ? 0 : 1),
+      id,
+      playerId,
+    );
+  }
   const closed = await request(app).post(`/api/food-orders/${id}/close`);
   assert.equal(closed.status, 200);
-  // Explicit fixture times around the recorded cutoff; no elapsed-time waiting.
-  const deadline = closed.body.closedAt - 1000;
-  buyers.forEach((playerId, index) =>
-    db
-      .prepare('UPDATE food_order_items SET created_at = ? WHERE order_id = ? AND player_id = ?')
-      .run(deadline + (index === 3 ? 1 : index === 2 ? 0 : -1), id, playerId),
-  );
   const source = (kind: string, playerId = organizer) => ({
     groupId: DEFAULT_GROUP_ID,
     eventId: BASE_EVENT_ID,
@@ -746,62 +748,50 @@ test('order deadlines exclude late positions and deadline corrections update awa
     account: 'orga' as const,
     sourceKey: `food-order:${id}:${kind}`,
   });
-  const duplicate = await Promise.all(
-    [0, 1].map(() => request(app).patch(`/api/food-orders/${id}`).send({ sendAt: deadline })),
-  );
   assert.deepEqual(
-    duplicate.map((res) => res.status),
-    [200, 200],
+    readPointsSource(source('organization')),
+    { total: 3, revision: 1 },
+    'late buyers also count toward the organization tier',
   );
-  assert.equal(readPointsSource(source('organization'))!.total, 3);
-  assert.deepEqual(
-    readPointsSource(source('participation', buyers[2])),
-    { total: 1, revision: 1 },
-    'a position exactly at the deadline counts',
+  for (const playerId of buyers)
+    assert.deepEqual(readPointsSource(source('participation', playerId)), { total: 1, revision: 1 });
+  const journals = [organizer, ...buyers].map((playerId) =>
+    readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, playerId),
   );
-  assert.equal(
-    readPointsSource(source('participation', buyers[3]))!.total,
-    0,
-    'a position after the deadline does not count',
-  );
-  assert.equal(
-    (
-      await request(app)
-        .patch(`/api/food-orders/${id}`)
-        .send({ sendAt: deadline - 1 })
-    ).status,
-    200,
-  );
-  assert.equal(
-    readPointsSource(source('organization'))!.total,
-    0,
-    'two timely other buyers fall below the organization tier',
-  );
-  const before = buyers.map((playerId) => readPointsSource(source('participation', playerId)));
   db.exec(`CREATE TEMP TRIGGER fail_order_award BEFORE INSERT ON points_journal
     WHEN EXISTS(SELECT 1 FROM points_sources s WHERE s.id = NEW.source_id AND s.source_key LIKE 'food-order:%')
-    BEGIN SELECT RAISE(ABORT, 'test order award failure'); END;`);
+    BEGIN SELECT RAISE(ABORT, 'test unexpected order award'); END;`);
   try {
-    assert.equal((await request(app).patch(`/api/food-orders/${id}`).send({ sendAt: null })).status, 500);
-    assert.equal(
-      (db.prepare('SELECT send_at FROM food_orders WHERE id = ?').get(id) as { send_at: number }).send_at,
-      deadline - 1,
+    const duplicate = await Promise.all(
+      [0, 1].map(() =>
+        request(app)
+          .patch(`/api/food-orders/${id}`)
+          .send({ sendAt: deadline - 1 }),
+      ),
     );
     assert.deepEqual(
-      buyers.map((playerId) => readPointsSource(source('participation', playerId))),
-      before,
+      duplicate.map((res) => res.status),
+      [200, 200],
+    );
+    assert.equal((await request(app).patch(`/api/food-orders/${id}`).send({ sendAt: null })).status, 200);
+    assert.equal(syncOrgaPoints(DEFAULT_GROUP_ID, BASE_EVENT_ID), false);
+    assert.deepEqual(
+      [organizer, ...buyers].map((playerId) => readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, playerId)),
+      journals,
+      'moving or removing the deadline does not change journal entries',
     );
   } finally {
     db.exec('DROP TRIGGER fail_order_award');
   }
   const raced = await Promise.all([
-    request(app).patch(`/api/food-orders/${id}`).send({ sendAt: null }),
+    request(app)
+      .patch(`/api/food-orders/${id}`)
+      .send({ sendAt: deadline - 1 }),
     request(app).post(`/api/food-orders/${id}/finalize`),
   ]);
   assert.equal(raced[1].status, 200);
   assert.ok([200, 409].includes(raced[0].status));
-  const order = db.prepare('SELECT send_at FROM food_orders WHERE id = ?').get(id) as { send_at: number | null };
-  assert.equal(readPointsSource(source('organization'))!.total, order.send_at === null ? 3 : 0);
+  assert.deepEqual(readPointsSource(source('organization')), { total: 3, revision: 1 });
   assert.equal((await request(app).delete(`/api/food-orders/${id}`)).status, 204);
   assert.equal(readPointsSource(source('organization'))!.total, 0);
 });
@@ -827,8 +817,9 @@ test('order close rolls back with points, background backfill deduplicates and f
     db.exec('DROP TRIGGER fail_order_close');
   }
   db.prepare(
-    'UPDATE food_orders SET closed_at = (SELECT MAX(created_at) FROM food_order_items WHERE order_id = ?) WHERE id = ?',
-  ).run(id, id);
+    `UPDATE food_orders SET closed_at = (SELECT MAX(created_at) FROM food_order_items WHERE order_id = ?),
+      send_at = (SELECT MIN(created_at) - 1000 FROM food_order_items WHERE order_id = ?) WHERE id = ?`,
+  ).run(id, id, id);
   const source = {
     groupId: DEFAULT_GROUP_ID,
     eventId: BASE_EVENT_ID,

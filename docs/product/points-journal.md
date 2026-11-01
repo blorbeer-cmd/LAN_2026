@@ -113,11 +113,10 @@ Beim **Abschicken** (`closed_at`) entstehen automatisch die folgenden Ansprüche
   Positionen oder größere Mengen erzeugen keinen weiteren Bonus. Das gilt auch für den
   Organisator, wenn er selbst bestellt; seine Bestellung erhöht die Zahl anderer Besteller nicht.
 
-Es zählen unterschiedliche Personen mit mindestens einer noch vorhandenen Position bis zum
-Bestellschluss. Maßgeblich ist das Abschicken oder eine früher hinterlegte Bestellfrist
-(`send_at`). Eine Position genau zum Stichtag zählt, eine spätere nicht. Beschreibung und
-Menge müssen wie bisher gültig sein; der Preis bleibt nach den vorhandenen Bestellregeln
-optional. Ein bloßes Öffnen der Sammelbestellung oder das Markieren einer Zahlung gibt keine Punkte.
+Es zählen unterschiedliche Personen mit mindestens einer noch vorhandenen, abgegebenen
+Position. Die Bestellfrist (`send_at`) und der Zeitpunkt der Abgabe beeinflussen weder den
+persönlichen Bonus noch die Organisatorstaffel. Beschreibung und Menge müssen wie bisher
+gültig sein; der Preis bleibt nach den vorhandenen Bestellregeln optional. Ein bloßes Öffnen der Sammelbestellung oder das Markieren einer Zahlung gibt keine Punkte.
 
 Die Quellen lauten `food-order:<id>:organization` beziehungsweise pro Besteller
 `food-order:<id>:participation` im Konto `orga`. Beide sind unabhängig von Spiel- oder
@@ -127,8 +126,8 @@ Es entstehen keine neuen Wallet-Punkte.
 Das Wiederöffnen nur für Zahlungen (`finalized_at` zurücknehmen) lässt die Ansprüche bestehen.
 Vollständiges Wiederöffnen zum Ändern der Positionen nimmt die bisherigen Bestellansprüche
 zurück. Entfernte Positionen gelten als storniert. Erneutes Abschicken berechnet die Staffel
-und die persönlichen Ansprüche neu, ohne zusätzliche Auszahlung derselben Quelle. Fristkorrekturen
-berechnen auch bereits abgeschickte Bestellungen neu. Unveränderte fachliche Ansprüche behalten
+und die persönlichen Ansprüche neu, ohne zusätzliche Auszahlung derselben Quelle. Änderungen
+der Bestellfrist ändern keine Punkteansprüche. Unveränderte fachliche Ansprüche behalten
 manuelle Korrekturen; entfallene Ansprüche werden auf 0 berechnet. Das Löschen der Sammelbestellung
 nimmt ihre Ansprüche zurück. Jede Änderung und die zugehörigen Journalbuchungen werden atomar
 gespeichert; bei einem Buchungsfehler bleibt auch die Bestellung unverändert.
