@@ -7,6 +7,7 @@ import { readScoringInputs } from './leaderboardData';
 import { syncPlayingPoints } from './playingPoints';
 import { grantSkillCompletionBonus, SKILL_BONUS_SOURCE, SKILL_BONUS_POINTS } from './skillBonus';
 import { todoAwards } from './todoPoints';
+import { grantTravelPoints } from './travelPoints';
 
 export function syncOrgaPoints(groupId: string, eventId: string): boolean {
   return db
@@ -14,9 +15,37 @@ export function syncOrgaPoints(groupId: string, eventId: string): boolean {
       // A caller with the wrong group must not trigger even an otherwise valid grant.
       if (!db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId)) return false;
       const skillChanged = grantSkillCompletionBonus(eventId);
+      const travelChanged = grantTravelPoints(groupId, eventId);
       const otherChanged = syncAutomaticPoints(groupId, eventId, 'orga', () => {
         const { matches } = readScoringInputs(groupId, [eventId]);
         const awards: AutomaticAward[] = todoAwards(groupId, eventId);
+        const votes = db.prepare(`WITH RECURSIVE decisions(round,root,started_at,created_by,title) AS (
+          SELECT round,round,started_at,created_by,title FROM vote_rounds
+            WHERE group_id=? AND event_id=? AND source_round IS NULL
+          UNION ALL SELECT child.round,d.root,d.started_at,d.created_by,d.title FROM vote_rounds child
+            JOIN decisions d ON child.source_round=d.round WHERE child.group_id=? AND child.event_id=?
+          ) SELECT DISTINCT d.root AS round,d.started_at,d.created_by,d.title FROM decisions d
+          JOIN vote_rounds vr ON vr.group_id=? AND vr.event_id=? AND vr.round=d.round
+          WHERE vr.closed_at IS NOT NULL AND d.created_by IS NOT NULL
+            AND (SELECT COUNT(DISTINCT v.player_id) FROM votes v
+              WHERE v.group_id=vr.group_id AND v.round=vr.round) >= 3`)
+          .all(groupId, eventId, groupId, eventId, groupId, eventId) as Array<{ round: number; started_at: number; created_by: string; title: string | null }>;
+        for (const vote of votes) awards.push({
+          playerId: vote.created_by, sourceKey: `vote:${vote.round}:${vote.started_at}:organization`, amount: 2,
+          title: `Spieleabstimmung abgeschlossen: ${vote.title || `Runde ${vote.round}`}`,
+        });
+        const polls = db.prepare(`SELECT p.title,
+          (SELECT original.id FROM event_date_polls original WHERE original.event_id=p.event_id
+            AND original.decision_key=p.decision_key ORDER BY original.round_number LIMIT 1) AS root_id,
+          (SELECT original.created_by FROM event_date_polls original WHERE original.event_id=p.event_id
+            AND original.decision_key=p.decision_key ORDER BY original.round_number LIMIT 1) AS created_by
+          FROM event_date_polls p WHERE p.event_id=? AND p.status IN ('closed','scheduled','superseded')
+          AND (SELECT COUNT(DISTINCT r.player_id) FROM event_date_poll_responses r WHERE r.poll_id=p.id) >= 3`)
+          .all(eventId) as Array<{ root_id: string; created_by: string | null; title: string }>;
+        for (const poll of polls) if (poll.created_by) awards.push({
+          playerId: poll.created_by, sourceKey: `poll:${poll.root_id}:organization`, amount: 3,
+          title: `Umfrage abgeschlossen: ${poll.title}`,
+        });
         for (const match of matches) {
           if (!match.createdBy || computeStandings([match]).length === 0) continue;
           // A tournament result is already one canonical match. Its organizer was
@@ -90,9 +119,14 @@ export function syncOrgaPoints(groupId: string, eventId: string): boolean {
             amount: SKILL_BONUS_POINTS,
             title: 'Skill-Einschätzungen vollständig',
           });
+        const travel = db.prepare(`SELECT player_id,source_key FROM points_orga_awards
+          WHERE event_id=? AND source_key IN ('bonus:arrival','bonus:departure') AND amount=2`)
+          .all(eventId) as Array<{ player_id: string; source_key: string }>;
+        for (const item of travel) awards.push({ playerId: item.player_id, sourceKey: item.source_key, amount: 2,
+          title: item.source_key === 'bonus:arrival' ? 'Ankunft eingetragen' : 'Abreise eingetragen' });
         return awards;
       });
-      return skillChanged || otherChanged;
+      return skillChanged || travelChanged || otherChanged;
     })
     .immediate();
 }

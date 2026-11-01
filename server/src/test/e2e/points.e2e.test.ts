@@ -522,3 +522,44 @@ test('category history and reasoned own and foreign corrections stay consistent 
     for (const session of [cookie, alice.cookie, bob.cookie]) await api('/api/me/active-event', 'PUT', { eventId }, session);
   }
 });
+
+test('poll and event-start travel awards update the open personal journal live', async () => {
+  const future = Date.now() + 3_600_000;
+  const event = await api('/api/events', 'POST', { name: 'Orga-Boni-LAN', eventType: 'lan', startsAt: future, endsAt: future + 86_400_000 });
+  await api(`/api/events/${event.id}/participants`, 'PUT', { playerIds: [myId, alice.id, bob.id] });
+  for (const session of [cookie, alice.cookie, bob.cookie]) {
+    await api(`/api/events/${event.id}/invitation/accept`, 'POST', {}, session);
+    await api('/api/me/active-event', 'PUT', { eventId: event.id }, session);
+  }
+  try {
+    await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: true, revision: 0 });
+    await api('/api/arrivals/mine', 'PUT', { playerId: alice.id, arrivalAt: future + 10_000, departureAt: future + 20_000 }, alice.cookie);
+    await member.goto(`${server.baseUrl}/?eventId=${event.id}#points`);
+    await waitForPlayerData(member);
+    await navigate(member, 'points');
+    const category = member.getByRole('region', { name: 'Meine Kategorien', exact: true });
+    await category.locator('[data-category-balance="orga"]').filter({ hasText: /^0$/ }).waitFor();
+    const poll = await api(`/api/events/${event.id}/polls`, 'POST', {
+      topic: 'custom', title: 'Gemeinsame Pause', responseMode: 'feasibility',
+      options: [{ label: 'Früh' }, { label: 'Spät' }],
+    }, alice.cookie);
+    const responses = poll.options.map((option: { id: string }) => ({ optionId: option.id, response: 'can' }));
+    for (const session of [cookie, alice.cookie, bob.cookie])
+      await api(`/api/events/${event.id}/polls/${poll.id}/my-responses`, 'PUT', { responses }, session);
+    await api(`/api/events/${event.id}/polls/${poll.id}/close`, 'POST', {}, alice.cookie);
+    await category.locator('[data-category-balance="orga"]').filter({ hasText: /^3$/ }).waitFor();
+    // The source timestamps predate this start. Let the real background sweep
+    // cross it and wait for the observable live balance rather than sleeping.
+    const db = new Database(fixtureDb);
+    db.prepare('UPDATE events SET starts_at=? WHERE id=?').run(Date.now() + 500, event.id);
+    db.close();
+    await category.locator('[data-category-balance="orga"]').filter({ hasText: /^7$/ }).waitFor();
+    const history = member.getByRole('region', { name: 'Kategorie-Verlauf', exact: true });
+    await history.getByText('Umfrage abgeschlossen: Gemeinsame Pause', { exact: true }).waitFor();
+    await history.getByText('Ankunft eingetragen', { exact: true }).waitFor();
+    await history.getByText('Abreise eingetragen', { exact: true }).waitFor();
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    for (const session of [cookie, alice.cookie, bob.cookie]) await api('/api/me/active-event', 'PUT', { eventId }, session);
+  }
+});

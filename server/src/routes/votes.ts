@@ -20,6 +20,7 @@
 // list starts out sorted by general popularity, not alphabetically.
 
 import { Router, type Request, type Response } from 'express';
+import { syncOrgaPoints } from '../orgaPoints';
 import { nanoid } from 'nanoid';
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, getState, setState } from '../db';
 import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
@@ -919,13 +920,15 @@ votesRouter.post('/close', requireGroupRole('member'), (req, res) => {
   // Two concurrent closes both pass requestedOpenRound; only the one whose
   // UPDATE still finds the round open wins, the other gets the same 409 as a
   // close that arrived after the round had ended.
-  const closed = db.prepare('UPDATE vote_rounds SET closed_at = ?, winner_game_ids = ? WHERE group_id = ? AND round = ? AND closed_at IS NULL').run(
-    closedAt,
-    JSON.stringify(winnerGameIds),
-    groupId,
-    state.round,
-  );
+  const closed = db.transaction(() => {
+    const updated = db.prepare('UPDATE vote_rounds SET closed_at = ?, winner_game_ids = ? WHERE group_id = ? AND round = ? AND closed_at IS NULL').run(
+      closedAt, JSON.stringify(winnerGameIds), groupId, state.round,
+    );
+    if (updated.changes) syncOrgaPoints(groupId, eventId);
+    return updated;
+  })();
   if (closed.changes === 0) return res.status(409).json({ error: 'Diese Abstimmung läuft nicht.' });
+  broadcast(Events.leaderboardChanged, null, { groupId, eventId });
   resolvePushTopic(`vote:${state.round}`, false, { groupId, eventId: meta.eventId });
 
   const payload = buildOverviewPayload(groupId, eventId, includesTestPlayers(req), { winnerGameIds });
@@ -1131,6 +1134,7 @@ votesRouter.delete('/history/:round', requireGroupRole('admin'), (req, res) => {
       SELECT d.rowid FROM vote_rounds d WHERE ${dependentSql} AND d.closed_at IS NOT NULL AND NOT ${hasBallots})`)
       .run(groupId, eventId, round, round, round);
     db.prepare('DELETE FROM vote_rounds WHERE group_id = ? AND round = ?').run(groupId, round);
+    syncOrgaPoints(groupId, eventId);
     return true;
   });
   try {
@@ -1142,5 +1146,6 @@ votesRouter.delete('/history/:round', requireGroupRole('admin'), (req, res) => {
     throw err;
   }
   broadcast(Events.votesChanged, { round, open: false }, { groupId, eventId });
+  broadcast(Events.leaderboardChanged, null, { groupId, eventId });
   res.json(buildOverviewPayload(groupId, eventId, includesTestPlayers(req)));
 });

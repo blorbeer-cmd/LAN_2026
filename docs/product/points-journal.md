@@ -100,8 +100,7 @@ das Journal bleibt die Grundlage aller Salden. Der persönliche Export enthält 
 und eigene Organisatorzuordnungen. Bei Kontolöschung werden diese Zuordnungen auf `NULL` gesetzt.
 
 Die Kategorieansicht zeigt diese Buchungen im eigenen Saldo und Verlauf sowie im
-Admin-Journal. Neue To-dos sind ebenfalls angebunden; Abstimmungen sowie Ankunfts-/Abreiseboni
-sind weitere Pakete. Offene Grenzen und
+Admin-Journal. Neue To-dos, Abstimmungen sowie Ankunfts-/Abreiseboni sind ebenfalls angebunden. Offene Grenzen und
 Zuordnungsregeln aus dem Konzept werden dadurch nicht festgelegt.
 
 ## Orga-Punkte für Sammelbestellungen
@@ -248,6 +247,12 @@ zugänglich; Admin-Dialoge schließen bei Event-, Konto- oder Rollenwechsel. Nac
 ist das Journal lesbar, Korrekturen bleiben gesperrt. Wett-/Wallet-Korrekturen werden in dieser
 Oberfläche bis zur Klärung von W6 ausschließlich lesend angeboten. Fehler beim Laden des
 Journals lassen sich über dessen Aktualisieren-Aktion erneut versuchen.
+
+## Reiseangaben und Abstimmungen
+
+Ankunfts- und Abreisezeit bringen bei Eventstart jeweils 2 dauerhafte Orga-Punkte, wenn die jeweilige Angabe bis zum Start eingetragen war. Ein Hintergrundlauf erfasst den Start auch ohne geöffneten Browser; unmittelbar vor späteren Änderungen wird der Stand ebenfalls gesichert. Optionaler Freitext ist nicht erforderlich. Verschiebungen vor der Vergabe verwenden den aktualisierten Start; bereits verbuchte Boni und administrative Korrekturen bleiben erhalten. Abgesagte und unveröffentlichte Events erhalten keinen Reisebonus.
+
+Abgeschlossene allgemeine Umfragen mit drei unterschiedlichen Antwortenden bringen dem ursprünglichen Ersteller 3 Punkte, abgeschlossene Spieleabstimmungen mit drei unterschiedlichen Abstimmenden 2. Es gibt kein Kontingent. Zusammengehörige Stichwahlen gelten als eine Entscheidung. Abschluss beziehungsweise Wiederöffnen/Löschen und die Journaländerung erfolgen atomar; eingefrorene Wertungen bleiben unverändert. Historische Quellen ohne belegbaren Ersteller werden nicht zugeordnet.
 
 ## Migration und nächste Pakete
 

@@ -10,12 +10,121 @@ import { correctJournalEntry } from '../pointsAdministration';
 import { readPointsBalances, readPointsSource, recordPointsEntitlements } from '../pointsJournal';
 import { buildPersonalDataExport, deleteAccount } from '../privacyService';
 import { syncOrgaPoints } from '../orgaPoints';
+import { grantTravelPoints } from '../travelPoints';
+import { sweepTravelPoints } from '../travelPointSweep';
 import { config } from '../config';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const app = createTestApp();
+
+test('travel awards are granted once at event start and survive later edits', async () => {
+  const f = await fixture();
+  const start = Date.now() + 60_000;
+  db.prepare('UPDATE events SET starts_at=? WHERE id=?').run(start, f.eventId);
+  db.prepare('INSERT INTO arrivals(event_id,player_id,arrival_at,departure_at,updated_at) VALUES (?,?,?,?,?)')
+    .run(f.eventId, f.players[0], start + 1000, start + 2000, start - 100);
+  db.prepare('INSERT INTO arrivals(event_id,player_id,arrival_at,departure_at,updated_at) VALUES (?,?,?,?,?)')
+    .run(f.eventId, f.players[1], start + 1000, null, start - 100);
+  db.prepare('INSERT INTO arrivals(event_id,player_id,arrival_at,departure_at,updated_at) VALUES (?,?,?,?,?)')
+    .run(f.eventId, f.players[2], start + 1000, start + 2000, start + 1);
+  db.prepare("UPDATE events SET status='cancelled' WHERE id=?").run(f.eventId);
+  assert.equal(grantTravelPoints(DEFAULT_GROUP_ID, f.eventId, start), false, 'cancelled events do not start');
+  db.prepare("UPDATE events SET status='published' WHERE id=?").run(f.eventId);
+  assert.equal(grantTravelPoints(DEFAULT_GROUP_ID, f.eventId, start - 1), false);
+  db.exec(`CREATE TEMP TRIGGER fail_travel_points BEFORE INSERT ON points_journal
+    WHEN NEW.title='Ankunft eingetragen' BEGIN SELECT RAISE(ABORT,'travel points failed'); END`);
+  try {
+    assert.throws(() => grantTravelPoints(DEFAULT_GROUP_ID, f.eventId, start), /travel points failed/);
+    assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[0])!.orga, 0);
+  } finally { db.exec('DROP TRIGGER fail_travel_points'); }
+  sweepTravelPoints(start);
+  assert.equal(grantTravelPoints(DEFAULT_GROUP_ID, f.eventId, start), false);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[0])!.orga, 4);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[1])!.orga, 2);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[2])!.orga, 0);
+  const entry = db.prepare(`SELECT j.id FROM points_journal j JOIN points_sources s ON s.id=j.source_id
+    WHERE s.event_id=? AND s.player_id=? AND s.source_key='bonus:arrival'`).get(f.eventId, f.players[0]) as { id: string };
+  assert.equal((await request(app).post(`/api/points/admin/journal/${entry.id}/correct`).send({ total: 1, revision: 1, reason: 'Korrektur' })).status, 200);
+  db.prepare('UPDATE arrivals SET arrival_at=NULL,departure_at=NULL,updated_at=? WHERE event_id=? AND player_id=?')
+    .run(start + 1, f.eventId, f.players[0]);
+  syncOrgaPoints(DEFAULT_GROUP_ID, f.eventId);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[0])!.orga, 3, 'manual corrections and the permanent bonus survive edits');
+});
+
+test('a travel edit after event start first captures the pre-start values atomically', async () => {
+  const f = await fixture();
+  const start = Date.now() - 1000;
+  db.prepare('UPDATE events SET starts_at=? WHERE id=?').run(start, f.eventId);
+  db.prepare('INSERT INTO arrivals(event_id,player_id,arrival_at,departure_at,updated_at) VALUES (?,?,?,?,?)')
+    .run(f.eventId, f.players[0], start + 1000, start + 2000, start - 100);
+  const response = await request(app).put('/api/arrivals/mine').set('x-test-player-id', f.players[0])
+    .send({ playerId: f.players[0], arrivalAt: null, departureAt: null });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[0])!.orga, 4);
+});
+
+test('three distinct game voters grant two organizer points once and deletion reverses them', async () => {
+  const f = await fixture();
+  const started = await request(app).post('/api/votes/start').send({ mode: 'single' });
+  assert.equal(started.status, 201);
+  const round = started.body.round as number;
+  const { started_at: startedAt } = db.prepare('SELECT started_at FROM vote_rounds WHERE group_id=? AND round=?')
+    .get(DEFAULT_GROUP_ID, round) as { started_at: number };
+  for (const playerId of f.players) {
+    const result = await request(app).post('/api/votes').set('x-test-player-id', playerId)
+      .send({ playerId, round, gameId: f.gameId });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+  }
+  const close = () => request(app).post('/api/votes/close').send({ round });
+  db.exec(`CREATE TEMP TRIGGER fail_vote_points BEFORE INSERT ON points_journal
+    WHEN NEW.title LIKE 'Spieleabstimmung abgeschlossen:%' BEGIN SELECT RAISE(ABORT,'vote points failed'); END`);
+  try {
+    assert.equal((await close()).status, 500);
+    assert.equal((db.prepare('SELECT closed_at FROM vote_rounds WHERE group_id=? AND round=?').get(DEFAULT_GROUP_ID, round) as { closed_at: number | null }).closed_at, null);
+  } finally { db.exec('DROP TRIGGER fail_vote_points'); }
+  const results = await Promise.all([close(), close()]);
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+  const source = { groupId: DEFAULT_GROUP_ID, eventId: f.eventId, playerId: TEST_ADMIN_ID,
+    account: 'orga' as const, sourceKey: `vote:${round}:${startedAt}:organization` };
+  assert.equal(readPointsSource(source)!.total, 2);
+  syncOrgaPoints(DEFAULT_GROUP_ID, f.eventId);
+  assert.equal(readPointsSource(source)!.total, 2);
+  const runoff = await request(app).post('/api/votes/start').send({ mode: 'single', sourceRound: round, gameIds: [f.gameId] });
+  assert.equal(runoff.status, 201, JSON.stringify(runoff.body));
+  for (const playerId of f.players)
+    assert.equal((await request(app).post('/api/votes').set('x-test-player-id', playerId)
+      .send({ playerId, round: runoff.body.round, gameId: f.gameId })).status, 200);
+  assert.equal((await request(app).post('/api/votes/close').send({ round: runoff.body.round })).status, 200);
+  assert.equal(readPointsSource(source)!.total, 2, 'a runoff cannot pay the same decision twice');
+  assert.equal((await request(app).delete(`/api/votes/history/${runoff.body.round}`)).status, 200);
+  assert.equal((await request(app).delete(`/api/votes/history/${round}`)).status, 200);
+  assert.equal(readPointsSource(source)!.total, 0);
+  const next = await request(app).post('/api/votes/start').send({ mode: 'single' });
+  assert.equal(next.status, 201);
+  const nextRound = next.body.round as number;
+  const nextStarted = (db.prepare('SELECT started_at FROM vote_rounds WHERE group_id=? AND round=?')
+    .get(DEFAULT_GROUP_ID, nextRound) as { started_at: number }).started_at;
+  for (const playerId of f.players)
+    assert.equal((await request(app).post('/api/votes').set('x-test-player-id', playerId)
+      .send({ playerId, round: nextRound, gameId: f.gameId })).status, 200);
+  assert.equal((await request(app).post('/api/votes/close').send({ round: nextRound })).status, 200);
+  assert.equal(readPointsSource(source)!.total, 0, 'a later round never reuses a deleted source');
+  assert.equal(readPointsSource({ ...source, sourceKey: `vote:${nextRound}:${nextStarted}:organization` })!.total, 2);
+});
+
+test('two game voters do not qualify for the organizer reward', async () => {
+  const f = await fixture();
+  const started = await request(app).post('/api/votes/start').send({ mode: 'single' });
+  assert.equal(started.status, 201);
+  const round = started.body.round as number;
+  for (const playerId of f.players.slice(0, 2))
+    assert.equal((await request(app).post('/api/votes').set('x-test-player-id', playerId)
+      .send({ playerId, round, gameId: f.gameId })).status, 200);
+  assert.equal((await request(app).post('/api/votes/close').send({ round })).status, 200);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID)!.orga, 0);
+});
 // Explicit pre-upgrade promises still have to be honored. No public endpoint
 // can create these after fixed To-do rewards have replaced task configuration.
 function legacyPromise(taskId: string, perPerson = 5, slots = 1) {

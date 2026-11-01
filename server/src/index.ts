@@ -31,6 +31,7 @@ import { registerArcadeSockets as registerArcadeRealtimeSockets } from './arcade
 import { startPrivacyRetention } from './privacyRetention';
 import { startNewstickerGeneration } from './newsticker';
 import { backfillCompetitionPoints } from './orgaPoints';
+import { startTravelPointSweep } from './travelPointSweep';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -104,6 +105,7 @@ function start(): void {
   const server = http.createServer(app);
   const io = new Server(server);
   setIo(io);
+  startTravelPointSweep();
 
   io.use(createSocketAuthGuard());
   registerSocketFeatures(io);

@@ -68,7 +68,8 @@ function text(value: unknown, label: string, max = 300): string {
 pointsRouter.get('/', (req, res) => {
   const eventId = res.locals.eventId as string;
   if (!['owner', 'admin'].includes(req.groupMembership!.role)) requirePointsVisible(eventId);
-  syncCompetitionPoints(req.group!.id, eventId);
+  if (syncCompetitionPoints(req.group!.id, eventId))
+    broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   ensurePointAccounts(eventId);
   reconcileBetting(eventId);
   const settings = pointsSettings(eventId) ?? null;
@@ -177,7 +178,8 @@ pointsRouter.get('/admin/entries', requireGroupRole('admin'), (req, res) => {
   res.json({ entries, participants: pointParticipants(req.group!.id, eventId), budget: rewardBudget(eventId) });
 });
 pointsRouter.get('/admin/journal', requireGroupRole('admin'), (req, res) => {
-  syncCompetitionPoints(req.group!.id, res.locals.eventId);
+  if (syncCompetitionPoints(req.group!.id, res.locals.eventId))
+    broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: res.locals.eventId });
   const entries = db.prepare(`SELECT j.*, s.player_id AS playerId, p.name AS playerName,
       s.account, s.source_key AS sourceKey, a.actor_player_id AS actorId, actor.name AS actorName
     FROM points_journal j JOIN points_sources s ON s.id = j.source_id JOIN players p ON p.id = s.player_id

@@ -272,9 +272,7 @@ dauerhaft erhalten. Späteres Ändern oder Löschen der Angaben nimmt sie nicht 
 zurück. Dauerhaft bedeutet keine automatische Rücknahme bei Datenänderungen; die allgemeine
 Möglichkeit einer begründeten administrativen Korrektur von Missbrauch bleibt bestehen.
 
-**OFFEN – Stichtagsdetails:** Vorabgutschriften, Löschen vor dem Stichtag und spätere
-Verschiebungen des Eventstarts sind nicht gesondert entschieden. Hier wird dafür keine
-zusätzliche Verfalls- oder Rücknahmeregel festgelegt.
+**Umsetzung:** Die Auswertung und Gutschrift erfolgen zum Eventstart anhand der bis dahin eingetragenen Ankunfts- beziehungsweise Abreisezeit; eine optionale Notiz ist nicht erforderlich. Vorher gibt es keine Reisegutschrift. Wird der Start vor der Gutschrift verschoben, gilt der neue Start. Bereits verdiente Boni bleiben bei späteren Verschiebungen bestehen.
 
 ### 5.4 Matches, Turniere und Abstimmungen
 
@@ -283,9 +281,8 @@ zusätzliche Verfalls- oder Rücknahmeregel festgelegt.
 | Eigenständiges Match organisieren | 1 | Das angelegte Match erhält ein gültiges Ergebnis. |
 | Turnierspiel organisieren | 1 | Ein tatsächlich gespieltes Turniermatch erhält ein gültiges Ergebnis; Empfänger ist der Turnierorganisator. Freilose zählen nicht. |
 | Turnier abschließen | Zusätzlich 5 | Regulärer Turnierabschluss. |
-| Allgemeine Umfrage veröffentlichen | 1 | Vollständige Veröffentlichung. |
-| Allgemeine Umfrage abschließen | Zusätzlich 1 | Auswertbarer Abschluss mit mindestens zwei unterschiedlichen Antwortenden. |
-| Spieleabstimmung organisieren | 1 | Erfolgreich abgeschlossene eindeutige Entscheidung mit mindestens zwei unterschiedlichen Antwortenden. |
+| Umfrage abschließen | 3 | Abgeschlossen, mindestens drei unterschiedliche Teilnehmende. |
+| Spieleabstimmung abschließen | 2 | Abgeschlossen, mindestens drei unterschiedliche Teilnehmende. |
 
 Für Turnierspiele gibt es kein zusätzliches „Match organisiert“. Auslosung, Match und
 Turnierbegegnung dürfen denselben Vorgang nicht mehrfach belohnen. Ein Turnier mit sieben
@@ -296,9 +293,7 @@ Stichwahlen gehören zur ursprünglichen Entscheidung und erzeugen keine weitere
 Organisationsbelohnung. Allgemeine Umfragen und Spieleabstimmungen sind getrennte
 Punktequellen; derselbe Vorgang wird nicht unter beiden Bezeichnungen doppelt belohnt.
 
-**OFFEN O2:** Kontingente für vergütete Umfragen und Spieleabstimmungen pro Ersteller und
-Event. Review-Vorschlag: 2–3. Verbindliche Zahl und genaue Aufteilung beziehungsweise
-Zählweise der Veröffentlichungs- und Abschlussboni sind noch nicht entschieden.
+Für diese abgeschlossenen Umfragen und Spieleabstimmungen gibt es kein Kontingent.
 
 ## 6. Kategorieplätze und Gesamtwertung
 
@@ -448,7 +443,6 @@ Die folgenden vier ursprünglichen Entscheidungen sind weiterhin ausdrücklich *
 |---|---|---|
 | W1 | Einsatzgrenze pro Wettmarkt | 10–20 % des gleichen Startguthabens |
 | W2 | Mindestzahl abgerechneter Tipps für eine Wettplatzierung | 3–5; Zählweise erstatteter Märkte ebenfalls klären |
-| O2 | Kontingente vergüteter Umfragen und Spieleabstimmungen pro Ersteller und Event | 2–3; genaue Zuordnung der Boni klären |
 
 Das Review des bisherigen Codes ergänzt folgende offene Entscheidungen. Bestehende technische
 Vorgabewerte sind dafür keine Entscheidung:
@@ -465,8 +459,6 @@ Vorgabewerte sind dafür keine Entscheidung:
 | W7 | Feste Restverteilung bei gleich großen größten richtigen Einsätzen und Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
 | O3 | Neue Aufgaben verwenden keine alten Orga-Budgets oder vergüteten Helferplätze. Alte Zusagen bleiben im bisherigen Pfad; dessen vollständige finanzielle Ablösung folgt mit dem Wallet. |
 | O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben mit expliziter LAN-Belohnung behalten vorerst ihren bisherigen Abschlussweg ohne Wiederöffnen. |
-| O5 | Welche Funktion als allgemeine Umfrage zählt: vorhandene Terminumfrage oder neues generisches Umfragemodul; Abgrenzung von Veröffentlichung, Abschluss und Stichwahlen. |
-| O6 | Vollständigkeit von Reiseangaben, Vorabgutschriften, Löschung vor dem Stichtag und verschobener Eventstart. Bestellpunkte bleiben ausdrücklich ohne Fristprüfung. |
 | S1 | Turnierplatzierungsbonus bei geteilten Plätzen. Der Ist-Code vergibt in Ligen den vollen Bonus des geteilten Rangs (beispielsweise 5/5/1); die Zielregel ist noch nicht ausdrücklich festgelegt. |
 | M1 | Meldungen gegen Event-Ersteller ohne Adminrolle oder bei fehlendem zuständigen Admin; Vertretung und Bearbeitung. |
 | H1 | Korrektur des rechnerisch nicht allgemein zutreffenden Teamzahl-Durchschnittshinweises aus Abschnitt 3.4. |
@@ -497,7 +489,7 @@ dieses Zielkonzepts.
 | Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Spielfilter und eventübergreifende Auswertungen verwenden ausschließlich Spielpunkte. Eine ausdrücklich gewählte einzelne konfigurierte LAN ohne Spielfilter, Hall of Fame und Event-Export nutzen bis zum Umstellungspaket noch das alte gemeinsame Konto. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
 | Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Umgesetzt sind außerdem persönliche Kategorie-Rohwerte, Verlauf und Admin-Korrektur-Oberfläche. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler anbinden sowie Kategorie-Platzpunkte berechnen. |
 | Wettmärkte | Vorläufige Pool-Quoten sichtbar machen, formatabhängige Remis-Auswahl anbieten, die beschlossenen Erstattungen und Restverteilung umsetzen. W1, W2 und die offenen Randfälle nicht vorwegnehmen. |
-| Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit festen 3 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Offen für Folgepakete: Umfragen/Spieleabstimmungen sowie Ankunft und Abreise mit Reisestichtag. Die ausdrücklich offenen Regeln bleiben offen. |
+| Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit festen 3 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Ebenfalls umgesetzt: 2 Punkte je eingetragener Ankunft/Abreise beim Eventstart sowie 3 Punkte für abgeschlossene Umfragen und 2 Punkte für abgeschlossene Spieleabstimmungen mit jeweils mindestens drei Teilnehmenden. Die ausdrücklich offenen Regeln bleiben offen. |
 | Kiosk | Umgesetzt: [Ergebnis-Feed](product/media-and-dashboard-rules.md#tv-kiosk) mit Anzeigenamen, Platzierungen und tatsächlich gebuchten Spielpunkten, Korrekturhinweis auch bei reinen Score-Änderungen. Bei ausgeblendeten Punkteansichten bleiben Ergebnisse ohne Punkte sichtbar. Die zehn jüngsten Ergebnisse wechseln in der bestehenden Turnierkachel; alle Teilnehmer werden automatisch durchgeblättert. Migration 128 ergänzt Erfassungszeit, Änderungszeit und Ergebnisrevision, ohne Punktebestände zu verändern. |
 | Meldefunktion | Meldbare Quellen, optionalen Grund, eine offene Meldung pro Person/Eintrag, Empfängerfilter, Identitätsschutz, Status und begründete Korrekturen ergänzen. Eigene administrative Korrekturen bleiben erlaubt. |
 | Abschluss und Sichtbarkeit | Hintergrundvergabe von der Anzeige trennen; neue Tipps bei ausgeblendeter Anzeige sperren. Festschreibung gegen gleichzeitig eingehende Meldungen absichern und bei offenen Meldungen verhindern. Den endgültigen Stand nachvollziehbar festhalten. |

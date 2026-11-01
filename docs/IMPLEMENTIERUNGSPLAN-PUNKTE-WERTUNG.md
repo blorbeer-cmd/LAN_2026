@@ -147,17 +147,9 @@ bleiben ohne rückwirkenden Bonus. Historische Aufgaben mit alter
 LAN-Belohnung behalten ihren bisherigen Abschlussweg und können bis zur finanziellen Ablösung
 nicht wieder geöffnet werden; deren bereits gezahlte Beträge werden nicht umgedeutet.
 
-**Ankunft/Abreise:** Anspruch mit dauerhaftem Zustand wie beim Skill-Bonus speichern.
-`arrival_at` und `departure_at` sind vorhanden; ob `note` oder weitere Angaben zur Vollständigkeit
-gehören und wie verschobene Eventstarts behandelt werden, ist offen. Die Abgabefrist gilt nach
-dem derzeitigen Konzept nur für diese Reiseboni, nicht für Bestellpunkte. Ein bereits verdienter
-Bonus geht durch spätere Änderungen nicht verloren.
+**Paket 3 umgesetzt:** Je 2 Punkte entstehen zum Eventstart für eine bis dahin eingetragene Ankunfts- beziehungsweise Abreisezeit. Die optionalen Notizen sind dafür nicht erforderlich. Die Vergabe läuft auch ohne offene App und bleibt nach Änderungen erhalten. Ein vor dem Start verschobener Eventtermin verwendet den neuen Start; bereits erworbene Boni bleiben erhalten. Bestellpunkte sind unabhängig von Fristen.
 
-**Umfragen/Spieleabstimmungen:** `vote_rounds.created_by` und die Verknüpfung von Stichwahlen
-nutzen. Historisch unbekannte Ersteller bleiben unzugeordnet. Allgemeine Umfragen sind bislang
-nicht als eigenes generisches Modul vorhanden; Terminumfragen liegen in `event_date_polls`.
-Ob diese gemeint sind oder eine neue Umfragefunktion benötigt wird, ist offen. Veröffentlichung,
-Abschluss, Stichwahlen und Kontingente müssen vor der Vergabe abgegrenzt werden.
+**Paket 4 umgesetzt:** Jede abgeschlossene Umfrage mit mindestens drei unterschiedlichen Teilnehmenden bringt dem ursprünglichen Ersteller 3 Punkte; eine entsprechend abgeschlossene Spieleabstimmung 2 Punkte. Es gibt kein Kontingent. Stichwahlen bleiben Teil derselben Entscheidung. Wiederöffnen und Löschen berechnen den Anspruch neu. Historisch unbekannte Ersteller bleiben unzugeordnet.
 
 Abnahme je Erzeuger: erfüllter und nicht erfüllter Anspruch, Wiederholung, relevante Parallelzugriffe,
 atomarer Fehlerfall, Korrektur/Löschung und unveränderte manuelle Korrektur. Änderungen der

@@ -17,6 +17,7 @@ import {
 } from './eventFeatureCatalog';
 import { createEventFeatureSnapshot } from './eventFeatures';
 import { grantSkillCompletionBonus } from './skillBonus';
+import { grantTravelPoints } from './travelPoints';
 
 export { OUTSIDE_EVENTS_ID };
 
@@ -220,20 +221,24 @@ export function updateEvent(id: string, fields: UpdateEventFields): EventRow | u
   // published event is a legal row since migration 103 and simply cannot
   // track: getTrackingEvents needs a started period, and tracking can never
   // have been on, because removing a period is refused while it is running.
-  db.prepare(
-    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, cost_cents = ?, accommodation_cost_cents = ?, paypal_link = ?, payment_due_at = ? WHERE id = ?'
-  ).run(
-    next.name,
-    next.starts_at,
-    next.ends_at,
-    next.location,
-    next.description,
-    next.cost_cents,
-    next.accommodation_cost_cents,
-    next.paypal_link,
-    next.payment_due_at,
-    next.id,
-  );
+  db.transaction(() => {
+    if (existing.group_id) grantTravelPoints(existing.group_id, id);
+    db.prepare(
+      'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, cost_cents = ?, accommodation_cost_cents = ?, paypal_link = ?, payment_due_at = ? WHERE id = ?'
+    ).run(
+      next.name,
+      next.starts_at,
+      next.ends_at,
+      next.location,
+      next.description,
+      next.cost_cents,
+      next.accommodation_cost_cents,
+      next.paypal_link,
+      next.payment_due_at,
+      next.id,
+    );
+    if (existing.group_id) grantTravelPoints(existing.group_id, id);
+  })();
 
   return next;
 }
