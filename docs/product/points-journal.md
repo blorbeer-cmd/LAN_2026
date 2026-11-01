@@ -19,7 +19,7 @@ Admins und Event-Ersteller werden wie alle anderen Teilnehmer behandelt.
 | `wallet` | Separates, für Wetten verfügbares Guthaben |
 
 Die neuen Konten beginnen technisch bei 0. Gültige Spiele und Turnierplatzierungen erzeugen
-automatisch Spielpunkte; organisierte Matches und Turniere erzeugen Orga-Punkte. Weitere
+automatisch Spielpunkte; organisierte Matches, Turniere und Sammelbestellungen erzeugen Orga-Punkte. Weitere
 Orga-Auslöser folgen. Dokumentierte frühere Spielteilnehmer
 erhalten beziehungsweise behalten ihre Konten auch nach einem Austritt. Das legt weder die
 Teilnehmerbasis der Gesamtwertung noch die Höhe eines Wett-Startguthabens fest. Ein späterer Startguthaben-Vorgang
@@ -99,9 +99,46 @@ das Journal bleibt die Grundlage aller Salden. Der persönliche Export enthält 
 und eigene Organisatorzuordnungen. Bei Kontolöschung werden diese Zuordnungen auf `NULL` gesetzt.
 
 Die Kategorie-API zeigt diese Buchungen bereits im eigenen Saldo und Verlauf sowie im
-Admin-Journal. Die sichtbare Kategorieansicht folgt später. To-dos, Sammelbestellungen,
+Admin-Journal. Die sichtbare Kategorieansicht folgt später. To-dos,
 Abstimmungen und dauerhafte persönliche Boni sind weitere Pakete. Offene Grenzen und
 Zuordnungsregeln aus dem Konzept werden dadurch nicht festgelegt.
+
+## Orga-Punkte für Sammelbestellungen
+
+Beim **Abschicken** (`closed_at`) entstehen automatisch die folgenden Ansprüche:
+
+- Der Organisator erhält bei 3–5 anderen Bestellern 3 Punkte, bei 6–8 anderen 4 und ab 9
+  anderen 5 Punkte; bei weniger als 3 anderen gibt es keinen Organisationsbonus.
+- Jeder Besteller erhält 1 Punkt für seine gültig abgegebene eigene Bestellung. Mehrere
+  Positionen oder größere Mengen erzeugen keinen weiteren Bonus. Das gilt auch für den
+  Organisator, wenn er selbst bestellt; seine Bestellung erhöht die Zahl anderer Besteller nicht.
+
+Es zählen unterschiedliche Personen mit mindestens einer noch vorhandenen Position bis zum
+Bestellschluss. Maßgeblich ist das Abschicken oder eine früher hinterlegte Bestellfrist
+(`send_at`). Eine Position genau zum Stichtag zählt, eine spätere nicht. Beschreibung und
+Menge müssen wie bisher gültig sein; der Preis bleibt nach den vorhandenen Bestellregeln
+optional. Ein bloßes Öffnen der Sammelbestellung oder das Markieren einer Zahlung gibt keine Punkte.
+
+Die Quellen lauten `food-order:<id>:organization` beziehungsweise pro Besteller
+`food-order:<id>:participation` im Konto `orga`. Beide sind unabhängig von Spiel- oder
+Turnierquellen. Die gemeinsame Orga-Ableitung erhält alle weiterhin gültigen Ansprüche.
+Es entstehen keine neuen Wallet-Punkte.
+
+Das Wiederöffnen nur für Zahlungen (`finalized_at` zurücknehmen) lässt die Ansprüche bestehen.
+Vollständiges Wiederöffnen zum Ändern der Positionen nimmt die bisherigen Bestellansprüche
+zurück. Entfernte Positionen gelten als storniert. Erneutes Abschicken berechnet die Staffel
+und die persönlichen Ansprüche neu, ohne zusätzliche Auszahlung derselben Quelle. Fristkorrekturen
+berechnen auch bereits abgeschickte Bestellungen neu. Unveränderte fachliche Ansprüche behalten
+manuelle Korrekturen; entfallene Ansprüche werden auf 0 berechnet. Das Löschen der Sammelbestellung
+nimmt ihre Ansprüche zurück. Jede Änderung und die zugehörigen Journalbuchungen werden atomar
+gespeichert; bei einem Buchungsfehler bleibt auch die Bestellung unverändert.
+
+Die Vergabe läuft unabhängig von der Sichtbarkeit. Historische abgeschickte Bestellungen offener
+Wertungen werden über den vorhandenen Startabgleich nachgetragen. Festgeschriebene Wertungen
+bleiben unverändert, Wiederöffnen der Wertung zieht zwischenzeitliche Änderungen nach.
+Die eigene Punkte-API (`categoryBalances`, `categoryJournal`) und der Datenschutzexport enthalten
+die neuen Orga-Einträge. Die sichtbare Kategorieoberfläche folgt im Ansichtenpaket. Dieses Paket benötigt
+keine weitere Migration und entscheidet keine offenen To-do-, Abstimmungs- oder Wettregeln.
 
 ## Buchung und Korrektur
 

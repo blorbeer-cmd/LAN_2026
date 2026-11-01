@@ -23,6 +23,7 @@ import { isIntInRange, isNonEmptyString, isValidPaypalUrl, isValidUrl } from '..
 import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
 import { requireUser, withBodyPlayerIdentity } from '../sessions';
 import { communicationRecipientIds } from '../communicationRecipients';
+import { syncOrgaPoints } from '../orgaPoints';
 
 export const foodOrdersRouter = Router();
 
@@ -42,6 +43,19 @@ const MAX_NOTES_LENGTH = 500;
 const MAX_LINK_LENGTH = 300;
 const HISTORY_LIMIT = 10;
 const MAX_GROUP_PAYMENT_ITEMS = 100;
+
+function mutateOrderWithPoints(order: OrderRow, mutate: () => boolean): boolean {
+  return db.transaction(() => {
+    if (!mutate()) return false;
+    syncOrgaPoints(order.group_id, order.event_id);
+    return true;
+  }).immediate();
+}
+
+function broadcastOrderChange(order: OrderRow): void {
+  broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
+  broadcast(Events.leaderboardChanged, null, orderDeliveryScope(order));
+}
 
 interface OrderRow {
   id: string;
@@ -319,21 +333,21 @@ foodOrdersRouter.patch('/:id', requireUser, (req, res) => {
     paypal_link: paypalLink !== undefined ? (paypalLink ? paypalLink.trim() : null) : order.paypal_link,
     tip_percent: tipPercent !== undefined ? tipPercent : order.tip_percent,
   };
-  db.prepare('UPDATE food_orders SET send_at = ?, notes = ?, link = ?, paypal_link = ?, tip_percent = ? WHERE id = ?').run(
-    next.send_at,
-    next.notes,
-    next.link,
-    next.paypal_link,
-    next.tip_percent,
-    order.id
-  );
+  const updated = mutateOrderWithPoints(order, () => db.prepare(`UPDATE food_orders
+    SET send_at = ?, notes = ?, link = ?, paypal_link = ?, tip_percent = ?
+    WHERE id = ? AND finalized_at IS NULL AND send_at IS ? AND notes IS ? AND link IS ?
+      AND paypal_link IS ? AND tip_percent IS ?`).run(
+    next.send_at, next.notes, next.link, next.paypal_link, next.tip_percent, order.id,
+    order.send_at, order.notes, order.link, order.paypal_link, order.tip_percent,
+  ).changes === 1);
+  if (!updated) return res.status(409).json({ error: 'Die Bestellung wurde inzwischen geändert.' });
   if (sendAt !== undefined) {
     updatePushTopicExpiry(`food-order:${order.id}`, next.send_at, {
       groupId: order.group_id,
       eventId: order.event_id,
     });
   }
-  broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
+  broadcastOrderChange(order);
   res.json(serializeOrder({ ...order, ...next }));
 });
 
@@ -349,12 +363,13 @@ foodOrdersRouter.delete('/:id', requireUser, (req, res) => {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung löschen.' });
   }
 
-  db.prepare('DELETE FROM food_orders WHERE id = ?').run(order.id);
+  const deleted = mutateOrderWithPoints(order, () => db.prepare('DELETE FROM food_orders WHERE id = ?').run(order.id).changes === 1);
+  if (!deleted) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   resolvePushTopic(`food-order:${order.id}`, false, {
     groupId: order.group_id,
     eventId: order.event_id,
   });
-  broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
+  broadcastOrderChange(order);
   res.status(204).end();
 });
 
@@ -558,12 +573,13 @@ foodOrdersRouter.post('/:id/close', requireUser, (req, res) => {
   }
 
   const closedAt = Date.now();
-  db.prepare('UPDATE food_orders SET closed_at = ? WHERE id = ?').run(closedAt, order.id);
+  const closed = mutateOrderWithPoints(order, () => db.prepare('UPDATE food_orders SET closed_at = ? WHERE id = ? AND closed_at IS NULL').run(closedAt, order.id).changes === 1);
+  if (!closed) return res.status(409).json({ error: 'Diese Bestellung wurde bereits abgeschickt.' });
   resolvePushTopic(`food-order:${order.id}`, false, {
     groupId: order.group_id,
     eventId: order.event_id,
   });
-  broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
+  broadcastOrderChange(order);
   res.json(serializeOrder({ ...order, closed_at: closedAt }));
 });
 
@@ -581,16 +597,18 @@ foodOrdersRouter.post('/:id/reopen', requireUser, (req, res) => {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung wieder öffnen.' });
   }
   if (order.finalized_at !== null) {
-    db.prepare('UPDATE food_orders SET finalized_at = NULL WHERE id = ?').run(order.id);
-    broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
+    const reopened = mutateOrderWithPoints(order, () => db.prepare('UPDATE food_orders SET finalized_at = NULL WHERE id = ? AND finalized_at IS ? AND closed_at IS ?').run(order.id, order.finalized_at, order.closed_at).changes === 1);
+    if (!reopened) return res.status(409).json({ error: 'Die Bestellung wurde inzwischen geändert.' });
+    broadcastOrderChange(order);
     return res.json(serializeOrder({ ...order, finalized_at: null }));
   }
   if (order.closed_at === null) {
     return res.status(409).json({ error: 'Diese Bestellung ist bereits offen.' });
   }
 
-  db.prepare('UPDATE food_orders SET closed_at = NULL WHERE id = ?').run(order.id);
-  broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
+  const reopened = mutateOrderWithPoints(order, () => db.prepare('UPDATE food_orders SET closed_at = NULL WHERE id = ? AND closed_at IS ? AND finalized_at IS NULL').run(order.id, order.closed_at).changes === 1);
+  if (!reopened) return res.status(409).json({ error: 'Die Bestellung wurde inzwischen geändert.' });
+  broadcastOrderChange(order);
   res.json(serializeOrder({ ...order, closed_at: null }));
 });
 

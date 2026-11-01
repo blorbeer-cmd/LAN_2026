@@ -6,7 +6,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp, sessionCookie } from './testApp';
+import { createTestApp, sessionCookie, DEFAULT_GROUP_ID, TEST_ADMIN_ID } from './testApp';
+
+import { BASE_EVENT_ID, db } from '../db';
+import { readPointsSource, readPointsJournal, readPointsBalances } from '../pointsJournal';
+import { backfillCompetitionPoints, syncOrgaPoints } from '../orgaPoints';
 
 const app = createTestApp();
 
@@ -576,4 +580,279 @@ test('DELETE /api/food-orders/:id also works on a closed and on a finalized orde
   await request(app).post(`/api/food-orders/${finalizedOrder.body.id}/finalize`);
   const finalizedDelete = await request(app).delete(`/api/food-orders/${finalizedOrder.body.id}`);
   assert.equal(finalizedDelete.status, 204);
+});
+
+
+test('order Orga rewards count distinct other buyers, follow every tier and reverse cancellations without duplicate payouts', async () => {
+  const players: string[] = [];
+  for (let i = 0; i < 10; i++)
+    players.push(
+      (
+        await request(app)
+          .post('/api/players')
+          .send({ name: `Points buyer ${i}` })
+      ).body.id,
+    );
+  const [organizer, ...buyers] = players;
+  const gameId = (db.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get(DEFAULT_GROUP_ID) as { id: string })
+    .id;
+  const match = await request(app)
+    .post('/api/matches')
+    .set('x-test-player-id', buyers[0])
+    .send({ gameId, teams: [{ playerIds: [TEST_ADMIN_ID] }, { playerIds: [buyers[1]] }], winnerTeamIndex: 0 });
+  assert.equal(match.status, 201);
+  const matchOrga = {
+    groupId: DEFAULT_GROUP_ID,
+    eventId: BASE_EVENT_ID,
+    playerId: buyers[0],
+    account: 'orga' as const,
+    sourceKey: `match:${match.body.id}`,
+  };
+  assert.deepEqual(readPointsSource(matchOrga), { total: 1, revision: 1 });
+  const created = await request(app).post('/api/food-orders').send({ playerId: organizer, title: 'Punkte-Pizza' });
+  assert.equal(created.status, 201);
+  const id = created.body.id;
+  const items = new Map<string, string[]>();
+  for (const playerId of players) {
+    const added = await request(app)
+      .post(`/api/food-orders/${id}/items`)
+      .send({ playerId, description: 'Pizza', quantity: 2 });
+    assert.equal(added.status, 201);
+    items.set(
+      playerId,
+      added.body.items
+        .filter((item: { playerId: string }) => item.playerId === playerId)
+        .map((item: { id: string }) => item.id),
+    );
+  }
+  for (const playerId of [organizer, buyers[0]]) {
+    const added = await request(app).post(`/api/food-orders/${id}/items`).send({ playerId, description: 'Getränk' });
+    items.set(
+      playerId,
+      added.body.items
+        .filter((item: { playerId: string }) => item.playerId === playerId)
+        .map((item: { id: string }) => item.id),
+    );
+  }
+  const source = (kind: string, playerId = organizer) => ({
+    groupId: DEFAULT_GROUP_ID,
+    eventId: BASE_EVENT_ID,
+    playerId,
+    account: 'orga' as const,
+    sourceKey: `food-order:${id}:${kind}`,
+  });
+  assert.equal(
+    readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)?.orga ?? 0,
+    0,
+    'creating and filling an open order earns nothing',
+  );
+  const closes = await Promise.all([0, 1].map(() => request(app).post(`/api/food-orders/${id}/close`)));
+  assert.deepEqual(closes.map((res) => res.status).sort(), [200, 409]);
+  assert.deepEqual(readPointsSource(source('organization')), { total: 5, revision: 1 });
+  for (const playerId of players)
+    assert.deepEqual(readPointsSource(source('participation', playerId)), { total: 1, revision: 1 });
+  assert.deepEqual(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer), {
+    orga: 6,
+    playing: 0,
+    betting: 0,
+    wallet: 0,
+  });
+  const journal = readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer);
+  backfillCompetitionPoints();
+  backfillCompetitionPoints();
+  assert.deepEqual(readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer), journal);
+  const award = journal.find((entry) => entry.sourceKey.endsWith(':organization'))!;
+  assert.equal(
+    (
+      await request(app)
+        .post(`/api/points/admin/journal/${award.id}/correct`)
+        .send({ total: 2, revision: 1, reason: 'Organisationsbonus berichtigt' })
+    ).status,
+    200,
+  );
+  assert.equal((await request(app).post(`/api/food-orders/${id}/finalize`)).status, 200);
+  assert.equal((await request(app).post(`/api/food-orders/${id}/reopen`)).status, 200);
+  assert.deepEqual(
+    readPointsSource(source('organization')),
+    { total: 2, revision: 2 },
+    'unlocking payments does not reset a manual correction',
+  );
+  let remaining = 9;
+  for (const [target, amount] of [
+    [8, 4],
+    [6, 4],
+    [5, 3],
+    [3, 3],
+    [2, 0],
+  ]) {
+    const reopened = await Promise.all([0, 1].map(() => request(app).post(`/api/food-orders/${id}/reopen`)));
+    assert.deepEqual(reopened.map((res) => res.status).sort(), [200, 409]);
+    assert.equal(readPointsSource(source('organization'))!.total, 0);
+    assert.equal(readPointsSource(source('participation'))!.total, 0);
+    while (remaining > target) {
+      const buyer = buyers[--remaining];
+      for (const itemId of items.get(buyer)!)
+        assert.equal(
+          (await request(app).delete(`/api/food-orders/${id}/items/${itemId}`).send({ playerId: buyer })).status,
+          200,
+        );
+    }
+    assert.equal((await request(app).post(`/api/food-orders/${id}/close`)).status, 200);
+    assert.equal(readPointsSource(source('organization'))!.total, amount, `${target} other buyers earn ${amount}`);
+    assert.equal(readPointsSource(source('participation'))!.total, 1, 'multiple own items still earn one point');
+  }
+  const deleted = await Promise.all([0, 1].map(() => request(app).delete(`/api/food-orders/${id}`)));
+  assert.deepEqual(deleted.map((res) => res.status).sort(), [204, 404]);
+  for (const playerId of players) assert.equal(readPointsSource(source('participation', playerId))!.total, 0);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, BASE_EVENT_ID, organizer)!.orga, 0);
+  assert.deepEqual(
+    readPointsSource(matchOrga),
+    { total: 1, revision: 1 },
+    'order updates leave competition Orga claims intact',
+  );
+});
+
+test('order deadlines exclude late positions and deadline corrections update awards atomically', async () => {
+  const organizer = (await request(app).post('/api/players').send({ name: 'Deadline organizer' })).body.id;
+  const buyers: string[] = [];
+  for (let i = 0; i < 4; i++)
+    buyers.push(
+      (
+        await request(app)
+          .post('/api/players')
+          .send({ name: `Deadline buyer ${i}` })
+      ).body.id,
+    );
+  const created = await request(app).post('/api/food-orders').send({ playerId: organizer, title: 'Frist-Pizza' });
+  const id = created.body.id;
+  for (const playerId of buyers)
+    assert.equal(
+      (await request(app).post(`/api/food-orders/${id}/items`).send({ playerId, description: 'Pizza' })).status,
+      201,
+    );
+  const closed = await request(app).post(`/api/food-orders/${id}/close`);
+  assert.equal(closed.status, 200);
+  // Explicit fixture times around the recorded cutoff; no elapsed-time waiting.
+  const deadline = closed.body.closedAt - 1000;
+  buyers.forEach((playerId, index) =>
+    db
+      .prepare('UPDATE food_order_items SET created_at = ? WHERE order_id = ? AND player_id = ?')
+      .run(deadline + (index === 3 ? 1 : index === 2 ? 0 : -1), id, playerId),
+  );
+  const source = (kind: string, playerId = organizer) => ({
+    groupId: DEFAULT_GROUP_ID,
+    eventId: BASE_EVENT_ID,
+    playerId,
+    account: 'orga' as const,
+    sourceKey: `food-order:${id}:${kind}`,
+  });
+  const duplicate = await Promise.all(
+    [0, 1].map(() => request(app).patch(`/api/food-orders/${id}`).send({ sendAt: deadline })),
+  );
+  assert.deepEqual(
+    duplicate.map((res) => res.status),
+    [200, 200],
+  );
+  assert.equal(readPointsSource(source('organization'))!.total, 3);
+  assert.deepEqual(
+    readPointsSource(source('participation', buyers[2])),
+    { total: 1, revision: 1 },
+    'a position exactly at the deadline counts',
+  );
+  assert.equal(
+    readPointsSource(source('participation', buyers[3]))!.total,
+    0,
+    'a position after the deadline does not count',
+  );
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/food-orders/${id}`)
+        .send({ sendAt: deadline - 1 })
+    ).status,
+    200,
+  );
+  assert.equal(
+    readPointsSource(source('organization'))!.total,
+    0,
+    'two timely other buyers fall below the organization tier',
+  );
+  const before = buyers.map((playerId) => readPointsSource(source('participation', playerId)));
+  db.exec(`CREATE TEMP TRIGGER fail_order_award BEFORE INSERT ON points_journal
+    WHEN EXISTS(SELECT 1 FROM points_sources s WHERE s.id = NEW.source_id AND s.source_key LIKE 'food-order:%')
+    BEGIN SELECT RAISE(ABORT, 'test order award failure'); END;`);
+  try {
+    assert.equal((await request(app).patch(`/api/food-orders/${id}`).send({ sendAt: null })).status, 500);
+    assert.equal(
+      (db.prepare('SELECT send_at FROM food_orders WHERE id = ?').get(id) as { send_at: number }).send_at,
+      deadline - 1,
+    );
+    assert.deepEqual(
+      buyers.map((playerId) => readPointsSource(source('participation', playerId))),
+      before,
+    );
+  } finally {
+    db.exec('DROP TRIGGER fail_order_award');
+  }
+  const raced = await Promise.all([
+    request(app).patch(`/api/food-orders/${id}`).send({ sendAt: null }),
+    request(app).post(`/api/food-orders/${id}/finalize`),
+  ]);
+  assert.equal(raced[1].status, 200);
+  assert.ok([200, 409].includes(raced[0].status));
+  const order = db.prepare('SELECT send_at FROM food_orders WHERE id = ?').get(id) as { send_at: number | null };
+  assert.equal(readPointsSource(source('organization'))!.total, order.send_at === null ? 3 : 0);
+  assert.equal((await request(app).delete(`/api/food-orders/${id}`)).status, 204);
+  assert.equal(readPointsSource(source('organization'))!.total, 0);
+});
+
+test('order close rolls back with points, background backfill deduplicates and final valuations freeze order rewards', async () => {
+  const organizer = (await request(app).post('/api/players').send({ name: 'Backfill order organizer' })).body.id;
+  const buyer = (await request(app).post('/api/players').send({ name: 'Backfill order buyer' })).body.id;
+  const created = await request(app)
+    .post('/api/food-orders')
+    .send({ playerId: organizer, title: 'Nachgetragene Pizza' });
+  const id = created.body.id;
+  const added = await request(app).post(`/api/food-orders/${id}/items`).send({ playerId: buyer, description: 'Pizza' });
+  assert.equal(added.status, 201);
+  db.exec(`CREATE TEMP TRIGGER fail_order_close BEFORE INSERT ON points_journal
+    BEGIN SELECT RAISE(ABORT, 'test order close failure'); END;`);
+  try {
+    assert.equal((await request(app).post(`/api/food-orders/${id}/close`)).status, 500);
+    assert.equal(
+      (db.prepare('SELECT closed_at FROM food_orders WHERE id = ?').get(id) as { closed_at: null }).closed_at,
+      null,
+    );
+  } finally {
+    db.exec('DROP TRIGGER fail_order_close');
+  }
+  db.prepare(
+    'UPDATE food_orders SET closed_at = (SELECT MAX(created_at) FROM food_order_items WHERE order_id = ?) WHERE id = ?',
+  ).run(id, id);
+  const source = {
+    groupId: DEFAULT_GROUP_ID,
+    eventId: BASE_EVENT_ID,
+    playerId: buyer,
+    account: 'orga' as const,
+    sourceKey: `food-order:${id}:participation`,
+  };
+  backfillCompetitionPoints();
+  backfillCompetitionPoints();
+  assert.deepEqual(readPointsSource(source), { total: 1, revision: 1 });
+  const journals = readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, buyer);
+  // Simulate the already-finalized event setting, restoring it for unrelated fixtures.
+  const previous = db.prepare('SELECT closed_at FROM points_settings WHERE event_id = ?').get(BASE_EVENT_ID) as {
+    closed_at: number | null;
+  };
+  db.prepare('UPDATE points_settings SET closed_at = 1 WHERE event_id = ?').run(BASE_EVENT_ID);
+  try {
+    assert.equal((await request(app).delete(`/api/food-orders/${id}`)).status, 204);
+    assert.equal(syncOrgaPoints(DEFAULT_GROUP_ID, BASE_EVENT_ID), false);
+    assert.deepEqual(readPointsJournal(DEFAULT_GROUP_ID, BASE_EVENT_ID, buyer), journals);
+  } finally {
+    db.prepare('UPDATE points_settings SET closed_at = ? WHERE event_id = ?').run(previous.closed_at, BASE_EVENT_ID);
+  }
+  assert.equal(syncOrgaPoints(DEFAULT_GROUP_ID, BASE_EVENT_ID), true);
+  assert.deepEqual(readPointsSource(source), { total: 0, revision: 2 });
+  assert.equal((await request(app).get('/api/points').set('x-test-player-id', TEST_ADMIN_ID)).status, 200);
 });

@@ -48,6 +48,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   groups so `Gesamt` stays the card's last row; its `Hinzufügen` button is compact and, on phones,
   sits at the bottom right below quantity and price.
 
+  Beim Abschicken werden automatisch [Orga-Punkte im Kategorie-Journal](points-journal.md#orga-punkte-für-sammelbestellungen)
+  verbucht: 3/4/5 für den Organisator ab 3/6/9 anderen Bestellern und je 1 pro rechtzeitig
+  abgegebener eigener Bestellung. Mehrere Positionen derselben Person zählen nur einmal.
+  Wiederöffnen, Fristkorrekturen und Löschen passen die Ansprüche nachvollziehbar an.
+  Die sichtbare Kategorieansicht folgt separat; das bisherige Wettguthaben wird nicht erhöht.
+
   Payment is a per-person handoff, never a per-position action. The card reads like an invoice:
   every amount sits in one right-aligned last column. Each orderer group row carries the same
   controls so the columns never open gaps: the two-state paid marker, the PayPal action when the order
