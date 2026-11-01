@@ -165,15 +165,18 @@ wird ein eingetretenes Remis weiterhin vollständig erstattet. Die Auswahl erwei
 gespeicherten Teilnehmerseiten eines Wettbewerbs.
 
 Vorläufig bleiben die bisherigen konfigurierten Marktgrenzen und die bisherige
-Pool-Verteilung aktiv. **W1 ist inzwischen entschieden:** maximal 20 Punkte pro Person und
-Wettmarkt. Die technische Umstellung auf diese feste Grenze steht noch aus; die Entscheidung
-legt weder Tages-/Rundenlimits noch eine Mindestzahl gewerteter Tipps fest.
+Pool-Verteilung aktiv. **W1/W2/W5 sind inzwischen entschieden:** maximal 20 Punkte pro Person
+und Wettmarkt, mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung und keine
+zusätzlichen Tageslimits oder Höchstzahl von Wettrunden pro Event. Vollständig erstattete Märkte
+und zurückgenommene Tipps zählen nicht zur Mindestzahl. Diese technischen Umstellungen stehen
+noch aus; die Auszahlung ist von der Mindestzahl unabhängig.
 
 - Zielregeln ersetzen die alten Regeln: sichtbare vorläufige Pool-Quoten, formatabhängiger
   Remis-Tipp, vollständige Erstattungen und Abrunden mit Rest an den größten richtigen Einsatz.
 - W1 umsetzen: maximal 20 Punkte pro Person und Wettmarkt.
-- W2, W4, W5 und W7 bleiben offen: Mindestzahl einschließlich Erstattungszählung,
-  Markteröffnung, Ablösung alter Tages-/Rundenlimits, gleiche größte Einsätze und gesperrte,
+- W2 umsetzen: Wettplatzierung erst ab zwei regulär abgerechneten Tipps und positivem Nettowert.
+- W5 umsetzen: alte Tages-/Rundenlimits als Beschränkungen abschalten.
+- W4 und W7 bleiben offen: Markteröffnung, gleiche größte Einsätze und gesperrte,
   unabgerechnete Märkte bei der Festschreibung. Alte Werte 10/30/6 sind keine Zielvorgaben.
 - Eigenwetten, Mitteilungen und die Anzeige direkt an Match/Turnier bleiben erhalten.
 
@@ -184,8 +187,9 @@ Die reine Berechnung liegt in `server/src/categoryScoring.ts` und ist anhand der
 geprüft. Ihre Eingaben sind die extern bestimmte Teilnehmermenge und Wettberechtigung; sie trifft
 keine Auswahl nach Eventstatus, Teilnehmerstatus oder Mindestzahl von Tipps. API, Auswertungen
 und Oberfläche verwenden diese Berechnung erst nach Entscheidung der folgenden Fachfragen.
-Wett-Mindestzahl, N samt Stichtag, ehemalige/späte Teilnehmer, Testkonten und Eventumfang sind
-Eingaben, die zuerst entschieden werden müssen. Die Kontenmenge darf nicht als N verwendet werden.
+Die Wett-Mindestzahl ist mit zwei regulär abgerechneten Tipps entschieden. N samt Stichtag,
+ehemalige/späte Teilnehmer, Testkonten und Eventumfang müssen zuerst entschieden werden.
+Die Kontenmenge darf nicht als N verwendet werden.
 Der Umgang mit geteilten Turnierboni ist ebenfalls ausdrücklich offen; der Ist-Code vergibt in
 Ligen den vollen Bonus des geteilten Platzes (zum Beispiel 5/5/1).
 

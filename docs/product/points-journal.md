@@ -292,9 +292,11 @@ Das alte Budget und einseitige Wallet-Entzüge sind als Finanzpfade abgeschaltet
 
 Die Journalbasis, Wallet-Abrechnung, Kategorie-Rohwerte und Admin-Korrekturen sind angebunden.
 Paket 5b bietet bereits vorläufige Pool-Quoten und eine formatabhängige, regulär gewinnende
-Remis-Auswahl. Die Einsatzgrenze W1 ist mit maximal 20 Punkten pro Person und Markt entschieden;
-ihre technische Umstellung steht noch aus. Mindestzahl, Markteröffnung, Ablösung alter Tages-/Rundenlimits
-und gleiche größte Gewinner-Einsätze bleiben offen. Kategorieplätze,
+Remis-Auswahl. W1/W2/W5 sind entschieden: maximal 20 Punkte pro Person und Markt, mindestens
+zwei regulär abgerechnete Tipps für eine Wettplatzierung und keine zusätzlichen Tages-/Rundenlimits.
+Vollständig erstattete Märkte und zurückgenommene Tipps zählen nicht zur Mindestzahl; die Auszahlung
+ist davon unabhängig. Die technische Umstellung steht noch aus. Markteröffnung und gleiche größte
+Gewinner-Einsätze bleiben offen. Kategorieplätze,
 Teilnehmerbasis N, Gesamtwertung, Meldefunktion und einheitliche Festschreibung folgen gemäß
 [Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md). Die vorläufigen Auswertungen
 verwenden Spiel-Rohwerte, niemals Wallet-Summen als Gesamtwertung.
