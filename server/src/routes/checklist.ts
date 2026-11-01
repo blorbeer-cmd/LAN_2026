@@ -818,9 +818,8 @@ checklistRouter.patch('/tasks/:id/reopen', resolveChecklistTask, ...withBodyPlay
   if (taskReward(task.id)) return res.status(409).json({ error: 'Aufgaben mit alter LAN-Belohnung können noch nicht wieder geöffnet werden.' });
   db.transaction(() => {
     const status = taskParticipants(task.id).length ? 'taken' : 'open';
-    const changed = db.prepare(`UPDATE checklist_tasks SET status = ?, done_at = NULL, archived_at = NULL,
-      points_model='category',points_value=CASE WHEN type='todo' THEN ? ELSE 0 END
-      WHERE id = ? AND status = 'done'`).run(status, TODO_POINTS, task.id);
+    const changed = db.prepare(`UPDATE checklist_tasks SET status = ?, done_at = NULL, archived_at = NULL
+      WHERE id = ? AND status = 'done'`).run(status, task.id);
     if (changed.changes !== 1) throw new PointsError('Diese Aufgabe ist nicht mehr erledigt.');
     if (task.event_id) syncOrgaPoints(task.group_id, task.event_id);
   })();

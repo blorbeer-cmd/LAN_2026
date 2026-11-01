@@ -7,7 +7,7 @@ const reportedFailures = new Set<string>();
 export function sweepTravelPoints(now = Date.now()): void {
   const events = db.prepare(`SELECT e.id,e.group_id FROM events e
     LEFT JOIN points_settings s ON s.event_id=e.id
-    WHERE e.id != ? AND e.group_id IS NOT NULL AND e.status IN ('published','ended') AND e.starts_at IS NOT NULL AND e.starts_at <= ? AND s.closed_at IS NULL
+    WHERE e.id != ? AND e.group_id IS NOT NULL AND e.status='published' AND e.ended_at IS NULL AND e.starts_at IS NOT NULL AND e.starts_at <= ? AND s.closed_at IS NULL
     AND EXISTS (SELECT 1 FROM arrivals a JOIN event_participants ep
       ON ep.event_id=a.event_id AND ep.player_id=a.player_id AND ep.status='accepted'
       WHERE a.event_id=e.id AND a.updated_at<=e.starts_at AND (

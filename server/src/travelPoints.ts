@@ -5,10 +5,10 @@ import { POINTS_ACCOUNTS, readPointsSource, recordPointsEntitlements } from './p
 // removes their travel details. Journal corrections remain independent.
 export function grantTravelPoints(groupId: string, eventId: string, now = Date.now()): boolean {
   return db.transaction(() => {
-    const event = db.prepare(`SELECT e.starts_at, e.status, s.closed_at FROM events e
+    const event = db.prepare(`SELECT e.starts_at, e.status, e.ended_at, s.closed_at FROM events e
       LEFT JOIN points_settings s ON s.event_id=e.id WHERE e.id=? AND e.group_id=?`).get(eventId, groupId) as
-      { starts_at: number | null; status: string; closed_at: number | null } | undefined;
-    if (!event || eventId === OUTSIDE_EVENTS_ID || !['published', 'ended'].includes(event.status) || event.closed_at != null || event.starts_at === null || event.starts_at > now) return false;
+      { starts_at: number | null; status: string; ended_at: number | null; closed_at: number | null } | undefined;
+    if (!event || eventId === OUTSIDE_EVENTS_ID || event.status !== 'published' || event.ended_at !== null || event.closed_at != null || event.starts_at === null || event.starts_at > now) return false;
     const rows = db.prepare(`SELECT a.player_id,a.arrival_at,a.departure_at FROM arrivals a
       JOIN event_participants ep ON ep.event_id=a.event_id AND ep.player_id=a.player_id AND ep.status='accepted'
       WHERE a.event_id=? AND a.updated_at<=?`).all(eventId, event.starts_at) as

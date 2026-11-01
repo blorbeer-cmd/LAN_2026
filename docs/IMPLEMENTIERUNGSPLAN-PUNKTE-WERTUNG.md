@@ -147,7 +147,7 @@ bleiben ohne rückwirkenden Bonus. Historische Aufgaben mit alter
 LAN-Belohnung behalten ihren bisherigen Abschlussweg und können bis zur finanziellen Ablösung
 nicht wieder geöffnet werden; deren bereits gezahlte Beträge werden nicht umgedeutet.
 
-**Paket 3 umgesetzt:** Je 2 Punkte entstehen zum Eventstart für eine bis dahin eingetragene Ankunfts- beziehungsweise Abreisezeit. Die optionalen Notizen sind dafür nicht erforderlich. Die Vergabe läuft auch ohne offene App und bleibt nach Änderungen erhalten. Ein vor dem Start verschobener Eventtermin verwendet den neuen Start; bereits erworbene Boni bleiben erhalten. Bestellpunkte sind unabhängig von Fristen.
+**Paket 3 umgesetzt:** Je 2 Punkte entstehen zum Eventstart für eine bis dahin eingetragene Ankunfts- beziehungsweise Abreisezeit. Die optionalen Notizen sind dafür nicht erforderlich. Die Vergabe läuft auch ohne offene App und bleibt nach Änderungen erhalten. Ein vor dem Start verschobener Eventtermin verwendet den neuen Start; bereits erworbene Boni bleiben erhalten. Für bereits beendete Events erfolgt keine nachträgliche Reisebonus-Vergabe; beim Beenden eines laufenden Events wird der Anspruch zuvor gesichert. Bestellpunkte sind unabhängig von Fristen.
 
 **Paket 4 umgesetzt:** Jede abgeschlossene Umfrage mit mindestens drei unterschiedlichen Teilnehmenden bringt dem ursprünglichen Ersteller 3 Punkte; eine entsprechend abgeschlossene Spieleabstimmung 2 Punkte. Es gibt kein Kontingent. Stichwahlen bleiben Teil derselben Entscheidung. Wiederöffnen und Löschen berechnen den Anspruch neu. Historisch unbekannte Ersteller bleiben unzugeordnet.
 

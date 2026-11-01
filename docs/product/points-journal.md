@@ -250,7 +250,7 @@ Journals lassen sich über dessen Aktualisieren-Aktion erneut versuchen.
 
 ## Reiseangaben und Abstimmungen
 
-Ankunfts- und Abreisezeit bringen bei Eventstart jeweils 2 dauerhafte Orga-Punkte, wenn die jeweilige Angabe bis zum Start eingetragen war. Ein Hintergrundlauf erfasst den Start auch ohne geöffneten Browser; unmittelbar vor späteren Änderungen wird der Stand ebenfalls gesichert. Optionaler Freitext ist nicht erforderlich. Verschiebungen vor der Vergabe verwenden den aktualisierten Start; bereits verbuchte Boni und administrative Korrekturen bleiben erhalten. Abgesagte und unveröffentlichte Events erhalten keinen Reisebonus.
+Ankunfts- und Abreisezeit bringen bei Eventstart jeweils 2 dauerhafte Orga-Punkte, wenn die jeweilige Angabe bis zum Start eingetragen war. Ein Hintergrundlauf erfasst den Start auch ohne geöffneten Browser; unmittelbar vor späteren Änderungen wird der Stand ebenfalls gesichert. Optionaler Freitext ist nicht erforderlich. Verschiebungen vor der Vergabe verwenden den aktualisierten Start; bereits verbuchte Boni und administrative Korrekturen bleiben erhalten. Abgesagte, unveröffentlichte und bereits beendete Events erhalten keinen nachträglichen Reisebonus. Beim regulären Beenden eines laufenden Events wird der Anspruch zuvor gesichert.
 
 Abgeschlossene allgemeine Umfragen mit drei unterschiedlichen Antwortenden bringen dem ursprünglichen Ersteller 3 Punkte, abgeschlossene Spieleabstimmungen mit drei unterschiedlichen Abstimmenden 2. Es gibt kein Kontingent. Zusammengehörige Stichwahlen gelten als eine Entscheidung. Abschluss beziehungsweise Wiederöffnen/Löschen und die Journaländerung erfolgen atomar; eingefrorene Wertungen bleiben unverändert. Historische Quellen ohne belegbaren Ersteller werden nicht zugeordnet.
 

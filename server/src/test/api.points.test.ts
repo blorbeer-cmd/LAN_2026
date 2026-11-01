@@ -12,6 +12,7 @@ import { buildPersonalDataExport, deleteAccount } from '../privacyService';
 import { syncOrgaPoints } from '../orgaPoints';
 import { grantTravelPoints } from '../travelPoints';
 import { sweepTravelPoints } from '../travelPointSweep';
+import { endEvent } from '../events';
 import { config } from '../config';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -31,7 +32,11 @@ test('travel awards are granted once at event start and survive later edits', as
     .run(f.eventId, f.players[2], start + 1000, start + 2000, start + 1);
   db.prepare("UPDATE events SET status='cancelled' WHERE id=?").run(f.eventId);
   assert.equal(grantTravelPoints(DEFAULT_GROUP_ID, f.eventId, start), false, 'cancelled events do not start');
-  db.prepare("UPDATE events SET status='published' WHERE id=?").run(f.eventId);
+  db.prepare("UPDATE events SET status='ended',ended_at=? WHERE id=?").run(start + 1, f.eventId);
+  sweepTravelPoints(start + 2);
+  assert.equal(grantTravelPoints(DEFAULT_GROUP_ID, f.eventId, start + 2), false, 'finished events do not receive retroactive travel awards');
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[0])!.orga, 0);
+  db.prepare("UPDATE events SET status='published',ended_at=NULL WHERE id=?").run(f.eventId);
   assert.equal(grantTravelPoints(DEFAULT_GROUP_ID, f.eventId, start - 1), false);
   db.exec(`CREATE TEMP TRIGGER fail_travel_points BEFORE INSERT ON points_journal
     WHEN NEW.title='Ankunft eingetragen' BEGIN SELECT RAISE(ABORT,'travel points failed'); END`);
@@ -62,6 +67,16 @@ test('a travel edit after event start first captures the pre-start values atomic
   const response = await request(app).put('/api/arrivals/mine').set('x-test-player-id', f.players[0])
     .send({ playerId: f.players[0], arrivalAt: null, departureAt: null });
   assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[0])!.orga, 4);
+});
+
+test('ending a running event captures travel awards before changing its status', async () => {
+  const f = await fixture();
+  const start = Date.now() - 1000;
+  db.prepare('UPDATE events SET starts_at=? WHERE id=?').run(start, f.eventId);
+  db.prepare('INSERT INTO arrivals(event_id,player_id,arrival_at,departure_at,updated_at) VALUES (?,?,?,?,?)')
+    .run(f.eventId, f.players[0], start, start + 1000, start - 100);
+  assert.equal(endEvent(f.eventId)?.status, 'ended');
   assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[0])!.orga, 4);
 });
 
@@ -466,6 +481,11 @@ test('todo batches pay once, preserve historical work and promises, and roll bac
   db.prepare("UPDATE checklist_tasks SET points_value=0,points_model='legacy',status='done',done_at=1 WHERE id=?").run(oldId);
   syncOrgaPoints(DEFAULT_GROUP_ID, f.eventId);
   assert.equal(readPointsSource({ ...source, sourceKey: `todo:${oldId}` })!.total, 0);
+  const reopenedOld = await request(app).patch(`/api/checklist/tasks/${oldId}/reopen`).send({ playerId: a });
+  assert.equal(reopenedOld.status, 200);
+  assert.equal(reopenedOld.body.pointsValue, 0);
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${oldId}/done`).send({ playerId: a })).status, 200);
+  assert.equal(readPointsSource({ ...source, sourceKey: `todo:${oldId}` })!.total, 0, 'reopening a historical task does not convert it to a new reward');
   const requestTask = await request(app).post('/api/checklist/tasks').send({ title: 'Bring a cable', assigneePlayerIds: [a], pointsValue: 5 });
   const requestId = requestTask.body.tasks[0].id;
   assert.equal((await request(app).post(`/api/points/tasks/${requestId}/reward`).send({ perPerson: 5, slots: 1 })).status, 409);

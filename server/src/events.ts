@@ -380,7 +380,10 @@ export function endEvent(id: string): EventRow | undefined {
 
   const now = Date.now();
   const wasTracking = Boolean(event.tracking_enabled);
-  db.prepare("UPDATE events SET tracking_enabled = 0, ended_at = ?, status = 'ended' WHERE id = ?").run(now, id);
+  db.transaction(() => {
+    if (event.group_id) grantTravelPoints(event.group_id, id, now);
+    db.prepare("UPDATE events SET tracking_enabled = 0, ended_at = ?, status = 'ended' WHERE id = ?").run(now, id);
+  })();
   if (wasTracking) closeEventContexts(id);
   fallbackEventContexts(id);
   endActiveMusicSession(id, now);
