@@ -295,8 +295,10 @@ Paket 5b bietet bereits vorläufige Pool-Quoten und eine formatabhängige, regul
 Remis-Auswahl. W1/W2/W5 sind entschieden: maximal 20 Punkte pro Person und Markt, mindestens
 zwei regulär abgerechnete Tipps für eine Wettplatzierung und keine zusätzlichen Tages-/Rundenlimits.
 Vollständig erstattete Märkte und zurückgenommene Tipps zählen nicht zur Mindestzahl; die Auszahlung
-ist davon unabhängig. Die technische Umstellung steht noch aus. Markteröffnung und gleiche größte
-Gewinner-Einsätze bleiben offen. Kategorieplätze,
+ist davon unabhängig. Die technische Umstellung steht noch aus. Für Matches ist außerdem
+entschieden: Der Ersteller wählt direkt beim Anlegen vor Spielbeginn, ob Wetten erlaubt sind;
+dafür ist keine Adminrolle erforderlich. Auch diese Anbindung folgt in Paket 5b. Die Regel
+für Turniermärkte und gleiche größte Gewinner-Einsätze bleiben offen. Kategorieplätze,
 Teilnehmerbasis N, Gesamtwertung, Meldefunktion und einheitliche Festschreibung folgen gemäß
 [Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md). Die vorläufigen Auswertungen
 verwenden Spiel-Rohwerte, niemals Wallet-Summen als Gesamtwertung.

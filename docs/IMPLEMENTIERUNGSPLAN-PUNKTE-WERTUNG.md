@@ -176,7 +176,10 @@ noch aus; die Auszahlung ist von der Mindestzahl unabhängig.
 - W1 umsetzen: maximal 20 Punkte pro Person und Wettmarkt.
 - W2 umsetzen: Wettplatzierung erst ab zwei regulär abgerechneten Tipps und positivem Nettowert.
 - W5 umsetzen: alte Tages-/Rundenlimits als Beschränkungen abschalten.
-- W4 und W7 bleiben offen: Markteröffnung, gleiche größte Einsätze und gesperrte,
+- W4 für Matches umsetzen: Der Ersteller wählt direkt beim Anlegen vor Spielbeginn „Wetten
+  zulassen“. Keine zusätzliche Adminrolle; eine ausgeschaltete Option darf nicht über die
+  separate Markt-API umgangen werden. Die Auswahl gehört nicht in die spätere Ergebniseingabe.
+- W4 für Turniere und W7 bleiben offen: Turniermärkte, gleiche größte Einsätze und gesperrte,
   unabgerechnete Märkte bei der Festschreibung. Alte Werte 10/30/6 sind keine Zielvorgaben.
 - Eigenwetten, Mitteilungen und die Anzeige direkt an Match/Turnier bleiben erhalten.
 

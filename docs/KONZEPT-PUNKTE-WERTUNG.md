@@ -148,6 +148,13 @@ Es gibt nur bewusst eröffnete offizielle Wettrunden mit ausdrücklichem Start b
 Tippschluss. Eine neue Auslosung oder ein neues Spiel eröffnet nicht automatisch einen Markt.
 Das betrifft ausschließlich Wetten; alle gültigen Spiele zählen weiterhin zur Spielwertung.
 
+**Entschieden W4 für Matches:** Der Match-Ersteller wählt direkt beim Anlegen vor Spielbeginn,
+ob auf dieses Match gewettet werden darf, etwa über „Wetten zulassen“. Dafür braucht er keine
+zusätzliche Adminrolle. Eine ausgeschaltete Option eröffnet keinen Wettmarkt; andere Personen
+dürfen diese Entscheidung nicht durch eine separate Markteröffnung umgehen. Die entsprechende
+Regel für Turniere und Turniersieger-Märkte bleibt noch offen. Die technische Anbindung folgt
+in Paket 5b.
+
 Es gelten Pool-Quoten. Vorläufige Quoten sind am Markt sichtbar und können sich mit den
 Einsätzen verändern. Maßgeblich für die Abrechnung ist der Pool zum Tippschluss. Für einen
 Ausgang mit Einsatz ist die Quote `Gesamttopf / Einsatz auf diesen Ausgang`; ohne Einsatz
@@ -467,7 +474,7 @@ Vorgabewerte sind dafür keine Entscheidung:
 | E1 | Laufende Events werden unterstützt. Offen bleiben die endgültige Abgrenzung nach Eventtyp sowie unveröffentlichte/beendete Events. Vorhandene Spiel-/Orga-Backfills werden durch das To-do-Paket nicht verändert. |
 | E2 | Wertungsberechtigte Teilnehmer, Testkonten und Teilnehmerbasis N samt Stichtag, späten Zusagen und Austritten. Vorhandene Konten sind nicht gleich N. |
 | W3 (entschieden) | Fest 100 separate Wettpunkte einmal pro Event und berechtigtem Teilnehmer, auch bei später Zusage. Nicht konfigurierbar; erneute Zusage zahlt nicht erneut. |
-| W4 | Wer offizielle Wettmärkte eröffnen darf. Die bestehende Adminrolle ist noch keine beschlossene Zielregel. |
+| W4 (für Matches entschieden) | Der Match-Ersteller entscheidet direkt beim Anlegen, ob auf sein Match gewettet werden darf; keine zusätzliche Adminrolle erforderlich. Die Regel für Turniere und Turniersieger-Märkte bleibt offen. |
 | W5 (entschieden) | Keine zusätzlichen Tageslimits und keine Höchstzahl offizieller Wettrunden pro Event. Ausreichendes verfügbares Guthaben und die feste Einsatzgrenze von 20 Punkten gelten weiterhin. |
 | W6 (entschieden) | Ausschließlich begründete Markt-Neuberechnung oder Storno unter Erhaltung der Nullsumme. Keine einseitigen Wallet-/Wett-Journalkorrekturen; eigene Marktkorrekturen bleiben erlaubt. |
 | W7 | Feste Restverteilung bei gleich großen größten richtigen Einsätzen und Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
