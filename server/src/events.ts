@@ -16,6 +16,7 @@ import {
   type EventTypeKey,
 } from './eventFeatureCatalog';
 import { createEventFeatureSnapshot } from './eventFeatures';
+import { grantSkillCompletionBonus } from './skillBonus';
 
 export { OUTSIDE_EVENTS_ID };
 
@@ -166,6 +167,7 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
          VALUES (?, ?, 'accepted')
          ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
       ).run(id, options.createdBy);
+      grantSkillCompletionBonus(id);
     }
     return getEvent(id)!;
   })();
@@ -647,6 +649,7 @@ export function respondToEventInvitation(
     const paid = db
       .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
       .get(eventId, playerId) as { paid: number };
+    if (response === 'accepted' && updated.changes === 1) grantSkillCompletionBonus(eventId);
     return {
       ok: true,
       participant: { playerId, status: response, paid: Boolean(paid.paid) },
@@ -699,6 +702,7 @@ export function setParticipants(eventId: string, playerIds: string[]): void {
     for (const playerId of previousIds) {
       if (!desired.has(playerId)) fallbackPlayerEventContext(playerId, eventId);
     }
+    grantSkillCompletionBonus(eventId);
   });
   tx();
 }

@@ -250,6 +250,10 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   filters, „Bock offen“ and „Skill offen“, narrow the list to games the current identity hasn't
   rated yet on that facet; both active at once is an AND, unlike the genre chips'
   OR-within-one-facet semantics.
+  Vollständige Einschätzungen des aktuellen, nicht leeren Katalogs geben bestätigten Teilnehmern
+  automatisch [einmalig 5 Orga-Punkte je Event](points-journal.md#dauerhafter-skill-bonus).
+  Vorschläge und Arcade-Spiele sind ausgenommen; 0 zählt als gültige Einschätzung. Der Bonus
+  bleibt bei späteren Änderungen oder Löschungen erhalten. Die Höhe des Skills erhöht den Bonus nicht.
   The first-login tour completes without ratings. It recommends entering Skill before the LAN
   for balanced teams; Bock stays optional and can be adopted from Votes. The retained optional
   rating mode uses the same catalog rows. Among its first ten games, only games missing the

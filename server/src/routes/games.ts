@@ -15,8 +15,24 @@ import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { broadcastLiveBoards } from '../liveStatus';
 import { assertGameEditable, reconcileBetting } from '../betting';
 import { syncCompetitionPoints } from '../orgaPoints';
+import { grantGroupSkillBonuses } from '../skillBonus';
 
 export const gamesRouter = Router();
+
+class CatalogChangedError extends Error {}
+
+function mutateCatalogWithSkillBonuses(groupId: string, mutate: () => { changes: number }): string[] {
+  return db.transaction(() => {
+    const before = grantGroupSkillBonuses(groupId);
+    if (mutate().changes !== 1) throw new CatalogChangedError();
+    return [...new Set([...before, ...grantGroupSkillBonuses(groupId)])];
+  }).immediate();
+}
+
+function broadcastSkillBonuses(groupId: string, eventIds: string[]): void {
+  for (const eventId of eventIds) broadcast(Events.leaderboardChanged, null, { groupId, eventId });
+}
+
 
 const DEFAULT_ICON = '🎮';
 const MIN_TEAM_SIZE_FLOOR = 1;
@@ -304,29 +320,35 @@ gamesRouter.post(
       consider_seat_neighbors_default: considerSeatNeighborsDefault ? 1 : 0,
     };
 
-    db.prepare(
-      `INSERT INTO games (id, name, icon, icon_image, min_team_size, max_team_size, platform, platform_url, trailer_url, genre, info, status, created_by, created_at, group_id, consider_seat_neighbors_default)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      row.id,
-      row.name,
-      row.icon,
-      row.icon_image,
-      row.min_team_size,
-      row.max_team_size,
-      row.platform,
-      row.platform_url,
-      row.trailer_url,
-      row.genre,
-      row.info,
-      row.status,
-      row.created_by,
-      row.created_at,
-      row.group_id,
-      row.consider_seat_neighbors_default,
+    const creditedEvents = mutateCatalogWithSkillBonuses(req.group!.id, () =>
+      db
+        .prepare(
+          `INSERT INTO games (id, name, icon, icon_image, min_team_size, max_team_size, platform, platform_url, trailer_url, genre, info, status, created_by, created_at, group_id, consider_seat_neighbors_default)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          row.id,
+          row.name,
+          row.icon,
+          row.icon_image,
+          row.min_team_size,
+          row.max_team_size,
+          row.platform,
+          row.platform_url,
+          row.trailer_url,
+          row.genre,
+          row.info,
+          row.status,
+          row.created_by,
+          row.created_at,
+          row.group_id,
+          row.consider_seat_neighbors_default,
+        ),
     );
 
+
     broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
+    broadcastSkillBonuses(req.group!.id, creditedEvents);
     res.status(201).json(withProcessNames(row));
   },
 );
@@ -448,12 +470,18 @@ gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('admin'), (req, r
   const existing = req.groupResource as GameRow;
   if (existing.status !== 'suggestion') return res.status(409).json({ error: 'Spiel ist bereits im Katalog.' });
 
-  const result = db
-    .prepare(`UPDATE games SET status = 'catalog' WHERE id = ? AND status = 'suggestion'`)
-    .run(existing.id);
-  if (result.changes === 0) return res.status(409).json({ error: 'Spiel ist bereits im Katalog.' });
+  let creditedEvents: string[];
+  try {
+    creditedEvents = mutateCatalogWithSkillBonuses(req.group!.id, () => db
+      .prepare(`UPDATE games SET status = 'catalog' WHERE id = ? AND status = 'suggestion'`)
+      .run(existing.id));
+  } catch (error) {
+    if (error instanceof CatalogChangedError) return res.status(409).json({ error: 'Spiel ist bereits im Katalog.' });
+    throw error;
+  }
 
   broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
+  broadcastSkillBonuses(req.group!.id, creditedEvents);
   res.json(withProcessNames(db.prepare('SELECT * FROM games WHERE id = ?').get(existing.id) as GameRow));
 });
 
@@ -467,12 +495,18 @@ gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('admin'), (req, re
   const trailerUrl = isYoutubeUrl(existing.trailer_url)
     ? existing.trailer_url
     : suggestionTrailerUrl(existing.name, null);
-  const result = db
-    .prepare(`UPDATE games SET status = 'suggestion', trailer_url = ? WHERE id = ? AND status = 'catalog'`)
-    .run(trailerUrl, existing.id);
-  if (result.changes === 0) return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
+  let creditedEvents: string[];
+  try {
+    creditedEvents = mutateCatalogWithSkillBonuses(req.group!.id, () => db
+      .prepare(`UPDATE games SET status = 'suggestion', trailer_url = ? WHERE id = ? AND status = 'catalog'`)
+      .run(trailerUrl, existing.id));
+  } catch (error) {
+    if (error instanceof CatalogChangedError) return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
+    throw error;
+  }
 
   broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
+  broadcastSkillBonuses(req.group!.id, creditedEvents);
   res.json(withProcessNames(db.prepare('SELECT * FROM games WHERE id = ?').get(existing.id) as GameRow));
 });
 
@@ -497,12 +531,15 @@ gamesRouter.delete(
     const existing = req.groupResource as GameRow;
     const affectedEvents = db.transaction(() => {
       assertGameEditable(req.group!.id, existing.id);
+      const creditedBefore = grantGroupSkillBonuses(req.group!.id);
       const events = db.prepare(`SELECT event_id FROM matches WHERE game_id = ? AND group_id = ?
         UNION SELECT event_id FROM tournaments WHERE game_id = ? AND group_id = ?`)
         .all(existing.id, req.group!.id, existing.id, req.group!.id) as Array<{ event_id: string }>;
       db.prepare('DELETE FROM games WHERE id = ?').run(existing.id);
       for (const event of events) syncCompetitionPoints(req.group!.id, event.event_id);
-      return events;
+      const creditedAfter = grantGroupSkillBonuses(req.group!.id);
+      return [...new Set([...events.map((event) => event.event_id), ...creditedBefore, ...creditedAfter])]
+        .map((event_id) => ({ event_id }));
     })();
     reconcileBetting();
     for (const event of affectedEvents) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: event.event_id });

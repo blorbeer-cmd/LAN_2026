@@ -20,7 +20,8 @@ Admins und Event-Ersteller werden wie alle anderen Teilnehmer behandelt.
 
 Die neuen Konten beginnen technisch bei 0. Gültige Spiele und Turnierplatzierungen erzeugen
 automatisch Spielpunkte; organisierte Matches, Turniere und Sammelbestellungen erzeugen Orga-Punkte. Weitere
-Orga-Auslöser folgen. Dokumentierte frühere Spielteilnehmer
+Orga-Auslöser folgen. Vollständige Skill-Einschätzungen erzeugen einmalig 5 Orga-Punkte je Event.
+Dokumentierte frühere Spielteilnehmer
 erhalten beziehungsweise behalten ihre Konten auch nach einem Austritt. Das legt weder die
 Teilnehmerbasis der Gesamtwertung noch die Höhe eines Wett-Startguthabens fest. Ein späterer Startguthaben-Vorgang
 bucht ausschließlich auf `wallet`. Orga- und Spielpunkte erhöhen dieses Guthaben nicht.
@@ -100,7 +101,7 @@ und eigene Organisatorzuordnungen. Bei Kontolöschung werden diese Zuordnungen a
 
 Die Kategorie-API zeigt diese Buchungen bereits im eigenen Saldo und Verlauf sowie im
 Admin-Journal. Die sichtbare Kategorieansicht folgt später. To-dos,
-Abstimmungen und dauerhafte persönliche Boni sind weitere Pakete. Offene Grenzen und
+Abstimmungen sowie Ankunfts-/Abreiseboni sind weitere Pakete. Offene Grenzen und
 Zuordnungsregeln aus dem Konzept werden dadurch nicht festgelegt.
 
 ## Orga-Punkte für Sammelbestellungen
@@ -138,6 +139,38 @@ bleiben unverändert, Wiederöffnen der Wertung zieht zwischenzeitliche Änderun
 Die eigene Punkte-API (`categoryBalances`, `categoryJournal`) und der Datenschutzexport enthalten
 die neuen Orga-Einträge. Die sichtbare Kategorieoberfläche folgt im Ansichtenpaket. Dieses Paket benötigt
 keine weitere Migration und entscheidet keine offenen To-do-, Abstimmungs- oder Wettregeln.
+
+## Dauerhafter Skill-Bonus
+
+Bestätigte Event-Teilnehmer erhalten einmalig **5 Orga-Punkte**, sobald sie alle aktuellen
+Katalogspiele eingeschätzt haben. Maßgeblich sind die aufgenommenen Spiele der eigenen Gruppe
+(`status = 'catalog'`, `arcade_key IS NULL`); Vorschläge und eingebaute Arcade-Spiele gehören
+nicht dazu. Ein leerer Katalog erzeugt keinen Bonus. Jeder gültige Wert von 0 bis 5 zählt,
+einschließlich 0 („kenne ich nicht“/„noch nie gespielt“). Die Höhe des Skills verändert die Punkte nicht.
+
+Der kanonische Vorgang ist `bonus:skills` pro Person und Event. Der erste Journaleintrag nennt
+die Zahl der damals eingeschätzten Katalogspiele. Der automatische Anspruch von 5 wird im
+vorhandenen `points_orga_awards` dauerhaft festgehalten. Dieser Zustand ist kein berechneter
+Kontostand und darf nicht aus dem später veränderten Skill-Profil neu aufgebaut werden.
+
+Spätere Änderungen oder Löschungen von Einschätzungen, neue Katalogspiele und ein geänderter
+Teilnehmerbestand nehmen einen erhaltenen Bonus nicht zurück und erzeugen keinen zweiten.
+Eine begründete administrative Korrektur bleibt bestehen: Auch nach einem Entzug führt erneutes
+Vervollständigen nicht zu einer neuen Auszahlung. Alle Salden stammen weiterhin aus dem Journal.
+
+Die Prüfung erfolgt beim Ändern von Skills, vor Katalogänderungen sowie nach Aufnahme, Zurückstufen
+oder Löschen von Katalogspielen. So geht ein bereits vollständiger Stand beim Hinzufügen eines
+Spiels nicht verloren; das Entfernen eines bislang offenen Spiels kann die Vollständigkeit herstellen.
+Skill-Daten und Katalog gelten für die Gruppe; alle bestätigten Event-Teilnahmen werden getrennt geprüft.
+Vorhandene Einschätzungen zählen bei Event-Erstellung, Aufnahme in die Teilnehmerliste und
+Bestätigung einer Einladung. Der jeweilige Quelldatensatz und die Gutschrift werden gemeinsam gespeichert;
+ein Buchungsfehler rollt auch die Skill-, Katalog- oder Teilnahmeänderung zurück.
+
+Der Startabgleich trägt fehlende Boni offener Wertungen nach. Ausgeblendete Punkteansichten
+verhindern keine Vergabe. Festgeschriebene Wertungen bleiben unverändert; nach ihrem begründeten
+Wiederöffnen werden dann vollständige Einschätzungen berücksichtigt. Eigene Kategorie-API und
+Datenschutzexport enthalten Bonus und Verlauf. Die sichtbare Kategorieoberfläche folgt separat.
+Es wird kein Wettguthaben erzeugt. Reiseboni und ihre offenen Stichtagsregeln gehören in ein Folgepaket.
 
 ## Buchung und Korrektur
 
