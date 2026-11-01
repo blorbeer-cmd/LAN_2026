@@ -165,8 +165,8 @@ function roundHtml(round, compact = false) {
   const pick = round.outcomes.find((o) => o.id === mine?.outcomeId);
   return `<div class="stack points-round" data-points-round="${e(round.id)}">
     <div class="row-between"><${compact ? 'h3' : 'h2'}>${e(round.title)}</${compact ? 'h3' : 'h2'}><span class="badge">${statusLabels[round.status]}</span></div>
-    <p class="muted">${round.status === 'open' ? `Tipps bis ${e(formatDateTime(round.closesAt))} · ` : ''}Topf: ${round.pot} Punkte · ${round.tipCount} Tipps</p>
-    <ul class="points-outcomes">${round.outcomes.map((o) => `<li><span>${e(o.label)}${round.result === o.id ? ' · Sieger' : ''}</span><span>${o.stake} P. · ${round.status === 'open' ? 'Vorläufige Quote' : 'Quote'} ${o.odds ? o.odds.toFixed(2) : '–'}</span></li>`).join('')}</ul>
+    <p class="muted">${round.status === 'open' ? `Tipps bis ${e(formatDateTime(round.closesAt))} · ` : ''}Topf: ${round.pot} Punkte · ${round.tipCount} Tipps${round.status === 'open' ? ' · Quoten vorläufig' : ''}</p>
+    <ul class="points-outcomes">${round.outcomes.map((o) => `<li><span>${e(o.label)}${round.result === o.id ? ' · Treffer' : ''}</span><span>${o.stake} P. · Quote ${o.odds ? o.odds.toFixed(2) : '–'}</span></li>`).join('')}</ul>
     ${mine ? `<p>Dein Tipp: <strong>${e(pick?.label ?? '')}</strong> · Einsatz ${mine.stake} P.${mine.payout !== null ? ` · Auszahlung ${mine.payout} P. · Netto ${signedPoints(mine.net)} P.` : ' · reserviert'}</p>` : '<p class="muted">Du hast noch keinen Tipp abgegeben.</p>'}
     <div class="row points-actions">
       ${round.status === 'open' && !currentData()?.settings.closed_at ? `<button type="button" class="btn btn-primary btn-sm" data-tip-round="${e(round.id)}">${mine ? 'Tipp ändern' : 'Jetzt tippen'}</button>` : `<button type="button" class="btn btn-sm" data-tip-round="${e(round.id)}">Details</button>`}

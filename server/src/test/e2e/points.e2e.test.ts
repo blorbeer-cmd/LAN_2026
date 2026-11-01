@@ -31,6 +31,8 @@ let myId: string;
 const fixtureDir = mkdtempSync(path.join(tmpdir(), 'respawn-points-browser-'));
 const fixtureDb = path.join(fixtureDir, 'points.db');
 const pageErrors: string[] = [];
+const pendingHttpRoutes = new Set<Promise<void>>();
+let closingHttpRoutes = false;
 const test = createE2EDiagnosticTest(() => ({ browser, server }));
 
 async function api(path: string, method = 'GET', body?: unknown, session = cookie): Promise<any> {
@@ -84,11 +86,27 @@ before(async () => {
   const adminBaseUrl = server.baseUrl.replace('localhost', 'respawn.test');
   const adminContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const memberContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
-  // Serve the synthetic origin exclusively from the isolated local server.
-  await adminContext.route(`${adminBaseUrl}/**`, async (route) => {
-    const url = new URL(route.request().url());
-    const response = await route.fetch({ url: `${server.baseUrl}${url.pathname}${url.search}` });
-    await route.fulfill({ response });
+  // Serve the insecure LAN origin exclusively from the isolated local server.
+  // Drain complete callbacks, including their cancellation cleanup, before
+  // disposing the request context or stopping the real server.
+  await adminContext.route(`${adminBaseUrl}/**`, (route) => {
+    const completion = (async () => {
+      try {
+        const url = new URL(route.request().url());
+        const response = await route.fetch({ url: `${server.baseUrl}${url.pathname}${url.search}` });
+        await route.fulfill({ response });
+      } catch (error) {
+        const cancelled = error instanceof Error &&
+          /Route is already handled|Request context disposed|Target page, context or browser has been closed/.test(error.message);
+        if (!closingHttpRoutes || !cancelled) throw error;
+        // A cancelled page request no longer needs a response. Active-test
+        // failures still propagate; only fixture teardown consumes cancellation.
+        await route.abort('aborted').catch(() => {});
+      }
+    })();
+    pendingHttpRoutes.add(completion);
+    void completion.then(() => pendingHttpRoutes.delete(completion), () => pendingHttpRoutes.delete(completion));
+    return completion;
   });
   await addSessionCookie(adminContext, adminBaseUrl, cookie);
   await addSessionCookie(memberContext, server.baseUrl, alice.cookie);
@@ -102,7 +120,9 @@ before(async () => {
   await activateAdminMode(admin);
 });
 after(async () => {
-  await admin?.context().unrouteAll({ behavior: 'ignoreErrors' });
+  closingHttpRoutes = true;
+  await admin?.context().unrouteAll({ behavior: 'wait' });
+  await Promise.all([...pendingHttpRoutes]);
   await browser?.close();
   if (server && server.process.exitCode === null && server.process.signalCode === null) {
     const exited = once(server.process, 'exit');
@@ -201,8 +221,9 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     bob.cookie,
   );
   await member.getByText(/Topf: 15 Punkte · 2 Tipps/).waitFor();
-  await member.getByText('10 P. · Vorläufige Quote 1.50', { exact: true }).waitFor();
-  await member.getByText('5 P. · Vorläufige Quote 3.00', { exact: true }).waitFor();
+  await member.getByText(/Quoten vorläufig/).waitFor();
+  await member.getByText('10 P. · Quote 1.50', { exact: true }).waitFor();
+  await member.getByText('5 P. · Quote 3.00', { exact: true }).waitFor();
   await member.locator('[data-lock-round]').click();
   await member.getByRole('button', { name: 'Tipps schließen', exact: true }).click();
   await member.getByText('Topf: 15 Punkte · 2 Tipps', { exact: true }).waitFor();
