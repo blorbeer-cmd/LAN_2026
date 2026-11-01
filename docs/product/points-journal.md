@@ -199,6 +199,15 @@ Scheitert ein Teil einer Buchungsgruppe, wird die gesamte Gruppe zurückgerollt.
 spätere Markt-Abrechnungen Wallet- und Nettoanteile gemeinsam buchen. Die spätere Wettlogik
 muss darüber hinaus die Nullsumme und die beschlossenen Auszahlungsregeln sicherstellen.
 
+`server/src/bettingAccounting.ts` bereitet diesen Fachpfad vor, ist aber noch nicht an die
+bestehenden Wett-Handler angeschlossen. Pro Markt verwendet er `bet:<roundId>` im Wallet
+und Wettkonto: offene/gesperrte Tipps reservieren ausschließlich den Einsatz im Wallet,
+abgerechnete Tipps buchen Auszahlung minus Einsatz in beiden Konten. Rücknahme beziehungsweise
+Erstattung setzen den betreffenden Anspruch auf 0. Die Marktabrechnung prüft die Summe der
+Auszahlungen gegen die Einsätze einschließlich anonymisierter Tipps. Alle Spieler und beide
+Konten werden gemeinsam verbucht; Wiederholungen bleiben wirkungslos. Die bisherigen Konten
+und Reservierungen werden dadurch noch nicht verändert oder übernommen.
+
 Journal und Vorgangsidentitäten sind gegen nachträgliches Ändern und einzelnes Löschen
 geschützt. Ein Austritt beziehungsweise erneuter Beitritt zum Event lässt die Konten bestehen.
 Die Ausnahme ist die vollständige Löschung des Events oder Benutzerkontos: Dann werden die
@@ -215,6 +224,11 @@ auch die eigenen. Die Event-Erstellerrolle allein gewährt keine Korrekturrechte
 - `POST /api/points/admin/journal/:id/correct` erwartet `total` (neuer Gesamtanspruch dieses
   Vorgangs), `revision` (aktuelle Vorgangsrevision) und `reason`. Der Empfänger, das Konto
   und der Vorgang stammen aus dem vorhandenen Eintrag; der handelnde Admin aus der Sitzung.
+
+Dieser Korrekturendpunkt akzeptiert ausschließlich Orga- und Spielansprüche. Wallet und
+Wett-Nettowerte dürfen nur durch begründete Markt-Neuberechnung oder Storno unter Erhaltung
+der Nullsumme geändert werden (W6). Einseitige Korrekturversuche erhalten 409 und verändern
+weder Journal noch Admin-Protokoll; das gilt auch für eigene Wettansprüche.
 
 Eine aktuelle Revision ist auch bei eigenen Korrekturen erforderlich. Von zwei gleichzeitigen
 Änderungen derselben Revision gewinnt höchstens eine; die andere erhält 409 und muss neu laden.
@@ -244,8 +258,8 @@ möglich. Ein veralteter Bearbeitungsstand wird nicht überschrieben: Der Dialog
 
 Ausblenden entfernt Kategorieansichten und offene Teilnehmerdetails. Das Admin-Journal bleibt
 zugänglich; Admin-Dialoge schließen bei Event-, Konto- oder Rollenwechsel. Nach Festschreibung
-ist das Journal lesbar, Korrekturen bleiben gesperrt. Wett-/Wallet-Korrekturen werden in dieser
-Oberfläche bis zur Klärung von W6 ausschließlich lesend angeboten. Fehler beim Laden des
+ist das Journal lesbar, Korrekturen bleiben gesperrt. Wett-/Wallet-Einträge werden in dieser
+Oberfläche ausschließlich lesend angeboten; finanzielle Korrekturen erfolgen am Markt. Fehler beim Laden des
 Journals lassen sich über dessen Aktualisieren-Aktion erneut versuchen.
 
 ## Reiseangaben und Abstimmungen

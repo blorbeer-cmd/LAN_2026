@@ -216,6 +216,14 @@ test('category journal corrections require admin rights and reason, allow own ch
     (error: unknown) => error instanceof PointsError && error.status === 403);
   assert.equal((await correct(0, 5, 1, '')).status, 400);
   assert.equal((await correct(0, 1.5, 1, 'Keine ganzen Punkte')).status, 400);
+  for (const account of ['wallet', 'betting'] as const) {
+    const source = { ...sources[0], account, sourceKey: 'market:correction-guard' };
+    const entry = recordPointsEntitlements([{ ...source, total: 5, expectedRevision: 0, title: 'Wettabrechnung' }])[0];
+    const correction = await request(app).post(`/api/points/admin/journal/${entry.entryId}/correct?eventId=${f.eventId}`)
+      .send({ total: 10, revision: 1, reason: 'Einseitige Wettkorrektur' });
+    assert.equal(correction.status, 409);
+    assert.equal(readPointsSource(source)!.total, 5, 'financial corrections must preserve the market zero sum');
+  }
   const own = await correct(0, 5, 1, 'Fehlende eigene Punkte ergänzt');
   assert.equal(own.status, 200, JSON.stringify(own.body));
   assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID)!.orga, 5);

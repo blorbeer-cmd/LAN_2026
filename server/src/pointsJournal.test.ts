@@ -8,6 +8,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { nanoid } from 'nanoid';
 import { BASE_EVENT_ID, DEFAULT_GROUP_ID, db } from './db';
+import { bookBettingMarket } from './bettingAccounting';
 import {
   readPointsBalances,
   readPointsSource,
@@ -183,6 +184,61 @@ test('wallet and three category totals stay separate; negative corrections and a
     assert.throws(() => recordPointsEntitlements([{ ...base, sourceKey: 'invalid', total }]), RangeError);
   }
   assert.equal(readPointsSource({ ...base, sourceKey: 'invalid' })!.revision, 0);
+});
+
+test('market accounting reserves, withdraws, settles and voids paired journal claims atomically', () => {
+  const eventId = nanoid();
+  db.prepare(`INSERT INTO events(id,name,starts_at,group_id,status,event_type_key)
+    VALUES (?,'Wallet accounting',1,?,'published','lan')`).run(eventId, DEFAULT_GROUP_ID);
+  const players = [participant(), participant()];
+  for (const playerId of players) {
+    db.prepare("INSERT INTO event_participants(event_id,player_id,status) VALUES (?,?,'accepted')").run(eventId, playerId);
+    recordPointsEntitlements([entitlement(playerId, { eventId, account: 'wallet', sourceKey: 'start', total: 100 })]);
+  }
+  const roundId = nanoid();
+  db.prepare(`INSERT INTO betting_rounds(id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_at)
+    VALUES (?,?,?,'draw',?,'Test market','[]','open',9999999999999,1)`).run(roundId, DEFAULT_GROUP_ID, eventId, nanoid());
+  const tipIds = [nanoid(), nanoid()];
+  players.forEach((playerId, index) => db.prepare(`INSERT INTO betting_tips
+    (id,round_id,player_id,outcome_id,stake,day,created_at,updated_at) VALUES (?,?,?,?,5,'2026-11-01',1,1)`)
+    .run(tipIds[index], roundId, playerId, String(index)));
+  const book = () => bookBettingMarket(DEFAULT_GROUP_ID, eventId, roundId, 'Markt neu berechnet');
+  const balances = () => players.map((id) => readPointsBalances(DEFAULT_GROUP_ID, eventId, id)!);
+  book();
+  assert.deepEqual(balances().map(({ wallet, betting }) => [wallet, betting]), [[95, 0], [95, 0]]);
+  const entries = () => db.prepare(`SELECT j.* FROM points_journal j JOIN points_sources s ON s.id=j.source_id
+    WHERE s.event_id=? ORDER BY j.rowid`).all(eventId);
+  const first = entries();
+  book();
+  assert.deepEqual(entries(), first, 'identical reconciliation does not pay twice');
+  db.prepare('DELETE FROM betting_tips WHERE id=?').run(tipIds[0]);
+  book();
+  assert.equal(balances()[0].wallet, 100, 'withdrawal releases the persisted reservation');
+  db.prepare(`INSERT INTO betting_tips(id,round_id,player_id,outcome_id,stake,day,created_at,updated_at)
+    VALUES (?,?,?,'0',5,'2026-11-01',1,1)`).run(tipIds[0], roundId, players[0]);
+  db.prepare("UPDATE betting_rounds SET status='settled' WHERE id=?").run(roundId);
+  db.prepare('UPDATE betting_tips SET payout=CASE WHEN id=? THEN 10 ELSE 0 END WHERE round_id=?').run(tipIds[0], roundId);
+  db.exec(`CREATE TEMP TRIGGER fail_market_net BEFORE INSERT ON points_journal
+    WHEN (SELECT account FROM points_sources WHERE id=NEW.source_id)='betting'
+    BEGIN SELECT RAISE(ABORT,'market journal failure'); END`);
+  const before = entries();
+  try {
+    assert.throws(book, /market journal failure/);
+    assert.deepEqual(entries(), before, 'a failure in the net leg rolls back the wallet leg for every player');
+  } finally { db.exec('DROP TRIGGER fail_market_net'); }
+  book();
+  assert.deepEqual(balances().map(({ wallet, betting }) => [wallet, betting]), [[105, 5], [95, -5]]);
+  db.prepare('UPDATE betting_tips SET payout=11 WHERE id=?').run(tipIds[0]);
+  assert.throws(book, /Summe aller Einsätze/);
+  assert.deepEqual(balances().map(({ wallet, betting }) => [wallet, betting]), [[105, 5], [95, -5]]);
+  db.prepare('UPDATE betting_tips SET payout=CASE WHEN id=? THEN 0 ELSE 10 END WHERE round_id=?').run(tipIds[0], roundId);
+  book();
+  assert.deepEqual(balances().map(({ wallet, betting }) => [wallet, betting]), [[95, -5], [105, 5]]);
+  db.prepare("UPDATE betting_rounds SET status='refunded' WHERE id=?").run(roundId);
+  book();
+  assert.deepEqual(balances().map(({ wallet, betting }) => [wallet, betting]), [[100, 0], [100, 0]]);
+  db.prepare('UPDATE points_settings SET closed_at=1 WHERE event_id=?').run(eventId);
+  assert.throws(book, /abgeschlossen/);
 });
 
 test(

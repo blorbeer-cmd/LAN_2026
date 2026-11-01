@@ -11,7 +11,8 @@ Vorhanden sind Kategorie-Journal und Konten, Admin-Korrektur-API, automatische S
 Wettbewerbs-/Bestell-Orga, dauerhafter Skill-Bonus, Event-Sichtbarkeit und Kiosk-Ergebnisfeed.
 Kategorie-Rohwerte und Verlauf sind jetzt auch im persönlichen Konto sichtbar. Das Admin-Journal
 erlaubt begründete, revisionsgeschützte Orga-/Spielkorrekturen einschließlich eigener Ansprüche;
-Wallet und Wett-Nettowert bleiben dort bis zur Klärung des Korrekturwegs schreibgeschützt.
+Wallet und Wett-Nettowert bleiben dort schreibgeschützt; gemäß W6 erfolgen finanzielle
+Korrekturen ausschließlich durch Markt-Neuberechnung oder Storno.
 Die bisherige LAN-Summe, historische To-do-Belohnungen, Wetten und Endwertungs-Snapshots verwenden dagegen noch
 das gemeinsame alte Konto. Der bestehende Wettumfang ist keine vollständige Umsetzung des Ziels.
 
@@ -157,12 +158,21 @@ Fachquelle bleiben bei geschlossener Wertung nutzbar; deren Punkte und Snapshot 
 
 ## Pakete 5a/5b – Wallet und Marktregeln
 
+**5a in Vorbereitung:** Der interne Buchungspfad `bettingAccounting.ts` kann Reservierungen,
+Rücknahmen, Auszahlungen, Neuberechnungen und Stornos als atomare Wallet-/Wettansprüche
+abbilden. Er ist noch nicht an die bestehenden Wett-Handler angeschlossen. Die allgemeine
+Journal-Korrektur-API sperrt bereits einseitige Wallet-/Wettänderungen gemäß W6.
+Die Umstellung bestehender Events benötigt noch die genaue Abgrenzung des beschlossenen
+Neustarts ohne Guthabenübernahme; Startwert-Vorschlag sind feste 100 Wettpunkte einschließlich
+später Zusagen. Bis zur Klärung bleiben die bisherigen Finanzpfade aktiv.
+
 - Gleiches separates Startguthaben einmalig vergeben; Höhe, Konfigurierbarkeit und späte Zusage
   sind offen. Grundstock und Erstattungen sind kein Wett-Nettogewinn.
 - Einsätze, Reservierungen, Auszahlung und Nettowert gemeinsam im Journal abbilden. Negative
   Korrekturen bleiben möglich; negatives verfügbares Guthaben verhindert neue Tipps.
-- Markt-Neuberechnung und Admin-Korrekturen zusammen definieren. Die Zulässigkeit eigener
-  Korrekturen ist entschieden; daraus folgt keine Ausnahme von der Nullsumme.
+- Korrekturweg beschlossen (W6): ausschließlich begründete Markt-Neuberechnung oder Storno,
+  auch für eigene Wetten. Einseitige Wallet-/Wett-Journalkorrekturen sind ausgeschlossen;
+  jede Marktkorrektur erhält die Nullsumme.
 - Zielregeln ersetzen ausdrücklich alte Regeln: vorläufige Pool-Quoten sichtbar, formatabhängiger
   Remis-Tipp, beschlossene vollständige Erstattungen, Abrunden und Rest an den größten richtigen
   Einsatz. Gleiche größte Einsätze und gesperrte unabgerechnete Märkte bleiben offene Randfälle.

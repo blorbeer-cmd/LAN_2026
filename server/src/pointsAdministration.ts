@@ -26,6 +26,8 @@ export function correctJournalEntry(input: {
         { playerId: string; account: PointsAccount; sourceKey: string; title: string } | undefined;
       if (!source) throw new PointsError('Journaleintrag nicht gefunden.', 404);
       requirePointsAdmin(input.groupId, input.actorId);
+      if (source.account === 'wallet' || source.account === 'betting')
+        throw new PointsError('Wettguthaben und Wett-Nettowerte können nur durch eine begründete Marktkorrektur oder ein Storno geändert werden.');
       const settings = db.prepare('SELECT closed_at FROM points_settings WHERE event_id = ?').get(input.eventId) as
         { closed_at: number | null } | undefined;
       if (settings?.closed_at != null) throw new PointsError('Die Punktewertung ist abgeschlossen.');

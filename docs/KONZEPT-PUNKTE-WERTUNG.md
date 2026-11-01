@@ -185,6 +185,11 @@ Auszahlung kann das Guthaben negativ machen, wenn Gewinne bereits weiterverwende
 Bei negativem Guthaben sind keine neuen Tipps möglich. Korrekturen werden nachvollziehbar
 gebucht und erzeugen keinen zweiten Gewinnanspruch.
 
+**Entschieden (W6):** Wallet und Wett-Nettokonto werden ausschließlich durch begründete
+Markt-Neuberechnung oder Storno korrigiert. Einseitige administrative Änderungen einzelner
+Wallet- oder Wettansprüche sind auch über die Journal-API ausgeschlossen. Jede Korrektur
+erhält die Nullsumme des Marktes; eigene administrative Marktkorrekturen bleiben erlaubt.
+
 ### 4.4 Wettwertung und offene Grenzen
 
 Für die Kategorie zählt der **Nettogewinn** aus gültig abgerechneten Tipps: Auszahlung
@@ -455,7 +460,7 @@ Vorgabewerte sind dafür keine Entscheidung:
 | W3 | Höhe und Konfigurierbarkeit des gleichen Wett-Startguthabens und dessen Vergabe bei später Zusage. |
 | W4 | Wer offizielle Wettmärkte eröffnen darf. Die bestehende Adminrolle ist noch keine beschlossene Zielregel. |
 | W5 | Abschaltung beziehungsweise Übergang alter Tages-/Rundenlimits und Einsatzgrenzen; die bisherigen Werte 10/30/6 sind keine Zielvorgaben. |
-| W6 | Korrekturweg für Wallet und Wett-Nettokonto unter Erhaltung der Nullsumme; Wechselwirkung mit einer späteren Markt-Neuberechnung. Eigene Admin-Korrekturen bleiben erlaubt, eine Ausnahme von der Nullsumme ist nicht beschlossen. |
+| W6 (entschieden) | Ausschließlich begründete Markt-Neuberechnung oder Storno unter Erhaltung der Nullsumme. Keine einseitigen Wallet-/Wett-Journalkorrekturen; eigene Marktkorrekturen bleiben erlaubt. |
 | W7 | Feste Restverteilung bei gleich großen größten richtigen Einsätzen und Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
 | O3 | Neue Aufgaben verwenden keine alten Orga-Budgets oder vergüteten Helferplätze. Alte Zusagen bleiben im bisherigen Pfad; dessen vollständige finanzielle Ablösung folgt mit dem Wallet. |
 | O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben mit expliziter LAN-Belohnung behalten vorerst ihren bisherigen Abschlussweg ohne Wiederöffnen. |
