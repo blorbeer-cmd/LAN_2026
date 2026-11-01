@@ -610,6 +610,11 @@ export function renderProfile(container, ctx) {
   const layoutPreference = layoutModeForPlayer(myId);
   const adminModeActive = isAdmin();
   const eventRows = [
+    state.activeEvent?.pointsEnabled ? profileRow({
+      title: 'Meine LAN-Punkte',
+      meta: 'Guthaben, Verlauf und Sieger-Tipps',
+      action: '<button type="button" class="btn btn-sm" data-navigate="points">Ansehen</button>',
+    }) : '',
     ratingNudge
       ? profileRow({
           title: 'Bock &amp; Skill',

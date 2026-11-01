@@ -158,6 +158,7 @@ export function createAreaTours({ container, getContext }) {
     const handle = openModal(tour.title, '', {
       isolateKeys: true,
       closeOnBackdrop: false,
+      restoreFocus: false,
       onClose: finish,
       onMount: (el) => {
         el.classList.add('area-tour-backdrop');

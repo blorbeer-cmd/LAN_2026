@@ -33,6 +33,9 @@
 // its row through resolveGroupResource, so a retained group_id mismatch stays
 // hidden behind a 404.
 
+import { pointsAreVisible, PointsError } from '../points';
+import { TODO_POINTS } from '../todoPoints';
+import { syncOrgaPoints } from '../orgaPoints';
 import { Router, type Request, type Response } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
@@ -93,6 +96,8 @@ interface TaskRow {
   claim_comment: string | null;
   due_at: number | null;
   archived_at: number | null;
+  points_value: number;
+  points_model: 'legacy' | 'category';
 }
 
 function serializeItem(row: ItemRow) {
@@ -153,7 +158,7 @@ function syncTaskAssignee(taskId: string): void {
   }
 }
 
-function serializeTask(row: TaskRow) {
+function serializeTask(row: TaskRow, forAdmin = false) {
   const assignees = taskParticipants(row.id).flatMap((participant) => {
     const ref = playerRef(participant.player_id);
     return ref ? [{ ...ref, comment: participant.comment, joinedAt: participant.joined_at }] : [];
@@ -175,7 +180,15 @@ function serializeTask(row: TaskRow) {
     claimComment: row.claim_comment,
     dueAt: row.due_at,
     archivedAt: row.archived_at,
+    pointsValue: forAdmin || pointsAreVisible(row.event_id)
+      ? row.points_model === 'category' && row.type === 'todo' ? TODO_POINTS : row.points_value
+      : null,
+    canReopen: true,
+    reward: null,
   };
+}
+function serializeTaskFor(req: import('express').Request, row: TaskRow) {
+  return serializeTask(row, ['owner', 'admin'].includes(req.groupMembership!.role));
 }
 
 // Optional due date (epoch ms), same shape/convention as events.ts's own
@@ -382,7 +395,7 @@ checklistRouter.get('/tasks', (req, res) => {
   const groupId = req.group!.id;
   const scope = currentEventScope(req, res);
   if (!scope) return;
-  res.json({ tasks: listTasks(groupId, scope.eventId).map(serializeTask) });
+  res.json({ tasks: listTasks(groupId, scope.eventId).map((row) => serializeTaskFor(req, row)) });
 });
 
 // POST /api/checklist/tasks - body: { playerId, title, description?,
@@ -464,6 +477,8 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
             claim_comment: null,
             due_at: parsedDueAt.value,
             archived_at: null,
+            points_value: 0,
+            points_model: 'category',
           },
         ]
       : assigneeIds.map((assigneeId) => ({
@@ -484,6 +499,8 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
           claim_comment: null,
           due_at: parsedDueAt.value,
           archived_at: null,
+          points_value: 0,
+          points_model: 'category' as const,
         }));
 
   db.transaction(() => {
@@ -519,7 +536,7 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
   }
 
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId });
-  res.status(201).json({ tasks: rows.map(serializeTask) });
+  res.status(201).json({ tasks: rows.map((row) => serializeTaskFor(req, row)) });
 });
 
 // POST /api/checklist/tasks/todo - body: { playerId, title, description?,
@@ -575,8 +592,8 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
   const batchId = assigneeIds.length > 1 ? nanoid() : null;
 
   const insert = db.prepare(
-    `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, description, created_by, assignee_id, batch_id, status, created_at, taken_at, due_at)
-     VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, description, created_by, assignee_id, batch_id, status, created_at, taken_at, due_at, points_value)
+     VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
   const rows: TaskRow[] =
@@ -600,6 +617,8 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
             claim_comment: null,
             due_at: parsedDueAt.value,
             archived_at: null,
+            points_value: TODO_POINTS,
+            points_model: 'category',
           },
         ]
       : assigneeIds.map((assigneeId) => ({
@@ -620,11 +639,13 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
           claim_comment: null,
           due_at: parsedDueAt.value,
           archived_at: null,
+          points_value: TODO_POINTS,
+          points_model: 'category' as const,
         }));
 
   db.transaction(() => {
     for (const row of rows) {
-      insert.run(row.id, row.group_id, row.event_id, row.title, row.description, row.created_by, row.assignee_id, row.batch_id, row.status, row.created_at, row.taken_at, row.due_at);
+      insert.run(row.id, row.group_id, row.event_id, row.title, row.description, row.created_by, row.assignee_id, row.batch_id, row.status, row.created_at, row.taken_at, row.due_at, row.points_value);
       if (row.assignee_id) insertParticipant().run(row.id, row.assignee_id, null, row.created_at);
     }
   })();
@@ -655,7 +676,7 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
   }
 
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId });
-  res.status(201).json({ tasks: rows.map(serializeTask) });
+  res.status(201).json({ tasks: rows.map((row) => serializeTaskFor(req, row)) });
 });
 
 // POST /api/checklist/tasks/:id/claim - body: { playerId, comment? }. Signs
@@ -691,6 +712,7 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
     const inserted = insertParticipant().run(task.id, playerId, trimmedComment, now);
     if (inserted.changes !== 1) return 'duplicate';
     syncTaskAssignee(task.id);
+    if (task.points_value > 0 && task.event_id) syncOrgaPoints(task.group_id, task.event_id);
     return 'ok';
   })();
   if (outcome === 'closed') return res.status(409).json({ error: 'Diese Aufgabe ist bereits abgeschlossen.' });
@@ -716,7 +738,8 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
     );
   }
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask(getTask(task.id)!));
+  if (task.points_value > 0) broadcast(Events.leaderboardChanged, null, { groupId: task.group_id, eventId: task.event_id });
+  res.json(serializeTaskFor(req, getTask(task.id)!));
 });
 
 // POST /api/checklist/tasks/:id/release - body: { playerId }. A participant
@@ -735,8 +758,11 @@ checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlay
   }
 
   db.transaction(() => {
-    db.prepare('DELETE FROM checklist_task_assignees WHERE task_id = ? AND player_id = ?').run(task.id, playerId);
+    const removed = db.prepare(`DELETE FROM checklist_task_assignees WHERE task_id = ? AND player_id = ?
+      AND EXISTS (SELECT 1 FROM checklist_tasks WHERE id = ? AND status = 'taken')`).run(task.id, playerId, task.id);
+    if (removed.changes !== 1) throw new PointsError('Diese Übernahme hat sich bereits geändert.');
     syncTaskAssignee(task.id);
+    if (task.points_value > 0 && task.event_id) syncOrgaPoints(task.group_id, task.event_id);
   })();
   // The create-with-assigneePlayerIds path records an active "you were
   // assigned" push topic for the assignee - releasing must close it too, or
@@ -744,7 +770,8 @@ checklistRouter.post('/tasks/:id/release', resolveChecklistTask, ...withBodyPlay
   // task that's back in the open pool.
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask(getTask(task.id)!));
+  if (task.points_value > 0) broadcast(Events.leaderboardChanged, null, { groupId: task.group_id, eventId: task.event_id });
+  res.json(serializeTaskFor(req, getTask(task.id)!));
 });
 
 // PATCH /api/checklist/tasks/:id/done - body: { playerId }. Any participant,
@@ -763,10 +790,37 @@ checklistRouter.patch('/tasks/:id/done', resolveChecklistTask, ...withBodyPlayer
   }
 
   const doneAt = Date.now();
-  db.prepare(`UPDATE checklist_tasks SET status = 'done', done_at = ? WHERE id = ? AND status = 'taken'`).run(doneAt, task.id);
+  db.transaction(() => {
+    const updated = db.prepare(`UPDATE checklist_tasks SET status = 'done', done_at = ? WHERE id = ? AND status = 'taken'`).run(doneAt, task.id);
+    if (updated.changes !== 1) throw new PointsError('Diese Aufgabe ist bereits abgeschlossen.');
+    if (task.points_value > 0 && task.event_id) syncOrgaPoints(task.group_id, task.event_id);
+  })();
+  broadcast(Events.leaderboardChanged, null, { groupId: task.group_id, eventId: task.event_id });
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask({ ...task, status: 'done', done_at: doneAt }));
+  res.json(serializeTaskFor(req, { ...task, status: 'done', done_at: doneAt }));
+});
+
+// PATCH /api/checklist/tasks/:id/reopen - reverses the new category claim atomically.
+checklistRouter.patch('/tasks/:id/reopen', resolveChecklistTask, ...withBodyPlayerIdentity, (req, res) => {
+  const task = req.groupResource as TaskRow;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
+  if (task.event_id !== scope.eventId) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' });
+  const { playerId } = req.body ?? {};
+  if (!isTaskParticipant(task.id, playerId) && playerId !== task.created_by && !isChecklistModerator(req)) {
+    return res.status(403).json({ error: 'Nur Helfer, Ersteller oder Admins können die Aufgabe wieder öffnen.' });
+  }
+  db.transaction(() => {
+    const status = taskParticipants(task.id).length ? 'taken' : 'open';
+    const changed = db.prepare(`UPDATE checklist_tasks SET status = ?, done_at = NULL, archived_at = NULL
+      WHERE id = ? AND status = 'done'`).run(status, task.id);
+    if (changed.changes !== 1) throw new PointsError('Diese Aufgabe ist nicht mehr erledigt.');
+    if (task.event_id) syncOrgaPoints(task.group_id, task.event_id);
+  })();
+  broadcast(Events.leaderboardChanged, null, { groupId: task.group_id, eventId: task.event_id });
+  broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
+  res.json(serializeTaskFor(req, getTask(task.id)!));
 });
 
 // POST /api/checklist/tasks/:id/archive - body: { playerId }. A done task
@@ -789,7 +843,7 @@ checklistRouter.post('/tasks/:id/archive', resolveChecklistTask, ...withBodyPlay
     return res.status(409).json({ error: 'Nur erledigte, noch nicht archivierte Aufgaben können archiviert werden.' });
   }
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
-  res.json(serializeTask({ ...task, archived_at: archivedAt }));
+  res.json(serializeTaskFor(req, { ...task, archived_at: archivedAt }));
 });
 
 // PATCH /api/checklist/tasks/:id - body: { playerId, type?, title?,
@@ -823,20 +877,27 @@ checklistRouter.patch('/tasks/:id', resolveChecklistTask, ...withBodyPlayerIdent
     title: title !== undefined ? title.trim() : task.title,
     description: description === undefined ? task.description : description ? description.trim() : null,
     due_at: dueAt === undefined ? task.due_at : parsedDueAt.value,
+    points_value: (type ?? task.type) === 'todo' ? TODO_POINTS : 0,
   };
-  const update = task.batch_id
+  const update = db.transaction(() => {
+    const changed = task.batch_id
     ? db
         .prepare(
-          `UPDATE checklist_tasks SET type = ?, title = ?, description = ?, due_at = ?
+          `UPDATE checklist_tasks SET type = ?, title = ?, description = ?, due_at = ?, points_value = CASE WHEN points_model='category' THEN ? ELSE points_value END
            WHERE batch_id = ? AND group_id = ? AND status IN ('open', 'taken')`,
         )
-        .run(next.type, next.title, next.description, next.due_at, task.batch_id, task.group_id)
+        .run(next.type, next.title, next.description, next.due_at, next.points_value, task.batch_id, task.group_id)
     : db
         .prepare(
-          `UPDATE checklist_tasks SET type = ?, title = ?, description = ?, due_at = ?
+          `UPDATE checklist_tasks SET type = ?, title = ?, description = ?, due_at = ?, points_value = CASE WHEN points_model='category' THEN ? ELSE points_value END
            WHERE id = ? AND status IN ('open', 'taken')`,
         )
-        .run(next.type, next.title, next.description, next.due_at, task.id);
+        .run(next.type, next.title, next.description, next.due_at, next.points_value, task.id);
+    if (changed.changes && task.event_id && (task.points_value > 0 || next.points_value > 0)) {
+      syncOrgaPoints(task.group_id, task.event_id);
+    }
+    return changed;
+  }).immediate();
   if (update.changes === 0) {
     return res.status(409).json({ error: 'Diese Aufgabe ist bereits abgeschlossen.' });
   }
@@ -849,7 +910,8 @@ checklistRouter.patch('/tasks/:id', resolveChecklistTask, ...withBodyPlayerIdent
           .all(task.batch_id, task.group_id)
       : [getTask(task.id)]
   ) as TaskRow[];
-  res.json({ tasks: rows.map(serializeTask) });
+  if (task.points_value > 0 || next.points_value > 0) broadcast(Events.leaderboardChanged, null, { groupId: task.group_id, eventId: task.event_id });
+  res.json({ tasks: rows.map((row) => serializeTaskFor(req, row)) });
 });
 
 // DELETE /api/checklist/tasks/:id - body: { playerId }. Creator or group
@@ -870,14 +932,19 @@ checklistRouter.delete('/tasks/:id', resolveChecklistTask, ...withBodyPlayerIden
   }
 
   const cancelledAt = Date.now();
-  const update = db
-    .prepare(`UPDATE checklist_tasks SET status = 'cancelled', cancelled_at = ? WHERE id = ? AND status != 'done' AND status != 'cancelled'`)
-    .run(cancelledAt, task.id);
+  const update = db.transaction(() => {
+    const changed = db
+      .prepare(`UPDATE checklist_tasks SET status = 'cancelled', cancelled_at = ? WHERE id = ? AND status != 'done' AND status != 'cancelled'`)
+      .run(cancelledAt, task.id);
+    if (changed.changes && task.points_value > 0 && task.event_id) syncOrgaPoints(task.group_id, task.event_id);
+    return changed;
+  })();
   if (update.changes !== 1) {
     return res.status(409).json({ error: 'Diese Aufgabe ist bereits abgeschlossen.' });
   }
 
   resolvePushTopic(`checklist-task:${task.id}`, false, { groupId: task.group_id, eventId: task.event_id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: task.group_id, eventId: task.event_id });
+  if (task.points_value > 0) broadcast(Events.leaderboardChanged, null, { groupId: task.group_id, eventId: task.event_id });
   res.status(204).end();
 });

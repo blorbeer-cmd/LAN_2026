@@ -53,7 +53,10 @@ flowTest('manual area tours resume, restore focus, survive refresh and never sub
 
   await help.click();
   await dismissFromText('.modal-backdrop');
-  await help.click();
+  // Activation need not focus the help button. Keep a real form field as the
+  // previous focus to expose competing restoration by Modal and the tour.
+  await tourPage.locator('#profile-name').focus();
+  await help.dispatchEvent('click');
   await tourPage.getByRole('button', { name: 'Profil und Einstellungen: Starten', exact: true }).click();
   const overlay = tourPage.locator('.area-tour-backdrop');
   await overlay.getByRole('heading', { name: 'Dein Profil bearbeiten', exact: true }).waitFor();

@@ -1,3 +1,5 @@
+import { withBettingAccounting, reconcileBetting, assertCompetitionEditable } from '../betting';
+import { syncCompetitionPoints } from '../orgaPoints';
 // Matchmaking endpoint (FR-16..18): draws balanced teams for a game from a
 // set of present players, using their skill ratings. Stateless — every call
 // is a fresh draw, so "re-roll" is just calling it again. The result is
@@ -25,6 +27,10 @@ import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 
 export const matchmakingRouter = Router();
+matchmakingRouter.use((req, _res, next) => {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) reconcileBetting();
+  next();
+});
 
 // Neutral middle rating for players without one. It is what balanceTeams
 // works with, but a stored teams snapshot keeps `rating: null` for such a
@@ -259,10 +265,11 @@ matchmakingRouter.post('/', (req, res) => {
   // matchmaking_draws comment in db.ts for why this is separate from the
   // actually-recorded `matches`).
   db.prepare(
-    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt);
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt, req.player!.id);
 
+  reconcileBetting(eventId);
   broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
   res.json(result);
 });
@@ -334,10 +341,11 @@ matchmakingRouter.post('/rematch', (req, res) => {
   };
 
   db.prepare(
-    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source)
-     VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'rematch')`
-  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), result.generatedAt);
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source, created_by)
+     VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'rematch', ?)`
+  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), result.generatedAt, req.player!.id);
 
+  reconcileBetting(eventId);
   broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
   res.json(result);
 });
@@ -503,9 +511,12 @@ matchmakingRouter.delete('/draws/:id', requireGroupRole('admin'), requireRecentR
     return res.status(409).json({ error: 'Diese Auslosung gehört zu einem Turnier. Bitte das Turnier separat löschen.' });
   }
 
-  db.transaction(() => {
+  assertCompetitionEditable(req.group!.id, draw.event_id, 'draw', draw.id);
+
+  withBettingAccounting(draw.event_id, () => {
     if (draw.match_id) db.prepare('DELETE FROM matches WHERE id = ? AND group_id = ?').run(draw.match_id, req.group!.id);
     db.prepare('DELETE FROM matchmaking_draws WHERE id = ? AND group_id = ?').run(draw.id, req.group!.id);
+    syncCompetitionPoints(req.group!.id, draw.event_id);
     writeAdminAudit({
       actorPlayerId: req.player?.id,
       groupId: req.group!.id,
@@ -514,7 +525,7 @@ matchmakingRouter.delete('/draws/:id', requireGroupRole('admin'), requireRecentR
       targetId: draw.id,
       details: { hadResult: Boolean(draw.match_id) },
     });
-  })();
+  });
   broadcast(Events.matchmakingDrawsChanged, { id: draw.id, deleted: true }, { groupId: req.group!.id, eventId: draw.event_id });
   if (draw.match_id) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: draw.event_id });
   res.status(204).end();
@@ -592,11 +603,13 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   // neighbors in the first place (avoidAdjacentOpponents was on for it).
   const seatConflicts = row.seat_pairs_considered > 0 ? applySeatConflicts(req.group!.id, row.event_id, teams) : 0;
 
-  db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?').run(
-    JSON.stringify(teams),
-    seatConflicts,
-    row.id
-  );
+  withBettingAccounting(row.event_id, () => {
+    db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?').run(
+      JSON.stringify(teams),
+      seatConflicts,
+      row.id
+    );
+  });
 
   const updated = db
     .prepare(

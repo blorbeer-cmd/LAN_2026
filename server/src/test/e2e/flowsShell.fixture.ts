@@ -1477,7 +1477,8 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.locator('[data-navigate="adminFeedback"]').count(), 1);
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
-  assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 5);
+  assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 6);
+  assert.equal(await page.locator('[data-navigate="pointsAdmin"]').count(), 1);
   await page.click('[data-navigate="adminFeatureUsage"]');
   await page.waitForSelector('#admin-feature-usage-refresh');
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
@@ -1566,8 +1567,12 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.locator('.seating-plan').evaluate((plan) => plan.scrollWidth <= plan.clientWidth + 1), true);
   assert.equal(await page.locator('.seating-side-top .seating-side-seats').evaluate((seats) => getComputedStyle(seats).flexDirection), 'column');
   // Unseated players are flat rows: one column on phones, two from --bp-lg.
-  const unseated = page.locator('.seating-pool .profile-rows');
-  assert.equal(await unseated.evaluate((rows) => getComputedStyle(rows).display), 'flex');
+  // A shared refresh can replace the pool while Playwright resolves it.
+  // Measure the current document in one task, as for the desktop check below.
+  await page.waitForFunction(() => {
+    const rows = document.querySelector('.seating-pool .profile-rows');
+    return rows && getComputedStyle(rows).display === 'flex';
+  });
   await page.setViewportSize({ width: 900, height: 844 });
   // A background render may replace the rows between locator resolution and
   // evaluation. Wait for the current DOM's layout, not a detached old element.

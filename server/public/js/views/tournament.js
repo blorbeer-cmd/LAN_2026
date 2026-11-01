@@ -1,3 +1,4 @@
+import { competitionBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
 // Tournament detail view (FR-33): automatically generated single-elimination
 // bracket ("Turnierbaum") or
 // round-robin league ("jeder gegen jeden", optionally Hin- und Rückspiele),
@@ -196,6 +197,11 @@ function renderDetail(container, ctx) {
     .join(' · ');
   const formatExplanation = `${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''}`;
   const activeLobbies = renderActiveLobbies(t);
+  const outrightBetting = competitionBettingHtml('tournament', t.id, ctx, { canOpen: t.status === 'active' && !decidedMatches });
+  const fixtureBetting = t.matches.filter((m) => !m.isBye && m.teamAId && m.teamBId).map((m) => {
+    const content = competitionBettingHtml('tournament_match', m.id, ctx, { canOpen: !m.winnerTeamId && !m.isDraw && !t.endedEarly });
+    return content ? `<div class="stack"><h3>${escapeHtml(t.teams.find((team) => team.id === m.teamAId)?.name ?? '')} gegen ${escapeHtml(t.teams.find((team) => team.id === m.teamBId)?.name ?? '')}</h3>${content}</div>` : '';
+  }).join('');
 
   container.innerHTML = `
     <div class="row-between page-title-row">
@@ -214,10 +220,14 @@ function renderDetail(container, ctx) {
     <div class="grouped-page-sections tournament-board">
       ${renderChampion(t)}
       ${activeLobbies}
+      ${outrightBetting ? `<section class="card stack" aria-label="Turniersieger tippen">${outrightBetting}</section>` : ''}
       ${board}
+      ${fixtureBetting ? `<section class="card stack" aria-label="Wetten auf Begegnungen"><h2>Wetten auf Begegnungen</h2>${fixtureBetting}</section>` : ''}
       ${renderTournamentTeams(t, { teamsOpen: tournamentTeamsOpen, canRename: (team) => canRenameTeam(t, team), highlightOwn: ownTeamFocusFor === t.id })}
     </div>
   `;
+
+  wireCompetitionBetting(container, ctx);
 
   container.querySelector('[data-tournament-teams]')?.addEventListener('toggle', (event) => {
     tournamentTeamsOpen = event.currentTarget.open;
@@ -348,8 +358,10 @@ function openResultDialog(t, match, phaseLabel, ctx) {
   }));
   const decided = match.winnerTeamId !== null || match.isDraw;
   const knockout = t.format === 'single_elimination' || match.stage === 'knockout';
+  const correction = competitionCorrection('tournament', t.id, t.matches.map((m) => m.id));
   const { close, el } = openModal('Ergebnis', `
     <div class="muted result-dialog-subtitle">${escapeHtml(t.name)} · ${escapeHtml(phaseLabel)}</div>
+    ${decided ? correction.html : ''}
     ${resultFormHtml({ teams, prefix: 'tournament-result', mode: t.trackScore ? 'score' : 'winner', fixedMode: true, allowDraw: !knockout, integerScores: true, winnerIndex: decided && !t.trackScore ? match.isDraw ? -1 : match.winnerTeamId === match.teamAId ? 0 : 1 : undefined, scores: [match.scoreA, match.scoreB] })}`);
   wireResultForm(el, {
     teams, mode: t.trackScore ? 'score' : 'winner', allowDraw: !knockout, integerScores: true,
@@ -363,7 +375,7 @@ function openResultDialog(t, match, phaseLabel, ctx) {
         return false;
       }
       detailCache = decided
-        ? await api.tournaments.updateResult(t.id, match.id, { ...payload, expectedPlayedAt: match.playedAt })
+        ? await api.tournaments.updateResult(t.id, match.id, { ...payload, expectedPlayedAt: match.playedAt, ...correction.payload(el) })
         : await api.tournaments.recordResult(t.id, match.id, payload);
       close();
       ctx.rerender();

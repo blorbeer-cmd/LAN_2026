@@ -5,6 +5,18 @@ const c = (id, title, steps, options = {}) => ({ id, title, steps, ...options })
 const t = (title, chapters, options = {}) => ({ title, chapters, ...options });
 
 export const AREA_TOURS = {
+  points: t('LAN-Punkte', [c('account', 'Punkte verdienen und einsetzen', [
+    s('balance', 'Dein Punktekonto', 'Gesamtpunkte bestimmen die LAN-Wertung. Reservierte Einsätze bleiben Teil deines Guthabens, stehen aber für andere Tipps nicht zur Verfügung.', '[aria-label="Mein Punktekonto"]'),
+    s('earn', 'Orga statt Siegprämie', 'Übernimm belohnte To-Dos. Beim Erledigen erhältst du die zugesagten Punkte automatisch. Ein Sieg im Spiel selbst gibt keine Punkte.'),
+    s('bet', 'Auch eigene Spiele tippen', 'Tippe vor Spielstart auf einen Sieger. Auch eigene Spiele und Turniere sind erlaubt. Der Topf verteilt ausschließlich vorhandene Einsätze.', '[aria-label="Tipprunden"]'),
+    s('history', 'Jede Buchung nachvollziehen', 'Der Verlauf zeigt Zeitpunkt, Herkunft und Betrag. Details erklären Auszahlungen und begründete Korrekturen. Die Filter verändern deine Gesamtsumme nicht.', '[aria-label="Punkteverlauf"]'),
+  ])]),
+  pointsAdmin: t('LAN-Punkte verwalten', [c('manage', 'Regeln und Korrekturen', [
+    s('rules', 'Begrenzt starten', 'Lege Grundstock, Orga-Budget und Wettgrenzen fest. Mit null offiziellen Tipprunden startest du ausschließlich mit Orga-Punkten.', '[data-points-settings]'),
+    s('tasks', 'Belohnungen vorher zusagen', 'Lege die Belohnung am offenen To-Do vor der ersten Übernahme fest. Erledigen bucht automatisch; es gibt keinen Freigabeprozess.'),
+    s('correct', 'Nachvollziehbar korrigieren', 'Punkteentzug braucht eine Begründung und bleibt im Journal. Ergebniskorrekturen buchen betroffene Wettabrechnungen atomar gegen und neu.'),
+    s('finish', 'Endwertung festschreiben', 'Rechne alle Tipprunden ab oder erstatte sie. Danach schreibst du die Platzierung fest. Wiederöffnen benötigt eine Begründung.'),
+  ])], { adminOnly: true }),
   home: t('Home', [
     c('overview', 'Überblick', [
       s('current', 'Was läuft gerade?', 'Aktuell führt dich zu laufenden Abstimmungen, Turnieren, Bestellungen und Arcade-Lobbys. Erledigte Vorgänge findest du im jeweiligen Bereich wieder.', '#home-current-title'),

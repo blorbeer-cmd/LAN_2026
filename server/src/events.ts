@@ -16,6 +16,8 @@ import {
   type EventTypeKey,
 } from './eventFeatureCatalog';
 import { createEventFeatureSnapshot } from './eventFeatures';
+import { grantSkillCompletionBonus } from './skillBonus';
+import { grantTravelPoints } from './travelPoints';
 
 export { OUTSIDE_EVENTS_ID };
 
@@ -166,6 +168,7 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
          VALUES (?, ?, 'accepted')
          ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
       ).run(id, options.createdBy);
+      grantSkillCompletionBonus(id);
     }
     return getEvent(id)!;
   })();
@@ -218,20 +221,24 @@ export function updateEvent(id: string, fields: UpdateEventFields): EventRow | u
   // published event is a legal row since migration 103 and simply cannot
   // track: getTrackingEvents needs a started period, and tracking can never
   // have been on, because removing a period is refused while it is running.
-  db.prepare(
-    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, cost_cents = ?, accommodation_cost_cents = ?, paypal_link = ?, payment_due_at = ? WHERE id = ?'
-  ).run(
-    next.name,
-    next.starts_at,
-    next.ends_at,
-    next.location,
-    next.description,
-    next.cost_cents,
-    next.accommodation_cost_cents,
-    next.paypal_link,
-    next.payment_due_at,
-    next.id,
-  );
+  db.transaction(() => {
+    if (existing.group_id) grantTravelPoints(existing.group_id, id);
+    db.prepare(
+      'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, cost_cents = ?, accommodation_cost_cents = ?, paypal_link = ?, payment_due_at = ? WHERE id = ?'
+    ).run(
+      next.name,
+      next.starts_at,
+      next.ends_at,
+      next.location,
+      next.description,
+      next.cost_cents,
+      next.accommodation_cost_cents,
+      next.paypal_link,
+      next.payment_due_at,
+      next.id,
+    );
+    if (existing.group_id) grantTravelPoints(existing.group_id, id);
+  })();
 
   return next;
 }
@@ -373,7 +380,10 @@ export function endEvent(id: string): EventRow | undefined {
 
   const now = Date.now();
   const wasTracking = Boolean(event.tracking_enabled);
-  db.prepare("UPDATE events SET tracking_enabled = 0, ended_at = ?, status = 'ended' WHERE id = ?").run(now, id);
+  db.transaction(() => {
+    if (event.group_id) grantTravelPoints(event.group_id, id, now);
+    db.prepare("UPDATE events SET tracking_enabled = 0, ended_at = ?, status = 'ended' WHERE id = ?").run(now, id);
+  })();
   if (wasTracking) closeEventContexts(id);
   fallbackEventContexts(id);
   endActiveMusicSession(id, now);
@@ -647,6 +657,7 @@ export function respondToEventInvitation(
     const paid = db
       .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
       .get(eventId, playerId) as { paid: number };
+    if (response === 'accepted' && updated.changes === 1) grantSkillCompletionBonus(eventId);
     return {
       ok: true,
       participant: { playerId, status: response, paid: Boolean(paid.paid) },
@@ -699,6 +710,7 @@ export function setParticipants(eventId: string, playerIds: string[]): void {
     for (const playerId of previousIds) {
       if (!desired.has(playerId)) fallbackPlayerEventContext(playerId, eventId);
     }
+    grantSkillCompletionBonus(eventId);
   });
   tx();
 }

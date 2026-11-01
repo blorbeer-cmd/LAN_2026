@@ -1,3 +1,4 @@
+import { withBettingAccounting, reconcileBetting, assertMatchEditable, settledDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
 // Recorded match results (FR-22, FR-25). Result details (teams + winner) are
 // stored as JSON with an explicit draw flag so missing results stay unscored.
 // Each match is
@@ -16,11 +17,17 @@ import { applySeatConflicts, buildTeamsSnapshot } from './matchmaking';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
+import { syncCompetitionPoints } from '../orgaPoints';
 
 export const matchesRouter = Router();
+matchesRouter.use((req, _res, next) => {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) reconcileBetting();
+  next();
+});
 
 interface DrawLinkRow {
   id: string;
+  created_by: string | null;
   match_id: string | null;
   tournament_id: string | null;
   event_id: string;
@@ -37,8 +44,8 @@ interface TeamInput {
   // Both optional and independent of winnerTeamIndex/each other: a game with
   // a real score (Punktestand) can carry `score`, a placement-only game
   // (Mario Kart, ein Rennen) can carry `rank` instead, some games want both.
-  // Neither feeds the leaderboard's win/loss scoring (see leaderboard.ts) —
-  // that still only reads winnerTeamIndex — they're purely for display.
+  // Complete ranks feed placement scoring (see leaderboard.ts). Scores are
+  // display values; different games need not share the same score direction.
   score?: number | null;
   rank?: number | null; // 1 = first place; ties allowed (same rank twice)
 }
@@ -51,6 +58,7 @@ interface MatchResult {
 
 interface MatchRow {
   id: string;
+  created_by: string | null;
   game_id: string;
   event_id: string;
   played_at: number;
@@ -197,7 +205,7 @@ matchesRouter.post('/', (req, res) => {
   let draw: DrawLinkRow | undefined;
   if (drawId) {
     draw = db
-      .prepare('SELECT id, match_id, tournament_id, event_id, seat_pairs_considered, game_id, source, teams FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+      .prepare('SELECT id, created_by, match_id, tournament_id, event_id, seat_pairs_considered, game_id, source, teams FROM matchmaking_draws WHERE id = ? AND group_id = ?')
       .get(drawId, req.group!.id) as DrawLinkRow | undefined;
     if (!draw) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
     if (draw.match_id) return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
@@ -207,6 +215,7 @@ matchesRouter.post('/', (req, res) => {
 
   const row: MatchRow = {
     id: nanoid(),
+    created_by: draw ? draw.created_by : req.player!.id,
     game_id: gameId,
     event_id: eventId,
     played_at: playedAt ?? Date.now(),
@@ -214,14 +223,17 @@ matchesRouter.post('/', (req, res) => {
     group_id: req.group!.id,
   };
   try {
-    db.transaction(() => {
-      db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+    withBettingAccounting(eventId, () => {
+      db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by, recorded_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
         row.id,
         row.game_id,
         row.event_id,
         row.played_at,
         row.result,
         row.group_id,
+        row.created_by,
+        Date.now(),
+        Date.now(),
       );
 
       if (drawId && draw) {
@@ -263,7 +275,8 @@ matchesRouter.post('/', (req, res) => {
         drawId,
       );
       }
-    })();
+      syncCompetitionPoints(req.group!.id, eventId);
+    });
   } catch (error) {
     if (error instanceof DrawAlreadyClaimedError) {
       return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
@@ -341,17 +354,23 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
   }
 
   const nextResult = JSON.stringify(nextResultObj);
-  db.prepare('UPDATE matches SET game_id = ?, played_at = ?, result = ? WHERE id = ?').run(
-    nextGameId,
-    nextPlayedAt,
-    nextResult,
-    existing.id
-  );
+  withBettingAccounting(existing.event_id, () => {
+    const rounds = settledDrawRounds(req.group!.id, existing.id);
+    if (!rounds.length) assertMatchEditable(req.group!.id, existing.id);
+    const correction = validateBettingCorrection(req, rounds);
+    if (nextGameId !== existing.game_id || nextPlayedAt !== existing.played_at || nextResult !== existing.result) {
+      db.prepare('UPDATE matches SET game_id = ?, played_at = ?, result = ?, updated_at = ?, result_revision = result_revision + 1 WHERE id = ?')
+        .run(nextGameId, nextPlayedAt, nextResult, Date.now(), existing.id);
+    }
+    rebookCorrectedRounds(rounds, correction);
+    syncCompetitionPoints(req.group!.id, existing.event_id);
+  });
 
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: existing.event_id });
   res.json(
     parseMatch({
       id: existing.id,
+      created_by: existing.created_by,
       game_id: nextGameId,
       event_id: existing.event_id,
       played_at: nextPlayedAt,
@@ -365,7 +384,11 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
 matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
   const existing = req.groupResource as MatchRow;
   if (!requireGroupEventAccess(req, res, existing.event_id)) return;
-  db.prepare('DELETE FROM matches WHERE id = ?').run(existing.id);
+  withBettingAccounting(existing.event_id, () => {
+    assertMatchEditable(req.group!.id, existing.id);
+    db.prepare('DELETE FROM matches WHERE id = ?').run(existing.id);
+    syncCompetitionPoints(req.group!.id, existing.event_id);
+  });
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.group!.id,

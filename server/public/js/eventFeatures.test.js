@@ -6,6 +6,13 @@ const generalEvent = {
   enabledFeatures: ['tasks', 'travel', 'food', 'costs', 'music', 'arcade'],
 };
 
+test('LAN points navigation follows participant visibility independently of collection and tracking', () => {
+  assert.equal(viewIsEnabledForEvent('points', { eventType: 'lan' }), false);
+  assert.equal(viewIsEnabledForEvent('points', { eventType: 'lan', pointsEnabled: true, enabledFeatures: ['tasks'] }), true);
+  assert.equal(viewIsEnabledForEvent('pointsAdmin', { eventType: 'lan', enabledFeatures: ['tasks'] }), true);
+  assert.equal(viewIsEnabledForEvent('points', { eventType: 'lan', pointsEnabled: false }), false);
+});
+
 test('general events keep core and planning areas while hiding LAN-specific routes', () => {
   for (const view of ['home', 'profile', 'events', 'broadcast', 'foodOrders', 'checklist', 'arrivals', 'music', 'arcade', 'tetris']) {
     assert.equal(viewIsEnabledForEvent(view, generalEvent), true, view);

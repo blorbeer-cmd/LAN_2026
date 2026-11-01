@@ -929,6 +929,19 @@ test('Events answers invitations directly and preserves declined and closed info
     await page.waitForSelector('#view-container[data-view="events"]');
     const originalContext = await page.locator('#event-context-switcher').inputValue();
     const startsAt = Date.now() + 7 * 24 * 60 * 60_000;
+    // An already collapsed declined list must open when another invitation
+    // is declined, even when shared refresh restores interaction state.
+    const previous = await ownerPage.request.post(`${BASE_URL}/api/events`, {
+      data: { name: 'Previously declined event', eventType: 'general', startsAt, endsAt: startsAt + 24 * 60 * 60_000 },
+    });
+    assert.equal(previous.status(), 201);
+    const previousId = ((await previous.json()) as { id: string }).id;
+    assert.equal((await ownerPage.request.post(`${BASE_URL}/api/events/${previousId}/invitations`, { data: { playerId: memberId } })).status(), 201);
+    assert.equal((await page.request.post(`${BASE_URL}/api/events/${previousId}/invitation/decline`, { data: {} })).status(), 200);
+    const previousSection = page.locator('[data-declined-events="event"]');
+    await previousSection.waitFor();
+    if (await previousSection.getAttribute('open') !== null) await previousSection.locator(':scope > summary').click();
+    assert.equal(await previousSection.getAttribute('open'), null);
     const created = await ownerPage.request.post(`${BASE_URL}/api/events`, {
       data: {
         name: 'Wochenende mit Übernachtung im Gemeindehaus Oberhausen',
@@ -970,6 +983,22 @@ test('Events answers invitations directly and preserves declined and closed info
     await declined.waitFor();
     await page.waitForFunction(() => document.activeElement?.id === 'orga-events-title');
     assert.equal(await page.locator('#view-container').getAttribute('data-view'), 'events');
+    const section = page.locator('[data-declined-events="event"]');
+    const retired = await section.elementHandle();
+    assert.ok(retired);
+    assert.equal((await ownerPage.request.patch(`${BASE_URL}/api/events/${id}`, { data: { location: 'Gemeindehaus Oberhausen' } })).status(), 200);
+    await page.waitForFunction((element) => !element.isConnected, retired);
+    await retired.evaluate((element) => {
+      const details = element as HTMLDetailsElement;
+      details.open = false;
+      details.dispatchEvent(new Event('toggle'));
+    });
+    const current = await section.elementHandle();
+    assert.ok(current);
+    assert.equal((await ownerPage.request.patch(`${BASE_URL}/api/events/${id}`, { data: { location: 'Gemeindehaus Oberhausen' } })).status(), 200);
+    await page.waitForFunction((element) => !element.isConnected, current);
+    await declined.waitFor();
+    assert.equal(await section.getAttribute('open'), '', 'retired toggle events must not collapse the current declined section');
     await page.reload();
     await page.waitForSelector('#view-container[data-view="events"]');
     await page.locator('[data-declined-events="event"] > summary').click();

@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { grantTravelPoints } from '../travelPoints';
 import { requireGroupEventAccess, resolveRequestGroupEventScope, resolveRequestGroupEventStorageId } from '../groupEventScope';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString } from '../validation';
@@ -83,6 +84,8 @@ function playerExists(playerId: string): boolean {
 const DIRECTION_FIELD = { arrival: 'arrival_at', departure: 'departure_at' } as const;
 
 function syncOwnDirectionField(eventId: string, playerId: string, direction: 'arrival' | 'departure', value: number | null): void {
+  const event = db.prepare('SELECT group_id FROM events WHERE id=?').get(eventId) as { group_id: string | null } | undefined;
+  if (event?.group_id) grantTravelPoints(event.group_id, eventId);
   const column = DIRECTION_FIELD[direction];
   db.prepare(
     `INSERT INTO arrivals (event_id, player_id, ${column}, updated_at)
@@ -240,17 +243,21 @@ arrivalsRouter.put('/mine', ...withBodyPlayerIdentity, (req, res) => {
 
   const eventId = res.locals.storageEventId as string | null;
   if (!eventId) return res.status(409).json({ error: 'Für diese Community läuft derzeit kein Event.' });
-  db.prepare(
-    `INSERT INTO arrivals (event_id, player_id, arrival_at, departure_at, note, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(event_id, player_id) DO UPDATE SET
-       arrival_at = excluded.arrival_at,
-       departure_at = excluded.departure_at,
-       note = excluded.note,
-       updated_at = excluded.updated_at`
-  ).run(eventId, playerId, parsedArrival, parsedDeparture, parsedNote, Date.now());
+  db.transaction(() => {
+    grantTravelPoints(req.group!.id, eventId);
+    db.prepare(
+      `INSERT INTO arrivals (event_id, player_id, arrival_at, departure_at, note, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(event_id, player_id) DO UPDATE SET
+         arrival_at = excluded.arrival_at,
+         departure_at = excluded.departure_at,
+         note = excluded.note,
+         updated_at = excluded.updated_at`
+    ).run(eventId, playerId, parsedArrival, parsedDeparture, parsedNote, Date.now());
+  })();
 
   broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id, eventId });
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json(buildList(req.group!.id, eventId));
 });
 
@@ -305,6 +312,7 @@ arrivalsRouter.post('/carpools', ...withBodyPlayerIdentity, (req, res) => {
   create();
 
   broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id, eventId });
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.status(201).json(serializeCarpool(getCarpool(id, req.group!.id, eventId)!));
 });
 
@@ -352,6 +360,7 @@ arrivalsRouter.patch('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => {
     groupId: carpool.group_id,
     eventId: carpool.event_id,
   });
+  broadcast(Events.leaderboardChanged, null, { groupId: carpool.group_id, eventId: carpool.event_id });
   res.json(serializeCarpool(getCarpool(carpool.id, carpool.group_id, carpool.event_id)!));
 });
 
@@ -384,6 +393,7 @@ arrivalsRouter.post('/carpools/:id/join', ...withBodyPlayerIdentity, (req, res) 
     groupId: carpool.group_id,
     eventId: carpool.event_id,
   });
+  broadcast(Events.leaderboardChanged, null, { groupId: carpool.group_id, eventId: carpool.event_id });
   res.json(serializeCarpool(carpool));
 });
 
@@ -409,6 +419,7 @@ arrivalsRouter.post('/carpools/:id/leave', ...withBodyPlayerIdentity, (req, res)
     groupId: carpool.group_id,
     eventId: carpool.event_id,
   });
+  broadcast(Events.leaderboardChanged, null, { groupId: carpool.group_id, eventId: carpool.event_id });
   if (remaining === 0) return res.status(204).end();
   res.json(serializeCarpool(carpool));
 });
@@ -434,5 +445,6 @@ arrivalsRouter.delete('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => 
     groupId: carpool.group_id,
     eventId: carpool.event_id,
   });
+  broadcast(Events.leaderboardChanged, null, { groupId: carpool.group_id, eventId: carpool.event_id });
   res.status(204).end();
 });

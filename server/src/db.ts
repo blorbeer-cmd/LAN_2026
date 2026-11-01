@@ -5533,6 +5533,417 @@ function addWelcomeTrailerSeen(): void {
 }
 registerMigration({ version: 122, name: 'add welcome trailer seen marker', up: addWelcomeTrailerSeen });
 
+// Points are opt-in per event; legacy leaderboards keep their original model.
+registerMigration({ version: 123, name: 'add event points journal and betting pools', up: () => {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS points_settings (
+      event_id TEXT PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+      group_id TEXT NOT NULL REFERENCES groups(id),
+      initial_points INTEGER NOT NULL CHECK(initial_points BETWEEN 0 AND 10000),
+      orga_budget INTEGER NOT NULL CHECK(orga_budget BETWEEN 0 AND 1000000),
+      orga_allocated INTEGER NOT NULL DEFAULT 0 CHECK(orga_allocated BETWEEN 0 AND 1000000),
+      prize_info TEXT NOT NULL DEFAULT '',
+      max_stake INTEGER NOT NULL DEFAULT 10 CHECK(max_stake BETWEEN 1 AND 1000),
+      daily_limit INTEGER NOT NULL DEFAULT 30 CHECK(daily_limit BETWEEN 1 AND 10000),
+      max_rounds INTEGER NOT NULL DEFAULT 6 CHECK(max_rounds BETWEEN 0 AND 100),
+      created_at INTEGER NOT NULL,
+      closed_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS point_entries (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL REFERENCES groups(id),
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      amount INTEGER NOT NULL CHECK(amount BETWEEN -1000000000 AND 1000000000),
+      source TEXT NOT NULL CHECK(source IN ('start','task','tip','refund','correction','reversal')),
+      source_key TEXT NOT NULL,
+      title TEXT NOT NULL,
+      details TEXT NOT NULL DEFAULT '{}',
+      actor_id TEXT REFERENCES players(id) ON DELETE SET NULL,
+      original_id TEXT REFERENCES point_entries(id),
+      created_at INTEGER NOT NULL,
+      UNIQUE(event_id, source_key)
+    );
+    CREATE INDEX IF NOT EXISTS point_entries_wallet ON point_entries(event_id,player_id,created_at);
+    CREATE TABLE IF NOT EXISTS points_snapshots (
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      revision INTEGER NOT NULL,
+      standings TEXT NOT NULL,
+      actor_id TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY(event_id,revision)
+    );
+    CREATE TRIGGER IF NOT EXISTS points_participant_start_insert AFTER INSERT ON event_participants
+    WHEN NEW.status = 'accepted' BEGIN
+      INSERT OR IGNORE INTO point_entries
+      (id,group_id,event_id,player_id,amount,source,source_key,title,created_at)
+      SELECT lower(hex(randomblob(16))),s.group_id,s.event_id,NEW.player_id,s.initial_points,
+        'start','start:' || NEW.player_id,'Grundstock zur LAN',CAST(unixepoch('subsec')*1000 AS INTEGER)
+      FROM points_settings s JOIN players p ON p.id = NEW.player_id
+      JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = s.group_id AND gm.status = 'active'
+      WHERE s.event_id = NEW.event_id AND s.closed_at IS NULL AND p.deactivated_at IS NULL AND p.is_test = 0
+        AND NOT EXISTS (SELECT 1 FROM point_entries WHERE event_id = NEW.event_id AND source_key = 'start:' || NEW.player_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS points_participant_start_update AFTER UPDATE OF status ON event_participants
+    WHEN NEW.status = 'accepted' BEGIN
+      INSERT OR IGNORE INTO point_entries
+      (id,group_id,event_id,player_id,amount,source,source_key,title,created_at)
+      SELECT lower(hex(randomblob(16))),s.group_id,s.event_id,NEW.player_id,s.initial_points,
+        'start','start:' || NEW.player_id,'Grundstock zur LAN',CAST(unixepoch('subsec')*1000 AS INTEGER)
+      FROM points_settings s JOIN players p ON p.id = NEW.player_id
+      JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = s.group_id AND gm.status = 'active'
+      WHERE s.event_id = NEW.event_id AND s.closed_at IS NULL AND p.deactivated_at IS NULL AND p.is_test = 0
+        AND NOT EXISTS (SELECT 1 FROM point_entries WHERE event_id = NEW.event_id AND source_key = 'start:' || NEW.player_id);
+    END;
+    CREATE TABLE IF NOT EXISTS points_task_rewards (
+      task_id TEXT PRIMARY KEY REFERENCES checklist_tasks(id) ON DELETE CASCADE,
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      group_id TEXT NOT NULL REFERENCES groups(id),
+      per_person INTEGER NOT NULL CHECK(per_person BETWEEN 1 AND 1000),
+      slots INTEGER NOT NULL CHECK(slots BETWEEN 1 AND 30),
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS points_task_claims (
+      task_id TEXT NOT NULL REFERENCES points_task_rewards(task_id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      PRIMARY KEY(task_id,player_id)
+    );
+    CREATE TABLE IF NOT EXISTS betting_rounds (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL REFERENCES groups(id),
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      source_type TEXT NOT NULL CHECK(source_type IN ('draw','tournament_match','tournament')),
+      source_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      outcomes TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('open','locked','settled','refunded')),
+      closes_at INTEGER NOT NULL,
+      locked_at INTEGER,
+      settled_at INTEGER,
+      result_key TEXT,
+      revision INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      notice_sent INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(event_id,source_type,source_id)
+    );
+    CREATE INDEX IF NOT EXISTS betting_rounds_event ON betting_rounds(event_id,status);
+    CREATE TABLE IF NOT EXISTS betting_tips (
+      id TEXT PRIMARY KEY,
+      round_id TEXT NOT NULL REFERENCES betting_rounds(id) ON DELETE CASCADE,
+      player_id TEXT REFERENCES players(id) ON DELETE SET NULL,
+      outcome_id TEXT NOT NULL,
+      stake INTEGER NOT NULL CHECK(stake BETWEEN 1 AND 1000),
+      day TEXT NOT NULL,
+      counts_daily INTEGER NOT NULL DEFAULT 1,
+      payout INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(round_id,player_id)
+    );
+  `);
+} });
+
+registerMigration({ version: 124, name: 'collect LAN points independently of participant visibility', up: () => {
+  const columns = db.prepare('PRAGMA table_info(points_settings)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'visible')) {
+    db.exec('ALTER TABLE points_settings ADD COLUMN visible INTEGER NOT NULL DEFAULT 1 CHECK(visible IN (0,1))');
+  }
+  if (!columns.some((column) => column.name === 'visibility_revision')) {
+    db.exec('ALTER TABLE points_settings ADD COLUMN visibility_revision INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!columns.some((column) => column.name === 'configured_at')) {
+    db.exec('ALTER TABLE points_settings ADD COLUMN configured_at INTEGER');
+    db.exec('UPDATE points_settings SET configured_at = created_at');
+  }
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS points_settings_start_accounts AFTER INSERT ON points_settings BEGIN
+      INSERT OR IGNORE INTO point_entries
+      (id,group_id,event_id,player_id,amount,source,source_key,title,created_at)
+      SELECT lower(hex(randomblob(16))),NEW.group_id,NEW.event_id,p.id,NEW.initial_points,
+        'start','start:' || p.id,'Grundstock zur LAN',NEW.created_at
+      FROM event_participants ep JOIN players p ON p.id = ep.player_id
+      JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = NEW.group_id AND gm.status = 'active'
+      WHERE ep.event_id = NEW.event_id AND ep.status = 'accepted'
+        AND NEW.closed_at IS NULL AND p.deactivated_at IS NULL AND p.is_test = 0;
+    END;
+    CREATE TRIGGER IF NOT EXISTS points_event_insert AFTER INSERT ON events
+    WHEN NEW.event_type_key = 'lan' AND NEW.status = 'published' AND NEW.group_id IS NOT NULL BEGIN
+      INSERT OR IGNORE INTO points_settings
+      (event_id,group_id,initial_points,orga_budget,created_at,visible)
+      VALUES (NEW.id,NEW.group_id,100,400,CAST(unixepoch('subsec')*1000 AS INTEGER),0);
+    END;
+    CREATE TRIGGER IF NOT EXISTS points_event_publish AFTER UPDATE OF status,event_type_key ON events
+    WHEN NEW.event_type_key = 'lan' AND NEW.status = 'published' AND NEW.group_id IS NOT NULL BEGIN
+      INSERT OR IGNORE INTO points_settings
+      (event_id,group_id,initial_points,orga_budget,created_at,visible)
+      VALUES (NEW.id,NEW.group_id,100,400,CAST(unixepoch('subsec')*1000 AS INTEGER),0);
+    END;
+    INSERT OR IGNORE INTO points_settings
+    (event_id,group_id,initial_points,orga_budget,created_at,visible)
+    SELECT id,group_id,100,400,CAST(unixepoch('subsec')*1000 AS INTEGER),0 FROM events
+    WHERE event_type_key = 'lan' AND status = 'published' AND ended_at IS NULL AND group_id IS NOT NULL;
+  `);
+} });
+
+// Versions 123/124 retain the existing LAN account and wagering implementation.
+// This journal keeps category scores separate from the spendable betting wallet.
+registerMigration({ version: 125, name: 'add category points accounts and journal', up: () => {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS points_accounts (
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      account TEXT NOT NULL CHECK(account IN ('betting', 'orga', 'playing', 'wallet')),
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY(event_id, player_id, account)
+    );
+    CREATE TABLE IF NOT EXISTS points_sources (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      player_id TEXT NOT NULL,
+      account TEXT NOT NULL,
+      source_key TEXT NOT NULL CHECK(length(source_key) BETWEEN 1 AND 200),
+      UNIQUE(event_id, player_id, account, source_key),
+      FOREIGN KEY(event_id, player_id, account)
+        REFERENCES points_accounts(event_id, player_id, account) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS points_journal (
+      id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL REFERENCES points_sources(id) ON DELETE CASCADE,
+      revision INTEGER NOT NULL CHECK(revision > 0),
+      amount INTEGER NOT NULL CHECK(typeof(amount) = 'integer' AND amount != 0 AND abs(amount) <= 9007199254740991),
+      title TEXT NOT NULL CHECK(length(trim(title)) BETWEEN 1 AND 200),
+      reason TEXT CHECK(reason IS NULL OR length(trim(reason)) BETWEEN 1 AND 500),
+      created_at INTEGER NOT NULL,
+      UNIQUE(source_id, revision),
+      CHECK(revision = 1 OR reason IS NOT NULL)
+    );
+    CREATE INDEX IF NOT EXISTS points_accounts_player ON points_accounts(player_id, event_id);
+    CREATE TRIGGER IF NOT EXISTS points_journal_immutable_update BEFORE UPDATE ON points_journal
+      BEGIN SELECT RAISE(ABORT, 'Points journal entries are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS points_journal_immutable_delete BEFORE DELETE ON points_journal
+      WHEN EXISTS(SELECT 1 FROM points_sources WHERE id = OLD.source_id)
+      BEGIN SELECT RAISE(ABORT, 'Points journal entries are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS points_sources_immutable_update BEFORE UPDATE ON points_sources
+      BEGIN SELECT RAISE(ABORT, 'Points sources are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS points_sources_immutable_delete BEFORE DELETE ON points_sources
+      WHEN EXISTS(SELECT 1 FROM points_accounts
+        WHERE event_id = OLD.event_id AND player_id = OLD.player_id AND account = OLD.account)
+      BEGIN SELECT RAISE(ABORT, 'Points sources are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS points_accounts_retained BEFORE DELETE ON points_accounts
+      WHEN EXISTS(SELECT 1 FROM events WHERE id = OLD.event_id)
+       AND EXISTS(SELECT 1 FROM players WHERE id = OLD.player_id)
+      BEGIN SELECT RAISE(ABORT, 'Points accounts remain until event or account erasure'); END;
+  `);
+  const accountKinds = `(SELECT 'betting' AS account UNION ALL SELECT 'orga' UNION ALL SELECT 'playing' UNION ALL SELECT 'wallet')`;
+  for (const operation of ['INSERT', 'UPDATE OF status'] as const) {
+    db.exec(`CREATE TRIGGER IF NOT EXISTS points_accounts_participant_${operation === 'INSERT' ? 'insert' : 'update'}
+      AFTER ${operation} ON event_participants
+      WHEN NEW.status = 'accepted' AND NEW.event_id != '${OUTSIDE_EVENTS_ID}' BEGIN
+        INSERT OR IGNORE INTO points_accounts(event_id, player_id, account, created_at)
+        SELECT NEW.event_id, NEW.player_id, kinds.account, CAST(unixepoch('subsec') * 1000 AS INTEGER)
+        FROM ${accountKinds} kinds WHERE NOT EXISTS (
+          SELECT 1 FROM points_accounts a WHERE a.event_id = NEW.event_id
+            AND a.player_id = NEW.player_id AND a.account = kinds.account
+        );
+      END;`);
+  }
+  db.prepare(`INSERT OR IGNORE INTO points_accounts(event_id, player_id, account, created_at)
+    SELECT ep.event_id, ep.player_id, kinds.account, ? FROM event_participants ep
+    CROSS JOIN ${accountKinds} kinds WHERE ep.status = 'accepted' AND ep.event_id != ?`
+  ).run(Date.now(), OUTSIDE_EVENTS_ID);
+} });
+
+registerMigration({ version: 126, name: 'track automatic playing entitlements', up: () => {
+  db.exec(`CREATE TABLE IF NOT EXISTS points_playing_awards (
+    event_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    account TEXT NOT NULL DEFAULT 'playing' CHECK(account = 'playing'),
+    source_key TEXT NOT NULL,
+    amount INTEGER NOT NULL CHECK(typeof(amount) = 'integer' AND amount >= 0),
+    PRIMARY KEY(event_id, player_id, source_key),
+    FOREIGN KEY(event_id, player_id, account)
+      REFERENCES points_accounts(event_id, player_id, account) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS points_playing_awards_player ON points_playing_awards(player_id, event_id);`);
+} });
+
+registerMigration({ version: 127, name: 'track competition organizers and automatic orga entitlements', up: () => {
+  // Older competitions have no attributable organizer. Never infer one from
+  // an event owner, participant or whoever happens to edit a historical result.
+  for (const table of ['matches', 'tournaments', 'matchmaking_draws', 'drafts']) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'created_by')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN created_by TEXT REFERENCES players(id) ON DELETE SET NULL`);
+    }
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS points_orga_awards (
+    event_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    account TEXT NOT NULL DEFAULT 'orga' CHECK(account = 'orga'),
+    source_key TEXT NOT NULL,
+    amount INTEGER NOT NULL CHECK(typeof(amount) = 'integer' AND amount >= 0),
+    PRIMARY KEY(event_id, player_id, source_key),
+    FOREIGN KEY(event_id, player_id, account)
+      REFERENCES points_accounts(event_id, player_id, account) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS points_orga_awards_player ON points_orga_awards(player_id, event_id);`);
+} });
+
+registerMigration({ version: 128, name: 'track recorded result activity for the kiosk feed', up: () => {
+  const columns = db.prepare('PRAGMA table_info(matches)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'recorded_at')) db.exec('ALTER TABLE matches ADD COLUMN recorded_at INTEGER NOT NULL DEFAULT 0');
+  if (!columns.some((column) => column.name === 'updated_at')) db.exec('ALTER TABLE matches ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0');
+  if (!columns.some((column) => column.name === 'result_revision')) db.exec('ALTER TABLE matches ADD COLUMN result_revision INTEGER NOT NULL DEFAULT 1 CHECK(result_revision >= 1)');
+  db.exec(`UPDATE matches SET recorded_at = played_at WHERE recorded_at = 0;
+    UPDATE matches SET updated_at = recorded_at WHERE updated_at = 0;
+    CREATE INDEX IF NOT EXISTS matches_event_activity ON matches(group_id, event_id, updated_at DESC);`);
+} });
+
+registerMigration({ version: 129, name: 'add prospective todo category rewards', up: () => {
+  const columns = db.prepare('PRAGMA table_info(checklist_tasks)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'points_model')) {
+    db.exec(`ALTER TABLE checklist_tasks ADD COLUMN points_model TEXT NOT NULL DEFAULT 'category' CHECK(points_model IN ('legacy','category'));
+      UPDATE checklist_tasks SET points_model = 'legacy';`);
+  }
+  if (!columns.some((column) => column.name === 'points_value')) {
+    // Historical tasks keep their existing promises; never invent a reward for
+    // already completed work. New tasks explicitly choose their category value.
+    db.exec(`ALTER TABLE checklist_tasks ADD COLUMN points_value INTEGER NOT NULL DEFAULT 0 CHECK(typeof(points_value) = 'integer' AND points_value BETWEEN 0 AND 5)`);
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS checklist_tasks_points ON checklist_tasks(event_id, points_value, batch_id)');
+} });
+
+registerMigration({ version: 130, name: 'use a fixed three point todo reward', up: () => {
+  // Completed historical work and explicit old promises stay in their old
+  // model. Unrewarded work that is still open can join the new scoring now.
+  db.exec(`UPDATE checklist_tasks SET points_model='category',points_value=3
+    WHERE type='todo' AND status IN ('open','taken')
+      AND NOT EXISTS (SELECT 1 FROM points_task_rewards r WHERE r.task_id=checklist_tasks.id);
+    UPDATE checklist_tasks SET points_value=CASE WHEN type='todo' THEN 3 ELSE 0 END
+      WHERE points_model='category';`);
+} });
+
+registerMigration({ version: 131, name: 'restart points without balances and activate the separate betting wallet', up: () => {
+  db.exec(`CREATE TABLE IF NOT EXISTS points_wallet_reset (
+      id INTEGER PRIMARY KEY CHECK(id=1), reset_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS points_reset_sources (
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      source_key TEXT NOT NULL,
+      player_id TEXT REFERENCES players(id) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS points_reset_source_identity
+      ON points_reset_sources(event_id,source_key,COALESCE(player_id,''));`);
+  // The user explicitly chose a fresh start for every existing event, including
+  // category scores and snapshots. Replay must never erase post-reset earnings.
+  if (!db.prepare('SELECT 1 FROM points_wallet_reset WHERE id=1').get()) {
+    db.exec(`INSERT OR IGNORE INTO points_reset_sources(event_id,source_key,player_id)
+        SELECT event_id,source_key,player_id FROM points_sources;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,'match:' || id FROM matches;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,'tournament:' || id || ':placement' FROM tournaments WHERE status='completed';
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,'tournament:' || id || ':completion' FROM tournaments WHERE status='completed';
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,CASE WHEN batch_id IS NULL THEN 'todo:' || id ELSE 'todo:batch:' || batch_id END
+        FROM checklist_tasks WHERE event_id IS NOT NULL AND status='done';
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,'food-order:' || id || ':organization' FROM food_orders WHERE closed_at IS NOT NULL;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT event_id,'food-order:' || id || ':participation' FROM food_orders WHERE closed_at IS NOT NULL;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        WITH RECURSIVE decisions(event_id,group_id,round,root,started_at) AS (
+          SELECT event_id,group_id,round,round,started_at FROM vote_rounds WHERE source_round IS NULL
+          UNION ALL SELECT child.event_id,child.group_id,child.round,d.root,d.started_at
+            FROM vote_rounds child JOIN decisions d ON child.source_round=d.round
+              AND child.event_id=d.event_id AND child.group_id=d.group_id
+        ) SELECT d.event_id,'vote:' || d.root || ':' || d.started_at || ':organization'
+          FROM decisions d JOIN vote_rounds v ON v.event_id=d.event_id AND v.group_id=d.group_id
+            AND v.round=d.round WHERE v.closed_at IS NOT NULL;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key)
+        SELECT p.event_id,'poll:' || (SELECT original.id FROM event_date_polls original
+          WHERE original.event_id=p.event_id AND original.decision_key=p.decision_key
+          ORDER BY original.round_number LIMIT 1) || ':organization'
+        FROM event_date_polls p WHERE p.status IN ('closed','scheduled','superseded');
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key,player_id)
+        SELECT event_id,source_key,player_id FROM points_orga_awards;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key,player_id)
+        SELECT ep.event_id,'bonus:skills',ep.player_id FROM event_participants ep
+        JOIN events e ON e.id=ep.event_id WHERE ep.status='accepted'
+          AND EXISTS(SELECT 1 FROM games g WHERE g.group_id=e.group_id AND g.status='catalog' AND g.arcade_key IS NULL)
+          AND NOT EXISTS(SELECT 1 FROM games g WHERE g.group_id=e.group_id AND g.status='catalog' AND g.arcade_key IS NULL
+            AND NOT EXISTS(SELECT 1 FROM skills s WHERE s.player_id=ep.player_id AND s.game_id=g.id
+              AND s.group_id=g.group_id AND s.rating BETWEEN 0 AND 5));
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key,player_id)
+        SELECT a.event_id,'bonus:arrival',a.player_id FROM arrivals a JOIN events e ON e.id=a.event_id
+        WHERE e.starts_at<=CAST(unixepoch('subsec')*1000 AS INTEGER) AND a.updated_at<=e.starts_at AND a.arrival_at IS NOT NULL;
+      INSERT OR IGNORE INTO points_reset_sources(event_id,source_key,player_id)
+        SELECT a.event_id,'bonus:departure',a.player_id FROM arrivals a JOIN events e ON e.id=a.event_id
+        WHERE e.starts_at<=CAST(unixepoch('subsec')*1000 AS INTEGER) AND a.updated_at<=e.starts_at AND a.departure_at IS NOT NULL;
+      DROP TRIGGER IF EXISTS points_journal_immutable_delete;
+      DROP TRIGGER IF EXISTS points_sources_immutable_delete;
+      DELETE FROM points_journal;
+      DELETE FROM points_sources;
+      DELETE FROM points_playing_awards;
+      DELETE FROM points_orga_awards;
+      DELETE FROM point_entries;
+      DELETE FROM points_snapshots;
+      DELETE FROM betting_rounds;
+      DELETE FROM points_task_claims;
+      DELETE FROM points_task_rewards;
+      UPDATE points_settings SET initial_points=100,orga_budget=0,orga_allocated=0,closed_at=NULL;
+      UPDATE checklist_tasks SET points_model='category',points_value=3 WHERE type='todo' AND status IN ('open','taken');
+      UPDATE push_log SET resolved_at=CAST(unixepoch('subsec')*1000 AS INTEGER)
+        WHERE notification_type='betting-open' AND resolved_at IS NULL;
+      CREATE TRIGGER points_journal_immutable_delete BEFORE DELETE ON points_journal
+        WHEN EXISTS(SELECT 1 FROM points_sources WHERE id=OLD.source_id)
+        BEGIN SELECT RAISE(ABORT,'Points journal entries are immutable'); END;
+      CREATE TRIGGER points_sources_immutable_delete BEFORE DELETE ON points_sources
+        WHEN EXISTS(SELECT 1 FROM points_accounts WHERE event_id=OLD.event_id AND player_id=OLD.player_id AND account=OLD.account)
+        BEGIN SELECT RAISE(ABORT,'Points sources are immutable'); END;`);
+    db.prepare('INSERT INTO points_wallet_reset(id,reset_at) VALUES(1,?)').run(Date.now());
+  }
+  // Funding is driven by participation/settings writes, including late acceptance
+  // and event publication. Reading a wallet is never needed to mint its start.
+  const fund = (event: string, player?: string) => `
+    INSERT OR IGNORE INTO points_accounts(event_id,player_id,account,created_at)
+      SELECT ep.event_id,ep.player_id,'wallet',CAST(unixepoch('subsec')*1000 AS INTEGER)
+      FROM event_participants ep JOIN points_settings s ON s.event_id=ep.event_id
+      JOIN players p ON p.id=ep.player_id JOIN group_memberships gm ON gm.group_id=s.group_id AND gm.player_id=p.id
+      WHERE ep.event_id=${event} ${player ? `AND ep.player_id=${player}` : ''}
+        AND ep.status='accepted' AND gm.status='active' AND p.deactivated_at IS NULL AND p.is_test=0
+        AND s.closed_at IS NULL AND ep.event_id!='${OUTSIDE_EVENTS_ID}'
+        AND NOT EXISTS(SELECT 1 FROM points_accounts a WHERE a.event_id=ep.event_id AND a.player_id=ep.player_id AND a.account='wallet');
+    INSERT OR IGNORE INTO points_sources(id,event_id,player_id,account,source_key)
+      SELECT lower(hex(randomblob(16))),ep.event_id,ep.player_id,'wallet','wallet:start'
+      FROM event_participants ep JOIN points_settings s ON s.event_id=ep.event_id
+      JOIN players p ON p.id=ep.player_id JOIN group_memberships gm ON gm.group_id=s.group_id AND gm.player_id=p.id
+      WHERE ep.event_id=${event} ${player ? `AND ep.player_id=${player}` : ''}
+        AND ep.status='accepted' AND gm.status='active' AND p.deactivated_at IS NULL AND p.is_test=0
+        AND s.closed_at IS NULL AND ep.event_id!='${OUTSIDE_EVENTS_ID}'
+        AND NOT EXISTS(SELECT 1 FROM points_sources a WHERE a.event_id=ep.event_id AND a.player_id=ep.player_id AND a.account='wallet' AND a.source_key='wallet:start');
+    INSERT OR IGNORE INTO points_journal(id,source_id,revision,amount,title,created_at)
+      SELECT lower(hex(randomblob(16))),s.id,1,100,'Wett-Startguthaben',CAST(unixepoch('subsec')*1000 AS INTEGER)
+      FROM points_sources s WHERE s.event_id=${event} ${player ? `AND s.player_id=${player}` : ''}
+        AND s.account='wallet' AND s.source_key='wallet:start'
+        AND NOT EXISTS(SELECT 1 FROM points_journal j WHERE j.source_id=s.id);`;
+  db.exec(`DROP TRIGGER IF EXISTS points_participant_start_insert;
+    DROP TRIGGER IF EXISTS points_participant_start_update;
+    DROP TRIGGER IF EXISTS points_settings_start_accounts;
+    CREATE TRIGGER points_participant_start_insert AFTER INSERT ON event_participants WHEN NEW.status='accepted'
+      BEGIN ${fund('NEW.event_id', 'NEW.player_id')} END;
+    CREATE TRIGGER points_participant_start_update AFTER UPDATE OF status ON event_participants WHEN NEW.status='accepted'
+      BEGIN ${fund('NEW.event_id', 'NEW.player_id')} END;
+    CREATE TRIGGER points_settings_start_accounts AFTER INSERT ON points_settings
+      BEGIN ${fund('NEW.event_id')} END;`);
+  for (const event of db.prepare('SELECT event_id FROM points_settings').all() as Array<{ event_id: string }>) {
+    // Internal identifiers only; actual event IDs remain bound SQL values.
+    db.prepare(`UPDATE event_participants SET status=status WHERE event_id=? AND status='accepted'`).run(event.event_id);
+  }
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

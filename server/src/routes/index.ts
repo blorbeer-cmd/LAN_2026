@@ -2,6 +2,7 @@
 // they are built (players, games, skills, live, votes, matches).
 
 import { Router, type Request } from 'express';
+import { pointsRouter } from './points';
 import { playersRouter } from './players';
 import { gamesRouter } from './games';
 import { skillsRouter } from './skills';
@@ -37,6 +38,7 @@ import { backupRouter } from './backup';
 import { authRouter } from './auth';
 import { kioskAccessRouter } from './kioskAccess';
 import { newstickerRouter } from './newsticker';
+import { resultsRouter } from './results';
 import { groupsRouter } from './groups';
 import { pingsRouter } from './pings';
 import { musicRouter } from './music';
@@ -88,6 +90,7 @@ const KIOSK_GET_PATHS = [
   /^\/food-orders\/?$/,
   /^\/music\/kiosk\/?$/,
   /^\/newsticker\/?$/,
+  /^\/results\/feed\/?$/,
   // The dashboard loads the latest group-wide banner alongside the other
   // read-only views; without this a token-only kiosk 401s on the whole
   // Promise.all refresh. getLastPushLogEntry only returns 'all'-audience
@@ -230,6 +233,7 @@ apiRouter.use('/live', requireActiveEventFeatureMutation('tracking'), liveRouter
 apiRouter.use('/matchmaking', requireActiveEventFeatureMutation('competition'), matchmakingRouter);
 apiRouter.use('/votes', requireActiveEventFeatureMutation('games'), votesRouter);
 apiRouter.use('/matches', requireActiveEventFeatureMutation('competition'), matchesRouter);
+apiRouter.use('/points', pointsRouter);
 apiRouter.use('/leaderboard', leaderboardRouter);
 apiRouter.use('/stats', statsRouter);
 apiRouter.use('/analytics', analyticsRouter);
@@ -247,6 +251,7 @@ apiRouter.use('/agent-download', requireActiveEventFeatureMutation('tracking'), 
 apiRouter.use('/draft', requireActiveEventFeatureMutation('competition'), draftRouter);
 apiRouter.use('/broadcasts', broadcastsRouter);
 apiRouter.use('/newsticker', newstickerRouter);
+apiRouter.use('/results', resultsRouter);
 apiRouter.use('/info', infoBoardRouter);
 apiRouter.use('/food-orders', requireActiveEventFeatureMutation('food'), foodOrdersRouter);
 // Packliste and To-Dos are two switchable areas now, so the router guards

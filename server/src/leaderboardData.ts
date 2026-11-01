@@ -5,7 +5,7 @@ import { computeStandings, type MatchForScoring, type TournamentPlacementForScor
 import { computeBracketPlacements, computeRoundRobinStandings } from './tournament';
 import { matchResultContainsPlayerIds } from './testDataVisibility';
 
-export function readStandings(
+export function readScoringInputs(
   groupId: string,
   eventIds: string[],
   gameId: string | null = null,
@@ -15,30 +15,44 @@ export function readStandings(
   const gameFilter = gameId ? ' AND m.game_id = ?' : '';
   const rows = db
     .prepare(
-      `SELECT m.result, tm.is_draw FROM matches m
+      `SELECT m.id, m.created_by, m.result, MAX(tm.is_draw) AS is_draw, COALESCE(g.name, 'Unbekanntes Spiel') AS game_name FROM matches m
      LEFT JOIN tournament_matches tm ON tm.match_id = m.id
-     WHERE m.group_id = ? AND ${eventFilter.clause}${gameFilter}`,
+     LEFT JOIN games g ON g.id = m.game_id
+     WHERE m.group_id = ? AND ${eventFilter.clause}${gameFilter} GROUP BY m.id`,
     )
     .all(groupId, ...eventFilter.params, ...(gameId ? [gameId] : [])) as Array<{
     result: string;
     is_draw: number | null;
+    id: string;
+    created_by: string | null;
+    game_name: string;
   }>;
-  const matches: MatchForScoring[] = rows
+  const matches = rows
     .filter((row) => !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
     .map((row) => {
       const result = JSON.parse(row.result) as MatchForScoring;
       // Older tournament draws have an explicit flag on their fixture only.
-      return { ...result, isDraw: result.isDraw ?? row.is_draw === 1 };
+      return {
+        ...result,
+        id: row.id,
+        createdBy: row.created_by,
+        gameName: row.game_name,
+        isDraw: result.isDraw ?? row.is_draw === 1,
+      };
     });
 
   const tournamentFilter = eventIdSql('event_id', eventIds);
   const tournaments = db
     .prepare(
-      `SELECT id, format FROM tournaments WHERE group_id = ? AND ${tournamentFilter.clause}
+      `SELECT id, name, format FROM tournaments WHERE group_id = ? AND ${tournamentFilter.clause}
      AND status = 'completed' AND ended_early = 0${gameId ? ' AND game_id = ?' : ''}`,
     )
-    .all(groupId, ...tournamentFilter.params, ...(gameId ? [gameId] : [])) as Array<{ id: string; format: string }>;
-  const placements: TournamentPlacementForScoring[] = [];
+    .all(groupId, ...tournamentFilter.params, ...(gameId ? [gameId] : [])) as Array<{
+    id: string;
+    name: string;
+    format: string;
+  }>;
+  const placements: Array<TournamentPlacementForScoring & { tournamentId: string; tournamentName: string }> = [];
   for (const tournament of tournaments) {
     const teams = db
       .prepare('SELECT id, player_ids FROM tournament_teams WHERE tournament_id = ?')
@@ -98,10 +112,22 @@ export function readStandings(
     }
     placements.push(
       ...teamPlacements.map((placement) => ({
+        tournamentId: tournament.id,
+        tournamentName: tournament.name,
         playerIds: playerIdsByTeam.get(placement.teamId) ?? [],
         place: placement.place,
       })),
     );
   }
+  return { matches, placements };
+}
+
+export function readStandings(
+  groupId: string,
+  eventIds: string[],
+  gameId: string | null = null,
+  hiddenPlayerIds: Set<string> = new Set(),
+) {
+  const { matches, placements } = readScoringInputs(groupId, eventIds, gameId, hiddenPlayerIds);
   return computeStandings(matches, placements);
 }

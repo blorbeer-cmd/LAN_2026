@@ -189,6 +189,7 @@ export const api = {
     login: (data) => apiFetch('/api/kiosk/login', { method: 'POST', body: JSON.stringify(data) }),
     exchangeHandoff: (code) => apiFetch('/api/kiosk/handoff', { method: 'POST', body: JSON.stringify({ code }) }),
     newsticker: () => apiFetch('/api/newsticker'),
+    results: () => apiFetch('/api/results/feed'),
   },
   me: () => apiFetch('/api/me'),
 
@@ -693,6 +694,8 @@ export const api = {
       apiFetch(`/api/checklist/tasks/${taskId}/release`, { method: 'POST', body: JSON.stringify({ playerId }) }),
     setDone: (taskId, playerId) =>
       apiFetch(`/api/checklist/tasks/${taskId}/done`, { method: 'PATCH', body: JSON.stringify({ playerId }) }),
+    reopen: (taskId, playerId) =>
+      apiFetch(`/api/checklist/tasks/${taskId}/reopen`, { method: 'PATCH', body: JSON.stringify({ playerId }) }),
     cancel: (taskId, playerId) =>
       apiFetch(`/api/checklist/tasks/${taskId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
     archive: (taskId, playerId) =>

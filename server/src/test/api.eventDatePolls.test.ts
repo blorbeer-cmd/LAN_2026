@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createTestApp, TEST_ADMIN_ID } from './testApp';
-import { BASE_EVENT_ID, db } from '../db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
+import { readPointsSource } from '../pointsJournal';
 import { ensureDefaultGroupMembership } from '../groups';
 import { advanceAutomaticReminder, dueAutomaticReminders } from '../eventDatePolls';
 import { ensureAccountEventContext } from '../eventContext';
@@ -95,6 +96,52 @@ function responsesFor(
 ) {
   return poll.options.map((option, index) => ({ optionId: option.id, response: values[index] }));
 }
+
+test('three poll participants grant three organizer points and reopening reverses them', async () => {
+  const players = ['poll-points-a', 'poll-points-b', 'poll-points-c'];
+  players.forEach((id) => createMember(id, id));
+  const eventId = await createEvent('Poll Points Event', players);
+  const created = await createPoll(eventId, players[0]);
+  assert.equal(created.status, 201);
+  const pollId = created.body.id as string;
+  for (const player of players.slice(0, 2)) {
+    const response = await request(app).put(`/api/events/${eventId}/polls/${pollId}/my-responses`)
+      .set('x-test-player-id', player).send({ responses: responsesFor(created.body, ['can', 'cannot']) });
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+  }
+  const source = { groupId: DEFAULT_GROUP_ID, eventId, playerId: players[0], account: 'orga' as const,
+    sourceKey: `poll:${pollId}:organization` };
+  const close = () => request(app).post(`/api/events/${eventId}/polls/${pollId}/close`).set('x-test-player-id', players[0]);
+  assert.equal((await close()).status, 200);
+  assert.equal(readPointsSource(source)!.total, 0, 'two people do not meet the threshold');
+  assert.equal((await request(app).post(`/api/events/${eventId}/polls/${pollId}/reopen`).set('x-test-player-id', players[0]).send({})).status, 200);
+  assert.equal((await request(app).put(`/api/events/${eventId}/polls/${pollId}/my-responses`)
+    .set('x-test-player-id', players[2]).send({ responses: responsesFor(created.body, ['can', 'cannot']) })).status, 200);
+  db.exec(`CREATE TEMP TRIGGER fail_poll_points BEFORE INSERT ON points_journal
+    WHEN NEW.title LIKE 'Umfrage abgeschlossen:%' BEGIN SELECT RAISE(ABORT,'poll points failed'); END`);
+  try {
+    assert.equal((await close()).status, 500);
+    assert.equal((db.prepare('SELECT status FROM event_date_polls WHERE id=?').get(pollId) as { status: string }).status, 'open');
+  } finally { db.exec('DROP TRIGGER fail_poll_points'); }
+  const results = await Promise.all([close(), close()]);
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(readPointsSource(source)!.total, 3);
+  const reopened = await request(app).post(`/api/events/${eventId}/polls/${pollId}/reopen`).set('x-test-player-id', players[0]).send({});
+  assert.equal(reopened.status, 200, JSON.stringify(reopened.body));
+  assert.equal(readPointsSource(source)!.total, 0);
+  assert.equal((await close()).status, 200);
+  assert.equal(readPointsSource(source)!.total, 3);
+  assert.equal((await request(app).delete(`/api/events/${eventId}/polls/${pollId}`).set('x-test-player-id', players[0])).status, 204);
+  assert.equal(readPointsSource(source)!.total, 0);
+  const next = await createPoll(eventId, players[0], { decisionKey: created.body.decisionKey });
+  assert.equal(next.status, 201, JSON.stringify(next.body));
+  for (const player of players)
+    assert.equal((await request(app).put(`/api/events/${eventId}/polls/${next.body.id}/my-responses`)
+      .set('x-test-player-id', player).send({ responses: responsesFor(next.body, ['can', 'cannot']) })).status, 200);
+  assert.equal((await request(app).post(`/api/events/${eventId}/polls/${next.body.id}/close`).set('x-test-player-id', players[0])).status, 200);
+  assert.equal(readPointsSource(source)!.total, 0);
+  assert.equal(readPointsSource({ ...source, sourceKey: `poll:${next.body.id}:organization` })!.total, 3);
+});
 
 test('only confirmed event participants can see, create and answer polls; every participant may create one', async () => {
   const alice = 'poll-access-alice';

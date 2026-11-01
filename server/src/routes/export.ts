@@ -1,3 +1,4 @@
+import { pointsSettings, pointStandings, pointsAreVisible } from '../points';
 // "Export als Andenken": a one-click JSON snapshot of everything that
 // happened at one LAN (leaderboard, playtime, awards, tournament
 // champions) — a keepsake, and reuses the same pure scoring/stats logic the
@@ -120,7 +121,8 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
   const now = Date.now();
 
   // ---------- Leaderboard, scoped to this event's matches ----------
-  const leaderboard = readStandings(groupId, [filterEventId]).map((s) => ({
+  const leaderboard = (pointsSettings(filterEventId)?.configured_at != null
+    ? (pointsAreVisible(filterEventId) ? pointStandings(filterEventId) : []) : readStandings(groupId, [filterEventId])).map((s) => ({
     playerId: s.playerId,
     name: playerById.get(s.playerId)?.name ?? 'Unbekannt',
     points: s.points,

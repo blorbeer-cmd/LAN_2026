@@ -8,8 +8,11 @@ import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { rankedListHtml } from '../rankedList.js';
 import { openMatchForm } from './adminResultForm.js';
+import { pointsRankingHtml } from './points.js';
 
 export function renderLeaderboard(container, ctx) {
+  const points = pointsRankingHtml(ctx);
+  if (points) { container.innerHTML = points; return; }
   const filterGameId = state.selectedGameId || '';
   // Accepted games only — plus any game that already carries results, so a
   // game moved back to the suggestions after it was played keeps its own

@@ -1,3 +1,4 @@
+import { withBettingAccounting, reconcileBetting, assertTournamentEditable, settledTournamentRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
 // Tournaments (FR-33): pick a game, group present players into teams, and
 // get either a single-elimination bracket ("Turnierbaum", optionally with a
 // third-place match) or a round-robin
@@ -17,6 +18,7 @@ import { notifyPlayers, resolvePushTopic } from '../push';
 import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupRole } from '../groupAuthorization';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
+import { syncCompetitionPoints } from '../orgaPoints';
 import { shuffle } from '../matchmaking';
 import {
   generateBracket,
@@ -34,6 +36,10 @@ import {
 } from '../tournament';
 
 export const tournamentsRouter = Router();
+tournamentsRouter.use((req, _res, next) => {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) reconcileBetting();
+  next();
+});
 
 const FORMATS: TournamentFormat[] = ['single_elimination', 'round_robin', 'group_knockout'];
 // Short enough for a bracket box and a phone-width team card.
@@ -42,6 +48,7 @@ const communicationEventId = (eventId: string): string => eventId;
 
 interface TournamentRow {
   id: string;
+  created_by: string | null;
   event_id: string;
   game_id: string;
   name: string;
@@ -572,11 +579,11 @@ tournamentsRouter.post('/', (req, res) => {
   const resolvedLobbyName = isNonEmptyString(lobbyName, 60) ? (lobbyName as string).trim() : null;
   const resolvedLobbyPassword = isNonEmptyString(lobbyPassword, 60) ? (lobbyPassword as string).trim() : null;
 
-  const create = db.transaction(() => {
+  const create = () => withBettingAccounting(eventId, () => {
     db.prepare(
       `INSERT INTO tournaments
-         (id, event_id, game_id, name, format, two_legged, track_score, third_place_match, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password, group_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
+         (id, event_id, game_id, name, format, two_legged, track_score, third_place_match, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password, group_id, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`
     ).run(
       tournamentId,
       eventId,
@@ -591,7 +598,8 @@ tournamentsRouter.post('/', (req, res) => {
       now,
       resolvedLobbyName,
       resolvedLobbyPassword,
-      req.group!.id
+      req.group!.id,
+      req.player!.id
     );
 
     // Team -> group assignment (group_knockout only) has to happen before
@@ -833,7 +841,9 @@ function saveTournamentResult(req: Request, res: Response) {
   // semifinal also readies the third-place match, which is added here too.
   let readyNextRoundMatchIds: string[] = [];
 
-  const record = db.transaction(() => {
+  const record = () => withBettingAccounting(tournament.event_id, () => {
+    const correctedRounds = isCorrection ? settledTournamentRounds(req.group!.id, tournament.id) : [];
+    const correction = validateBettingCorrection(req, correctedRounds);
     const leaderboardResult = JSON.stringify({
       teams: [{ playerIds: JSON.parse(teamA.player_ids) }, { playerIds: JSON.parse(teamB.player_ids) }],
       winnerTeamIndex,
@@ -841,7 +851,8 @@ function saveTournamentResult(req: Request, res: Response) {
       ...(scoreA !== null ? { score: [scoreA, scoreB] } : {}),
     });
     if (isCorrection) {
-      db.prepare('UPDATE matches SET result = ? WHERE id = ?').run(leaderboardResult, leaderboardMatchId);
+      db.prepare('UPDATE matches SET result = ?, updated_at = ?, result_revision = result_revision + 1 WHERE id = ? AND result != ?')
+        .run(leaderboardResult, now, leaderboardMatchId, leaderboardResult);
 
       if (outcomeChanged && (tournament.format === 'single_elimination' || match.stage === 'knockout')) {
         const bracketRows = db
@@ -858,8 +869,8 @@ function saveTournamentResult(req: Request, res: Response) {
       }
     } else {
       db.prepare(
-        'INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(leaderboardMatchId, tournament.game_id, tournament.event_id, now, leaderboardResult, tournament.group_id);
+        'INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by, recorded_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(leaderboardMatchId, tournament.game_id, tournament.event_id, now, leaderboardResult, tournament.group_id, tournament.created_by, now, now);
     }
 
     db.prepare(
@@ -985,6 +996,8 @@ function saveTournamentResult(req: Request, res: Response) {
         }
       }
     }
+    rebookCorrectedRounds(correctedRounds, correction);
+    syncCompetitionPoints(req.group!.id, tournament.event_id);
   });
   record();
   const notificationScope = {
@@ -1175,6 +1188,7 @@ tournamentsRouter.put('/:id/teams/:teamId', (req, res) => {
       player_ids: string;
     }>
   ).flatMap((row) => JSON.parse(row.player_ids) as string[]);
+  reconcileBetting(tournament.event_id);
   broadcast(
     Events.tournamentsChanged,
     {
@@ -1203,9 +1217,9 @@ tournamentsRouter.post('/:id/finish', requireGroupRole('admin'), (req, res) => {
     .get(req.params.id, req.group!.id) as { event_id: string; name: string } | undefined;
   if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   if (!requireGroupEventAccess(req, res, tournament.event_id)) return;
-  const result = db
+  const result = withBettingAccounting(tournament.event_id, () => db
     .prepare("UPDATE tournaments SET status = 'completed', ended_early = 1 WHERE id = ? AND group_id = ? AND status = 'active'")
-    .run(req.params.id, req.group!.id);
+    .run(req.params.id, req.group!.id));
   if (result.changes === 0) return res.status(409).json({ error: 'Das Turnier ist bereits beendet.' });
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -1216,6 +1230,7 @@ tournamentsRouter.post('/:id/finish', requireGroupRole('admin'), (req, res) => {
   });
   const scope = { groupId: req.group!.id, eventId: communicationEventId(tournament.event_id) };
   resolvePushTopic(`tournament:${req.params.id}`, true, scope);
+  reconcileBetting(tournament.event_id);
   broadcast(Events.tournamentsChanged, { type: 'finished', tournamentId: req.params.id }, scope);
   res.json(buildDetail(req.params.id, req.group!.id));
 });
@@ -1230,15 +1245,18 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
     .get(req.params.id, req.group!.id) as { event_id: string } | undefined;
   if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   if (!requireGroupEventAccess(req, res, tournament.event_id)) return;
-  const result = db.transaction(() => {
+  const result = withBettingAccounting(tournament.event_id, () => {
+    assertTournamentEditable(req.group!.id, req.params.id);
     // Preserve explicit draws from the older JSON format before their
     // fixture rows disappear. Recorded match points outlive the tournament.
     db.prepare(`UPDATE matches SET result = json_set(result, '$.isDraw', json('true'))
       WHERE group_id = ? AND json_type(result, '$.isDraw') IS NULL AND id IN (
         SELECT match_id FROM tournament_matches WHERE tournament_id = ? AND is_draw = 1
       )`).run(req.group!.id, req.params.id);
-    return db.prepare('DELETE FROM tournaments WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
-  })();
+    const deleted = db.prepare('DELETE FROM tournaments WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
+    syncCompetitionPoints(req.group!.id, tournament.event_id);
+    return deleted;
+  });
   if (result.changes === 0) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   writeAdminAudit({
     actorPlayerId: req.player?.id,

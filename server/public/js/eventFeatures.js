@@ -16,6 +16,7 @@ export function eventHasFeature(event, featureKey) {
 }
 
 export function viewIsEnabledForEvent(view, event) {
+  if (VIEW_MANIFEST[view]?.requiresPoints && !event?.pointsEnabled) return false;
   const featureKey = VIEW_EVENT_FEATURE[view];
   return featureKey ? eventHasFeature(event, featureKey) : true;
 }

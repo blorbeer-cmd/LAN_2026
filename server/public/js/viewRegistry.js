@@ -15,6 +15,7 @@ import { renderTournaments } from './views/tournament.js';
 import { renderHallOfFame } from './views/hallOfFame.js';
 import { renderSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
+import { renderPoints, renderPointsAdmin } from './views/points.js';
 import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
 import { renderAdminFeatureUsage } from './views/adminFeatureUsage.js';
@@ -48,6 +49,8 @@ export const VIEW_REGISTRY = createViewRegistry({
   hallOfFame: inSection('hallOfFame', renderHallOfFame),
   seating: renderSeating,
   myStats: renderMyStats,
+  points: renderPoints,
+  pointsAdmin: renderPointsAdmin,
   more: renderMore,
   broadcast: renderBroadcast,
   foodOrders: renderFoodOrders,
