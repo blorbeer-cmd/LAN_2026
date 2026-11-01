@@ -292,15 +292,17 @@ Das alte Budget und einseitige Wallet-Entzüge sind als Finanzpfade abgeschaltet
 
 Die Journalbasis, Wallet-Abrechnung, Kategorie-Rohwerte und Admin-Korrekturen sind angebunden.
 Paket 5b bietet bereits vorläufige Pool-Quoten und eine formatabhängige, regulär gewinnende
-Remis-Auswahl. W1/W2/W5 sind entschieden: maximal 20 Punkte pro Person und Markt, mindestens
-zwei regulär abgerechnete Tipps für eine Wettplatzierung und keine zusätzlichen Tages-/Rundenlimits.
+Remis-Auswahl. W1/W5 sind umgesetzt: maximal 20 Punkte pro Person und Markt und keine zusätzlichen
+Tages-/Rundenlimits. W2 verlangt mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung;
+die persönliche API liefert die Anzahl und das Erreichen dieser Mindestzahl.
 Vollständig erstattete Märkte und zurückgenommene Tipps zählen nicht zur Mindestzahl; die Auszahlung
-ist davon unabhängig. Die technische Umstellung steht noch aus. Für Matches ist außerdem
+ist davon unabhängig. Die Kategorieplatzierung folgt in Paket 6. Für Matches ist außerdem
 entschieden: Der Ersteller wählt direkt beim Anlegen vor Spielbeginn, ob Wetten erlaubt sind;
 dafür ist keine Adminrolle erforderlich. Bei Turnieren werden Wetten auf den Turniersieger
 und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bestehenden
 Start-/Tippschluss- und Sichtbarkeitsregeln gelten. Auch diese Anbindung folgt in Paket 5b.
-Gleiche größte Gewinner-Einsätze bleiben offen. Kategorieplätze,
+Die Pool-Abrechnung verteilt Restpunkte nach größtem Nachkommaanteil, gleiche Anteile nach früherer
+erster Tippabgabe und dann Einfügereihenfolge. Die Nullsumme bleibt erhalten. Kategorieplätze,
 Teilnehmerbasis N, Gesamtwertung, Meldefunktion und einheitliche Festschreibung folgen gemäß
 [Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md). Die vorläufigen Auswertungen
 verwenden Spiel-Rohwerte, niemals Wallet-Summen als Gesamtwertung.

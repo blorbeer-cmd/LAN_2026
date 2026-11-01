@@ -182,15 +182,21 @@ Ein wählbares und eingetretenes Unentschieden kann dagegen regulär gewinnen.
 ### 4.3 Auszahlung und Korrekturen
 
 Die Gewinner teilen den Topf im Verhältnis ihrer Gewinner-Einsätze. Zunächst werden alle
-Auszahlungen auf ganze Punkte abgerundet. Der verbleibende Rest geht nach fester Regel
-an den größten Gewinner-Einsatz. Die Summe der Auszahlungen entspricht exakt dem Topf.
+Auszahlungen auf ganze Punkte abgerundet. Verbleibende Restpunkte werden einzeln an die
+Gewinner mit den größten Nachkommaanteilen ihrer berechneten Auszahlung verteilt.
+Die Summe der Auszahlungen entspricht exakt dem Topf.
 
 Beispiel: 5 und 3 Punkte auf A, 2 auf B; A gewinnt. Der Topf beträgt 10. Aus 6,25 und 3,75
-werden zunächst 6 und 3. Der Restpunkt geht an den Einsatz von 5: Auszahlung **7 und 3**.
-Das ersetzt die frühere Restverteilung nach größtem Nachkomma-Rest.
+werden zunächst 6 und 3. Der Restpunkt geht an den Anteil mit 0,75 Rest: Auszahlung **6 und 4**.
+Diese Nutzerentscheidung ersetzt die zuvor geplante Restvergabe an den größten Einsatz.
 
-**OFFEN:** Die feste Reihenfolge bei mehreren gleich großen größten Gewinner-Einsätzen
-ist noch festzulegen. Es wird hier kein zusätzliches Auswahlkriterium bestimmt.
+Bei gleichen Nachkommaanteilen entscheidet der früher abgegebene Tipp. Maßgeblich ist seine
+erste Speicherung; bei gleichem Millisekunden-Zeitstempel die gespeicherte Einfügereihenfolge.
+Änderungen eines bestehenden Tipps verändern dessen ursprünglichen Abgabezeitpunkt nicht.
+
+Die Nullsumme wird ausdrücklich beibehalten: Sie begründet das Poolmodell und den begrenzten
+Wettvorrat. Die gleiche Gewichtung der Kategorien folgt unabhängig davon aus den N-basierten
+Platzpunkten; sie benötigt keine Begrenzung der gesamten Wett-Rohwerte.
 
 Kontostände werden immer aus dem Journal neu berechnet. Eine Ergebniskorrektur nach einer
 Auszahlung kann das Guthaben negativ machen, wenn Gewinne bereits weiterverwendet wurden.
@@ -480,7 +486,7 @@ Vorgabewerte sind dafür keine Entscheidung:
 | W4 (entschieden) | Der Match-Ersteller entscheidet direkt beim Anlegen, ob auf sein Match gewettet werden darf; keine zusätzliche Adminrolle erforderlich. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bestehenden Start-/Tippschlussregeln gelten weiterhin. |
 | W5 (entschieden) | Keine zusätzlichen Tageslimits und keine Höchstzahl offizieller Wettrunden pro Event. Ausreichendes verfügbares Guthaben und die feste Einsatzgrenze von 20 Punkten gelten weiterhin. |
 | W6 (entschieden) | Ausschließlich begründete Markt-Neuberechnung oder Storno unter Erhaltung der Nullsumme. Keine einseitigen Wallet-/Wett-Journalkorrekturen; eigene Marktkorrekturen bleiben erlaubt. |
-| W7 | Feste Restverteilung bei gleich großen größten richtigen Einsätzen und Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
+| W7 (Abrechnung entschieden) | Pool und Nullsumme bleiben erhalten. Restpunkte nach größtem Nachkommaanteil, bei gleichem Anteil früher abgegebener Tipp. Offen bleibt die Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
 | O3 (umgesetzt) | Neue Aufgaben verwenden kein Orga-Budget und keine vergüteten Helferplätze. Alte Zusagen und der alte Finanzpfad entfallen mit dem beschlossenen Neustart. |
 | O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben erhalten keine alten LAN-Auszahlungen mehr. |
 | S1 | Turnierplatzierungsbonus bei geteilten Plätzen. Der Ist-Code vergibt in Ligen den vollen Bonus des geteilten Rangs (beispielsweise 5/5/1); die Zielregel ist noch nicht ausdrücklich festgelegt. |
@@ -512,7 +518,7 @@ dieses Zielkonzepts.
 | Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln, Turnierboni bleiben 5/3/1. [Automatische Journalbuchungen](../server/src/playingPoints.ts) erfolgen bei Ergebnissen, Korrekturen, Löschungen und beim Nachtragen bestehender Ergebnisse. |
 | Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Spielfilter und eventübergreifende Auswertungen verwenden ausschließlich Spielpunkte. Die einzelne konfigurierte LAN ohne Spielfilter, Hall of Fame und Event-Export verwenden seit Paket 5a vorläufig Spiel-Rohwerte; die Wallet-Summe wird nicht als Gesamtwertung ausgegeben. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
 | Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Umgesetzt sind außerdem persönliche Kategorie-Rohwerte, Verlauf und Admin-Korrektur-Oberfläche. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler anbinden sowie Kategorie-Platzpunkte berechnen. |
-| Wettmärkte | Umgesetzt: sichtbare vorläufige Pool-Quoten und formatabhängige Remis-Auswahl; freie Zweiermatches sowie Liga-/Gruppenspiele können über Remis regulär abrechnen. K.-o.- und Turniersieger-Märkte bieten kein Remis. W1/W2/W4/W5 sind entschieden: maximal 20 Punkte, mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung, Ersteller-Auswahl beim Match, Wetten bei Turnieren immer angeboten und keine zusätzlichen Tages-/Rundenlimits. Die technische Anbindung steht noch aus. Offen bleibt W7 zur Restverteilung und Festschreibung. |
+| Wettmärkte | Umgesetzt: sichtbare vorläufige Pool-Quoten, formatabhängige Remis-Auswahl, die feste Einsatzgrenze von 20 Punkten, Abschaltung alter Tages-/Rundenlimits und ganzzahlige Pool-Verteilung nach größtem Nachkommaanteil mit früherer Tippabgabe als Gleichstandsregel. Die API zählt regulär abgerechnete Tipps für die beschlossene Mindestzahl zwei; die Kategorieplatzierung folgt in Paket 6. W4 ist entschieden, technisch noch anzubinden: Ersteller-Auswahl beim Match und Wetten bei Turnieren immer angeboten. Offen bleibt W7 zur Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
 | Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit festen 3 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Ebenfalls umgesetzt: 2 Punkte je eingetragener Ankunft/Abreise beim Eventstart sowie 3 Punkte für abgeschlossene Umfragen und 2 Punkte für abgeschlossene Spieleabstimmungen mit jeweils mindestens drei Teilnehmenden. Die ausdrücklich offenen Regeln bleiben offen. |
 | Kiosk | Umgesetzt: [Ergebnis-Feed](product/media-and-dashboard-rules.md#tv-kiosk) mit Anzeigenamen, Platzierungen und tatsächlich gebuchten Spielpunkten, Korrekturhinweis auch bei reinen Score-Änderungen. Bei ausgeblendeten Punkteansichten bleiben Ergebnisse ohne Punkte sichtbar. Die zehn jüngsten Ergebnisse wechseln in der bestehenden Turnierkachel; alle Teilnehmer werden automatisch durchgeblättert. Migration 128 ergänzt Erfassungszeit, Änderungszeit und Ergebnisrevision, ohne Punktebestände zu verändern. |
 | Meldefunktion | Meldbare Quellen, optionalen Grund, eine offene Meldung pro Person/Eintrag, Empfängerfilter, Identitätsschutz, Status und begründete Korrekturen ergänzen. Eigene administrative Korrekturen bleiben erlaubt. |

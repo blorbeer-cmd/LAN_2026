@@ -13,6 +13,8 @@ import {
   wallet,
   walletEntries,
   BETTING_START_POINTS,
+  BETTING_MAX_STAKE,
+  bettingParticipation,
 } from '../points';
 import {
   createBettingRound,
@@ -84,6 +86,7 @@ pointsRouter.get('/', (req, res) => {
     categoryJournal: readPointsJournal(req.group!.id, eventId, req.player!.id),
     settings,
     wallet: wallet(eventId, req.player!.id),
+    bettingParticipation: bettingParticipation(eventId, req.player!.id),
     entries,
     rounds,
     standings: pointStandings(eventId),
@@ -95,9 +98,9 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
   const initial = BETTING_START_POINTS;
   if (body.initialPoints !== undefined && body.initialPoints !== initial)
     throw new PointsError('Das Wett-Startguthaben beträgt fest 100 Punkte.', 400);
-  const maxStake = integer(body.maxStake ?? 10, 'Maximaler Einsatz', 1, 1000);
-  const daily = integer(body.dailyLimit ?? 30, 'Tageskontingent', maxStake, 10000);
-  const rounds = integer(body.maxRounds ?? 6, 'Tipprunden', 0, 100);
+  const maxStake = BETTING_MAX_STAKE;
+  if (body.maxStake !== undefined && body.maxStake !== maxStake)
+    throw new PointsError('Der maximale Einsatz beträgt fest 20 Punkte pro Wettmarkt.', 400);
   const prizeInfo = body.prizeInfo ?? pointsSettings(eventId)?.prize_info ?? '';
   if (typeof prizeInfo !== 'string' || prizeInfo.trim().length > 300)
     throw new PointsError('Preisinfo: höchstens 300 Zeichen.', 400);
@@ -110,19 +113,12 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
     if (previous && previous.closed_at !== null) throw new PointsError('Die Punktewertung ist abgeschlossen.');
     if (previous?.configured_at != null && initial !== previous.initial_points)
       throw new PointsError('Der Grundstock kann nach Aktivierung nicht geändert werden.');
-    const { count } = db.prepare('SELECT COUNT(*) AS count FROM betting_rounds WHERE event_id = ?').get(eventId) as {
-      count: number;
-    };
-    if (rounds < count) throw new PointsError('Es bestehen bereits mehr Tipprunden.');
-    if (previous && (maxStake !== previous.max_stake || daily !== previous.daily_limit) && count > 0) {
-      throw new PointsError('Einsatzregeln können nach Öffnung einer Tipprunde nicht geändert werden.');
-    }
     db.prepare(
-      `INSERT INTO points_settings (event_id,group_id,initial_points,orga_budget,max_stake,daily_limit,max_rounds,created_at,prize_info)
-      VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET orga_budget=excluded.orga_budget,
+      `INSERT INTO points_settings (event_id,group_id,initial_points,orga_budget,max_stake,created_at,prize_info)
+      VALUES (?,?,?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET orga_budget=excluded.orga_budget,
       initial_points=excluded.initial_points,configured_at=COALESCE(points_settings.configured_at,excluded.created_at),
-      max_stake=excluded.max_stake,daily_limit=excluded.daily_limit,max_rounds=excluded.max_rounds,prize_info=excluded.prize_info`,
-    ).run(eventId, req.group!.id, initial, 0, maxStake, daily, rounds, Date.now(), prizeInfo.trim());
+      max_stake=excluded.max_stake,prize_info=excluded.prize_info`,
+    ).run(eventId, req.group!.id, initial, 0, maxStake, Date.now(), prizeInfo.trim());
     ensurePointAccounts(eventId);
   })();
   writeAdminAudit({
@@ -134,8 +130,8 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
     details: {
       initialPoints: initial,
       maxStake,
-      dailyLimit: daily,
-      maxRounds: rounds,
+      dailyLimit: null,
+      maxRounds: null,
       prizeInfo: prizeInfo.trim(),
     },
   });

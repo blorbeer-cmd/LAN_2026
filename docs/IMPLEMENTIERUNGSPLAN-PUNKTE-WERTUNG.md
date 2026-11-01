@@ -164,25 +164,27 @@ K.-o.-Spiele und Turniersieger-Märkte bieten ihn nicht. Bei älteren Märkten o
 wird ein eingetretenes Remis weiterhin vollständig erstattet. Die Auswahl erweitert nicht die
 gespeicherten Teilnehmerseiten eines Wettbewerbs.
 
-Vorläufig bleiben die bisherigen konfigurierten Marktgrenzen und die bisherige
-Pool-Verteilung aktiv. **W1/W2/W5 sind inzwischen entschieden:** maximal 20 Punkte pro Person
-und Wettmarkt, mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung und keine
-zusätzlichen Tageslimits oder Höchstzahl von Wettrunden pro Event. Vollständig erstattete Märkte
-und zurückgenommene Tipps zählen nicht zur Mindestzahl. Diese technischen Umstellungen stehen
-noch aus; die Auszahlung ist von der Mindestzahl unabhängig.
+**W1/W5 umgesetzt:** Maximal 20 Punkte pro Person und Wettmarkt; keine zusätzlichen Tageslimits
+oder Höchstzahl von Wettrunden pro Event. Alte gespeicherte Kontingente begrenzen keine Wetten
+mehr und die API zeigt diese Grenzen als `null`. W2 ist mit zwei regulär abgerechneten Tipps
+entschieden. Die persönliche API liefert deren Anzahl und die erreichte Mindestzahl; die
+Kategorieplatzierung wird erst in Paket 6 angebunden. Vollständig erstattete Märkte und
+zurückgenommene Tipps zählen nicht zur Mindestzahl. Auszahlungen sind davon unabhängig.
 
 - Zielregeln ersetzen die alten Regeln: sichtbare vorläufige Pool-Quoten, formatabhängiger
-  Remis-Tipp, vollständige Erstattungen und Abrunden mit Rest an den größten richtigen Einsatz.
-- W1 umsetzen: maximal 20 Punkte pro Person und Wettmarkt.
+  Remis-Tipp, vollständige Erstattungen und ganzzahlige proportionale Pool-Auszahlungen.
+- W1 umgesetzt: maximal 20 Punkte pro Person und Wettmarkt.
 - W2 umsetzen: Wettplatzierung erst ab zwei regulär abgerechneten Tipps und positivem Nettowert.
-- W5 umsetzen: alte Tages-/Rundenlimits als Beschränkungen abschalten.
+- W5 umgesetzt: alte Tages-/Rundenlimits als Beschränkungen abgeschaltet.
 - W4 für Matches umsetzen: Der Ersteller wählt direkt beim Anlegen vor Spielbeginn „Wetten
   zulassen“. Keine zusätzliche Adminrolle; eine ausgeschaltete Option darf nicht über die
   separate Markt-API umgangen werden. Die Auswahl gehört nicht in die spätere Ergebniseingabe.
 - W4 für Turniere umsetzen: Wetten auf Turniersieger und einzelne Turnierspiele immer ohne
   optionalen Freischalter anbieten. Bestehende Start-/Tippschluss- und Sichtbarkeitsregeln gelten.
-- W7 bleibt offen: gleiche größte Einsätze und gesperrte,
-  unabgerechnete Märkte bei der Festschreibung. Alte Werte 10/30/6 sind keine Zielvorgaben.
+- W7-Abrechnung umgesetzt: Restpunkte nach größtem Nachkommaanteil; gleiche Anteile nach
+  früherer erster Tippabgabe und bei gleichem Zeitstempel nach gespeicherter Einfügereihenfolge.
+  Pool und Nullsumme bleiben erhalten. Offen bleibt die Behandlung gesperrter, unabgerechneter
+  Märkte bei der Festschreibung. Alte Werte 10/30/6 sind keine Zielvorgaben.
 - Eigenwetten, Mitteilungen und die Anzeige direkt an Match/Turnier bleiben erhalten.
 
 ## Pakete 6/7 – Wertung und vollständige Ansichten

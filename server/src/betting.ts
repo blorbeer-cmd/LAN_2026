@@ -12,6 +12,7 @@ import {
   pointsAreVisible,
   requirePointsVisible,
   wallet,
+  BETTING_MAX_STAKE,
 } from './points';
 import { notifyPlayers, resolvePushTopic } from './push';
 import { broadcast, Events } from './realtime';
@@ -49,6 +50,8 @@ interface TipRow {
   stake: number;
   payout: number | null;
   day: string;
+  created_at: number;
+  sequence: number;
 }
 interface SourceState {
   title: string;
@@ -191,7 +194,7 @@ export function getBettingRound(groupId: string, eventId: string, id: string): B
   return row;
 }
 function tipsFor(id: string): TipRow[] {
-  return db.prepare('SELECT * FROM betting_tips WHERE round_id = ? ORDER BY id').all(id) as TipRow[];
+  return db.prepare('SELECT rowid AS sequence,* FROM betting_tips WHERE round_id = ? ORDER BY created_at,rowid').all(id) as TipRow[];
 }
 export function notifyBettingRound(round: BettingRound): void {
   if (round.notice_sent || round.closes_at <= Date.now() || round.status !== 'open' || !pointsAreVisible(round.event_id)) return;
@@ -221,7 +224,7 @@ export function createBettingRound(
 ): string {
   const id = db.transaction(() => {
     requirePointsVisible(eventId);
-    const settings = requirePointsOpen(eventId);
+    requirePointsOpen(eventId);
     const source = betSourceState(groupId, eventId, type, sourceId);
     if (
       source.started ||
@@ -234,10 +237,6 @@ export function createBettingRound(
     }
     if (type !== 'tournament' && source.outcomes.filter((o) => o.id !== DRAW_BET_OUTCOME).length !== 2)
       throw new PointsError('Match-Tipps benötigen genau zwei Seiten.');
-    const { count } = db.prepare('SELECT COUNT(*) AS count FROM betting_rounds WHERE event_id = ?').get(eventId) as {
-      count: number;
-    };
-    if (count >= settings.max_rounds) throw new PointsError('Das Kontingent an Tipprunden ist ausgeschöpft.');
     if (
       db
         .prepare('SELECT 1 FROM betting_rounds WHERE event_id = ? AND source_type = ? AND source_id = ?')
@@ -287,7 +286,7 @@ export function roundView(round: BettingRound, playerId: string) {
       const stake = tips.filter((t) => t.outcome_id === outcome.id).reduce((sum, t) => sum + t.stake, 0);
       const preview = mine
         ? distributePool(
-            tips.map((t) => ({ id: t.id, stake: t.stake, outcomeId: t.outcome_id })),
+            tips.map((t) => ({ id: t.id, stake: t.stake, outcomeId: t.outcome_id, createdAt: t.created_at, sequence: t.sequence })),
             outcome.id,
           ).get(mine.id)
         : undefined;
@@ -337,7 +336,7 @@ function settleRound(
   const valid =
     winner !== null && tips.some((t) => t.outcome_id === winner) && new Set(tips.map((t) => t.outcome_id)).size >= 2;
   const payouts = distributePool(
-    tips.map((t) => ({ id: t.id, stake: t.stake, outcomeId: t.outcome_id })),
+    tips.map((t) => ({ id: t.id, stake: t.stake, outcomeId: t.outcome_id, createdAt: t.created_at, sequence: t.sequence })),
     valid ? winner : null,
   );
   for (const tip of tips) {
@@ -431,7 +430,7 @@ export function putTip(
   reconcileBetting(eventId);
   db.transaction(() => {
     requirePointsVisible(eventId);
-    const settings = requirePointsOpen(eventId);
+    requirePointsOpen(eventId);
     ensurePointAccounts(eventId);
     const round = getBettingRound(groupId, eventId, roundId);
     if (round.status !== 'open' || round.closes_at <= Date.now()) throw new PointsError('Die Tipps sind geschlossen.');
@@ -439,19 +438,12 @@ export function putTip(
       throw new PointsError('Keine Wertungsteilnahme.', 404);
     if (!(JSON.parse(round.outcomes) as BetOutcome[]).some((o) => o.id === outcomeId))
       throw new PointsError('Ungültiger Sieger-Tipp.', 400);
-    if (stake > settings.max_stake) throw new PointsError(`Höchstens ${settings.max_stake} Punkte je Runde.`, 400);
+    if (stake > BETTING_MAX_STAKE) throw new PointsError(`Höchstens ${BETTING_MAX_STAKE} Punkte je Runde.`, 400);
     if (wallet(eventId, playerId).available < 0) throw new PointsError('Dein verfügbares Wettguthaben ist negativ.');
     const previous = tipsFor(round.id).find((t) => t.player_id === playerId);
     if (wallet(eventId, playerId).available + (previous?.stake ?? 0) < stake)
       throw new PointsError('Nicht genügend frei verfügbare Punkte.');
     const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date());
-    const { spent } = db
-      .prepare(
-        `SELECT COALESCE(SUM(t.stake),0) AS spent FROM betting_tips t JOIN betting_rounds r ON r.id = t.round_id
-      WHERE r.event_id = ? AND t.player_id = ? AND t.day = ? AND t.counts_daily = 1 AND r.id <> ?`,
-      )
-      .get(eventId, playerId, day, roundId) as { spent: number };
-    if (spent + stake > settings.daily_limit) throw new PointsError('Dein Tageskontingent ist ausgeschöpft.');
     db.prepare(
       `INSERT INTO betting_tips (id,round_id,player_id,outcome_id,stake,day,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)
       ON CONFLICT(round_id,player_id) DO UPDATE SET outcome_id=excluded.outcome_id, stake=excluded.stake, day=excluded.day, updated_at=excluded.updated_at`,

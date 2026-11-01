@@ -183,8 +183,8 @@ export function competitionBettingHtml(type, id, ctx, { canOpen = true } = {}) {
   if (!data?.settings) return '';
   const round = data.rounds.find((r) => r.sourceType === type && r.sourceId === id);
   if (round) return roundHtml(round, true);
-  if (!canOpen || !isGroupAdmin() || data.settings.closed_at || data.settings.max_rounds === 0) return '';
-  return `<div class="row points-actions"><button type="button" class="btn btn-sm" data-open-betting-type="${type}" data-open-betting-source="${e(id)}">Tipprunde öffnen</button><span class="muted">${data.rounds.length}/${data.settings.max_rounds} offizielle Runden</span></div>`;
+  if (!canOpen || !isGroupAdmin() || data.settings.closed_at) return '';
+  return `<div class="row points-actions"><button type="button" class="btn btn-sm" data-open-betting-type="${type}" data-open-betting-source="${e(id)}">Tipprunde öffnen</button></div>`;
 }
 
 function openTip(round, ctx) {
@@ -198,7 +198,7 @@ function openTip(round, ctx) {
       editable
         ? `<label class="stack"><span class="field-label">Dein Ergebnis</span><select name="outcomeId" required>${round.outcomes.map((o) => `<option value="${e(o.id)}" ${round.mine?.outcomeId === o.id ? 'selected' : ''}>${e(o.label)} · Quote ${o.odds ? o.odds.toFixed(2) : '–'}</option>`).join('')}</select></label>
     ${numberField('stake', `Einsatz · maximal ${data.settings.max_stake} Punkte`, round.mine?.stake ?? 1, 1, data.settings.max_stake)}
-    <p class="muted">${data.wallet.available + (round.mine?.stake ?? 0)} Punkte verfügbar für diesen Tipp. Tageslimit: ${data.settings.daily_limit} Punkte (Europe/Berlin). Die Quoten ändern sich bis Tippschluss mit den Einsätzen. Auch Tipps auf das eigene Team oder den Gegner sind erlaubt.</p>
+    <p class="muted">${data.wallet.available + (round.mine?.stake ?? 0)} Punkte verfügbar für diesen Tipp. Die Quoten ändern sich bis Tippschluss mit den Einsätzen. Auch Tipps auf das eigene Team oder den Gegner sind erlaubt.</p>
     <div class="row points-actions">${round.mine ? '<button type="button" class="btn" data-remove-tip>Tipp zurücknehmen</button>' : ''}<button type="submit" class="btn btn-primary">Tipp speichern</button></div>`
         : `<p>${round.mine ? `Einsatz ${round.mine.stake} P. · ${round.mine.payout === null ? 'Auszahlung steht noch aus' : `Auszahlung ${round.mine.payout} P. · Netto ${signedPoints(round.mine.net)} P.`}` : 'Du hast in dieser Runde keinen Tipp abgegeben.'}</p>
     <ul class="points-outcomes">${round.outcomes.map((o) => `<li><span>${e(o.label)}</span><span>${o.stake} P.${o.odds ? ` · Quote ${o.odds.toFixed(2)}` : ''}</span></li>`).join('')}</ul>
@@ -245,7 +245,7 @@ function openRound(type, sourceId, ctx) {
   const { close } = openModal(
     'Offizielle Tipprunde öffnen',
     `<form class="stack" data-round-form>
-    <p>Alle LAN-Teilnehmer werden benachrichtigt, auch die Mitspieler. Die Runde zählt dauerhaft zum LAN-Kontingent.</p>
+    <p>Alle LAN-Teilnehmer werden benachrichtigt, auch die Mitspieler.</p>
     ${numberField('minutes', 'Tippschluss in Minuten', 10, 1, 1440)}
     <p class="muted">Vor Spielbeginn „Spielstart / Tipps schließen“ betätigen. Wird ein Ergebnis vor Tippschluss eingetragen, wird der Topf zur Sicherheit erstattet.</p>
     <button type="submit" class="btn btn-primary">Runde öffnen & benachrichtigen</button></form>`,
@@ -438,7 +438,7 @@ export function renderPoints(container, ctx) {
   container.innerHTML = `${header}<div class="grouped-page-sections">${categoryPointsHtml(data, { account: categoryAccount, query: categoryQuery })}${overviewHtml(data)}
     <section class="card stack" aria-label="Tipprunden"><div class="row-between"><h2>${selected ? 'Tipprunde' : 'Spiele & Turniere tippen'}</h2>${selected ? '<button type="button" class="btn btn-sm" data-all-rounds>Alle Runden</button>' : ''}</div>
       <p class="muted">Max. ${data.settings.max_stake} P. pro Runde · ${data.settings.daily_limit} P. pro Tag · ${data.rounds.length}/${data.settings.max_rounds} offizielle Runden. Auch eigene Spiele und Turniere sind erlaubt.</p>
-      ${rounds.length ? rounds.map((r) => roundHtml(r)).join('') : emptyStateHtml(selected ? 'Diese Tipprunde wurde nicht gefunden.' : data.settings.max_rounds === 0 ? 'Wetten sind für dieses Event deaktiviert.' : 'Noch keine offiziellen Tipprunden. Admins öffnen sie direkt am Match oder Turnier.')}</section>
+      ${rounds.length ? rounds.map((r) => roundHtml(r)).join('') : emptyStateHtml(selected ? 'Diese Tipprunde wurde nicht gefunden.' : 'Noch keine offiziellen Tipprunden.')}</section>
     ${historyHtml(data)}
     <section class="card stack" aria-label="LAN-Rangliste"><h2>${data.settings.closed_at ? 'Spielpunkte-Endstand' : 'Spielpunkte'}</h2><p class="muted">Bei gleichem Punktestand wird der Platz geteilt. Spiel-Skill und Siege entscheiden keinen Gleichstand.</p>${rankedListHtml(
       data.standings.map((p, i) => ({
@@ -581,9 +581,7 @@ export function renderPointsAdmin(container, ctx) {
     <form class="stack" data-points-settings>
       <label class="stack"><span class="field-label">Preis & Vergabe bei Gleichstand (optional)</span><textarea name="prizeInfo" maxlength="300" ${closed ? 'disabled' : ''}>${e(s?.prize_info ?? '')}</textarea></label>
       <p class="muted">Kündige Preis und Sachpreisvergabe bei gleichem Punktestand vor Beginn an. Die Rangliste teilt gleiche Plätze ohne Skill-Tiebreaker.</p>
-      ${numberField('maxStake', 'Maximaler Einsatz je Runde', s?.max_stake ?? 10, 1, 1000, closed || data.rounds.length > 0)}
-      ${numberField('dailyLimit', 'Tageskontingent pro Teilnehmer', s?.daily_limit ?? 30, 1, 10000, closed || data.rounds.length > 0)}
-      ${numberField('maxRounds', 'Offizielle Tipprunden insgesamt (0 = keine Wetten)', s?.max_rounds ?? 6, 0, 100, closed)}
+      <p>Maximal 20 Punkte je Wette. Keine zusätzlichen Tages- oder Rundenlimits. Für eine Wettplatzierung sind mindestens zwei regulär abgerechnete Tipps und ein positiver Nettogewinn erforderlich.</p>
       ${closed ? '' : `<button type="submit" class="btn btn-primary">${s ? 'Regeln speichern' : 'Punktewertung aktivieren'}</button>`}
     </form>
     ${s ? `<p class="muted">Neue To-dos bringen fest 3 Orga-Punkte. Tipprunden direkt am Match oder Turnier öffnen.</p><div class="row points-actions"><button type="button" class="btn btn-sm" data-navigate="checklist">Zu den To-Dos</button><button type="button" class="btn btn-sm" data-points-close>${closed ? 'Wertung wieder öffnen' : 'LAN-Endwertung festschreiben'}</button></div>` : ''}
@@ -609,9 +607,6 @@ export function renderPointsAdmin(container, ctx) {
     const values = new FormData(form);
     const body = {
       initialPoints: 100,
-      maxStake: data.rounds.length ? s.max_stake : Number(values.get('maxStake')),
-      dailyLimit: data.rounds.length ? s.daily_limit : Number(values.get('dailyLimit')),
-      maxRounds: Number(values.get('maxRounds')),
       prizeInfo: values.get('prizeInfo'),
     };
     perform(

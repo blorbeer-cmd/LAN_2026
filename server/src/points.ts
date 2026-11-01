@@ -2,6 +2,8 @@ import { db } from './db';
 import { PointsError } from './pointsAccess';
 import { readPointsBalances, readPointsSource, recordPointsEntitlements } from './pointsJournal';
 export { PointsError } from './pointsAccess';
+export const BETTING_MAX_STAKE = 20;
+export const BETTING_MIN_SETTLED_TIPS = 2;
 
 export interface PointsSettings {
   event_id: string;
@@ -9,8 +11,8 @@ export interface PointsSettings {
   initial_points: number;
   orga_budget: number;
   max_stake: number;
-  daily_limit: number;
-  max_rounds: number;
+  daily_limit: null;
+  max_rounds: null;
   orga_allocated: number;
   prize_info: string;
   created_at: number;
@@ -20,7 +22,9 @@ export interface PointsSettings {
   configured_at: number | null;
 }
 export function pointsSettings(eventId: string): PointsSettings | undefined {
-  return db.prepare('SELECT * FROM points_settings WHERE event_id = ?').get(eventId) as PointsSettings | undefined;
+  const settings = db.prepare('SELECT * FROM points_settings WHERE event_id = ?').get(eventId) as PointsSettings | undefined;
+  // Legacy quota columns remain storage-compatible, but are no longer rules.
+  return settings ? { ...settings, max_stake: BETTING_MAX_STAKE, daily_limit: null, max_rounds: null } : undefined;
 }
 export function pointsAreVisible(eventId: string | null): boolean {
   if (!eventId) return false;
@@ -95,6 +99,12 @@ export function wallet(eventId: string, playerId: string) {
     )
     .get(eventId, playerId) as { held: number };
   return { total: available + held, held, available };
+}
+export function bettingParticipation(eventId: string, playerId: string) {
+  const { count } = db.prepare(`SELECT COUNT(*) AS count FROM betting_tips t
+    JOIN betting_rounds r ON r.id=t.round_id
+    WHERE r.event_id=? AND t.player_id=? AND r.status='settled'`).get(eventId, playerId) as { count: number };
+  return { settledTips: count, minimumTips: BETTING_MIN_SETTLED_TIPS, hasMinimum: count >= BETTING_MIN_SETTLED_TIPS };
 }
 export function pointStandings(eventId: string) {
   const settings = pointsSettings(eventId);

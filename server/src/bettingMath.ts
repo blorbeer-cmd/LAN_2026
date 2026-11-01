@@ -2,9 +2,13 @@ export interface PoolTip {
   id: string;
   outcomeId: string;
   stake: number;
+  createdAt: number;
+  sequence: number;
 }
 
-// Largest-remainder allocation. Stable tip IDs settle ties; no points are
+// Largest-remainder allocation. Earlier submissions settle equal remainders;
+// the persisted sequence distinguishes submissions in the same millisecond.
+// Stable tip IDs are the final fallback. No points are
 // minted or discarded, including pools whose shares are fractional.
 export function distributePool(tips: PoolTip[], winner: string | null): Map<string, number> {
   const payouts = new Map(tips.map((tip) => [tip.id, tip.stake]));
@@ -19,7 +23,8 @@ export function distributePool(tips: PoolTip[], winner: string | null): Map<stri
       whole: Math.floor((pot * tip.stake) / winningStakes),
       remainder: (pot * tip.stake) % winningStakes,
     }))
-    .sort((a, b) => b.remainder - a.remainder || a.tip.id.localeCompare(b.tip.id, 'en'));
+    .sort((a, b) => b.remainder - a.remainder || a.tip.createdAt - b.tip.createdAt ||
+      a.tip.sequence - b.tip.sequence || a.tip.id.localeCompare(b.tip.id, 'en'));
   const remainder = pot - shares.reduce((sum, share) => sum + share.whole, 0);
   shares.forEach((share, index) => payouts.set(share.tip.id, share.whole + (index < remainder ? 1 : 0)));
   return payouts;

@@ -656,6 +656,8 @@ test('players bet on their own games; visible pools lock and settle zero-sum, on
   assert.equal(wallet(f.eventId, a).total, 90);
   assert.equal(wallet(f.eventId, b).total, 110);
   assert.equal((await request(app).get('/api/points')).body.rounds[0].revision, 1);
+  assert.deepEqual((await request(app).get('/api/points').set('x-test-player-id', a)).body.bettingParticipation,
+    { settledTips: 1, minimumTips: 2, hasMinimum: false });
   db.exec(`CREATE TEMP TRIGGER fail_void_audit BEFORE INSERT ON admin_log
     WHEN NEW.action = 'betting_settlement_voided' BEGIN SELECT RAISE(ABORT, 'test void audit failure'); END;`);
   try {
@@ -676,27 +678,44 @@ test('players bet on their own games; visible pools lock and settle zero-sum, on
   assert.equal(wallet(f.eventId, b).total, 100);
   assert.equal((await request(app).patch(`/api/matches/${result.body.id}`).send({ winnerTeamIndex: 1 })).status, 200);
   assert.equal((await request(app).get('/api/points')).body.rounds[0].status, 'refunded');
+  assert.deepEqual((await request(app).get('/api/points').set('x-test-player-id', a)).body.bettingParticipation,
+    { settledTips: 0, minimumTips: 2, hasMinimum: false });
 });
 
-test('parallel reservations obey available funds and event limits; closing prevents bets but keeps To-dos usable without credits', async () => {
-  const f = await fixture({ maxStake: 100, dailyLimit: 200 });
+test('parallel reservations obey the fixed stake and available funds without legacy quotas; closed To-dos remain usable', async () => {
+  const f = await fixture({ dailyLimit: 1, maxRounds: 1 });
+  db.prepare('UPDATE points_settings SET max_stake=1,daily_limit=1,max_rounds=0 WHERE event_id=?').run(f.eventId);
+  const settings = (await request(app).get('/api/points')).body.settings;
+  assert.deepEqual([settings.max_stake, settings.daily_limit, settings.max_rounds], [20, null, null]);
+  assert.equal((await request(app).put('/api/points/settings').send({ maxStake: 100 })).status, 400);
   const a = f.players[0],
     first = await round(f),
     second = await round(f);
+  assert.equal((await request(app).put(`/api/points/rounds/${first.id}/tip`).set('x-test-player-id', a)
+    .send({ outcomeId: '0', stake: 21 })).status, 400);
+  const heldRounds = [];
+  for (let i = 0; i < 4; i++) {
+    const held = await round(f);
+    heldRounds.push(held.id);
+    assert.equal((await request(app).put(`/api/points/rounds/${held.id}/tip`).set('x-test-player-id', a)
+      .send({ outcomeId: '0', stake: 20 })).status, 200);
+  }
   const attempts = await Promise.all(
     [first, second].map((r) =>
-      request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', a).send({ outcomeId: '0', stake: 100 }),
+      request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', a).send({ outcomeId: '0', stake: 20 }),
     ),
   );
   assert.deepEqual(attempts.map((r) => r.status).sort(), [200, 409]);
   const accepted = attempts[0].status === 200 ? first : second;
   assert.equal((await request(app).post(`/api/points/rounds/${accepted.id}/lock`).send({})).status, 200);
-  assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 0, available: 100 });
+  assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 80, available: 20 });
   const other = accepted.id === first.id ? second : first;
   assert.equal(
     (await request(app).post(`/api/points/rounds/${other.id}/refund`).send({ reason: 'Not played' })).status,
     200,
   );
+  for (const id of heldRounds)
+    assert.equal((await request(app).post(`/api/points/rounds/${id}/refund`).send({ reason: 'Test finished' })).status, 200);
   const taskIds: string[] = [];
   for (const rewarded of [true, false]) {
     const created = await request(app).post('/api/checklist/tasks/todo')
@@ -786,6 +805,8 @@ test('tournament participants can bet on themselves and opponents, including the
   const data = (await request(app).get('/api/points')).body;
   assert.ok(data.rounds.every((r: { status: string }) => r.status === 'settled'));
   const winningPlayer = tournament.teams[0].players[0].id;
+  assert.deepEqual((await request(app).get('/api/points').set('x-test-player-id', winningPlayer)).body.bettingParticipation,
+    { settledTips: 2, minimumTips: 2, hasMinimum: true });
   assert.equal(wallet(f.eventId, winningPlayer).total, 110);
   assert.equal(
     f.players.reduce((sum, p) => sum + wallet(f.eventId, p).total, 0),
@@ -915,7 +936,7 @@ test('late accepted participants get exactly one starting credit; final standing
   );
 });
 
-test('deadlines and pre-start changes refund unsafe pools; official round limits cannot be bypassed by redrawing', async () => {
+test('deadlines and pre-start changes refund unsafe pools; legacy round quotas no longer limit new markets', async () => {
   const f = await fixture({ maxRounds: 1 });
   const r = await round(f);
   await Promise.all(
@@ -946,9 +967,9 @@ test('deadlines and pre-start changes refund unsafe pools; official round limits
         .post('/api/points/rounds')
         .send({ sourceType: 'draw', sourceId: draw.body.id ?? draw.body.drawId, closesAt: Date.now() + 60000 })
     ).status,
-    409,
+    201,
   );
-  assert.equal((await request(app).put('/api/points/settings').send({ maxRounds: 1, maxStake: 11 })).status, 409);
+  assert.equal((await request(app).put('/api/points/settings').send({ maxRounds: 1, maxStake: 11 })).status, 400);
   const second = await fixture();
   const deadline = await round(second);
   await Promise.all(
@@ -973,7 +994,7 @@ test('deadlines and pre-start changes refund unsafe pools; official round limits
 });
 
 test('result corrections keep original pools zero-sum even when the old winnings are already reserved elsewhere', async () => {
-  const f = await fixture({ maxStake: 200, dailyLimit: 400 });
+  const f = await fixture();
   const first = await round(f);
   for (let i = 0; i < 2; i++)
     assert.equal(
@@ -981,7 +1002,7 @@ test('result corrections keep original pools zero-sum even when the old winnings
         await request(app)
           .put(`/api/points/rounds/${first.id}/tip`)
           .set('x-test-player-id', f.players[i])
-          .send({ outcomeId: String(i), stake: 100 })
+          .send({ outcomeId: String(i), stake: 20 })
       ).status,
       200,
     );
@@ -994,16 +1015,15 @@ test('result corrections keep original pools zero-sum even when the old winnings
       teams: first.outcomes.map((o) => ({ playerIds: o.playerIds })),
       winnerTeamIndex: 0,
     });
-  const second = await round(f);
-  assert.equal(
-    (
-      await request(app)
-        .put(`/api/points/rounds/${second.id}/tip`)
-        .set('x-test-player-id', f.players[0])
-        .send({ outcomeId: '0', stake: 200 })
-    ).status,
-    200,
-  );
+  const reservations = [];
+  for (let i = 0; i < 6; i++) {
+    const r = await round(f);
+    reservations.push(r);
+    assert.equal((await request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', f.players[0])
+      .send({ outcomeId: '0', stake: 20 })).status, 200);
+  }
+  const second = reservations[0];
+  assert.equal((await request(app).get('/api/points')).body.rounds.length, 7, 'there is no six-round quota');
   const corrected = await request(app)
     .patch(`/api/matches/${match.body.id}`)
     .send({
@@ -1011,8 +1031,8 @@ test('result corrections keep original pools zero-sum even when the old winnings
       bettingCorrection: { reason: 'Score reversed', revisions: [{ id: first.id, revision: 0 }] },
     });
   assert.equal(corrected.status, 200, JSON.stringify(corrected.body));
-  assert.deepEqual(wallet(f.eventId, f.players[0]), { total: 0, held: 200, available: -200 });
-  assert.equal(wallet(f.eventId, f.players[1]).total, 200);
+  assert.deepEqual(wallet(f.eventId, f.players[0]), { total: 80, held: 120, available: -40 });
+  assert.equal(wallet(f.eventId, f.players[1]).total, 120);
   assert.equal(
     (
       await request(app)
@@ -1028,12 +1048,12 @@ test('result corrections keep original pools zero-sum even when the old winnings
         .prepare('SELECT stake FROM betting_tips WHERE round_id = ? AND player_id = ?')
         .get(second.id, f.players[0]) as { stake: number }
     ).stake,
-    200,
+    20,
     'unrelated reservations are not silently changed',
   );
 });
 
-test('an orga-only LAN cannot open pools or configure legacy rewards; fixed todos ignore the old budget', async () => {
+test('legacy zero-round quotas do not disable betting; fixed todos ignore the old budget and reward route', async () => {
   const f = await fixture({ maxRounds: 0, orgaBudget: 5 });
   const tasks = [];
   for (const title of ['Setup', 'Cleanup'])
@@ -1060,7 +1080,7 @@ test('an orga-only LAN cannot open pools or configure legacy rewards; fixed todo
         .post('/api/points/rounds')
         .send({ sourceType: 'draw', sourceId: draw.id, closesAt: Date.now() + 60000 })
     ).status,
-    409,
+    201,
   );
   assert.equal((await request(app).get('/api/points')).body.budget, undefined);
 });

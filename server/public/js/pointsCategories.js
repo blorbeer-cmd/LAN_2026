@@ -33,6 +33,7 @@ export function categoryPointsHtml(data, { account, query }) {
   </section><section class="card stack" aria-label="Kategorie-Verlauf"><h2>Kategorie-Verlauf</h2>
     <div class="points-filters"><label class="stack"><span class="field-label">Kategorie</span><select name="categoryAccount" data-category-account>${categoryOptions(account)}</select></label>
       <label class="stack"><span class="field-label">Buchungen durchsuchen</span><input type="search" name="categoryQuery" data-category-query value="${e(query)}" placeholder="Vorgang suchen"></label></div>
+    ${account === 'betting' && data.bettingParticipation ? `<p class="muted">Regulär abgerechnete Wetten: ${e(data.bettingParticipation.settledTips)}. Für einen Wettplatz sind mindestens ${e(data.bettingParticipation.minimumTips)} und ein positiver Nettogewinn erforderlich. Vollständige Erstattungen zählen nicht.</p>` : ''}
     ${pointsChartHtml(entries, { label: `${categoryName(account)}-Punkteverlauf` })}
     ${filtered.length ? rowsHtml([...filtered].reverse()) : emptyStateHtml(needle ? 'Keine Buchungen gefunden.' : 'Noch keine Buchungen.')}
   </section>`;

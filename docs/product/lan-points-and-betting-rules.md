@@ -58,13 +58,14 @@ Runden an ungespielten Zweier-Auslosungen, Turniermatches mit feststehenden Gegn
 den Gesamtsieger eines noch nicht begonnenen Turniers. Auslosen allein öffnet keinen Markt.
 Alle berechtigten Teilnehmer dürfen auf sich, ihr Team oder den Gegner tippen.
 
-Die bisherigen konfigurierbaren Einsatz-/Tages-/Rundengrenzen bleiben vorläufig aktiv
-(technische Anfangswerte 10/30/6). Die Tagesgrenze gilt pro Event in Europe/Berlin.
-**Beschlossen sind inzwischen W1/W2/W5:** maximal 20 Punkte pro Person und Wettmarkt,
-mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung und keine zusätzlichen
-Tageslimits oder Höchstzahl von Wettrunden pro Event. Vollständig erstattete Märkte und
+**W1/W5 sind umgesetzt:** maximal 20 Punkte pro Person und Wettmarkt, keine zusätzlichen
+Tageslimits und keine Höchstzahl von Wettrunden pro Event. Alte gespeicherte Konfigurationswerte
+begrenzen keine Wetten mehr; die API zeigt Tages-/Rundenlimits als `null`.
+W2 verlangt mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung.
+Vollständig erstattete Märkte und
 zurückgenommene Tipps zählen nicht zur Mindestzahl; Gewinne werden unabhängig davon ausgezahlt.
-Diese Regeln sind technisch noch umzusetzen. Für Matches ist W4 ebenfalls beschlossen:
+Die persönliche API liefert die Anzahl regulärer Abrechnungen und das Erreichen der Mindestzahl;
+die spätere Kategorieplatzierung folgt in Paket 6. Für Matches ist W4 ebenfalls beschlossen:
 Der Ersteller entscheidet direkt beim Anlegen vor Spielbeginn über „Wetten zulassen“, ohne
 zusätzliche Adminrolle. Bei ausgeschalteter Option darf kein anderer einen Markt für dieses
 Match eröffnen. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer
@@ -76,9 +77,8 @@ ist nur bei einem Einsatz auf diesen Ausgang berechenbar; neue Einsätze können
 Die API veröffentlicht dabei keine individuellen fremden Tipps. Freie Zweiermatches sowie
 Liga- und Gruppenspiele bieten „Unentschieden“ als regulär gewinnenden Tipp. K.-o.-Spiele und
 Turniersieger-Märkte bieten ihn nicht; ältere Märkte behalten ihre ursprüngliche Auswahl.
-Die neue Restverteilung bleibt der offenen Entscheidung in Paket 5b zugeordnet.
-Eine Runde verbraucht dauerhaft einen Kontingentplatz. `maxRounds=0`
-deaktiviert neue Wettrunden, ohne Kategorie-Gutschriften zu verhindern.
+Eine neue Runde verbraucht keinen Kontingentplatz. Auch ein gespeichertes altes `maxRounds=0`
+deaktiviert keine neuen Wetten mehr. Sichtbarkeit und Festschreibung behalten ihre Wirkung.
 
 Pro Person und Runde gibt es einen Tipp. Bis zum Schließen lassen sich Auswahl und Einsatz
 ändern oder der Tipp zurücknehmen. Annahme und Journalreservierung erfolgen gemeinsam;
@@ -94,9 +94,11 @@ Der Hintergrundlauf arbeitet auch ohne offenen Browser. Nach Tippschluss sind Ei
 ## Abrechnung und Korrektur
 
 Der Pool besteht ausschließlich aus den Einsätzen. Gewinner erhalten ihn anteilig ohne Gebühr
-oder Hausanteil. Die derzeitige Verteilung verwendet weiterhin den größten Nachkomma-Rest mit
-stabiler Tipp-ID als Gleichstandsregel. Die Zielregel „Rest an den größten richtigen Einsatz“
-ersetzt sie erst mit Paket 5b nach Klärung gleich großer größter Einsätze.
+oder Hausanteil. Auszahlungen werden zunächst ganzzahlig abgerundet. Restpunkte erhalten
+die größten Nachkommaanteile; bei gleichen Anteilen gewinnt der früher abgegebene Tipp.
+Maßgeblich ist dessen erste Speicherung, bei gleichem Zeitstempel die Einfügereihenfolge.
+Die vorher geplante Vergabe an den größten Einsatz entfällt. Die Nullsumme bleibt erhalten;
+die Gewichtung der Kategorien wird unabhängig davon durch ihre Platzpunkte geregelt.
 
 Auszahlung minus Einsatz wird atomar im Wallet und als Wett-Nettowert erfasst. Vollständige
 Erstattung ergibt 0 Nettogewinn. Grundstock ist kein Wett-Nettogewinn. Die Auszahlungen müssen
