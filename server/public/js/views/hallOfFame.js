@@ -12,6 +12,7 @@ import { rankedListHtml, sharedRankNumbers } from '../rankedList.js';
 import { accessibleEvents } from '../state.js';
 import { eventSelectOption } from '../eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
+import { POINT_CATEGORIES, categoryPlaceSummary } from '../pointsPresentation.js';
 
 let cache = null;
 let loading = false;
@@ -102,7 +103,7 @@ function renderEvent(e) {
           rank: r.rank ?? index + 1,
           lead: avatarHtml(r, 28),
           title: escapeHtml(r.name),
-          meta: e.scoringModel === 'lan_points' ? 'LAN-Punkte' : `${r.wins} ${r.wins === 1 ? 'Sieg' : 'Siege'} · ${r.matchesPlayed} ${r.matchesPlayed === 1 ? 'Spiel' : 'Spiele'}`,
+          meta: e.scoringModel === 'lan_points' ? escapeHtml(categoryPlaceSummary(r.categories)) : `${r.wins} ${r.wins === 1 ? 'Sieg' : 'Siege'} · ${r.matchesPlayed} ${r.matchesPlayed === 1 ? 'Spiel' : 'Spiele'}`,
           value: `${r.points} P`,
         })),
         { ranked: true, label: 'Gesamtplatzierungen' },
@@ -124,12 +125,16 @@ function renderEvent(e) {
     : '';
 
   const range = eventRange(e);
+  const categoryWinners = e.categoryChampions ? Object.entries(POINT_CATEGORIES)
+    .filter(([key]) => e.categoryChampions[key]?.length)
+    .map(([key, label]) => `<dt>${label}</dt><dd>${e.categoryChampions[key].map((winner) => escapeHtml(winner.name)).join(', ')}</dd>`).join('') : '';
   return `
     ${range ? `<span class="muted hall-of-fame-event-range">${range}</span>` : ''}
     <section class="stack hall-of-fame-event-section">
       <h3 class="section-title hall-of-fame-subtitle">Gesamtplatzierungen</h3>
       ${standingsHtml}
     </section>
+    ${categoryWinners ? `<section class="stack hall-of-fame-event-section"><h3 class="section-title hall-of-fame-subtitle">Kategoriesieger</h3><dl class="checklist-detail-facts">${categoryWinners}</dl></section>` : ''}
     ${tournamentsHtml ? `<section class="stack hall-of-fame-event-section"><h3 class="section-title hall-of-fame-subtitle">Turniere</h3>${tournamentsHtml}</section>` : ''}
   `;
 }

@@ -41,6 +41,12 @@ Telefonen in der normalen Textgröße lesbar bleiben.
 
 ## 7. Erreichbare Zustände
 
+Die persönliche Zusammenfassung zeigt für jede Kategorie getrennt Rohwert, Rang und
+Platzpunkte aus `categoryStanding.categories`. `rank: null` erscheint als „Kein Platz“ mit
+0 Platzpunkten. Gesamtplatz und Summe der Platzpunkte stehen darunter; Wettguthaben bleibt
+separat. `participantCount` nennt die gemeinsame Teilnehmerbasis. Bei fehlendem eigenen
+Wertungseintrag bleibt der Verlauf zugänglich und die fehlende Teilnahme wird benannt.
+
 Startguthaben allein; Reservierungen/Freigaben im Wallet und getrennte Kategorie-Gutschriften; Gewinne und Verluste; Erstattungen mit Netto null;
 negative Korrektur; abgeschlossenes Konto.
 

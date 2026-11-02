@@ -4,8 +4,8 @@ Die Punktefunktion verwendet getrennte Konten für **Orga**, **Spielen**, **Wett
 **Wettguthaben**. Kategorie-Rohwerte und Wettguthaben werden nicht addiert.
 Das [Zielkonzept](../KONZEPT-PUNKTE-WERTUNG.md) und der
 [Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) unterscheiden die bereits
-umgesetzte Wallet-Abrechnung (5a) von den noch offenen Marktregeln (5b), Kategorieplätzen
-und der Gesamtwertung (6), Meldefunktion und einheitlichen Festschreibung.
+umgesetzte Wallet-Abrechnung (5a), Kategorieplätze und Gesamtwertung (6/7) von den noch
+ausstehenden Marktanbindungen (5b), Meldefunktion und weitergehenden Abschlussregeln.
 
 ## Neustart ohne Punkteübernahme
 
@@ -26,7 +26,9 @@ Dies beschreibt die beschlossene Upgrade-Migration, keine bereits ausgeführte p
 Jeder berechtigte Teilnehmer erhält einmalig **fest 100 Wettpunkte je Event**, auch bei später
 Zusage. Der Betrag ist nicht konfigurierbar. Austreten und erneut Zusagen zahlen nicht erneut.
 Die technische Wettteilnahme verwendet weiterhin aktive bestätigte Teilnehmer ohne Testkonten;
-dies legt die spätere Teilnehmerbasis N der Gesamtwertung nicht fest.
+dies ist auch die beschlossene Teilnehmerbasis N der laufenden Gesamtwertung. Späte Zusagen
+zählen sofort. Austritte entfernen die Person aus der laufenden Rangliste, erhalten aber ihren
+Verlauf. Beim Abschluss werden Teilnehmerbasis und N gemeinsam mit dem Ergebnis festgehalten.
 
 Orga- und Spielpunkte erhöhen kein Wettguthaben. Neue To-dos bringen fest 3 Orga-Punkte für
 den ersten fremden Helfer; ein altes Orga-Budget, alte Belohnungsauszahlungen und individuelle
@@ -65,7 +67,7 @@ W2 verlangt mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierun
 Vollständig erstattete Märkte und
 zurückgenommene Tipps zählen nicht zur Mindestzahl; Gewinne werden unabhängig davon ausgezahlt.
 Die persönliche API liefert die Anzahl regulärer Abrechnungen und das Erreichen der Mindestzahl;
-die spätere Kategorieplatzierung folgt in Paket 6. Für Matches ist W4 ebenfalls beschlossen:
+die Kategorieplatzierung ist angebunden. Für Matches ist W4 ebenfalls beschlossen:
 Der Ersteller entscheidet direkt beim Anlegen vor Spielbeginn über „Wetten zulassen“, ohne
 zusätzliche Adminrolle. Bei ausgeschalteter Option darf kein anderer einen Markt für dieses
 Match eröffnen. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer
@@ -123,15 +125,20 @@ Andere reservierte Tipps werden dabei nicht stillschweigend verändert. Bezahlte
 und kaskadierende Kataloglöschungen bleiben bis zum ausdrücklichen Storno geschützt.
 Persönlicher Datenschutzexport und Kontolöschung berücksichtigen Journal und Wettquellen.
 
-## Vorläufige Auswertung und Abschluss
+## Kategorienwertung und Abschluss
 
-Kategorieansichten zeigen Rohwerte und Verlauf. Die frühere gemeinsame Kontosumme wird nicht
-mehr als LAN-Gesamtwertung ausgegeben. Die einzelne LAN-Rangliste, Hall of Fame und Event-Export
-verwenden bis Paket 6 vorläufig Spiel-Rohwerte. Klassische Sportstatistiken und Spielfilter
-werten weiterhin dokumentierte Ergebnisse aus; sie buchen keine historischen Punkte ins Journal.
-Gleiche Werte teilen sich den Rang; Namen bestimmen nur die Darstellung.
+Kategorieansichten zeigen Rohwert, Rang, Platzpunkte und Verlauf. Nur positive Rohwerte erhalten
+einen Platz, bei Wetten zusätzlich erst nach zwei regulären Abrechnungen. Platzpunkte sind
+N minus Rang plus 1; N umfasst alle wertungsberechtigten Event-Teilnehmer. Gleiche Rohwerte
+teilen den besseren Rang, zum Beispiel 1/2/2/4. Die Summe der drei Kategorien ergibt die
+Gesamtwertung. Rangliste, Hall of Fame und Event-Export lesen dieselbe Berechnung und erhalten
+geteilte Gesamtplätze und Kategoriesieger. Ohne wertbare Ergebnisse gibt es keinen Sieger.
+Wettguthaben wird niemals hinzuaddiert. Reguläre veröffentlichte LANs werden gewertet und
+bleiben nach Ende sichtbar; Testevents, Entwürfe, abgesagte Events und andere Eventtypen sind
+ausgeschlossen. Klassische Sportstatistiken und Spielfilter werten weiterhin dokumentierte
+Spielergebnisse aus; sie buchen keine historischen Punkte ins Journal.
 
-Der bisherige Abschluss speichert den vorläufigen Spielstand und sperrt weitere Punktebuchungen.
+Der bestehende Abschluss speichert N, Teilnehmerliste, Kategorienwerte und Gesamtstand und sperrt weitere Punktebuchungen.
 Offene oder gesperrte Runden verhindern ihn weiterhin. Begründetes Wiederöffnen und erneuter
-Abschluss behalten die Versionen seit dem Neustart. Die endgültige Kategorie-/Gesamtwertung
-mit Meldungen, automatischer Erstattung und einheitlichem Snapshot folgt in Paket 9.
+Abschluss behalten die Versionen seit dem Neustart. Meldungen, automatische Erstattung und
+weitergehende Regeln der einheitlichen Festschreibung folgen in Paket 9.

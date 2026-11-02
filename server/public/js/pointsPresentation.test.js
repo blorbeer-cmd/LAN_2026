@@ -46,12 +46,18 @@ test('category views keep each full history when searching and escape journal co
     { id: 'orga-2', account: 'orga', amount: -3, title: 'Korrektur <script>', reason: '<img src=x onerror=alert(1)>', createdAt: 2000 },
     { id: 'wallet-1', account: 'wallet', amount: 100, title: 'Startguthaben', createdAt: 3000 },
   ];
-  const html = categoryPointsHtml({ categoryJournal: entries, categoryBalances: { orga: -1, playing: 4, betting: 0 } },
+  const html = categoryPointsHtml({ categoryJournal: entries, categoryBalances: { orga: -1, playing: 4, betting: 0 },
+    participantCount: 4, categoryStanding: { points: 4, rank: 2, categories: {
+      orga: { rank: null, placePoints: 0 }, playing: { rank: 1, placePoints: 4 }, betting: { rank: null, placePoints: 0 },
+    } } },
     { account: 'orga', query: 'Korrektur' });
   assert.match(html, /Orga-Punkteverlauf: 2 Buchungen, aktuell -1 Punkte/);
   assert.match(html, /Korrektur &lt;script&gt;/);
   assert.doesNotMatch(html, /<script>|<img|Startguthaben/);
   assert.equal((html.match(/data-category-entry=/g) ?? []).length, 1);
+  assert.match(html, /Gesamt: 4 Platzpunkte · Platz 2/);
+  assert.match(html, /Kein Platz · 0 Platzpunkte/);
+  assert.match(html, /Platz 1 · 4 Platzpunkte/);
   const adminEntry = { ...entries[2], playerName: '<Alice>', actorName: '<Admin>', created_at: 2000 };
   const admin = adminCategoryJournalHtml([adminEntry], { account: 'orga', query: 'Alice', loading: false, error: '' });
   assert.match(admin, /&lt;Alice&gt;/);

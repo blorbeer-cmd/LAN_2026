@@ -27,11 +27,12 @@ leaderboardRouter.get('/', (req, res) => {
   const hiddenPlayerIds = includesTestPlayers(req) ? new Set<string>() : testPlayerIds();
   const visibleEvents = scope.eventIds.filter((eventId) =>
     pointsSettings(eventId)?.configured_at == null || pointsAreVisible(eventId));
-  // The explicit, unfiltered LAN keeps its old event account until cutover.
-  // Game filters and cross-event analytics always compare game points only.
+  // Category place points belong to one LAN. Game filters and cross-event
+  // analytics continue comparing game points, never mixing these units.
   const event = scope.explicitEventId;
   const settings = event ? pointsSettings(event) : undefined;
-  const lanAccount = !filterGameId && event && settings?.group_id === req.group!.id && settings.configured_at != null;
+  const lanAccount = !filterGameId && event && settings?.group_id === req.group!.id &&
+    (settings.configured_at != null || pointsAreVisible(event));
   const combined = lanAccount
     ? (pointsAreVisible(event) ? pointStandings(event) : [])
     : readStandings(req.group!.id, visibleEvents, filterGameId, hiddenPlayerIds);

@@ -5,7 +5,7 @@ import { createTestApp, TEST_ADMIN_ID, DEFAULT_GROUP_ID } from './testApp';
 import { createEvent, setParticipants } from '../events';
 import { setActiveEventForPlayer } from '../eventContext';
 import { db } from '../db';
-import { wallet, PointsError } from '../points';
+import { wallet, PointsError, pointStandings, pointsAreVisible } from '../points';
 import { correctJournalEntry } from '../pointsAdministration';
 import { readPointsBalances, readPointsSource, readPointsJournal, recordPointsEntitlements } from '../pointsJournal';
 import { buildPersonalDataExport, deleteAccount } from '../privacyService';
@@ -332,13 +332,65 @@ test('leaderboard filters and cross-event totals use game points without mixing 
   assert.deepEqual((await scores(`?gameId=${secondGame.body.id}`)).map((row: { points: number }) => row.points), [1, 4]);
   assert.deepEqual((await scores('')).map((row: { points: number; wins: number; matchesPlayed: number }) =>
     [row.points, row.wins, row.matchesPlayed]), [[5, 1, 2], [5, 1, 2]]);
-  assert.deepEqual((await scores(`?eventId=${f.eventId}`)).map((row: { points: number }) => row.points), [4, 1, 0],
-    'the explicit LAN view shows playing raw scores, never spendable wallet balances');
+  assert.deepEqual((await scores(`?eventId=${f.eventId}`)).map((row: { points: number }) => row.points), [4, 3, 0],
+    'the explicit LAN view shows category place points, never spendable wallet balances');
   assert.equal((await request(app).patch(`/api/events/${f.eventId}/points-visibility`)
     .send({ visible: false, revision: 1 })).status, 200);
   assert.deepEqual(await scores(`?eventId=${f.eventId}&gameId=${f.gameId}`), []);
   assert.deepEqual(await scores(`?gameId=${f.gameId}`), []);
   assert.deepEqual((await scores('')).map((row: { points: number }) => row.points), [1, 4]);
+});
+
+test('category readers share participant-based places, exclude test and withdrawn entrants, and freeze N with the result', async () => {
+  const f = await fixture();
+  const ids = [TEST_ADMIN_ID, ...f.players];
+  for (const [account, totals] of [['orga', [8, 4, 4, 0]], ['playing', [4, 8, 4, 0]], ['betting', [0, 0, 0, 100]]] as const)
+    recordPointsEntitlements(ids.map((playerId, index) => ({ groupId: DEFAULT_GROUP_ID, eventId: f.eventId,
+      playerId, account, sourceKey: `fixture:category:${account}`, total: totals[index], expectedRevision: 0,
+      title: 'Category reader fixture' })));
+  const own = () => request(app).get(`/api/points?eventId=${f.eventId}`);
+  const initial = (await own()).body;
+  assert.equal(initial.participantCount, 4);
+  assert.deepEqual(initial.standings.map((row: { points: number; rank: number }) => [row.points, row.rank]),
+    [[7, 1], [7, 1], [6, 3], [0, 4]]);
+  assert.deepEqual(initial.standings.find((row: { playerId: string }) => row.playerId === f.players[2]).categories.betting,
+    { raw: 100, rank: null, placePoints: 0 }, 'positive betting net alone cannot bypass the two-settlement minimum');
+  const comparable = (rows: Array<{ playerId: string; points: number; rank: number; categories: unknown }>) =>
+    rows.map(({ playerId, points, rank, categories }) => ({ playerId, points, rank, categories }));
+  assert.deepEqual(comparable((await request(app).get(`/api/leaderboard?eventId=${f.eventId}`)).body.standings), comparable(initial.standings));
+  const hall = (await request(app).get(`/api/hall-of-fame?eventId=${f.eventId}`)).body.events[0];
+  assert.deepEqual(comparable(hall.overallStandings), comparable(initial.standings));
+  assert.equal(hall.overallChampions.length, 2);
+  assert.equal(hall.categoryChampions.orga[0].playerId, TEST_ADMIN_ID);
+  const exported = (await request(app).get(`/api/export?eventId=${f.eventId}`)).body;
+  assert.equal(exported.scoringModel, 'category_place_points');
+  assert.equal(exported.participantCount, 4);
+  assert.deepEqual(comparable(exported.leaderboard), comparable(initial.standings));
+  const late = (await request(app).post('/api/players').send({ name: `Late category entrant ${sequence}` })).body.id;
+  setParticipants(f.eventId, [...ids, late]);
+  const expanded = (await own()).body;
+  assert.equal(expanded.participantCount, 5);
+  assert.equal(expanded.categoryStanding.points, 9, 'late entrants change N equally for all categories');
+  db.prepare('UPDATE players SET is_test=1 WHERE id=?').run(late);
+  assert.equal((await own()).body.participantCount, 4, 'test accounts never count, including in admin mode');
+  db.prepare('UPDATE players SET is_test=0 WHERE id=?').run(late);
+  setParticipants(f.eventId, [TEST_ADMIN_ID, f.players[0], f.players[2], late]);
+  const departed = (await own()).body;
+  assert.equal(departed.participantCount, 4);
+  assert.ok(!departed.standings.some((row: { playerId: string }) => row.playerId === f.players[1]));
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[1])!.orga, 4, 'withdrawal retains journal history');
+  for (const [status, isTest] of [['draft', 0], ['cancelled', 0], ['published', 1]] as const) {
+    db.prepare('UPDATE events SET status=?,is_test=? WHERE id=?').run(status, isTest, f.eventId);
+    assert.deepEqual(pointStandings(f.eventId), []);
+    assert.equal(pointsAreVisible(f.eventId), false);
+  }
+  db.prepare("UPDATE events SET status='ended',is_test=0 WHERE id=?").run(f.eventId);
+  assert.deepEqual((await own()).body.standings, departed.standings, 'ended LAN results remain visible');
+  assert.equal((await request(app).post(`/api/points/close?eventId=${f.eventId}`).send({})).status, 200);
+  const frozen = (await own()).body;
+  setParticipants(f.eventId, [TEST_ADMIN_ID]);
+  assert.deepEqual((await own()).body.standings, frozen.standings);
+  assert.equal((await own()).body.participantCount, 4, 'the closing roster and N survive later withdrawals');
 });
 
 test('admins and event creators toggle visibility without interrupting hidden credits or settled pools', async () => {
@@ -658,6 +710,7 @@ test('players bet on their own games; visible pools lock and settle zero-sum, on
   assert.equal((await request(app).get('/api/points')).body.rounds[0].revision, 1);
   assert.deepEqual((await request(app).get('/api/points').set('x-test-player-id', a)).body.bettingParticipation,
     { settledTips: 1, minimumTips: 2, hasMinimum: false });
+  assert.equal((await request(app).get('/api/points').set('x-test-player-id', b)).body.categoryStanding.categories.betting.rank, null);
   db.exec(`CREATE TEMP TRIGGER fail_void_audit BEFORE INSERT ON admin_log
     WHEN NEW.action = 'betting_settlement_voided' BEGIN SELECT RAISE(ABORT, 'test void audit failure'); END;`);
   try {
@@ -807,6 +860,7 @@ test('tournament participants can bet on themselves and opponents, including the
   const winningPlayer = tournament.teams[0].players[0].id;
   assert.deepEqual((await request(app).get('/api/points').set('x-test-player-id', winningPlayer)).body.bettingParticipation,
     { settledTips: 2, minimumTips: 2, hasMinimum: true });
+  assert.equal(data.standings.find((row: { playerId: string }) => row.playerId === winningPlayer).categories.betting.rank, 1);
   assert.equal(wallet(f.eventId, winningPlayer).total, 110);
   assert.equal(
     f.players.reduce((sum, p) => sum + wallet(f.eventId, p).total, 0),

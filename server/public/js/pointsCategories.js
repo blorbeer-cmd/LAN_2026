@@ -28,8 +28,10 @@ export function categoryPointsHtml(data, { account, query }) {
   return `<section class="card stack" aria-label="Meine Kategorien"><h2>Kategorien</h2>
     <div class="my-stats-kpis">${Object.entries(POINT_CATEGORIES).map(([key, label]) => `<div class="my-stats-kpi">
       <span class="my-stats-kpi-value" data-category-balance="${key}">${e(data.categoryBalances?.[key] ?? 0)}</span>
-      <span class="my-stats-kpi-label">${label}</span></div>`).join('')}</div>
-    <p class="muted">Spiel- und Orga-Punkte werden getrennt vom Wettguthaben gesammelt.</p>
+      <span class="my-stats-kpi-label">${label} · Rohwert</span>
+      ${data.categoryStanding?.categories ? `<span class="muted" data-category-score="${key}">${data.categoryStanding.categories[key].rank === null ? 'Kein Platz' : `Platz ${data.categoryStanding.categories[key].rank}`} · ${e(data.categoryStanding.categories[key].placePoints)} Platzpunkte</span>` : ''}</div>`).join('')}</div>
+    ${data.categoryStanding ? `<p><strong>Gesamt: ${e(data.categoryStanding.points)} Platzpunkte · Platz ${e(data.categoryStanding.rank)}</strong></p>` : '<p class="muted">Du gehörst aktuell nicht zur Wertung. Dein Punkteverlauf bleibt erhalten.</p>'}
+    <p class="muted">${e(data.participantCount ?? 0)} Teilnehmer bilden die Wertung. Jede Kategorie zählt gleich viel; Wettguthaben zählt nicht zur Gesamtwertung.</p>
   </section><section class="card stack" aria-label="Kategorie-Verlauf"><h2>Kategorie-Verlauf</h2>
     <div class="points-filters"><label class="stack"><span class="field-label">Kategorie</span><select name="categoryAccount" data-category-account>${categoryOptions(account)}</select></label>
       <label class="stack"><span class="field-label">Buchungen durchsuchen</span><input type="search" name="categoryQuery" data-category-query value="${e(query)}" placeholder="Vorgang suchen"></label></div>

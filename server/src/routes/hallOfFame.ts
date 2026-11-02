@@ -1,4 +1,5 @@
 import { pointsSettings, pointStandings, pointsAreVisible } from '../points';
+import { POINT_CATEGORIES } from '../categoryScoring';
 // Mehrjahres-Hall-of-Fame (FR-36): per-event champions (overall leaderboard
 // + tournament winners) across every LAN ever thrown, plus an all-time
 // "who's won the most" ranking built from those same per-event results.
@@ -60,12 +61,14 @@ hallOfFameRouter.get('/', (req, res) => {
   const tournamentWinCounts = new Map<string, number>();
 
   const eventSummaries = events.map((e) => {
-    const lanPoints = pointsSettings(e.id)?.configured_at != null;
-    const standings = lanPoints ? (pointsAreVisible(e.id) ? pointStandings(e.id) : []) : readStandings(req.group!.id, [e.id], null, hiddenPlayerIds);
+    const lanPoints = pointsSettings(e.id)?.configured_at != null || pointsAreVisible(e.id);
+    const lanStandings = pointsAreVisible(e.id) ? pointStandings(e.id) : [];
+    const standings = lanPoints ? lanStandings : readStandings(req.group!.id, [e.id], null, hiddenPlayerIds);
     const firstRankByPoints = new Map<number, number>();
     const overallStandings = standings.map((standing, index) => {
       if (!firstRankByPoints.has(standing.points)) firstRankByPoints.set(standing.points, index + 1);
       return {
+        ...standing,
         ...playerSummary(playerById, standing.playerId),
         points: standing.points,
         wins: standing.wins,
@@ -74,10 +77,9 @@ hallOfFameRouter.get('/', (req, res) => {
       };
     });
     const top = standings[0];
-    // LAN points share first place solely by points, including zero/negative
-    // final balances. Legacy match scoring still needs an actual scored win.
+    // An unplayed event has no champion; positive equal totals share victory.
     const overallChampions =
-      top && (lanPoints || top.points > 0)
+      top && top.points > 0
         ? overallStandings
             .filter((standing) => standing.rank === 1)
             .map((standing) => ({
@@ -87,6 +89,10 @@ hallOfFameRouter.get('/', (req, res) => {
         : [];
     // Retain the singular field for consumers of uniquely decided events.
     const overallChampion = overallChampions.length === 1 ? overallChampions[0] : null;
+    const categoryChampions = lanPoints ? Object.fromEntries(POINT_CATEGORIES.map((category) => [category,
+      lanStandings.filter((row) => row.categories?.[category].rank === 1)
+        .map((row) => ({ ...playerSummary(playerById, row.playerId), raw: row.categories[category].raw,
+          placePoints: row.categories[category].placePoints }))])) : null;
     for (const champion of overallChampions) {
       overallWinCounts.set(champion.playerId, (overallWinCounts.get(champion.playerId) ?? 0) + 1);
     }
@@ -116,6 +122,7 @@ hallOfFameRouter.get('/', (req, res) => {
       overallChampion,
       overallChampions,
       overallStandings,
+      categoryChampions,
       tournamentChampions,
     };
   });

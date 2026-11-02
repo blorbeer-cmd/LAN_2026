@@ -15,7 +15,8 @@ Wallet und Wett-Nettowert bleiben dort schreibgeschützt; gemäß W6 erfolgen fi
 Korrekturen ausschließlich durch Markt-Neuberechnung oder Storno.
 Wallet und Wetten verwenden seit Paket 5a ebenfalls das Kategorie-Journal. Das alte gemeinsame
 Konto und alte To-do-Belohnungen sind abgeschaltet. Der Wettumfang enthält noch die ausdrücklich
-vorläufigen Marktregeln; Paket 5b und die Gesamtwertung sind nicht umgesetzt.
+vorläufigen Marktregeln; Paket 5b ist teilweise umgesetzt. Die Kategorie-/Gesamtwertung aus
+Paketen 6/7 ist angebunden; ihre abschließende Prüfung läuft.
 
 Die beiden Code-Findings sind berechtigt und gehören vor die nächsten Fachpakete:
 
@@ -24,15 +25,16 @@ Die beiden Code-Findings sind berechtigt und gehören vor die nächsten Fachpake
 - **F2:** Spielfilter und eventübergreifende Ranglisten dürfen keine LAN-Kontostände samt
   Grundstock zu Spielpunkten addieren. Diese Abfragen verwenden ausschließlich Spielpunkte.
   Die damalige Altmodell-Ausnahme für einzelne LANs, Hall of Fame und Export ist seit Paket 5a
-  abgelöst: Diese Ansichten verwenden vorläufig Spiel-Rohwerte. Kategorie- und Gesamtwertung
-  folgen weiterhin in Paket 6.
+  abgelöst. Seit Paket 6 verwenden diese Ansichten Kategorie-Platzpunkte; klassische Spielfilter
+  und eventübergreifende Sportstatistiken bleiben bei Spielpunkten.
 
 K1–K11 des Reviews werden durch den Umstellungsvertrag, die folgende Paketfolge und die
 erweiterte Liste offener Entscheidungen im Konzept berücksichtigt. Insbesondere ist die Zahl
 vorhandener Konten weder die Teilnehmerzahl N noch eine Entscheidung über die Wertungsberechtigung.
-Die endgültige Wertungsberechtigung von beendeten und nicht für LAN-Punkte konfigurierten Events
-bleibt E1 zugeordnet. Der beschlossene Neustart in Paket 5a schließt historische Ansprüche
-aus dem Abgleich aus, ohne den endgültigen Umfang der künftigen Wertung festzulegen.
+E1 ist entschieden: Die Kategorienwertung gilt für reguläre veröffentlichte LANs und bleibt
+nach deren Ende sichtbar. Testevents, Entwürfe, abgesagte Veranstaltungen und andere Eventtypen
+sind ausgenommen. Der beschlossene Neustart in Paket 5a schließt historische Ansprüche weiterhin
+aus dem Abgleich aus. E2 bestimmt die Teilnehmerbasis unabhängig von vorhandenen Konten.
 
 ## Paketfolge und Abhängigkeiten
 
@@ -84,11 +86,11 @@ und kein Deployment ausgeführt.
 | `points_accounts`, `points_sources`, `points_journal` | Einzige Grundlage aller aktuellen Punkte und des Wallets |
 | Wettreservierungen und Abrechnungen | Ein kanonischer Journalvorgang je Markt, Person und Konto |
 | Punkteansicht und Verwaltung | Getrennte Rohwerte und Wettguthaben; keine einseitigen Finanzkorrekturen |
-| Bisherige LAN-Auswertungen | Vorläufig Spiel-Rohwerte statt gemeinsamer Kontosumme; keine Gesamtplatzpunkte |
-| Einheitliche Kategorie-/Gesamtwertung, Snapshots | Folgen in Paketen 6 und 9 |
+| LAN-Auswertungen | Seit Paket 6 Kategorie-Platzpunkte statt gemeinsamer Kontosumme |
+| Kategorie-/Gesamtstände und Teilnehmerbasis im Snapshot | In Paket 6 angebunden; weitergehende Abschlussregeln folgen in Paket 9 |
 
 Die bisherige technische Wettteilnahme (aktive bestätigte Teilnehmer ohne Testkonten) bleibt
-vorläufig bestehen; sie entscheidet weder N noch den endgültigen Wertungsumfang E1/E2.
+bestehen; E1/E2 sind inzwischen ausdrücklich für die Kategorienwertung entschieden.
 Historische Sportstatistiken bleiben Ergebnis-Auswertungen, ohne Punkte ins neue Journal zu buchen.
 
 ## Paket 1 – Rohwerte und Journal zuerst
@@ -96,7 +98,7 @@ Historische Sportstatistiken bleiben Ergebnis-Auswertungen, ohne Punkte ins neue
 **Umgesetzt als additive Oberfläche auf dem bestehenden Journal.** Bei ihrer Einführung blieben LAN-Summe und Wetten separat. Paket 5a ersetzt diesen
 Zwischenstand durch das separate Wallet ohne Guthabenübernahme. Der Browserfall prüft eigene und fremde Korrekturen, negative Ansprüche, die Bearbeitung
 älterer Buchungen, einen Revisionskonflikt, Ladefehler mit erneutem Versuch, Realtime und die
-Sichtbarkeit auf Telefon und Desktop. Kategorienränge und Platzpunkte folgen weiterhin später.
+Sichtbarkeit auf Telefon und Desktop. Kategorienränge und Platzpunkte sind in Paket 7 ergänzt.
 Der aktuelle Umstellungsvertrag steht in Paket 0; offene Markt- und Gesamtwertungsfragen
 bleiben den Paketen 5b und 6 zugeordnet.
 
@@ -146,8 +148,8 @@ Fachquelle bleiben bei geschlossener Wertung nutzbar; deren Punkte und Snapshot 
 - Oberfläche und Datenschutzexport lesen das neue Journal. Der Wallet-Verlauf zeigt verfügbare
   Mittel einschließlich Reservierungen. Orga-/Spielkorrekturen bleiben im Kategorie-Journal.
   Das alte Budget, die alte To-do-Auszahlung und einseitige Entzüge aus dem alten Konto sind abgeschaltet.
-- Die bisherige LAN-Rangliste, Hall of Fame und der Event-Export lesen vorläufig Spiel-Rohwerte,
-  keine Wallet-Summen. Kategorieplätze und die Gesamtwertung folgen weiterhin in Paket 6.
+- Die LAN-Rangliste, Hall of Fame und der Event-Export lesen seit Paket 6 Kategorie-Platzpunkte,
+  keine Wallet-Summen. Die zwischenzeitlichen Spiel-Rohwerte sind damit abgelöst.
 
 Abnahme: Reset samt Replay/Rollback und Hintergrundabgleich; neue Vergaben nach Reset;
 Startguthaben bei später Zusage; Nullsumme, wiederholte Abrechnung, parallele Reservierungen,
@@ -168,7 +170,7 @@ gespeicherten Teilnehmerseiten eines Wettbewerbs.
 oder Höchstzahl von Wettrunden pro Event. Alte gespeicherte Kontingente begrenzen keine Wetten
 mehr und die API zeigt diese Grenzen als `null`. W2 ist mit zwei regulär abgerechneten Tipps
 entschieden. Die persönliche API liefert deren Anzahl und die erreichte Mindestzahl; die
-Kategorieplatzierung wird erst in Paket 6 angebunden. Vollständig erstattete Märkte und
+Kategorieplatzierung ist in Paket 6 angebunden. Vollständig erstattete Märkte und
 zurückgenommene Tipps zählen nicht zur Mindestzahl. Auszahlungen sind davon unabhängig.
 
 - Zielregeln ersetzen die alten Regeln: sichtbare vorläufige Pool-Quoten, formatabhängiger
@@ -187,22 +189,24 @@ zurückgenommene Tipps zählen nicht zur Mindestzahl. Auszahlungen sind davon un
   Märkte bei der Festschreibung. Alte Werte 10/30/6 sind keine Zielvorgaben.
 - Eigenwetten, Mitteilungen und die Anzeige direkt an Match/Turnier bleiben erhalten.
 
-## Pakete 6/7 – Wertung und vollständige Ansichten
+## Pakete 6/7 – Wertung und vollständige Ansichten (Anbindung umgesetzt, Prüfung läuft)
 
 Paket 6 berechnet positive Rohwerte, geteilte Ränge und N-basierte Platzpunkte gemäß Konzept.
 Die reine Berechnung liegt in `server/src/categoryScoring.ts` und ist anhand der Konzeptbeispiele
-geprüft. Ihre Eingaben sind die extern bestimmte Teilnehmermenge und Wettberechtigung; sie trifft
-keine Auswahl nach Eventstatus, Teilnehmerstatus oder Mindestzahl von Tipps. API, Auswertungen
-und Oberfläche verwenden diese Berechnung erst nach Entscheidung der folgenden Fachfragen.
-Die Wett-Mindestzahl ist mit zwei regulär abgerechneten Tipps entschieden. N samt Stichtag,
-ehemalige/späte Teilnehmer, Testkonten und Eventumfang müssen zuerst entschieden werden.
-Die Kontenmenge darf nicht als N verwendet werden.
-Der Umgang mit geteilten Turnierboni ist ebenfalls ausdrücklich offen; der Ist-Code vergibt in
-Ligen den vollen Bonus des geteilten Platzes (zum Beispiel 5/5/1).
+geprüft. `pointStandings` verbindet sie mit den beschlossenen Regeln: reguläre veröffentlichte
+oder beendete LAN, aktive bestätigte Teilnehmer ohne Testkonten, späte Zusagen sofort,
+Austritte nur aus der laufenden Rangliste entfernen. N wird aus dieser Teilnehmerliste ermittelt,
+niemals aus vorhandenen Konten. Für die Wettplatzierung zählen mindestens zwei regulär abgerechnete
+Tipps und positiver Nettogewinn. S1 ist bestätigt: voller Bonus des geteilten Turnierplatzes,
+zum Beispiel 5/5/1. Der vorhandene Abschluss speichert nun Teilnehmerbasis, Kategorien und
+Gesamtstand; die weiteren Abschlussregeln einschließlich Meldungen bleiben Paket 9 zugeordnet.
 
-Rangliste, Hall of Fame und Export werden gemeinsam auf die neuen Kategorien und Gesamtstände
-umgestellt. `pointStandings` darf danach nicht weiter unbemerkt das Gesamtergebnis liefern.
-Paket 7 ergänzt Rang und Platzpunkte in den bereits bestehenden Rohwert-/Verlaufsansichten.
+Rangliste, Hall of Fame und Export verwenden gemeinsam diese Kategorien und Gesamtstände.
+Spielfilter und eventübergreifende Sportstatistiken vergleichen weiterhin ausschließlich
+Spielpunkte; sie vermischen diese nicht mit Kategorie-Platzpunkten. Die Hall of Fame liefert
+zusätzlich geteilte Kategoriesieger; ohne wertbare Ergebnisse gibt es keinen Sieger.
+Paket 7 ergänzt Rohwert, Rang und Platzpunkte in den bestehenden Kategorie-/Verlaufsansichten
+sowie deren Summe und Gesamtplatz. Wettguthaben bleibt separat.
 Abnahme: alle Konzeptbeispiele, Gleichstände, inaktive Kategorien, fehlende Wettberechtigung,
 negative/Null-Rohwerte und identische Werte in allen Ansichten und Exporten.
 

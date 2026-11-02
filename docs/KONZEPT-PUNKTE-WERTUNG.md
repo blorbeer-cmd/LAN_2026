@@ -107,6 +107,8 @@ zusätzlich als Spiele. Freilose erzeugen keine Punkte für ein gespieltes Match
 
 Eine Änderung des Turnierergebnisses berechnet die Wertung neu. Sie erzeugt keinen
 zweiten Platzierungsbonus.
+Geteilte Turnierplätze erhalten jeweils den vollen Bonus des gemeinsamen Rangs.
+Zwei Erstplatzierte erhalten daher 5/5/1; nach ihnen folgt Platz 3 (S1, bestätigt).
 
 **Entschieden für manuelle Spielpunkte-Korrekturen:** Ändert sich später der tatsächliche
 Punkteanspruch aus einem Spiel oder einer Turnierplatzierung, wird er aus dem neuen Ergebnis
@@ -357,8 +359,16 @@ Beispiel einer Kategorie bei N = 8:
 | D | 4 | 4 | 5 |
 | E–H | Je 0 oder negativ | Kein Platz | Je 0 |
 
-**OFFEN – Teilnehmerbasis:** Die genaue Abgrenzung und der maßgebliche Stichtag für N bei
-Zu- und Abmeldungen sind noch festzulegen. Dieses Konzept entscheidet sie nicht selbst.
+**Entschiedene Teilnehmerbasis (E2):** N umfasst alle aktuell bestätigten Teilnehmer mit
+aktivem Gruppenkonto, ohne Testkonten und deaktivierte Konten. Späte Zusagen kommen sofort
+hinzu. Absage und Austritt entfernen die Person aus der laufenden Rangliste, erhalten aber
+ihren Punkteverlauf. Bei der Festschreibung werden Teilnehmerliste und N gemeinsam mit den
+Kategorie- und Gesamtständen festgehalten; spätere Austritte verändern diesen Endstand nicht.
+
+**Entschiedener Eventumfang (E1):** Die Kategorienwertung gilt ausschließlich für reguläre
+veröffentlichte LANs. Ihre Ergebnisse bleiben nach dem Ende sichtbar. Testevents, Entwürfe,
+abgesagte Veranstaltungen und andere Eventtypen gehören nicht zur Kategorienwertung.
+Die Neustartentscheidung bleibt bestehen: Historische Punkte werden nicht nachgetragen.
 
 ### 6.3 Gesamtsieger und Anzeige
 
@@ -480,8 +490,8 @@ Vorgabewerte sind dafür keine Entscheidung:
 | Kennung | Offene Entscheidung / betroffene Umsetzung |
 |---|---|
 | U1 (entschieden) | Keine Übernahme bisheriger Orga-, Spiel- oder Wettpunkte für bestehende Events. Einmaliger Neustart einschließlich alter Reservierungen, Belohnungszusagen und Punkte-Endstände; Fachdaten bleiben erhalten. Historische Ansprüche werden nicht erneut nachgetragen. |
-| E1 | Laufende Events werden unterstützt. Offen bleiben die endgültige Abgrenzung nach Eventtyp sowie unveröffentlichte/beendete Events. Vorhandene Spiel-/Orga-Backfills werden durch das To-do-Paket nicht verändert. |
-| E2 | Wertungsberechtigte Teilnehmer, Testkonten und Teilnehmerbasis N samt Stichtag, späten Zusagen und Austritten. Vorhandene Konten sind nicht gleich N. |
+| E1 (entschieden) | Ausschließlich reguläre veröffentlichte LANs; Ergebnisse bleiben nach Ende sichtbar. Keine Kategorienwertung für Testevents, Entwürfe, abgesagte Veranstaltungen oder andere Eventtypen. Keine historischen Gutschriften. |
+| E2 (entschieden) | Aktuell bestätigte Teilnehmer mit aktivem Gruppenkonto, ohne Testkonten/deaktivierte Konten. Späte Zusagen zählen sofort; Absage/Austritt entfernen die Person aus der laufenden Rangliste, erhalten aber ihren Verlauf. Festschreibung hält Teilnehmerliste und N fest. |
 | W3 (entschieden) | Fest 100 separate Wettpunkte einmal pro Event und berechtigtem Teilnehmer, auch bei später Zusage. Nicht konfigurierbar; erneute Zusage zahlt nicht erneut. |
 | W4 (entschieden) | Der Match-Ersteller entscheidet direkt beim Anlegen, ob auf sein Match gewettet werden darf; keine zusätzliche Adminrolle erforderlich. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bestehenden Start-/Tippschlussregeln gelten weiterhin. |
 | W5 (entschieden) | Keine zusätzlichen Tageslimits und keine Höchstzahl offizieller Wettrunden pro Event. Ausreichendes verfügbares Guthaben und die feste Einsatzgrenze von 20 Punkten gelten weiterhin. |
@@ -489,7 +499,7 @@ Vorgabewerte sind dafür keine Entscheidung:
 | W7 (Abrechnung entschieden) | Pool und Nullsumme bleiben erhalten. Restpunkte nach größtem Nachkommaanteil, bei gleichem Anteil früher abgegebener Tipp. Offen bleibt die Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
 | O3 (umgesetzt) | Neue Aufgaben verwenden kein Orga-Budget und keine vergüteten Helferplätze. Alte Zusagen und der alte Finanzpfad entfallen mit dem beschlossenen Neustart. |
 | O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben erhalten keine alten LAN-Auszahlungen mehr. |
-| S1 | Turnierplatzierungsbonus bei geteilten Plätzen. Der Ist-Code vergibt in Ligen den vollen Bonus des geteilten Rangs (beispielsweise 5/5/1); die Zielregel ist noch nicht ausdrücklich festgelegt. |
+| S1 (entschieden) | Geteilte Turnierplätze erhalten jeweils den vollen Bonus des gemeinsamen Rangs, beispielsweise 5/5/1. |
 | M1 | Meldungen gegen Event-Ersteller ohne Adminrolle oder bei fehlendem zuständigen Admin; Vertretung und Bearbeitung. |
 | H1 | Korrektur des rechnerisch nicht allgemein zutreffenden Teamzahl-Durchschnittshinweises aus Abschnitt 3.4. |
 

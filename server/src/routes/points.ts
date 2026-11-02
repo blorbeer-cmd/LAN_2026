@@ -5,6 +5,7 @@ import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../group
 import {
   ensurePointAccounts,
   pointParticipants,
+  pointParticipantCount,
   pointStandings,
   PointsError,
   pointsSettings,
@@ -80,6 +81,7 @@ pointsRouter.get('/', (req, res) => {
       .prepare('SELECT * FROM betting_rounds WHERE event_id = ? ORDER BY created_at DESC')
       .all(eventId) as BettingRound[]
   ).map((r) => roundView(r, req.player!.id));
+  const standings = pointStandings(eventId);
   res.json({
     eventId,
     categoryBalances: readPointsBalances(req.group!.id, eventId, req.player!.id),
@@ -89,7 +91,9 @@ pointsRouter.get('/', (req, res) => {
     bettingParticipation: bettingParticipation(eventId, req.player!.id),
     entries,
     rounds,
-    standings: pointStandings(eventId),
+    standings,
+    participantCount: pointParticipantCount(eventId),
+    categoryStanding: standings.find((row) => row.playerId === req.player!.id) ?? null,
   });
 });
 pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
@@ -105,7 +109,7 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
   if (typeof prizeInfo !== 'string' || prizeInfo.trim().length > 300)
     throw new PointsError('Preisinfo: höchstens 300 Zeichen.', 400);
   const event = db
-    .prepare("SELECT id FROM events WHERE id = ? AND group_id = ? AND event_type_key = 'lan' AND status = 'published'")
+    .prepare("SELECT id FROM events WHERE id = ? AND group_id = ? AND event_type_key = 'lan' AND is_test = 0 AND status = 'published'")
     .get(eventId, req.group!.id);
   if (!event) throw new PointsError('Die Punktewertung ist für veröffentlichte LAN-Events vorgesehen.', 400);
   db.transaction(() => {
@@ -280,14 +284,14 @@ pointsRouter.post('/close', requireGroupRole('admin'), (req, res) => {
       throw new PointsError('Bitte offene Tipprunden erst abrechnen oder mit Begründung erstatten.');
     }
     ensurePointAccounts(eventId);
-    const standings = pointStandings(eventId).map((p) => ({ playerId: p.playerId, points: p.points }));
+    const standings = pointStandings(eventId).map(({ name: _name, color: _color, ...row }) => row);
     const { revision } = db
       .prepare('SELECT COALESCE(MAX(revision),0) + 1 AS revision FROM points_snapshots WHERE event_id = ?')
       .get(eventId) as { revision: number };
     db.prepare('INSERT INTO points_snapshots (event_id,revision,standings,actor_id,created_at) VALUES (?,?,?,?,?)').run(
       eventId,
       revision,
-      JSON.stringify(standings),
+      JSON.stringify({ version: 2, participantCount: pointParticipantCount(eventId), standings }),
       req.player!.id,
       Date.now(),
     );
@@ -300,7 +304,7 @@ pointsRouter.post('/close', requireGroupRole('admin'), (req, res) => {
       targetId: eventId,
       details: { revision },
     });
-  })();
+  }).immediate();
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json({ ok: true });
 });

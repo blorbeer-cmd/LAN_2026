@@ -1,6 +1,7 @@
 import { db } from './db';
 import { PointsError } from './pointsAccess';
 import { readPointsBalances, readPointsSource, recordPointsEntitlements } from './pointsJournal';
+import { computeCategoryStandings, type CategoryStanding } from './categoryScoring';
 export { PointsError } from './pointsAccess';
 export const BETTING_MAX_STAKE = 20;
 export const BETTING_MIN_SETTLED_TIPS = 2;
@@ -29,12 +30,18 @@ export function pointsSettings(eventId: string): PointsSettings | undefined {
 export function pointsAreVisible(eventId: string | null): boolean {
   if (!eventId) return false;
   return Boolean(db.prepare(`SELECT 1 FROM points_settings s JOIN events e ON e.id = s.event_id
-    WHERE s.event_id = ? AND s.visible = 1 AND e.event_type_key = 'lan'`).get(eventId));
+    WHERE s.event_id = ? AND s.visible = 1 AND e.event_type_key = 'lan'
+      AND e.is_test = 0 AND e.status IN ('published','ended')`).get(eventId));
+}
+export function isPointsEvent(eventId: string): boolean {
+  return Boolean(db.prepare(`SELECT 1 FROM events WHERE id = ? AND event_type_key = 'lan'
+    AND is_test = 0 AND status IN ('published','ended')`).get(eventId));
 }
 export function requirePointsVisible(eventId: string): void {
   if (!pointsAreVisible(eventId)) throw new PointsError('LAN-Punkte sind für dieses Event ausgeblendet.', 403);
 }
 export function requirePointsOpen(eventId: string): PointsSettings {
+  if (!isPointsEvent(eventId)) throw new PointsError('Die Punktewertung gilt nur für reguläre veröffentlichte LANs.', 409);
   const settings = pointsSettings(eventId);
   if (!settings) throw new PointsError('Die Punktewertung ist noch nicht aktiviert.', 404);
   if (settings.closed_at !== null) throw new PointsError('Die Punktewertung ist abgeschlossen.');
@@ -56,7 +63,7 @@ export function pointParticipants(
 export const BETTING_START_POINTS = 100;
 export function ensurePointAccounts(eventId: string): void {
   const settings = pointsSettings(eventId);
-  if (!settings || settings.closed_at !== null) return;
+  if (!settings || settings.closed_at !== null || !isPointsEvent(eventId)) return;
   db.transaction(() => {
     for (const player of pointParticipants(settings.group_id, eventId)) {
       for (const account of ['orga', 'playing', 'betting', 'wallet'])
@@ -106,31 +113,60 @@ export function bettingParticipation(eventId: string, playerId: string) {
     WHERE r.event_id=? AND t.player_id=? AND r.status='settled'`).get(eventId, playerId) as { count: number };
   return { settledTips: count, minimumTips: BETTING_MIN_SETTLED_TIPS, hasMinimum: count >= BETTING_MIN_SETTLED_TIPS };
 }
-export function pointStandings(eventId: string) {
+export interface PointStanding extends CategoryStanding {
+  name: string;
+  color: string;
+  participantCount: number;
+  settledTips: number;
+  bettingQualified: boolean;
+  wins: number;
+  matchesPlayed: number;
+}
+
+interface PointsSnapshot {
+  version: 2;
+  participantCount: number;
+  standings: PointStanding[];
+}
+function frozenPoints(eventId: string): PointsSnapshot | null {
+  if (pointsSettings(eventId)?.closed_at == null) return null;
+  const frozen = db.prepare('SELECT standings FROM points_snapshots WHERE event_id=? ORDER BY revision DESC LIMIT 1')
+    .get(eventId) as { standings: string } | undefined;
+  if (!frozen) return null;
+  const parsed = JSON.parse(frozen.standings) as PointsSnapshot | PointStanding[];
+  return Array.isArray(parsed) ? { version: 2, participantCount: parsed[0]?.participantCount ?? parsed.length, standings: parsed } : parsed;
+}
+export function pointParticipantCount(eventId: string): number {
   const settings = pointsSettings(eventId);
-  if (!settings) return [];
-  const frozen =
-    settings.closed_at !== null
-      ? (db
-          .prepare('SELECT standings FROM points_snapshots WHERE event_id = ? ORDER BY revision DESC LIMIT 1')
-          .get(eventId) as { standings: string } | undefined)
-      : undefined;
+  if (!settings || !isPointsEvent(eventId)) return 0;
+  return frozenPoints(eventId)?.participantCount ?? pointParticipants(settings.group_id, eventId).length;
+}
+
+export function pointStandings(eventId: string): PointStanding[] {
+  const settings = pointsSettings(eventId);
+  if (!settings || !isPointsEvent(eventId)) return [];
+  const frozen = frozenPoints(eventId);
   if (frozen) {
-    return (JSON.parse(frozen.standings) as Array<{ playerId: string; points: number }>).flatMap((row) => {
+    // Older pre-cutover snapshots remain readable without inventing category
+    // scores. New snapshots retain N, category ranks and the full calculation.
+    return frozen.standings.flatMap((row) => {
       const player = db
         .prepare('SELECT name,color FROM players WHERE id = ? AND deactivated_at IS NULL')
         .get(row.playerId) as { name: string; color: string } | undefined;
-      return player ? [{ ...row, ...player, wins: 0, matchesPlayed: 0 }] : [];
+      return player ? [{ ...row, ...player }] : [];
     });
   }
-  return pointParticipants(settings.group_id, eventId)
-    .map((p) => ({
-      playerId: p.id,
-      name: p.name,
-      color: p.color,
-      points: readPointsBalances(settings.group_id, eventId, p.id)?.playing ?? 0,
-      wins: 0,
-      matchesPlayed: 0,
-    }))
-    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'de'));
+  const participants = pointParticipants(settings.group_id, eventId);
+  const inputs = participants.map((player) => {
+    const balances = readPointsBalances(settings.group_id, eventId, player.id);
+    const participation = bettingParticipation(eventId, player.id);
+    return { playerId: player.id, raw: { orga: balances?.orga ?? 0, playing: balances?.playing ?? 0,
+      betting: balances?.betting ?? 0 }, bettingQualified: participation.hasMinimum, settledTips: participation.settledTips };
+  });
+  const byId = new Map(participants.map((player, index) => [player.id, { ...player, ...inputs[index] }]));
+  return computeCategoryStandings(inputs).map((row) => {
+    const player = byId.get(row.playerId)!;
+    return { ...row, name: player.name, color: player.color, participantCount: participants.length,
+      settledTips: player.settledTips, bettingQualified: player.bettingQualified, wins: 0, matchesPlayed: 0 };
+  }).sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'de') || a.playerId.localeCompare(b.playerId));
 }

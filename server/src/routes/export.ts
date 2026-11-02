@@ -1,4 +1,5 @@
-import { pointsSettings, pointStandings, pointsAreVisible } from '../points';
+import { pointsSettings, pointStandings, pointParticipantCount, pointsAreVisible } from '../points';
+import type { CategoryStanding } from '../categoryScoring';
 // "Export als Andenken": a one-click JSON snapshot of everything that
 // happened at one LAN (leaderboard, playtime, awards, tournament
 // champions) — a keepsake, and reuses the same pure scoring/stats logic the
@@ -44,7 +45,10 @@ interface EventRow {
 export interface ExportSnapshot {
   event: { id: string; name: string; startsAt: number; endsAt: number | null };
   exportedAt: number;
-  leaderboard: Array<{ playerId: string; name: string; points: number; wins: number; matchesPlayed: number }>;
+  scoringModel: 'category_place_points' | 'match_results';
+  participantCount: number | null;
+  leaderboard: Array<{ playerId: string; name: string; points: number; wins: number; matchesPlayed: number;
+    rank?: number; categories?: CategoryStanding['categories']; participantCount?: number }>;
   playtimeByPlayer: Array<{ playerId: string; name: string; totalFormatted: string }>;
   playtimeByGame: Array<{ gameId: string; gameName: string; gameIcon: string; totalFormatted: string }>;
   awards: Array<{ title: string; description: string; playerName: string; value: string }>;
@@ -121,10 +125,12 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
   const now = Date.now();
 
   // ---------- Leaderboard, scoped to this event's matches ----------
-  const leaderboard = (pointsSettings(filterEventId)?.configured_at != null
+  const lanPoints = pointsSettings(filterEventId)?.configured_at != null || pointsAreVisible(filterEventId);
+  const leaderboard = (lanPoints
     ? (pointsAreVisible(filterEventId) ? pointStandings(filterEventId) : []) : readStandings(groupId, [filterEventId])).map((s) => ({
+    ...s,
     playerId: s.playerId,
-    name: playerById.get(s.playerId)?.name ?? 'Unbekannt',
+    name: 'name' in s && typeof s.name === 'string' ? s.name : playerById.get(s.playerId)?.name ?? 'Unbekannt',
     points: s.points,
     wins: s.wins,
     matchesPlayed: s.matchesPlayed,
@@ -347,6 +353,8 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
   return {
     event: { id: event.id, name: event.name, startsAt: event.starts_at, endsAt: event.ends_at },
     exportedAt: now,
+    scoringModel: lanPoints ? 'category_place_points' : 'match_results',
+    participantCount: lanPoints ? (pointsAreVisible(filterEventId) ? pointParticipantCount(filterEventId) : 0) : null,
     leaderboard,
     playtimeByPlayer,
     playtimeByGame,

@@ -7,7 +7,7 @@ import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { rankedListHtml, sharedRankNumbers } from '../rankedList.js';
-import { POINT_SOURCES, signedPoints, pointsChartHtml, journalSourceState } from '../pointsPresentation.js';
+import { POINT_SOURCES, signedPoints, pointsChartHtml, journalSourceState, categoryPlaceSummary } from '../pointsPresentation.js';
 import { categoryPointsHtml, adminCategoryJournalHtml, categoryEntryFactsHtml } from '../pointsCategories.js';
 
 let cached = null;
@@ -103,14 +103,15 @@ export function currentPointStandings() {
   return currentData()?.settings ? currentData().standings : null;
 }
 export function pointsRankingHtml(ctx) {
+  if (state.selectedGameId) return '';
   ensurePoints(ctx);
   const standings = currentPointStandings();
   if (!standings) return '';
   const ranks = sharedRankNumbers(standings.map((p) => p.points));
   return `<section class="card stack"><div class="row-between"><h2>LAN-Punkte</h2><button type="button" class="btn btn-sm" data-navigate="points">Punktekonto & Verlauf</button></div>
-    <p class="muted">Spiel-Rohwerte dieser LAN. Gleiche Punkte teilen sich den Platz.</p>
+    <p class="muted">Gesamtplatzpunkte aus Orga, Spielen und Wetten. Gleiche Punkte teilen sich den Platz.</p>
     ${rankedListHtml(
-      standings.map((p, i) => ({ rank: ranks[i], title: e(p.name), value: `${p.points} P.` })),
+      standings.map((p, i) => ({ rank: ranks[i], title: e(p.name), meta: e(categoryPlaceSummary(p.categories)), value: `${p.points} P.` })),
       { ranked: true, label: 'LAN-Punkte' },
     )}</section>`;
 }
@@ -437,14 +438,14 @@ export function renderPoints(container, ctx) {
   const rounds = selected ? data.rounds.filter((r) => r.id === selected) : data.rounds;
   container.innerHTML = `${header}<div class="grouped-page-sections">${categoryPointsHtml(data, { account: categoryAccount, query: categoryQuery })}${overviewHtml(data)}
     <section class="card stack" aria-label="Tipprunden"><div class="row-between"><h2>${selected ? 'Tipprunde' : 'Spiele & Turniere tippen'}</h2>${selected ? '<button type="button" class="btn btn-sm" data-all-rounds>Alle Runden</button>' : ''}</div>
-      <p class="muted">Max. ${data.settings.max_stake} P. pro Runde · ${data.settings.daily_limit} P. pro Tag · ${data.rounds.length}/${data.settings.max_rounds} offizielle Runden. Auch eigene Spiele und Turniere sind erlaubt.</p>
+      <p class="muted">Max. ${data.settings.max_stake} P. pro Wettmarkt. Auch eigene Spiele und Turniere sind erlaubt.</p>
       ${rounds.length ? rounds.map((r) => roundHtml(r)).join('') : emptyStateHtml(selected ? 'Diese Tipprunde wurde nicht gefunden.' : 'Noch keine offiziellen Tipprunden.')}</section>
     ${historyHtml(data)}
-    <section class="card stack" aria-label="LAN-Rangliste"><h2>${data.settings.closed_at ? 'Spielpunkte-Endstand' : 'Spielpunkte'}</h2><p class="muted">Bei gleichem Punktestand wird der Platz geteilt. Spiel-Skill und Siege entscheiden keinen Gleichstand.</p>${rankedListHtml(
+    <section class="card stack" aria-label="LAN-Rangliste"><h2>${data.settings.closed_at ? 'Gesamt-Endstand' : 'Gesamtwertung'}</h2><p class="muted">Die Platzpunkte der drei Kategorien werden addiert. Gleiche Gesamtpunkte teilen sich den Platz.</p>${rankedListHtml(
       data.standings.map((p, i) => ({
         rank: ranks[i],
         title: e(p.name),
-        meta: p.playerId === getMyId() ? 'Du' : '',
+        meta: e([p.playerId === getMyId() ? 'Du' : '', categoryPlaceSummary(p.categories)].filter(Boolean).join(' · ')),
         value: `${p.points} P.`,
       })),
       { ranked: true, label: 'LAN-Rangliste' },
@@ -579,10 +580,10 @@ export function renderPointsAdmin(container, ctx) {
     ${adminCategoryJournalHtml(adminCategoryEntries, { account: adminCategoryAccount, query: adminCategoryQuery, loading: adminCategoryLoading, error: adminCategoryError })}<section class="card stack"><h2>${s ? 'Wettregeln' : 'Punktewertung aktivieren'}</h2>
     <p>Jeder Teilnehmer erhält einmalig 100 Wettpunkte pro Event, auch bei später Zusage. Orga- und Spielpunkte erhöhen das Wettguthaben nicht.</p>
     <form class="stack" data-points-settings>
-      <label class="stack"><span class="field-label">Preis & Vergabe bei Gleichstand (optional)</span><textarea name="prizeInfo" maxlength="300" ${closed ? 'disabled' : ''}>${e(s?.prize_info ?? '')}</textarea></label>
+      <label class="stack"><span class="field-label">Preis & Vergabe bei Gleichstand</span><textarea name="prizeInfo" maxlength="300" ${closed ? 'disabled' : ''}>${e(s?.prize_info ?? '')}</textarea></label>
       <p class="muted">Kündige Preis und Sachpreisvergabe bei gleichem Punktestand vor Beginn an. Die Rangliste teilt gleiche Plätze ohne Skill-Tiebreaker.</p>
       <p>Maximal 20 Punkte je Wette. Keine zusätzlichen Tages- oder Rundenlimits. Für eine Wettplatzierung sind mindestens zwei regulär abgerechnete Tipps und ein positiver Nettogewinn erforderlich.</p>
-      ${closed ? '' : `<button type="submit" class="btn btn-primary">${s ? 'Regeln speichern' : 'Punktewertung aktivieren'}</button>`}
+      ${closed ? '' : `<div class="row" style="justify-content:flex-end"><button type="submit" class="btn btn-primary">${s ? 'Regeln speichern' : 'Punktewertung aktivieren'}</button></div>`}
     </form>
     ${s ? `<p class="muted">Neue To-dos bringen fest 3 Orga-Punkte. Tipprunden direkt am Match oder Turnier öffnen.</p><div class="row points-actions"><button type="button" class="btn btn-sm" data-navigate="checklist">Zu den To-Dos</button><button type="button" class="btn btn-sm" data-points-close>${closed ? 'Wertung wieder öffnen' : 'LAN-Endwertung festschreiben'}</button></div>` : ''}
     </section>

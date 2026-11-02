@@ -189,7 +189,9 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await standings.getByText('Points Bob', { exact: true }).waitFor();
   await api(`/api/players/${bob.id}`, 'PATCH', { name: 'AAA Points Bob' }, bob.cookie);
   await standings.getByText('AAA Points Bob', { exact: true }).waitFor();
-  assert.match(await standings.locator('.ranked-list-row').first().innerText(), /AAA Points Bob/);
+  assert.match(await standings.locator('.ranked-list-row').first().innerText(), /Points Alice/,
+    'the earned Orga category keeps Alice ahead of renamed zero-score entrants');
+  assert.match(await standings.locator('.ranked-list-row').nth(1).innerText(), /AAA Points Bob/);
   assert.equal(await standings.getByText('Points Bob', { exact: true }).count(), 0);
   await member.locator('[data-point-entry]').first().click();
   await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).waitFor();
@@ -267,12 +269,23 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await admin.locator('.modal-backdrop').waitFor({ state: 'detached' });
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
   assert.equal((await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie)).categoryBalances.betting, 0);
-  // The interim standings show playing raw scores. Prepare a shared zero score
-  // through the supported category correction API, without editing any wallet.
+  // Create a shared positive playing score and remove prior claims through
+  // the supported correction API, without editing any wallet.
   const entries = (await api(`/api/points/admin/journal?eventId=${eventId}`)).entries;
   for (const entry of entries.filter((row: { account: string; amount: number }) => row.account === 'playing' && row.amount > 0))
     await api(`/api/points/admin/journal/${entry.id}/correct?eventId=${eventId}`, 'POST',
       { total: 0, revision: entry.revision, reason: 'Arrange tied playing raw scores' });
+  await api('/api/matches', 'POST', { gameId: game.id,
+    teams: [myId, alice.id, bob.id].map((id) => ({ playerIds: [id], rank: 1 })) });
+  const orgaEntries = (await api(`/api/points/admin/journal?eventId=${eventId}`)).entries;
+  const correctedSources = new Set<string>();
+  for (const entry of orgaEntries.filter((row: { account: string }) => row.account === 'orga')) {
+    const key = `${entry.playerId}:${entry.sourceKey}`;
+    if (correctedSources.has(key)) continue;
+    correctedSources.add(key);
+    await api(`/api/points/admin/journal/${entry.id}/correct?eventId=${eventId}`, 'POST',
+      { total: 0, revision: entry.revision, reason: 'Arrange tied category standings' });
+  }
   await navigate(admin, 'pointsAdmin');
   await admin.locator('[data-points-close]').click();
   await admin.getByRole('alertdialog').getByRole('button', { name: 'Endwertung festschreiben', exact: true }).click();
@@ -282,8 +295,10 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   assert.equal(typeof final.settings.closed_at, 'number', 'confirming the dialog must persist the final snapshot');
   assert.deepEqual(
     final.standings.map((row: { points: number }) => row.points),
-    [0, 0, 0],
+    [3, 3, 3],
   );
+  assert.ok(final.standings.every((row: { categories: { playing: { raw: number; rank: number; placePoints: number } } }) =>
+    row.categories.playing.raw === 2 && row.categories.playing.rank === 1 && row.categories.playing.placePoints === 3));
 
   await navigate(admin, 'hallOfFame');
   await admin.locator('[data-hall-section="events"] > summary').click();

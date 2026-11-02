@@ -101,7 +101,7 @@ test('GET /api/hall-of-fame reports no champion for an event with no matches', a
   assert.deepEqual(entry.tournamentChampions, []);
 });
 
-test('frozen LAN points retain shared champions, shared places and equal all-time credits, including zero balances', async () => {
+test('frozen LAN points retain shared champions and equal all-time credits, while unplayed categories have no champion', async () => {
   const players = [TEST_ADMIN_ID];
   for (const name of ['AAA Shared Alice', 'ZZZ Shared Bob', 'Middle Lower']) {
     players.push((await request(app).post('/api/players').send({ name })).body.id);
@@ -125,7 +125,7 @@ test('frozen LAN points retain shared champions, shared places and equal all-tim
     const response = await request(app).get(`/api/hall-of-fame?eventId=${event.id}`);
     assert.equal(response.status, 200);
     const summary = response.body.events[0];
-    const champions = initialPoints > 0 ? players.slice(0, 3) : players;
+    const champions = initialPoints > 0 ? players.slice(0, 3) : [];
     assert.equal(summary.scoringModel, 'lan_points');
     assert.equal(summary.overallChampion, null, 'there is no sole champion in a tied points event');
     assert.deepEqual(

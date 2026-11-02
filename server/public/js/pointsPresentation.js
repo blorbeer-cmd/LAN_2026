@@ -13,6 +13,11 @@ export const signedPoints = (value) => `${value > 0 ? '+' : ''}${value}`;
 
 export const POINT_CATEGORIES = Object.freeze({ orga: 'Orga', playing: 'Spielen', betting: 'Wetten' });
 
+export function categoryPlaceSummary(categories) {
+  return categories ? Object.entries(POINT_CATEGORIES)
+    .map(([key, label]) => `${label} ${categories[key].placePoints}`).join(' · ') : '';
+}
+
 // Corrections affect the entire source, even when an older booking is selected.
 export function journalSourceState(entries, sourceId) {
   return entries.filter((entry) => entry.source_id === sourceId).reduce(

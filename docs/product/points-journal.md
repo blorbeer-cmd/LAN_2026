@@ -242,8 +242,16 @@ und Stornos sind erlaubt. Der alte einseitige LAN-Entzugsendpunkt ist mit 409 ab
 
 ## Kategorieansicht und administratives Journal
 
-Die Punkteansicht zeigt Orga, Spielen und Wetten als getrennte Rohwerte; sie werden nicht zu
-vorläufigen Gesamtplatzpunkten addiert. Der Verlauf zeigt jeweils die ausgewählte Kategorie.
+Die Punkteansicht zeigt Orga, Spielen und Wetten mit getrennten Rohwerten, Kategorienrängen
+und Platzpunkten sowie deren Summe als Gesamtwertung. Nur positive Rohwerte erhalten einen Rang;
+Wetten benötigen zusätzlich zwei reguläre Abrechnungen. Gleiche Werte teilen den besseren Rang.
+Die Teilnehmerzahl N umfasst aktive bestätigte Teilnehmer ohne Testkonten; späte Zusagen zählen
+sofort. Austritte entfernen die Person aus der laufenden Rangliste, erhalten aber den Verlauf.
+Gewertet werden reguläre veröffentlichte LANs; ihre Ergebnisse bleiben nach Ende sichtbar.
+Testevents, Entwürfe, abgesagte Veranstaltungen und andere Eventtypen sind ausgeschlossen.
+Rangliste, Hall of Fame und Export lesen dieselbe Berechnung. Der bestehende Abschluss hält N,
+Teilnehmerliste und Kategorie-/Gesamtstände fest. Weitere Abschlussregeln folgen in Paket 9.
+Der Verlauf zeigt jeweils die ausgewählte Kategorie.
 Die Suche filtert ausschließlich die Liste, die Kurve behält den vollständigen Kategorienverlauf.
 Buchungsdetails nennen Kategorie, Zeitpunkt, Anlass, Betrag und gegebenenfalls Begründung.
 
@@ -296,13 +304,15 @@ Remis-Auswahl. W1/W5 sind umgesetzt: maximal 20 Punkte pro Person und Markt und 
 Tages-/Rundenlimits. W2 verlangt mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung;
 die persönliche API liefert die Anzahl und das Erreichen dieser Mindestzahl.
 Vollständig erstattete Märkte und zurückgenommene Tipps zählen nicht zur Mindestzahl; die Auszahlung
-ist davon unabhängig. Die Kategorieplatzierung folgt in Paket 6. Für Matches ist außerdem
+ist davon unabhängig. Die Kategorieplatzierung ist in Paket 6 angebunden. Für Matches ist außerdem
 entschieden: Der Ersteller wählt direkt beim Anlegen vor Spielbeginn, ob Wetten erlaubt sind;
 dafür ist keine Adminrolle erforderlich. Bei Turnieren werden Wetten auf den Turniersieger
 und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bestehenden
 Start-/Tippschluss- und Sichtbarkeitsregeln gelten. Auch diese Anbindung folgt in Paket 5b.
 Die Pool-Abrechnung verteilt Restpunkte nach größtem Nachkommaanteil, gleiche Anteile nach früherer
 erster Tippabgabe und dann Einfügereihenfolge. Die Nullsumme bleibt erhalten. Kategorieplätze,
-Teilnehmerbasis N, Gesamtwertung, Meldefunktion und einheitliche Festschreibung folgen gemäß
-[Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md). Die vorläufigen Auswertungen
-verwenden Spiel-Rohwerte, niemals Wallet-Summen als Gesamtwertung.
+Teilnehmerbasis N und Gesamtwertung sind angebunden. Meldefunktion und weitergehende Regeln
+der einheitlichen Festschreibung folgen gemäß
+[Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md). Klassische Spielfilter und
+eventübergreifende Sportstatistiken verwenden weiterhin Spielpunkte und vermischen diese nicht
+mit Kategorie-Platzpunkten oder Wallet-Summen.
