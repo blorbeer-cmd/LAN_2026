@@ -134,6 +134,10 @@ Fachquelle bleiben bei geschlossener Wertung nutzbar; deren Punkte und Snapshot 
 
 - Fest 100 Wettpunkte einmal je Event und berechtigtem Teilnehmer, einschließlich später Zusagen.
   Startguthaben wird bei Teilnahme beziehungsweise Event-Veröffentlichung im Hintergrund vergeben.
+  Migration 134 schließt Reaktivierung, Mitgliedschaftsaktivierung und den Wechsel vom Testkonto
+  zum normalen Konto ein; übersehene berechtigte Konten offener Wertungen werden beim Upgrade
+  einmalig nachfinanziert. Bereits finanzierte oder festgeschriebene Konten erhalten keine neue
+  Startgutschrift. Der Punkteabruf bleibt lesend, die Teilnahmehistorie unverändert.
 - Neustart aller bestehenden Punktebestände gemäß Paket 0; keine finanzielle Übernahme.
 - Ein offener oder gesperrter Einsatz bucht nur eine negative Wallet-Reservierung. Nach Abrechnung
   ersetzt Auszahlung minus Einsatz diesen Anspruch und wird zugleich als Wett-Nettowert gebucht.

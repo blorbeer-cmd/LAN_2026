@@ -27,6 +27,12 @@ erhalten beziehungsweise behalten ihre Konten auch nach einem Austritt. Die Kont
 bestimmt N nicht; dafür gelten die ausdrücklich beschlossenen Teilnehmerregeln E2.
 Der Startguthaben-Vorgang `wallet:start`
 bucht ausschließlich auf `wallet`. Orga- und Spielpunkte erhöhen dieses Guthaben nicht.
+Migration 134 ergänzt die Finanzierung bei Reaktivierung, wieder aktiver Mitgliedschaft und
+beim Wechsel vom Testkonto zum normalen Konto. Sie erfolgt mit der auslösenden Änderung,
+auch ohne Abruf des Punktekontos oder ersten Tipp. Beim Upgrade werden bisher übersehene
+berechtigte Konten offener LAN-Wertungen nachfinanziert. Vorhandene Startgutschriften,
+Reservierungen, Teilnahmehistorie und abgeschlossene Wertungen bleiben unverändert;
+der einmalige Reset aus Migration 131 wird nicht wiederholt.
 Offene Einsätze reservieren nur das Wallet; der Wett-Rohwert wird aus abgerechneten
 Nettoergebnissen gebucht. Vollständige Erstattungen ergeben dort 0. Wallet und Rohwerte
 dürfen nach einer Korrektur negativ sein. Negative verfügbare Mittel sperren neue Tipps und Änderungen; die Rücknahme eines offenen Tipps bleibt möglich.

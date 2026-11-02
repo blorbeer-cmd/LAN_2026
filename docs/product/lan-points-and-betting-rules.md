@@ -104,8 +104,12 @@ eventweise isolierter Wiederherstellungsabgleich. Fehler eines Events halten and
 nicht auf; dauerhaft fehlerhafte Quellen werden bis zur Erholung nur einmal protokolliert.
 Erzeugung der Quelle und ihrer Märkte laufen atomar; Benachrichtigungen folgen erst nach Commit.
 Der Abruf des Punktekontos berechnet keine Ansprüche neu und schreibt keine Punkte.
-Teilnahme-/Einstellungsschreibzugriffe buchen Startguthaben über Datenbank-Trigger;
+Teilnahme-/Einstellungsschreibzugriffe sowie Reaktivierung, Aktivierung der Mitgliedschaft
+und der Wechsel vom Testkonto zum normalen Konto buchen fehlendes Startguthaben über Datenbank-Trigger;
 Quellenänderungen und der Prozessstart synchronisieren die Kategorieansprüche.
+Migration 134 ergänzt diese Aktivierungspfade und finanziert bereits übersehene berechtigte
+Konten offener Wertungen einmalig nach. Bestehende Guthaben, Einsätze und abgeschlossene
+Wertungen bleiben erhalten; es gibt keinen erneuten Reset und keine zweite Startgutschrift.
 Nach Eventende sind neue Tipps gesperrt, während Ergebnisse und Verlauf sichtbar bleiben.
 
 ## Abrechnung und Korrektur

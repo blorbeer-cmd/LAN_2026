@@ -614,6 +614,73 @@ test('points start once per accepted participant, preserve event access, and blo
     'a sports win earns playing points independently of the legacy wallet');
 });
 
+test('returning eligibility funds wallets at the mutation, rolls back failed reactivation and never funds twice', async () => {
+  const f = await fixture();
+  const roster = [TEST_ADMIN_ID, ...f.players];
+  const market = await round(f);
+  for (const mode of ['reactivation', 'membership-update', 'membership-insert', 'test-flag'] as const) {
+    let playerId: string;
+    if (mode === 'membership-insert') {
+      playerId = `returning-${sequence}`;
+      db.prepare('INSERT INTO players(id,name,api_key,created_at) VALUES(?,?,?,1)')
+        .run(playerId, playerId, `key-${playerId}`);
+    } else {
+      playerId = (await request(app).post('/api/players').send({ name: `Returning ${sequence} ${mode}` })).body.id;
+      if (mode === 'reactivation')
+        assert.equal((await request(app).post(`/api/players/${playerId}/deactivate`).send({})).status, 204);
+      if (mode === 'membership-update') db.prepare("UPDATE group_memberships SET status='left' WHERE player_id=?").run(playerId);
+      if (mode === 'test-flag') db.prepare('UPDATE players SET is_test=1 WHERE id=?').run(playerId);
+    }
+    roster.push(playerId);
+    setParticipants(f.eventId, roster);
+    assert.equal(wallet(f.eventId, playerId).total, 0, `${mode}: excluded participants are not funded`);
+    const history = db.prepare('SELECT * FROM event_participation_history WHERE event_id=? AND player_id=?').get(f.eventId, playerId);
+    if (mode === 'reactivation') {
+      db.exec(`CREATE TEMP TRIGGER fail_returned_wallet BEFORE INSERT ON points_journal
+        BEGIN SELECT RAISE(ABORT,'reactivation wallet failed'); END;`);
+      try {
+        assert.equal((await request(app).post(`/api/players/${playerId}/reactivate`).send({})).status, 500);
+        assert.notEqual(db.prepare('SELECT deactivated_at FROM players WHERE id=?').pluck().get(playerId), null);
+        assert.equal(wallet(f.eventId, playerId).total, 0);
+      } finally { db.exec('DROP TRIGGER fail_returned_wallet'); }
+      const attempts = await Promise.all([0, 1].map(() => request(app).post(`/api/players/${playerId}/reactivate`).send({})));
+      assert.deepEqual(attempts.map((r) => r.status).sort(), [204, 404]);
+    } else if (mode === 'membership-insert') {
+      db.prepare("INSERT INTO group_memberships(group_id,player_id,role,status) VALUES(?,?,'member','active')").run(DEFAULT_GROUP_ID, playerId);
+    } else if (mode === 'membership-update') {
+      db.prepare("UPDATE group_memberships SET status='active' WHERE player_id=?").run(playerId);
+    } else {
+      db.prepare('UPDATE players SET is_test=0 WHERE id=?').run(playerId);
+    }
+    assert.equal(wallet(f.eventId, playerId).total, 100, `${mode}: funded before any read or tip`);
+    setActiveEventForPlayer(playerId, f.eventId);
+    const read = await request(app).get('/api/points').set('x-test-player-id', playerId);
+    assert.equal(read.status, 200);
+    assert.deepEqual(read.body.wallet, { total: 100, held: 0, available: 100 });
+    assert.equal(read.body.participantCount, roster.length);
+    assert.deepEqual(db.prepare('SELECT * FROM event_participation_history WHERE event_id=? AND player_id=?').get(f.eventId, playerId), history);
+    assert.equal((await request(app).put(`/api/points/rounds/${market.id}/tip`).set('x-test-player-id', playerId)
+      .send({ outcomeId: '0', stake: 5 })).status, 200);
+    const journal = readPointsJournal(DEFAULT_GROUP_ID, f.eventId, playerId);
+    db.prepare('UPDATE players SET is_test=1 WHERE id=?').run(playerId);
+    db.prepare('UPDATE players SET is_test=0 WHERE id=?').run(playerId);
+    db.prepare("UPDATE group_memberships SET status='left' WHERE player_id=?").run(playerId);
+    db.prepare("UPDATE group_memberships SET status='active' WHERE player_id=?").run(playerId);
+    assert.deepEqual(wallet(f.eventId, playerId), { total: 100, held: 5, available: 95 });
+    assert.deepEqual(readPointsJournal(DEFAULT_GROUP_ID, f.eventId, playerId), journal, 'returning eligibility preserves reservations and the existing start');
+  }
+  const closedPlayer = (await request(app).post('/api/players').send({ name: `Returning after close ${sequence}` })).body.id;
+  assert.equal((await request(app).post(`/api/players/${closedPlayer}/deactivate`).send({})).status, 204);
+  setParticipants(f.eventId, [...roster, closedPlayer]);
+  assert.equal((await request(app).post('/api/points/close').send({})).status, 200);
+  const frozen = pointStandings(f.eventId);
+  const journal = db.prepare('SELECT * FROM points_journal WHERE source_id IN (SELECT id FROM points_sources WHERE event_id=?) ORDER BY id').all(f.eventId);
+  assert.equal((await request(app).post(`/api/players/${closedPlayer}/reactivate`).send({})).status, 204);
+  assert.equal(wallet(f.eventId, closedPlayer).total, 0, 'closed valuations cannot mint a late start');
+  assert.deepEqual(pointStandings(f.eventId), frozen);
+  assert.deepEqual(db.prepare('SELECT * FROM points_journal WHERE source_id IN (SELECT id FROM points_sources WHERE event_id=?) ORDER BY id').all(f.eventId), journal);
+});
+
 test('leaderboard filters and cross-event totals use game points without mixing configured LAN wallets', async () => {
   const f = await fixture();
   const gameMatch = async (gameId: string, winnerTeamIndex: number) => {

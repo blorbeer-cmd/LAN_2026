@@ -85,6 +85,65 @@ function makeTempDbPath(name: string): string {
   return path.join(dir, `${name}.db`);
 }
 
+test('migration 134 funds missed eligible wallets atomically and preserves spent balances, history and closed events on replay', () => {
+  const dbFile = makeTempDbPath('returning-wallet-eligibility');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`DROP TRIGGER points_player_eligibility_returned;
+    DROP TRIGGER points_membership_activated_insert; DROP TRIGGER points_membership_activated_update;
+    DELETE FROM schema_migrations WHERE version=134;
+    INSERT INTO players(id,name,api_key,created_at,deactivated_at) VALUES
+      ('elig-funded','Funded','elig-funded-key',1,NULL),('elig-waiting','Waiting','elig-waiting-key',1,1),
+      ('elig-closed','Closed','elig-closed-key',1,1);
+    INSERT INTO group_memberships(group_id,player_id,role,status)
+      SELECT 'default-group',id,'member','active' FROM players WHERE id LIKE 'elig-%';
+    INSERT INTO events(id,name,starts_at,group_id,status,event_type_key) VALUES
+      ('elig-open','Open LAN',1,'default-group','published','lan'),
+      ('elig-frozen','Closed LAN',1,'default-group','published','lan');
+    INSERT INTO event_participants(event_id,player_id,status) VALUES
+      ('elig-open','elig-funded','accepted'),('elig-open','elig-waiting','accepted'),('elig-frozen','elig-closed','accepted');
+    UPDATE points_settings SET closed_at=2 WHERE event_id='elig-frozen';
+    UPDATE players SET deactivated_at=NULL WHERE id IN ('elig-waiting','elig-closed');
+    INSERT INTO points_sources(id,event_id,player_id,account,source_key)
+      VALUES('elig-spent','elig-open','elig-funded','wallet','bet:legacy-fixture');
+    INSERT INTO points_journal(id,source_id,revision,amount,title,created_at)
+      VALUES('elig-spent-entry','elig-spent',1,-20,'Existing reservation',1);
+    CREATE TRIGGER fail_eligibility_upgrade BEFORE INSERT ON points_journal
+      WHEN (SELECT player_id FROM points_sources WHERE id=NEW.source_id)='elig-waiting'
+      BEGIN SELECT RAISE(ABORT,'eligibility upgrade failed'); END;`);
+  const journal = fixture.prepare('SELECT * FROM points_journal ORDER BY id').all();
+  const history = fixture.prepare('SELECT * FROM event_participation_history ORDER BY event_id,player_id').all();
+  const reset = fixture.prepare('SELECT * FROM points_wallet_reset').all();
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /eligibility upgrade failed/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=134').get(), undefined);
+  assert.equal(failed.prepare("SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='points_player_eligibility_returned'").get(), undefined);
+  assert.equal(failed.prepare("SELECT 1 FROM points_sources WHERE player_id='elig-waiting' AND source_key='wallet:start'").get(), undefined);
+  assert.deepEqual(failed.prepare('SELECT * FROM points_journal ORDER BY id').all(), journal);
+  failed.exec('DROP TRIGGER fail_eligibility_upgrade');
+  failed.close();
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  const balance = (id: string) => migrated.prepare(`SELECT COALESCE(SUM(j.amount),0) FROM points_sources s
+    JOIN points_journal j ON j.source_id=s.id WHERE s.player_id=? AND s.account='wallet'`).pluck().get(id);
+  assert.equal(balance('elig-funded'), 80, 'spent starting funds are not topped up');
+  assert.equal(balance('elig-waiting'), 100);
+  assert.equal(balance('elig-closed'), 0);
+  const fundedJournal = migrated.prepare('SELECT * FROM points_journal ORDER BY id').all();
+  migrated.exec('DELETE FROM schema_migrations WHERE version=134');
+  migrated.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const replayed = new Database(dbFile);
+  assert.deepEqual(replayed.prepare('SELECT * FROM points_journal ORDER BY id').all(), fundedJournal);
+  assert.deepEqual(replayed.prepare('SELECT * FROM event_participation_history ORDER BY event_id,player_id').all(), history);
+  assert.deepEqual(replayed.prepare('SELECT * FROM points_wallet_reset').all(), reset);
+  assert.deepEqual(replayed.pragma('foreign_key_check'), []);
+  replayed.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 133 upgrades without changing balances, rolls back a failed schema step, and preserves reports on replay', () => {
   const dbFile = makeTempDbPath('private-points-reports');
   runMigrations(dbFile);
@@ -639,6 +698,7 @@ test('migration 127 rolls back organizer columns and state together after a part
 });
 
 function removeCategoryPointsSchema(fixture: Database.Database): void {
+  removeWalletEligibilitySchema(fixture);
   removeMatchActivitySchema(fixture);
   removeCompetitionOrgaSchema(fixture);
   fixture.exec(`DROP TRIGGER points_participant_start_insert;
@@ -653,6 +713,15 @@ function removeCategoryPointsSchema(fixture: Database.Database): void {
     DROP TABLE points_sources;
     DROP TABLE points_accounts;
     DELETE FROM schema_migrations WHERE version = 125;`);
+}
+
+// Old-schema fixtures must not retain future triggers referring to columns
+// they deliberately remove. The real upgrade installs these only at v134.
+function removeWalletEligibilitySchema(fixture: Database.Database): void {
+  fixture.exec(`DROP TRIGGER points_player_eligibility_returned;
+    DROP TRIGGER points_membership_activated_insert;
+    DROP TRIGGER points_membership_activated_update;
+    DELETE FROM schema_migrations WHERE version=134;`);
 }
 
 test('migration 125 backfills only accepted participants without minting points and preserves history on restart', () => {
@@ -1590,10 +1659,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 133);
+  assert.equal(migrations.length, 134);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 133 }, (_, index) => index + 1),
+    Array.from({ length: 134 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -2195,8 +2264,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 133 }, (_, index) => index + 1),
-    'every version 1..133 runs exactly once',
+    Array.from({ length: 134 }, (_, index) => index + 1),
+    'every version 1..134 runs exactly once',
   );
 });
 
@@ -3136,6 +3205,7 @@ test('migration 53 preserves legacy event participants as accepted and is restar
   runMigrations(dbFile);
 
   const fixture = new Database(dbFile);
+  removeWalletEligibilitySchema(fixture);
   fixture.pragma('foreign_keys = OFF');
   fixture
     .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
@@ -4030,7 +4100,9 @@ function downgradeToPre83Shape(fixture: Database.Database): void {
     DROP TABLE IF EXISTS event_date_poll_options;
     DROP TABLE IF EXISTS event_date_polls;
 
-    DELETE FROM schema_migrations WHERE version = 83;
+    -- Rebuilding the pre-83 events table also removes its later type columns
+    -- and event triggers. Replay their owners before installing v134.
+    DELETE FROM schema_migrations WHERE version IN (83,89,90,91,124);
   `);
   assert.deepEqual(fixture.pragma('foreign_key_check'), [], 'the downgraded legacy fixture itself must stay referentially consistent');
   fixture.pragma('foreign_keys = ON');
@@ -4199,6 +4271,7 @@ test('migrations 89 through 91 add event types, collapse legacy presets and enab
   runMigrations(dbFile);
 
   const legacy = new Database(dbFile);
+  removeWalletEligibilitySchema(legacy);
   const now = Date.now();
   legacy
     .prepare(

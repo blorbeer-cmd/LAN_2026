@@ -5981,6 +5981,47 @@ registerMigration({ version: 133, name: 'add private points reports and protecte
   );`);
 } });
 
+registerMigration({ version: 134, name: 'fund betting wallets when participant eligibility returns', up: () => {
+  // Eligibility can return without another invitation/settings write. Keep
+  // funding in that same mutation, without touching participation history.
+  const eligible = (player?: string, group?: string) => `SELECT ep.event_id,ep.player_id
+    FROM event_participants ep JOIN events e ON e.id=ep.event_id
+    JOIN points_settings s ON s.event_id=e.id AND s.group_id=e.group_id
+    JOIN players p ON p.id=ep.player_id
+    JOIN group_memberships gm ON gm.group_id=e.group_id AND gm.player_id=p.id
+    WHERE ep.status='accepted' AND gm.status='active' AND p.deactivated_at IS NULL AND p.is_test=0
+      AND e.event_type_key='lan' AND e.is_test=0 AND e.status IN ('published','ended') AND s.closed_at IS NULL
+      ${player ? `AND p.id=${player}` : ''} ${group ? `AND gm.group_id=${group}` : ''}`;
+  const fund = (player?: string, group?: string) => `
+    INSERT OR IGNORE INTO points_accounts(event_id,player_id,account,created_at)
+      SELECT x.event_id,x.player_id,'wallet',CAST(unixepoch('subsec')*1000 AS INTEGER)
+      FROM (${eligible(player, group)}) x
+      WHERE NOT EXISTS(SELECT 1 FROM points_accounts a
+        WHERE a.event_id=x.event_id AND a.player_id=x.player_id AND a.account='wallet');
+    INSERT OR IGNORE INTO points_sources(id,event_id,player_id,account,source_key)
+      SELECT lower(hex(randomblob(16))),x.event_id,x.player_id,'wallet','wallet:start'
+      FROM (${eligible(player, group)}) x
+      WHERE NOT EXISTS(SELECT 1 FROM points_sources s WHERE s.event_id=x.event_id
+        AND s.player_id=x.player_id AND s.account='wallet' AND s.source_key='wallet:start');
+    INSERT OR IGNORE INTO points_journal(id,source_id,revision,amount,title,created_at)
+      SELECT lower(hex(randomblob(16))),s.id,1,100,'Wett-Startguthaben',CAST(unixepoch('subsec')*1000 AS INTEGER)
+      FROM points_sources s JOIN (${eligible(player, group)}) x
+        ON x.event_id=s.event_id AND x.player_id=s.player_id
+      WHERE s.account='wallet' AND s.source_key='wallet:start'
+        AND NOT EXISTS(SELECT 1 FROM points_journal j WHERE j.source_id=s.id);`;
+  db.exec(`CREATE TRIGGER IF NOT EXISTS points_player_eligibility_returned
+    AFTER UPDATE OF deactivated_at,is_test ON players
+    WHEN NEW.deactivated_at IS NULL AND NEW.is_test=0 AND (OLD.deactivated_at IS NOT NULL OR OLD.is_test!=0)
+    BEGIN ${fund('NEW.id')} END;
+    CREATE TRIGGER IF NOT EXISTS points_membership_activated_insert AFTER INSERT ON group_memberships
+    WHEN NEW.status='active' AND EXISTS(SELECT 1 FROM event_participants WHERE player_id=NEW.player_id AND status='accepted')
+    BEGIN ${fund('NEW.player_id', 'NEW.group_id')} END;
+    CREATE TRIGGER IF NOT EXISTS points_membership_activated_update AFTER UPDATE OF status ON group_memberships
+    WHEN NEW.status='active' AND OLD.status!='active'
+    BEGIN ${fund('NEW.player_id', 'NEW.group_id')} END;
+    ${fund()}`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
