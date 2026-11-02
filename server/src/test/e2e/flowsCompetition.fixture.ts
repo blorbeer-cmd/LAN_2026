@@ -579,17 +579,25 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   const rankingDisclosure = page.locator('details.collapsible-section').filter({ hasText: 'Top 10 nach Bock-Level' });
-  const latestGeometry = await currentVote.evaluate((card) => ({
-    height: card.getBoundingClientRect().height,
-    titleX: card.querySelector('strong')!.getBoundingClientRect().x,
-  }));
-  const rankingGeometry = await rankingDisclosure.evaluate((card) => ({
-    height: card.getBoundingClientRect().height,
-    titleX: card.querySelector('h2')!.getBoundingClientRect().x,
-  }));
+  // A refresh can detach the node resolved by Locator.evaluate before its
+  // callback runs (a detached card reports height 0). Exercise a real refresh,
+  // then query both connected cards and measure in the same browser task.
+  const [latestGeometry, rankingGeometry] = await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('respawn:rerender'));
+    const root = document.querySelector('#view-container')!;
+    const geometry = (card: Element, title: string) => ({
+      height: card.getBoundingClientRect().height,
+      titleX: card.querySelector(title)!.getBoundingClientRect().x,
+    });
+    return [
+      geometry(root.querySelector('section[aria-labelledby="vote-current-result-title"]')!, 'strong'),
+      geometry(root.querySelector('details[data-vote-top10]')!, 'h2'),
+    ];
+  });
+  assert.ok(latestGeometry.height > 0 && rankingGeometry.height > 0, 'closed Vote sections are visible');
   // The admin's trash button can tip the meta line onto its own row, which
   // adds one text line of at most a few pixels.
-  assert.ok(Math.abs(latestGeometry.height - rankingGeometry.height) <= 4, 'closed Vote sections share one height');
+  assert.ok(Math.abs(latestGeometry.height - rankingGeometry.height) <= 4, `closed Vote sections share one height: ${JSON.stringify({ latestGeometry, rankingGeometry })}`);
   assert.equal(latestGeometry.titleX, rankingGeometry.titleX, 'closed Vote section titles align');
   await rankingDisclosure.locator(':scope > summary').click();
   const bockRanks = await rankingDisclosure.locator('.lb-row').evaluateAll((rows) => rows.map((row) => ({
