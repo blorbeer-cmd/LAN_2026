@@ -162,8 +162,9 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const eventId = scope.eventId;
-  const { gameId, captainIds, poolPlayerIds, bettingAllowed = false } = req.body ?? {};
-  if (typeof bettingAllowed !== 'boolean') return res.status(400).json({ error: 'Wetten erlauben muss Ja oder Nein sein.' });
+  const { gameId, captainIds, poolPlayerIds, bettingAllowed: requestedBettingAllowed } = req.body ?? {};
+  if (requestedBettingAllowed !== undefined && typeof requestedBettingAllowed !== 'boolean')
+    return res.status(400).json({ error: 'Wetten erlauben muss Ja oder Nein sein.' });
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -182,6 +183,7 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   if (poolPlayerIds.length < 1) {
     return res.status(400).json({ error: 'Der Pool braucht mindestens einen Spieler zum Picken.' });
   }
+  const bettingAllowed = requestedBettingAllowed ?? captainIds.length === 2;
   if (bettingAllowed && captainIds.length !== 2)
     return res.status(400).json({ error: 'Wetten sind nur bei genau zwei Teams möglich.' });
   const allIds = [...captainIds, ...poolPlayerIds];

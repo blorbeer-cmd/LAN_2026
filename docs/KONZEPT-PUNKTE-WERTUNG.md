@@ -148,6 +148,9 @@ zählen weiterhin unabhängig vom Wettangebot zur Spielwertung.
 ob auf dieses Match gewettet werden darf, etwa über „Wetten zulassen“. Dafür braucht er keine
 zusätzliche Adminrolle. Eine ausgeschaltete Option eröffnet keinen Wettmarkt; andere Personen
 dürfen diese Entscheidung nicht durch eine separate Markteröffnung umgehen.
+Bei neuen Zweiermatches, Captain Drafts mit zwei Captains und Rematches ist Wetten
+standardmäßig erlaubt. Der Ersteller kann es für die jeweilige Anlage ausschalten.
+Die API verwendet bei fehlender Angabe denselben Standard. Bestehende Entscheidungen bleiben erhalten.
 
 Bei Turnieren werden Wetten immer angeboten, sowohl auf den Turniersieger als auch auf
 einzelne Turnierspiele. Dafür gibt es keinen optionalen Freischalter. Die bestehenden Regeln

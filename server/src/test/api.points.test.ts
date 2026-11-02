@@ -208,7 +208,7 @@ async function round(f: Awaited<ReturnType<typeof fixture>>) {
 
 test('creators decide match betting, tournament markets open automatically, and market failures roll competition writes back', async () => {
   const f = await fixture();
-  const create = (bettingAllowed: unknown) => request(app).post('/api/matchmaking').set('x-test-player-id', f.players[0])
+  const create = (bettingAllowed?: unknown) => request(app).post('/api/matchmaking').set('x-test-player-id', f.players[0])
     .send({ gameId: f.gameId, playerIds: f.players.slice(0, 2), teamCount: 2, bettingAllowed });
   assert.equal((await create('yes')).status, 400);
   const denied = await create(false);
@@ -218,9 +218,13 @@ test('creators decide match betting, tournament markets open automatically, and 
       .send({ sourceType: 'draw', sourceId: denied.body.id, closesAt: Date.now() + 60000 })).status,
     actor === TEST_ADMIN_ID ? 409 : 403,
     'neither admins nor participants can bypass the creator decision');
-  const allowed = await create(true);
+  const allowed = await create();
   assert.equal(allowed.status, 200);
   assert.equal(allowed.body.bettingAllowed, true);
+  const threeSides = await request(app).post('/api/matchmaking').send({ gameId: f.gameId,
+    playerIds: f.players, teamCount: 3 });
+  assert.equal(threeSides.status, 200, 'the default must not prevent unsupported multi-team matches from being created');
+  assert.equal(threeSides.body.bettingAllowed, false);
   const concurrent = await Promise.all([0, 1].map(() => request(app).get('/api/points')));
   for (const response of concurrent)
     assert.equal(response.body.rounds.filter((row: { sourceId: string }) => row.sourceId === allowed.body.id).length, 1);
@@ -236,11 +240,11 @@ test('creators decide match betting, tournament markets open automatically, and 
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM matchmaking_draws WHERE event_id=?').get(f.eventId) as { n: number }).n, before);
   } finally { db.exec('DROP TRIGGER fail_automatic_market'); }
   const rematch = await request(app).post('/api/matchmaking/rematch').set('x-test-player-id', f.players[0])
-    .send({ gameId: f.gameId, teams: f.players.slice(0, 2).map((id) => ({ playerIds: [id] })), bettingAllowed: true });
+    .send({ gameId: f.gameId, teams: f.players.slice(0, 2).map((id) => ({ playerIds: [id] })) });
   assert.equal(rematch.status, 200);
   assert.equal((await automaticMarket(f, 'draw', rematch.body.id)).status, 'open');
   const draft = await request(app).post('/api/draft/start').send({ gameId: f.gameId,
-    captainIds: f.players.slice(0, 2), poolPlayerIds: [f.players[2]], bettingAllowed: true });
+    captainIds: f.players.slice(0, 2), poolPlayerIds: [f.players[2]] });
   assert.equal(draft.status, 201);
   const picked = await request(app).post('/api/draft/pick').set('x-test-player-id', f.players[0])
     .send({ playerId: f.players[0], pickPlayerId: f.players[2] });

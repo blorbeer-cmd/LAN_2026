@@ -206,6 +206,11 @@ Ungültige/abgebrochene Quellen und nicht wählbare geteilte Turniersiege werden
 Hall of Fame und Export behalten auch bei Turnieren gemeinsame Sieger. Der bestätigte
 Hinweis H1 erscheint im Spiel-Kategorieverlauf; er ändert keine Formel.
 
+Neue Zweiermatches, Drafts mit zwei Captains und Rematches erlauben Wetten standardmäßig.
+Die Oberfläche wählt die Freigabe bei jeder neuen Anlage vor; ein ausdrückliches Nein gilt
+für diesen Vorgang. Die API verwendet bei fehlender Angabe denselben formatabhängigen
+Standard. Historische beziehungsweise ausdrücklich ausgeschaltete Freigaben bleiben unverändert.
+
 ## Pakete 6/7 – Wertung und vollständige Ansichten (umgesetzt)
 
 Paket 6 berechnet positive Rohwerte, geteilte Ränge und N-basierte Platzpunkte gemäß Konzept.

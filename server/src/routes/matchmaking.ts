@@ -162,8 +162,9 @@ function loadAvoidPairs(groupId: string, eventId: string, playerIds: string[]): 
 // opposing teams can depend on how competitive/serious that particular round
 // is, not just the game itself.
 matchmakingRouter.post('/', (req, res) => {
-  const { gameId, playerIds, teamCount, avoidAdjacentOpponents, bettingAllowed = false } = req.body ?? {};
-  if (typeof bettingAllowed !== 'boolean') return res.status(400).json({ error: 'Wetten erlauben muss Ja oder Nein sein.' });
+  const { gameId, playerIds, teamCount, avoidAdjacentOpponents, bettingAllowed: requestedBettingAllowed } = req.body ?? {};
+  if (requestedBettingAllowed !== undefined && typeof requestedBettingAllowed !== 'boolean')
+    return res.status(400).json({ error: 'Wetten erlauben muss Ja oder Nein sein.' });
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -223,6 +224,7 @@ matchmakingRouter.post('/', (req, res) => {
   const avoidPairs: SeatPair[] = avoidAdjacentOpponents ? loadAvoidPairs(req.group!.id, eventId, uniqueIds) : [];
 
   const resolvedTeamCount = computeTeamCount(teamCount, players.length, game.max_team_size);
+  const bettingAllowed = requestedBettingAllowed ?? resolvedTeamCount === 2;
   if (bettingAllowed && resolvedTeamCount !== 2)
     return res.status(400).json({ error: 'Wetten sind nur bei genau zwei Teams möglich.' });
   const teamIdLists = balanceTeams(ratings, resolvedTeamCount, avoidPairs);
@@ -282,8 +284,9 @@ matchmakingRouter.post('/', (req, res) => {
 // Body: { gameId: string, teams: [{ playerIds: string[] }] } (same shape the
 // frontend already has lying around from the draw it's rematching).
 matchmakingRouter.post('/rematch', (req, res) => {
-  const { gameId, teams: teamsInput, bettingAllowed = false } = req.body ?? {};
-  if (typeof bettingAllowed !== 'boolean') return res.status(400).json({ error: 'Wetten erlauben muss Ja oder Nein sein.' });
+  const { gameId, teams: teamsInput, bettingAllowed: requestedBettingAllowed } = req.body ?? {};
+  if (requestedBettingAllowed !== undefined && typeof requestedBettingAllowed !== 'boolean')
+    return res.status(400).json({ error: 'Wetten erlauben muss Ja oder Nein sein.' });
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -329,6 +332,7 @@ matchmakingRouter.post('/rematch', (req, res) => {
   }
 
   const teams = buildTeamsSnapshot(gameId, teamPlayerIdLists);
+  const bettingAllowed = requestedBettingAllowed ?? teams.length === 2;
   if (bettingAllowed && teams.length !== 2)
     return res.status(400).json({ error: 'Wetten sind nur bei genau zwei Teams möglich.' });
 

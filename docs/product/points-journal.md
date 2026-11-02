@@ -312,6 +312,9 @@ und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bes
 Start-/Tippschluss- und Sichtbarkeitsregeln gelten. Migration 132 speichert die Erstellerwahl
 an Auslosungen und Captain Drafts; Rematches wählen sie ebenfalls beim Anlegen. Quelle und
 automatisch angebotene Märkte entstehen atomar, Mitteilungen folgen nach Commit.
+Neue Zweiermatches, Drafts mit zwei Captains und Rematches erlauben Wetten standardmäßig.
+Ein ausdrückliches Nein bleibt gespeichert; bei fehlender API-Angabe gilt der Standard für
+das jeweilige Format. Bestehende Freigaben und historische Vorgänge werden nicht geändert.
 Turniermärkte entstehen bei feststehenden Gegnern automatisch. Vor dem ersten Spiel schließt
 die Startaktion auch den Gesamtsieger-Markt. Neue automatische Märkte verwenden die ausdrückliche
 Startaktion als Tippschluss. Bestehende Fristen bleiben wirksam.

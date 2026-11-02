@@ -60,6 +60,9 @@ wird auch bei Captain Drafts und Rematches gespeichert. Dafür braucht der Erste
 zusätzliche Adminrolle. Bei einem Nein entsteht kein Markt; auch die weiterhin administrative
 separate Markt-API kann die Entscheidung nicht umgehen. Turniersieger-Märkte und einzelne
 Turniermatches mit feststehenden Gegnern werden immer automatisch angeboten, ohne Freischalter.
+Bei jeder neuen Anlage ist Wetten für Zweiermatches, Drafts mit zwei Captains und Rematches
+vorbelegt erlaubt. Der Ersteller kann die Option ausschalten. Eine fehlende API-Angabe
+verwendet denselben Standard; gespeicherte Entscheidungen werden nicht nachträglich geändert.
 Alle berechtigten Teilnehmer dürfen auf sich, ihr Team oder den Gegner tippen.
 
 **W1/W5 sind umgesetzt:** maximal 20 Punkte pro Person und Wettmarkt, keine zusätzlichen

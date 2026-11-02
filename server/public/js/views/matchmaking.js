@@ -34,7 +34,7 @@ let avoidAdjacentOpponents = false;
 // for the same game (e.g. from an unrelated realtime update).
 let avoidAdjacentOpponentsGameId = null;
 let teamCountValue = '2';
-let bettingAllowed = false;
+let bettingAllowed = true;
 const canOfferBetting = () => Boolean(state.activeEvent?.pointsEnabled &&
   state.activeEvent.status === 'published' && !state.activeEvent.isEnded);
 
@@ -722,7 +722,7 @@ function wireDrawCards(container, ctx) {
         };
         if (canOfferBetting() && teams.length === 2) {
           const { close } = openModal('Rematch erstellen', `<form class="stack" data-rematch-form>
-            <label class="check-row"><input type="checkbox" name="bettingAllowed">Wetten erlauben</label>
+            <label class="check-row"><input type="checkbox" name="bettingAllowed" checked>Wetten erlauben</label>
             <div class="row" style="justify-content:flex-end"><button type="submit" class="btn btn-primary">Rematch erstellen</button></div></form>`, {
             onMount(el) {
               el.querySelector('form').addEventListener('submit', async (event) => {
@@ -741,7 +741,7 @@ function wireDrawCards(container, ctx) {
           });
           return;
         }
-        openDrawResultDialog(await create(false), ctx);
+        openDrawResultDialog(await create(teams.length === 2), ctx);
       } catch (err) {
         showToast(err.message, { error: true });
       }
@@ -1253,7 +1253,7 @@ export function renderMatchmaking(container, ctx) {
           renderTrailing: (player) => playerSkillHtml(player, selectedGameId),
         })}
         <div class="card-footer-actions row" style="justify-content:flex-end;flex-wrap:wrap;">
-          ${canOfferBetting() ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" id="mm-betting-allowed" ${bettingAllowed ? 'checked' : ''}>Wetten erlauben</label>` : ''}
+          ${canOfferBetting() ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" id="mm-betting-allowed" ${bettingAllowed ? 'checked' : ''}${teamCountValue && Number(teamCountValue) !== 2 ? ' disabled' : ''}>Wetten erlauben</label>` : ''}
           <div class="check-row" style="padding:0;border-bottom:0;">
             <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
             <span class="title-with-info tournament-option-label">
@@ -1310,7 +1310,7 @@ export function renderMatchmaking(container, ctx) {
           })}
         </div>
         <div class="card-footer-actions">
-          ${canOfferBetting() ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" id="draft-betting-allowed" ${bettingAllowed ? 'checked' : ''}>Wetten erlauben</label>` : ''}
+          ${canOfferBetting() ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" id="draft-betting-allowed" ${bettingAllowed ? 'checked' : ''}${draftCaptainIds.size > 2 ? ' disabled' : ''}>Wetten erlauben</label>` : ''}
           <div class="row" style="flex-wrap:wrap;">
             <button type="button" class="btn btn-primary btn-sm" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten</button>
             ${draftReady ? '' : infoTooltipHtml(
@@ -1394,6 +1394,8 @@ export function renderMatchmaking(container, ctx) {
   const capTeamCountField = (event) => {
     teamCountValue = capTeamCountValue(event.target.value, checkedIds.size);
     if (event.target.value !== teamCountValue) event.target.value = teamCountValue;
+    const bettingChoice = container.querySelector('#mm-betting-allowed');
+    if (bettingChoice) bettingChoice.disabled = Boolean(teamCountValue && Number(teamCountValue) !== 2);
   };
   container.querySelector('#mm-teamcount')?.addEventListener('input', capTeamCountField);
   // A realtime re-render while this field is focused writes the value typed
@@ -1409,9 +1411,10 @@ export function renderMatchmaking(container, ctx) {
         gameId: selectedGameId,
         captainIds,
         poolPlayerIds,
-        bettingAllowed: Boolean(canOfferBetting() && bettingAllowed),
+        bettingAllowed: captainIds.length === 2 && (!canOfferBetting() || bettingAllowed),
       });
       draftCaptainIds = new Set();
+      bettingAllowed = true;
       ctx.rerender();
     } catch (err) {
       showToast(err.message, { error: true });
@@ -1436,12 +1439,16 @@ export function renderMatchmaking(container, ctx) {
     const playerIds = [...checkedIds];
     const teamCountRaw = capTeamCountValue(container.querySelector('#mm-teamcount').value, playerIds.length);
     const body = { gameId, playerIds, avoidAdjacentOpponents,
-      bettingAllowed: Boolean(canOfferBetting() && bettingAllowed) };
-    if (teamCountRaw) body.teamCount = parseInt(teamCountRaw, 10);
+      bettingAllowed: !canOfferBetting() || bettingAllowed };
+    if (teamCountRaw) {
+      body.teamCount = parseInt(teamCountRaw, 10);
+      body.bettingAllowed = body.teamCount === 2 && body.bettingAllowed;
+    } else if (body.bettingAllowed) delete body.bettingAllowed;
 
     try {
       const result = await api.matchmaking.generate(body);
       state.lastMatchmaking = result;
+      bettingAllowed = true;
       ctx.rerender();
     } catch (err) {
       showToast(err.message, { error: true });

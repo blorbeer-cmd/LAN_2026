@@ -218,8 +218,10 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   for (const id of [myId, alice.id, bob.id])
     await member.locator(`[data-roster-picker="mm-draw-roster"] [data-player="${id}"]`).setChecked(id !== myId);
   await member.locator('#mm-teamcount').fill('2');
-  assert.equal(await member.locator('#mm-betting-allowed').isChecked(), false);
+  assert.equal(await member.locator('#mm-betting-allowed').isChecked(), true);
   await member.locator('#mm-betting-allowed').focus();
+  await member.keyboard.press('Space');
+  assert.equal(await member.locator('#mm-betting-allowed').isChecked(), false, 'the creator can opt out of the enabled default');
   await member.keyboard.press('Space');
   await member.waitForFunction(() => document.querySelectorAll('#toast-container .toast').length === 0);
   for (const width of [320, 1440]) {
