@@ -110,6 +110,9 @@ Quellenänderungen und der Prozessstart synchronisieren die Kategorieansprüche.
 Migration 134 ergänzt diese Aktivierungspfade und finanziert bereits übersehene berechtigte
 Konten offener Wertungen einmalig nach. Bestehende Guthaben, Einsätze und abgeschlossene
 Wertungen bleiben erhalten; es gibt keinen erneuten Reset und keine zweite Startgutschrift.
+Während der Festschreibung neu berechtigte Konten werden erst beim begründeten Wiederöffnen
+finanziert. Die fehlende Startgutschrift und das Wiederöffnen bilden eine gemeinsame Transaktion;
+frühere Endstände bleiben unverändert.
 Nach Eventende sind neue Tipps gesperrt, während Ergebnisse und Verlauf sichtbar bleiben.
 
 ## Abrechnung und Korrektur

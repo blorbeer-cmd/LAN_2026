@@ -292,6 +292,7 @@ pointsRouter.post('/reopen', requireGroupRole('admin'), (req, res) => {
   db.transaction(() => {
     const reopened = db.prepare('UPDATE points_settings SET closed_at = NULL WHERE event_id = ? AND closed_at IS NOT NULL').run(eventId);
     if (!reopened.changes) throw new PointsError('Die Punktewertung ist nicht abgeschlossen.');
+    ensurePointAccounts(eventId);
     syncCompetitionPoints(req.group!.id, eventId);
     writeAdminAudit({
     actorPlayerId: req.player!.id,

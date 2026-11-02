@@ -679,6 +679,18 @@ test('returning eligibility funds wallets at the mutation, rolls back failed rea
   assert.equal(wallet(f.eventId, closedPlayer).total, 0, 'closed valuations cannot mint a late start');
   assert.deepEqual(pointStandings(f.eventId), frozen);
   assert.deepEqual(db.prepare('SELECT * FROM points_journal WHERE source_id IN (SELECT id FROM points_sources WHERE event_id=?) ORDER BY id').all(f.eventId), journal);
+  const snapshot = db.prepare('SELECT standings FROM points_snapshots WHERE event_id=?').pluck().get(f.eventId);
+  db.exec(`CREATE TEMP TRIGGER fail_reopened_wallet BEFORE INSERT ON points_journal
+    WHEN NEW.title='Wett-Startguthaben' BEGIN SELECT RAISE(ABORT,'reopened wallet failed'); END;`);
+  try {
+    assert.equal((await request(app).post('/api/points/reopen').send({ reason: 'Returning participant' })).status, 500);
+    assert.notEqual(db.prepare('SELECT closed_at FROM points_settings WHERE event_id=?').pluck().get(f.eventId), null);
+    assert.equal(wallet(f.eventId, closedPlayer).total, 0);
+  } finally { db.exec('DROP TRIGGER fail_reopened_wallet'); }
+  const reopens = await Promise.all([0, 1].map(() => request(app).post('/api/points/reopen').send({ reason: 'Returning participant' })));
+  assert.deepEqual(reopens.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(wallet(f.eventId, closedPlayer).total, 100, 'reopening funds participants whose eligibility returned while frozen');
+  assert.deepEqual(db.prepare('SELECT standings FROM points_snapshots WHERE event_id=?').pluck().get(f.eventId), snapshot);
 });
 
 test('leaderboard filters and cross-event totals use game points without mixing configured LAN wallets', async () => {

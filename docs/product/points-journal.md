@@ -33,6 +33,8 @@ auch ohne Abruf des Punktekontos oder ersten Tipp. Beim Upgrade werden bisher ü
 berechtigte Konten offener LAN-Wertungen nachfinanziert. Vorhandene Startgutschriften,
 Reservierungen, Teilnahmehistorie und abgeschlossene Wertungen bleiben unverändert;
 der einmalige Reset aus Migration 131 wird nicht wiederholt.
+Bei während der Festschreibung zurückgekehrter Berechtigung wird das fehlende Startguthaben
+erst beim begründeten Wiederöffnen gemeinsam mit diesem Zustandswechsel gebucht.
 Offene Einsätze reservieren nur das Wallet; der Wett-Rohwert wird aus abgerechneten
 Nettoergebnissen gebucht. Vollständige Erstattungen ergeben dort 0. Wallet und Rohwerte
 dürfen nach einer Korrektur negativ sein. Negative verfügbare Mittel sperren neue Tipps und Änderungen; die Rücknahme eines offenen Tipps bleibt möglich.
