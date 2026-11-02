@@ -395,6 +395,7 @@ export const Events = {
   liveStatusChanged: 'live:changed',
   votesChanged: 'votes:changed',
   leaderboardChanged: 'leaderboard:changed',
+  pointsReportsChanged: 'pointsReports:changed',
   matchmakingGenerated: 'matchmaking:generated',
   matchmakingDrawsChanged: 'matchmaking:draws-changed',
   eventsChanged: 'events:changed',

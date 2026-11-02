@@ -91,8 +91,9 @@ export function pointsReportRecipients(report: ReportRow): string[] {
   const creator = db.prepare('SELECT created_by FROM events WHERE id=? AND group_id=?').get(report.event_id, report.group_id) as
     { created_by: string | null } | undefined;
   const excluded = subjects(report);
-  const candidates = new Set([...admins(report.group_id), ...(creator?.created_by ? [creator.created_by] : [])]);
-  return [...candidates].filter((id) => !excluded.has(id) && Boolean(db.prepare(`SELECT 1 FROM group_memberships gm
+  const reviewers = admins(report.group_id);
+  const candidates = new Set([...reviewers, ...(creator?.created_by ? [creator.created_by] : [])]);
+  return [...candidates].filter((id) => (!excluded.has(id) || (reviewers.length === 1 && reviewers[0] === id)) && Boolean(db.prepare(`SELECT 1 FROM group_memberships gm
     JOIN players p ON p.id=gm.player_id WHERE gm.group_id=? AND gm.player_id=? AND gm.status='active' AND p.deactivated_at IS NULL`)
     .get(report.group_id, id)));
 }
@@ -101,16 +102,26 @@ function view(report: ReportRow) {
     reason: report.reason, status: report.status, createdAt: report.created_at,
     resolvedAt: report.resolved_at, resolution: report.resolution };
 }
+export function canReportPointsAssignment(groupId: string, eventId: string, actorId: string, type: string, id: string): boolean {
+  if (!['journal','match','tip','betting_round','todo'].includes(type) || !isPointsEvent(eventId)) return false;
+  try { requirePointsOpen(eventId); source(groupId, eventId, type as PointsReportTarget, id, actorId); return true; }
+  catch (error) { if (error instanceof PointsError) return false; throw error; }
+}
 export function readPointsReports(groupId: string, eventId: string, actorId: string) {
   const reports = db.prepare('SELECT * FROM points_reports WHERE group_id=? AND event_id=? ORDER BY created_at DESC,rowid DESC')
     .all(groupId, eventId) as ReportRow[];
   const canResolve = admins(groupId).includes(actorId);
   return {
     own: reports.filter((report) => report.reporter_id === actorId).map(view),
-    inbox: reports.filter((report) => pointsReportRecipients(report).includes(actorId)).map((report) => ({
-      ...view(report), canResolve,
-      reporter: report.reporter_id ? db.prepare('SELECT id,name FROM players WHERE id=?').get(report.reporter_id) ?? null : null,
-    })),
+    inbox: reports.filter((report) => pointsReportRecipients(report).includes(actorId)).map((report) => {
+      const anonymous = subjects(report).has(actorId);
+      // Free text and exact submission times can identify the sender just as
+      // directly as a name. Self-review exposes only the disputed assignment.
+      return { ...view(report), canResolve, anonymous,
+        reason: anonymous ? '' : report.reason, createdAt: anonymous ? null : report.created_at,
+        resolvedAt: anonymous ? null : report.resolved_at, resolution: anonymous ? '' : report.resolution,
+        reporter: !anonymous && report.reporter_id ? db.prepare('SELECT id,name FROM players WHERE id=?').get(report.reporter_id) ?? null : null };
+    }),
   };
 }
 export function createPointsReport(groupId: string, eventId: string, actorId: string, input: Record<string, unknown>) {

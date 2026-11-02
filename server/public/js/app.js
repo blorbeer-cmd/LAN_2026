@@ -22,6 +22,7 @@ import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
 import { prepareEventTarget } from './views/events.js';
 import { syncPointsDialogVisibility } from './views/points.js';
+import { refreshPointsReports } from './pointsReports.js';
 import { focusGameCatalog } from './views/gameCatalog.js';
 import { clearTournamentTeamTarget, prepareTournamentTeamTarget } from './views/tournament.js';
 import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
@@ -143,7 +144,7 @@ const startupData = createStartupDataGate((state) => {
 // without that line (the event-context signal below) committed first.
 async function loadAllAndPublish() {
   const committed = await startupData.loadAndPublish(loadAll);
-  if (committed) syncPointsDialogVisibility();
+  if (committed) { syncPointsDialogVisibility(); refreshPointsReports(); }
   return committed;
 }
 
@@ -594,8 +595,7 @@ function renderCurrent({ preserveState = true } = {}) {
   const renderer = entry.render ?? resolvedLazyRenderers.get(view);
   if (renderer) {
     renderer(viewContainer, ctx);
-    restoreViewRenderState(viewContainer, renderState);
-    finishRenderedViewFocus();
+    finishRenderedViewFocus(renderState);
     return;
   }
 
@@ -605,8 +605,7 @@ function renderCurrent({ preserveState = true } = {}) {
       resolvedLazyRenderers.set(view, renderFn);
       if (revision !== renderRevision || view !== currentView) return;
       renderFn(viewContainer, ctx);
-      restoreViewRenderState(viewContainer, renderState);
-      finishRenderedViewFocus();
+      finishRenderedViewFocus(renderState);
     })
     .catch((error) => {
       if (revision !== renderRevision || view !== currentView) return;
@@ -627,8 +626,11 @@ function focusPendingViewHeading() {
   pendingViewHeadingFocus = false;
 }
 
-function finishRenderedViewFocus() {
+function finishRenderedViewFocus(renderState) {
+  // Tour help controls are attached after the view markup. Reattach them
+  // before restoring focus so a refresh cannot lose the just-focused trigger.
   areaTours.sync();
+  restoreViewRenderState(viewContainer, renderState);
   if (!focusPendingSearchTarget()) focusPendingViewHeading();
 }
 
@@ -966,6 +968,7 @@ function wireSocket() {
   // Arcade views open and intentionally close auxiliary sockets; those must
   // never make the whole app appear offline.
   const socket = connectSocket({ reportConnectionState: true });
+  socket.on('pointsReports:changed', refreshPointsReports);
 
   // These payload-less events still need a fresh central snapshot, but only
   // screens that consume the changed entity are redrawn. Secondary caches

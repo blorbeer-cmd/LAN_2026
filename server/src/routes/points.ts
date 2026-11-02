@@ -28,6 +28,7 @@ import {
   notifyBettingRound,
   putTip,
   reconcileBetting,
+  publishBettingChanges,
   refundBettingRound,
   removeTip,
   roundView,
@@ -41,6 +42,7 @@ import { resolvePushTopic } from '../push';
 import { correctJournalEntry } from '../pointsAdministration';
 import { syncCompetitionPoints } from '../orgaPoints';
 import { readPointsBalances, readPointsJournal } from '../pointsJournal';
+import { canReportPointsAssignment, createPointsReport, readPointsReports, resolvePointsReport } from '../pointsReports';
 
 export const pointsRouter = Router();
 pointsRouter.use((req, res, next) => {
@@ -98,7 +100,31 @@ pointsRouter.get('/', (req, res) => {
     standings,
     participantCount: pointParticipantCount(eventId),
     categoryStanding: standings.find((row) => row.playerId === req.player!.id) ?? null,
+    revisions: db.prepare('SELECT revision,created_at AS createdAt FROM points_snapshots WHERE event_id=? ORDER BY revision DESC').all(eventId),
   });
+});
+pointsRouter.get('/reports', (req, res) => {
+  const eventId = res.locals.eventId as string;
+  if (!isPointsEvent(eventId)) throw new PointsError('LAN-Wertung nicht gefunden.', 404);
+  res.json({ ...readPointsReports(req.group!.id, eventId, req.player!.id),
+    canReport: Boolean(pointsSettings(eventId) && pointsSettings(eventId)!.closed_at === null) });
+});
+pointsRouter.get('/reports/targets/:type/:id', (req, res) => {
+  res.json({ canReport: canReportPointsAssignment(req.group!.id, res.locals.eventId, req.player!.id, req.params.type, req.params.id) });
+});
+pointsRouter.post('/reports', (req, res) => {
+  const eventId = res.locals.eventId as string;
+  const result = createPointsReport(req.group!.id, eventId, req.player!.id, req.body ?? {});
+  // A personal inbox may be open for an inactive event. Send no event or
+  // report identifiers; its next read rechecks the selected event's access.
+  broadcast(Events.pointsReportsChanged, null, { groupId: req.group!.id, recipientPlayerIds: result.recipients });
+  res.status(201).json(result.report);
+});
+pointsRouter.post('/reports/:id/resolve', (req, res) => {
+  const eventId = res.locals.eventId as string;
+  const result = resolvePointsReport(req.group!.id, eventId, req.player!.id, req.params.id, req.body ?? {});
+  broadcast(Events.pointsReportsChanged, null, { groupId: req.group!.id, recipientPlayerIds: result.recipients });
+  res.json({ ok: true });
 });
 pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
   const eventId = res.locals.eventId as string;
@@ -297,13 +323,17 @@ pointsRouter.post('/rounds/:id/void', requireGroupRole('admin'), (req, res) => {
 pointsRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   const eventId = res.locals.eventId as string;
   if (!isPointsEvent(eventId)) throw new PointsError('Die Punktewertung gilt nur für reguläre veröffentlichte LANs.');
-  reconcileBetting(eventId);
-  db.transaction(() => {
+  const changedRounds = db.transaction(() => {
     requirePointsOpen(eventId);
-    syncCompetitionPoints(req.group!.id, eventId);
-    if (db.prepare("SELECT 1 FROM betting_rounds WHERE event_id = ? AND status IN ('open','locked')").get(eventId)) {
-      throw new PointsError('Bitte offene Tipprunden erst abrechnen oder mit Begründung erstatten.');
+    if (db.prepare("SELECT 1 FROM points_reports WHERE event_id=? AND status='open'").get(eventId))
+      throw new PointsError('Bitte zuerst alle offenen Punktefehler-Meldungen abschließen.');
+    const changed = reconcileBetting(eventId, false);
+    const unresolved = db.prepare("SELECT * FROM betting_rounds WHERE event_id=? AND status IN ('open','locked')").all(eventId) as BettingRound[];
+    for (const round of unresolved) {
+      refundBettingRound(round, req.player!.id, 'LAN-Endwertung festgeschrieben: kein abgerechnetes Ergebnis');
+      changed.push(round);
     }
+    syncCompetitionPoints(req.group!.id, eventId);
     ensurePointAccounts(eventId);
     const standings = pointStandings(eventId).map(({ name: _name, color: _color, ...row }) => row);
     const { revision } = db
@@ -325,7 +355,9 @@ pointsRouter.post('/close', requireGroupRole('admin'), (req, res) => {
       targetId: eventId,
       details: { revision },
     });
+    return changed;
   }).immediate();
+  publishBettingChanges(changedRounds);
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json({ ok: true });
 });

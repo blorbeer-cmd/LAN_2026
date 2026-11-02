@@ -9,6 +9,7 @@ import { emptyStateHtml } from '../emptyState.js';
 import { rankedListHtml, sharedRankNumbers } from '../rankedList.js';
 import { POINT_SOURCES, signedPoints, pointsChartHtml, journalSourceState, categoryPlaceSummary } from '../pointsPresentation.js';
 import { categoryPointsHtml, adminCategoryJournalHtml, categoryEntryFactsHtml } from '../pointsCategories.js';
+import { pointsReportButton, wirePointsReportButtons } from '../pointsReports.js';
 
 let cached = null;
 let cacheKey = '';
@@ -173,6 +174,7 @@ function roundHtml(round, compact = false) {
       ${round.status === 'open' && !currentData()?.settings.closed_at ? `<button type="button" class="btn btn-primary btn-sm" data-tip-round="${e(round.id)}">${mine ? 'Tipp ändern' : 'Jetzt tippen'}</button>` : `<button type="button" class="btn btn-sm" data-tip-round="${e(round.id)}">Details</button>`}
       ${round.status === 'open' && (isGroupAdmin() || round.outcomes.some((o) => o.playerIds.includes(getMyId()))) ? `<button type="button" class="btn btn-sm" data-lock-round="${e(round.id)}">Spielstart / Tipps schließen</button>` : ''}
       ${isGroupAdmin() && ['open', 'locked', 'settled'].includes(round.status) && !currentData()?.settings.closed_at ? `<button type="button" class="btn btn-sm" data-refund-round="${e(round.id)}">${round.status === 'settled' ? 'Abrechnung stornieren' : 'Runde erstatten'}</button>` : ''}
+      ${pointsReportButton('betting_round', round.id, ['settled', 'refunded'].includes(round.status))}
     </div>
   </div>`;
 }
@@ -204,9 +206,10 @@ function openTip(round, ctx) {
     <ul class="points-outcomes">${round.outcomes.map((o) => `<li><span>${e(o.label)}</span><span>${o.stake} P.${o.odds ? ` · Quote ${o.odds.toFixed(2)}` : ''}</span></li>`).join('')}</ul>
     <p class="muted">Auszahlung enthält den Einsatz. Rundungen werden nach dem größten Rest verteilt. Bei ungültigem Topf, Abbruch oder einem nicht wählbaren Unentschieden wird erstattet.</p>`
     }
-    </form>`,
+    </form>${pointsReportButton('tip', round.mine?.id, ['settled', 'refunded'].includes(round.status))}`,
     {
       onMount(el) {
+        wirePointsReportButtons(el);
         el.querySelector('form').addEventListener('submit', (event) => {
           event.preventDefault();
           const form = event.currentTarget;
@@ -267,6 +270,7 @@ function reasonDialog(title, action, ctx) {
 }
 
 export function wireCompetitionBetting(container, ctx) {
+  wirePointsReportButtons(container);
   container.querySelectorAll('[data-tip-round]').forEach((button) =>
     button.addEventListener('click', () => {
       const round = currentData()?.rounds.find((r) => r.id === button.dataset.tipRound);
@@ -344,7 +348,8 @@ function entryDetails(entry, allEntries) {
     ${details.stake !== undefined ? `<dt>Einsatz</dt><dd>${details.stake} P.</dd><dt>Auszahlung</dt><dd>${details.payout} P.</dd>` : ''}
     ${details.reason ? `<dt>Begründung</dt><dd>${e(details.reason)}</dd>` : ''}
     ${original ? `<dt>Originalbuchung</dt><dd>${e(original.title)} · ${signedPoints(original.amount)} P. · ${e(formatDateTime(original.created_at))}</dd>` : ''}
-    <dt>Buchungs-ID</dt><dd>${e(entry.id)}</dd></dl>`,
+    <dt>Buchungs-ID</dt><dd>${e(entry.id)}</dd></dl>${pointsReportButton('journal', entry.id)}`,
+    { onMount: wirePointsReportButtons },
   );
 }
 
@@ -377,6 +382,26 @@ function historyHtml(data) {
     }
     </section>`;
 }
+function savedStandingsHtml(data) {
+  if (!data.revisions?.length) return '';
+  return `<section class="card stack"><h2>Gespeicherte Endstände</h2><div class="stack">
+    <label class="stack"><span class="field-label">Endstand auswählen</span><select data-points-revision>${data.revisions.map((r) => `<option value="${r.revision}">Version ${r.revision} · ${e(formatDateTime(r.createdAt))}</option>`).join('')}</select></label>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="btn btn-sm" data-download-points-revision>Endstand herunterladen</button></div></div></section>`;
+}
+function wireSavedStandings(container) {
+  const eventId = state.activeEvent?.id;
+  const key = scopeKey();
+  container.querySelector('[data-download-points-revision]')?.addEventListener('click', (event) => {
+    const revision = container.querySelector('[data-points-revision]').value;
+    perform(event.currentTarget, async () => {
+      const snapshot = await pointsRequest(`/snapshots/${encodeURIComponent(revision)}`, {}, eventId);
+      if (key !== scopeKey()) return;
+      const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a'); link.href = url; link.download = `lan-punkte-${eventId}-v${revision}.json`;
+      link.click(); URL.revokeObjectURL(url);
+    });
+  });
+}
 
 export function renderPoints(container, ctx) {
   if (!state.activeEvent?.pointsEnabled) {
@@ -385,9 +410,10 @@ export function renderPoints(container, ctx) {
   }
   ensurePoints(ctx);
   const data = currentData();
-  const header = `<div class="row-between page-title-row points-actions"><h1 class="view-title">Meine LAN-Punkte</h1>${isGroupAdmin() ? '<button type="button" class="btn btn-sm" data-navigate="pointsAdmin">Punkte verwalten</button>' : ''}</div>`;
+  const header = `<div class="row-between page-title-row points-actions"><h1 class="view-title">Meine LAN-Punkte</h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-reports>Meldungen</button>${isGroupAdmin() ? '<button type="button" class="btn btn-sm" data-navigate="pointsAdmin">Punkte verwalten</button>' : ''}</div></div>`;
   if (!data?.settings) {
     container.innerHTML = `${header}${emptyStateHtml(loadError || (data ? 'Für diese LAN ist noch keine Punktewertung aktiviert.' : state.activeEvent?.eventType === 'lan' ? 'Punktekonto wird geladen…' : 'Wähle ein LAN-Event.'))}${loadError ? '<button type="button" class="btn" data-points-retry>Erneut laden</button>' : ''}`;
+    wirePointsReportButtons(container);
     container.querySelector('[data-points-retry]')?.addEventListener('click', () => refreshPoints(ctx));
     return;
   }
@@ -398,7 +424,7 @@ export function renderPoints(container, ctx) {
     <section class="card stack" aria-label="Tipprunden"><div class="row-between"><h2>${selected ? 'Tipprunde' : 'Spiele & Turniere tippen'}</h2>${selected ? '<button type="button" class="btn btn-sm" data-all-rounds>Alle Runden</button>' : ''}</div>
       <p class="muted">Max. ${data.settings.max_stake} P. pro Wettmarkt. Auch eigene Spiele und Turniere sind erlaubt.</p>
       ${rounds.length ? rounds.map((r) => roundHtml(r)).join('') : emptyStateHtml(selected ? 'Diese Tipprunde wurde nicht gefunden.' : 'Noch keine offiziellen Tipprunden.')}</section>
-    ${historyHtml(data)}
+    ${historyHtml(data)}${savedStandingsHtml(data)}
     <section class="card stack" aria-label="LAN-Rangliste"><h2>${data.settings.closed_at ? 'Gesamt-Endstand' : 'Gesamtwertung'}</h2><p class="muted">Die Platzpunkte der drei Kategorien werden addiert. Gleiche Gesamtpunkte teilen sich den Platz.</p>${rankedListHtml(
       data.standings.map((p, i) => ({
         rank: p.rank ?? ranks[i],
@@ -409,6 +435,7 @@ export function renderPoints(container, ctx) {
       { ranked: true, label: 'LAN-Rangliste' },
     )}</section></div>`;
   wireCompetitionBetting(container, ctx);
+  wireSavedStandings(container);
   container.querySelector('[data-category-account]').addEventListener('change', (event) => {
     categoryAccount = event.target.value;
     ctx.rerender();
@@ -419,7 +446,7 @@ export function renderPoints(container, ctx) {
   });
   container.querySelectorAll('[data-category-entry]').forEach((button) => button.addEventListener('click', () => {
     const entry = data.categoryJournal.find((row) => row.id === button.dataset.categoryEntry);
-    if (entry) openPointsModal('Kategorie-Buchung', categoryEntryFactsHtml(entry));
+    if (entry) openPointsModal('Kategorie-Buchung', `${categoryEntryFactsHtml(entry)}${pointsReportButton('journal', entry.id)}`, { onMount: wirePointsReportButtons });
   }));
   container.querySelector('[data-all-rounds]')?.addEventListener('click', () => ctx.navigateLocal(null));
   container.querySelector('[data-points-source]').addEventListener('change', (event) => {
@@ -464,7 +491,7 @@ function openAdminCategoryEntry(entry, data, ctx) {
   const key = scopeKey();
   const current = journalSourceState(adminCategoryEntries, entry.source_id);
   const editable = !data.settings?.closed_at && ['orga', 'playing'].includes(entry.account);
-  const dialog = openModal('Kategorie-Buchung verwalten', `${categoryEntryFactsHtml(entry)}
+  const dialog = openModal('Kategorie-Buchung verwalten', `${categoryEntryFactsHtml(entry)}${pointsReportButton('journal', entry.id)}
     <p>Aktueller Gesamtanspruch für diesen Vorgang: <strong>${e(current.total)} P.</strong></p>
     ${editable ? `<form class="stack" data-category-correction>
       ${numberField('total', 'Neuer Gesamtanspruch', current.total, -Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)}
@@ -474,6 +501,7 @@ function openAdminCategoryEntry(entry, data, ctx) {
     </form>` : data.settings?.closed_at ? '<p class="muted">Die Punktewertung ist abgeschlossen.</p>' : ''}`, {
     onClose() { adminCategoryDialogs.delete(dialog.close); },
     onMount(el) {
+      wirePointsReportButtons(el);
       el.querySelector('[data-category-correction]')?.addEventListener('submit', (event) => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -533,9 +561,9 @@ export function renderPointsAdmin(container, ctx) {
   loadAdminCategories(ctx);
   const s = data.settings;
   const closed = Boolean(s?.closed_at);
-  container.innerHTML = `<div class="row-between page-title-row points-actions"><h1 class="view-title">LAN-Punkte verwalten</h1>${state.activeEvent?.pointsEnabled ? '<button type="button" class="btn btn-sm" data-navigate="points">Mein Punktekonto</button>' : ''}</div>
+  container.innerHTML = `<div class="row-between page-title-row points-actions"><h1 class="view-title">LAN-Punkte verwalten</h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-reports>Meldungen</button>${state.activeEvent?.pointsEnabled ? '<button type="button" class="btn btn-sm" data-navigate="points">Mein Punktekonto</button>' : ''}</div></div>
     <div class="grouped-page-sections"><section class="card stack"><div class="row-between points-actions"><h2>Anzeige für Teilnehmer</h2><button type="button" class="btn btn-sm" data-navigate="events">Zur Eventverwaltung</button></div><p>${state.activeEvent?.pointsEnabled ? 'LAN-Punkte, Verlauf und Wetten sind für alle Teilnehmer sichtbar.' : 'LAN-Punkte, Verlauf und Wetten sind für Teilnehmer ausgeblendet.'} Punkte werden unabhängig davon im Hintergrund gesammelt. Die Anzeige steuerst du jederzeit direkt am Event.</p></section>
-    ${adminCategoryJournalHtml(adminCategoryEntries, { account: adminCategoryAccount, query: adminCategoryQuery, loading: adminCategoryLoading, error: adminCategoryError })}<section class="card stack"><h2>${s ? 'Wettregeln' : 'Punktewertung aktivieren'}</h2>
+    ${savedStandingsHtml(data)}${adminCategoryJournalHtml(adminCategoryEntries, { account: adminCategoryAccount, query: adminCategoryQuery, loading: adminCategoryLoading, error: adminCategoryError })}<section class="card stack"><h2>${s ? 'Wettregeln' : 'Punktewertung aktivieren'}</h2>
     <p>Jeder Teilnehmer erhält einmalig 100 Wettpunkte pro Event, auch bei später Zusage. Orga- und Spielpunkte erhöhen das Wettguthaben nicht.</p>
     <form class="stack" data-points-settings>
       <label class="stack"><span class="field-label">Preis & Vergabe bei Gleichstand</span><textarea name="prizeInfo" maxlength="300" ${closed ? 'disabled' : ''}>${e(s?.prize_info ?? '')}</textarea></label>
@@ -547,6 +575,8 @@ export function renderPointsAdmin(container, ctx) {
     </section>
     ${s ? `<section class="card stack"><h2>Wettguthaben aller Teilnehmer</h2><p class="muted">Korrekturen erfolgen mit Begründung direkt an der Tipprunde oder am Spielergebnis.</p>${adminEntries ? `<label class="stack"><span class="field-label">Teilnehmer oder Buchung suchen</span><input type="search" data-admin-entry-query></label><ol class="points-journal">${adminEntries.map((entry) => `<li data-admin-entry-text="${e(`${entry.playerName} ${entry.title}`.toLocaleLowerCase('de'))}"><div><strong>${e(entry.playerName)}</strong><div>${e(entry.title)} · ${signedPoints(entry.amount)} P.</div><div class="muted">${e(formatDateTime(entry.created_at))}</div></div><button type="button" class="btn btn-sm" data-admin-entry-details="${e(entry.id)}">Details</button></li>`).join('')}</ol>` : emptyStateHtml(adminError || 'Buchungen werden geladen…')}</section>` : ''}
     </div>`;
+  wirePointsReportButtons(container);
+  wireSavedStandings(container);
   container.querySelector('[data-category-admin-refresh]').addEventListener('click', () => refreshPoints(ctx));
   container.querySelector('[data-admin-category-account]').addEventListener('change', (event) => {
     adminCategoryAccount = event.target.value;
@@ -584,7 +614,7 @@ export function renderPointsAdmin(container, ctx) {
       );
     if (
       !(await confirmDialog(
-        'LAN-Endwertung festschreiben? Alle Tipprunden müssen abgerechnet oder erstattet sein. Danach sind Punkteänderungen gesperrt.',
+        'LAN-Endwertung festschreiben? Offene Punktefehler-Meldungen müssen zuerst abgeschlossen sein. Alle noch nicht abgerechneten Wetten werden vollständig erstattet. Danach sind Punkteänderungen gesperrt.',
         { confirmText: 'Endwertung festschreiben' },
       ))
     )

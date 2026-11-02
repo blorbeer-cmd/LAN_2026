@@ -426,13 +426,13 @@ Eine solche Änderung erscheint nachvollziehbar im Journal.
 - Meldungen gehen an Admins und den Event-Ersteller.
 - Betrifft die gemeldete Punktevergabe einen Admin selbst, sehen sie ausschließlich die übrigen Admins
   beziehungsweise der Event-Ersteller. Ist der Ersteller zugleich der betroffene Admin,
-  eröffnet die zweite Rolle keinen Zugriff auf die eigene Meldung.
+  eröffnet die zweite Rolle keinen zusätzlichen Zugriff. Die beschlossene Ausnahme für den einzigen Admin steht unten.
 - Die gemeldete Person sieht nicht, wer gemeldet hat. Rollen oder andere Ansichten dürfen
   die Identität des Meldenden nicht indirekt offenlegen.
 - Der Event-Ersteller ohne Adminrolle kann Meldungen sehen; die Punkteentscheidung und
   der Abschluss der Meldung liegen bei einem Admin.
 - Admins dürfen eigene Punkte korrigieren oder entziehen. Das erweitert weder den Zugriff
-  auf Meldungen über sie selbst noch die Sichtbarkeit der Identität des Meldenden.
+  auf Meldungen über sie selbst; für den einzigen Admin gilt die folgende anonyme Ausnahme. Die Identität des Meldenden bleibt geschützt.
 
 ### 8.3 Bearbeitung und Abschluss
 
@@ -443,10 +443,12 @@ Gemeldet werden kann bis zur Festschreibung. Festgeschrieben wird erst, wenn **k
 Meldung mehr offen** ist. Dies ist eine Abschlussbedingung und kein Freigabeprozess für
 die laufende Punktevergabe.
 
-**OFFEN – Meldungsempfänger und Bearbeitung:** Der Umgang mit einer gemeldeten fehlerhaften
-Punktevergabe zugunsten eines Event-Erstellers ohne Adminrolle sowie mit Fällen ohne verfügbare empfangsberechtigte Adminperson ist
-noch zu präzisieren. Die Identität des Meldenden bleibt geschützt; es werden hier keine
-zusätzlichen Meldungszugriffe oder Korrekturrechte für Nicht-Admins vergeben.
+**M1 entschieden:** Der einzige aktive Admin darf eine Meldung zu seinen eigenen Punkten
+anonym prüfen und abschließen. Er erhält weder Absender noch privaten Freitext oder genaue
+Meldezeitpunkte. Mit mehreren Admins prüfen nur unbetroffene Admins; ein betroffener
+Event-Ersteller ohne Adminrolle erhält keinen Zugriff. Ist niemand zur Bearbeitung berechtigt,
+bleibt die Meldung offen und verhindert die Festschreibung. Persönliche Exporte liefern nur
+eigene Meldungen; Rollenwechsel und Kontolöschung dürfen keine Absenderidentität offenlegen.
 
 ## 9. Sichtbarkeit und Festschreibung
 
@@ -460,9 +462,9 @@ Platzpunkten, Gesamtsummen und den verwendeten Regeln festgeschrieben. Solange M
 offen sind, ist das nicht möglich. Noch offene Wettmärkte werden bei der Festschreibung
 vollständig erstattet; Startguthaben und diese Erstattungen erhöhen keine Wertung.
 
-**OFFEN – gesperrte Wettmärkte:** Wie bereits geschlossene, aber noch nicht abgerechnete
-Märkte bei der Festschreibung behandelt werden, ist mit der Regel zu noch offenen Märkten
-nicht abschließend entschieden. Es wird keine zusätzliche automatische Behandlung erfunden.
+**W7-Abschluss entschieden:** Auch bereits gesperrte, noch unabgerechnete Märkte werden
+vollständig erstattet. Abgleich, Meldesperre, Erstattungen und Festschreibung erfolgen atomar.
+Begründetes Wiederöffnen erhält die früheren Endstände mit ihren Regeln und Teilnehmerzahlen.
 
 ## 10. Akzeptierte Restrisiken und weitere Hinweise
 
@@ -503,11 +505,11 @@ Vorgabewerte sind dafür keine Entscheidung:
 | W4 (entschieden) | Der Match-Ersteller entscheidet direkt beim Anlegen, ob auf sein Match gewettet werden darf; keine zusätzliche Adminrolle erforderlich. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bestehenden Start-/Tippschlussregeln gelten weiterhin. |
 | W5 (entschieden) | Keine zusätzlichen Tageslimits und keine Höchstzahl offizieller Wettrunden pro Event. Ausreichendes verfügbares Guthaben und die feste Einsatzgrenze von 20 Punkten gelten weiterhin. |
 | W6 (entschieden) | Ausschließlich begründete Markt-Neuberechnung oder Storno unter Erhaltung der Nullsumme. Keine einseitigen Wallet-/Wett-Journalkorrekturen; eigene Marktkorrekturen bleiben erlaubt. |
-| W7 (Abrechnung entschieden) | Pool und Nullsumme bleiben erhalten. Restpunkte nach größtem Nachkommaanteil, bei gleichem Anteil früher abgegebener Tipp. Offen bleibt die Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
+| W7 (Abrechnung entschieden) | Pool und Nullsumme bleiben erhalten. Restpunkte nach größtem Nachkommaanteil, bei gleichem Anteil früher abgegebener Tipp. Auch gesperrte, unabgerechnete Märkte werden bei Festschreibung vollständig erstattet. |
 | O3 (umgesetzt) | Neue Aufgaben verwenden kein Orga-Budget und keine vergüteten Helferplätze. Alte Zusagen und der alte Finanzpfad entfallen mit dem beschlossenen Neustart. |
 | O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben erhalten keine alten LAN-Auszahlungen mehr. |
 | S1 (entschieden) | Geteilte Turnierplätze erhalten jeweils den vollen Bonus des gemeinsamen Rangs, beispielsweise 5/5/1. |
-| M1 | Gemeldete fehlerhafte Punktevergabe zugunsten des Event-Erstellers ohne Adminrolle oder fehlender zuständiger Admin; Vertretung und Bearbeitung. |
+| M1 (entschieden) | Unbetroffene Prüfer; einziger Admin darf eigene Punkte anonym prüfen. Ohne berechtigten Prüfer bleibt die Meldung offen. |
 | H1 (entschieden) | „Jedes gespielte Match bringt Punkte. Spielzeit und Teamgröße werden nicht gewichtet.“ Die Formel bleibt unverändert. |
 
 Die [überarbeitete Paketfolge](IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) ordnet diese Entscheidungen
@@ -535,11 +537,11 @@ dieses Zielkonzepts.
 | Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln, Turnierboni bleiben 5/3/1. [Automatische Journalbuchungen](../server/src/playingPoints.ts) erfolgen bei Ergebnissen, Korrekturen, Löschungen und beim Nachtragen bestehender Ergebnisse. |
 | Einheitliche Auswertung | Umgesetzt: [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts) und [Export](../server/src/routes/export.ts) verwenden für aktivierte oder sichtbare LAN-Wertungen dieselben Kategorie-Platzpunkte, Gesamtstände und geteilten Ränge. Spielfilter und eventübergreifende Sportstatistiken verwenden weiterhin ausschließlich Spielpunkte. Wettguthaben wird niemals als Gesamtwertung ausgegeben. Gemeinsame Turniersiege bleiben in Hall of Fame und Export erhalten. |
 | Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spiel-/Orga-Gutschriften, Wallet und Wettabrechnung, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Persönliches Konto und Journal zeigen Rohwerte, Ränge, Platzpunkte und Verläufe; Finanzkorrekturen erfolgen ausschließlich am Markt. |
-| Wettmärkte | Umgesetzt: sichtbare vorläufige Pool-Quoten, formatabhängige Remis-Auswahl, feste Einsatzgrenze 20, keine zusätzlichen Tages-/Rundenlimits und proportionale ganzzahlige Pool-Verteilung mit früherer Tippabgabe als Gleichstandsregel. Wettplatzierung ab zwei regulären Abrechnungen. W4 ist angebunden: Erstellerwahl direkt beim Match, Captain Draft und Rematch, automatische Turniermärkte und Startaktion vor Spielbeginn. Offen bleibt W7 zur Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung in Paket 9. |
+| Wettmärkte | Umgesetzt: sichtbare vorläufige Pool-Quoten, formatabhängige Remis-Auswahl, feste Einsatzgrenze 20, keine zusätzlichen Tages-/Rundenlimits und proportionale ganzzahlige Pool-Verteilung mit früherer Tippabgabe als Gleichstandsregel. Wettplatzierung ab zwei regulären Abrechnungen. W4 ist angebunden: Erstellerwahl direkt beim Match, Captain Draft und Rematch, automatische Turniermärkte und Startaktion vor Spielbeginn. Paket 9 erstattet alle noch unabgerechneten Märkte bei Festschreibung vollständig. |
 | Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit festen 3 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Ebenfalls umgesetzt: 2 Punkte je eingetragener Ankunft/Abreise beim Eventstart sowie 3 Punkte für abgeschlossene Umfragen und 2 Punkte für abgeschlossene Spieleabstimmungen mit jeweils mindestens drei Teilnehmenden. Die ausdrücklich offenen Regeln bleiben offen. |
 | Kiosk | Umgesetzt: [Ergebnis-Feed](product/media-and-dashboard-rules.md#tv-kiosk) mit Anzeigenamen, Platzierungen und tatsächlich gebuchten Spielpunkten, Korrekturhinweis auch bei reinen Score-Änderungen. Bei ausgeblendeten Punkteansichten bleiben Ergebnisse ohne Punkte sichtbar. Die zehn jüngsten Ergebnisse wechseln in der bestehenden Turnierkachel; alle Teilnehmer werden automatisch durchgeblättert. Migration 128 ergänzt Erfassungszeit, Änderungszeit und Ergebnisrevision, ohne Punktebestände zu verändern. |
-| Meldefunktion | Meldbare Quellen, optionalen Grund, eine offene Meldung pro Person/Eintrag, Empfängerfilter, Identitätsschutz, Status und begründete Korrekturen ergänzen. Eigene administrative Korrekturen bleiben erlaubt. |
-| Abschluss und Sichtbarkeit | Hintergrundvergabe von der Anzeige trennen; neue Tipps bei ausgeblendeter Anzeige sperren. Festschreibung gegen gleichzeitig eingehende Meldungen absichern und bei offenen Meldungen verhindern. Den endgültigen Stand nachvollziehbar festhalten. |
+| Meldefunktion | Umgesetzt: konkrete Punktebuchungen melden, optionaler Grund, eine offene Meldung pro Person/Eintrag, geschützter Posteingang und Status. Der einzige Admin prüft eigene Punkte anonym; tatsächliche Korrekturen bleiben separate begründete Buchungen. |
+| Abschluss und Sichtbarkeit | Umgesetzt: Hintergrundvergabe bleibt unabhängig von Anzeige; Meldesperre, Markterstattung, Punktesynchronisierung, Regeln und Endstand werden atomar festgeschrieben. Begründetes Wiederöffnen erhält die alten Versionen und Downloads. |
 
 Für die spätere Umsetzung sind mindestens die hier aufgeführten Rechenbeispiele,
 Korrektur- und Rückerstattungsfälle, gleichzeitige Wiederholungsversuche, Rollen- und Meldungszugriffe

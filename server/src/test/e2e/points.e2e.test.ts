@@ -14,7 +14,7 @@ import { startE2EServer, type E2EServer } from './e2eServer';
 import { createE2EDiagnosticTest } from './e2eDiagnostics';
 import { activateAdminMode } from './navHelpers';
 import Database from 'better-sqlite3';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
@@ -32,8 +32,9 @@ let pointsGame: { id: string };
 const fixtureDir = mkdtempSync(path.join(tmpdir(), 'respawn-points-browser-'));
 const fixtureDb = path.join(fixtureDir, 'points.db');
 const pageErrors: string[] = [];
-const pendingHttpRoutes = new Set<Promise<void>>();
-let closingHttpRoutes = false;
+const proxyAbort = new AbortController();
+const proxyErrors: unknown[] = [];
+let closingProxy = false;
 const test = createE2EDiagnosticTest(() => ({ browser, server }));
 
 async function api(path: string, method = 'GET', body?: unknown, session = cookie): Promise<any> {
@@ -88,32 +89,27 @@ before(async () => {
   const adminBaseUrl = server.baseUrl.replace('localhost', 'respawn.test');
   const adminContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const memberContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
-  // Serve the insecure LAN origin exclusively from the isolated local server.
-  // Track complete callbacks so cancelled proxies finish before the browser
-  // and real server are released.
-  await adminContext.route(`${adminBaseUrl}/**`, (route) => {
-    const completion = (async () => {
-      if (closingHttpRoutes) {
-        await route.abort('aborted').catch(() => {});
-        return;
-      }
-      try {
-        const url = new URL(route.request().url());
-        const response = await route.fetch({ url: `${server.baseUrl}${url.pathname}${url.search}` });
-        await route.fulfill({ response });
-      } catch (error) {
-        const cancelled = error instanceof Error &&
-          /Route is already handled|Request context disposed|Target page, context or browser has been closed|route\.fetch: read ECONNRESET/.test(error.message);
-        if (!closingHttpRoutes || !cancelled) throw error;
-        // Disposing the fixture HTTP client can cancel an in-flight read with
-        // ECONNRESET. Active-test failures still propagate; this applies only
-        // after teardown explicitly stopped accepting proxied requests.
-        await route.abort('aborted').catch(() => {});
-      }
-    })();
-    pendingHttpRoutes.add(completion);
-    void completion.then(() => pendingHttpRoutes.delete(completion), () => pendingHttpRoutes.delete(completion));
-    return completion;
+  // The hostname is synthetic; every resource comes from the isolated local
+  // server. Node owns the HTTP lifetime so route.fetch's internal requests
+  // cannot reject after Playwright has disposed their context.
+  await adminContext.route(`${adminBaseUrl}/**`, async (route) => {
+    try {
+      if (closingProxy) { await route.abort(); return; }
+      const original = route.request();
+      const url = new URL(original.url());
+      const payload = original.postDataBuffer();
+      const response = await fetch(`${server.baseUrl}${url.pathname}${url.search}`, {
+        method: original.method(), headers: await original.allHeaders(),
+        body: payload ? new Uint8Array(payload).buffer : undefined, signal: proxyAbort.signal,
+      });
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => { headers[key] = value; });
+      delete headers['content-encoding']; delete headers['content-length']; delete headers['transfer-encoding'];
+      await route.fulfill({ status: response.status, headers, body: Buffer.from(await response.arrayBuffer()) });
+    } catch (error) {
+      if (!closingProxy) proxyErrors.push(error);
+      await route.abort().catch(() => {});
+    }
   });
   await addSessionCookie(adminContext, adminBaseUrl, cookie);
   await addSessionCookie(memberContext, server.baseUrl, alice.cookie);
@@ -127,28 +123,20 @@ before(async () => {
   await activateAdminMode(admin);
 });
 after(async () => {
-  closingHttpRoutes = true;
+  closingProxy = true;
+  proxyAbort.abort();
   try {
-    const context = admin?.context();
-    // Socket polling can still be waiting for a future server event. Cancel
-    // the HTTP client while joining Playwright's complete route handlers.
-    // unrouteAll's default would return before those handlers finish and can
-    // leave an unhandled rejection after the owner and its server have ended.
-    await Promise.all([context?.unrouteAll({ behavior: 'wait' }), context?.request.dispose()]);
-    await Promise.all([...pendingHttpRoutes]);
+    await admin?.context().unrouteAll({ behavior: 'wait' });
+    await browser?.close();
   } finally {
-    try {
-      await browser?.close();
-    } finally {
-      await Promise.allSettled([...pendingHttpRoutes]);
       if (server && server.process.exitCode === null && server.process.signalCode === null) {
         const exited = once(server.process, 'exit');
         server.process.kill();
         await exited;
       }
       rmSync(fixtureDir, { recursive: true, force: true });
-    }
   }
+  assert.deepEqual(proxyErrors, [], 'active fixture proxy failures must fail the owner');
 });
 
 test('real LAN account, automatic orga credits, own-game betting notification, history and market voids work on phone and desktop', async () => {
@@ -615,4 +603,78 @@ test('poll and event-start travel awards update the open personal journal live',
   } finally {
     for (const session of [cookie, alice.cookie, bob.cookie]) await api('/api/me/active-event', 'PUT', { eventId }, session);
   }
+});
+
+test('a participant reports awarded points, the sole admin reviews anonymously, and finalization refunds both market states', async () => {
+  const initial = await api(`/api/points?eventId=${eventId}`);
+  if (initial.settings.closed_at) await api('/api/points/reopen', 'POST', { reason: 'Prüfung der endgültigen Wertung' });
+  if (!initial.settings.visible) await setPointsVisibility(true);
+  const task = (await api('/api/checklist/tasks/todo', 'POST', { title: 'Punkteprüfung am Abschluss' }, alice.cookie)).tasks[0];
+  await api(`/api/checklist/tasks/${task.id}/claim`, 'POST', { playerId: myId });
+  await api(`/api/checklist/tasks/${task.id}/done`, 'PATCH', { playerId: myId });
+  await navigate(member, 'checklist');
+  await member.locator(`[data-task-detail="${task.id}"]`).click();
+  await member.getByRole('button', { name: 'Punktefehler melden', exact: true }).click();
+  const reportDialog = member.getByRole('dialog', { name: 'Punktefehler melden', exact: true });
+  const privateReason = `Privater Absender: Points Alice <img src=x onerror="window.pointReportXss=true"> ${'x'.repeat(200)}`;
+  await reportDialog.locator('[name="reason"]').fill(privateReason);
+  await reportDialog.locator('[type="submit"]').focus();
+  await member.keyboard.press('Enter');
+  const ownInbox = member.getByRole('dialog', { name: 'Punktefehler-Meldungen', exact: true });
+  await ownInbox.getByText('Offen', { exact: true }).waitFor();
+  await ownInbox.getByText(privateReason, { exact: true }).waitFor();
+  assert.equal(await ownInbox.locator('img').count(), 0, 'private report text is escaped');
+  const reports = await api('/api/points/reports', 'GET', undefined, alice.cookie);
+  const reportId = reports.own.find((r: { targetId: string }) => r.targetId === task.id).id;
+  await navigate(admin, 'pointsAdmin');
+  await admin.getByRole('button', { name: 'Meldungen', exact: true }).click();
+  const adminInbox = admin.getByRole('dialog', { name: 'Punktefehler-Meldungen', exact: true });
+  const row = adminInbox.locator(`[data-points-report-id="${reportId}"]`);
+  await row.getByText('Anonyme Meldung zu eigenen Punkten. Absender und Freitext sind verborgen.', { exact: true }).waitFor();
+  assert.ok(!(await adminInbox.innerText()).includes('Privater Absender'));
+  assert.ok(!(await adminInbox.innerText()).includes('Points Alice'));
+  const blocked = await fetch(`${server.baseUrl}/api/points/close`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: '{}' });
+  assert.equal(blocked.status, 409);
+  await admin.screenshot({ path: 'test-results/points-report-admin-1440.png', fullPage: true, animations: 'disabled' });
+  await adminInbox.getByRole('button', { name: 'Zum Punktejournal', exact: true }).click();
+  await admin.locator('[data-admin-category-account]').selectOption('orga');
+  await admin.locator('[data-admin-category-query]').fill(task.id);
+  await admin.locator('[data-admin-category-query]').press('Tab');
+  await admin.getByRole('region', { name: 'Kategorie-Journal', exact: true }).getByText('Aufgabe erledigt: Punkteprüfung am Abschluss', { exact: true }).waitFor();
+  await admin.getByRole('button', { name: 'Meldungen', exact: true }).click();
+  await adminInbox.locator(`[data-points-report-id="${reportId}"]`).getByRole('button', { name: 'In Ordnung', exact: true }).click();
+  const resolution = admin.getByRole('dialog', { name: 'Meldung: In Ordnung', exact: true });
+  await resolution.locator('[name="resolution"]').fill('Vergabe anhand der Aufgabe geprüft.');
+  await resolution.getByRole('button', { name: 'Meldung abschließen', exact: true }).click();
+  await ownInbox.locator(`[data-points-report-id="${reportId}"]`).getByText('In Ordnung', { exact: true }).waitFor();
+  await member.setViewportSize({ width: 320, height: 568 });
+  assert.equal(await member.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+  await member.screenshot({ path: 'test-results/points-report-member-320.png', fullPage: true, animations: 'disabled' });
+  while (await admin.locator('.modal-backdrop').count()) await admin.keyboard.press('Escape');
+  while (await member.locator('.modal-backdrop').count()) await member.keyboard.press('Escape');
+  const marketIds: string[] = [];
+  for (const locked of [false, true]) {
+    const draw = await api('/api/matchmaking', 'POST', { gameId: pointsGame.id, playerIds: [alice.id, bob.id], teamCount: 2 });
+    const data = await api('/api/points');
+    const round = data.rounds.find((r: { sourceId: string }) => r.sourceId === (draw.drawId ?? draw.id));
+    marketIds.push(round.id);
+    await api(`/api/points/rounds/${round.id}/tip`, 'PUT', { outcomeId: '0', stake: 5 }, alice.cookie);
+    await api(`/api/points/rounds/${round.id}/tip`, 'PUT', { outcomeId: '1', stake: 5 }, bob.cookie);
+    if (locked) await api(`/api/points/rounds/${round.id}/lock`, 'POST', {});
+  }
+  await navigate(admin, 'pointsAdmin');
+  await admin.getByRole('button', { name: 'LAN-Endwertung festschreiben', exact: true }).click();
+  await admin.getByRole('alertdialog').getByRole('button', { name: 'Endwertung festschreiben', exact: true }).click();
+  await admin.getByRole('button', { name: 'Wertung wieder öffnen', exact: true }).waitFor();
+  const final = await api('/api/points');
+  assert.ok(final.rounds.filter((r: { id: string }) => marketIds.includes(r.id)).every((r: { status: string }) => r.status === 'refunded'));
+  for (const session of [alice.cookie, bob.cookie]) assert.equal((await api('/api/points', 'GET', undefined, session)).wallet.held, 0);
+  await navigate(member, 'points');
+  await member.getByRole('heading', { name: 'Gesamt-Endstand', exact: true }).waitFor();
+  assert.equal(await member.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+  const [download] = await Promise.all([member.waitForEvent('download'), member.getByRole('button', { name: 'Endstand herunterladen', exact: true }).click()]);
+  const exported = JSON.parse(readFileSync((await download.path())!, 'utf8'));
+  assert.equal(exported.revision, final.revisions[0].revision);
+  assert.deepEqual(exported.standings, final.standings);
+  assert.deepEqual(pageErrors, []);
 });

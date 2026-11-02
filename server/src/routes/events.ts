@@ -486,6 +486,7 @@ function serializeEventSummary(
     enabledFeatures: getEnabledEventFeatures(event.id),
     pointsEnabled: pointsAreVisible(event.id),
     pointsAvailable: Boolean(pointsSettings(event.id)),
+    pointsClosedAt: pointsSettings(event.id)?.closed_at ?? null,
     pointsVisibilityRevision: pointsSettings(event.id)?.visibility_revision ?? 0,
     isTest: Boolean(event.is_test),
     trackingEnabled: Boolean(event.tracking_enabled),

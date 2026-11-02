@@ -76,3 +76,12 @@ CSS-Eigentümer oder befristeten Ausnahmen. Kategorie-Details schließen bei Wec
 Kontos/Events oder ausgeblendeten Teilnehmeransichten. Admin-Details bleiben beim Ausblenden
 verfügbar und schließen bei Rollen-/Kontextwechsel. Orga-/Spiel-Ansprüche können mit Begründung
 und aktueller Revision korrigiert werden, auch eigene; Wett-/Wallet-Korrekturen erfolgen ausschließlich als begründete Markt-Neuberechnung oder Storno.
+
+„Punktefehler melden“ öffnet den gemeinsamen Modal für eine konkrete Buchung. Status und
+Prüfung verwenden dieselben Controls; freie Meldungstexte werden escaped und umbrechen auch
+als langes Einzelwort. Der einzige Admin sieht eigene gemeldete Vergaben ohne Absender,
+Freitext und genaue Meldezeit. Rollen- und Eventwechsel entfernen alte Dialogdaten; persönliche
+Realtime-Signale laden nur den geschützten Posteingang neu. Frühere Endstände werden über
+eine native Versionsauswahl als JSON heruntergeladen. Die Abnahme in `points.e2e.test.ts`
+umfasst Meldung per Tastatur, Status-Realtime, anonymen Admin, 320/1440 px, Abschluss mit
+Erstattung offener/gesperrter Märkte und den heruntergeladenen Endstand.

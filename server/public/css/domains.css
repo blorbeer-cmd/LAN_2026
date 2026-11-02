@@ -3236,6 +3236,9 @@ input.food-order-price-input {
 }
 /* LAN points: journal and pooled bets retain the shared card/control layout. */
 .points-actions { flex-wrap: wrap; gap: var(--space-2); }
+.points-report { min-width: 0; }
+.points-report p, .points-report strong { min-width: 0; overflow-wrap: anywhere; }
+.points-report .badge { flex-shrink: 0; white-space: nowrap; }
 .points-round { padding-block: var(--space-4); border-top: 1px solid var(--border); min-width: 0; }
 .points-round h2, .points-round h3 { overflow-wrap: anywhere; }
 .points-outcomes, .points-journal { margin: 0; padding: 0; list-style: none; }

@@ -16,6 +16,7 @@ import { emptyStateHtml } from '../emptyState.js';
 import { localRouteKey } from '../appRoute.js';
 import { copyText } from '../clipboard.js';
 import { resultFormHtml, wireResultForm } from '../resultDialog.js';
+import { pointsReportButton, wirePointsReportButtons } from '../pointsReports.js';
 import { getMyId } from '../whoami.js';
 import { isGroupAdmin } from '../groupContext.js';
 
@@ -361,8 +362,9 @@ function openResultDialog(t, match, phaseLabel, ctx) {
   const correction = competitionCorrection('tournament', t.id, t.matches.map((m) => m.id));
   const { close, el } = openModal('Ergebnis', `
     <div class="muted result-dialog-subtitle">${escapeHtml(t.name)} · ${escapeHtml(phaseLabel)}</div>
-    ${decided ? correction.html : ''}
+    ${decided ? correction.html : ''}${pointsReportButton('match', match.matchId, decided)}
     ${resultFormHtml({ teams, prefix: 'tournament-result', mode: t.trackScore ? 'score' : 'winner', fixedMode: true, allowDraw: !knockout, integerScores: true, winnerIndex: decided && !t.trackScore ? match.isDraw ? -1 : match.winnerTeamId === match.teamAId ? 0 : 1 : undefined, scores: [match.scoreA, match.scoreB] })}`);
+  wirePointsReportButtons(el);
   wireResultForm(el, {
     teams, mode: t.trackScore ? 'score' : 'winner', allowDraw: !knockout, integerScores: true,
     onSave: async ({ mode, winnerIndex, scores }) => {

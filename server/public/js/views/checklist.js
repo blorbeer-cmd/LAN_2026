@@ -20,6 +20,7 @@ import { wireActionMenus } from '../actionMenu.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { openPointsModal } from './points.js';
 import { state } from '../state.js';
+import { pointsReportButton, wirePointsReportButtons } from '../pointsReports.js';
 
 let tasksCache = null;
 let itemsCache = null;
@@ -520,10 +521,12 @@ function openTaskDetail(ctx, myId, taskId) {
        <dl class="checklist-detail-facts">
          ${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
        </dl>
+       ${pointsReportButton('todo', task.id, isDone)}
        ${secondary || primary ? `<div class="checklist-form-footer">${secondary}${primary}</div>` : ''}
      </div>`,
     {
       onMount: (el) => {
+        wirePointsReportButtons(el);
         (el.closest('.modal') ?? el.querySelector('.modal'))?.classList.add('checklist-detail-modal');
         el.querySelector('[data-detail-reopen]')?.addEventListener('click', async () => {
           try {

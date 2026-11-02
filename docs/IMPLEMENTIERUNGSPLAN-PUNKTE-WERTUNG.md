@@ -87,7 +87,7 @@ und kein Deployment ausgeführt.
 | Wettreservierungen und Abrechnungen | Ein kanonischer Journalvorgang je Markt, Person und Konto |
 | Punkteansicht und Verwaltung | Getrennte Rohwerte und Wettguthaben; keine einseitigen Finanzkorrekturen |
 | LAN-Auswertungen | Seit Paket 6 Kategorie-Platzpunkte statt gemeinsamer Kontosumme |
-| Kategorie-/Gesamtstände und Teilnehmerbasis im Snapshot | In Paket 6 angebunden; weitergehende Abschlussregeln folgen in Paket 9 |
+| Kategorie-/Gesamtstände und Teilnehmerbasis im Snapshot | In Paket 6 angebunden; weitergehende Abschlussregeln sind in Paket 9 umgesetzt |
 
 Die bisherige technische Wettteilnahme (aktive bestätigte Teilnehmer ohne Testkonten) bleibt
 bestehen; E1/E2 sind inzwischen ausdrücklich für die Kategorienwertung entschieden.
@@ -221,7 +221,7 @@ Austritte nur aus der laufenden Rangliste entfernen. N wird aus dieser Teilnehme
 niemals aus vorhandenen Konten. Für die Wettplatzierung zählen mindestens zwei regulär abgerechnete
 Tipps und positiver Nettogewinn. S1 ist bestätigt: voller Bonus des geteilten Turnierplatzes,
 zum Beispiel 5/5/1. Der vorhandene Abschluss speichert nun Teilnehmerbasis, Kategorien und
-Gesamtstand; die weiteren Abschlussregeln einschließlich Meldungen bleiben Paket 9 zugeordnet.
+Gesamtstand; die weiteren Abschlussregeln einschließlich Meldungen sind in Paket 9 umgesetzt.
 
 Rangliste, Hall of Fame und Export verwenden gemeinsam diese Kategorien und Gesamtstände.
 Spielfilter und eventübergreifende Sportstatistiken vergleichen weiterhin ausschließlich
@@ -232,50 +232,49 @@ sowie deren Summe und Gesamtplatz. Wettguthaben bleibt separat.
 Abnahme: alle Konzeptbeispiele, Gleichstände, inaktive Kategorien, fehlende Wettberechtigung,
 negative/Null-Rohwerte und identische Werte in allen Ansichten und Exporten.
 
-## Pakete 8/9 – Melden und Festschreiben
+## Pakete 8/9 – Melden und Festschreiben (umgesetzt)
 
-Nutzerpräzisierung: Gemeldet werden ausschließlich mutmaßlich falsch vergebene Punkte.
-Die Aktion heißt „Punktefehler melden“ und bezieht sich auf eine konkrete Punktebuchung.
-Spielergebnisse, To-dos und Wettabrechnungen sind nur mit vorhandener zugehöriger Buchung
-meldbar; ein offenes To-do oder eine noch unabgerechnete Wette genügt dafür nicht.
-Die Zuständigkeitsfrage M1 betrifft ebenfalls nur diese Punktevergabe, etwa eine falsche
-Gutschrift zugunsten des Event-Erstellers.
-Betroffene Konten werden aus den zugehörigen Punktebuchungen ermittelt; reine Erstellerrollen
-begründen bei fremden Gutschriften keinen Ausschluss von der Bearbeitung.
+Gemeldet werden ausschließlich mutmaßlich falsch vergebene Punkte. „Punktefehler melden“
+bezieht sich auf eine konkrete Buchung. Gewertete Ergebnisse, vergütete To-dos und abgerechnete
+Wetten führen zu ihrer zugehörigen Punktevergabe. Offene Aufgaben und unabgerechnete Wetten
+sind keine Meldungsziele. Betroffene Konten ergeben sich aus den tatsächlichen Buchungen;
+reine Erstellerrollen und Korrekturen fremder Konten schließen einen Admin nicht pauschal aus.
 
-Vorbereitung im bestehenden PR: Migration 133 legt ausschließlich die privaten Meldungstabellen
-mit stabiler Zielkennung, getrennten betroffenen Personen und einer Eindeutigkeitsregel für
-offene Meldungen an. Sie setzt keine Punkte zurück und aktiviert noch keine Melde-API.
-Die Empfängerentscheidung M1 bleibt ausdrücklich offen.
-Die interne Meldungslogik unterstützt Erfassung, eigenen Status und administrative Bearbeitung.
-Ursprünglich betroffene Konten bleiben auch nach Quellenänderungen ausgeschlossen; aktuelle
-Betroffene werden zusätzlich geprüft. Persönliche Exporte enthalten nur eigene Meldungen.
-Kontolöschung entfernt Absenderreferenz und privaten Meldungstext, ohne andere Meldungen oder
-Punktestände zu verändern. Es erfolgt keine Übernahme ins allgemeine Adminprotokoll.
+Migration 133 legt private Meldungen mit stabilen Quellenkennungen und höchstens einer offenen
+Meldung je Person und Eintrag an. Sie verändert keine Guthaben. Die API unter `/api/points/reports`
+und die Dialoge bieten optionalen Grund, eigenen Status und einen rollenabhängigen Posteingang.
+Einstiege liegen in Buchungs-, Ergebnis-, Wett- und To-do-Details; Status und Prüfung sind auch
+über das Event erreichbar, wenn Punkte ausgeblendet sind. Nur Admins schließen als „korrigiert“
+oder „in Ordnung“; eine Meldung bucht und sperrt selbst keine Punkte. Eine Korrektur erfolgt
+weiterhin separat mit Begründung im Journal beziehungsweise als vollständige Marktkorrektur.
 
-Die bestehenden Abschluss-Snapshots speichern zusätzlich die angewandten Wertungsregeln.
-`GET /api/points/snapshots` listet Versionen, `GET /api/points/snapshots/:revision` liefert
-eine bestimmte Festschreibung. `GET /api/export?eventId=…&pointsRevision=…` übernimmt N,
-Rohwerte, Ränge, Platzpunkte und Regeln aus genau dieser Version, auch nach Wiederöffnen
-und erneutem Abschluss. Ältere Snapshots ohne Regeln werden nicht nachträglich mit aktuellen
-Regeln versehen. Sichtbarkeit und Datenschutz gelten weiterhin.
+**M1 entschieden:** Unbetroffene Admins und der unbetroffene Event-Ersteller sehen Meldungen.
+Der Event-Ersteller ohne Adminrolle liest nur. Ist der einzige aktive Admin selbst von der
+Punktevergabe betroffen, darf er die Meldung anonym prüfen und abschließen. Absender, privater
+Freitext und genaue Meldezeitpunkte werden ihm nicht ausgeliefert. Mit mehreren Admins entfällt
+diese Ausnahme; ohne berechtigten Prüfer bleibt die Meldung offen. Ursprünglich betroffene
+Konten bleiben auch nach Quellenänderungen geschützt; aktuelle Betroffene werden zusätzlich
+geprüft. Rollenwechsel wirken unmittelbar. Persönliche Exporte enthalten nur eigene Meldungen.
+Kontolöschung anonymisiert Absender und private Textkopien. Das allgemeine Adminprotokoll
+enthält keine Meldungsidentitäten; Realtime-Signale gehen ohne Inhalt nur an Berechtigte.
 
-Diese Vorbereitung schließt die Pakete noch nicht ab. Insbesondere bleiben M1, die gesperrten
-Märkte bei Abschluss (W7), Meldeoberfläche und atomare Abschlussprüfung ausstehend.
+**W7-Abschluss entschieden:** Alle bei Festschreibung noch unabgerechneten Märkte werden voll
+zurückgezahlt, einschließlich bereits gesperrter Märkte. Ergebnisabgleich, Prüfung offener
+Meldungen, Rückerstattungen, Punktesynchronisierung, Snapshot, Schließzustand und Adminaudit
+liegen in einer gemeinsamen `immediate`-Transaktion. Benachrichtigungen folgen nach Commit.
+Offene Meldungen verhindern die Festschreibung. Rückzahlungen erzeugen keine Wett-Nettopunkte
+und zählen nicht als regulär abgerechnete Tipps.
 
-Meldungen verwenden stabile Kennungen für Journalvorgänge, Ergebnisse, Tipps und To-dos.
-Der Melder bleibt gegenüber dem Gemeldeten geschützt, auch in personenbezogenen Exporten,
-Löschpfaden und Protokollen. Eine Meldung friert nichts ein. Der Meldende sieht den Status;
-eine Person kann je Eintrag höchstens eine offene Meldung haben. Ungeklärte Empfänger-/Vertretungsfälle
-bleiben vor ihrer Umsetzung offen; eigene administrative Korrekturen bleiben erlaubt.
+Snapshot und Live-Wertung verwenden dieselben Rohwerte, Ränge und N; die angewandten Regeln
+werden mitgespeichert. Begründetes Wiederöffnen erhält frühere Versionen. Gespeicherte
+Endstände sind in Konto und Verwaltung auswählbar und als JSON herunterladbar.
+`GET /api/points/snapshots` listet Versionen, `GET /api/points/snapshots/:revision` liefert einen
+bestimmten Stand. Der Andenken-Export übernimmt mit `pointsRevision` gezielt dessen Wertung;
+seine übrigen Eventdaten bleiben aktuell. Alte Snapshots erhalten keine erfundenen Regeln.
+Sichtbarkeit und Anonymisierung nach Kontolöschung bleiben für alle Versionen wirksam.
 
-Die Festschreibung prüft offene Meldungen und Marktstände zusammen mit dem Schreiben des
-Kategorie-/Gesamtsnapshots in einer `immediate`-Transaktion. Noch offene Märkte werden gemäß
-Konzept erstattet. Die Behandlung bereits gesperrter, unabgerechneter Märkte muss vorher
-entschieden werden. Snapshot und Live-Wertung verwenden dieselben Rohwerte, Ränge und N.
-Begründetes Wiederöffnen und erneutes Festschreiben erhalten die alten Versionen.
-
-Abnahme: paralleles Melden gegen Abschluss, parallele Ergebnis-/Marktänderung, vollständiger
-Rollback, versionsgetreuer Export, Identitätsschutz und weiterhin nutzbare Orga-Funktionen nach
-Festschreibung. Technische Prüfungen und Regressionen werden pro Paket ausgeführt; grüne CI
-ersetzt weder diese Fachentscheidungen noch ein Review des jeweils aktuellen Heads.
+Abnahme: paralleles Melden, Bearbeiten und Festschreiben; Ergebnis-/Marktänderungen gegen
+Abschluss; vollständiger Rollback; versionsgetreuer Export; anonyme Selbstprüfung und
+Rollenwechsel; weiterhin nutzbare Orga-Funktionen bei eingefrorenen Punkten. Der Browser prüft
+Meldung, Status-Realtime, anonyme Bearbeitung, Rückzahlung offener/gesperrter Märkte und Download
+bei Telefon- und Desktopbreite. Kein Merge und kein Deployment.

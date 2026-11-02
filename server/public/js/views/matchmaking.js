@@ -20,6 +20,7 @@ import { emptyStateHtml } from '../emptyState.js';
 import { teamMoveControlHtml } from '../tournamentTeamDraft.js';
 import { filterRosterPicker, pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
 import { resultFormHtml, wireResultForm } from '../resultDialog.js';
+import { pointsReportButton, wirePointsReportButtons } from '../pointsReports.js';
 import { withStepUp } from '../reauth.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { RESTORE_FOCUS_EVENT } from '../viewRenderState.js';
@@ -411,8 +412,9 @@ function openDrawResultDialog(draw, ctx) {
   const correction = competitionCorrection('draw', draw.id);
   const { close, el } = openModal('Ergebnis', `
     <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
-    ${recorded ? correction.html : ''}
+    ${recorded ? correction.html : ''}${pointsReportButton('match', draw.matchId, recorded)}
     ${resultFormHtml({ teams, prefix: 'draw-result', mode: hasValues ? 'score' : 'winner', winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? (draw.isDraw ? -1 : undefined) : undefined, scores: draw.teams.map((team) => team.score) })}`);
+  wirePointsReportButtons(el);
   wireResultForm(el, {
     teams,
     mode: hasValues ? 'score' : 'winner',

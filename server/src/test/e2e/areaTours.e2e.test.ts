@@ -70,6 +70,9 @@ flowTest('manual area tours resume, restore focus, survive refresh and never sub
   await dismissFromText('.area-tour-backdrop');
   assert.equal(await tourPage.locator('#app').evaluate((element) => (element as HTMLElement).inert), false);
   assert.equal(await help.evaluate((element) => document.activeElement === element), true);
+  await tourPage.evaluate(() => window.dispatchEvent(new Event('respawn:rerender')));
+  assert.equal(await help.evaluate((element) => document.activeElement === element), true,
+    'a rerender after ending the tour retains focus on the reattached help control');
   assert.equal(await tourPage.locator('#view-container').evaluate((element) => element.scrollTop), originalScroll);
 
   await tourPage.reload();

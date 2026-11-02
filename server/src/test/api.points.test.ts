@@ -88,6 +88,126 @@ test('private report records retain subjects, protect reporter exports and erase
   } finally {
     mutableConfig.deletionLedgerFile = previousLedger;
     rmSync(directory, { recursive: true, force: true });
+    db.prepare("UPDATE group_memberships SET role='member' WHERE group_id=? AND player_id=?").run(DEFAULT_GROUP_ID, subject);
+  }
+});
+
+test('report API protects anonymous sole-admin review, applies role changes and serializes submission and resolution', async () => {
+  const f = await fixture();
+  const [reporter, secondAdmin, outsider] = f.players;
+  const task = (await request(app).post('/api/checklist/tasks/todo').set('x-test-player-id', reporter)
+    .send({ title: 'Disputed admin helper points' })).body.tasks[0];
+  assert.equal((await request(app).post(`/api/checklist/tasks/${task.id}/claim`).send({ playerId: TEST_ADMIN_ID })).status, 200);
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${task.id}/done`).send({ playerId: TEST_ADMIN_ID })).status, 200);
+  const reason = `Private sender ${reporter}`;
+  const submit = () => request(app).post('/api/points/reports').set('x-test-player-id', reporter)
+    .send({ targetType: 'todo', targetId: task.id, reason });
+  const submitted = await Promise.all([submit(), submit()]);
+  assert.deepEqual(submitted.map((r) => r.status).sort(), [201, 409]);
+  const id = submitted.find((r) => r.status === 201)!.body.id;
+  const inbox = () => request(app).get('/api/points/reports');
+  const anonymous = (await inbox()).body.inbox.find((row: { id: string }) => row.id === id);
+  assert.equal(anonymous.anonymous, true);
+  assert.equal(anonymous.reporter, null);
+  assert.equal(anonymous.reason, '');
+  assert.equal(anonymous.createdAt, null);
+  assert.ok(!JSON.stringify(anonymous).includes(reporter));
+  const own = (await request(app).get('/api/points/reports').set('x-test-player-id', reporter)).body;
+  assert.equal(own.own[0].reason, reason);
+  assert.deepEqual((await request(app).get('/api/points/reports').set('x-test-player-id', outsider)).body.inbox, []);
+  assert.ok(!(buildPersonalDataExport(TEST_ADMIN_ID)!.pointsReports as Array<{ id: string }>).some((report) => report.id === id),
+    'admin exports contain no foreign submissions');
+  assert.equal((await request(app).post('/api/points/close').send({})).status, 409);
+  db.prepare("UPDATE group_memberships SET role='admin' WHERE group_id=? AND player_id=?").run(DEFAULT_GROUP_ID, secondAdmin);
+  try {
+    assert.deepEqual((await inbox()).body.inbox, [], 'an available second admin removes the self-review exception');
+    assert.equal((await request(app).post(`/api/points/reports/${id}/resolve`).send({ status: 'dismissed' })).status, 404);
+    const authorized = (await request(app).get('/api/points/reports').set('x-test-player-id', secondAdmin)).body.inbox[0];
+    assert.equal(authorized.reporter.id, reporter);
+    assert.equal(authorized.reason, reason);
+  } finally {
+    db.prepare("UPDATE group_memberships SET role='member' WHERE group_id=? AND player_id=?").run(DEFAULT_GROUP_ID, secondAdmin);
+  }
+  const resolutions = await Promise.all([0, 1].map(() => request(app).post(`/api/points/reports/${id}/resolve`)
+    .send({ status: 'dismissed', resolution: 'Award checked against the task' })));
+  assert.deepEqual(resolutions.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID)!.orga, 3);
+  assert.equal((await request(app).get('/api/points/reports').set('x-test-player-id', reporter)).body.own[0].status, 'dismissed');
+  assert.equal((await request(app).post('/api/points/close').send({})).status, 200);
+  assert.equal((await submit()).status, 409);
+});
+
+test('finalization refunds open and locked bets atomically, blocks on reports, and rolls every write back on failure', async () => {
+  const f = await fixture();
+  const open = await round(f), locked = await round(f);
+  for (const market of [open, locked]) for (const [i, player] of f.players.slice(0, 2).entries())
+    assert.equal((await request(app).put(`/api/points/rounds/${market.id}/tip`).set('x-test-player-id', player)
+      .send({ outcomeId: String(i), stake: 5 })).status, 200);
+  assert.equal((await request(app).post(`/api/points/rounds/${locked.id}/lock`).send({})).status, 200);
+  const walletBefore = f.players.map((id) => wallet(f.eventId, id));
+  const journalBefore = db.prepare('SELECT j.* FROM points_journal j JOIN points_sources s ON s.id=j.source_id WHERE s.event_id=? ORDER BY j.id').all(f.eventId);
+  const roundsBefore = db.prepare('SELECT * FROM betting_rounds WHERE event_id=? ORDER BY id').all(f.eventId);
+  db.exec(`CREATE TEMP TRIGGER fail_final_snapshot BEFORE INSERT ON points_snapshots
+    BEGIN SELECT RAISE(ABORT,'final snapshot failed'); END`);
+  try {
+    assert.equal((await request(app).post('/api/points/close').send({})).status, 500);
+    assert.deepEqual(f.players.map((id) => wallet(f.eventId, id)), walletBefore);
+    assert.deepEqual(db.prepare('SELECT j.* FROM points_journal j JOIN points_sources s ON s.id=j.source_id WHERE s.event_id=? ORDER BY j.id').all(f.eventId), journalBefore);
+    assert.deepEqual(db.prepare('SELECT * FROM betting_rounds WHERE event_id=? ORDER BY id').all(f.eventId), roundsBefore);
+    assert.equal((await request(app).get('/api/points')).body.settings.closed_at, null);
+  } finally { db.exec('DROP TRIGGER fail_final_snapshot'); }
+  const closes = await Promise.all([0, 1].map(() => request(app).post('/api/points/close').send({})));
+  assert.deepEqual(closes.map((r) => r.status).sort(), [200, 409]);
+  const final = (await request(app).get('/api/points')).body;
+  assert.ok(final.rounds.every((r: { status: string }) => r.status === 'refunded'));
+  for (const player of f.players) {
+    assert.deepEqual(wallet(f.eventId, player), { total: 100, held: 0, available: 100 });
+    assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, player)!.betting, 0);
+  }
+  const snapshot = (await request(app).get('/api/points/snapshots/1')).body;
+  assert.equal(snapshot.rules.unsettledMarketsAtClose, 'full_refund');
+  assert.deepEqual(snapshot.standings, final.standings);
+});
+
+test('reports, results and market locks racing finalization preserve a consistent frozen revision', async () => {
+  for (const closeFirst of [false, true]) {
+    const f = await fixture();
+    const task = (await request(app).post('/api/checklist/tasks/todo').send({ title: 'Report-close race' })).body.tasks[0];
+    assert.equal((await request(app).post(`/api/checklist/tasks/${task.id}/claim`).send({ playerId: f.players[0] })).status, 200);
+    assert.equal((await request(app).patch(`/api/checklist/tasks/${task.id}/done`).send({ playerId: f.players[0] })).status, 200);
+    const report = () => request(app).post('/api/points/reports').set('x-test-player-id', f.players[1])
+      .send({ targetType: 'todo', targetId: task.id });
+    const close = () => request(app).post('/api/points/close').send({});
+    const actions = await Promise.all(closeFirst ? [close(), report()] : [report(), close()]);
+    const creation = actions[closeFirst ? 1 : 0], closure = actions[closeFirst ? 0 : 1];
+    assert.deepEqual([creation.status, closure.status].sort(), creation.status === 201 ? [201, 409] : [200, 409]);
+    if (creation.status === 201) {
+      assert.equal(closure.status, 409);
+      assert.equal((await request(app).post(`/api/points/reports/${creation.body.id}/resolve`).send({ status: 'dismissed' })).status, 200);
+    } else assert.equal((await request(app).post('/api/points/reopen').send({ reason: 'Continue the race fixture' })).status, 200);
+    const market = await round(f);
+    for (const [index, player] of f.players.slice(0, 2).entries())
+      assert.equal((await request(app).put(`/api/points/rounds/${market.id}/tip`).set('x-test-player-id', player)
+        .send({ outcomeId: String(index), stake: 5 })).status, 200);
+    const lock = () => request(app).post(`/api/points/rounds/${market.id}/lock`).send({});
+    const locks = await Promise.all(closeFirst ? [close(), lock()] : [lock(), close()]);
+    assert.equal(locks[closeFirst ? 0 : 1].status, 200);
+    assert.ok([200, 409].includes(locks[closeFirst ? 1 : 0].status));
+    assert.equal(wallet(f.eventId, f.players[0]).held, 0);
+    assert.equal((await request(app).post('/api/points/reopen').send({ reason: 'Race result recording against close' })).status, 200);
+    const resultMarket = await round(f);
+    for (const [index, player] of f.players.slice(0, 2).entries())
+      await request(app).put(`/api/points/rounds/${resultMarket.id}/tip`).set('x-test-player-id', player).send({ outcomeId: String(index), stake: 5 });
+    await request(app).post(`/api/points/rounds/${resultMarket.id}/lock`).send({});
+    const result = () => request(app).post('/api/matches').send({ gameId: f.gameId, drawId: resultMarket.drawId,
+      teams: resultMarket.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 0 });
+    const race = await Promise.all(closeFirst ? [close(), result()] : [result(), close()]);
+    assert.ok(race.every((r) => r.status === 200 || r.status === 201), JSON.stringify(race.map((r) => r.body)));
+    const frozen = (await request(app).get('/api/points')).body;
+    const snapshots = (await request(app).get('/api/points/snapshots')).body.revisions;
+    assert.deepEqual((await request(app).get(`/api/points/snapshots/${snapshots[0].revision}`)).body.standings, frozen.standings);
+    assert.deepEqual((await request(app).get('/api/export')).body.leaderboard, frozen.standings);
+    assert.equal(wallet(f.eventId, f.players[0]).held, 0);
   }
 });
 

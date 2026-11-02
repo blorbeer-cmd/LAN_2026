@@ -45,7 +45,7 @@ export function categoryPointsHtml(data, { account, query }) {
 export function adminCategoryJournalHtml(entries, { account, query, loading, error }) {
   const needle = query.trim().toLocaleLowerCase('de');
   const filtered = (entries ?? []).filter((entry) => (!account || entry.account === account)
-    && `${entry.playerName} ${entry.title} ${entry.reason ?? ''}`.toLocaleLowerCase('de').includes(needle));
+    && `${entry.playerName} ${entry.title} ${entry.reason ?? ''} ${entry.id ?? ''} ${entry.sourceKey ?? ''}`.toLocaleLowerCase('de').includes(needle));
   return `<section class="card stack" aria-label="Kategorie-Journal"><div class="row-between points-actions"><h2>Kategorie-Journal</h2>
     <button type="button" class="btn btn-sm" data-category-admin-refresh${loading ? ' disabled' : ''}>Aktualisieren</button></div>
     <div class="points-filters"><label class="stack"><span class="field-label">Konto</span><select name="adminCategoryAccount" data-admin-category-account>${categoryOptions(account, true)}</select></label>

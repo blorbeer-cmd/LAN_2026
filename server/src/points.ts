@@ -142,6 +142,7 @@ export function pointsSnapshotRules() {
     minimumSettledTips: BETTING_MIN_SETTLED_TIPS,
     walletStart: BETTING_START_POINTS,
     maximumStake: BETTING_MAX_STAKE,
+    unsettledMarketsAtClose: 'full_refund',
     matchPointsByPosition: [4, 3, 2, 1],
     lastMatchPlacePoints: 1,
     matchTies: 'floor_mean_occupied_positions',

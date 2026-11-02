@@ -342,6 +342,7 @@ export function roundView(round: BettingRound, playerId: string) {
     }),
     mine: mine
       ? {
+          id: mine.id,
           outcomeId: mine.outcome_id,
           stake: mine.stake,
           payout: mine.payout,
@@ -441,7 +442,7 @@ export function reconcileBetting(eventId?: string, publish = true): BettingRound
   if (publish) publishBettingChanges(changed);
   return changed;
 }
-function publishBettingChanges(changed: BettingRound[]): void {
+export function publishBettingChanges(changed: BettingRound[]): void {
   for (const round of changed) {
     const fresh = getBettingRound(round.group_id, round.event_id, round.id);
     if (fresh.status !== 'open')

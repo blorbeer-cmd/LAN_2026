@@ -251,7 +251,7 @@ sofort. Austritte entfernen die Person aus der laufenden Rangliste, erhalten abe
 Gewertet werden reguläre veröffentlichte LANs; ihre Ergebnisse bleiben nach Ende sichtbar.
 Testevents, Entwürfe, abgesagte Veranstaltungen und andere Eventtypen sind ausgeschlossen.
 Rangliste, Hall of Fame und Export lesen dieselbe Berechnung. Der bestehende Abschluss hält N,
-Teilnehmerliste und Kategorie-/Gesamtstände fest. Weitere Abschlussregeln folgen in Paket 9.
+Teilnehmerliste und Kategorie-/Gesamtstände fest. Die weiteren Abschlussregeln sind in Paket 9 umgesetzt.
 Der Verlauf zeigt jeweils die ausgewählte Kategorie.
 Die Suche filtert ausschließlich die Liste, die Kurve behält den vollständigen Kategorienverlauf.
 Buchungsdetails nennen Kategorie, Zeitpunkt, Anlass, Betrag und gegebenenfalls Begründung.
@@ -342,9 +342,8 @@ keine nachträglich erfundene Regelversion. Ausgeblendete Punkte bleiben im geme
 ausgeblendet; ein Versionsparameter umgeht diese Regel nicht. Kontolöschung anonymisiert auch
 die früheren Versionen; gespeicherte Ränge und N werden dabei nicht neu berechnet.
 
-Migration 133 bereitet private Meldungen vor und verändert keine Guthaben. Solange M1 und
-W7 für den endgültigen Abschluss offen sind, ist dies noch keine aktivierte Meldefunktion;
-die bisherigen Abschlussbedingungen bleiben bestehen.
+Migration 133 ergänzt private Meldungen und verändert keine Guthaben. Die API und Oberfläche
+sind angebunden; offene Meldungen verhindern den endgültigen Abschluss.
 Die interne Meldungslogik speichert Quellenkennungen und betroffene Konten getrennt vom Absender.
 „Punktefehler melden“ gilt ausschließlich mutmaßlich falsch vergebenen Punkten und ist an eine
 konkrete Buchung gebunden. Gewertete Ergebnisse, vergütete To-dos und abgerechnete Wetten
@@ -356,5 +355,17 @@ betroffen sind.
 Eigene Meldungen und ihr Status sind Bestandteil des persönlichen Datenexports, fremde Meldungen
 nicht. Löschung des Absenders anonymisiert seine Referenz und entfernt seinen privaten Text;
 andere Meldungen sowie die Punktebuchungen bleiben erhalten. Meldungsdetails gelangen nicht in
-das allgemeine Adminprotokoll. Oberfläche, öffentliche Melde-API und abschließende Empfängerregel
-werden erst nach der noch offenen fachlichen Entscheidung angebunden.
+das allgemeine Adminprotokoll. Der einzige aktive Admin darf Meldungen zu eigenen Punkten
+anonym bearbeiten: Absender, Freitext und genaue Meldezeitpunkte bleiben verborgen. Andere
+berechtigte Admins beziehungsweise der unbetroffene Event-Ersteller erhalten ihren Posteingang;
+Nicht-Admins schließen keine Meldungen ab. Rollenwechsel entziehen den Zugriff unmittelbar.
+Statusdialoge aktualisieren sich durch persönliche, inhaltslose Realtime-Signale und schließen
+beim Kontextwechsel. Über das Event bleiben eigene Meldungen auch bei ausgeblendeten Punkten
+zugänglich.
+
+Alle noch nicht abgerechneten Wetten werden bei Festschreibung vollständig zurückgezahlt,
+auch bereits gesperrte. Meldesperre, Ergebnisabgleich, Erstattungen, automatische Punkte,
+Snapshot und Audit sind eine gemeinsame Transaktion; ein Fehler rollt alle Änderungen zurück.
+Mitteilungen folgen erst danach. Rückzahlungen zählen weder als Wett-Nettogewinn noch zur
+Mindestzahl regulär abgerechneter Tipps. Konto und Verwaltung bieten frühere Endstände als
+versionierte JSON-Downloads; Wiederöffnen überschreibt keine frühere Festschreibung.

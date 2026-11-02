@@ -27,6 +27,7 @@ import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { compareEventsByStartAscending, eventStatusBadgeHtml } from '../eventStatus.js';
 import { isGroupAdmin } from '../groupContext.js';
+import { openPointsReports } from '../pointsReports.js';
 import { formatEuroCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 import { eventHasFeature } from '../eventFeatures.js';
 import { availableEventTypeOptions, eventIsGroup, eventTypeTitle, isGroupEventType } from '../eventTypes.js';
@@ -832,8 +833,10 @@ function trackingChip(event) {
 }
 
 function renderEventPointsVisibility(event) {
-  if (!event.pointsAvailable || event.eventType !== 'lan' || (!isGroupAdmin() && !isEventCreator(event))) return '';
-  return `<section class="event-card-section stack"><h3>LAN-Punkte</h3><p>${event.pointsEnabled ? 'Punkteübersichten und Wetten sind für alle Teilnehmer sichtbar.' : 'Punkteübersichten und Wetten sind für Teilnehmer ausgeblendet.'} Punkte werden im Hintergrund weiter gesammelt. Bereits laufende Runden werden weiter abgewickelt.</p><button type="button" class="btn btn-sm" data-points-visibility="${escapeHtml(event.id)}" data-points-visible="${event.pointsEnabled ? 'false' : 'true'}" data-points-revision="${event.pointsVisibilityRevision ?? 0}">${event.pointsEnabled ? 'Für Teilnehmer ausblenden' : 'Für Teilnehmer anzeigen'}</button></section>`;
+  if (!event.pointsAvailable || event.eventType !== 'lan' || event.isTest || !['published', 'ended'].includes(event.status)) return '';
+  const reports = `<button type="button" class="btn btn-sm" data-event-points-reports="${escapeHtml(event.id)}">Punktefehler-Meldungen</button>`;
+  if (!isGroupAdmin() && !isEventCreator(event)) return `<section class="event-card-section stack"><h3>LAN-Punkte</h3>${reports}</section>`;
+  return `<section class="event-card-section stack"><h3>LAN-Punkte</h3><p>${event.pointsEnabled ? 'Punkteübersichten und Wetten sind für alle Teilnehmer sichtbar.' : 'Punkteübersichten und Wetten sind für Teilnehmer ausgeblendet.'} Punkte werden im Hintergrund weiter gesammelt. Bereits laufende Runden werden weiter abgewickelt.</p><button type="button" class="btn btn-sm" data-points-visibility="${escapeHtml(event.id)}" data-points-visible="${event.pointsEnabled ? 'false' : 'true'}" data-points-revision="${event.pointsVisibilityRevision ?? 0}">${event.pointsEnabled ? 'Für Teilnehmer ausblenden' : 'Für Teilnehmer anzeigen'}</button>${reports}</section>`;
 }
 
 function renderEventCardShell(event, { collapsible, managed }) {
@@ -1600,6 +1603,7 @@ export function renderOrgaEvents(container, ctx) {
     });
   });
 
+  container.querySelectorAll('[data-event-points-reports]').forEach((button) => button.addEventListener('click', () => openPointsReports(button.dataset.eventPointsReports)));
   wireActionMenus(container);
   container.querySelectorAll('[data-points-visibility]').forEach((button) => {
     button.addEventListener('click', async () => {
