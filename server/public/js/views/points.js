@@ -111,7 +111,7 @@ export function pointsRankingHtml(ctx) {
   return `<section class="card stack"><div class="row-between"><h2>LAN-Punkte</h2><button type="button" class="btn btn-sm" data-navigate="points">Punktekonto & Verlauf</button></div>
     <p class="muted">Gesamtplatzpunkte aus Orga, Spielen und Wetten. Gleiche Punkte teilen sich den Platz.</p>
     ${rankedListHtml(
-      standings.map((p, i) => ({ rank: ranks[i], title: e(p.name), meta: e(categoryPlaceSummary(p.categories)), value: `${p.points} P.` })),
+      standings.map((p, i) => ({ rank: p.rank ?? ranks[i], title: e(p.name), meta: e(categoryPlaceSummary(p.categories)), value: `${p.points} P.` })),
       { ranked: true, label: 'LAN-Punkte' },
     )}</section>`;
 }
@@ -166,7 +166,7 @@ function roundHtml(round, compact = false) {
   const pick = round.outcomes.find((o) => o.id === mine?.outcomeId);
   return `<div class="stack points-round" data-points-round="${e(round.id)}">
     <div class="row-between"><${compact ? 'h3' : 'h2'}>${e(round.title)}</${compact ? 'h3' : 'h2'}><span class="badge">${statusLabels[round.status]}</span></div>
-    <p class="muted">${round.status === 'open' ? `Tipps bis ${e(formatDateTime(round.closesAt))} · ` : ''}Topf: ${round.pot} Punkte · ${round.tipCount} Tipps${round.status === 'open' ? ' · Quoten vorläufig' : ''}</p>
+    <p class="muted">${round.status === 'open' ? `${round.closesAt ? `Tipps bis ${e(formatDateTime(round.closesAt))}` : 'Tipps bis zum Spielstart'} · ` : ''}Topf: ${round.pot} Punkte · ${round.tipCount} Tipps${round.status === 'open' ? ' · Quoten vorläufig' : ''}</p>
     <ul class="points-outcomes">${round.outcomes.map((o) => `<li><span>${e(o.label)}${round.result === o.id ? ' · Treffer' : ''}</span><span>${o.stake} P. · Quote ${o.odds ? o.odds.toFixed(2) : '–'}</span></li>`).join('')}</ul>
     ${mine ? `<p>Dein Tipp: <strong>${e(pick?.label ?? '')}</strong> · Einsatz ${mine.stake} P.${mine.payout !== null ? ` · Auszahlung ${mine.payout} P. · Netto ${signedPoints(mine.net)} P.` : ' · reserviert'}</p>` : '<p class="muted">Du hast noch keinen Tipp abgegeben.</p>'}
     <div class="row points-actions">
@@ -177,15 +177,14 @@ function roundHtml(round, compact = false) {
   </div>`;
 }
 
-export function competitionBettingHtml(type, id, ctx, { canOpen = true } = {}) {
+export function competitionBettingHtml(type, id, ctx) {
   ensurePoints(ctx);
   if (!state.activeEvent?.pointsEnabled) return '';
   const data = currentData();
   if (!data?.settings) return '';
   const round = data.rounds.find((r) => r.sourceType === type && r.sourceId === id);
   if (round) return roundHtml(round, true);
-  if (!canOpen || !isGroupAdmin() || data.settings.closed_at) return '';
-  return `<div class="row points-actions"><button type="button" class="btn btn-sm" data-open-betting-type="${type}" data-open-betting-source="${e(id)}">Tipprunde öffnen</button></div>`;
+  return '';
 }
 
 function openTip(round, ctx) {
@@ -241,40 +240,6 @@ function openTip(round, ctx) {
   );
 }
 
-function openRound(type, sourceId, ctx) {
-  const eventId = state.activeEvent.id;
-  const { close } = openModal(
-    'Offizielle Tipprunde öffnen',
-    `<form class="stack" data-round-form>
-    <p>Alle LAN-Teilnehmer werden benachrichtigt, auch die Mitspieler.</p>
-    ${numberField('minutes', 'Tippschluss in Minuten', 10, 1, 1440)}
-    <p class="muted">Vor Spielbeginn „Spielstart / Tipps schließen“ betätigen. Wird ein Ergebnis vor Tippschluss eingetragen, wird der Topf zur Sicherheit erstattet.</p>
-    <button type="submit" class="btn btn-primary">Runde öffnen & benachrichtigen</button></form>`,
-    {
-      onMount(el) {
-        el.querySelector('form').addEventListener('submit', (event) => {
-          event.preventDefault();
-          const form = event.currentTarget;
-          const minutes = Number(new FormData(form).get('minutes'));
-          perform(
-            form.querySelector('button'),
-            () =>
-              pointsRequest(
-                '/rounds',
-                json('POST', { sourceType: type, sourceId, closesAt: Date.now() + minutes * 60000 }),
-                eventId,
-              ),
-            () => {
-              close();
-              refreshPoints(ctx);
-            },
-          );
-        });
-      },
-    },
-  );
-}
-
 function reasonDialog(title, action, ctx) {
   const eventId = state.activeEvent.id;
   const { close } = openModal(
@@ -302,13 +267,6 @@ function reasonDialog(title, action, ctx) {
 }
 
 export function wireCompetitionBetting(container, ctx) {
-  container
-    .querySelectorAll('[data-open-betting-type]')
-    .forEach((button) =>
-      button.addEventListener('click', () =>
-        openRound(button.dataset.openBettingType, button.dataset.openBettingSource, ctx),
-      ),
-    );
   container.querySelectorAll('[data-tip-round]').forEach((button) =>
     button.addEventListener('click', () => {
       const round = currentData()?.rounds.find((r) => r.id === button.dataset.tipRound);
@@ -443,7 +401,7 @@ export function renderPoints(container, ctx) {
     ${historyHtml(data)}
     <section class="card stack" aria-label="LAN-Rangliste"><h2>${data.settings.closed_at ? 'Gesamt-Endstand' : 'Gesamtwertung'}</h2><p class="muted">Die Platzpunkte der drei Kategorien werden addiert. Gleiche Gesamtpunkte teilen sich den Platz.</p>${rankedListHtml(
       data.standings.map((p, i) => ({
-        rank: ranks[i],
+        rank: p.rank ?? ranks[i],
         title: e(p.name),
         meta: e([p.playerId === getMyId() ? 'Du' : '', categoryPlaceSummary(p.categories)].filter(Boolean).join(' · ')),
         value: `${p.points} P.`,
@@ -585,7 +543,7 @@ export function renderPointsAdmin(container, ctx) {
       <p>Maximal 20 Punkte je Wette. Keine zusätzlichen Tages- oder Rundenlimits. Für eine Wettplatzierung sind mindestens zwei regulär abgerechnete Tipps und ein positiver Nettogewinn erforderlich.</p>
       ${closed ? '' : `<div class="row" style="justify-content:flex-end"><button type="submit" class="btn btn-primary">${s ? 'Regeln speichern' : 'Punktewertung aktivieren'}</button></div>`}
     </form>
-    ${s ? `<p class="muted">Neue To-dos bringen fest 3 Orga-Punkte. Tipprunden direkt am Match oder Turnier öffnen.</p><div class="row points-actions"><button type="button" class="btn btn-sm" data-navigate="checklist">Zu den To-Dos</button><button type="button" class="btn btn-sm" data-points-close>${closed ? 'Wertung wieder öffnen' : 'LAN-Endwertung festschreiben'}</button></div>` : ''}
+    ${s ? `<p class="muted">Neue To-dos bringen fest 3 Orga-Punkte. Wetten beim Anlegen eines Matches erlauben; Turniermärkte werden automatisch angeboten.</p><div class="row points-actions"><button type="button" class="btn btn-sm" data-navigate="checklist">Zu den To-Dos</button><button type="button" class="btn btn-sm" data-points-close>${closed ? 'Wertung wieder öffnen' : 'LAN-Endwertung festschreiben'}</button></div>` : ''}
     </section>
     ${s ? `<section class="card stack"><h2>Wettguthaben aller Teilnehmer</h2><p class="muted">Korrekturen erfolgen mit Begründung direkt an der Tipprunde oder am Spielergebnis.</p>${adminEntries ? `<label class="stack"><span class="field-label">Teilnehmer oder Buchung suchen</span><input type="search" data-admin-entry-query></label><ol class="points-journal">${adminEntries.map((entry) => `<li data-admin-entry-text="${e(`${entry.playerName} ${entry.title}`.toLocaleLowerCase('de'))}"><div><strong>${e(entry.playerName)}</strong><div>${e(entry.title)} · ${signedPoints(entry.amount)} P.</div><div class="muted">${e(formatDateTime(entry.created_at))}</div></div><button type="button" class="btn btn-sm" data-admin-entry-details="${e(entry.id)}">Details</button></li>`).join('')}</ol>` : emptyStateHtml(adminError || 'Buchungen werden geladen…')}</section>` : ''}
     </div>`;

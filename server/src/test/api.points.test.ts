@@ -17,6 +17,7 @@ import { config } from '../config';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type { roundView } from '../betting';
 
 const app = createTestApp();
 
@@ -181,23 +182,88 @@ async function fixture(config: object = {}, visible = true) {
   assert.equal(game.status, 201);
   return { eventId: event.id, players, gameId: game.body.id };
 }
+async function automaticMarket(f: { eventId: string }, sourceType: string, sourceId: string): Promise<ReturnType<typeof roundView>> {
+  const response = await request(app).get(`/api/points?eventId=${f.eventId}`);
+  assert.equal(response.status, 200);
+  const found = response.body.rounds.find((row: { sourceType: string; sourceId: string }) =>
+    row.sourceType === sourceType && row.sourceId === sourceId);
+  assert.ok(found, `automatic market missing: ${sourceType}/${sourceId}`);
+  return found;
+}
 async function round(f: Awaited<ReturnType<typeof fixture>>) {
   const draw = await request(app)
     .post('/api/matchmaking')
-    .send({ gameId: f.gameId, playerIds: f.players.slice(0, 2), teamCount: 2 });
+    .send({ gameId: f.gameId, playerIds: f.players.slice(0, 2), teamCount: 2, bettingAllowed: true });
   assert.equal(draw.status, 200, JSON.stringify(draw.body));
   const id = draw.body.drawId ?? draw.body.id;
   assert.ok(id, JSON.stringify(draw.body));
-  const created = await request(app)
-    .post('/api/points/rounds')
-    .send({ sourceType: 'draw', sourceId: id, closesAt: Date.now() + 60000 });
-  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const created = await automaticMarket(f, 'draw', id);
+  assert.equal(created.status, 'open');
   return {
-    id: created.body.id as string,
+    id: created.id,
     drawId: id as string,
-    outcomes: (created.body.outcomes as Array<{ id: string; playerIds: string[] }>).filter((o) => o.playerIds.length),
+    outcomes: created.outcomes.filter((o) => o.playerIds.length),
   };
 }
+
+test('creators decide match betting, tournament markets open automatically, and market failures roll competition writes back', async () => {
+  const f = await fixture();
+  const create = (bettingAllowed: unknown) => request(app).post('/api/matchmaking').set('x-test-player-id', f.players[0])
+    .send({ gameId: f.gameId, playerIds: f.players.slice(0, 2), teamCount: 2, bettingAllowed });
+  assert.equal((await create('yes')).status, 400);
+  const denied = await create(false);
+  assert.equal(denied.status, 200);
+  for (const actor of [TEST_ADMIN_ID, f.players[0], f.players[1]])
+    assert.equal((await request(app).post('/api/points/rounds').set('x-test-player-id', actor)
+      .send({ sourceType: 'draw', sourceId: denied.body.id, closesAt: Date.now() + 60000 })).status,
+    actor === TEST_ADMIN_ID ? 409 : 403,
+    'neither admins nor participants can bypass the creator decision');
+  const allowed = await create(true);
+  assert.equal(allowed.status, 200);
+  assert.equal(allowed.body.bettingAllowed, true);
+  const concurrent = await Promise.all([0, 1].map(() => request(app).get('/api/points')));
+  for (const response of concurrent)
+    assert.equal(response.body.rounds.filter((row: { sourceId: string }) => row.sourceId === allowed.body.id).length, 1);
+  const opened = await automaticMarket(f, 'draw', allowed.body.id);
+  assert.equal(opened.closesAt, null, 'automatically offered tips close at the explicit pre-game start');
+  const personal = buildPersonalDataExport(f.players[0])! as { organizedCompetitions: { draws: Array<{ id: string; bettingAllowed: number }> } };
+  assert.equal(personal.organizedCompetitions.draws.find((row) => row.id === allowed.body.id)!.bettingAllowed, 1);
+  const before = (db.prepare('SELECT COUNT(*) AS n FROM matchmaking_draws WHERE event_id=?').get(f.eventId) as { n: number }).n;
+  db.exec(`CREATE TEMP TRIGGER fail_automatic_market BEFORE INSERT ON betting_rounds
+    BEGIN SELECT RAISE(ABORT,'automatic market failed'); END`);
+  try {
+    assert.equal((await create(true)).status, 500);
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM matchmaking_draws WHERE event_id=?').get(f.eventId) as { n: number }).n, before);
+  } finally { db.exec('DROP TRIGGER fail_automatic_market'); }
+  const rematch = await request(app).post('/api/matchmaking/rematch').set('x-test-player-id', f.players[0])
+    .send({ gameId: f.gameId, teams: f.players.slice(0, 2).map((id) => ({ playerIds: [id] })), bettingAllowed: true });
+  assert.equal(rematch.status, 200);
+  assert.equal((await automaticMarket(f, 'draw', rematch.body.id)).status, 'open');
+  const draft = await request(app).post('/api/draft/start').send({ gameId: f.gameId,
+    captainIds: f.players.slice(0, 2), poolPlayerIds: [f.players[2]], bettingAllowed: true });
+  assert.equal(draft.status, 201);
+  const picked = await request(app).post('/api/draft/pick').set('x-test-player-id', f.players[0])
+    .send({ playerId: f.players[0], pickPlayerId: f.players[2] });
+  assert.equal(picked.status, 200);
+  const drafted = (await request(app).get('/api/matchmaking/history')).body.history.find((row: { source: string }) => row.source === 'draft');
+  assert.equal(drafted.bettingAllowed, true);
+  assert.equal((await automaticMarket(f, 'draw', drafted.id)).status, 'open');
+  const tournament = await request(app).post('/api/tournaments').set('x-test-player-id', f.players[0]).send({
+    gameId: f.gameId, format: 'single_elimination', teams: f.players.slice(0, 2).map((id) => ({ playerIds: [id] })),
+  });
+  assert.equal(tournament.status, 201);
+  const champion = await automaticMarket(f, 'tournament', tournament.body.id);
+  const fixtureRound = await automaticMarket(f, 'tournament_match', tournament.body.matches[0].id);
+  const locks = await Promise.all([0, 1].map(() => request(app).post(`/api/points/rounds/${fixtureRound.id}/lock`)
+    .set('x-test-player-id', f.players[0]).send({})));
+  assert.deepEqual(locks.map((response) => response.status).sort(), [200, 409]);
+  assert.equal((await automaticMarket(f, 'tournament', tournament.body.id)).status, 'refunded', 'the first fixture also closes the empty champion pool');
+  assert.equal((await request(app).put(`/api/points/rounds/${champion.id}/tip`).set('x-test-player-id', f.players[0])
+    .send({ outcomeId: champion.outcomes[0].id, stake: 1 })).status, 409);
+  db.prepare("UPDATE events SET status='ended',ended_at=? WHERE id=?").run(Date.now(), f.eventId);
+  assert.equal((await request(app).put(`/api/points/rounds/${opened.id}/tip?eventId=${f.eventId}`).set('x-test-player-id', f.players[0])
+    .send({ outcomeId: opened.outcomes[0].id, stake: 1 })).status, 409, 'ended LANs retain results but accept no new tips');
+});
 
 test('category journal corrections require admin rights and reason, allow own changes and commit with their audit', async () => {
   const f = await fixture({}, false);
@@ -386,11 +452,21 @@ test('category readers share participant-based places, exclude test and withdraw
   }
   db.prepare("UPDATE events SET status='ended',is_test=0 WHERE id=?").run(f.eventId);
   assert.deepEqual((await own()).body.standings, departed.standings, 'ended LAN results remain visible');
+  recordPointsEntitlements([{ groupId: DEFAULT_GROUP_ID, eventId: f.eventId, playerId: TEST_ADMIN_ID,
+    account: 'orga', sourceKey: 'fixture:category:orga', total: 0, expectedRevision: 1,
+    title: 'Category reader fixture', reason: 'Prepare a unique final leader' }]);
   assert.equal((await request(app).post(`/api/points/close?eventId=${f.eventId}`).send({})).status, 200);
   const frozen = (await own()).body;
   setParticipants(f.eventId, [TEST_ADMIN_ID]);
   assert.deepEqual((await own()).body.standings, frozen.standings);
   assert.equal((await own()).body.participantCount, 4, 'the closing roster and N survive later withdrawals');
+  db.prepare('UPDATE players SET deactivated_at=? WHERE id=?').run(Date.now(), f.players[0]);
+  const remaining = (await own()).body;
+  assert.equal(remaining.participantCount, 4);
+  assert.equal(remaining.standings[0].rank, 2, 'removing a closed account must not renumber the frozen places');
+  const remainingHall = (await request(app).get(`/api/hall-of-fame?eventId=${f.eventId}`)).body.events[0];
+  assert.equal(remainingHall.overallStandings[0].rank, 2);
+  assert.deepEqual(remainingHall.overallChampions, []);
 });
 
 test('admins and event creators toggle visibility without interrupting hidden credits or settled pools', async () => {
@@ -821,18 +897,16 @@ test('tournament participants can bet on themselves and opponents, including the
     ['tournament', tournament.id],
     ['tournament_match', fixtureId],
   ]) {
-    const opened = await request(app)
-      .post('/api/points/rounds')
-      .send({ sourceType, sourceId, closesAt: Date.now() + 60000 });
-    assert.equal(opened.status, 201, JSON.stringify(opened.body));
-    assert.equal(opened.body.outcomes.length, 2, 'knockout and champion markets do not offer a draw');
-    rounds.push(opened.body);
+    const opened = await automaticMarket(f, sourceType, sourceId);
+    assert.equal(opened.status, 'open');
+    assert.equal(opened.outcomes.length, 2, 'knockout and champion markets do not offer a draw');
+    rounds.push(opened);
     const tips = await Promise.all(
       f.players
         .slice(0, 2)
         .map((p, i) =>
           request(app)
-            .put(`/api/points/rounds/${opened.body.id}/tip`)
+            .put(`/api/points/rounds/${opened.id}/tip`)
             .set('x-test-player-id', p)
             .send({ outcomeId: tournament.teams[i].id, stake: 5 }),
         ),
@@ -844,7 +918,7 @@ test('tournament participants can bet on themselves and opponents, including the
     assert.equal(
       (
         await request(app)
-          .post(`/api/points/rounds/${opened.body.id}/lock`)
+          .post(`/api/points/rounds/${opened.id}/lock`)
           .set('x-test-player-id', f.players[0])
           .send({})
       ).status,
@@ -914,13 +988,16 @@ test('selectable draws win free-match and league pools; a legacy market without 
       const tournament = await request(app).post('/api/tournaments').send({ gameId: f.gameId,
         format: 'round_robin', teams: f.players.slice(0, 2).map((id) => ({ playerIds: [id] })) });
       assert.equal(tournament.status, 201);
+      const champion = await automaticMarket(f, 'tournament', tournament.body.id);
+      for (const [index, playerId] of f.players.slice(0, 2).entries())
+        assert.equal((await request(app).put(`/api/points/rounds/${champion.id}/tip`).set('x-test-player-id', playerId)
+          .send({ outcomeId: champion.outcomes[index].id, stake: 5 })).status, 200);
       const matchId = tournament.body.matches[0].id;
-      const market = await request(app).post('/api/points/rounds').send({ sourceType: 'tournament_match',
-        sourceId: matchId, closesAt: Date.now() + 60000 });
-      assert.equal(market.status, 201);
-      assert.ok(market.body.outcomes.some((o: { id: string }) => o.id === '__draw__'));
-      roundId = market.body.id;
-      sideId = market.body.outcomes[0].id;
+      const opened = await automaticMarket(f, 'tournament_match', matchId);
+      assert.equal(opened.status, 'open');
+      assert.ok(opened.outcomes.some((o) => o.id === '__draw__'));
+      roundId = opened.id;
+      sideId = opened.outcomes[0].id;
       finish = () => request(app).post(`/api/tournaments/${tournament.body.id}/matches/${matchId}/result`)
         .send({ winnerTeamId: null });
     } else {
@@ -940,9 +1017,16 @@ test('selectable draws win free-match and league pools; a legacy market without 
     assert.equal((await request(app).post(`/api/points/rounds/${roundId}/lock`).send({})).status, 200);
     const result = await finish();
     assert.equal(result.status, mode === 'league' ? 200 : 201, JSON.stringify(result.body));
-    const market = (await request(app).get('/api/points')).body.rounds[0];
+    const market = (await request(app).get('/api/points')).body.rounds.find((row: { id: string }) => row.id === roundId);
     assert.equal(market.status, mode === 'legacy' ? 'refunded' : 'settled');
     assert.equal(market.result, mode === 'legacy' ? null : '__draw__');
+    if (mode === 'league') {
+      const champion = (await request(app).get('/api/points')).body.rounds.find((row: { sourceType: string }) => row.sourceType === 'tournament');
+      assert.equal(champion.status, 'refunded', 'an unselectable shared tournament victory cannot favor the first stored team');
+      const hall = (await request(app).get(`/api/hall-of-fame?eventId=${f.eventId}`)).body.events[0];
+      assert.deepEqual([...hall.tournamentChampions[0].championPlayers].sort(),
+        f.players.slice(0, 2).map((id) => db.prepare('SELECT name FROM players WHERE id=?').get(id) as { name: string }).map((p) => p.name).sort());
+    }
     assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total),
       mode === 'legacy' ? [100, 100] : [105, 95]);
   }
@@ -1014,15 +1098,16 @@ test('deadlines and pre-start changes refund unsafe pools; legacy round quotas n
   assert.equal(wallet(f.eventId, f.players[0]).total, 100);
   const draw = await request(app)
     .post('/api/matchmaking')
-    .send({ gameId: f.gameId, playerIds: f.players.slice(0, 2), teamCount: 2 });
+    .send({ gameId: f.gameId, playerIds: f.players.slice(0, 2), teamCount: 2, bettingAllowed: true });
   assert.equal(
     (
       await request(app)
         .post('/api/points/rounds')
         .send({ sourceType: 'draw', sourceId: draw.body.id ?? draw.body.drawId, closesAt: Date.now() + 60000 })
     ).status,
-    201,
+    409,
   );
+  assert.equal((await automaticMarket(f, 'draw', draw.body.id)).status, 'open', 'the next permitted match still opens automatically');
   assert.equal((await request(app).put('/api/points/settings').send({ maxRounds: 1, maxStake: 11 })).status, 400);
   const second = await fixture();
   const deadline = await round(second);
@@ -1126,7 +1211,7 @@ test('legacy zero-round quotas do not disable betting; fixed todos ignore the ol
   const draw = (
     await request(app)
       .post('/api/matchmaking')
-      .send({ gameId: f.gameId, playerIds: f.players.slice(0, 2), teamCount: 2 })
+      .send({ gameId: f.gameId, playerIds: f.players.slice(0, 2), teamCount: 2, bettingAllowed: true })
   ).body;
   assert.equal(
     (
@@ -1134,8 +1219,9 @@ test('legacy zero-round quotas do not disable betting; fixed todos ignore the ol
         .post('/api/points/rounds')
         .send({ sourceType: 'draw', sourceId: draw.id, closesAt: Date.now() + 60000 })
     ).status,
-    201,
+    409,
   );
+  assert.equal((await automaticMarket(f, 'draw', draw.id)).status, 'open', 'a stored legacy zero quota cannot disable an allowed match');
   assert.equal((await request(app).get('/api/points')).body.budget, undefined);
 });
 
@@ -1222,16 +1308,10 @@ test('catalog deletion protects paid draw, fixture and outright pools until an e
       assert.equal(created.status, 201, JSON.stringify(created.body));
       tournamentId = created.body.id;
       fixtureId = created.body.matches.find((match: { isBye: boolean }) => !match.isBye).id;
-      const opened = await request(app)
-        .post('/api/points/rounds')
-        .send({
-          sourceType,
-          sourceId: sourceType === 'tournament' ? tournamentId : fixtureId,
-          closesAt: Date.now() + 60000,
-        });
-      assert.equal(opened.status, 201, JSON.stringify(opened.body));
-      roundId = opened.body.id;
-      outcomes = opened.body.outcomes;
+      const opened = await automaticMarket(f, sourceType, sourceType === 'tournament' ? tournamentId : fixtureId);
+      assert.equal(opened.status, 'open');
+      roundId = opened.id;
+      outcomes = opened.outcomes;
     }
     for (let i = 0; i < 2; i++) {
       assert.equal(
@@ -1293,7 +1373,7 @@ test('catalog deletion protects paid draw, fixture and outright pools until an e
       sourceType,
     );
     assert.ok(db.prepare('SELECT 1 FROM games WHERE id = ?').get(f.gameId), 'a rejected cascade keeps its source');
-    assert.equal((await request(app).get('/api/points')).body.rounds[0].status, 'settled');
+    assert.equal((await request(app).get('/api/points')).body.rounds.find((row: { id: string }) => row.id === roundId).status, 'settled');
     assert.deepEqual(
       f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total),
       [105, 95],
@@ -1317,7 +1397,7 @@ test('catalog deletion protects paid draw, fixture and outright pools until an e
       f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total),
       [100, 100],
     );
-    assert.equal((await request(app).get('/api/points')).body.rounds[0].status, 'refunded');
+    assert.equal((await request(app).get('/api/points')).body.rounds.find((row: { id: string }) => row.id === roundId).status, 'refunded');
   }
 
   const f = await fixture();

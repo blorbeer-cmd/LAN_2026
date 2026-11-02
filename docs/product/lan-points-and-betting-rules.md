@@ -3,9 +3,9 @@
 Die Punktefunktion verwendet getrennte Konten für **Orga**, **Spielen**, **Wetten** und
 **Wettguthaben**. Kategorie-Rohwerte und Wettguthaben werden nicht addiert.
 Das [Zielkonzept](../KONZEPT-PUNKTE-WERTUNG.md) und der
-[Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) unterscheiden die bereits
-umgesetzte Wallet-Abrechnung (5a), Kategorieplätze und Gesamtwertung (6/7) von den noch
-ausstehenden Marktanbindungen (5b), Meldefunktion und weitergehenden Abschlussregeln.
+[Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) beschreiben die umgesetzte
+Wallet-Abrechnung (5a), Marktanbindungen (5b), Kategorieplätze und Gesamtwertung (6/7) sowie
+die noch ausstehende Meldefunktion und weitergehenden Abschlussregeln (8/9).
 
 ## Neustart ohne Punkteübernahme
 
@@ -55,9 +55,11 @@ auf Geräten nicht zurückrufen. Der Kiosk zeigt Ergebnisse weiterhin ohne Punkt
 
 ## Wetten am Match und Turnier
 
-Bis zur Entscheidung über die vollständigen Zielregeln öffnen weiterhin Admins offizielle
-Runden an ungespielten Zweier-Auslosungen, Turniermatches mit feststehenden Gegnern und auf
-den Gesamtsieger eines noch nicht begonnenen Turniers. Auslosen allein öffnet keinen Markt.
+Beim Anlegen eines Zweiermatches entscheidet der Ersteller über **Wetten erlauben**. Die Wahl
+wird auch bei Captain Drafts und Rematches gespeichert. Dafür braucht der Ersteller keine
+zusätzliche Adminrolle. Bei einem Nein entsteht kein Markt; auch die weiterhin administrative
+separate Markt-API kann die Entscheidung nicht umgehen. Turniersieger-Märkte und einzelne
+Turniermatches mit feststehenden Gegnern werden immer automatisch angeboten, ohne Freischalter.
 Alle berechtigten Teilnehmer dürfen auf sich, ihr Team oder den Gegner tippen.
 
 **W1/W5 sind umgesetzt:** maximal 20 Punkte pro Person und Wettmarkt, keine zusätzlichen
@@ -72,8 +74,7 @@ Der Ersteller entscheidet direkt beim Anlegen vor Spielbeginn über „Wetten zu
 zusätzliche Adminrolle. Bei ausgeschalteter Option darf kein anderer einen Markt für dieses
 Match eröffnen. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer
 ohne optionalen Freischalter angeboten. Die bestehenden Regeln zu Sichtbarkeit, feststehenden
-Gegnern, Tippschluss und Spielbeginn gelten weiterhin. Auch diese Anbindungen stehen technisch
-noch aus. Topf, Anzahl Tipps,
+Gegnern, Tippschluss und Spielbeginn gelten weiterhin. Topf, Anzahl Tipps,
 Einsätze je Ausgang und vorläufige Pool-Quoten sind schon vor Tippschluss sichtbar. Eine Quote
 ist nur bei einem Einsatz auf diesen Ausgang berechenbar; neue Einsätze können sie verändern.
 Die API veröffentlicht dabei keine individuellen fremden Tipps. Freie Zweiermatches sowie
@@ -89,9 +90,13 @@ verfügbarem Guthaben sind neue Tipps und Änderungen gesperrt. Eine vollständi
 eines noch offenen Tipps bleibt möglich.
 
 Die persönliche Öffnungsmitteilung nennt Event und Runde, berücksichtigt Einwilligung und
-Stummschaltung und wird nicht doppelt gesendet. Mitspieler oder Admins schließen vor Spielbeginn,
-alternativ greift die Frist. Ein Ergebnis bei noch offenen Tipps führt vorläufig zur Erstattung.
+Stummschaltung und wird nicht doppelt gesendet. Neue automatische Märkte bleiben bis zur
+ausdrücklichen Startaktion offen. Mitspieler oder Admins schließen vor Spielbeginn; beim
+ersten Turnierspiel wird zugleich der Gesamtsieger-Markt geschlossen. Bestehende explizite
+Fristen bleiben wirksam. Ein Ergebnis bei noch offenen Tipps führt zur Erstattung.
 Der Hintergrundlauf arbeitet auch ohne offenen Browser. Nach Tippschluss sind Einsätze unveränderlich.
+Erzeugung der Quelle und ihrer Märkte laufen atomar; Benachrichtigungen folgen erst nach Commit.
+Nach Eventende sind neue Tipps gesperrt, während Ergebnisse und Verlauf sichtbar bleiben.
 
 ## Abrechnung und Korrektur
 
@@ -112,6 +117,8 @@ wenn eine Teilbuchung scheitert.
 Ein nicht am Markt wählbares Remis, fehlende Tipps auf das eingetretene Ergebnis, Einsätze
 auf nur einen Ausgang und ein abgebrochener Wettbewerb führen zur vollständigen Erstattung.
 Ein angebotenes Remis kann dagegen regulär gewinnen und wird genauso abgerechnet wie ein Sieger-Tipp.
+Ein geteilter Turniersieg ist im Gesamtsieger-Markt nicht wählbar und führt deshalb zur
+Erstattung. Die Turniertitel und Platzierungsboni bleiben für alle gleichplatzierten Sieger erhalten.
 
 **W6:** Finanzkorrekturen erfolgen ausschließlich über begründete Markt-Neuberechnung oder
 Storno. Einseitige Wallet-/Wettänderungen über die allgemeine Journal-Korrektur oder den alten

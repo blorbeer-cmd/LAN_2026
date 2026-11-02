@@ -20,11 +20,12 @@ Admins und Event-Ersteller werden wie alle anderen Teilnehmer behandelt.
 
 Orga-, Spiel- und Wett-Nettowerte beginnen bei 0. Das separate Wallet erhält einmalig fest
 100 Wettpunkte für jeden berechtigten Teilnehmer eines LAN-Events, auch bei später Zusage. Gültige Spiele und Turnierplatzierungen erzeugen
-automatisch Spielpunkte; organisierte Matches, Turniere und Sammelbestellungen erzeugen Orga-Punkte. Weitere
-Orga-Auslöser folgen. Vollständige Skill-Einschätzungen erzeugen einmalig 5 Orga-Punkte je Event.
+automatisch Spielpunkte; organisierte Matches, Turniere, Sammelbestellungen, To-dos und
+Abstimmungen erzeugen Orga-Punkte. Vollständige Skill-Einschätzungen erzeugen einmalig 5 Orga-Punkte je Event.
 Dokumentierte frühere Spielteilnehmer
-erhalten beziehungsweise behalten ihre Konten auch nach einem Austritt. Das legt weder die
-Teilnehmerbasis der Gesamtwertung noch die Höhe eines Wett-Startguthabens fest. Der Startguthaben-Vorgang `wallet:start`
+erhalten beziehungsweise behalten ihre Konten auch nach einem Austritt. Die Kontenmenge
+bestimmt N nicht; dafür gelten die ausdrücklich beschlossenen Teilnehmerregeln E2.
+Der Startguthaben-Vorgang `wallet:start`
 bucht ausschließlich auf `wallet`. Orga- und Spielpunkte erhöhen dieses Guthaben nicht.
 Offene Einsätze reservieren nur das Wallet; der Wett-Rohwert wird aus abgerechneten
 Nettoergebnissen gebucht. Vollständige Erstattungen ergeben dort 0. Wallet und Rohwerte
@@ -308,7 +309,15 @@ ist davon unabhängig. Die Kategorieplatzierung ist in Paket 6 angebunden. Für 
 entschieden: Der Ersteller wählt direkt beim Anlegen vor Spielbeginn, ob Wetten erlaubt sind;
 dafür ist keine Adminrolle erforderlich. Bei Turnieren werden Wetten auf den Turniersieger
 und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bestehenden
-Start-/Tippschluss- und Sichtbarkeitsregeln gelten. Auch diese Anbindung folgt in Paket 5b.
+Start-/Tippschluss- und Sichtbarkeitsregeln gelten. Migration 132 speichert die Erstellerwahl
+an Auslosungen und Captain Drafts; Rematches wählen sie ebenfalls beim Anlegen. Quelle und
+automatisch angebotene Märkte entstehen atomar, Mitteilungen folgen nach Commit.
+Turniermärkte entstehen bei feststehenden Gegnern automatisch. Vor dem ersten Spiel schließt
+die Startaktion auch den Gesamtsieger-Markt. Neue automatische Märkte verwenden die ausdrückliche
+Startaktion als Tippschluss. Bestehende Fristen bleiben wirksam.
+Die administrative Markt-API kann ein Nein des Match-Erstellers nicht umgehen. Neue Tipps
+sind nach Eventende gesperrt; Ergebnisse bleiben sichtbar. Nicht wählbare geteilte Turniersiege
+werden erstattet; gemeinsame Turniertitel und volle gemeinsame Platzierungsboni bleiben erhalten.
 Die Pool-Abrechnung verteilt Restpunkte nach größtem Nachkommaanteil, gleiche Anteile nach früherer
 erster Tippabgabe und dann Einfügereihenfolge. Die Nullsumme bleibt erhalten. Kategorieplätze,
 Teilnehmerbasis N und Gesamtwertung sind angebunden. Meldefunktion und weitergehende Regeln

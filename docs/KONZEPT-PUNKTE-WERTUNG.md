@@ -122,15 +122,9 @@ Es gibt weder eine Zeitgewichtung noch einen Abschlag für wiederholte Begegnung
 Häufiges Spielen und kurze Spiele können deshalb vorteilhaft sein. Aktivität soll belohnt
 werden; daraus wird keine Sperre oder Begrenzung abgeleitet.
 
-Der Nutzerhinweis lautet: „Spiele mit vielen Teams bringen pro Person im Schnitt etwas
-mehr Punkte. Das ist akzeptiert, weil Aktivität belohnt werden soll.“
-
-**Rechnerischer Klärungspunkt – OFFEN:** Diese pauschale Durchschnittsaussage folgt nicht
-allgemein aus den beschlossenen Punktefolgen. Bei gleich großen Teams ergeben sich ohne
-Gleichstände im Schnitt 2,5 Punkte bei zwei Teams, rund 2,67 bei drei, 2,5 bei vier und
-1,75 bei acht Teams. Die festgelegten Punktefolgen und die fehlende Gewichtung bleiben
-unverändert. Die Formulierung dieses Hinweises muss geklärt werden; sie ist keine Grundlage
-für eine eigenmächtig geänderte Formel.
+Der bestätigte Nutzerhinweis lautet: „Jedes gespielte Match bringt Punkte. Spielzeit und
+Teamgröße werden nicht gewichtet.“ Die Punkteformel bleibt unverändert. Die frühere pauschale
+Aussage über einen höheren Punktedurchschnitt bei mehr Teams entfällt (H1).
 
 ## 4. Wetten
 
@@ -158,7 +152,11 @@ dürfen diese Entscheidung nicht durch eine separate Markteröffnung umgehen.
 Bei Turnieren werden Wetten immer angeboten, sowohl auf den Turniersieger als auch auf
 einzelne Turnierspiele. Dafür gibt es keinen optionalen Freischalter. Die bestehenden Regeln
 zu Sichtbarkeit, feststehenden Gegnern, Tippschluss und Spielbeginn gelten weiterhin.
-Die technische Anbindung folgt in Paket 5b.
+Die technische Anbindung ist in Paket 5b umgesetzt: Die Wahl wird für Auslosungen, Captain
+Drafts und Rematches gespeichert. Turniermärkte entstehen automatisch, sobald sie spielbar
+sind. Vor Spielbeginn schließen Mitspieler oder Admins die Tipps über die Startaktion;
+beim ersten Turnierspiel schließt damit zugleich der Gesamtsieger-Markt. Bestehende explizite
+Fristen bleiben wirksam.
 
 Es gelten Pool-Quoten. Vorläufige Quoten sind am Markt sichtbar und können sich mit den
 Einsätzen verändern. Maßgeblich für die Abrechnung ist der Pool zum Tippschluss. Für einen
@@ -501,7 +499,7 @@ Vorgabewerte sind dafür keine Entscheidung:
 | O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben erhalten keine alten LAN-Auszahlungen mehr. |
 | S1 (entschieden) | Geteilte Turnierplätze erhalten jeweils den vollen Bonus des gemeinsamen Rangs, beispielsweise 5/5/1. |
 | M1 | Meldungen gegen Event-Ersteller ohne Adminrolle oder bei fehlendem zuständigen Admin; Vertretung und Bearbeitung. |
-| H1 | Korrektur des rechnerisch nicht allgemein zutreffenden Teamzahl-Durchschnittshinweises aus Abschnitt 3.4. |
+| H1 (entschieden) | „Jedes gespielte Match bringt Punkte. Spielzeit und Teamgröße werden nicht gewichtet.“ Die Formel bleibt unverändert. |
 
 Die [überarbeitete Paketfolge](IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) ordnet diese Entscheidungen
 konkreten Schritten zu. Keine davon wird allein durch die Reihenfolge entschieden.
@@ -519,16 +517,16 @@ Einheitenmix im Spielfilter beziehungsweise über Events) sind im Review-Fix adr
 Die Spielberechnung, automatische Spiel- und Orga-Gutschriften für Wettbewerbe, Bestellungen und vollständige Skill-Einschätzungen sowie die Journalbasis mit Admin-Korrekturen, persönliche Kategorie-Rohwerte/Verläufe und die neue To-do-Vergütung
 sind umgesetzt. Die bisherige sichtbare
 LAN-Punkte-/Wettfunktion verwendet jetzt das separate Wallet und das Wettjournal. Vorherige Punktebestände
-werden nicht übernommen. Die vollständigen Marktregeln und die Kategorie-/Gesamtwertung folgen weiter.
+werden nicht übernommen. Die Marktregeln und Kategorie-/Gesamtwertung sind inzwischen angebunden.
 Bestehende Grenzen und Vorgabewerte der bisherigen Funktion entscheiden keine offenen Regeln
 dieses Zielkonzepts.
 
 | Bereich | Vermerkte Folgeänderung |
 |---|---|
 | Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln, Turnierboni bleiben 5/3/1. [Automatische Journalbuchungen](../server/src/playingPoints.ts) erfolgen bei Ergebnissen, Korrekturen, Löschungen und beim Nachtragen bestehender Ergebnisse. |
-| Einheitliche Auswertung | [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts), [gemeinsame Datenbasis](../server/src/leaderboardData.ts) und [Export](../server/src/routes/export.ts) müssen dieselbe Spielregel verwenden. Spielfilter und eventübergreifende Auswertungen verwenden ausschließlich Spielpunkte. Die einzelne konfigurierte LAN ohne Spielfilter, Hall of Fame und Event-Export verwenden seit Paket 5a vorläufig Spiel-Rohwerte; die Wallet-Summe wird nicht als Gesamtwertung ausgegeben. Kategorieplätze, Gesamtwertung und geteilte Ränge sind konsistent abzubilden; eine Sortierung nach Siegen darf Kategoriegleichstände nicht auflösen. |
-| Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spielgutschriften, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Umgesetzt sind außerdem persönliche Kategorie-Rohwerte, Verlauf und Admin-Korrektur-Oberfläche. Offen für die Folgepakete: weitere Orga-/Wett-Fachhandler anbinden sowie Kategorie-Platzpunkte berechnen. |
-| Wettmärkte | Umgesetzt: sichtbare vorläufige Pool-Quoten, formatabhängige Remis-Auswahl, die feste Einsatzgrenze von 20 Punkten, Abschaltung alter Tages-/Rundenlimits und ganzzahlige Pool-Verteilung nach größtem Nachkommaanteil mit früherer Tippabgabe als Gleichstandsregel. Die API zählt regulär abgerechnete Tipps für die beschlossene Mindestzahl zwei; die Kategorieplatzierung folgt in Paket 6. W4 ist entschieden, technisch noch anzubinden: Ersteller-Auswahl beim Match und Wetten bei Turnieren immer angeboten. Offen bleibt W7 zur Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung. |
+| Einheitliche Auswertung | Umgesetzt: [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts) und [Export](../server/src/routes/export.ts) verwenden für aktivierte oder sichtbare LAN-Wertungen dieselben Kategorie-Platzpunkte, Gesamtstände und geteilten Ränge. Spielfilter und eventübergreifende Sportstatistiken verwenden weiterhin ausschließlich Spielpunkte. Wettguthaben wird niemals als Gesamtwertung ausgegeben. Gemeinsame Turniersiege bleiben in Hall of Fame und Export erhalten. |
+| Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spiel-/Orga-Gutschriften, Wallet und Wettabrechnung, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Persönliches Konto und Journal zeigen Rohwerte, Ränge, Platzpunkte und Verläufe; Finanzkorrekturen erfolgen ausschließlich am Markt. |
+| Wettmärkte | Umgesetzt: sichtbare vorläufige Pool-Quoten, formatabhängige Remis-Auswahl, feste Einsatzgrenze 20, keine zusätzlichen Tages-/Rundenlimits und proportionale ganzzahlige Pool-Verteilung mit früherer Tippabgabe als Gleichstandsregel. Wettplatzierung ab zwei regulären Abrechnungen. W4 ist angebunden: Erstellerwahl direkt beim Match, Captain Draft und Rematch, automatische Turniermärkte und Startaktion vor Spielbeginn. Offen bleibt W7 zur Behandlung gesperrter, unabgerechneter Märkte bei der Festschreibung in Paket 9. |
 | Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit festen 3 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Ebenfalls umgesetzt: 2 Punkte je eingetragener Ankunft/Abreise beim Eventstart sowie 3 Punkte für abgeschlossene Umfragen und 2 Punkte für abgeschlossene Spieleabstimmungen mit jeweils mindestens drei Teilnehmenden. Die ausdrücklich offenen Regeln bleiben offen. |
 | Kiosk | Umgesetzt: [Ergebnis-Feed](product/media-and-dashboard-rules.md#tv-kiosk) mit Anzeigenamen, Platzierungen und tatsächlich gebuchten Spielpunkten, Korrekturhinweis auch bei reinen Score-Änderungen. Bei ausgeblendeten Punkteansichten bleiben Ergebnisse ohne Punkte sichtbar. Die zehn jüngsten Ergebnisse wechseln in der bestehenden Turnierkachel; alle Teilnehmer werden automatisch durchgeblättert. Migration 128 ergänzt Erfassungszeit, Änderungszeit und Ergebnisrevision, ohne Punktebestände zu verändern. |
 | Meldefunktion | Meldbare Quellen, optionalen Grund, eine offene Meldung pro Person/Eintrag, Empfängerfilter, Identitätsschutz, Status und begründete Korrekturen ergänzen. Eigene administrative Korrekturen bleiben erlaubt. |

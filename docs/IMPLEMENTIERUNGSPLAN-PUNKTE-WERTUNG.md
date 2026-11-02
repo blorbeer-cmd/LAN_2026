@@ -15,8 +15,8 @@ Wallet und Wett-Nettowert bleiben dort schreibgeschützt; gemäß W6 erfolgen fi
 Korrekturen ausschließlich durch Markt-Neuberechnung oder Storno.
 Wallet und Wetten verwenden seit Paket 5a ebenfalls das Kategorie-Journal. Das alte gemeinsame
 Konto und alte To-do-Belohnungen sind abgeschaltet. Der Wettumfang enthält noch die ausdrücklich
-vorläufigen Marktregeln; Paket 5b ist teilweise umgesetzt. Die Kategorie-/Gesamtwertung aus
-Paketen 6/7 ist angebunden; ihre abschließende Prüfung läuft.
+Marktregeln aus Paket 5b einschließlich der Erstellerwahl und automatischer Turniermärkte.
+Die Kategorie-/Gesamtwertung aus Paketen 6/7 ist ebenfalls angebunden.
 
 Die beiden Code-Findings sind berechtigt und gehören vor die nächsten Fachpakete:
 
@@ -106,7 +106,7 @@ bleiben den Paketen 5b und 6 zugeordnet.
 - Admin-Journal mit Begründung und Revisionsschutz bedienbar machen; eigene Korrekturen bleiben
   erlaubt. Wallet und Wett-Nettowerte bleiben im allgemeinen Journal gemäß W6 schreibgeschützt.
 - Keine alte Summe als neues Wettguthaben ausgeben. Der Kontobezug muss
-  erkennbar sein. Rang und Platzpunkte folgen in Paket 7.
+  erkennbar sein. Rang und Platzpunkte sind in Paket 7 ergänzt.
 - Sichtbarkeit, direkte Links, Realtime, leere und negative Konten sowie eigene/fremde
   Zugriffsgrenzen prüfen. Keine neuen Buchungen allein durch einen Seitenaufruf.
 
@@ -157,7 +157,7 @@ Rücknahmen, Ergebnisänderungen mit bereits eingesetzten Gewinnen, negative Mit
 Finanz-/Sport-Rollback und Datenschutz. Browser prüfen 320/390/1440 Pixel, Sichtbarkeit,
 Journal, feste Startvergabe, Marktstorno und Kategorie-Korrekturen.
 
-## Paket 5b – vollständige Marktregeln (teilweise umgesetzt)
+## Paket 5b – vollständige Marktregeln (umgesetzt)
 
 **Umgesetzt:** Vorläufiger Topf, Anzahl Tipps, Einsätze je Ausgang und Pool-Quoten sind
 bereits vor Tippschluss sichtbar. Ein nicht belegter Ausgang hat keine berechenbare Quote.
@@ -176,12 +176,12 @@ zurückgenommene Tipps zählen nicht zur Mindestzahl. Auszahlungen sind davon un
 - Zielregeln ersetzen die alten Regeln: sichtbare vorläufige Pool-Quoten, formatabhängiger
   Remis-Tipp, vollständige Erstattungen und ganzzahlige proportionale Pool-Auszahlungen.
 - W1 umgesetzt: maximal 20 Punkte pro Person und Wettmarkt.
-- W2 umsetzen: Wettplatzierung erst ab zwei regulär abgerechneten Tipps und positivem Nettowert.
+- W2 umgesetzt: Wettplatzierung erst ab zwei regulär abgerechneten Tipps und positivem Nettowert.
 - W5 umgesetzt: alte Tages-/Rundenlimits als Beschränkungen abgeschaltet.
-- W4 für Matches umsetzen: Der Ersteller wählt direkt beim Anlegen vor Spielbeginn „Wetten
+- W4 für Matches umgesetzt: Der Ersteller wählt direkt beim Anlegen vor Spielbeginn „Wetten
   zulassen“. Keine zusätzliche Adminrolle; eine ausgeschaltete Option darf nicht über die
   separate Markt-API umgangen werden. Die Auswahl gehört nicht in die spätere Ergebniseingabe.
-- W4 für Turniere umsetzen: Wetten auf Turniersieger und einzelne Turnierspiele immer ohne
+- W4 für Turniere umgesetzt: Wetten auf Turniersieger und einzelne Turnierspiele immer ohne
   optionalen Freischalter anbieten. Bestehende Start-/Tippschluss- und Sichtbarkeitsregeln gelten.
 - W7-Abrechnung umgesetzt: Restpunkte nach größtem Nachkommaanteil; gleiche Anteile nach
   früherer erster Tippabgabe und bei gleichem Zeitstempel nach gespeicherter Einfügereihenfolge.
@@ -189,7 +189,24 @@ zurückgenommene Tipps zählen nicht zur Mindestzahl. Auszahlungen sind davon un
   Märkte bei der Festschreibung. Alte Werte 10/30/6 sind keine Zielvorgaben.
 - Eigenwetten, Mitteilungen und die Anzeige direkt an Match/Turnier bleiben erhalten.
 
-## Pakete 6/7 – Wertung und vollständige Ansichten (Anbindung umgesetzt, Prüfung läuft)
+Migration 132 speichert die Erstellerwahl an Auslosungen und Captain Drafts. Rematches fragen
+ebenfalls beim Anlegen nach der Freigabe. Bestehende explizite Märkte behalten ihre Freigabe;
+andere Alt-Auslosungen beginnen ohne Freigabe. Die separate administrative Markt-API prüft
+die Wahl ebenso und kann ein Nein nicht umgehen. Die bestehende Zweiermatch-Grenze bleibt
+erhalten. Turniermärkte werden angeboten, sobald ihre Gegner feststehen, der Gesamtsieg
+vor dem ersten Spiel. Mitspieler oder Admin schließen neue automatische Märkte vor Spielbeginn
+über die vorhandene Startaktion. Beim ersten Turnierspiel
+wird auch der Gesamtsieger-Markt geschlossen. Bestehende explizite Fristen bleiben wirksam.
+Ein Ergebnis ohne vorheriges Schließen führt weiterhin zur Erstattung. Neue Wetten nach
+Eventende sind gesperrt; Ergebnisse und Verläufe bleiben sichtbar.
+
+Erzeugung der Quelle und der Märkte laufen in derselben Transaktion, einschließlich des
+letzten Draft-Picks und neu feststehender Turniergegner. Mitteilungen folgen erst nach Commit.
+Ungültige/abgebrochene Quellen und nicht wählbare geteilte Turniersiege werden erstattet.
+Hall of Fame und Export behalten auch bei Turnieren gemeinsame Sieger. Der bestätigte
+Hinweis H1 erscheint im Spiel-Kategorieverlauf; er ändert keine Formel.
+
+## Pakete 6/7 – Wertung und vollständige Ansichten (umgesetzt)
 
 Paket 6 berechnet positive Rohwerte, geteilte Ränge und N-basierte Platzpunkte gemäß Konzept.
 Die reine Berechnung liegt in `server/src/categoryScoring.ts` und ist anhand der Konzeptbeispiele

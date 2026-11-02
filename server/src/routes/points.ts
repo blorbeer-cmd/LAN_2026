@@ -6,6 +6,7 @@ import {
   ensurePointAccounts,
   pointParticipants,
   pointParticipantCount,
+  isPointsEvent,
   pointStandings,
   PointsError,
   pointsSettings,
@@ -276,6 +277,7 @@ pointsRouter.post('/rounds/:id/void', requireGroupRole('admin'), (req, res) => {
 
 pointsRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   const eventId = res.locals.eventId as string;
+  if (!isPointsEvent(eventId)) throw new PointsError('Die Punktewertung gilt nur für reguläre veröffentlichte LANs.');
   reconcileBetting(eventId);
   db.transaction(() => {
     requirePointsOpen(eventId);

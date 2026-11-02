@@ -621,7 +621,7 @@ function renderLeaderboardTop() {
   if (standings.length === 0) return '';
   const ranks = sharedRankNumbers(standings.map((s) => s.points));
   const items = standings.slice(0, 6).map((s, index) => ({
-    ...(lanStandings ? { rank: ranks[index] } : {}),
+    ...(lanStandings ? { rank: s.rank ?? ranks[index] } : {}),
     lead: avatarHtml(s, 28),
     title: escapeHtml(s.name),
     value: `${s.points} P`,

@@ -92,11 +92,11 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
   if (type === 'draw') {
     const draw = db
       .prepare(
-        `SELECT d.teams,d.match_id,d.tournament_id,g.name FROM matchmaking_draws d
+        `SELECT d.teams,d.match_id,d.tournament_id,d.betting_allowed,g.name FROM matchmaking_draws d
       JOIN games g ON g.id = d.game_id WHERE d.id = ? AND d.group_id = ? AND d.event_id = ?`,
       )
       .get(id, groupId, eventId) as
-      { teams: string; match_id: string | null; tournament_id: string | null; name: string } | undefined;
+      { teams: string; match_id: string | null; tournament_id: string | null; betting_allowed: number; name: string } | undefined;
     if (!draw) throw new PointsError('Match nicht gefunden.', 404);
     const teams = JSON.parse(draw.teams) as Array<{ players: Array<{ id: string; name: string }> }>;
     const sides: BetOutcome[] = teams.map((t, i) => ({
@@ -120,7 +120,7 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
       started: Boolean(result),
       finished: Boolean(result),
       winner: data?.isDraw ? DRAW_BET_OUTCOME : data?.winnerTeamIndex == null ? null : String(data.winnerTeamIndex),
-      invalid: Boolean(draw.tournament_id || mismatch),
+      invalid: Boolean(!draw.betting_allowed || draw.tournament_id || mismatch),
     };
   }
   const fixture =
@@ -162,13 +162,15 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
   let winner: string | null = null;
   if (tournament.status === 'completed' && !tournament.ended_early) {
     if (tournament.format === 'round_robin') {
-      winner =
-        computeRoundRobinStandings(
+      const standings = computeRoundRobinStandings(
           teams.map((t) => t.id),
           fixtures
             .filter((m) => m.winner_team_id || m.is_draw)
             .map((m) => ({ teamAId: m.team_a_id!, teamBId: m.team_b_id!, winnerTeamId: m.winner_team_id })),
-        )[0]?.teamId ?? null;
+        );
+      const first = standings[0];
+      const tied = first && standings.filter((row) => row.points === first.points && row.wins === first.wins).length > 1;
+      winner = first && !tied ? first.teamId : null;
     } else {
       const bracket = fixtures.filter(
         (m) => !m.is_third_place && (tournament.format !== 'group_knockout' || m.stage === 'knockout'),
@@ -181,7 +183,9 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
     title: `${tournament.name} · Gesamtsieger`,
     outcomes: teams,
     winner,
-    started: fixtures.some((m) => !m.is_bye && m.played_at !== null),
+    started: fixtures.some((m) => !m.is_bye && m.played_at !== null) || Boolean(db.prepare(`SELECT 1
+      FROM betting_rounds r JOIN tournament_matches m ON m.id=r.source_id
+      WHERE r.source_type='tournament_match' AND m.tournament_id=? AND r.locked_at IS NOT NULL LIMIT 1`).get(tournament.id)),
     finished: tournament.status === 'completed' || Boolean(tournament.ended_early),
     invalid: Boolean(tournament.ended_early),
   };
@@ -197,19 +201,21 @@ function tipsFor(id: string): TipRow[] {
   return db.prepare('SELECT rowid AS sequence,* FROM betting_tips WHERE round_id = ? ORDER BY created_at,rowid').all(id) as TipRow[];
 }
 export function notifyBettingRound(round: BettingRound): void {
-  if (round.notice_sent || round.closes_at <= Date.now() || round.status !== 'open' || !pointsAreVisible(round.event_id)) return;
+  if (round.notice_sent || (round.closes_at > 0 && round.closes_at <= Date.now()) || round.status !== 'open' || !pointsAreVisible(round.event_id)) return;
   const recipients = pointParticipants(round.group_id, round.event_id).map((p) => p.id);
   notifyPlayers(
     recipients,
     {
       title: `Neue Wettmöglichkeit: ${round.title}`,
-      body: `Auch Mitspieler können tippen. Tipps bis ${new Date(round.closes_at).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })}.`,
+      body: round.closes_at > 0
+        ? `Auch Mitspieler können tippen. Tipps bis ${new Date(round.closes_at).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })}.`
+        : 'Auch Mitspieler können tippen. Vor Spielbeginn die Tipps schließen.',
       url: `/?eventId=${encodeURIComponent(round.event_id)}#points/round/${encodeURIComponent(round.id)}`,
       type: 'betting-open',
       targetId: round.id,
     },
     'direct',
-    { key: `betting-open:${round.id}`, expiresAt: round.closes_at },
+    { key: `betting-open:${round.id}`, ...(round.closes_at > 0 ? { expiresAt: round.closes_at } : {}) },
     { groupId: round.group_id, eventId: round.event_id },
   );
   db.prepare('UPDATE betting_rounds SET notice_sent = 1 WHERE id = ?').run(round.id);
@@ -220,11 +226,13 @@ export function createBettingRound(
   type: BetSource,
   sourceId: string,
   closesAt: number,
-  actorId: string,
+  actorId: string | null,
+  publish = true,
 ): string {
   const id = db.transaction(() => {
     requirePointsVisible(eventId);
     requirePointsOpen(eventId);
+    requireActiveBettingEvent(eventId);
     const source = betSourceState(groupId, eventId, type, sourceId);
     if (
       source.started ||
@@ -262,8 +270,43 @@ export function createBettingRound(
     );
     return roundId;
   }).immediate();
-  notifyBettingRound(getBettingRound(groupId, eventId, id));
+  if (publish) notifyBettingRound(getBettingRound(groupId, eventId, id));
   return id;
+}
+function requireActiveBettingEvent(eventId: string): void {
+  if (!db.prepare("SELECT 1 FROM events WHERE id=? AND status='published' AND ended_at IS NULL").get(eventId))
+    throw new PointsError('Neue Wetten sind nur in einer laufenden veröffentlichten LAN möglich.');
+}
+
+// Called inside the competition transaction. Only approved draws and playable
+// tournament sources create markets; notification delivery follows the commit.
+function ensureBettingMarkets(eventId?: string): BettingRound[] {
+  const sources = db.prepare(`WITH candidates AS (
+    SELECT d.id AS source_id,d.group_id,d.event_id,'draw' AS source_type,d.created_by
+      FROM matchmaking_draws d WHERE d.betting_allowed=1 AND d.match_id IS NULL AND d.tournament_id IS NULL
+    UNION ALL
+    SELECT m.id,t.group_id,t.event_id,'tournament_match',t.created_by FROM tournament_matches m
+      JOIN tournaments t ON t.id=m.tournament_id WHERE t.status!='completed' AND t.ended_early=0
+        AND m.played_at IS NULL AND m.is_bye=0 AND m.team_a_id IS NOT NULL AND m.team_b_id IS NOT NULL
+    UNION ALL
+    SELECT t.id,t.group_id,t.event_id,'tournament',t.created_by FROM tournaments t
+      WHERE t.status!='completed' AND t.ended_early=0
+  ) SELECT c.* FROM candidates c JOIN events e ON e.id=c.event_id AND e.group_id=c.group_id
+    JOIN points_settings s ON s.event_id=e.id AND s.closed_at IS NULL AND s.visible=1
+    LEFT JOIN betting_rounds r ON r.event_id=c.event_id AND r.source_type=c.source_type AND r.source_id=c.source_id
+    WHERE r.id IS NULL AND e.event_type_key='lan' AND e.is_test=0 AND e.status='published' AND e.ended_at IS NULL
+      AND (? IS NULL OR e.id=?)`).all(eventId ?? null, eventId ?? null) as
+    Array<{ source_id: string; group_id: string; event_id: string; source_type: BetSource; created_by: string | null }>;
+  const created: BettingRound[] = [];
+  for (const row of sources) {
+    const source = betSourceState(row.group_id, row.event_id, row.source_type, row.source_id);
+    const sides = source.outcomes.filter((outcome) => outcome.id !== DRAW_BET_OUTCOME);
+    if (source.started || source.finished || source.invalid || sides.length < 2 ||
+        sides.some((side) => !side.playerIds.length) || (row.source_type !== 'tournament' && sides.length !== 2)) continue;
+    const id = createBettingRound(row.group_id, row.event_id, row.source_type, row.source_id, 0, row.created_by, false);
+    created.push(getBettingRound(row.group_id, row.event_id, id));
+  }
+  return created;
 }
 export function roundView(round: BettingRound, playerId: string) {
   const tips = tipsFor(round.id);
@@ -276,7 +319,7 @@ export function roundView(round: BettingRound, playerId: string) {
     sourceId: round.source_id,
     title: round.title,
     status: round.status,
-    closesAt: round.closes_at,
+    closesAt: round.closes_at || null,
     settledAt: round.settled_at,
     revision: round.revision,
     result: round.result_key,
@@ -354,13 +397,12 @@ function settleRound(
 // Invoked after competition writes, on reads, and by the deadline sweeper.
 // Result corrections are handled by the explicit administrative path only.
 export function reconcileBetting(eventId?: string, publish = true): BettingRound[] {
-  const rounds = (
-    eventId
-      ? db.prepare("SELECT * FROM betting_rounds WHERE event_id = ? AND status IN ('open','locked')").all(eventId)
-      : db.prepare("SELECT * FROM betting_rounds WHERE status IN ('open','locked')").all()
-  ) as BettingRound[];
   const changed: BettingRound[] = [];
   db.transaction(() => {
+    changed.push(...ensureBettingMarkets(eventId));
+    const rounds = (eventId
+      ? db.prepare("SELECT * FROM betting_rounds WHERE event_id = ? AND status IN ('open','locked')").all(eventId)
+      : db.prepare("SELECT * FROM betting_rounds WHERE status IN ('open','locked')").all()) as BettingRound[];
     for (const row of rounds) {
       let round = getBettingRound(row.group_id, row.event_id, row.id);
       if (!['open', 'locked'].includes(round.status)) continue;
@@ -385,7 +427,7 @@ export function reconcileBetting(eventId?: string, publish = true): BettingRound
         changed.push(round);
         continue;
       }
-      if (round.status === 'open' && round.closes_at <= Date.now()) {
+      if (round.status === 'open' && round.closes_at > 0 && round.closes_at <= Date.now()) {
         closeRound(round, Date.now());
         changed.push(round);
         round = getBettingRound(round.group_id, round.event_id, round.id);
@@ -404,6 +446,7 @@ function publishBettingChanges(changed: BettingRound[]): void {
     const fresh = getBettingRound(round.group_id, round.event_id, round.id);
     if (fresh.status !== 'open')
       resolvePushTopic(`betting-open:${round.id}`, false, { groupId: round.group_id, eventId: round.event_id });
+    else notifyBettingRound(fresh);
     broadcast(Events.leaderboardChanged, null, { groupId: round.group_id, eventId: round.event_id });
   }
 }
@@ -431,9 +474,10 @@ export function putTip(
   db.transaction(() => {
     requirePointsVisible(eventId);
     requirePointsOpen(eventId);
+    requireActiveBettingEvent(eventId);
     ensurePointAccounts(eventId);
     const round = getBettingRound(groupId, eventId, roundId);
-    if (round.status !== 'open' || round.closes_at <= Date.now()) throw new PointsError('Die Tipps sind geschlossen.');
+    if (round.status !== 'open' || (round.closes_at > 0 && round.closes_at <= Date.now())) throw new PointsError('Die Tipps sind geschlossen.');
     if (!pointParticipants(groupId, eventId).some((p) => p.id === playerId))
       throw new PointsError('Keine Wertungsteilnahme.', 404);
     if (!(JSON.parse(round.outcomes) as BetOutcome[]).some((o) => o.id === outcomeId))
@@ -456,12 +500,13 @@ export function removeTip(groupId: string, eventId: string, roundId: string, pla
   db.transaction(() => {
     requirePointsOpen(eventId);
     const round = getBettingRound(groupId, eventId, roundId);
-    if (round.status !== 'open' || round.closes_at <= Date.now()) throw new PointsError('Die Tipps sind geschlossen.');
+    if (round.status !== 'open' || (round.closes_at > 0 && round.closes_at <= Date.now())) throw new PointsError('Die Tipps sind geschlossen.');
     db.prepare('DELETE FROM betting_tips WHERE round_id = ? AND player_id = ?').run(round.id, playerId);
     bookBettingMarket(groupId, eventId, round.id, 'Tipp zurückgenommen');
   }).immediate();
 }
 export function lockBettingRound(round: BettingRound): void {
+  const closedChampions: BettingRound[] = [];
   db.transaction(() => {
     requirePointsOpen(round.event_id);
     const fresh = getBettingRound(round.group_id, round.event_id, round.id);
@@ -469,8 +514,20 @@ export function lockBettingRound(round: BettingRound): void {
     const source = betSourceState(round.group_id, round.event_id, round.source_type, round.source_id);
     if (source.started || source.invalid || sourceChanged(round, source))
       throw new PointsError('Der Wettbewerb hat bereits begonnen oder wurde geändert.');
+    if (round.source_type === 'tournament_match') {
+      const champions = db.prepare(`SELECT r.* FROM betting_rounds r
+        JOIN tournament_matches m ON m.tournament_id=r.source_id
+        WHERE m.id=? AND r.source_type='tournament' AND r.event_id=? AND r.status='open'`)
+        .all(round.source_id, round.event_id) as BettingRound[];
+      for (const champion of champions) {
+        closeRound(champion, Date.now());
+        closedChampions.push(champion);
+      }
+    }
     closeRound(fresh, Date.now());
   }).immediate();
+  for (const champion of closedChampions)
+    resolvePushTopic(`betting-open:${champion.id}`, false, { groupId: champion.group_id, eventId: champion.event_id });
 }
 export function refundBettingRound(round: BettingRound, actorId: string, reason: string): void {
   db.transaction(() => {

@@ -21,6 +21,7 @@ import { requireGroupRole } from '../groupAuthorization';
 import { activeGroupPlayers, type GroupPlayerSnapshot } from '../groupPlayers';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 import { buildTeamsSnapshot } from './matchmaking';
+import { withBettingAccounting } from '../betting';
 
 export const draftRouter = Router();
 
@@ -38,6 +39,7 @@ interface DraftRow {
   pool_ids: string;
   picks: string;
   created_at: number;
+  betting_allowed: number;
 }
 
 interface Pick {
@@ -116,6 +118,7 @@ function buildState(row: DraftRow | undefined) {
       groupId: row.group_id,
       eventId: row.event_id,
       status: row.status,
+      bettingAllowed: Boolean(row.betting_allowed),
       gameId: row.game_id,
       gameName: game?.name ?? '?',
       gameIcon: game?.icon ?? '🎮',
@@ -159,7 +162,8 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const eventId = scope.eventId;
-  const { gameId, captainIds, poolPlayerIds } = req.body ?? {};
+  const { gameId, captainIds, poolPlayerIds, bettingAllowed = false } = req.body ?? {};
+  if (typeof bettingAllowed !== 'boolean') return res.status(400).json({ error: 'Wetten erlauben muss Ja oder Nein sein.' });
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -178,6 +182,8 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   if (poolPlayerIds.length < 1) {
     return res.status(400).json({ error: 'Der Pool braucht mindestens einen Spieler zum Picken.' });
   }
+  if (bettingAllowed && captainIds.length !== 2)
+    return res.status(400).json({ error: 'Wetten sind nur bei genau zwei Teams möglich.' });
   const allIds = [...captainIds, ...poolPlayerIds];
   if (new Set(allIds).size !== allIds.length) {
     return res.status(400).json({ error: 'Ein Spieler kann nicht doppelt teilnehmen (Captain und Pool).' });
@@ -205,6 +211,7 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   const row: DraftRow = {
     id: nanoid(),
     created_by: req.player!.id,
+    betting_allowed: Number(bettingAllowed),
     group_id: groupId,
     event_id: eventId,
     game_id: gameId,
@@ -218,8 +225,8 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
     db.transaction(() => {
       db.prepare(
         `INSERT INTO drafts
-         (id, group_id, event_id, game_id, status, captain_ids, pool_ids, picks, created_at, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, group_id, event_id, game_id, status, captain_ids, pool_ids, picks, created_at, created_by, betting_allowed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         row.id,
         row.group_id,
@@ -231,6 +238,7 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
         row.picks,
         row.created_at,
         row.created_by,
+        row.betting_allowed,
       );
       const insertRef = db.prepare(
         `INSERT INTO draft_player_refs
@@ -337,7 +345,7 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   }
 
   let finishedDraw: Record<string, unknown> | null = null;
-  const saved = db.transaction(() => {
+  const saved = withBettingAccounting(row.event_id, () => {
     const update = db
       .prepare(
         `UPDATE drafts SET pool_ids = ?, picks = ?, status = ?
@@ -368,8 +376,8 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
       }));
       const drawId = nanoid();
       db.prepare(
-        "INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source, created_by) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'draft', ?)",
-      ).run(drawId, row.game_id, historyEventId, groupId, JSON.stringify(teamsSnapshot), now, row.created_by);
+        "INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source, created_by, betting_allowed) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'draft', ?, ?)",
+      ).run(drawId, row.game_id, historyEventId, groupId, JSON.stringify(teamsSnapshot), now, row.created_by, row.betting_allowed);
       finishedDraw = {
         id: drawId,
         gameId: row.game_id,
@@ -380,12 +388,13 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
         generatedAt: now,
         matchId: null,
         source: 'draft',
+        bettingAllowed: Boolean(row.betting_allowed),
         tournamentId: null,
         tournamentName: null,
       };
     }
     return true;
-  }).immediate();
+  });
   if (!saved) return res.status(409).json({ error: 'Der Draft wurde zwischenzeitlich geändert.' });
   if (completed) resolvePushTopic(`draft:${row.id}`, false, { groupId, eventId: row.event_id });
 

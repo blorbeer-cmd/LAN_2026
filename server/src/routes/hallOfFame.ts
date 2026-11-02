@@ -73,7 +73,8 @@ hallOfFameRouter.get('/', (req, res) => {
         points: standing.points,
         wins: standing.wins,
         matchesPlayed: standing.matchesPlayed,
-        rank: lanPoints ? firstRankByPoints.get(standing.points)! : index + 1,
+        rank: lanPoints ? ('rank' in standing && typeof standing.rank === 'number'
+          ? standing.rank : firstRankByPoints.get(standing.points)!) : index + 1,
       };
     });
     const top = standings[0];

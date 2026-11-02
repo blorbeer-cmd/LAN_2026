@@ -34,6 +34,9 @@ let avoidAdjacentOpponents = false;
 // for the same game (e.g. from an unrelated realtime update).
 let avoidAdjacentOpponentsGameId = null;
 let teamCountValue = '2';
+let bettingAllowed = false;
+const canOfferBetting = () => Boolean(state.activeEvent?.pointsEnabled &&
+  state.activeEvent.status === 'published' && !state.activeEvent.isEnded);
 
 // Tournament team names are capped server-side (TEAM_NAME_MAX_LENGTH).
 const DRAW_TEAM_NAME_MAX_LENGTH = 30;
@@ -711,10 +714,34 @@ function wireDrawCards(container, ctx) {
         // "Teams auslosen" re-roll, this keeps the exact teams) so the result
         // entered below links back to it in Historie, same as any other draw
         // — see the /rematch endpoint's comment.
-        const rematchDraw = await api.matchmaking.rematch({ gameId: draw.gameId, teams });
-        state.lastMatchmaking = rematchDraw;
-        ctx.rerender();
-        openDrawResultDialog(rematchDraw, ctx);
+        const create = async (allowBetting) => {
+          const rematchDraw = await api.matchmaking.rematch({ gameId: draw.gameId, teams, bettingAllowed: allowBetting });
+          state.lastMatchmaking = rematchDraw;
+          ctx.rerender();
+          return rematchDraw;
+        };
+        if (canOfferBetting() && teams.length === 2) {
+          const { close } = openModal('Rematch erstellen', `<form class="stack" data-rematch-form>
+            <label class="check-row"><input type="checkbox" name="bettingAllowed">Wetten erlauben</label>
+            <div class="row" style="justify-content:flex-end"><button type="submit" class="btn btn-primary">Rematch erstellen</button></div></form>`, {
+            onMount(el) {
+              el.querySelector('form').addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const button = event.currentTarget.querySelector('button');
+                const allowBetting = new FormData(event.currentTarget).has('bettingAllowed');
+                button.disabled = true;
+                try {
+                  const rematchDraw = await create(allowBetting);
+                  close();
+                  if (!allowBetting) openDrawResultDialog(rematchDraw, ctx);
+                }
+                catch (error) { button.disabled = false; showToast(error.message, { error: true }); }
+              });
+            },
+          });
+          return;
+        }
+        openDrawResultDialog(await create(false), ctx);
       } catch (err) {
         showToast(err.message, { error: true });
       }
@@ -1226,6 +1253,7 @@ export function renderMatchmaking(container, ctx) {
           renderTrailing: (player) => playerSkillHtml(player, selectedGameId),
         })}
         <div class="card-footer-actions row" style="justify-content:flex-end;flex-wrap:wrap;">
+          ${canOfferBetting() ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" id="mm-betting-allowed" ${bettingAllowed ? 'checked' : ''}>Wetten erlauben</label>` : ''}
           <div class="check-row" style="padding:0;border-bottom:0;">
             <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
             <span class="title-with-info tournament-option-label">
@@ -1282,6 +1310,7 @@ export function renderMatchmaking(container, ctx) {
           })}
         </div>
         <div class="card-footer-actions">
+          ${canOfferBetting() ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" id="draft-betting-allowed" ${bettingAllowed ? 'checked' : ''}>Wetten erlauben</label>` : ''}
           <div class="row" style="flex-wrap:wrap;">
             <button type="button" class="btn btn-primary btn-sm" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten</button>
             ${draftReady ? '' : infoTooltipHtml(
@@ -1380,6 +1409,7 @@ export function renderMatchmaking(container, ctx) {
         gameId: selectedGameId,
         captainIds,
         poolPlayerIds,
+        bettingAllowed: Boolean(canOfferBetting() && bettingAllowed),
       });
       draftCaptainIds = new Set();
       ctx.rerender();
@@ -1397,12 +1427,16 @@ export function renderMatchmaking(container, ctx) {
   container.querySelector('#mm-avoid-adjacent')?.addEventListener('change', (e) => {
     avoidAdjacentOpponents = e.target.checked;
   });
+  container.querySelectorAll('#mm-betting-allowed, #draft-betting-allowed').forEach((input) => {
+    input.addEventListener('change', () => { bettingAllowed = input.checked; });
+  });
 
   container.querySelector('#mm-generate')?.addEventListener('click', async () => {
     const gameId = selectedGameId;
     const playerIds = [...checkedIds];
     const teamCountRaw = capTeamCountValue(container.querySelector('#mm-teamcount').value, playerIds.length);
-    const body = { gameId, playerIds, avoidAdjacentOpponents };
+    const body = { gameId, playerIds, avoidAdjacentOpponents,
+      bettingAllowed: Boolean(canOfferBetting() && bettingAllowed) };
     if (teamCountRaw) body.teamCount = parseInt(teamCountRaw, 10);
 
     try {

@@ -162,7 +162,8 @@ function loadAvoidPairs(groupId: string, eventId: string, playerIds: string[]): 
 // opposing teams can depend on how competitive/serious that particular round
 // is, not just the game itself.
 matchmakingRouter.post('/', (req, res) => {
-  const { gameId, playerIds, teamCount, avoidAdjacentOpponents } = req.body ?? {};
+  const { gameId, playerIds, teamCount, avoidAdjacentOpponents, bettingAllowed = false } = req.body ?? {};
+  if (typeof bettingAllowed !== 'boolean') return res.status(400).json({ error: 'Wetten erlauben muss Ja oder Nein sein.' });
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -222,6 +223,8 @@ matchmakingRouter.post('/', (req, res) => {
   const avoidPairs: SeatPair[] = avoidAdjacentOpponents ? loadAvoidPairs(req.group!.id, eventId, uniqueIds) : [];
 
   const resolvedTeamCount = computeTeamCount(teamCount, players.length, game.max_team_size);
+  if (bettingAllowed && resolvedTeamCount !== 2)
+    return res.status(400).json({ error: 'Wetten sind nur bei genau zwei Teams möglich.' });
   const teamIdLists = balanceTeams(ratings, resolvedTeamCount, avoidPairs);
   const seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
   const conflictNeighbors = seatConflictNeighbors(teamIdLists, avoidPairs);
@@ -259,17 +262,16 @@ matchmakingRouter.post('/', (req, res) => {
     generatedAt: Date.now(),
     matchId: null as string | null,
     source: null as string | null,
+    bettingAllowed,
   };
 
   // Logged for the history view (every draw, including re-rolls — see the
   // matchmaking_draws comment in db.ts for why this is separate from the
   // actually-recorded `matches`).
-  db.prepare(
-    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt, req.player!.id);
-
-  reconcileBetting(eventId);
+  withBettingAccounting(eventId, () => db.prepare(
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, created_by, betting_allowed)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt, req.player!.id, Number(bettingAllowed)));
   broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
   res.json(result);
 });
@@ -280,7 +282,8 @@ matchmakingRouter.post('/', (req, res) => {
 // Body: { gameId: string, teams: [{ playerIds: string[] }] } (same shape the
 // frontend already has lying around from the draw it's rematching).
 matchmakingRouter.post('/rematch', (req, res) => {
-  const { gameId, teams: teamsInput } = req.body ?? {};
+  const { gameId, teams: teamsInput, bettingAllowed = false } = req.body ?? {};
+  if (typeof bettingAllowed !== 'boolean') return res.status(400).json({ error: 'Wetten erlauben muss Ja oder Nein sein.' });
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -326,6 +329,8 @@ matchmakingRouter.post('/rematch', (req, res) => {
   }
 
   const teams = buildTeamsSnapshot(gameId, teamPlayerIdLists);
+  if (bettingAllowed && teams.length !== 2)
+    return res.status(400).json({ error: 'Wetten sind nur bei genau zwei Teams möglich.' });
 
   const drawId = nanoid();
   const result = {
@@ -338,14 +343,13 @@ matchmakingRouter.post('/rematch', (req, res) => {
     generatedAt: Date.now(),
     matchId: null as string | null,
     source: 'rematch' as string | null,
+    bettingAllowed,
   };
 
-  db.prepare(
-    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source, created_by)
-     VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'rematch', ?)`
-  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), result.generatedAt, req.player!.id);
-
-  reconcileBetting(eventId);
+  withBettingAccounting(eventId, () => db.prepare(
+    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source, created_by, betting_allowed)
+     VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'rematch', ?, ?)`
+  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), result.generatedAt, req.player!.id, Number(bettingAllowed)));
   broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
   res.json(result);
 });
@@ -363,6 +367,7 @@ interface DrawRow {
   source: string | null;
   tournamentId?: string | null;
   tournamentName?: string | null;
+  bettingAllowed: number;
 }
 
 function parseDrawRow(r: DrawRow) {
@@ -379,6 +384,7 @@ function parseDrawRow(r: DrawRow) {
     source: r.source,
     tournamentId: r.tournamentId ?? null,
     tournamentName: r.tournamentName ?? null,
+    bettingAllowed: Boolean(r.bettingAllowed),
   };
 }
 
@@ -466,7 +472,7 @@ matchmakingRouter.get('/history', (req, res) => {
   const columns = `md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
               md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
               md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
-              md.match_id AS matchId, md.source AS source,
+              md.match_id AS matchId, md.source AS source, md.betting_allowed AS bettingAllowed,
               md.tournament_id AS tournamentId, t.name AS tournamentName`;
   const joins = `FROM matchmaking_draws md
        JOIN games g ON g.id = md.game_id
@@ -616,7 +622,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
       `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
               md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
               md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
-              md.match_id AS matchId, md.source AS source,
+              md.match_id AS matchId, md.source AS source, md.betting_allowed AS bettingAllowed,
               md.tournament_id AS tournamentId, t.name AS tournamentName
        FROM matchmaking_draws md JOIN games g ON g.id = md.game_id
        LEFT JOIN tournaments t ON t.id = md.tournament_id WHERE md.id = ?`

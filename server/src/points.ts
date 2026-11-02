@@ -41,7 +41,6 @@ export function requirePointsVisible(eventId: string): void {
   if (!pointsAreVisible(eventId)) throw new PointsError('LAN-Punkte sind für dieses Event ausgeblendet.', 403);
 }
 export function requirePointsOpen(eventId: string): PointsSettings {
-  if (!isPointsEvent(eventId)) throw new PointsError('Die Punktewertung gilt nur für reguläre veröffentlichte LANs.', 409);
   const settings = pointsSettings(eventId);
   if (!settings) throw new PointsError('Die Punktewertung ist noch nicht aktiviert.', 404);
   if (settings.closed_at !== null) throw new PointsError('Die Punktewertung ist abgeschlossen.');

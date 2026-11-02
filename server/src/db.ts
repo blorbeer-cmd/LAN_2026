@@ -5944,6 +5944,17 @@ registerMigration({ version: 131, name: 'restart points without balances and act
   }
 } });
 
+registerMigration({ version: 132, name: 'persist creator betting choice on draws and drafts', up: () => {
+  for (const table of ['matchmaking_draws', 'drafts']) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'betting_allowed'))
+      db.exec(`ALTER TABLE ${table} ADD COLUMN betting_allowed INTEGER NOT NULL DEFAULT 0 CHECK(betting_allowed IN (0,1))`);
+  }
+  // Existing markets retain the decision under which they were opened.
+  db.exec(`UPDATE matchmaking_draws SET betting_allowed=1 WHERE EXISTS (
+    SELECT 1 FROM betting_rounds r WHERE r.source_type='draw' AND r.source_id=matchmaking_draws.id)`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

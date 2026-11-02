@@ -37,6 +37,49 @@ test('points migrations leave legacy LANs hidden and preserve background balance
   restarted.close();
 });
 
+test('migration 132 preserves existing market permission, defaults new choices off, and rolls back both schema changes on failure', () => {
+  const dbFile = makeTempDbPath('creator-betting-choice');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`INSERT INTO events(id,name,starts_at,group_id,status,event_type_key)
+      VALUES('choice-event','Existing LAN',1,'default-group','published','lan');
+    INSERT INTO games(id,name,created_at,group_id,status) VALUES('choice-game','Choice game',1,'default-group','catalog');
+    INSERT INTO matchmaking_draws(id,game_id,event_id,group_id,teams,generated_at) VALUES
+      ('choice-approved','choice-game','choice-event','default-group','[]',1),
+      ('choice-unspecified','choice-game','choice-event','default-group','[]',1);
+    INSERT INTO betting_rounds(id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_at)
+      VALUES('choice-market','default-group','choice-event','draw','choice-approved','Existing market','[]','open',10,1);
+    ALTER TABLE matchmaking_draws DROP COLUMN betting_allowed;
+    ALTER TABLE drafts DROP COLUMN betting_allowed;
+    DELETE FROM schema_migrations WHERE version=132;
+    CREATE TRIGGER fail_creator_choice BEFORE UPDATE ON matchmaking_draws
+      BEGIN SELECT RAISE(ABORT,'creator choice migration failed'); END;`);
+  const journal = fixture.prepare('SELECT * FROM points_journal ORDER BY id').all();
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /creator choice migration failed/);
+  const failed = new Database(dbFile);
+  for (const table of ['matchmaking_draws', 'drafts'])
+    assert.ok(!(failed.pragma(`table_info(${table})`) as Array<{ name: string }>).some((column) => column.name === 'betting_allowed'));
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=132').get(), undefined);
+  failed.exec('DROP TRIGGER fail_creator_choice');
+  failed.close();
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  const choices = migrated.prepare('SELECT id,betting_allowed FROM matchmaking_draws ORDER BY id').all();
+  assert.deepEqual(choices, [{ id: 'choice-approved', betting_allowed: 1 }, { id: 'choice-unspecified', betting_allowed: 0 }]);
+  assert.equal((migrated.pragma('table_info(drafts)') as Array<{ name: string; dflt_value: string }>).find((column) => column.name === 'betting_allowed')!.dflt_value, '0');
+  migrated.exec('DELETE FROM schema_migrations WHERE version=132');
+  migrated.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const replayed = new Database(dbFile);
+  assert.deepEqual(replayed.prepare('SELECT id,betting_allowed FROM matchmaking_draws ORDER BY id').all(), choices);
+  assert.deepEqual(replayed.prepare('SELECT * FROM points_journal ORDER BY id').all(), journal);
+  assert.deepEqual(replayed.pragma('foreign_key_check'), []);
+  replayed.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 function makeTempDbPath(name: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-migration-test-'));
   return path.join(dir, `${name}.db`);
@@ -1507,10 +1550,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 131);
+  assert.equal(migrations.length, 132);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 131 }, (_, index) => index + 1),
+    Array.from({ length: 132 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -2112,8 +2155,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 131 }, (_, index) => index + 1),
-    'every version 1..131 runs exactly once',
+    Array.from({ length: 132 }, (_, index) => index + 1),
+    'every version 1..132 runs exactly once',
   );
 });
 

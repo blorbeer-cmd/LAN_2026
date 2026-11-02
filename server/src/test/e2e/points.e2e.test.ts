@@ -28,6 +28,7 @@ let alice: E2EAccount;
 let bob: E2EAccount;
 let eventId: string;
 let myId: string;
+let pointsGame: { id: string };
 const fixtureDir = mkdtempSync(path.join(tmpdir(), 'respawn-points-browser-'));
 const fixtureDb = path.join(fixtureDir, 'points.db');
 const pageErrors: string[] = [];
@@ -80,6 +81,7 @@ before(async () => {
     await api(`/api/events/${eventId}/invitation/accept`, 'POST', {}, session);
     await api('/api/me/active-event', 'PUT', { eventId }, session);
   }
+  pointsGame = await api('/api/games', 'POST', { name: 'Punkte-Spiel' });
   // A LAN hostname is not a secure context. Exercise admin actions there as
   // localhost would hide failures in secure-context-only browser APIs.
   browser = await chromium.launch();
@@ -209,13 +211,33 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.keyboard.press('Escape');
   await member.locator('[data-points-source]').selectOption('');
 
-  const game = await api('/api/games', 'POST', { name: 'Punkte-Spiel' });
-  const draw = await api('/api/matchmaking', 'POST', { gameId: game.id, playerIds: [alice.id, bob.id], teamCount: 2 });
-  await navigate(admin, 'matchmaking');
-  await admin.locator(`[data-open-betting-source="${draw.id}"]`).click();
-  await admin.getByRole('button', { name: 'Runde öffnen & benachrichtigen', exact: true }).click();
-  await admin.locator('.modal-backdrop').waitFor({ state: 'detached' });
-  const round = (await api(`/api/points?eventId=${eventId}`)).rounds[0];
+  const game = pointsGame;
+  await navigate(member, 'matchmaking');
+  await member.locator('#mm-game-search').click();
+  await member.locator(`#mm-game-list [data-search-select-value="${game.id}"]`).click();
+  for (const id of [myId, alice.id, bob.id])
+    await member.locator(`[data-roster-picker="mm-draw-roster"] [data-player="${id}"]`).setChecked(id !== myId);
+  await member.locator('#mm-teamcount').fill('2');
+  assert.equal(await member.locator('#mm-betting-allowed').isChecked(), false);
+  await member.locator('#mm-betting-allowed').focus();
+  await member.keyboard.press('Space');
+  await member.waitForFunction(() => document.querySelectorAll('#toast-container .toast').length === 0);
+  for (const width of [320, 1440]) {
+    await member.setViewportSize({ width, height: 900 });
+    await member.locator('#mm-betting-allowed').scrollIntoViewIfNeeded();
+    assert.ok(await member.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
+    await member.screenshot({ path: `test-results/match-betting-choice-${width}.png`, animations: 'disabled' });
+  }
+  await member.setViewportSize({ width: 390, height: 844 });
+  const [createdDraw] = await Promise.all([
+    member.waitForResponse((response) => response.url().includes('/api/matchmaking') && response.request().method() === 'POST'),
+    member.locator('#mm-generate').click(),
+  ]);
+  assert.equal(createdDraw.status(), 200);
+  const draw = await createdDraw.json();
+  assert.equal(draw.bettingAllowed, true, 'a regular member chooses betting while creating the match');
+  const round = (await api(`/api/points?eventId=${eventId}`)).rounds.find((row: { sourceId: string }) => row.sourceId === draw.id);
+  assert.ok(round, 'the allowed match immediately has a market, without an admin opening it');
   await member.locator('#notifications-btn').click();
   await member.locator(`[data-notification-navigate="points"][data-notification-target="${round.id}"]`).click();
   await member.waitForFunction((id) => window.location.hash === `#points/round/${id}`, round.id);
