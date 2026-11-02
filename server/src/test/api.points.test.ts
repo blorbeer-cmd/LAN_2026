@@ -17,7 +17,8 @@ import { config } from '../config';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { roundView } from '../betting';
+import { reconcileBetting, type roundView } from '../betting';
+import { sweepBetting } from '../routes/points';
 import { createPointsReport, readPointsReports, resolvePointsReport } from '../pointsReports';
 
 const app = createTestApp();
@@ -927,7 +928,7 @@ test('retired task rewards and entry deductions cannot mint or remove wallet fun
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM point_entries WHERE event_id=?').get(f.eventId) as { n: number }).n, 0);
 });
 
-test('players bet on their own games; visible pools lock and settle zero-sum, once, with a personal notification', async (t) => {
+test('rank-only results and conflicting winner corrections settle zero-sum, once, with a personal notification', async (t) => {
   const f = await fixture();
   const r = await round(f);
   const a = f.players[0],
@@ -948,9 +949,10 @@ test('players bet on their own games; visible pools lock and settle zero-sum, on
     bets.every((v) => v.status === 200),
     JSON.stringify(bets.map((v) => v.body)),
   );
-  const preview = (await request(app).get('/api/points')).body.rounds[0];
+  const preview = (await request(app).get('/api/points').set('x-test-player-id', a)).body.rounds[0];
   assert.equal(preview.pot, 15);
   assert.equal(preview.tipCount, 2);
+  assert.deepEqual(preview.outcomes.map((o: { myPossiblePayout: number | null }) => o.myPossiblePayout), [15, null, null]);
   assert.deepEqual(preview.outcomes.map((o: { stake: number; odds: number | null }) => [o.stake, o.odds]),
     [[10, 1.5], [5, 3], [0, null]]);
   assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 10, available: 90 });
@@ -994,8 +996,7 @@ test('players bet on their own games; visible pools lock and settle zero-sum, on
     .send({
       gameId: f.gameId,
       drawId: r.drawId,
-      teams: r.outcomes.map((o) => ({ playerIds: o.playerIds })),
-      winnerTeamIndex: 0,
+      teams: r.outcomes.map((o, index) => ({ playerIds: o.playerIds, rank: index + 1 })),
     });
   assert.equal(result.status, 201, JSON.stringify(result.body));
   await Promise.all([request(app).get('/api/points'), request(app).get('/api/points')]);
@@ -1026,7 +1027,8 @@ test('players bet on their own games; visible pools lock and settle zero-sum, on
         .patch(`/api/matches/${result.body.id}`)
         .set('x-test-player-id', a)
         .send({
-          winnerTeamIndex: 1,
+          teams: r.outcomes.map((o, index) => ({ playerIds: o.playerIds, rank: 2 - index })),
+          winnerTeamIndex: 0, // Complete placements override this conflicting legacy field.
           bettingCorrection: { reason: 'Actually the other team won', revisions: [{ id: r.id, revision: 0 }] },
         }),
     ),
@@ -1230,7 +1232,7 @@ test('tournament participants can bet on themselves and opponents, including the
 });
 
 test('selectable draws win free-match and league pools; a legacy market without a draw choice refunds', async () => {
-  for (const mode of ['draw', 'league', 'legacy'] as const) {
+  for (const mode of ['draw', 'rank_draw', 'league', 'legacy'] as const) {
     const f = await fixture();
     let roundId: string;
     let sideId: string;
@@ -1259,7 +1261,8 @@ test('selectable draws win free-match and league pools; a legacy market without 
         db.prepare('UPDATE betting_rounds SET outcomes=? WHERE id=?').run(JSON.stringify(r.outcomes), roundId);
       }
       finish = () => request(app).post('/api/matches').send({ gameId: f.gameId, drawId: r.drawId,
-        teams: r.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: null, isDraw: true });
+        teams: r.outcomes.map((o) => ({ playerIds: o.playerIds, ...(mode === 'rank_draw' ? { rank: 1 } : {}) })),
+        winnerTeamIndex: mode === 'rank_draw' ? 0 : null, isDraw: mode !== 'rank_draw' });
     }
     const tips = await Promise.all(f.players.slice(0, 2).map((playerId, index) => request(app)
       .put(`/api/points/rounds/${roundId}/tip`).set('x-test-player-id', playerId)
@@ -1280,6 +1283,77 @@ test('selectable draws win free-match and league pools; a legacy market without 
     }
     assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total),
       mode === 'legacy' ? [100, 100] : [105, 95]);
+  }
+});
+
+test('missing fixture teams refund existing stakes and skip new markets without stopping healthy sources', async () => {
+  const f = await fixture();
+  const create = () => request(app).post('/api/tournaments').send({ gameId: f.gameId,
+    format: 'round_robin', teams: f.players.map((id) => ({ playerIds: [id] })) });
+  const tournament = await create();
+  const other = await create();
+  assert.equal(tournament.status, 201);
+  assert.equal(other.status, 201);
+  const [firstFixture, unoffered] = tournament.body.matches;
+  const market = await automaticMarket(f, 'tournament_match', firstFixture.id);
+  for (const [index, playerId] of f.players.slice(0, 2).entries())
+    assert.equal((await request(app).put(`/api/points/rounds/${market.id}/tip`).set('x-test-player-id', playerId)
+      .send({ outcomeId: market.outcomes[index].id, stake: 5 })).status, 200);
+  const original = [firstFixture, unoffered].map((m) => db.prepare('SELECT team_a_id FROM tournament_matches WHERE id=?')
+    .get(m.id) as { team_a_id: string });
+  // A foreign tournament's team satisfies SQLite's FK but is absent from
+  // this source's roster, as can happen with inconsistent legacy data.
+  const foreignTeam = (db.prepare('SELECT id FROM tournament_teams WHERE tournament_id=? LIMIT 1')
+    .get(other.body.id) as { id: string }).id;
+  db.prepare("DELETE FROM betting_rounds WHERE source_id=? AND source_type='tournament_match'").run(unoffered.id);
+  try {
+    for (const match of [firstFixture, unoffered])
+      db.prepare('UPDATE tournament_matches SET team_a_id=? WHERE id=?').run(foreignTeam, match.id);
+    reconcileBetting(f.eventId);
+    assert.equal((await request(app).get('/api/points')).status, 200);
+    assert.equal(db.prepare('SELECT status FROM betting_rounds WHERE id=?').pluck().get(market.id), 'refunded');
+    assert.equal(db.prepare("SELECT id FROM betting_rounds WHERE source_id=? AND source_type='tournament_match'").get(unoffered.id), undefined);
+    assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total), [100, 100]);
+    assert.equal((await round(f)).outcomes.length, 2, 'an unrelated source remains usable');
+  } finally {
+    for (const [index, match] of [firstFixture, unoffered].entries())
+      db.prepare('UPDATE tournament_matches SET team_a_id=? WHERE id=?').run(original[index].team_a_id, match.id);
+  }
+});
+
+test('competition writes and deadline sweeps isolate another event with broken legacy JSON', async (t) => {
+  const broken = await fixture();
+  const bad = await round(broken);
+  const healthy = await fixture();
+  const good = await round(healthy);
+  for (const [index, playerId] of healthy.players.slice(0, 2).entries())
+    assert.equal((await request(app).put(`/api/points/rounds/${good.id}/tip`).set('x-test-player-id', playerId)
+      .send({ outcomeId: String(index), stake: 5 })).status, 200);
+  const original = db.prepare('SELECT teams FROM matchmaking_draws WHERE id=?').pluck().get(bad.drawId) as string;
+  const logged = t.mock.method(console, 'error', () => {});
+  try {
+    db.prepare('UPDATE matchmaking_draws SET teams=? WHERE id=?').run('{broken', bad.drawId);
+    assert.equal((await request(app).post('/api/matches').send({ gameId: healthy.gameId, teams: [] })).status, 400);
+    assert.equal((await request(app).post('/api/matches').send({ gameId: healthy.gameId,
+      teams: healthy.players.slice(0, 2).map((id) => ({ playerIds: [id] })), winnerTeamIndex: 0 })).status, 201);
+    assert.equal((await round(healthy)).outcomes.length, 2);
+    assert.equal((await request(app).post('/api/tournaments').send({ gameId: healthy.gameId,
+      format: 'round_robin', teams: healthy.players.slice(0, 2).map((id) => ({ playerIds: [id] })) })).status, 201);
+    db.prepare('UPDATE betting_rounds SET closes_at=? WHERE id IN (?,?)').run(Date.now() - 1, bad.id, good.id);
+    sweepBetting();
+    sweepBetting();
+    assert.equal(db.prepare('SELECT status FROM betting_rounds WHERE id=?').pluck().get(good.id), 'locked');
+    assert.equal(logged.mock.calls.length, 1, 'a persistent source error is logged once and does not prevent other deadlines');
+    // No due deadlines or undelivered notices: the fast tick must need no writes.
+    db.prepare('UPDATE betting_rounds SET closes_at=0 WHERE id=?').run(bad.id);
+    db.pragma('query_only = ON');
+    try {
+      sweepBetting();
+      assert.equal(logged.mock.calls.length, 1);
+    } finally { db.pragma('query_only = OFF'); }
+  } finally {
+    db.prepare('UPDATE matchmaking_draws SET teams=? WHERE id=?').run(original, bad.drawId);
+    logged.mock.restore();
   }
 });
 
@@ -1381,6 +1455,15 @@ test('deadlines and pre-start changes refund unsafe pools; legacy round quotas n
     409,
   );
   assert.equal((await request(app).get('/api/points')).body.rounds[0].status, 'locked');
+  const delayed = await round(second);
+  for (const [index, playerId] of second.players.slice(0, 2).entries())
+    assert.equal((await request(app).put(`/api/points/rounds/${delayed.id}/tip`).set('x-test-player-id', playerId)
+      .send({ outcomeId: String(index), stake: 5 })).status, 200);
+  db.prepare('UPDATE betting_rounds SET closes_at=? WHERE id=?').run(Date.now() - 1, delayed.id);
+  assert.equal((await request(app).post('/api/matches').send({ gameId: second.gameId, drawId: delayed.drawId,
+    teams: delayed.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 0 })).status, 201);
+  assert.equal(db.prepare('SELECT status FROM betting_rounds WHERE id=?').pluck().get(delayed.id), 'settled',
+    'an elapsed deadline is applied before recording the result even without a prior read or sweep');
 });
 
 test('result corrections keep original pools zero-sum even when the old winnings are already reserved elsewhere', async () => {

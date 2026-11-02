@@ -174,9 +174,10 @@ function frozenPoints(eventId: string): PointsSnapshot | null {
   return readPointsSnapshot(eventId);
 }
 export function hydratePointStandings(standings: PointStanding[]): PointStanding[] {
+  const players = new Map((db.prepare('SELECT id,name,color FROM players WHERE deactivated_at IS NULL')
+    .all() as Array<{ id: string; name: string; color: string }>).map(({ id, ...player }) => [id, player]));
   return standings.flatMap((row) => {
-    const player = db.prepare('SELECT name,color FROM players WHERE id = ? AND deactivated_at IS NULL')
-      .get(row.playerId) as { name: string; color: string } | undefined;
+    const player = players.get(row.playerId);
     return player ? [{ ...row, ...player }] : [];
   });
 }

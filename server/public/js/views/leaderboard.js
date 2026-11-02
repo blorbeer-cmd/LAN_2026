@@ -11,8 +11,6 @@ import { openMatchForm } from './adminResultForm.js';
 import { pointsRankingHtml } from './points.js';
 
 export function renderLeaderboard(container, ctx) {
-  const points = pointsRankingHtml(ctx);
-  if (points) { container.innerHTML = points; return; }
   const filterGameId = state.selectedGameId || '';
   // Accepted games only — plus any game that already carries results, so a
   // game moved back to the suggestions after it was played keeps its own
@@ -21,6 +19,9 @@ export function renderLeaderboard(container, ctx) {
     { value: '', label: 'Alle Spiele' },
     ...gamesWithHistory().map((g) => ({ value: g.id, label: g.name })),
   ];
+  const filter = searchSelectHtml('lb-filter', lbGameOptions, filterGameId, { placeholder: 'Spiel suchen', ariaLabel: 'Spiel' });
+  const addMatch = '<button type="button" class="btn btn-primary btn-sm" id="add-match-btn">Ergebnis eintragen</button>';
+  const points = pointsRankingHtml(ctx, { filter, addMatch });
 
   const standings = state.leaderboard?.standings || [];
   // Places follow the server's order (points, then wins) by position, the
@@ -36,14 +37,14 @@ export function renderLeaderboard(container, ctx) {
   });
 
   // The page's only card, so it stays open instead of collapsing.
-  container.innerHTML = `
+  container.innerHTML = points || `
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="leaderboard-ranking-title">
         <div class="grouped-page-section-title">
           <h2 id="leaderboard-ranking-title">Rangliste</h2>
-          <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">Ergebnis eintragen</button>
+          ${addMatch}
         </div>
-        ${searchSelectHtml('lb-filter', lbGameOptions, filterGameId, { placeholder: 'Spiel suchen', ariaLabel: 'Spiel' })}
+        ${filter}
         ${standingItems.length === 0
           ? emptyStateHtml('Noch keine Ergebnisse', { className: 'empty-state-compact' })
           : rankedListHtml(standingItems, { ranked: true, label: 'Rangliste' })}

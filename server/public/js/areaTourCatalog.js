@@ -6,16 +6,16 @@ const t = (title, chapters, options = {}) => ({ title, chapters, ...options });
 
 export const AREA_TOURS = {
   points: t('LAN-Punkte', [c('account', 'Punkte verdienen und einsetzen', [
-    s('balance', 'Dein Punktekonto', 'Gesamtpunkte bestimmen die LAN-Wertung. Reservierte Einsätze bleiben Teil deines Guthabens, stehen aber für andere Tipps nicht zur Verfügung.', '[aria-label="Mein Punktekonto"]'),
-    s('earn', 'Orga statt Siegprämie', 'Übernimm belohnte To-Dos. Beim Erledigen erhältst du die zugesagten Punkte automatisch. Ein Sieg im Spiel selbst gibt keine Punkte.'),
-    s('bet', 'Auch eigene Spiele tippen', 'Tippe vor Spielstart auf einen Sieger. Auch eigene Spiele und Turniere sind erlaubt. Der Topf verteilt ausschließlich vorhandene Einsätze.', '[aria-label="Tipprunden"]'),
-    s('history', 'Jede Buchung nachvollziehen', 'Der Verlauf zeigt Zeitpunkt, Herkunft und Betrag. Details erklären Auszahlungen und begründete Korrekturen. Die Filter verändern deine Gesamtsumme nicht.', '[aria-label="Punkteverlauf"]'),
+    s('balance', 'Dein Punktekonto', 'Orga, Spielen und Wetten zählen als drei gleich gewichtete Kategorien. Ihre Platzpunkte ergeben die LAN-Wertung. Das separate Wettguthaben startet einmal mit 100 Punkten.', '[aria-label="Mein Punktekonto"]'),
+    s('earn', 'Mitmachen bringt Punkte', 'Ein erledigtes fremdes To-do bringt dem ersten Helfer 3 Orga-Punkte. Gespielte Matches bringen Spielpunkte: ein Sieg 4, der letzte Platz 1. Spielzeit und Teamgröße werden nicht gewichtet.'),
+    s('bet', 'Auch eigene Spiele tippen', 'Setze vor Spielstart bis zu 20 Wettpunkte je Markt. Auch eigene Spiele sind erlaubt. Der Topf verteilt vorhandene Einsätze; Nettogewinne zählen ab zwei regulär abgerechneten Tipps für den Kategorienrang.', '[aria-label="Tipprunden"]'),
+    s('history', 'Jede Buchung nachvollziehen', 'Die getrennten Verläufe zeigen Zeitpunkt, Herkunft und Betrag. Details erklären Auszahlungen und begründete Korrekturen. Bei falsch vergebenen Punkten kannst du eine Meldung erstellen.', '[aria-label="Punkteverlauf"]'),
   ])]),
   pointsAdmin: t('LAN-Punkte verwalten', [c('manage', 'Regeln und Korrekturen', [
-    s('rules', 'Begrenzt starten', 'Lege Grundstock, Orga-Budget und Wettgrenzen fest. Mit null offiziellen Tipprunden startest du ausschließlich mit Orga-Punkten.', '[data-points-settings]'),
-    s('tasks', 'Belohnungen vorher zusagen', 'Lege die Belohnung am offenen To-Do vor der ersten Übernahme fest. Erledigen bucht automatisch; es gibt keinen Freigabeprozess.'),
+    s('rules', 'Feste Regeln', 'Pro Person gibt es einmal 100 Wettpunkte und höchstens 20 Punkte Einsatz je Markt. Orga-, Spiel- und Wett-Nettopunkte bleiben getrennt; Kategorieplätze bestimmen die Gesamtwertung.', '[data-points-settings]'),
+    s('tasks', 'Feste To-do-Punkte', 'Der erste fremde Helfer erhält beim Erledigen eines To-dos automatisch 3 Orga-Punkte, auch bei einer Sammelaufgabe nur einmal. Wiederöffnen nimmt die Punkte zurück.'),
     s('correct', 'Nachvollziehbar korrigieren', 'Punkteentzug braucht eine Begründung und bleibt im Journal. Ergebniskorrekturen buchen betroffene Wettabrechnungen atomar gegen und neu.'),
-    s('finish', 'Endwertung festschreiben', 'Rechne alle Tipprunden ab oder erstatte sie. Danach schreibst du die Platzierung fest. Wiederöffnen benötigt eine Begründung.'),
+    s('finish', 'Endwertung festschreiben', 'Prüfe zuerst alle offenen Punktefehler-Meldungen. Beim Festschreiben werden alle noch unabgerechneten Wetten vollständig erstattet, auch gesperrte. Frühere Endstände bleiben nach begründetem Wiederöffnen erhalten.'),
   ])], { adminOnly: true }),
   home: t('Home', [
     c('overview', 'Überblick', [

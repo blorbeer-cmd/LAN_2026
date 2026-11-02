@@ -103,13 +103,15 @@ export function currentPointStandings() {
   if (!state.activeEvent?.pointsEnabled) return null;
   return currentData()?.settings ? currentData().standings : null;
 }
-export function pointsRankingHtml(ctx) {
+export function pointsRankingHtml(ctx, { filter = '', addMatch = '' } = {}) {
   if (state.selectedGameId) return '';
   ensurePoints(ctx);
   const standings = currentPointStandings();
   if (!standings) return '';
   const ranks = sharedRankNumbers(standings.map((p) => p.points));
-  return `<section class="card stack"><div class="row-between"><h2>LAN-Punkte</h2><button type="button" class="btn btn-sm" data-navigate="points">Punktekonto & Verlauf</button></div>
+  return `<section class="card stack"><div class="grouped-page-section-title"><h2>LAN-Punkte</h2>${addMatch}</div>
+    ${filter}
+    <div><button type="button" class="btn btn-sm" data-navigate="points">Punktekonto & Verlauf</button></div>
     <p class="muted">Gesamtplatzpunkte aus Orga, Spielen und Wetten. Gleiche Punkte teilen sich den Platz.</p>
     ${rankedListHtml(
       standings.map((p, i) => ({ rank: p.rank ?? ranks[i], title: e(p.name), meta: e(categoryPlaceSummary(p.categories)), value: `${p.points} P.` })),

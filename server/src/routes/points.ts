@@ -76,10 +76,16 @@ function text(value: unknown, label: string, max = 300): string {
 pointsRouter.get('/', (req, res) => {
   const eventId = res.locals.eventId as string;
   if (!['owner', 'admin'].includes(req.groupMembership!.role)) requirePointsVisible(eventId);
-  if (syncCompetitionPoints(req.group!.id, eventId))
+  // Retain lazy initialization/recovery for late entrants and legacy sources,
+  // but acquire one outer write transaction and publish only after its commit.
+  const refreshed = db.transaction(() => {
+    const pointsChanged = syncCompetitionPoints(req.group!.id, eventId);
+    ensurePointAccounts(eventId);
+    return { pointsChanged, rounds: reconcileBetting(eventId, false) };
+  }).immediate();
+  publishBettingChanges(refreshed.rounds);
+  if (refreshed.pointsChanged)
     broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
-  ensurePointAccounts(eventId);
-  reconcileBetting(eventId);
   const settings = pointsSettings(eventId) ?? null;
   const entries = walletEntries(eventId, req.player!.id);
   const rounds = (
@@ -362,20 +368,46 @@ pointsRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   res.json({ ok: true });
 });
 
-// Keep deadline and result reconciliation active even when every browser is
-// closed. Failed deliveries retry their durable, once-per-round notice.
-export function startBettingSweep(): () => void {
-  const timer = setInterval(() => {
+const reportedBettingFailures = new Set<string>();
+// The fast tick reads due events without taking a write lock. The slower
+// recovery pass also discovers legacy sources/results without a browser.
+export function sweepBetting(now = Date.now(), recoverSources = false): void {
+  const events = db.prepare(`SELECT DISTINCT e.id FROM events e JOIN points_settings s ON s.event_id=e.id
+    WHERE EXISTS (SELECT 1 FROM betting_rounds r WHERE r.event_id=e.id AND (
+      (r.status='open' AND r.closes_at>0 AND r.closes_at<=?) OR
+      (?=1 AND r.status IN ('open','locked'))))
+      OR (?=1 AND s.closed_at IS NULL AND s.visible=1 AND e.event_type_key='lan' AND e.is_test=0
+        AND e.status='published' AND e.ended_at IS NULL)`)
+    .all(now, Number(recoverSources), Number(recoverSources)) as Array<{ id: string }>;
+  for (const event of events) {
     try {
-      reconcileBetting();
-      for (const round of db
-        .prepare("SELECT * FROM betting_rounds WHERE status = 'open' AND notice_sent = 0")
-        .all() as BettingRound[])
-        notifyBettingRound(round);
+      reconcileBetting(event.id);
+      reportedBettingFailures.delete(event.id);
     } catch (error) {
-      console.error('Betting reconciliation failed:', error);
+      if (!reportedBettingFailures.has(event.id)) {
+        console.error(`Betting reconciliation failed for event ${event.id}:`, error);
+        reportedBettingFailures.add(event.id);
+      }
     }
-  }, 1000);
+  }
+  for (const round of db.prepare("SELECT * FROM betting_rounds WHERE status='open' AND notice_sent=0")
+    .all() as BettingRound[]) notifyBettingRound(round);
+}
+
+export function startBettingSweep(): () => void {
+  let lastRecovery = 0;
+  const run = () => {
+    try {
+      const now = Date.now();
+      const recover = now - lastRecovery >= 30_000;
+      if (recover) lastRecovery = now;
+      sweepBetting(now, recover);
+    } catch (error) {
+      console.error('Betting sweep failed:', error);
+    }
+  };
+  run();
+  const timer = setInterval(run, 1000);
   timer.unref();
   return () => clearInterval(timer);
 }

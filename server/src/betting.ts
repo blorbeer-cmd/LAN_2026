@@ -3,6 +3,7 @@ import { db } from './db';
 import { requirePointsAdmin } from './pointsAccess';
 import { computeRoundRobinStandings } from './tournament';
 import { distributePool } from './bettingMath';
+import { computeMatchPlacements, type MatchForScoring } from './leaderboard';
 import { bookBettingMarket } from './bettingAccounting';
 import {
   ensurePointAccounts,
@@ -108,8 +109,10 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
       ? (db.prepare('SELECT result FROM matches WHERE id = ?').get(draw.match_id) as { result: string } | undefined)
       : undefined;
     const data = result
-      ? (JSON.parse(result.result) as { winnerTeamIndex: number | null; isDraw?: boolean; teams: Array<{ playerIds: string[] }> })
+      ? (JSON.parse(result.result) as MatchForScoring)
       : null;
+    const placements = data ? computeMatchPlacements(data) : null;
+    const winners = placements?.flatMap((placement, index) => placement.place === 1 ? [String(index)] : []) ?? [];
     const mismatch =
       data &&
       JSON.stringify(data.teams.map((t) => [...t.playerIds].sort())) !==
@@ -119,7 +122,7 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
       outcomes: [...sides, { id: DRAW_BET_OUTCOME, label: 'Unentschieden', playerIds: [] }],
       started: Boolean(result),
       finished: Boolean(result),
-      winner: data?.isDraw ? DRAW_BET_OUTCOME : data?.winnerTeamIndex == null ? null : String(data.winnerTeamIndex),
+      winner: winners.length > 1 ? DRAW_BET_OUTCOME : winners[0] ?? null,
       invalid: Boolean(!draw.betting_allowed || draw.tournament_id || mismatch),
     };
   }
@@ -148,7 +151,11 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
       throw new PointsError('Die Gegner stehen noch nicht fest.');
     const allowsDraw = tournament.format === 'round_robin' ||
       (tournament.format === 'group_knockout' && fixture.stage === 'group');
-    const outcomes = [fixture.team_a_id, fixture.team_b_id].map((teamId) => teams.find((t) => t.id === teamId)!);
+    const outcomes = [fixture.team_a_id, fixture.team_b_id].map((teamId) => {
+      const team = teams.find((t) => t.id === teamId);
+      if (!team) throw new PointsError('Ein Turnierteam wurde entfernt.', 404);
+      return team;
+    });
     if (allowsDraw) outcomes.push({ id: DRAW_BET_OUTCOME, label: 'Unentschieden', playerIds: [] });
     return {
       title: `${tournament.name} · Match`,
@@ -299,7 +306,15 @@ function ensureBettingMarkets(eventId?: string): BettingRound[] {
     Array<{ source_id: string; group_id: string; event_id: string; source_type: BetSource; created_by: string | null }>;
   const created: BettingRound[] = [];
   for (const row of sources) {
-    const source = betSourceState(row.group_id, row.event_id, row.source_type, row.source_id);
+    let source: SourceState;
+    try {
+      source = betSourceState(row.group_id, row.event_id, row.source_type, row.source_id);
+    } catch (error) {
+      // Invalid legacy sources cannot offer a new market. Existing markets
+      // are refunded by the reconciliation loop below.
+      if (!(error instanceof PointsError)) throw error;
+      continue;
+    }
     const sides = source.outcomes.filter((outcome) => outcome.id !== DRAW_BET_OUTCOME);
     if (source.started || source.finished || source.invalid || sides.length < 2 ||
         sides.some((side) => !side.playerIds.length) || (row.source_type !== 'tournament' && sides.length !== 2)) continue;
@@ -327,7 +342,7 @@ export function roundView(round: BettingRound, playerId: string) {
     tipCount: tips.length,
     outcomes: (JSON.parse(round.outcomes) as BetOutcome[]).map((outcome) => {
       const stake = tips.filter((t) => t.outcome_id === outcome.id).reduce((sum, t) => sum + t.stake, 0);
-      const preview = mine
+      const preview = mine?.outcome_id === outcome.id
         ? distributePool(
             tips.map((t) => ({ id: t.id, stake: t.stake, outcomeId: t.outcome_id, createdAt: t.created_at, sequence: t.sequence })),
             outcome.id,
@@ -456,8 +471,11 @@ export function publishBettingChanges(changed: BettingRound[]): void {
 // Realtime and notification delivery are deferred until the outer commit.
 export function withBettingAccounting<T>(eventId: string | undefined, change: () => T): T {
   const committed = db.transaction(() => {
+    // Apply elapsed deadlines and existing results before editing their source,
+    // scoped to the authorized event and rolled back if the edit fails.
+    const before = reconcileBetting(eventId, false);
     const result = change();
-    const rounds = reconcileBetting(eventId, false);
+    const rounds = [...before, ...reconcileBetting(eventId, false)];
     return { result, rounds };
   }).immediate();
   publishBettingChanges(committed.rounds);

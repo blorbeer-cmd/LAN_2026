@@ -1,4 +1,4 @@
-import { withBettingAccounting, reconcileBetting, assertCompetitionEditable } from '../betting';
+import { withBettingAccounting, assertCompetitionEditable } from '../betting';
 import { syncCompetitionPoints } from '../orgaPoints';
 // Matchmaking endpoint (FR-16..18): draws balanced teams for a game from a
 // set of present players, using their skill ratings. Stateless — every call
@@ -27,10 +27,6 @@ import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 
 export const matchmakingRouter = Router();
-matchmakingRouter.use((req, _res, next) => {
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) reconcileBetting();
-  next();
-});
 
 // Neutral middle rating for players without one. It is what balanceTeams
 // works with, but a stored teams snapshot keeps `rating: null` for such a

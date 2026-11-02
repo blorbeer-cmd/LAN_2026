@@ -98,6 +98,10 @@ ausdrücklichen Startaktion offen. Mitspieler oder Admins schließen vor Spielbe
 ersten Turnierspiel wird zugleich der Gesamtsieger-Markt geschlossen. Bestehende explizite
 Fristen bleiben wirksam. Ein Ergebnis bei noch offenen Tipps führt zur Erstattung.
 Der Hintergrundlauf arbeitet auch ohne offenen Browser. Nach Tippschluss sind Einsätze unveränderlich.
+Der Sekundentakt gleicht nur Events mit fälliger Frist ab; ohne solche Frist nimmt er keine
+Schreibsperre für einen Quellenabgleich. Beim Start und alle 30 Sekunden läuft zusätzlich ein
+eventweise isolierter Wiederherstellungsabgleich. Fehler eines Events halten andere Events
+nicht auf; dauerhaft fehlerhafte Quellen werden bis zur Erholung nur einmal protokolliert.
 Erzeugung der Quelle und ihrer Märkte laufen atomar; Benachrichtigungen folgen erst nach Commit.
 Nach Eventende sind neue Tipps gesperrt, während Ergebnisse und Verlauf sichtbar bleiben.
 
@@ -120,6 +124,8 @@ wenn eine Teilbuchung scheitert.
 Ein nicht am Markt wählbares Remis, fehlende Tipps auf das eingetretene Ergebnis, Einsätze
 auf nur einen Ausgang und ein abgebrochener Wettbewerb führen zur vollständigen Erstattung.
 Ein angebotenes Remis kann dagegen regulär gewinnen und wird genauso abgerechnet wie ein Sieger-Tipp.
+Bei freien Matches gilt dieselbe Ergebnisinterpretation wie für Spielpunkte: vollständige
+Teamränge haben Vorrang vor einem separaten Siegerfeld, ein geteilter erster Rang gilt als Remis.
 Ein geteilter Turniersieg ist im Gesamtsieger-Markt nicht wählbar und führt deshalb zur
 Erstattung. Die Turniertitel und Platzierungsboni bleiben für alle gleichplatzierten Sieger erhalten.
 
@@ -143,6 +149,8 @@ N minus Rang plus 1; N umfasst alle wertungsberechtigten Event-Teilnehmer. Gleic
 teilen den besseren Rang, zum Beispiel 1/2/2/4. Die Summe der drei Kategorien ergibt die
 Gesamtwertung. Rangliste, Hall of Fame und Event-Export lesen dieselbe Berechnung und erhalten
 geteilte Gesamtplätze und Kategoriesieger. Ohne wertbare Ergebnisse gibt es keinen Sieger.
+Die LAN-Rangliste behält die Spielauswahl und „Ergebnis eintragen“. Ein ausgewähltes Spiel
+zeigt weiterhin die klassische Spielwertung; „Alle Spiele“ führt zurück zu den LAN-Kategorien.
 Wettguthaben wird niemals hinzuaddiert. Reguläre veröffentlichte LANs werden gewertet und
 bleiben nach Ende sichtbar; Testevents, Entwürfe, abgesagte Events und andere Eventtypen sind
 ausgeschlossen. Klassische Sportstatistiken und Spielfilter werten weiterhin dokumentierte

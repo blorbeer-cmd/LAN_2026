@@ -36,10 +36,6 @@ import {
 } from '../tournament';
 
 export const tournamentsRouter = Router();
-tournamentsRouter.use((req, _res, next) => {
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) reconcileBetting();
-  next();
-});
 
 const FORMATS: TournamentFormat[] = ['single_elimination', 'round_robin', 'group_knockout'];
 // Short enough for a bracket box and a phone-width team card.

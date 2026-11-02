@@ -28,7 +28,7 @@ let alice: E2EAccount;
 let bob: E2EAccount;
 let eventId: string;
 let myId: string;
-let pointsGame: { id: string };
+let pointsGame: { id: string; name: string };
 const fixtureDir = mkdtempSync(path.join(tmpdir(), 'respawn-points-browser-'));
 const fixtureDb = path.join(fixtureDir, 'points.db');
 const pageErrors: string[] = [];
@@ -202,6 +202,28 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.getByRole('dialog').getByText('Wett-Startguthaben', { exact: true }).first().waitFor();
   await member.keyboard.press('Escape');
   await member.locator('[data-points-source]').selectOption('');
+
+  await navigate(admin, 'leaderboard');
+  await admin.getByRole('list', { name: 'LAN-Punkte', exact: true }).waitFor();
+  for (const width of [320, 1440]) {
+    await admin.setViewportSize({ width, height: 900 });
+    assert.equal(await admin.locator('#lb-filter-search').isVisible(), true);
+    assert.equal(await admin.locator('#add-match-btn').isVisible(), true);
+    assert.equal(await admin.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+    await admin.screenshot({ path: `test-results/points-ranking-${width}.png`, fullPage: true, animations: 'disabled' });
+  }
+  await admin.locator('#lb-filter-search').fill('Punkte-');
+  await admin.keyboard.press('Enter');
+  await admin.getByRole('list', { name: 'LAN-Punkte', exact: true }).waitFor({ state: 'detached' });
+  await admin.waitForFunction((id) => (document.querySelector('#lb-filter') as HTMLInputElement)?.value === id, pointsGame.id);
+  await admin.locator('#lb-filter-search').fill('Alle');
+  await admin.keyboard.press('Enter');
+  await admin.getByRole('list', { name: 'LAN-Punkte', exact: true }).waitFor();
+  await admin.locator('#add-match-btn').focus();
+  await admin.keyboard.press('Enter');
+  await admin.getByRole('dialog', { name: 'Ergebnis eintragen', exact: true }).waitFor();
+  await admin.keyboard.press('Escape');
+  await admin.locator('.modal-backdrop').waitFor({ state: 'detached' });
 
   const game = pointsGame;
   await navigate(member, 'matchmaking');

@@ -41,6 +41,15 @@ pm2 set pm2-logrotate:retain 5
 Die Datenbankrotation ist davon unabhängig: SQLite-Backups bleiben ein eigener Betriebs- und
 Sicherheitsprozess.
 
+## Wettabgleich
+
+Der Sekundentakt prüft lesend auf fällige Tippfristen und gleicht nur betroffene Events ab.
+Beim Prozessstart sowie alle 30 Sekunden werden zusätzlich offene Quellen und Ergebnisse
+eventweise abgeglichen. Ohne fällige Frist nimmt der schnelle Takt dafür keine Schreibsperre.
+Fehler eines Events stoppen den Abgleich anderer Events nicht. Ein anhaltender Eventfehler
+erscheint einmal auf stderr mit Event-ID; nach erfolgreichem Abgleich wird die Meldesperre
+zurückgesetzt. Nicht zugestellte Marktmitteilungen werden weiterhin erneut versucht.
+
 ## Backup und Restore
 
 Respawn schreibt vor jedem Aktivieren des Event-Trackings einen persistenten SQLite-

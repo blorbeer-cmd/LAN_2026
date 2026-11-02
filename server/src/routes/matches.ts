@@ -1,4 +1,4 @@
-import { withBettingAccounting, reconcileBetting, assertMatchEditable, settledDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
+import { withBettingAccounting, assertMatchEditable, settledDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
 // Recorded match results (FR-22, FR-25). Result details (teams + winner) are
 // stored as JSON with an explicit draw flag so missing results stay unscored.
 // Each match is
@@ -20,10 +20,6 @@ import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../group
 import { syncCompetitionPoints } from '../orgaPoints';
 
 export const matchesRouter = Router();
-matchesRouter.use((req, _res, next) => {
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) reconcileBetting();
-  next();
-});
 
 interface DrawLinkRow {
   id: string;
