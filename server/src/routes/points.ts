@@ -76,16 +76,9 @@ function text(value: unknown, label: string, max = 300): string {
 pointsRouter.get('/', (req, res) => {
   const eventId = res.locals.eventId as string;
   if (!['owner', 'admin'].includes(req.groupMembership!.role)) requirePointsVisible(eventId);
-  // Retain lazy initialization/recovery for late entrants and legacy sources,
-  // but acquire one outer write transaction and publish only after its commit.
-  const refreshed = db.transaction(() => {
-    const pointsChanged = syncCompetitionPoints(req.group!.id, eventId);
-    ensurePointAccounts(eventId);
-    return { pointsChanged, rounds: reconcileBetting(eventId, false) };
-  }).immediate();
-  publishBettingChanges(refreshed.rounds);
-  if (refreshed.pointsChanged)
-    broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
+  // Source mutations and startup synchronize category awards; SQLite triggers
+  // fund late participants immediately. Deadlines are handled by the sweep and
+  // betting mutations. A client refresh must not recompute or write these data.
   const settings = pointsSettings(eventId) ?? null;
   const entries = walletEntries(eventId, req.player!.id);
   const rounds = (

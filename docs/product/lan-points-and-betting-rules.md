@@ -103,6 +103,9 @@ Schreibsperre für einen Quellenabgleich. Beim Start und alle 30 Sekunden läuft
 eventweise isolierter Wiederherstellungsabgleich. Fehler eines Events halten andere Events
 nicht auf; dauerhaft fehlerhafte Quellen werden bis zur Erholung nur einmal protokolliert.
 Erzeugung der Quelle und ihrer Märkte laufen atomar; Benachrichtigungen folgen erst nach Commit.
+Der Abruf des Punktekontos berechnet keine Ansprüche neu und schreibt keine Punkte.
+Teilnahme-/Einstellungsschreibzugriffe buchen Startguthaben über Datenbank-Trigger;
+Quellenänderungen und der Prozessstart synchronisieren die Kategorieansprüche.
 Nach Eventende sind neue Tipps gesperrt, während Ergebnisse und Verlauf sichtbar bleiben.
 
 ## Abrechnung und Korrektur

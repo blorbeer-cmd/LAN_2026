@@ -1326,6 +1326,16 @@ test('competition writes and deadline sweeps isolate another event with broken l
   const bad = await round(broken);
   const healthy = await fixture();
   const good = await round(healthy);
+  // Session authentication still slides expiry. Guard points writes rather
+  // than all SQLite writes when exercising the real authenticated endpoint.
+  db.exec(`CREATE TEMP TRIGGER refuse_point_refresh BEFORE INSERT ON points_accounts
+    BEGIN SELECT RAISE(ABORT,'points refresh must not initialize accounts'); END;`);
+  try {
+    const read = await request(app).get('/api/points');
+    assert.equal(read.status, 200, 'refreshing points requires no points writes');
+    assert.equal(read.body.wallet.total, 100);
+    assert.equal(read.body.participantCount, 4);
+  } finally { db.exec('DROP TRIGGER refuse_point_refresh'); }
   for (const [index, playerId] of healthy.players.slice(0, 2).entries())
     assert.equal((await request(app).put(`/api/points/rounds/${good.id}/tip`).set('x-test-player-id', playerId)
       .send({ outcomeId: String(index), stake: 5 })).status, 200);
