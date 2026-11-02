@@ -346,6 +346,13 @@ Migration 133 bereitet private Meldungen vor und verändert keine Guthaben. Sola
 W7 für den endgültigen Abschluss offen sind, ist dies noch keine aktivierte Meldefunktion;
 die bisherigen Abschlussbedingungen bleiben bestehen.
 Die interne Meldungslogik speichert Quellenkennungen und betroffene Konten getrennt vom Absender.
+„Punktefehler melden“ gilt ausschließlich mutmaßlich falsch vergebenen Punkten und ist an eine
+konkrete Buchung gebunden. Gewertete Ergebnisse, vergütete To-dos und abgerechnete Wetten
+führen zu ihrer jeweiligen Punktevergabe; offene Aufgaben und noch unabgerechnete Wetten
+sind dafür nicht meldbar. Die interne Validierung prüft diesen Buchungsbezug serverseitig.
+Betroffene Konten stammen aus diesen Buchungen. Ein Admin, der ein To-do erstellt hat, bleibt
+für die gemeldete Gutschrift eines anderen Kontos zuständig, sofern seine eigenen Punkte nicht
+betroffen sind.
 Eigene Meldungen und ihr Status sind Bestandteil des persönlichen Datenexports, fremde Meldungen
 nicht. Löschung des Absenders anonymisiert seine Referenz und entfernt seinen privaten Text;
 andere Meldungen sowie die Punktebuchungen bleiben erhalten. Meldungsdetails gelangen nicht in

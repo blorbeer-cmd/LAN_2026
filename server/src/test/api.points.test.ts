@@ -25,14 +25,31 @@ const app = createTestApp();
 test('private report records retain subjects, protect reporter exports and erase private copies without changing points', async () => {
   const f = await fixture();
   const [subject, reporter, creator] = f.players;
-  const task = await request(app).post('/api/checklist/tasks/todo').set('x-test-player-id', subject)
-    .send({ title: 'Review this completion' });
+  const task = await request(app).post('/api/checklist/tasks/todo')
+    .send({ title: 'Review these task points' });
   assert.equal(task.status, 201);
   const targetId = task.body.tasks[0].id;
-  const input = { targetType: 'todo', targetId, reason: 'Please check the completion' };
+  const input = { targetType: 'todo', targetId, reason: 'Please check the awarded points' };
+  assert.throws(() => createPointsReport(DEFAULT_GROUP_ID, f.eventId, reporter, input),
+    (error: unknown) => error instanceof PointsError && error.status === 404,
+    'an open task without a points assignment is not a report target');
+  assert.throws(() => createPointsReport(DEFAULT_GROUP_ID, f.eventId, reporter, { targetType: 'player', targetId: subject }),
+    (error: unknown) => error instanceof PointsError && error.status === 400,
+    'reports always identify a points assignment rather than a person');
+  assert.equal((await request(app).post(`/api/checklist/tasks/${targetId}/claim`)
+    .set('x-test-player-id', subject).send({ playerId: subject })).status, 200);
+  assert.equal((await request(app).patch(`/api/checklist/tasks/${targetId}/done`)
+    .set('x-test-player-id', subject).send({ playerId: subject })).status, 200);
+  const original = readPointsJournal(DEFAULT_GROUP_ID, f.eventId, subject).find((entry) => entry.sourceKey === `todo:${targetId}`)!;
+  const correction = correctJournalEntry({ groupId: DEFAULT_GROUP_ID, eventId: f.eventId, actorId: TEST_ADMIN_ID,
+    entryId: original.id, total: 4, expectedRevision: original.revision, reason: 'Review the manually assigned helper points' });
   const balances = readPointsBalances(DEFAULT_GROUP_ID, f.eventId, subject);
   const first = createPointsReport(DEFAULT_GROUP_ID, f.eventId, reporter, input);
-  assert.ok(first.recipients.includes(TEST_ADMIN_ID));
+  assert.ok(first.recipients.includes(TEST_ADMIN_ID), 'creating the task does not exclude an admin whose points are not affected');
+  const journalReport = createPointsReport(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID,
+    { targetType: 'journal', targetId: correction.entryId });
+  assert.ok(readPointsReports(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID).inbox.some((entry) => entry.id === journalReport.report.id),
+    'assigning points to another account does not make them the admin own points');
   assert.throws(() => createPointsReport(DEFAULT_GROUP_ID, f.eventId, reporter, input),
     (error: unknown) => error instanceof PointsError && error.status === 409);
   createPointsReport(DEFAULT_GROUP_ID, f.eventId, creator, input);
@@ -41,7 +58,7 @@ test('private report records retain subjects, protect reporter exports and erase
   assert.deepEqual(buildPersonalDataExport(subject)!.pointsReports, []);
   db.prepare('UPDATE events SET created_by=? WHERE id=?').run(creator, f.eventId);
   const creatorInbox = readPointsReports(DEFAULT_GROUP_ID, f.eventId, creator).inbox;
-  assert.equal(creatorInbox.length, 2);
+  assert.equal(creatorInbox.length, 3);
   assert.equal(creatorInbox[0].canResolve, false);
   assert.throws(() => resolvePointsReport(DEFAULT_GROUP_ID, f.eventId, creator, first.report.id, { status: 'dismissed' }),
     (error: unknown) => error instanceof PointsError && error.status === 403);
@@ -817,6 +834,11 @@ test('players bet on their own games; visible pools lock and settle zero-sum, on
   assert.deepEqual(preview.outcomes.map((o: { stake: number; odds: number | null }) => [o.stake, o.odds]),
     [[10, 1.5], [5, 3], [0, null]]);
   assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 10, available: 90 });
+  const { id: tipId } = db.prepare('SELECT id FROM betting_tips WHERE round_id=? AND player_id=?').get(r.id, a) as { id: string };
+  for (const target of [{ targetType: 'betting_round', targetId: r.id }, { targetType: 'tip', targetId: tipId }])
+    assert.throws(() => createPointsReport(DEFAULT_GROUP_ID, f.eventId, a, target),
+      (error: unknown) => error instanceof PointsError && error.status === 404,
+      'an unsettled bet is not an awarded result even when its stake is reserved');
   const messages = db
     .prepare("SELECT player_ids,url FROM push_log WHERE notification_type = 'betting-open' AND target_id = ?")
     .all(r.id) as Array<{ player_ids: string; url: string }>;

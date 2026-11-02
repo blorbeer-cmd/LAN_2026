@@ -404,12 +404,18 @@ Teams beziehungsweise Anzeigenamen und Ergebnisplatzierung, aber **keine Punkte 
 Punkteranglisten**. Die Platzierung des einzelnen Spielergebnisses ist vom Event-Rang zu
 unterscheiden.
 
-## 8. „Ungewöhnliche Punkte melden“
+## 8. „Punktefehler melden“
 
 ### 8.1 Melden und Wirkung
 
-Teilnehmer können **Journaleinträge, Spielergebnisse, Wetten und To-dos** melden. Ein kurzer
-Grund ist optional. Pro meldender Person und Eintrag gibt es höchstens eine offene Meldung.
+Teilnehmer melden **mutmaßlich falsch vergebene Punkte**. Die Meldung bezieht sich auf eine
+konkrete Punktebuchung. Journaleinträge, gewertete Spielergebnisse, abgerechnete Wetten und
+vergütete To-dos dienen als Einstieg zur jeweiligen Punktevergabe. Beispielsweise kann eine
+unberechtigte Gutschrift von 3 Orga-Punkten für ein To-do gemeldet werden.
+Ein kurzer Grund ist optional. Pro meldender Person und Eintrag gibt es höchstens eine offene Meldung.
+Welche Konten betroffen sind, ergibt sich aus den zugehörigen Punktebuchungen. Das bloße
+Anlegen eines Events, Matches oder To-dos macht den Ersteller nicht zum Betroffenen einer
+fremden Punktegutschrift.
 
 Eine Meldung ändert nichts automatisch: keine Sperre, kein Einfrieren und keine Freigabe.
 Punkte bleiben bestehen, bis eine Adminperson begründet korrigiert oder entzieht.
@@ -418,7 +424,7 @@ Eine solche Änderung erscheint nachvollziehbar im Journal.
 ### 8.2 Sichtbarkeit und Zuständigkeit
 
 - Meldungen gehen an Admins und den Event-Ersteller.
-- Betrifft eine Meldung einen Admin selbst, sehen sie ausschließlich die übrigen Admins
+- Betrifft die gemeldete Punktevergabe einen Admin selbst, sehen sie ausschließlich die übrigen Admins
   beziehungsweise der Event-Ersteller. Ist der Ersteller zugleich der betroffene Admin,
   eröffnet die zweite Rolle keinen Zugriff auf die eigene Meldung.
 - Die gemeldete Person sieht nicht, wer gemeldet hat. Rollen oder andere Ansichten dürfen
@@ -437,8 +443,8 @@ Gemeldet werden kann bis zur Festschreibung. Festgeschrieben wird erst, wenn **k
 Meldung mehr offen** ist. Dies ist eine Abschlussbedingung und kein Freigabeprozess für
 die laufende Punktevergabe.
 
-**OFFEN – Meldungsempfänger und Bearbeitung:** Der Umgang mit Meldungen gegen einen nicht als Admin
-handelnden Event-Ersteller sowie mit Fällen ohne verfügbare empfangsberechtigte Adminperson ist
+**OFFEN – Meldungsempfänger und Bearbeitung:** Der Umgang mit einer gemeldeten fehlerhaften
+Punktevergabe zugunsten eines Event-Erstellers ohne Adminrolle sowie mit Fällen ohne verfügbare empfangsberechtigte Adminperson ist
 noch zu präzisieren. Die Identität des Meldenden bleibt geschützt; es werden hier keine
 zusätzlichen Meldungszugriffe oder Korrekturrechte für Nicht-Admins vergeben.
 
@@ -501,7 +507,7 @@ Vorgabewerte sind dafür keine Entscheidung:
 | O3 (umgesetzt) | Neue Aufgaben verwenden kein Orga-Budget und keine vergüteten Helferplätze. Alte Zusagen und der alte Finanzpfad entfallen mit dem beschlossenen Neustart. |
 | O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben erhalten keine alten LAN-Auszahlungen mehr. |
 | S1 (entschieden) | Geteilte Turnierplätze erhalten jeweils den vollen Bonus des gemeinsamen Rangs, beispielsweise 5/5/1. |
-| M1 | Meldungen gegen Event-Ersteller ohne Adminrolle oder bei fehlendem zuständigen Admin; Vertretung und Bearbeitung. |
+| M1 | Gemeldete fehlerhafte Punktevergabe zugunsten des Event-Erstellers ohne Adminrolle oder fehlender zuständiger Admin; Vertretung und Bearbeitung. |
 | H1 (entschieden) | „Jedes gespielte Match bringt Punkte. Spielzeit und Teamgröße werden nicht gewichtet.“ Die Formel bleibt unverändert. |
 
 Die [überarbeitete Paketfolge](IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) ordnet diese Entscheidungen

@@ -93,16 +93,21 @@ before(async () => {
   // and real server are released.
   await adminContext.route(`${adminBaseUrl}/**`, (route) => {
     const completion = (async () => {
+      if (closingHttpRoutes) {
+        await route.abort('aborted').catch(() => {});
+        return;
+      }
       try {
         const url = new URL(route.request().url());
         const response = await route.fetch({ url: `${server.baseUrl}${url.pathname}${url.search}` });
         await route.fulfill({ response });
       } catch (error) {
         const cancelled = error instanceof Error &&
-          /Route is already handled|Request context disposed|Target page, context or browser has been closed/.test(error.message);
+          /Route is already handled|Request context disposed|Target page, context or browser has been closed|route\.fetch: read ECONNRESET/.test(error.message);
         if (!closingHttpRoutes || !cancelled) throw error;
-        // A cancelled page request no longer needs a response. Active-test
-        // failures still propagate; only fixture teardown consumes cancellation.
+        // Disposing the fixture HTTP client can cancel an in-flight read with
+        // ECONNRESET. Active-test failures still propagate; this applies only
+        // after teardown explicitly stopped accepting proxied requests.
         await route.abort('aborted').catch(() => {});
       }
     })();
@@ -125,13 +130,12 @@ after(async () => {
   closingHttpRoutes = true;
   try {
     const context = admin?.context();
-    await context?.unrouteAll();
-    const pending = [...pendingHttpRoutes];
     // Socket polling can still be waiting for a future server event. Cancel
-    // the fixture's HTTP client before joining callbacks, rather than waiting
-    // for those responses or leaking the server when a proxy fails.
-    await context?.request.dispose();
-    await Promise.all(pending);
+    // the HTTP client while joining Playwright's complete route handlers.
+    // unrouteAll's default would return before those handlers finish and can
+    // leave an unhandled rejection after the owner and its server have ended.
+    await Promise.all([context?.unrouteAll({ behavior: 'wait' }), context?.request.dispose()]);
+    await Promise.all([...pendingHttpRoutes]);
   } finally {
     try {
       await browser?.close();

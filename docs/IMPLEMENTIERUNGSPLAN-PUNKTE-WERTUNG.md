@@ -234,6 +234,15 @@ negative/Null-Rohwerte und identische Werte in allen Ansichten und Exporten.
 
 ## Pakete 8/9 – Melden und Festschreiben
 
+Nutzerpräzisierung: Gemeldet werden ausschließlich mutmaßlich falsch vergebene Punkte.
+Die Aktion heißt „Punktefehler melden“ und bezieht sich auf eine konkrete Punktebuchung.
+Spielergebnisse, To-dos und Wettabrechnungen sind nur mit vorhandener zugehöriger Buchung
+meldbar; ein offenes To-do oder eine noch unabgerechnete Wette genügt dafür nicht.
+Die Zuständigkeitsfrage M1 betrifft ebenfalls nur diese Punktevergabe, etwa eine falsche
+Gutschrift zugunsten des Event-Erstellers.
+Betroffene Konten werden aus den zugehörigen Punktebuchungen ermittelt; reine Erstellerrollen
+begründen bei fremden Gutschriften keinen Ausschluss von der Bearbeitung.
+
 Vorbereitung im bestehenden PR: Migration 133 legt ausschließlich die privaten Meldungstabellen
 mit stabiler Zielkennung, getrennten betroffenen Personen und einer Eindeutigkeitsregel für
 offene Meldungen an. Sie setzt keine Punkte zurück und aktiviert noch keine Melde-API.

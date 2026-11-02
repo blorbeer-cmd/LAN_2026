@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import { db } from './db';
 import { PointsError, requirePointsOpen, isPointsEvent } from './points';
 import { requirePointsAdmin } from './pointsAccess';
+import { todoSourceKey } from './todoPoints';
 
 export type PointsReportTarget = 'journal' | 'match' | 'tip' | 'betting_round' | 'todo';
 interface ReportSource { title: string; subjects: string[] }
@@ -18,7 +19,18 @@ function optionalText(value: unknown): string {
     throw new PointsError('Bitte höchstens 300 Zeichen eingeben.', 400);
   return value.trim();
 }
-function unavailable(): never { throw new PointsError('Meldbarer Eintrag nicht gefunden.', 404); }
+function unavailable(): never { throw new PointsError('Meldbare Punktevergabe nicht gefunden.', 404); }
+// Source actions are shortcuts to an existing points assignment, not a
+// general complaint about a player, event, task or competition.
+function bookedPlayers(eventId: string, sourceKey: string, playerId: string | null = null): string[] {
+  return (db.prepare(`SELECT DISTINCT s.player_id FROM points_sources s JOIN points_journal j ON j.source_id=s.id
+    WHERE s.event_id=? AND s.source_key=? AND (? IS NULL OR s.player_id=?)`)
+    .all(eventId, sourceKey, playerId, playerId) as Array<{ player_id: string }>).map((row) => row.player_id);
+}
+function assignment(title: string, players: string[], actorId?: string): ReportSource {
+  if (actorId && !players.length) unavailable();
+  return { title, subjects: players };
+}
 function admins(groupId: string): string[] {
   return (db.prepare(`SELECT gm.player_id FROM group_memberships gm JOIN players p ON p.id=gm.player_id
     WHERE gm.group_id=? AND gm.status='active' AND gm.role IN ('owner','admin') AND p.deactivated_at IS NULL`)
@@ -31,43 +43,39 @@ function source(groupId: string, eventId: string, type: PointsReportTarget, id: 
       JOIN events e ON e.id=s.event_id WHERE j.id=? AND s.event_id=? AND e.group_id=?`)
       .get(id, eventId, groupId) as { title: string; player_id: string } | undefined;
     if (!row || (actorId && row.player_id !== actorId && !admins(groupId).includes(actorId))) unavailable();
-    const actors = db.prepare(`SELECT actor_player_id FROM admin_log WHERE group_id=? AND target_type='points_journal' AND target_id=?`)
-      .all(groupId, id) as Array<{ actor_player_id: string | null }>;
-    return { title: row.title, subjects: [row.player_id, ...actors.flatMap((a) => a.actor_player_id ? [a.actor_player_id] : [])] };
+    return { title: `Punktebuchung: ${row.title}`, subjects: [row.player_id] };
   }
   if (type === 'match') {
-    const row = db.prepare(`SELECT m.result,m.created_by,g.name FROM matches m JOIN games g ON g.id=m.game_id
+    const row = db.prepare(`SELECT g.name FROM matches m JOIN games g ON g.id=m.game_id
       WHERE m.id=? AND m.event_id=? AND m.group_id=?`).get(id, eventId, groupId) as
-      { result: string; created_by: string | null; name: string } | undefined;
+      { name: string } | undefined;
     if (!row) unavailable();
-    const result = JSON.parse(row.result) as { teams?: Array<{ playerIds?: string[] }> };
-    return { title: `Spielergebnis: ${row.name}`, subjects: [...(row.created_by ? [row.created_by] : []),
-      ...(result.teams ?? []).flatMap((team) => team.playerIds ?? [])] };
+    return assignment(`Punkte zum Spielergebnis: ${row.name}`, bookedPlayers(eventId, `match:${id}`), actorId);
   }
   if (type === 'todo') {
-    const task = db.prepare(`SELECT title,created_by,assignee_id,batch_id FROM checklist_tasks
+    const task = db.prepare(`SELECT id,title,batch_id FROM checklist_tasks
       WHERE id=? AND event_id=? AND group_id=? AND type='todo'`).get(id, eventId, groupId) as
-      { title: string; created_by: string; assignee_id: string | null; batch_id: string | null } | undefined;
+      { id: string; title: string; batch_id: string | null } | undefined;
     if (!task) unavailable();
-    const related = task.batch_id ? db.prepare(`SELECT created_by,assignee_id FROM checklist_tasks
-      WHERE group_id=? AND event_id=? AND batch_id=?`).all(groupId, eventId, task.batch_id) as
-      Array<{ created_by: string; assignee_id: string | null }> : [task];
-    return { title: `To-do: ${task.title}`, subjects: related.flatMap((row) => [row.created_by, ...(row.assignee_id ? [row.assignee_id] : [])]) };
+    return assignment(`Orga-Punkte zum To-do: ${task.title}`, bookedPlayers(eventId, todoSourceKey(task)), actorId);
   }
   if (type === 'tip') {
-    const tip = db.prepare(`SELECT r.title,t.player_id FROM betting_tips t JOIN betting_rounds r ON r.id=t.round_id
+    const tip = db.prepare(`SELECT r.id AS round_id,r.title,r.status,t.player_id FROM betting_tips t JOIN betting_rounds r ON r.id=t.round_id
       WHERE t.id=? AND r.event_id=? AND r.group_id=?`).get(id, eventId, groupId) as
-      { title: string; player_id: string | null } | undefined;
+      { round_id: string; title: string; status: string; player_id: string | null } | undefined;
     if (!tip || (actorId && tip.player_id !== actorId && !admins(groupId).includes(actorId))) unavailable();
-    return { title: `Tipp: ${tip.title}`, subjects: tip.player_id ? [tip.player_id] : [] };
+    if (actorId) {
+      if (!['settled','refunded'].includes(tip.status) || !tip.player_id) unavailable();
+    }
+    return assignment(`Wettabrechnung: ${tip.title}`, tip.player_id ? bookedPlayers(eventId, `bet:${tip.round_id}`, tip.player_id) : [], actorId);
   }
-  const round = db.prepare(`SELECT title,created_by,outcomes FROM betting_rounds WHERE id=? AND event_id=? AND group_id=?`)
-    .get(id, eventId, groupId) as { title: string; created_by: string | null; outcomes: string } | undefined;
+  const round = db.prepare(`SELECT title,status FROM betting_rounds WHERE id=? AND event_id=? AND group_id=?`)
+    .get(id, eventId, groupId) as { title: string; status: string } | undefined;
   if (!round) unavailable();
-  const tips = db.prepare('SELECT player_id FROM betting_tips WHERE round_id=? AND player_id IS NOT NULL').all(id) as Array<{ player_id: string }>;
-  const outcomes = JSON.parse(round.outcomes) as Array<{ playerIds: string[] }>;
-  return { title: `Wettmarkt: ${round.title}`, subjects: [...(round.created_by ? [round.created_by] : []),
-    ...tips.map((tip) => tip.player_id), ...outcomes.flatMap((outcome) => outcome.playerIds)] };
+  if (actorId) {
+    if (!['settled','refunded'].includes(round.status)) unavailable();
+  }
+  return assignment(`Wettabrechnung: ${round.title}`, bookedPlayers(eventId, `bet:${id}`), actorId);
 }
 
 // Keep the original subjects even after a source changes or disappears. Add
@@ -108,14 +116,14 @@ export function readPointsReports(groupId: string, eventId: string, actorId: str
 export function createPointsReport(groupId: string, eventId: string, actorId: string, input: Record<string, unknown>) {
   const type = input.targetType;
   if (!['journal','match','tip','betting_round','todo'].includes(type as string) || typeof input.targetId !== 'string' || !input.targetId)
-    throw new PointsError('Bitte einen meldbaren Eintrag wählen.', 400);
+    throw new PointsError('Bitte eine konkrete Punktevergabe wählen.', 400);
   const reason = optionalText(input.reason);
   return db.transaction(() => {
     if (!isPointsEvent(eventId)) throw new PointsError('Meldungen sind nur für reguläre LAN-Wertungen möglich.', 409);
     requirePointsOpen(eventId);
     const target = source(groupId, eventId, type as PointsReportTarget, input.targetId as string, actorId);
     if (db.prepare(`SELECT 1 FROM points_reports WHERE event_id=? AND reporter_id=? AND target_type=? AND target_id=? AND status='open'`)
-      .get(eventId, actorId, type, input.targetId)) throw new PointsError('Du hast diesen Eintrag bereits gemeldet.');
+      .get(eventId, actorId, type, input.targetId)) throw new PointsError('Du hast diese Punktevergabe bereits gemeldet.');
     const id = nanoid();
     db.prepare(`INSERT INTO points_reports(id,group_id,event_id,reporter_id,target_type,target_id,title,reason,created_at)
       VALUES(?,?,?,?,?,?,?,?,?)`).run(id, groupId, eventId, actorId, type, input.targetId, target.title, reason, Date.now());
