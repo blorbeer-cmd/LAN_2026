@@ -122,18 +122,62 @@ export interface PointStanding extends CategoryStanding {
   matchesPlayed: number;
 }
 
-interface PointsSnapshot {
+export interface PointsSnapshot {
   version: 2;
   participantCount: number;
   standings: PointStanding[];
+  rules?: ReturnType<typeof pointsSnapshotRules>;
+}
+// Keep the applied rules with each revision. Historical snapshots without
+// this field remain explicitly unknown rather than inheriting today's rules.
+export function pointsSnapshotRules() {
+  return {
+    model: 'category_place_points',
+    categories: ['orga', 'playing', 'betting'],
+    eligibleParticipants: 'accepted_active_non_test_at_close',
+    categoryEligibility: 'positive_raw',
+    placePoints: 'N-rank+1',
+    sharedRanks: 'competition',
+    total: 'sum_category_place_points',
+    minimumSettledTips: BETTING_MIN_SETTLED_TIPS,
+    walletStart: BETTING_START_POINTS,
+    maximumStake: BETTING_MAX_STAKE,
+    matchPointsByPosition: [4, 3, 2, 1],
+    lastMatchPlacePoints: 1,
+    matchTies: 'floor_mean_occupied_positions',
+    tournamentPlacementPoints: [5, 3, 1],
+    tournamentTies: 'full_bonus_for_shared_place',
+    poolRemainder: 'largest_fraction_then_first_tip_submission_then_insertion_order',
+    orga: {
+      completedForeignTodo: 3, organizedMatch: 1, completedTournament: 5,
+      foodOrderByOtherParticipants: { minimum: 3, threeToFive: 3, sixToEight: 4, nineOrMore: 5 },
+      ownFoodOrder: 1, completeSkills: 5, arrivalBeforeStart: 2, departureBeforeStart: 2,
+      completedPoll: 3, completedGameVote: 2, minimumRespondents: 3,
+    },
+  } as const;
+}
+export function readPointsSnapshot(eventId: string, revision?: number) {
+  const row = (revision === undefined
+    ? db.prepare('SELECT revision,standings,created_at FROM points_snapshots WHERE event_id=? ORDER BY revision DESC LIMIT 1').get(eventId)
+    : db.prepare('SELECT revision,standings,created_at FROM points_snapshots WHERE event_id=? AND revision=?').get(eventId, revision)) as
+      { revision: number; standings: string; created_at: number } | undefined;
+  if (!row) return null;
+  const parsed = JSON.parse(row.standings) as PointsSnapshot | PointStanding[];
+  const snapshot = Array.isArray(parsed)
+    ? { version: 2 as const, participantCount: parsed[0]?.participantCount ?? parsed.length, standings: parsed }
+    : parsed;
+  return { ...snapshot, revision: row.revision, createdAt: row.created_at };
 }
 function frozenPoints(eventId: string): PointsSnapshot | null {
   if (pointsSettings(eventId)?.closed_at == null) return null;
-  const frozen = db.prepare('SELECT standings FROM points_snapshots WHERE event_id=? ORDER BY revision DESC LIMIT 1')
-    .get(eventId) as { standings: string } | undefined;
-  if (!frozen) return null;
-  const parsed = JSON.parse(frozen.standings) as PointsSnapshot | PointStanding[];
-  return Array.isArray(parsed) ? { version: 2, participantCount: parsed[0]?.participantCount ?? parsed.length, standings: parsed } : parsed;
+  return readPointsSnapshot(eventId);
+}
+export function hydratePointStandings(standings: PointStanding[]): PointStanding[] {
+  return standings.flatMap((row) => {
+    const player = db.prepare('SELECT name,color FROM players WHERE id = ? AND deactivated_at IS NULL')
+      .get(row.playerId) as { name: string; color: string } | undefined;
+    return player ? [{ ...row, ...player }] : [];
+  });
 }
 export function pointParticipantCount(eventId: string): number {
   const settings = pointsSettings(eventId);
@@ -148,12 +192,7 @@ export function pointStandings(eventId: string): PointStanding[] {
   if (frozen) {
     // Older pre-cutover snapshots remain readable without inventing category
     // scores. New snapshots retain N, category ranks and the full calculation.
-    return frozen.standings.flatMap((row) => {
-      const player = db
-        .prepare('SELECT name,color FROM players WHERE id = ? AND deactivated_at IS NULL')
-        .get(row.playerId) as { name: string; color: string } | undefined;
-      return player ? [{ ...row, ...player }] : [];
-    });
+    return hydratePointStandings(frozen.standings);
   }
   const participants = pointParticipants(settings.group_id, eventId);
   const inputs = participants.map((player) => {

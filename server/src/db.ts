@@ -5955,6 +5955,32 @@ registerMigration({ version: 132, name: 'persist creator betting choice on draws
     SELECT 1 FROM betting_rounds r WHERE r.source_type='draw' AND r.source_id=matchmaking_draws.id)`);
 } });
 
+registerMigration({ version: 133, name: 'add private points reports and protected subjects', up: () => {
+  db.exec(`CREATE TABLE IF NOT EXISTS points_reports (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    reporter_id TEXT REFERENCES players(id) ON DELETE SET NULL,
+    target_type TEXT NOT NULL CHECK(target_type IN ('journal','match','tip','betting_round','todo')),
+    target_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '' CHECK(length(reason)<=300),
+    status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','corrected','dismissed')),
+    created_at INTEGER NOT NULL,
+    resolved_at INTEGER,
+    resolved_by TEXT REFERENCES players(id) ON DELETE SET NULL,
+    resolution TEXT NOT NULL DEFAULT '' CHECK(length(resolution)<=300)
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS points_reports_one_open
+    ON points_reports(event_id,reporter_id,target_type,target_id) WHERE status='open' AND reporter_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS points_reports_event ON points_reports(event_id,status);
+  CREATE TABLE IF NOT EXISTS points_report_subjects (
+    report_id TEXT NOT NULL REFERENCES points_reports(id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    PRIMARY KEY(report_id,player_id)
+  );`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

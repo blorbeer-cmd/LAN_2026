@@ -17,6 +17,9 @@ import {
   BETTING_START_POINTS,
   BETTING_MAX_STAKE,
   bettingParticipation,
+  pointsSnapshotRules,
+  readPointsSnapshot,
+  hydratePointStandings,
 } from '../points';
 import {
   createBettingRound,
@@ -143,6 +146,22 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id, eventId });
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json(pointsSettings(eventId));
+});
+pointsRouter.get('/snapshots', (req, res) => {
+  const eventId = res.locals.eventId as string;
+  if (!isPointsEvent(eventId)) throw new PointsError('LAN-Wertung nicht gefunden.', 404);
+  if (!['owner', 'admin'].includes(req.groupMembership!.role)) requirePointsVisible(eventId);
+  res.json({ revisions: db.prepare('SELECT revision,created_at AS createdAt FROM points_snapshots WHERE event_id=? ORDER BY revision DESC').all(eventId) });
+});
+pointsRouter.get('/snapshots/:revision', (req, res) => {
+  const eventId = res.locals.eventId as string;
+  if (!isPointsEvent(eventId)) throw new PointsError('LAN-Wertung nicht gefunden.', 404);
+  if (!['owner', 'admin'].includes(req.groupMembership!.role)) requirePointsVisible(eventId);
+  if (!/^[1-9]\d*$/.test(req.params.revision) || !Number.isSafeInteger(Number(req.params.revision)))
+    throw new PointsError('Ungültige Abschlussversion.', 400);
+  const snapshot = readPointsSnapshot(eventId, Number(req.params.revision));
+  if (!snapshot) throw new PointsError('Abschlussversion nicht gefunden.', 404);
+  res.json({ eventId, ...snapshot, standings: hydratePointStandings(snapshot.standings) });
 });
 pointsRouter.post('/tasks/:id/reward', requireGroupRole('admin'), (_req, res) => {
   res.status(409).json({ error: 'To-dos bringen fest 3 Orga-Punkte. Einzelne Belohnungen werden nicht mehr festgelegt.' });
@@ -293,7 +312,7 @@ pointsRouter.post('/close', requireGroupRole('admin'), (req, res) => {
     db.prepare('INSERT INTO points_snapshots (event_id,revision,standings,actor_id,created_at) VALUES (?,?,?,?,?)').run(
       eventId,
       revision,
-      JSON.stringify({ version: 2, participantCount: pointParticipantCount(eventId), standings }),
+      JSON.stringify({ version: 2, participantCount: pointParticipantCount(eventId), rules: pointsSnapshotRules(), standings }),
       req.player!.id,
       Date.now(),
     );

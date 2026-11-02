@@ -234,6 +234,26 @@ negative/Null-Rohwerte und identische Werte in allen Ansichten und Exporten.
 
 ## Pakete 8/9 – Melden und Festschreiben
 
+Vorbereitung im bestehenden PR: Migration 133 legt ausschließlich die privaten Meldungstabellen
+mit stabiler Zielkennung, getrennten betroffenen Personen und einer Eindeutigkeitsregel für
+offene Meldungen an. Sie setzt keine Punkte zurück und aktiviert noch keine Melde-API.
+Die Empfängerentscheidung M1 bleibt ausdrücklich offen.
+Die interne Meldungslogik unterstützt Erfassung, eigenen Status und administrative Bearbeitung.
+Ursprünglich betroffene Konten bleiben auch nach Quellenänderungen ausgeschlossen; aktuelle
+Betroffene werden zusätzlich geprüft. Persönliche Exporte enthalten nur eigene Meldungen.
+Kontolöschung entfernt Absenderreferenz und privaten Meldungstext, ohne andere Meldungen oder
+Punktestände zu verändern. Es erfolgt keine Übernahme ins allgemeine Adminprotokoll.
+
+Die bestehenden Abschluss-Snapshots speichern zusätzlich die angewandten Wertungsregeln.
+`GET /api/points/snapshots` listet Versionen, `GET /api/points/snapshots/:revision` liefert
+eine bestimmte Festschreibung. `GET /api/export?eventId=…&pointsRevision=…` übernimmt N,
+Rohwerte, Ränge, Platzpunkte und Regeln aus genau dieser Version, auch nach Wiederöffnen
+und erneutem Abschluss. Ältere Snapshots ohne Regeln werden nicht nachträglich mit aktuellen
+Regeln versehen. Sichtbarkeit und Datenschutz gelten weiterhin.
+
+Diese Vorbereitung schließt die Pakete noch nicht ab. Insbesondere bleiben M1, die gesperrten
+Märkte bei Abschluss (W7), Meldeoberfläche und atomare Abschlussprüfung ausstehend.
+
 Meldungen verwenden stabile Kennungen für Journalvorgänge, Ergebnisse, Tipps und To-dos.
 Der Melder bleibt gegenüber dem Gemeldeten geschützt, auch in personenbezogenen Exporten,
 Löschpfaden und Protokollen. Eine Meldung friert nichts ein. Der Meldende sieht den Status;

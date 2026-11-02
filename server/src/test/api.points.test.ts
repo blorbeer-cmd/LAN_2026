@@ -18,8 +18,113 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { roundView } from '../betting';
+import { createPointsReport, readPointsReports, resolvePointsReport } from '../pointsReports';
 
 const app = createTestApp();
+
+test('private report records retain subjects, protect reporter exports and erase private copies without changing points', async () => {
+  const f = await fixture();
+  const [subject, reporter, creator] = f.players;
+  const task = await request(app).post('/api/checklist/tasks/todo').set('x-test-player-id', subject)
+    .send({ title: 'Review this completion' });
+  assert.equal(task.status, 201);
+  const targetId = task.body.tasks[0].id;
+  const input = { targetType: 'todo', targetId, reason: 'Please check the completion' };
+  const balances = readPointsBalances(DEFAULT_GROUP_ID, f.eventId, subject);
+  const first = createPointsReport(DEFAULT_GROUP_ID, f.eventId, reporter, input);
+  assert.ok(first.recipients.includes(TEST_ADMIN_ID));
+  assert.throws(() => createPointsReport(DEFAULT_GROUP_ID, f.eventId, reporter, input),
+    (error: unknown) => error instanceof PointsError && error.status === 409);
+  createPointsReport(DEFAULT_GROUP_ID, f.eventId, creator, input);
+  db.prepare("UPDATE group_memberships SET role='admin' WHERE group_id=? AND player_id=?").run(DEFAULT_GROUP_ID, subject);
+  assert.deepEqual(readPointsReports(DEFAULT_GROUP_ID, f.eventId, subject), { own: [], inbox: [] });
+  assert.deepEqual(buildPersonalDataExport(subject)!.pointsReports, []);
+  db.prepare('UPDATE events SET created_by=? WHERE id=?').run(creator, f.eventId);
+  const creatorInbox = readPointsReports(DEFAULT_GROUP_ID, f.eventId, creator).inbox;
+  assert.equal(creatorInbox.length, 2);
+  assert.equal(creatorInbox[0].canResolve, false);
+  assert.throws(() => resolvePointsReport(DEFAULT_GROUP_ID, f.eventId, creator, first.report.id, { status: 'dismissed' }),
+    (error: unknown) => error instanceof PointsError && error.status === 403);
+  // Changing or deleting a source never grants the original subject access.
+  db.prepare('UPDATE checklist_tasks SET created_by=? WHERE id=?').run(TEST_ADMIN_ID, targetId);
+  db.prepare('DELETE FROM checklist_tasks WHERE id=?').run(targetId);
+  assert.deepEqual(readPointsReports(DEFAULT_GROUP_ID, f.eventId, subject).inbox, []);
+  assert.equal(readPointsReports(DEFAULT_GROUP_ID, f.eventId, reporter).own[0].status, 'open');
+  resolvePointsReport(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID, first.report.id,
+    { status: 'corrected', resolution: 'Journal correction is handled separately' });
+  assert.equal(readPointsReports(DEFAULT_GROUP_ID, f.eventId, reporter).own[0].status, 'corrected');
+  assert.deepEqual(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, subject), balances);
+  assert.throws(() => resolvePointsReport(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID, first.report.id, { status: 'dismissed' }),
+    (error: unknown) => error instanceof PointsError && error.status === 409);
+  const directory = mkdtempSync(path.join(tmpdir(), 'points-report-erasure-'));
+  const mutableConfig = config as unknown as { deletionLedgerFile: string };
+  const previousLedger = mutableConfig.deletionLedgerFile;
+  mutableConfig.deletionLedgerFile = path.join(directory, 'receipts.jsonl');
+  try {
+    const erased = deleteAccount(reporter, TEST_ADMIN_ID);
+    assert.equal(erased.ok, true, JSON.stringify(erased));
+    const persisted = db.prepare('SELECT reporter_id,reason,status FROM points_reports WHERE id=?').get(first.report.id);
+    assert.deepEqual(persisted, { reporter_id: null, reason: '', status: 'corrected' });
+    assert.deepEqual(readPointsReports(DEFAULT_GROUP_ID, f.eventId, subject).inbox, []);
+    const log = db.prepare("SELECT * FROM admin_log WHERE target_type='points_report' AND target_id=?").all(first.report.id);
+    assert.deepEqual(log, [], 'report identities never enter the broadly visible admin log');
+  } finally {
+    mutableConfig.deletionLedgerFile = previousLedger;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('exports retain the selected points revision and its rules after reopening and changing the roster', async () => {
+  const f = await fixture();
+  recordPointsEntitlements([{ groupId: DEFAULT_GROUP_ID, eventId: f.eventId, playerId: f.players[0],
+    account: 'orga', sourceKey: 'fixture:revision', total: 7, expectedRevision: 0, title: 'Revision fixture' }]);
+  const endpoint = `/api/points/snapshots?eventId=${f.eventId}`;
+  const exportRevision = (revision: string) => request(app).get(`/api/export?eventId=${f.eventId}&pointsRevision=${revision}`);
+  assert.equal((await request(app).post('/api/points/close').send({})).status, 200);
+  const original = (await exportRevision('1')).body;
+  assert.equal(original.pointsSnapshot.revision, 1);
+  assert.equal(original.pointsSnapshot.rules.minimumSettledTips, 2);
+  assert.equal(original.pointsSnapshot.rules.placePoints, 'N-rank+1');
+  const stored = (await request(app).get(`/api/points/snapshots/1?eventId=${f.eventId}`)).body;
+  assert.deepEqual(stored.standings, original.leaderboard);
+  assert.equal((await request(app).post('/api/points/reopen').send({ reason: 'Correct final roster' })).status, 200);
+  setParticipants(f.eventId, [TEST_ADMIN_ID, f.players[0]]);
+  assert.deepEqual((await exportRevision('1')).body.leaderboard, original.leaderboard);
+  assert.equal((await request(app).post('/api/points/close').send({})).status, 200);
+  const current = (await request(app).get(`/api/export?eventId=${f.eventId}`)).body;
+  assert.equal(current.pointsSnapshot.revision, 2);
+  assert.equal(current.participantCount, 2);
+  const historical = (await exportRevision('1')).body;
+  assert.equal(historical.participantCount, 4);
+  assert.deepEqual(historical.pointsSnapshot, original.pointsSnapshot);
+  assert.deepEqual(historical.leaderboard, original.leaderboard);
+  assert.deepEqual((await request(app).get(endpoint)).body.revisions.map((row: { revision: number }) => row.revision), [2, 1]);
+  assert.equal((await exportRevision('3')).status, 404);
+  assert.equal((await exportRevision('invalid')).status, 400);
+  assert.equal((await request(app).get(`/api/points/snapshots/0?eventId=${f.eventId}`)).status, 400);
+  db.prepare('UPDATE points_settings SET visible=0 WHERE event_id=?').run(f.eventId);
+  assert.equal((await request(app).get(`/api/points/snapshots/1?eventId=${f.eventId}`).set('x-test-player-id', f.players[0])).status, 403);
+  assert.equal((await exportRevision('1')).status, 404, 'a historical selection never exposes hidden points in the shared export');
+  db.prepare('UPDATE points_settings SET visible=1 WHERE event_id=?').run(f.eventId);
+  const directory = mkdtempSync(path.join(tmpdir(), 'points-snapshot-erasure-'));
+  const mutableConfig = config as unknown as { deletionLedgerFile: string };
+  const previousLedger = mutableConfig.deletionLedgerFile;
+  mutableConfig.deletionLedgerFile = path.join(directory, 'receipts.jsonl');
+  try {
+    const deleted = deleteAccount(f.players[1], TEST_ADMIN_ID);
+    assert.equal(deleted.ok, true, JSON.stringify(deleted));
+    const anonymized = (await exportRevision('1')).body;
+    assert.equal(anonymized.participantCount, 4);
+    assert.deepEqual(anonymized.pointsSnapshot.rules, original.pointsSnapshot.rules);
+    assert.deepEqual(anonymized.leaderboard, original.leaderboard.filter((row: { playerId: string }) => row.playerId !== f.players[1]));
+    const afterDeletion = await request(app).get(`/api/points/snapshots/1?eventId=${f.eventId}`);
+    assert.equal(afterDeletion.status, 200);
+    assert.ok(!JSON.stringify(afterDeletion.body).includes(f.players[1]));
+  } finally {
+    mutableConfig.deletionLedgerFile = previousLedger;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test('travel awards are granted once at event start and survive later edits', async () => {
   const f = await fixture();

@@ -267,6 +267,9 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
        WHERE s.player_id = ? ORDER BY j.created_at, j.rowid`,
       playerId,
     ),
+    pointsReports: rows(`SELECT id,event_id AS eventId,target_type AS targetType,target_id AS targetId,
+      title,reason,status,created_at AS createdAt,resolved_at AS resolvedAt,resolution
+      FROM points_reports WHERE reporter_id=? ORDER BY created_at,rowid`, playerId),
     memberships: rows(
       `SELECT gm.group_id AS groupId, g.name AS groupName, gm.role, gm.status,
               gm.joined_at AS joinedAt, gm.ended_at AS endedAt
@@ -926,6 +929,12 @@ function scrubPushLogIdentifiers(playerId: string): void {
 }
 
 function scrubAccountCopies(playerId: string, names: Set<string>): void {
+  // Reports are private records. Erasure must neither copy their reporter to
+  // the public audit trail nor expose somebody else's submission in an export.
+  db.prepare("UPDATE points_reports SET reason='' WHERE reporter_id=?").run(playerId);
+  db.prepare("UPDATE points_reports SET resolution='' WHERE resolved_by=?").run(playerId);
+  db.prepare(`UPDATE points_reports SET title='Eintrag mit gelöschtem Konto'
+    WHERE id IN (SELECT report_id FROM points_report_subjects WHERE player_id=?)`).run(playerId);
   removeSubjectScopedPushes(playerId);
   removeIdFromJsonArrayTable('push_log', 'id', 'player_ids', playerId);
   scrubPushLogIdentifiers(playerId);

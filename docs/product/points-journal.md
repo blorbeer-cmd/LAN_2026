@@ -328,3 +328,26 @@ der einheitlichen Festschreibung folgen gemäß
 [Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md). Klassische Spielfilter und
 eventübergreifende Sportstatistiken verwenden weiterhin Spielpunkte und vermischen diese nicht
 mit Kategorie-Platzpunkten oder Wallet-Summen.
+
+## Versionierte Festschreibung
+
+Neue Abschlussversionen speichern neben Teilnehmerbasis, Rohwerten, Rängen, Platzpunkten und
+Gesamtständen auch die verwendeten Wertungsregeln. Frühere Versionen bleiben beim begründeten
+Wiederöffnen erhalten. `GET /api/points/snapshots` listet die Versionen eines Events;
+`GET /api/points/snapshots/:revision` liefert einen gespeicherten Stand.
+Der Andenken-Export übernimmt mit `pointsRevision` gezielt dessen Kategorie-Wertung und N;
+die übrigen Andenken-Daten bleiben der aktuelle Eventexport. Ohne Versionsauswahl verwendet
+ein abgeschlossenes Event den jüngsten Abschluss. Alte Stände ohne gespeicherte Regeln liefern
+keine nachträglich erfundene Regelversion. Ausgeblendete Punkte bleiben im gemeinsamen Export
+ausgeblendet; ein Versionsparameter umgeht diese Regel nicht. Kontolöschung anonymisiert auch
+die früheren Versionen; gespeicherte Ränge und N werden dabei nicht neu berechnet.
+
+Migration 133 bereitet private Meldungen vor und verändert keine Guthaben. Solange M1 und
+W7 für den endgültigen Abschluss offen sind, ist dies noch keine aktivierte Meldefunktion;
+die bisherigen Abschlussbedingungen bleiben bestehen.
+Die interne Meldungslogik speichert Quellenkennungen und betroffene Konten getrennt vom Absender.
+Eigene Meldungen und ihr Status sind Bestandteil des persönlichen Datenexports, fremde Meldungen
+nicht. Löschung des Absenders anonymisiert seine Referenz und entfernt seinen privaten Text;
+andere Meldungen sowie die Punktebuchungen bleiben erhalten. Meldungsdetails gelangen nicht in
+das allgemeine Adminprotokoll. Oberfläche, öffentliche Melde-API und abschließende Empfängerregel
+werden erst nach der noch offenen fachlichen Entscheidung angebunden.

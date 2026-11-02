@@ -85,6 +85,46 @@ function makeTempDbPath(name: string): string {
   return path.join(dir, `${name}.db`);
 }
 
+test('migration 133 upgrades without changing balances, rolls back a failed schema step, and preserves reports on replay', () => {
+  const dbFile = makeTempDbPath('private-points-reports');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  const balances = fixture.prepare('SELECT * FROM points_journal ORDER BY id').all();
+  fixture.exec(`DROP TABLE points_report_subjects; DROP TABLE points_reports;
+    DELETE FROM schema_migrations WHERE version=133;
+    CREATE TABLE points_reports_one_open(id TEXT);`);
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /points_reports_one_open/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare("SELECT name FROM sqlite_master WHERE name='points_reports'").get(), undefined);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=133').get(), undefined);
+  failed.exec('DROP TABLE points_reports_one_open');
+  failed.close();
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  migrated.exec(`INSERT INTO players(id,name,api_key,created_at) VALUES ('report-migration','Reporter','report-migration-key',1);
+    INSERT INTO events(id,name,starts_at,group_id,status,event_type_key)
+      VALUES('report-event','Existing LAN',1,'default-group','published','lan');
+    INSERT INTO points_reports(id,group_id,event_id,reporter_id,target_type,target_id,title,created_at)
+      VALUES('report-1','default-group','report-event','report-migration','todo','removed-task','Stable reference',1);
+    INSERT INTO points_report_subjects(report_id,player_id) VALUES('report-1','report-migration');`);
+  assert.throws(() => migrated.exec(`INSERT INTO points_reports(id,group_id,event_id,reporter_id,target_type,target_id,title,created_at)
+    VALUES('report-duplicate','default-group','report-event','report-migration','todo','removed-task','Duplicate',2)`), /UNIQUE/);
+  const reports = migrated.prepare('SELECT * FROM points_reports').all();
+  const subjects = migrated.prepare('SELECT * FROM points_report_subjects').all();
+  migrated.exec('DELETE FROM schema_migrations WHERE version=133');
+  migrated.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const replayed = new Database(dbFile);
+  assert.deepEqual(replayed.prepare('SELECT * FROM points_reports').all(), reports);
+  assert.deepEqual(replayed.prepare('SELECT * FROM points_report_subjects').all(), subjects);
+  assert.deepEqual(replayed.prepare('SELECT * FROM points_journal ORDER BY id').all(), balances);
+  assert.deepEqual(replayed.pragma('foreign_key_check'), []);
+  replayed.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 131 restarts every points account, discards pools and snapshots, and prevents historical backfills', () => {
   const dbFile = makeTempDbPath('wallet-reset');
   runMigrations(dbFile);
@@ -1550,10 +1590,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 132);
+  assert.equal(migrations.length, 133);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 132 }, (_, index) => index + 1),
+    Array.from({ length: 133 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -2155,8 +2195,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 132 }, (_, index) => index + 1),
-    'every version 1..132 runs exactly once',
+    Array.from({ length: 133 }, (_, index) => index + 1),
+    'every version 1..133 runs exactly once',
   );
 });
 
