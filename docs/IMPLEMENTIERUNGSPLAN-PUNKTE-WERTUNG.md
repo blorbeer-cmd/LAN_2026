@@ -165,7 +165,7 @@ Journal, feste Startvergabe, Marktstorno und Kategorie-Korrekturen.
 
 **Umgesetzt:** Vorläufiger Topf, Anzahl Tipps, Einsätze je Ausgang und Pool-Quoten sind
 bereits vor Tippschluss sichtbar. Ein nicht belegter Ausgang hat keine berechenbare Quote.
-Freie Zweiermatches, Ligaspiele und Gruppenspiele bieten einen regulär gewinnenden Remis-Tipp;
+Freie Matches mit mindestens zwei Teams, Ligaspiele und Gruppenspiele bieten einen regulär gewinnenden Remis-Tipp;
 K.-o.-Spiele und Turniersieger-Märkte bieten ihn nicht. Bei älteren Märkten ohne Remis-Auswahl
 wird ein eingetretenes Remis weiterhin vollständig erstattet. Die Auswahl erweitert nicht die
 gespeicherten Teilnehmerseiten eines Wettbewerbs.
@@ -196,8 +196,8 @@ zurückgenommene Tipps zählen nicht zur Mindestzahl. Auszahlungen sind davon un
 Migration 132 speichert die Erstellerwahl an Auslosungen und Captain Drafts. Rematches fragen
 ebenfalls beim Anlegen nach der Freigabe. Bestehende explizite Märkte behalten ihre Freigabe;
 andere Alt-Auslosungen beginnen ohne Freigabe. Die separate administrative Markt-API prüft
-die Wahl ebenso und kann ein Nein nicht umgehen. Die bestehende Zweiermatch-Grenze bleibt
-erhalten. Turniermärkte werden angeboten, sobald ihre Gegner feststehen, der Gesamtsieg
+die Wahl ebenso und kann ein Nein nicht umgehen. Matches, Rematches und Captain Drafts unterstützen seit der UX-Nachbesserung auch mehr als
+zwei Teams; die bestehende Sieger-/Remis-Abrechnung bleibt erhalten. Turniermärkte werden angeboten, sobald ihre Gegner feststehen, der Gesamtsieg
 vor dem ersten Spiel. Mitspieler oder Admin schließen neue automatische Märkte vor Spielbeginn
 über die vorhandene Startaktion. Beim ersten Turnierspiel
 wird auch der Gesamtsieger-Markt geschlossen. Bestehende explizite Fristen bleiben wirksam.
@@ -208,9 +208,10 @@ Erzeugung der Quelle und der Märkte laufen in derselben Transaktion, einschlie�
 letzten Draft-Picks und neu feststehender Turniergegner. Mitteilungen folgen erst nach Commit.
 Ungültige/abgebrochene Quellen und nicht wählbare geteilte Turniersiege werden erstattet.
 Hall of Fame und Export behalten auch bei Turnieren gemeinsame Sieger. Der bestätigte
-Hinweis H1 erscheint im Spiel-Kategorieverlauf; er ändert keine Formel.
+Hinweis H1 beschreibt weiterhin die unveränderte Formel; die kompakte Oberfläche wiederholt
+ihn nicht mehr als Erklärung unter jedem Spielverlauf.
 
-Neue Zweiermatches, Drafts mit zwei Captains und Rematches erlauben Wetten standardmäßig.
+Neue Matches, Drafts mit mindestens zwei Captains und Rematches erlauben Wetten standardmäßig.
 Die Oberfläche wählt die Freigabe bei jeder neuen Anlage vor; ein ausdrückliches Nein gilt
 für diesen Vorgang. Die API verwendet bei fehlender Angabe denselben formatabhängigen
 Standard. Historische beziehungsweise ausdrücklich ausgeschaltete Freigaben bleiben unverändert.

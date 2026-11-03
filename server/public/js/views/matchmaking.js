@@ -1,4 +1,4 @@
-import { competitionBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
+import { competitionBettingHtml, competitionOddsHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
 let pointsContext = null;
 // Matchmaking view (FR-16..18): pick a game + present players, draw balanced
 // teams. Results are stored in shared state (updated live via the
@@ -20,7 +20,6 @@ import { emptyStateHtml } from '../emptyState.js';
 import { teamMoveControlHtml } from '../tournamentTeamDraft.js';
 import { filterRosterPicker, pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
 import { resultFormHtml, wireResultForm } from '../resultDialog.js';
-import { pointsReportButton, wirePointsReportButtons } from '../pointsReports.js';
 import { withStepUp } from '../reauth.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { RESTORE_FOCUS_EVENT } from '../viewRenderState.js';
@@ -333,7 +332,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       return `
       <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${isLoser ? ' is-loser' : ''}" role="group" aria-label="${escapeHtml(teamNames[i])}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
         <div class="team-card-header">
-          <span class="row matchmaking-draw-team-title" style="gap:var(--space-2);"><span class="matchmaking-draw-team-name">${escapeHtml(teamNames[i])}</span>${isWinner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}</span>
+          <span class="row matchmaking-draw-team-title" style="gap:var(--space-2);"><span class="matchmaking-draw-team-name">${escapeHtml(teamNames[i])}</span>${inTournament ? '' : competitionOddsHtml('draw', draw.id, String(i))}${isWinner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}</span>
           ${teamSkillHtml(t.players, draw.gameId, skillOptions)}
         </div>
         ${resultLine}
@@ -384,7 +383,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
     const cardActions = `${actions}${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>` : ''}`;
     return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, cardActions,
-      `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { canOpen: editable && draw.teams.length === 2 })}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
+      `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext)}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
   }
 
   return `
@@ -400,7 +399,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       </div>
       <div class="tournament-team-preview-grid">${teamsHtml}</div>
       ${seatingNote}
-      ${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { canOpen: editable && draw.teams.length === 2 })}
+      ${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext)}
     </div>`;
 }
 
@@ -412,9 +411,8 @@ function openDrawResultDialog(draw, ctx) {
   const correction = competitionCorrection('draw', draw.id);
   const { close, el } = openModal('Ergebnis', `
     <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
-    ${recorded ? correction.html : ''}${pointsReportButton('match', draw.matchId, recorded)}
+    ${recorded ? correction.html : ''}
     ${resultFormHtml({ teams, prefix: 'draw-result', mode: hasValues ? 'score' : 'winner', winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? (draw.isDraw ? -1 : undefined) : undefined, scores: draw.teams.map((team) => team.score) })}`);
-  wirePointsReportButtons(el);
   wireResultForm(el, {
     teams,
     mode: hasValues ? 'score' : 'winner',
@@ -722,7 +720,7 @@ function wireDrawCards(container, ctx) {
           ctx.rerender();
           return rematchDraw;
         };
-        if (canOfferBetting() && teams.length === 2) {
+        if (canOfferBetting()) {
           const { close } = openModal('Rematch erstellen', `<form class="stack" data-rematch-form>
             <label class="check-row"><input type="checkbox" name="bettingAllowed" checked>Wetten erlauben</label>
             <div class="row" style="justify-content:flex-end"><button type="submit" class="btn btn-primary">Rematch erstellen</button></div></form>`, {
@@ -828,7 +826,7 @@ function historyMatchHtml(draw) {
   const seating = draw.seatConflicts > 0
     ? `<div class="muted">${icon('armchair')} ${draw.seatConflicts} von ${draw.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten.</div>` : '';
   return historyItemHtml(draw.id, draw.gameName, meta, actions,
-    `<div class="matchmaking-history-teams">${teams}</div>${seating}${competitionBettingHtml('draw', draw.id, pointsContext, { canOpen: false })}`, '', drawIncludesMe(draw));
+    `<div class="matchmaking-history-teams">${teams}</div>${seating}${competitionBettingHtml('draw', draw.id, pointsContext)}`, '', drawIncludesMe(draw));
 }
 
 function historyTournamentDetailHtml(tournament) {
@@ -1255,7 +1253,7 @@ export function renderMatchmaking(container, ctx) {
           renderTrailing: (player) => playerSkillHtml(player, selectedGameId),
         })}
         <div class="card-footer-actions row" style="justify-content:flex-end;flex-wrap:wrap;">
-          ${canOfferBetting() ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" id="mm-betting-allowed" ${bettingAllowed ? 'checked' : ''}${teamCountValue && Number(teamCountValue) !== 2 ? ' disabled' : ''}>Wetten erlauben</label>` : ''}
+          ${canOfferBetting() ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" id="mm-betting-allowed" ${bettingAllowed ? 'checked' : ''}>Wetten erlauben</label>` : ''}
           <div class="check-row" style="padding:0;border-bottom:0;">
             <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
             <span class="title-with-info tournament-option-label">
@@ -1312,7 +1310,7 @@ export function renderMatchmaking(container, ctx) {
           })}
         </div>
         <div class="card-footer-actions">
-          ${canOfferBetting() ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" id="draft-betting-allowed" ${bettingAllowed ? 'checked' : ''}${draftCaptainIds.size > 2 ? ' disabled' : ''}>Wetten erlauben</label>` : ''}
+          ${canOfferBetting() ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" id="draft-betting-allowed" ${bettingAllowed ? 'checked' : ''}>Wetten erlauben</label>` : ''}
           <div class="row" style="flex-wrap:wrap;">
             <button type="button" class="btn btn-primary btn-sm" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten</button>
             ${draftReady ? '' : infoTooltipHtml(
@@ -1396,8 +1394,6 @@ export function renderMatchmaking(container, ctx) {
   const capTeamCountField = (event) => {
     teamCountValue = capTeamCountValue(event.target.value, checkedIds.size);
     if (event.target.value !== teamCountValue) event.target.value = teamCountValue;
-    const bettingChoice = container.querySelector('#mm-betting-allowed');
-    if (bettingChoice) bettingChoice.disabled = Boolean(teamCountValue && Number(teamCountValue) !== 2);
   };
   container.querySelector('#mm-teamcount')?.addEventListener('input', capTeamCountField);
   // A realtime re-render while this field is focused writes the value typed
@@ -1413,7 +1409,7 @@ export function renderMatchmaking(container, ctx) {
         gameId: selectedGameId,
         captainIds,
         poolPlayerIds,
-        bettingAllowed: captainIds.length === 2 && (!canOfferBetting() || bettingAllowed),
+        bettingAllowed: !canOfferBetting() || bettingAllowed,
       });
       draftCaptainIds = new Set();
       bettingAllowed = true;
@@ -1444,8 +1440,7 @@ export function renderMatchmaking(container, ctx) {
       bettingAllowed: !canOfferBetting() || bettingAllowed };
     if (teamCountRaw) {
       body.teamCount = parseInt(teamCountRaw, 10);
-      body.bettingAllowed = body.teamCount === 2 && body.bettingAllowed;
-    } else if (body.bettingAllowed) delete body.bettingAllowed;
+    }
 
     try {
       const result = await api.matchmaking.generate(body);

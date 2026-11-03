@@ -1,4 +1,5 @@
 import { escapeHtml } from './format.js';
+import { icon } from './icons.js';
 
 export const POINT_SOURCES = Object.freeze({
   start: 'Wett-Startguthaben',
@@ -12,6 +13,12 @@ export const POINT_SOURCES = Object.freeze({
 export const signedPoints = (value) => `${value > 0 ? '+' : ''}${value}`;
 
 export const POINT_CATEGORIES = Object.freeze({ orga: 'Orga', playing: 'Spielen', betting: 'Wetten' });
+
+export function pointsSectionHtml(key, title, content, { open = false, flat = false, meta = '', metaHtml = '', label = title } = {}) {
+  return `<section aria-label="${escapeHtml(label)}"><details class="${flat ? 'points-ranking' : 'card'} collapsible-section" data-points-section="${escapeHtml(key)}"${open ? ' open' : ''}>
+    <summary class="collapsible-section-header"><span class="collapsible-section-chevron">${icon('chevronRight')}</span><h2>${escapeHtml(title)}</h2>${metaHtml || meta ? `<span class="muted">${metaHtml || escapeHtml(meta)}</span>` : ''}</summary>
+    <div class="collapsible-section-content stack">${content}</div></details></section>`;
+}
 
 export function categoryPlaceSummary(categories) {
   return categories ? Object.entries(POINT_CATEGORIES)

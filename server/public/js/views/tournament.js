@@ -1,4 +1,4 @@
-import { competitionBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
+import { competitionBettingHtml, competitionOddsHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
 // Tournament detail view (FR-33): automatically generated single-elimination
 // bracket ("Turnierbaum") or
 // round-robin league ("jeder gegen jeden", optionally Hin- und Rückspiele),
@@ -16,7 +16,6 @@ import { emptyStateHtml } from '../emptyState.js';
 import { localRouteKey } from '../appRoute.js';
 import { copyText } from '../clipboard.js';
 import { resultFormHtml, wireResultForm } from '../resultDialog.js';
-import { pointsReportButton, wirePointsReportButtons } from '../pointsReports.js';
 import { getMyId } from '../whoami.js';
 import { isGroupAdmin } from '../groupContext.js';
 
@@ -168,7 +167,10 @@ function renderDetail(container, ctx) {
     renderSingleFinal,
     renderRoundRobin,
     renderTournamentTeams,
-  } = createTournamentPresentation(getMyId());
+  } = createTournamentPresentation(getMyId(), {
+    bettingControls: (type, id) => competitionBettingHtml(type, id, ctx, { actionsOnly: true }),
+    bettingOdds: (type, id, outcomeId) => competitionOddsHtml(type, id, outcomeId),
+  });
   const boardContent =
     t.format === 'single_elimination'
       ? t.matches.filter((match) => !match.isBye).length === 1
@@ -198,11 +200,7 @@ function renderDetail(container, ctx) {
     .join(' · ');
   const formatExplanation = `${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''}`;
   const activeLobbies = renderActiveLobbies(t);
-  const outrightBetting = competitionBettingHtml('tournament', t.id, ctx, { canOpen: t.status === 'active' && !decidedMatches });
-  const fixtureBetting = t.matches.filter((m) => !m.isBye && m.teamAId && m.teamBId).map((m) => {
-    const content = competitionBettingHtml('tournament_match', m.id, ctx, { canOpen: !m.winnerTeamId && !m.isDraw && !t.endedEarly });
-    return content ? `<div class="stack"><h3>${escapeHtml(t.teams.find((team) => team.id === m.teamAId)?.name ?? '')} gegen ${escapeHtml(t.teams.find((team) => team.id === m.teamBId)?.name ?? '')}</h3>${content}</div>` : '';
-  }).join('');
+  const outrightBetting = competitionBettingHtml('tournament', t.id, ctx);
 
   container.innerHTML = `
     <div class="row-between page-title-row">
@@ -221,9 +219,8 @@ function renderDetail(container, ctx) {
     <div class="grouped-page-sections tournament-board">
       ${renderChampion(t)}
       ${activeLobbies}
-      ${outrightBetting ? `<section class="card stack" aria-label="Turniersieger tippen">${outrightBetting}</section>` : ''}
+      ${outrightBetting ? `<div class="row points-actions" aria-label="Turniersieger tippen"><strong>Turniersieger</strong>${outrightBetting}</div>` : ''}
       ${board}
-      ${fixtureBetting ? `<section class="card stack" aria-label="Wetten auf Begegnungen"><h2>Wetten auf Begegnungen</h2>${fixtureBetting}</section>` : ''}
       ${renderTournamentTeams(t, { teamsOpen: tournamentTeamsOpen, canRename: (team) => canRenameTeam(t, team), highlightOwn: ownTeamFocusFor === t.id })}
     </div>
   `;
@@ -362,9 +359,8 @@ function openResultDialog(t, match, phaseLabel, ctx) {
   const correction = competitionCorrection('tournament', t.id, t.matches.map((m) => m.id));
   const { close, el } = openModal('Ergebnis', `
     <div class="muted result-dialog-subtitle">${escapeHtml(t.name)} · ${escapeHtml(phaseLabel)}</div>
-    ${decided ? correction.html : ''}${pointsReportButton('match', match.matchId, decided)}
+    ${decided ? correction.html : ''}
     ${resultFormHtml({ teams, prefix: 'tournament-result', mode: t.trackScore ? 'score' : 'winner', fixedMode: true, allowDraw: !knockout, integerScores: true, winnerIndex: decided && !t.trackScore ? match.isDraw ? -1 : match.winnerTeamId === match.teamAId ? 0 : 1 : undefined, scores: [match.scoreA, match.scoreB] })}`);
-  wirePointsReportButtons(el);
   wireResultForm(el, {
     teams, mode: t.trackScore ? 'score' : 'winner', allowDraw: !knockout, integerScores: true,
     onSave: async ({ mode, winnerIndex, scores }) => {

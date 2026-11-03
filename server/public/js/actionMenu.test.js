@@ -20,4 +20,9 @@ test('an action menu only bundles more entries than it may show inline', () => {
   assert.match(menu, /^<details class="action-menu" data-action-menu="k1">/);
   assert.match(menu, /aria-label="Aktionen für &quot;X&quot;">Aktion /);
   assert.ok(menu.includes(`<div class="action-menu-panel">${edit}${end}${remove}</div>`));
+  const floating = actionMenuHtml([edit, end], 'Wetten: Arena', { summary: 'Wetten', floating: true });
+  assert.match(floating, /data-floating-action-menu/);
+  assert.match(floating, /class="action-menu-panel" popover="manual"/);
+  assert.match(floating, /aria-label="Wetten: Arena">Wetten /);
+  assert.equal(actionMenuHtml([edit], 'Wetten: Arena', { floating: true }), edit);
 });

@@ -245,13 +245,11 @@ export function createBettingRound(
       source.started ||
       source.finished ||
       source.invalid ||
-      source.outcomes.length < 2 ||
+      source.outcomes.filter((outcome) => outcome.id !== DRAW_BET_OUTCOME).length < 2 ||
       source.outcomes.some((o) => o?.id !== DRAW_BET_OUTCOME && !o?.playerIds.length)
     ) {
       throw new PointsError('Für diesen Wettbewerb kann keine neue Tipprunde geöffnet werden.');
     }
-    if (type !== 'tournament' && source.outcomes.filter((o) => o.id !== DRAW_BET_OUTCOME).length !== 2)
-      throw new PointsError('Match-Tipps benötigen genau zwei Seiten.');
     if (
       db
         .prepare('SELECT 1 FROM betting_rounds WHERE event_id = ? AND source_type = ? AND source_id = ?')
@@ -317,7 +315,7 @@ function ensureBettingMarkets(eventId?: string): BettingRound[] {
     }
     const sides = source.outcomes.filter((outcome) => outcome.id !== DRAW_BET_OUTCOME);
     if (source.started || source.finished || source.invalid || sides.length < 2 ||
-        sides.some((side) => !side.playerIds.length) || (row.source_type !== 'tournament' && sides.length !== 2)) continue;
+        sides.some((side) => !side.playerIds.length)) continue;
     const id = createBettingRound(row.group_id, row.event_id, row.source_type, row.source_id, 0, row.created_by, false);
     created.push(getBettingRound(row.group_id, row.event_id, id));
   }
@@ -373,9 +371,9 @@ function sourceChanged(round: BettingRound, source: SourceState): boolean {
     .map((o) => ({ id: o.id, players: [...o.playerIds].sort() }));
   return JSON.stringify(signature(JSON.parse(round.outcomes))) !== JSON.stringify(signature(source.outcomes));
 }
-function closeRound(round: BettingRound, now: number): void {
+function closeRound(round: BettingRound, now: number, refundInvalidPool = true): void {
   const tips = tipsFor(round.id);
-  if (tips.length < 2 || new Set(tips.map((t) => t.outcome_id)).size < 2) {
+  if (refundInvalidPool && (tips.length < 2 || new Set(tips.map((t) => t.outcome_id)).size < 2)) {
     settleRound(round, null, 'Ungültiger Tipptopf', now);
     db.prepare('UPDATE betting_tips SET counts_daily = 0 WHERE round_id = ?').run(round.id);
   } else
@@ -539,14 +537,33 @@ export function lockBettingRound(round: BettingRound): void {
         WHERE m.id=? AND r.source_type='tournament' AND r.event_id=? AND r.status='open'`)
         .all(round.source_id, round.event_id) as BettingRound[];
       for (const champion of champions) {
-        closeRound(champion, Date.now());
+        closeRound(champion, Date.now(), false);
         closedChampions.push(champion);
       }
     }
-    closeRound(fresh, Date.now());
+    closeRound(fresh, Date.now(), false);
   }).immediate();
   for (const champion of closedChampions)
     resolvePushTopic(`betting-open:${champion.id}`, false, { groupId: champion.group_id, eventId: champion.event_id });
+}
+export function reopenBettingRound(round: BettingRound, actorId: string): void {
+  db.transaction(() => {
+    requirePointsOpen(round.event_id);
+    requirePointsVisible(round.event_id);
+    requireActiveBettingEvent(round.event_id);
+    const fresh = getBettingRound(round.group_id, round.event_id, round.id);
+    if (fresh.status !== 'locked') throw new PointsError('Nur geschlossene Tippabgaben können wieder geöffnet werden.');
+    if (fresh.revision !== 0 || fresh.settled_at !== null)
+      throw new PointsError('Bereits abgerechnete Einsätze bleiben auch nach einer Ergebniskorrektur unveränderlich.');
+    if (fresh.closes_at > 0 && fresh.closes_at <= Date.now())
+      throw new PointsError('Der festgelegte Tippschluss ist bereits vorbei.');
+    const source = betSourceState(fresh.group_id, fresh.event_id, fresh.source_type, fresh.source_id);
+    if (source.started || source.finished || source.invalid || sourceChanged(fresh, source))
+      throw new PointsError('Der Wettbewerb hat bereits begonnen oder wurde geändert.');
+    db.prepare("UPDATE betting_rounds SET status='open',locked_at=NULL WHERE id=? AND status='locked'").run(fresh.id);
+    writeAdminAudit({ actorPlayerId: actorId, groupId: fresh.group_id, action: 'betting_round_reopened',
+      targetType: 'betting_round', targetId: fresh.id });
+  }).immediate();
 }
 export function refundBettingRound(round: BettingRound, actorId: string, reason: string): void {
   db.transaction(() => {

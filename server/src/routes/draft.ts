@@ -183,9 +183,7 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   if (poolPlayerIds.length < 1) {
     return res.status(400).json({ error: 'Der Pool braucht mindestens einen Spieler zum Picken.' });
   }
-  const bettingAllowed = requestedBettingAllowed ?? captainIds.length === 2;
-  if (bettingAllowed && captainIds.length !== 2)
-    return res.status(400).json({ error: 'Wetten sind nur bei genau zwei Teams möglich.' });
+  const bettingAllowed = requestedBettingAllowed ?? true;
   const allIds = [...captainIds, ...poolPlayerIds];
   if (new Set(allIds).size !== allIds.length) {
     return res.status(400).json({ error: 'Ein Spieler kann nicht doppelt teilnehmen (Captain und Pool).' });

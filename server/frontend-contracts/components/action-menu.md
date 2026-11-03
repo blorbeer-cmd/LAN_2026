@@ -9,14 +9,15 @@ Bestellkarten. Sie hält seltenere Aktionen aus dem Kartenkopf heraus, ohne dere
 Tastaturpfade oder Trefferflächen zu verkleinern. Ein Menü lohnt den zusätzlichen Klick erst ab
 mehreren Einträgen: Bis zur vom Aufrufer gewählten Grenze (Standard: ein Eintrag) rendert der Helper
 die Einträge direkt als Buttons. Persönliche Teilnahme-, Zahlungs- und Kalenderaktionen bleiben
-außerhalb dieses Menüs.
+außerhalb dieses Menüs. Die ausdrücklich gebündelten Wettaktionen verwenden den benannten
+Trigger „Wetten“; dort gehören persönlicher Tipp und Marktaktionen zusammen.
 
 ## 2. Quelle
 
 - Markup und Verhalten: `public/js/actionMenu.js`
 - Geometrie und offene Kartenlage: `public/css/style.css`
 - Ergänzende bestehende Kartenlage: `public/css/domains.css`
-- Markup-API: `actionMenuHtml(actions, label, { key, inlineMax, summary })`; `actions` ist ein Array mit
+- Markup-API: `actionMenuHtml(actions, label, { key, inlineMax, summary, floating })`; `actions` ist ein Array mit
   einem Eintrag je Aktion, leere Einträge fallen weg. Höchstens `inlineMax` Einträge (Standard `1`)
   werden direkt aneinandergereiht zurückgegeben, erst darüber entsteht das Menü. Der optionale
   `key` setzt
@@ -45,6 +46,7 @@ Eintragsgröße erzeugen.
 | Standardtrigger | `summary.btn.btn-sm` | umgesetzt | sichtbarer Text „Aktion“ plus Chevron |
 | Standardpanel | `.action-menu-panel` | umgesetzt | vertikale Liste sekundärer/destruktiver Buttons |
 | Eintrag mit Zusatzcontrol | `.action-menu-row` | umgesetzt | bestehende Zeile, zum Beispiel Aktion plus Infohilfe |
+| Schwebendes Wettmenü | `floating: true`, `.action-menu-panel[popover]` | umgesetzt | natives manuelles Popover hält Wettoptionen über scrollenden Turnierbäumen und benachbarten Spielen erreichbar |
 | Ohne Aktionen | `actionMenuHtml([], label)` | umgesetzt | rendert kein leeres Menü |
 | Direkte Einträge | `actionMenuHtml(actions, label, { inlineMax })` | umgesetzt | bis `inlineMax` Einträge (Standard 1) stehen als normale Buttons im Kopf, ohne Trigger |
 | Benannter Trigger | `actionMenuHtml(actions, label, { summary })` | umgesetzt | bündelt Einträge einer einzigen Aktionsart unter ihrem Namen, etwa „Kalender“ (Google, Outlook, Download) oder „Absagen“ (Absagen, Mit Ausrede absagen) auf Eventkarten |
@@ -60,7 +62,7 @@ Eine dauerhaft geöffnete, verschachtelte oder mehrspaltige Variante existiert n
 - Jeder gerenderte View MUSS genau einmal seinen gemeinsamen Container nach dem Markupaufbau mit
   `wireActionMenus(container)` verdrahten. Ein Re-Render verdrahtet den neuen Container erneut.
 - Aufrufer DÜRFEN persönliche, immer sichtbare Aktionen nicht in das Menü verschieben, nur um
-  Platz zu sparen.
+  Platz zu sparen. Die benannte Wettbedienung bildet die dokumentierte Ausnahme.
 - Ein Menü mit genau einem Eintrag entsteht nie. Aufrufer DÜRFEN `inlineMax: 2` wählen, wenn zwei
   gleichrangige Verwaltungsaktionen im Kopf Platz haben; ein direkt stehender „Beenden“- oder
   „Löschen“-Button ist dann neutral, die Gefahr trägt sein Bestätigungsdialog. Ein zweiter
@@ -146,3 +148,15 @@ Die Registry-IDs `action-menu-trigger` und `action-menu-entry` sind permanente V
 Trigger folgt der 32-px-Standardgeometrie, Einträge sind ausdrückliche 44-px-Strukturziele. Die
 Button-IDs liefern Bedeutungs- und Textgeometrie. `.action-menu-row` ist eine interne
 Zusammensetzung, keine weitere Größenvariante. Es gibt keine befristete ActionMenu-Ausnahme.
+
+### Schwebende Wettmenüs
+
+`floating: true` nutzt bei mehreren Einträgen ein natives manuelles Popover in der obersten
+Browserebene. Ein einzelner Eintrag bleibt ein direkter Button. Der Helper positioniert das
+Panel am Trigger, innerhalb des Viewports und bei Platzmangel darüber; die maximale Höhe
+bleibt viewportgebunden. Innere Zeilen und Tastaturpfade bleiben unverändert. Schließen blendet
+das Popover synchron aus, bevor ein Folgedialog geöffnet wird. Scrollen des Panels bleibt möglich;
+beim Verschieben folgt das Panel seinem Trigger. Ein aus dem Viewport gescrollter Trigger oder Resize schließt es. Bereits vor dem Öffnen
+abgeschlossene Scrollbewegungen schließen ein neu geöffnetes Menü nicht nachträglich.
+Der bestehende absolute Modus bleibt unverändert. Ältere Browser ohne Popover-API behalten das
+normale Menü; die ungeclippte Darstellung setzt einen Browser mit Popover-Unterstützung voraus.

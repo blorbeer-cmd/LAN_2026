@@ -148,7 +148,7 @@ zählen weiterhin unabhängig vom Wettangebot zur Spielwertung.
 ob auf dieses Match gewettet werden darf, etwa über „Wetten zulassen“. Dafür braucht er keine
 zusätzliche Adminrolle. Eine ausgeschaltete Option eröffnet keinen Wettmarkt; andere Personen
 dürfen diese Entscheidung nicht durch eine separate Markteröffnung umgehen.
-Bei neuen Zweiermatches, Captain Drafts mit zwei Captains und Rematches ist Wetten
+Bei neuen Matches mit mindestens zwei Teams, Captain Drafts und Rematches ist Wetten
 standardmäßig erlaubt. Der Ersteller kann es für die jeweilige Anlage ausschalten.
 Die API verwendet bei fehlender Angabe denselben Standard. Bestehende Entscheidungen bleiben erhalten.
 

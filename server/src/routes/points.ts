@@ -25,6 +25,7 @@ import {
   createBettingRound,
   getBettingRound,
   lockBettingRound,
+  reopenBettingRound,
   notifyBettingRound,
   putTip,
   reconcileBetting,
@@ -272,6 +273,18 @@ pointsRouter.post('/rounds/:id/lock', (req, res) => {
     return res.status(403).json({ error: 'Nur Mitspieler oder Admins können das Spiel starten.' });
   lockBettingRound(round);
   resolvePushTopic(`betting-open:${round.id}`, false, { groupId: req.group!.id, eventId });
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
+  res.json({ ok: true });
+});
+pointsRouter.post('/rounds/:id/reopen', (req, res) => {
+  const eventId = res.locals.eventId as string;
+  const round = getBettingRound(req.group!.id, eventId, req.params.id);
+  const participating = (JSON.parse(round.outcomes) as Array<{ playerIds: string[] }>).some((o) =>
+    o.playerIds.includes(req.player!.id),
+  );
+  if (!participating && !['admin', 'owner'].includes(req.groupMembership!.role))
+    return res.status(403).json({ error: 'Nur Mitspieler oder Admins können die Tippabgabe wieder öffnen.' });
+  reopenBettingRound(round, req.player!.id);
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json({ ok: true });
 });

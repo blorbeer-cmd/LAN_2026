@@ -311,7 +311,6 @@ function renderTaskRow(tasks, myId, mode) {
     <div class="checklist-table-row${isDone ? ' is-done' : ''}" role="row" data-checklist-task="${task.id}" data-checklist-task-item data-selection-search="${escapeHtml(`${task.title} ${who}`)}">
       <div class="checklist-table-task" role="cell">
         <button type="button" class="checklist-task-title" data-task-detail="${task.id}" title="${escapeHtml(task.title)}">${escapeHtml(shortTitle(task.title))}</button>
-        ${task.pointsValue > 0 ? `<div class="muted">${task.pointsValue} Orga-Punkte · einmalig für den ersten fremden Helfer</div>` : ''}
         ${task.reward ? `<div class="muted">${task.reward.perPerson} P. pro Helfer · ${task.reward.remaining} belohnte Plätze frei${task.reward.beneficiaryIds.includes(myId) ? ' · Dein Punkteplatz ist gesichert' : ''}</div>` : ''}
       </div>
       <div class="checklist-table-who" role="cell">${who ? whoCellHtml(tasks, who, myId) : '<span class="muted">offen</span>'}</div>
@@ -495,7 +494,6 @@ function openTaskDetail(ctx, myId, taskId) {
     commentLines.length ? ['Kommentare', commentLines.join('')] : null,
     !isDone && task.dueAt ? ['Fällig', dueDetailText(task.dueAt)] : null,
     isDone ? ['Erledigt', escapeHtml(formatDateTime(task.doneAt))] : null,
-    task.pointsValue > 0 ? ['Orga-Punkte', `${task.pointsValue} P. einmalig für den ersten Helfer, der nicht der Ersteller ist.`] : null,
     task.reward ? ['Bisherige LAN-Belohnung', `${task.reward.perPerson} P. pro Helfer · ${task.reward.remaining}/${task.reward.slots} belohnte Plätze frei${task.reward.beneficiaryIds.includes(myId) ? ' · Du erhältst die Punkte beim Erledigen automatisch.' : ''}`] : null,
   ].filter(Boolean);
   const canManage = isOwn && !isDone;
@@ -609,7 +607,6 @@ function openClaimForm(ctx, myId, taskId) {
 // `existing` (a task) turns the same form into "To-Do bearbeiten".
 async function openCreateTodoForm(ctx, myId, existing = null) {
   const form = { kind: existing?.type ?? 'todo' };
-  const pointsVisible = Boolean(state.activeEvent?.id && (state.activeEvent.pointsEnabled || isGroupAdmin()));
 
   let bodyEl;
   let anyFieldEverTouched = false;
@@ -671,7 +668,6 @@ async function openCreateTodoForm(ctx, myId, existing = null) {
           <label for="todo-due-date" class="field-label">Fällig bis</label>
           ${dateTimeFieldHtml('todo-due', prev.dueAtMs, { dateOnly: true, clearable: true, label: 'Fällig bis' })}
         </div>
-        ${form.kind === 'todo' && pointsVisible ? '<p class="muted">Beim Erledigen erhält der erste fremde Helfer einmalig 3 Orga-Punkte.</p>' : ''}
         <div class="checklist-form-footer">
           <button type="submit" class="btn btn-primary btn-sm">${existing ? 'Speichern' : 'To-Do erstellen'}</button>
         </div>

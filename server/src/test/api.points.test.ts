@@ -466,8 +466,26 @@ test('creators decide match betting, tournament markets open automatically, and 
   assert.equal(allowed.body.bettingAllowed, true);
   const threeSides = await request(app).post('/api/matchmaking').send({ gameId: f.gameId,
     playerIds: f.players, teamCount: 3 });
-  assert.equal(threeSides.status, 200, 'the default must not prevent unsupported multi-team matches from being created');
-  assert.equal(threeSides.body.bettingAllowed, false);
+  assert.equal(threeSides.status, 200);
+  assert.equal(threeSides.body.bettingAllowed, true);
+  const multiMarket = await automaticMarket(f, 'draw', threeSides.body.id);
+  assert.equal(multiMarket.outcomes.filter((outcome) => outcome.playerIds.length).length, 3);
+  for (const [index, player] of f.players.entries()) assert.equal((await request(app)
+    .put(`/api/points/rounds/${multiMarket.id}/tip`).set('x-test-player-id', player)
+    .send({ outcomeId: String(index), stake: 5 })).status, 200);
+  assert.equal((await request(app).post(`/api/points/rounds/${multiMarket.id}/lock`).send({})).status, 200);
+  const multiResult = await request(app).post('/api/matches').send({ gameId: f.gameId,
+    drawId: threeSides.body.id, teams: multiMarket.outcomes.filter((o) => o.playerIds.length)
+      .map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 2 });
+  assert.equal(multiResult.status, 201);
+  assert.equal((await automaticMarket(f, 'draw', threeSides.body.id)).status, 'settled');
+  assert.deepEqual(f.players.map((id) => wallet(f.eventId, id).total), [95, 95, 110]);
+  for (const [index, outcome] of multiMarket.outcomes.filter((o) => o.playerIds.length).entries()) {
+    const booking = readPointsJournal(DEFAULT_GROUP_ID, f.eventId, outcome.playerIds[0])
+      .find((entry) => entry.account === 'playing' && entry.sourceKey === `match:${multiResult.body.id}`)!;
+    assert.match(booking.title, index === 2 ? / · Platz 1$/ : / · Platz 3$/);
+    assert.equal(booking.amount, index === 2 ? 4 : 1);
+  }
   const concurrent = await Promise.all([0, 1].map(() => request(app).get('/api/points')));
   for (const response of concurrent)
     assert.equal(response.body.rounds.filter((row: { sourceId: string }) => row.sourceId === allowed.body.id).length, 1);
@@ -475,6 +493,12 @@ test('creators decide match betting, tournament markets open automatically, and 
   assert.equal(opened.closesAt, null, 'automatically offered tips close at the explicit pre-game start');
   const personal = buildPersonalDataExport(f.players[0])! as { organizedCompetitions: { draws: Array<{ id: string; bettingAllowed: number }> } };
   assert.equal(personal.organizedCompetitions.draws.find((row) => row.id === allowed.body.id)!.bettingAllowed, 1);
+  const malformed = await create(true);
+  db.prepare("DELETE FROM betting_rounds WHERE source_type='draw' AND source_id=?").run(malformed.body.id);
+  db.prepare('UPDATE matchmaking_draws SET teams=? WHERE id=?').run(JSON.stringify(malformed.body.teams.slice(0, 1)), malformed.body.id);
+  assert.equal((await request(app).post('/api/points/rounds').send({ sourceType: 'draw',
+    sourceId: malformed.body.id, closesAt: Date.now() + 60000 })).status, 409,
+    'a legacy one-sided draw plus the optional draw selection is not a two-sided market');
   const before = (db.prepare('SELECT COUNT(*) AS n FROM matchmaking_draws WHERE event_id=?').get(f.eventId) as { n: number }).n;
   db.exec(`CREATE TEMP TRIGGER fail_automatic_market BEFORE INSERT ON betting_rounds
     BEGIN SELECT RAISE(ABORT,'automatic market failed'); END`);
@@ -486,6 +510,10 @@ test('creators decide match betting, tournament markets open automatically, and 
     .send({ gameId: f.gameId, teams: f.players.slice(0, 2).map((id) => ({ playerIds: [id] })) });
   assert.equal(rematch.status, 200);
   assert.equal((await automaticMarket(f, 'draw', rematch.body.id)).status, 'open');
+  const multiRematch = await request(app).post('/api/matchmaking/rematch').send({ gameId: f.gameId,
+    teams: f.players.map((id) => ({ playerIds: [id] })) });
+  assert.equal(multiRematch.status, 200);
+  assert.equal((await automaticMarket(f, 'draw', multiRematch.body.id)).outcomes.filter((o) => o.playerIds.length).length, 3);
   const draft = await request(app).post('/api/draft/start').send({ gameId: f.gameId,
     captainIds: f.players.slice(0, 2), poolPlayerIds: [f.players[2]] });
   assert.equal(draft.status, 201);
@@ -495,6 +523,15 @@ test('creators decide match betting, tournament markets open automatically, and 
   const drafted = (await request(app).get('/api/matchmaking/history')).body.history.find((row: { source: string }) => row.source === 'draft');
   assert.equal(drafted.bettingAllowed, true);
   assert.equal((await automaticMarket(f, 'draw', drafted.id)).status, 'open');
+  const multiDraft = await request(app).post('/api/draft/start').send({ gameId: f.gameId,
+    captainIds: f.players, poolPlayerIds: [TEST_ADMIN_ID] });
+  assert.equal(multiDraft.status, 201);
+  assert.equal((await request(app).post('/api/draft/pick').set('x-test-player-id', f.players[0])
+    .send({ playerId: f.players[0], pickPlayerId: TEST_ADMIN_ID })).status, 200);
+  const multiDrafted = (await request(app).get('/api/matchmaking/history')).body.openDraws
+    .find((row: { source: string; teams: unknown[] }) => row.source === 'draft' && row.teams.length === 3);
+  assert.ok(multiDrafted);
+  assert.equal((await automaticMarket(f, 'draw', multiDrafted.id)).outcomes.filter((o) => o.playerIds.length).length, 3);
   const tournament = await request(app).post('/api/tournaments').set('x-test-player-id', f.players[0]).send({
     gameId: f.gameId, format: 'single_elimination', teams: f.players.slice(0, 2).map((id) => ({ playerIds: [id] })),
   });
@@ -504,12 +541,63 @@ test('creators decide match betting, tournament markets open automatically, and 
   const locks = await Promise.all([0, 1].map(() => request(app).post(`/api/points/rounds/${fixtureRound.id}/lock`)
     .set('x-test-player-id', f.players[0]).send({})));
   assert.deepEqual(locks.map((response) => response.status).sort(), [200, 409]);
-  assert.equal((await automaticMarket(f, 'tournament', tournament.body.id)).status, 'refunded', 'the first fixture also closes the empty champion pool');
+  assert.equal((await automaticMarket(f, 'tournament', tournament.body.id)).status, 'locked', 'manual closure retains an empty champion pool so it can be reopened before play');
+  assert.equal((await request(app).post(`/api/points/rounds/${champion.id}/reopen`).send({})).status, 409,
+    'the outright pool stays closed while a fixture is marked as started');
+  assert.equal((await request(app).post(`/api/points/rounds/${fixtureRound.id}/reopen`).set('x-test-player-id', f.players[0]).send({})).status, 200);
+  assert.equal((await request(app).post(`/api/points/rounds/${champion.id}/reopen`).send({})).status, 200);
+  assert.equal((await request(app).post(`/api/points/rounds/${fixtureRound.id}/lock`).send({})).status, 200);
   assert.equal((await request(app).put(`/api/points/rounds/${champion.id}/tip`).set('x-test-player-id', f.players[0])
     .send({ outcomeId: champion.outcomes[0].id, stake: 1 })).status, 409);
   db.prepare("UPDATE events SET status='ended',ended_at=? WHERE id=?").run(Date.now(), f.eventId);
   assert.equal((await request(app).put(`/api/points/rounds/${opened.id}/tip?eventId=${f.eventId}`).set('x-test-player-id', f.players[0])
     .send({ outcomeId: opened.outcomes[0].id, stake: 1 })).status, 409, 'ended LANs retain results but accept no new tips');
+});
+
+test('manual betting closure can be reopened before play without changing money; rights, deadlines and races remain guarded', async () => {
+  const f = await fixture();
+  const r = await round(f);
+  const [a, b, spectator] = f.players;
+  const reopen = (actor = a) => request(app).post(`/api/points/rounds/${r.id}/reopen?eventId=${f.eventId}`)
+    .set('x-test-player-id', actor).send({});
+  assert.equal((await reopen()).status, 409, 'an already open market is not reopened');
+  assert.equal((await request(app).post(`/api/points/rounds/${r.id}/lock`).send({})).status, 200);
+  assert.equal((await automaticMarket(f, 'draw', r.drawId)).status, 'locked', 'empty manual closure remains reversible');
+  assert.equal((await reopen(spectator)).status, 403);
+  const before = [a, b].map((id) => ({ wallet: wallet(f.eventId, id), journal: readPointsJournal(DEFAULT_GROUP_ID, f.eventId, id) }));
+  db.exec(`CREATE TEMP TRIGGER fail_betting_reopen BEFORE INSERT ON admin_log
+    WHEN NEW.action='betting_round_reopened' BEGIN SELECT RAISE(ABORT,'reopen audit failed'); END;`);
+  try { assert.equal((await reopen()).status, 500); }
+  finally { db.exec('DROP TRIGGER fail_betting_reopen'); }
+  assert.equal((await automaticMarket(f, 'draw', r.drawId)).status, 'locked');
+  const attempts = await Promise.all([reopen(), reopen()]);
+  assert.deepEqual(attempts.map((response) => response.status).sort(), [200, 409]);
+  assert.deepEqual([a, b].map((id) => ({ wallet: wallet(f.eventId, id), journal: readPointsJournal(DEFAULT_GROUP_ID, f.eventId, id) })), before);
+  for (const [index, player] of [a, b].entries())
+    assert.equal((await request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', player)
+      .send({ outcomeId: String(index), stake: 10 })).status, 200);
+  assert.equal((await request(app).post(`/api/points/rounds/${r.id}/lock`).send({})).status, 200);
+  const reserved = wallet(f.eventId, a);
+  db.prepare('UPDATE betting_rounds SET revision=1 WHERE id=?').run(r.id);
+  assert.equal((await reopen()).status, 409, 'an immutable paid pool awaiting a corrected result cannot accept new tips');
+  db.prepare('UPDATE betting_rounds SET revision=0 WHERE id=?').run(r.id);
+  db.prepare('UPDATE betting_rounds SET closes_at=? WHERE id=?').run(Date.now() - 1, r.id);
+  assert.equal((await reopen()).status, 409, 'a passed explicit deadline cannot be bypassed');
+  db.prepare('UPDATE betting_rounds SET closes_at=0 WHERE id=?').run(r.id);
+  assert.equal((await request(app).patch(`/api/events/${f.eventId}/points-visibility`).send({ visible: false, revision: 1 })).status, 200);
+  assert.equal((await reopen()).status, 403);
+  assert.equal((await request(app).patch(`/api/events/${f.eventId}/points-visibility`).send({ visible: true, revision: 2 })).status, 200);
+  assert.equal((await reopen(TEST_ADMIN_ID)).status, 200);
+  assert.deepEqual(wallet(f.eventId, a), reserved, 'paid reservations survive reopening unchanged');
+  assert.equal((await request(app).post(`/api/points/rounds/${r.id}/lock`).send({})).status, 200);
+  db.prepare("UPDATE events SET ended_at=?,status='ended' WHERE id=?").run(Date.now(), f.eventId);
+  assert.equal((await reopen()).status, 409);
+  db.prepare("UPDATE events SET ended_at=NULL,status='published' WHERE id=?").run(f.eventId);
+  assert.equal((await request(app).post('/api/matches').send({ gameId: f.gameId, drawId: r.drawId,
+    teams: r.outcomes.map((outcome) => ({ playerIds: outcome.playerIds })), winnerTeamIndex: 0 })).status, 201);
+  assert.equal((await reopen()).status, 409, 'settled results cannot accept late tips');
+  assert.equal((await request(app).post('/api/points/close').send({})).status, 200);
+  assert.equal((await reopen()).status, 409);
 });
 
 test('category journal corrections require admin rights and reason, allow own changes and commit with their audit', async () => {
@@ -1169,7 +1257,7 @@ test('parallel reservations obey the fixed stake and available funds without leg
   assert.deepEqual(attempts.map((r) => r.status).sort(), [200, 409]);
   const accepted = attempts[0].status === 200 ? first : second;
   assert.equal((await request(app).post(`/api/points/rounds/${accepted.id}/lock`).send({})).status, 200);
-  assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 80, available: 20 });
+  assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 100, available: 0 }, 'manual closing retains the reservation until result or refund');
   const other = accepted.id === first.id ? second : first;
   assert.equal(
     (await request(app).post(`/api/points/rounds/${other.id}/refund`).send({ reason: 'Not played' })).status,

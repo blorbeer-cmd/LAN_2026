@@ -8,7 +8,10 @@ Die Buchungsliste liefert die exakten Werte und Details; Filter verändern aussc
 ## 2. Quelle
 
 `public/js/pointsPresentation.js`: `pointTimeline(entries)`, `pointsChartHtml(entries, { label })` und `journalSourceState(entries, sourceId)`.
-`public/js/pointsCategories.js` liefert Kategorie-Zusammenfassung, Verlauf, Admin-Journal und Buchungsdetails.
+`public/js/pointsCategories.js` liefert Kategorie-Zusammenfassung, Kategorie-Ranglisten, Verlauf, Admin-Journal und Buchungsdetails.
+`pointsSectionHtml(key, title, content, { open, flat, meta, metaHtml, label })` komponiert die
+vorhandene native Disclosure. `content` und `metaHtml` sind vertrauenswürdiges, bereits escaptes
+Markup; normale Titel und Metadaten werden im Helper escaped.
 Aufrufer: `public/js/views/points.js`, Route `points`.
 
 ## 3. CSS-Eigentümerschaft
@@ -85,3 +88,24 @@ Realtime-Signale laden nur den geschützten Posteingang neu. Frühere Endstände
 eine native Versionsauswahl als JSON heruntergeladen. Die Abnahme in `points.e2e.test.ts`
 umfasst Meldung per Tastatur, Status-Realtime, anonymen Admin, 320/1440 px, Abschluss mit
 Erstattung offener/gesperrter Märkte und den heruntergeladenen Endstand.
+
+## Kompakte Darstellung
+
+Kategorien, Gesamtwertung, Verläufe und einzelne Wettrunden verwenden native Disclosures mit
+stabilen `data-points-section`-/`data-points-round`-Kennungen. Kategorie-Ranglisten bleiben flache
+Zeilen innerhalb ihrer Hauptkarte (`flat`), statt je eine zusätzliche gepolsterte Karte anzulegen.
+RankedList sortiert nach den fachlichen Kategorieplätzen einschließlich Gleichständen. Die
+persönlichen Rohwerte bleiben auch bei geschlossener Rangliste im Header sichtbar.
+
+Diagramme sind separat einklappbar; Filter verändern weiterhin nur die Liste. Laden im Hintergrund
+ersetzt bestehende Daten nicht durch eine leere Fläche. Die gemeinsame Zustandssicherung erhält
+Disclosures und Scrollposition. Die Browserprüfung hält die GET-Antwort nach einer echten
+Tippänderung gezielt zurück und prüft sowohl den ausstehenden als auch den fertigen Refresh.
+
+Wettaktionen verwenden ausschließlich ActionMenu und Standardbuttons. `competitionBettingHtml`
+und `competitionOddsHtml` liefern dieselben Controls und Quoten an Match, Turnier und LAN-Punkte.
+Die Turnierpräsentation erhält optionale, vertrauenswürdige Rendercallbacks; ohne diese bleibt
+sie unverändert. Bracket-Höhe und Verbindungslinien bleiben erhalten, Wett- und Ergebnisaktionen
+teilen sich eine kompakte Seitenspalte. Liga-/Gruppenzeilen setzen auf schmalen Geräten die
+Aktionen gemeinsam darunter. Menüs dürfen nicht vom Turnierbaum abgeschnitten werden.
+Die zugehörigen Containermaße gehören `domains.css`; Controls selbst behalten ihre Eigentümer.

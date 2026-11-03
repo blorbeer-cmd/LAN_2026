@@ -837,6 +837,17 @@ textarea {
   background: var(--bg-elevated);
   box-shadow: var(--shadow);
 }
+.action-menu-panel[popover] {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-height: calc(100dvh - var(--space-4));
+  overflow-y: auto;
+  color: var(--text);
+}
+.action-menu-panel[popover]:not(:popover-open) {
+  display: none;
+}
 /* Menu entries compose the standard button variants with a full touch target.
    They are flat list rows: no box per entry, a hover surface only, and the
    destructive entry keeps its red text behind a hairline instead of a red box. */

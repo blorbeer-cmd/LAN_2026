@@ -47,6 +47,10 @@ test('category views keep each full history when searching and escape journal co
     { id: 'wallet-1', account: 'wallet', amount: 100, title: 'Startguthaben', createdAt: 3000 },
   ];
   const html = categoryPointsHtml({ categoryJournal: entries, categoryBalances: { orga: -1, playing: 4, betting: 0 },
+    standings: ['<Alice>', 'Bob', 'Carol'].map((name, index) => ({ name, categories: {
+      orga: { raw: index < 2 ? 6 : 0, rank: index < 2 ? 1 : null, placePoints: index < 2 ? 4 : 0 },
+      playing: { raw: 4, rank: 1, placePoints: 4 }, betting: { raw: 0, rank: null, placePoints: 0 },
+    } })),
     participantCount: 4, categoryStanding: { points: 4, rank: 2, categories: {
       orga: { rank: null, placePoints: 0 }, playing: { rank: 1, placePoints: 4 }, betting: { rank: null, placePoints: 0 },
     } } },
@@ -55,13 +59,18 @@ test('category views keep each full history when searching and escape journal co
   assert.match(html, /Korrektur &lt;script&gt;/);
   assert.doesNotMatch(html, /<script>|<img|Startguthaben/);
   assert.equal((html.match(/data-category-entry=/g) ?? []).length, 1);
-  assert.match(html, /Gesamt: 4 Platzpunkte · Platz 2/);
+  assert.match(html, /Gesamt 4 P. · Platz 2/);
   assert.match(html, /Kein Platz · 0 Platzpunkte/);
   assert.match(html, /Platz 1 · 4 Platzpunkte/);
+  assert.match(html, /aria-label="Orga-Rangliste"/);
+  assert.match(html, /aria-label="Spielen-Rangliste"/);
+  assert.match(html, /aria-label="Wetten-Rangliste"/);
+  assert.ok(html.indexOf('&lt;Alice&gt;') < html.indexOf('Bob'), 'tied category leaders stay ordered by name');
   const adminEntry = { ...entries[2], playerName: '<Alice>', actorName: '<Admin>', created_at: 2000 };
   const admin = adminCategoryJournalHtml([adminEntry], { account: 'orga', query: 'Alice', loading: false, error: '' });
   assert.match(admin, /&lt;Alice&gt;/);
   assert.match(categoryEntryFactsHtml(adminEntry), /&lt;Admin&gt;/);
+  assert.match(categoryEntryFactsHtml({ ...adminEntry, title: 'Spiel: Arena · Platz 2' }), /<dt>Anlass<\/dt><dd>Spiel: Arena · Platz 2<\/dd>/);
   assert.doesNotMatch(admin + categoryEntryFactsHtml(adminEntry), /<script>|<img|<Alice>|<Admin>/);
 });
 

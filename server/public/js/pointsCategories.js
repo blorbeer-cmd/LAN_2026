@@ -1,6 +1,7 @@
 import { escapeHtml, formatDateTime } from './format.js';
 import { emptyStateHtml } from './emptyState.js';
-import { POINT_CATEGORIES, pointsChartHtml, signedPoints } from './pointsPresentation.js';
+import { rankedListHtml } from './rankedList.js';
+import { POINT_CATEGORIES, pointsChartHtml, pointsSectionHtml, signedPoints } from './pointsPresentation.js';
 
 const e = escapeHtml;
 const categoryName = (account) => POINT_CATEGORIES[account] ?? (account === 'wallet' ? 'Wettguthaben' : account);
@@ -25,21 +26,36 @@ export function categoryPointsHtml(data, { account, query }) {
   const entries = (data.categoryJournal ?? []).filter((entry) => entry.account === account);
   const needle = query.trim().toLocaleLowerCase('de');
   const filtered = entries.filter((entry) => `${entry.title} ${entry.reason ?? ''}`.toLocaleLowerCase('de').includes(needle));
-  return `<section class="card stack" aria-label="Meine Kategorien"><h2>Kategorien</h2>
-    <div class="my-stats-kpis">${Object.entries(POINT_CATEGORIES).map(([key, label]) => `<div class="my-stats-kpi">
-      <span class="my-stats-kpi-value" data-category-balance="${key}">${e(data.categoryBalances?.[key] ?? 0)}</span>
-      <span class="my-stats-kpi-label">${label} · Rohwert</span>
-      ${data.categoryStanding?.categories ? `<span class="muted" data-category-score="${key}">${data.categoryStanding.categories[key].rank === null ? 'Kein Platz' : `Platz ${data.categoryStanding.categories[key].rank}`} · ${e(data.categoryStanding.categories[key].placePoints)} Platzpunkte</span>` : ''}</div>`).join('')}</div>
-    ${data.categoryStanding ? `<p><strong>Gesamt: ${e(data.categoryStanding.points)} Platzpunkte · Platz ${e(data.categoryStanding.rank)}</strong></p>` : '<p class="muted">Du gehörst aktuell nicht zur Wertung. Dein Punkteverlauf bleibt erhalten.</p>'}
-    <p class="muted">${e(data.participantCount ?? 0)} Teilnehmer bilden die Wertung. Jede Kategorie zählt gleich viel; Wettguthaben zählt nicht zur Gesamtwertung.</p>
-  </section><section class="card stack" aria-label="Kategorie-Verlauf"><h2>Kategorie-Verlauf</h2>
+  const categories = Object.entries(POINT_CATEGORIES).map(([key, label]) => {
+    const score = data.categoryStanding?.categories?.[key];
+    const leaders = (data.standings ?? []).filter((row) => row.categories[key].rank !== null)
+      .sort((a, b) => a.categories[key].rank - b.categories[key].rank || a.name.localeCompare(b.name, 'de'));
+    const ranking = leaders.length ? rankedListHtml(leaders.map((row) => ({
+      rank: row.categories[key].rank, title: e(row.name),
+      meta: `${e(row.categories[key].raw)} Rohpunkte`, value: `${e(row.categories[key].placePoints)} P.`,
+    })), { ranked: true, label: `${label}-Rangliste` }) : emptyStateHtml('Noch keine Platzierung.');
+    return pointsSectionHtml(`ranking-${key}`, label, ranking, {
+      flat: true,
+      metaHtml: `<span data-category-balance="${key}">${e(data.categoryBalances?.[key] ?? 0)}</span> Rohpunkte${score ? ` · <span data-category-score="${key}">${score.rank === null ? 'Kein Platz' : `Platz ${score.rank}`} · ${e(score.placePoints)} Platzpunkte</span>` : ''}`,
+      label: `${label}-Rangliste`,
+    });
+  }).join('');
+  const overall = pointsSectionHtml('overall-ranking', data.settings?.closed_at ? 'Gesamt-Endstand' : 'Gesamtwertung',
+    rankedListHtml((data.standings ?? []).map((row) => ({ rank: row.rank, title: e(row.name),
+      meta: Object.entries(POINT_CATEGORIES).map(([key, label]) => `${label} ${row.categories[key].placePoints}`).join(' · '),
+      value: `${e(row.points ?? 0)} P.`,
+    })), { ranked: true, label: 'LAN-Rangliste' }), { flat: true, label: 'LAN-Rangliste' });
+  const summary = pointsSectionHtml('categories', 'Wertung', `<div class="stack">${categories}${overall}</div>`, {
+    open: true, label: 'Meine Kategorien',
+    meta: data.categoryStanding ? `Gesamt ${data.categoryStanding.points} P. · Platz ${data.categoryStanding.rank}` : 'Ohne Wertung',
+  });
+  const history = pointsSectionHtml('category-history', 'Kategorie-Verlauf', `
     <div class="points-filters"><label class="stack"><span class="field-label">Kategorie</span><select name="categoryAccount" data-category-account>${categoryOptions(account)}</select></label>
-      <label class="stack"><span class="field-label">Buchungen durchsuchen</span><input type="search" name="categoryQuery" data-category-query value="${e(query)}" placeholder="Vorgang suchen"></label></div>
-    ${account === 'betting' && data.bettingParticipation ? `<p class="muted">Regulär abgerechnete Wetten: ${e(data.bettingParticipation.settledTips)}. Für einen Wettplatz sind mindestens ${e(data.bettingParticipation.minimumTips)} und ein positiver Nettogewinn erforderlich. Vollständige Erstattungen zählen nicht.</p>` : ''}
-    ${account === 'playing' ? '<p class="muted">Jedes gespielte Match bringt Punkte. Spielzeit und Teamgröße werden nicht gewichtet.</p>' : ''}
-    ${pointsChartHtml(entries, { label: `${categoryName(account)}-Punkteverlauf` })}
-    ${filtered.length ? rowsHtml([...filtered].reverse()) : emptyStateHtml(needle ? 'Keine Buchungen gefunden.' : 'Noch keine Buchungen.')}
-  </section>`;
+      <label class="stack"><span class="field-label">Suche</span><input type="search" name="categoryQuery" data-category-query value="${e(query)}" placeholder="Vorgang suchen"></label></div>
+    ${account === 'betting' && data.bettingParticipation && data.categoryStanding?.categories?.betting.rank == null ? `<p class="muted">${e(data.bettingParticipation.settledTips)}/${e(data.bettingParticipation.minimumTips)} abgerechnete Tipps · Für einen Platz ist positiver Nettogewinn nötig.</p>` : ''}
+    ${pointsSectionHtml('category-chart', 'Verlauf', pointsChartHtml(entries, { label: `${categoryName(account)}-Punkteverlauf` }))}
+    ${filtered.length ? rowsHtml([...filtered].reverse()) : emptyStateHtml(needle ? 'Keine Buchungen gefunden.' : 'Noch keine Buchungen.')}`);
+  return summary + history;
 }
 
 export function adminCategoryJournalHtml(entries, { account, query, loading, error }) {

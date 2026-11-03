@@ -220,9 +220,7 @@ matchmakingRouter.post('/', (req, res) => {
   const avoidPairs: SeatPair[] = avoidAdjacentOpponents ? loadAvoidPairs(req.group!.id, eventId, uniqueIds) : [];
 
   const resolvedTeamCount = computeTeamCount(teamCount, players.length, game.max_team_size);
-  const bettingAllowed = requestedBettingAllowed ?? resolvedTeamCount === 2;
-  if (bettingAllowed && resolvedTeamCount !== 2)
-    return res.status(400).json({ error: 'Wetten sind nur bei genau zwei Teams möglich.' });
+  const bettingAllowed = requestedBettingAllowed ?? true;
   const teamIdLists = balanceTeams(ratings, resolvedTeamCount, avoidPairs);
   const seatConflicts = countSeatConflicts(teamIdLists, avoidPairs);
   const conflictNeighbors = seatConflictNeighbors(teamIdLists, avoidPairs);
@@ -328,9 +326,7 @@ matchmakingRouter.post('/rematch', (req, res) => {
   }
 
   const teams = buildTeamsSnapshot(gameId, teamPlayerIdLists);
-  const bettingAllowed = requestedBettingAllowed ?? teams.length === 2;
-  if (bettingAllowed && teams.length !== 2)
-    return res.status(400).json({ error: 'Wetten sind nur bei genau zwei Teams möglich.' });
+  const bettingAllowed = requestedBettingAllowed ?? true;
 
   const drawId = nanoid();
   const result = {

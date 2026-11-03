@@ -7,7 +7,7 @@ import { selectActiveLobbyMatches } from './tournamentLobbies.js';
 // Presentation functions share one immutable render-state snapshot. Keeping
 // bracket/league markup here leaves views/tournament.js responsible for data,
 // forms and actions without introducing a framework or another dependency.
-export function createTournamentPresentation(myPlayerId = null) {
+export function createTournamentPresentation(myPlayerId = null, { bettingControls = () => '', bettingOdds = () => '' } = {}) {
   // ---------- detail: bracket ----------
 
   function bracketRoundLabel(round, totalRounds) {
@@ -148,12 +148,13 @@ export function createTournamentPresentation(myPlayerId = null) {
       const cls = `bracket-team-row${isWinner ? ' is-winner' : ''}${decided && !isWinner ? ' is-loser' : ''}${!teamId ? ' is-tbd' : ''}${mine(teamId) ? ' is-mine' : ''}`;
       const scoreReadout = t.trackScore && score !== null ? `<span class="bracket-score">${score}</span>` : '';
       const winMark = !t.trackScore && isWinner ? `<span class="bracket-win-mark" aria-label="Sieger">${icon('check')}</span>` : '';
-      return `<div class="${cls}">${teamId ? teamContent(teamId) : '<span class="bracket-team-name">offen</span>'}${scoreReadout}${winMark}</div>`;
+      return `<div class="${cls}">${teamId ? teamContent(teamId) : '<span class="bracket-team-name">offen</span>'}${bettingOdds('tournament_match', m.id, teamId)}${scoreReadout}${winMark}</div>`;
     };
 
+    const betting = bettingControls('tournament_match', m.id);
     return `<div class="bracket-match${decided ? '' : ' is-open'}">
       <div class="bracket-rows">${teamRow(m.teamAId, m.scoreA)}${teamRow(m.teamBId, m.scoreB)}</div>
-      ${resultActionHtml(m, t, 'bracket-side')}
+      ${betting ? `<div class="bracket-betting-actions">${betting}${resultActionHtml(m, t, 'tournament-fixture-action')}</div>` : resultActionHtml(m, t, 'bracket-side')}
     </div>`;
   }
 
@@ -255,14 +256,15 @@ export function createTournamentPresentation(myPlayerId = null) {
     }
     const nameA = teamLabel(teamsById, m.teamAId);
     const nameB = teamLabel(teamsById, m.teamBId);
-    const teamHtml = (teamId, won, home) => `<span class="${nameCls(won)}${home ? ' is-home' : ''}">${teamLabel(teamsById, teamId)}</span>`;
+    const teamHtml = (teamId, won, home) => `<span class="${nameCls(won)}${home ? ' is-home' : ''}">${teamLabel(teamsById, teamId)}${bettingOdds('tournament_match', m.id, teamId)}</span>`;
+    const betting = bettingControls('tournament_match', m.id);
     const mine = isMyMatch(m, myTeamId);
     return `<div class="tournament-fixture${mine ? ' is-mine' : ''}" aria-label="${mine ? 'Dein Spiel: ' : ''}${nameA} gegen ${nameB}">
         ${mine ? '<span class="visually-hidden">Dein Spiel: </span>' : ''}
         ${teamHtml(m.teamAId, aWon, true)}
         ${center}
         ${teamHtml(m.teamBId, bWon, false)}
-        ${resultActionHtml(m, t, 'tournament-fixture-action')}
+        ${betting ? `<div class="tournament-fixture-actions">${betting}${resultActionHtml(m, t, 'tournament-fixture-action')}</div>` : resultActionHtml(m, t, 'tournament-fixture-action')}
       </div>`;
   }
 
@@ -391,7 +393,7 @@ export function createTournamentPresentation(myPlayerId = null) {
         <div class="team-card tournament-team-card${mine ? ' is-mine' : ''}${highlight ? ' search-target-highlight' : ''}"${ownMarker}>
           <div class="team-card-header">
             <span class="row tournament-team-card-heading" style="gap:var(--space-2);">
-              <span class="tournament-team-card-name">${escapeHtml(team.name)}</span>${mine ? MY_TEAM_HINT : ''}
+              <span class="tournament-team-card-name">${escapeHtml(team.name)}</span>${mine ? MY_TEAM_HINT : ''}${bettingOdds('tournament', t.id, team.id)}
               ${teamSkillHtml(team.players, t.gameId, { balanced: false, current: true })}
               ${winner ? '<span class="tournament-fixture-score is-pick">Win</span>' : ''}
             </span>

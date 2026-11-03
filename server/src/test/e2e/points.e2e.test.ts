@@ -58,9 +58,24 @@ async function setPointsVisibility(visible: boolean) {
   const card = admin.locator(`[data-event-card="${eventId}"]`);
   const expand = card.locator('[data-event-card-toggle]');
   if (await expand.count() && await expand.getAttribute('aria-expanded') === 'false') await expand.click();
-  await card.getByRole('button', { name: visible ? 'Für Teilnehmer anzeigen' : 'Für Teilnehmer ausblenden', exact: true }).click();
-  await card.getByRole('button', { name: visible ? 'Für Teilnehmer ausblenden' : 'Für Teilnehmer anzeigen', exact: true }).waitFor();
+  await card.getByRole('checkbox', { name: 'LAN-Punkte anzeigen', exact: true }).setChecked(visible);
+  await card.locator(`[data-points-visible="${!visible}"]`).waitFor();
   await member.locator('.desktop-nav-btn[data-view="points"]').waitFor({ state: visible ? 'attached' : 'detached' });
+}
+
+async function openSection(page: Page, key: string) {
+  const section = page.locator(`[data-points-section="${key}"]`);
+  await section.waitFor();
+  if (!(await section.evaluate((element) => (element as HTMLDetailsElement).open)))
+    await section.locator(':scope > summary').click();
+}
+async function openRoundActions(page: Page, id: string) {
+  const round = page.locator(`[data-points-round="${id}"]`);
+  if (await round.count() && !(await round.evaluate((element) => (element as HTMLDetailsElement).open)))
+    await round.locator(':scope > summary').click();
+  const menu = page.locator(`[data-action-menu="betting-${id}"]`);
+  if (await menu.count() && !(await menu.evaluate((element) => (element as HTMLDetailsElement).open)))
+    await menu.locator(':scope > summary').click();
 }
 
 before(async () => {
@@ -143,7 +158,8 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await navigate(admin, 'pointsAdmin');
   await admin.locator('[name="prizeInfo"]').fill('Respawn-Pokal; bei Gleichstand Losentscheid.');
   await admin.getByRole('button', { name: 'Regeln speichern', exact: true }).click();
-  await admin.getByText('Jeder Teilnehmer erhält einmalig 100 Wettpunkte pro Event, auch bei später Zusage. Orga- und Spielpunkte erhöhen das Wettguthaben nicht.', { exact: true }).waitFor();
+  await admin.getByText('100 Startpunkte · Max. 20 P. je Wette · Wettplatz ab 2 Abrechnungen mit positivem Netto', { exact: true }).waitFor();
+  assert.equal(await admin.getByRole('heading', { name: 'Anzeige für Teilnehmer', exact: true }).count(), 0);
   for (const width of [320, 390, 1440]) {
     await admin.setViewportSize({ width, height: 900 });
     const fits = await admin.evaluate(
@@ -178,7 +194,9 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await setPointsVisibility(true);
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
-  await member.getByText('Preis & Vergabe: Respawn-Pokal; bei Gleichstand Losentscheid.', { exact: true }).waitFor();
+  await openSection(member, 'wallet');
+  await member.getByText('Respawn-Pokal; bei Gleichstand Losentscheid.', { exact: true }).waitFor();
+  await openSection(member, 'overall-ranking');
   const standings = member.getByRole('list', { name: 'LAN-Rangliste', exact: true });
   await standings.getByText('Points Bob', { exact: true }).waitFor();
   await api(`/api/players/${bob.id}`, 'PATCH', { name: 'AAA Points Bob' }, bob.cookie);
@@ -187,6 +205,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     'the earned Orga category keeps Alice ahead of renamed zero-score entrants');
   assert.match(await standings.locator('.ranked-list-row').nth(1).innerText(), /AAA Points Bob/);
   assert.equal(await standings.getByText('Points Bob', { exact: true }).count(), 0);
+  await openSection(member, 'wallet-history');
   await member.locator('[data-point-entry]').first().click();
   await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).waitFor();
   await setPointsVisibility(false);
@@ -196,6 +215,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await setPointsVisibility(true);
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
+  await openSection(member, 'wallet-history');
   await member.locator('[data-points-source]').selectOption('start');
   assert.equal(await member.getByRole('region', { name: 'Punkteverlauf', exact: true }).locator('.points-journal li').count(), 1);
   await member.locator('[data-point-entry]').click();
@@ -231,6 +251,11 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.locator(`#mm-game-list [data-search-select-value="${game.id}"]`).click();
   for (const id of [myId, alice.id, bob.id])
     await member.locator(`[data-roster-picker="mm-draw-roster"] [data-player="${id}"]`).setChecked(id !== myId);
+  await member.locator(`[data-roster-picker="mm-draw-roster"] [data-player="${myId}"]`).setChecked(true);
+  await member.locator('#mm-teamcount').fill('3');
+  assert.equal(await member.locator('#mm-betting-allowed').isEnabled(), true, 'multi-team draws retain the betting choice');
+  assert.equal(await member.locator('#mm-betting-allowed').isChecked(), true);
+  await member.locator(`[data-roster-picker="mm-draw-roster"] [data-player="${myId}"]`).setChecked(false);
   await member.locator('#mm-teamcount').fill('2');
   assert.equal(await member.locator('#mm-betting-allowed').isChecked(), true);
   await member.locator('#mm-betting-allowed').focus();
@@ -257,6 +282,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.locator('#notifications-btn').click();
   await member.locator(`[data-notification-navigate="points"][data-notification-target="${round.id}"]`).click();
   await member.waitForFunction((id) => window.location.hash === `#points/round/${id}`, round.id);
+  await openRoundActions(member, round.id);
   await member.locator('[data-tip-round]').click();
   const ownOutcome = round.outcomes.find((outcome: { playerIds: string[] }) => outcome.playerIds.includes(alice.id)).id;
   const otherOutcome = round.outcomes.find((outcome: { id: string }) => outcome.id !== ownOutcome).id;
@@ -266,20 +292,67 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.locator('[data-tip-form] [name="stake"]').fill('10');
   await member.getByRole('button', { name: 'Tipp speichern', exact: true }).click();
   await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
-  await member.getByText('Für Wetten reserviert', { exact: true }).waitFor();
+  await member.locator('[data-wallet-held]').filter({ hasText: /^10$/ }).waitFor();
+  // Exercise a real lower-down market while the refresh response is held back.
+  // Both the loading phase and the settled refresh must retain scroll and disclosures.
+  for (let index = 0; index < 6; index++) await api('/api/matchmaking', 'POST', {
+    gameId: game.id, playerIds: [alice.id, bob.id], teamCount: 2,
+  });
+  await member.locator('[data-all-rounds]').click();
+  await member.waitForFunction(() => document.querySelectorAll('[data-points-round]').length === 7);
+  await member.setViewportSize({ width: 1440, height: 568 });
+  await openRoundActions(member, round.id);
+  await member.locator(`[data-tip-round="${round.id}"]`).click();
+  const scrollBefore = await member.locator('#view-container').evaluate((element) => element.scrollTop);
+  assert.ok(scrollBefore > 100, 'the chosen game is below the initial viewport');
+  let releaseRefresh!: () => void;
+  const heldRefresh = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  await member.route('**/api/points?*', async (route) => {
+    await heldRefresh;
+    await route.continue();
+  });
+  try {
+    await member.locator('[data-tip-form] [name="stake"]').fill('11');
+    await Promise.all([
+      member.waitForRequest((request) => request.method() === 'GET' && new URL(request.url()).pathname === '/api/points'),
+      member.getByRole('button', { name: 'Tipp speichern', exact: true }).click(),
+    ]);
+    await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
+    assert.equal(await member.locator(`[data-points-round="${round.id}"]`).evaluate((element) => (element as HTMLDetailsElement).open), true);
+    assert.ok(Math.abs(await member.locator('#view-container').evaluate((element) => element.scrollTop) - scrollBefore) <= 2,
+      'a pending refresh keeps the existing content and its scroll position');
+  } finally {
+    releaseRefresh();
+    await member.unrouteAll({ behavior: 'wait' });
+  }
+  await member.locator('[data-wallet-held]').filter({ hasText: /^11$/ }).waitFor();
+  assert.ok(Math.abs(await member.locator('#view-container').evaluate((element) => element.scrollTop) - scrollBefore) <= 2,
+    'the refreshed game remains at the same position');
+  await openRoundActions(member, round.id);
+  await member.locator(`[data-tip-round="${round.id}"]`).click();
+  await member.locator('[data-tip-form] [name="stake"]').fill('10');
+  await member.getByRole('button', { name: 'Tipp speichern', exact: true }).click();
+  await member.locator('[data-wallet-held]').filter({ hasText: /^10$/ }).waitFor();
   await api(
     `/api/points/rounds/${round.id}/tip?eventId=${eventId}`,
     'PUT',
     { outcomeId: otherOutcome, stake: 5 },
     bob.cookie,
   );
-  await member.getByText(/Topf: 15 Punkte · 2 Tipps/).waitFor();
-  await member.getByText(/Quoten vorläufig/).waitFor();
-  await member.getByText('10 P. · Quote 1.50', { exact: true }).waitFor();
-  await member.getByText('5 P. · Quote 3.00', { exact: true }).waitFor();
-  await member.locator('[data-lock-round]').click();
+  await member.getByText(/Topf 15 P./).waitFor();
+  await member.getByText('Quote 1.50', { exact: true }).waitFor();
+  await member.getByText('Quote 3.00', { exact: true }).waitFor();
+  await openRoundActions(member, round.id);
+  await member.locator(`[data-lock-round="${round.id}"]`).click();
   await member.getByRole('button', { name: 'Tipps schließen', exact: true }).click();
-  await member.getByText('Topf: 15 Punkte · 2 Tipps', { exact: true }).waitFor();
+  await member.locator(`[data-points-round="${round.id}"] > summary`).getByText(/Tipps geschlossen/).waitFor();
+  await openRoundActions(member, round.id);
+  await member.locator(`[data-reopen-round="${round.id}"]`).click();
+  await member.locator(`[data-points-round="${round.id}"] > summary`).getByText(/Tipps offen/).waitFor();
+  await openRoundActions(member, round.id);
+  await member.locator(`[data-lock-round="${round.id}"]`).click();
+  await member.getByRole('button', { name: 'Tipps schließen', exact: true }).click();
+  await member.locator(`[data-points-round="${round.id}"] > summary`).getByText(/Tipps geschlossen/).waitFor();
   await api('/api/matches', 'POST', {
     gameId: game.id,
     drawId: draw.id,
@@ -287,8 +360,24 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     winnerTeamIndex: Number(ownOutcome),
   });
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('105', { exact: true }).first().waitFor();
-  await member.getByText(/Auszahlung 15 P. · Netto \+5 P./).waitFor();
+  await openRoundActions(member, round.id);
+  await member.locator(`[data-tip-round="${round.id}"]`).click();
+  await member.getByRole('dialog').getByText(/Auszahlung 15 P. · Netto \+5 P./).waitFor();
+  await member.keyboard.press('Escape');
 
+  const categoryData = await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie);
+  for (const [account, label] of Object.entries({ orga: 'Orga', playing: 'Spielen', betting: 'Wetten' })) {
+    await openSection(member, `ranking-${account}`);
+    const section = member.locator(`[data-points-section="ranking-${account}"]`);
+    const expected = categoryData.standings.filter((row: any) => row.categories[account].rank !== null)
+      .sort((a: any, b: any) => a.categories[account].rank - b.categories[account].rank || a.name.localeCompare(b.name, 'de'));
+    if (expected.length) {
+      const ranking = section.getByRole('list', { name: `${label}-Rangliste`, exact: true });
+      await ranking.waitFor();
+      assert.deepEqual(await ranking.locator('.ranked-list-title').allTextContents(), expected.map((row: any) => row.name));
+      assert.deepEqual(await ranking.locator('.ranked-list-value').allTextContents(), expected.map((row: any) => `${row.categories[account].placePoints} P.`));
+    } else await section.getByText('Noch keine Platzierung.', { exact: true }).waitFor();
+  }
   for (const width of [320, 390, 1440]) {
     await member.setViewportSize({ width, height: 900 });
     const geometry = await member.evaluate(() => ({
@@ -296,17 +385,53 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
       scroll: document.documentElement.scrollWidth,
     }));
     assert.ok(geometry.scroll <= geometry.viewport, `points at ${width}px: ${JSON.stringify(geometry)}`);
+    const collisions = await member.locator('[data-points-section] > summary').evaluateAll((headers) => headers
+      .filter((header) => header.getClientRects().length > 0).filter((header) => {
+        const title = header.children[1].getBoundingClientRect();
+        const meta = header.children[2]?.getBoundingClientRect();
+        return meta && meta.left < title.right && meta.top < title.bottom;
+      }).map((header) => header.textContent));
+    assert.deepEqual(collisions, [], 'compact headers wrap metadata instead of overlapping labels');
     assert.equal(await member.getByRole('region', { name: 'Punkteverlauf', exact: true }).locator('.points-chart svg[role="img"]').count(), 1);
   }
   await navigate(admin, 'points');
   assert.deepEqual(await admin.evaluate(() => ({ secure: isSecureContext, uuid: typeof crypto.randomUUID })),
     { secure: false, uuid: 'undefined' }, 'market corrections also work on HTTP LAN origins');
+  await openRoundActions(admin, round.id);
   await admin.locator(`[data-refund-round="${round.id}"]`).click();
   await admin.getByRole('dialog').locator('textarea').fill('Ungültiges Spielergebnis');
   await admin.getByRole('dialog').getByRole('button', { name: 'Abrechnung stornieren', exact: true }).click();
   await admin.locator('.modal-backdrop').waitFor({ state: 'detached' });
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
   assert.equal((await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie)).categoryBalances.betting, 0);
+  // Menus must remain usable inside the real scrolling bracket, above sibling games.
+  const cup = await api('/api/tournaments', 'POST', { gameId: game.id, name: 'Kompakter Wettpokal',
+    format: 'single_elimination', teams: [myId, alice.id, bob.id].map((id) => ({ playerIds: [id] })) });
+  const fixture = cup.matches.find((match: any) => !match.isBye && match.teamAId && match.teamBId);
+  const market = (await api(`/api/points?eventId=${eventId}`)).rounds.find((row: any) => row.sourceId === fixture.id);
+  for (const [index, session] of [alice.cookie, bob.cookie].entries())
+    await api(`/api/points/rounds/${market.id}/tip`, 'PUT', { outcomeId: market.outcomes[index].id, stake: 5 }, session);
+  await admin.evaluate((id) => { window.location.hash = `#tournaments/${id}`; }, cup.id);
+  const controls = admin.locator(`[data-betting-controls="${market.id}"]`);
+  await controls.waitFor();
+  await controls.locator('summary').click();
+  const panel = controls.locator('.action-menu-panel');
+  await panel.waitFor();
+  assert.equal(await panel.evaluate((element) => element.matches(':popover-open')), true);
+  assert.equal(await panel.locator('button').evaluateAll((buttons) => buttons.every((button) => {
+    const rect = button.getBoundingClientRect();
+    return button.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+  })), true, 'every menu action remains reachable over the bracket and neighboring games');
+  await controls.locator('[data-tip-round]').click();
+  await admin.getByRole('dialog', { name: 'Ergebnis tippen', exact: true }).waitFor();
+  assert.equal(await admin.getByRole('dialog').locator('textarea').count(), 0);
+  await admin.keyboard.press('Escape');
+  await api(`/api/tournaments/${cup.id}/matches/${fixture.id}/result`, 'POST', { winnerTeamId: fixture.teamAId });
+  await admin.locator(`[data-open-result="${fixture.id}"]`).click();
+  await admin.getByRole('dialog', { name: 'Ergebnis', exact: true }).waitFor();
+  assert.equal(await admin.getByRole('dialog').getByRole('button', { name: 'Punktefehler melden', exact: true }).count(), 0,
+    'editing a result has no points-report action');
+  await admin.keyboard.press('Escape');
   // Create a shared positive playing score and remove prior claims through
   // the supported correction API, without editing any wallet.
   const entries = (await api(`/api/points/admin/journal?eventId=${eventId}`)).entries;
@@ -478,6 +603,7 @@ test('category history and reasoned own and foreign corrections stay consistent 
     await navigate(member, 'points');
     const personal = member.getByRole('region', { name: 'Meine Kategorien', exact: true });
     const history = member.getByRole('region', { name: 'Kategorie-Verlauf', exact: true });
+    await openSection(member, 'category-history');
     const administration = admin.getByRole('region', { name: 'Kategorie-Journal', exact: true });
     await personal.locator('[data-category-balance=\"playing\"]').filter({ hasText: /^4$/ }).waitFor();
     await history.getByText('Noch keine Buchungen.', { exact: true }).waitFor();
@@ -488,9 +614,11 @@ test('category history and reasoned own and foreign corrections stay consistent 
     await administration.locator('[data-category-admin-refresh]').click();
     await administration.locator(`[data-admin-category-entry="${own.id}"]`).waitFor();
     await history.locator('[data-category-account]').selectOption('playing');
+    await openSection(member, 'category-chart');
     await history.getByRole('img', { name: /Spielen-Punkteverlauf: 1 Buchungen, aktuell 4 Punkte/ }).waitFor();
     await history.locator('[data-category-entry]').click();
     await member.getByRole('dialog', { name: 'Kategorie-Buchung', exact: true }).getByText('+4 P.', { exact: true }).waitFor();
+    await member.getByRole('dialog', { name: 'Kategorie-Buchung', exact: true }).getByText(/Spiel:.* · Platz 1$/).waitFor();
     await member.keyboard.press('Escape');
     assert.equal((await api(journalUrl)).entries.length, initialJournal.length, 'opening either journal never adds an award');
     async function correctInUi(id: string, total: number, reason: string) {
@@ -526,7 +654,7 @@ test('category history and reasoned own and foreign corrections stay consistent 
     await admin.locator('#checklist-new-todo-btn').click();
     await admin.locator('#todo-title').fill('Switch nach der LAN einpacken');
     assert.equal(await admin.locator('#todo-points').count(), 0);
-    await admin.getByText('Beim Erledigen erhält der erste fremde Helfer einmalig 3 Orga-Punkte.', { exact: true }).waitFor();
+    assert.equal(await admin.getByText('Beim Erledigen erhält der erste fremde Helfer einmalig 3 Orga-Punkte.', { exact: true }).count(), 0, 'fixed rewards do not add explanatory copy to every task form');
     await admin.setViewportSize({ width: 390, height: 844 });
     await admin.locator('#toast-container .toast').waitFor({ state: 'detached' });
     await admin.screenshot({ path: 'test-results/todo-points-form-phone.png', animations: 'disabled' });
@@ -541,7 +669,7 @@ test('category history and reasoned own and foreign corrections stay consistent 
     await member.locator('#checklist-claim-form [type=submit]').click();
     await member.locator('#checklist-claim-form').waitFor({ state: 'detached' });
     await member.locator(`[data-task-detail="${todo.id}"]`).click();
-    await member.getByText('3 P. einmalig für den ersten Helfer, der nicht der Ersteller ist.', { exact: true }).waitFor();
+    assert.equal(await member.getByText('3 P. einmalig für den ersten Helfer, der nicht der Ersteller ist.', { exact: true }).count(), 0, 'the standard reward is omitted from task details');
     await member.locator('[data-detail-done]').click();
     await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
     await navigate(member, 'points');
@@ -556,6 +684,7 @@ test('category history and reasoned own and foreign corrections stay consistent 
     }
     await member.setViewportSize({ width: 390, height: 844 });
     await member.screenshot({ path: 'test-results/category-points-phone.png', fullPage: true });
+    await openSection(member, 'category-history');
     await history.locator('[data-category-entry]').first().click();
     await member.getByRole('dialog', { name: 'Kategorie-Buchung', exact: true }).waitFor();
     await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 1 });
@@ -618,6 +747,7 @@ test('poll and event-start travel awards update the open personal journal live',
     db.close();
     await category.locator('[data-category-balance="orga"]').filter({ hasText: /^7$/ }).waitFor();
     const history = member.getByRole('region', { name: 'Kategorie-Verlauf', exact: true });
+    await openSection(member, 'category-history');
     await history.getByText('Umfrage abgeschlossen: Gemeinsame Pause', { exact: true }).waitFor();
     await history.getByText('Ankunft eingetragen', { exact: true }).waitFor();
     await history.getByText('Abreise eingetragen', { exact: true }).waitFor();

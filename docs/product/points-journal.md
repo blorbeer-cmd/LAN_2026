@@ -44,7 +44,8 @@ dürfen nach einer Korrektur negativ sein. Negative verfügbare Mittel sperren n
 Freie Ergebnisse und tatsächlich gespielte Turniermatches werden beim Speichern in derselben
 Transaktion wie die Spielpunkte verbucht. Rangliste und Journal teilen sich die
 [Spielberechnung](competition-and-game-rules.md#ranglistenpunkte). Alle Teammitglieder erhalten
-die Punkte ihrer Platzierung. Es gibt keine Freigabe, Spielkontingente, Dauergewichtung oder
+die Punkte ihrer Platzierung. Neue Matchbuchungen speichern den erreichten Teamplatz im Anlass,
+sodass Betrag und damalige Platzierung auch nach einer Ergebniskorrektur nachvollziehbar bleiben. Es gibt keine Freigabe, Spielkontingente, Dauergewichtung oder
 Abschläge für wiederholte Begegnungen.
 
 Ein Match hat den Schlüssel `match:<id>`, unabhängig von verknüpfter Auslosung oder

@@ -835,8 +835,9 @@ function trackingChip(event) {
 function renderEventPointsVisibility(event) {
   if (!event.pointsAvailable || event.eventType !== 'lan' || event.isTest || !['published', 'ended'].includes(event.status)) return '';
   const reports = `<button type="button" class="btn btn-sm" data-event-points-reports="${escapeHtml(event.id)}">Punktefehler-Meldungen</button>`;
-  if (!isGroupAdmin() && !isEventCreator(event)) return `<section class="event-card-section stack"><h3>LAN-Punkte</h3>${reports}</section>`;
-  return `<section class="event-card-section stack"><h3>LAN-Punkte</h3><p>${event.pointsEnabled ? 'Punkteübersichten und Wetten sind für alle Teilnehmer sichtbar.' : 'Punkteübersichten und Wetten sind für Teilnehmer ausgeblendet.'} Punkte werden im Hintergrund weiter gesammelt. Bereits laufende Runden werden weiter abgewickelt.</p><button type="button" class="btn btn-sm" data-points-visibility="${escapeHtml(event.id)}" data-points-visible="${event.pointsEnabled ? 'false' : 'true'}" data-points-revision="${event.pointsVisibilityRevision ?? 0}">${event.pointsEnabled ? 'Für Teilnehmer ausblenden' : 'Für Teilnehmer anzeigen'}</button>${reports}</section>`;
+  const toggle = isGroupAdmin() || isEventCreator(event)
+    ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" data-points-visibility="${escapeHtml(event.id)}" data-points-visible="${event.pointsEnabled ? 'false' : 'true'}" data-points-revision="${event.pointsVisibilityRevision ?? 0}"${event.pointsEnabled ? ' checked' : ''}>LAN-Punkte anzeigen</label>` : '';
+  return `<section class="event-card-section"><div class="row points-actions">${toggle}${reports}</div></section>`;
 }
 
 function renderEventCardShell(event, { collapsible, managed }) {
@@ -1615,6 +1616,7 @@ export function renderOrgaEvents(container, ctx) {
         });
         await ctx.refresh();
       } catch (error) {
+        button.checked = button.dataset.pointsVisible !== 'true';
         showToast(error.message, { error: true });
       } finally {
         button.disabled = false;

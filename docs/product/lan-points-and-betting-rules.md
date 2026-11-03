@@ -5,7 +5,7 @@ Die Punktefunktion verwendet getrennte Konten für **Orga**, **Spielen**, **Wett
 Das [Zielkonzept](../KONZEPT-PUNKTE-WERTUNG.md) und der
 [Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) beschreiben die umgesetzte
 Wallet-Abrechnung (5a), Marktanbindungen (5b), Kategorieplätze und Gesamtwertung (6/7) sowie
-die noch ausstehende Meldefunktion und weitergehenden Abschlussregeln (8/9).
+Punktefehler-Meldungen und endgültigen Abschluss (8/9).
 
 ## Neustart ohne Punkteübernahme
 
@@ -55,12 +55,12 @@ auf Geräten nicht zurückrufen. Der Kiosk zeigt Ergebnisse weiterhin ohne Punkt
 
 ## Wetten am Match und Turnier
 
-Beim Anlegen eines Zweiermatches entscheidet der Ersteller über **Wetten erlauben**. Die Wahl
+Beim Anlegen eines Matches mit mindestens zwei Teams entscheidet der Ersteller über **Wetten erlauben**. Die Wahl
 wird auch bei Captain Drafts und Rematches gespeichert. Dafür braucht der Ersteller keine
 zusätzliche Adminrolle. Bei einem Nein entsteht kein Markt; auch die weiterhin administrative
 separate Markt-API kann die Entscheidung nicht umgehen. Turniersieger-Märkte und einzelne
 Turniermatches mit feststehenden Gegnern werden immer automatisch angeboten, ohne Freischalter.
-Bei jeder neuen Anlage ist Wetten für Zweiermatches, Drafts mit zwei Captains und Rematches
+Bei jeder neuen Anlage ist Wetten für Matches, Drafts mit mindestens zwei Captains und Rematches
 vorbelegt erlaubt. Der Ersteller kann die Option ausschalten. Eine fehlende API-Angabe
 verwendet denselben Standard; gespeicherte Entscheidungen werden nicht nachträglich geändert.
 Alle berechtigten Teilnehmer dürfen auf sich, ihr Team oder den Gegner tippen.
@@ -80,7 +80,7 @@ ohne optionalen Freischalter angeboten. Die bestehenden Regeln zu Sichtbarkeit, 
 Gegnern, Tippschluss und Spielbeginn gelten weiterhin. Topf, Anzahl Tipps,
 Einsätze je Ausgang und vorläufige Pool-Quoten sind schon vor Tippschluss sichtbar. Eine Quote
 ist nur bei einem Einsatz auf diesen Ausgang berechenbar; neue Einsätze können sie verändern.
-Die API veröffentlicht dabei keine individuellen fremden Tipps. Freie Zweiermatches sowie
+Die API veröffentlicht dabei keine individuellen fremden Tipps. Freie Matches mit zwei oder mehr Teams sowie
 Liga- und Gruppenspiele bieten „Unentschieden“ als regulär gewinnenden Tipp. K.-o.-Spiele und
 Turniersieger-Märkte bieten ihn nicht; ältere Märkte behalten ihre ursprüngliche Auswahl.
 Eine neue Runde verbraucht keinen Kontingentplatz. Auch ein gespeichertes altes `maxRounds=0`
@@ -97,7 +97,16 @@ Stummschaltung und wird nicht doppelt gesendet. Neue automatische Märkte bleibe
 ausdrücklichen Startaktion offen. Mitspieler oder Admins schließen vor Spielbeginn; beim
 ersten Turnierspiel wird zugleich der Gesamtsieger-Markt geschlossen. Bestehende explizite
 Fristen bleiben wirksam. Ein Ergebnis bei noch offenen Tipps führt zur Erstattung.
-Der Hintergrundlauf arbeitet auch ohne offenen Browser. Nach Tippschluss sind Einsätze unveränderlich.
+Der Hintergrundlauf arbeitet auch ohne offenen Browser. Bei geschlossener Tippabgabe sind Einsätze unveränderlich.
+Mitspieler und Admins können eine manuell geschlossene Tippabgabe vor dem Ergebnis wieder öffnen.
+Dabei bleiben Einsätze und Wallet unverändert; auch ein leerer oder einseitiger Topf bleibt beim
+manuellen Schließen zunächst gesperrt und wird erst mit dem Ergebnis oder beim LAN-Abschluss
+abgerechnet beziehungsweise erstattet. Eine bereits abgelaufene feste Frist, ein begonnenes oder
+beendetes Turnier und eine festgeschriebene Wertung lassen sich damit nicht umgehen. Der
+Turniersieger-Markt bleibt geschlossen, solange ein Turnierspiel als gestartet markiert ist.
+Das Wiederöffnen und sein Audit werden atomar gespeichert; zwei gleichzeitige Versuche ergeben
+200/409. Bereits abgerechnete oder erstattete Märkte können nicht wieder geöffnet werden. Das gilt
+auch für bereits bezahlte Pools, die nach einer Ergebniskorrektur wieder auf ein Ergebnis warten.
 Der Sekundentakt gleicht nur Events mit fälliger Frist ab; ohne solche Frist nimmt er keine
 Schreibsperre für einen Quellenabgleich. Beim Start und alle 30 Sekunden läuft zusätzlich ein
 eventweise isolierter Wiederherstellungsabgleich. Fehler eines Events halten andere Events
@@ -170,3 +179,25 @@ Der bestehende Abschluss speichert N, Teilnehmerliste, Kategorienwerte und Gesam
 Offene oder gesperrte Runden verhindern ihn weiterhin. Begründetes Wiederöffnen und erneuter
 Abschluss behalten die Versionen seit dem Neustart. Meldungen, automatische Erstattung und
 weitergehende Regeln der einheitlichen Festschreibung folgen in Paket 9.
+
+## Kompakte Punkte- und Wettansichten
+
+Am Event steht die Sichtbarkeit als kompakte Checkbox „LAN-Punkte anzeigen“ neben den
+Punktefehler-Meldungen. In der Punkteverwaltung gibt es keinen zweiten Sichtbarkeitsblock.
+To-do-Zeilen, -Formulare und -Details wiederholen die einheitliche Punktevergütung nicht.
+
+Die LAN-Übersicht bietet getrennte einklappbare Ranglisten für Orga, Spielen, Wetten und den
+Gesamtstand. Jede Kategorie zeigt den eigenen Rohwert, Rang und die Platzpunkte; die Rangliste
+verwendet dieselben berechtigten Plätze wie die Gesamtwertung. Verläufe, Diagramme und einzelne
+Spiele lassen sich aufklappen. Seltenere Informationen stehen in Details oder der bestehenden Hilfe.
+
+„Wetten“ bündelt Tippabgabe, Schließen, Wiederöffnen und berechtigte Korrekturen. Matches und
+Turniere nutzen dieselbe Bedienung direkt in ihren vorhandenen Ansichten; Quoten stehen bei
+den Teams. Es gibt keine zweite große Wettliste unter dem Turnierbaum. Persönliche fremde Tipps
+werden nicht offengelegt. Regeln und Einsätze bleiben über die Tippdetails zugänglich.
+
+Live-Aktualisierungen behalten die bisherigen Daten bis zur Antwort, die Scrollposition und
+geöffnete Bereiche. Neue Spielbuchungen speichern die erreichte Platzierung im Anlass; die
+Buchungsdetails zeigen sie ausdrücklich. Historische Einträge ohne diese Angabe erhalten keine
+nachträglich erfundene Platzierung. „Punktefehler melden“ steht in Buchungs- und Ergebnisdetails,
+aber nicht in den Formularen zum Eintragen oder Korrigieren von Ergebnissen.
