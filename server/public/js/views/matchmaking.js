@@ -1,3 +1,4 @@
+import { historyItemHtml as sharedHistoryItemHtml } from '../historyItem.js';
 import { competitionBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
 let pointsContext = null;
 // Matchmaking view (FR-16..18): pick a game + present players, draw balanced
@@ -767,19 +768,9 @@ function renderHistoryDetails(title, count, content) {
 }
 
 function historyItemHtml(id, title, meta, actions, details, extraClass = '', isMine = false) {
-  const open = expandedHistoryIds.has(id);
-  const panelId = `match-history-${id}`;
-  return `<div class="card matchmaking-history-item ${extraClass}">
-    <div class="matchmaking-history-head">
-      <button type="button" class="matchmaking-history-toggle" data-history-toggle="${escapeHtml(id)}" aria-expanded="${open}" aria-controls="${escapeHtml(panelId)}">
-        <span class="matchmaking-history-chevron">${icon('chevronRight')}</span>
-        <span class="matchmaking-history-title player-name">${isMine ? `<strong>${escapeHtml(title)}</strong>` : escapeHtml(title)}</span>
-        <span class="matchmaking-history-meta">${meta}</span>
-      </button>
-      <div class="matchmaking-draw-actions">${actions}</div>
-    </div>
-    <div id="${escapeHtml(panelId)}" class="matchmaking-history-details stack" ${open ? '' : 'hidden'}>${details}</div>
-  </div>`;
+  return sharedHistoryItemHtml(id, title, meta, actions, details, {
+    open: expandedHistoryIds.has(id), extraClass, isMine,
+  });
 }
 
 function wireHistoryItemToggles(container, ctx) {

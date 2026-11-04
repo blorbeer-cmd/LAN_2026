@@ -212,7 +212,7 @@ Spiele lassen sich aufklappen. Seltenere Informationen stehen in Details oder de
 
 „Wetten“ bündelt Tippabgabe, Schließen, Wiederöffnen und berechtigte Korrekturen. Matches und
 Turniere nutzen dieselbe Bedienung direkt in ihren vorhandenen Ansichten. Die Spieleübersicht
-bei den LAN-Punkten verwendet die vorhandenen flachen Disclosures und alphabetischen Wertlisten
+bei den LAN-Punkten verwendet die gemeinsamen Match-Historienkarten mit Wettaktionen im Header und alphabetischen Wertlisten
 für die Einsätze; eigener Tipp und Gewinner stehen als Metadaten an der jeweiligen Zeile.
 Quoten werden in keiner Ansicht angezeigt. Es gibt keine zweite große Wettliste unter dem
 Turnierbaum. Persönliche fremde Tipps werden nicht offengelegt. Regeln und Einsätze bleiben über die Tippdetails zugänglich.

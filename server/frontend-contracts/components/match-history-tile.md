@@ -4,12 +4,17 @@
 
 Status: umgesetzt. Eine Kachel zeigt den Ergebnisüberblick und klappt Match- oder Turnierteams
 auf. Die Historie besitzt einen eigenen einklappbaren Rahmen; offene Auslosungen und laufende
-Turniere stehen in einem separaten, zunächst geschlossenen Abschnitt darüber.
+Turniere stehen in einem separaten, zunächst geschlossenen Abschnitt darüber. LAN-Punkte
+verwenden dieselbe Kachel für Wettmärkte, mit jederzeit erreichbaren Aktionen im Kopf.
 
 ## 2. Quelle
 
-`public/js/views/matchmaking.js`: `historyItemHtml`, `renderHistory`, `renderOpenDraws`,
-`wireHistory` und `wireOpenDraws`.
+`public/js/historyItem.js`: `historyItemHtml(id, title, meta, actions, details,
+{ open, extraClass, isMine })` liefert den gemeinsamen Kartenkopf, getrennte Aktionen und den
+aufklappbaren Inhalt. Titel und Kennungen werden escaped; Meta-, Aktions- und Detailmarkup
+kommen bereits escaped vom Aufrufer.
+`public/js/views/matchmaking.js`: `renderHistory`, `renderOpenDraws`, `wireHistory` und
+`wireOpenDraws`. `views/points.js` nutzt denselben Helper für LAN-Spiele und Turniermärkte.
 
 ## 3. CSS-Eigentümerschaft
 
@@ -22,6 +27,8 @@ Erfasstes Match mit Ergebnis und Stift/Rematch, Turnier mit direktem Detail-Link
 nachladbaren Teamdetails; „Ohne Ergebnis“ als separater Abschnitt mit bearbeitbaren Auslosungen
 und laufenden Turnieren. Jede Kartenart besitzt einen Papierkorb mit Bestätigung.
 Jede Auslosung in diesem Abschnitt ist selbst eine einklappbare Kachel mit Aktionen im Kopf.
+LAN-Punkte verwenden denselben Kopf mit Marktart, Status und eigenem Einsatz; Wettaktionen
+bleiben auch bei geschlossenem Inhalt erreichbar. Der Inhalt ergänzt die Einsätze je Ergebnis.
 
 ## 5. Erlaubte Anpassungen
 
@@ -30,7 +37,12 @@ im Aufklappbutton, vor Titel und Metadaten; Aktionen stehen getrennt rechts und 
 
 ## 6. Komponenteneigene Invarianten
 
-Alle Kacheln beginnen geschlossen und behalten ihren Zustand bei einem Neuzeichnen. Ist der
+Alle Kacheln beginnen geschlossen und behalten ihren Zustand bei einem Neuzeichnen. Ein direkter
+LAN-Punkte-Link darf seinen Markt zunächst öffnen; bewusste Nutzerentscheidungen bleiben erhalten.
+`data-history-item` und `data-history-toggle` identifizieren Karte und Aufklappbutton. Wettmenüs
+sind Geschwister des Aufklappbuttons, niemals darin verschachtelt. Tippabgabe öffnet keine Karte.
+Alle Karten verwenden `.card`; die globalen Flächen wechseln je Kartenebene zwischen
+`--bg-elevated` und `--bg-elevated-2`, unabhängig vom Aufklappzustand. Ist der
 angemeldete Spieler beteiligt, steht der Spielname im geschlossenen Kopf fett; im Detail wird
 nur sein Spielername fett. Ein gerade
 gespeichertes Ergebnis öffnet seine Kachel. Spielnamen kürzen nur visuell; der vollständige
@@ -84,13 +96,15 @@ einen eigenen Namen und Fokus; der Stift heißt „Ergebnis bearbeiten“.
 
 ## 9. Repräsentative Aufrufer
 
-`views/matchmaking.js` auf 390 px mit umbrochener Aktionsgruppe und auf 1024 px mit
+`views/points.js` mit Wettaktion bei geschlossenem Spiel und `views/matchmaking.js` auf 390 px mit umbrochener Aktionsgruppe und auf 1024 px mit
 nebeneinanderliegenden Teams.
 
 ## 10. Prüfungen und Abnahmebeispiele
 
 E2E prüft Aufklappen, Ergebnis/Rematch, Turnierdetails, Filter und Nachladen. Auf 390 und 1024 px gibt es
-keinen horizontalen Überlauf; ein langer Spielname schneidet keine Aktion ab.
+keinen horizontalen Überlauf; ein langer Spielname schneidet keine Aktion ab. Der Punkte-Browserfall
+prüft zusätzlich per Tastatur: tippen bei geschlossener Karte, geschlossen bleiben nach dem Speichern,
+geöffnet bleiben beim verzögerten Live-Refresh sowie dieselben Flächen wie in der Match-Historie.
 
 ## 11. Permanente Varianten und befristete Ausnahmen
 

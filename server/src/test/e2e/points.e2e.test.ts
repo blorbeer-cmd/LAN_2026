@@ -70,9 +70,6 @@ async function openSection(page: Page, key: string) {
     await section.locator(':scope > summary').click();
 }
 async function openRoundActions(page: Page, id: string) {
-  const round = page.locator(`[data-points-section="round-${id}"]`);
-  if (await round.count() && !(await round.evaluate((element) => (element as HTMLDetailsElement).open)))
-    await round.locator(':scope > summary').click();
   const menu = page.locator(`[data-action-menu="betting-${id}"]`);
   if (await menu.count() && !(await menu.evaluate((element) => (element as HTMLDetailsElement).open)))
     await menu.locator(':scope > summary').click();
@@ -316,7 +313,15 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.locator('#notifications-btn').click();
   await member.locator(`[data-notification-navigate="points"][data-notification-target="${round.id}"]`).click();
   await member.waitForFunction((id) => window.location.hash === `#points/round/${id}`, round.id);
-  await openRoundActions(member, round.id);
+  const selectedCard = member.locator(`[data-history-item="points-round-${round.id}"]`);
+  const cardToggle = selectedCard.locator('.matchmaking-history-toggle');
+  await cardToggle.focus();
+  await member.keyboard.press('Enter');
+  assert.equal(await cardToggle.getAttribute('aria-expanded'), 'false');
+  await selectedCard.locator('[data-action-menu] > summary').focus();
+  await member.keyboard.press('Space');
+  assert.equal(await cardToggle.getAttribute('aria-expanded'), 'false', 'header betting never opens the game');
+  assert.equal(await selectedCard.locator('.matchmaking-history-details').isHidden(), true);
   await member.locator('[data-tip-round]').click();
   const ownOutcome = round.outcomes.find((outcome: { playerIds: string[] }) => outcome.playerIds.includes(alice.id)).id;
   const otherOutcome = round.outcomes.find((outcome: { id: string }) => outcome.id !== ownOutcome).id;
@@ -328,14 +333,23 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.getByRole('button', { name: 'Tipp speichern', exact: true }).click();
   await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
   await member.locator('[data-wallet-held]').filter({ hasText: /^10$/ }).waitFor();
+  assert.equal(await cardToggle.getAttribute('aria-expanded'), 'false', 'saving a tip preserves the closed game');
+  const surfaces = await member.evaluate((roundId) => {
+    const card = document.querySelector(`[data-history-item="points-round-${roundId}"]`)!;
+    return { group: getComputedStyle(card.parentElement!.closest('.card')!).backgroundColor,
+      child: getComputedStyle(card).backgroundColor };
+  }, round.id);
+  assert.ok(surfaces.group && surfaces.child, 'measure the currently rendered card surfaces');
+  assert.notEqual(surfaces.group, surfaces.child, 'nested game cards alternate the group surface');
   // Exercise a real lower-down market while the refresh response is held back.
   // Both the loading phase and the settled refresh must retain scroll and disclosures.
   for (let index = 0; index < 6; index++) await api('/api/matchmaking', 'POST', {
     gameId: game.id, playerIds: [alice.id, bob.id], teamCount: 2,
   });
   await member.locator('[data-all-rounds]').click();
-  await member.waitForFunction(() => document.querySelectorAll('[data-points-section^="round-"]').length === 7);
+  await member.waitForFunction(() => document.querySelectorAll('[data-history-item^="points-round-"]').length === 7);
   await member.setViewportSize({ width: 1440, height: 568 });
+  await cardToggle.click();
   await openRoundActions(member, round.id);
   await member.locator(`[data-tip-round="${round.id}"]`).click();
   const scrollBefore = await member.locator('#view-container').evaluate((element) => element.scrollTop);
@@ -353,7 +367,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
       member.getByRole('button', { name: 'Tipp speichern', exact: true }).click(),
     ]);
     await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
-    assert.equal(await member.locator(`[data-points-section="round-${round.id}"]`).evaluate((element) => (element as HTMLDetailsElement).open), true);
+    assert.equal(await cardToggle.getAttribute('aria-expanded'), 'true');
     assert.ok(Math.abs(await member.locator('#view-container').evaluate((element) => element.scrollTop) - scrollBefore) <= 2,
       'a pending refresh keeps the existing content and its scroll position');
   } finally {
@@ -379,20 +393,20 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   );
   await member.getByText(/Topf 16 P./).waitFor();
   assert.doesNotMatch(await member.locator('#view-container').innerText(), /Quoten?/i, 'LAN markets show no odds');
-  const outcomeList = member.locator(`[data-points-section="round-${round.id}"]`).getByRole('list', { name: 'Einsätze nach Ergebnis' });
+  const outcomeList = member.locator(`[data-history-item="points-round-${round.id}"]`).getByRole('list', { name: 'Einsätze nach Ergebnis' });
   await outcomeList.getByText('Dein Tipp', { exact: true }).waitFor();
   await outcomeList.getByText('15 P.', { exact: true }).waitFor();
   await openRoundActions(member, round.id);
   await member.locator(`[data-lock-round="${round.id}"]`).click();
   await member.getByRole('button', { name: 'Tipps schließen', exact: true }).click();
-  await member.locator(`[data-points-section="round-${round.id}"] > summary`).getByText(/Tipps geschlossen/).waitFor();
+  await member.locator(`[data-history-item="points-round-${round.id}"] .matchmaking-history-meta`).getByText(/Tipps geschlossen/).waitFor();
   await openRoundActions(member, round.id);
   await member.locator(`[data-reopen-round="${round.id}"]`).click();
-  await member.locator(`[data-points-section="round-${round.id}"] > summary`).getByText(/Tipps offen/).waitFor();
+  await member.locator(`[data-history-item="points-round-${round.id}"] .matchmaking-history-meta`).getByText(/Tipps offen/).waitFor();
   await openRoundActions(member, round.id);
   await member.locator(`[data-lock-round="${round.id}"]`).click();
   await member.getByRole('button', { name: 'Tipps schließen', exact: true }).click();
-  await member.locator(`[data-points-section="round-${round.id}"] > summary`).getByText(/Tipps geschlossen/).waitFor();
+  await member.locator(`[data-history-item="points-round-${round.id}"] .matchmaking-history-meta`).getByText(/Tipps geschlossen/).waitFor();
   await api('/api/matches', 'POST', {
     gameId: game.id,
     drawId: draw.id,
@@ -421,6 +435,12 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await navigate(member, 'matchmaking');
   const recordedMatch = member.locator(`[data-history-toggle="${draw.id}"]`);
   if (await recordedMatch.getAttribute('aria-expanded') !== 'true') await recordedMatch.click();
+  const matchSurfaces = await member.evaluate((drawId) => {
+    const card = document.querySelector(`[data-history-toggle="${drawId}"]`)!.closest('.card')!;
+    return { group: getComputedStyle(card.parentElement!.closest('.card')!).backgroundColor,
+      child: getComputedStyle(card).backgroundColor };
+  }, draw.id);
+  assert.deepEqual(surfaces, matchSurfaces, 'LAN games and Match history use the same nested card surfaces');
   assert.doesNotMatch(await member.locator('#view-container').innerText(), /Quoten?/i, 'Match history shows no odds');
   const historyBettingGap = await member.locator(`#match-history-${draw.id} .points-betting-controls`).evaluate((controls) =>
     controls.getBoundingClientRect().top - controls.previousElementSibling!.getBoundingClientRect().bottom);
@@ -454,6 +474,15 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
         return meta && meta.left < title.right && meta.top < title.bottom;
       }).map((header) => header.textContent));
     assert.deepEqual(collisions, [], 'compact headers wrap metadata instead of overlapping labels');
+    const gameHeader = member.locator(`[data-history-item="points-round-${round.id}"] .matchmaking-history-head`);
+    const headerGeometry = await gameHeader.evaluate((header) => {
+      const toggle = header.querySelector('.matchmaking-history-toggle')!.getBoundingClientRect();
+      const actions = header.querySelector('.matchmaking-draw-actions')!.getBoundingClientRect();
+      const card = header.closest('.card')!.getBoundingClientRect();
+      return { overlap: actions.left < toggle.right - 1 && actions.top < toggle.bottom - 1,
+        contained: actions.right <= card.right + 1 && toggle.right <= card.right + 1 };
+    });
+    assert.deepEqual(headerGeometry, { overlap: false, contained: true }, `game header at ${width}px`);
     assert.equal(await member.getByRole('region', { name: 'Punkteverlauf', exact: true }).locator('.points-chart svg[role="img"]').count(), 1);
   }
   await navigate(admin, 'points');

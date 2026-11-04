@@ -36,7 +36,7 @@ Control-Selektoren und ihre Zuordnung stehen in der reinen
 | `kiosk-results` | [Kiosk-Ergebnisanzeige](components/kiosk-results.md) | `public/css/kiosk.css` |
 | `pointsPresentation.js`, `pointsCategories.js` | [Punkteverlauf](components/points-history.md) | `public/css/domains.css` |
 | `resultDialog.js` | [Ergebnisformular](components/result-form.md) | `public/css/domains.css` |
-| `match-history-disclosure` | [Match-Historienkachel](components/match-history-tile.md) | `public/css/style.css` |
+| `historyItem.js`, `match-history-disclosure` | [Match-Historienkachel](components/match-history-tile.md) | `public/css/style.css` |
 | `welcome-trailer-control`, `welcome-trailer-control-glyph`, `welcome-trailer-start` | [Willkommens-Trailer](components/welcome-trailer.md) | `public/css/overlays.css` |
 
 Neue Komponenten oder Varianten verwenden

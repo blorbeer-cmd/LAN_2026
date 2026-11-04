@@ -1,3 +1,4 @@
+import { historyItemHtml } from '../historyItem.js';
 import { apiFetch } from '../api.js';
 import { state } from '../state.js';
 import { getMyId } from '../whoami.js';
@@ -23,6 +24,8 @@ let historySource = '';
 let adminEntries = null;
 let adminLoading = false;
 let adminError = '';
+const roundExpanded = new Map();
+let roundScope = '';
 let categoryAccount = 'orga';
 let categoryQuery = '';
 let adminCategoryAccount = '';
@@ -196,11 +199,25 @@ function roundOutcomesHtml(round) {
 
 function roundHtml(round, selected = false) {
   const type = { draw: 'Match', tournament_match: 'Turnierspiel', tournament: 'Turniersieg' }[round.sourceType];
-  return pointsSectionHtml(`round-${round.id}`, round.title,
-    `${bettingControlsHtml(round, { showStatus: false })}${roundOutcomesHtml(round)}`, {
-      flat: true, open: selected,
-      meta: [type, statusLabels[round.status]].filter(Boolean).join(' · '),
+  if (!roundExpanded.has(round.id)) roundExpanded.set(round.id, selected);
+  const meta = [type, statusLabels[round.status], round.mine ? `Dein Tipp ${round.mine.stake} P.` : ''].filter(Boolean).map(e).join(' · ');
+  const info = [round.pot ? `Topf ${round.pot} P.` : '', round.mine?.payout != null ? `Netto ${signedPoints(round.mine.net)} P.` : ''].filter(Boolean).join(' · ');
+  return historyItemHtml(`points-round-${round.id}`, round.title, meta,
+    bettingControlsHtml(round, { actionsOnly: true }),
+    `${info ? `<span class="muted">${e(info)}</span>` : ''}${roundOutcomesHtml(round)}`, {
+      open: roundExpanded.get(round.id),
+      isMine: round.outcomes.some((outcome) => outcome.playerIds.includes(getMyId())),
     });
+}
+
+function wireRoundDisclosures(container) {
+  container.querySelectorAll('[data-history-toggle]').forEach((button) => button.addEventListener('click', () => {
+    const id = button.dataset.historyToggle.slice('points-round-'.length);
+    const open = button.getAttribute('aria-expanded') !== 'true';
+    roundExpanded.set(id, open);
+    button.setAttribute('aria-expanded', String(open));
+    button.closest('[data-history-item]').querySelector('.matchmaking-history-details').hidden = !open;
+  }));
 }
 
 export function competitionBettingHtml(type, id, ctx, options = {}) {
@@ -417,13 +434,15 @@ export function renderPoints(container, ctx) {
     container.querySelector('[data-points-retry]')?.addEventListener('click', () => refreshPoints(ctx));
     return;
   }
+  if (roundScope !== scopeKey()) { roundExpanded.clear(); roundScope = scopeKey(); }
   const selected = ctx.localRoute?.()?.kind === 'round' ? ctx.localRoute().id : null;
   const rounds = selected ? data.rounds.filter((r) => r.id === selected) : data.rounds;
   container.innerHTML = `${header}${loadError ? `<div class="row points-actions" role="status">${e(loadError)}<button type="button" class="btn btn-sm" data-points-retry>Erneut laden</button></div>` : ''}<div class="grouped-page-sections">${categoryPointsHtml(data)}${overviewHtml(data)}
     ${pointsSectionHtml('rounds', selected ? 'Tipprunde' : 'Spiele & Turniere', `
       ${selected ? '<div><button type="button" class="btn btn-sm" data-all-rounds>Alle Runden</button></div>' : ''}
-      ${rounds.length ? rounds.map((r) => roundHtml(r, Boolean(selected))).join('') : emptyStateHtml('Keine Tipprunden.')}`, { open: true, label: 'Tipprunden', meta: String(rounds.length) })}
+      ${rounds.length ? `<div>${rounds.map((r) => roundHtml(r, Boolean(selected))).join('')}</div>` : emptyStateHtml('Keine Tipprunden.')}`, { open: true, label: 'Tipprunden', meta: String(rounds.length) })}
     ${pointsHistoryHtml(data, { account: categoryAccount, query: categoryQuery, source: historySource })}${savedStandingsHtml(data)}</div>`;
+  wireRoundDisclosures(container);
   wireCompetitionBetting(container, ctx);
   container.querySelector('[data-points-retry]')?.addEventListener('click', () => refreshPoints(ctx));
   wireSavedStandings(container);

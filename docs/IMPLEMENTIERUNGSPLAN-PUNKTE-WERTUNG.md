@@ -172,7 +172,7 @@ Journal, feste Startvergabe, Marktstorno und Kategorie-Korrekturen.
 
 **Umgesetzt:** Vorläufiger Topf und Einsätze je Ausgang sind bereits vor Tippschluss sichtbar.
 Auf Nutzerentscheidung entfallen sämtliche Quotenanzeigen, auch in Tippdialogen, Match- und
-Turnieransichten. Die Spieleübersicht verwendet die vorhandenen flachen Disclosures und
+Turnieransichten. Die Spieleübersicht verwendet die gemeinsamen Match-Historienkarten mit Wettaktionen im Header und
 Wertlisten. Ein gemeinsamer Punkteverlauf bietet die Konten Orga, Spielen, Wetten und
 Wettguthaben; Reservierungen und Nettoänderungen bleiben fachlich getrennt.
 Freie Matches mit mindestens zwei Teams, Ligaspiele und Gruppenspiele bieten einen regulär gewinnenden Remis-Tipp;

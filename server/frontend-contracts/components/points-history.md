@@ -93,7 +93,8 @@ Erstattung offener/gesperrter Märkte und den heruntergeladenen Endstand.
 ## Kompakte Darstellung
 
 Kategorien, Gesamtwertung, Verläufe und einzelne Wettrunden verwenden native Disclosures mit
-stabilen `data-points-section`-Kennungen; Wettrunden nutzen `round-<id>`. Kategorie-Ranglisten
+stabilen `data-points-section`-Kennungen; Spielkarten verwenden den gemeinsamen
+Match-Historienhelper mit `data-history-item="points-round-<id>"`. Kategorie-Ranglisten
 bleiben flache Zeilen innerhalb ihrer Hauptkarte (`flat`), statt je eine zusätzliche gepolsterte Karte anzulegen.
 RankedList sortiert nach den fachlichen Kategorieplätzen einschließlich Gleichständen. Die
 persönlichen Kategoriepunkte (UI-Bezeichnung „Punkte“) bleiben auch bei geschlossener Rangliste
@@ -104,9 +105,13 @@ ersetzt bestehende Daten nicht durch eine leere Fläche. Die gemeinsame Zustands
 Disclosures und Scrollposition. Die Browserprüfung hält die GET-Antwort nach einer echten
 Tippänderung gezielt zurück und prüft sowohl den ausstehenden als auch den fertigen Refresh.
 
-Die Spieleübersicht verwendet `pointsSectionHtml` mit `flat` und `rankedListHtml` als
-alphabetische Wertliste der Einsätze je Ergebnis. Eigener Tipp und Gewinner stehen in der
-Meta-Zeile; im Header stehen Marktart und Status. Es gibt keine eigene Spielelisten-Geometrie.
+Die Spieleübersicht verwendet `historyItemHtml` aus `historyItem.js` wie die Match-Historie:
+kompakter Aufklappbutton mit Marktart, Status und eigenem Einsatz sowie eine getrennte rechte
+Aktionsgruppe. „Wetten“ ist bei geschlossener Karte bedienbar; eine Tippabgabe ändert den
+Aufklappzustand nicht. Der aufklappbare Inhalt ergänzt die alphabetische `rankedListHtml`-Wertliste
+der Einsätze je Ergebnis. Eigener Tipp und Gewinner stehen an der jeweiligen Zeile. `.card`
+übernimmt die wechselnden Flächen je Verschachtelungsebene; es gibt keine eigene Spielelisten-
+Geometrie oder abweichende Controlgröße.
 Wettaktionen verwenden ausschließlich ActionMenu und Standardbuttons. `competitionBettingHtml`
 liefert dieselben Controls an Match, Turnier und LAN-Punkte. Quotenanzeigen entfallen überall,
 einschließlich Auswahloptionen, Tippdetails und Hilfetexten. Die Turnierpräsentation erhält
