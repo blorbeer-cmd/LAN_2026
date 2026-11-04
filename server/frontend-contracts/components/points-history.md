@@ -21,9 +21,10 @@ Die Komponente enthält keine eigenen Controls. Buchungsaktionen verwenden die g
 
 ## 4. Varianten
 
-Vollständige, nichtinteraktive Stufenkurve sowie getrennte Kategorie-Verläufe mit eigenem
-zugänglichem Namen: `umgesetzt`. Ohne Buchungen kein SVG. Kategorie-Suche filtert nur die Liste,
-nicht die vollständige Kurve der ausgewählten Kategorie.
+Vollständige, nichtinteraktive Stufenkurve für das im gemeinsamen Punkteverlauf ausgewählte
+Konto (Orga, Spielen, Wetten oder Wettguthaben) mit eigenem zugänglichem Namen: `umgesetzt`.
+Ohne Buchungen kein SVG. Die Suche filtert nur die Liste, nicht die vollständige Kurve des
+ausgewählten Kontos.
 
 ## 5. Erlaubte Anpassungen
 
@@ -92,19 +93,24 @@ Erstattung offener/gesperrter Märkte und den heruntergeladenen Endstand.
 ## Kompakte Darstellung
 
 Kategorien, Gesamtwertung, Verläufe und einzelne Wettrunden verwenden native Disclosures mit
-stabilen `data-points-section`-/`data-points-round`-Kennungen. Kategorie-Ranglisten bleiben flache
-Zeilen innerhalb ihrer Hauptkarte (`flat`), statt je eine zusätzliche gepolsterte Karte anzulegen.
+stabilen `data-points-section`-Kennungen; Wettrunden nutzen `round-<id>`. Kategorie-Ranglisten
+bleiben flache Zeilen innerhalb ihrer Hauptkarte (`flat`), statt je eine zusätzliche gepolsterte Karte anzulegen.
 RankedList sortiert nach den fachlichen Kategorieplätzen einschließlich Gleichständen. Die
-persönlichen Rohwerte bleiben auch bei geschlossener Rangliste im Header sichtbar.
+persönlichen Kategoriepunkte (UI-Bezeichnung „Punkte“) bleiben auch bei geschlossener Rangliste
+im Header sichtbar.
 
 Diagramme sind separat einklappbar; Filter verändern weiterhin nur die Liste. Laden im Hintergrund
 ersetzt bestehende Daten nicht durch eine leere Fläche. Die gemeinsame Zustandssicherung erhält
 Disclosures und Scrollposition. Die Browserprüfung hält die GET-Antwort nach einer echten
 Tippänderung gezielt zurück und prüft sowohl den ausstehenden als auch den fertigen Refresh.
 
+Die Spieleübersicht verwendet `pointsSectionHtml` mit `flat` und `rankedListHtml` als
+alphabetische Wertliste der Einsätze je Ergebnis. Eigener Tipp und Gewinner stehen in der
+Meta-Zeile; im Header stehen Marktart und Status. Es gibt keine eigene Spielelisten-Geometrie.
 Wettaktionen verwenden ausschließlich ActionMenu und Standardbuttons. `competitionBettingHtml`
-und `competitionOddsHtml` liefern dieselben Controls und Quoten an Match, Turnier und LAN-Punkte.
-Die Turnierpräsentation erhält optionale, vertrauenswürdige Rendercallbacks; ohne diese bleibt
+liefert dieselben Controls an Match, Turnier und LAN-Punkte. Quotenanzeigen entfallen überall,
+einschließlich Auswahloptionen, Tippdetails und Hilfetexten. Die Turnierpräsentation erhält
+einen optionalen, vertrauenswürdigen Rendercallback für Controls; ohne diesen bleibt
 sie unverändert. Bracket-Höhe und Verbindungslinien bleiben erhalten, Wett- und Ergebnisaktionen
 teilen sich eine kompakte Seitenspalte. Liga-/Gruppenzeilen setzen auf schmalen Geräten die
 Aktionen gemeinsam darunter. Menüs dürfen nicht vom Turnierbaum abgeschnitten werden.
@@ -113,6 +119,12 @@ Die zugehörigen Containermaße gehören `domains.css`; Controls selbst behalten
 Die schreibgeschützten Tippdetails nennen den eigenen gewählten Ausgang ausdrücklich neben
 Einsatz, Auszahlung und Netto. Die Meldeschaltfläche steht mit dem Standardabstand in einer
 eigenen Aktionszeile unter den Details.
-Quoten und Auszahlungsvorschau folgen der am Markt gespeicherten Auszahlungsregel. Neue Märkte
-begrenzen den Nettogewinn auf den eigenen Einsatz (Quote höchstens 2,00); die bestehende Tipp-Hilfe
+Die Abrechnung folgt der am Markt gespeicherten Auszahlungsregel. Neue Märkte
+begrenzen den Nettogewinn auf den eigenen Einsatz; die bestehende Tipp-Hilfe
 erklärt Begrenzung und anteilige Rückzahlung. Historische Märkte behalten ihre damalige Regel.
+
+Der gemeinsame Punkteverlauf ersetzt die getrennten Kategorie- und Wettguthaben-Verlaufsbereiche.
+Die Kontoauswahl umfasst alle vier Konten. Nur Wettguthaben bietet zusätzlich die bisherige
+Buchungsart-Auswahl; seine Details behalten Einsatz, Auszahlung und Originalbuchung. Die
+Konten werden weder addiert noch ineinander umgerechnet. Die Kurve verwendet stets alle
+Buchungen des Kontos, unabhängig von Suchtext und Buchungsart.

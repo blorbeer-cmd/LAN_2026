@@ -7,11 +7,10 @@ import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { rankedListHtml, sharedRankNumbers } from '../rankedList.js';
-import { POINT_SOURCES, signedPoints, pointsChartHtml, pointsSectionHtml, journalSourceState, categoryPlaceSummary } from '../pointsPresentation.js';
-import { categoryPointsHtml, adminCategoryJournalHtml, categoryEntryFactsHtml } from '../pointsCategories.js';
+import { POINT_SOURCES, signedPoints, pointsSectionHtml, journalSourceState, categoryPlaceSummary } from '../pointsPresentation.js';
+import { categoryPointsHtml, pointsHistoryHtml, adminCategoryJournalHtml, categoryEntryFactsHtml } from '../pointsCategories.js';
 import { pointsReportButton, wirePointsReportButtons } from '../pointsReports.js';
 import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
-import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let cached = null;
@@ -21,7 +20,6 @@ let pendingKey = '';
 let generation = 0;
 let loadError = '';
 let historySource = '';
-let historyQuery = '';
 let adminEntries = null;
 let adminLoading = false;
 let adminError = '';
@@ -172,11 +170,6 @@ function bettingRound(type, id) {
   return currentData()?.rounds.find((round) => round.sourceType === type && round.sourceId === id) ?? null;
 }
 
-export function competitionOddsHtml(type, id, outcomeId) {
-  const outcome = bettingRound(type, id)?.outcomes.find((row) => row.id === String(outcomeId));
-  return outcome?.odds ? `<span class="muted points-odds">Quote ${outcome.odds.toFixed(2)}</span>` : '';
-}
-
 function bettingControlsHtml(round, { actionsOnly = false, showStatus = true } = {}) {
   const closed = Boolean(currentData()?.settings.closed_at);
   const canManage = isGroupAdmin() || round.outcomes.some((outcome) => outcome.playerIds.includes(getMyId()));
@@ -193,12 +186,21 @@ function bettingControlsHtml(round, { actionsOnly = false, showStatus = true } =
     ${actionMenuHtml(actions, `Wetten: ${round.title}`, { key: `betting-${round.id}`, summary: 'Wetten', floating: true })}</div>`;
 }
 
+function roundOutcomesHtml(round) {
+  return rankedListHtml(round.outcomes.map((outcome) => ({
+    title: e(outcome.label), sortKey: outcome.label,
+    meta: [round.result === outcome.id ? 'Gewinner' : '', round.mine?.outcomeId === outcome.id ? 'Dein Tipp' : ''].filter(Boolean).join(' · '),
+    value: `${outcome.stake} P.`,
+  })), { label: 'Einsätze nach Ergebnis' });
+}
+
 function roundHtml(round, selected = false) {
-  return `<details class="collapsible-section points-round" data-points-round="${e(round.id)}"${selected ? ' open' : ''}>
-    <summary class="collapsible-section-header"><span class="collapsible-section-chevron">${icon('chevronRight')}</span><strong>${e(round.title)}</strong><span class="muted">${statusLabels[round.status]}${round.mine ? ` · ${round.mine.stake} P.` : ''}</span></summary>
-    <div class="collapsible-section-content stack">${bettingControlsHtml(round, { showStatus: false })}
-      <ul class="points-outcomes">${round.outcomes.map((outcome) => `<li><span>${e(outcome.label)}${round.result === outcome.id ? ' · Treffer' : ''}${round.mine?.outcomeId === outcome.id ? ' · Dein Tipp' : ''}</span><span>${outcome.odds ? `Quote ${outcome.odds.toFixed(2)}` : '–'}</span></li>`).join('')}</ul>
-    </div></details>`;
+  const type = { draw: 'Match', tournament_match: 'Turnierspiel', tournament: 'Turniersieg' }[round.sourceType];
+  return pointsSectionHtml(`round-${round.id}`, round.title,
+    `${bettingControlsHtml(round, { showStatus: false })}${roundOutcomesHtml(round)}`, {
+      flat: true, open: selected,
+      meta: [type, statusLabels[round.status]].filter(Boolean).join(' · '),
+    });
 }
 
 export function competitionBettingHtml(type, id, ctx, options = {}) {
@@ -211,19 +213,19 @@ function openTip(round, ctx) {
   const data = currentData();
   const editable = round.status === 'open' && !data.settings.closed_at;
   const reportAction = pointsReportButton('tip', round.mine?.id, ['settled', 'refunded'].includes(round.status));
-  const tipRules = `${round.payoutPolicy === 'stake_cap_v1' ? 'Gewinn höchstens in Höhe deines Einsatzes; übrige Einsätze gehen anteilig zurück. ' : ''}Die Quoten ändern sich bis Tippschluss. Tipps auf das eigene Team sind erlaubt. Auszahlung inklusive Einsatz; Rundung auf ganze Punkte.`;
+  const tipRules = `${round.payoutPolicy === 'stake_cap_v1' ? 'Gewinn höchstens in Höhe deines Einsatzes; übrige Einsätze gehen anteilig zurück. ' : ''}Tipps auf das eigene Team sind erlaubt. Auszahlung inklusive Einsatz; Rundung auf ganze Punkte.`;
   const { close } = openPointsModal(
     editable ? 'Ergebnis tippen' : 'Dein Tipp',
     `<div class="stack"><form class="stack" data-tip-form>
     ${
       editable
-        ? `<label class="stack"><span class="field-label">Ergebnis</span><select name="outcomeId" required>${round.outcomes.map((o) => `<option value="${e(o.id)}" ${round.mine?.outcomeId === o.id ? 'selected' : ''}>${e(o.label)} · Quote ${o.odds ? o.odds.toFixed(2) : '–'}</option>`).join('')}</select></label>
+        ? `<label class="stack"><span class="field-label">Ergebnis</span><select name="outcomeId" required>${round.outcomes.map((o) => `<option value="${e(o.id)}" ${round.mine?.outcomeId === o.id ? 'selected' : ''}>${e(o.label)}</option>`).join('')}</select></label>
     ${numberField('stake', `Einsatz (max. ${data.settings.max_stake} P.)`, round.mine?.stake ?? 1, 1, data.settings.max_stake)}
     <div class="row"><span class="muted">${data.wallet.available + (round.mine?.stake ?? 0)} P. verfügbar</span>${infoTooltipHtml('tip-rules', 'Hinweise zum Tipp', tipRules)}</div>
     <div class="row points-actions" style="justify-content:flex-end">${round.mine ? '<button type="button" class="btn" data-remove-tip>Tipp zurücknehmen</button>' : ''}<button type="submit" class="btn btn-primary">Tipp speichern</button></div>`
         : `${round.mine ? `<div><strong>Dein Tipp:</strong> ${e(round.outcomes.find((o) => o.id === round.mine.outcomeId)?.label ?? 'Unbekannter Ausgang')}</div>` : ''}
     <div>${round.mine ? `Einsatz ${round.mine.stake} P. · ${round.mine.payout === null ? 'Auszahlung steht noch aus' : `Auszahlung ${round.mine.payout} P. · Netto ${signedPoints(round.mine.net)} P.`}` : 'Du hast in dieser Runde keinen Tipp abgegeben.'}</div>
-    <ul class="points-outcomes">${round.outcomes.map((o) => `<li><span>${e(o.label)}</span><span>${o.stake} P.${o.odds ? ` · Quote ${o.odds.toFixed(2)}` : ''}</span></li>`).join('')}</ul>
+    ${roundOutcomesHtml(round)}
     `
     }
     </form>${reportAction ? `<div class="row points-actions">${reportAction}</div>` : ''}</div>`,
@@ -380,34 +382,6 @@ function entryDetails(entry, allEntries) {
   );
 }
 
-function historyHtml(data) {
-  const entries = data.entries.filter(
-    (entry) =>
-      (!historySource || entry.source === historySource) &&
-      `${entry.title} ${POINT_SOURCES[entry.source] ?? ''}`
-        .toLocaleLowerCase('de')
-        .includes(historyQuery.toLocaleLowerCase('de')),
-  );
-  return pointsSectionHtml('wallet-history', 'Wettguthaben-Verlauf', `${pointsSectionHtml('wallet-chart', 'Verlauf', pointsChartHtml(data.entries, { label: 'Verfügbares Wettguthaben' }))}
-    <div class="points-filters"><label class="stack"><span class="field-label">Buchungen durchsuchen</span><input type="search" data-points-query value="${e(historyQuery)}" placeholder="Wette suchen"></label>
-    <label class="stack"><span class="field-label">Buchungsart</span><select data-points-source><option value="">Alle Buchungen</option>${Object.entries(
-      POINT_SOURCES,
-    )
-      .map(([id, label]) => `<option value="${id}" ${id === historySource ? 'selected' : ''}>${label}</option>`)
-      .join('')}</select></label></div>
-    ${
-      entries.length
-        ? `<ol class="points-journal">${[...entries]
-            .reverse()
-            .map(
-              (entry) =>
-                `<li><div><strong>${e(entry.title)}</strong><div class="muted">${e(POINT_SOURCES[entry.source] ?? entry.source)} · ${e(formatDateTime(entry.created_at))}</div></div><strong>${signedPoints(entry.amount)} P.</strong><button type="button" class="btn btn-sm" data-point-entry="${e(entry.id)}" aria-label="Details: ${e(entry.title)}">Details</button></li>`,
-            )
-            .join('')}</ol>`
-        : emptyStateHtml('Keine Buchungen gefunden')
-    }
-    `, { label: 'Punkteverlauf' });
-}
 function savedStandingsHtml(data) {
   if (!data.revisions?.length) return '';
   return `<section class="card stack"><h2>Gespeicherte Endstände</h2><div class="stack">
@@ -445,11 +419,11 @@ export function renderPoints(container, ctx) {
   }
   const selected = ctx.localRoute?.()?.kind === 'round' ? ctx.localRoute().id : null;
   const rounds = selected ? data.rounds.filter((r) => r.id === selected) : data.rounds;
-  container.innerHTML = `${header}${loadError ? `<div class="row points-actions" role="status">${e(loadError)}<button type="button" class="btn btn-sm" data-points-retry>Erneut laden</button></div>` : ''}<div class="grouped-page-sections">${categoryPointsHtml(data, { account: categoryAccount, query: categoryQuery })}${overviewHtml(data)}
+  container.innerHTML = `${header}${loadError ? `<div class="row points-actions" role="status">${e(loadError)}<button type="button" class="btn btn-sm" data-points-retry>Erneut laden</button></div>` : ''}<div class="grouped-page-sections">${categoryPointsHtml(data)}${overviewHtml(data)}
     ${pointsSectionHtml('rounds', selected ? 'Tipprunde' : 'Spiele & Turniere', `
       ${selected ? '<div><button type="button" class="btn btn-sm" data-all-rounds>Alle Runden</button></div>' : ''}
       ${rounds.length ? rounds.map((r) => roundHtml(r, Boolean(selected))).join('') : emptyStateHtml('Keine Tipprunden.')}`, { open: true, label: 'Tipprunden', meta: String(rounds.length) })}
-    ${historyHtml(data)}${savedStandingsHtml(data)}</div>`;
+    ${pointsHistoryHtml(data, { account: categoryAccount, query: categoryQuery, source: historySource })}${savedStandingsHtml(data)}</div>`;
   wireCompetitionBetting(container, ctx);
   container.querySelector('[data-points-retry]')?.addEventListener('click', () => refreshPoints(ctx));
   wireSavedStandings(container);
@@ -466,12 +440,8 @@ export function renderPoints(container, ctx) {
     if (entry) openPointsModal('Kategorie-Buchung', `${categoryEntryFactsHtml(entry)}${pointsReportButton('journal', entry.id)}`, { onMount: wirePointsReportButtons });
   }));
   container.querySelector('[data-all-rounds]')?.addEventListener('click', () => ctx.navigateLocal(null));
-  container.querySelector('[data-points-source]').addEventListener('change', (event) => {
+  container.querySelector('[data-points-source]')?.addEventListener('change', (event) => {
     historySource = event.target.value;
-    ctx.rerender();
-  });
-  container.querySelector('[data-points-query]').addEventListener('change', (event) => {
-    historyQuery = event.target.value;
     ctx.rerender();
   });
   container.querySelectorAll('[data-point-entry]').forEach((button) =>

@@ -70,7 +70,7 @@ async function openSection(page: Page, key: string) {
     await section.locator(':scope > summary').click();
 }
 async function openRoundActions(page: Page, id: string) {
-  const round = page.locator(`[data-points-round="${id}"]`);
+  const round = page.locator(`[data-points-section="round-${id}"]`);
   if (await round.count() && !(await round.evaluate((element) => (element as HTMLDetailsElement).open)))
     await round.locator(':scope > summary').click();
   const menu = page.locator(`[data-action-menu="betting-${id}"]`);
@@ -223,7 +223,10 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     'the earned Orga category keeps Alice ahead of renamed zero-score entrants');
   assert.match(await standings.locator('.ranked-list-row').nth(1).innerText(), /AAA Points Bob/);
   assert.equal(await standings.getByText('Points Bob', { exact: true }).count(), 0);
-  await openSection(member, 'wallet-history');
+  await openSection(member, 'history');
+  await member.locator('[data-category-account]').selectOption('wallet');
+  assert.equal(await member.getByRole('region', { name: 'Punkteverlauf', exact: true }).count(), 1, 'one history serves all accounts');
+  assert.deepEqual(await member.locator('[data-category-account] option').evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value)), ['orga', 'playing', 'betting', 'wallet']);
   await member.locator('[data-point-entry]').first().click();
   await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).waitFor();
   await setPointsVisibility(false);
@@ -233,7 +236,8 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await setPointsVisibility(true);
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
-  await openSection(member, 'wallet-history');
+  await openSection(member, 'history');
+  await member.locator('[data-category-account]').selectOption('wallet');
   await member.locator('[data-points-source]').selectOption('start');
   assert.equal(await member.getByRole('region', { name: 'Punkteverlauf', exact: true }).locator('.points-journal li').count(), 1);
   await member.locator('[data-point-entry]').click();
@@ -318,6 +322,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const otherOutcome = round.outcomes.find((outcome: { id: string }) => outcome.id !== ownOutcome).id;
   assert.equal(await member.locator('[data-tip-form] option[value="__draw__"]').count(), 1,
     'a free-match market offers a selectable draw');
+  assert.doesNotMatch(await member.getByRole('dialog').innerText(), /Quoten?/i, 'tip options show no odds');
   await member.locator('[data-tip-form] select').selectOption(ownOutcome);
   await member.locator('[data-tip-form] [name="stake"]').fill('10');
   await member.getByRole('button', { name: 'Tipp speichern', exact: true }).click();
@@ -329,7 +334,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     gameId: game.id, playerIds: [alice.id, bob.id], teamCount: 2,
   });
   await member.locator('[data-all-rounds]').click();
-  await member.waitForFunction(() => document.querySelectorAll('[data-points-round]').length === 7);
+  await member.waitForFunction(() => document.querySelectorAll('[data-points-section^="round-"]').length === 7);
   await member.setViewportSize({ width: 1440, height: 568 });
   await openRoundActions(member, round.id);
   await member.locator(`[data-tip-round="${round.id}"]`).click();
@@ -348,7 +353,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
       member.getByRole('button', { name: 'Tipp speichern', exact: true }).click(),
     ]);
     await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
-    assert.equal(await member.locator(`[data-points-round="${round.id}"]`).evaluate((element) => (element as HTMLDetailsElement).open), true);
+    assert.equal(await member.locator(`[data-points-section="round-${round.id}"]`).evaluate((element) => (element as HTMLDetailsElement).open), true);
     assert.ok(Math.abs(await member.locator('#view-container').evaluate((element) => element.scrollTop) - scrollBefore) <= 2,
       'a pending refresh keeps the existing content and its scroll position');
   } finally {
@@ -373,19 +378,21 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     bob.cookie,
   );
   await member.getByText(/Topf 16 P./).waitFor();
-  await member.getByText('Quote 2.00', { exact: true }).waitFor();
-  await member.getByText('Quote 1.07', { exact: true }).waitFor();
+  assert.doesNotMatch(await member.locator('#view-container').innerText(), /Quoten?/i, 'LAN markets show no odds');
+  const outcomeList = member.locator(`[data-points-section="round-${round.id}"]`).getByRole('list', { name: 'Einsätze nach Ergebnis' });
+  await outcomeList.getByText('Dein Tipp', { exact: true }).waitFor();
+  await outcomeList.getByText('15 P.', { exact: true }).waitFor();
   await openRoundActions(member, round.id);
   await member.locator(`[data-lock-round="${round.id}"]`).click();
   await member.getByRole('button', { name: 'Tipps schließen', exact: true }).click();
-  await member.locator(`[data-points-round="${round.id}"] > summary`).getByText(/Tipps geschlossen/).waitFor();
+  await member.locator(`[data-points-section="round-${round.id}"] > summary`).getByText(/Tipps geschlossen/).waitFor();
   await openRoundActions(member, round.id);
   await member.locator(`[data-reopen-round="${round.id}"]`).click();
-  await member.locator(`[data-points-round="${round.id}"] > summary`).getByText(/Tipps offen/).waitFor();
+  await member.locator(`[data-points-section="round-${round.id}"] > summary`).getByText(/Tipps offen/).waitFor();
   await openRoundActions(member, round.id);
   await member.locator(`[data-lock-round="${round.id}"]`).click();
   await member.getByRole('button', { name: 'Tipps schließen', exact: true }).click();
-  await member.locator(`[data-points-round="${round.id}"] > summary`).getByText(/Tipps geschlossen/).waitFor();
+  await member.locator(`[data-points-section="round-${round.id}"] > summary`).getByText(/Tipps geschlossen/).waitFor();
   await api('/api/matches', 'POST', {
     gameId: game.id,
     drawId: draw.id,
@@ -400,17 +407,21 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const losingTip = (await api(`/api/points?eventId=${eventId}`, 'GET', undefined, bob.cookie)).rounds.find((row: any) => row.id === round.id).mine;
   assert.deepEqual([losingTip.stake, losingTip.payout, losingTip.net], [15, 14, -1]);
   await tipDetails.getByText(`Dein Tipp: ${round.outcomes.find((outcome: { id: string }) => outcome.id === ownOutcome).label}`, { exact: true }).waitFor();
+  assert.doesNotMatch(await tipDetails.innerText(), /Quoten?/i, 'read-only tip details show no odds');
   await tipDetails.locator('[data-report-points]').waitFor();
   assert.ok(await tipDetails.locator('[data-report-points]').evaluate((button) => {
-    const outcomes = button.closest('.modal')!.querySelector('.points-outcomes')!;
+    const outcomes = button.closest('.modal')!.querySelector('.ranked-list')!;
     const standardGap = parseFloat(getComputedStyle(outcomes.closest('form')!.parentElement!).rowGap);
-    return button.getBoundingClientRect().top - outcomes.getBoundingClientRect().bottom >= standardGap - 1;
+    const contentBottom = Math.max(...Array.from(outcomes.querySelectorAll('.ranked-list-text, .ranked-list-value'))
+      .map((item) => item.getBoundingClientRect().bottom));
+    return button.getBoundingClientRect().top - contentBottom >= standardGap - 1;
   }), 'reporting has a separate action row below tip details');
   await tipDetails.screenshot({ path: 'test-results/points-tip-details.png', animations: 'disabled' });
   await member.keyboard.press('Escape');
   await navigate(member, 'matchmaking');
   const recordedMatch = member.locator(`[data-history-toggle="${draw.id}"]`);
   if (await recordedMatch.getAttribute('aria-expanded') !== 'true') await recordedMatch.click();
+  assert.doesNotMatch(await member.locator('#view-container').innerText(), /Quoten?/i, 'Match history shows no odds');
   const historyBettingGap = await member.locator(`#match-history-${draw.id} .points-betting-controls`).evaluate((controls) =>
     controls.getBoundingClientRect().top - controls.previousElementSibling!.getBoundingClientRect().bottom);
   assert.equal(historyBettingGap, freshBettingGap, 'new and recorded matches use the same gap above betting actions');
@@ -465,6 +476,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await admin.evaluate((id) => { window.location.hash = `#tournaments/${id}`; }, cup.id);
   const controls = admin.locator(`[data-betting-controls="${market.id}"]`);
   await controls.waitFor();
+  assert.doesNotMatch(await admin.locator('#view-container').innerText(), /Quoten?/i, 'tournament teams and fixtures show no odds');
   await controls.locator('summary').click();
   const panel = controls.locator('.action-menu-panel');
   await panel.waitFor();
@@ -475,6 +487,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   })), true, 'every menu action remains reachable over the bracket and neighboring games');
   await controls.locator('[data-tip-round]').click();
   await admin.getByRole('dialog', { name: 'Ergebnis tippen', exact: true }).waitFor();
+  assert.doesNotMatch(await admin.getByRole('dialog').innerText(), /Quoten?/i, 'tournament tip options show no odds');
   assert.equal(await admin.getByRole('dialog').locator('textarea').count(), 0);
   await admin.keyboard.press('Escape');
   await api(`/api/tournaments/${cup.id}/matches/${fixture.id}/result`, 'POST', { winnerTeamId: fixture.teamAId });
@@ -655,8 +668,8 @@ test('category history and reasoned own and foreign corrections stay consistent 
     await navigate(admin, 'pointsAdmin');
     await navigate(member, 'points');
     const personal = member.getByRole('region', { name: 'Meine Kategorien', exact: true });
-    const history = member.getByRole('region', { name: 'Kategorie-Verlauf', exact: true });
-    await openSection(member, 'category-history');
+    const history = member.getByRole('region', { name: 'Punkteverlauf', exact: true });
+    await openSection(member, 'history');
     const administration = admin.getByRole('region', { name: 'Kategorie-Journal', exact: true });
     await personal.locator('[data-category-balance=\"playing\"]').filter({ hasText: /^4$/ }).waitFor();
     await history.getByText('Noch keine Buchungen.', { exact: true }).waitFor();
@@ -737,7 +750,7 @@ test('category history and reasoned own and foreign corrections stay consistent 
     }
     await member.setViewportSize({ width: 390, height: 844 });
     await member.screenshot({ path: 'test-results/category-points-phone.png', fullPage: true });
-    await openSection(member, 'category-history');
+    await openSection(member, 'history');
     await history.locator('[data-category-entry]').first().click();
     await member.getByRole('dialog', { name: 'Kategorie-Buchung', exact: true }).waitFor();
     await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 1 });
@@ -799,8 +812,8 @@ test('poll and event-start travel awards update the open personal journal live',
     db.prepare('UPDATE events SET starts_at=? WHERE id=?').run(Date.now() + 500, event.id);
     db.close();
     await category.locator('[data-category-balance="orga"]').filter({ hasText: /^7$/ }).waitFor();
-    const history = member.getByRole('region', { name: 'Kategorie-Verlauf', exact: true });
-    await openSection(member, 'category-history');
+    const history = member.getByRole('region', { name: 'Punkteverlauf', exact: true });
+    await openSection(member, 'history');
     await history.getByText('Umfrage abgeschlossen: Gemeinsame Pause', { exact: true }).waitFor();
     await history.getByText('Ankunft eingetragen', { exact: true }).waitFor();
     await history.getByText('Abreise eingetragen', { exact: true }).waitFor();

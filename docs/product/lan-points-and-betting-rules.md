@@ -38,7 +38,9 @@ Das Konto zeigt Wettguthaben insgesamt, reservierte Einsätze und verfügbare Mi
 oder gesperrter Einsatz reserviert ausschließlich Wallet-Punkte. Die Wallet-Journalsumme ist
 das verfügbare Guthaben; insgesamt verfügbar plus reserviert ergibt das gesamte Wettguthaben.
 Der vollständige Wallet-Verlauf zeigt auch Reservierung, Änderung und Freigabe von Einsätzen.
-Such- und Quellenfilter ändern nur die Liste, nicht die Kurve. Kategorie-Verläufe bleiben getrennt.
+Ein gemeinsamer Punkteverlauf bietet die Kontoauswahl Orga, Spielen, Wetten und Wettguthaben.
+Such- und Quellenfilter ändern nur die Liste, nicht die Kurve des ausgewählten Kontos. Die
+Buchungen der Konten bleiben getrennt; nur Wettguthaben bietet den Quellenfilter.
 
 ## Anzeige während des Events steuern
 
@@ -77,9 +79,9 @@ Der Ersteller entscheidet direkt beim Anlegen vor Spielbeginn über „Wetten zu
 zusätzliche Adminrolle. Bei ausgeschalteter Option darf kein anderer einen Markt für dieses
 Match eröffnen. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer
 ohne optionalen Freischalter angeboten. Die bestehenden Regeln zu Sichtbarkeit, feststehenden
-Gegnern, Tippschluss und Spielbeginn gelten weiterhin. Topf, Anzahl Tipps,
-Einsätze je Ausgang und vorläufige Pool-Quoten sind schon vor Tippschluss sichtbar. Eine Quote
-ist nur bei einem Einsatz auf diesen Ausgang berechenbar; neue Einsätze können sie verändern.
+Gegnern, Tippschluss und Spielbeginn gelten weiterhin. Topf und Einsätze je Ausgang sind schon
+vor Tippschluss sichtbar. Auf Nutzerentscheidung werden Quoten vollständig aus der Oberfläche
+entfernt, einschließlich Match, Turnier, LAN-Punkte, Tippdialog und Hilfetext.
 Die API veröffentlicht dabei keine individuellen fremden Tipps. Freie Matches mit zwei oder mehr Teams sowie
 Liga- und Gruppenspiele bieten „Unentschieden“ als regulär gewinnenden Tipp. K.-o.-Spiele und
 Turniersieger-Märkte bieten ihn nicht; ältere Märkte behalten ihre ursprüngliche Auswahl.
@@ -134,7 +136,7 @@ Einsatz begrenzt. Umverteilt wird der kleinere Betrag aus Gewinner-Einsätzen un
 Einsätzen. Gewinner erhalten ihren Einsatz plus anteiligen Gewinn; Verlierer bekommen ihren
 Einsatz abzüglich des anteiligen Verlustes zurück. Bei 1 Punkt gegen 15 und einem Sieg der
 1-Punkt-Wette sind die Auszahlungen 2 und 14 (Netto +1/−1). Es entstehen keine Punkte, keine
-Gebühren und kein Hausanteil. Die vorläufige Quote ist höchstens 2,00 und enthält den Einsatz.
+Gebühren und kein Hausanteil. Die Oberflächenänderung verändert die Abrechnungsregel nicht.
 
 Gewinne und Verluste werden auf beiden Seiten getrennt ganzzahlig abgerundet. Restpunkte erhalten
 jeweils die größten Nachkommaanteile; bei gleichen Anteilen entscheidet der früher abgegebene Tipp.
@@ -147,7 +149,8 @@ Migration 135 speichert die Regel am Markt. Neue und noch nie abgerechnete offen
 Märkte offener Wertungen erhalten die Gewinnbegrenzung. Bereits abgerechnete oder erstattete
 Märkte, frühere Finanzkorrekturen und festgeschriebene Wertungen behalten die bisherige Poolregel,
 auch bei späterer Neuberechnung. Migration und Wiederholung verändern keine Guthaben,
-Reservierungen, Auszahlungen oder Journaleinträge. Historische Quoten bleiben unter ihrer Regel lesbar.
+Reservierungen, Auszahlungen oder Journaleinträge. Historische Berechnungen bleiben über die
+API unter ihrer gespeicherten Regel lesbar.
 
 Auszahlung minus Einsatz wird atomar im Wallet und als Wett-Nettowert erfasst. Vollständige
 Erstattung ergibt 0 Nettogewinn. Grundstock ist kein Wett-Nettogewinn. Die Auszahlungen müssen
@@ -203,14 +206,16 @@ Punktefehler-Meldungen. In der Punkteverwaltung gibt es keinen zweiten Sichtbark
 To-do-Zeilen, -Formulare und -Details wiederholen die einheitliche Punktevergütung nicht.
 
 Die LAN-Übersicht bietet getrennte einklappbare Ranglisten für Orga, Spielen, Wetten und den
-Gesamtstand. Jede Kategorie zeigt den eigenen Rohwert, Rang und die Platzpunkte; die Rangliste
+Gesamtstand. Jede Kategorie zeigt die eigenen „Punkte“, den Rang und die „Platzpunkte“; die Rangliste
 verwendet dieselben berechtigten Plätze wie die Gesamtwertung. Verläufe, Diagramme und einzelne
 Spiele lassen sich aufklappen. Seltenere Informationen stehen in Details oder der bestehenden Hilfe.
 
 „Wetten“ bündelt Tippabgabe, Schließen, Wiederöffnen und berechtigte Korrekturen. Matches und
-Turniere nutzen dieselbe Bedienung direkt in ihren vorhandenen Ansichten; Quoten stehen bei
-den Teams. Es gibt keine zweite große Wettliste unter dem Turnierbaum. Persönliche fremde Tipps
-werden nicht offengelegt. Regeln und Einsätze bleiben über die Tippdetails zugänglich.
+Turniere nutzen dieselbe Bedienung direkt in ihren vorhandenen Ansichten. Die Spieleübersicht
+bei den LAN-Punkten verwendet die vorhandenen flachen Disclosures und alphabetischen Wertlisten
+für die Einsätze; eigener Tipp und Gewinner stehen als Metadaten an der jeweiligen Zeile.
+Quoten werden in keiner Ansicht angezeigt. Es gibt keine zweite große Wettliste unter dem
+Turnierbaum. Persönliche fremde Tipps werden nicht offengelegt. Regeln und Einsätze bleiben über die Tippdetails zugänglich.
 Die Tippdetails nennen den selbst gewählten Ausgang ausdrücklich. Die Meldeschaltfläche steht
 mit Abstand in einer eigenen Aktionszeile. Neue Wettmenüs beginnen geschlossen; Teamkarten und
 Wettaktionen haben in Auslosung und Historie denselben Abstand.

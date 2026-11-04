@@ -148,7 +148,7 @@ Fachquelle bleiben bei geschlossener Wertung nutzbar; deren Punkte und Snapshot 
 - Beschlossene Gewinnbegrenzung umgesetzt: Nettogewinn höchstens in Höhe des eigenen Einsatzes.
   Umverteilt wird `min(Gewinner-Einsätze, übrige Einsätze)`; Gewinn und Verlust werden je Seite
   anteilig einschließlich ganzzahliger Restverteilung zugeordnet. Überschüsse gehen zurück.
-  Beispiel 1 gegen 15: Auszahlung 2/14, Netto +1/−1. Quote und Vorschau verwenden dieselbe Regel.
+  Beispiel 1 gegen 15: Auszahlung 2/14, Netto +1/−1. Die interne Vorschau verwendet dieselbe Regel; Quoten werden nicht angezeigt.
   Migration 135 versioniert sie am Markt: neue und noch nie abgerechnete offene/gesperrte Märkte
   offener Wertungen erhalten die Begrenzung, historische/festgeschriebene Märkte behalten ihre
   bisherige Berechnung auch bei Korrekturen. Bestehende Finanzbuchungen bleiben unverändert.
@@ -170,8 +170,11 @@ Journal, feste Startvergabe, Marktstorno und Kategorie-Korrekturen.
 
 ## Paket 5b – vollständige Marktregeln (umgesetzt)
 
-**Umgesetzt:** Vorläufiger Topf, Anzahl Tipps, Einsätze je Ausgang und Pool-Quoten sind
-bereits vor Tippschluss sichtbar. Ein nicht belegter Ausgang hat keine berechenbare Quote.
+**Umgesetzt:** Vorläufiger Topf und Einsätze je Ausgang sind bereits vor Tippschluss sichtbar.
+Auf Nutzerentscheidung entfallen sämtliche Quotenanzeigen, auch in Tippdialogen, Match- und
+Turnieransichten. Die Spieleübersicht verwendet die vorhandenen flachen Disclosures und
+Wertlisten. Ein gemeinsamer Punkteverlauf bietet die Konten Orga, Spielen, Wetten und
+Wettguthaben; Reservierungen und Nettoänderungen bleiben fachlich getrennt.
 Freie Matches mit mindestens zwei Teams, Ligaspiele und Gruppenspiele bieten einen regulär gewinnenden Remis-Tipp;
 K.-o.-Spiele und Turniersieger-Märkte bieten ihn nicht. Bei älteren Märkten ohne Remis-Auswahl
 wird ein eingetretenes Remis weiterhin vollständig erstattet. Die Auswahl erweitert nicht die
@@ -184,7 +187,7 @@ entschieden. Die persönliche API liefert deren Anzahl und die erreichte Mindest
 Kategorieplatzierung ist in Paket 6 angebunden. Vollständig erstattete Märkte und
 zurückgenommene Tipps zählen nicht zur Mindestzahl. Auszahlungen sind davon unabhängig.
 
-- Zielregeln ersetzen die alten Regeln: sichtbare vorläufige Pool-Quoten, formatabhängiger
+- Zielregeln ersetzen die alten Regeln: kompakte Wettansichten ohne Quoten, formatabhängiger
   Remis-Tipp, vollständige Erstattungen und ganzzahlige proportionale Pool-Auszahlungen.
 - W1 umgesetzt: maximal 20 Punkte pro Person und Wettmarkt.
 - W2 umgesetzt: Wettplatzierung erst ab zwei regulär abgerechneten Tipps und positivem Nettowert.

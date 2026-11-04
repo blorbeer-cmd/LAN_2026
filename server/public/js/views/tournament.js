@@ -1,4 +1,4 @@
-import { competitionBettingHtml, competitionOddsHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
+import { competitionBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
 // Tournament detail view (FR-33): automatically generated single-elimination
 // bracket ("Turnierbaum") or
 // round-robin league ("jeder gegen jeden", optionally Hin- und Rückspiele),
@@ -169,7 +169,6 @@ function renderDetail(container, ctx) {
     renderTournamentTeams,
   } = createTournamentPresentation(getMyId(), {
     bettingControls: (type, id) => competitionBettingHtml(type, id, ctx, { actionsOnly: true }),
-    bettingOdds: (type, id, outcomeId) => competitionOddsHtml(type, id, outcomeId),
   });
   const boardContent =
     t.format === 'single_elimination'

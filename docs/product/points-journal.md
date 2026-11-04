@@ -222,7 +222,7 @@ sind reguläre Abrechnungen mit eigenem Nettowert; nur eine vollständige Markte
 Migration 135 speichert die Regel je Markt. Noch nie abgerechnete offene/gesperrte Märkte offener
 Wertungen wechseln zur Begrenzung; historische Abrechnungen, Erstattungen, Korrekturen und
 festgeschriebene Wertungen behalten ihre Poolregel auch bei späterer Neuberechnung. Die Migration
-schreibt keine Finanzbuchungen um. API-Quoten und persönliche Vorschau verwenden die gespeicherte Regel.
+schreibt keine Finanzbuchungen um. API-Quoten und interne Vorschau verwenden die gespeicherte Regel; die Oberfläche zeigt keine Quoten.
 Alle Spieler und beide Konten werden gemeinsam verbucht; Wiederholungen bleiben wirkungslos.
 Finanzkorrekturen verknüpfen die Journalbuchungen mit dem handelnden Admin im Protokoll.
 
@@ -261,7 +261,8 @@ und Stornos sind erlaubt. Der alte einseitige LAN-Entzugsendpunkt ist mit 409 ab
 ## Kategorieansicht und administratives Journal
 
 Die Punkteansicht zeigt Orga, Spielen und Wetten mit getrennten Rohwerten, Kategorienrängen
-und Platzpunkten sowie deren Summe als Gesamtwertung. Nur positive Rohwerte erhalten einen Rang;
+und Platzpunkten sowie deren Summe als Gesamtwertung. Die Oberfläche nennt die Kategoriepunkte
+einfach „Punkte“, ohne den technischen Zusatz „Roh-“. Nur positive Rohwerte erhalten einen Rang;
 Wetten benötigen zusätzlich zwei reguläre Abrechnungen. Gleiche Werte teilen den besseren Rang.
 Die Teilnehmerzahl N umfasst aktive bestätigte Teilnehmer ohne Testkonten; späte Zusagen zählen
 sofort. Austritte entfernen die Person aus der laufenden Rangliste, erhalten aber den Verlauf.
@@ -269,8 +270,12 @@ Gewertet werden reguläre veröffentlichte LANs; ihre Ergebnisse bleiben nach En
 Testevents, Entwürfe, abgesagte Veranstaltungen und andere Eventtypen sind ausgeschlossen.
 Rangliste, Hall of Fame und Export lesen dieselbe Berechnung. Der bestehende Abschluss hält N,
 Teilnehmerliste und Kategorie-/Gesamtstände fest. Die weiteren Abschlussregeln sind in Paket 9 umgesetzt.
-Der Verlauf zeigt jeweils die ausgewählte Kategorie.
-Die Suche filtert ausschließlich die Liste, die Kurve behält den vollständigen Kategorienverlauf.
+Ein gemeinsamer „Punkteverlauf“ bietet die Kontoauswahl Orga, Spielen, Wetten und Wettguthaben.
+Es gibt keinen zusätzlichen Wallet-Verlaufsbereich. Wetten enthält ausschließlich den
+Nettogewinn/-verlust für die Rangliste; Wettguthaben zeigt verfügbare Mittel einschließlich
+Reservierungen und Freigaben. Seine Buchungsart-Auswahl und vollständigen Wallet-Details bleiben
+verfügbar. Die Suche und Buchungsart filtern ausschließlich die Liste; die Kurve behält den
+vollständigen Verlauf des ausgewählten Kontos.
 Buchungsdetails nennen Kategorie, Zeitpunkt, Anlass, Betrag und gegebenenfalls Begründung.
 
 In der Punkteverwaltung steht zusätzlich das Kategorie-Journal aller Teilnehmer mit Konto-
@@ -317,8 +322,9 @@ schreiben weder Grundstock, To-do-Abschluss noch Wettabschluss in `point_entries
 Das alte Budget und einseitige Wallet-Entzüge sind als Finanzpfade abgeschaltet.
 
 Die Journalbasis, Wallet-Abrechnung, Kategorie-Rohwerte und Admin-Korrekturen sind angebunden.
-Paket 5b bietet bereits vorläufige Pool-Quoten und eine formatabhängige, regulär gewinnende
-Remis-Auswahl. W1/W5 sind umgesetzt: maximal 20 Punkte pro Person und Markt und keine zusätzlichen
+Paket 5b bietet eine formatabhängige, regulär gewinnende Remis-Auswahl. Die Oberfläche
+verzichtet vollständig auf Quotenanzeigen. Die Spieleübersicht verwendet die gemeinsamen
+flachen Disclosures, Wertlisten für die Einsätze und ActionMenu für Wettaktionen. W1/W5 sind umgesetzt: maximal 20 Punkte pro Person und Markt und keine zusätzlichen
 Tages-/Rundenlimits. W2 verlangt mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung;
 die persönliche API liefert die Anzahl und das Erreichen dieser Mindestzahl.
 Vollständig erstattete Märkte und zurückgenommene Tipps zählen nicht zur Mindestzahl; die Auszahlung

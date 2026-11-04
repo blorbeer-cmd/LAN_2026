@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { pointTimeline, pointsChartHtml, journalSourceState } from './pointsPresentation.js';
 import { parseAppHash, appHash } from './appRoute.js';
 import { feedLinkTarget, feedLinkView } from './pushFeed.js';
-import { categoryPointsHtml, adminCategoryJournalHtml, categoryEntryFactsHtml } from './pointsCategories.js';
+import { categoryPointsHtml, pointsHistoryHtml, adminCategoryJournalHtml, categoryEntryFactsHtml } from './pointsCategories.js';
 
 test('point history preserves same-time order, net settlements and negative corrections', () => {
   const entries = [
@@ -46,19 +46,20 @@ test('category views keep each full history when searching and escape journal co
     { id: 'orga-2', account: 'orga', amount: -3, title: 'Korrektur <script>', reason: '<img src=x onerror=alert(1)>', createdAt: 2000 },
     { id: 'wallet-1', account: 'wallet', amount: 100, title: 'Startguthaben', createdAt: 3000 },
   ];
-  const html = categoryPointsHtml({ categoryJournal: entries, categoryBalances: { orga: -1, playing: 4, betting: 0 },
+  const data = { categoryJournal: entries, categoryBalances: { orga: -1, playing: 4, betting: 0 },
     standings: ['<Alice>', 'Bob', 'Carol'].map((name, index) => ({ name, categories: {
       orga: { raw: index < 2 ? 6 : 0, rank: index < 2 ? 1 : null, placePoints: index < 2 ? 4 : 0 },
       playing: { raw: 4, rank: 1, placePoints: 4 }, betting: { raw: 0, rank: null, placePoints: 0 },
     } })),
     participantCount: 4, categoryStanding: { points: 4, rank: 2, categories: {
       orga: { rank: null, placePoints: 0 }, playing: { rank: 1, placePoints: 4 }, betting: { rank: null, placePoints: 0 },
-    } } },
-    { account: 'orga', query: 'Korrektur' });
+    } } };
+  const html = categoryPointsHtml(data) + pointsHistoryHtml(data, { account: 'orga', query: 'Korrektur' });
   assert.match(html, /Orga-Punkteverlauf: 2 Buchungen, aktuell -1 Punkte/);
   assert.match(html, /Korrektur &lt;script&gt;/);
   assert.doesNotMatch(html, /<script>|<img|Startguthaben/);
   assert.equal((html.match(/data-category-entry=/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /Rohpunkte/);
   assert.match(html, /Gesamt 4 P. · Platz 2/);
   assert.match(html, /Kein Platz · 0 Platzpunkte/);
   assert.match(html, /Platz 1 · 4 Platzpunkte/);
@@ -66,6 +67,22 @@ test('category views keep each full history when searching and escape journal co
   assert.match(html, /aria-label="Spielen-Rangliste"/);
   assert.match(html, /aria-label="Wetten-Rangliste"/);
   assert.ok(html.indexOf('&lt;Alice&gt;') < html.indexOf('Bob'), 'tied category leaders stay ordered by name');
+  const wallet = pointsHistoryHtml({ ...data, entries: [
+    { id: 'start', source: 'start', title: 'Wett-Startguthaben', amount: 100, created_at: 1000 },
+    { id: 'reservation', source: 'reservation', title: 'Spiel', amount: -15, created_at: 2000 },
+    { id: 'release', source: 'release', title: 'Spiel', amount: 15, created_at: 3000 },
+    { id: 'tip', source: 'tip', title: 'Spiel', amount: -1, created_at: 3000 },
+  ] }, { account: 'wallet', query: 'Startguthaben', source: 'start' });
+  assert.match(wallet, /Verfügbares Wettguthaben: 4 Buchungen, aktuell 99 Punkte/);
+  assert.equal((wallet.match(/data-point-entry=/g) ?? []).length, 1);
+  assert.doesNotMatch(wallet, /data-category-entry=/);
+  assert.match(wallet, /value="wallet" selected/);
+  assert.doesNotMatch(html + wallet, /Kategorie-Verlauf|Wettguthaben-Verlauf/);
+  const betting = pointsHistoryHtml({ ...data, categoryJournal: [
+    ...entries, { id: 'bet-net', account: 'betting', title: 'Spiel', amount: -1, createdAt: 3000 },
+  ] }, { account: 'betting', query: '' });
+  assert.match(betting, /Wetten-Punkteverlauf: 1 Buchungen, aktuell -1 Punkte/);
+  assert.doesNotMatch(betting, /data-point-entry=|data-points-source/);
   const adminEntry = { ...entries[2], playerName: '<Alice>', actorName: '<Admin>', created_at: 2000 };
   const admin = adminCategoryJournalHtml([adminEntry], { account: 'orga', query: 'Alice', loading: false, error: '' });
   assert.match(admin, /&lt;Alice&gt;/);

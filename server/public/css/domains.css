@@ -3239,15 +3239,11 @@ input.food-order-price-input {
 .points-report { min-width: 0; }
 .points-report p, .points-report strong { min-width: 0; overflow-wrap: anywhere; }
 .points-report .badge { flex-shrink: 0; white-space: nowrap; }
-.points-round { border-top: 1px solid var(--border); min-width: 0; }
-.points-round > .collapsible-section-content { padding-bottom: var(--space-2); }
 .points-betting-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
 .points-betting-controls { justify-content: space-between; font-size: var(--font-size-sm); }
 .points-betting-controls > span { min-width: 0; overflow-wrap: anywhere; }
-.points-odds { font-size: var(--font-size-xs); white-space: nowrap; }
-.tournament-fixture-team .points-odds { margin-left: var(--space-2); }
 .bracket-betting-actions { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: var(--space-1); padding-inline: var(--space-1); border-left: 1px solid var(--border); }
-.bracket-match:has(.action-menu[open]), .tournament-fixture:has(.action-menu[open]), .points-round:has(.action-menu[open]) { z-index: 2; position: relative; }
+.bracket-match:has(.action-menu[open]), .tournament-fixture:has(.action-menu[open]), .points-ranking:has(.action-menu[open]) { z-index: 2; position: relative; }
 .tournament-fixture:has(.tournament-fixture-actions) { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; }
 .tournament-fixture-actions { display: flex; align-items: center; gap: var(--space-2); }
 #view-container[data-view='points'] .collapsible-section-header { flex-wrap: wrap; }
@@ -3257,11 +3253,7 @@ input.food-order-price-input {
   .tournament-fixture:has(.tournament-fixture-actions) { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); padding-block: var(--space-2); }
   .tournament-fixture-actions { grid-column: 1 / -1; justify-content: flex-end; }
 }
-.points-round h2, .points-round h3 { overflow-wrap: anywhere; }
-.points-outcomes, .points-journal { margin: 0; padding: 0; list-style: none; }
-.points-outcomes li { display: flex; justify-content: space-between; gap: var(--space-3); padding-block: var(--space-1); }
-.points-outcomes li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.points-outcomes li > span:last-child { flex-shrink: 0; }
+.points-journal { margin: 0; padding: 0; list-style: none; }
 .points-journal li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-3); padding-block: var(--space-3); border-bottom: 1px solid var(--border); }
 .points-journal li[hidden] { display: none; }
 .points-journal li > div { min-width: 0; overflow-wrap: anywhere; }
