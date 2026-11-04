@@ -64,6 +64,12 @@ lassen sich unabhängig voneinander öffnen und wieder schließen; dieser Zustan
 Neuzeichnen erhalten.
 Teamdetails und Wettaktionen verwenden in neuer Auslosung und Historie denselben Stack-Abstand.
 Neue Wettmenüs beginnen geschlossen und übernehmen niemals den Aufklappzustand der Historie.
+„Ohne Ergebnis“ und „Historie“ besitzen stabile `data-matchmaking-section`-Kennungen. Gespeichert
+wird ihr tatsächlicher nativer Aufklappzustand, auch nach programmatischer Wiederherstellung.
+Ein Neuaufbau liest ihn vor dem Ersetzen des DOM; verzögerte Toggle-Ereignisse abgelöster alter
+Knoten ändern den neuen Zustand nicht. Ein vorübergehend ausgeblendeter Abschnitt öffnet sich
+beim Wiedererscheinen wie zuvor. Ergebniseingaben erhalten die übrigen geöffneten Spiele;
+das gespeicherte Ergebnis bleibt in seiner geöffneten Historienkachel sichtbar.
 
 ## 7. Erreichbare Zustände
 

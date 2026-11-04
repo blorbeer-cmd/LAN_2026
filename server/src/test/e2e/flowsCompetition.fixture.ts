@@ -1214,6 +1214,25 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   if ((await openTile.getAttribute('open')) === null) await openTile.locator('summary').click();
   const spareToggle = page.locator(`[data-history-toggle="o-${spare.id}"]`);
   if (await spareToggle.getAttribute('aria-expanded') === 'false') await spareToggle.click();
+  // App refreshes restore native disclosures programmatically. The view's
+  // remembered state must follow that restoration, even if a later render
+  // temporarily has no open draws to show.
+  const disclosureState = await page.evaluate(async () => {
+    const { captureViewRenderState } = await globalThis.eval("import('/js/viewRenderState.js')");
+    return captureViewRenderState(document.querySelector('#view-container'));
+  });
+  await openTile.locator(':scope > summary').click();
+  await page.locator('.history-details > summary').click();
+  await page.evaluate(async (snapshot) => {
+    const { restoreViewRenderState } = await globalThis.eval("import('/js/viewRenderState.js')");
+    restoreViewRenderState(document.querySelector('#view-container'), snapshot);
+  }, disclosureState);
+  await spareToggle.waitFor();
+  await page.click('[data-history-filter="tournaments"]');
+  assert.equal(await openTile.count(), 0);
+  await page.click('[data-history-filter="matches"]');
+  assert.equal(await openTile.evaluate((element: HTMLDetailsElement) => element.open), true,
+    'a restored open section survives disappearing temporarily during a refresh');
   await page.locator(`#match-history-open [data-record-draw="${draw.id}"]`).click();
 
   await page.click('[data-result-mode="score"]');
@@ -1237,6 +1256,18 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   const loserTeam = page.locator('.matchmaking-history-team.is-loser').first();
   assert.equal(await loserTeam.locator('.lb-rank').innerText(), '2');
   assert.equal(await loserTeam.locator('.matchmaking-history-team-score').innerText(), '0');
+  await openTile.locator(':scope > summary').click();
+  await page.locator(`[data-edit-draw-result="${draw.id}"]`).click();
+  await page.fill('#draw-result-score-0', '4');
+  await page.click('.modal [data-result-save]');
+  await page.locator('.modal-backdrop').waitFor({ state: 'detached' });
+  await page.waitForLoadState('networkidle');
+  assert.equal(await openTile.evaluate((element: HTMLDetailsElement) => element.open), false,
+    'correcting a result also retains an intentionally closed section');
+  assert.equal(await page.locator('.history-details').evaluate((element: HTMLDetailsElement) => element.open), true);
+  assert.equal(await page.locator(`[data-history-toggle="${oldId}"]`).getAttribute('aria-expanded'), 'true');
+  await openTile.locator(':scope > summary').click();
+  assert.equal(await spareToggle.getAttribute('aria-expanded'), 'true');
   await page.click('[data-history-filter="tournaments"]');
   assert.equal(await page.getAttribute('[data-history-filter="tournaments"]', 'aria-pressed'), 'true');
   assert.equal(await page.locator('.matchmaking-history-team').count(), 0);

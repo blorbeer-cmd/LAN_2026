@@ -430,6 +430,10 @@ function openDrawResultDialog(draw, ctx) {
       }
       expandedHistoryIds.add(draw.id);
       historySectionOpen = true;
+      // Make the intent visible to the shared render-state snapshot as well.
+      // Updating only the module flag lets restoration close it again.
+      const history = document.querySelector('#view-container [data-matchmaking-section="history"]');
+      if (history) history.open = true;
       invalidateMatchmakingHistory();
       close();
       await ctx.refresh();
@@ -750,7 +754,7 @@ function wireDrawCards(container, ctx) {
 }
 
 function renderHistoryDetails(title, count, content) {
-  return `<details class="card history-details collapsible-section" ${historySectionOpen ? 'open' : ''}>
+  return `<details class="card history-details collapsible-section" data-matchmaking-section="history" ${historySectionOpen ? 'open' : ''}>
     <summary class="collapsible-section-header">
       <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
       <h2>${title}</h2>
@@ -931,7 +935,7 @@ function renderOpenDraws(selectedGameId) {
     draws.length ? `${draws.length} Auslosungen` : null,
     tournaments.length ? `${tournaments.length} laufende Turniere` : null,
   ].filter(Boolean).join(' · ');
-  return `<details class="card matchmaking-open-draws collapsible-section" ${openDrawsSectionOpen ? 'open' : ''}>
+  return `<details class="card matchmaking-open-draws collapsible-section" data-matchmaking-section="open" ${openDrawsSectionOpen ? 'open' : ''}>
     <summary class="collapsible-section-header">
       <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
       <h2>Ohne Ergebnis</h2>
@@ -964,9 +968,6 @@ function renderHistory(selectedGameId) {
 function wireOpenDraws(container, selectedGameId, ctx) {
   const section = container.querySelector('.matchmaking-open-draws');
   const openPanel = container.querySelector('#match-history-open');
-  section?.querySelector('summary')?.addEventListener('click', () => {
-    openDrawsSectionOpen = !section.open;
-  });
   function releaseOpenDraws() {
     if (!openPanel) return;
     openPanel.replaceChildren();
@@ -992,6 +993,8 @@ function wireOpenDraws(container, selectedGameId, ctx) {
     }));
   }
   section?.addEventListener('toggle', () => {
+    if (!section.isConnected) return;
+    openDrawsSectionOpen = section.open;
     if (section.open) populateOpenDraws();
     else releaseOpenDraws();
   });
@@ -1000,8 +1003,8 @@ function wireOpenDraws(container, selectedGameId, ctx) {
 
 function wireHistory(container, selectedGameId, ctx) {
   const section = container.querySelector('.history-details');
-  section?.querySelector('summary')?.addEventListener('click', () => {
-    historySectionOpen = !section.open;
+  section?.addEventListener('toggle', () => {
+    if (section.isConnected) historySectionOpen = section.open;
   });
   if (section) wireHistoryItemToggles(section, ctx);
   section?.querySelectorAll('[data-history-toggle^="t-"][aria-expanded="true"]').forEach((button) =>
@@ -1124,6 +1127,13 @@ function wireDraftBoard(container, ctx) {
 }
 
 export function renderMatchmaking(container, ctx) {
+  // Restoration and keyboard/browser actions can change native disclosures
+  // without a summary click. Read their live state before replacing the DOM,
+  // including when a refresh/filter temporarily removes a whole section.
+  const openSection = container.querySelector('[data-matchmaking-section="open"]');
+  const historySection = container.querySelector('[data-matchmaking-section="history"]');
+  if (openSection) openDrawsSectionOpen = openSection.open;
+  if (historySection) historySectionOpen = historySection.open;
   pointsContext = ctx;
   if (((tournamentCache === null && !tournamentError) || tournamentStale) && !tournamentLoading) loadMatchTournaments(ctx);
   const leading = `<h2 class="view-title">Match</h2>${renderActiveTournaments()}`;
