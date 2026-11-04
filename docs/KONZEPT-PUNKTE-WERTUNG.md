@@ -141,6 +141,9 @@ erlaubt. Auch Ergebniseintrager und Organisatoren dürfen tippen. Das Risiko abs
 Niederlagen und abgesprochener Ergebnisse wird im Rahmen des Vertrauensprinzips akzeptiert.
 
 Offizielle Wettrunden haben einen ausdrücklichen Start beziehungsweise Tippschluss.
+Wird vorher ein Ergebnis eingetragen, schließt dies die Tippabgabe und rechnet bereits angenommene
+Tipps regulär ab. Ergebnis und Abrechnung werden gemeinsam gespeichert; spätere Tipps sind gesperrt.
+Beim ersten Turnierergebnis wird auch der Gesamtsieger-Markt geschlossen und bis zum Turnierende gehalten.
 Ihre Verfügbarkeit richtet sich nach der folgenden Entscheidung W4. Alle gültigen Spiele
 zählen weiterhin unabhängig vom Wettangebot zur Spielwertung.
 

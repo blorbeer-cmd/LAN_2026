@@ -1576,7 +1576,7 @@ test('late accepted participants get exactly one starting credit; final standing
   );
 });
 
-test('deadlines and pre-start changes refund unsafe pools; legacy round quotas no longer limit new markets', async () => {
+test('results implicitly close accepted tips atomically, deadlines reject late tips, and legacy quotas do not limit new markets', async () => {
   const f = await fixture({ maxRounds: 1 });
   const r = await round(f);
   await Promise.all(
@@ -1587,17 +1587,41 @@ test('deadlines and pre-start changes refund unsafe pools; legacy round quotas n
         .send({ outcomeId: String(i), stake: 5 }),
     ),
   );
-  const early = await request(app)
+  const resultInput = {
+    gameId: f.gameId,
+    drawId: r.drawId,
+    teams: r.outcomes.map((o) => ({ playerIds: o.playerIds })),
+    winnerTeamIndex: 0,
+  };
+  db.exec(`CREATE TEMP TRIGGER fail_implicit_settlement BEFORE INSERT ON points_journal
+    WHEN (SELECT account FROM points_sources WHERE id=NEW.source_id)='betting'
+    BEGIN SELECT RAISE(ABORT,'implicit settlement failed'); END;`);
+  try {
+    assert.equal((await request(app).post('/api/matches').send(resultInput)).status, 500);
+    assert.deepEqual(db.prepare('SELECT status, locked_at FROM betting_rounds WHERE id=?').get(r.id),
+      { status: 'open', locked_at: null }, 'an accounting error also rolls back the implicit lock');
+    assert.equal(db.prepare('SELECT match_id FROM matchmaking_draws WHERE id=?').pluck().get(r.drawId), null);
+    assert.deepEqual(wallet(f.eventId, f.players[0]), { total: 100, held: 5, available: 95 });
+    assert.equal(db.prepare('SELECT COUNT(*) FROM betting_tips WHERE round_id=? AND payout IS NOT NULL').pluck().get(r.id), 0);
+  } finally { db.exec('DROP TRIGGER fail_implicit_settlement'); }
+  const [early, concurrentTip] = await Promise.all([request(app)
     .post('/api/matches')
-    .send({
-      gameId: f.gameId,
-      drawId: r.drawId,
-      teams: r.outcomes.map((o) => ({ playerIds: o.playerIds })),
-      winnerTeamIndex: 0,
-    });
+    .send(resultInput), request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', f.players[2])
+      .send({ outcomeId: '0', stake: 5 })]);
   assert.equal(early.status, 201);
-  assert.equal((await request(app).get('/api/points')).body.rounds[0].status, 'refunded');
-  assert.equal(wallet(f.eventId, f.players[0]).total, 100);
+  assert.ok([200, 409].includes(concurrentTip.status));
+  const settled = (await request(app).get('/api/points')).body.rounds.find((row: { id: string }) => row.id === r.id);
+  assert.equal(settled.status, 'settled');
+  assert.ok(db.prepare('SELECT locked_at FROM betting_rounds WHERE id=?').pluck().get(r.id),
+    'result submission records the implicit betting lock');
+  const settledTips = db.prepare('SELECT player_id, stake, payout FROM betting_tips WHERE round_id=?').all(r.id) as
+    Array<{ player_id: string; stake: number; payout: number }>;
+  assert.equal(settledTips.length, concurrentTip.status === 200 ? 3 : 2);
+  assert.equal(settledTips.reduce((sum, tip) => sum + tip.payout, 0), settledTips.reduce((sum, tip) => sum + tip.stake, 0));
+  assert.ok(wallet(f.eventId, f.players[0]).total > 100);
+  assert.ok(wallet(f.eventId, f.players[1]).total < 100);
+  assert.equal((await request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', f.players[1])
+    .send({ outcomeId: '0', stake: 5 })).status, 409, 'a result never admits subsequent tips');
   const draw = await request(app)
     .post('/api/matchmaking')
     .send({ gameId: f.gameId, playerIds: f.players.slice(0, 2), teamCount: 2, bettingAllowed: true });

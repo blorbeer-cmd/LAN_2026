@@ -774,7 +774,7 @@ function historyItemHtml(id, title, meta, actions, details, extraClass = '', isM
       </button>
       <div class="matchmaking-draw-actions">${actions}</div>
     </div>
-    <div id="${escapeHtml(panelId)}" class="matchmaking-history-details" ${open ? '' : 'hidden'}>${details}</div>
+    <div id="${escapeHtml(panelId)}" class="matchmaking-history-details stack" ${open ? '' : 'hidden'}>${details}</div>
   </div>`;
 }
 

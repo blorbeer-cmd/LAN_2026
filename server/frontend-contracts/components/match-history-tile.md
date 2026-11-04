@@ -62,6 +62,8 @@ ein gespeicherter Eintrag ohne Sieger und ohne Remis-Kennzeichen heißt „Ohne 
 Nach dem Öffnen des Abschnitts beginnen die einzelnen Auslosungen geschlossen. Ihre Teamdetails
 lassen sich unabhängig voneinander öffnen und wieder schließen; dieser Zustand bleibt beim
 Neuzeichnen erhalten.
+Teamdetails und Wettaktionen verwenden in neuer Auslosung und Historie denselben Stack-Abstand.
+Neue Wettmenüs beginnen geschlossen und übernehmen niemals den Aufklappzustand der Historie.
 
 ## 7. Erreichbare Zustände
 

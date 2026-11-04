@@ -96,7 +96,10 @@ Die persönliche Öffnungsmitteilung nennt Event und Runde, berücksichtigt Einw
 Stummschaltung und wird nicht doppelt gesendet. Neue automatische Märkte bleiben bis zur
 ausdrücklichen Startaktion offen. Mitspieler oder Admins schließen vor Spielbeginn; beim
 ersten Turnierspiel wird zugleich der Gesamtsieger-Markt geschlossen. Bestehende explizite
-Fristen bleiben wirksam. Ein Ergebnis bei noch offenen Tipps führt zur Erstattung.
+Fristen bleiben wirksam. Wird bei noch offenen Tipps ein Ergebnis eingetragen, schließt dies
+die Tippabgabe und rechnet die bereits angenommenen Tipps regulär ab. Ergebnis, Schließung
+und Abrechnung sind atomar; spätere Tipps werden abgewiesen. Das erste Turnierergebnis
+schließt auch den Gesamtsieger-Markt, dessen Abrechnung bis zum Turnierende wartet.
 Der Hintergrundlauf arbeitet auch ohne offenen Browser. Bei geschlossener Tippabgabe sind Einsätze unveränderlich.
 Mitspieler und Admins können eine manuell geschlossene Tippabgabe vor dem Ergebnis wieder öffnen.
 Dabei bleiben Einsätze und Wallet unverändert; auch ein leerer oder einseitiger Topf bleibt beim
@@ -195,6 +198,9 @@ Spiele lassen sich aufklappen. Seltenere Informationen stehen in Details oder de
 Turniere nutzen dieselbe Bedienung direkt in ihren vorhandenen Ansichten; Quoten stehen bei
 den Teams. Es gibt keine zweite große Wettliste unter dem Turnierbaum. Persönliche fremde Tipps
 werden nicht offengelegt. Regeln und Einsätze bleiben über die Tippdetails zugänglich.
+Die Tippdetails nennen den selbst gewählten Ausgang ausdrücklich. Die Meldeschaltfläche steht
+mit Abstand in einer eigenen Aktionszeile. Neue Wettmenüs beginnen geschlossen; Teamkarten und
+Wettaktionen haben in Auslosung und Historie denselben Abstand.
 
 Live-Aktualisierungen behalten die bisherigen Daten bis zur Antwort, die Scrollposition und
 geöffnete Bereiche. Neue Spielbuchungen speichern die erreichte Platzierung im Anlass; die

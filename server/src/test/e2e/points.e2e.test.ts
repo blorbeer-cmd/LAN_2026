@@ -155,6 +155,16 @@ after(async () => {
 });
 
 test('real LAN account, automatic orga credits, own-game betting notification, history and market voids work on phone and desktop', async () => {
+  const restoredDisclosures = await member.evaluate(async () => {
+    const { captureViewRenderState, restoreViewRenderState } = await globalThis.eval("import('/js/viewRenderState.js')");
+    const root = document.createElement('div');
+    root.innerHTML = '<details class="history-details" open><summary>Historie</summary></details>';
+    const snapshot = captureViewRenderState(root);
+    root.innerHTML = '<details class="action-menu" data-action-menu="new-bet"><summary>Wetten</summary></details><details class="history-details"><summary>Historie</summary></details>';
+    restoreViewRenderState(root, snapshot);
+    return Array.from(root.querySelectorAll('details'), (details) => details.open);
+  });
+  assert.deepEqual(restoredDisclosures, [false, true], 'an inserted betting menu never inherits the history disclosure state');
   await navigate(admin, 'pointsAdmin');
   await admin.locator('[name="prizeInfo"]').fill('Respawn-Pokal; bei Gleichstand Losentscheid.');
   await admin.getByRole('button', { name: 'Regeln speichern', exact: true }).click();
@@ -270,6 +280,9 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     await member.screenshot({ path: `test-results/match-betting-choice-${width}.png`, animations: 'disabled' });
   }
   await member.setViewportSize({ width: 390, height: 844 });
+  // The only disclosure before the first draw is the empty history. Its
+  // remembered state must never be applied to a newly inserted action menu.
+  await member.locator('.history-details > summary').click();
   const [createdDraw] = await Promise.all([
     member.waitForResponse((response) => response.url().includes('/api/matchmaking') && response.request().method() === 'POST'),
     member.locator('#mm-generate').click(),
@@ -279,6 +292,15 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   assert.equal(draw.bettingAllowed, true, 'a regular member chooses betting while creating the match');
   const round = (await api(`/api/points?eventId=${eventId}`)).rounds.find((row: { sourceId: string }) => row.sourceId === draw.id);
   assert.ok(round, 'the allowed match immediately has a market, without an admin opening it');
+  const freshBettingMenu = member.locator(`[data-draw-card="${draw.id}"] [data-action-menu="betting-${round.id}"]`);
+  await freshBettingMenu.waitFor();
+  assert.equal(await freshBettingMenu.evaluate((element) => (element as HTMLDetailsElement).open), false,
+    'drawing a match leaves its new betting menu closed');
+  assert.equal(await member.locator('.history-details').evaluate((element) => (element as HTMLDetailsElement).open), true);
+  const freshBettingGap = await freshBettingMenu.evaluate((menu) => {
+    const controls = menu.closest('.points-betting-controls')!;
+    return controls.getBoundingClientRect().top - controls.previousElementSibling!.getBoundingClientRect().bottom;
+  });
   await member.locator('#notifications-btn').click();
   await member.locator(`[data-notification-navigate="points"][data-notification-target="${round.id}"]`).click();
   await member.waitForFunction((id) => window.location.hash === `#points/round/${id}`, round.id);
@@ -362,8 +384,24 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('105', { exact: true }).first().waitFor();
   await openRoundActions(member, round.id);
   await member.locator(`[data-tip-round="${round.id}"]`).click();
-  await member.getByRole('dialog').getByText(/Auszahlung 15 P. · Netto \+5 P./).waitFor();
+  const tipDetails = member.getByRole('dialog', { name: 'Dein Tipp', exact: true });
+  await tipDetails.getByText(/Auszahlung 15 P. · Netto \+5 P./).waitFor();
+  await tipDetails.getByText(`Dein Tipp: ${round.outcomes.find((outcome: { id: string }) => outcome.id === ownOutcome).label}`, { exact: true }).waitFor();
+  await tipDetails.locator('[data-report-points]').waitFor();
+  assert.ok(await tipDetails.locator('[data-report-points]').evaluate((button) => {
+    const outcomes = button.closest('.modal')!.querySelector('.points-outcomes')!;
+    const standardGap = parseFloat(getComputedStyle(outcomes.closest('form')!.parentElement!).rowGap);
+    return button.getBoundingClientRect().top - outcomes.getBoundingClientRect().bottom >= standardGap - 1;
+  }), 'reporting has a separate action row below tip details');
+  await tipDetails.screenshot({ path: 'test-results/points-tip-details.png', animations: 'disabled' });
   await member.keyboard.press('Escape');
+  await navigate(member, 'matchmaking');
+  const recordedMatch = member.locator(`[data-history-toggle="${draw.id}"]`);
+  if (await recordedMatch.getAttribute('aria-expanded') !== 'true') await recordedMatch.click();
+  const historyBettingGap = await member.locator(`#match-history-${draw.id} .points-betting-controls`).evaluate((controls) =>
+    controls.getBoundingClientRect().top - controls.previousElementSibling!.getBoundingClientRect().bottom);
+  assert.equal(historyBettingGap, freshBettingGap, 'new and recorded matches use the same gap above betting actions');
+  await navigate(member, 'points');
 
   const categoryData = await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie);
   for (const [account, label] of Object.entries({ orga: 'Orga', playing: 'Spielen', betting: 'Wetten' })) {
@@ -427,6 +465,8 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   assert.equal(await admin.getByRole('dialog').locator('textarea').count(), 0);
   await admin.keyboard.press('Escape');
   await api(`/api/tournaments/${cup.id}/matches/${fixture.id}/result`, 'POST', { winnerTeamId: fixture.teamAId });
+  assert.equal((await api(`/api/points?eventId=${eventId}`)).rounds.find((row: any) => row.id === market.id).status, 'settled',
+    'a tournament result settles accepted tips even without manual closing');
   await admin.locator(`[data-open-result="${fixture.id}"]`).click();
   await admin.getByRole('dialog', { name: 'Ergebnis', exact: true }).waitFor();
   assert.equal(await admin.getByRole('dialog').getByRole('button', { name: 'Punktefehler melden', exact: true }).count(), 0,

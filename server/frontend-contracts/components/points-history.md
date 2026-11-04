@@ -109,3 +109,7 @@ sie unverändert. Bracket-Höhe und Verbindungslinien bleiben erhalten, Wett- un
 teilen sich eine kompakte Seitenspalte. Liga-/Gruppenzeilen setzen auf schmalen Geräten die
 Aktionen gemeinsam darunter. Menüs dürfen nicht vom Turnierbaum abgeschnitten werden.
 Die zugehörigen Containermaße gehören `domains.css`; Controls selbst behalten ihre Eigentümer.
+
+Die schreibgeschützten Tippdetails nennen den eigenen gewählten Ausgang ausdrücklich neben
+Einsatz, Auszahlung und Netto. Die Meldeschaltfläche steht mit dem Standardabstand in einer
+eigenen Aktionszeile unter den Details.

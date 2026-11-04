@@ -201,7 +201,9 @@ zwei Teams; die bestehende Sieger-/Remis-Abrechnung bleibt erhalten. Turniermär
 vor dem ersten Spiel. Mitspieler oder Admin schließen neue automatische Märkte vor Spielbeginn
 über die vorhandene Startaktion. Beim ersten Turnierspiel
 wird auch der Gesamtsieger-Markt geschlossen. Bestehende explizite Fristen bleiben wirksam.
-Ein Ergebnis ohne vorheriges Schließen führt weiterhin zur Erstattung. Neue Wetten nach
+Die Ergebniseingabe schließt eine noch offene Tippabgabe atomar und rechnet bereits angenommene
+Tipps regulär ab. Beim ersten Turnierergebnis schließt sie auch den Gesamtsieger-Markt, dessen
+Abrechnung weiterhin erst nach dem Turnierende erfolgt. Spätere Tipps werden abgewiesen. Neue Wetten nach
 Eventende sind gesperrt; Ergebnisse und Verläufe bleiben sichtbar.
 
 Erzeugung der Quelle und der Märkte laufen in derselben Transaktion, einschließlich des

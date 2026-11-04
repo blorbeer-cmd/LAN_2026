@@ -327,6 +327,10 @@ das jeweilige Format. Bestehende Freigaben und historische Vorgänge werden nich
 Turniermärkte entstehen bei feststehenden Gegnern automatisch. Vor dem ersten Spiel schließt
 die Startaktion auch den Gesamtsieger-Markt. Neue automatische Märkte verwenden die ausdrückliche
 Startaktion als Tippschluss. Bestehende Fristen bleiben wirksam.
+Eine Ergebniseingabe bei offener Tippabgabe schließt den Markt atomar und rechnet angenommene
+Tipps regulär ab. Das erste Turnierergebnis schließt außerdem den Gesamtsieger-Markt; dieser
+wird erst nach Turnierende abgerechnet. Spätere Tipps werden abgewiesen, ungültige Tipptöpfe
+weiterhin vollständig erstattet.
 Die administrative Markt-API kann ein Nein des Match-Erstellers nicht umgehen. Neue Tipps
 sind nach Eventende gesperrt; Ergebnisse bleiben sichtbar. Nicht wählbare geteilte Turniersiege
 werden erstattet; gemeinsame Turniertitel und volle gemeinsame Platzierungsboni bleiben erhalten.

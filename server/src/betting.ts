@@ -435,11 +435,11 @@ export function reconcileBetting(eventId?: string, publish = true): BettingRound
         continue;
       }
       if (round.status === 'open' && source.started) {
-        // A game result arriving before a deliberate lock/deadline proves
-        // no fair pre-game closure. Refund instead of paying late tips.
-        settleRound(round, null, 'Spiel vor Tippschluss gestartet', Date.now());
+        // A recorded result closes betting atomically with the source write.
+        // Accepted tips remain valid; subsequent tip requests see the lock.
+        closeRound(round, Date.now(), false);
         changed.push(round);
-        continue;
+        round = getBettingRound(round.group_id, round.event_id, round.id);
       }
       if (round.status === 'open' && round.closes_at > 0 && round.closes_at <= Date.now()) {
         closeRound(round, Date.now());
