@@ -215,6 +215,14 @@ Einsatz im Wallet, abgerechnete Tipps buchen Auszahlung minus Einsatz in beiden 
 Rücknahme beziehungsweise Erstattung setzen den Anspruch auf 0. Die Wallet-Summe ist das
 verfügbare Guthaben; die API ergänzt die gehaltenen Einsätze für die Anzeige des Gesamtguthabens.
 Die Marktabrechnung prüft Auszahlungen gegen Einsätze einschließlich anonymisierter Tipps.
+Für neue Abrechnungen ist der Nettogewinn auf den eigenen Einsatz begrenzt: Der kleinere Betrag
+aus Gewinner- und Verlierer-Einsätzen wechselt anteilig die Seite, der Rest wird zurückgezahlt.
+Gewinn- und Verlustanteile verwenden jeweils die ganzzahlige Restverteilung. Teilrückzahlungen
+sind reguläre Abrechnungen mit eigenem Nettowert; nur eine vollständige Markterstattung ist ein Storno.
+Migration 135 speichert die Regel je Markt. Noch nie abgerechnete offene/gesperrte Märkte offener
+Wertungen wechseln zur Begrenzung; historische Abrechnungen, Erstattungen, Korrekturen und
+festgeschriebene Wertungen behalten ihre Poolregel auch bei späterer Neuberechnung. Die Migration
+schreibt keine Finanzbuchungen um. API-Quoten und persönliche Vorschau verwenden die gespeicherte Regel.
 Alle Spieler und beide Konten werden gemeinsam verbucht; Wiederholungen bleiben wirkungslos.
 Finanzkorrekturen verknüpfen die Journalbuchungen mit dem handelnden Admin im Protokoll.
 

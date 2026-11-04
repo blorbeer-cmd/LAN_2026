@@ -145,6 +145,13 @@ Fachquelle bleiben bei geschlossener Wertung nutzbar; deren Punkte und Snapshot 
 - Ein kanonischer Schlüssel `bet:<roundId>` bleibt über alle Abrechnungsversionen erhalten.
   Alle Personen, Wallet und Wett-Nettowerte werden atomar gebucht. Wiederholungen zahlen nicht doppelt;
   die Summe der Auszahlungen muss genau den Einsätzen entsprechen, einschließlich anonymisierter Tipps.
+- Beschlossene Gewinnbegrenzung umgesetzt: Nettogewinn höchstens in Höhe des eigenen Einsatzes.
+  Umverteilt wird `min(Gewinner-Einsätze, übrige Einsätze)`; Gewinn und Verlust werden je Seite
+  anteilig einschließlich ganzzahliger Restverteilung zugeordnet. Überschüsse gehen zurück.
+  Beispiel 1 gegen 15: Auszahlung 2/14, Netto +1/−1. Quote und Vorschau verwenden dieselbe Regel.
+  Migration 135 versioniert sie am Markt: neue und noch nie abgerechnete offene/gesperrte Märkte
+  offener Wertungen erhalten die Begrenzung, historische/festgeschriebene Märkte behalten ihre
+  bisherige Berechnung auch bei Korrekturen. Bestehende Finanzbuchungen bleiben unverändert.
 - Korrekturen erfolgen ausschließlich durch begründete Markt-Neuberechnung oder Storno (W6),
   auch bei eigenen Wetten. Eine Korrektur kann bereits weiterverwendete Gewinne zurücknehmen und
   negatives verfügbares Guthaben erzeugen. Dieses sperrt neue Tipps und Änderungen; die Rücknahme

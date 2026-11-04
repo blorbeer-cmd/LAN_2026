@@ -113,3 +113,6 @@ Die zugehörigen Containermaße gehören `domains.css`; Controls selbst behalten
 Die schreibgeschützten Tippdetails nennen den eigenen gewählten Ausgang ausdrücklich neben
 Einsatz, Auszahlung und Netto. Die Meldeschaltfläche steht mit dem Standardabstand in einer
 eigenen Aktionszeile unter den Details.
+Quoten und Auszahlungsvorschau folgen der am Markt gespeicherten Auszahlungsregel. Neue Märkte
+begrenzen den Nettogewinn auf den eigenen Einsatz (Quote höchstens 2,00); die bestehende Tipp-Hilfe
+erklärt Begrenzung und anteilige Rückzahlung. Historische Märkte behalten ihre damalige Regel.

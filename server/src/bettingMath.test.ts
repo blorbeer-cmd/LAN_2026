@@ -9,7 +9,13 @@ test('pools distribute existing stakes exactly, refund invalid rounds, and alloc
     { id: 'c', outcomeId: 'red', stake: 20, createdAt: 3, sequence: 3 },
   ];
   assert.deepEqual([...distributePool(tips, 'blue').values()], [15, 45, 0]);
-  assert.deepEqual([...distributePool(tips, 'red').values()], [0, 0, 60]);
+  assert.deepEqual([...distributePool(tips, 'red').values()], [5, 15, 40]);
+  assert.deepEqual([...distributePool(tips, 'red', 'pool_v1').values()], [0, 0, 60], 'historical policies remain reproducible');
+  assert.deepEqual([...distributePool([{ ...tips[0], stake: 1 }, { ...tips[2], stake: 15 }], 'blue').values()], [2, 14]);
+  assert.deepEqual([...distributePool([
+    { ...tips[0], stake: 2 }, { ...tips[1], stake: 1 },
+    { ...tips[2], stake: 7 }, { ...tips[2], id: 'd', outcomeId: 'green', stake: 3 },
+  ], 'blue').values()], [4, 2, 5, 2], 'gains and losses are proportional across all losing outcomes');
   assert.deepEqual([...distributePool(tips, null).values()], [10, 30, 20]);
   assert.deepEqual([...distributePool(tips, 'unknown').values()], [10, 30, 20]);
   assert.deepEqual([...distributePool([
@@ -27,12 +33,12 @@ test('pools distribute existing stakes exactly, refund invalid rounds, and alloc
   for (let size = 2; size < 25; size++) {
     const pool = Array.from({ length: size }, (_, i) => ({
       id: String(i).padStart(3, '0'),
-      outcomeId: i % 2 ? 'a' : 'b',
+      outcomeId: ['a', 'b', 'c'][i % 3],
       stake: ((i * 7) % 10) + 1,
       createdAt: i,
       sequence: i,
     }));
-    for (const winner of ['a', 'b']) {
+    for (const winner of ['a', 'b', 'c']) {
       const result = distributePool(pool, winner);
       assert.equal(
         [...result.values()].reduce((a, b) => a + b, 0),
@@ -40,6 +46,11 @@ test('pools distribute existing stakes exactly, refund invalid rounds, and alloc
       );
       assert.deepEqual(distributePool([...pool].reverse(), winner), result);
       assert.ok([...result.values()].every(Number.isInteger));
+      for (const tip of pool) {
+        const net = result.get(tip.id)! - tip.stake;
+        assert.ok(Math.abs(net) <= tip.stake, 'rounding never exceeds the individual stake');
+        assert.ok(tip.outcomeId === winner ? net >= 0 : net <= 0);
+      }
     }
   }
 });

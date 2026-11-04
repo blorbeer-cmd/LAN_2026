@@ -211,6 +211,7 @@ function openTip(round, ctx) {
   const data = currentData();
   const editable = round.status === 'open' && !data.settings.closed_at;
   const reportAction = pointsReportButton('tip', round.mine?.id, ['settled', 'refunded'].includes(round.status));
+  const tipRules = `${round.payoutPolicy === 'stake_cap_v1' ? 'Gewinn höchstens in Höhe deines Einsatzes; übrige Einsätze gehen anteilig zurück. ' : ''}Die Quoten ändern sich bis Tippschluss. Tipps auf das eigene Team sind erlaubt. Auszahlung inklusive Einsatz; Rundung auf ganze Punkte.`;
   const { close } = openPointsModal(
     editable ? 'Ergebnis tippen' : 'Dein Tipp',
     `<div class="stack"><form class="stack" data-tip-form>
@@ -218,7 +219,7 @@ function openTip(round, ctx) {
       editable
         ? `<label class="stack"><span class="field-label">Ergebnis</span><select name="outcomeId" required>${round.outcomes.map((o) => `<option value="${e(o.id)}" ${round.mine?.outcomeId === o.id ? 'selected' : ''}>${e(o.label)} · Quote ${o.odds ? o.odds.toFixed(2) : '–'}</option>`).join('')}</select></label>
     ${numberField('stake', `Einsatz (max. ${data.settings.max_stake} P.)`, round.mine?.stake ?? 1, 1, data.settings.max_stake)}
-    <div class="row"><span class="muted">${data.wallet.available + (round.mine?.stake ?? 0)} P. verfügbar</span>${infoTooltipHtml('tip-rules', 'Hinweise zum Tipp', 'Die Quoten ändern sich bis Tippschluss. Tipps auf das eigene Team sind erlaubt. Auszahlung inklusive Einsatz.')}</div>
+    <div class="row"><span class="muted">${data.wallet.available + (round.mine?.stake ?? 0)} P. verfügbar</span>${infoTooltipHtml('tip-rules', 'Hinweise zum Tipp', tipRules)}</div>
     <div class="row points-actions" style="justify-content:flex-end">${round.mine ? '<button type="button" class="btn" data-remove-tip>Tipp zurücknehmen</button>' : ''}<button type="submit" class="btn btn-primary">Tipp speichern</button></div>`
         : `${round.mine ? `<div><strong>Dein Tipp:</strong> ${e(round.outcomes.find((o) => o.id === round.mine.outcomeId)?.label ?? 'Unbekannter Ausgang')}</div>` : ''}
     <div>${round.mine ? `Einsatz ${round.mine.stake} P. · ${round.mine.payout === null ? 'Auszahlung steht noch aus' : `Auszahlung ${round.mine.payout} P. · Netto ${signedPoints(round.mine.net)} P.`}` : 'Du hast in dieser Runde keinen Tipp abgegeben.'}</div>

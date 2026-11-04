@@ -479,7 +479,7 @@ test('creators decide match betting, tournament markets open automatically, and 
       .map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 2 });
   assert.equal(multiResult.status, 201);
   assert.equal((await automaticMarket(f, 'draw', threeSides.body.id)).status, 'settled');
-  assert.deepEqual(f.players.map((id) => wallet(f.eventId, id).total), [95, 95, 110]);
+  assert.deepEqual(f.players.map((id) => wallet(f.eventId, id).total), [97, 98, 105]);
   for (const [index, outcome] of multiMarket.outcomes.filter((o) => o.playerIds.length).entries()) {
     const booking = readPointsJournal(DEFAULT_GROUP_ID, f.eventId, outcome.playerIds[0])
       .find((entry) => entry.account === 'playing' && entry.sourceKey === `match:${multiResult.body.id}`)!;
@@ -1121,7 +1121,7 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
   assert.equal(preview.tipCount, 2);
   assert.deepEqual(preview.outcomes.map((o: { myPossiblePayout: number | null }) => o.myPossiblePayout), [15, null, null]);
   assert.deepEqual(preview.outcomes.map((o: { stake: number; odds: number | null }) => [o.stake, o.odds]),
-    [[10, 1.5], [5, 3], [0, null]]);
+    [[10, 1.5], [5, 2], [0, null]]);
   assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 10, available: 90 });
   const { id: tipId } = db.prepare('SELECT id FROM betting_tips WHERE round_id=? AND player_id=?').get(r.id, a) as { id: string };
   for (const target of [{ targetType: 'betting_round', targetId: r.id }, { targetType: 'tip', targetId: tipId }])
@@ -1201,8 +1201,8 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
     ),
   );
   assert.deepEqual(corrections.map((v) => v.status).sort(), [200, 409]);
-  assert.equal(wallet(f.eventId, a).total, 90);
-  assert.equal(wallet(f.eventId, b).total, 110);
+  assert.equal(wallet(f.eventId, a).total, 95);
+  assert.equal(wallet(f.eventId, b).total, 105);
   assert.equal((await request(app).get('/api/points')).body.rounds[0].revision, 1);
   assert.deepEqual((await request(app).get('/api/points').set('x-test-player-id', a)).body.bettingParticipation,
     { settledTips: 1, minimumTips: 2, hasMinimum: false });
@@ -1212,7 +1212,7 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
   try {
     assert.equal((await request(app).post(`/api/points/rounds/${r.id}/void`).set('x-test-player-id', a)
       .send({ reason: 'Audit muss atomar sein', revision: 1 })).status, 500);
-    assert.deepEqual([wallet(f.eventId, a).total, wallet(f.eventId, b).total], [90, 110]);
+    assert.deepEqual([wallet(f.eventId, a).total, wallet(f.eventId, b).total], [95, 105]);
     assert.equal((await request(app).get('/api/points')).body.rounds[0].revision, 1);
   } finally {
     db.exec('DROP TRIGGER fail_void_audit');
@@ -1229,6 +1229,45 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
   assert.equal((await request(app).get('/api/points')).body.rounds[0].status, 'refunded');
   assert.deepEqual((await request(app).get('/api/points').set('x-test-player-id', a)).body.bettingParticipation,
     { settledTips: 0, minimumTips: 2, hasMinimum: false });
+});
+
+test('stake-capped markets refund unused losing stakes and preserve historical policies through corrections', async () => {
+  for (const policy of ['stake_cap_v1', 'pool_v1']) {
+    const f = await fixture();
+    const r = await round(f);
+    const [a, b] = f.players;
+    if (policy === 'pool_v1')
+      db.prepare('UPDATE betting_rounds SET payout_policy=? WHERE id=?').run(policy, r.id);
+    for (const [index, playerId] of [a, b].entries())
+      assert.equal((await request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', playerId)
+        .send({ outcomeId: String(index), stake: index === 0 ? 1 : 15 })).status, 200);
+    const preview = (await request(app).get('/api/points').set('x-test-player-id', a)).body.rounds.find((row: { id: string }) => row.id === r.id);
+    assert.equal(preview.payoutPolicy, policy);
+    assert.equal(preview.outcomes[0].odds, policy === 'stake_cap_v1' ? 2 : 16);
+    assert.equal(preview.outcomes[0].myPossiblePayout, policy === 'stake_cap_v1' ? 2 : 16);
+    const result = await request(app).post('/api/matches').send({ gameId: f.gameId, drawId: r.drawId,
+      teams: r.outcomes.map((outcome) => ({ playerIds: outcome.playerIds })), winnerTeamIndex: 0 });
+    assert.equal(result.status, 201);
+    const expected = policy === 'stake_cap_v1' ? [101, 99] : [115, 85];
+    const balances = () => [a, b].map((id) => wallet(f.eventId, id).total);
+    assert.deepEqual(balances(), expected, 'a 1-point winner gains only 1 under the new policy');
+    assert.deepEqual(db.prepare('SELECT stake,payout FROM betting_tips WHERE round_id=? ORDER BY stake').all(r.id),
+      [{ stake: 1, payout: expected[0] - 99 }, { stake: 15, payout: expected[1] - 85 }]);
+    for (const [revision, winnerTeamIndex] of [1, 0].entries()) {
+      assert.equal((await request(app).patch(`/api/matches/${result.body.id}`).send({ winnerTeamIndex,
+        bettingCorrection: { reason: 'Correcting the winner with the recorded payout rule', revisions: [{ id: r.id, revision }] },
+      })).status, 200);
+      assert.deepEqual(balances(), winnerTeamIndex === 1 ? [99, 101] : expected);
+      assert.equal(db.prepare('SELECT payout_policy FROM betting_rounds WHERE id=?').pluck().get(r.id), policy);
+    }
+    await Promise.all([request(app).get('/api/points'), request(app).get('/api/points')]);
+    assert.deepEqual(balances(), expected, 'reconciliation never pays a capped or historical market twice');
+    assert.deepEqual([a, b].map((id) => readPointsBalances(DEFAULT_GROUP_ID, f.eventId, id)!.betting),
+      expected.map((total) => total - 100));
+    assert.equal(balances().reduce((sum, total) => sum + total, 0), 200);
+    const exported = buildPersonalDataExport(a)! as { organisation: { bettingTips: Array<{ eventId: string; payoutPolicy: string }> } };
+    assert.equal(exported.organisation.bettingTips.find((tip) => tip.eventId === f.eventId)!.payoutPolicy, policy);
+  }
 });
 
 test('parallel reservations obey the fixed stake and available funds without legacy quotas; closed To-dos remain usable', async () => {

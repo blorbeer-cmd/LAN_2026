@@ -166,7 +166,7 @@ Fristen bleiben wirksam.
 
 Es gelten Pool-Quoten. Vorläufige Quoten sind am Markt sichtbar und können sich mit den
 Einsätzen verändern. Maßgeblich für die Abrechnung ist der Pool zum Tippschluss. Für einen
-Ausgang mit Einsatz ist die Quote `Gesamttopf / Einsatz auf diesen Ausgang`; ohne Einsatz
+Ausgang mit Einsatz ist die Quote `min(2, Gesamttopf / Einsatz auf diesen Ausgang)`; ohne Einsatz
 ist für diesen Ausgang keine solche Quote berechenbar.
 
 „Unentschieden“ ist als Tipp wählbar, wenn Spiel und Format es zulassen. Bei Turnier-K.-o.-
@@ -187,18 +187,31 @@ Ein wählbares und eingetretenes Unentschieden kann dagegen regulär gewinnen.
 
 ### 4.3 Auszahlung und Korrekturen
 
-Die Gewinner teilen den Topf im Verhältnis ihrer Gewinner-Einsätze. Zunächst werden alle
-Auszahlungen auf ganze Punkte abgerundet. Verbleibende Restpunkte werden einzeln an die
-Gewinner mit den größten Nachkommaanteilen ihrer berechneten Auszahlung verteilt.
-Die Summe der Auszahlungen entspricht exakt dem Topf.
+Der zusätzliche Gewinn ist je Person höchstens so hoch wie der eigene Einsatz. Sind W die
+Einsätze auf das eingetretene Ergebnis und L alle anderen Einsätze, werden genau `min(W,L)`
+Punkte umverteilt. Gewinner erhalten ihren Einsatz und ihren Anteil an diesem Betrag nach
+Gewinner-Einsatz zurück. Verlierer verlieren ihren Anteil nach Verlierer-Einsatz; den übrigen
+Einsatz bekommen sie zurück. Es gibt keine Gebühr und keinen Hausanteil.
 
-Beispiel: 5 und 3 Punkte auf A, 2 auf B; A gewinnt. Der Topf beträgt 10. Aus 6,25 und 3,75
-werden zunächst 6 und 3. Der Restpunkt geht an den Anteil mit 0,75 Rest: Auszahlung **6 und 4**.
+Gewinne und Verluste werden getrennt auf ganze Punkte abgerundet; die verbleibenden Restpunkte
+gehen jeweils an die größten Nachkommaanteile. Beide Seiten verteilen damit genau denselben
+Betrag. Niemand gewinnt zusätzlich mehr als seinen eigenen Einsatz oder verliert mehr als ihn.
+Die Summe aller Auszahlungen entspricht exakt dem Topf.
+
+Beispiel: 1 Punkt auf A und 15 auf B; A gewinnt. A erhält **2 Punkte** (Netto +1), B erhält
+**14 Punkte zurück** (Netto −1). Eine solche Teilrückzahlung gehört zur regulären Abrechnung.
+
+Beispiel: 5 und 3 Punkte auf A, 2 auf B; A gewinnt. Umverteilt werden 2 Punkte. Aus Gewinnen
+von 1,25 und 0,75 werden zunächst 1 und 0. Der Restpunkt geht an den Anteil mit 0,75 Rest:
+Auszahlung inklusive Einsatz **6 und 4**, B erhält 0.
 Diese Nutzerentscheidung ersetzt die zuvor geplante Restvergabe an den größten Einsatz.
 
 Bei gleichen Nachkommaanteilen entscheidet der früher abgegebene Tipp. Maßgeblich ist seine
 erste Speicherung; bei gleichem Millisekunden-Zeitstempel die gespeicherte Einfügereihenfolge.
 Änderungen eines bestehenden Tipps verändern dessen ursprünglichen Abgabezeitpunkt nicht.
+Migration 135 hinterlegt die Auszahlungsregel je Markt. Neue und noch nie abgerechnete offene
+Märkte verwenden die Gewinnbegrenzung. Bereits abgerechnete, erstattete, korrigierte oder in einer
+festgeschriebenen Wertung gespeicherte Märkte behalten ihre bisherige Poolregel, auch bei Korrekturen.
 
 Die Nullsumme wird ausdrücklich beibehalten: Sie begründet das Poolmodell und den begrenzten
 Wettvorrat. Die gleiche Gewichtung der Kategorien folgt unabhängig davon aus den N-basierten
@@ -508,7 +521,7 @@ Vorgabewerte sind dafür keine Entscheidung:
 | W4 (entschieden) | Der Match-Ersteller entscheidet direkt beim Anlegen, ob auf sein Match gewettet werden darf; keine zusätzliche Adminrolle erforderlich. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bestehenden Start-/Tippschlussregeln gelten weiterhin. |
 | W5 (entschieden) | Keine zusätzlichen Tageslimits und keine Höchstzahl offizieller Wettrunden pro Event. Ausreichendes verfügbares Guthaben und die feste Einsatzgrenze von 20 Punkten gelten weiterhin. |
 | W6 (entschieden) | Ausschließlich begründete Markt-Neuberechnung oder Storno unter Erhaltung der Nullsumme. Keine einseitigen Wallet-/Wett-Journalkorrekturen; eigene Marktkorrekturen bleiben erlaubt. |
-| W7 (Abrechnung entschieden) | Pool und Nullsumme bleiben erhalten. Restpunkte nach größtem Nachkommaanteil, bei gleichem Anteil früher abgegebener Tipp. Auch gesperrte, unabgerechnete Märkte werden bei Festschreibung vollständig erstattet. |
+| W7 (Abrechnung entschieden) | Pool und Nullsumme bleiben erhalten. Nettogewinn höchstens in Höhe des eigenen Einsatzes; überschüssige Einsätze gehen anteilig zurück. Restpunkte je Gewinn-/Verlustseite nach größtem Nachkommaanteil, bei gleichem Anteil früher abgegebener Tipp. Auch gesperrte, unabgerechnete Märkte werden bei Festschreibung vollständig erstattet. |
 | O3 (umgesetzt) | Neue Aufgaben verwenden kein Orga-Budget und keine vergüteten Helferplätze. Alte Zusagen und der alte Finanzpfad entfallen mit dem beschlossenen Neustart. |
 | O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben erhalten keine alten LAN-Auszahlungen mehr. |
 | S1 (entschieden) | Geteilte Turnierplätze erhalten jeweils den vollen Bonus des gemeinsamen Rangs, beispielsweise 5/5/1. |

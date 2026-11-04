@@ -129,12 +129,25 @@ Nach Eventende sind neue Tipps gesperrt, während Ergebnisse und Verlauf sichtba
 
 ## Abrechnung und Korrektur
 
-Der Pool besteht ausschließlich aus den Einsätzen. Gewinner erhalten ihn anteilig ohne Gebühr
-oder Hausanteil. Auszahlungen werden zunächst ganzzahlig abgerundet. Restpunkte erhalten
-die größten Nachkommaanteile; bei gleichen Anteilen gewinnt der früher abgegebene Tipp.
+Der Pool besteht ausschließlich aus den Einsätzen. Der Nettogewinn ist je Person auf den eigenen
+Einsatz begrenzt. Umverteilt wird der kleinere Betrag aus Gewinner-Einsätzen und allen übrigen
+Einsätzen. Gewinner erhalten ihren Einsatz plus anteiligen Gewinn; Verlierer bekommen ihren
+Einsatz abzüglich des anteiligen Verlustes zurück. Bei 1 Punkt gegen 15 und einem Sieg der
+1-Punkt-Wette sind die Auszahlungen 2 und 14 (Netto +1/−1). Es entstehen keine Punkte, keine
+Gebühren und kein Hausanteil. Die vorläufige Quote ist höchstens 2,00 und enthält den Einsatz.
+
+Gewinne und Verluste werden auf beiden Seiten getrennt ganzzahlig abgerundet. Restpunkte erhalten
+jeweils die größten Nachkommaanteile; bei gleichen Anteilen entscheidet der früher abgegebene Tipp.
 Maßgeblich ist dessen erste Speicherung, bei gleichem Zeitstempel die Einfügereihenfolge.
 Die vorher geplante Vergabe an den größten Einsatz entfällt. Die Nullsumme bleibt erhalten;
 die Gewichtung der Kategorien wird unabhängig davon durch ihre Platzpunkte geregelt.
+Teilrückzahlungen überschüssiger Einsätze sind reguläre Abrechnungen und zählen zur Mindestzahl.
+
+Migration 135 speichert die Regel am Markt. Neue und noch nie abgerechnete offene/gesperrte
+Märkte offener Wertungen erhalten die Gewinnbegrenzung. Bereits abgerechnete oder erstattete
+Märkte, frühere Finanzkorrekturen und festgeschriebene Wertungen behalten die bisherige Poolregel,
+auch bei späterer Neuberechnung. Migration und Wiederholung verändern keine Guthaben,
+Reservierungen, Auszahlungen oder Journaleinträge. Historische Quoten bleiben unter ihrer Regel lesbar.
 
 Auszahlung minus Einsatz wird atomar im Wallet und als Wett-Nettowert erfasst. Vollständige
 Erstattung ergibt 0 Nettogewinn. Grundstock ist kein Wett-Nettogewinn. Die Auszahlungen müssen

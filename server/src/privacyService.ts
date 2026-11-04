@@ -447,7 +447,7 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
       pointEntries: rows(`SELECT s.event_id AS eventId,j.amount,s.account,s.source_key AS sourceKey,j.title,j.reason,j.created_at AS createdAt
         FROM points_journal j JOIN points_sources s ON s.id=j.source_id WHERE s.player_id=? AND s.account='wallet' ORDER BY j.created_at,j.rowid`, playerId),
       resetPointSources: rows('SELECT event_id AS eventId,source_key AS sourceKey FROM points_reset_sources WHERE player_id=?', playerId),
-      bettingTips: rows(`SELECT r.event_id AS eventId,r.title,t.outcome_id AS outcomeId,t.stake,t.payout,t.created_at AS createdAt
+      bettingTips: rows(`SELECT r.event_id AS eventId,r.title,r.payout_policy AS payoutPolicy,t.outcome_id AS outcomeId,t.stake,t.payout,t.created_at AS createdAt
         FROM betting_tips t JOIN betting_rounds r ON r.id = t.round_id WHERE t.player_id = ? ORDER BY t.created_at`, playerId),
       foodOrderItems: rows(
         `SELECT i.id, i.order_id AS orderId, o.title AS orderTitle, i.description, i.quantity,

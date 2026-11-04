@@ -85,6 +85,65 @@ function makeTempDbPath(name: string): string {
   return path.join(dir, `${name}.db`);
 }
 
+test('migration 135 versions capped markets atomically without rewriting paid tips, frozen events or replayed policies', () => {
+  const dbFile = makeTempDbPath('betting-stake-cap');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`ALTER TABLE betting_rounds DROP COLUMN payout_policy;
+    DELETE FROM schema_migrations WHERE version=135;
+    INSERT INTO events(id,name,starts_at,group_id,status,event_type_key) VALUES
+      ('cap-live','Live LAN',1,'default-group','published','lan'),
+      ('cap-frozen','Frozen LAN',1,'default-group','published','lan');
+    UPDATE points_settings SET closed_at=2 WHERE event_id='cap-frozen';
+    INSERT INTO betting_rounds(id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_at,settled_at,revision) VALUES
+      ('cap-open','default-group','cap-live','draw','cap-open','Open','[]','open',0,1,NULL,0),
+      ('cap-locked','default-group','cap-live','draw','cap-locked','Locked','[]','locked',0,1,NULL,0),
+      ('cap-paid','default-group','cap-live','draw','cap-paid','Paid','[]','settled',0,1,2,0),
+      ('cap-refunded','default-group','cap-live','draw','cap-refunded','Refunded','[]','refunded',0,1,2,0),
+      ('cap-corrected','default-group','cap-live','draw','cap-corrected','Corrected','[]','locked',0,1,NULL,1),
+      ('cap-frozen-open','default-group','cap-frozen','draw','cap-frozen-open','Frozen','[]','open',0,1,NULL,0);
+    INSERT INTO betting_tips(id,round_id,player_id,outcome_id,stake,payout,day,created_at,updated_at) VALUES
+      ('cap-paid-tip','cap-paid',NULL,'0',1,16,'2026-11-04',1,1);
+    CREATE TRIGGER fail_cap_upgrade BEFORE UPDATE ON betting_rounds WHEN OLD.id='cap-paid'
+      BEGIN SELECT RAISE(ABORT,'payout policy migration failed'); END;`);
+  const journal = fixture.prepare('SELECT * FROM points_journal ORDER BY id').all();
+  const tips = fixture.prepare('SELECT * FROM betting_tips ORDER BY id').all();
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /payout policy migration failed/);
+  const failed = new Database(dbFile);
+  assert.ok(!(failed.pragma('table_info(betting_rounds)') as Array<{ name: string }>).some((column) => column.name === 'payout_policy'));
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=135').get(), undefined);
+  assert.deepEqual(failed.prepare('SELECT * FROM betting_tips ORDER BY id').all(), tips);
+  failed.exec('DROP TRIGGER fail_cap_upgrade');
+  failed.close();
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  assert.deepEqual(migrated.prepare('SELECT id,payout_policy FROM betting_rounds ORDER BY id').all(), [
+    { id: 'cap-corrected', payout_policy: 'pool_v1' },
+    { id: 'cap-frozen-open', payout_policy: 'pool_v1' },
+    { id: 'cap-locked', payout_policy: 'stake_cap_v1' },
+    { id: 'cap-open', payout_policy: 'stake_cap_v1' },
+    { id: 'cap-paid', payout_policy: 'pool_v1' },
+    { id: 'cap-refunded', payout_policy: 'pool_v1' },
+  ]);
+  migrated.exec(`INSERT INTO betting_rounds(id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_at)
+    VALUES('cap-new','default-group','cap-live','draw','cap-new','New','[]','open',0,1)`);
+  assert.equal(migrated.prepare('SELECT payout_policy FROM betting_rounds WHERE id=?').pluck().get('cap-new'), 'stake_cap_v1');
+  assert.throws(() => migrated.prepare('UPDATE betting_rounds SET payout_policy=? WHERE id=?').run('unknown', 'cap-new'), /CHECK constraint/);
+  migrated.exec("UPDATE betting_rounds SET status='settled',settled_at=3 WHERE id='cap-new'; DELETE FROM schema_migrations WHERE version=135;");
+  const rounds = migrated.prepare('SELECT * FROM betting_rounds ORDER BY id').all();
+  migrated.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const replayed = new Database(dbFile);
+  assert.deepEqual(replayed.prepare('SELECT * FROM betting_rounds ORDER BY id').all(), rounds);
+  assert.deepEqual(replayed.prepare('SELECT * FROM betting_tips ORDER BY id').all(), tips);
+  assert.deepEqual(replayed.prepare('SELECT * FROM points_journal ORDER BY id').all(), journal);
+  assert.deepEqual(replayed.prepare('PRAGMA foreign_key_check').all(), []);
+  replayed.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 134 funds missed eligible wallets atomically and preserves spent balances, history and closed events on replay', () => {
   const dbFile = makeTempDbPath('returning-wallet-eligibility');
   runMigrations(dbFile);
@@ -1659,10 +1718,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 134);
+  assert.equal(migrations.length, 135);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 134 }, (_, index) => index + 1),
+    Array.from({ length: 135 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -2264,8 +2323,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 134 }, (_, index) => index + 1),
-    'every version 1..134 runs exactly once',
+    Array.from({ length: 135 }, (_, index) => index + 1),
+    'every version 1..135 runs exactly once',
   );
 });
 

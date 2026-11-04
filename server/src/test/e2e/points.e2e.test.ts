@@ -352,18 +352,21 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     'the refreshed game remains at the same position');
   await openRoundActions(member, round.id);
   await member.locator(`[data-tip-round="${round.id}"]`).click();
-  await member.locator('[data-tip-form] [name="stake"]').fill('10');
+  await member.getByRole('button', { name: 'Mehr Informationen zu Hinweise zum Tipp', exact: true }).click();
+  await member.getByRole('tooltip').getByText(/Gewinn höchstens in Höhe deines Einsatzes/).waitFor();
+  await member.keyboard.press('Escape');
+  await member.locator('[data-tip-form] [name="stake"]').fill('1');
   await member.getByRole('button', { name: 'Tipp speichern', exact: true }).click();
-  await member.locator('[data-wallet-held]').filter({ hasText: /^10$/ }).waitFor();
+  await member.locator('[data-wallet-held]').filter({ hasText: /^1$/ }).waitFor();
   await api(
     `/api/points/rounds/${round.id}/tip?eventId=${eventId}`,
     'PUT',
-    { outcomeId: otherOutcome, stake: 5 },
+    { outcomeId: otherOutcome, stake: 15 },
     bob.cookie,
   );
-  await member.getByText(/Topf 15 P./).waitFor();
-  await member.getByText('Quote 1.50', { exact: true }).waitFor();
-  await member.getByText('Quote 3.00', { exact: true }).waitFor();
+  await member.getByText(/Topf 16 P./).waitFor();
+  await member.getByText('Quote 2.00', { exact: true }).waitFor();
+  await member.getByText('Quote 1.07', { exact: true }).waitFor();
   await openRoundActions(member, round.id);
   await member.locator(`[data-lock-round="${round.id}"]`).click();
   await member.getByRole('button', { name: 'Tipps schließen', exact: true }).click();
@@ -381,11 +384,13 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     teams: draw.teams.map((team: { players: Array<{ id: string }> }) => ({ playerIds: team.players.map((p) => p.id) })),
     winnerTeamIndex: Number(ownOutcome),
   });
-  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('105', { exact: true }).first().waitFor();
+  await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('101', { exact: true }).first().waitFor();
   await openRoundActions(member, round.id);
   await member.locator(`[data-tip-round="${round.id}"]`).click();
   const tipDetails = member.getByRole('dialog', { name: 'Dein Tipp', exact: true });
-  await tipDetails.getByText(/Auszahlung 15 P. · Netto \+5 P./).waitFor();
+  await tipDetails.getByText(/Einsatz 1 P. · Auszahlung 2 P. · Netto \+1 P./).waitFor();
+  const losingTip = (await api(`/api/points?eventId=${eventId}`, 'GET', undefined, bob.cookie)).rounds.find((row: any) => row.id === round.id).mine;
+  assert.deepEqual([losingTip.stake, losingTip.payout, losingTip.net], [15, 14, -1]);
   await tipDetails.getByText(`Dein Tipp: ${round.outcomes.find((outcome: { id: string }) => outcome.id === ownOutcome).label}`, { exact: true }).waitFor();
   await tipDetails.locator('[data-report-points]').waitFor();
   assert.ok(await tipDetails.locator('[data-report-points]').evaluate((button) => {

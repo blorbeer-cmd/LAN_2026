@@ -8,7 +8,7 @@ export const AREA_TOURS = {
   points: t('LAN-Punkte', [c('account', 'Punkte verdienen und einsetzen', [
     s('balance', 'Dein Punktekonto', 'Orga, Spielen und Wetten zählen als drei gleich gewichtete Kategorien. Ihre Platzpunkte ergeben die LAN-Wertung. Das separate Wettguthaben startet einmal mit 100 Punkten.', '[aria-label="Mein Punktekonto"]'),
     s('earn', 'Mitmachen bringt Punkte', 'Ein erledigtes fremdes To-do bringt dem ersten Helfer 3 Orga-Punkte. Gespielte Matches bringen Spielpunkte: ein Sieg 4, der letzte Platz 1. Spielzeit und Teamgröße werden nicht gewichtet.'),
-    s('bet', 'Auch eigene Spiele tippen', 'Setze vor Spielstart bis zu 20 Wettpunkte je Markt. Auch eigene Spiele sind erlaubt. Der Topf verteilt vorhandene Einsätze; Nettogewinne zählen ab zwei regulär abgerechneten Tipps für den Kategorienrang.', '[aria-label="Tipprunden"]'),
+    s('bet', 'Auch eigene Spiele tippen', 'Bis zu 20 Wettpunkte je Markt, auch auf eigene Spiele. Gewinn maximal in Einsatzhöhe, übrige Einsätze anteilig zurück. Für den Kategorienrang zählen Nettogewinne ab zwei regulär abgerechneten Tipps.', '[aria-label="Tipprunden"]'),
     s('history', 'Jede Buchung nachvollziehen', 'Die getrennten Verläufe zeigen Zeitpunkt, Herkunft und Betrag. Details erklären Auszahlungen und begründete Korrekturen. Bei falsch vergebenen Punkten kannst du eine Meldung erstellen.', '[aria-label="Punkteverlauf"]'),
   ])]),
   pointsAdmin: t('LAN-Punkte verwalten', [c('manage', 'Regeln und Korrekturen', [

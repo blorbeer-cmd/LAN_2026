@@ -6022,6 +6022,16 @@ registerMigration({ version: 134, name: 'fund betting wallets when participant e
     ${fund()}`);
 } });
 
+registerMigration({ version: 135, name: 'cap betting net gains while preserving historical payout rules', up: () => {
+  const columns = db.prepare('PRAGMA table_info(betting_rounds)').all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === 'payout_policy')) return;
+  db.exec(`ALTER TABLE betting_rounds ADD COLUMN payout_policy TEXT NOT NULL DEFAULT 'stake_cap_v1'
+    CHECK(payout_policy IN ('pool_v1','stake_cap_v1'));
+    UPDATE betting_rounds SET payout_policy='pool_v1'
+    WHERE status IN ('settled','refunded') OR settled_at IS NOT NULL OR revision>0
+      OR EXISTS(SELECT 1 FROM points_settings s WHERE s.event_id=betting_rounds.event_id AND s.closed_at IS NOT NULL);`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

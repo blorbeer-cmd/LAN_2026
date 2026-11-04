@@ -149,6 +149,8 @@ export function pointsSnapshotRules() {
     tournamentPlacementPoints: [5, 3, 1],
     tournamentTies: 'full_bonus_for_shared_place',
     poolRemainder: 'largest_fraction_then_first_tip_submission_then_insertion_order',
+    bettingPayoutPolicy: 'stored_per_market',
+    defaultBettingPayoutPolicy: 'stake_cap_v1',
     orga: {
       completedForeignTodo: 3, organizedMatch: 1, completedTournament: 5,
       foodOrderByOtherParticipants: { minimum: 3, threeToFive: 3, sixToEight: 4, nineOrMore: 5 },

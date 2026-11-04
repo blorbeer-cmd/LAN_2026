@@ -2,7 +2,7 @@ import { nanoid } from 'nanoid';
 import { db } from './db';
 import { requirePointsAdmin } from './pointsAccess';
 import { computeRoundRobinStandings } from './tournament';
-import { distributePool } from './bettingMath';
+import { distributePool, type BettingPayoutPolicy } from './bettingMath';
 import { computeMatchPlacements, type MatchForScoring } from './leaderboard';
 import { bookBettingMarket } from './bettingAccounting';
 import {
@@ -43,6 +43,7 @@ export interface BettingRound {
   revision: number;
   created_at: number;
   notice_sent: number;
+  payout_policy: BettingPayoutPolicy;
 }
 interface TipRow {
   id: string;
@@ -332,6 +333,7 @@ export function roundView(round: BettingRound, playerId: string) {
     sourceId: round.source_id,
     title: round.title,
     status: round.status,
+    payoutPolicy: round.payout_policy,
     closesAt: round.closes_at || null,
     settledAt: round.settled_at,
     revision: round.revision,
@@ -344,12 +346,13 @@ export function roundView(round: BettingRound, playerId: string) {
         ? distributePool(
             tips.map((t) => ({ id: t.id, stake: t.stake, outcomeId: t.outcome_id, createdAt: t.created_at, sequence: t.sequence })),
             outcome.id,
+            round.payout_policy,
           ).get(mine.id)
         : undefined;
       return {
         ...outcome,
         stake,
-        odds: stake ? pot / stake : null,
+        odds: stake ? (round.payout_policy === 'stake_cap_v1' ? Math.min(2, pot / stake) : pot / stake) : null,
         myPossiblePayout: mine?.outcome_id === outcome.id ? preview : null,
       };
     }),
@@ -395,6 +398,7 @@ function settleRound(
   const payouts = distributePool(
     tips.map((t) => ({ id: t.id, stake: t.stake, outcomeId: t.outcome_id, createdAt: t.created_at, sequence: t.sequence })),
     valid ? winner : null,
+    round.payout_policy,
   );
   for (const tip of tips) {
     const payout = payouts.get(tip.id)!;
