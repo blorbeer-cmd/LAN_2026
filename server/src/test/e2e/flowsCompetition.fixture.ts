@@ -1190,25 +1190,46 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   assert.deepEqual(historyActions, ['edit', 'Rematch', 'delete']);
 });
 
-flowTest('matchmaking Historie derives the winner from values entered in the draw result dialog', async () => {
+flowTest('matchmaking Historie derives the winner and keeps open games and sections after saving a result', async (t) => {
   // Values mode: the higher value wins, places follow the values, and the
   // recorded draw shows its winner with the "Win" chip in Historie. A field
   // left empty counts as its "0" placeholder instead of blocking the save.
   await openTeams();
-  await page.click('#mm-generate');
+  const generate = async () => {
+    const [response] = await Promise.all([
+      page.waitForResponse((res) => new URL(res.url()).pathname === '/api/matchmaking' && res.request().method() === 'POST'),
+      page.click('#mm-generate'),
+    ]);
+    assert.equal(response.status(), 200);
+    return response.json();
+  };
+  const spare = await generate();
+  t.after(async () => { await page.request.delete(`${BASE_URL}/api/matchmaking/draws/${spare.id}`); });
+  const draw = await generate();
   await openMatchmakingHistory();
+  const oldMatch = page.locator('.history-details [data-history-toggle]').first();
+  const oldId = await oldMatch.getAttribute('data-history-toggle');
+  if (await oldMatch.getAttribute('aria-expanded') === 'false') await oldMatch.click();
   const openTile = page.locator('.matchmaking-open-draws');
   if ((await openTile.getAttribute('open')) === null) await openTile.locator('summary').click();
-  await page.waitForSelector('#match-history-open [data-record-draw]');
-  await page.click('#match-history-open [data-record-draw]');
+  const spareToggle = page.locator(`[data-history-toggle="o-${spare.id}"]`);
+  if (await spareToggle.getAttribute('aria-expanded') === 'false') await spareToggle.click();
+  await page.locator(`#match-history-open [data-record-draw="${draw.id}"]`).click();
 
   await page.click('[data-result-mode="score"]');
   await page.fill('#draw-result-score-0', '3');
   assert.equal(await page.inputValue('#draw-result-score-1'), '');
   await page.click('.modal [data-result-save]');
 
-  await page.waitForFunction(() => !!document.querySelector('[data-edit-draw-result]'));
-  await openMatchmakingHistory();
+  await page.locator(`[data-edit-draw-result="${draw.id}"]`).waitFor();
+  await page.waitForLoadState('networkidle');
+  assert.equal(await page.locator('.history-details').evaluate((element: HTMLDetailsElement) => element.open), true,
+    'saving leaves the history section open');
+  assert.equal(await openTile.evaluate((element: HTMLDetailsElement) => element.open), true,
+    'saving leaves the other open draws visible');
+  assert.equal(await spareToggle.getAttribute('aria-expanded'), 'true', 'another open game stays expanded');
+  assert.equal(await page.locator(`[data-history-toggle="${oldId}"]`).getAttribute('aria-expanded'), 'true',
+    'an earlier expanded result stays expanded');
   const winnerTeam = page.locator('.matchmaking-history-team:not(.is-loser)').first();
   await winnerTeam.waitFor();
   assert.equal(await winnerTeam.locator('.lb-rank.is-first').innerText(), '1');

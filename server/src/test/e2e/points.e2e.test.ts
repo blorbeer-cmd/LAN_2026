@@ -202,6 +202,14 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const hidden = await api(`/api/points?eventId=${eventId}`);
   assert.equal(hidden.wallet.total, 100);
   await setPointsVisibility(true);
+  await admin.setViewportSize({ width: 1366, height: 720 });
+  const compactRail = await admin.locator('.desktop-nav-main').evaluate((element) => ({
+    overflow: element.scrollHeight - element.clientHeight,
+    rowHeights: Array.from(document.querySelectorAll('.desktop-nav-btn'), (button) => button.getBoundingClientRect().height),
+  }));
+  assert.ok(compactRail.overflow <= 1, `the full LAN rail fits a small desktop: ${JSON.stringify(compactRail)}`);
+  assert.ok(compactRail.rowHeights.every((height) => height >= 31 && height <= 33));
+  await admin.setViewportSize({ width: 1440, height: 900 });
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
   await openSection(member, 'wallet');

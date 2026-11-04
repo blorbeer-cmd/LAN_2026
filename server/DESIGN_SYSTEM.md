@@ -233,6 +233,9 @@ centering calculation explicitly subtracts the rail so the navigation never narr
 content column by accident. Mein Profil offers Automatic/Desktop/Laptop as one account-scoped shell
 choice. Automatic follows `--bp-xl`; below that breakpoint every preference intentionally retains
 compact geometry.
+The desktop rail uses standard 32px rows for a hovering fine pointer, with compact group spacing.
+Coarse-pointer navigation retains 44px targets. Labels and keyboard focus remain fully visible;
+the main list scrolls only when the available window height still cannot fit its entries.
 
 ## Breakpoints
 

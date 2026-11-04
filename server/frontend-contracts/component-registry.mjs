@@ -890,7 +890,7 @@ export const components = [
     "selector": ".collapsible-section-header, .desktop-nav-btn",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#strukturziele-mit-44-px",
-    "purpose": "Permanent disclosure headers and desktop rail rows retain their 44px minimum."
+    "purpose": "Disclosure headers retain 44px; desktop rail rows use 32px with a hovering fine pointer and 44px otherwise."
   },
   {
     "id": "row-layout",
@@ -1925,7 +1925,7 @@ export const permanentVariants = [
     "selector": ":root[data-layout-mode='desktop'] .desktop-nav-btn",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Permanent 44px desktop navigation rail rows."
+    "reason": "Desktop navigation uses standard 32px rows for a hovering fine pointer and keeps 44px touch targets otherwise."
   },
   {
     "id": "page-heading",

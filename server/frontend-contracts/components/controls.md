@@ -51,6 +51,7 @@ Bedeutung und Breite werden mit der Basisvariante kombiniert.
 | `action-menu-trigger` | 31–33 px | Inhalt |
 | `action-menu-entry` | mindestens 44 px | mindestens 44 px |
 | `number-stepper` | zwei interne Hälften des 32-px-Felds | interne Spalte |
+| `desktop-navigation` | 31–33 px bei Maus/Trackpad (`hover: hover`, `pointer: fine`), sonst mindestens 44 px | volle Spaltenbreite |
 
 Es gibt keine `.btn-touch`-Klasse und keine Variante `kompakt-touch`. Eine segmentierte Einstellung
 besitzt genau zwei Optionen; ab drei benannten exklusiven Optionen MUSS ein Select verwendet
@@ -61,7 +62,7 @@ segmentierte Einstellung im Sinne dieser Regel.
 ### Strukturziele mit 44 px
 
 `--tap-target-size` bleibt unverändert für die folgenden Strukturziele: topbar/section/page-title
-header rows, navigation rail button, collapsible-section header, food-order and seating rows,
+header rows, navigation rail button ohne präzisen Mauszeiger, collapsible-section header, food-order and seating rows,
 searchable-select option rows samt angehefteter Popup-Aktion, calendar day grid, game-board/memory
 cells and the kiosk TV canvas
 (its own device class). Icon-Controls verwenden den Token regelmäßig als Mindestbreite, nicht als
@@ -428,7 +429,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `food-position-slots`, `food-payment-marker`, `food-header` | Gleich breite Aktionsplätze der Personenzeile, 32-px-Zahlungsaktion und permanenter 44-px-Kartenkopf. |
 | `food-open-section-action`, `food-amount-copy`, `food-inline-remove` | Die Kopfaktion der offenen Bestellungen bricht nicht um; Kopieren steht als 32-px-Quadrat vor dem Betrag; Löschen einer eigenen Position ist ein zeilenhohes Symbol hinter dem Gericht. |
 | `arcade-toolbar-buttons`, `challenge-test-disclosure` | Standardhöhe mit echtem Textumbruch; Segment-/Erstellungsgeometrie bleibt beim Pilotvertrag. |
-| `topbar-title`, `desktop-navigation`, `page-heading`, `subpage-heading`, `tabbed-subpage-heading`, `section-heading`, `section-title` | Bestehende 44-px-Kopf-/Navigationszeilen und mehrzeilige Headerreservierungen. |
+| `topbar-title`, `desktop-navigation`, `page-heading`, `subpage-heading`, `tabbed-subpage-heading`, `section-heading`, `section-title` | Bestehende 44-px-Kopfzeilen und mehrzeilige Headerreservierungen. Desktopnavigation: 32 px mit präzisem Mauszeiger und Hover, sonst 44 px. |
 | `seating-seat` | Sitzplatz-Kachel des Tischplans in Token-Größe mit Avatar, Name und Status; öffnet den Platz-Dialog. |
 | `music-cover` | Unverändertes nichtinteraktives 76-px-Cover. |
 | `kiosk-match-row` | Permanente 44-px-Ziele der eigenständigen TV-Geräteklasse. |
@@ -537,7 +538,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:player-selection-actions`: Whole roster cards for picking/reordering, not standalone text buttons.
 
-- `registry:structural-disclosure`: Permanent disclosure headers and desktop rail rows retain their 44px minimum.
+- `registry:structural-disclosure`: Disclosure headers retain their 44px minimum. Desktop rail rows use 32px with a hovering fine pointer and 44px otherwise.
 
 - `registry:row-layout`: Layout attachment; the semantic control variant still owns its interior.
 
@@ -655,7 +656,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:topbar-title`: Permanent 44px brand/navigation row.
 
-- `registry:desktop-navigation`: Permanent 44px desktop navigation rail rows.
+- `registry:desktop-navigation`: Desktop rail rows use `--control-height` with a hovering fine pointer and `--tap-target-size` otherwise. Main and utility padding use `--space-2`; group separators use `--space-1`. All labels remain visible and keyboard-accessible. The real LAN navigation including points and admin utilities fits at 1366×720 without scrolling; shorter windows retain an accessible scroll fallback.
 
 - `registry:page-heading`: Permanent page-header alignment row.
 
