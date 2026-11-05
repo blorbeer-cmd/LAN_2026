@@ -92,7 +92,7 @@ Klassenbelege (Standard `dynamic-class`) können ihn nicht ersetzen. Komplexe Da
 beliebige DOM-APIs und zur Laufzeit erzeugtes HTML sind keine Browseremulation. Ein real benötigter
 dynamischer Klassenaufruf wird über `dynamicUses` mit exakter Quelldatei, Templatefragment und
 Begründung belegt; fehlende Control-Zuordnungen und entfernte Belege schlagen fehl. Die Registry
-belegt die 63 vorhandenen dynamischen Control-Klassenaufrufe ausdrücklich, einschließlich
+belegt die vorhandenen dynamischen Control-Klassenaufrufe ausdrücklich, einschließlich
 DateTime-Kalendertagen, Tooltip-Triggern und der EmptyState-Aktion. `calls` bindet exakte Datei/Aufruf/Eigenschaft/
 Wert-Tupel an einen Besitzer, etwa den nichtinteraktiven Onboarding-Markierungsring. Auch einzelne
 entfernte Call-Bindings schlagen fehl. `control: false` kennzeichnet Container, Zustandsmarker und

@@ -199,17 +199,17 @@ function renderDetail(container, ctx) {
     .join(' · ');
   const formatExplanation = `${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''}`;
   const activeLobbies = renderActiveLobbies(t);
-  const outrightBetting = competitionBettingHtml('tournament', t.id, ctx);
+  const outrightBetting = competitionBettingHtml('tournament', t.id, ctx, { actionsOnly: true, tournamentId: t.id });
 
   container.innerHTML = `
-    <div class="row-between page-title-row">
+    <div class="row-between page-title-row points-actions">
       <h2 class="view-title">${escapeHtml(t.name)}</h2>
-      ${isGroupAdmin()
-        ? `<span class="row" style="gap:var(--space-2);">
+      <span class="row points-actions">${outrightBetting}${isGroupAdmin()
+        ? `
             ${t.status === 'active' ? '<button type="button" class="btn btn-sm" id="tourn-finish">Beenden</button>' : ''}
             <button type="button" class="btn btn-sm" id="tourn-delete">Löschen</button>
-          </span>`
-        : ''}
+          `
+        : ''}</span>
     </div>
     <div class="muted tournament-detail-meta">
       <span>${formatExplanation} · ${t.teams.length} Teams · ${participantCount} Spieler · ${decidedMatches}/${t.matches.length} entschieden</span>
@@ -218,7 +218,6 @@ function renderDetail(container, ctx) {
     <div class="grouped-page-sections tournament-board">
       ${renderChampion(t)}
       ${activeLobbies}
-      ${outrightBetting ? `<div class="row points-actions" aria-label="Turniersieger tippen"><strong>Turniersieger</strong>${outrightBetting}</div>` : ''}
       ${board}
       ${renderTournamentTeams(t, { teamsOpen: tournamentTeamsOpen, canRename: (team) => canRenameTeam(t, team), highlightOwn: ownTeamFocusFor === t.id })}
     </div>

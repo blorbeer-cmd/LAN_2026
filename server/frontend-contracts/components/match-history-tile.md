@@ -4,8 +4,7 @@
 
 Status: umgesetzt. Eine Kachel zeigt den Ergebnisüberblick und klappt Match- oder Turnierteams
 auf. Die Historie besitzt einen eigenen einklappbaren Rahmen; offene Auslosungen und laufende
-Turniere stehen in einem separaten, zunächst geschlossenen Abschnitt darüber. LAN-Punkte
-verwenden dieselbe Kachel für Wettmärkte, mit jederzeit erreichbaren Aktionen im Kopf.
+Turniere stehen in einem separaten, zunächst geschlossenen Abschnitt darüber.
 
 ## 2. Quelle
 
@@ -14,7 +13,7 @@ verwenden dieselbe Kachel für Wettmärkte, mit jederzeit erreichbaren Aktionen 
 aufklappbaren Inhalt. Titel und Kennungen werden escaped; Meta-, Aktions- und Detailmarkup
 kommen bereits escaped vom Aufrufer.
 `public/js/views/matchmaking.js`: `renderHistory`, `renderOpenDraws`, `wireHistory` und
-`wireOpenDraws`. `views/points.js` nutzt denselben Helper für LAN-Spiele und Turniermärkte.
+`wireOpenDraws`.
 
 ## 3. CSS-Eigentümerschaft
 
@@ -27,8 +26,8 @@ Erfasstes Match mit Ergebnis und Stift/Rematch, Turnier mit direktem Detail-Link
 nachladbaren Teamdetails; „Ohne Ergebnis“ als separater Abschnitt mit bearbeitbaren Auslosungen
 und laufenden Turnieren. Jede Kartenart besitzt einen Papierkorb mit Bestätigung.
 Jede Auslosung in diesem Abschnitt ist selbst eine einklappbare Kachel mit Aktionen im Kopf.
-LAN-Punkte verwenden denselben Kopf mit Marktart, Status und eigenem Einsatz; Wettaktionen
-bleiben auch bei geschlossenem Inhalt erreichbar. Der Inhalt ergänzt die Einsätze je Ergebnis.
+Wettaktionen stehen im Kopf, außerhalb des Aufklappbuttons. Das gilt auch für Turnierkacheln;
+deren Tippdialog bündelt Turniersieger und bereits angelegte Spieltipps.
 
 ## 5. Erlaubte Anpassungen
 
@@ -37,9 +36,7 @@ im Aufklappbutton, vor Titel und Metadaten; Aktionen stehen getrennt rechts und 
 
 ## 6. Komponenteneigene Invarianten
 
-Alle Kacheln beginnen geschlossen und behalten ihren Zustand bei einem Neuzeichnen. Ein direkter
-LAN-Punkte-Link darf seinen Markt zunächst öffnen; bewusste Nutzerentscheidungen bleiben erhalten.
-`data-history-item` und `data-history-toggle` identifizieren Karte und Aufklappbutton. Wettmenüs
+Alle Kacheln beginnen geschlossen und behalten ihren Zustand bei einem Neuzeichnen. `data-history-item` und `data-history-toggle` identifizieren Karte und Aufklappbutton. Wettmenüs
 sind Geschwister des Aufklappbuttons, niemals darin verschachtelt. Tippabgabe öffnet keine Karte.
 Alle Karten verwenden `.card`; die globalen Flächen wechseln je Kartenebene zwischen
 `--bg-elevated` und `--bg-elevated-2`, unabhängig vom Aufklappzustand. Ist der
@@ -61,10 +58,10 @@ Platz steht die Ausscheidungsrunde in der Kontextzeile unter den Spielernamen.
 Seine bearbeitbaren Auslosungen werden erst beim Aufklappen aufgebaut und beim Schließen
 wieder aus dem DOM entfernt; die Anzahl und Erreichbarkeit aller offenen Auslosungen bleiben erhalten.
 Laufende Turniere stehen dort ebenfalls; erst nach Abschluss wechseln sie in die Historie.
-Eine gemeinsame, stets sichtbare Filterzeile steht vor „Ohne Ergebnis“ und „Historie“.
-„Alle“, „Matches“ und „Turniere“ gelten für beide Abschnitte. Die laufende Turnierübersicht bleibt
+Ein stets erreichbares Filtermenü nach dem Muster des Spielekatalogs steht vor „Ohne Ergebnis“
+und „Historie“. Eine native Auswahl „Art“ (Alle, Matches, Turniere) gilt für beide Abschnitte. Die laufende Turnierübersicht bleibt
 davon unabhängig und zeigt immer alle laufenden Turniere.
-Der zusätzliche Schalter „Meine“ lässt sich mit jeder Art kombinieren und berücksichtigt die
+Die Checkbox „Meine Beteiligung“ lässt sich mit jeder Art kombinieren und berücksichtigt die
 Teamteilnahme des angemeldeten Spielers, auch bei älteren nachgeladenen Ergebnissen. Filterwechsel
 erhalten die geöffneten Abschnitte und Kacheln; ein leerer Treffer entfernt nie die Filterzeile.
 Ein gelöschter Match-Datensatz verschwindet auch aus der Rangliste. Turniere nutzen den bestehenden
@@ -74,7 +71,13 @@ ein gespeicherter Eintrag ohne Sieger und ohne Remis-Kennzeichen heißt „Ohne 
 Nach dem Öffnen des Abschnitts beginnen die einzelnen Auslosungen geschlossen. Ihre Teamdetails
 lassen sich unabhängig voneinander öffnen und wieder schließen; dieser Zustand bleibt beim
 Neuzeichnen erhalten.
-Teamdetails und Wettaktionen verwenden in neuer Auslosung und Historie denselben Stack-Abstand.
+Teamdetails bleiben aufklappbar, während Wettaktionen im Header auch geschlossen erreichbar sind.
+„Tippstatus · offene Spiele“ filtert nach noch nicht getippten offenen oder bereits abgegebenen
+Tipps und wirkt ausschließlich auf „Ohne Ergebnis“. Ein Turnier passt, wenn mindestens einer
+seiner Märkte passt. Nicht zum Tippen freigegebene Matches passen zu keinem aktiven Tippfilter.
+Die Filter sind kombinierbar, zeigen ihre aktive Anzahl und lassen sich gemeinsam zurücksetzen.
+Die unabhängige Übersicht laufender Turniere bleibt erhalten; eine leere gefilterte Menge zeigt
+einen kompakten Leerzustand und lässt das Filtermenü erreichbar.
 Neue Wettmenüs beginnen geschlossen und übernehmen niemals den Aufklappzustand der Historie.
 „Ohne Ergebnis“ und „Historie“ besitzen stabile `data-matchmaking-section`-Kennungen. Gespeichert
 wird ihr tatsächlicher nativer Aufklappzustand, auch nach programmatischer Wiederherstellung.
@@ -91,20 +94,21 @@ Turnier, Ladefehler und leerer Filter.
 ## 8. Accessibility
 
 Der Pfeil-Button verwendet `aria-expanded` und `aria-controls`, ist über die Tastatur bedienbar
-und zeigt Fokus sichtbar. Sein Ziel ist mindestens `--tap-target-size` hoch. Die Filterchips benutzen `aria-pressed`. Aktionsknöpfe haben
+und zeigt Fokus sichtbar. Sein Ziel ist mindestens `--tap-target-size` hoch. Filter verwenden benannte native Selects und eine echte Checkbox; das Filterpanel nutzt den
+vorhandenen Popover-Modus, damit es auf Telefonen nicht vom View-Container abgeschnitten wird. Aktionsknöpfe haben
 einen eigenen Namen und Fokus; der Stift heißt „Ergebnis bearbeiten“.
 
 ## 9. Repräsentative Aufrufer
 
-`views/points.js` mit Wettaktion bei geschlossenem Spiel und `views/matchmaking.js` auf 390 px mit umbrochener Aktionsgruppe und auf 1024 px mit
+`views/matchmaking.js` auf 390 px mit umbrochener Aktionsgruppe und auf 1024 px mit
 nebeneinanderliegenden Teams.
 
 ## 10. Prüfungen und Abnahmebeispiele
 
 E2E prüft Aufklappen, Ergebnis/Rematch, Turnierdetails, Filter und Nachladen. Auf 390 und 1024 px gibt es
-keinen horizontalen Überlauf; ein langer Spielname schneidet keine Aktion ab. Der Punkte-Browserfall
+keinen horizontalen Überlauf; ein langer Spielname schneidet keine Aktion ab. Der Punkte-/Match-Browserfall
 prüft zusätzlich per Tastatur: tippen bei geschlossener Karte, geschlossen bleiben nach dem Speichern,
-geöffnet bleiben beim verzögerten Live-Refresh sowie dieselben Flächen wie in der Match-Historie.
+geöffnet bleiben beim verzögerten Live-Refresh sowie die kombinierten Tipp- und Beteiligungsfilter.
 
 ## 11. Permanente Varianten und befristete Ausnahmen
 

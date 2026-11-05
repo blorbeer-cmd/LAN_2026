@@ -64,8 +64,11 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
     </div>
   `;
   const dialog = backdrop.querySelector('.modal');
-  dialog.querySelector('h2').textContent = title;
-  dialog.setAttribute('aria-label', title);
+  const setTitle = (value) => {
+    dialog.querySelector('h2').textContent = value;
+    dialog.setAttribute('aria-label', value);
+  };
+  setTitle(title);
   document.body.appendChild(backdrop);
 
   let closed = false;
@@ -122,7 +125,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
     backdrop.querySelector('input, select, textarea, button, a[href]')?.focus();
   }
   if (tourKey) document.dispatchEvent(new CustomEvent('respawn:dialog-opened', { detail: { tourKey, el: backdrop } }));
-  return { el: backdrop, close };
+  return { el: backdrop, close, setTitle };
 }
 
 // Themed replacement for the browser's native confirm() — the same dark

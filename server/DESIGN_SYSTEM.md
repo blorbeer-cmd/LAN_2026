@@ -382,6 +382,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Card headings** — headings inside cards use `--font-size-lg`, bold weight and the card's
   standard top/left inset. `.grouped-page-section-title` aligns heading text and trailing actions
   to the same top edge; collapsible headers use the shared vertical centering described below.
+  Long user-authored page titles wrap even within an unbroken word; `.page-title-row .view-title`
+  owns their zero minimum width and wrapping so trailing actions remain inside the content pane.
   A contextual-help trigger keeps its full touch target through negative outer margin, so adding
   help never shifts only that heading
   downward.

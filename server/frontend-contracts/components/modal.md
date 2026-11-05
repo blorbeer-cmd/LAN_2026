@@ -18,13 +18,15 @@ keine allgemeine Wide-Variante.
 - Etablierte zentrierte Profilfarb- und QR-Präsentation: `public/css/style.css`
 - Öffentliche API:
   `openModal(title, bodyHtml, { onMount, onClose, confirmClose, restoreFocus = true })`
-- Rückgabe von `openModal`: `{ el, close }`
+- Rückgabe von `openModal`: `{ el, close, setTitle }`
 - Bestätigung:
   `confirmDialog(message, { title = 'Bestätigen', confirmText = 'OK',
   cancelText = 'Abbrechen', danger = false })`, Rückgabe `Promise<boolean>`
 
 `openModal` behandelt `title` ausschließlich als Klartext: Überschrift und `aria-label` erhalten
-den Rohtext über DOM-APIs. `bodyHtml` bleibt die bestehende Schnittstelle für vertrauenswürdiges,
+den Rohtext über DOM-APIs. `setTitle(text)` aktualisiert Überschrift und zugänglichen
+Dialognamen gemeinsam als Klartext, etwa beim Wechsel zwischen Turniersieger- und Spieltipps.
+`bodyHtml` bleibt die bestehende Schnittstelle für vertrauenswürdiges,
 vom Aufrufer erzeugtes HTML. `confirmDialog` escaped Titel, Nachricht und Aktionslabels.
 
 ## 3. CSS-Eigentümerschaft

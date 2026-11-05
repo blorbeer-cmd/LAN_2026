@@ -1358,6 +1358,10 @@ test('tournament participants can bet on themselves and opponents, including the
   ]) {
     const opened = await automaticMarket(f, sourceType, sourceId);
     assert.equal(opened.status, 'open');
+    assert.ok(opened.tournament);
+    assert.equal(opened.tournament.id, tournament.id);
+    assert.equal(opened.tournament.name, tournament.name);
+    if (sourceType === 'tournament_match') assert.equal(opened.tournament.round, tournament.matches.find((m: { id: string }) => m.id === fixtureId).round);
     assert.equal(opened.outcomes.length, 2, 'knockout and champion markets do not offer a draw');
     rounds.push(opened);
     const tips = await Promise.all(

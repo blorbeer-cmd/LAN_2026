@@ -3776,6 +3776,8 @@ button.draft-pool-player {
 }
 .page-title-row .view-title {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Untabbed secondary destinations reached from "Mehr" or Admin use the same

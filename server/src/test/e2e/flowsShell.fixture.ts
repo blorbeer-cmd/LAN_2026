@@ -26,7 +26,7 @@ import {
   readConnectedBoundingBox,
   readConnectedBoxShadow,
 } from './flowsShared.fixture';
-import { openMoreViewEntry, setAdminMode } from './navHelpers';
+import { openMoreViewEntry, setAdminMode, selectMatchHistoryFilter } from './navHelpers';
 import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 registerFlowFixture('shell');
@@ -2308,7 +2308,7 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   await page.click('#mm-game-search');
   await page.locator(`#mm-game-list [data-search-select-value="${otherTournamentGame.id}"]`).click();
   await openMatchmakingHistory();
-  await page.click('[data-history-filter="tournaments"]');
+  await selectMatchHistoryFilter(page, 'tournaments');
   assert.equal(await page.locator(`.matchmaking-open-draws [data-open-draw-tournament="${tournamentId}"]`).count(), 0,
     'the completed tournament has left Ohne Ergebnis');
   const historyTournament = page.locator(`.matchmaking-history-item:has([data-open-draw-tournament="${tournamentId}"])`);
@@ -2366,7 +2366,7 @@ flowTest('completed league history shows placements and points beside team names
   await page.locator('#mm-game-search').click();
   await page.locator(`#mm-game-list [data-search-select-value="${gameId}"]`).click();
   await openMatchmakingHistory();
-  await page.locator('[data-history-filter="tournaments"]').click();
+  await selectMatchHistoryFilter(page, 'tournaments');
   const tile = page.locator(`.history-details .matchmaking-history-item:has([data-open-draw-tournament="${tournament.id}"])`);
   await tile.waitFor();
   assert.equal(await tile.locator('.matchmaking-history-title strong').count(), 1);

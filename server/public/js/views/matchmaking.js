@@ -1,5 +1,5 @@
 import { historyItemHtml as sharedHistoryItemHtml } from '../historyItem.js';
-import { competitionBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
+import { competitionBettingHtml, competitionMatchesTipFilter, wireCompetitionBetting, competitionCorrection } from './points.js';
 let pointsContext = null;
 // Matchmaking view (FR-16..18): pick a game + present players, draw balanced
 // teams. Results are stored in shared state (updated live via the
@@ -131,6 +131,7 @@ let historyCursor = null;
 let openDrawsCache = [];
 let openDrawsSectionOpen = false;
 let historyFilter = 'all';
+let tipFilter = 'all';
 let mineOnly = false;
 let historySectionOpen = false;
 const expandedHistoryIds = new Set();
@@ -382,9 +383,9 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
   if (collapsible) {
     const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span>
       <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
-    const cardActions = `${actions}${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>` : ''}`;
+    const cardActions = `${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { actionsOnly: true })}${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>` : ''}`;
     return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, cardActions,
-      `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext)}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
+      `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
   }
 
   return `
@@ -396,11 +397,10 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
           ${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}
           ${draw.matchId && draw.isDraw ? '<span class="tournament-fixture-score">Remis</span>' : ''}
         </div>
-        ${actions ? `<div class="matchmaking-draw-actions">${actions}</div>` : ''}
+        ${actions ? `<div class="matchmaking-draw-actions">${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { actionsOnly: true, keyPrefix: 'betting-fresh' })}</div>` : ''}
       </div>
       <div class="tournament-team-preview-grid">${teamsHtml}</div>
       ${seatingNote}
-      ${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext)}
     </div>`;
 }
 
@@ -820,8 +820,8 @@ function historyMatchHtml(draw) {
   }).join('');
   const seating = draw.seatConflicts > 0
     ? `<div class="muted">${icon('armchair')} ${draw.seatConflicts} von ${draw.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten.</div>` : '';
-  return historyItemHtml(draw.id, draw.gameName, meta, actions,
-    `<div class="matchmaking-history-teams">${teams}</div>${seating}${competitionBettingHtml('draw', draw.id, pointsContext)}`, '', drawIncludesMe(draw));
+  return historyItemHtml(draw.id, draw.gameName, meta, `${actions}${competitionBettingHtml('draw', draw.id, pointsContext, { actionsOnly: true })}`,
+    `<div class="matchmaking-history-teams">${teams}</div>${seating}`, '', drawIncludesMe(draw));
 }
 
 function historyTournamentDetailHtml(tournament) {
@@ -894,13 +894,13 @@ function historyTournamentHtml(tournament) {
     <span class="muted">${escapeHtml(tournament.name)}</span>`;
   const actions = `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(tournament.id)}">Turnier</button>
     ${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-tournament="${escapeHtml(tournament.id)}" aria-label="Turnier löschen" title="Turnier löschen">${icon('trash')}</button>` : ''}`;
-  return historyItemHtml(`t-${tournament.id}`, tournament.gameName, meta, actions,
+  return historyItemHtml(`t-${tournament.id}`, tournament.gameName, meta, `${actions}${competitionBettingHtml('tournament', tournament.id, pointsContext, { actionsOnly: true, tournamentId: tournament.id })}`,
     historyTournamentDetailHtml(tournament), 'is-tournament', Boolean(getMyId() && tournament.participantIds?.includes(getMyId())));
 }
 
 function filteredOpenDraws(selectedGameId) {
   return historyFilter === 'tournaments' || historyForGameId !== selectedGameId ? []
-    : openDrawsCache.filter((draw) => !mineOnly || drawIncludesMe(draw));
+    : openDrawsCache.filter((draw) => (!mineOnly || drawIncludesMe(draw)) && competitionMatchesTipFilter('draw', draw.id, tipFilter));
 }
 
 function filteredTournaments(selectedGameId, completed) {
@@ -908,20 +908,29 @@ function filteredTournaments(selectedGameId, completed) {
   return historyFilter === 'matches' ? [] : (tournamentCache ?? []).filter((tournament) =>
     (selectedGameId === undefined || tournament.gameId === selectedGameId)
     && (tournament.status === 'completed') === completed
+    && (completed || competitionMatchesTipFilter('tournament', tournament.id, tipFilter))
     && (!mineOnly || Boolean(myId && tournament.participantIds?.includes(myId))));
 }
 
 function renderMatchFilters() {
+  const count = Number(historyFilter !== 'all') + Number(mineOnly) + Number(state.activeEvent?.pointsEnabled && tipFilter !== 'all');
   return `<div class="matchmaking-history-filters" role="group" aria-label="Spiele und Turniere filtern">
-    ${[['all', 'Alle'], ['matches', 'Matches'], ['tournaments', 'Turniere']].map(([key, label]) => `<button type="button" class="chip${historyFilter === key ? ' is-active' : ''}" data-history-filter="${key}" aria-pressed="${historyFilter === key}">${label}</button>`).join('')}
-    <button type="button" class="chip${mineOnly ? ' is-active' : ''}" data-match-mine aria-pressed="${mineOnly}">Meine</button>
+    <div><details class="action-menu game-catalog-filter-menu" data-floating-action-menu data-action-menu="match-filters">
+      <summary class="btn btn-sm game-catalog-filter-trigger" aria-label="Match-Filter">Filter${count ? ` (${count})` : ''} ${icon('chevronDown')}</summary>
+      <div class="action-menu-panel game-catalog-filter-panel" popover="manual">
+        <label class="stack"><span class="field-label">Art</span><select data-history-filter>${[['all', 'Alle'], ['matches', 'Matches'], ['tournaments', 'Turniere']].map(([key, label]) => `<option value="${key}"${historyFilter === key ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
+        <label class="check-row"><input type="checkbox" data-match-mine${mineOnly ? ' checked' : ''}>Meine Beteiligung</label>
+        ${state.activeEvent?.pointsEnabled ? `<label class="stack"><span class="field-label">Tippstatus · offene Spiele</span><select data-match-tip-filter>${[['all', 'Alle'], ['open', 'Noch nicht getippt'], ['placed', 'Tipp abgegeben']].map(([key, label]) => `<option value="${key}"${tipFilter === key ? ' selected' : ''}>${label}</option>`).join('')}</select></label>` : ''}
+        ${count ? '<button type="button" class="btn btn-sm game-catalog-filter-reset" data-match-filter-reset>Filter zurücksetzen</button>' : ''}
+      </div>
+    </details></div>
   </div>`;
 }
 
 function renderOpenDraws(selectedGameId) {
   const draws = filteredOpenDraws(selectedGameId);
   const tournaments = filteredTournaments(selectedGameId, false);
-  if (!draws.length && !tournaments.length) return '';
+  if (!draws.length && !tournaments.length && (tipFilter === 'all' || !state.activeEvent?.pointsEnabled)) return '';
   const summary = [
     draws.length ? `${draws.length} Auslosungen` : null,
     tournaments.length ? `${tournaments.length} laufende Turniere` : null,
@@ -970,7 +979,7 @@ function wireOpenDraws(container, selectedGameId, ctx) {
     openPanel.innerHTML = [
       ...filteredOpenDraws(selectedGameId).map((draw) => renderDrawCard(draw, { editable: true, showGame: true, collapsible: true })),
       ...tournaments.map(historyTournamentHtml),
-    ].join('');
+    ].join('') || emptyStateHtml('Keine offenen Spiele gefunden.');
     openPanel.dataset.rendered = 'true';
     wireHistoryItemToggles(openPanel, ctx);
     wireDrawCards(openPanel, ctx);
@@ -1005,15 +1014,18 @@ function wireHistory(container, selectedGameId, ctx) {
     tournamentDetailErrors.delete(id);
     loadHistoryTournamentDetail(id, ctx);
   }));
-  container.querySelectorAll('[data-history-filter]').forEach((button) => button.addEventListener('click', () => {
-    if (historyFilter === button.dataset.historyFilter) return;
-    historyFilter = button.dataset.historyFilter;
-    ctx.rerender();
-  }));
-  container.querySelector('[data-match-mine]')?.addEventListener('click', () => {
-    mineOnly = !mineOnly;
-    invalidateMatchmakingHistory({ hard: true });
-    ctx.rerender();
+  container.querySelector('[data-history-filter]')?.addEventListener('change', (event) => {
+    historyFilter = event.target.value; ctx.rerender();
+  });
+  container.querySelector('[data-match-mine]')?.addEventListener('change', (event) => {
+    mineOnly = event.target.checked; invalidateMatchmakingHistory({ hard: true }); ctx.rerender();
+  });
+  container.querySelector('[data-match-tip-filter]')?.addEventListener('change', (event) => {
+    tipFilter = event.target.value; ctx.rerender();
+  });
+  container.querySelector('[data-match-filter-reset]')?.addEventListener('click', () => {
+    historyFilter = 'all'; mineOnly = false; tipFilter = 'all';
+    invalidateMatchmakingHistory({ hard: true }); ctx.rerender();
   });
   container.querySelector('[data-history-more]')?.addEventListener('click', () => {
     if (!historyLoading && historyCursor) loadHistory(selectedGameId, ctx, { append: true });

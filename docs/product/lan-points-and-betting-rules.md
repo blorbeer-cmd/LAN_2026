@@ -207,18 +207,31 @@ To-do-Zeilen, -Formulare und -Details wiederholen die einheitliche Punktevergüt
 
 Die LAN-Übersicht bietet getrennte einklappbare Ranglisten für Orga, Spielen, Wetten und den
 Gesamtstand. Jede Kategorie zeigt die eigenen „Punkte“, den Rang und die „Platzpunkte“; die Rangliste
-verwendet dieselben berechtigten Plätze wie die Gesamtwertung. Verläufe, Diagramme und einzelne
-Spiele lassen sich aufklappen. Seltenere Informationen stehen in Details oder der bestehenden Hilfe.
+verwendet dieselben berechtigten Plätze wie die Gesamtwertung. Verläufe und Diagramme lassen
+sich aufklappen; die LAN-Punkteansicht enthält keine Spieleliste. Seltenere Informationen stehen in Details oder der bestehenden Hilfe.
 
-„Wetten“ bündelt Tippabgabe, Schließen, Wiederöffnen und berechtigte Korrekturen. Matches und
-Turniere nutzen dieselbe Bedienung direkt in ihren vorhandenen Ansichten. Die Spieleübersicht
-bei den LAN-Punkten verwendet die gemeinsamen Match-Historienkarten mit Wettaktionen im Header und alphabetischen Wertlisten
-für die Einsätze; eigener Tipp und Gewinner stehen als Metadaten an der jeweiligen Zeile.
-Quoten werden in keiner Ansicht angezeigt. Es gibt keine zweite große Wettliste unter dem
-Turnierbaum. Persönliche fremde Tipps werden nicht offengelegt. Regeln und Einsätze bleiben über die Tippdetails zugänglich.
-Die Tippdetails nennen den selbst gewählten Ausgang ausdrücklich. Die Meldeschaltfläche steht
-mit Abstand in einer eigenen Aktionszeile. Neue Wettmenüs beginnen geschlossen; Teamkarten und
-Wettaktionen haben in Auslosung und Historie denselben Abstand.
+„Wetten“ steht im Header von Matches und Turnieren, auch bei geschlossener Spielkarte.
+Ein einzelnes verfügbares Angebot ist ein direkter Button, erst mehrere sind ein Dropdown.
+Punktefehler-Meldungen stehen in den Tippdetails; ihre asynchrone Freigabe erzeugt kein Menü
+mit nur einem sichtbaren Eintrag. Teilnahme und Adminrechte bestimmen weiterhin, ob neben
+der Tippabgabe auch Schließen, Wiederöffnen oder Finanzkorrekturen angeboten werden.
+
+Der Tippdialog nennt „Sieger tippen“ oder „Turniersieger tippen“ und zeigt kurze Angaben zu
+Spiel, Turnier, Runde und Gegnern. Bei Turnieren lassen sich Turniersieger und bereits angelegte
+Spiele im selben Dialog auswählen. Ungespeicherte Auswahlen bleiben beim Wechsel erhalten;
+„Speichern & weiter“ führt zum nächsten noch offenen, noch nicht getippten Markt. Bereits
+abgegebene Tipps bleiben änderbar, solange der jeweilige Markt offen ist; abgeschlossene Märkte
+zeigen die eigenen Details. Quoten werden nirgends angezeigt. Einsätze und Regeln bleiben über
+den Dialog zugänglich. Neue Wettmenüs beginnen geschlossen und öffnen die Spielkarte nicht.
+Die geschützte Punkte-API liefert dafür den Turnierbezug einschließlich Spiel/Runde; es werden
+keine individuellen fremden Tipps offengelegt.
+
+Das Filtermenü im Match-Bereich folgt dem Spielekatalog: Art, eigene Beteiligung und Tippstatus
+sind kombinierbar, aktive Filter werden gezählt und lassen sich zurücksetzen. Die Art gilt für
+offene und historische Spiele, der Tippstatus nur für offene Spiele. „Noch nicht getippt“ setzt
+einen offenen Markt ohne eigenen Tipp voraus, „Tipp abgegeben“ einen vorhandenen eigenen Tipp.
+Bei Turnieren genügt ein passender Markt. Die laufende Turnierübersicht bleibt unabhängig.
+Die Auswahl oder eine leere Trefferliste ändert keine Aufklappzustände.
 
 Live-Aktualisierungen behalten die bisherigen Daten bis zur Antwort, die Scrollposition und
 geöffnete Bereiche. Neue Spielbuchungen speichern die erreichte Platzierung im Anlass; die

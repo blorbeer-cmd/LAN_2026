@@ -20,7 +20,7 @@ import {
   openAuswertungTab,
   ensureAdminMode,
 } from './flowsShared.fixture';
-import { openMoreViewEntry } from './navHelpers';
+import { openMoreViewEntry, openMatchHistoryFilters, selectMatchHistoryFilter } from './navHelpers';
 import { TRACKING_CONSENT_TEXT_VERSION } from '../../privacyPolicy';
 import { assertPaintedPollResultCentered } from './pollResultGeometry';
 
@@ -1228,9 +1228,9 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
     restoreViewRenderState(document.querySelector('#view-container'), snapshot);
   }, disclosureState);
   await spareToggle.waitFor();
-  await page.click('[data-history-filter="tournaments"]');
+  await selectMatchHistoryFilter(page, 'tournaments');
   assert.equal(await openTile.count(), 0);
-  await page.click('[data-history-filter="matches"]');
+  await selectMatchHistoryFilter(page, 'matches');
   assert.equal(await openTile.evaluate((element: HTMLDetailsElement) => element.open), true,
     'a restored open section survives disappearing temporarily during a refresh');
   await page.locator(`#match-history-open [data-record-draw="${draw.id}"]`).click();
@@ -1268,12 +1268,12 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   assert.equal(await page.locator(`[data-history-toggle="${oldId}"]`).getAttribute('aria-expanded'), 'true');
   await openTile.locator(':scope > summary').click();
   assert.equal(await spareToggle.getAttribute('aria-expanded'), 'true');
-  await page.click('[data-history-filter="tournaments"]');
-  assert.equal(await page.getAttribute('[data-history-filter="tournaments"]', 'aria-pressed'), 'true');
+  await selectMatchHistoryFilter(page, 'tournaments');
+  assert.equal(await page.inputValue('[data-history-filter]'), 'tournaments');
   assert.equal(await page.locator('.matchmaking-history-team').count(), 0);
-  await page.click('[data-history-filter="matches"]');
+  await selectMatchHistoryFilter(page, 'matches');
   await page.waitForSelector('.matchmaking-history-item [data-edit-draw-result]');
-  assert.equal(await page.getAttribute('[data-history-filter="matches"]', 'aria-pressed'), 'true');
+  assert.equal(await page.inputValue('[data-history-filter]'), 'matches');
 });
 
 flowTest('shared filters narrow open games and history while keeping running tournaments visible', async (t) => {
@@ -1349,11 +1349,12 @@ flowTest('shared filters narrow open games and history while keeping running tou
 
   const ownResponse = page.waitForResponse((response) => response.url().includes('/api/matchmaking/history?')
     && new URL(response.url()).searchParams.get('mine') === '1' && response.status() === 200);
-  await filters.getByRole('button', { name: 'Meine', exact: true }).focus();
-  await page.keyboard.press('Enter');
+  await openMatchHistoryFilters(page);
+  await filters.getByRole('checkbox', { name: 'Meine Beteiligung', exact: true }).focus();
+  await page.keyboard.press('Space');
   await ownResponse;
   await drawTile(mineOpen).waitFor();
-  assert.equal(await filters.getByRole('button', { name: 'Meine', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.equal(await filters.getByRole('checkbox', { name: 'Meine Beteiligung', exact: true }).isChecked(), true);
   assert.equal(await drawTile(otherOpen).count(), 0);
   assert.equal(await drawTile(otherPlayed).count(), 0);
   assert.equal(await tournamentTile(otherRunning).count(), 0);
@@ -1364,20 +1365,22 @@ flowTest('shared filters narrow open games and history while keeping running tou
   assert.equal(await tournamentTile(mineRunning).count(), 1);
   assert.equal(await tournamentTile(mineFinished).count(), 1);
 
-  await filters.getByRole('button', { name: 'Matches', exact: true }).click();
+  await selectMatchHistoryFilter(page, 'matches');
   await drawTile(mineOpen).waitFor();
   assert.equal(await tournamentTile(mineRunning).count(), 0);
   assert.equal(await tournamentTile(mineFinished).count(), 0);
   assert.equal(await page.locator(`.matchmaking-active-tournaments [data-open-draw-tournament="${mineRunning}"]`).count(), 1);
   assert.equal(await page.locator(`.matchmaking-active-tournaments [data-open-draw-tournament="${otherRunning}"]`).count(), 1,
     'the running-tournament overview remains visible when only matches are requested');
-  await filters.getByRole('button', { name: 'Turniere', exact: true }).click();
+  await selectMatchHistoryFilter(page, 'tournaments');
   await tournamentTile(mineRunning).waitFor();
   assert.equal(await drawTile(mineOpen).count(), 0);
   assert.equal(await drawTile(minePlayed).count(), 0);
   assert.equal(await tournamentTile(mineFinished).count(), 1);
-  await filters.getByRole('button', { name: 'Alle', exact: true }).click();
-  await filters.getByRole('button', { name: 'Meine', exact: true }).click();
+  await selectMatchHistoryFilter(page, 'all');
+  await openMatchHistoryFilters(page);
+  await filters.getByRole('checkbox', { name: 'Meine Beteiligung', exact: true }).uncheck();
+  await page.keyboard.press('Escape');
   await drawTile(otherOpen).waitFor();
   assert.equal(await tournamentTile(otherFinished).count(), 1);
 
@@ -1411,7 +1414,7 @@ flowTest('match history reports failed tournament and older-match requests', asy
   try {
     await page.reload();
     await page.waitForSelector('#mm-generate');
-    await page.click('[data-history-filter="tournaments"]');
+    await selectMatchHistoryFilter(page, 'tournaments');
     // The filters are now outside the disclosure. Open the error detail
     // after the failed request has settled so this checks its visible message.
     await page.getByText('Historie konnte nicht geladen werden.', { exact: true }).waitFor({ state: 'attached' });

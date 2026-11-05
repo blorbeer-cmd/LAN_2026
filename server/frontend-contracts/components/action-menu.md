@@ -160,3 +160,9 @@ beim Verschieben folgt das Panel seinem Trigger. Ein aus dem Viewport gescrollte
 abgeschlossene Scrollbewegungen schließen ein neu geöffnetes Menü nicht nachträglich.
 Der bestehende absolute Modus bleibt unverändert. Ältere Browser ohne Popover-API behalten das
 normale Menü; die ungeclippte Darstellung setzt einen Browser mit Popover-Unterstützung voraus.
+
+Wettaktionen zählen ausschließlich synchron verfügbare Controls. „Punktefehler melden“ bleibt
+im Tippdialog, damit eine asynchron ausgeblendete Meldeschaltfläche kein Ein-Aktions-Menü
+erzeugt. Der direkte Einzeleinstieg und das Mehrfachmenü heißen sichtbar einheitlich „Wetten“.
+Die Matchfilter verwenden das bestehende Katalog-Filterpanel mit Popover und benannten Selects;
+dieses ist eine Filterauswahl und keine Liste von Verwaltungsaktionen.

@@ -92,10 +92,9 @@ Erstattung offener/gesperrter Märkte und den heruntergeladenen Endstand.
 
 ## Kompakte Darstellung
 
-Kategorien, Gesamtwertung, Verläufe und einzelne Wettrunden verwenden native Disclosures mit
-stabilen `data-points-section`-Kennungen; Spielkarten verwenden den gemeinsamen
-Match-Historienhelper mit `data-history-item="points-round-<id>"`. Kategorie-Ranglisten
-bleiben flache Zeilen innerhalb ihrer Hauptkarte (`flat`), statt je eine zusätzliche gepolsterte Karte anzulegen.
+Kategorien, Gesamtwertung und Verläufe verwenden native Disclosures mit stabilen
+`data-points-section`-Kennungen. Die LAN-Punkteansicht enthält keine Spiele- oder Wettrundenliste.
+Kategorie-Ranglisten bleiben flache Zeilen innerhalb ihrer Hauptkarte (`flat`).
 RankedList sortiert nach den fachlichen Kategorieplätzen einschließlich Gleichständen. Die
 persönlichen Kategoriepunkte (UI-Bezeichnung „Punkte“) bleiben auch bei geschlossener Rangliste
 im Header sichtbar.
@@ -105,21 +104,25 @@ ersetzt bestehende Daten nicht durch eine leere Fläche. Die gemeinsame Zustands
 Disclosures und Scrollposition. Die Browserprüfung hält die GET-Antwort nach einer echten
 Tippänderung gezielt zurück und prüft sowohl den ausstehenden als auch den fertigen Refresh.
 
-Die Spieleübersicht verwendet `historyItemHtml` aus `historyItem.js` wie die Match-Historie:
-kompakter Aufklappbutton mit Marktart, Status und eigenem Einsatz sowie eine getrennte rechte
-Aktionsgruppe. „Wetten“ ist bei geschlossener Karte bedienbar; eine Tippabgabe ändert den
-Aufklappzustand nicht. Der aufklappbare Inhalt ergänzt die alphabetische `rankedListHtml`-Wertliste
-der Einsätze je Ergebnis. Eigener Tipp und Gewinner stehen an der jeweiligen Zeile. `.card`
-übernimmt die wechselnden Flächen je Verschachtelungsebene; es gibt keine eigene Spielelisten-
-Geometrie oder abweichende Controlgröße.
-Wettaktionen verwenden ausschließlich ActionMenu und Standardbuttons. `competitionBettingHtml`
-liefert dieselben Controls an Match, Turnier und LAN-Punkte. Quotenanzeigen entfallen überall,
-einschließlich Auswahloptionen, Tippdetails und Hilfetexten. Die Turnierpräsentation erhält
-einen optionalen, vertrauenswürdigen Rendercallback für Controls; ohne diesen bleibt
+Wettaktionen stehen im Header der Matchkarten sowie im Header und an den Begegnungen eines
+Turniers. Sie verwenden Standardbuttons und ActionMenu: ein synchron verfügbares Angebot
+steht direkt unter „Wetten“, mehrere öffnen das Menü. Die asynchron erlaubte Punktefehlermeldung
+steht ausschließlich in Tippdetails und zählt nicht als unsichtbarer Menüeintrag.
+`competitionBettingHtml` liefert dieselben Controls; es gibt keine Quotenanzeigen.
+Ein benannter Tournament-Kontext aus der geschützten Punkte-API ordnet jede Spielrunde ihrem
+Turnier zu. Der gemeinsame Tippdialog zeigt „Sieger tippen“ beziehungsweise „Turniersieger tippen“,
+Turnier/Spiel, Runde und konkrete Gegner. Bei Turnieren bietet eine native Auswahl alle bereits
+angelegten eigenen Turniermärkte; „Speichern & weiter“ führt zum nächsten noch nicht getippten
+offenen Markt. Noch nicht gespeicherte Auswahlen bleiben beim Wechsel im Dialog erhalten.
+Vorbelegte eigene Tipps lassen sich ändern; geschlossene oder abgerechnete Märkte sind nur lesbar.
+Wettbenachrichtigungen mit einer alten Punkte-Rundenroute öffnen direkt diesen Kontextdialog,
+ohne eine Spieleliste auf der Punkteansicht einzublenden.
+Die Turnierpräsentation erhält einen optionalen Rendercallback für Controls; ohne diesen bleibt
 sie unverändert. Bracket-Höhe und Verbindungslinien bleiben erhalten, Wett- und Ergebnisaktionen
 teilen sich eine kompakte Seitenspalte. Liga-/Gruppenzeilen setzen auf schmalen Geräten die
 Aktionen gemeinsam darunter. Menüs dürfen nicht vom Turnierbaum abgeschnitten werden.
-Die zugehörigen Containermaße gehören `domains.css`; Controls selbst behalten ihre Eigentümer.
+Lange Turnier- und Teamnamen umbrechen im Dialogcontainer `.points-tip` ohne Änderung der
+gemeinsamen Controlgeometrie. Die zugehörigen Containermaße gehören `domains.css`; Controls selbst behalten ihre Eigentümer.
 
 Die schreibgeschützten Tippdetails nennen den eigenen gewählten Ausgang ausdrücklich neben
 Einsatz, Auszahlung und Netto. Die Meldeschaltfläche steht mit dem Standardabstand in einer

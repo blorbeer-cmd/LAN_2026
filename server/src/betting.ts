@@ -322,6 +322,28 @@ function ensureBettingMarkets(eventId?: string): BettingRound[] {
   }
   return created;
 }
+interface BetTournamentContext {
+  id: string;
+  name: string;
+  gameName: string;
+  round?: number;
+  slot?: number;
+  groupIndex?: number | null;
+  thirdPlace?: number;
+}
+
+function tournamentContext(round: BettingRound): BetTournamentContext | null {
+  if (round.source_type === 'draw') return null;
+  const query = round.source_type === 'tournament'
+    ? `SELECT t.id, t.name, g.name AS gameName FROM tournaments t JOIN games g ON g.id = t.game_id
+       WHERE t.id = ? AND t.group_id = ? AND t.event_id = ?`
+    : `SELECT t.id, t.name, g.name AS gameName, m.round, m.slot, m.group_index AS groupIndex,
+       m.is_third_place AS thirdPlace FROM tournament_matches m
+       JOIN tournaments t ON t.id = m.tournament_id JOIN games g ON g.id = t.game_id
+       WHERE m.id = ? AND t.group_id = ? AND t.event_id = ?`;
+  return db.prepare(query).get(round.source_id, round.group_id, round.event_id) as BetTournamentContext | undefined ?? null;
+}
+
 export function roundView(round: BettingRound, playerId: string) {
   const tips = tipsFor(round.id);
   const mine = tips.find((tip) => tip.player_id === playerId);
@@ -331,6 +353,7 @@ export function roundView(round: BettingRound, playerId: string) {
     eventId: round.event_id,
     sourceType: round.source_type,
     sourceId: round.source_id,
+    tournament: tournamentContext(round),
     title: round.title,
     status: round.status,
     payoutPolicy: round.payout_policy,
