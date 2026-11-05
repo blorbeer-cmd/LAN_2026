@@ -1,4 +1,4 @@
-import { competitionBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
+import { competitionBettingHtml, tournamentGamesBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
 // Tournament detail view (FR-33): automatically generated single-elimination
 // bracket ("Turnierbaum") or
 // round-robin league ("jeder gegen jeden", optionally Hin- und Rückspiele),
@@ -167,9 +167,7 @@ function renderDetail(container, ctx) {
     renderSingleFinal,
     renderRoundRobin,
     renderTournamentTeams,
-  } = createTournamentPresentation(getMyId(), {
-    bettingControls: (type, id) => competitionBettingHtml(type, id, ctx, { actionsOnly: true }),
-  });
+  } = createTournamentPresentation(getMyId());
   const boardContent =
     t.format === 'single_elimination'
       ? t.matches.filter((match) => !match.isBye).length === 1
@@ -200,6 +198,7 @@ function renderDetail(container, ctx) {
   const formatExplanation = `${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''}`;
   const activeLobbies = renderActiveLobbies(t);
   const outrightBetting = competitionBettingHtml('tournament', t.id, ctx, { actionsOnly: true });
+  const gamesBetting = tournamentGamesBettingHtml(t.id, ctx);
 
   container.innerHTML = `
     <div class="row-between page-title-row points-actions">
@@ -215,7 +214,7 @@ function renderDetail(container, ctx) {
       <span>${formatExplanation} · ${t.teams.length} Teams · ${participantCount} Spieler · ${decidedMatches}/${t.matches.length} entschieden</span>
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? (t.endedEarly ? 'Vorzeitig beendet' : 'Beendet') : 'Läuft'}</span>
     </div>
-    ${outrightBetting ? `<div class="row points-actions" aria-label="Turniersieger tippen"><strong>Turniersieger</strong>${outrightBetting}</div>` : ''}
+    ${outrightBetting || gamesBetting ? `<div class="row points-actions" aria-label="Turnierwetten">${outrightBetting ? `<div class="row points-actions" aria-label="Turniersieger tippen"><strong>Turniersieger</strong>${outrightBetting}</div>` : ''}${gamesBetting}</div>` : ''}
     <div class="grouped-page-sections tournament-board">
       ${renderChampion(t)}
       ${activeLobbies}

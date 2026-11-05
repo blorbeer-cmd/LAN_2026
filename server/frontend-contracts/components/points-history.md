@@ -104,8 +104,9 @@ ersetzt bestehende Daten nicht durch eine leere Fläche. Die gemeinsame Zustands
 Disclosures und Scrollposition. Die Browserprüfung hält die GET-Antwort nach einer echten
 Tippänderung gezielt zurück und prüft sowohl den ausstehenden als auch den fertigen Refresh.
 
-Wettaktionen stehen im Header der Matchkarten und an den einzelnen Turnierbegegnungen.
-Der Turniersiegertipp steht in der Turnieransicht unter Titel und Metadaten. Sie verwenden Standardbuttons und ActionMenu: ein synchron verfügbares Angebot
+Wettaktionen stehen im Header der Matchkarten. In der Turnieransicht stehen der Turniersiegertipp
+und ein direkter Einstieg „Turnierspiele tippen“ unter Titel und Metadaten. Im Turnierbaum sowie
+in Liga- und Gruppenzeilen gibt es keine Wettcontrols. Sie verwenden Standardbuttons und ActionMenu: ein synchron verfügbares Angebot
 steht direkt unter „Wetten“, mehrere öffnen das Menü. Die asynchron erlaubte Punktefehlermeldung
 steht ausschließlich in Tippdetails und zählt nicht als unsichtbarer Menüeintrag.
 `competitionBettingHtml` liefert dieselben Controls; es gibt keine Quotenanzeigen.
@@ -113,16 +114,20 @@ Ein benannter Tournament-Kontext aus der geschützten Punkte-API ordnet jede Spi
 Turnier zu. Der gemeinsame Tippdialog zeigt „Sieger tippen“ beziehungsweise „Turniersieger tippen“,
 Turnier/Spiel und Runde. Teamnamen stehen in der Auswahl und werden in der sichtbaren
 Kontextzeile nicht wiederholt; zugängliche Menünamen behalten ihren Begegnungskontext.
-Die Teamauswahl bei „Sieger tippen“ heißt „Sieger“. Bei Turnieren bietet eine native Auswahl alle bereits
-angelegten eigenen Turniermärkte; „Speichern & weiter“ führt zum nächsten noch nicht getippten
-offenen Markt. Noch nicht gespeicherte Auswahlen bleiben beim Wechsel im Dialog erhalten.
+Die Teamauswahl bei „Sieger tippen“ heißt „Sieger“. Bei Turnieren trennt das Modal die native
+Rundenauswahl (einschließlich Turniersieger, Gruppen und Platz 3) von der Spielauswahl. Die Spiele
+der gewählten Runde zeigen Begegnung, Tippstatus und einen vorhandenen eigenen Tipp. Nur
+bereits angelegte Märkte mit feststehenden Teams sind wählbar. „Speichern & weiter“ führt zum
+nächsten noch nicht getippten offenen Markt, bei Bedarf wieder zum Anfang der Auswahl.
+Entwürfe und die zuletzt gewählte Begegnung jeder Runde bleiben beim Wechsel erhalten.
+Berechtigte Mitspieler können die ausgewählte Spiel-Tippabgabe im Modal schließen oder
+wieder öffnen; Admins erreichen zusätzlich begründete Erstattung/Storno. Dieselben Regeln
+liefern die Match-Controls. Ein oder zwei Verwaltungsaktionen sind direkte Standardbuttons.
 Vorbelegte eigene Tipps lassen sich ändern; geschlossene oder abgerechnete Märkte sind nur lesbar.
 Wettbenachrichtigungen mit einer alten Punkte-Rundenroute öffnen direkt diesen Kontextdialog,
 ohne eine Spieleliste auf der Punkteansicht einzublenden.
-Die Turnierpräsentation erhält einen optionalen Rendercallback für Controls; ohne diesen bleibt
-sie unverändert. Bracket-Höhe und Verbindungslinien bleiben erhalten, Wett- und Ergebnisaktionen
-teilen sich eine kompakte Seitenspalte. Liga-/Gruppenzeilen setzen auf schmalen Geräten die
-Aktionen gemeinsam darunter. Menüs dürfen nicht vom Turnierbaum abgeschnitten werden.
+Die Turnierpräsentation rendert ausschließlich Teams, Ergebnisse und Ergebnisaktionen. Bracket-Höhe,
+Verbindungslinien und Ergebnisrechte bleiben erhalten; Wettcontrols verbreitern die Spiele nicht.
 Lange Turnier- und Teamnamen umbrechen im Dialogcontainer `.points-tip` ohne Änderung der
 gemeinsamen Controlgeometrie. Die zugehörigen Containermaße gehören `domains.css`; Controls selbst behalten ihre Eigentümer.
 

@@ -7,7 +7,7 @@ import { selectActiveLobbyMatches } from './tournamentLobbies.js';
 // Presentation functions share one immutable render-state snapshot. Keeping
 // bracket/league markup here leaves views/tournament.js responsible for data,
 // forms and actions without introducing a framework or another dependency.
-export function createTournamentPresentation(myPlayerId = null, { bettingControls = () => '' } = {}) {
+export function createTournamentPresentation(myPlayerId = null) {
   // ---------- detail: bracket ----------
 
   function bracketRoundLabel(round, totalRounds) {
@@ -151,10 +151,9 @@ export function createTournamentPresentation(myPlayerId = null, { bettingControl
       return `<div class="${cls}">${teamId ? teamContent(teamId) : '<span class="bracket-team-name">offen</span>'}${scoreReadout}${winMark}</div>`;
     };
 
-    const betting = bettingControls('tournament_match', m.id);
     return `<div class="bracket-match${decided ? '' : ' is-open'}">
       <div class="bracket-rows">${teamRow(m.teamAId, m.scoreA)}${teamRow(m.teamBId, m.scoreB)}</div>
-      ${betting ? `<div class="bracket-betting-actions">${betting}${resultActionHtml(m, t, 'tournament-fixture-action')}</div>` : resultActionHtml(m, t, 'bracket-side')}
+      ${resultActionHtml(m, t, 'bracket-side')}
     </div>`;
   }
 
@@ -257,14 +256,13 @@ export function createTournamentPresentation(myPlayerId = null, { bettingControl
     const nameA = teamLabel(teamsById, m.teamAId);
     const nameB = teamLabel(teamsById, m.teamBId);
     const teamHtml = (teamId, won, home) => `<span class="${nameCls(won)}${home ? ' is-home' : ''}">${teamLabel(teamsById, teamId)}</span>`;
-    const betting = bettingControls('tournament_match', m.id);
     const mine = isMyMatch(m, myTeamId);
     return `<div class="tournament-fixture${mine ? ' is-mine' : ''}" aria-label="${mine ? 'Dein Spiel: ' : ''}${nameA} gegen ${nameB}">
         ${mine ? '<span class="visually-hidden">Dein Spiel: </span>' : ''}
         ${teamHtml(m.teamAId, aWon, true)}
         ${center}
         ${teamHtml(m.teamBId, bWon, false)}
-        ${betting ? `<div class="tournament-fixture-actions">${betting}${resultActionHtml(m, t, 'tournament-fixture-action')}</div>` : resultActionHtml(m, t, 'tournament-fixture-action')}
+        ${resultActionHtml(m, t, 'tournament-fixture-action')}
       </div>`;
   }
 

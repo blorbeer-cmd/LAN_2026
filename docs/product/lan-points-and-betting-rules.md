@@ -210,8 +210,9 @@ Gesamtstand. Jede Kategorie zeigt die eigenen „Punkte“, den Rang und die „
 verwendet dieselben berechtigten Plätze wie die Gesamtwertung. Verläufe und Diagramme lassen
 sich aufklappen; die LAN-Punkteansicht enthält keine Spieleliste. Seltenere Informationen stehen in Details oder der bestehenden Hilfe.
 
-„Wetten“ steht im Header von Matchkarten und einzelnen Turnierspielen, auch bei geschlossener
-Spielkarte. Der Turniersiegertipp steht in der Turnieransicht unter Titel und Turnierinfos.
+„Wetten“ steht im Header von Matchkarten, auch bei geschlossener Spielkarte. In der
+Turnieransicht stehen Turniersiegertipp und „Turnierspiele tippen“ direkt unter Titel und
+Turnierinfos. Turnierbaum, Liga- und Gruppenzeilen enthalten keine Wettbuttons.
 Ein einzelnes verfügbares Angebot ist ein direkter Button, erst mehrere sind ein Dropdown.
 Punktefehler-Meldungen stehen in den Tippdetails; ihre asynchrone Freigabe erzeugt kein Menü
 mit nur einem sichtbaren Eintrag. Teilnahme und Adminrechte bestimmen weiterhin, ob neben
@@ -220,10 +221,13 @@ der Tippabgabe auch Schließen, Wiederöffnen oder Finanzkorrekturen angeboten w
 Der Tippdialog nennt „Sieger tippen“ oder „Turniersieger tippen“ und zeigt kurze Angaben zu
 Spiel, Turnier und Runde. Die Teamnamen stehen in der Auswahl und werden in der Kontextzeile
 nicht wiederholt. Die Teamauswahl bei „Sieger tippen“ trägt die Beschriftung „Sieger“.
-Bei Turnieren lassen sich Turniersieger und bereits angelegte
-Spiele im selben Dialog auswählen. Ungespeicherte Auswahlen bleiben beim Wechsel erhalten;
-„Speichern & weiter“ führt zum nächsten noch offenen, noch nicht getippten Markt. Bereits
-abgegebene Tipps bleiben änderbar, solange der jeweilige Markt offen ist; abgeschlossene Märkte
+Im Turniermodal wählt man zuerst Runde beziehungsweise Gruppe und dann ein Spiel mit
+feststehenden Teams. Turniersieger und Spiel um Platz 3 sind eigene Einträge. Spielauswahl
+und Tippstatus nennen auch vorhandene eigene Tipps. Entwürfe und das zuletzt gewählte Spiel
+je Runde bleiben erhalten. „Speichern & weiter“ führt zum nächsten noch offenen, noch nicht
+getippten Markt und berücksichtigt auch frühere Runden der Auswahl. Schließen, Wiederöffnen
+und begründete Erstattung/Storno des gewählten Spiels bleiben entsprechend der bisherigen
+Mitspieler-/Adminrechte im Modal erreichbar. Bereits abgegebene Tipps bleiben änderbar, solange der jeweilige Markt offen ist; abgeschlossene Märkte
 zeigen die eigenen Details. Quoten werden nirgends angezeigt. Einsätze und Regeln bleiben über
 den Dialog zugänglich. Neue Wettmenüs beginnen geschlossen und öffnen die Spielkarte nicht.
 Die geschützte Punkte-API liefert dafür den Turnierbezug einschließlich Spiel/Runde; es werden

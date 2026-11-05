@@ -46,7 +46,7 @@ Eintragsgröße erzeugen.
 | Standardtrigger | `summary.btn.btn-sm` | umgesetzt | sichtbarer Text „Aktion“ plus Chevron |
 | Standardpanel | `.action-menu-panel` | umgesetzt | vertikale Liste sekundärer/destruktiver Buttons |
 | Eintrag mit Zusatzcontrol | `.action-menu-row` | umgesetzt | bestehende Zeile, zum Beispiel Aktion plus Infohilfe |
-| Schwebendes Wettmenü | `floating: true`, `.action-menu-panel[popover]` | umgesetzt | natives manuelles Popover hält Wettoptionen über scrollenden Turnierbäumen und benachbarten Spielen erreichbar |
+| Schwebendes Wettmenü | `floating: true`, `.action-menu-panel[popover]` | umgesetzt | natives manuelles Popover hält Wettoptionen über scrollenden Karten und benachbarten Inhalten erreichbar |
 | Ohne Aktionen | `actionMenuHtml([], label)` | umgesetzt | rendert kein leeres Menü |
 | Direkte Einträge | `actionMenuHtml(actions, label, { inlineMax })` | umgesetzt | bis `inlineMax` Einträge (Standard 1) stehen als normale Buttons im Kopf, ohne Trigger |
 | Benannter Trigger | `actionMenuHtml(actions, label, { summary })` | umgesetzt | bündelt Einträge einer einzigen Aktionsart unter ihrem Namen, etwa „Kalender“ (Google, Outlook, Download) oder „Absagen“ (Absagen, Mit Ausrede absagen) auf Eventkarten |

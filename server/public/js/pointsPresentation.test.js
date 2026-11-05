@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pointTimeline, pointsChartHtml, journalSourceState } from './pointsPresentation.js';
+import { pointTimeline, pointsChartHtml, journalSourceState, tournamentTipGroups } from './pointsPresentation.js';
 import { parseAppHash, appHash } from './appRoute.js';
 import { feedLinkTarget, feedLinkView } from './pushFeed.js';
 import { categoryPointsHtml, pointsHistoryHtml, adminCategoryJournalHtml, categoryEntryFactsHtml } from './pointsCategories.js';
@@ -100,4 +100,18 @@ test('betting notifications retain their round deep link on reload and navigatio
   const url = `/?eventId=lan-42${hash}`;
   assert.equal(feedLinkView(url), 'points');
   assert.deepEqual(feedLinkTarget(url), { type: 'betting-round', id: route.id });
+});
+
+test('tournament tip selection separates equal round numbers in groups, knockout and third place', () => {
+  const rows = [
+    { id: 'champion', sourceType: 'tournament' },
+    ...[
+      ['a1', 0, 1, 0], ['a2', 0, 1, 0], ['b1', 1, 1, 0],
+      ['ko', null, 1, 0], ['third', null, 1, 1], ['final', null, 2, 0],
+    ].map(([id, groupIndex, round, thirdPlace]) => ({ id, sourceType: 'tournament_match', tournament: { groupIndex, round, thirdPlace } })),
+  ];
+  assert.deepEqual(tournamentTipGroups(rows).map((group) => [group.label, group.rounds.map((row) => row.id)]), [
+    ['Turniersieger', ['champion']], ['Gruppe 1 · Runde 1', ['a1', 'a2']], ['Gruppe 2 · Runde 1', ['b1']],
+    ['Runde 1', ['ko']], ['Spiel um Platz 3', ['third']], ['Runde 2', ['final']],
+  ]);
 });

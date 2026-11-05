@@ -62,3 +62,17 @@ export function pointsChartHtml(entries, { label: chartLabel = 'Punkteverlauf' }
       <div class="row-between"><span>${escapeHtml(new Date(start).toLocaleString('de-DE'))}</span><span>${escapeHtml(new Date(timeline.at(-1).time).toLocaleString('de-DE'))}</span></div></figcaption>
   </figure>`;
 }
+
+// Group stages and knockout rounds can share the same round number. Keep them
+// distinct, including the third-place match beside its final.
+export function tournamentTipGroups(rounds) {
+  const groups = new Map();
+  for (const round of rounds) {
+    const t = round.tournament;
+    const label = round.sourceType === 'tournament' ? 'Turniersieger' : t?.thirdPlace ? 'Spiel um Platz 3'
+      : `${t?.groupIndex != null ? `Gruppe ${t.groupIndex + 1} · ` : ''}Runde ${t?.round ?? 1}`;
+    if (!groups.has(label)) groups.set(label, { label, rounds: [] });
+    groups.get(label).rounds.push(round);
+  }
+  return [...groups.values()];
+}

@@ -173,9 +173,11 @@ Journal, feste Startvergabe, Marktstorno und Kategorie-Korrekturen.
 **Umgesetzt:** Vorläufiger Topf und Einsätze je Ausgang sind bereits vor Tippschluss sichtbar.
 Auf Nutzerentscheidung entfallen sämtliche Quotenanzeigen, auch in Tippdialogen, Match- und
 Turnieransichten. LAN-Punkte zeigen keine Spieleliste. Wettaktionen stehen im Header von
-Matchkarten und einzelnen Turnierspielen; der Turniersiegertipp steht unter den Turnierinfos.
+Matchkarten. In der Turnieransicht stehen Turniersieger- und Spieltipps unter den Turnierinfos;
+der Turnierbaum und die einzelnen Spielzeilen enthalten keine Wettbuttons.
 Einzeleinträge sind direkte Buttons. Kontextbezogene Tippdialoge
-bündeln Turniersieger und Spiele mit Auswahl und „Speichern & weiter“. Das Match-Filtermenü
+bündeln Turniersieger und Spiele mit getrennter Runden-/Gruppen- und Spielauswahl sowie
+„Speichern & weiter“. Verwaltungsaktionen des gewählten Spiels stehen im Modal. Das Match-Filtermenü
 bietet Art, eigene Beteiligung und Tippstatus mit denselben Abschnittsüberschriften und
 Filterchips wie der Spielekatalog. Ein gemeinsamer Punkteverlauf bietet die Konten Orga, Spielen,
 Wetten und

@@ -3243,17 +3243,9 @@ input.food-order-price-input {
 .points-betting-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
 .points-betting-controls { justify-content: space-between; font-size: var(--font-size-sm); }
 .points-betting-controls > span { min-width: 0; overflow-wrap: anywhere; }
-.bracket-betting-actions { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: var(--space-1); padding-inline: var(--space-1); border-left: 1px solid var(--border); }
-.bracket-match:has(.action-menu[open]), .tournament-fixture:has(.action-menu[open]) { z-index: 2; position: relative; }
-.tournament-fixture:has(.tournament-fixture-actions) { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; }
-.tournament-fixture-actions { display: flex; align-items: center; gap: var(--space-2); }
 #view-container[data-view='points'] .collapsible-section-header { flex-wrap: wrap; }
 #view-container[data-view='points'] .collapsible-section-header > :nth-child(2) { flex-basis: auto; overflow-wrap: anywhere; }
 #view-container[data-view='points'] .collapsible-section-header > .muted { font-size: var(--font-size-sm); }
-@media (max-width: 479px) { /* --bp-sm */
-  .tournament-fixture:has(.tournament-fixture-actions) { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); padding-block: var(--space-2); }
-  .tournament-fixture-actions { grid-column: 1 / -1; justify-content: flex-end; }
-}
 .points-journal { margin: 0; padding: 0; list-style: none; }
 .points-journal li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-3); padding-block: var(--space-3); border-bottom: 1px solid var(--border); }
 .points-journal li[hidden] { display: none; }
