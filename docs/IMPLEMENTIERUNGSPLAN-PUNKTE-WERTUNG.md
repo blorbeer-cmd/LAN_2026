@@ -173,7 +173,8 @@ Journal, feste Startvergabe, Marktstorno und Kategorie-Korrekturen.
 **Umgesetzt:** Vorläufiger Topf und Einsätze je Ausgang sind bereits vor Tippschluss sichtbar.
 Auf Nutzerentscheidung entfallen sämtliche Quotenanzeigen, auch in Tippdialogen, Match- und
 Turnieransichten. LAN-Punkte zeigen keine Spieleliste. Wettaktionen stehen im Header von
-Matchkarten. In der Turnieransicht stehen Turniersieger- und Spieltipps unter den Turnierinfos;
+Matchkarten. In der Turnieransicht steht einmal „Wetten“ unter den Turnierinfos;
+Turniersieger und Spieltipps werden im gemeinsamen Modal ausgewählt;
 der Turnierbaum und die einzelnen Spielzeilen enthalten keine Wettbuttons.
 Einzeleinträge sind direkte Buttons. Kontextbezogene Tippdialoge
 bündeln Turniersieger und Spiele mit getrennter Runden-/Gruppen- und Spielauswahl sowie

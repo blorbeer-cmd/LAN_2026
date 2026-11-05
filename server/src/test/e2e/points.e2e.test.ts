@@ -500,11 +500,17 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   for (const [index, session] of [alice.cookie, bob.cookie].entries())
     await api(`/api/points/rounds/${market.id}/tip`, 'PUT', { outcomeId: market.outcomes[index].id, stake: 5 }, session);
   await admin.evaluate((id) => { window.location.hash = `#tournaments/${id}`; }, cup.id);
-  const gameTips = admin.locator('[data-tournament-game-tips]');
-  await gameTips.waitFor();
+  const tournamentBets = admin.locator('[aria-label="Turnierwetten"] [data-betting-controls]');
+  await tournamentBets.waitFor();
+  assert.equal(await tournamentBets.count(), 1, 'one shared tournament betting entry');
+  assert.equal(await admin.getByRole('button', { name: 'Turnierspiele tippen', exact: true }).count(), 0, 'no duplicate game-tip button');
+  const openTournamentTips = async () => {
+    await tournamentBets.locator('summary').click();
+    await tournamentBets.locator('[data-tip-round]').click();
+  };
   assert.equal(await admin.locator('.tournament-board [data-betting-controls], .tournament-board [data-tip-round]').count(), 0, 'no betting controls in the bracket');
-  assert.equal(await admin.locator('.page-title-row [data-betting-controls]').count(), 0, 'champion betting stays below the title and tournament metadata');
-  await admin.locator('[aria-label="Turniersieger tippen"] [data-betting-controls]').waitFor();
+  assert.equal(await admin.locator('.page-title-row [data-betting-controls]').count(), 0, 'tournament betting stays below the title and metadata');
+  assert.equal(await tournamentBets.evaluate((element) => element.parentElement?.previousElementSibling?.classList.contains('tournament-detail-meta')), true, 'shared entry stays below the tournament metadata');
   for (const width of [320, 390, 1440]) {
     await admin.setViewportSize({ width, height: 900 });
     assert.ok(await admin.evaluate(() => {
@@ -514,7 +520,9 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     }), `long tournament titles keep the content pane and header actions in bounds at ${width}px`);
   }
   assert.doesNotMatch(await admin.locator('#view-container').innerText(), /Quoten?/i, 'tournament teams and fixtures show no odds');
-  await gameTips.click();
+  await openTournamentTips();
+  await admin.getByRole('dialog', { name: 'Turniersieger tippen', exact: true }).waitFor();
+  await admin.locator('[data-tip-group]').selectOption('Runde 1');
   await admin.getByRole('dialog', { name: 'Sieger tippen', exact: true }).waitFor();
   assert.doesNotMatch(await admin.getByRole('dialog').innerText(), /Quoten?/i, 'tournament tip options show no odds');
   assert.equal(await admin.getByRole('dialog').locator('textarea').count(), 0);
@@ -549,7 +557,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await api(`/api/tournaments/${cup.id}/matches/${fixture.id}/result`, 'POST', { winnerTeamId: fixture.teamAId });
   assert.equal((await api(`/api/points?eventId=${eventId}`)).rounds.find((row: any) => row.id === market.id).status, 'settled',
     'a tournament result settles accepted tips even without manual closing');
-  await admin.locator('[data-tournament-game-tips]').click();
+  await openTournamentTips();
   await tournamentDialog.locator('[data-tip-group] option[value="Runde 2"]').waitFor({ state: 'attached' });
   await tournamentDialog.locator('[data-tip-group]').selectOption('Runde 2');
   assert.equal(await tournamentDialog.locator('[data-tip-select] option').count(), 1, 'newly playable final appears in its own round');

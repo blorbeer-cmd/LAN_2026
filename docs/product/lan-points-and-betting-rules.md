@@ -211,8 +211,9 @@ verwendet dieselben berechtigten Plätze wie die Gesamtwertung. Verläufe und Di
 sich aufklappen; die LAN-Punkteansicht enthält keine Spieleliste. Seltenere Informationen stehen in Details oder der bestehenden Hilfe.
 
 „Wetten“ steht im Header von Matchkarten, auch bei geschlossener Spielkarte. In der
-Turnieransicht stehen Turniersiegertipp und „Turnierspiele tippen“ direkt unter Titel und
-Turnierinfos. Turnierbaum, Liga- und Gruppenzeilen enthalten keine Wettbuttons.
+Turnieransicht steht genau einmal „Wetten“ direkt unter Titel und Turnierinfos. Turniersieger
+und einzelne Spiele wählt man im gemeinsamen Modal aus; im Match-Bereich führt die
+Turnierkachel in dasselbe Modal. Turnierbaum, Liga- und Gruppenzeilen enthalten keine Wettbuttons.
 Ein einzelnes verfügbares Angebot ist ein direkter Button, erst mehrere sind ein Dropdown.
 Punktefehler-Meldungen stehen in den Tippdetails; ihre asynchrone Freigabe erzeugt kein Menü
 mit nur einem sichtbaren Eintrag. Teilnahme und Adminrechte bestimmen weiterhin, ob neben

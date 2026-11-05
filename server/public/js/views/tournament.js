@@ -1,4 +1,4 @@
-import { competitionBettingHtml, tournamentGamesBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
+import { competitionBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
 // Tournament detail view (FR-33): automatically generated single-elimination
 // bracket ("Turnierbaum") or
 // round-robin league ("jeder gegen jeden", optionally Hin- und Rückspiele),
@@ -197,8 +197,7 @@ function renderDetail(container, ctx) {
     .join(' · ');
   const formatExplanation = `${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''}`;
   const activeLobbies = renderActiveLobbies(t);
-  const outrightBetting = competitionBettingHtml('tournament', t.id, ctx, { actionsOnly: true });
-  const gamesBetting = tournamentGamesBettingHtml(t.id, ctx);
+  const betting = competitionBettingHtml('tournament', t.id, ctx, { actionsOnly: true, tournamentId: t.id });
 
   container.innerHTML = `
     <div class="row-between page-title-row points-actions">
@@ -214,7 +213,7 @@ function renderDetail(container, ctx) {
       <span>${formatExplanation} · ${t.teams.length} Teams · ${participantCount} Spieler · ${decidedMatches}/${t.matches.length} entschieden</span>
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? (t.endedEarly ? 'Vorzeitig beendet' : 'Beendet') : 'Läuft'}</span>
     </div>
-    ${outrightBetting || gamesBetting ? `<div class="row points-actions" aria-label="Turnierwetten">${outrightBetting ? `<div class="row points-actions" aria-label="Turniersieger tippen"><strong>Turniersieger</strong>${outrightBetting}</div>` : ''}${gamesBetting}</div>` : ''}
+    ${betting ? `<div class="row points-actions" aria-label="Turnierwetten">${betting}</div>` : ''}
     <div class="grouped-page-sections tournament-board">
       ${renderChampion(t)}
       ${activeLobbies}

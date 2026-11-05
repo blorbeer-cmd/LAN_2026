@@ -219,15 +219,6 @@ export function competitionBettingHtml(type, id, ctx, options = {}) {
   return round ? bettingControlsHtml(round, options) : '';
 }
 
-export function tournamentGamesBettingHtml(tournamentId, ctx) {
-  ensurePoints(ctx);
-  if (!state.activeEvent?.pointsEnabled) return '';
-  const data = currentData();
-  const rounds = (data?.rounds ?? []).filter((round) => round.sourceType === 'tournament_match' && round.tournament?.id === tournamentId);
-  const round = rounds.find((row) => row.status === 'open' && !row.mine) ?? rounds.find((row) => row.status === 'open') ?? rounds[0];
-  return round ? `<button type="button" class="btn btn-sm" data-tip-round="${e(round.id)}" data-tournament-game-tips>${!data.settings.closed_at && rounds.some((row) => row.status === 'open') ? 'Turnierspiele tippen' : 'Spieltipps ansehen'}</button>` : '';
-}
-
 function tipFixtureLabel(round) {
   const t = round.tournament;
   if (round.sourceType === 'tournament') return 'Turniersieger';

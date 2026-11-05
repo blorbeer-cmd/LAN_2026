@@ -104,8 +104,9 @@ ersetzt bestehende Daten nicht durch eine leere Fläche. Die gemeinsame Zustands
 Disclosures und Scrollposition. Die Browserprüfung hält die GET-Antwort nach einer echten
 Tippänderung gezielt zurück und prüft sowohl den ausstehenden als auch den fertigen Refresh.
 
-Wettaktionen stehen im Header der Matchkarten. In der Turnieransicht stehen der Turniersiegertipp
-und ein direkter Einstieg „Turnierspiele tippen“ unter Titel und Metadaten. Im Turnierbaum sowie
+Wettaktionen stehen im Header der Matchkarten. In der Turnieransicht steht genau ein gemeinsamer
+Einstieg „Wetten“ unter Titel und Metadaten. Die Auswahl zwischen Turniersieger und einzelnen
+Spielen erfolgt im selben Modal wie an Turnierkacheln im Match-Bereich. Im Turnierbaum sowie
 in Liga- und Gruppenzeilen gibt es keine Wettcontrols. Sie verwenden Standardbuttons und ActionMenu: ein synchron verfügbares Angebot
 steht direkt unter „Wetten“, mehrere öffnen das Menü. Die asynchron erlaubte Punktefehlermeldung
 steht ausschließlich in Tippdetails und zählt nicht als unsichtbarer Menüeintrag.

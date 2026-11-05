@@ -324,9 +324,9 @@ Das alte Budget und einseitige Wallet-Entzüge sind als Finanzpfade abgeschaltet
 Die Journalbasis, Wallet-Abrechnung, Kategorie-Rohwerte und Admin-Korrekturen sind angebunden.
 Paket 5b bietet eine formatabhängige, regulär gewinnende Remis-Auswahl. Die Oberfläche
 verzichtet vollständig auf Quotenanzeigen und eine Spieleliste bei den LAN-Punkten.
-Matchheader bieten Wettaktionen auch bei geschlossener Karte. Turniersiegertipp und
-„Turnierspiele tippen“ stehen unter Titel und Metadaten des Turniers; die Spiele selbst
-enthalten keine Wettcontrols. Ein einzelnes
+Matchheader bieten Wettaktionen auch bei geschlossener Karte. In der Turnieransicht steht
+ein gemeinsamer Einstieg „Wetten“ unter Titel und Metadaten; Turniersieger und Spieltipps
+werden im Modal ausgewählt. Die Spiele selbst enthalten keine Wettcontrols. Ein einzelnes
 Angebot steht direkt als Button, mehrere als Menü. Tippdialoge nennen Turnier/Spiel und Runde;
 Teams stehen in der Auswahl und werden in der Kontextzeile nicht wiederholt. Turniersieger und
 bereits angelegte Spiele sind im selben Dialog über getrennte Runden-/Gruppen- und
