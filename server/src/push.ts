@@ -99,6 +99,7 @@ export const EVENT_POLL_OPEN_TOPIC_PREFIX = 'event-poll-open:';
 
 export function isDeduplicatedPushTopic(topicKey: string): boolean {
   return (
+    topicKey.startsWith('betting-open:') ||
     topicKey.startsWith(FOOD_ORDER_PAYMENT_REMINDER_TOPIC_PREFIX) ||
     topicKey.startsWith(EVENT_POLL_REMINDER_TOPIC_PREFIX) ||
     topicKey.startsWith(EVENT_REMINDER_TOPIC_PREFIX) ||
@@ -171,6 +172,9 @@ export interface PushDeliveryResult {
 }
 
 const ACTIVE_PUSH_SQL = 'resolved_at IS NULL AND (expires_at IS NULL OR expires_at > ?)';
+const VISIBLE_POINTS_PUSH_SQL = `(COALESCE(notification_type,'') != 'betting-open' OR EXISTS (
+  SELECT 1 FROM points_settings s JOIN events e ON e.id = s.event_id
+  WHERE s.event_id = push_log.event_id AND s.visible = 1 AND e.event_type_key = 'lan'))`;
 
 // Only 'all' (group-wide) entries — the Kiosk is the sole consumer, a
 // shared screen with no identity of its own, so a 'direct' one (e.g. "dein
@@ -182,7 +186,7 @@ export function getLastPushLogEntry(groupId: string, eventId: string): PushLogEn
               notification_type AS notificationType, target_id AS targetId, title, body, url, audience,
               expires_at AS expiresAt, created_at AS createdAt
        FROM push_log
-       WHERE group_id = ? AND event_id IS ? AND audience = 'all' AND ${ACTIVE_PUSH_SQL}
+       WHERE group_id = ? AND event_id IS ? AND audience = 'all' AND ${ACTIVE_PUSH_SQL} AND ${VISIBLE_POINTS_PUSH_SQL}
        ORDER BY created_at DESC, rowid DESC LIMIT 1`
     )
     .get(groupId, eventId, Date.now()) as PushLogEntry | undefined;
@@ -204,7 +208,7 @@ export function getCurrentPushLogEntryFor(groupId: string, eventId: string, play
               player_ids AS playerIds, expires_at AS expiresAt,
               created_at AS createdAt
        FROM push_log
-       WHERE group_id = ? AND event_id IS ? AND ${ACTIVE_PUSH_SQL}
+       WHERE group_id = ? AND event_id IS ? AND ${ACTIVE_PUSH_SQL} AND ${VISIBLE_POINTS_PUSH_SQL}
          AND NOT EXISTS (
            SELECT 1 FROM push_log_seen
            WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
@@ -363,7 +367,7 @@ export function getPushLogEntriesFor(
                 WHERE push_log_hidden.push_id = push_log.id AND push_log_hidden.player_id = ?
               ) AS hidden
        FROM push_log
-       WHERE group_id = ? AND event_id IS ?
+       WHERE group_id = ? AND event_id IS ? AND ${VISIBLE_POINTS_PUSH_SQL}
        ORDER BY created_at DESC`
     )
     .all(playerId, playerId, groupId, eventId ?? BASE_EVENT_ID) as Array<
@@ -399,7 +403,7 @@ export function getPushLogEntriesForPlayer(
                 WHERE push_log_hidden.push_id = push_log.id AND push_log_hidden.player_id = ?
               ) AS hidden
        FROM push_log
-       WHERE event_id IS NOT NULL
+       WHERE event_id IS NOT NULL AND ${VISIBLE_POINTS_PUSH_SQL}
        ORDER BY created_at DESC`,
     )
     .all(playerId, playerId) as Array<

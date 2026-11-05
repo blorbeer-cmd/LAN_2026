@@ -32,6 +32,7 @@ test('event context keeps the personal workspace separate from invitations', () 
     {
       events: [base, lan],
       managedEvents: null,
+      pointsVisibilityEvents: [],
       activeEvent: lan,
       availableEvents: [base, lan],
       plannedEvents: [],

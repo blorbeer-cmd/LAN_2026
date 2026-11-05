@@ -1,14 +1,37 @@
 # Produktregeln: Wettbewerb und Spiele
 
+Die optionale neue LAN-Wertung ist unter [LAN-Punkte und Sieger-Tipps](lan-points-and-betting-rules.md)
+beschrieben. Eine ausdrücklich gewählte konfigurierte LAN ohne Spielfilter verwendet bis zur Umstellung
+noch deren alte Orga-/Wett-Kontosumme. Spielfilter und eventübergreifende Auswertungen verwenden
+stets Spielpunkte. Die neue Kategorie-/Gesamtwertung folgt im
+[Restplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md); sportliche Turniertabellen bleiben für den
+Turnierverlauf erhalten.
+
 Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spielen, Vote und Turnieren. Gemeinsame Control-, Modal- und Auswahlverträge bleiben unter [Frontend-Verträgen](../../server/frontend-contracts/README.md).
 
 ## Ranglistenpunkte
 
-- Pro Spieler zählt ein Sieg insgesamt 3 Punkte, eine Niederlage 1 Punkt und ein ausdrücklich
-  eingetragenes Unentschieden 2 Punkte. Spiele ohne Ergebnis zählen weder als
-  gespieltes Match noch für Punkte. Ein fehlender Sieger allein gilt nicht als Unentschieden.
+Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
+[Respawn – Punkte und Wertung](../KONZEPT-PUNKTE-WERTUNG.md).
+
+- Pro Spieler zählt Platz 1 insgesamt 4 Punkte, Platz 2 zählt 3 und Platz 3 zählt 2 Punkte.
+  Der letzte Platz und alle Plätze ab dem vierten zählen immer 1 Punkt. Bei zwei Teams ergibt
+  das 4/1, bei drei Teams 4/3/1, bei vier Teams 4/3/2/1 und bei acht Teams 4/3/2/1/1/1/1/1.
+- Gleichplatzierte erhalten den abgerundeten Durchschnitt der Punkte ihrer belegten Plätze:
+  ein 1v1-Unentschieden ergibt 2/2; zwei geteilte erste Plätze bei vier Teams ergeben je 3 Punkte.
+  Vollständige Platzierungen (`teams[].rank`) bestimmen die Reihenfolge und haben Vorrang vor
+  einem zusätzlich gespeicherten Sieger. Sie zählen auch ohne einzelnen Sieger als Ergebnis.
+  Ein geteilter erster Platz zählt nicht als einzelner Sieg in der Siege-Statistik.
+- Ist nur ein Sieger bekannt, erhält er 4 und jedes andere Team 1 Punkt. Ohne vollständige
+  Platzierung gilt ein ausdrücklich eingetragenes Unentschieden für alle Teams; sie teilen
+  die Punkte aller belegten Plätze. Ein fehlender Sieger allein gilt nicht als Unentschieden.
+  Unvollständige Platzierungen ohne Sieger oder Remis und reine Spielstände ohne Platzierung
+  beziehungsweise Sieger zählen nicht als Ergebnis; aus Zahlenständen wird keine Richtung abgeleitet.
+  Spiele ohne Ergebnis zählen weder als gespieltes Match noch für Punkte.
 - Jedes Teammitglied erhält die vollen Punkte. Spielstand, Teamgröße und Spieldauer verändern
-  die Wertung nicht. Sortiert wird nach Punkten, danach nach Siegen.
+  die Wertung nicht. Alle dokumentierten Ergebnisse zählen, auch wiederholte Begegnungen;
+  es gibt keine Freigaben oder Spielkontingente. Die bestehende Spielrangliste sortiert nach Punkten,
+  danach nach Siegen. Die geplanten Kategorie-Platzpunkte und deren geteilte Ränge folgen separat.
 - Regulär abgeschlossene Turniere geben zusätzlich pro Teammitglied 5 Punkte für Platz 1,
   3 für Platz 2 und 1 für Platz 3. Diese Boni erhöhen weder Siege noch Matchanzahl.
   In K.-o.-Turnieren gelten die durch Finale und Spiel um Platz 3 entschiedenen Plätze;
@@ -17,10 +40,22 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
 - Laufende oder vorzeitig beendete Turniere geben keine Platzierungsboni. Eine Korrektur
   berechnet die Punkte neu; wird das Turnier wieder geöffnet, entfallen seine Boni bis zum
   nächsten regulären Abschluss. Löschen entfernt die Boni, lässt vorhandene Matchpunkte bestehen.
-- Rangliste, Hall of Fame und Export verwenden dieselbe Berechnung. Spiel- und Eventfilter
+- Die Spielauswertungen von Rangliste, Hall of Fame und Export verwenden dieselbe Berechnung.
+  Bis zum Umstellungspaket verwenden Hall of Fame und Event-Export für konfigurierte LANs sowie
+  deren ausdrücklich gewählte Rangliste ohne Spielfilter noch das alte Konto. Spiel- und Eventfilter
   gelten auch für die Boni. Bereits gespeicherte Ergebnisse werden nach diesen Regeln neu
-  berechnet. Ältere freie Matches ohne Sieger und ohne ausdrückliches Remis-Kennzeichen werden
-  als ohne Ergebnis behandelt; ältere Turnier-Remis bleiben anhand ihres Turnierergebnisses erkennbar.
+  berechnet; historische Punktestände können sich dadurch ändern. Ältere freie Matches ohne
+  vollständige Platzierung, Sieger oder ausdrückliches Remis-Kennzeichen werden als ohne Ergebnis
+  behandelt; ältere Turnier-Remis bleiben anhand ihres Turnierergebnisses erkennbar.
+- Gültige Spielergebnisse und Turnierplatzierungen werden automatisch im
+  [Kategorie-Journal](points-journal.md) verbucht; Änderungen und Löschungen berechnen die
+  Ansprüche neu. Vorhandene Ergebnisse werden beim Start nachgetragen, Wiederholungen zahlen
+  nicht erneut aus. Organisatoren erhalten im Orga-Konto 1 Punkt pro gültigem Match und
+  zusätzlich 5 für den regulären Turnierabschluss. Die gespeicherte Erstellerzuordnung verhindert,
+  dass bloße Ergebniseintrager oder Freilose belohnt werden; Turnierspiele werden nicht zusätzlich
+  als Auslosung belohnt. Weitere Orga-/Wett-Anbindungen, Kategorieansichten, Gesamtwertung aus
+  Platzpunkten und Meldefunktion folgen. Der Kiosk-Ergebnisfeed ist bereits umgesetzt.
+  Die Ligatabelle innerhalb eines Turniers behält ihre eigene 3/1/0-Regel für Sieg/Remis/Niederlage.
 
 ## Auswahlentscheidungen
 
@@ -220,6 +255,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Match, Spiele
   filters, „Bock offen“ and „Skill offen“, narrow the list to games the current identity hasn't
   rated yet on that facet; both active at once is an AND, unlike the genre chips'
   OR-within-one-facet semantics.
+  Vollständige Einschätzungen des aktuellen, nicht leeren Katalogs geben bestätigten Teilnehmern
+  automatisch [einmalig 5 Orga-Punkte je Event](points-journal.md#dauerhafter-skill-bonus).
+  Vorschläge und Arcade-Spiele sind ausgenommen; 0 zählt als gültige Einschätzung. Der Bonus
+  bleibt bei späteren Änderungen oder Löschungen erhalten. Die Höhe des Skills erhöht den Bonus nicht.
   The first-login tour completes without ratings. It recommends entering Skill before the LAN
   for balanced teams; Bock stays optional and can be adopted from Votes. The retained optional
   rating mode uses the same catalog rows. Among its first ten games, only games missing the

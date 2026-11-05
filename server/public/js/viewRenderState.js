@@ -30,6 +30,11 @@ function attributeSelector(element) {
   if (element.getAttribute('aria-label')) {
     return `${element.localName}[aria-label="${cssEscape(element.getAttribute('aria-label'))}"]`;
   }
+  // Unkeyed section disclosures must retain their component identity. A bare
+  // `details` selector can match a newly inserted action menu after a redraw.
+  if (element.localName === 'details' && element.classList.length) {
+    return `details${[...element.classList].map((name) => `.${cssEscape(name)}`).join('')}`;
+  }
   const type = element.getAttribute('type');
   return `${element.localName}${type ? `[type="${cssEscape(type)}"]` : ''}`;
 }

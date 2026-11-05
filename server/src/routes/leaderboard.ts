@@ -1,6 +1,7 @@
 // Aggregated leaderboard (FR-23, FR-24): overall standings, or filtered to one
 // game via ?gameId=.
 
+import { pointsSettings, pointStandings, pointsAreVisible } from '../points';
 import { Router } from 'express';
 import { db } from '../db';
 import { readStandings } from '../leaderboardData';
@@ -24,7 +25,18 @@ leaderboardRouter.get('/', (req, res) => {
   const scope = resolveAnalyticsEvents(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   const hiddenPlayerIds = includesTestPlayers(req) ? new Set<string>() : testPlayerIds();
-  const standings = readStandings(req.group!.id, scope.eventIds, filterGameId, hiddenPlayerIds);
+  const visibleEvents = scope.eventIds.filter((eventId) =>
+    pointsSettings(eventId)?.configured_at == null || pointsAreVisible(eventId));
+  // Category place points belong to one LAN. Game filters and cross-event
+  // analytics continue comparing game points, never mixing these units.
+  const event = scope.explicitEventId;
+  const settings = event ? pointsSettings(event) : undefined;
+  const lanAccount = !filterGameId && event && settings?.group_id === req.group!.id &&
+    (settings.configured_at != null || pointsAreVisible(event));
+  const combined = lanAccount
+    ? (pointsAreVisible(event) ? pointStandings(event) : [])
+    : readStandings(req.group!.id, visibleEvents, filterGameId, hiddenPlayerIds);
+  const standings = combined.sort((a, b) => b.points - a.points || b.wins - a.wins);
 
   const playerIds = standings.map((s) => s.playerId);
   let players: PlayerRow[] = [];

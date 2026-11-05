@@ -110,8 +110,10 @@ Alphabet.
   (Wertliste), Spielzeit pro Spiel, Spielzeit pro Event und Längsten Sessions (Ranglisten).
 - Mit Führungselement: Karte „Rangliste“ auf Home (`public/js/views/home.js`), Top 6 mit Avatar.
 - Geteilte Plätze: die Allzeit-Zählungen in Hall of Fame (`public/js/views/hallOfFame.js`) und
-  die Zähllisten in Statistiken (`public/js/views/analytics.js`). Punkte-Ranglisten (Rangliste,
-  „Nach Event“, Home) nummerieren nach Position in der Reihenfolge des Servers.
+  die Zähllisten in Statistiken (`public/js/views/analytics.js`). Aktivierte LAN-Punktewertungen
+  übergeben geteilte Plätze auch für „Nach Event“; gleiche Punkte teilen einen Platz und die
+  nachfolgende Nummer zählt alle vorherigen Einträge. Legacy-Matchergebnisse behalten ihre
+  fortlaufenden Positionen in der Serverreihenfolge.
 - Wertliste mit eigenem `sortKey`: Session-Protokoll in Statistiken, neueste Session zuerst.
 - Vorbild vor diesem Vertrag: „Top 10 nach Bock-Level“ in Vote (`public/js/views/votes.js`,
   `.vote-ranking-columns`); Übernahme im Folgepaket.

@@ -1,3 +1,5 @@
+import { pointsSettings, pointStandings, pointParticipantCount, pointsAreVisible, readPointsSnapshot, hydratePointStandings, PointsError } from '../points';
+import type { CategoryStanding } from '../categoryScoring';
 // "Export als Andenken": a one-click JSON snapshot of everything that
 // happened at one LAN (leaderboard, playtime, awards, tournament
 // champions) — a keepsake, and reuses the same pure scoring/stats logic the
@@ -43,7 +45,11 @@ interface EventRow {
 export interface ExportSnapshot {
   event: { id: string; name: string; startsAt: number; endsAt: number | null };
   exportedAt: number;
-  leaderboard: Array<{ playerId: string; name: string; points: number; wins: number; matchesPlayed: number }>;
+  scoringModel: 'category_place_points' | 'match_results';
+  participantCount: number | null;
+  pointsSnapshot: { revision: number; createdAt: number; rules: unknown } | null;
+  leaderboard: Array<{ playerId: string; name: string; points: number; wins: number; matchesPlayed: number;
+    rank?: number; categories?: CategoryStanding['categories']; participantCount?: number }>;
   playtimeByPlayer: Array<{ playerId: string; name: string; totalFormatted: string }>;
   playtimeByGame: Array<{ gameId: string; gameName: string; gameIcon: string; totalFormatted: string }>;
   awards: Array<{ title: string; description: string; playerName: string; value: string }>;
@@ -100,7 +106,7 @@ export interface ExportSnapshot {
 
 // Builds the full "Andenken" snapshot for one event, served as JSON by
 // GET /api/export.
-export function buildExportSnapshot(filterEventId: string, groupId: string): ExportSnapshot | undefined {
+export function buildExportSnapshot(filterEventId: string, groupId: string, pointsRevision?: number): ExportSnapshot | undefined {
   const event = db.prepare('SELECT * FROM events WHERE id = ? AND group_id = ?').get(filterEventId, groupId) as
     EventRow | undefined;
   if (!event) return undefined;
@@ -120,9 +126,16 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
   const now = Date.now();
 
   // ---------- Leaderboard, scoped to this event's matches ----------
-  const leaderboard = readStandings(groupId, [filterEventId]).map((s) => ({
+  const pointsVisible = pointsAreVisible(filterEventId);
+  const lanPoints = pointsSettings(filterEventId)?.configured_at != null || pointsVisible;
+  const frozen = pointsVisible && (pointsRevision !== undefined || pointsSettings(filterEventId)?.closed_at != null)
+    ? readPointsSnapshot(filterEventId, pointsRevision) : null;
+  if (pointsRevision !== undefined && !frozen) throw new PointsError('Abschlussversion nicht gefunden.', 404);
+  const categoryStandings = pointsVisible ? (frozen ? hydratePointStandings(frozen.standings) : pointStandings(filterEventId)) : [];
+  const leaderboard = (lanPoints ? categoryStandings : readStandings(groupId, [filterEventId])).map((s) => ({
+    ...s,
     playerId: s.playerId,
-    name: playerById.get(s.playerId)?.name ?? 'Unbekannt',
+    name: 'name' in s && typeof s.name === 'string' ? s.name : playerById.get(s.playerId)?.name ?? 'Unbekannt',
     points: s.points,
     wins: s.wins,
     matchesPlayed: s.matchesPlayed,
@@ -345,6 +358,9 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
   return {
     event: { id: event.id, name: event.name, startsAt: event.starts_at, endsAt: event.ends_at },
     exportedAt: now,
+    scoringModel: lanPoints ? 'category_place_points' : 'match_results',
+    participantCount: lanPoints ? (pointsVisible ? frozen?.participantCount ?? pointParticipantCount(filterEventId) : 0) : null,
+    pointsSnapshot: frozen ? { revision: frozen.revision, createdAt: frozen.createdAt, rules: frozen.rules ?? null } : null,
     leaderboard,
     playtimeByPlayer,
     playtimeByGame,
@@ -372,7 +388,10 @@ exportRouter.get('/', (req, res) => {
   const { eventId } = req.query;
   const filterEventId = exportEventId(req, eventId);
   if (!filterEventId) return res.status(404).json({ error: 'Event nicht gefunden.' });
-  const snapshot = buildExportSnapshot(filterEventId, req.group!.id);
+  const requested = req.query.pointsRevision;
+  if (requested !== undefined && (typeof requested !== 'string' || !/^[1-9]\d*$/.test(requested) || !Number.isSafeInteger(Number(requested))))
+    return res.status(400).json({ error: 'Ungültige Abschlussversion.' });
+  const snapshot = buildExportSnapshot(filterEventId, req.group!.id, requested === undefined ? undefined : Number(requested));
   if (!snapshot) return res.status(404).json({ error: 'Event nicht gefunden.' });
   res.json(snapshot);
 });

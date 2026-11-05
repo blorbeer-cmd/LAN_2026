@@ -72,11 +72,11 @@ test('GET /api/leaderboard reflects points from the recorded match', async () =>
   const byId = new Map(res.body.standings.map((s: { playerId: string }) => [s.playerId, s]));
   assert.ok((byId.get(playerB) as { wins: number }).wins === 1);
   assert.ok((byId.get(playerA) as { wins: number }).wins === 0);
-  assert.equal((byId.get(playerB) as { points: number }).points, 3);
+  assert.equal((byId.get(playerB) as { points: number }).points, 4);
   assert.equal((byId.get(playerA) as { points: number }).points, 1);
 });
 
-test('missing results earn nothing; explicit draws survive editing and winners earn three total points', async () => {
+test('missing results earn nothing; explicit draws survive editing and winners earn four total points', async () => {
   const game = await request(app).post('/api/games').send({ name: 'Unscored matches' });
   const created = await request(app).post('/api/matches').send({
     gameId: game.body.id, teams: [{ playerIds: [playerA] }, { playerIds: [playerB] }],
@@ -95,7 +95,7 @@ test('missing results earn nothing; explicit draws survive editing and winners e
   assert.deepEqual((await leaderboard()).body.standings.map((s: { points: number }) => s.points), [2, 2]);
   const winner = await request(app).patch(`/api/matches/${created.body.id}`).send({ winnerTeamIndex: 0 });
   assert.equal(winner.body.isDraw, false);
-  assert.deepEqual((await leaderboard()).body.standings.map((s: { points: number }) => s.points), [3, 1]);
+  assert.deepEqual((await leaderboard()).body.standings.map((s: { points: number }) => s.points), [4, 1]);
   await request(app).patch(`/api/matches/${created.body.id}`).send({ winnerTeamIndex: null });
   assert.deepEqual((await leaderboard()).body.standings, []);
 });

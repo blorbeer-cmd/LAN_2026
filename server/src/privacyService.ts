@@ -239,6 +239,37 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
     exportedAt: Date.now(),
     notice: 'Zugangsdaten und fremde private Daten sind absichtlich nicht enthalten.',
     profile,
+    pointsAccounts: rows(
+      `SELECT event_id AS eventId, account, created_at AS createdAt
+       FROM points_accounts WHERE player_id = ? ORDER BY event_id, account`,
+      playerId,
+    ),
+    automaticPlayingState: rows(
+      `SELECT event_id AS eventId, source_key AS sourceKey, amount
+       FROM points_playing_awards WHERE player_id = ? ORDER BY event_id, source_key`,
+      playerId,
+    ),
+    automaticOrgaState: rows(
+      `SELECT event_id AS eventId, source_key AS sourceKey, amount
+       FROM points_orga_awards WHERE player_id = ? ORDER BY event_id, source_key`,
+      playerId,
+    ),
+    organizedCompetitions: {
+      matches: rows('SELECT id, event_id AS eventId FROM matches WHERE created_by = ?', playerId),
+      tournaments: rows('SELECT id, event_id AS eventId FROM tournaments WHERE created_by = ?', playerId),
+      draws: rows('SELECT id, event_id AS eventId, betting_allowed AS bettingAllowed FROM matchmaking_draws WHERE created_by = ?', playerId),
+      drafts: rows('SELECT id, event_id AS eventId, betting_allowed AS bettingAllowed FROM drafts WHERE created_by = ?', playerId),
+    },
+    pointsJournal: rows(
+      `SELECT j.id, s.event_id AS eventId, s.account, s.source_key AS sourceKey,
+              j.revision, j.amount, j.title, j.reason, j.created_at AS createdAt
+       FROM points_journal j JOIN points_sources s ON s.id = j.source_id
+       WHERE s.player_id = ? ORDER BY j.created_at, j.rowid`,
+      playerId,
+    ),
+    pointsReports: rows(`SELECT id,event_id AS eventId,target_type AS targetType,target_id AS targetId,
+      title,reason,status,created_at AS createdAt,resolved_at AS resolvedAt,resolution
+      FROM points_reports WHERE reporter_id=? ORDER BY created_at,rowid`, playerId),
     memberships: rows(
       `SELECT gm.group_id AS groupId, g.name AS groupName, gm.role, gm.status,
               gm.joined_at AS joinedAt, gm.ended_at AS endedAt
@@ -413,6 +444,11 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
       ),
     },
     organisation: {
+      pointEntries: rows(`SELECT s.event_id AS eventId,j.amount,s.account,s.source_key AS sourceKey,j.title,j.reason,j.created_at AS createdAt
+        FROM points_journal j JOIN points_sources s ON s.id=j.source_id WHERE s.player_id=? AND s.account='wallet' ORDER BY j.created_at,j.rowid`, playerId),
+      resetPointSources: rows('SELECT event_id AS eventId,source_key AS sourceKey FROM points_reset_sources WHERE player_id=?', playerId),
+      bettingTips: rows(`SELECT r.event_id AS eventId,r.title,r.payout_policy AS payoutPolicy,t.outcome_id AS outcomeId,t.stake,t.payout,t.created_at AS createdAt
+        FROM betting_tips t JOIN betting_rounds r ON r.id = t.round_id WHERE t.player_id = ? ORDER BY t.created_at`, playerId),
       foodOrderItems: rows(
         `SELECT i.id, i.order_id AS orderId, o.title AS orderTitle, i.description, i.quantity,
                 i.price_cents AS priceCents, i.paid, i.paid_at AS paidAt, i.created_at AS createdAt
@@ -446,6 +482,7 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
         `SELECT t.id, t.event_id AS eventId, t.type, t.title, t.description, t.status,
                 CASE WHEN a.player_id IS NOT NULL THEN a.comment ELSE t.claim_comment END AS claimComment,
                 t.due_at AS dueAt, t.created_at AS createdAt, t.taken_at AS takenAt, t.done_at AS doneAt,
+                t.points_value AS pointsValue, t.points_model AS pointsModel,
                 CASE WHEN t.created_by = ? THEN 1 ELSE 0 END AS createdByMe,
                 CASE WHEN a.player_id IS NOT NULL OR t.assignee_id = ? THEN 1 ELSE 0 END AS assignedToMe
          FROM checklist_tasks t
@@ -892,6 +929,12 @@ function scrubPushLogIdentifiers(playerId: string): void {
 }
 
 function scrubAccountCopies(playerId: string, names: Set<string>): void {
+  // Reports are private records. Erasure must neither copy their reporter to
+  // the public audit trail nor expose somebody else's submission in an export.
+  db.prepare("UPDATE points_reports SET reason='' WHERE reporter_id=?").run(playerId);
+  db.prepare("UPDATE points_reports SET resolution='' WHERE resolved_by=?").run(playerId);
+  db.prepare(`UPDATE points_reports SET title='Eintrag mit gelöschtem Konto'
+    WHERE id IN (SELECT report_id FROM points_report_subjects WHERE player_id=?)`).run(playerId);
   removeSubjectScopedPushes(playerId);
   removeIdFromJsonArrayTable('push_log', 'id', 'player_ids', playerId);
   scrubPushLogIdentifiers(playerId);
@@ -900,6 +943,20 @@ function scrubAccountCopies(playerId: string, names: Set<string>): void {
   for (const column of ['captain_ids', 'pool_ids', 'picks']) redactJsonColumn('drafts', 'id', column, playerId, names);
   redactJsonColumn('matches', 'id', 'result', playerId, names);
   redactJsonColumn('matchmaking_draws', 'id', 'teams', playerId, names);
+  const bettingOutcomes = db.prepare('SELECT id,outcomes FROM betting_rounds').all() as Array<{ id: string; outcomes: string }>;
+  for (const round of bettingOutcomes) {
+    const outcomes = parseJson(round.outcomes, []) as Array<{ label: string; playerIds: string[] }>;
+    let changed = false;
+    for (const outcome of outcomes) {
+      if (!outcome.playerIds.includes(playerId)) continue;
+      outcome.label = 'Team mit gelöschtem Konto';
+      outcome.playerIds = outcome.playerIds.filter((id) => id !== playerId);
+      changed = true;
+    }
+    if (changed) db.prepare('UPDATE betting_rounds SET outcomes = ? WHERE id = ?').run(JSON.stringify(outcomes), round.id);
+  }
+  redactJsonColumn('points_snapshots', 'rowid', 'standings', playerId, names);
+  redactJsonColumn('point_entries', 'id', 'details', playerId, names);
   removePlayerAssignments(playerId);
   redactJsonColumn('arcade_results', 'id', 'players', playerId, names);
   redactJsonColumn('arcade_results', 'id', 'scores', playerId, names);

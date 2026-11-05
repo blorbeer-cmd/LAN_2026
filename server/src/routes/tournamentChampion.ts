@@ -30,7 +30,7 @@ export function getCompletedTournamentSummaries(eventId: string, groupId: string
       .all(t.id) as Array<{ id: string; name: string; player_ids: string }>;
     const teamById = new Map(teamRows.map((tm) => [tm.id, tm]));
 
-    let championTeamId: string | null = null;
+    let championTeamIds: string[] = [];
     if (t.format === 'single_elimination' || t.format === 'group_knockout') {
       // group_knockout only ever reaches 'completed' once its knockout
       // bracket (not the group stage) has a decided final — same
@@ -42,7 +42,8 @@ export function getCompletedTournamentSummaries(eventId: string, groupId: string
         .all(t.id) as Array<{ round: number; winner_team_id: string | null; stage: string | null }>;
       const bracketRows = t.format === 'group_knockout' ? rows.filter((r) => r.stage === 'knockout') : rows;
       const finalRound = Math.max(...bracketRows.map((r) => r.round));
-      championTeamId = bracketRows.find((r) => r.round === finalRound)?.winner_team_id ?? null;
+      const winner = bracketRows.find((r) => r.round === finalRound)?.winner_team_id;
+      championTeamIds = winner ? [winner] : [];
     } else {
       const rows = db
         .prepare('SELECT team_a_id, team_b_id, winner_team_id, is_draw FROM tournament_matches WHERE tournament_id = ?')
@@ -51,10 +52,12 @@ export function getCompletedTournamentSummaries(eventId: string, groupId: string
         .filter((r) => r.winner_team_id !== null || r.is_draw)
         .map((r) => ({ teamAId: r.team_a_id, teamBId: r.team_b_id, winnerTeamId: r.winner_team_id }));
       const standings = computeRoundRobinStandings(teamRows.map((tm) => tm.id), decided);
-      championTeamId = standings[0]?.teamId ?? null;
+      const first = standings[0];
+      championTeamIds = first ? standings.filter((row) => row.points === first.points && row.wins === first.wins)
+        .map((row) => row.teamId) : [];
     }
 
-    const championTeam = championTeamId ? teamById.get(championTeamId) : undefined;
+    const championTeams = championTeamIds.flatMap((id) => teamById.has(id) ? [teamById.get(id)!] : []);
     const game = db.prepare('SELECT name, icon FROM games WHERE id = ?').get(t.game_id) as
       | { name: string; icon: string }
       | undefined;
@@ -64,8 +67,8 @@ export function getCompletedTournamentSummaries(eventId: string, groupId: string
       format: t.format,
       gameName: game?.name ?? 'Unbekannt',
       gameIcon: game?.icon ?? '🎮',
-      championTeamName: championTeam?.name ?? null,
-      championPlayerIds: championTeam ? (JSON.parse(championTeam.player_ids) as string[]) : [],
+      championTeamName: championTeams.length ? championTeams.map((team) => team.name).join(' / ') : null,
+      championPlayerIds: championTeams.flatMap((team) => JSON.parse(team.player_ids) as string[]),
     };
   });
 }

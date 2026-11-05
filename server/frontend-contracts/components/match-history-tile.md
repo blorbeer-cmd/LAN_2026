@@ -8,8 +8,12 @@ Turniere stehen in einem separaten, zunächst geschlossenen Abschnitt darüber.
 
 ## 2. Quelle
 
-`public/js/views/matchmaking.js`: `historyItemHtml`, `renderHistory`, `renderOpenDraws`,
-`wireHistory` und `wireOpenDraws`.
+`public/js/historyItem.js`: `historyItemHtml(id, title, meta, actions, details,
+{ open, extraClass, isMine })` liefert den gemeinsamen Kartenkopf, getrennte Aktionen und den
+aufklappbaren Inhalt. Titel und Kennungen werden escaped; Meta-, Aktions- und Detailmarkup
+kommen bereits escaped vom Aufrufer.
+`public/js/views/matchmaking.js`: `renderHistory`, `renderOpenDraws`, `wireHistory` und
+`wireOpenDraws`.
 
 ## 3. CSS-Eigentümerschaft
 
@@ -22,6 +26,8 @@ Erfasstes Match mit Ergebnis und Stift/Rematch, Turnier mit direktem Detail-Link
 nachladbaren Teamdetails; „Ohne Ergebnis“ als separater Abschnitt mit bearbeitbaren Auslosungen
 und laufenden Turnieren. Jede Kartenart besitzt einen Papierkorb mit Bestätigung.
 Jede Auslosung in diesem Abschnitt ist selbst eine einklappbare Kachel mit Aktionen im Kopf.
+Wettaktionen stehen im Kopf, außerhalb des Aufklappbuttons. Das gilt auch für Turnierkacheln;
+deren Tippdialog bündelt Turniersieger und bereits angelegte Spieltipps.
 
 ## 5. Erlaubte Anpassungen
 
@@ -30,7 +36,10 @@ im Aufklappbutton, vor Titel und Metadaten; Aktionen stehen getrennt rechts und 
 
 ## 6. Komponenteneigene Invarianten
 
-Alle Kacheln beginnen geschlossen und behalten ihren Zustand bei einem Neuzeichnen. Ist der
+Alle Kacheln beginnen geschlossen und behalten ihren Zustand bei einem Neuzeichnen. `data-history-item` und `data-history-toggle` identifizieren Karte und Aufklappbutton. Wettmenüs
+sind Geschwister des Aufklappbuttons, niemals darin verschachtelt. Tippabgabe öffnet keine Karte.
+Alle Karten verwenden `.card`; die globalen Flächen wechseln je Kartenebene zwischen
+`--bg-elevated` und `--bg-elevated-2`, unabhängig vom Aufklappzustand. Ist der
 angemeldete Spieler beteiligt, steht der Spielname im geschlossenen Kopf fett; im Detail wird
 nur sein Spielername fett. Ein gerade
 gespeichertes Ergebnis öffnet seine Kachel. Spielnamen kürzen nur visuell; der vollständige
@@ -49,10 +58,10 @@ Platz steht die Ausscheidungsrunde in der Kontextzeile unter den Spielernamen.
 Seine bearbeitbaren Auslosungen werden erst beim Aufklappen aufgebaut und beim Schließen
 wieder aus dem DOM entfernt; die Anzahl und Erreichbarkeit aller offenen Auslosungen bleiben erhalten.
 Laufende Turniere stehen dort ebenfalls; erst nach Abschluss wechseln sie in die Historie.
-Eine gemeinsame, stets sichtbare Filterzeile steht vor „Ohne Ergebnis“ und „Historie“.
-„Alle“, „Matches“ und „Turniere“ gelten für beide Abschnitte. Die laufende Turnierübersicht bleibt
+Ein stets erreichbares Filtermenü nach dem Muster des Spielekatalogs steht vor „Ohne Ergebnis“
+und „Historie“. Die Chips unter „Art“ (Alle, Matches, Turniere) gelten für beide Abschnitte. Die laufende Turnierübersicht bleibt
 davon unabhängig und zeigt immer alle laufenden Turniere.
-Der zusätzliche Schalter „Meine“ lässt sich mit jeder Art kombinieren und berücksichtigt die
+Der Filterchip „Meine“ lässt sich mit jeder Art kombinieren und berücksichtigt die
 Teamteilnahme des angemeldeten Spielers, auch bei älteren nachgeladenen Ergebnissen. Filterwechsel
 erhalten die geöffneten Abschnitte und Kacheln; ein leerer Treffer entfernt nie die Filterzeile.
 Ein gelöschter Match-Datensatz verschwindet auch aus der Rangliste. Turniere nutzen den bestehenden
@@ -62,6 +71,22 @@ ein gespeicherter Eintrag ohne Sieger und ohne Remis-Kennzeichen heißt „Ohne 
 Nach dem Öffnen des Abschnitts beginnen die einzelnen Auslosungen geschlossen. Ihre Teamdetails
 lassen sich unabhängig voneinander öffnen und wieder schließen; dieser Zustand bleibt beim
 Neuzeichnen erhalten.
+Teamdetails bleiben aufklappbar, während Wettaktionen im Header auch geschlossen erreichbar sind.
+Die Chips „Noch offen“ und „Abgegeben“ unter „Dein Tipp · offene Spiele“ filtern nach noch
+nicht getippten offenen oder bereits abgegebenen Tipps und wirken ausschließlich auf „Ohne Ergebnis“. Ein Turnier passt, wenn mindestens einer
+seiner Märkte passt. Nicht zum Tippen freigegebene Matches passen zu keinem aktiven Tippfilter.
+Ein erneuter Klick auf den aktiven Tippstatus zeigt wieder alle Tipps.
+Abschnittsüberschriften, Chiplisten und Rücksetzen nutzen exakt die Katalogkomponenten.
+Die Filter sind kombinierbar, zeigen ihre aktive Anzahl und lassen sich gemeinsam zurücksetzen.
+Die unabhängige Übersicht laufender Turniere bleibt erhalten; eine leere gefilterte Menge zeigt
+einen kompakten Leerzustand und lässt das Filtermenü erreichbar.
+Neue Wettmenüs beginnen geschlossen und übernehmen niemals den Aufklappzustand der Historie.
+„Ohne Ergebnis“ und „Historie“ besitzen stabile `data-matchmaking-section`-Kennungen. Gespeichert
+wird ihr tatsächlicher nativer Aufklappzustand, auch nach programmatischer Wiederherstellung.
+Ein Neuaufbau liest ihn vor dem Ersetzen des DOM; verzögerte Toggle-Ereignisse abgelöster alter
+Knoten ändern den neuen Zustand nicht. Ein vorübergehend ausgeblendeter Abschnitt öffnet sich
+beim Wiedererscheinen wie zuvor. Ergebniseingaben erhalten die übrigen geöffneten Spiele;
+das gespeicherte Ergebnis bleibt in seiner geöffneten Historienkachel sichtbar.
 
 ## 7. Erreichbare Zustände
 
@@ -71,7 +96,8 @@ Turnier, Ladefehler und leerer Filter.
 ## 8. Accessibility
 
 Der Pfeil-Button verwendet `aria-expanded` und `aria-controls`, ist über die Tastatur bedienbar
-und zeigt Fokus sichtbar. Sein Ziel ist mindestens `--tap-target-size` hoch. Die Filterchips benutzen `aria-pressed`. Aktionsknöpfe haben
+und zeigt Fokus sichtbar. Sein Ziel ist mindestens `--tap-target-size` hoch. Filterchips verwenden `aria-pressed` und sind mit Enter/Space erreichbar; das Filterpanel nutzt den
+vorhandenen Popover-Modus, damit es auf Telefonen nicht vom View-Container abgeschnitten wird. Aktionsknöpfe haben
 einen eigenen Namen und Fokus; der Stift heißt „Ergebnis bearbeiten“.
 
 ## 9. Repräsentative Aufrufer
@@ -82,7 +108,9 @@ nebeneinanderliegenden Teams.
 ## 10. Prüfungen und Abnahmebeispiele
 
 E2E prüft Aufklappen, Ergebnis/Rematch, Turnierdetails, Filter und Nachladen. Auf 390 und 1024 px gibt es
-keinen horizontalen Überlauf; ein langer Spielname schneidet keine Aktion ab.
+keinen horizontalen Überlauf; ein langer Spielname schneidet keine Aktion ab. Der Punkte-/Match-Browserfall
+prüft zusätzlich per Tastatur: tippen bei geschlossener Karte, geschlossen bleiben nach dem Speichern,
+geöffnet bleiben beim verzögerten Live-Refresh sowie die kombinierten Tipp- und Beteiligungsfilter.
 
 ## 11. Permanente Varianten und befristete Ausnahmen
 

@@ -8,6 +8,7 @@ import { domainIcon } from './domainIcons.js';
 
 export const FEED_LINK_LABELS = {
   votes: 'Zur Abstimmung',
+  points: 'Zur Tipprunde',
   tournaments: 'Zum Turnier',
   matchmaking: 'Zu den Teams',
   foodOrders: 'Zur Bestellung',
@@ -44,6 +45,10 @@ export function feedLinkTarget(url) {
   const hashIndex = (url || '').indexOf('#');
   if (hashIndex === -1) return null;
   const [view, encodedId, focus] = url.slice(hashIndex + 1).split('/');
+  if (view === 'points' && encodedId === 'round' && focus) {
+    try { return { type: 'betting-round', id: decodeURIComponent(focus) }; }
+    catch { return null; }
+  }
   if (!['foodOrders', 'tournaments', 'events'].includes(view) || !encodedId) return null;
   const type = view === 'foodOrders' ? 'order' : view === 'events' ? 'event' : focus === 'teams' ? 'tournament-team' : 'tournament';
   try {

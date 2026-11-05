@@ -1,0 +1,407 @@
+# Punktejournal und Kategorie-Konten
+
+Dieses Paket liefert die interne Buchungsgrundlage für „Respawn – Punkte und Wertung“.
+Spielberechnung, Journalbasis und das [Zielkonzept](../KONZEPT-PUNKTE-WERTUNG.md)
+werden zusammen mit der bisherigen LAN-Punkte-/Wettfunktion im gemeinsamen PR #749 geführt.
+
+## Konten
+
+Bei bestätigter Teilnahme werden im Hintergrund vier Event-Konten angelegt, auch ohne
+sichtbare Punkteansichten. Vorhandene bestätigte Teilnehmer erhalten sie beim Upgrade.
+Einladungen allein und der historische „Außerhalb von Events“-Datensatz erzeugen keine Konten.
+Admins und Event-Ersteller werden wie alle anderen Teilnehmer behandelt.
+
+| Konto | Inhalt |
+|---|---|
+| `orga` | Orga-Rohpunkte |
+| `playing` | Spiel-Rohpunkte |
+| `betting` | Nettoergebnis abgerechneter Wetten |
+| `wallet` | Separates, für Wetten verfügbares Guthaben |
+
+Orga-, Spiel- und Wett-Nettowerte beginnen bei 0. Das separate Wallet erhält einmalig fest
+100 Wettpunkte für jeden berechtigten Teilnehmer eines LAN-Events, auch bei später Zusage. Gültige Spiele und Turnierplatzierungen erzeugen
+automatisch Spielpunkte; organisierte Matches, Turniere, Sammelbestellungen, To-dos und
+Abstimmungen erzeugen Orga-Punkte. Vollständige Skill-Einschätzungen erzeugen einmalig 5 Orga-Punkte je Event.
+Dokumentierte frühere Spielteilnehmer
+erhalten beziehungsweise behalten ihre Konten auch nach einem Austritt. Die Kontenmenge
+bestimmt N nicht; dafür gelten die ausdrücklich beschlossenen Teilnehmerregeln E2.
+Der Startguthaben-Vorgang `wallet:start`
+bucht ausschließlich auf `wallet`. Orga- und Spielpunkte erhöhen dieses Guthaben nicht.
+Migration 134 ergänzt die Finanzierung bei Reaktivierung, wieder aktiver Mitgliedschaft und
+beim Wechsel vom Testkonto zum normalen Konto. Sie erfolgt mit der auslösenden Änderung,
+auch ohne Abruf des Punktekontos oder ersten Tipp. Beim Upgrade werden bisher übersehene
+berechtigte Konten offener LAN-Wertungen nachfinanziert. Vorhandene Startgutschriften,
+Reservierungen, Teilnahmehistorie und abgeschlossene Wertungen bleiben unverändert;
+der einmalige Reset aus Migration 131 wird nicht wiederholt.
+Bei während der Festschreibung zurückgekehrter Berechtigung wird das fehlende Startguthaben
+erst beim begründeten Wiederöffnen gemeinsam mit diesem Zustandswechsel gebucht.
+Offene Einsätze reservieren nur das Wallet; der Wett-Rohwert wird aus abgerechneten
+Nettoergebnissen gebucht. Vollständige Erstattungen ergeben dort 0. Wallet und Rohwerte
+dürfen nach einer Korrektur negativ sein. Negative verfügbare Mittel sperren neue Tipps und Änderungen; die Rücknahme eines offenen Tipps bleibt möglich.
+
+## Automatische Spielpunkte
+
+Freie Ergebnisse und tatsächlich gespielte Turniermatches werden beim Speichern in derselben
+Transaktion wie die Spielpunkte verbucht. Rangliste und Journal teilen sich die
+[Spielberechnung](competition-and-game-rules.md#ranglistenpunkte). Alle Teammitglieder erhalten
+die Punkte ihrer Platzierung. Neue Matchbuchungen speichern den erreichten Teamplatz im Anlass,
+sodass Betrag und damalige Platzierung auch nach einer Ergebniskorrektur nachvollziehbar bleiben. Es gibt keine Freigabe, Spielkontingente, Dauergewichtung oder
+Abschläge für wiederholte Begegnungen.
+
+Ein Match hat den Schlüssel `match:<id>`, unabhängig von verknüpfter Auslosung oder
+Turnierbegegnung. Die Quelle wird einmal pro Spieler gebucht. Reguläre Turnierabschlüsse
+erhalten zusätzlich `tournament:<id>:placement` mit 5/3/1; Freilose erzeugen keine Matchpunkte.
+Wiederöffnen eines Turniers entfernt vorläufig seine Platzierungsboni. Löschen entfernt den
+Anspruch der jeweiligen Quelle; beim Turnierlöschen bleiben die weiterhin dokumentierten
+Matches bestehen. Auch Katalog- und Auslosungslöschungen korrigieren die Ansprüche atomar.
+
+**Entschiedene Neuberechnung:** Ändert sich der tatsächliche Punkteanspruch, ersetzt der aus
+dem neuen Ergebnis berechnete Wert den vorherigen Anspruch einschließlich einer manuellen
+Korrektur. Eine Löschung berechnet den Anspruch auf 0. Unveränderte Punkteansprüche,
+wiederholtes Speichern, andere Matches und Neustarts setzen manuelle Korrekturen nicht zurück.
+Bei der erstmaligen Übernahme bereits vorhandener Journalansprüche bleibt deren Stand erhalten;
+erst eine anschließende Änderung des automatischen Anspruchs löst eine neue Berechnung aus.
+
+Beim Serverstart werden neue, nicht durch den Reset ausgeschlossene Ergebnisse offener Wertungen nachgetragen. Der Zustand
+pro Quelle in `points_playing_awards` dient ausschließlich dem Abgleich; Kontostände bleiben
+Journalsummen. Eine festgeschriebene Wertung bleibt unverändert. Nach dem begründeten
+Wiederöffnen werden zwischenzeitliche Änderungen einmal nachgezogen. Der persönliche
+Datenschutzexport enthält auch den eigenen automatischen Abgleichstand.
+
+`GET /api/points` liefert zusätzlich `categoryBalances` und `categoryJournal` der angemeldeten
+Person. Die vorhandenen Sichtbarkeitsregeln gelten auch für diese Daten. Die LAN-Ansicht zeigt die drei Kategorie-Rohwerte mit eigenem Verlauf. Das separate Wallet und seine Tipps verwenden dasselbe Journal; Spielpunkte erhöhen
+das Wettguthaben nicht.
+
+## Orga-Punkte für Wettbewerbe
+
+Ein gültiges Match erzeugt **1 Orga-Punkt** für seinen gespeicherten Organisator. Bei einem
+freien Match ist das der angemeldete Ersteller, bei einem Match aus einer Auslosung deren
+ursprünglicher Ersteller. Auch Rematch-Auslosungen und abgeschlossene Captain-Drafts behalten
+ihren Ersteller. Das bloße Erzeugen von Teams erzeugt keine Gutschrift. Es gelten dieselben
+Kriterien für ein gültiges Ergebnis wie in der Spielwertung, einschließlich ausdrücklicher
+Remis und vollständiger Platzierungen.
+
+Der angemeldete Turnierersteller ist Turnierorganisator, auch wenn eine andere Person die
+vorangehende Auslosung erstellt oder das spätere Ergebnis einträgt. Seine Zuordnung wird auf
+jedes tatsächlich gespielte Turniermatch übernommen. Freilose erzeugen keine Matchpunkte.
+Ein regulärer Abschluss erzeugt zusätzlich **5 Orga-Punkte**; vorzeitig beendete Turniere
+erhalten diesen Abschlussbonus nicht.
+
+Die kanonischen Orga-Quellen sind `match:<id>` und `tournament:<id>:completion`. Das ist pro
+Konto eindeutig: Ein Turnierspiel erzeugt genau eine Matchbelohnung und keine zweite
+Auslosungs- oder Turnierbegegnungsbelohnung. Ergebnisänderungen mit unverändertem Orga-Anspruch
+lassen auch manuelle Korrekturen bestehen. Entfällt ein gültiges Ergebnis oder ein regulärer
+Abschluss, wird der zugehörige Anspruch auf 0 neu berechnet. Bei erneuter Erfüllung gilt wieder
+der fachliche Anspruch, ohne zusätzliche Auszahlung desselben Vorgangs.
+
+Wird ein Turnier gelöscht, entfallen dessen Abschlussbonus und die Turnierverknüpfung;
+weiter dokumentierte Matches behalten ihren ursprünglichen Organisator und genau einen
+Matchpunkt. Werden die Matches selbst gelöscht, werden deren Orga-Punkte zurückgenommen.
+Spiel- und Orga-Gutschriften laufen gemeinsam mit der jeweiligen Datenänderung in einer
+Transaktion. Ausblenden der Punkteansichten hält sie nicht auf; festgeschriebene Wertungen
+bleiben unverändert. Beim Wiederöffnen und Serverstart werden offene Ansprüche abgeglichen.
+
+Migration 127 speichert die vom Server aus der Sitzung ermittelte, anschließend unveränderliche
+Erstellerzuordnung an Matches, Turnieren, Auslosungen und Drafts. Vom Client übermittelte
+Ersteller-IDs werden nicht übernommen. Historische Einträge ohne belegbaren Ersteller bleiben
+ohne automatische Orga-Gutschrift; Event-Ersteller, Ergebniseintrager oder Sieger werden nicht
+ersatzweise angenommen. `points_orga_awards` speichert nur den letzten automatischen Anspruch;
+das Journal bleibt die Grundlage aller Salden. Der persönliche Export enthält eigene Ansprüche
+und eigene Organisatorzuordnungen. Bei Kontolöschung werden diese Zuordnungen auf `NULL` gesetzt.
+
+Die Kategorieansicht zeigt diese Buchungen im eigenen Saldo und Verlauf sowie im
+Admin-Journal. Neue To-dos, Abstimmungen sowie Ankunfts-/Abreiseboni sind ebenfalls angebunden. Offene Grenzen und
+Zuordnungsregeln aus dem Konzept werden dadurch nicht festgelegt.
+
+## Orga-Punkte für Sammelbestellungen
+
+Beim **Abschicken** (`closed_at`) entstehen automatisch die folgenden Ansprüche:
+
+- Der Organisator erhält bei 3–5 anderen Bestellern 3 Punkte, bei 6–8 anderen 4 und ab 9
+  anderen 5 Punkte; bei weniger als 3 anderen gibt es keinen Organisationsbonus.
+- Jeder Besteller erhält 1 Punkt für seine gültig abgegebene eigene Bestellung. Mehrere
+  Positionen oder größere Mengen erzeugen keinen weiteren Bonus. Das gilt auch für den
+  Organisator, wenn er selbst bestellt; seine Bestellung erhöht die Zahl anderer Besteller nicht.
+
+Es zählen unterschiedliche Personen mit mindestens einer noch vorhandenen, abgegebenen
+Position. Die Bestellfrist (`send_at`) und der Zeitpunkt der Abgabe beeinflussen weder den
+persönlichen Bonus noch die Organisatorstaffel. Beschreibung und Menge müssen wie bisher
+gültig sein; der Preis bleibt nach den vorhandenen Bestellregeln optional. Ein bloßes Öffnen der Sammelbestellung oder das Markieren einer Zahlung gibt keine Punkte.
+
+Die Quellen lauten `food-order:<id>:organization` beziehungsweise pro Besteller
+`food-order:<id>:participation` im Konto `orga`. Beide sind unabhängig von Spiel- oder
+Turnierquellen. Die gemeinsame Orga-Ableitung erhält alle weiterhin gültigen Ansprüche.
+Es entstehen keine neuen Wallet-Punkte.
+
+Das Wiederöffnen nur für Zahlungen (`finalized_at` zurücknehmen) lässt die Ansprüche bestehen.
+Vollständiges Wiederöffnen zum Ändern der Positionen nimmt die bisherigen Bestellansprüche
+zurück. Entfernte Positionen gelten als storniert. Erneutes Abschicken berechnet die Staffel
+und die persönlichen Ansprüche neu, ohne zusätzliche Auszahlung derselben Quelle. Änderungen
+der Bestellfrist ändern keine Punkteansprüche. Unveränderte fachliche Ansprüche behalten
+manuelle Korrekturen; entfallene Ansprüche werden auf 0 berechnet. Das Löschen der Sammelbestellung
+nimmt ihre Ansprüche zurück. Jede Änderung und die zugehörigen Journalbuchungen werden atomar
+gespeichert; bei einem Buchungsfehler bleibt auch die Bestellung unverändert.
+
+Die Vergabe läuft unabhängig von der Sichtbarkeit. Historische abgeschickte Bestellungen offener
+Wertungen werden über den vorhandenen Startabgleich nachgetragen. Festgeschriebene Wertungen
+bleiben unverändert, Wiederöffnen der Wertung zieht zwischenzeitliche Änderungen nach.
+Die eigene Punkte-API (`categoryBalances`, `categoryJournal`) und der Datenschutzexport enthalten
+die neuen Orga-Einträge. Die Kategorieoberfläche zeigt diese Buchungen mit Zeitpunkt, Anlass und Betrag. Dieses Paket benötigt
+keine weitere Migration und entscheidet keine offenen To-do-, Abstimmungs- oder Wettregeln.
+
+## Dauerhafter Skill-Bonus
+
+Bestätigte Event-Teilnehmer erhalten einmalig **5 Orga-Punkte**, sobald sie alle aktuellen
+Katalogspiele eingeschätzt haben. Maßgeblich sind die aufgenommenen Spiele der eigenen Gruppe
+(`status = 'catalog'`, `arcade_key IS NULL`); Vorschläge und eingebaute Arcade-Spiele gehören
+nicht dazu. Ein leerer Katalog erzeugt keinen Bonus. Jeder gültige Wert von 0 bis 5 zählt,
+einschließlich 0 („kenne ich nicht“/„noch nie gespielt“). Die Höhe des Skills verändert die Punkte nicht.
+
+Der kanonische Vorgang ist `bonus:skills` pro Person und Event. Der erste Journaleintrag nennt
+die Zahl der damals eingeschätzten Katalogspiele. Der automatische Anspruch von 5 wird im
+vorhandenen `points_orga_awards` dauerhaft festgehalten. Dieser Zustand ist kein berechneter
+Kontostand und darf nicht aus dem später veränderten Skill-Profil neu aufgebaut werden.
+
+Spätere Änderungen oder Löschungen von Einschätzungen, neue Katalogspiele und ein geänderter
+Teilnehmerbestand nehmen einen erhaltenen Bonus nicht zurück und erzeugen keinen zweiten.
+Eine begründete administrative Korrektur bleibt bestehen: Auch nach einem Entzug führt erneutes
+Vervollständigen nicht zu einer neuen Auszahlung. Alle Salden stammen weiterhin aus dem Journal.
+
+Die Prüfung erfolgt beim Ändern von Skills, vor Katalogänderungen sowie nach Aufnahme, Zurückstufen
+oder Löschen von Katalogspielen. So geht ein bereits vollständiger Stand beim Hinzufügen eines
+Spiels nicht verloren; das Entfernen eines bislang offenen Spiels kann die Vollständigkeit herstellen.
+Skill-Daten und Katalog gelten für die Gruppe; alle bestätigten Event-Teilnahmen werden getrennt geprüft.
+Vorhandene Einschätzungen zählen bei Event-Erstellung, Aufnahme in die Teilnehmerliste und
+Bestätigung einer Einladung. Der jeweilige Quelldatensatz und die Gutschrift werden gemeinsam gespeichert;
+ein Buchungsfehler rollt auch die Skill-, Katalog- oder Teilnahmeänderung zurück.
+
+Der Startabgleich trägt fehlende Boni offener Wertungen nach. Ausgeblendete Punkteansichten
+verhindern keine Vergabe. Festgeschriebene Wertungen bleiben unverändert; nach ihrem begründeten
+Wiederöffnen werden dann vollständige Einschätzungen berücksichtigt. Eigene Kategorie-API und
+Datenschutzexport enthalten Bonus und Verlauf. Die Kategorieoberfläche zeigt Bonus und Verlauf.
+Es wird kein Wettguthaben erzeugt. Reiseboni und ihre offenen Stichtagsregeln gehören in ein Folgepaket.
+
+## Buchung und Korrektur
+
+`server/src/pointsJournal.ts` bietet ausschließlich interne Funktionen:
+
+- `readPointsBalances(groupId, eventId, playerId)` liest die vier getrennten Summen.
+- `readPointsSource(source)` liefert Stand und Revision eines Anspruchs.
+- `readPointsJournal(groupId, eventId, playerId)` liest den Verlauf mit Zeitpunkt,
+  Anlass, Betrag, Begründung, Kategorie, Vorgangsschlüssel und Revision.
+- `recordPointsEntitlements(changes)` schreibt eine Gruppe zusammengehöriger Ansprüche atomar.
+
+Kontostände werden immer aus dem Journal berechnet; es gibt keinen veränderlichen Saldo.
+Ein Anspruch ist durch Event, Empfänger, Konto und kanonischen Vorgangsschlüssel eindeutig,
+beispielsweise `todo:<id>` oder `match:<id>`. Aufrufer verwenden die Kennung des echten
+Vorgangs, niemals eine neue Anfrage-UUID. Die spätere Fachlogik muss für Auslosung und
+Turnierbegegnung dieselbe tatsächliche Partie erkennen, bevor sie einen Orga-Anspruch bucht.
+
+Der Aufrufer übergibt den neu berechneten **Gesamtanspruch** sowie die erwartete Revision.
+Das Journal bucht nur die Differenz zum bestehenden Anspruch. Beispiel: 5 Punkte für ein
+To-do, Wiederöffnen auf 0 und erneutes Erledigen auf 5 erzeugen `+5 / −5 / +5`, insgesamt 5.
+Wiederholungen desselben Gesamtanspruchs sind wirkungslos. Eine abweichende Buchung auf
+einer veralteten Revision scheitert mit `PointsJournalConflict`; der Aufrufer muss den
+Fachzustand neu lesen. Jede wirksame Korrektur benötigt eine Begründung.
+
+Eine sofortige SQLite-Transaktion schützt auch vor unabhängigen gleichzeitigen Schreibern.
+Scheitert ein Teil einer Buchungsgruppe, wird die gesamte Gruppe zurückgerollt. Damit können
+spätere Markt-Abrechnungen Wallet- und Nettoanteile gemeinsam buchen. Die spätere Wettlogik
+muss darüber hinaus die Nullsumme und die beschlossenen Auszahlungsregeln sicherstellen.
+
+`server/src/bettingAccounting.ts` ist an alle Wett-Handler angeschlossen. Pro Markt verwendet
+er `bet:<roundId>` im Wallet und Wettkonto: offene/gesperrte Tipps reservieren ausschließlich den
+Einsatz im Wallet, abgerechnete Tipps buchen Auszahlung minus Einsatz in beiden Konten.
+Rücknahme beziehungsweise Erstattung setzen den Anspruch auf 0. Die Wallet-Summe ist das
+verfügbare Guthaben; die API ergänzt die gehaltenen Einsätze für die Anzeige des Gesamtguthabens.
+Die Marktabrechnung prüft Auszahlungen gegen Einsätze einschließlich anonymisierter Tipps.
+Für neue Abrechnungen ist der Nettogewinn auf den eigenen Einsatz begrenzt: Der kleinere Betrag
+aus Gewinner- und Verlierer-Einsätzen wechselt anteilig die Seite, der Rest wird zurückgezahlt.
+Gewinn- und Verlustanteile verwenden jeweils die ganzzahlige Restverteilung. Teilrückzahlungen
+sind reguläre Abrechnungen mit eigenem Nettowert; nur eine vollständige Markterstattung ist ein Storno.
+Migration 135 speichert die Regel je Markt. Noch nie abgerechnete offene/gesperrte Märkte offener
+Wertungen wechseln zur Begrenzung; historische Abrechnungen, Erstattungen, Korrekturen und
+festgeschriebene Wertungen behalten ihre Poolregel auch bei späterer Neuberechnung. Die Migration
+schreibt keine Finanzbuchungen um. API-Quoten und interne Vorschau verwenden die gespeicherte Regel; die Oberfläche zeigt keine Quoten.
+Alle Spieler und beide Konten werden gemeinsam verbucht; Wiederholungen bleiben wirkungslos.
+Finanzkorrekturen verknüpfen die Journalbuchungen mit dem handelnden Admin im Protokoll.
+
+Journal und Vorgangsidentitäten sind gegen nachträgliches Ändern und einzelnes Löschen
+geschützt. Ein Austritt beziehungsweise erneuter Beitritt zum Event lässt die Konten bestehen.
+Die reguläre Ausnahme ist die vollständige Löschung des Events oder Benutzerkontos: Dann werden die
+zugehörigen Konten, Ansprüche und Journaleinträge kaskadierend gelöscht. Der persönliche
+Datenschutzexport enthält ausschließlich die eigenen Konten und Buchungen.
+
+## Administrative Korrekturen
+
+Aktive Community-Admins und Owner können bestehende Ansprüche begründet korrigieren,
+auch die eigenen. Die Event-Erstellerrolle allein gewährt keine Korrekturrechte.
+
+- `GET /api/points/admin/journal` liefert das Journal des gewählten Events einschließlich
+  Empfänger und protokollierendem Admin bei manuellen Korrekturen.
+- `POST /api/points/admin/journal/:id/correct` erwartet `total` (neuer Gesamtanspruch dieses
+  Vorgangs), `revision` (aktuelle Vorgangsrevision) und `reason`. Der Empfänger, das Konto
+  und der Vorgang stammen aus dem vorhandenen Eintrag; der handelnde Admin aus der Sitzung.
+
+Dieser Korrekturendpunkt akzeptiert ausschließlich Orga- und Spielansprüche. Wallet und
+Wett-Nettowerte dürfen nur durch begründete Markt-Neuberechnung oder Storno unter Erhaltung
+der Nullsumme geändert werden (W6). Einseitige Korrekturversuche erhalten 409 und verändern
+weder Journal noch Admin-Protokoll; das gilt auch für eigene Wettansprüche.
+
+Eine aktuelle Revision ist auch bei eigenen Korrekturen erforderlich. Von zwei gleichzeitigen
+Änderungen derselben Revision gewinnt höchstens eine; die andere erhält 409 und muss neu laden.
+Unveränderte Ansprüche erzeugen keine weitere Buchung oder Protokollzeile. Eine wirksame
+Änderung schreibt die Differenz und den Admin-Protokolleintrag in derselben Transaktion.
+Scheitert das Protokoll, wird auch die Buchung zurückgerollt. Eine festgeschriebene Wertung
+blockiert neue Korrekturen bis zum bestehenden begründeten Wiederöffnen.
+
+Finanzielle Wettkorrekturen prüfen ebenfalls die aktive Adminrolle; eigene Markt-Neuberechnungen
+und Stornos sind erlaubt. Der alte einseitige LAN-Entzugsendpunkt ist mit 409 abgeschaltet.
+
+## Kategorieansicht und administratives Journal
+
+Die Punkteansicht zeigt Orga, Spielen und Wetten mit getrennten Rohwerten, Kategorienrängen
+und Platzpunkten sowie deren Summe als Gesamtwertung. Die Oberfläche nennt die Kategoriepunkte
+einfach „Punkte“, ohne den technischen Zusatz „Roh-“. Nur positive Rohwerte erhalten einen Rang;
+Wetten benötigen zusätzlich zwei reguläre Abrechnungen. Gleiche Werte teilen den besseren Rang.
+Die Teilnehmerzahl N umfasst aktive bestätigte Teilnehmer ohne Testkonten; späte Zusagen zählen
+sofort. Austritte entfernen die Person aus der laufenden Rangliste, erhalten aber den Verlauf.
+Gewertet werden reguläre veröffentlichte LANs; ihre Ergebnisse bleiben nach Ende sichtbar.
+Testevents, Entwürfe, abgesagte Veranstaltungen und andere Eventtypen sind ausgeschlossen.
+Rangliste, Hall of Fame und Export lesen dieselbe Berechnung. Der bestehende Abschluss hält N,
+Teilnehmerliste und Kategorie-/Gesamtstände fest. Die weiteren Abschlussregeln sind in Paket 9 umgesetzt.
+Ein gemeinsamer „Punkteverlauf“ bietet die Kontoauswahl Orga, Spielen, Wetten und Wettguthaben.
+Es gibt keinen zusätzlichen Wallet-Verlaufsbereich. Wetten enthält ausschließlich den
+Nettogewinn/-verlust für die Rangliste; Wettguthaben zeigt verfügbare Mittel einschließlich
+Reservierungen und Freigaben. Seine Buchungsart-Auswahl und vollständigen Wallet-Details bleiben
+verfügbar. Die Suche und Buchungsart filtern ausschließlich die Liste; die Kurve behält den
+vollständigen Verlauf des ausgewählten Kontos.
+Buchungsdetails nennen Kategorie, Zeitpunkt, Anlass, Betrag und gegebenenfalls Begründung.
+
+In der Punkteverwaltung steht zusätzlich das Kategorie-Journal aller Teilnehmer mit Konto-
+und Textfilter zur Verfügung. Orga- und Spielansprüche können aus jeder zugehörigen Buchung
+korrigiert werden. Der Dialog verwendet den aktuellen Gesamtanspruch und die jüngste Revision
+aller Buchungen dieses Vorgangs, auch wenn eine ältere Buchung ausgewählt wurde. Eigene
+Korrekturen bleiben erlaubt. Mit 0 wird der ganze Anspruch entzogen; negative Ansprüche sind
+möglich. Ein veralteter Bearbeitungsstand wird nicht überschrieben: Der Dialog schließt nach
+409 und lädt den aktuellen Stand. Weitere Eingabefehler bleiben im offenen Dialog korrigierbar.
+
+Ausblenden entfernt Kategorieansichten und offene Teilnehmerdetails. Das Admin-Journal bleibt
+zugänglich; Admin-Dialoge schließen bei Event-, Konto- oder Rollenwechsel. Nach Festschreibung
+ist das Journal lesbar, Korrekturen bleiben gesperrt. Wett-/Wallet-Einträge werden in dieser
+Oberfläche ausschließlich lesend angeboten; finanzielle Korrekturen erfolgen am Markt. Fehler beim Laden des
+Journals lassen sich über dessen Aktualisieren-Aktion erneut versuchen.
+
+## Reiseangaben und Abstimmungen
+
+Ankunfts- und Abreisezeit bringen bei Eventstart jeweils 2 dauerhafte Orga-Punkte, wenn die jeweilige Angabe bis zum Start eingetragen war. Ein Hintergrundlauf erfasst den Start auch ohne geöffneten Browser; unmittelbar vor späteren Änderungen wird der Stand ebenfalls gesichert. Optionaler Freitext ist nicht erforderlich. Verschiebungen vor der Vergabe verwenden den aktualisierten Start; bereits verbuchte Boni und administrative Korrekturen bleiben erhalten. Abgesagte, unveröffentlichte und bereits beendete Events erhalten keinen nachträglichen Reisebonus. Beim regulären Beenden eines laufenden Events wird der Anspruch zuvor gesichert.
+
+Abgeschlossene allgemeine Umfragen mit drei unterschiedlichen Antwortenden bringen dem ursprünglichen Ersteller 3 Punkte, abgeschlossene Spieleabstimmungen mit drei unterschiedlichen Abstimmenden 2. Es gibt kein Kontingent. Zusammengehörige Stichwahlen gelten als eine Entscheidung. Abschluss beziehungsweise Wiederöffnen/Löschen und die Journaländerung erfolgen atomar; eingefrorene Wertungen bleiben unverändert. Historische Quellen ohne belegbaren Ersteller werden nicht zugeordnet.
+
+## Neustart und Migrationen
+
+**Nutzerentscheidung:** Für bestehende Events werden keine bisherigen Orga-, Spiel- oder
+Wettpunkte übernommen. Migration 131 entfernt alte Journal- und gemeinsame Kontobuchungen,
+Abgleichstände, To-do-Belohnungszusagen, Wettmärkte samt Tipps und Punkte-Endstände. Fachdaten
+bleiben erhalten. Bereits abgeschlossene Quellen sowie bereits erfüllte persönliche Boni werden
+in `points_reset_sources` festgehalten und von allen automatischen Erzeugern ausgeschlossen.
+Das verhindert eine erneute historische Gutschrift nach Start, Reload, Änderungen oder Beitritt.
+Neue Quellen werden regulär vergütet; offene Altaufgaben verwenden feste 3 Orga-Punkte.
+
+Reset und einmalige Vergabe von 100 Wettpunkten laufen atomar. Der Marker `points_wallet_reset`
+verhindert einen zweiten Reset bei Replay. Die Journal-Schutzregeln werden ausschließlich in
+dieser ausdrücklich beschlossenen Migration kurz innerhalb derselben Transaktion aufgehoben
+und anschließend wiederhergestellt. Reguläre Neuberechnungen verändern keine alten Buchungen.
+Persönliche Reset-Quellen sind im eigenen Datenschutzexport enthalten und werden bei Kontolöschung
+kaskadierend entfernt. Es wurde keine produktive Migration oder Auslieferung ausgeführt.
+
+Migrationen 123/124 liefern die alten Tabellen und Grundeinstellungen, 125 die getrennten Konten,
+126/127 automatische Spiel-/Orga-Abgleiche und Erstellerzuordnungen, 128 den Ergebnisfeed,
+129/130 die festen To-do-Punkte. Diese historischen Migrationen bleiben erhalten. Seit 131
+schreiben weder Grundstock, To-do-Abschluss noch Wettabschluss in `point_entries`.
+Das alte Budget und einseitige Wallet-Entzüge sind als Finanzpfade abgeschaltet.
+
+Die Journalbasis, Wallet-Abrechnung, Kategorie-Rohwerte und Admin-Korrekturen sind angebunden.
+Paket 5b bietet eine formatabhängige, regulär gewinnende Remis-Auswahl. Die Oberfläche
+verzichtet vollständig auf Quotenanzeigen und eine Spieleliste bei den LAN-Punkten.
+Matchheader bieten Wettaktionen auch bei geschlossener Karte. In der Turnieransicht steht
+ein gemeinsamer Einstieg „Wetten“ unter Titel und Metadaten; Turniersieger und Spieltipps
+werden im Modal ausgewählt. Die Spiele selbst enthalten keine Wettcontrols. Ein einzelnes
+Angebot steht direkt als Button, mehrere als Menü. Tippdialoge nennen Turnier/Spiel und Runde;
+Teams stehen in der Auswahl und werden in der Kontextzeile nicht wiederholt. Turniersieger und
+bereits angelegte Spiele sind im selben Dialog über getrennte Runden-/Gruppen- und
+Spielauswahl wählbar. Entwürfe, die zuletzt gewählte Begegnung je Runde und berechtigte
+Verwaltungsaktionen bleiben dabei erhalten.
+Tippstatus- und Beteiligungsfilter sind im Match-Bereich als Katalog-Filterchips kombinierbar.
+Kartenflächen wechseln gemäß Designsystem je Verschachtelungsebene. W1/W5 sind umgesetzt: maximal 20 Punkte pro Person und Markt und keine zusätzlichen
+Tages-/Rundenlimits. W2 verlangt mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung;
+die persönliche API liefert die Anzahl und das Erreichen dieser Mindestzahl.
+Vollständig erstattete Märkte und zurückgenommene Tipps zählen nicht zur Mindestzahl; die Auszahlung
+ist davon unabhängig. Die Kategorieplatzierung ist in Paket 6 angebunden. Für Matches ist außerdem
+entschieden: Der Ersteller wählt direkt beim Anlegen vor Spielbeginn, ob Wetten erlaubt sind;
+dafür ist keine Adminrolle erforderlich. Bei Turnieren werden Wetten auf den Turniersieger
+und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bestehenden
+Start-/Tippschluss- und Sichtbarkeitsregeln gelten. Migration 132 speichert die Erstellerwahl
+an Auslosungen und Captain Drafts; Rematches wählen sie ebenfalls beim Anlegen. Quelle und
+automatisch angebotene Märkte entstehen atomar, Mitteilungen folgen nach Commit.
+Neue Zweiermatches, Drafts mit zwei Captains und Rematches erlauben Wetten standardmäßig.
+Ein ausdrückliches Nein bleibt gespeichert; bei fehlender API-Angabe gilt der Standard für
+das jeweilige Format. Bestehende Freigaben und historische Vorgänge werden nicht geändert.
+Turniermärkte entstehen bei feststehenden Gegnern automatisch. Vor dem ersten Spiel schließt
+die Startaktion auch den Gesamtsieger-Markt. Neue automatische Märkte verwenden die ausdrückliche
+Startaktion als Tippschluss. Bestehende Fristen bleiben wirksam.
+Eine Ergebniseingabe bei offener Tippabgabe schließt den Markt atomar und rechnet angenommene
+Tipps regulär ab. Das erste Turnierergebnis schließt außerdem den Gesamtsieger-Markt; dieser
+wird erst nach Turnierende abgerechnet. Spätere Tipps werden abgewiesen, ungültige Tipptöpfe
+weiterhin vollständig erstattet.
+Die administrative Markt-API kann ein Nein des Match-Erstellers nicht umgehen. Neue Tipps
+sind nach Eventende gesperrt; Ergebnisse bleiben sichtbar. Nicht wählbare geteilte Turniersiege
+werden erstattet; gemeinsame Turniertitel und volle gemeinsame Platzierungsboni bleiben erhalten.
+Die Pool-Abrechnung verteilt Restpunkte nach größtem Nachkommaanteil, gleiche Anteile nach früherer
+erster Tippabgabe und dann Einfügereihenfolge. Die Nullsumme bleibt erhalten. Kategorieplätze,
+Teilnehmerbasis N und Gesamtwertung sind angebunden. Meldefunktion und weitergehende Regeln
+der einheitlichen Festschreibung folgen gemäß
+[Implementierungsplan](../IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md). Klassische Spielfilter und
+eventübergreifende Sportstatistiken verwenden weiterhin Spielpunkte und vermischen diese nicht
+mit Kategorie-Platzpunkten oder Wallet-Summen.
+
+## Versionierte Festschreibung
+
+Neue Abschlussversionen speichern neben Teilnehmerbasis, Rohwerten, Rängen, Platzpunkten und
+Gesamtständen auch die verwendeten Wertungsregeln. Frühere Versionen bleiben beim begründeten
+Wiederöffnen erhalten. `GET /api/points/snapshots` listet die Versionen eines Events;
+`GET /api/points/snapshots/:revision` liefert einen gespeicherten Stand.
+Der Andenken-Export übernimmt mit `pointsRevision` gezielt dessen Kategorie-Wertung und N;
+die übrigen Andenken-Daten bleiben der aktuelle Eventexport. Ohne Versionsauswahl verwendet
+ein abgeschlossenes Event den jüngsten Abschluss. Alte Stände ohne gespeicherte Regeln liefern
+keine nachträglich erfundene Regelversion. Ausgeblendete Punkte bleiben im gemeinsamen Export
+ausgeblendet; ein Versionsparameter umgeht diese Regel nicht. Kontolöschung anonymisiert auch
+die früheren Versionen; gespeicherte Ränge und N werden dabei nicht neu berechnet.
+
+Migration 133 ergänzt private Meldungen und verändert keine Guthaben. Die API und Oberfläche
+sind angebunden; offene Meldungen verhindern den endgültigen Abschluss.
+Die interne Meldungslogik speichert Quellenkennungen und betroffene Konten getrennt vom Absender.
+„Punktefehler melden“ gilt ausschließlich mutmaßlich falsch vergebenen Punkten und ist an eine
+konkrete Buchung gebunden. Gewertete Ergebnisse, vergütete To-dos und abgerechnete Wetten
+führen zu ihrer jeweiligen Punktevergabe; offene Aufgaben und noch unabgerechnete Wetten
+sind dafür nicht meldbar. Die interne Validierung prüft diesen Buchungsbezug serverseitig.
+Betroffene Konten stammen aus diesen Buchungen. Ein Admin, der ein To-do erstellt hat, bleibt
+für die gemeldete Gutschrift eines anderen Kontos zuständig, sofern seine eigenen Punkte nicht
+betroffen sind.
+Eigene Meldungen und ihr Status sind Bestandteil des persönlichen Datenexports, fremde Meldungen
+nicht. Löschung des Absenders anonymisiert seine Referenz und entfernt seinen privaten Text;
+andere Meldungen sowie die Punktebuchungen bleiben erhalten. Meldungsdetails gelangen nicht in
+das allgemeine Adminprotokoll. Der einzige aktive Admin darf Meldungen zu eigenen Punkten
+anonym bearbeiten: Absender, Freitext und genaue Meldezeitpunkte bleiben verborgen. Andere
+berechtigte Admins beziehungsweise der unbetroffene Event-Ersteller erhalten ihren Posteingang;
+Nicht-Admins schließen keine Meldungen ab. Rollenwechsel entziehen den Zugriff unmittelbar.
+Statusdialoge aktualisieren sich durch persönliche, inhaltslose Realtime-Signale und schließen
+beim Kontextwechsel. Über das Event bleiben eigene Meldungen auch bei ausgeblendeten Punkten
+zugänglich.
+
+Alle noch nicht abgerechneten Wetten werden bei Festschreibung vollständig zurückgezahlt,
+auch bereits gesperrte. Meldesperre, Ergebnisabgleich, Erstattungen, automatische Punkte,
+Snapshot und Audit sind eine gemeinsame Transaktion; ein Fehler rollt alle Änderungen zurück.
+Mitteilungen folgen erst danach. Rückzahlungen zählen weder als Wett-Nettogewinn noch zur
+Mindestzahl regulär abgerechneter Tipps. Konto und Verwaltung bieten frühere Endstände als
+versionierte JSON-Downloads; Wiederöffnen überschreibt keine frühere Festschreibung.

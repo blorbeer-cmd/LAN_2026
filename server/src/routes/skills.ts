@@ -7,6 +7,7 @@ import { broadcast, Events } from '../realtime';
 import { isIntInRange } from '../validation';
 import { computeSkillSuggestionsForGame, MIN_RESULTS_FOR_SUGGESTION, type SkillSuggestionMatch } from '../skillSuggestion';
 import { requireUser } from '../sessions';
+import { grantGroupSkillBonuses } from '../skillBonus';
 import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
 
 export const skillsRouter = Router();
@@ -108,12 +109,15 @@ skillsRouter.put('/', requireUser, (req, res) => {
   const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
 
-  db.prepare(
-    `INSERT INTO skills (player_id, game_id, group_id, rating) VALUES (?, ?, ?, ?)
-     ON CONFLICT(player_id, game_id) DO UPDATE SET rating = excluded.rating`
-  ).run(playerId, gameId, req.group!.id, rating);
-
+  const creditedEvents = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO skills (player_id, game_id, group_id, rating) VALUES (?, ?, ?, ?)
+       ON CONFLICT(player_id, game_id) DO UPDATE SET rating = excluded.rating`
+    ).run(playerId, gameId, req.group!.id, rating);
+    return grantGroupSkillBonuses(req.group!.id);
+  }).immediate();
   broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
+  for (const eventId of creditedEvents) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json({ playerId, gameId, rating });
 });
 
@@ -122,12 +126,19 @@ skillsRouter.delete('/:playerId/:gameId', requireUser, (req, res) => {
   if (req.player && req.params.playerId !== req.player.id) {
     return res.status(403).json({ error: 'Du kannst nur deine eigenen Skill-Ratings bearbeiten.' });
   }
-  const result = db
-    .prepare('DELETE FROM skills WHERE player_id = ? AND game_id = ? AND group_id = ?')
-    .run(req.params.playerId, req.params.gameId, req.group!.id);
-  if (result.changes === 0) {
-    return res.status(404).json({ error: 'Rating nicht gefunden.' });
-  }
+  const creditedEvents = db.transaction(() => {
+    const rating = db.prepare('SELECT 1 FROM skills WHERE player_id = ? AND game_id = ? AND group_id = ?')
+      .get(req.params.playerId, req.params.gameId, req.group!.id);
+    if (!rating) return null;
+    // Capture an already complete profile before clearing its rating. The
+    // claim and deletion commit together; subsequent data changes cannot undo it.
+    const events = grantGroupSkillBonuses(req.group!.id);
+    db.prepare('DELETE FROM skills WHERE player_id = ? AND game_id = ? AND group_id = ?')
+      .run(req.params.playerId, req.params.gameId, req.group!.id);
+    return events;
+  }).immediate();
+  if (!creditedEvents) return res.status(404).json({ error: 'Rating nicht gefunden.' });
   broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
+  for (const eventId of creditedEvents) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.status(204).end();
 });

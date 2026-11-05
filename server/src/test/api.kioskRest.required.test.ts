@@ -161,6 +161,22 @@ test('a token-only kiosk loads one exact event and honours archival', () => {
         'an opted-out name leaves the visible feed at once',
       );
 
+      const feedGame = db.prepare("SELECT id FROM games WHERE group_id = ? AND arcade_key IS NULL LIMIT 1").get(GROUP).id;
+      db.prepare('INSERT INTO matches(id,game_id,event_id,group_id,played_at,result) VALUES (?, ?, ?, ?, ?, ?)')
+        .run('kiosk-feed-match', feedGame, lanEvent.id, GROUP, now, JSON.stringify({ teams: [{ playerIds: ['news-a'] }, { playerIds: ['news-b'] }], winnerTeamIndex: 0 }));
+      const feedBefore = db.prepare('SELECT COUNT(*) AS n FROM points_journal').get().n;
+      const resultFeed = await request(app).get('/api/results/feed').set('x-kiosk-mode', '1').set('x-access-token', login.body.token);
+      assert.equal(resultFeed.status, 200);
+      assert.equal(resultFeed.body.items[0].id, 'kiosk-feed-match');
+      assert.equal(resultFeed.body.showPoints, false);
+      assert.deepEqual(resultFeed.body.items[0].teams[0].players, [{ name: 'Tickerfuchs' }]);
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM points_journal').get().n, feedBefore, 'kiosk reads never award points');
+      const clampedFeed = await request(app).get('/api/results/feed?eventId=' + generalEvent.id)
+        .set('x-kiosk-mode', '1').set('x-access-token', login.body.token);
+      assert.equal(clampedFeed.status, 200);
+      assert.equal(clampedFeed.body.items[0].id, 'kiosk-feed-match', 'kiosk credentials override an event selector');
+      assert.equal((await request(app).post('/api/results/feed').set('x-kiosk-mode', '1').set('x-access-token', login.body.token)).status, 401);
+
       // #1 — /push/last must be a read-only kiosk path; before the fix a
       // token-only kiosk 401s here and its whole Promise.all refresh fails.
       const lastEmpty = await kioskGet(app, '/api/push/last');

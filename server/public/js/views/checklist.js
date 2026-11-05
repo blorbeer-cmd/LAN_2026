@@ -17,6 +17,10 @@ import { dateTimeFieldHtml, wireDateTimeField, parseDatetimeLocalMs } from '../d
 import { dueDiffDays, dueText } from '../checklistDue.js';
 import { wireSelectionSearch } from '../selectionSearch.js';
 import { wireActionMenus } from '../actionMenu.js';
+import { isGroupAdmin } from '../groupContext.js';
+import { openPointsModal } from './points.js';
+import { state } from '../state.js';
+import { pointsReportButton, wirePointsReportButtons } from '../pointsReports.js';
 
 let tasksCache = null;
 let itemsCache = null;
@@ -307,6 +311,7 @@ function renderTaskRow(tasks, myId, mode) {
     <div class="checklist-table-row${isDone ? ' is-done' : ''}" role="row" data-checklist-task="${task.id}" data-checklist-task-item data-selection-search="${escapeHtml(`${task.title} ${who}`)}">
       <div class="checklist-table-task" role="cell">
         <button type="button" class="checklist-task-title" data-task-detail="${task.id}" title="${escapeHtml(task.title)}">${escapeHtml(shortTitle(task.title))}</button>
+        ${task.reward ? `<div class="muted">${task.reward.perPerson} P. pro Helfer · ${task.reward.remaining} belohnte Plätze frei${task.reward.beneficiaryIds.includes(myId) ? ' · Dein Punkteplatz ist gesichert' : ''}</div>` : ''}
       </div>
       <div class="checklist-table-who" role="cell">${who ? whoCellHtml(tasks, who, myId) : '<span class="muted">offen</span>'}</div>
       <div class="checklist-table-due" role="cell">${
@@ -489,10 +494,12 @@ function openTaskDetail(ctx, myId, taskId) {
     commentLines.length ? ['Kommentare', commentLines.join('')] : null,
     !isDone && task.dueAt ? ['Fällig', dueDetailText(task.dueAt)] : null,
     isDone ? ['Erledigt', escapeHtml(formatDateTime(task.doneAt))] : null,
+    task.reward ? ['Bisherige LAN-Belohnung', `${task.reward.perPerson} P. pro Helfer · ${task.reward.remaining}/${task.reward.slots} belohnte Plätze frei${task.reward.beneficiaryIds.includes(myId) ? ' · Du erhältst die Punkte beim Erledigen automatisch.' : ''}`] : null,
   ].filter(Boolean);
   const canManage = isOwn && !isDone;
   const canArchive = mode === 'done' && (isOwn || joined);
   const secondary = [
+    isDone && task.canReopen && (isOwn || joined || isGroupAdmin()) ? '<button type="button" class="btn btn-sm" data-detail-reopen>Wieder öffnen</button>' : '',
     canManage ? '<button type="button" class="btn btn-sm" data-detail-delete>Löschen</button>' : '',
     joined && !isDone ? '<button type="button" class="btn btn-sm" data-detail-return>Abgeben</button>' : '',
     canManage ? '<button type="button" class="btn btn-sm" data-detail-edit>Bearbeiten</button>' : '',
@@ -505,18 +512,28 @@ function openTaskDetail(ctx, myId, taskId) {
         : canArchive
           ? '<button type="button" class="btn btn-primary btn-sm" data-detail-archive>Archivieren</button>'
           : '';
-  const { close } = openModal(
+  const { close } = ((task.reward || task.pointsValue > 0) && state.activeEvent?.pointsEnabled ? openPointsModal : openModal)(
     task.title,
     `<div class="stack">
        ${task.description ? `<p class="checklist-detail-description">${escapeHtml(task.description)}</p>` : ''}
        <dl class="checklist-detail-facts">
          ${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
        </dl>
+       ${pointsReportButton('todo', task.id, isDone)}
        ${secondary || primary ? `<div class="checklist-form-footer">${secondary}${primary}</div>` : ''}
      </div>`,
     {
       onMount: (el) => {
+        wirePointsReportButtons(el);
         (el.closest('.modal') ?? el.querySelector('.modal'))?.classList.add('checklist-detail-modal');
+        el.querySelector('[data-detail-reopen]')?.addEventListener('click', async () => {
+          try {
+            reconcileTasks(await api.checklist.reopen(task.id, myId));
+            close();
+            showToast('Aufgabe wieder geöffnet.');
+            ctx.rerender();
+          } catch (error) { showToast(error.message, { error: true }); }
+        });
         el.querySelector('[data-detail-done]')?.addEventListener('click', async () => {
           if (await markTaskDone(ctx, myId, task.id)) close();
         });
@@ -707,7 +724,7 @@ async function openCreateTodoForm(ctx, myId, existing = null) {
     }
   }
 
-  const { close } = openModal(existing ? 'To-Do bearbeiten' : 'To-Do erstellen', '<div data-todo-form-body></div>', {
+  const { close } = (state.activeEvent?.pointsEnabled && !isGroupAdmin() ? openPointsModal : openModal)(existing ? 'To-Do bearbeiten' : 'To-Do erstellen', '<div data-todo-form-body></div>', {
     confirmClose: () =>
       anyFieldEverTouched ? (existing ? 'Die Änderungen gehen verloren.' : 'Das To-Do mit den bisherigen Angaben geht verloren.') : null,
     onMount: (el) => {

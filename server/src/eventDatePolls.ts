@@ -6,6 +6,7 @@
 
 import { nanoid } from 'nanoid';
 import { db } from './db';
+import { syncOrgaPoints } from './orgaPoints';
 import type { EventRow } from './events';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import { endOfIsoDateUtcMs } from './localDate';
@@ -181,6 +182,11 @@ export interface MaterializeResult {
   transitioned: boolean;
 }
 
+function syncPollPoints(eventId: string): void {
+  const event = db.prepare('SELECT group_id FROM events WHERE id=?').get(eventId) as { group_id: string | null } | undefined;
+  if (event?.group_id) syncOrgaPoints(event.group_id, eventId);
+}
+
 // Idempotent, race-safe lazy close: the first authenticated request to see
 // an expired open round flips it, clears its pending automatic reminders and
 // reports transitioned:true; any concurrent or later request sees the
@@ -203,6 +209,7 @@ export function materializeExpiredPollIfNeeded(pollId: string, now = Date.now())
     }
     freezeEligibleRoster(poll);
     clearAutomaticReminders(pollId);
+    syncPollPoints(poll.event_id);
     return { poll: getDatePoll(pollId)!, transitioned: true };
   })();
 }
@@ -736,6 +743,7 @@ export function closeDatePoll(poll: DatePollRow): PollMutationResult {
     }
     freezeEligibleRoster(poll);
     clearAutomaticReminders(poll.id);
+    syncPollPoints(poll.event_id);
     return { ok: true, poll: getDatePoll(poll.id)! };
   })();
 }
@@ -777,6 +785,7 @@ export function reopenDatePoll(poll: DatePollRow, responseDueOn: string | null |
       return { ok: false, code: 'not_closed', error: 'Die Abstimmung ist nicht beendet.' };
     }
     rescheduleRemindersForStillOpenInvitees(poll.id, responseDueAt, now);
+    syncPollPoints(poll.event_id);
     return { ok: true, poll: getDatePoll(poll.id)! };
   })();
 }
@@ -788,6 +797,7 @@ export function deleteDatePollSeries(poll: DatePollRow): string[] {
       .all(poll.event_id, poll.decision_key) as Array<{ id: string }>;
     db.prepare('DELETE FROM event_date_polls WHERE event_id = ? AND decision_key = ?')
       .run(poll.event_id, poll.decision_key);
+    syncPollPoints(poll.event_id);
     return rows.map((row) => row.id);
   })();
 }

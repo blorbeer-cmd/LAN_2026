@@ -233,6 +233,9 @@ centering calculation explicitly subtracts the rail so the navigation never narr
 content column by accident. Mein Profil offers Automatic/Desktop/Laptop as one account-scoped shell
 choice. Automatic follows `--bp-xl`; below that breakpoint every preference intentionally retains
 compact geometry.
+The desktop rail uses standard 32px rows for a hovering fine pointer, with compact group spacing.
+Coarse-pointer navigation retains 44px targets. Labels and keyboard focus remain fully visible;
+the main list scrolls only when the available window height still cannot fit its entries.
 
 ## Breakpoints
 
@@ -379,6 +382,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Card headings** — headings inside cards use `--font-size-lg`, bold weight and the card's
   standard top/left inset. `.grouped-page-section-title` aligns heading text and trailing actions
   to the same top edge; collapsible headers use the shared vertical centering described below.
+  Long user-authored page titles wrap even within an unbroken word; `.page-title-row .view-title`
+  owns their zero minimum width and wrapping so trailing actions remain inside the content pane.
   A contextual-help trigger keeps its full touch target through negative outer margin, so adding
   help never shifts only that heading
   downward.

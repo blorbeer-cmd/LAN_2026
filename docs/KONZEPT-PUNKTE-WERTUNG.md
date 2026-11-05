@@ -1,0 +1,565 @@
+# Respawn – Punkte und Wertung
+
+**Status:** Beschlossenes Zielkonzept mit ausdrücklich offenen Entscheidungen. Die Umsetzung
+erfolgt schrittweise im gemeinsamen Punkte-PR. Bereits umgesetzte Grundlagen und verbleibende
+Arbeiten stehen in Abschnitt 12; das gesamte Zielkonzept ist noch nicht vollständig umgesetzt.
+
+Das Konzept ersetzt die früheren Konzeptstände zu einer reinen Wetten-/Orga-Wertung,
+zu 3/2/1 beziehungsweise 3/1/0 Spielpunkten, zu 8/5/3 Turnierboni und zur Normalisierung
+auf den Kategorienführer. Der tatsächliche Implementierungsstand ist getrennt dokumentiert
+unter [Produktregeln: Wettbewerb und Spiele](product/competition-and-game-rules.md#ranglistenpunkte).
+Die nötigen Folgeänderungen stehen in Abschnitt 12.
+
+## 1. Ziel und verbindliche Grundprinzipien
+
+Es gibt die Kategorien **Wetten**, **Orga** und **Spielen**. Jede Kategorie hat eine eigene
+Rangliste und einen Sieger. Aus den Platzpunkten aller drei Kategorien entsteht die
+Gesamtwertung mit einem zusätzlichen Gesamtsieger. Mehrere Titel pro Person sind erlaubt.
+
+- Alle regulären Gutschriften erfolgen automatisch. Es gibt keine Freigaben.
+- Alle in Respawn dokumentierten Spiele mit gültigem Ergebnis zählen. Es gibt kein
+  Kontingent gewerteter Spiele, keine Gegenbestätigung und keine Plausibilitätssperren.
+- Spieldauer und wiederholte Begegnungen werden nicht gewichtet. Auch kurze Spiele und
+  echte Wiederholungsspiele zählen vollständig. Das ist bewusst akzeptiert.
+- Erfundene Spiele, absichtliches Verlieren und Absprachen lassen sich ohne unabhängigen
+  Nachweis nicht zuverlässig erkennen. Die kleine Runde setzt bewusst auf Vertrauen.
+- Die nachträglichen Gegenmaßnahmen sind transparente Ergebnisse im Kiosk, Meldungen und
+  begründete administrative Punktekorrekturen. Eine Meldung hält keine Gutschrift auf.
+- Admins und Event-Ersteller sind voll wertungsberechtigt. Admins dürfen auch eigene Punkte
+  korrigieren oder entziehen. Dafür gelten dieselben Begründungs-, Journal- und Revisionsregeln
+  wie bei fremden Punkten; es gibt keine zusätzliche Freigabe.
+- Das Ein- oder Ausblenden der Punkteansichten verändert keine Ansprüche und setzt keine
+  Punkte zurück. Die Erfassung läuft immer im Hintergrund.
+
+## 2. Journal, Vorgänge und Zuständigkeiten
+
+Jede Gutschrift erhält einen Journaleintrag mit Event, Empfänger, Kategorie, Zeitpunkt,
+Anlass, Betrag und eindeutigem Vorgangsschlüssel. Der fachliche Anspruch eines Vorgangs
+wird genau einmal erfasst; erneute Verarbeitung, Reload oder wiederholtes Speichern
+erzeugen keinen zweiten Anspruch.
+
+Korrekturen berechnen den richtigen Stand neu. Begründete Gegen- oder Differenzbuchungen
+referenzieren den ursprünglichen Vorgang; die Historie bleibt nachvollziehbar. Ein
+geändertes Ergebnis ist keine weitere Partie. Die dauerhaften persönlichen Boni aus
+Abschnitt 5 bilden eine ausdrücklich festgelegte Ausnahme von einer automatischen Rücknahme.
+
+Die eindeutige Kennung verhindert doppelte Verarbeitung desselben Datensatzes. Sie beweist
+nicht, dass eine neu angelegte Partie tatsächlich gespielt wurde. Neue erfundene Datensätze
+können deshalb weiterhin Punkte erzeugen; dieses Restrisiko wird bewusst akzeptiert.
+
+Orga-Punkte für organisierte Aktivitäten erhält der verantwortliche Ersteller. Das reine
+Eintragen eines fremden Ergebnisses erzeugt keine weitere Organisationsbelohnung.
+Ausführende Helfer erhalten ihre To-do-Punkte nach Abschnitt 5.1. Persönliche Angaben und
+eigene Bestellungen belohnen die jeweils betreffende Person.
+
+Administrative Entzüge und Korrekturen benötigen eine Begründung und eine aktive Adminrolle.
+Korrekturen mit Auswirkung auf die eigene Wertung sind ausdrücklich erlaubt und werden
+ebenso nachvollziehbar protokolliert. Der Event-Ersteller erhält durch die Erstellerrolle allein keine
+zusätzlichen administrativen Korrekturrechte.
+
+## 3. Spielen
+
+### 3.1 Punkte nach Platzierung
+
+Für Teams und Einzelspieler gilt dieselbe Regel. Jeder Spieler eines Teams erhält den
+vollen Wert seines Teamplatzes. Die Punkte gelten insgesamt pro Spiel, nicht zusätzlich
+zu einem weiteren Teilnahmebonus.
+
+| Platz im Spiel | Spielpunkte pro Person |
+|---|---:|
+| 1. Platz, sofern nicht zugleich letzter | 4 |
+| 2. Platz, sofern nicht zugleich letzter | 3 |
+| 3. Platz, sofern nicht zugleich letzter | 2 |
+| Letzter Platz und jeder Platz ab dem 4. | 1 |
+
+Der letzte Platz hat Vorrang vor den nominellen Werten für Platz 2 und 3. Daraus folgen
+für vollständig angegebene, ungeteilte Platzierungen:
+
+| Teams beziehungsweise Einzelspieler | Punktefolge |
+|---|---|
+| 2 | 4 / 1 |
+| 3 | 4 / 3 / 1 |
+| 4 | 4 / 3 / 2 / 1 |
+| 8 | 4 / 3 / 2 / 1 / 1 / 1 / 1 / 1 |
+
+### 3.2 Gleichplatzierungen und reine Siegereingabe
+
+Gleichplatzierte belegen gemeinsam die entsprechenden aufeinanderfolgenden Plätze. Sie
+erhalten jeweils den **abgerundeten Durchschnitt** der Punkte dieser Plätze, bezogen auf
+die Zahl der Seiten in diesem Spiel.
+
+- 1v1-Unentschieden: `abrunden((4 + 1) / 2) = 2` Punkte je Person beziehungsweise Teammitglied.
+- Zwei Teams auf geteiltem Platz 1 bei insgesamt vier Teams:
+  `abrunden((4 + 3) / 2) = 3` Punkte je Teammitglied.
+- Zwei Teams auf geteiltem Platz 3 bei vier Teams: `abrunden((2 + 1) / 2) = 1` Punkt je Teammitglied.
+
+**Sonderregel bei reiner Siegereingabe:** Ist nur der Sieger angegeben und fehlen die
+weiteren Platzierungen, erhält der Sieger 4 Punkte. Alle übrigen Seiten gelten als
+gemeinsamer letzter Platz und erhalten jeweils 1 Punkt. Aus den fehlenden Platzierungen
+werden keine höheren Durchschnittspunkte abgeleitet.
+
+### 3.3 Turnierboni
+
+Regulär abgeschlossene Turniere geben zusätzlich pro Teammitglied beziehungsweise
+Einzelspieler **5 / 3 / 1 Punkte für Platz 1 / 2 / 3**. Diese Werte sind entschieden;
+der frühere Vorschlag 8/5/3 ist ersetzt. Tatsächlich gespielte Turniermatches zählen
+zusätzlich als Spiele. Freilose erzeugen keine Punkte für ein gespieltes Match.
+
+Eine Änderung des Turnierergebnisses berechnet die Wertung neu. Sie erzeugt keinen
+zweiten Platzierungsbonus.
+Geteilte Turnierplätze erhalten jeweils den vollen Bonus des gemeinsamen Rangs.
+Zwei Erstplatzierte erhalten daher 5/5/1; nach ihnen folgt Platz 3 (S1, bestätigt).
+
+**Entschieden für manuelle Spielpunkte-Korrekturen:** Ändert sich später der tatsächliche
+Punkteanspruch aus einem Spiel oder einer Turnierplatzierung, wird er aus dem neuen Ergebnis
+neu berechnet und ersetzt den vorherigen, auch manuell korrigierten Anspruch. Eine Löschung
+setzt ihn auf 0. Unveränderte Ansprüche, erneutes Speichern und Neustarts setzen manuelle
+Korrekturen nicht zurück.
+
+### 3.4 Bewusst akzeptierte Auswirkungen
+
+Es gibt weder eine Zeitgewichtung noch einen Abschlag für wiederholte Begegnungen.
+Häufiges Spielen und kurze Spiele können deshalb vorteilhaft sein. Aktivität soll belohnt
+werden; daraus wird keine Sperre oder Begrenzung abgeleitet.
+
+Der bestätigte Nutzerhinweis lautet: „Jedes gespielte Match bringt Punkte. Spielzeit und
+Teamgröße werden nicht gewichtet.“ Die Punkteformel bleibt unverändert. Die frühere pauschale
+Aussage über einen höheren Punktedurchschnitt bei mehr Teams entfällt (H1).
+
+## 4. Wetten
+
+### 4.1 Wettguthaben und Märkte
+
+Alle starten mit demselben separaten Wettguthaben: **fest 100 Wettpunkte pro Event**, einmalig
+auch bei später Zusage und ohne Konfiguration. Austritt und erneute Zusage erzeugen keinen
+zweiten Grundstock. Es gehört nicht zur Gesamtwertung.
+Orga- und Spielpunkte erhöhen das Wettguthaben nicht. Wetten verteilen vorhandene Einsätze
+ohne Gebühr oder Hausanteil um; es entstehen und verschwinden keine Guthabenpunkte.
+
+Tipps auf das eigene Spiel, das eigene Team, den Gegner und den Turniersieger bleiben
+erlaubt. Auch Ergebniseintrager und Organisatoren dürfen tippen. Das Risiko absichtlicher
+Niederlagen und abgesprochener Ergebnisse wird im Rahmen des Vertrauensprinzips akzeptiert.
+
+Offizielle Wettrunden haben einen ausdrücklichen Start beziehungsweise Tippschluss.
+Wird vorher ein Ergebnis eingetragen, schließt dies die Tippabgabe und rechnet bereits angenommene
+Tipps regulär ab. Ergebnis und Abrechnung werden gemeinsam gespeichert; spätere Tipps sind gesperrt.
+Beim ersten Turnierergebnis wird auch der Gesamtsieger-Markt geschlossen und bis zum Turnierende gehalten.
+Ihre Verfügbarkeit richtet sich nach der folgenden Entscheidung W4. Alle gültigen Spiele
+zählen weiterhin unabhängig vom Wettangebot zur Spielwertung.
+
+**Entschieden W4:** Der Match-Ersteller wählt direkt beim Anlegen vor Spielbeginn,
+ob auf dieses Match gewettet werden darf, etwa über „Wetten zulassen“. Dafür braucht er keine
+zusätzliche Adminrolle. Eine ausgeschaltete Option eröffnet keinen Wettmarkt; andere Personen
+dürfen diese Entscheidung nicht durch eine separate Markteröffnung umgehen.
+Bei neuen Matches mit mindestens zwei Teams, Captain Drafts und Rematches ist Wetten
+standardmäßig erlaubt. Der Ersteller kann es für die jeweilige Anlage ausschalten.
+Die API verwendet bei fehlender Angabe denselben Standard. Bestehende Entscheidungen bleiben erhalten.
+
+Bei Turnieren werden Wetten immer angeboten, sowohl auf den Turniersieger als auch auf
+einzelne Turnierspiele. Dafür gibt es keinen optionalen Freischalter. Die bestehenden Regeln
+zu Sichtbarkeit, feststehenden Gegnern, Tippschluss und Spielbeginn gelten weiterhin.
+Die technische Anbindung ist in Paket 5b umgesetzt: Die Wahl wird für Auslosungen, Captain
+Drafts und Rematches gespeichert. Turniermärkte entstehen automatisch, sobald sie spielbar
+sind. Vor Spielbeginn schließen Mitspieler oder Admins die Tipps über die Startaktion;
+beim ersten Turnierspiel schließt damit zugleich der Gesamtsieger-Markt. Bestehende explizite
+Fristen bleiben wirksam.
+
+Die Oberfläche zeigt keine Quoten: weder in der LAN-Punkteübersicht noch an Matches,
+Turnieren oder in Tippdialogen und Hilfetexten. Sichtbar bleiben Einsätze, der eigene Tipp
+und nach der Abrechnung Auszahlung und Nettogewinn. Maßgeblich für die Abrechnung ist der
+Pool zum Tippschluss; die beschlossene Gewinnbegrenzung bleibt unverändert.
+
+„Unentschieden“ ist als Tipp wählbar, wenn Spiel und Format es zulassen. Bei Turnier-K.-o.-
+Spielen und Turniersieger-Märkten wird diese Option nicht angeboten.
+
+### 4.2 Vollständige Rückerstattung
+
+Der gesamte Markt wird erstattet, wenn:
+
+- niemand auf das tatsächliche Ergebnis gesetzt hat;
+- nur auf ein Ergebnis gesetzt wurde;
+- ein Unentschieden eintritt, das am Markt nicht wählbar war;
+- das Spiel abgesagt wird;
+- der Markt bei der Festschreibung der Endwertung noch offen ist.
+
+Eine vollständige Erstattung gibt die Einsätze zurück und erzeugt keinen Nettogewinn.
+Ein wählbares und eingetretenes Unentschieden kann dagegen regulär gewinnen.
+
+### 4.3 Auszahlung und Korrekturen
+
+Der zusätzliche Gewinn ist je Person höchstens so hoch wie der eigene Einsatz. Sind W die
+Einsätze auf das eingetretene Ergebnis und L alle anderen Einsätze, werden genau `min(W,L)`
+Punkte umverteilt. Gewinner erhalten ihren Einsatz und ihren Anteil an diesem Betrag nach
+Gewinner-Einsatz zurück. Verlierer verlieren ihren Anteil nach Verlierer-Einsatz; den übrigen
+Einsatz bekommen sie zurück. Es gibt keine Gebühr und keinen Hausanteil.
+
+Gewinne und Verluste werden getrennt auf ganze Punkte abgerundet; die verbleibenden Restpunkte
+gehen jeweils an die größten Nachkommaanteile. Beide Seiten verteilen damit genau denselben
+Betrag. Niemand gewinnt zusätzlich mehr als seinen eigenen Einsatz oder verliert mehr als ihn.
+Die Summe aller Auszahlungen entspricht exakt dem Topf.
+
+Beispiel: 1 Punkt auf A und 15 auf B; A gewinnt. A erhält **2 Punkte** (Netto +1), B erhält
+**14 Punkte zurück** (Netto −1). Eine solche Teilrückzahlung gehört zur regulären Abrechnung.
+
+Beispiel: 5 und 3 Punkte auf A, 2 auf B; A gewinnt. Umverteilt werden 2 Punkte. Aus Gewinnen
+von 1,25 und 0,75 werden zunächst 1 und 0. Der Restpunkt geht an den Anteil mit 0,75 Rest:
+Auszahlung inklusive Einsatz **6 und 4**, B erhält 0.
+Diese Nutzerentscheidung ersetzt die zuvor geplante Restvergabe an den größten Einsatz.
+
+Bei gleichen Nachkommaanteilen entscheidet der früher abgegebene Tipp. Maßgeblich ist seine
+erste Speicherung; bei gleichem Millisekunden-Zeitstempel die gespeicherte Einfügereihenfolge.
+Änderungen eines bestehenden Tipps verändern dessen ursprünglichen Abgabezeitpunkt nicht.
+Migration 135 hinterlegt die Auszahlungsregel je Markt. Neue und noch nie abgerechnete offene
+Märkte verwenden die Gewinnbegrenzung. Bereits abgerechnete, erstattete, korrigierte oder in einer
+festgeschriebenen Wertung gespeicherte Märkte behalten ihre bisherige Poolregel, auch bei Korrekturen.
+
+Die Nullsumme wird ausdrücklich beibehalten: Sie begründet das Poolmodell und den begrenzten
+Wettvorrat. Die gleiche Gewichtung der Kategorien folgt unabhängig davon aus den N-basierten
+Platzpunkten; sie benötigt keine Begrenzung der gesamten Wett-Rohwerte.
+
+Kontostände werden immer aus dem Journal neu berechnet. Eine Ergebniskorrektur nach einer
+Auszahlung kann das Guthaben negativ machen, wenn Gewinne bereits weiterverwendet wurden.
+Bei negativem Guthaben sind keine neuen Tipps möglich. Korrekturen werden nachvollziehbar
+gebucht und erzeugen keinen zweiten Gewinnanspruch.
+
+**Entschieden (W6):** Wallet und Wett-Nettokonto werden ausschließlich durch begründete
+Markt-Neuberechnung oder Storno korrigiert. Einseitige administrative Änderungen einzelner
+Wallet- oder Wettansprüche sind auch über die Journal-API ausgeschlossen. Jede Korrektur
+erhält die Nullsumme des Marktes; eigene administrative Marktkorrekturen bleiben erlaubt.
+
+### 4.4 Wettwertung und offene Grenzen
+
+Für die Kategorie zählt der **Nettogewinn** aus gültig abgerechneten Tipps: Auszahlung
+minus Einsatz. Verluste werden mit Gewinnen verrechnet. Negative oder ausgeglichene
+Bilanzen erhalten keine Platzierung und 0 Platzpunkte.
+
+**Entschieden W1 – Einsatzgrenze je Markt:** Maximal **20 Wettpunkte** pro Person und
+Wettmarkt. Der Nutzer hat diesen Vorschlag ausdrücklich bestätigt. Bei 100 Punkten
+Startguthaben begrenzt das den Einsatz einer einzelnen Wette auf ein Fünftel des Grundstocks.
+
+**Entschieden W2 – Mindestzahl abgerechneter Tipps für eine Wettplatzierung:** Mindestens
+**2 regulär abgerechnete Tipps** pro Person und Event. Vollständig erstattete Märkte und
+zurückgenommene Tipps zählen nicht. Auch vor Erreichen der Mindestzahl werden Gewinne
+normal ausgezahlt; die Voraussetzung betrifft nur die Kategorieplatzierung. Eine positive
+Nettobilanz bleibt zusätzlich erforderlich.
+
+**Entschieden W5 – keine zusätzlichen Kontingente:** Es gibt weder ein Tageslimit noch
+eine Höchstzahl offizieller Wettrunden pro Event. Neue Einsätze benötigen weiterhin ausreichend
+verfügbares Wettguthaben und bleiben auf höchstens 20 Punkte pro Person und Markt begrenzt.
+
+Begründung: Weil negative Bilanzen nicht zu negativen Platzpunkten führen, kosten riskante
+Alles-oder-nichts-Tipps in der Gesamtwertung nach unten nichts. Die beschlossene Einsatzgrenze
+und die Mindestzahl von zwei abgerechneten Tipps sollen diesen Anreiz mildern.
+
+## 5. Orga und organisatorische Mitwirkung
+
+Die Kategorie belohnt praktische Hilfe, verlässliche Angaben und erfolgreich organisierte
+Abläufe in Respawn. Die folgenden Sonderregeln ersetzen frühere Vorschläge, soweit sie
+abweichen. Die übrigen Werte bleiben erhalten.
+
+### 5.1 To-dos
+
+- Jedes berechtigte To-do bringt **fest 3 Orga-Punkte**, unabhängig von Aufwand und Aufgabe. Es gibt keine Punkteauswahl und keine höheren automatischen Admin-Werte.
+- Punkte entstehen nur für das Übernehmen **und** Erledigen eines To-dos, das jemand
+  anderes angelegt hat. Das Anlegen allein und das Erledigen eigener To-dos bringen nichts.
+- Ein To-do zahlt höchstens einmal aus. Wird es wieder geöffnet, wird die Gutschrift
+  korrigiert. Erneutes Erledigen erzeugt keinen zusätzlichen Auszahlungsanspruch.
+- Es gibt keine Freigabe der Erledigung und keine Gegenbestätigung.
+
+**Erste Umsetzung:** Der erste angemeldete Helfer, der nicht der Ersteller ist, erhält den
+festgelegten Wert beim Erledigen. Direkte Zuweisung zählt als Übernahme. Ein gemeinsamer Auftrag
+mit mehreren Direktzuweisungen wird zusammen einmal belohnt; weitere Helfer erzeugen keine
+zusätzliche Auszahlung. Mitbring-Anfragen sind keine vergüteten Aufgaben.
+Ersteller, eingetragene Helfer und Admins dürfen wieder öffnen; die Gutschrift wird dabei
+zurückgerechnet. Der feste Wert ist weder beim Anlegen noch beim Bearbeiten konfigurierbar.
+Administrative Journal-Korrekturen bleiben davon unabhängig möglich.
+
+Laufende Events werden ab der Umstellung unterstützt. Offene oder übernommene Altaufgaben ohne zugesagte Belohnung wechseln ebenfalls zu festen 3 Punkten.
+Bereits erledigte, bisher unvergütete Altaufgaben werden nicht nachträglich vergütet. Bereits im
+Kategorie-Modell gewertete Aufgaben werden dagegen nach der neuen festen Regel neu berechnet.
+Mit dem beschlossenen Neustart in Paket 5a werden keine alten Belohnungszusagen oder Gutschriften
+übernommen. Vorher abgeschlossene Aufgaben bleiben ohne rückwirkende Vergütung.
+
+### 5.2 Sammelbestellungen
+
+Der Organisator erhält Punkte nach der Zahl **anderer unterschiedlicher Teilnehmer** mit
+nicht stornierter Bestellung zum Bestellschluss. Die eigene Bestellung und mehrere
+Bestellpositionen derselben Person erhöhen diese Teilnehmerzahl nicht.
+
+| Andere Teilnehmer mit nicht stornierter Bestellung | Orga-Punkte |
+|---|---:|
+| Weniger als 3 | 0 |
+| 3–5 | 3 |
+| 6–8 | 4 |
+| Ab 9 | 5 |
+
+Spätere Stornos korrigieren die Gutschrift anhand dieser Staffel. Sinkt die Zahl
+beispielsweise von 6 auf 5, wird aus der Gutschrift von 4 eine Gutschrift von 3 Punkten;
+der Verlauf zeigt die Differenz von −1.
+
+Der persönliche Bonus für eine abgegebene eigene Bestellung beträgt **1 Punkt**.
+Eine fristgerechte Abgabe ist weder für diesen Bonus noch für die Organisatorstaffel erforderlich.
+Die Staffel der Sammelbestellung ersetzt nur die
+früher pauschal vorgeschlagenen 3–5 Organisatorpunkte.
+
+### 5.3 Dauerhafte persönliche Boni
+
+| Beitrag | Punkte | Voraussetzung und Bestandsschutz |
+|---|---:|---|
+| Skill-Einschätzungen | 5 | Einmal je Event nach vollständiger Einschätzung des relevanten Spielkatalogs. Vorhandene Angaben und „noch nie gespielt“ zählen. Die Höhe des Skills ist irrelevant. |
+| Ankunft | 2 | Bis zum Stichtag Eventstart vollständig eingetragen; einmal je Event. Vorhandene Angaben zählen. |
+| Abreise | 2 | Bis zum Stichtag Eventstart vollständig eingetragen; einmal je Event. Vorhandene Angaben zählen. |
+
+Ein einmal erhaltener Skill-Bonus bleibt dauerhaft erhalten, auch wenn sich der Katalog
+ändert oder Einschätzungen gelöscht oder geändert werden. Neue Spiele lösen keinen
+zweiten Bonus aus. Der relevante Katalog ist nachvollziehbar zu bestimmen; Änderungen
+werden nicht als Gelegenheit für eine weitere Gutschrift verwendet.
+
+Nach dem Stichtag bleiben rechtzeitig erworbene Ankunfts- und Abreiseboni ebenso
+dauerhaft erhalten. Späteres Ändern oder Löschen der Angaben nimmt sie nicht automatisch
+zurück. Dauerhaft bedeutet keine automatische Rücknahme bei Datenänderungen; die allgemeine
+Möglichkeit einer begründeten administrativen Korrektur von Missbrauch bleibt bestehen.
+
+**Umsetzung:** Die Auswertung und Gutschrift erfolgen zum Eventstart anhand der bis dahin eingetragenen Ankunfts- beziehungsweise Abreisezeit; eine optionale Notiz ist nicht erforderlich. Vorher gibt es keine Reisegutschrift. Wird der Start vor der Gutschrift verschoben, gilt der neue Start. Bereits verdiente Boni bleiben bei späteren Verschiebungen bestehen.
+
+### 5.4 Matches, Turniere und Abstimmungen
+
+| Organisatorischer Beitrag | Orga-Punkte | Auslöser |
+|---|---:|---|
+| Eigenständiges Match organisieren | 1 | Das angelegte Match erhält ein gültiges Ergebnis. |
+| Turnierspiel organisieren | 1 | Ein tatsächlich gespieltes Turniermatch erhält ein gültiges Ergebnis; Empfänger ist der Turnierorganisator. Freilose zählen nicht. |
+| Turnier abschließen | Zusätzlich 5 | Regulärer Turnierabschluss. |
+| Umfrage abschließen | 3 | Abgeschlossen, mindestens drei unterschiedliche Teilnehmende. |
+| Spieleabstimmung abschließen | 2 | Abgeschlossen, mindestens drei unterschiedliche Teilnehmende. |
+
+Für Turnierspiele gibt es kein zusätzliches „Match organisiert“. Auslosung, Match und
+Turnierbegegnung dürfen denselben Vorgang nicht mehrfach belohnen. Ein Turnier mit sieben
+tatsächlich gespielten Begegnungen und regulärem Abschluss bringt dem Organisator
+**7 + 5 = 12 Punkte**.
+
+Stichwahlen gehören zur ursprünglichen Entscheidung und erzeugen keine weitere
+Organisationsbelohnung. Allgemeine Umfragen und Spieleabstimmungen sind getrennte
+Punktequellen; derselbe Vorgang wird nicht unter beiden Bezeichnungen doppelt belohnt.
+
+Für diese abgeschlossenen Umfragen und Spieleabstimmungen gibt es kein Kontingent.
+
+## 6. Kategorieplätze und Gesamtwertung
+
+### 6.1 Ablösung der Führer-Normalisierung
+
+Die frühere Formel `100 × eigene Rohpunkte / Rohpunkte des Führers` entfällt vollständig.
+Ein Ausreißer würde damit alle anderen stauchen, die effektive Gewichtung hinge von der
+Streuung ab und Stände könnten ohne eigenes Zutun schwanken. Stattdessen zählen Plätze.
+
+### 6.2 Platzpunkte
+
+**N ist die Anzahl der Event-Teilnehmer**, nicht die Zahl der in einer Kategorie Platzierten.
+Dasselbe N gilt für alle drei Kategorien.
+
+- Nur ein positiver Rohwert erhält einen Kategorieplatz. Sonst gibt es keinen Platz und
+  **0 Platzpunkte**. Für die Wettwertung sind zusätzlich mindestens zwei regulär abgerechnete
+  Tipps erforderlich (W2); vollständig erstattete Märkte und zurückgenommene Tipps zählen nicht.
+- Platz 1 erhält N Punkte, Platz 2 N−1 und so weiter: `Platzpunkte = N − Rang + 1`.
+- Gleichstände teilen den besseren Rang. Nach zwei Personen auf Platz 2 folgt Platz 4:
+  **1, 2, 2, 4**. Die beiden Zweitplatzierten erhalten beide N−1 Punkte.
+- Rohwerte sind ganzzahlig. Gleichstände werden direkt nach Rohwert festgestellt;
+  Anzeigerundung, Siege oder Namen entscheiden keinen Gleichstand dieser Kategorien.
+- Eine Kategorie ohne wertbare Ergebnisse wird nicht ausgespielt.
+
+Beispiel einer Kategorie bei N = 8:
+
+| Person | Rohwert | Rang | Platzpunkte |
+|---|---:|---:|---:|
+| A | 20 | 1 | 8 |
+| B | 12 | 2 | 7 |
+| C | 12 | 2 | 7 |
+| D | 4 | 4 | 5 |
+| E–H | Je 0 oder negativ | Kein Platz | Je 0 |
+
+**Entschiedene Teilnehmerbasis (E2):** N umfasst alle aktuell bestätigten Teilnehmer mit
+aktivem Gruppenkonto, ohne Testkonten und deaktivierte Konten. Späte Zusagen kommen sofort
+hinzu. Absage und Austritt entfernen die Person aus der laufenden Rangliste, erhalten aber
+ihren Punkteverlauf. Bei der Festschreibung werden Teilnehmerliste und N gemeinsam mit den
+Kategorie- und Gesamtständen festgehalten; spätere Austritte verändern diesen Endstand nicht.
+
+**Entschiedener Eventumfang (E1):** Die Kategorienwertung gilt ausschließlich für reguläre
+veröffentlichte LANs. Ihre Ergebnisse bleiben nach dem Ende sichtbar. Testevents, Entwürfe,
+abgesagte Veranstaltungen und andere Eventtypen gehören nicht zur Kategorienwertung.
+Die Neustartentscheidung bleibt bestehen: Historische Punkte werden nicht nachgetragen.
+
+### 6.3 Gesamtsieger und Anzeige
+
+`Gesamtwertung = Platzpunkte Wetten + Platzpunkte Orga + Platzpunkte Spielen`
+
+Die Höchstsumme beträgt **3 × N**. Auch in der Gesamtwertung teilen Gleichstände den Rang.
+Eine nicht ausgespielte Kategorie liefert 0 Punkte; die anderen werden nicht höher skaliert.
+Startguthaben und Rückerstattungen zählen nicht als verdiente Rohwerte oder Platzpunkte.
+
+Das Konto zeigt pro Kategorie **Rohwert, Rang, Platzpunkte und Verlauf** mit Zeitpunkt,
+Anlass und Betrag sowie die Summe der Platzpunkte als Gesamtwertung. Rohpunkte und
+Platzpunkte sind klar bezeichnet und werden nicht miteinander addiert.
+
+Vergeben werden die Titel für Wetten, Orga, Spielen und den Gesamtsieg. Eine Person darf
+mehrere Titel gewinnen. Punktegleichstände bleiben geteilte Plätze.
+
+## 7. Kiosk-Feed neuer Spielergebnisse
+
+Der Kiosk zeigt laufend neue gültige Ergebnisse mit:
+
+- Spiel;
+- Teams beziehungsweise beteiligten Spielern;
+- Platzierung;
+- den dadurch gutgeschriebenen Spielpunkten.
+
+Korrekturen erscheinen mit dem Hinweis **„korrigiert“**. Der Feed verwendet ausschließlich
+Anzeigenamen und keine weiteren persönlichen Angaben. Sein Zweck ist Transparenz als
+Ersatz für Freigaben, nicht eine Prüfung oder Gegenbestätigung der Ergebnisse.
+
+Bei ausgeblendeten Punkteansichten bleibt der Ergebnis-Feed sichtbar. Er zeigt dann Spiel,
+Teams beziehungsweise Anzeigenamen und Ergebnisplatzierung, aber **keine Punkte und keine
+Punkteranglisten**. Die Platzierung des einzelnen Spielergebnisses ist vom Event-Rang zu
+unterscheiden.
+
+## 8. „Punktefehler melden“
+
+### 8.1 Melden und Wirkung
+
+Teilnehmer melden **mutmaßlich falsch vergebene Punkte**. Die Meldung bezieht sich auf eine
+konkrete Punktebuchung. Journaleinträge, gewertete Spielergebnisse, abgerechnete Wetten und
+vergütete To-dos dienen als Einstieg zur jeweiligen Punktevergabe. Beispielsweise kann eine
+unberechtigte Gutschrift von 3 Orga-Punkten für ein To-do gemeldet werden.
+Ein kurzer Grund ist optional. Pro meldender Person und Eintrag gibt es höchstens eine offene Meldung.
+Welche Konten betroffen sind, ergibt sich aus den zugehörigen Punktebuchungen. Das bloße
+Anlegen eines Events, Matches oder To-dos macht den Ersteller nicht zum Betroffenen einer
+fremden Punktegutschrift.
+
+Eine Meldung ändert nichts automatisch: keine Sperre, kein Einfrieren und keine Freigabe.
+Punkte bleiben bestehen, bis eine Adminperson begründet korrigiert oder entzieht.
+Eine solche Änderung erscheint nachvollziehbar im Journal.
+
+### 8.2 Sichtbarkeit und Zuständigkeit
+
+- Meldungen gehen an Admins und den Event-Ersteller.
+- Betrifft die gemeldete Punktevergabe einen Admin selbst, sehen sie ausschließlich die übrigen Admins
+  beziehungsweise der Event-Ersteller. Ist der Ersteller zugleich der betroffene Admin,
+  eröffnet die zweite Rolle keinen zusätzlichen Zugriff. Die beschlossene Ausnahme für den einzigen Admin steht unten.
+- Die gemeldete Person sieht nicht, wer gemeldet hat. Rollen oder andere Ansichten dürfen
+  die Identität des Meldenden nicht indirekt offenlegen.
+- Der Event-Ersteller ohne Adminrolle kann Meldungen sehen; die Punkteentscheidung und
+  der Abschluss der Meldung liegen bei einem Admin.
+- Admins dürfen eigene Punkte korrigieren oder entziehen. Das erweitert weder den Zugriff
+  auf Meldungen über sie selbst; für den einzigen Admin gilt die folgende anonyme Ausnahme. Die Identität des Meldenden bleibt geschützt.
+
+### 8.3 Bearbeitung und Abschluss
+
+Ein Admin schließt eine Meldung als **„korrigiert“** oder **„in Ordnung“**. Der Meldende
+sieht den Status. Ein Korrekturabschluss ersetzt nicht die begründete Journalbuchung.
+
+Gemeldet werden kann bis zur Festschreibung. Festgeschrieben wird erst, wenn **keine
+Meldung mehr offen** ist. Dies ist eine Abschlussbedingung und kein Freigabeprozess für
+die laufende Punktevergabe.
+
+**M1 entschieden:** Der einzige aktive Admin darf eine Meldung zu seinen eigenen Punkten
+anonym prüfen und abschließen. Er erhält weder Absender noch privaten Freitext oder genaue
+Meldezeitpunkte. Mit mehreren Admins prüfen nur unbetroffene Admins; ein betroffener
+Event-Ersteller ohne Adminrolle erhält keinen Zugriff. Ist niemand zur Bearbeitung berechtigt,
+bleibt die Meldung offen und verhindert die Festschreibung. Persönliche Exporte liefern nur
+eigene Meldungen; Rollenwechsel und Kontolöschung dürfen keine Absenderidentität offenlegen.
+
+## 9. Sichtbarkeit und Festschreibung
+
+Punkte werden immer im Hintergrund gesammelt. Admins und Event-Ersteller steuern die
+Anzeige für das Event. Ausblenden verhindert neue Tipps; vorhandene Einsätze, Abrechnungen
+und Gutschriften bleiben bestehen. Erneutes Anzeigen setzt weder Konten noch Verlauf zurück.
+Der Ergebnis-Feed im Kiosk bleibt gemäß Abschnitt 7 sichtbar.
+
+Die Endwertung wird als nachvollziehbarer Stand mit Rohwerten, Kategorieplätzen,
+Platzpunkten, Gesamtsummen und den verwendeten Regeln festgeschrieben. Solange Meldungen
+offen sind, ist das nicht möglich. Noch offene Wettmärkte werden bei der Festschreibung
+vollständig erstattet; Startguthaben und diese Erstattungen erhöhen keine Wertung.
+
+**W7-Abschluss entschieden:** Auch bereits gesperrte, noch unabgerechnete Märkte werden
+vollständig erstattet. Abgleich, Meldesperre, Erstattungen und Festschreibung erfolgen atomar.
+Begründetes Wiederöffnen erhält die früheren Endstände mit ihren Regeln und Teilnehmerzahlen.
+
+## 10. Akzeptierte Restrisiken und weitere Hinweise
+
+- Erfundene Spiele, Schein-To-dos, wechselseitige Gefälligkeitsleistungen und absichtliche
+  Niederlagen bleiben möglich. Keine automatische Plausibilitätssperre wird daraus abgeleitet.
+  Das Vertrauen der kleinen Runde, öffentliche Ergebnisse, Meldungen und begründete
+  nachträgliche Korrekturen sind die gewählten Gegenmaßnahmen.
+- Positive Nettogewinne können durch riskante Tipps entstehen, während negative Bilanzen
+  0 Platzpunkte liefern. Die Einsatzgrenze beträgt beschlossen 20 Punkte pro Markt;
+  für eine Wettplatzierung sind mindestens zwei regulär abgerechnete Tipps erforderlich.
+- Werden Skill-Einschätzungen neben Wettmärkten angezeigt oder für Teamaufteilungen genutzt,
+  kann Tiefstapeln lohnen. **Empfehlung aus dem Review:** Skills nicht neben Wettmärkten
+  anzeigen. Bei skillbasierter Teamaufteilung bleibt das Manipulationsrisiko dennoch bestehen.
+- Wer später anreist, ist in Orga und Spielen strukturell im Nachteil. Das wird akzeptiert;
+  es wird kein Zeit- oder Nachzüglerausgleich eingeführt.
+- Ein Rage-Quit-Token-Bonus bleibt **optional** und würde ausschließlich durch einen Admin
+  vergeben. Punktehöhe und konkrete Ausgestaltung sind nicht beschlossen. Auch eigene
+  Korrekturen oder Entzüge bleiben mit Begründung und Protokollierung erlaubt.
+
+## 11. Offene Entscheidungen
+
+Stand der ursprünglichen Wettgrenzen:
+
+| Kennung | Regel | Beschlossener Wert |
+|---|---|---|
+| W1 (entschieden) | Einsatzgrenze pro Person und Wettmarkt | Maximal 20 Wettpunkte; ausdrücklich vom Nutzer bestätigt |
+| W2 (entschieden) | Mindestzahl abgerechneter Tipps für eine Wettplatzierung | Mindestens 2 regulär abgerechnete Tipps; vollständig erstattete Märkte und zurückgenommene Tipps zählen nicht |
+
+Das Review des bisherigen Codes ergänzt folgende offene Entscheidungen. Bestehende technische
+Vorgabewerte sind dafür keine Entscheidung:
+
+| Kennung | Offene Entscheidung / betroffene Umsetzung |
+|---|---|
+| U1 (entschieden) | Keine Übernahme bisheriger Orga-, Spiel- oder Wettpunkte für bestehende Events. Einmaliger Neustart einschließlich alter Reservierungen, Belohnungszusagen und Punkte-Endstände; Fachdaten bleiben erhalten. Historische Ansprüche werden nicht erneut nachgetragen. |
+| E1 (entschieden) | Ausschließlich reguläre veröffentlichte LANs; Ergebnisse bleiben nach Ende sichtbar. Keine Kategorienwertung für Testevents, Entwürfe, abgesagte Veranstaltungen oder andere Eventtypen. Keine historischen Gutschriften. |
+| E2 (entschieden) | Aktuell bestätigte Teilnehmer mit aktivem Gruppenkonto, ohne Testkonten/deaktivierte Konten. Späte Zusagen zählen sofort; Absage/Austritt entfernen die Person aus der laufenden Rangliste, erhalten aber ihren Verlauf. Festschreibung hält Teilnehmerliste und N fest. |
+| W3 (entschieden) | Fest 100 separate Wettpunkte einmal pro Event und berechtigtem Teilnehmer, auch bei später Zusage. Nicht konfigurierbar; erneute Zusage zahlt nicht erneut. |
+| W4 (entschieden) | Der Match-Ersteller entscheidet direkt beim Anlegen, ob auf sein Match gewettet werden darf; keine zusätzliche Adminrolle erforderlich. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bestehenden Start-/Tippschlussregeln gelten weiterhin. |
+| W5 (entschieden) | Keine zusätzlichen Tageslimits und keine Höchstzahl offizieller Wettrunden pro Event. Ausreichendes verfügbares Guthaben und die feste Einsatzgrenze von 20 Punkten gelten weiterhin. |
+| W6 (entschieden) | Ausschließlich begründete Markt-Neuberechnung oder Storno unter Erhaltung der Nullsumme. Keine einseitigen Wallet-/Wett-Journalkorrekturen; eigene Marktkorrekturen bleiben erlaubt. |
+| W7 (Abrechnung entschieden) | Pool und Nullsumme bleiben erhalten. Nettogewinn höchstens in Höhe des eigenen Einsatzes; überschüssige Einsätze gehen anteilig zurück. Restpunkte je Gewinn-/Verlustseite nach größtem Nachkommaanteil, bei gleichem Anteil früher abgegebener Tipp. Auch gesperrte, unabgerechnete Märkte werden bei Festschreibung vollständig erstattet. |
+| O3 (umgesetzt) | Neue Aufgaben verwenden kein Orga-Budget und keine vergüteten Helferplätze. Alte Zusagen und der alte Finanzpfad entfallen mit dem beschlossenen Neustart. |
+| O4 | Erste Umsetzung: ein erster fremder Helfer, Direktzuweisung zählt, `item_request` ist ausgeschlossen; Ersteller/Helfer/Admins dürfen wieder öffnen. Altaufgaben erhalten keine alten LAN-Auszahlungen mehr. |
+| S1 (entschieden) | Geteilte Turnierplätze erhalten jeweils den vollen Bonus des gemeinsamen Rangs, beispielsweise 5/5/1. |
+| M1 (entschieden) | Unbetroffene Prüfer; einziger Admin darf eigene Punkte anonym prüfen. Ohne berechtigten Prüfer bleibt die Meldung offen. |
+| H1 (entschieden) | „Jedes gespielte Match bringt Punkte. Spielzeit und Teamgröße werden nicht gewichtet.“ Die Formel bleibt unverändert. |
+
+Die [überarbeitete Paketfolge](IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) ordnet diese Entscheidungen
+konkreten Schritten zu. Keine davon wird allein durch die Reihenfolge entschieden.
+
+## 12. Umsetzungsstand und verbleibende Folgearbeiten
+
+Der [Implementierungsplan](IMPLEMENTIERUNGSPLAN-PUNKTE-WERTUNG.md) ersetzt nach dem Review
+vom 1. November 2026 die bisherige Liste aus acht Restpaketen. Neu ist ein eigenes
+Umstellungspaket für alte Erzeuger, Leser, Reservierungen und Endstände. Rohwerte, Verlauf
+und die Admin-Korrektur-Oberfläche werden vorgezogen; Ränge und Platzpunkte folgen nach der
+Kategorie-/Gesamtberechnung. Die beiden Code-Findings (To-do-Abschluss nach Festschreibung und
+Einheitenmix im Spielfilter beziehungsweise über Events) sind im Review-Fix adressiert.
+
+
+Die Spielberechnung, automatische Spiel- und Orga-Gutschriften für Wettbewerbe, Bestellungen und vollständige Skill-Einschätzungen sowie die Journalbasis mit Admin-Korrekturen, persönliche Kategorie-Rohwerte/Verläufe und die neue To-do-Vergütung
+sind umgesetzt. Die bisherige sichtbare
+LAN-Punkte-/Wettfunktion verwendet jetzt das separate Wallet und das Wettjournal. Vorherige Punktebestände
+werden nicht übernommen. Die Marktregeln und Kategorie-/Gesamtwertung sind inzwischen angebunden.
+Bestehende Grenzen und Vorgabewerte der bisherigen Funktion entscheiden keine offenen Regeln
+dieses Zielkonzepts.
+
+| Bereich | Vermerkte Folgeänderung |
+|---|---|
+| Spielwertung | Umgesetzt: [server/src/leaderboard.ts](../server/src/leaderboard.ts) verwendet 4/3/2/1 einschließlich Letztplatz- und Gleichstandsregeln, Turnierboni bleiben 5/3/1. [Automatische Journalbuchungen](../server/src/playingPoints.ts) erfolgen bei Ergebnissen, Korrekturen, Löschungen und beim Nachtragen bestehender Ergebnisse. |
+| Einheitliche Auswertung | Umgesetzt: [Rangliste](../server/src/routes/leaderboard.ts), [Hall of Fame](../server/src/routes/hallOfFame.ts) und [Export](../server/src/routes/export.ts) verwenden für aktivierte oder sichtbare LAN-Wertungen dieselben Kategorie-Platzpunkte, Gesamtstände und geteilten Ränge. Spielfilter und eventübergreifende Sportstatistiken verwenden weiterhin ausschließlich Spielpunkte. Wettguthaben wird niemals als Gesamtwertung ausgegeben. Gemeinsame Turniersiege bleiben in Hall of Fame und Export erhalten. |
+| Journal und Wettkonto | Umgesetzt: [Kategorie-Konten und Journalbasis](product/points-journal.md), automatische Spiel-/Orga-Gutschriften, Wallet und Wettabrechnung, eindeutige Vorgänge, begründete Admin-Korrekturen auch in eigener Sache, Differenzbuchungen, Journalsummen und negative Stände. Persönliches Konto und Journal zeigen Rohwerte, Ränge, Platzpunkte und Verläufe; Finanzkorrekturen erfolgen ausschließlich am Markt. |
+| Wettmärkte | Umgesetzt: kompakte Wettansichten ohne Quoten, formatabhängige Remis-Auswahl, feste Einsatzgrenze 20, keine zusätzlichen Tages-/Rundenlimits und proportionale ganzzahlige Pool-Verteilung mit früherer Tippabgabe als Gleichstandsregel. Wettplatzierung ab zwei regulären Abrechnungen. W4 ist angebunden: Erstellerwahl direkt beim Match, Captain Draft und Rematch, automatische Turniermärkte und Startaktion vor Spielbeginn. Paket 9 erstattet alle noch unabgerechneten Märkte bei Festschreibung vollständig. |
+| Orga | Umgesetzt: [Wettbewerbsorganisation](product/points-journal.md#orga-punkte-für-wettbewerbe) mit gespeicherten Erstellern, 1 Punkt pro gültigem Match und 5 pro regulärem Turnierabschluss, ohne Freilos- oder Doppelbelohnungen. Historische Wettbewerbe ohne belegbaren Ersteller erhalten keine automatische Orga-Zuordnung. Ebenfalls umgesetzt: [Sammelbestellstaffel und eigener Bestellbonus](product/points-journal.md#orga-punkte-für-sammelbestellungen) ohne Fristprüfung sowie der [dauerhafte Skill-Bonus](product/points-journal.md#dauerhafter-skill-bonus) von einmalig 5 Punkten je Event für bestätigte Teilnehmer mit vollständig eingeschätztem, nicht leerem Spielkatalog. Vorschläge und Arcade-Spiele zählen nicht zum Katalog; 0 zählt als gültige Einschätzung. Ebenfalls umgesetzt: neue fremde To-dos mit festen 3 Punkten, einmaliger Auszahlung und Rückrechnung beim Wiederöffnen. Ebenfalls umgesetzt: 2 Punkte je eingetragener Ankunft/Abreise beim Eventstart sowie 3 Punkte für abgeschlossene Umfragen und 2 Punkte für abgeschlossene Spieleabstimmungen mit jeweils mindestens drei Teilnehmenden. Die ausdrücklich offenen Regeln bleiben offen. |
+| Kiosk | Umgesetzt: [Ergebnis-Feed](product/media-and-dashboard-rules.md#tv-kiosk) mit Anzeigenamen, Platzierungen und tatsächlich gebuchten Spielpunkten, Korrekturhinweis auch bei reinen Score-Änderungen. Bei ausgeblendeten Punkteansichten bleiben Ergebnisse ohne Punkte sichtbar. Die zehn jüngsten Ergebnisse wechseln in der bestehenden Turnierkachel; alle Teilnehmer werden automatisch durchgeblättert. Migration 128 ergänzt Erfassungszeit, Änderungszeit und Ergebnisrevision, ohne Punktebestände zu verändern. |
+| Meldefunktion | Umgesetzt: konkrete Punktebuchungen melden, optionaler Grund, eine offene Meldung pro Person/Eintrag, geschützter Posteingang und Status. Der einzige Admin prüft eigene Punkte anonym; tatsächliche Korrekturen bleiben separate begründete Buchungen. |
+| Abschluss und Sichtbarkeit | Umgesetzt: Hintergrundvergabe bleibt unabhängig von Anzeige; Meldesperre, Markterstattung, Punktesynchronisierung, Regeln und Endstand werden atomar festgeschrieben. Begründetes Wiederöffnen erhält die alten Versionen und Downloads. |
+
+Für die spätere Umsetzung sind mindestens die hier aufgeführten Rechenbeispiele,
+Korrektur- und Rückerstattungsfälle, gleichzeitige Wiederholungsversuche, Rollen- und Meldungszugriffe
+und die Sichtbarkeit des Kiosk-Feeds zu prüfen. Noch offene Fachfälle werden in den Folgepaketen
+entsprechend abgesichert.

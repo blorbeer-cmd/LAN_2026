@@ -105,6 +105,10 @@ Scrollen zum Ziel benötigt keine Animation. Beim Ende werden die zuvor geschlos
 Details und die Scrollposition soweit noch vorhanden wiederhergestellt. Auch ein Ziel in einem
 sichtbaren Summary öffnet dessen Details-Inhalt. Die Beispielszene verschwindet vollständig.
 Native Formularwerte der echten Ansicht werden durch keine Beispielszene verändert.
+Die Tour übernimmt mit `restoreFocus: false` die Fokusrückgabe selbst. Der Fokus geht an
+ihren noch verbundenen Hilfe-Auslöser beziehungsweise dessen aktuellen Ersatz, auch wenn
+beim Start ein Formularfeld fokussiert war. Die gemeinsame Modalschicht darf dieses Ziel
+anschließend nicht mit dem vorher fokussierten Feld überschreiben.
 
 ## 9. Repräsentative Aufrufer
 

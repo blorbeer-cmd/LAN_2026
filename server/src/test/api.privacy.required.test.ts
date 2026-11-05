@@ -15,6 +15,7 @@ import { TRACKING_CONSENT_PURPOSE, TRACKING_CONSENT_TEXT_VERSION } from '../priv
 import { ensureDefaultGroupMembership } from '../groups';
 import { config } from '../config';
 import { deleteAccount, deletionReceiptHash, listDeletionReceipts } from '../privacyService';
+import { recordPointsEntitlements } from '../pointsJournal';
 
 function createMember(label: string): { id: string; apiKey: string; cookie: string } {
   const id = nanoid();
@@ -32,6 +33,15 @@ test('personal export is self-scoped and excludes every reusable access secret',
   assert.equal((await request(createApp()).get('/api/privacy/export')).status, 401);
   const own = createMember('Export Own');
   const other = createMember('Export Foreign');
+  for (const player of [own, other]) {
+    db.prepare("INSERT OR IGNORE INTO event_participants(event_id, player_id, status) VALUES (?, ?, 'accepted')").run(BASE_EVENT_ID, player.id);
+    recordPointsEntitlements([{ groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID, playerId: player.id,
+      account: 'orga', sourceKey: 'todo:privacy', total: 3, expectedRevision: 0, title: 'To-do erledigt' }]);
+    db.prepare('INSERT INTO points_playing_awards(event_id,player_id,source_key,amount) VALUES (?, ?, ?, 4)')
+      .run(BASE_EVENT_ID, player.id, `match:privacy-${player.id}`);
+    db.prepare('INSERT INTO points_orga_awards(event_id,player_id,source_key,amount) VALUES (?, ?, ?, 1)')
+      .run(BASE_EVENT_ID, player.id, `match:privacy-${player.id}`);
+  }
   const ownMessage = `own-${nanoid()}`;
   const foreignMessage = `foreign-${nanoid()}`;
   const endpointSecret = `https://push.invalid/${nanoid()}`;
@@ -136,8 +146,20 @@ test('personal export is self-scoped and excludes every reusable access secret',
     }),
   );
 
+  db.prepare('UPDATE matches SET created_by = ? WHERE id = ?').run(own.id, recordedMatchId);
+  db.prepare('UPDATE tournaments SET created_by = ? WHERE id = ?').run(other.id, tournamentId);
   const response = await request(app).get('/api/privacy/export').set('Cookie', own.cookie);
   assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(response.body.pointsAccounts.length, 4);
+  assert.deepEqual(response.body.automaticPlayingState, [{ eventId: BASE_EVENT_ID, sourceKey: `match:privacy-${own.id}`, amount: 4 }]);
+  assert.deepEqual(response.body.automaticOrgaState, [{ eventId: BASE_EVENT_ID, sourceKey: `match:privacy-${own.id}`, amount: 1 }]);
+  assert.deepEqual(response.body.organizedCompetitions.matches, [{ id: recordedMatchId, eventId: exportEventId }]);
+  assert.deepEqual(response.body.organizedCompetitions.tournaments, []);
+  assert.equal(response.body.pointsJournal.length, 2);
+  const ownPointEntry = db.prepare(`SELECT j.id FROM points_journal j JOIN points_sources s ON s.id = j.source_id
+    WHERE s.player_id = ? AND s.account='orga'`).get(own.id) as { id: string };
+  assert.equal(response.body.pointsJournal.find((entry: { account: string }) => entry.account === 'orga').id, ownPointEntry.id);
+  assert.equal(response.body.pointsJournal.find((entry: { account: string }) => entry.account === 'orga').amount, 3);
   assert.match(response.headers['content-disposition'], /respawn-meine-daten/);
   const serialized = JSON.stringify(response.body);
   assert.match(serialized, new RegExp(ownMessage));
@@ -174,6 +196,13 @@ test('personal export is self-scoped and excludes every reusable access secret',
 test('self deletion revokes access and scrubs recipient, result and historical name copies', async () => {
   const app = createTestApp();
   const target = createMember('Delete Target');
+  db.prepare("INSERT OR IGNORE INTO event_participants(event_id, player_id, status) VALUES (?, ?, 'accepted')").run(BASE_EVENT_ID, target.id);
+  const pointEntryId = recordPointsEntitlements([{ groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID, playerId: target.id,
+    account: 'orga', sourceKey: 'todo:deletion', total: 3, expectedRevision: 0, title: 'To-do erledigt' }])[0].entryId;
+  db.prepare('INSERT INTO points_playing_awards(event_id,player_id,source_key,amount) VALUES (?, ?, ?, 4)')
+    .run(BASE_EVENT_ID, target.id, 'match:deletion');
+  db.prepare('INSERT INTO points_orga_awards(event_id,player_id,source_key,amount) VALUES (?, ?, ?, 1)')
+    .run(BASE_EVENT_ID, target.id, 'match:deletion');
   const other = createMember('Delete Other');
   const now = Date.now();
   const gameId = (db.prepare('SELECT id FROM games WHERE group_id = ? LIMIT 1').get(DEFAULT_GROUP_ID) as { id: string }).id;
@@ -329,8 +358,17 @@ test('self deletion revokes access and scrubs recipient, result and historical n
              180000, ?, 'Delete Other Gamertag', 'played', ?, ?)`,
   ).run(musicRequestId, musicSessionId, other.id, now - 500, now);
 
+  db.prepare('UPDATE matches SET created_by = ? WHERE id = ?').run(target.id, matchId);
+  db.prepare('UPDATE matchmaking_draws SET created_by = ? WHERE id = ?').run(target.id, drawId);
   const deleted = await request(app).delete('/api/privacy/account').set('Cookie', target.cookie);
   assert.equal(deleted.status, 204, JSON.stringify(deleted.body));
+  assert.equal(db.prepare('SELECT 1 FROM points_accounts WHERE player_id = ?').get(target.id), undefined);
+  assert.equal(db.prepare('SELECT 1 FROM points_playing_awards WHERE player_id = ?').get(target.id), undefined);
+  assert.equal(db.prepare('SELECT 1 FROM points_orga_awards WHERE player_id = ?').get(target.id), undefined);
+  assert.equal((db.prepare('SELECT created_by FROM matches WHERE id = ?').get(matchId) as { created_by: null }).created_by, null);
+  assert.equal((db.prepare('SELECT created_by FROM matchmaking_draws WHERE id = ?').get(drawId) as { created_by: null }).created_by, null);
+  assert.equal(db.prepare('SELECT 1 FROM points_sources WHERE player_id = ?').get(target.id), undefined);
+  assert.equal(db.prepare('SELECT 1 FROM points_journal WHERE id = ?').get(pointEntryId), undefined);
   assert.equal(db.prepare('SELECT 1 FROM players WHERE id = ?').get(target.id), undefined);
   assert.equal(db.prepare('SELECT 1 FROM sessions WHERE player_id = ?').get(target.id), undefined);
   assert.deepEqual(JSON.parse((db.prepare('SELECT player_ids FROM push_log WHERE id = ?').get(pushId) as { player_ids: string }).player_ids), [other.id]);

@@ -6,7 +6,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp, sessionCookie } from './testApp';
+import { createTestApp, sessionCookie, TEST_ADMIN_ID, DEFAULT_GROUP_ID } from './testApp';
+import { BASE_EVENT_ID, db } from '../db';
+import { readPointsSource } from '../pointsJournal';
 import { snakeCaptainIndex } from '../routes/draft';
 
 const app = createTestApp();
@@ -102,7 +104,19 @@ test('a full 2-captain draft: snake order, turn enforcement, auto-assigned last 
 
   // B picks p3 — one player remains, so p4 is auto-assigned to A (whose turn
   // it would be) and the draft completes without a fourth request.
-  const pick3 = await request(app).post('/api/draft/pick').send({ playerId: capB.id, pickPlayerId: p3.id });
+  db.exec(`CREATE TEMP TRIGGER fail_draft_organizer BEFORE INSERT ON matchmaking_draws
+    WHEN NEW.source = 'draft' BEGIN SELECT RAISE(ABORT, 'test draft history failure'); END;`);
+  try {
+    const failed = await request(app).post('/api/draft/pick').send({ playerId: capB.id, pickPlayerId: p3.id });
+    assert.equal(failed.status, 500);
+    const unchanged = await request(app).get('/api/draft');
+    assert.equal(unchanged.body.draft.status, 'active', 'draft update rolls back with history insert');
+    assert.ok(unchanged.body.draft.pool.some((player: { id: string }) => player.id === p3.id));
+  } finally { db.exec('DROP TRIGGER fail_draft_organizer'); }
+  const finishes = await Promise.all([0, 1].map(() => request(app).post('/api/draft/pick')
+    .send({ playerId: capB.id, pickPlayerId: p3.id })));
+  assert.deepEqual(finishes.map((res) => res.status).sort(), [200, 409]);
+  const pick3 = finishes.find((res) => res.status === 200)!;
   assert.equal(pick3.status, 200);
   assert.equal(pick3.body.draft.status, 'completed');
   assert.equal(pick3.body.draft.pool.length, 0);
@@ -173,6 +187,9 @@ test('a full 2-captain draft: snake order, turn enforcement, auto-assigned last 
     ],
   });
   assert.equal(recorded.status, 201);
+  assert.deepEqual(readPointsSource({ groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID,
+    playerId: TEST_ADMIN_ID, account: 'orga', sourceKey: `match:${recorded.body.id}` }), { total: 1, revision: 1 },
+    'draft organizer receives the match award, not the captain who made the last pick');
   assert.equal((await request(app).put('/api/skills').send({ playerId: capA.id, gameId, rating: 2 })).status, 200);
   assert.equal((await request(app).put('/api/skills').send({ playerId: newcomer.body.id, gameId, rating: 1 })).status, 200);
   const afterResult = await request(app).get(`/api/matchmaking/history?gameId=${gameId}&kind=matches`);

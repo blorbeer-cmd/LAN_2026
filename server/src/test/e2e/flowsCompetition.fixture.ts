@@ -20,7 +20,7 @@ import {
   openAuswertungTab,
   ensureAdminMode,
 } from './flowsShared.fixture';
-import { openMoreViewEntry } from './navHelpers';
+import { openMoreViewEntry, openMatchHistoryFilters, selectMatchHistoryFilter } from './navHelpers';
 import { TRACKING_CONSENT_TEXT_VERSION } from '../../privacyPolicy';
 import { assertPaintedPollResultCentered } from './pollResultGeometry';
 
@@ -579,17 +579,25 @@ flowTest('full click-through: players, matchmaking, voting, leaderboard, live pa
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   const rankingDisclosure = page.locator('details.collapsible-section').filter({ hasText: 'Top 10 nach Bock-Level' });
-  const latestGeometry = await currentVote.evaluate((card) => ({
-    height: card.getBoundingClientRect().height,
-    titleX: card.querySelector('strong')!.getBoundingClientRect().x,
-  }));
-  const rankingGeometry = await rankingDisclosure.evaluate((card) => ({
-    height: card.getBoundingClientRect().height,
-    titleX: card.querySelector('h2')!.getBoundingClientRect().x,
-  }));
+  // A refresh can detach the node resolved by Locator.evaluate before its
+  // callback runs (a detached card reports height 0). Exercise a real refresh,
+  // then query both connected cards and measure in the same browser task.
+  const [latestGeometry, rankingGeometry] = await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('respawn:rerender'));
+    const root = document.querySelector('#view-container')!;
+    const geometry = (card: Element, title: string) => ({
+      height: card.getBoundingClientRect().height,
+      titleX: card.querySelector(title)!.getBoundingClientRect().x,
+    });
+    return [
+      geometry(root.querySelector('section[aria-labelledby="vote-current-result-title"]')!, 'strong'),
+      geometry(root.querySelector('details[data-vote-top10]')!, 'h2'),
+    ];
+  });
+  assert.ok(latestGeometry.height > 0 && rankingGeometry.height > 0, 'closed Vote sections are visible');
   // The admin's trash button can tip the meta line onto its own row, which
   // adds one text line of at most a few pixels.
-  assert.ok(Math.abs(latestGeometry.height - rankingGeometry.height) <= 4, 'closed Vote sections share one height');
+  assert.ok(Math.abs(latestGeometry.height - rankingGeometry.height) <= 4, `closed Vote sections share one height: ${JSON.stringify({ latestGeometry, rankingGeometry })}`);
   assert.equal(latestGeometry.titleX, rankingGeometry.titleX, 'closed Vote section titles align');
   await rankingDisclosure.locator(':scope > summary').click();
   const bockRanks = await rankingDisclosure.locator('.lb-row').evaluateAll((rows) => rows.map((row) => ({
@@ -1182,25 +1190,65 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   assert.deepEqual(historyActions, ['edit', 'Rematch', 'delete']);
 });
 
-flowTest('matchmaking Historie derives the winner from values entered in the draw result dialog', async () => {
+flowTest('matchmaking Historie derives the winner and keeps open games and sections after saving a result', async (t) => {
   // Values mode: the higher value wins, places follow the values, and the
   // recorded draw shows its winner with the "Win" chip in Historie. A field
   // left empty counts as its "0" placeholder instead of blocking the save.
   await openTeams();
-  await page.click('#mm-generate');
+  const generate = async () => {
+    const [response] = await Promise.all([
+      page.waitForResponse((res) => new URL(res.url()).pathname === '/api/matchmaking' && res.request().method() === 'POST'),
+      page.click('#mm-generate'),
+    ]);
+    assert.equal(response.status(), 200);
+    return response.json();
+  };
+  const spare = await generate();
+  t.after(async () => { await page.request.delete(`${BASE_URL}/api/matchmaking/draws/${spare.id}`); });
+  const draw = await generate();
   await openMatchmakingHistory();
+  const oldMatch = page.locator('.history-details [data-history-toggle]').first();
+  const oldId = await oldMatch.getAttribute('data-history-toggle');
+  if (await oldMatch.getAttribute('aria-expanded') === 'false') await oldMatch.click();
   const openTile = page.locator('.matchmaking-open-draws');
   if ((await openTile.getAttribute('open')) === null) await openTile.locator('summary').click();
-  await page.waitForSelector('#match-history-open [data-record-draw]');
-  await page.click('#match-history-open [data-record-draw]');
+  const spareToggle = page.locator(`[data-history-toggle="o-${spare.id}"]`);
+  if (await spareToggle.getAttribute('aria-expanded') === 'false') await spareToggle.click();
+  // App refreshes restore native disclosures programmatically. The view's
+  // remembered state must follow that restoration, even if a later render
+  // temporarily has no open draws to show.
+  const disclosureState = await page.evaluate(async () => {
+    const { captureViewRenderState } = await globalThis.eval("import('/js/viewRenderState.js')");
+    return captureViewRenderState(document.querySelector('#view-container'));
+  });
+  await openTile.locator(':scope > summary').click();
+  await page.locator('.history-details > summary').click();
+  await page.evaluate(async (snapshot) => {
+    const { restoreViewRenderState } = await globalThis.eval("import('/js/viewRenderState.js')");
+    restoreViewRenderState(document.querySelector('#view-container'), snapshot);
+  }, disclosureState);
+  await spareToggle.waitFor();
+  await selectMatchHistoryFilter(page, 'tournaments');
+  assert.equal(await openTile.count(), 0);
+  await selectMatchHistoryFilter(page, 'matches');
+  assert.equal(await openTile.evaluate((element: HTMLDetailsElement) => element.open), true,
+    'a restored open section survives disappearing temporarily during a refresh');
+  await page.locator(`#match-history-open [data-record-draw="${draw.id}"]`).click();
 
   await page.click('[data-result-mode="score"]');
   await page.fill('#draw-result-score-0', '3');
   assert.equal(await page.inputValue('#draw-result-score-1'), '');
   await page.click('.modal [data-result-save]');
 
-  await page.waitForFunction(() => !!document.querySelector('[data-edit-draw-result]'));
-  await openMatchmakingHistory();
+  await page.locator(`[data-edit-draw-result="${draw.id}"]`).waitFor();
+  await page.waitForLoadState('networkidle');
+  assert.equal(await page.locator('.history-details').evaluate((element: HTMLDetailsElement) => element.open), true,
+    'saving leaves the history section open');
+  assert.equal(await openTile.evaluate((element: HTMLDetailsElement) => element.open), true,
+    'saving leaves the other open draws visible');
+  assert.equal(await spareToggle.getAttribute('aria-expanded'), 'true', 'another open game stays expanded');
+  assert.equal(await page.locator(`[data-history-toggle="${oldId}"]`).getAttribute('aria-expanded'), 'true',
+    'an earlier expanded result stays expanded');
   const winnerTeam = page.locator('.matchmaking-history-team:not(.is-loser)').first();
   await winnerTeam.waitFor();
   assert.equal(await winnerTeam.locator('.lb-rank.is-first').innerText(), '1');
@@ -1208,10 +1256,22 @@ flowTest('matchmaking Historie derives the winner from values entered in the dra
   const loserTeam = page.locator('.matchmaking-history-team.is-loser').first();
   assert.equal(await loserTeam.locator('.lb-rank').innerText(), '2');
   assert.equal(await loserTeam.locator('.matchmaking-history-team-score').innerText(), '0');
-  await page.click('[data-history-filter="tournaments"]');
+  await openTile.locator(':scope > summary').click();
+  await page.locator(`[data-edit-draw-result="${draw.id}"]`).click();
+  await page.fill('#draw-result-score-0', '4');
+  await page.click('.modal [data-result-save]');
+  await page.locator('.modal-backdrop').waitFor({ state: 'detached' });
+  await page.waitForLoadState('networkidle');
+  assert.equal(await openTile.evaluate((element: HTMLDetailsElement) => element.open), false,
+    'correcting a result also retains an intentionally closed section');
+  assert.equal(await page.locator('.history-details').evaluate((element: HTMLDetailsElement) => element.open), true);
+  assert.equal(await page.locator(`[data-history-toggle="${oldId}"]`).getAttribute('aria-expanded'), 'true');
+  await openTile.locator(':scope > summary').click();
+  assert.equal(await spareToggle.getAttribute('aria-expanded'), 'true');
+  await selectMatchHistoryFilter(page, 'tournaments');
   assert.equal(await page.getAttribute('[data-history-filter="tournaments"]', 'aria-pressed'), 'true');
   assert.equal(await page.locator('.matchmaking-history-team').count(), 0);
-  await page.click('[data-history-filter="matches"]');
+  await selectMatchHistoryFilter(page, 'matches');
   await page.waitForSelector('.matchmaking-history-item [data-edit-draw-result]');
   assert.equal(await page.getAttribute('[data-history-filter="matches"]', 'aria-pressed'), 'true');
 });
@@ -1289,8 +1349,9 @@ flowTest('shared filters narrow open games and history while keeping running tou
 
   const ownResponse = page.waitForResponse((response) => response.url().includes('/api/matchmaking/history?')
     && new URL(response.url()).searchParams.get('mine') === '1' && response.status() === 200);
+  await openMatchHistoryFilters(page);
   await filters.getByRole('button', { name: 'Meine', exact: true }).focus();
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
   await ownResponse;
   await drawTile(mineOpen).waitFor();
   assert.equal(await filters.getByRole('button', { name: 'Meine', exact: true }).getAttribute('aria-pressed'), 'true');
@@ -1304,20 +1365,22 @@ flowTest('shared filters narrow open games and history while keeping running tou
   assert.equal(await tournamentTile(mineRunning).count(), 1);
   assert.equal(await tournamentTile(mineFinished).count(), 1);
 
-  await filters.getByRole('button', { name: 'Matches', exact: true }).click();
+  await selectMatchHistoryFilter(page, 'matches');
   await drawTile(mineOpen).waitFor();
   assert.equal(await tournamentTile(mineRunning).count(), 0);
   assert.equal(await tournamentTile(mineFinished).count(), 0);
   assert.equal(await page.locator(`.matchmaking-active-tournaments [data-open-draw-tournament="${mineRunning}"]`).count(), 1);
   assert.equal(await page.locator(`.matchmaking-active-tournaments [data-open-draw-tournament="${otherRunning}"]`).count(), 1,
     'the running-tournament overview remains visible when only matches are requested');
-  await filters.getByRole('button', { name: 'Turniere', exact: true }).click();
+  await selectMatchHistoryFilter(page, 'tournaments');
   await tournamentTile(mineRunning).waitFor();
   assert.equal(await drawTile(mineOpen).count(), 0);
   assert.equal(await drawTile(minePlayed).count(), 0);
   assert.equal(await tournamentTile(mineFinished).count(), 1);
-  await filters.getByRole('button', { name: 'Alle', exact: true }).click();
+  await selectMatchHistoryFilter(page, 'all');
+  await openMatchHistoryFilters(page);
   await filters.getByRole('button', { name: 'Meine', exact: true }).click();
+  await page.keyboard.press('Escape');
   await drawTile(otherOpen).waitFor();
   assert.equal(await tournamentTile(otherFinished).count(), 1);
 
@@ -1351,7 +1414,7 @@ flowTest('match history reports failed tournament and older-match requests', asy
   try {
     await page.reload();
     await page.waitForSelector('#mm-generate');
-    await page.click('[data-history-filter="tournaments"]');
+    await selectMatchHistoryFilter(page, 'tournaments');
     // The filters are now outside the disclosure. Open the error detail
     // after the failed request has settled so this checks its visible message.
     await page.getByText('Historie konnte nicht geladen werden.', { exact: true }).waitFor({ state: 'attached' });

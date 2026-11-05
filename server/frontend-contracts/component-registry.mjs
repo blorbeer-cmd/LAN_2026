@@ -1,5 +1,14 @@
 export const components = [
   {
+    "id": "kiosk-results",
+    "role": "composite-part",
+    "selector": ".kiosk-results, .kiosk-result-page, .kiosk-result-caption, .kiosk-result-meta, .kiosk-result-pages, .kiosk-result-player, .kiosk-result-name, .kiosk-result-table, .kiosk-result-win",
+    "owner": "public/css/kiosk.css",
+    "contract": "components/kiosk-results.md#3-css-eigentümerschaft",
+    "purpose": "Read-only paginated result table shares the existing broadcast tournament tile.",
+    "control": false
+  },
+  {
     "id": "area-tour-heading",
     "role": "composite-part",
     "selector": ".area-tour-heading",
@@ -575,12 +584,17 @@ export const components = [
       {
         "file": "public/js/views/matchmaking.js",
         "source": "class=\"chip${historyFilter === key ? ' is-active' : ''}\"",
-        "reason": "Open games and history share the established active type filter chip without changing its geometry."
+        "reason": "Match type chips reuse the catalog filter sections and standard active-chip geometry."
       },
       {
         "file": "public/js/views/matchmaking.js",
         "source": "class=\"chip${mineOnly ? ' is-active' : ''}\"",
-        "reason": "The participation toggle uses the same active filter chip as the shared type filters."
+        "reason": "The participation chip uses the same catalog filter component."
+      },
+      {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"chip${tipFilter === key ? ' is-active' : ''}\"",
+        "reason": "The personal tip-status chips reuse the catalog active-chip component."
       },
       {
         "file": "public/js/views/gameCatalog.js",
@@ -881,7 +895,7 @@ export const components = [
     "selector": ".collapsible-section-header, .desktop-nav-btn",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#strukturziele-mit-44-px",
-    "purpose": "Permanent disclosure headers and desktop rail rows retain their 44px minimum."
+    "purpose": "Disclosure headers retain 44px; desktop rail rows use 32px with a hovering fine pointer and 44px otherwise."
   },
   {
     "id": "row-layout",
@@ -1916,7 +1930,7 @@ export const permanentVariants = [
     "selector": ":root[data-layout-mode='desktop'] .desktop-nav-btn",
     "owner": "public/css/style.css",
     "contract": "components/controls.md#11-permanente-varianten-und-befristete-ausnahmen",
-    "reason": "Permanent 44px desktop navigation rail rows."
+    "reason": "Desktop navigation uses standard 32px rows for a hovering fine pointer and keeps 44px touch targets otherwise."
   },
   {
     "id": "page-heading",

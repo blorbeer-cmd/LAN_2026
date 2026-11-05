@@ -2,6 +2,7 @@
 // with Socket.IO (realtime push) and the offline sweeper, then listens.
 
 import http from 'http';
+import { startBettingSweep } from './routes/points';
 import { Server } from 'socket.io';
 
 import { config, productionConfigError, productionConfigWarning, startupAccessConfigError } from './config';
@@ -29,6 +30,8 @@ import { registerChimpSockets } from './arcade/chimp';
 import { registerArcadeSockets as registerArcadeRealtimeSockets } from './arcade/realtime';
 import { startPrivacyRetention } from './privacyRetention';
 import { startNewstickerGeneration } from './newsticker';
+import { backfillCompetitionPoints } from './orgaPoints';
+import { startTravelPointSweep } from './travelPointSweep';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -45,6 +48,7 @@ const socketFeatureRegistrars = [
   registerChallengeRushSockets,
   registerChimpSockets,
   startOfflineSweeper,
+  startBettingSweep,
   startMusicControllerExpiry,
 ] as const;
 
@@ -96,10 +100,12 @@ function start(): void {
   }
   const showLocalRecoveryInfo = !claimedAdminExists && process.env.LOCAL_GENERATED_RECOVERY_CODE === '1';
 
+  backfillCompetitionPoints();
   const app = createApp();
   const server = http.createServer(app);
   const io = new Server(server);
   setIo(io);
+  startTravelPointSweep();
 
   io.use(createSocketAuthGuard());
   registerSocketFeatures(io);

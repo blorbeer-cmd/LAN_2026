@@ -14,7 +14,7 @@
 // Sitzplan uses (see seating.js).
 
 import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
-import { api } from '../api.js';
+import { api, apiFetch } from '../api.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { state } from '../state.js';
 import { icon } from '../icons.js';
@@ -27,6 +27,7 @@ import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { compareEventsByStartAscending, eventStatusBadgeHtml } from '../eventStatus.js';
 import { isGroupAdmin } from '../groupContext.js';
+import { openPointsReports } from '../pointsReports.js';
 import { formatEuroCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 import { eventHasFeature } from '../eventFeatures.js';
 import { availableEventTypeOptions, eventIsGroup, eventTypeTitle, isGroupEventType } from '../eventTypes.js';
@@ -86,6 +87,13 @@ const historyOpen = { event: false, group: false };
 // Same pattern for the declined workspaces: present enough to come back from,
 // quiet enough not to compete with the ones actually being planned.
 const declinedOpen = { event: false, group: false };
+function openDeclinedSection(event) {
+  const kind = eventIsGroup(event) ? 'group' : 'event';
+  declinedOpen[kind] = true;
+  // The shared render-state restorer captures the live DOM before refresh.
+  // Update it too, so it cannot restore the previous collapsed section.
+  document.querySelectorAll(`[data-declined-events="${kind}"]`).forEach((details) => { details.open = true; });
+}
 let acceptedInvitationHandoff = null;
 // Fetched once per session (the shared kiosk password is stable once
 // generated — see server/src/kioskAccounts.ts) and cached across successful
@@ -824,6 +832,14 @@ function trackingChip(event) {
     : '';
 }
 
+function renderEventPointsVisibility(event) {
+  if (!event.pointsAvailable || event.eventType !== 'lan' || event.isTest || !['published', 'ended'].includes(event.status)) return '';
+  const reports = `<button type="button" class="btn btn-sm" data-event-points-reports="${escapeHtml(event.id)}">Punktefehler-Meldungen</button>`;
+  const toggle = isGroupAdmin() || isEventCreator(event)
+    ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" data-points-visibility="${escapeHtml(event.id)}" data-points-visible="${event.pointsEnabled ? 'false' : 'true'}" data-points-revision="${event.pointsVisibilityRevision ?? 0}"${event.pointsEnabled ? ' checked' : ''}>LAN-Punkte anzeigen</label>` : '';
+  return `<section class="event-card-section"><div class="row points-actions">${toggle}${reports}</div></section>`;
+}
+
 function renderEventCardShell(event, { collapsible, managed }) {
   const expanded = !collapsible || expandedEventCards.has(event.id);
   const metaParts = eventHeaderMeta(event, { withDateRange: !expanded });
@@ -838,6 +854,7 @@ function renderEventCardShell(event, { collapsible, managed }) {
       <div class="food-order-card-body event-card-body" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
         ${renderEventInfoSection(event)}
         ${renderEventPayment(event)}
+        ${renderEventPointsVisibility(event)}
         ${renderParticipantsSection(event, { includeInvitationStatuses: managed })}
         ${renderOwnParticipationActions(event)}
       </div>
@@ -1113,7 +1130,7 @@ export async function answerPendingInvitation(btn, ctx) {
       : null;
     if (inEvents && invitation) {
       if (accept) expandedEventCards.add(eventId);
-      else declinedOpen[eventIsGroup(invitation) ? 'group' : 'event'] = true;
+      else openDeclinedSection(invitation);
     }
     await ctx.refresh();
     window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
@@ -1168,7 +1185,7 @@ export function wireParticipationAnswerActions(container, ctx) {
       btn.disabled = true;
       try {
         await api.events.declineInvitation(eventId);
-        declinedOpen[eventIsGroup(event) ? 'group' : 'event'] = true;
+        openDeclinedSection(event);
         await ctx.refresh();
         container.querySelector(eventIsGroup(event) ? '#orga-groups-title' : '#orga-events-title')?.focus();
         showToast('Teilnahme abgesagt.');
@@ -1188,7 +1205,7 @@ export function wireParticipationAnswerActions(container, ctx) {
         onDecline: async (excuse) => {
           try {
             await api.events.declineInvitation(eventId, excuse);
-            declinedOpen[eventIsGroup(event) ? 'group' : 'event'] = true;
+            openDeclinedSection(event);
             await ctx.refresh();
             showToast('Teilnahme abgesagt. Deine Ausrede ist für alle sichtbar.');
             return true;
@@ -1545,6 +1562,8 @@ export function renderOrgaKiosk(container, ctx) {
 // No longer an Orga tab, so this view owns its own page title and the way back
 // to "Mehr", like every other destination reached directly from the hub.
 export function renderOrgaEvents(container, ctx) {
+  const listed = new Set([...(state.managedEvents ?? []), ...(state.availableEvents ?? []), ...(state.endedEvents ?? [])].map((event) => event.id));
+  const creatorControls = (state.pointsVisibilityEvents ?? []).filter((event) => !listed.has(event.id));
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
@@ -1553,6 +1572,7 @@ export function renderOrgaEvents(container, ctx) {
     </div>
     <div class="grouped-page-sections">
       ${renderEventSection()}
+      ${creatorControls.map((event) => `<article class="card stack"><h2>${escapeHtml(event.name)}</h2>${renderEventPointsVisibility(event)}</article>`).join('')}
     </div>
   `;
 
@@ -1565,6 +1585,9 @@ export function renderOrgaEvents(container, ctx) {
   ]) {
     container.querySelectorAll(selector).forEach((details) => {
       details.addEventListener('toggle', (e) => {
+        // Queued events from a replaced section must not overwrite its
+        // current open state after a shared refresh.
+        if (!e.currentTarget.isConnected) return;
         const kind = e.currentTarget.dataset.eventHistory ?? e.currentTarget.dataset.declinedEvents;
         state[kind] = e.currentTarget.open;
       });
@@ -1581,7 +1604,25 @@ export function renderOrgaEvents(container, ctx) {
     });
   });
 
+  container.querySelectorAll('[data-event-points-reports]').forEach((button) => button.addEventListener('click', () => openPointsReports(button.dataset.eventPointsReports)));
   wireActionMenus(container);
+  container.querySelectorAll('[data-points-visibility]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        await apiFetch(`/api/events/${encodeURIComponent(button.dataset.pointsVisibility)}/points-visibility`, {
+          method: 'PATCH',
+          body: JSON.stringify({ visible: button.dataset.pointsVisible === 'true', revision: Number(button.dataset.pointsRevision) }),
+        });
+        await ctx.refresh();
+      } catch (error) {
+        button.checked = button.dataset.pointsVisible !== 'true';
+        showToast(error.message, { error: true });
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
   wireParticipantActions(container, ctx);
   wireParticipationAnswerActions(container, ctx);
   wirePendingInvitationActions(container, ctx);

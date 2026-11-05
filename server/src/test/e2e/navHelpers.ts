@@ -61,3 +61,15 @@ export async function openAdminCard(page: Page, section: string): Promise<void> 
   await card.waitFor();
   if (!(await card.evaluate((element) => (element as HTMLDetailsElement).open))) await card.locator(':scope > summary').click();
 }
+
+// Match reuses the catalog filter panel with section headings and chips. Keep its opening and dismissal consistent across owners.
+export async function openMatchHistoryFilters(page: Page): Promise<void> {
+  const menu = page.locator('[data-action-menu="match-filters"]');
+  if (!await menu.evaluate((element) => (element as HTMLDetailsElement).open)) await menu.locator(':scope > summary').click();
+}
+
+export async function selectMatchHistoryFilter(page: Page, value: 'all' | 'matches' | 'tournaments'): Promise<void> {
+  await openMatchHistoryFilters(page);
+  await page.locator(`[data-history-filter="${value}"]`).click();
+  await page.keyboard.press('Escape');
+}

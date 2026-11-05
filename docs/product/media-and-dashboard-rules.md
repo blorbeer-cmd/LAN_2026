@@ -19,7 +19,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   or when a newer one replaces it. Separate food-order summary cards are omitted because order
   pushes already use this banner.
 - **Cards**: Four cards remain a 2×2 grid: Live-Status and Newsticker above Abstimmung and
-  Turnier, with the Jam bar below. Banner, header and Jam bar share the card edges and the card
+  Turnier/Ergebnisse, with the Jam bar below. Banner, header and Jam bar share the card edges and the card
   content inset. A card without data centers one short line at content size in the whole card.
 - **Live-Status**: shows every participant including offline ones, playing first. It uses the
   fewest columns (up to three, each at least 240 px wide) that show everyone; only if even that does
@@ -59,6 +59,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   timestamp. A round started after the result replaces it immediately. Without an open or recently closed round, the card only
   states that no vote is running. The regular personal Vote view keeps its open-round
   distribution hidden.
+- **Ergebnisse**: Die bestehende Turnierkachel zeigt die zehn zuletzt erfassten oder korrigierten
+  gültigen Match- und Turnierspielergebnisse. Spiel, Anzeigenamen/Team, Platzierung und tatsächlich
+  gebuchte Spielpunkte stehen in einer Tabelle; keine weiteren persönlichen Angaben.
+  Änderungen erscheinen als „korrigiert“, auch reine Score-Korrekturen. Ohne Punkteanzeige fehlen
+  die Punktespalte und Punkteranglisten; Ergebnisse bleiben sichtbar. Bei vorhandenem Turnier
+  wechseln beide Ansichten alle zehn Sekunden. Lange Teilnehmerlisten werden innerhalb der Kachel
+  automatisch paginiert; die Begrenzung auf zehn Ergebnisse beschränkt keine Punktegutschriften.
+  Neue Ergebnisse und Sichtbarkeitsänderungen werden per Realtime, zusätzlich alle 60 Sekunden,
+  geladen. Ein fehlgeschlagener Abruf verbirgt Punkte bis zum nächsten erfolgreichen Abruf.
 - **Turnier**: Standings and group phases start directly below their metadata; in a knockout
   view, game and round remain fixed at the top while the bracket round is centered below, with
   matches side by side; a third-place match follows the final with the caption „Spiel um Platz 3“.

@@ -48,6 +48,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   groups so `Gesamt` stays the card's last row; its `Hinzufügen` button is compact and, on phones,
   sits at the bottom right below quantity and price.
 
+  Beim Abschicken werden automatisch [Orga-Punkte im Kategorie-Journal](points-journal.md#orga-punkte-für-sammelbestellungen)
+  verbucht: 3/4/5 für den Organisator ab 3/6/9 anderen Bestellern und je 1 pro
+  abgegebener eigener Bestellung, unabhängig von der Bestellfrist. Mehrere Positionen derselben Person zählen nur einmal.
+  Wiederöffnen und Löschen passen die Ansprüche nachvollziehbar an; Friständerungen verändern keine Punkte.
+  Die sichtbare Kategorieansicht folgt separat; das bisherige Wettguthaben wird nicht erhöht.
+
   Payment is a per-person handoff, never a per-position action. The card reads like an invoice:
   every amount sits in one right-aligned last column. Each orderer group row carries the same
   controls so the columns never open gaps: the two-state paid marker, the PayPal action when the order
@@ -99,8 +105,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   marker; „Aktuell“ shows only orders that are still open. The
   reminder uses the same order deep link and a durable per-player/event send timestamp independent of
   the bounded push history.
-- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
-  are „Umfragen“, „An- & Abreise“, „Packliste“ and
+- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“.
+  LAN point visibility is controlled separately on the event card in „Events & Gruppen“ by an
+  admin or the recorded event creator, including creators without current participation. This
+  control never grants roster or financial access; see [LAN-Punkte](lan-points-and-betting-rules.md).
+  Its four area tabs are „Umfragen“, „An- & Abreise“, „Packliste“ and
   „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;
   docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9 records the earlier „Packliste“→„Checkliste“
   rename). „Events & Gruppen“ is deliberately not an Orga tab either: Orga organises work *inside*
@@ -136,6 +145,16 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   creation; switching Art mid-form keeps already-typed values. The creator can later edit Art,
   Titel, Beschreibung and Fälligkeit („To-Do bearbeiten“, `PATCH /api/checklist/tasks/:id`) or
   delete the To-Do until it is done.
+  Ordinary tasks always earn 3 Orga points, independent of effort or task content. There is
+  no amount picker or separate reward setup, including for admins. The first signed-up helper
+  other than the creator receives the reward when the task is completed; direct assignment
+  counts, shared assignment batches pay once, and bring-item requests earn no category reward.
+  Creator, signed-up helpers and admins can reopen completed tasks and atomically reverse the
+  category claim; recompletion restores it rather than adding another reward. Points keep
+  accumulating while their display is hidden. Migration 130 adopts unfinished historical tasks
+  without an old promise; completed uncredited legacy work stays uncredited. Existing old
+  promises retain their original payout path and cannot yet be reopened. The old setup endpoint
+  rejects new promises. New rewards never use the old wallet or its budget.
   All To-Dos form one table in one card without a card heading: a toolbar with „To-Do suchen“,
   a sort menu (Fälligkeit, Titel · A–Z, Wer · A–Z), a filter menu (Wer: Alle/Meine/Offen/Unterwegs/
   Erledigt/Von mir erstellt; Art: Alle/Aufgaben/Mitbring-Anfragen) and the compact gradient

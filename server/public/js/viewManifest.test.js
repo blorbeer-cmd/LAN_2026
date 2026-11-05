@@ -89,11 +89,11 @@ test('every route carries the shared navigation and lifecycle contract', () => {
   // A permanent gaming group keeps the same game-night destinations as a LAN.
   // Its planning routes remain reachable together through Orga in More.
   assert.deepEqual(bottomNavigationEntries('group').map((entry) => entry.view), ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more']);
-  assert.deepEqual(moreNavigationEntries('lan').map((entry) => entry.view ?? entry.section), ['events', 'profile', 'admin', 'arcade', 'broadcast', 'music', 'orga']);
+  assert.deepEqual(moreNavigationEntries('lan').map((entry) => entry.view ?? entry.section), ['events', 'points', 'profile', 'admin', 'arcade', 'broadcast', 'music', 'orga']);
   assert.deepEqual(moreNavigationEntries('group').map((entry) => entry.view ?? entry.section), ['events', 'profile', 'admin', 'arcade', 'broadcast', 'music', 'orga']);
   assert.deepEqual(
     desktopNavigationEntries('lan').map((entry) => entry.view),
-    ['home', 'matchmaking', 'votes', 'gameCatalog', 'eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'foodOrders', 'broadcast', 'arcade', 'music', 'events', 'admin', 'profile'],
+    ['home', 'matchmaking', 'votes', 'gameCatalog', 'points', 'eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'foodOrders', 'broadcast', 'arcade', 'music', 'events', 'admin', 'profile'],
   );
   assert.equal(navigationEventType({ eventType: 'group' }), 'group');
   assert.equal(navigationEventType({ eventType: 'unknown' }), 'lan');

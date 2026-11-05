@@ -5,6 +5,18 @@ const c = (id, title, steps, options = {}) => ({ id, title, steps, ...options })
 const t = (title, chapters, options = {}) => ({ title, chapters, ...options });
 
 export const AREA_TOURS = {
+  points: t('LAN-Punkte', [c('account', 'Punkte verdienen und einsetzen', [
+    s('balance', 'Dein Punktekonto', 'Orga, Spielen und Wetten zählen als drei gleich gewichtete Kategorien. Ihre Platzpunkte ergeben die LAN-Wertung. Das separate Wettguthaben startet einmal mit 100 Punkten.', '[aria-label="Mein Punktekonto"]'),
+    s('earn', 'Mitmachen bringt Punkte', 'Ein erledigtes fremdes To-do bringt dem ersten Helfer 3 Orga-Punkte. Gespielte Matches bringen Spielpunkte: ein Sieg 4, der letzte Platz 1. Spielzeit und Teamgröße werden nicht gewichtet.'),
+    s('bet', 'Auch eigene Spiele tippen', 'Tippe über „Wetten“ im Match- oder Turnierheader, auch auf eigene Spiele. Höchstens 20 Punkte Einsatz; Gewinn maximal in Einsatzhöhe. Nettogewinne zählen ab zwei abgerechneten Tipps.', '[aria-label="Mein Punktekonto"]'),
+    s('history', 'Jede Buchung nachvollziehen', 'Der Punkteverlauf bietet die Kontoauswahl und zeigt Zeitpunkt, Herkunft und Betrag. Details erklären Auszahlungen und begründete Korrekturen. Bei falsch vergebenen Punkten kannst du eine Meldung erstellen.', '[aria-label="Punkteverlauf"]'),
+  ])]),
+  pointsAdmin: t('LAN-Punkte verwalten', [c('manage', 'Regeln und Korrekturen', [
+    s('rules', 'Feste Regeln', 'Pro Person gibt es einmal 100 Wettpunkte und höchstens 20 Punkte Einsatz je Markt. Orga-, Spiel- und Wett-Nettopunkte bleiben getrennt; Kategorieplätze bestimmen die Gesamtwertung.', '[data-points-settings]'),
+    s('tasks', 'Feste To-do-Punkte', 'Der erste fremde Helfer erhält beim Erledigen eines To-dos automatisch 3 Orga-Punkte, auch bei einer Sammelaufgabe nur einmal. Wiederöffnen nimmt die Punkte zurück.'),
+    s('correct', 'Nachvollziehbar korrigieren', 'Punkteentzug braucht eine Begründung und bleibt im Journal. Ergebniskorrekturen buchen betroffene Wettabrechnungen atomar gegen und neu.'),
+    s('finish', 'Endwertung festschreiben', 'Prüfe zuerst alle offenen Punktefehler-Meldungen. Beim Festschreiben werden alle noch unabgerechneten Wetten vollständig erstattet, auch gesperrte. Frühere Endstände bleiben nach begründetem Wiederöffnen erhalten.'),
+  ])], { adminOnly: true }),
   home: t('Home', [
     c('overview', 'Überblick', [
       s('current', 'Was läuft gerade?', 'Aktuell führt dich zu laufenden Abstimmungen, Turnieren, Bestellungen und Arcade-Lobbys. Erledigte Vorgänge findest du im jeweiligen Bereich wieder.', '#home-current-title'),

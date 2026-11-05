@@ -49,7 +49,7 @@ function trapTabFocus(event, backdrop) {
 // title (a dialog's primary action, e.g. "Eintrag anlegen").
 // closeButton: false drops the header's X for a pure reference dialog;
 // Escape and a tap outside still close it.
-export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, headerAction = '', closeButton = true, closeOnBackdrop = true, tourKey = null, isolateKeys = false } = {}) {
+export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, headerAction = '', closeButton = true, closeOnBackdrop = true, tourKey = null, isolateKeys = false, restoreFocus = true } = {}) {
   const previousFocus = document.activeElement;
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -64,8 +64,11 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
     </div>
   `;
   const dialog = backdrop.querySelector('.modal');
-  dialog.querySelector('h2').textContent = title;
-  dialog.setAttribute('aria-label', title);
+  const setTitle = (value) => {
+    dialog.querySelector('h2').textContent = value;
+    dialog.setAttribute('aria-label', value);
+  };
+  setTitle(title);
   document.body.appendChild(backdrop);
 
   let closed = false;
@@ -75,7 +78,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
     document.removeEventListener('keydown', onKeydown, isolateKeys);
     backdrop.remove();
     onClose?.();
-    if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    if (restoreFocus && previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
   };
   let confirmPending = false;
   const requestClose = async () => {
@@ -122,7 +125,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose, hea
     backdrop.querySelector('input, select, textarea, button, a[href]')?.focus();
   }
   if (tourKey) document.dispatchEvent(new CustomEvent('respawn:dialog-opened', { detail: { tourKey, el: backdrop } }));
-  return { el: backdrop, close };
+  return { el: backdrop, close, setTitle };
 }
 
 // Themed replacement for the browser's native confirm() — the same dark

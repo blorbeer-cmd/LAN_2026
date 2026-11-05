@@ -51,10 +51,12 @@ const REFRESH_ON = Object.freeze({
   leaderboard: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard],
   analytics: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
   profile: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.events],
-  tournaments: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills],
+  tournaments: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard],
   hallOfFame: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
   seating: [CORE_REALTIME_EVENTS.players],
   myStats: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
+  points: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
+  pointsAdmin: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
   broadcast: [CORE_REALTIME_EVENTS.players],
   foodOrders: [CORE_REALTIME_EVENTS.players],
   checklist: [CORE_REALTIME_EVENTS.players],
@@ -141,6 +143,20 @@ export const VIEW_MANIFEST = Object.freeze({
     search: search('Auswertung', 'Ergebnisse, Punkte und Platzierungen', 'auswertung rang leaderboard ergebnis match', 96),
     lifecycle: lifecycle('leaderboard', { eventScoped: true }),
   }),
+  points: defineView({
+    label: 'LAN-Punkte', iconKey: 'trophy', requiresPoints: true,
+    search: search('Bereich', 'Punktekonto, Verlauf, Sieger tippen und LAN-Rangliste', 'punkte wetten tippen guthaben journal belohnung', 95),
+    navigation: Object.freeze({
+      more: Object.freeze({ eventTypes: Object.freeze(['lan']), order: 1 }),
+      desktop: desktopNavigation('lan', 3, { eventTypes: ['lan'] }),
+    }),
+    lifecycle: lifecycle('points', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.leaderboard, 'checklist:changed', 'tournaments:changed', 'matchmaking:draws-changed'] }),
+  }),
+  pointsAdmin: defineView({
+    label: 'LAN-Punkte verwalten', iconKey: 'trophy', requiresRole: 'admin', deniedView: 'points',
+    search: search('Admin', 'Punkte aktivieren, Budget, Buchungen und Endwertung verwalten', 'punkte budget grundstock entziehen', 70),
+    lifecycle: lifecycle('pointsAdmin', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.leaderboard, 'checklist:changed'] }),
+  }),
   // Deliberately not an Orga tab. Orga organises work *inside* the selected
   // workspace; this view picks and creates the workspaces themselves, so it
   // sits one level up: first entry in "Mehr", in the desktop rail's pinned
@@ -190,7 +206,7 @@ export const VIEW_MANIFEST = Object.freeze({
   hallOfFame: defineView({
     label: 'Hall of Fame', section: 'insights', sectionOrder: 2, iconKey: 'landmark', requiresRole: 'admin', deniedView: 'foodOrders', eventFeature: 'tracking',
     search: search('Auswertung', 'Champions vergangener Events', 'auswertung champions sieger historie ruhmeshalle', 61),
-    lifecycle: lifecycle('hallOfFame', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard] }),
+    lifecycle: lifecycle('hallOfFame', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events] }),
   }),
   seating: defineView({
     label: 'Sitzplan', iconKey: 'armchair', requiresRole: 'admin', eventFeature: 'seating',

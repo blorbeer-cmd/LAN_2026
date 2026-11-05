@@ -574,8 +574,9 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   await page.waitForSelector('#kiosk-fullscreen');
   assert.deepEqual(
     await page.locator('#kiosk-dashboard > .kiosk-card > div').evaluateAll((contents) => contents.map((content) => content.id)),
-    ['kiosk-live', 'kiosk-newsticker', 'kiosk-votes', 'kiosk-tournament'],
+    ['kiosk-live', 'kiosk-newsticker', 'kiosk-votes', 'kiosk-tournament', 'kiosk-results'],
   );
+  assert.equal(await page.locator('#kiosk-dashboard > .kiosk-card').count(), 4, 'results share the tournament tile');
   // The newsticker opens with a few generated lines: one lead headline with
   // its kicker, all of them fitted inside the tile.
   await page.waitForSelector('#kiosk-newsticker .kiosk-news-item.is-first .kiosk-news-kicker >> text=Eilmeldung');

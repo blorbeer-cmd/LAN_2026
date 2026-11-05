@@ -107,6 +107,17 @@ Fall ist.
 
 - Unit/Integration laufen gegen eine **In-Memory-SQLite** (`DB_FILE=:memory:`), berühren also nie
   echte Daten.
+- `test:run` verwendet Nodes eingebauten JavaScript-Compile-Cache unter
+  `node_modules/.cache/test-bytecode`. Der absolute Pfad wird an Kindprozesse weitergegeben;
+  dadurch müssen isolierte Testdateien und Migrationsstarts dieselben Module nicht erneut
+  kompilieren. Prozesse, Datenbanken, Migrationen und Assertions bleiben unabhängig und laufen
+  vollständig. Es werden weder Testergebnisse noch Datenbankzustände wiederverwendet.
+  Ohne beschreibbaren Cache läuft Node regulär weiter. `test:coverage` verwendet diesen
+  Preload nicht, damit V8 alle Funktionen für die Coverage frisch instrumentiert.
+- Unabhängige Unit-/Integrationsdateien laufen mit bis zu vier Workern, begrenzt auf
+  `os.availableParallelism()`. Anders als Nodes Standard bleibt kein Kern für den meist
+  wartenden Koordinator reserviert. Server- und Frontend-/Skriptphase bleiben getrennt;
+  Dateimuster, Testprozesse, Datenbankisolation und Fehlercodes bleiben erhalten.
 - E2E startet den gebauten Server (`dist/index.js`) als eigenen Kindprozess auf einem vom
   Betriebssystem vergebenen freien Test-Port,
   ebenfalls mit `DB_FILE=:memory:`, und schließt ihn danach automatisch wieder.

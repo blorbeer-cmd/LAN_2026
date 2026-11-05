@@ -21,6 +21,8 @@ import { openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
 import { prepareEventTarget } from './views/events.js';
+import { syncPointsDialogVisibility } from './views/points.js';
+import { refreshPointsReports } from './pointsReports.js';
 import { focusGameCatalog } from './views/gameCatalog.js';
 import { clearTournamentTeamTarget, prepareTournamentTeamTarget } from './views/tournament.js';
 import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
@@ -141,7 +143,9 @@ const startupData = createStartupDataGate((state) => {
 // per call site instead left the barrier waiting forever whenever a winner
 // without that line (the event-context signal below) committed first.
 async function loadAllAndPublish() {
-  return startupData.loadAndPublish(loadAll);
+  const committed = await startupData.loadAndPublish(loadAll);
+  if (committed) { syncPointsDialogVisibility(); refreshPointsReports(); }
+  return committed;
 }
 
 async function runSharedRefresh() {
@@ -591,8 +595,7 @@ function renderCurrent({ preserveState = true } = {}) {
   const renderer = entry.render ?? resolvedLazyRenderers.get(view);
   if (renderer) {
     renderer(viewContainer, ctx);
-    restoreViewRenderState(viewContainer, renderState);
-    finishRenderedViewFocus();
+    finishRenderedViewFocus(renderState);
     return;
   }
 
@@ -602,8 +605,7 @@ function renderCurrent({ preserveState = true } = {}) {
       resolvedLazyRenderers.set(view, renderFn);
       if (revision !== renderRevision || view !== currentView) return;
       renderFn(viewContainer, ctx);
-      restoreViewRenderState(viewContainer, renderState);
-      finishRenderedViewFocus();
+      finishRenderedViewFocus(renderState);
     })
     .catch((error) => {
       if (revision !== renderRevision || view !== currentView) return;
@@ -624,8 +626,11 @@ function focusPendingViewHeading() {
   pendingViewHeadingFocus = false;
 }
 
-function finishRenderedViewFocus() {
+function finishRenderedViewFocus(renderState) {
+  // Tour help controls are attached after the view markup. Reattach them
+  // before restoring focus so a refresh cannot lose the just-focused trigger.
   areaTours.sync();
+  restoreViewRenderState(viewContainer, renderState);
   if (!focusPendingSearchTarget()) focusPendingViewHeading();
 }
 
@@ -698,6 +703,10 @@ function switchView(
   view,
   { fromHistory = false, replace = false, searchTarget = null, localRoute = undefined } = {},
 ) {
+  if (view === 'points' && searchTarget?.type === 'betting-round') {
+    localRoute = { kind: 'round', id: searchTarget.id };
+    searchTarget = null;
+  }
   if (view === 'tournaments' && (searchTarget?.type === 'tournament' || searchTarget?.type === 'tournament-team')) {
     localRoute = { kind: 'detail', id: searchTarget.id };
     // "tournament-team" (the start push's #tournaments/<id>/teams) keeps a
@@ -959,6 +968,7 @@ function wireSocket() {
   // Arcade views open and intentionally close auxiliary sockets; those must
   // never make the whole app appear offline.
   const socket = connectSocket({ reportConnectionState: true });
+  socket.on('pointsReports:changed', refreshPointsReports);
 
   // These payload-less events still need a fresh central snapshot, but only
   // screens that consume the changed entity are redrawn. Secondary caches
@@ -1064,7 +1074,7 @@ function wireSocket() {
   });
   socket.on('tournaments:changed', (payload) => {
     invalidateViewCaches(VIEW_REGISTRY, 'tournaments:changed');
-    if (currentView === 'tournaments' || currentView === 'home' || currentView === 'matchmaking') renderCurrent();
+    if (['tournaments', 'home', 'matchmaking', 'points', 'pointsAdmin'].includes(currentView)) renderCurrent();
 
     // Same pattern as the vote nudge: only the players actually named in
     // this notification see it, and not if they're already looking at the
@@ -1186,7 +1196,7 @@ function wireSocket() {
     invalidateViewCaches(VIEW_REGISTRY, 'checklist:changed', { payload });
     // Only the two checklist views show this data; the other Orga tabs keep
     // their drafts untouched.
-    if (currentView === 'checklist' || currentView === 'checklistPacking') renderCurrent();
+    if (['checklist', 'checklistPacking', 'points', 'pointsAdmin'].includes(currentView)) renderCurrent();
     // Home's "Meine To-Dos" counts the shared pool's free To-Dos from this
     // data (see renderMyTodos() in home.js), so a stale cache on an
     // already-open Home view has to trigger a re-render too.

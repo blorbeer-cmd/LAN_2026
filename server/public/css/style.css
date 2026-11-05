@@ -837,6 +837,17 @@ textarea {
   background: var(--bg-elevated);
   box-shadow: var(--shadow);
 }
+.action-menu-panel[popover] {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-height: calc(100dvh - var(--space-4));
+  overflow-y: auto;
+  color: var(--text);
+}
+.action-menu-panel[popover]:not(:popover-open) {
+  display: none;
+}
 /* Menu entries compose the standard button variants with a full touch target.
    They are flat list rows: no box per entry, a hover surface only, and the
    destructive entry keeps its red text behind a hairline instead of a red box. */
@@ -1587,18 +1598,18 @@ textarea {
     min-height: 0;
     flex: 1 1 auto;
     overflow-y: auto;
-    padding: var(--space-3);
+    padding: var(--space-2);
     scrollbar-gutter: stable;
   }
   :root[data-layout-mode='desktop'] .desktop-nav-utilities {
     flex: 0 0 auto;
-    padding: var(--space-2) var(--space-3) var(--space-3);
+    padding: var(--space-2);
     border-top: 1px solid var(--border);
     background: var(--bg-elevated);
   }
   :root[data-layout-mode='desktop'] .desktop-nav-group + .desktop-nav-group {
-    margin-top: var(--space-3);
-    padding-top: var(--space-2);
+    margin-top: var(--space-1);
+    padding-top: var(--space-1);
     border-top: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
   }
   :root[data-layout-mode='desktop'] .desktop-nav-heading {
@@ -1653,6 +1664,13 @@ textarea {
     border-radius: 50%;
     background: var(--state-paused);
     box-shadow: 0 0 0 2px var(--bg-elevated);
+  }
+}
+
+@media (min-width: 1280px) and (hover: hover) and (pointer: fine) { /* --bp-xl */
+  :root[data-layout-mode='desktop'] .desktop-nav-btn {
+    min-height: var(--control-height);
+    padding-block: var(--space-1);
   }
 }
 
@@ -3758,6 +3776,8 @@ button.draft-pool-player {
 }
 .page-title-row .view-title {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Untabbed secondary destinations reached from "Mehr" or Admin use the same

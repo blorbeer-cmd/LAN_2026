@@ -21,6 +21,7 @@ import { requireGroupRole } from '../groupAuthorization';
 import { activeGroupPlayers, type GroupPlayerSnapshot } from '../groupPlayers';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 import { buildTeamsSnapshot } from './matchmaking';
+import { withBettingAccounting } from '../betting';
 
 export const draftRouter = Router();
 
@@ -29,6 +30,7 @@ const MAX_CAPTAINS = 4;
 
 interface DraftRow {
   id: string;
+  created_by: string | null;
   group_id: string;
   event_id: string;
   game_id: string;
@@ -37,6 +39,7 @@ interface DraftRow {
   pool_ids: string;
   picks: string;
   created_at: number;
+  betting_allowed: number;
 }
 
 interface Pick {
@@ -115,6 +118,7 @@ function buildState(row: DraftRow | undefined) {
       groupId: row.group_id,
       eventId: row.event_id,
       status: row.status,
+      bettingAllowed: Boolean(row.betting_allowed),
       gameId: row.game_id,
       gameName: game?.name ?? '?',
       gameIcon: game?.icon ?? '🎮',
@@ -158,7 +162,9 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const eventId = scope.eventId;
-  const { gameId, captainIds, poolPlayerIds } = req.body ?? {};
+  const { gameId, captainIds, poolPlayerIds, bettingAllowed: requestedBettingAllowed } = req.body ?? {};
+  if (requestedBettingAllowed !== undefined && typeof requestedBettingAllowed !== 'boolean')
+    return res.status(400).json({ error: 'Wetten erlauben muss Ja oder Nein sein.' });
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -177,6 +183,7 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   if (poolPlayerIds.length < 1) {
     return res.status(400).json({ error: 'Der Pool braucht mindestens einen Spieler zum Picken.' });
   }
+  const bettingAllowed = requestedBettingAllowed ?? true;
   const allIds = [...captainIds, ...poolPlayerIds];
   if (new Set(allIds).size !== allIds.length) {
     return res.status(400).json({ error: 'Ein Spieler kann nicht doppelt teilnehmen (Captain und Pool).' });
@@ -203,6 +210,8 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
 
   const row: DraftRow = {
     id: nanoid(),
+    created_by: req.player!.id,
+    betting_allowed: Number(bettingAllowed),
     group_id: groupId,
     event_id: eventId,
     game_id: gameId,
@@ -216,8 +225,8 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
     db.transaction(() => {
       db.prepare(
         `INSERT INTO drafts
-         (id, group_id, event_id, game_id, status, captain_ids, pool_ids, picks, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, group_id, event_id, game_id, status, captain_ids, pool_ids, picks, created_at, created_by, betting_allowed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         row.id,
         row.group_id,
@@ -228,6 +237,8 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
         row.pool_ids,
         row.picks,
         row.created_at,
+        row.created_by,
+        row.betting_allowed,
       );
       const insertRef = db.prepare(
         `INSERT INTO draft_player_refs
@@ -333,55 +344,58 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
     }
   }
 
-  const update = db
-    .prepare(
-      `UPDATE drafts SET pool_ids = ?, picks = ?, status = ?
-       WHERE id = ? AND group_id = ? AND status = 'active' AND pool_ids = ? AND picks = ?`,
-    )
-    .run(
-      JSON.stringify(remaining),
-      JSON.stringify(picks),
-      completed ? 'completed' : 'active',
-      row.id,
-      groupId,
-      row.pool_ids,
-      row.picks,
-    );
-  if (update.changes !== 1) {
-    return res.status(409).json({ error: 'Der Draft wurde zwischenzeitlich geändert.' });
-  }
-
-  // A finished draft is a set of teams like any matchmaking draw — log it
-  // into the same history so Match history shows drafted teams too. The
-  // ratings are informational, captured once at completion, never used for
-  // pick order. The marker distinguishes these entries from older drafts.
-  const historyEventId = row.event_id;
   let finishedDraw: Record<string, unknown> | null = null;
-  if (completed && state.draft) {
-    const ratings = buildTeamsSnapshot(row.game_id, state.draft.teams.map((team) => team.players.map((player) => player.id)));
-    const teamsSnapshot = state.draft.teams.map((t, index) => ({
-      players: t.players.map((p, playerIndex) => ({ ...p, rating: ratings[index].players[playerIndex].rating })),
-      totalRating: ratings[index].totalRating,
-      skillSnapshot: true,
-    }));
-    const drawId = nanoid();
-    db.prepare(
-      "INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'draft')",
-    ).run(drawId, row.game_id, historyEventId, groupId, JSON.stringify(teamsSnapshot), now);
-    finishedDraw = {
-      id: drawId,
-      gameId: row.game_id,
-      gameName: state.draft.gameName,
-      teams: teamsSnapshot,
-      seatConflicts: 0,
-      seatPairsConsidered: 0,
-      generatedAt: now,
-      matchId: null,
-      source: 'draft',
-      tournamentId: null,
-      tournamentName: null,
-    };
-  }
+  const saved = withBettingAccounting(row.event_id, () => {
+    const update = db
+      .prepare(
+        `UPDATE drafts SET pool_ids = ?, picks = ?, status = ?
+         WHERE id = ? AND group_id = ? AND status = 'active' AND pool_ids = ? AND picks = ?`,
+      )
+      .run(
+        JSON.stringify(remaining),
+        JSON.stringify(picks),
+        completed ? 'completed' : 'active',
+        row.id,
+        groupId,
+        row.pool_ids,
+        row.picks,
+      );
+    if (update.changes !== 1) return false;
+
+    // A finished draft is a set of teams like any matchmaking draw — log it
+    // into the same history so Match history shows drafted teams too. The
+    // ratings are informational, captured once at completion, never used for
+    // pick order. The marker distinguishes these entries from older drafts.
+    const historyEventId = row.event_id;
+    if (completed && state.draft) {
+      const ratings = buildTeamsSnapshot(row.game_id, state.draft.teams.map((team) => team.players.map((player) => player.id)));
+      const teamsSnapshot = state.draft.teams.map((t, index) => ({
+        players: t.players.map((p, playerIndex) => ({ ...p, rating: ratings[index].players[playerIndex].rating })),
+        totalRating: ratings[index].totalRating,
+        skillSnapshot: true,
+      }));
+      const drawId = nanoid();
+      db.prepare(
+        "INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, source, created_by, betting_allowed) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'draft', ?, ?)",
+      ).run(drawId, row.game_id, historyEventId, groupId, JSON.stringify(teamsSnapshot), now, row.created_by, row.betting_allowed);
+      finishedDraw = {
+        id: drawId,
+        gameId: row.game_id,
+        gameName: state.draft.gameName,
+        teams: teamsSnapshot,
+        seatConflicts: 0,
+        seatPairsConsidered: 0,
+        generatedAt: now,
+        matchId: null,
+        source: 'draft',
+        bettingAllowed: Boolean(row.betting_allowed),
+        tournamentId: null,
+        tournamentName: null,
+      };
+    }
+    return true;
+  });
+  if (!saved) return res.status(409).json({ error: 'Der Draft wurde zwischenzeitlich geändert.' });
   if (completed) resolvePushTopic(`draft:${row.id}`, false, { groupId, eventId: row.event_id });
 
   broadcast(Events.draftChanged, { ...state, completed }, { groupId: req.group!.id, eventId: row.event_id });
