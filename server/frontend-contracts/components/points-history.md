@@ -111,6 +111,11 @@ in Liga- und Gruppenzeilen gibt es keine Wettcontrols. Sie verwenden Standardbut
 steht direkt unter „Wetten“, mehrere öffnen das Menü. Die asynchron erlaubte Punktefehlermeldung
 steht ausschließlich in Tippdetails und zählt nicht als unsichtbarer Menüeintrag.
 `competitionBettingHtml` liefert dieselben Controls; es gibt keine Quotenanzeigen.
+Der Turniereinstieg benötigt nur einen vorhandenen Markt des Turniers. Fehlt der
+Turniersiegermarkt bei einem bereits gestarteten Turnier, öffnet eine Spielrunde als Anker
+denselben Picker. Der Anker zeigt im Kopf ausschließlich den direkten Einstieg „Wetten“;
+Verwaltungsaktionen gelten erst im Modal für das ausdrücklich ausgewählte Spiel.
+Es wird dadurch kein verspäteter Turniersiegermarkt erzeugt.
 Ein benannter Tournament-Kontext aus der geschützten Punkte-API ordnet jede Spielrunde ihrem
 Turnier zu. Der gemeinsame Tippdialog zeigt „Sieger tippen“ beziehungsweise „Turniersieger tippen“,
 Turnier/Spiel und Runde. Teamnamen stehen in der Auswahl und werden in der sichtbaren

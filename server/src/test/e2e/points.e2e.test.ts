@@ -570,6 +570,61 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   assert.equal(await admin.getByRole('dialog').getByRole('button', { name: 'Punktefehler melden', exact: true }).count(), 0,
     'editing a result has no points-report action');
   await admin.keyboard.press('Escape');
+  // Reveal an already-started tournament: playable fixture markets exist, but
+  // opening an outright market now would accept a late champion prediction.
+  await setPointsVisibility(false);
+  const lateCup = await api('/api/tournaments', 'POST', { gameId: game.id, name: 'Bereits gestartete Liga',
+    format: 'round_robin', teams: [myId, alice.id, bob.id].map((id) => ({ playerIds: [id] })) });
+  const playedFixture = lateCup.matches[0];
+  await api(`/api/tournaments/${lateCup.id}/matches/${playedFixture.id}/result`, 'POST', { winnerTeamId: playedFixture.teamAId });
+  await setPointsVisibility(true);
+  // A real team rename runs the normal source reconciliation immediately,
+  // avoiding dependence on the 30-second background recovery timer.
+  await api(`/api/tournaments/${lateCup.id}/teams/${lateCup.teams[0].id}`, 'PUT', { name: 'Frühstarter' });
+  const lateRounds = (await api(`/api/points?eventId=${eventId}`)).rounds.filter((row: any) => row.tournament?.id === lateCup.id);
+  assert.equal(lateRounds.length, 2, 'only the two remaining league games receive markets');
+  assert.ok(lateRounds.every((row: any) => row.sourceType === 'tournament_match'), 'no late outright market is created');
+  const ownLateRound = lateRounds.find((row: any) => row.outcomes.some((outcome: any) => outcome.playerIds.includes(alice.id)));
+  const ownRoundLabel = `Runde ${ownLateRound.tournament.round}`;
+  await member.setViewportSize({ width: 390, height: 844 });
+  await member.evaluate((id) => { window.location.hash = `#tournaments/${id}`; }, lateCup.id);
+  const lateControls = member.locator('[aria-label="Turnierwetten"] [data-betting-controls]');
+  await lateControls.waitFor();
+  assert.equal(await lateControls.locator('summary, [data-lock-round], [data-refund-round]').count(), 0,
+    'a fallback anchor is a direct picker entry, never an action on an unspecified fixture');
+  await lateControls.getByRole('button', { name: 'Wetten', exact: true }).click();
+  const lateDialog = member.getByRole('dialog', { name: 'Sieger tippen', exact: true });
+  await lateDialog.waitFor();
+  assert.equal(await lateDialog.locator('[data-tip-group] option[value="Turniersieger"]').count(), 0);
+  await lateDialog.locator('[data-tip-group]').selectOption(ownRoundLabel);
+  await lateDialog.locator('[name="stake"]').fill('1');
+  const savedLateTip = member.waitForResponse((response) => response.url().includes(`/rounds/${ownLateRound.id}/tip`)
+    && response.request().method() === 'PUT' && response.status() === 200);
+  await lateDialog.locator('button[type="submit"]').click();
+  await savedLateTip;
+  await member.waitForFunction((id) => document.querySelector<HTMLSelectElement>('[data-tip-select]')?.value !== id, ownLateRound.id);
+  await member.keyboard.press('Escape');
+  await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
+  assert.equal((await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie)).rounds
+    .find((row: any) => row.id === ownLateRound.id).mine.stake, 1, 'the formerly unreachable game accepts a real tip');
+  await navigate(member, 'matchmaking');
+  await member.locator('#mm-game-search').click();
+  await member.locator(`#mm-game-list [data-search-select-value="${game.id}"]`).click();
+  const lateOpen = member.locator('.matchmaking-open-draws');
+  if (!await lateOpen.evaluate((element) => (element as HTMLDetailsElement).open)) await lateOpen.locator(':scope > summary').click();
+  const lateTile = member.locator(`[data-history-item="t-${lateCup.id}"]`);
+  await lateTile.locator('.matchmaking-history-head').getByRole('button', { name: 'Wetten', exact: true }).click();
+  await lateDialog.waitFor();
+  await lateDialog.locator('[data-tip-group]').selectOption(ownRoundLabel);
+  assert.equal(await lateDialog.locator('[name="stake"]').inputValue(), '1', 'Match entry opens the same saved game tip');
+  await lateDialog.getByRole('button', { name: 'Tipps schließen', exact: true }).waitFor();
+  await member.keyboard.press('Escape');
+  await admin.evaluate((id) => { window.location.hash = `#tournaments/${id}`; }, lateCup.id);
+  await admin.locator('[aria-label="Turnierwetten"]').getByRole('button', { name: 'Wetten', exact: true }).click();
+  await admin.getByRole('dialog').getByRole('button', { name: 'Runde erstatten', exact: true }).waitFor();
+  await admin.keyboard.press('Escape');
+  await navigate(member, 'points');
+  await member.getByRole('region', { name: 'Mein Punktekonto' }).waitFor();
   // Create a shared positive playing score and remove prior claims through
   // the supported correction API, without editing any wallet.
   const entries = (await api(`/api/points/admin/journal?eventId=${eventId}`)).entries;

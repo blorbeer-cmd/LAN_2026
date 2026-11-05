@@ -169,7 +169,10 @@ export function pointsHomeHtml(ctx) {
 
 function bettingRound(type, id) {
   if (!state.activeEvent?.pointsEnabled) return null;
-  return currentData()?.rounds.find((round) => round.sourceType === type && round.sourceId === id) ?? null;
+  const rounds = currentData()?.rounds ?? [];
+  return rounds.find((round) => round.sourceType === type && round.sourceId === id)
+    ?? (type === 'tournament' ? rounds.find((round) => round.sourceType === 'tournament_match' && round.tournament?.id === id) : null)
+    ?? null;
 }
 
 function bettingManagementActions(round, closed) {
@@ -185,7 +188,9 @@ function bettingControlsHtml(round, { actionsOnly = false, showStatus = true, to
   const closed = Boolean(currentData()?.settings.closed_at);
   const actions = [
     `<button type="button" class="btn btn-sm" data-tip-round="${e(round.id)}"${tournamentId ? ` data-tip-tournament="${e(tournamentId)}"` : ''}>${tournamentId ? 'Tipps öffnen' : round.status === 'open' && !closed ? (round.mine ? 'Tipp ändern' : 'Jetzt tippen') : 'Tippdetails'}</button>`,
-    ...bettingManagementActions(round, closed),
+    // A fixture anchors a tournament without an outright market only for opening
+    // its picker. Manage the explicitly selected fixture inside that modal.
+    ...(tournamentId && round.sourceType === 'tournament_match' ? [] : bettingManagementActions(round, closed)),
   ];
   // Permission-dependent reports live in tip details, so a hidden report never
   // creates a menu with just one visible action.
@@ -216,7 +221,7 @@ export function competitionMatchesTipFilter(type, id, filter) {
 export function competitionBettingHtml(type, id, ctx, options = {}) {
   ensurePoints(ctx);
   const round = bettingRound(type, id);
-  return round ? bettingControlsHtml(round, options) : '';
+  return round ? bettingControlsHtml(round, { ...options, ...(type === 'tournament' ? { tournamentId: id } : {}) }) : '';
 }
 
 function tipFixtureLabel(round) {

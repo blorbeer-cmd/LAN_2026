@@ -213,7 +213,11 @@ sich aufklappen; die LAN-Punkteansicht enthält keine Spieleliste. Seltenere Inf
 „Wetten“ steht im Header von Matchkarten, auch bei geschlossener Spielkarte. In der
 Turnieransicht steht genau einmal „Wetten“ direkt unter Titel und Turnierinfos. Turniersieger
 und einzelne Spiele wählt man im gemeinsamen Modal aus; im Match-Bereich führt die
-Turnierkachel in dasselbe Modal. Turnierbaum, Liga- und Gruppenzeilen enthalten keine Wettbuttons.
+Turnierkachel in dasselbe Modal. Der Einstieg bleibt auch ohne Turniersiegermarkt verfügbar,
+sobald Spielmärkte existieren, etwa nach dem Einblenden eines bereits gestarteten Turniers.
+Es wird kein verspäteter Siegertipp angelegt; Verwaltungsaktionen für einen Spielmarkt
+beziehen sich erst im Modal auf die gewählte Begegnung.
+Turnierbaum, Liga- und Gruppenzeilen enthalten keine Wettbuttons.
 Ein einzelnes verfügbares Angebot ist ein direkter Button, erst mehrere sind ein Dropdown.
 Punktefehler-Meldungen stehen in den Tippdetails; ihre asynchrone Freigabe erzeugt kein Menü
 mit nur einem sichtbaren Eintrag. Teilnahme und Adminrechte bestimmen weiterhin, ob neben
