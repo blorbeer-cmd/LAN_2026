@@ -918,9 +918,21 @@ function renderMatchFilters() {
     <div><details class="action-menu game-catalog-filter-menu" data-floating-action-menu data-action-menu="match-filters">
       <summary class="btn btn-sm game-catalog-filter-trigger" aria-label="Match-Filter">Filter${count ? ` (${count})` : ''} ${icon('chevronDown')}</summary>
       <div class="action-menu-panel game-catalog-filter-panel" popover="manual">
-        <label class="stack"><span class="field-label">Art</span><select data-history-filter>${[['all', 'Alle'], ['matches', 'Matches'], ['tournaments', 'Turniere']].map(([key, label]) => `<option value="${key}"${historyFilter === key ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
-        <label class="check-row"><input type="checkbox" data-match-mine${mineOnly ? ' checked' : ''}>Meine Beteiligung</label>
-        ${state.activeEvent?.pointsEnabled ? `<label class="stack"><span class="field-label">Tippstatus · offene Spiele</span><select data-match-tip-filter>${[['all', 'Alle'], ['open', 'Noch nicht getippt'], ['placed', 'Tipp abgegeben']].map(([key, label]) => `<option value="${key}"${tipFilter === key ? ' selected' : ''}>${label}</option>`).join('')}</select></label>` : ''}
+        <div class="stack game-catalog-filter-section" role="group" aria-label="Art">
+          <span class="game-catalog-filter-heading">Art</span><div class="chip-list">
+            ${[['all', 'Alle'], ['matches', 'Matches'], ['tournaments', 'Turniere']].map(([key, label]) => `<button type="button" class="chip${historyFilter === key ? ' is-active' : ''}" data-history-filter="${key}" aria-pressed="${historyFilter === key}">${label}</button>`).join('')}
+          </div>
+        </div>
+        <div class="stack game-catalog-filter-section" role="group" aria-label="Beteiligung">
+          <span class="game-catalog-filter-heading">Beteiligung</span><div class="chip-list">
+            <button type="button" class="chip${mineOnly ? ' is-active' : ''}" data-match-mine aria-pressed="${mineOnly}">Meine</button>
+          </div>
+        </div>
+        ${state.activeEvent?.pointsEnabled ? `<div class="stack game-catalog-filter-section" role="group" aria-label="Dein Tipp bei offenen Spielen">
+          <span class="game-catalog-filter-heading">Dein Tipp · offene Spiele</span><div class="chip-list">
+            ${[['open', 'Noch offen'], ['placed', 'Abgegeben']].map(([key, label]) => `<button type="button" class="chip${tipFilter === key ? ' is-active' : ''}" data-match-tip-filter="${key}" aria-pressed="${tipFilter === key}">${label}</button>`).join('')}
+          </div>
+        </div>` : ''}
         ${count ? '<button type="button" class="btn btn-sm game-catalog-filter-reset" data-match-filter-reset>Filter zurücksetzen</button>' : ''}
       </div>
     </details></div>
@@ -1014,15 +1026,15 @@ function wireHistory(container, selectedGameId, ctx) {
     tournamentDetailErrors.delete(id);
     loadHistoryTournamentDetail(id, ctx);
   }));
-  container.querySelector('[data-history-filter]')?.addEventListener('change', (event) => {
-    historyFilter = event.target.value; ctx.rerender();
+  container.querySelectorAll('[data-history-filter]').forEach((button) => button.addEventListener('click', () => {
+    historyFilter = button.dataset.historyFilter; ctx.rerender();
+  }));
+  container.querySelector('[data-match-mine]')?.addEventListener('click', () => {
+    mineOnly = !mineOnly; invalidateMatchmakingHistory({ hard: true }); ctx.rerender();
   });
-  container.querySelector('[data-match-mine]')?.addEventListener('change', (event) => {
-    mineOnly = event.target.checked; invalidateMatchmakingHistory({ hard: true }); ctx.rerender();
-  });
-  container.querySelector('[data-match-tip-filter]')?.addEventListener('change', (event) => {
-    tipFilter = event.target.value; ctx.rerender();
-  });
+  container.querySelectorAll('[data-match-tip-filter]').forEach((button) => button.addEventListener('click', () => {
+    tipFilter = tipFilter === button.dataset.matchTipFilter ? 'all' : button.dataset.matchTipFilter; ctx.rerender();
+  }));
   container.querySelector('[data-match-filter-reset]')?.addEventListener('click', () => {
     historyFilter = 'all'; mineOnly = false; tipFilter = 'all';
     invalidateMatchmakingHistory({ hard: true }); ctx.rerender();

@@ -324,10 +324,12 @@ Das alte Budget und einseitige Wallet-Entzüge sind als Finanzpfade abgeschaltet
 Die Journalbasis, Wallet-Abrechnung, Kategorie-Rohwerte und Admin-Korrekturen sind angebunden.
 Paket 5b bietet eine formatabhängige, regulär gewinnende Remis-Auswahl. Die Oberfläche
 verzichtet vollständig auf Quotenanzeigen und eine Spieleliste bei den LAN-Punkten.
-Match- und Turnierheader bieten Wettaktionen auch bei geschlossener Karte. Ein einzelnes
-Angebot steht direkt als Button, mehrere als Menü. Tippdialoge nennen Turnier/Spiel und
-konkrete Gegner; Turniersieger und bereits angelegte Spiele sind im selben Dialog wählbar.
-Tippstatus- und Beteiligungsfilter sind im Match-Bereich kombinierbar.
+Match- und Spielheader bieten Wettaktionen auch bei geschlossener Karte; der Turniersiegertipp
+steht unter Titel und Metadaten des Turniers. Ein einzelnes
+Angebot steht direkt als Button, mehrere als Menü. Tippdialoge nennen Turnier/Spiel und Runde;
+Teams stehen in der Auswahl und werden in der Kontextzeile nicht wiederholt. Turniersieger und
+bereits angelegte Spiele sind im selben Dialog wählbar.
+Tippstatus- und Beteiligungsfilter sind im Match-Bereich als Katalog-Filterchips kombinierbar.
 Kartenflächen wechseln gemäß Designsystem je Verschachtelungsebene. W1/W5 sind umgesetzt: maximal 20 Punkte pro Person und Markt und keine zusätzlichen
 Tages-/Rundenlimits. W2 verlangt mindestens zwei regulär abgerechnete Tipps für eine Wettplatzierung;
 die persönliche API liefert die Anzahl und das Erreichen dieser Mindestzahl.

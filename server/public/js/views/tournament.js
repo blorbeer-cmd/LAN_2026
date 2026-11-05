@@ -199,12 +199,12 @@ function renderDetail(container, ctx) {
     .join(' · ');
   const formatExplanation = `${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''}`;
   const activeLobbies = renderActiveLobbies(t);
-  const outrightBetting = competitionBettingHtml('tournament', t.id, ctx, { actionsOnly: true, tournamentId: t.id });
+  const outrightBetting = competitionBettingHtml('tournament', t.id, ctx, { actionsOnly: true });
 
   container.innerHTML = `
     <div class="row-between page-title-row points-actions">
       <h2 class="view-title">${escapeHtml(t.name)}</h2>
-      <span class="row points-actions">${outrightBetting}${isGroupAdmin()
+      <span class="row points-actions">${isGroupAdmin()
         ? `
             ${t.status === 'active' ? '<button type="button" class="btn btn-sm" id="tourn-finish">Beenden</button>' : ''}
             <button type="button" class="btn btn-sm" id="tourn-delete">Löschen</button>
@@ -215,6 +215,7 @@ function renderDetail(container, ctx) {
       <span>${formatExplanation} · ${t.teams.length} Teams · ${participantCount} Spieler · ${decidedMatches}/${t.matches.length} entschieden</span>
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? (t.endedEarly ? 'Vorzeitig beendet' : 'Beendet') : 'Läuft'}</span>
     </div>
+    ${outrightBetting ? `<div class="row points-actions" aria-label="Turniersieger tippen"><strong>Turniersieger</strong>${outrightBetting}</div>` : ''}
     <div class="grouped-page-sections tournament-board">
       ${renderChampion(t)}
       ${activeLobbies}

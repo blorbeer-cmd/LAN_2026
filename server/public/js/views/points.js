@@ -177,9 +177,9 @@ function bettingControlsHtml(round, { actionsOnly = false, showStatus = true, to
   const canManage = isGroupAdmin() || round.outcomes.some((outcome) => outcome.playerIds.includes(getMyId()));
   const actions = [
     `<button type="button" class="btn btn-sm" data-tip-round="${e(round.id)}"${tournamentId ? ` data-tip-tournament="${e(tournamentId)}"` : ''}>${tournamentId ? 'Tipps öffnen' : round.status === 'open' && !closed ? (round.mine ? 'Tipp ändern' : 'Jetzt tippen') : 'Tippdetails'}</button>`,
-    !closed && canManage && round.status === 'open' ? `<button type="button" class="btn btn-sm" data-lock-round="${e(round.id)}">${tournamentId ? 'Turniersiegertipps schließen' : 'Tipps schließen'}</button>` : '',
-    !closed && canManage && round.status === 'locked' && round.revision === 0 && round.settledAt === null ? `<button type="button" class="btn btn-sm" data-reopen-round="${e(round.id)}">${tournamentId ? 'Turniersiegertipps wieder öffnen' : 'Tipps wieder öffnen'}</button>` : '',
-    !closed && isGroupAdmin() && ['open', 'locked', 'settled'].includes(round.status) ? `<button type="button" class="btn btn-sm" data-refund-round="${e(round.id)}">${tournamentId ? (round.status === 'settled' ? 'Turniersieger-Abrechnung stornieren' : 'Turniersiegerwette erstatten') : round.status === 'settled' ? 'Abrechnung stornieren' : 'Runde erstatten'}</button>` : '',
+    !closed && canManage && round.status === 'open' ? `<button type="button" class="btn btn-sm" data-lock-round="${e(round.id)}">${round.sourceType === 'tournament' ? 'Turniersiegertipps schließen' : 'Tipps schließen'}</button>` : '',
+    !closed && canManage && round.status === 'locked' && round.revision === 0 && round.settledAt === null ? `<button type="button" class="btn btn-sm" data-reopen-round="${e(round.id)}">${round.sourceType === 'tournament' ? 'Turniersiegertipps wieder öffnen' : 'Tipps wieder öffnen'}</button>` : '',
+    !closed && isGroupAdmin() && ['open', 'locked', 'settled'].includes(round.status) ? `<button type="button" class="btn btn-sm" data-refund-round="${e(round.id)}">${round.sourceType === 'tournament' ? (round.status === 'settled' ? 'Turniersieger-Abrechnung stornieren' : 'Turniersiegerwette erstatten') : round.status === 'settled' ? 'Abrechnung stornieren' : 'Runde erstatten'}</button>` : '',
   ];
   // Permission-dependent reports live in tip details, so a hidden report never
   // creates a menu with just one visible action.
@@ -188,7 +188,7 @@ function bettingControlsHtml(round, { actionsOnly = false, showStatus = true, to
   const info = [showStatus ? statusLabels[round.status] : '', round.pot ? `Topf ${round.pot} P.` : '',
     round.mine ? `Dein Tipp ${round.mine.stake} P.${round.mine.payout !== null ? ` · Netto ${signedPoints(round.mine.net)} P.` : ''}` : ''].filter(Boolean).join(' · ');
   return `<div class="points-betting-controls" data-betting-controls="${e(round.id)}">${actionsOnly ? '' : `<span class="muted">${info}</span>`}
-    ${actionMenuHtml(visibleActions, `Wetten: ${tipContext(round)}`, { key: `${keyPrefix}-${round.id}`, summary: 'Wetten', floating: true })}</div>`;
+    ${actionMenuHtml(visibleActions, `Wetten: ${tipContext(round, { includeTeams: true })}`, { key: `${keyPrefix}-${round.id}`, summary: 'Wetten', floating: true })}</div>`;
 }
 
 function roundOutcomesHtml(round) {
@@ -221,10 +221,10 @@ function tipFixtureLabel(round) {
     : `${t.groupIndex != null ? `Gruppe ${t.groupIndex + 1} · ` : ''}Runde ${t.round} · Spiel ${t.slot + 1}`;
 }
 
-function tipContext(round) {
+function tipContext(round, { includeTeams = false } = {}) {
   const sides = round.outcomes.filter((outcome) => outcome.playerIds.length).map((outcome) => outcome.label).join(' gegen ');
   return [round.tournament ? `${round.tournament.name} · ${round.tournament.gameName}` : round.title,
-    round.sourceType === 'tournament' ? '' : `${tipFixtureLabel(round)} · ${sides}`].filter(Boolean).join(' · ');
+    round.sourceType === 'tournament' ? '' : `${tipFixtureLabel(round)}${includeTeams ? ` · ${sides}` : ''}`].filter(Boolean).join(' · ');
 }
 
 async function openBettingDialog({ roundId, tournamentId }, ctx) {
@@ -266,7 +266,7 @@ function openTip(initialRound, ctx, { data: initialData, rounds: initialRounds }
       ${rounds.length > 1 ? `<label class="stack"><span class="field-label">Tipp</span><select data-tip-select>${rounds.map((row) => `<option value="${e(row.id)}"${row.id === roundId ? ' selected' : ''}>${e(`${tipFixtureLabel(row)}${row.sourceType === 'tournament' ? '' : `: ${row.outcomes.filter((o) => o.playerIds.length).map((o) => o.label).join(' gegen ')}`} · ${statusLabels[row.status]}`)}</option>`).join('')}</select></label>` : ''}
       <p class="muted" data-tip-context>${e(tipContext(round))}</p>
       <form class="stack" data-tip-form>${editable ? `
-        <label class="stack"><span class="field-label">${round.sourceType === 'tournament' ? 'Team' : 'Ergebnis'}</span><select name="outcomeId" required>${round.outcomes.map((o) => `<option value="${e(o.id)}"${draft.outcomeId === o.id ? ' selected' : ''}>${e(o.label)}</option>`).join('')}</select></label>
+        <label class="stack"><span class="field-label">${round.sourceType === 'tournament' ? 'Team' : 'Sieger'}</span><select name="outcomeId" required>${round.outcomes.map((o) => `<option value="${e(o.id)}"${draft.outcomeId === o.id ? ' selected' : ''}>${e(o.label)}</option>`).join('')}</select></label>
         ${numberField('stake', `Einsatz (max. ${data.settings.max_stake} P.)`, e(draft.stake), 1, data.settings.max_stake)}
         <div class="row"><span class="muted">${data.wallet.available + (round.mine?.stake ?? 0)} P. verfügbar</span>${infoTooltipHtml('tip-rules', 'Hinweise zum Tipp', rules)}</div>
         <div class="row points-actions" style="justify-content:flex-end">${round.mine ? '<button type="button" class="btn" data-remove-tip>Tipp zurücknehmen</button>' : ''}<button type="submit" class="btn btn-primary">${next ? 'Speichern & weiter' : 'Tipp speichern'}</button></div>` : `

@@ -164,5 +164,5 @@ normale Menü; die ungeclippte Darstellung setzt einen Browser mit Popover-Unter
 Wettaktionen zählen ausschließlich synchron verfügbare Controls. „Punktefehler melden“ bleibt
 im Tippdialog, damit eine asynchron ausgeblendete Meldeschaltfläche kein Ein-Aktions-Menü
 erzeugt. Der direkte Einzeleinstieg und das Mehrfachmenü heißen sichtbar einheitlich „Wetten“.
-Die Matchfilter verwenden das bestehende Katalog-Filterpanel mit Popover und benannten Selects;
+Die Matchfilter verwenden das bestehende Katalog-Filterpanel mit Popover, Abschnittsüberschriften und Filterchips;
 dieses ist eine Filterauswahl und keine Liste von Verwaltungsaktionen.

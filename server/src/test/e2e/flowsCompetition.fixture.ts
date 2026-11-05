@@ -1269,11 +1269,11 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   await openTile.locator(':scope > summary').click();
   assert.equal(await spareToggle.getAttribute('aria-expanded'), 'true');
   await selectMatchHistoryFilter(page, 'tournaments');
-  assert.equal(await page.inputValue('[data-history-filter]'), 'tournaments');
+  assert.equal(await page.getAttribute('[data-history-filter="tournaments"]', 'aria-pressed'), 'true');
   assert.equal(await page.locator('.matchmaking-history-team').count(), 0);
   await selectMatchHistoryFilter(page, 'matches');
   await page.waitForSelector('.matchmaking-history-item [data-edit-draw-result]');
-  assert.equal(await page.inputValue('[data-history-filter]'), 'matches');
+  assert.equal(await page.getAttribute('[data-history-filter="matches"]', 'aria-pressed'), 'true');
 });
 
 flowTest('shared filters narrow open games and history while keeping running tournaments visible', async (t) => {
@@ -1350,11 +1350,11 @@ flowTest('shared filters narrow open games and history while keeping running tou
   const ownResponse = page.waitForResponse((response) => response.url().includes('/api/matchmaking/history?')
     && new URL(response.url()).searchParams.get('mine') === '1' && response.status() === 200);
   await openMatchHistoryFilters(page);
-  await filters.getByRole('checkbox', { name: 'Meine Beteiligung', exact: true }).focus();
+  await filters.getByRole('button', { name: 'Meine', exact: true }).focus();
   await page.keyboard.press('Space');
   await ownResponse;
   await drawTile(mineOpen).waitFor();
-  assert.equal(await filters.getByRole('checkbox', { name: 'Meine Beteiligung', exact: true }).isChecked(), true);
+  assert.equal(await filters.getByRole('button', { name: 'Meine', exact: true }).getAttribute('aria-pressed'), 'true');
   assert.equal(await drawTile(otherOpen).count(), 0);
   assert.equal(await drawTile(otherPlayed).count(), 0);
   assert.equal(await tournamentTile(otherRunning).count(), 0);
@@ -1379,7 +1379,7 @@ flowTest('shared filters narrow open games and history while keeping running tou
   assert.equal(await tournamentTile(mineFinished).count(), 1);
   await selectMatchHistoryFilter(page, 'all');
   await openMatchHistoryFilters(page);
-  await filters.getByRole('checkbox', { name: 'Meine Beteiligung', exact: true }).uncheck();
+  await filters.getByRole('button', { name: 'Meine', exact: true }).click();
   await page.keyboard.press('Escape');
   await drawTile(otherOpen).waitFor();
   assert.equal(await tournamentTile(otherFinished).count(), 1);

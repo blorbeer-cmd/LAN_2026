@@ -59,9 +59,9 @@ Seine bearbeitbaren Auslosungen werden erst beim Aufklappen aufgebaut und beim S
 wieder aus dem DOM entfernt; die Anzahl und Erreichbarkeit aller offenen Auslosungen bleiben erhalten.
 Laufende Turniere stehen dort ebenfalls; erst nach Abschluss wechseln sie in die Historie.
 Ein stets erreichbares Filtermenü nach dem Muster des Spielekatalogs steht vor „Ohne Ergebnis“
-und „Historie“. Eine native Auswahl „Art“ (Alle, Matches, Turniere) gilt für beide Abschnitte. Die laufende Turnierübersicht bleibt
+und „Historie“. Die Chips unter „Art“ (Alle, Matches, Turniere) gelten für beide Abschnitte. Die laufende Turnierübersicht bleibt
 davon unabhängig und zeigt immer alle laufenden Turniere.
-Die Checkbox „Meine Beteiligung“ lässt sich mit jeder Art kombinieren und berücksichtigt die
+Der Filterchip „Meine“ lässt sich mit jeder Art kombinieren und berücksichtigt die
 Teamteilnahme des angemeldeten Spielers, auch bei älteren nachgeladenen Ergebnissen. Filterwechsel
 erhalten die geöffneten Abschnitte und Kacheln; ein leerer Treffer entfernt nie die Filterzeile.
 Ein gelöschter Match-Datensatz verschwindet auch aus der Rangliste. Turniere nutzen den bestehenden
@@ -72,9 +72,11 @@ Nach dem Öffnen des Abschnitts beginnen die einzelnen Auslosungen geschlossen. 
 lassen sich unabhängig voneinander öffnen und wieder schließen; dieser Zustand bleibt beim
 Neuzeichnen erhalten.
 Teamdetails bleiben aufklappbar, während Wettaktionen im Header auch geschlossen erreichbar sind.
-„Tippstatus · offene Spiele“ filtert nach noch nicht getippten offenen oder bereits abgegebenen
-Tipps und wirkt ausschließlich auf „Ohne Ergebnis“. Ein Turnier passt, wenn mindestens einer
+Die Chips „Noch offen“ und „Abgegeben“ unter „Dein Tipp · offene Spiele“ filtern nach noch
+nicht getippten offenen oder bereits abgegebenen Tipps und wirken ausschließlich auf „Ohne Ergebnis“. Ein Turnier passt, wenn mindestens einer
 seiner Märkte passt. Nicht zum Tippen freigegebene Matches passen zu keinem aktiven Tippfilter.
+Ein erneuter Klick auf den aktiven Tippstatus zeigt wieder alle Tipps.
+Abschnittsüberschriften, Chiplisten und Rücksetzen nutzen exakt die Katalogkomponenten.
 Die Filter sind kombinierbar, zeigen ihre aktive Anzahl und lassen sich gemeinsam zurücksetzen.
 Die unabhängige Übersicht laufender Turniere bleibt erhalten; eine leere gefilterte Menge zeigt
 einen kompakten Leerzustand und lässt das Filtermenü erreichbar.
@@ -94,7 +96,7 @@ Turnier, Ladefehler und leerer Filter.
 ## 8. Accessibility
 
 Der Pfeil-Button verwendet `aria-expanded` und `aria-controls`, ist über die Tastatur bedienbar
-und zeigt Fokus sichtbar. Sein Ziel ist mindestens `--tap-target-size` hoch. Filter verwenden benannte native Selects und eine echte Checkbox; das Filterpanel nutzt den
+und zeigt Fokus sichtbar. Sein Ziel ist mindestens `--tap-target-size` hoch. Filterchips verwenden `aria-pressed` und sind mit Enter/Space erreichbar; das Filterpanel nutzt den
 vorhandenen Popover-Modus, damit es auf Telefonen nicht vom View-Container abgeschnitten wird. Aktionsknöpfe haben
 einen eigenen Namen und Fokus; der Stift heißt „Ergebnis bearbeiten“.
 

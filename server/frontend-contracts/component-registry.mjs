@@ -582,6 +582,21 @@ export const components = [
     "purpose": "Interactive filter chips use 32px; passive chip labels are outside this control variant.",
     "dynamicUses": [
       {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"chip${historyFilter === key ? ' is-active' : ''}\"",
+        "reason": "Match type chips reuse the catalog filter sections and standard active-chip geometry."
+      },
+      {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"chip${mineOnly ? ' is-active' : ''}\"",
+        "reason": "The participation chip uses the same catalog filter component."
+      },
+      {
+        "file": "public/js/views/matchmaking.js",
+        "source": "class=\"chip${tipFilter === key ? ' is-active' : ''}\"",
+        "reason": "The personal tip-status chips reuse the catalog active-chip component."
+      },
+      {
         "file": "public/js/views/gameCatalog.js",
         "source": "class=\"chip${selectedGenres.has(g) ? ' is-active' : ''}\"",
         "reason": "Concrete filter-chip caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."

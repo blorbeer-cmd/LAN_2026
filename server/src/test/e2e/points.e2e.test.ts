@@ -311,7 +311,8 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.locator(`[data-notification-navigate="points"][data-notification-target="${round.id}"]`).click();
   await member.getByRole('dialog', { name: 'Sieger tippen', exact: true }).waitFor();
   assert.equal(await member.getByRole('region', { name: 'Tipprunden', exact: true }).count(), 0, 'points contains no games list');
-  await member.getByRole('dialog').locator('[data-tip-context]').getByText(new RegExp(game.name)).waitFor();
+  assert.equal(await member.getByRole('dialog').locator('[data-tip-context]').innerText(), `${game.name} · Match`, 'context keeps the game and leaves teams in the result selection');
+  await member.getByRole('dialog').getByText('Sieger', { exact: true }).waitFor();
   const ownOutcome = round.outcomes.find((outcome: { playerIds: string[] }) => outcome.playerIds.includes(alice.id)).id;
   const otherOutcome = round.outcomes.find((outcome: { id: string }) => outcome.id !== ownOutcome).id;
   assert.equal(await member.locator('[data-tip-form] option[value="__draw__"]').count(), 1,
@@ -365,16 +366,16 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const filterMenu = member.locator('[data-action-menu="match-filters"]');
   const openFilters = async () => { if (!await filterMenu.evaluate((element) => (element as HTMLDetailsElement).open)) await filterMenu.locator(':scope > summary').click(); };
   await openFilters();
-  await member.locator('[data-match-tip-filter]').selectOption('placed');
+  await member.locator('[data-match-tip-filter="placed"]').click();
   await member.waitForFunction(() => document.querySelectorAll('#match-history-open [data-history-item]').length === 1);
   assert.equal(await selectedCard.count(), 1);
-  await member.locator('[data-match-tip-filter]').selectOption('open');
+  await member.locator('[data-match-tip-filter="open"]').click();
   await member.waitForFunction(() => document.querySelectorAll('#match-history-open [data-history-item]').length === 6);
   assert.equal(await selectedCard.count(), 0);
-  await member.locator('[data-match-mine]').check();
+  await member.locator('[data-match-mine]').click();
   await member.waitForFunction(() => document.querySelectorAll('#match-history-open [data-history-item]').length === 5);
-  await member.locator('[data-match-mine]').uncheck();
-  await member.locator('[data-match-tip-filter]').selectOption('all');
+  await member.locator('[data-match-mine]').click();
+  await member.locator('[data-match-tip-filter="open"]').click();
   await member.waitForFunction(() => document.querySelectorAll('#match-history-open [data-history-item]').length === 7);
   await member.keyboard.press('Escape');
   assert.equal(await cardToggle.getAttribute('aria-expanded'), 'false', 'filter changes retain collapsed cards');
@@ -501,6 +502,8 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await admin.evaluate((id) => { window.location.hash = `#tournaments/${id}`; }, cup.id);
   const controls = admin.locator(`[data-betting-controls="${market.id}"]`);
   await controls.waitFor();
+  assert.equal(await admin.locator('.page-title-row [data-betting-controls]').count(), 0, 'champion betting stays below the title and tournament metadata');
+  await admin.locator('[aria-label="Turniersieger tippen"] [data-betting-controls]').waitFor();
   for (const width of [320, 390, 1440]) {
     await admin.setViewportSize({ width, height: 900 });
     assert.ok(await admin.evaluate(() => {

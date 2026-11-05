@@ -210,14 +210,17 @@ Gesamtstand. Jede Kategorie zeigt die eigenen „Punkte“, den Rang und die „
 verwendet dieselben berechtigten Plätze wie die Gesamtwertung. Verläufe und Diagramme lassen
 sich aufklappen; die LAN-Punkteansicht enthält keine Spieleliste. Seltenere Informationen stehen in Details oder der bestehenden Hilfe.
 
-„Wetten“ steht im Header von Matches und Turnieren, auch bei geschlossener Spielkarte.
+„Wetten“ steht im Header von Matchkarten und einzelnen Turnierspielen, auch bei geschlossener
+Spielkarte. Der Turniersiegertipp steht in der Turnieransicht unter Titel und Turnierinfos.
 Ein einzelnes verfügbares Angebot ist ein direkter Button, erst mehrere sind ein Dropdown.
 Punktefehler-Meldungen stehen in den Tippdetails; ihre asynchrone Freigabe erzeugt kein Menü
 mit nur einem sichtbaren Eintrag. Teilnahme und Adminrechte bestimmen weiterhin, ob neben
 der Tippabgabe auch Schließen, Wiederöffnen oder Finanzkorrekturen angeboten werden.
 
 Der Tippdialog nennt „Sieger tippen“ oder „Turniersieger tippen“ und zeigt kurze Angaben zu
-Spiel, Turnier, Runde und Gegnern. Bei Turnieren lassen sich Turniersieger und bereits angelegte
+Spiel, Turnier und Runde. Die Teamnamen stehen in der Auswahl und werden in der Kontextzeile
+nicht wiederholt. Die Teamauswahl bei „Sieger tippen“ trägt die Beschriftung „Sieger“.
+Bei Turnieren lassen sich Turniersieger und bereits angelegte
 Spiele im selben Dialog auswählen. Ungespeicherte Auswahlen bleiben beim Wechsel erhalten;
 „Speichern & weiter“ führt zum nächsten noch offenen, noch nicht getippten Markt. Bereits
 abgegebene Tipps bleiben änderbar, solange der jeweilige Markt offen ist; abgeschlossene Märkte
@@ -226,11 +229,13 @@ den Dialog zugänglich. Neue Wettmenüs beginnen geschlossen und öffnen die Spi
 Die geschützte Punkte-API liefert dafür den Turnierbezug einschließlich Spiel/Runde; es werden
 keine individuellen fremden Tipps offengelegt.
 
-Das Filtermenü im Match-Bereich folgt dem Spielekatalog: Art, eigene Beteiligung und Tippstatus
+Das Filtermenü im Match-Bereich verwendet dieselben Überschriften, Chiplisten und Filterchips
+wie der Spielekatalog: Art, eigene Beteiligung und Tippstatus
 sind kombinierbar, aktive Filter werden gezählt und lassen sich zurücksetzen. Die Art gilt für
-offene und historische Spiele, der Tippstatus nur für offene Spiele. „Noch nicht getippt“ setzt
-einen offenen Markt ohne eigenen Tipp voraus, „Tipp abgegeben“ einen vorhandenen eigenen Tipp.
-Bei Turnieren genügt ein passender Markt. Die laufende Turnierübersicht bleibt unabhängig.
+offene und historische Spiele, der Tippstatus nur für offene Spiele. „Noch offen“ setzt
+einen offenen Markt ohne eigenen Tipp voraus, „Abgegeben“ einen vorhandenen eigenen Tipp.
+Bei Turnieren genügt ein passender Markt. Aktive Tippstatus-Chips lassen sich durch erneutes
+Anklicken abwählen. Die laufende Turnierübersicht bleibt unabhängig.
 Die Auswahl oder eine leere Trefferliste ändert keine Aufklappzustände.
 
 Live-Aktualisierungen behalten die bisherigen Daten bis zur Antwort, die Scrollposition und

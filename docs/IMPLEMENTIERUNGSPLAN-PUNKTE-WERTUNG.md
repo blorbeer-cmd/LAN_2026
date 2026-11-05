@@ -173,9 +173,12 @@ Journal, feste Startvergabe, Marktstorno und Kategorie-Korrekturen.
 **Umgesetzt:** Vorläufiger Topf und Einsätze je Ausgang sind bereits vor Tippschluss sichtbar.
 Auf Nutzerentscheidung entfallen sämtliche Quotenanzeigen, auch in Tippdialogen, Match- und
 Turnieransichten. LAN-Punkte zeigen keine Spieleliste. Wettaktionen stehen im Header von
-Match- und Turnierkarten; Einzeleinträge sind direkte Buttons. Kontextbezogene Tippdialoge
+Matchkarten und einzelnen Turnierspielen; der Turniersiegertipp steht unter den Turnierinfos.
+Einzeleinträge sind direkte Buttons. Kontextbezogene Tippdialoge
 bündeln Turniersieger und Spiele mit Auswahl und „Speichern & weiter“. Das Match-Filtermenü
-bietet Art, eigene Beteiligung und Tippstatus nach dem Muster des Spielekatalogs. Ein gemeinsamer Punkteverlauf bietet die Konten Orga, Spielen, Wetten und
+bietet Art, eigene Beteiligung und Tippstatus mit denselben Abschnittsüberschriften und
+Filterchips wie der Spielekatalog. Ein gemeinsamer Punkteverlauf bietet die Konten Orga, Spielen,
+Wetten und
 Wettguthaben; Reservierungen und Nettoänderungen bleiben fachlich getrennt.
 Freie Matches mit mindestens zwei Teams, Ligaspiele und Gruppenspiele bieten einen regulär gewinnenden Remis-Tipp;
 K.-o.-Spiele und Turniersieger-Märkte bieten ihn nicht. Bei älteren Märkten ohne Remis-Auswahl

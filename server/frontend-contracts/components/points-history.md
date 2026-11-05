@@ -104,14 +104,16 @@ ersetzt bestehende Daten nicht durch eine leere Fläche. Die gemeinsame Zustands
 Disclosures und Scrollposition. Die Browserprüfung hält die GET-Antwort nach einer echten
 Tippänderung gezielt zurück und prüft sowohl den ausstehenden als auch den fertigen Refresh.
 
-Wettaktionen stehen im Header der Matchkarten sowie im Header und an den Begegnungen eines
-Turniers. Sie verwenden Standardbuttons und ActionMenu: ein synchron verfügbares Angebot
+Wettaktionen stehen im Header der Matchkarten und an den einzelnen Turnierbegegnungen.
+Der Turniersiegertipp steht in der Turnieransicht unter Titel und Metadaten. Sie verwenden Standardbuttons und ActionMenu: ein synchron verfügbares Angebot
 steht direkt unter „Wetten“, mehrere öffnen das Menü. Die asynchron erlaubte Punktefehlermeldung
 steht ausschließlich in Tippdetails und zählt nicht als unsichtbarer Menüeintrag.
 `competitionBettingHtml` liefert dieselben Controls; es gibt keine Quotenanzeigen.
 Ein benannter Tournament-Kontext aus der geschützten Punkte-API ordnet jede Spielrunde ihrem
 Turnier zu. Der gemeinsame Tippdialog zeigt „Sieger tippen“ beziehungsweise „Turniersieger tippen“,
-Turnier/Spiel, Runde und konkrete Gegner. Bei Turnieren bietet eine native Auswahl alle bereits
+Turnier/Spiel und Runde. Teamnamen stehen in der Auswahl und werden in der sichtbaren
+Kontextzeile nicht wiederholt; zugängliche Menünamen behalten ihren Begegnungskontext.
+Die Teamauswahl bei „Sieger tippen“ heißt „Sieger“. Bei Turnieren bietet eine native Auswahl alle bereits
 angelegten eigenen Turniermärkte; „Speichern & weiter“ führt zum nächsten noch nicht getippten
 offenen Markt. Noch nicht gespeicherte Auswahlen bleiben beim Wechsel im Dialog erhalten.
 Vorbelegte eigene Tipps lassen sich ändern; geschlossene oder abgerechnete Märkte sind nur lesbar.
