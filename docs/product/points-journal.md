@@ -264,10 +264,12 @@ Die Punkteansicht zeigt Orga, Spielen und Wetten mit getrennten Rohwerten, Kateg
 und Platzpunkten sowie deren Summe als Gesamtwertung. Die Oberfläche nennt die Kategoriepunkte
 einfach „Punkte“, ohne den technischen Zusatz „Roh-“. Nur positive Rohwerte erhalten einen Rang;
 Wetten benötigen zusätzlich zwei reguläre Abrechnungen. Gleiche Werte teilen den besseren Rang.
-Die Teilnehmerzahl N umfasst aktive bestätigte Teilnehmer ohne Testkonten; späte Zusagen zählen
+Die Teilnehmerzahl N umfasst aktive bestätigte Teilnehmer ohne Testkonten, in Testevents
+einschließlich der Testkonten; späte Zusagen zählen
 sofort. Austritte entfernen die Person aus der laufenden Rangliste, erhalten aber den Verlauf.
-Gewertet werden reguläre veröffentlichte LANs; ihre Ergebnisse bleiben nach Ende sichtbar.
-Testevents, Entwürfe, abgesagte Veranstaltungen und andere Eventtypen sind ausgeschlossen.
+Gewertet werden veröffentlichte LANs einschließlich Testevents; ihre Ergebnisse bleiben nach Ende
+sichtbar. Testevents erscheinen nur im Admin-Modus. Entwürfe, abgesagte Veranstaltungen und andere
+Eventtypen sind ausgeschlossen.
 Rangliste, Hall of Fame und Export lesen dieselbe Berechnung. Der bestehende Abschluss hält N,
 Teilnehmerliste und Kategorie-/Gesamtstände fest. Die weiteren Abschlussregeln sind in Paket 9 umgesetzt.
 Ein gemeinsamer „Punkteverlauf“ bietet die Kontoauswahl Orga, Spielen, Wetten und Wettguthaben.

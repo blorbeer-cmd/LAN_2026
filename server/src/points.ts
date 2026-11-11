@@ -31,11 +31,11 @@ export function pointsAreVisible(eventId: string | null): boolean {
   if (!eventId) return false;
   return Boolean(db.prepare(`SELECT 1 FROM points_settings s JOIN events e ON e.id = s.event_id
     WHERE s.event_id = ? AND s.visible = 1 AND e.event_type_key = 'lan'
-      AND e.is_test = 0 AND e.status IN ('published','ended')`).get(eventId));
+      AND e.status IN ('published','ended')`).get(eventId));
 }
 export function isPointsEvent(eventId: string): boolean {
   return Boolean(db.prepare(`SELECT 1 FROM events WHERE id = ? AND event_type_key = 'lan'
-    AND is_test = 0 AND status IN ('published','ended')`).get(eventId));
+    AND status IN ('published','ended')`).get(eventId));
 }
 export function requirePointsVisible(eventId: string): void {
   if (!pointsAreVisible(eventId)) throw new PointsError('LAN-Punkte sind für dieses Event ausgeblendet.', 403);
@@ -46,6 +46,9 @@ export function requirePointsOpen(eventId: string): PointsSettings {
   if (settings.closed_at !== null) throw new PointsError('Die Punktewertung ist abgeschlossen.');
   return settings;
 }
+// Test events are scored like regular LANs so admins can rehearse the points
+// flow with the seeded test identities. Regular events keep excluding test
+// accounts; test events stay hidden outside Admin mode by event access.
 export function pointParticipants(
   groupId: string,
   eventId: string,
@@ -55,7 +58,8 @@ export function pointParticipants(
       `SELECT p.id, p.name, p.color FROM players p
     JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = ? AND gm.status = 'active'
     JOIN event_participants ep ON ep.player_id = p.id AND ep.event_id = ? AND ep.status = 'accepted'
-    WHERE p.deactivated_at IS NULL AND p.is_test = 0 ORDER BY p.name COLLATE NOCASE`,
+    JOIN events e ON e.id = ep.event_id
+    WHERE p.deactivated_at IS NULL AND (p.is_test = 0 OR e.is_test = 1) ORDER BY p.name COLLATE NOCASE`,
     )
     .all(groupId, eventId) as Array<{ id: string; name: string; color: string }>;
 }

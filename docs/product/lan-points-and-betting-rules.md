@@ -26,7 +26,8 @@ Dies beschreibt die beschlossene Upgrade-Migration, keine bereits ausgeführte p
 Jeder berechtigte Teilnehmer erhält einmalig **fest 100 Wettpunkte je Event**, auch bei später
 Zusage. Der Betrag ist nicht konfigurierbar. Austreten und erneut Zusagen zahlen nicht erneut.
 Die technische Wettteilnahme verwendet weiterhin aktive bestätigte Teilnehmer ohne Testkonten;
-dies ist auch die beschlossene Teilnehmerbasis N der laufenden Gesamtwertung. Späte Zusagen
+dies ist auch die beschlossene Teilnehmerbasis N der laufenden Gesamtwertung. In Testevents zählen
+zusätzlich die Testkonten, damit Admins den Ablauf mit den Test-Identitäten proben können. Späte Zusagen
 zählen sofort. Austritte entfernen die Person aus der laufenden Rangliste, erhalten aber ihren
 Verlauf. Beim Abschluss werden Teilnehmerbasis und N gemeinsam mit dem Ergebnis festgehalten.
 
@@ -124,6 +125,8 @@ Quellenänderungen und der Prozessstart synchronisieren die Kategorieansprüche.
 Migration 134 ergänzt diese Aktivierungspfade und finanziert bereits übersehene berechtigte
 Konten offener Wertungen einmalig nach. Bestehende Guthaben, Einsätze und abgeschlossene
 Wertungen bleiben erhalten; es gibt keinen erneuten Reset und keine zweite Startgutschrift.
+Migration 136 erweitert dieselben Trigger auf Testkonten in Testevents und finanziert deren
+fehlendes Startguthaben in offenen Wertungen einmalig nach.
 Während der Festschreibung neu berechtigte Konten werden erst beim begründeten Wiederöffnen
 finanziert. Die fehlende Startgutschrift und das Wiederöffnen bilden eine gemeinsame Transaktion;
 frühere Endstände bleiben unverändert.
@@ -189,9 +192,10 @@ Gesamtwertung. Rangliste, Hall of Fame und Event-Export lesen dieselbe Berechnun
 geteilte Gesamtplätze und Kategoriesieger. Ohne wertbare Ergebnisse gibt es keinen Sieger.
 Die LAN-Rangliste behält die Spielauswahl und „Ergebnis eintragen“. Ein ausgewähltes Spiel
 zeigt weiterhin die klassische Spielwertung; „Alle Spiele“ führt zurück zu den LAN-Kategorien.
-Wettguthaben wird niemals hinzuaddiert. Reguläre veröffentlichte LANs werden gewertet und
-bleiben nach Ende sichtbar; Testevents, Entwürfe, abgesagte Events und andere Eventtypen sind
-ausgeschlossen. Klassische Sportstatistiken und Spielfilter werten weiterhin dokumentierte
+Wettguthaben wird niemals hinzuaddiert. Veröffentlichte LANs werden gewertet und bleiben nach
+Ende sichtbar; Entwürfe, abgesagte Events und andere Eventtypen sind ausgeschlossen. Testevents
+lassen sich wie reguläre LANs werten, bleiben aber wie alle Testdaten außerhalb des Admin-Modus
+samt Rangliste, Hall of Fame und Export unsichtbar. Klassische Sportstatistiken und Spielfilter werten weiterhin dokumentierte
 Spielergebnisse aus; sie buchen keine historischen Punkte ins Journal.
 
 Der bestehende Abschluss speichert N, Teilnehmerliste, Kategorienwerte und Gesamtstand und sperrt weitere Punktebuchungen.

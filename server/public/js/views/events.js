@@ -833,7 +833,7 @@ function trackingChip(event) {
 }
 
 function renderEventPointsVisibility(event) {
-  if (!event.pointsAvailable || event.eventType !== 'lan' || event.isTest || !['published', 'ended'].includes(event.status)) return '';
+  if (!event.pointsAvailable || event.eventType !== 'lan' || !['published', 'ended'].includes(event.status)) return '';
   const reports = `<button type="button" class="btn btn-sm" data-event-points-reports="${escapeHtml(event.id)}">Punktefehler-Meldungen</button>`;
   const toggle = isGroupAdmin() || isEventCreator(event)
     ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" data-points-visibility="${escapeHtml(event.id)}" data-points-visible="${event.pointsEnabled ? 'false' : 'true'}" data-points-revision="${event.pointsVisibilityRevision ?? 0}"${event.pointsEnabled ? ' checked' : ''}>LAN-Punkte anzeigen</label>` : '';

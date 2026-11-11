@@ -80,6 +80,69 @@ test('migration 132 preserves existing market permission, defaults new choices o
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 136 funds test identities in test events only, rolls back on failure and replays without a second start', () => {
+  const dbFile = makeTempDbPath('test-event-points');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  // Recreate the pre-136 state: without the new funding triggers, accepted
+  // participants receive no betting start.
+  fixture.exec(`DROP TRIGGER points_participant_start_insert;
+    DROP TRIGGER points_participant_start_update;
+    DROP TRIGGER points_settings_start_accounts;
+    DROP TRIGGER points_player_eligibility_returned;
+    DROP TRIGGER points_membership_activated_insert;
+    DROP TRIGGER points_membership_activated_update;
+    DELETE FROM schema_migrations WHERE version=136;
+    INSERT INTO events(id,name,starts_at,group_id,status,event_type_key,is_test) VALUES
+      ('rehearsal','Rehearsal LAN',1,'default-group','published','lan',1),
+      ('regular','Regular LAN',1,'default-group','published','lan',0);
+    INSERT INTO players(id,name,api_key,created_at,is_test) VALUES
+      ('fixture-test','Fixture test','key-fixture-test',1,1),
+      ('fixture-real','Fixture real','key-fixture-real',1,0),
+      ('fixture-late','Fixture late','key-fixture-late',1,1);
+    INSERT INTO group_memberships(group_id,player_id,role,status) VALUES
+      ('default-group','fixture-test','member','active'),
+      ('default-group','fixture-real','member','active'),
+      ('default-group','fixture-late','member','active');
+    INSERT INTO event_participants(event_id,player_id,status) VALUES
+      ('rehearsal','fixture-test','accepted'),('rehearsal','fixture-real','accepted'),
+      ('regular','fixture-test','accepted'),('regular','fixture-real','accepted');
+    CREATE TRIGGER fail_test_event_points BEFORE INSERT ON points_journal
+      BEGIN SELECT RAISE(ABORT,'test event points migration failed'); END;`);
+  const start = (database: Database.Database, eventId: string, playerId: string) => database.prepare(
+    `SELECT COALESCE(SUM(j.amount),0) FROM points_journal j JOIN points_sources s ON s.id=j.source_id
+     WHERE s.event_id=? AND s.player_id=? AND s.account='wallet' AND s.source_key='wallet:start'`,
+  ).pluck().get(eventId, playerId);
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /test event points migration failed/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=136').get(), undefined);
+  assert.equal(start(failed, 'rehearsal', 'fixture-test'), 0);
+  assert.equal(failed.prepare("SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='points_participant_start_insert'").get(), undefined);
+  failed.exec('DROP TRIGGER fail_test_event_points');
+  failed.close();
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  assert.equal(start(migrated, 'rehearsal', 'fixture-test'), 100, 'a test identity is funded in a test event');
+  assert.equal(start(migrated, 'rehearsal', 'fixture-real'), 100, 'a real account is funded in a test event');
+  assert.equal(start(migrated, 'regular', 'fixture-test'), 0, 'a test identity stays excluded from a regular LAN');
+  assert.equal(start(migrated, 'regular', 'fixture-real'), 100);
+  migrated.exec(`INSERT INTO event_participants(event_id,player_id,status) VALUES
+    ('rehearsal','fixture-late','accepted'),('regular','fixture-late','accepted')`);
+  assert.equal(start(migrated, 'rehearsal', 'fixture-late'), 100, 'the recreated trigger funds a late test identity');
+  assert.equal(start(migrated, 'regular', 'fixture-late'), 0);
+  migrated.exec('DELETE FROM schema_migrations WHERE version=136');
+  const journal = migrated.prepare('SELECT * FROM points_journal ORDER BY id').all();
+  migrated.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const replayed = new Database(dbFile);
+  assert.deepEqual(replayed.prepare('SELECT * FROM points_journal ORDER BY id').all(), journal);
+  assert.deepEqual(replayed.pragma('foreign_key_check'), []);
+  replayed.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 function makeTempDbPath(name: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-migration-test-'));
   return path.join(dir, `${name}.db`);
@@ -1718,10 +1781,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 135);
+  assert.equal(migrations.length, 136);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 135 }, (_, index) => index + 1),
+    Array.from({ length: 136 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -2323,8 +2386,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 135 }, (_, index) => index + 1),
-    'every version 1..135 runs exactly once',
+    Array.from({ length: 136 }, (_, index) => index + 1),
+    'every version 1..136 runs exactly once',
   );
 });
 
