@@ -377,14 +377,17 @@ Beispiel einer Kategorie bei N = 8:
 | E–H | Je 0 oder negativ | Kein Platz | Je 0 |
 
 **Entschiedene Teilnehmerbasis (E2):** N umfasst alle aktuell bestätigten Teilnehmer mit
-aktivem Gruppenkonto, ohne Testkonten und deaktivierte Konten. Späte Zusagen kommen sofort
+aktivem Gruppenkonto, ohne Testkonten und deaktivierte Konten; in Testevents zählen die
+Testkonten mit. Späte Zusagen kommen sofort
 hinzu. Absage und Austritt entfernen die Person aus der laufenden Rangliste, erhalten aber
 ihren Punkteverlauf. Bei der Festschreibung werden Teilnehmerliste und N gemeinsam mit den
 Kategorie- und Gesamtständen festgehalten; spätere Austritte verändern diesen Endstand nicht.
 
-**Entschiedener Eventumfang (E1):** Die Kategorienwertung gilt ausschließlich für reguläre
-veröffentlichte LANs. Ihre Ergebnisse bleiben nach dem Ende sichtbar. Testevents, Entwürfe,
-abgesagte Veranstaltungen und andere Eventtypen gehören nicht zur Kategorienwertung.
+**Entschiedener Eventumfang (E1, angepasst):** Die Kategorienwertung gilt für veröffentlichte
+LANs. Ihre Ergebnisse bleiben nach dem Ende sichtbar. Testevents dürfen gewertet werden, damit
+Admins den Ablauf mit Test-Identitäten proben können; sie bleiben wie alle Testdaten außerhalb des
+Admin-Modus unsichtbar. Entwürfe, abgesagte Veranstaltungen und andere Eventtypen gehören nicht
+zur Kategorienwertung.
 Die Neustartentscheidung bleibt bestehen: Historische Punkte werden nicht nachgetragen.
 
 ### 6.3 Gesamtsieger und Anzeige
@@ -515,8 +518,8 @@ Vorgabewerte sind dafür keine Entscheidung:
 | Kennung | Offene Entscheidung / betroffene Umsetzung |
 |---|---|
 | U1 (entschieden) | Keine Übernahme bisheriger Orga-, Spiel- oder Wettpunkte für bestehende Events. Einmaliger Neustart einschließlich alter Reservierungen, Belohnungszusagen und Punkte-Endstände; Fachdaten bleiben erhalten. Historische Ansprüche werden nicht erneut nachgetragen. |
-| E1 (entschieden) | Ausschließlich reguläre veröffentlichte LANs; Ergebnisse bleiben nach Ende sichtbar. Keine Kategorienwertung für Testevents, Entwürfe, abgesagte Veranstaltungen oder andere Eventtypen. Keine historischen Gutschriften. |
-| E2 (entschieden) | Aktuell bestätigte Teilnehmer mit aktivem Gruppenkonto, ohne Testkonten/deaktivierte Konten. Späte Zusagen zählen sofort; Absage/Austritt entfernen die Person aus der laufenden Rangliste, erhalten aber ihren Verlauf. Festschreibung hält Teilnehmerliste und N fest. |
+| E1 (entschieden, angepasst) | Veröffentlichte LANs einschließlich Testevents (nur im Admin-Modus sichtbar); Ergebnisse bleiben nach Ende sichtbar. Keine Kategorienwertung für Entwürfe, abgesagte Veranstaltungen oder andere Eventtypen. Keine historischen Gutschriften. |
+| E2 (entschieden) | Aktuell bestätigte Teilnehmer mit aktivem Gruppenkonto, ohne Testkonten/deaktivierte Konten; in Testevents einschließlich Testkonten. Späte Zusagen zählen sofort; Absage/Austritt entfernen die Person aus der laufenden Rangliste, erhalten aber ihren Verlauf. Festschreibung hält Teilnehmerliste und N fest. |
 | W3 (entschieden) | Fest 100 separate Wettpunkte einmal pro Event und berechtigtem Teilnehmer, auch bei später Zusage. Nicht konfigurierbar; erneute Zusage zahlt nicht erneut. |
 | W4 (entschieden) | Der Match-Ersteller entscheidet direkt beim Anlegen, ob auf sein Match gewettet werden darf; keine zusätzliche Adminrolle erforderlich. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turnierspiele immer ohne optionalen Freischalter angeboten. Die bestehenden Start-/Tippschlussregeln gelten weiterhin. |
 | W5 (entschieden) | Keine zusätzlichen Tageslimits und keine Höchstzahl offizieller Wettrunden pro Event. Ausreichendes verfügbares Guthaben und die feste Einsatzgrenze von 20 Punkten gelten weiterhin. |

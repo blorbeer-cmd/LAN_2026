@@ -821,7 +821,7 @@ test('leaderboard filters and cross-event totals use game points without mixing 
   assert.deepEqual((await scores('')).map((row: { points: number }) => row.points), [1, 4]);
 });
 
-test('category readers share participant-based places, exclude test and withdrawn entrants, and freeze N with the result', async () => {
+test('category readers share participant-based places, exclude test accounts outside test events and withdrawn entrants, and freeze N with the result', async () => {
   const f = await fixture();
   const ids = [TEST_ADMIN_ID, ...f.players];
   for (const [account, totals] of [['orga', [8, 4, 4, 0]], ['playing', [4, 8, 4, 0]], ['betting', [0, 0, 0, 100]]] as const)
@@ -859,11 +859,21 @@ test('category readers share participant-based places, exclude test and withdraw
   assert.equal(departed.participantCount, 4);
   assert.ok(!departed.standings.some((row: { playerId: string }) => row.playerId === f.players[1]));
   assert.equal(readPointsBalances(DEFAULT_GROUP_ID, f.eventId, f.players[1])!.orga, 4, 'withdrawal retains journal history');
-  for (const [status, isTest] of [['draft', 0], ['cancelled', 0], ['published', 1]] as const) {
-    db.prepare('UPDATE events SET status=?,is_test=? WHERE id=?').run(status, isTest, f.eventId);
+  for (const status of ['draft', 'cancelled'] as const) {
+    db.prepare('UPDATE events SET status=? WHERE id=?').run(status, f.eventId);
     assert.deepEqual(pointStandings(f.eventId), []);
     assert.equal(pointsAreVisible(f.eventId), false);
   }
+  db.prepare("UPDATE events SET status='published',is_test=1 WHERE id=?").run(f.eventId);
+  assert.equal((await own()).status, 404, 'a test event stays hidden outside Admin mode');
+  const rehearsal = (await request(app).post('/api/players').send({ name: `Rehearsal identity ${sequence}` })).body.id;
+  db.prepare('UPDATE players SET is_test=1 WHERE id=?').run(rehearsal);
+  setParticipants(f.eventId, [TEST_ADMIN_ID, f.players[0], f.players[2], late, rehearsal]);
+  assert.equal(wallet(f.eventId, rehearsal).total, 100, 'a test identity is funded in a test event');
+  const rehearsed = (await own().set('x-admin-mode', '1')).body;
+  assert.equal(rehearsed.participantCount, 5, 'test events score their test identities for rehearsals');
+  assert.ok(rehearsed.standings.some((row: { playerId: string }) => row.playerId === rehearsal));
+  setParticipants(f.eventId, [TEST_ADMIN_ID, f.players[0], f.players[2], late]);
   db.prepare("UPDATE events SET status='ended',is_test=0 WHERE id=?").run(f.eventId);
   assert.deepEqual((await own()).body.standings, departed.standings, 'ended LAN results remain visible');
   recordPointsEntitlements([{ groupId: DEFAULT_GROUP_ID, eventId: f.eventId, playerId: TEST_ADMIN_ID,

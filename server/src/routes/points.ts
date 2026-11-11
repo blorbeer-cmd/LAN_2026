@@ -139,7 +139,7 @@ pointsRouter.put('/settings', requireGroupRole('admin'), (req, res) => {
   if (typeof prizeInfo !== 'string' || prizeInfo.trim().length > 300)
     throw new PointsError('Preisinfo: höchstens 300 Zeichen.', 400);
   const event = db
-    .prepare("SELECT id FROM events WHERE id = ? AND group_id = ? AND event_type_key = 'lan' AND is_test = 0 AND status = 'published'")
+    .prepare("SELECT id FROM events WHERE id = ? AND group_id = ? AND event_type_key = 'lan' AND status = 'published'")
     .get(eventId, req.group!.id);
   if (!event) throw new PointsError('Die Punktewertung ist für veröffentlichte LAN-Events vorgesehen.', 400);
   db.transaction(() => {
@@ -335,7 +335,7 @@ pointsRouter.post('/rounds/:id/void', requireGroupRole('admin'), (req, res) => {
 
 pointsRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   const eventId = res.locals.eventId as string;
-  if (!isPointsEvent(eventId)) throw new PointsError('Die Punktewertung gilt nur für reguläre veröffentlichte LANs.');
+  if (!isPointsEvent(eventId)) throw new PointsError('Die Punktewertung gilt nur für veröffentlichte LANs.');
   const changedRounds = db.transaction(() => {
     requirePointsOpen(eventId);
     if (db.prepare("SELECT 1 FROM points_reports WHERE event_id=? AND status='open'").get(eventId))
@@ -383,7 +383,7 @@ export function sweepBetting(now = Date.now(), recoverSources = false): void {
     WHERE EXISTS (SELECT 1 FROM betting_rounds r WHERE r.event_id=e.id AND (
       (r.status='open' AND r.closes_at>0 AND r.closes_at<=?) OR
       (?=1 AND r.status IN ('open','locked'))))
-      OR (?=1 AND s.closed_at IS NULL AND s.visible=1 AND e.event_type_key='lan' AND e.is_test=0
+      OR (?=1 AND s.closed_at IS NULL AND s.visible=1 AND e.event_type_key='lan'
         AND e.status='published' AND e.ended_at IS NULL)`)
     .all(now, Number(recoverSources), Number(recoverSources)) as Array<{ id: string }>;
   for (const event of events) {

@@ -33,7 +33,8 @@ erweiterte Liste offener Entscheidungen im Konzept berücksichtigt. Insbesondere
 vorhandener Konten weder die Teilnehmerzahl N noch eine Entscheidung über die Wertungsberechtigung.
 E1 ist entschieden: Die Kategorienwertung gilt für reguläre veröffentlichte LANs und bleibt
 nach deren Ende sichtbar. Testevents, Entwürfe, abgesagte Veranstaltungen und andere Eventtypen
-sind ausgenommen. Der beschlossene Neustart in Paket 5a schließt historische Ansprüche weiterhin
+sind ausgenommen. Nachtrag: Inzwischen werden auch Testevents samt ihrer Testkonten gewertet
+(Migration 136); sie bleiben außerhalb des Admin-Modus unsichtbar. Der beschlossene Neustart in Paket 5a schließt historische Ansprüche weiterhin
 aus dem Abgleich aus. E2 bestimmt die Teilnehmerbasis unabhängig von vorhandenen Konten.
 
 ## Paketfolge und Abhängigkeiten

@@ -130,7 +130,7 @@ export function createPointsReport(groupId: string, eventId: string, actorId: st
     throw new PointsError('Bitte eine konkrete Punktevergabe wählen.', 400);
   const reason = optionalText(input.reason);
   return db.transaction(() => {
-    if (!isPointsEvent(eventId)) throw new PointsError('Meldungen sind nur für reguläre LAN-Wertungen möglich.', 409);
+    if (!isPointsEvent(eventId)) throw new PointsError('Meldungen sind nur für LAN-Wertungen möglich.', 409);
     requirePointsOpen(eventId);
     const target = source(groupId, eventId, type as PointsReportTarget, input.targetId as string, actorId);
     if (db.prepare(`SELECT 1 FROM points_reports WHERE event_id=? AND reporter_id=? AND target_type=? AND target_id=? AND status='open'`)

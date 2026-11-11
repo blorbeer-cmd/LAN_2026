@@ -300,7 +300,7 @@ function ensureBettingMarkets(eventId?: string): BettingRound[] {
   ) SELECT c.* FROM candidates c JOIN events e ON e.id=c.event_id AND e.group_id=c.group_id
     JOIN points_settings s ON s.event_id=e.id AND s.closed_at IS NULL AND s.visible=1
     LEFT JOIN betting_rounds r ON r.event_id=c.event_id AND r.source_type=c.source_type AND r.source_id=c.source_id
-    WHERE r.id IS NULL AND e.event_type_key='lan' AND e.is_test=0 AND e.status='published' AND e.ended_at IS NULL
+    WHERE r.id IS NULL AND e.event_type_key='lan' AND e.status='published' AND e.ended_at IS NULL
       AND (? IS NULL OR e.id=?)`).all(eventId ?? null, eventId ?? null) as
     Array<{ source_id: string; group_id: string; event_id: string; source_type: BetSource; created_by: string | null }>;
   const created: BettingRound[] = [];
