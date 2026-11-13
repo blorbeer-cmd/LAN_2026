@@ -104,8 +104,9 @@ und der Turniersieger“). Sie wird zurückgezogen, sobald keiner dieser Turnier
 annimmt. Später einzeln öffnende Turnierspiele erhalten eine eigene Mitteilung.
 
 Wird für dasselbe Spiel und dieselben Spieler erneut „Teams auslosen“ gewählt, verwirft das die
-zuvor angezeigte Auslosung ohne Ergebnis: Ihr offener Markt schließt, angenommene Tipps werden
-erstattet. Eine Auslosung für andere Spieler oder ein anderes Spiel, eine bereits geschlossene
+zuvor angezeigte Auslosung ohne Ergebnis: Sie bietet dauerhaft keine Wetten mehr an, auch wenn
+die LAN-Punkte gerade ausgeblendet sind und noch kein Markt besteht. Ein offener Markt schließt,
+angenommene Tipps werden erstattet. Eine Auslosung für andere Spieler oder ein anderes Spiel, eine bereits geschlossene
 Tippabgabe und eine Auslosung mit Ergebnis bleiben unberührt. Neue automatische Märkte bleiben bis zur
 ausdrücklichen Startaktion offen. Mitspieler oder Admins schließen vor Spielbeginn; beim
 ersten Turnierspiel wird zugleich der Gesamtsieger-Markt geschlossen. Bestehende explizite

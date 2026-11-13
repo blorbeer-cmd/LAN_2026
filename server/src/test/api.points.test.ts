@@ -1714,11 +1714,19 @@ test('re-rolling the shown draw closes its market; draw notices wait for the kep
   assert.equal(status(secondMarket.id), 'refunded');
   assert.deepEqual(wallet(f.eventId, b), { total: 100, held: 0, available: 100 }, 'the stake is refunded exactly once');
 
+  // Closed tips mean the shown draw may already be played; a re-roll leaves it alone.
+  const playing = (await generate()).body;
+  const playingMarket = await automaticMarket(f, 'draw', playing.id);
+  assert.equal((await request(app).post(`/api/points/rounds/${playingMarket.id}/lock`).send({})).status, 200);
+  const playingReroll = (await generate(playing.id)).body;
+  assert.equal(status(playingMarket.id), 'locked');
+  assert.equal(db.prepare('SELECT betting_allowed FROM matchmaking_draws WHERE id=?').pluck().get(playing.id), 1);
+
   assert.deepEqual(notices(), [], 'draw notices wait for possible re-rolls');
   db.prepare("UPDATE betting_rounds SET created_at = created_at - ? WHERE event_id=? AND source_type='draw'")
     .run(DRAW_NOTICE_DELAY_MS, f.eventId);
   sweepBetting();
-  const kept = [otherRoster.id, ...raced.map((response) => response.body.id)];
+  const kept = [otherRoster.id, ...raced.map((response) => response.body.id), playingReroll.id];
   const keptMarkets = await Promise.all(kept.map((id) => automaticMarket(f, 'draw', id)));
   assert.deepEqual(notices().map((notice) => notice.target).sort(), keptMarkets.map((market) => market.id).sort(),
     'only the kept lineups are announced');
@@ -1740,6 +1748,17 @@ test('re-rolling the shown draw closes its market; draw notices wait for the kep
   db.prepare('UPDATE tournaments SET ended_early=1 WHERE id=?').run(tournamentId);
   reconcileBetting(f.eventId);
   assert.notEqual(shared()[0].resolved, null, 'the shared notice is withdrawn once no market accepts tips');
+
+  // With hidden points no market exists yet; the discard still lasts once points are shown.
+  const hidden = await fixture({}, false);
+  const drawHidden = (replacesDrawId?: string) => request(app).post('/api/matchmaking').send({ gameId: hidden.gameId,
+    playerIds: hidden.players, teamCount: 2, bettingAllowed: true, ...(replacesDrawId ? { replacesDrawId } : {}) });
+  const discarded = (await drawHidden()).body;
+  const keptHidden = (await drawHidden(discarded.id)).body;
+  assert.equal((await request(app).patch(`/api/events/${hidden.eventId}/points-visibility`).send({ visible: true, revision: 0 })).status, 200);
+  reconcileBetting(hidden.eventId);
+  const hiddenMarkets = db.prepare("SELECT source_id FROM betting_rounds WHERE event_id=? AND source_type='draw'").pluck().all(hidden.eventId);
+  assert.deepEqual(hiddenMarkets, [keptHidden.id], 'the discarded draw never opens a market');
 });
 
 test('competition writes and deadline sweeps isolate another event with broken legacy JSON', async (t) => {

@@ -595,8 +595,10 @@ export function reconcileBetting(eventId?: string, publish = true): BettingRound
   return changed;
 }
 // "Teams auslosen" again for the same game and roster discards the draw shown
-// before it. Its open market closes; accepted tips are refunded. A draw that
-// differs, already has a result or started its tips keeps its market.
+// before it. It stops offering betting for good, also when hidden points have
+// not opened its market yet; an open market closes and accepted tips are
+// refunded. A draw that differs, already has a result or closed its tips is
+// left unchanged.
 export function retireRerolledDraw(groupId: string, eventId: string, previousDrawId: string, gameId: string,
   playerIds: string[]): BettingRound[] {
   const previous = db.prepare(`SELECT teams FROM matchmaking_draws WHERE id = ? AND group_id = ? AND event_id = ?
@@ -606,6 +608,9 @@ export function retireRerolledDraw(groupId: string, eventId: string, previousDra
   const roster = (JSON.parse(previous.teams) as Array<{ players: Array<{ id: string }> }>)
     .flatMap((team) => team.players.map((player) => player.id)).sort();
   if (JSON.stringify(roster) !== JSON.stringify([...playerIds].sort())) return [];
+  if (db.prepare(`SELECT 1 FROM betting_rounds WHERE event_id = ? AND source_type = 'draw' AND source_id = ?
+    AND status IN ('locked','settled')`).get(eventId, previousDrawId)) return [];
+  db.prepare('UPDATE matchmaking_draws SET betting_allowed = 0 WHERE id = ?').run(previousDrawId);
   const rounds = db.prepare(`SELECT * FROM betting_rounds WHERE event_id = ? AND source_type = 'draw' AND source_id = ?
     AND status = 'open'`).all(eventId, previousDrawId) as BettingRound[];
   for (const round of rounds) settleRound(round, null, 'Neu ausgelost', Date.now());
