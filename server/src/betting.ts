@@ -820,14 +820,19 @@ export function assertTournamentEditable(groupId: string, tournamentId: string):
 }
 
 // Rounds a result correction of this competition rebooks; see rebooksOnCorrection.
-export function correctableTournamentRounds(groupId: string, tournamentId: string): BettingRound[] {
-  return db
+// fixtureIds limits fixture markets to the matches a correction can change;
+// the champion market always counts because any result can change the winner.
+export function correctableTournamentRounds(groupId: string, tournamentId: string, fixtureIds?: string[]): BettingRound[] {
+  const rounds = db
     .prepare(
       `SELECT r.* FROM betting_rounds r WHERE r.group_id = ? AND ${REBOOKS_ON_CORRECTION_SQL} AND (
     (r.source_type = 'tournament' AND r.source_id = ?) OR
     (r.source_type = 'tournament_match' AND r.source_id IN (SELECT id FROM tournament_matches WHERE tournament_id = ?)))`,
     )
     .all(groupId, tournamentId, tournamentId) as BettingRound[];
+  if (!fixtureIds) return rounds;
+  const affected = new Set(fixtureIds);
+  return rounds.filter((round) => round.source_type === 'tournament' || affected.has(round.source_id));
 }
 export function correctableDrawRounds(groupId: string, matchId: string): BettingRound[] {
   return db
