@@ -259,6 +259,8 @@ Wiederholungsfall ab.
   Aufrufen bleiben die regulären Zeiten aktiv. Challenge Rush verkürzt im E2E-Schnellmodus seine
   wiederholten Lese- und Reveal-Übergänge, behält aber die echte Challenge-Deadline, damit Fokus-
   und Vorschauphasen im Browser nicht vorzeitig abgeschnitten werden.
+  Ebenso verkürzt er die Wartezeit der Wett-Öffnungsmitteilung einer Auslosung von 30 auf
+  1 Sekunde; die Unit-/Integrationssuite behält die echte Wartezeit und überspringt sie gezielt.
 - Die Socket-Integrationssuite `src/test/api.challengeRush.test.ts` setzt zusätzlich
   `CHALLENGE_RUSH_FAST_TIMERS=1` zusammen mit `NODE_ENV=test`. Dieses Profil verkürzt zusätzlich die
   Challenge-Deadline für protokollnahe Zustandsprüfungen sowie die Merkphase eines Trials

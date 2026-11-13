@@ -213,8 +213,11 @@ function tipsFor(id: string): TipRow[] {
   return db.prepare('SELECT rowid AS sequence,* FROM betting_tips WHERE round_id = ? ORDER BY created_at,rowid').all(id) as TipRow[];
 }
 // Re-rolling a draw within this window replaces it before anyone is told, so a
-// burst of re-rolls announces only the lineup that is actually kept.
-export const DRAW_NOTICE_DELAY_MS = 30_000;
+// burst of re-rolls announces only the lineup that is actually kept. The
+// browser suites shorten the wait like their other fast timers; production and
+// every other run keep the real window.
+export const DRAW_NOTICE_DELAY_MS =
+  process.env.NODE_ENV === 'test' && process.env.E2E_FAST_TIMERS === '1' ? 1000 : 30_000;
 function noticeDue(round: BettingRound, now: number): boolean {
   return !round.notice_sent && round.status === 'open' && !(round.closes_at > 0 && round.closes_at <= now) &&
     !(round.source_type === 'draw' && round.created_at > now - DRAW_NOTICE_DELAY_MS) && pointsAreVisible(round.event_id);
