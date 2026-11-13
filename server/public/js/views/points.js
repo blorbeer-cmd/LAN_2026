@@ -11,6 +11,7 @@ import { POINT_SOURCES, signedPoints, pointsSectionHtml, journalSourceState, cat
 import { categoryPointsHtml, pointsHistoryHtml, adminCategoryJournalHtml, categoryEntryFactsHtml } from '../pointsCategories.js';
 import { pointsReportButton, wirePointsReportButtons } from '../pointsReports.js';
 import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
+import { profileRow } from '../profileRow.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let cached = null;
@@ -33,6 +34,11 @@ let adminCategoryEntries = null;
 let adminCategoryLoading = false;
 let adminCategoryError = '';
 const participantDialogs = new Map();
+// Open tip dialogs follow tips, closing and settlements of other devices.
+const bettingListeners = new Set();
+export function announceBettingChange(roundId) {
+  for (const listener of bettingListeners) listener(roundId);
+}
 const adminCategoryDialogs = new Map();
 export function openPointsModal(title, body, options = {}) {
   const dialog = openModal(title, body, { ...options, onClose() {
@@ -161,9 +167,12 @@ export function pointsHomeHtml(ctx) {
   ensurePoints(ctx);
   const data = currentData();
   if (!data?.settings) return '';
-  const open = data.rounds.filter((r) => r.status === 'open');
+  const open = data.rounds.filter((r) => r.status === 'open' && !r.replaced);
+  // The open rounds lead straight to the tips list on the points page.
+  const tipsAction = open.length ? '<button type="button" class="btn btn-sm" data-navigate="points">Tipps ansehen</button>' : '';
   return `<section class="card stack" aria-label="Meine LAN-Punkte"><div class="row-between"><h2>Meine LAN-Punkte</h2><button type="button" class="btn btn-sm" data-navigate="points">Punktekonto öffnen</button></div>
     <div class="my-stats-kpis">${kpi(data.wallet.total, 'Wettguthaben')}${kpi(Math.max(0, data.wallet.available), 'Verfügbar')}${kpi(open.length, 'Offene Tipprunden')}</div>
+    ${tipsAction ? `<div class="row" style="justify-content:flex-end">${tipsAction}</div>` : ''}
     <p class="muted">${data.settings.closed_at ? 'Die Endwertung steht fest.' : 'Orga- und Spielpunkte sammeln und mit separatem Wettguthaben tippen.'}</p></section>`;
 }
 
@@ -177,36 +186,63 @@ function bettingRound(type, id) {
 }
 
 function bettingManagementActions(round, closed) {
-  const canManage = isGroupAdmin() || round.outcomes.some((outcome) => outcome.playerIds.includes(getMyId()));
+  const canManage = canManageRound(round);
   return [
-    !closed && canManage && round.status === 'open' ? `<button type="button" class="btn btn-sm" data-lock-round="${e(round.id)}">${round.sourceType === 'tournament' ? 'Turniersiegertipps schließen' : 'Tipps schließen'}</button>` : '',
+    !closed && canManage && round.status === 'open' ? `<button type="button" class="btn btn-sm" data-lock-round="${e(round.id)}">${round.sourceType === 'tournament' ? 'Turniersiegertipps schließen' : 'Spiel starten (Tipps schließen)'}</button>` : '',
     !closed && canManage && round.status === 'locked' && round.revision === 0 && round.settledAt === null ? `<button type="button" class="btn btn-sm" data-reopen-round="${e(round.id)}">${round.sourceType === 'tournament' ? 'Turniersiegertipps wieder öffnen' : 'Tipps wieder öffnen'}</button>` : '',
     !closed && isGroupAdmin() && ['open', 'locked', 'settled'].includes(round.status) ? `<button type="button" class="btn btn-sm" data-refund-round="${e(round.id)}">${round.sourceType === 'tournament' ? (round.status === 'settled' ? 'Turniersieger-Abrechnung stornieren' : 'Turniersiegerwette erstatten') : round.status === 'settled' ? 'Abrechnung stornieren' : 'Runde erstatten'}</button>` : '',
   ].filter(Boolean);
 }
 
-function bettingControlsHtml(round, { actionsOnly = false, showStatus = true, tournamentId = null, keyPrefix = 'betting' } = {}) {
+function canManageRound(round) {
+  return isGroupAdmin() || round.outcomes.some((outcome) => outcome.playerIds.includes(getMyId()));
+}
+
+// Card actions: the tip button keeps its state label ("Jetzt tippen", "Tipp
+// ändern", "Tippdetails"); starting a match is its own compact button so a
+// stray tap next to "Jetzt tippen" cannot close the tips for everyone.
+function bettingControlsHtml(round, { tournamentId = null, keyPrefix = 'betting' } = {}) {
   const closed = Boolean(currentData()?.settings.closed_at);
+  const start = !tournamentId && !closed && round.status === 'open' && round.sourceType !== 'tournament' && canManageRound(round)
+    ? `<button type="button" class="btn btn-sm" data-lock-round="${e(round.id)}">Spiel starten</button>` : '';
   const actions = [
     `<button type="button" class="btn btn-sm" data-tip-round="${e(round.id)}"${tournamentId ? ` data-tip-tournament="${e(tournamentId)}"` : ''}>${tournamentId ? 'Tipps öffnen' : round.status === 'open' && !closed ? (round.mine ? 'Tipp ändern' : 'Jetzt tippen') : 'Tippdetails'}</button>`,
     // A fixture anchors a tournament without an outright market only for opening
     // its picker. Manage the explicitly selected fixture inside that modal.
-    ...(tournamentId && round.sourceType === 'tournament_match' ? [] : bettingManagementActions(round, closed)),
+    ...(tournamentId && round.sourceType === 'tournament_match' ? [] : bettingManagementActions(round, closed)
+      .filter((action) => !start || !action.includes('data-lock-round'))),
   ];
   // Permission-dependent reports live in tip details, so a hidden report never
   // creates a menu with just one visible action.
   const visibleActions = actions.filter(Boolean);
-  if (visibleActions.length === 1) visibleActions[0] = visibleActions[0].replace(/>[^<]*<\/button>$/, '>Wetten</button>');
-  const info = [showStatus ? statusLabels[round.status] : '', round.pot ? `Topf ${round.pot} P.` : '',
-    round.mine ? `Dein Tipp ${round.mine.stake} P.${round.mine.payout !== null ? ` · Netto ${signedPoints(round.mine.net)} P.` : ''}` : ''].filter(Boolean).join(' · ');
-  return `<div class="points-betting-controls" data-betting-controls="${e(round.id)}">${actionsOnly ? '' : `<span class="muted">${info}</span>`}
+  return `<div class="points-betting-controls" data-betting-controls="${e(round.id)}">${start}
     ${actionMenuHtml(visibleActions, `Wetten: ${tipContext(round, { includeTeams: true })}`, { key: `${keyPrefix}-${round.id}`, summary: 'Wetten', floating: true })}</div>`;
+}
+
+function outcomeLabel(round, outcomeId) {
+  return round.outcomes.find((outcome) => outcome.id === outcomeId)?.label ?? 'Unbekannter Ausgang';
+}
+function tipCountText(count) {
+  return `${count} ${count === 1 ? 'Tipp' : 'Tipps'}`;
+}
+// One compact status line per market: state, pot, tip count and the own tip.
+function roundSummary(round, closed = Boolean(currentData()?.settings.closed_at)) {
+  const mine = round.mine;
+  return [
+    closed && round.status === 'open' ? statusLabels.locked : statusLabels[round.status],
+    round.pot ? `Topf ${round.pot} P.` : '',
+    round.tipCount ? tipCountText(round.tipCount) : '',
+    mine ? `Dein Tipp: ${outcomeLabel(round, mine.outcomeId)}, ${mine.payout === null ? `${mine.stake} P.` : `Netto ${signedPoints(mine.net)} P.`}` : '',
+  ].filter(Boolean).join(' · ');
+}
+function tipperText(outcome) {
+  return (outcome.tippers ?? []).map((tipper) => `${tipper.name ?? 'Gelöschtes Konto'} ${tipper.stake} P.`).join(', ');
 }
 
 function roundOutcomesHtml(round) {
   return rankedListHtml(round.outcomes.map((outcome) => ({
     title: e(outcome.label), sortKey: outcome.label,
-    meta: [round.result === outcome.id ? 'Gewinner' : '', round.mine?.outcomeId === outcome.id ? 'Dein Tipp' : ''].filter(Boolean).join(' · '),
+    meta: e([round.result === outcome.id ? 'Gewinner' : '', round.mine?.outcomeId === outcome.id ? 'Dein Tipp' : '', tipperText(outcome)].filter(Boolean).join(' · ')),
     value: `${outcome.stake} P.`,
   })), { label: 'Einsätze nach Ergebnis' });
 }
@@ -225,12 +261,41 @@ export function competitionBettingHtml(type, id, ctx, options = {}) {
   return round ? bettingControlsHtml(round, { ...options, ...(type === 'tournament' ? { tournamentId: id } : {}) }) : '';
 }
 
+// While LAN points are hidden no market opens. Admins and the event's creator,
+// who can show them, learn why; everyone else sees no betting, as before.
+export function bettingHiddenHintHtml() {
+  const event = state.activeEvent;
+  if (!event || event.eventType !== 'lan' || event.pointsEnabled || !event.pointsAvailable
+    || event.status !== 'published' || event.isEnded) return '';
+  if (!isGroupAdmin() && !(event.createdBy && event.createdBy === getMyId())) return '';
+  return `<span class="row points-actions"><span class="muted">Tipps starten, sobald LAN-Punkte angezeigt werden.</span>
+    <button type="button" class="btn btn-sm" data-navigate="events">Zur Einstellung</button></span>`;
+}
+
+// The card's meta line: the market's state at a glance, without opening it.
+export function competitionBettingSummaryHtml(type, id) {
+  const data = currentData();
+  if (!state.activeEvent?.pointsEnabled || !data?.settings) return '';
+  if (type === 'tournament') {
+    const rounds = data.rounds.filter((round) => !round.replaced && round.tournament?.id === id);
+    if (!rounds.length) return '';
+    const open = data.settings.closed_at ? 0 : rounds.filter((round) => round.status === 'open').length;
+    const mine = rounds.filter((round) => round.mine).length;
+    const text = [open ? `${open} ${open === 1 ? 'Tipprunde' : 'Tipprunden'} offen` : statusLabels.locked,
+      mine ? `${mine} ${mine === 1 ? 'eigener Tipp' : 'eigene Tipps'}` : ''].filter(Boolean).join(' · ');
+    return `<span class="muted points-betting-summary">${e(text)}</span>`;
+  }
+  const round = bettingRound(type, id);
+  return round ? `<span class="muted points-betting-summary" data-betting-summary="${e(round.id)}">${e(roundSummary(round))}</span>` : '';
+}
+
 function tipFixtureLabel(round) {
   const t = round.tournament;
   if (round.sourceType === 'tournament') return 'Turniersieger';
   if (!t?.round) return 'Match';
-  return t.thirdPlace ? 'Spiel um Platz 3'
-    : `${t.groupIndex != null ? `Gruppe ${t.groupIndex + 1} · ` : ''}Runde ${t.round} · Spiel ${t.slot + 1}`;
+  if (t.thirdPlace) return 'Spiel um Platz 3';
+  const phase = t.phase ?? `${t.groupIndex != null ? `Gruppe ${t.groupIndex + 1} · ` : ''}Runde ${t.round}`;
+  return phase === 'Finale' ? phase : `${phase} · Spiel ${t.slot + 1}`;
 }
 
 function tipContext(round, { includeTeams = false } = {}) {
@@ -257,10 +322,31 @@ async function openBettingDialog({ roundId, tournamentId }, ctx) {
 
 function openTip(initialRound, ctx, { data: initialData, rounds: initialRounds }) {
   let data = initialData, rounds = initialRounds, roundId = initialRound.id, busy = false;
+  let liveVersion = 0, notice = null;
   const key = scopeKey(), eventId = data.eventId;
   const drafts = new Map();
   const selectedGames = new Map();
-  const dialog = openPointsModal('', '');
+  const dialog = openPointsModal('', '', { onClose: () => bettingListeners.delete(follow) });
+  // Another device tipped, closed or settled one of these markets: take over
+  // pot, stakes and status without losing the draft or the focused control.
+  function follow(changedId) {
+    if (changedId && !rounds.some((row) => row.id === changedId)) return;
+    const version = ++liveVersion;
+    pointsRequest('', {}, eventId).then((fresh) => {
+      if (version !== liveVersion || busy || key !== scopeKey() || !dialog.el.isConnected) return;
+      const wasOpen = rounds.find((row) => row.id === roundId)?.status === 'open' && !data.settings.closed_at;
+      remember();
+      data = fresh;
+      rounds = rounds.map((row) => fresh.rounds.find((updated) => updated.id === row.id) ?? row);
+      const current = rounds.find((row) => row.id === roundId);
+      if (wasOpen && (current?.status !== 'open' || fresh.settings.closed_at)) notice = { roundId, text: 'Tipps wurden gerade geschlossen.' };
+      const active = dialog.el.contains(document.activeElement) ? document.activeElement : null;
+      render(active?.name ? `[name="${active.name}"]${active.type === 'radio' ? ':checked' : ''}`
+        : active?.matches('[data-tip-select], [data-tip-group]') ? (active.matches('[data-tip-select]') ? '[data-tip-select]' : '[data-tip-group]')
+        : '[data-no-focus]');
+    }).catch(() => { /* The next signal or reopening the dialog loads again. */ });
+  }
+  bettingListeners.add(follow);
   function remember() {
     const form = dialog.el.querySelector('[data-tip-form]');
     if (form?.querySelector('[name="stake"]')) drafts.set(roundId, {
@@ -285,16 +371,23 @@ function openTip(initialRound, ctx, { data: initialData, rounds: initialRounds }
     dialog.el.querySelector('.modal-body').innerHTML = `<div class="stack points-tip">
       ${round.tournament && groups.length > 1 ? `<label class="stack"><span class="field-label">Runde</span><select data-tip-group>${groups.map((item) => `<option value="${e(item.label)}"${item === group ? ' selected' : ''}>${e(item.label)}</option>`).join('')}</select></label>` : ''}
       ${round.sourceType === 'tournament_match' ? `<label class="stack"><span class="field-label">Spiel</span><select data-tip-select>${group.rounds.map((row) => `<option value="${e(row.id)}"${row.id === roundId ? ' selected' : ''}>${e(`Spiel ${row.tournament.slot + 1}: ${row.outcomes.filter((o) => o.playerIds.length).map((o) => o.label).join(' gegen ')} · ${statusLabels[row.status]}${row.mine ? ' · Dein Tipp' : ''}`)}</option>`).join('')}</select></label>` : ''}
-      <p class="muted" data-tip-context>${e(tipContext(round))}</p>
+      <p class="muted"><span data-tip-context>${e(tipContext(round))}</span><br><span data-tip-summary>${e(roundSummary(round, Boolean(data.settings.closed_at)))}</span></p>
+      ${notice?.roundId === roundId ? `<p role="status" data-tip-notice>${e(notice.text)}</p>` : ''}
       <form class="stack" data-tip-form>${editable ? `
-        <label class="stack"><span class="field-label">${round.sourceType === 'tournament' ? 'Team' : 'Sieger'}</span><select name="outcomeId" required>${round.outcomes.map((o) => `<option value="${e(o.id)}"${draft.outcomeId === o.id ? ' selected' : ''}>${e(o.label)}</option>`).join('')}</select></label>
+        <span class="field-label is-required" id="tip-outcome-label">${round.sourceType === 'tournament' ? 'Team' : 'Sieger'}</span>
+        <div class="stack result-winner-list" role="radiogroup" aria-labelledby="tip-outcome-label">${round.outcomes.map((o) => `<label class="tournament-result-pick${draft.outcomeId === o.id ? ' is-selected' : ''}">
+          <input type="radio" class="visually-hidden" name="outcomeId" value="${e(o.id)}" required${draft.outcomeId === o.id ? ' checked' : ''}>
+          <span>${e(o.label)}</span><span class="tournament-result-pick-players">${e(o.tippers?.length ? `${o.stake} P. · ${tipperText(o)}` : 'Noch kein Tipp')}</span></label>`).join('')}</div>
         ${numberField('stake', `Einsatz (max. ${data.settings.max_stake} P.)`, e(draft.stake), 1, data.settings.max_stake)}
-        <div class="row"><span class="muted">${data.wallet.available + (round.mine?.stake ?? 0)} P. verfügbar</span>${infoTooltipHtml('tip-rules', 'Hinweise zum Tipp', rules)}</div>
+        <div class="row"><span class="muted">${data.wallet.available + (round.mine?.stake ?? 0)} P. verfügbar${round.payoutPolicy === 'stake_cap_v1' ? ' · Gewinn höchstens in Höhe deines Einsatzes' : ''}</span>${infoTooltipHtml('tip-rules', 'Hinweise zum Tipp', rules)}</div>
         <div class="row points-actions" style="justify-content:flex-end">${round.mine ? '<button type="button" class="btn" data-remove-tip>Tipp zurücknehmen</button>' : ''}<button type="submit" class="btn btn-primary">${next ? 'Speichern & weiter' : 'Tipp speichern'}</button></div>` : `
         ${round.mine ? `<div><strong>Dein Tipp:</strong> ${e(round.outcomes.find((o) => o.id === round.mine.outcomeId)?.label ?? 'Unbekannter Ausgang')}</div>` : ''}
         <div>${round.mine ? `Einsatz ${round.mine.stake} P. · ${round.mine.payout === null ? 'Auszahlung steht noch aus' : `Auszahlung ${round.mine.payout} P. · Netto ${signedPoints(round.mine.net)} P.`}` : 'Du hast in dieser Runde keinen Tipp abgegeben.'}</div>${roundOutcomesHtml(round)}`}
       </form>${management.length ? `<div class="row points-actions" data-tip-management>${actionMenuHtml(management, `Aktion: ${tipContext(round)}`, { inlineMax: 2 })}</div>` : ''}${report ? `<div class="row points-actions">${report}</div>` : ''}</div>`;
     wirePointsReportButtons(dialog.el); wireInfoTooltips(dialog.el);
+    dialog.el.querySelectorAll('[name="outcomeId"]').forEach((radio) => radio.addEventListener('change', () => {
+      dialog.el.querySelectorAll('.tournament-result-pick').forEach((label) => label.classList.toggle('is-selected', label.querySelector('input').checked));
+    }));
     dialog.el.querySelector('[data-tip-group]')?.addEventListener('change', (event) => {
       if (busy) return;
       const target = groups.find((item) => item.label === event.target.value);
@@ -304,7 +397,7 @@ function openTip(initialRound, ctx, { data: initialData, rounds: initialRounds }
     });
     dialog.el.querySelectorAll('[data-tip-management] button').forEach((button) => button.addEventListener('click', async () => {
       if (busy || key !== scopeKey()) return;
-      if (button.dataset.lockRound && !await confirmDialog('Tippabgabe schließen?', { confirmText: 'Tipps schließen' })) return;
+      if (button.dataset.lockRound && !await confirmLock(round)) return;
       if (key !== scopeKey() || !dialog.el.isConnected) return;
       remember();
       if (button.dataset.refundRound) {
@@ -348,10 +441,12 @@ function openTip(initialRound, ctx, { data: initialData, rounds: initialRounds }
           return;
         }
         drafts.delete(roundId);
+        showToast(method === 'DELETE' ? 'Tipp zurückgenommen.'
+          : `Tipp gespeichert: ${outcomeLabel(round, values.outcomeId)}, ${values.stake} P.`);
         if (!next || method === 'DELETE') { dialog.close(); refreshPoints(ctx); return; }
         refreshPoints(ctx);
         try { data = await pointsRequest('', {}, eventId); }
-        catch { showToast('Tipp gespeichert. Bitte die Tipps erneut öffnen.'); return dialog.close(); }
+        catch { showToast('Bitte die Tipps erneut öffnen.'); return dialog.close(); }
         if (key !== scopeKey() || !dialog.el.isConnected || !state.activeEvent?.pointsEnabled) return dialog.close();
         rounds = rounds.map((row) => data.rounds.find((updated) => updated.id === row.id)).filter(Boolean);
         roundId = next.id;
@@ -371,6 +466,13 @@ function openTip(initialRound, ctx, { data: initialData, rounds: initialRounds }
     dialog.el.querySelector(focusSelector)?.focus();
   }
   render();
+}
+
+// Starting a match closes the tips for everyone, so it always asks first.
+function confirmLock(round) {
+  return round.sourceType === 'tournament'
+    ? confirmDialog('Turniersiegertipps schließen?', { confirmText: 'Tipps schließen' })
+    : confirmDialog('Spiel starten? Danach nimmt dieses Spiel keine Tipps mehr an.', { confirmText: 'Spiel starten' });
 }
 
 function reasonDialog(title, action, ctx) {
@@ -409,7 +511,8 @@ export function wireCompetitionBetting(container, ctx) {
     if (!button || button.disabled) return;
     if (button.dataset.tipRound) return perform(button, () => openBettingDialog({ roundId: button.dataset.tipTournament ? undefined : button.dataset.tipRound, tournamentId: button.dataset.tipTournament }, ctx));
     if (button.dataset.lockRound) {
-      if (!await confirmDialog('Tippabgabe schließen?', { confirmText: 'Tipps schließen' })) return;
+      const round = currentData()?.rounds.find((row) => row.id === button.dataset.lockRound);
+      if (!round || !await confirmLock(round)) return;
       return perform(button, () => pointsRequest(`/rounds/${encodeURIComponent(button.dataset.lockRound)}/lock`, json('POST', {})), () => refreshPoints(ctx));
     }
     if (button.dataset.reopenRound) return perform(button,
@@ -465,6 +568,53 @@ function entryDetails(entry, allEntries) {
   );
 }
 
+// All markets of this LAN in three groups, so open tips and the own stakes are
+// findable without searching every match card.
+function tipsOverviewHtml(data) {
+  const closed = Boolean(data.settings.closed_at);
+  const rounds = data.rounds.filter((round) => !round.replaced);
+  const row = (round, action) => profileRow({
+    title: e(tipContext(round, { includeTeams: true })), meta: e(roundSummary(round, closed)), action,
+  });
+  const button = (round, label) => `<button type="button" class="btn btn-sm" data-tip-round="${e(round.id)}">${label}</button>`;
+  const untipped = rounds.filter((round) => round.status === 'open' && !closed && !round.mine);
+  const pending = rounds.filter((round) => round.mine && round.mine.payout === null);
+  const finished = rounds.filter((round) => round.mine && round.mine.payout !== null);
+  const group = (title, rows) => rows.length
+    ? `<div class="stack"><h3 class="field-label">${title}</h3><div class="profile-rows">${rows.join('')}</div></div>` : '';
+  const content = [
+    group('Noch nicht getippt', untipped.map((round) => row(round, button(round, 'Jetzt tippen')))),
+    group('Deine offenen Tipps', pending.map((round) => row(round, button(round, round.status === 'open' && !closed ? 'Tipp ändern' : 'Tippdetails')))),
+    group('Abgerechnet', finished.map((round) => row(round, button(round, 'Tippdetails')))),
+  ].filter(Boolean).join('');
+  return pointsSectionHtml('tips', 'Tipps', content || emptyStateHtml('Noch keine Tipprunden.', { className: 'empty-state-compact' }), {
+    open: untipped.length > 0 || pending.length > 0,
+    meta: untipped.length ? `${untipped.length} offen` : '',
+  });
+}
+
+// Admins check, close and refund every market from one place instead of
+// searching each match card, especially before the final standings.
+function adminRoundsHtml(data) {
+  const closed = Boolean(data.settings?.closed_at);
+  const rounds = (data.rounds ?? []).filter((round) => !round.replaced);
+  const order = { open: 0, locked: 1, settled: 2, refunded: 3 };
+  const rows = [...rounds].sort((a, b) => order[a.status] - order[b.status]
+    || tipContext(a, { includeTeams: true }).localeCompare(tipContext(b, { includeTeams: true }), 'de'))
+    .map((round) => profileRow({
+      title: e(tipContext(round, { includeTeams: true })),
+      meta: e([closed && round.status === 'open' ? statusLabels.locked : statusLabels[round.status],
+        `Topf ${round.pot} P.`, tipCountText(round.tipCount)].join(' · ')),
+      action: actionMenuHtml([`<button type="button" class="btn btn-sm" data-tip-round="${e(round.id)}">Tippdetails</button>`,
+        ...bettingManagementActions(round, closed)], `Wettrunde: ${tipContext(round)}`, { key: `admin-round-${round.id}`, summary: 'Aktionen', floating: true }),
+    }));
+  const pending = rounds.filter((round) => ['open', 'locked'].includes(round.status)).length;
+  return pointsSectionHtml('admin-rounds', 'Wettrunden', rows.length ? `<div class="profile-rows">${rows.join('')}</div>`
+    : emptyStateHtml('Noch keine Wettrunden.', { className: 'empty-state-compact' }), {
+    meta: pending ? `${pending} nicht abgerechnet` : '',
+  });
+}
+
 function savedStandingsHtml(data) {
   if (!data.revisions?.length) return '';
   return `<section class="card stack"><h2>Gespeicherte Endstände</h2><div class="stack">
@@ -501,7 +651,7 @@ export function renderPoints(container, ctx) {
     return;
   }
   const selected = ctx.localRoute?.()?.kind === 'round' ? ctx.localRoute().id : null;
-  container.innerHTML = `${header}${loadError ? `<div class="row points-actions" role="status">${e(loadError)}<button type="button" class="btn btn-sm" data-points-retry>Erneut laden</button></div>` : ''}<div class="grouped-page-sections">${categoryPointsHtml(data)}${overviewHtml(data)}
+  container.innerHTML = `${header}${loadError ? `<div class="row points-actions" role="status">${e(loadError)}<button type="button" class="btn btn-sm" data-points-retry>Erneut laden</button></div>` : ''}<div class="grouped-page-sections">${categoryPointsHtml(data)}${overviewHtml(data)}${tipsOverviewHtml(data)}
     ${pointsHistoryHtml(data, { account: categoryAccount, query: categoryQuery, source: historySource })}${savedStandingsHtml(data)}</div>`;
   if (!selected) routedTip = '';
   else if (!stale && !pendingKey && routedTip !== `${scopeKey()}:${selected}`) {
@@ -637,7 +787,7 @@ export function renderPointsAdmin(container, ctx) {
   const closed = Boolean(s?.closed_at);
   container.innerHTML = `<div class="row-between page-title-row points-actions"><h1 class="view-title">LAN-Punkte verwalten</h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-reports>Meldungen</button>${state.activeEvent?.pointsEnabled ? '<button type="button" class="btn btn-sm" data-navigate="points">Mein Punktekonto</button>' : ''}</div></div>
     <div class="grouped-page-sections">
-    ${savedStandingsHtml(data)}${adminCategoryJournalHtml(adminCategoryEntries, { account: adminCategoryAccount, query: adminCategoryQuery, loading: adminCategoryLoading, error: adminCategoryError })}<section class="card stack"><h2>${s ? 'Wettregeln' : 'Punktewertung aktivieren'}</h2>
+    ${s ? adminRoundsHtml(data) : ''}${savedStandingsHtml(data)}${adminCategoryJournalHtml(adminCategoryEntries, { account: adminCategoryAccount, query: adminCategoryQuery, loading: adminCategoryLoading, error: adminCategoryError })}<section class="card stack"><h2>${s ? 'Wettregeln' : 'Punktewertung aktivieren'}</h2>
 
     <form class="stack" data-points-settings>
       <label class="stack"><span class="field-label">Preis & Vergabe bei Gleichstand</span><textarea name="prizeInfo" maxlength="300" ${closed ? 'disabled' : ''}>${e(s?.prize_info ?? '')}</textarea></label>
@@ -649,7 +799,7 @@ export function renderPointsAdmin(container, ctx) {
     </section>
     ${s ? `<section class="card stack"><h2>Wettguthaben aller Teilnehmer</h2>${adminEntries ? `<label class="stack"><span class="field-label">Teilnehmer oder Buchung suchen</span><input type="search" data-admin-entry-query></label><ol class="points-journal">${adminEntries.map((entry) => `<li data-admin-entry-text="${e(`${entry.playerName} ${entry.title}`.toLocaleLowerCase('de'))}"><div><strong>${e(entry.playerName)}</strong><div>${e(entry.title)} · ${signedPoints(entry.amount)} P.</div><div class="muted">${e(formatDateTime(entry.created_at))}</div></div><button type="button" class="btn btn-sm" data-admin-entry-details="${e(entry.id)}">Details</button></li>`).join('')}</ol>` : emptyStateHtml(adminError || 'Buchungen werden geladen…')}</section>` : ''}
     </div>`;
-  wirePointsReportButtons(container);
+  wireCompetitionBetting(container, ctx);
   wireSavedStandings(container);
   container.querySelector('[data-category-admin-refresh]').addEventListener('click', () => refreshPoints(ctx));
   container.querySelector('[data-admin-category-account]').addEventListener('change', (event) => {
@@ -686,9 +836,12 @@ export function renderPointsAdmin(container, ctx) {
         (reason, eventId) => pointsRequest('/reopen', json('POST', { reason }), eventId),
         ctx,
       );
+    const pendingRounds = (data.rounds ?? []).filter((round) => !round.replaced && ['open', 'locked'].includes(round.status));
     if (
       !(await confirmDialog(
-        'LAN-Endwertung festschreiben? Offene Punktefehler-Meldungen müssen zuerst abgeschlossen sein. Alle noch nicht abgerechneten Wetten werden vollständig erstattet. Danach sind Punkteänderungen gesperrt.',
+        `LAN-Endwertung festschreiben? Offene Punktefehler-Meldungen müssen zuerst abgeschlossen sein. ${pendingRounds.length
+          ? `${pendingRounds.length} ${pendingRounds.length === 1 ? 'Wettrunde ist' : 'Wettrunden sind'} noch nicht abgerechnet (${pendingRounds.slice(0, 3).map((round) => tipContext(round, { includeTeams: true })).join('; ')}${pendingRounds.length > 3 ? '; …' : ''}) und ${pendingRounds.length === 1 ? 'wird' : 'werden'} vollständig erstattet.`
+          : 'Alle Wettrunden sind abgerechnet.'} Danach sind Punkteänderungen gesperrt.`,
         { confirmText: 'Endwertung festschreiben' },
       ))
     )

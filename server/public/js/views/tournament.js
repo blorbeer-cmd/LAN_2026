@@ -1,4 +1,4 @@
-import { competitionBettingHtml, wireCompetitionBetting, competitionCorrection } from './points.js';
+import { competitionBettingHtml, competitionBettingSummaryHtml, wireCompetitionBetting, competitionCorrection, bettingHiddenHintHtml } from './points.js';
 // Tournament detail view (FR-33): automatically generated single-elimination
 // bracket ("Turnierbaum") or
 // round-robin league ("jeder gegen jeden", optionally Hin- und Rückspiele),
@@ -197,7 +197,7 @@ function renderDetail(container, ctx) {
     .join(' · ');
   const formatExplanation = `${FORMAT_LABELS[t.format]}${formatMeta ? ` · ${formatMeta}` : ''}`;
   const activeLobbies = renderActiveLobbies(t);
-  const betting = competitionBettingHtml('tournament', t.id, ctx, { actionsOnly: true, tournamentId: t.id });
+  const betting = competitionBettingHtml('tournament', t.id, ctx, { tournamentId: t.id });
 
   container.innerHTML = `
     <div class="row-between page-title-row points-actions">
@@ -213,7 +213,8 @@ function renderDetail(container, ctx) {
       <span>${formatExplanation} · ${t.teams.length} Teams · ${participantCount} Spieler · ${decidedMatches}/${t.matches.length} entschieden</span>
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? (t.endedEarly ? 'Vorzeitig beendet' : 'Beendet') : 'Läuft'}</span>
     </div>
-    ${betting ? `<div class="row points-actions" aria-label="Turnierwetten">${betting}</div>` : ''}
+    ${betting ? `<div class="row points-actions" aria-label="Turnierwetten">${betting}${competitionBettingSummaryHtml('tournament', t.id)}</div>`
+      : t.status === 'active' ? bettingHiddenHintHtml() : ''}
     <div class="grouped-page-sections tournament-board">
       ${renderChampion(t)}
       ${activeLobbies}

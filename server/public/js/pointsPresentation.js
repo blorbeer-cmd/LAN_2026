@@ -69,8 +69,9 @@ export function tournamentTipGroups(rounds) {
   const groups = new Map();
   for (const round of rounds) {
     const t = round.tournament;
-    const label = round.sourceType === 'tournament' ? 'Turniersieger' : t?.thirdPlace ? 'Spiel um Platz 3'
-      : `${t?.groupIndex != null ? `Gruppe ${t.groupIndex + 1} · ` : ''}Runde ${t?.round ?? 1}`;
+    // The server names fixtures like the bracket does; older payloads fall back.
+    const label = round.sourceType === 'tournament' ? 'Turniersieger' : t?.phase ?? (t?.thirdPlace ? 'Spiel um Platz 3'
+      : `${t?.groupIndex != null ? `Gruppe ${t.groupIndex + 1} · ` : ''}Runde ${t?.round ?? 1}`);
     if (!groups.has(label)) groups.set(label, { label, rounds: [] });
     groups.get(label).rounds.push(round);
   }

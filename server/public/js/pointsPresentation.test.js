@@ -114,4 +114,8 @@ test('tournament tip selection separates equal round numbers in groups, knockout
     ['Turniersieger', ['champion']], ['Gruppe 1 · Runde 1', ['a1', 'a2']], ['Gruppe 2 · Runde 1', ['b1']],
     ['Runde 1', ['ko']], ['Spiel um Platz 3', ['third']], ['Runde 2', ['final']],
   ]);
+  const named = rows.map((row) => row.id === 'ko' ? { ...row, tournament: { ...row.tournament, phase: 'Halbfinale' } }
+    : row.id === 'final' ? { ...row, tournament: { ...row.tournament, phase: 'Finale' } } : row);
+  assert.deepEqual(tournamentTipGroups(named).map((group) => group.label).slice(-3), ['Halbfinale', 'Spiel um Platz 3', 'Finale'],
+    'server phase names match the bracket');
 });

@@ -44,19 +44,23 @@ function desktopNavigation(group, order, {
   return Object.freeze({ group, order, eventTypes: Object.freeze(eventTypes), label, iconKey });
 }
 
+// Tips, closing and reopening only change the points snapshot. Views that
+// show betting state redraw from it; nothing else refetches.
+const BETTING_CHANGED = 'betting:changed';
+
 const REFRESH_ON = Object.freeze({
-  home: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
-  matchmaking: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard],
+  home: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events, BETTING_CHANGED],
+  matchmaking: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard, BETTING_CHANGED],
   votes: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games],
   leaderboard: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard],
   analytics: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
   profile: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.events],
-  tournaments: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard],
+  tournaments: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard, BETTING_CHANGED],
   hallOfFame: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
   seating: [CORE_REALTIME_EVENTS.players],
   myStats: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
-  points: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
-  pointsAdmin: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
+  points: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events, BETTING_CHANGED],
+  pointsAdmin: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events, BETTING_CHANGED],
   broadcast: [CORE_REALTIME_EVENTS.players],
   foodOrders: [CORE_REALTIME_EVENTS.players],
   checklist: [CORE_REALTIME_EVENTS.players],

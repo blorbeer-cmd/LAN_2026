@@ -21,7 +21,7 @@ import { openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
 import { prepareEventTarget } from './views/events.js';
-import { syncPointsDialogVisibility } from './views/points.js';
+import { syncPointsDialogVisibility, announceBettingChange } from './views/points.js';
 import { refreshPointsReports } from './pointsReports.js';
 import { focusGameCatalog } from './views/gameCatalog.js';
 import { clearTournamentTeamTarget, prepareTournamentTeamTarget } from './views/tournament.js';
@@ -987,9 +987,19 @@ function wireSocket() {
         excludeViews: refreshesOpenFoodOrders ? ['foodOrders'] : [],
       });
       if (refreshesOpenFoodOrders) void refreshFoodOrders(ctx);
+      // Settlements and deadline closures arrive as leaderboard changes.
+      if (event === 'leaderboard:changed') announceBettingChange(null);
       void queueSharedRefresh({ render: realtimeEventAffectsView(event, currentView) });
     })
   );
+  // A tip, closing or reopening changes only the points snapshot: views that
+  // show betting redraw from a fresh /api/points, and an open tip dialog
+  // updates itself without the shared snapshot round trip.
+  socket.on('betting:changed', (payload) => {
+    invalidateViewCaches(VIEW_REGISTRY, 'betting:changed');
+    announceBettingChange(payload?.roundId ?? null);
+    if (realtimeEventAffectsView('betting:changed', currentView)) renderCurrent();
+  });
 
   // These events carry the fresh payload directly, so we can update state
   // and re-render without an extra round trip — important since live-status

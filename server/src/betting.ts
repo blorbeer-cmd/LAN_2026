@@ -402,24 +402,44 @@ interface BetTournamentContext {
   slot?: number;
   groupIndex?: number | null;
   thirdPlace?: number;
+  // The fixture's name as the bracket shows it ("Halbfinale", "Gruppe 1 · Runde 2").
+  phase?: string;
 }
 
+const KNOCKOUT_PHASES = ['Finale', 'Halbfinale', 'Viertelfinale'];
 function tournamentContext(round: BettingRound): BetTournamentContext | null {
   if (round.source_type === 'draw') return null;
-  const query = round.source_type === 'tournament'
-    ? `SELECT t.id, t.name, g.name AS gameName FROM tournaments t JOIN games g ON g.id = t.game_id
-       WHERE t.id = ? AND t.group_id = ? AND t.event_id = ?`
-    : `SELECT t.id, t.name, g.name AS gameName, m.round, m.slot, m.group_index AS groupIndex,
-       m.is_third_place AS thirdPlace FROM tournament_matches m
+  if (round.source_type === 'tournament') {
+    return db.prepare(`SELECT t.id, t.name, g.name AS gameName FROM tournaments t JOIN games g ON g.id = t.game_id
+       WHERE t.id = ? AND t.group_id = ? AND t.event_id = ?`)
+      .get(round.source_id, round.group_id, round.event_id) as BetTournamentContext | undefined ?? null;
+  }
+  const row = db.prepare(`SELECT t.id, t.name, g.name AS gameName, m.round, m.slot, m.group_index AS groupIndex,
+       m.is_third_place AS thirdPlace, t.format, m.stage,
+       (SELECT MAX(x.round) FROM tournament_matches x WHERE x.tournament_id = m.tournament_id
+         AND x.is_third_place = 0 AND x.stage IS m.stage) AS finalRound
+       FROM tournament_matches m
        JOIN tournaments t ON t.id = m.tournament_id JOIN games g ON g.id = t.game_id
-       WHERE m.id = ? AND t.group_id = ? AND t.event_id = ?`;
-  return db.prepare(query).get(round.source_id, round.group_id, round.event_id) as BetTournamentContext | undefined ?? null;
+       WHERE m.id = ? AND t.group_id = ? AND t.event_id = ?`).get(round.source_id, round.group_id, round.event_id) as
+    (Required<Omit<BetTournamentContext, 'phase'>> & { format: string; stage: string | null; finalRound: number }) | undefined;
+  if (!row) return null;
+  const { format, stage, finalRound, ...context } = row;
+  const phase = context.thirdPlace ? 'Spiel um Platz 3'
+    : format === 'round_robin' || stage === 'group'
+      ? `${context.groupIndex != null ? `Gruppe ${context.groupIndex + 1} · ` : ''}Runde ${context.round}`
+      : KNOCKOUT_PHASES[finalRound - context.round] ?? `Runde ${context.round}`;
+  return { ...context, phase };
 }
 
 export function roundView(round: BettingRound, playerId: string) {
   const tips = tipsFor(round.id);
   const mine = tips.find((tip) => tip.player_id === playerId);
   const pot = tips.reduce((sum, t) => sum + t.stake, 0);
+  const tipperIds = [...new Set(tips.map((t) => t.player_id).filter((id): id is string => Boolean(id)))];
+  const tipperNames = new Map(tipperIds.length
+    ? (db.prepare(`SELECT id, name FROM players WHERE id IN (${tipperIds.map(() => '?').join(',')})`)
+      .all(...tipperIds) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name])
+    : []);
   return {
     id: round.id,
     eventId: round.event_id,
@@ -439,6 +459,12 @@ export function roundView(round: BettingRound, playerId: string) {
     tipCount: tips.length,
     outcomes: (JSON.parse(round.outcomes) as BetOutcome[]).map((outcome) => {
       const stake = tips.filter((t) => t.outcome_id === outcome.id).reduce((sum, t) => sum + t.stake, 0);
+      // Tips are public with names from the moment they are placed (product
+      // decision on #755). Tips of erased accounts stay anonymous stakes.
+      const tippers = tips
+        .filter((t) => t.outcome_id === outcome.id)
+        .map((t) => ({ playerId: t.player_id, name: t.player_id ? tipperNames.get(t.player_id) ?? null : null, stake: t.stake }))
+        .sort((x, y) => y.stake - x.stake || (x.name ?? '').localeCompare(y.name ?? '', 'de'));
       const preview = mine?.outcome_id === outcome.id
         ? distributePool(
             tips.map((t) => ({ id: t.id, stake: t.stake, outcomeId: t.outcome_id, createdAt: t.created_at, sequence: t.sequence })),
@@ -451,6 +477,7 @@ export function roundView(round: BettingRound, playerId: string) {
         stake,
         odds: stake ? (round.payout_policy === 'stake_cap_v1' ? Math.min(2, pot / stake) : pot / stake) : null,
         myPossiblePayout: mine?.outcome_id === outcome.id ? preview : null,
+        tippers,
       };
     }),
     mine: mine

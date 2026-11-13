@@ -253,13 +253,13 @@ pointsRouter.put('/rounds/:id/tip', (req, res) => {
     text(req.body?.outcomeId, 'Sieger', 100),
     integer(req.body?.stake, 'Einsatz', 1, 1000),
   );
-  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
+  broadcast(Events.bettingChanged, { roundId: req.params.id }, { groupId: req.group!.id, eventId });
   res.json(roundView(getBettingRound(req.group!.id, eventId, req.params.id), req.player!.id));
 });
 pointsRouter.delete('/rounds/:id/tip', (req, res) => {
   requirePointsVisible(res.locals.eventId);
   removeTip(req.group!.id, res.locals.eventId, req.params.id, req.player!.id);
-  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: res.locals.eventId });
+  broadcast(Events.bettingChanged, { roundId: req.params.id }, { groupId: req.group!.id, eventId: res.locals.eventId });
   res.json({ ok: true });
 });
 pointsRouter.post('/rounds/:id/lock', (req, res) => {
@@ -272,7 +272,7 @@ pointsRouter.post('/rounds/:id/lock', (req, res) => {
   if (!participating && !['admin', 'owner'].includes(req.groupMembership!.role))
     return res.status(403).json({ error: 'Nur Mitspieler oder Admins können das Spiel starten.' });
   lockBettingRound(round);
-  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
+  broadcast(Events.bettingChanged, { roundId: round.id }, { groupId: req.group!.id, eventId });
   res.json({ ok: true });
 });
 pointsRouter.post('/rounds/:id/reopen', (req, res) => {
@@ -284,7 +284,7 @@ pointsRouter.post('/rounds/:id/reopen', (req, res) => {
   if (!participating && !['admin', 'owner'].includes(req.groupMembership!.role))
     return res.status(403).json({ error: 'Nur Mitspieler oder Admins können die Tippabgabe wieder öffnen.' });
   reopenBettingRound(round, req.player!.id);
-  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
+  broadcast(Events.bettingChanged, { roundId: round.id }, { groupId: req.group!.id, eventId });
   res.json({ ok: true });
 });
 pointsRouter.post('/rounds/:id/refund', requireGroupRole('admin'), (req, res) => {
