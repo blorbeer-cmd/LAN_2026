@@ -505,6 +505,22 @@ export function resolvePushTopic(
   }
 }
 
+// Topic keys that are still active below a prefix, e.g. to withdraw shared
+// notices whose source has disappeared in the meantime.
+export function unresolvedPushTopics(
+  topicPrefix: string,
+  scope: PushScope = { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID },
+): string[] {
+  const normalizedScope = normalizedPushScope(scope);
+  return db
+    .prepare(
+      `SELECT DISTINCT topic_key FROM push_log
+       WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND topic_key GLOB ?`
+    )
+    .pluck()
+    .all(normalizedScope.groupId, normalizedScope.eventId, `${topicPrefix}*`) as string[];
+}
+
 // Food-order deadlines are editable. Keep the banner expiry synchronized
 // without rewriting the historical notification itself.
 export function updatePushTopicExpiry(

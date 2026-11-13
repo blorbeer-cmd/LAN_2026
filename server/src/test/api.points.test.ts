@@ -1759,6 +1759,23 @@ test('re-rolling the shown draw closes its market; draw notices wait for the kep
   reconcileBetting(hidden.eventId);
   const hiddenMarkets = db.prepare("SELECT source_id FROM betting_rounds WHERE event_id=? AND source_type='draw'").pluck().all(hidden.eventId);
   assert.deepEqual(hiddenMarkets, [keptHidden.id], 'the discarded draw never opens a market');
+
+  // A league started while points were hidden only gets fixture markets. Deleting it
+  // removes the fixture rows before the refunds are published; its notice still goes.
+  const started = await fixture({}, false);
+  const league = await request(app).post('/api/tournaments').send({ gameId: started.gameId, format: 'round_robin',
+    teams: [TEST_ADMIN_ID, ...started.players].map((id) => ({ playerIds: [id] })) });
+  assert.equal(league.status, 201, JSON.stringify(league.body));
+  const firstFixture = league.body.matches[0] as { id: string; teamAId: string };
+  assert.equal((await request(app).post(`/api/tournaments/${league.body.id}/matches/${firstFixture.id}/result`)
+    .send({ winnerTeamId: firstFixture.teamAId })).status, 200);
+  assert.equal((await request(app).patch(`/api/events/${started.eventId}/points-visibility`).send({ visible: true, revision: 0 })).status, 200);
+  reconcileBetting(started.eventId);
+  const leagueNotice = () => db.prepare(`SELECT resolved_at FROM push_log WHERE event_id=? AND topic_key GLOB ?`)
+    .all(started.eventId, `betting-open:tournament:${league.body.id}:*`) as Array<{ resolved_at: number | null }>;
+  assert.deepEqual(leagueNotice(), [{ resolved_at: null }], 'the remaining fixtures share one notice without a champion market');
+  assert.equal((await request(app).delete(`/api/tournaments/${league.body.id}`)).status, 204);
+  assert.notEqual(leagueNotice()[0].resolved_at, null, 'deleting the league withdraws its shared notice');
 });
 
 test('competition writes and deadline sweeps isolate another event with broken legacy JSON', async (t) => {

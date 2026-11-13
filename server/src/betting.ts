@@ -15,7 +15,7 @@ import {
   wallet,
   BETTING_MAX_STAKE,
 } from './points';
-import { notifyPlayers, resolvePushTopic } from './push';
+import { notifyPlayers, resolvePushTopic, unresolvedPushTopics } from './push';
 import { broadcast, Events } from './realtime';
 import type { Request } from 'express';
 import { writeAdminAudit } from './adminAudit';
@@ -277,17 +277,22 @@ export function notifyBettingRounds(rounds: BettingRound[]): void {
     for (const round of group) mark.run(round.id);
   }
 }
-// A closed market withdraws its own message; a tournament's shared message
-// stays until none of its markets accepts tips any more.
+// A closed market withdraws its own message. A tournament's shared message
+// stays until none of its markets accepts tips any more; it is checked by the
+// tournament named in the topic, because a deleted tournament has already
+// lost the fixture rows that would link its markets back to it.
 export function resolveBettingNotice(round: BettingRound): void {
   const scope = { groupId: round.group_id, eventId: round.event_id };
   resolvePushTopic(`betting-open:${round.id}`, false, scope);
-  const tournamentId = tournamentIdOf(round);
-  if (tournamentId && !db.prepare(`SELECT 1 FROM betting_rounds r WHERE r.status = 'open' AND r.event_id = ? AND (
+  if (round.source_type === 'draw') return;
+  const stillOpen = db.prepare(`SELECT 1 FROM betting_rounds r WHERE r.status = 'open' AND r.event_id = ? AND (
       (r.source_type = 'tournament' AND r.source_id = ?) OR
-      (r.source_type = 'tournament_match' AND r.source_id IN (SELECT id FROM tournament_matches WHERE tournament_id = ?)))`)
-    .get(round.event_id, tournamentId, tournamentId))
-    resolvePushTopic(`${TOURNAMENT_NOTICE_PREFIX}${tournamentId}`, true, scope);
+      (r.source_type = 'tournament_match' AND r.source_id IN (SELECT id FROM tournament_matches WHERE tournament_id = ?)))`);
+  const tournamentIds = new Set(unresolvedPushTopics(TOURNAMENT_NOTICE_PREFIX, scope)
+    .map((topic) => topic.slice(TOURNAMENT_NOTICE_PREFIX.length).split(':')[0]));
+  for (const tournamentId of tournamentIds)
+    if (!stillOpen.get(round.event_id, tournamentId, tournamentId))
+      resolvePushTopic(`${TOURNAMENT_NOTICE_PREFIX}${tournamentId}`, true, scope);
 }
 export function createBettingRound(
   groupId: string,
