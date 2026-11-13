@@ -4,7 +4,7 @@ Diese Übersicht dokumentiert die Entwicklung von Respawn aus der verifizierten 
 GitHub-Historie. Gemergte Pull Requests erhalten eine Datei unter `docs/changelog/pr/`; die
 zugehörigen Arbeitsbranches sind unter `docs/changelog/branches/` erfasst.
 
-Stand: 2026-08-05 · Basis: `main` auf `e973e6a` · Lückenlos dokumentiert ist der Bereich
+Stand: 2026-11-13 · Basis: `main` auf `1178160` · Lückenlos dokumentiert ist der Bereich
 #214–#352; #214–#225, #249, #254, #310, #315, #324–#340 und #351 wurden nicht gemergt (offen,
 geschlossen oder unter einer anderen PR-Nummer im selben Branch gelandet) und erhalten daher keinen
 eigenen Eintrag. Beim früheren Vollabgleich fielen außerdem neun ältere, nicht zu R5 gehörende
@@ -14,13 +14,14 @@ Diff-Analyse. Zusätzlich lückenlos dokumentiert sind die am 2026-09-01 und 202
 PRs #529–#535 sowie die am 2026-09-16 gemergten PRs #636, #637 und #639; die Bereiche #353–#528
 und #536–#635 sind noch nicht erfasst. #638 wurde geschlossen, nicht gemergt, und erhält daher
 keinen Eintrag. Am 2026-09-26 nachgetragen sind die UI-Polish-PRs #657, #662 bis #664, #666 bis
-#671, #674 und #677, am 2026-09-27 #685 und am 2026-10-10 der Arcade-PR #732; ihre Zusammenfassungen stammen aus der PR-Beschreibung. Die PRs #640 bis #656, #658 bis #661
-und #665 sind noch nicht erfasst.
+#671, #674 und #677, am 2026-09-27 #685, am 2026-10-10 der Arcade-PR #732 und am 2026-11-13 der
+Wett-PR #756; ihre Zusammenfassungen stammen aus der PR-Beschreibung. Die PRs #640 bis #656,
+#658 bis #661 und #665 sowie die gemergten PRs zwischen #733 und #755 sind noch nicht erfasst.
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 253 (Dateien unter `pr/`)
-- Branch-Seiten dokumentiert: 215 (Dateien unter `branches/`)
+- Gemergte PRs dokumentiert: 254 (Dateien unter `pr/`)
+- Branch-Seiten dokumentiert: 217 (Dateien unter `branches/`)
 - Gemergte PRs #214–#352: 83 von 83 dokumentiert
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
@@ -28,6 +29,7 @@ und #665 sind noch nicht erfasst.
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-11-13 | [#756](https://github.com/blorbeer-cmd/LAN_2026/pull/756) | [Keep betting markets usable after lineup and result corrections](pr/pr-756-keep-betting-markets-usable-after-lineup-and-result-corrections.md) | `ccr-ce451f03-d7nhep` |
 | 2026-10-11 | [#732](https://github.com/blorbeer-cmd/LAN_2026/pull/732) | [Arcade: Spielfeld passt sich automatisch an, Vollbild statt „vergrößern“](pr/pr-732-arcade-spielfeld-passt-sich-automatisch-an-vollbild-statt-vergroessern.md) | `claude/arcade-spielfeld-responsive-znpn1k` |
 | 2026-09-26 | [#685](https://github.com/blorbeer-cmd/LAN_2026/pull/685) | [Polish Admin as row cards and move the admin mode switch into Mein Profil](pr/pr-685-polish-admin-as-row-cards-and-move-the-admin-mode-switch-into-mein-profil.md) | `claude/admin-ui-polish-800581` |
 | 2026-09-26 | [#677](https://github.com/blorbeer-cmd/LAN_2026/pull/677) | [Polish Mein Profil and Meine Statistiken as row cards with a shared RankedList](pr/pr-677-polish-mein-profil-and-meine-statistiken-as-row-cards-with-a-shared-rankedlist.md) | `claude/ui-polish-profile` |
