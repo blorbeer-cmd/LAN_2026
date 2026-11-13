@@ -6108,6 +6108,44 @@ registerMigration({ version: 136, name: 'score test events with their test ident
     ${eligibilityFund()}`);
 } });
 
+registerMigration({ version: 137, name: 'replace betting rounds after lineup changes and remember result refunds',
+  disableForeignKeysForRebuild: true, up: () => {
+  // A changed lineup refunds an open market with tips and opens a fresh one
+  // for the same source, so uniqueness only covers rounds not yet replaced.
+  // Result refunds stay correctable when the recorded result is fixed later.
+  const columns = db.prepare('PRAGMA table_info(betting_rounds)').all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === 'refund_cause')) return;
+  const copied = `id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,locked_at,settled_at,
+    result_key,revision,created_by,created_at,notice_sent,payout_policy`;
+  db.exec(`CREATE TABLE betting_rounds_replaceable (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL REFERENCES groups(id),
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      source_type TEXT NOT NULL CHECK(source_type IN ('draw','tournament_match','tournament')),
+      source_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      outcomes TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('open','locked','settled','refunded')),
+      closes_at INTEGER NOT NULL,
+      locked_at INTEGER,
+      settled_at INTEGER,
+      result_key TEXT,
+      revision INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT REFERENCES players(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      notice_sent INTEGER NOT NULL DEFAULT 0,
+      payout_policy TEXT NOT NULL DEFAULT 'stake_cap_v1' CHECK(payout_policy IN ('pool_v1','stake_cap_v1')),
+      refund_cause TEXT CHECK(refund_cause IN ('result','replaced')),
+      CHECK(refund_cause IS NULL OR status='refunded')
+    );
+    INSERT INTO betting_rounds_replaceable (${copied}) SELECT ${copied} FROM betting_rounds;
+    DROP TABLE betting_rounds;
+    ALTER TABLE betting_rounds_replaceable RENAME TO betting_rounds;
+    CREATE INDEX betting_rounds_event ON betting_rounds(event_id,status);
+    CREATE UNIQUE INDEX betting_rounds_current_source ON betting_rounds(event_id,source_type,source_id)
+      WHERE refund_cause IS NOT 'replaced';`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

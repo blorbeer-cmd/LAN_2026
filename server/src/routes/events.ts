@@ -57,6 +57,7 @@ import {
 import { includesTestEvents } from '../testDataVisibility';
 import { confirmEventCalendar, eventScheduleKey, STEFAN_CALENDAR_GAG_USERNAME } from '../eventReminders';
 import { pointsAreVisible, pointsSettings } from '../points';
+import { reconcileBetting } from '../betting';
 
 export const eventsRouter = Router();
 
@@ -667,6 +668,15 @@ eventsRouter.patch('/:id/points-visibility', resolveEvent, (req, res) => {
     return true;
   })();
   if (!changed) return res.status(409).json({ error: 'Die Punkteanzeige wurde inzwischen geändert. Bitte neu laden.' });
+  if (visible) {
+    // Open the markets of already waiting competitions right away instead of
+    // on the next recovery sweep. A failure leaves that sweep as fallback.
+    try {
+      reconcileBetting(event.id);
+    } catch (error) {
+      console.error(`Betting reconciliation after showing points failed for event ${event.id}:`, error);
+    }
+  }
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
   broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId: req.group!.id, eventId: event.id });
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: event.id });

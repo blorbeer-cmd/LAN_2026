@@ -1541,6 +1541,145 @@ test('missing fixture teams refund existing stakes and skip new markets without 
   }
 });
 
+test('revealed points open waiting markets at once; lineup moves update untipped markets and replace tipped open ones', async (t) => {
+  const f = await fixture({}, false);
+  const [a, b, c] = f.players;
+  const markets = (drawId: string) => db.prepare(`SELECT id,status,refund_cause AS cause FROM betting_rounds
+    WHERE source_type='draw' AND source_id=? ORDER BY created_at,rowid`).all(drawId) as Array<{ id: string; status: string; cause: string | null }>;
+  const draw = async () => {
+    const created = await request(app).post('/api/matchmaking')
+      .send({ gameId: f.gameId, playerIds: f.players, teamCount: 2, bettingAllowed: true });
+    assert.equal(created.status, 200, JSON.stringify(created.body));
+    return created.body as { id: string; teams: Array<{ players: Array<{ id: string }> }> };
+  };
+  const pair = (drawId: string, teams: Array<{ players: Array<{ id: string }> }>) => {
+    const from = teams.findIndex((team) => team.players.length > 1);
+    return { drawId, playerId: teams[from].players[0].id, toTeamIndex: 1 - from };
+  };
+  const move = ({ drawId, playerId, toTeamIndex }: ReturnType<typeof pair>) =>
+    request(app).patch(`/api/matchmaking/draws/${drawId}/move`).send({ playerId, toTeamIndex });
+  const tip = (roundId: string, playerId: string, outcomeId = '0') =>
+    request(app).put(`/api/points/rounds/${roundId}/tip`).set('x-test-player-id', playerId).send({ outcomeId, stake: 5 });
+
+  const waiting = await draw();
+  assert.deepEqual(markets(waiting.id), [], 'hidden points open no market');
+  assert.equal((await request(app).patch(`/api/events/${f.eventId}/points-visibility`).send({ visible: true, revision: 0 })).status, 200);
+  assert.deepEqual(markets(waiting.id).map((m) => m.status), ['open'], 'showing points opens the waiting market without a sweep');
+
+  const firstMove = pair(waiting.id, waiting.teams);
+  assert.equal((await move(firstMove)).status, 200);
+  const [kept] = markets(waiting.id);
+  assert.deepEqual(markets(waiting.id).map((m) => m.status), ['open'], 'an untipped market follows the new lineup');
+  const view = await automaticMarket(f, 'draw', waiting.id);
+  assert.equal(view.id, kept.id);
+  assert.ok(view.outcomes[firstMove.toTeamIndex].playerIds.includes(firstMove.playerId));
+
+  assert.equal((await tip(kept.id, a)).status, 200);
+  const moved = (await move({ ...firstMove, toTeamIndex: 1 - firstMove.toTeamIndex })).body;
+  assert.equal(wallet(f.eventId, a).held, 0, 'the changed lineup refunds the accepted tip');
+  const [replaced, fresh] = markets(waiting.id);
+  assert.deepEqual([replaced, fresh].map((m) => [m.id === kept.id, m.status, m.cause]),
+    [[true, 'refunded', 'replaced'], [false, 'open', null]]);
+  const pointsView = (await request(app).get('/api/points')).body.rounds;
+  assert.equal(pointsView.find((row: { id: string }) => row.id === kept.id).replaced, true);
+  assert.equal((await tip(kept.id, a)).status, 409, 'a stale client cannot tip on the replaced lineup');
+  assert.equal((await tip(fresh.id, a)).status, 200);
+  assert.equal((await request(app).post(`/api/points/rounds/${fresh.id}/lock`).send({})).status, 200);
+  assert.equal((await move(pair(waiting.id, moved.teams))).status, 200);
+  assert.deepEqual(markets(waiting.id).map((m) => [m.status, m.cause]), [['refunded', 'replaced'], ['refunded', null]],
+    'closed tips stay closed after a later lineup change');
+
+  // A replacement inherits an explicit deadline, which keeps closing its tips.
+  const timed = await draw();
+  const [timedMarket] = markets(timed.id);
+  const closesAt = Date.now() + 60_000;
+  db.prepare('UPDATE betting_rounds SET closes_at=? WHERE id=?').run(closesAt, timedMarket.id);
+  assert.equal((await tip(timedMarket.id, b)).status, 200);
+  assert.equal((await move(pair(timed.id, timed.teams))).status, 200);
+  const timedFresh = markets(timed.id).find((m) => m.cause === null)!;
+  assert.equal((await automaticMarket(f, 'draw', timed.id)).closesAt, closesAt);
+  t.mock.timers.enable({ apis: ['Date'], now: closesAt });
+  try {
+    assert.equal((await tip(timedFresh.id, c)).status, 409, 'the original deadline still closes the replacement');
+  } finally {
+    t.mock.timers.reset();
+  }
+
+  // A move racing a tip either refunds that tip with the old lineup or rejects
+  // it; it never leaves two current markets or a stake outside the current one.
+  const raced = await draw();
+  const [racedMarket] = markets(raced.id);
+  assert.equal((await tip(racedMarket.id, b)).status, 200);
+  const [moveResult, tipResult] = await Promise.all([move(pair(raced.id, raced.teams)), tip(racedMarket.id, c, '1')]);
+  assert.equal(moveResult.status, 200);
+  assert.ok([200, 409].includes(tipResult.status), JSON.stringify(tipResult.body));
+  const current = markets(raced.id).filter((m) => m.cause !== 'replaced');
+  assert.deepEqual(current.map((m) => m.status), ['open']);
+  assert.notEqual(current[0].id, racedMarket.id);
+  assert.deepEqual([b, c].map((id) => wallet(f.eventId, id).held), [0, 0]);
+});
+
+test('result corrections rebook pools refunded by a wrong result, and a corrected semifinal reopens the final market', async () => {
+  const f = await fixture();
+  const [a, b, c] = f.players;
+  const r = await round(f);
+  for (const [index, playerId] of [a, b].entries())
+    assert.equal((await request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', playerId)
+      .send({ outcomeId: r.outcomes[index].id, stake: 10 })).status, 200);
+  const teams = r.outcomes.map((o) => ({ playerIds: o.playerIds }));
+  const result = await request(app).post('/api/matches').send({ gameId: f.gameId, drawId: r.drawId, teams, isDraw: true });
+  assert.equal(result.status, 201, JSON.stringify(result.body));
+  const refunded = await automaticMarket(f, 'draw', r.drawId);
+  assert.deepEqual([refunded.status, refunded.rebooksOnCorrection], ['refunded', true]);
+  assert.equal((await request(app).patch(`/api/matches/${result.body.id}`).set('x-test-player-id', a)
+    .send({ winnerTeamIndex: 0 })).status, 409, 'rebooking a refunded pool requires the audited admin correction');
+  assert.equal((await request(app).patch(`/api/matches/${result.body.id}`).send({ winnerTeamIndex: 0,
+    bettingCorrection: { reason: 'Draw entered by mistake', revisions: [{ id: r.id, revision: refunded.revision }] } })).status, 200);
+  const corrected = await automaticMarket(f, 'draw', r.drawId);
+  assert.deepEqual([corrected.status, corrected.result, corrected.rebooksOnCorrection], ['settled', '0', true]);
+  assert.deepEqual([a, b].map((id) => wallet(f.eventId, id).total), [110, 90]);
+
+  const single = await round(f);
+  assert.equal((await request(app).put(`/api/points/rounds/${single.id}/tip`).set('x-test-player-id', a)
+    .send({ outcomeId: single.outcomes[0].id, stake: 5 })).status, 200);
+  const singleResult = await request(app).post('/api/matches').send({ gameId: f.gameId, drawId: single.drawId,
+    teams: single.outcomes.map((o) => ({ playerIds: o.playerIds })), isDraw: true });
+  assert.equal((await automaticMarket(f, 'draw', single.drawId)).rebooksOnCorrection, false);
+  assert.equal((await request(app).patch(`/api/matches/${singleResult.body.id}`).set('x-test-player-id', a)
+    .send({ winnerTeamIndex: 0 })).status, 200, 'a one-sided refund cannot pay out and needs no admin');
+  assert.equal((await automaticMarket(f, 'draw', single.drawId)).status, 'refunded');
+
+  const created = await request(app).post('/api/tournaments').send({ gameId: f.gameId, format: 'single_elimination',
+    teams: [TEST_ADMIN_ID, a, b, c].map((id) => ({ playerIds: [id] })) });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const tournament = created.body as { id: string; matches: Array<{ id: string; round: number; isBye: boolean;
+    teamAId: string | null; teamBId: string | null; playedAt: number | null }> };
+  const semis = tournament.matches.filter((m) => m.round === 1 && !m.isBye);
+  assert.equal(semis.length, 2);
+  const recorded = [];
+  for (const semi of semis) {
+    const response = await request(app).post(`/api/tournaments/${tournament.id}/matches/${semi.id}/result`)
+      .send({ winnerTeamId: semi.teamAId });
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    recorded.push(response.body.matches.find((m: { id: string }) => m.id === semi.id));
+  }
+  const finalId = tournament.matches.find((m) => m.round === 2)!.id;
+  const final = await automaticMarket(f, 'tournament_match', finalId);
+  const finalists = final.outcomes.map((o) => o.playerIds[0]);
+  for (const [index, playerId] of finalists.entries())
+    assert.equal((await request(app).put(`/api/points/rounds/${final.id}/tip`).set('x-test-player-id', playerId)
+      .send({ outcomeId: final.outcomes[index].id, stake: 5 })).status, 200);
+  const fix = await request(app).put(`/api/tournaments/${tournament.id}/matches/${semis[0].id}/result`)
+    .send({ winnerTeamId: semis[0].teamBId, expectedPlayedAt: recorded[0].playedAt });
+  assert.equal(fix.status, 200, JSON.stringify(fix.body));
+  assert.deepEqual(finalists.map((id) => wallet(f.eventId, id).held), [0, 0], 'the old final pairing is refunded');
+  const reopened = await automaticMarket(f, 'tournament_match', finalId);
+  assert.notEqual(reopened.id, final.id);
+  assert.equal(reopened.status, 'open', 'the new final pairing can be tipped');
+  assert.equal((await request(app).put(`/api/points/rounds/${reopened.id}/tip`).set('x-test-player-id', a)
+    .send({ outcomeId: reopened.outcomes[0].id, stake: 5 })).status, 200);
+});
+
 test('competition writes and deadline sweeps isolate another event with broken legacy JSON', async (t) => {
   const broken = await fixture();
   const bad = await round(broken);

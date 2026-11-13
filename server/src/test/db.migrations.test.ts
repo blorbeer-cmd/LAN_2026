@@ -207,6 +207,70 @@ test('migration 135 versions capped markets atomically without rewriting paid ti
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 137 keeps rounds and tips, rolls back on failure and limits uniqueness to rounds not replaced', () => {
+  const dbFile = makeTempDbPath('replaceable-betting-rounds');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  const legacyColumns = `id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,locked_at,settled_at,
+    result_key,revision,created_by,created_at,notice_sent,payout_policy`;
+  // Recreate the pre-137 table: one round per source, no refund cause.
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`CREATE TABLE betting_rounds_legacy (
+      id TEXT PRIMARY KEY, group_id TEXT NOT NULL REFERENCES groups(id),
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      source_type TEXT NOT NULL CHECK(source_type IN ('draw','tournament_match','tournament')), source_id TEXT NOT NULL,
+      title TEXT NOT NULL, outcomes TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('open','locked','settled','refunded')),
+      closes_at INTEGER NOT NULL, locked_at INTEGER, settled_at INTEGER, result_key TEXT, revision INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT REFERENCES players(id) ON DELETE SET NULL, created_at INTEGER NOT NULL, notice_sent INTEGER NOT NULL DEFAULT 0,
+      payout_policy TEXT NOT NULL DEFAULT 'stake_cap_v1' CHECK(payout_policy IN ('pool_v1','stake_cap_v1')),
+      UNIQUE(event_id,source_type,source_id));
+    DROP TABLE betting_rounds;
+    ALTER TABLE betting_rounds_legacy RENAME TO betting_rounds;
+    CREATE INDEX betting_rounds_event ON betting_rounds(event_id,status);
+    DELETE FROM schema_migrations WHERE version=137;
+    INSERT INTO events(id,name,starts_at,group_id,status,event_type_key) VALUES('replace-live','Live LAN',1,'default-group','published','lan');
+    INSERT INTO betting_rounds(id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_at,settled_at,payout_policy) VALUES
+      ('replace-open','default-group','replace-live','draw','draw-a','Open','[]','open',0,1,NULL,'stake_cap_v1'),
+      ('replace-refunded','default-group','replace-live','draw','draw-b','Refunded','[]','refunded',0,1,2,'pool_v1');
+    INSERT INTO betting_tips(id,round_id,player_id,outcome_id,stake,payout,day,created_at,updated_at) VALUES
+      ('replace-tip','replace-refunded',NULL,'0',5,5,'2026-11-04',1,1);
+    CREATE TABLE betting_rounds_replaceable (blocker INTEGER);`);
+  fixture.pragma('foreign_keys = ON');
+  const rounds = fixture.prepare(`SELECT ${legacyColumns} FROM betting_rounds ORDER BY id`).all();
+  const tips = fixture.prepare('SELECT * FROM betting_tips ORDER BY id').all();
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /already exists/);
+  const failed = new Database(dbFile);
+  assert.ok(!(failed.pragma('table_info(betting_rounds)') as Array<{ name: string }>).some((column) => column.name === 'refund_cause'));
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=137').get(), undefined);
+  assert.deepEqual(failed.prepare('SELECT * FROM betting_tips ORDER BY id').all(), tips);
+  failed.exec('DROP TABLE betting_rounds_replaceable');
+  failed.close();
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  assert.deepEqual(migrated.prepare(`SELECT ${legacyColumns} FROM betting_rounds ORDER BY id`).all(), rounds);
+  assert.deepEqual(migrated.prepare('SELECT refund_cause FROM betting_rounds').pluck().all(), [null, null]);
+  assert.deepEqual(migrated.prepare('SELECT * FROM betting_tips ORDER BY id').all(), tips);
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  const insert = migrated.prepare(`INSERT INTO betting_rounds(id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_at)
+    VALUES(?,'default-group','replace-live','draw','draw-a','Fresh','[]','open',0,3)`);
+  assert.throws(() => insert.run('replace-duplicate'), /UNIQUE constraint/);
+  assert.throws(() => migrated.prepare("UPDATE betting_rounds SET refund_cause='replaced' WHERE id='replace-open'").run(), /CHECK constraint/,
+    'only refunded rounds carry a refund cause');
+  migrated.exec("UPDATE betting_rounds SET status='refunded',settled_at=3,refund_cause='replaced' WHERE id='replace-open'");
+  insert.run('replace-fresh');
+  migrated.exec('DELETE FROM schema_migrations WHERE version=137');
+  const replacedRounds = migrated.prepare('SELECT * FROM betting_rounds ORDER BY id').all();
+  migrated.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const replayed = new Database(dbFile);
+  assert.deepEqual(replayed.prepare('SELECT * FROM betting_rounds ORDER BY id').all(), replacedRounds);
+  assert.deepEqual(replayed.prepare('SELECT * FROM betting_tips ORDER BY id').all(), tips);
+  replayed.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 134 funds missed eligible wallets atomically and preserves spent balances, history and closed events on replay', () => {
   const dbFile = makeTempDbPath('returning-wallet-eligibility');
   runMigrations(dbFile);
@@ -1781,10 +1845,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 136);
+  assert.equal(migrations.length, 137);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 136 }, (_, index) => index + 1),
+    Array.from({ length: 137 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -2386,8 +2450,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 136 }, (_, index) => index + 1),
-    'every version 1..136 runs exactly once',
+    Array.from({ length: 137 }, (_, index) => index + 1),
+    'every version 1..137 runs exactly once',
   );
 });
 
