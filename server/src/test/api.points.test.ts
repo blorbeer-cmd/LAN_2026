@@ -1541,7 +1541,7 @@ test('missing fixture teams refund existing stakes and skip new markets without 
   }
 });
 
-test('revealed points open waiting markets at once; lineup moves update untipped markets and replace tipped open ones', async () => {
+test('revealed points open waiting markets at once; lineup moves update untipped markets and replace tipped open ones', async (t) => {
   const f = await fixture({}, false);
   const [a, b, c] = f.players;
   const markets = (drawId: string) => db.prepare(`SELECT id,status,refund_cause AS cause FROM betting_rounds
@@ -1588,6 +1588,22 @@ test('revealed points open waiting markets at once; lineup moves update untipped
   assert.equal((await move(pair(waiting.id, moved.teams))).status, 200);
   assert.deepEqual(markets(waiting.id).map((m) => [m.status, m.cause]), [['refunded', 'replaced'], ['refunded', null]],
     'closed tips stay closed after a later lineup change');
+
+  // A replacement inherits an explicit deadline, which keeps closing its tips.
+  const timed = await draw();
+  const [timedMarket] = markets(timed.id);
+  const closesAt = Date.now() + 60_000;
+  db.prepare('UPDATE betting_rounds SET closes_at=? WHERE id=?').run(closesAt, timedMarket.id);
+  assert.equal((await tip(timedMarket.id, b)).status, 200);
+  assert.equal((await move(pair(timed.id, timed.teams))).status, 200);
+  const timedFresh = markets(timed.id).find((m) => m.cause === null)!;
+  assert.equal((await automaticMarket(f, 'draw', timed.id)).closesAt, closesAt);
+  t.mock.timers.enable({ apis: ['Date'], now: closesAt });
+  try {
+    assert.equal((await tip(timedFresh.id, c)).status, 409, 'the original deadline still closes the replacement');
+  } finally {
+    t.mock.timers.reset();
+  }
 
   // A move racing a tip either refunds that tip with the old lineup or rejects
   // it; it never leaves two current markets or a stake outside the current one.

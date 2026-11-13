@@ -139,8 +139,10 @@ im Feinschliff oder durch ein korrigiertes Vorrundenspiel im K.-o.-Baum, gilt:
 - Ohne Tipps übernimmt der bestehende Markt die neue Aufstellung. Link und Mitteilung bleiben gültig.
 - Ein offener Markt mit Tipps wird vollständig erstattet. Im selben Schritt öffnet für dieselbe
   Auslosung beziehungsweise Partie ein neuer Markt mit neuer Mitteilung, sobald beide Seiten
-  feststehen. Tipps auf den ersetzten Markt werden abgewiesen. Er bleibt nur im Punkteverlauf.
-- Ein bereits geschlossener Markt mit Tipps wird erstattet; die Tippabgabe bleibt geschlossen.
+  feststehen. Eine explizite Frist des ersetzten Marktes gilt für den neuen Markt weiter. Tipps auf
+  den ersetzten Markt werden abgewiesen. Er bleibt nur im Punkteverlauf.
+- Ein bereits geschlossener Markt mit Tipps oder abgelaufener Frist wird erstattet; die Tippabgabe
+  bleibt geschlossen.
 
 ## Abrechnung und Korrektur
 

@@ -302,13 +302,17 @@ function ensureBettingMarkets(eventId?: string): BettingRound[] {
     UNION ALL
     SELECT t.id,t.group_id,t.event_id,'tournament',t.created_by FROM tournaments t
       WHERE t.status!='completed' AND t.ended_early=0
-  ) SELECT c.* FROM candidates c JOIN events e ON e.id=c.event_id AND e.group_id=c.group_id
+  ) SELECT c.*,
+      -- A replacement keeps the explicit deadline of the round it replaces.
+      COALESCE((SELECT p.closes_at FROM betting_rounds p WHERE p.event_id=c.event_id AND p.source_type=c.source_type
+        AND p.source_id=c.source_id AND p.refund_cause='replaced' ORDER BY p.created_at DESC,p.rowid DESC LIMIT 1),0) AS closes_at
+    FROM candidates c JOIN events e ON e.id=c.event_id AND e.group_id=c.group_id
     JOIN points_settings s ON s.event_id=e.id AND s.closed_at IS NULL AND s.visible=1
     LEFT JOIN betting_rounds r ON r.event_id=c.event_id AND r.source_type=c.source_type AND r.source_id=c.source_id
       AND r.refund_cause IS NOT 'replaced'
     WHERE r.id IS NULL AND e.event_type_key='lan' AND e.status='published' AND e.ended_at IS NULL
       AND (? IS NULL OR e.id=?)`).all(eventId ?? null, eventId ?? null) as
-    Array<{ source_id: string; group_id: string; event_id: string; source_type: BetSource; created_by: string | null }>;
+    Array<{ source_id: string; group_id: string; event_id: string; source_type: BetSource; created_by: string | null; closes_at: number }>;
   const created: BettingRound[] = [];
   for (const row of sources) {
     let source: SourceState;
@@ -323,7 +327,7 @@ function ensureBettingMarkets(eventId?: string): BettingRound[] {
     const sides = source.outcomes.filter((outcome) => outcome.id !== DRAW_BET_OUTCOME);
     if (source.started || source.finished || source.invalid || sides.length < 2 ||
         sides.some((side) => !side.playerIds.length)) continue;
-    const id = createBettingRound(row.group_id, row.event_id, row.source_type, row.source_id, 0, row.created_by, false);
+    const id = createBettingRound(row.group_id, row.event_id, row.source_type, row.source_id, row.closes_at, row.created_by, false);
     created.push(getBettingRound(row.group_id, row.event_id, id));
   }
   return created;
@@ -475,9 +479,10 @@ export function reconcileBetting(eventId?: string, publish = true): BettingRound
     changed.push(...ensureBettingMarkets(eventId));
     let replaced = false;
     // An open round whose source changed is replaced by a fresh round once
-    // the source offers a market again. Closed tips stay closed.
+    // the source offers a market again. Closed tips and elapsed deadlines stay closed.
     const refundChanged = (round: BettingRound, reason: string, replaceable: boolean) => {
-      const cause = replaceable && round.status === 'open' ? 'replaced' : null;
+      const open = round.status === 'open' && !(round.closes_at > 0 && round.closes_at <= Date.now());
+      const cause = replaceable && open ? 'replaced' : null;
       settleRound(round, null, reason, Date.now(), null, cause);
       replaced ||= cause !== null;
       changed.push(round);
