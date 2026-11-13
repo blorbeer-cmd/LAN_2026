@@ -1,4 +1,4 @@
-import { withBettingAccounting, reconcileBetting, assertTournamentEditable, settledTournamentRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
+import { withBettingAccounting, reconcileBetting, assertTournamentEditable, correctableTournamentRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
 // Tournaments (FR-33): pick a game, group present players into teams, and
 // get either a single-elimination bracket ("Turnierbaum", optionally with a
 // third-place match) or a round-robin
@@ -838,7 +838,7 @@ function saveTournamentResult(req: Request, res: Response) {
   let readyNextRoundMatchIds: string[] = [];
 
   const record = () => withBettingAccounting(tournament.event_id, () => {
-    const correctedRounds = isCorrection ? settledTournamentRounds(req.group!.id, tournament.id) : [];
+    const correctedRounds = isCorrection ? correctableTournamentRounds(req.group!.id, tournament.id) : [];
     const correction = validateBettingCorrection(req, correctedRounds);
     const leaderboardResult = JSON.stringify({
       teams: [{ playerIds: JSON.parse(teamA.player_ids) }, { playerIds: JSON.parse(teamB.player_ids) }],

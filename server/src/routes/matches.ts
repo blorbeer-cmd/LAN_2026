@@ -1,4 +1,4 @@
-import { withBettingAccounting, assertMatchEditable, settledDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
+import { withBettingAccounting, assertMatchEditable, correctableDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
 // Recorded match results (FR-22, FR-25). Result details (teams + winner) are
 // stored as JSON with an explicit draw flag so missing results stay unscored.
 // Each match is
@@ -351,7 +351,7 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
 
   const nextResult = JSON.stringify(nextResultObj);
   withBettingAccounting(existing.event_id, () => {
-    const rounds = settledDrawRounds(req.group!.id, existing.id);
+    const rounds = correctableDrawRounds(req.group!.id, existing.id);
     if (!rounds.length) assertMatchEditable(req.group!.id, existing.id);
     const correction = validateBettingCorrection(req, rounds);
     if (nextGameId !== existing.game_id || nextPlayedAt !== existing.played_at || nextResult !== existing.result) {

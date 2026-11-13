@@ -169,7 +169,8 @@ export function pointsHomeHtml(ctx) {
 
 function bettingRound(type, id) {
   if (!state.activeEvent?.pointsEnabled) return null;
-  const rounds = currentData()?.rounds ?? [];
+  // A round replaced after a lineup change stays only in the points history.
+  const rounds = (currentData()?.rounds ?? []).filter((round) => !round.replaced);
   return rounds.find((round) => round.sourceType === type && round.sourceId === id)
     ?? (type === 'tournament' ? rounds.find((round) => round.sourceType === 'tournament_match' && round.tournament?.id === id) : null)
     ?? null;
@@ -213,7 +214,7 @@ function roundOutcomesHtml(round) {
 export function competitionMatchesTipFilter(type, id, filter) {
   const data = currentData();
   if (filter === 'all' || !state.activeEvent?.pointsEnabled || !data?.settings) return true;
-  return data.rounds.some((round) =>
+  return data.rounds.some((round) => !round.replaced &&
     (type === 'tournament' ? round.tournament?.id === id : round.sourceType === type && round.sourceId === id)
     && (filter === 'placed' ? Boolean(round.mine) : round.status === 'open' && !data.settings.closed_at && !round.mine));
 }
@@ -244,7 +245,8 @@ async function openBettingDialog({ roundId, tournamentId }, ctx) {
   if (key !== scopeKey() || !state.activeEvent?.pointsEnabled) return;
   const selected = data.rounds.find((round) => round.id === roundId);
   const group = tournamentId || selected?.tournament?.id;
-  const rounds = group ? data.rounds.filter((round) => round.tournament?.id === group) : selected ? [selected] : [];
+  const rounds = group ? data.rounds.filter((round) => round.tournament?.id === group && (!round.replaced || round.id === roundId))
+    : selected ? [selected] : [];
   rounds.sort((a, b) => Number(b.sourceType === 'tournament') - Number(a.sourceType === 'tournament')
     || (a.tournament?.groupIndex ?? Infinity) - (b.tournament?.groupIndex ?? Infinity)
     || (a.tournament?.round ?? 0) - (b.tournament?.round ?? 0) || (a.tournament?.slot ?? 0) - (b.tournament?.slot ?? 0)
@@ -423,7 +425,7 @@ export function wireCompetitionBetting(container, ctx) {
 export function competitionCorrection(type, sourceId, fixtureIds = []) {
   const rounds = (currentData()?.rounds ?? []).filter(
     (r) =>
-      r.status === 'settled' &&
+      r.rebooksOnCorrection &&
       ((r.sourceType === type && r.sourceId === sourceId) ||
         (type === 'tournament' && r.sourceType === 'tournament_match' && fixtureIds.includes(r.sourceId))),
   );

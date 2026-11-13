@@ -53,7 +53,8 @@ Ausblenden entfernt Punktekonto, Verlauf, Ranglisten, Home-/Profil-Verweise, Wet
 Wettmitteilungen für Teilnehmer. Direkte Teilnehmer-API-Zugriffe sind gesperrt. Die administrative
 Punkteverwaltung bleibt erreichbar. Automatische Kategorie-Gutschriften und bestehende Wetten
 werden weiter abgewickelt; die Sichtbarkeit setzt nichts zurück. Neue Tipps, Änderungen und
-neue Runden sind während des Ausblendens gesperrt. Bereits ausgelieferter Web-Push lässt sich
+neue Runden sind während des Ausblendens gesperrt. Beim Einblenden entstehen die Märkte bereits
+wartender Wettbewerbe sofort, nicht erst beim nächsten Wiederherstellungsabgleich. Bereits ausgelieferter Web-Push lässt sich
 auf Geräten nicht zurückrufen. Der Kiosk zeigt Ergebnisse weiterhin ohne Punkte.
 
 ## Wetten am Match und Turnier
@@ -132,6 +133,15 @@ finanziert. Die fehlende Startgutschrift und das Wiederöffnen bilden eine gemei
 frühere Endstände bleiben unverändert.
 Nach Eventende sind neue Tipps gesperrt, während Ergebnisse und Verlauf sichtbar bleiben.
 
+Ändert sich die Aufstellung eines Wettbewerbs vor dem Spiel, etwa durch Verschieben eines Spielers
+im Feinschliff oder durch ein korrigiertes Vorrundenspiel im K.-o.-Baum, gilt:
+
+- Ohne Tipps übernimmt der bestehende Markt die neue Aufstellung. Link und Mitteilung bleiben gültig.
+- Ein offener Markt mit Tipps wird vollständig erstattet. Im selben Schritt öffnet für dieselbe
+  Auslosung beziehungsweise Partie ein neuer Markt mit neuer Mitteilung, sobald beide Seiten
+  feststehen. Tipps auf den ersetzten Markt werden abgewiesen. Er bleibt nur im Punkteverlauf.
+- Ein bereits geschlossener Markt mit Tipps wird erstattet; die Tippabgabe bleibt geschlossen.
+
 ## Abrechnung und Korrektur
 
 Der Pool besteht ausschließlich aus den Einsätzen. Der Nettogewinn ist je Person auf den eigenen
@@ -169,6 +179,14 @@ Bei freien Matches gilt dieselbe Ergebnisinterpretation wie für Spielpunkte: vo
 Teamränge haben Vorrang vor einem separaten Siegerfeld, ein geteilter erster Rang gilt als Remis.
 Ein geteilter Turniersieg ist im Gesamtsieger-Markt nicht wählbar und führt deshalb zur
 Erstattung. Die Turniertitel und Platzierungsboni bleiben für alle gleichplatzierten Sieger erhalten.
+
+Eine Ergebniskorrektur berechnet nicht nur abgerechnete Märkte neu, sondern auch Märkte, die
+wegen des eingetragenen Ergebnisses erstattet wurden und Tipps auf mindestens zwei Ausgängen
+haben. Trifft das korrigierte Ergebnis einen getippten Ausgang, wird der Markt regulär abgerechnet.
+Diese Korrektur verlangt wie bei abgerechneten Märkten einen Admin mit Begründung. Märkte, die nach
+keiner Korrektur auszahlen können, sowie Admin-Erstattungen und Stornos bleiben unverändert.
+Migration 137 speichert dafür den Erstattungsgrund und erlaubt je Quelle einen neuen Markt nach
+einem ersetzten. Bestehende Märkte, Tipps und Buchungen bleiben unverändert.
 
 **W6:** Finanzkorrekturen erfolgen ausschließlich über begründete Markt-Neuberechnung oder
 Storno. Einseitige Wallet-/Wettänderungen über die allgemeine Journal-Korrektur oder den alten
