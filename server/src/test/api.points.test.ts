@@ -1720,6 +1720,14 @@ test('tips are public with names, signal only the betting views and name fixture
     .filter((row: { sourceType: string; tournament?: { id: string } }) => row.tournament?.id === created.body.id && row.sourceType === 'tournament_match')
     .map((row: { tournament: { phase: string } }) => row.tournament.phase);
   assert.deepEqual(phases, ['Halbfinale', 'Halbfinale'], 'the semifinals carry the bracket phase name');
+
+  // Accounts that opted out of being named and test accounts outside test
+  // events stay anonymous stakes: neither name nor id is published.
+  assert.equal((await request(app).patch(`/api/players/${b}`).set('x-test-player-id', b).send({ newstickerOptOut: true })).status, 200);
+  db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(a);
+  const hidden = await automaticMarketAs(f, c, r.id);
+  assert.deepEqual(hidden.outcomes.filter((o) => o.playerIds.length).map((o) => o.tippers),
+    [[{ playerId: null, name: null, stake: 5 }], [{ playerId: null, name: null, stake: 6 }]]);
 });
 
 test('re-rolling the shown draw closes its market; draw notices wait for the kept lineup and tournament markets share one notice', async () => {

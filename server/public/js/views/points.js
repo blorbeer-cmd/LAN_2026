@@ -7,7 +7,7 @@ import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { rankedListHtml, sharedRankNumbers } from '../rankedList.js';
-import { POINT_SOURCES, signedPoints, pointsSectionHtml, journalSourceState, categoryPlaceSummary, tournamentTipGroups } from '../pointsPresentation.js';
+import { POINT_SOURCES, signedPoints, pointsSectionHtml, journalSourceState, categoryPlaceSummary, tournamentTipGroups, tournamentBettingSummary } from '../pointsPresentation.js';
 import { categoryPointsHtml, pointsHistoryHtml, adminCategoryJournalHtml, categoryEntryFactsHtml } from '../pointsCategories.js';
 import { pointsReportButton, wirePointsReportButtons } from '../pointsReports.js';
 import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
@@ -236,7 +236,7 @@ function roundSummary(round, closed = Boolean(currentData()?.settings.closed_at)
   ].filter(Boolean).join(' · ');
 }
 function tipperText(outcome) {
-  return (outcome.tippers ?? []).map((tipper) => `${tipper.name ?? 'Gelöschtes Konto'} ${tipper.stake} P.`).join(', ');
+  return (outcome.tippers ?? []).map((tipper) => `${tipper.name ?? 'Anonym'} ${tipper.stake} P.`).join(', ');
 }
 
 function roundOutcomesHtml(round) {
@@ -279,11 +279,7 @@ export function competitionBettingSummaryHtml(type, id) {
   if (type === 'tournament') {
     const rounds = data.rounds.filter((round) => !round.replaced && round.tournament?.id === id);
     if (!rounds.length) return '';
-    const open = data.settings.closed_at ? 0 : rounds.filter((round) => round.status === 'open').length;
-    const mine = rounds.filter((round) => round.mine).length;
-    const text = [open ? `${open} ${open === 1 ? 'Tipprunde' : 'Tipprunden'} offen` : statusLabels.locked,
-      mine ? `${mine} ${mine === 1 ? 'eigener Tipp' : 'eigene Tipps'}` : ''].filter(Boolean).join(' · ');
-    return `<span class="muted points-betting-summary">${e(text)}</span>`;
+    return `<span class="muted points-betting-summary">${e(tournamentBettingSummary(rounds, Boolean(data.settings.closed_at)))}</span>`;
   }
   const round = bettingRound(type, id);
   return round ? `<span class="muted points-betting-summary" data-betting-summary="${e(round.id)}">${e(roundSummary(round))}</span>` : '';
@@ -304,18 +300,24 @@ function tipContext(round, { includeTeams = false } = {}) {
     round.sourceType === 'tournament' ? '' : `${tipFixtureLabel(round)}${includeTeams ? ` · ${sides}` : ''}`].filter(Boolean).join(' · ');
 }
 
+// The markets one dialog offers: every market of the tournament (a replaced
+// one only while it is the selected round) or the single selected market.
+function dialogRounds(data, roundId, group) {
+  const selected = data.rounds.find((round) => round.id === roundId);
+  const rounds = group ? data.rounds.filter((round) => round.tournament?.id === group && (!round.replaced || round.id === roundId))
+    : selected ? [selected] : [];
+  return rounds.sort((a, b) => Number(b.sourceType === 'tournament') - Number(a.sourceType === 'tournament')
+    || (a.tournament?.groupIndex ?? Infinity) - (b.tournament?.groupIndex ?? Infinity)
+    || (a.tournament?.round ?? 0) - (b.tournament?.round ?? 0) || (a.tournament?.slot ?? 0) - (b.tournament?.slot ?? 0)
+    || a.id.localeCompare(b.id));
+}
+
 async function openBettingDialog({ roundId, tournamentId }, ctx) {
   const key = scopeKey(), eventId = state.activeEvent?.id;
   const data = await pointsRequest('', {}, eventId);
   if (key !== scopeKey() || !state.activeEvent?.pointsEnabled) return;
   const selected = data.rounds.find((round) => round.id === roundId);
-  const group = tournamentId || selected?.tournament?.id;
-  const rounds = group ? data.rounds.filter((round) => round.tournament?.id === group && (!round.replaced || round.id === roundId))
-    : selected ? [selected] : [];
-  rounds.sort((a, b) => Number(b.sourceType === 'tournament') - Number(a.sourceType === 'tournament')
-    || (a.tournament?.groupIndex ?? Infinity) - (b.tournament?.groupIndex ?? Infinity)
-    || (a.tournament?.round ?? 0) - (b.tournament?.round ?? 0) || (a.tournament?.slot ?? 0) - (b.tournament?.slot ?? 0)
-    || a.id.localeCompare(b.id));
+  const rounds = dialogRounds(data, roundId, tournamentId || selected?.tournament?.id);
   if (!rounds.length) throw new Error('Für diese Begegnung gibt es keine Tipprunde.');
   openTip(selected ?? rounds.find((round) => round.status === 'open' && !round.mine) ?? rounds.find((round) => round.status === 'open') ?? rounds[0], ctx, { data, rounds });
 }
@@ -327,17 +329,21 @@ function openTip(initialRound, ctx, { data: initialData, rounds: initialRounds }
   const drafts = new Map();
   const selectedGames = new Map();
   const dialog = openPointsModal('', '', { onClose: () => bettingListeners.delete(follow) });
-  // Another device tipped, closed or settled one of these markets: take over
-  // pot, stakes and status without losing the draft or the focused control.
+  const group = initialRound.tournament?.id ?? null;
+  // Another device tipped, closed or settled one of these markets, or a
+  // tournament result opened a new one: take over pot, stakes, status and new
+  // markets without losing the draft or the focused control.
   function follow(changedId) {
-    if (changedId && !rounds.some((row) => row.id === changedId)) return;
+    if (changedId && !group && !rounds.some((row) => row.id === changedId)) return;
     const version = ++liveVersion;
     pointsRequest('', {}, eventId).then((fresh) => {
       if (version !== liveVersion || busy || key !== scopeKey() || !dialog.el.isConnected) return;
       const wasOpen = rounds.find((row) => row.id === roundId)?.status === 'open' && !data.settings.closed_at;
       remember();
       data = fresh;
-      rounds = rounds.map((row) => fresh.rounds.find((updated) => updated.id === row.id) ?? row);
+      const rebuilt = group ? dialogRounds(fresh, roundId, group) : [];
+      rounds = rebuilt.some((row) => row.id === roundId) ? rebuilt
+        : rounds.map((row) => fresh.rounds.find((updated) => updated.id === row.id) ?? row);
       const current = rounds.find((row) => row.id === roundId);
       if (wasOpen && (current?.status !== 'open' || fresh.settings.closed_at)) notice = { roundId, text: 'Tipps wurden gerade geschlossen.' };
       const active = dialog.el.contains(document.activeElement) ? document.activeElement : null;

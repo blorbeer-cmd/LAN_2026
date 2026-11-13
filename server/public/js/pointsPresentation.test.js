@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pointTimeline, pointsChartHtml, journalSourceState, tournamentTipGroups } from './pointsPresentation.js';
+import { pointTimeline, pointsChartHtml, journalSourceState, tournamentTipGroups, tournamentBettingSummary } from './pointsPresentation.js';
 import { parseAppHash, appHash } from './appRoute.js';
 import { feedLinkTarget, feedLinkView } from './pushFeed.js';
 import { categoryPointsHtml, pointsHistoryHtml, adminCategoryJournalHtml, categoryEntryFactsHtml } from './pointsCategories.js';
@@ -118,4 +118,13 @@ test('tournament tip selection separates equal round numbers in groups, knockout
     : row.id === 'final' ? { ...row, tournament: { ...row.tournament, phase: 'Finale' } } : row);
   assert.deepEqual(tournamentTipGroups(named).map((group) => group.label).slice(-3), ['Halbfinale', 'Spiel um Platz 3', 'Finale'],
     'server phase names match the bracket');
+});
+
+test('a tournament card tells open, waiting and finished markets apart', () => {
+  const rounds = (...statuses) => statuses.map((status, index) => ({ status, mine: index === 0 ? {} : null }));
+  assert.equal(tournamentBettingSummary(rounds('open', 'locked')), '1 Tipprunde offen · 1 eigener Tipp');
+  assert.equal(tournamentBettingSummary(rounds('locked', 'settled')), 'Tipps geschlossen · 1 eigener Tipp');
+  assert.equal(tournamentBettingSummary(rounds('open'), true), 'Tipps geschlossen · 1 eigener Tipp', 'final standings close open rounds');
+  assert.equal(tournamentBettingSummary(rounds('settled', 'refunded')), 'Abgerechnet · 1 eigener Tipp');
+  assert.equal(tournamentBettingSummary(rounds('refunded', 'refunded', 'refunded', 'refunded')), 'Erstattet · 1 eigener Tipp');
 });

@@ -65,6 +65,17 @@ export function pointsChartHtml(entries, { label: chartLabel = 'Punkteverlauf' }
 
 // Group stages and knockout rounds can share the same round number. Keep them
 // distinct, including the third-place match beside its final.
+// One status for all markets of a tournament on its card: open rounds first,
+// then rounds still waiting for a result, otherwise how the last ones ended.
+export function tournamentBettingSummary(rounds, closed = false) {
+  const open = closed ? 0 : rounds.filter((round) => round.status === 'open').length;
+  const mine = rounds.filter((round) => round.mine).length;
+  const state = open ? `${open} ${open === 1 ? 'Tipprunde' : 'Tipprunden'} offen`
+    : rounds.some((round) => round.status === 'locked' || round.status === 'open') ? 'Tipps geschlossen'
+    : rounds.every((round) => round.status === 'refunded') ? 'Erstattet' : 'Abgerechnet';
+  return [state, mine ? `${mine} ${mine === 1 ? 'eigener Tipp' : 'eigene Tipps'}` : ''].filter(Boolean).join(' · ');
+}
+
 export function tournamentTipGroups(rounds) {
   const groups = new Map();
   for (const round of rounds) {

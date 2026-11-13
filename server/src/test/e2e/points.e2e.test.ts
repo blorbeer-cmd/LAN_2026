@@ -579,10 +579,14 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   assert.equal(await tournamentDialog.locator('[name="stake"]').inputValue(), '3');
   await tournamentDialog.getByRole('button', { name: 'Tipp speichern', exact: true }).click();
   await admin.locator('.modal-backdrop').waitFor({ state: 'detached' });
+  // The dialog stays open while another device records the semifinal: the
+  // final's new market joins the round choice without reopening.
+  await openTournamentTips();
+  await tournamentDialog.locator('[data-tip-group]').waitFor();
+  assert.equal(await tournamentDialog.locator('[data-tip-group] option[value="Finale"]').count(), 0);
   await api(`/api/tournaments/${cup.id}/matches/${fixture.id}/result`, 'POST', { winnerTeamId: fixture.teamAId });
   assert.equal((await api(`/api/points?eventId=${eventId}`)).rounds.find((row: any) => row.id === market.id).status, 'settled',
     'a tournament result settles accepted tips even without manual closing');
-  await openTournamentTips();
   await tournamentDialog.locator('[data-tip-group] option[value="Finale"]').waitFor({ state: 'attached' });
   await tournamentDialog.locator('[data-tip-group]').selectOption('Finale');
   assert.equal(await tournamentDialog.locator('[data-tip-select] option').count(), 1, 'newly playable final appears in its own round');

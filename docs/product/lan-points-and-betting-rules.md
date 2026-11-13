@@ -87,8 +87,10 @@ entfernt, einschließlich Match, Turnier, LAN-Punkte, Tippdialog und Hilfetext. 
 Gewinnschätzung („bei Sieg etwa +X P.“) entfällt, weil sie faktisch eine Quote wäre; sichtbar ist
 nur die feste Obergrenze „Gewinn höchstens in Höhe deines Einsatzes“.
 Fremde Tipps sind nach Nutzerentscheidung zu #755 (Stufe 3) sofort mit Namen sichtbar: Die
-Punkte-API nennt je Ausgang die Tippenden mit Einsatz (`tippers`). Einsätze gelöschter Konten
-bleiben ohne Namen. Freie Matches mit zwei oder mehr Teams sowie
+Punkte-API nennt je Ausgang die Tippenden mit Einsatz (`tippers`). Ohne Namen und ohne
+Spieler-ID, also als „Anonym“ mit Einsatz, erscheinen Tipps gelöschter Konten, von Konten mit
+Newsticker-Opt-out und von Testkonten außerhalb von Testevents; Topf und Einsatzsummen bleiben
+vollständig. Freie Matches mit zwei oder mehr Teams sowie
 Liga- und Gruppenspiele bieten „Unentschieden“ als regulär gewinnenden Tipp. K.-o.-Spiele und
 Turniersieger-Märkte bieten ihn nicht; ältere Märkte behalten ihre ursprüngliche Auswahl.
 Eine neue Runde verbraucht keinen Kontingentplatz. Auch ein gespeichertes altes `maxRounds=0`
@@ -254,7 +256,9 @@ mehrere bilden das Menü „Wetten“. Mitspieler und Admins starten ein Match �
 Aktion „Spiel starten“ mit Bestätigung; sie schließt die Tipps für alle und steht nicht mehr
 neben „Jetzt tippen“ im Menü. Die Metazeile der Karte nennt den Stand: „Tipps offen“,
 „Tipps geschlossen“ oder „Abgerechnet“, Topf, Tippanzahl und den eigenen Tipp mit Team und
-Einsatz beziehungsweise nach der Abrechnung den Nettowert. Die Kachel „Ohne Ergebnis“ und der
+Einsatz beziehungsweise nach der Abrechnung den Nettowert. Turnierkarten fassen alle Märkte
+zusammen: offene Tipprunden, sonst „Tipps geschlossen“, solange ein Ergebnis aussteht, danach
+„Abgerechnet“ oder, wenn alles erstattet wurde, „Erstattet“. Die Kachel „Ohne Ergebnis“ und der
 Tippfilter umfassen alle Spiele; die Spielauswahl steuert nur das nächste Auslosen, die Historie
 bleibt je Spiel. In der Turnieransicht steht genau einmal „Tipps öffnen“ beziehungsweise
 „Wetten“ direkt unter Titel und Turnierinfos. Turniersieger
@@ -280,7 +284,8 @@ Beschriftung „Sieger“ und besteht aus großen Teamflächen; jede nennt Einsa
 mit Einsatz. Kein Team ist vorausgewählt. Nach dem Speichern bestätigt „Tipp gespeichert: Team,
 Einsatz“, nach dem Zurücknehmen „Tipp zurückgenommen“. Ein offener Dialog übernimmt Tipps,
 Schließen und Abrechnung anderer Geräte sofort und meldet „Tipps wurden gerade geschlossen“;
-der Entwurf bleibt erhalten.
+der Entwurf bleibt erhalten. Im Turnierdialog erscheinen dabei auch neu entstandene Märkte,
+etwa das Finale nach dem letzten Halbfinale.
 Im Turniermodal wählt man zuerst Runde beziehungsweise Gruppe und dann ein Spiel mit
 feststehenden Teams. Runden heißen wie im Turnierbaum („Viertelfinale“, „Halbfinale“, „Finale“,
 „Gruppe 1 · Runde 2“). Turniersieger und Spiel um Platz 3 sind eigene Einträge. Spielauswahl

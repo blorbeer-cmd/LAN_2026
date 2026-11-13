@@ -435,10 +435,14 @@ export function roundView(round: BettingRound, playerId: string) {
   const tips = tipsFor(round.id);
   const mine = tips.find((tip) => tip.player_id === playerId);
   const pot = tips.reduce((sum, t) => sum + t.stake, 0);
+  // Only identities that may be shown publicly: accounts that opted out of
+  // being named (newsticker opt-out) and test accounts outside test events
+  // stay anonymous stakes, without name or id (#755).
   const tipperIds = [...new Set(tips.map((t) => t.player_id).filter((id): id is string => Boolean(id)))];
   const tipperNames = new Map(tipperIds.length
-    ? (db.prepare(`SELECT id, name FROM players WHERE id IN (${tipperIds.map(() => '?').join(',')})`)
-      .all(...tipperIds) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name])
+    ? (db.prepare(`SELECT p.id, p.name FROM players p JOIN events e ON e.id = ?
+        WHERE p.id IN (${tipperIds.map(() => '?').join(',')}) AND p.newsticker_opt_out = 0 AND (p.is_test = 0 OR e.is_test = 1)`)
+      .all(round.event_id, ...tipperIds) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name])
     : []);
   return {
     id: round.id,
@@ -460,10 +464,14 @@ export function roundView(round: BettingRound, playerId: string) {
     outcomes: (JSON.parse(round.outcomes) as BetOutcome[]).map((outcome) => {
       const stake = tips.filter((t) => t.outcome_id === outcome.id).reduce((sum, t) => sum + t.stake, 0);
       // Tips are public with names from the moment they are placed (product
-      // decision on #755). Tips of erased accounts stay anonymous stakes.
+      // decision on #755). Erased, opted-out and hidden test accounts stay
+      // anonymous stakes: neither name nor id is published.
       const tippers = tips
         .filter((t) => t.outcome_id === outcome.id)
-        .map((t) => ({ playerId: t.player_id, name: t.player_id ? tipperNames.get(t.player_id) ?? null : null, stake: t.stake }))
+        .map((t) => {
+          const name = t.player_id ? tipperNames.get(t.player_id) ?? null : null;
+          return { playerId: name === null ? null : t.player_id, name, stake: t.stake };
+        })
         .sort((x, y) => y.stake - x.stake || (x.name ?? '').localeCompare(y.name ?? '', 'de'));
       const preview = mine?.outcome_id === outcome.id
         ? distributePool(
