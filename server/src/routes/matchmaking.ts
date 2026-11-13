@@ -1,4 +1,4 @@
-import { withBettingAccounting, assertCompetitionEditable } from '../betting';
+import { withBettingAccounting, assertCompetitionEditable, retireRerolledDraw, publishBettingChanges, type BettingRound } from '../betting';
 import { syncCompetitionPoints } from '../orgaPoints';
 // Matchmaking endpoint (FR-16..18): draws balanced teams for a game from a
 // set of present players, using their skill ratings. Stateless — every call
@@ -149,7 +149,10 @@ function loadAvoidPairs(groupId: string, eventId: string, playerIds: string[]): 
 
 // POST /api/matchmaking
 // Body: { gameId: string, playerIds: string[], teamCount?: number,
-//         avoidAdjacentOpponents?: boolean }
+//         avoidAdjacentOpponents?: boolean, bettingAllowed?: boolean,
+//         replacesDrawId?: string }
+// replacesDrawId names the unplayed draw this re-roll discards; it only takes
+// effect for the same game and roster (see retireRerolledDraw).
 // avoidAdjacentOpponents is always an explicit per-draw choice here, never
 // implied by the game. games.consider_seat_neighbors_default (routes/games.ts)
 // only prefills this checkbox client-side when a game is selected — it still
@@ -158,9 +161,11 @@ function loadAvoidPairs(groupId: string, eventId: string, playerIds: string[]): 
 // opposing teams can depend on how competitive/serious that particular round
 // is, not just the game itself.
 matchmakingRouter.post('/', (req, res) => {
-  const { gameId, playerIds, teamCount, avoidAdjacentOpponents, bettingAllowed: requestedBettingAllowed } = req.body ?? {};
+  const { gameId, playerIds, teamCount, avoidAdjacentOpponents, bettingAllowed: requestedBettingAllowed, replacesDrawId } = req.body ?? {};
   if (requestedBettingAllowed !== undefined && typeof requestedBettingAllowed !== 'boolean')
     return res.status(400).json({ error: 'Wetten erlauben muss Ja oder Nein sein.' });
+  if (replacesDrawId !== undefined && (typeof replacesDrawId !== 'string' || !replacesDrawId || replacesDrawId.length > 64))
+    return res.status(400).json({ error: 'replacesDrawId ist ungültig.' });
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -264,10 +269,17 @@ matchmakingRouter.post('/', (req, res) => {
   // Logged for the history view (every draw, including re-rolls — see the
   // matchmaking_draws comment in db.ts for why this is separate from the
   // actually-recorded `matches`).
-  withBettingAccounting(eventId, () => db.prepare(
-    `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, created_by, betting_allowed)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt, req.player!.id, Number(bettingAllowed)));
+  // A re-roll of the draw shown before closes that draw's open market in the
+  // same transaction; its refund is published with the other changes.
+  let retired: BettingRound[] = [];
+  withBettingAccounting(eventId, () => {
+    db.prepare(
+      `INSERT INTO matchmaking_draws (id, game_id, event_id, group_id, teams, seat_conflicts, seat_pairs_considered, generated_at, created_by, betting_allowed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(drawId, gameId, eventId, req.group!.id, JSON.stringify(teams), seatConflicts, avoidPairs.length, result.generatedAt, req.player!.id, Number(bettingAllowed));
+    if (replacesDrawId) retired = retireRerolledDraw(req.group!.id, eventId, replacesDrawId, gameId, uniqueIds);
+  });
+  publishBettingChanges(retired);
   broadcast(Events.matchmakingGenerated, result, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
   res.json(result);
 });

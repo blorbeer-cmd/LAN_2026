@@ -26,7 +26,8 @@ import {
   getBettingRound,
   lockBettingRound,
   reopenBettingRound,
-  notifyBettingRound,
+  notifyBettingRounds,
+  resolveBettingNotice,
   putTip,
   reconcileBetting,
   publishBettingChanges,
@@ -39,7 +40,6 @@ import {
 } from '../betting';
 import { broadcast, Events } from '../realtime';
 import { writeAdminAudit } from '../adminAudit';
-import { resolvePushTopic } from '../push';
 import { correctJournalEntry } from '../pointsAdministration';
 import { syncCompetitionPoints } from '../orgaPoints';
 import { readPointsBalances, readPointsJournal } from '../pointsJournal';
@@ -272,7 +272,6 @@ pointsRouter.post('/rounds/:id/lock', (req, res) => {
   if (!participating && !['admin', 'owner'].includes(req.groupMembership!.role))
     return res.status(403).json({ error: 'Nur Mitspieler oder Admins können das Spiel starten.' });
   lockBettingRound(round);
-  resolvePushTopic(`betting-open:${round.id}`, false, { groupId: req.group!.id, eventId });
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json({ ok: true });
 });
@@ -295,7 +294,7 @@ pointsRouter.post('/rounds/:id/refund', requireGroupRole('admin'), (req, res) =>
     req.player!.id,
     text(req.body?.reason, 'Begründung'),
   );
-  resolvePushTopic(`betting-open:${req.params.id}`, false, { groupId: req.group!.id, eventId });
+  resolveBettingNotice(getBettingRound(req.group!.id, eventId, req.params.id));
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.json({ ok: true });
 });
@@ -397,8 +396,7 @@ export function sweepBetting(now = Date.now(), recoverSources = false): void {
       }
     }
   }
-  for (const round of db.prepare("SELECT * FROM betting_rounds WHERE status='open' AND notice_sent=0")
-    .all() as BettingRound[]) notifyBettingRound(round);
+  notifyBettingRounds(db.prepare("SELECT * FROM betting_rounds WHERE status='open' AND notice_sent=0").all() as BettingRound[]);
 }
 
 export function startBettingSweep(): () => void {

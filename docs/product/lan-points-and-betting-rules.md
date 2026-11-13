@@ -97,7 +97,17 @@ verfügbarem Guthaben sind neue Tipps und Änderungen gesperrt. Eine vollständi
 eines noch offenen Tipps bleibt möglich.
 
 Die persönliche Öffnungsmitteilung nennt Event und Runde, berücksichtigt Einwilligung und
-Stummschaltung und wird nicht doppelt gesendet. Neue automatische Märkte bleiben bis zur
+Stummschaltung und wird nicht doppelt gesendet. Für eine Auslosung geht sie erst 30 Sekunden nach
+dem Auslosen hinaus; wird in dieser Zeit neu ausgelost, erhält nur die behaltene Aufstellung eine
+Mitteilung. Märkte, die gemeinsam für ein Turnier öffnen, teilen sich eine Mitteilung („6 Spiele
+und der Turniersieger“). Sie wird zurückgezogen, sobald keiner dieser Turniermärkte mehr Tipps
+annimmt. Später einzeln öffnende Turnierspiele erhalten eine eigene Mitteilung.
+
+Wird für dasselbe Spiel und dieselben Spieler erneut „Teams auslosen“ gewählt, verwirft das die
+zuvor angezeigte Auslosung ohne Ergebnis: Sie bietet dauerhaft keine Wetten mehr an, auch wenn
+die LAN-Punkte gerade ausgeblendet sind und noch kein Markt besteht. Ein offener Markt schließt,
+angenommene Tipps werden erstattet. Eine Auslosung für andere Spieler oder ein anderes Spiel, eine bereits geschlossene
+Tippabgabe und eine Auslosung mit Ergebnis bleiben unberührt. Neue automatische Märkte bleiben bis zur
 ausdrücklichen Startaktion offen. Mitspieler oder Admins schließen vor Spielbeginn; beim
 ersten Turnierspiel wird zugleich der Gesamtsieger-Markt geschlossen. Bestehende explizite
 Fristen bleiben wirksam. Wird bei noch offenen Tipps ein Ergebnis eingetragen, schließt dies

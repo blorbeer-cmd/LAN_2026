@@ -17,7 +17,7 @@ import { config } from '../config';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { reconcileBetting, type roundView } from '../betting';
+import { reconcileBetting, DRAW_NOTICE_DELAY_MS, type roundView } from '../betting';
 import { sweepBetting } from '../routes/points';
 import { createPointsReport, readPointsReports, resolvePointsReport } from '../pointsReports';
 
@@ -1138,6 +1138,9 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
     assert.throws(() => createPointsReport(DEFAULT_GROUP_ID, f.eventId, a, target),
       (error: unknown) => error instanceof PointsError && error.status === 404,
       'an unsettled bet is not an awarded result even when its stake is reserved');
+  // Draw notices wait for possible re-rolls; let that window pass.
+  db.prepare('UPDATE betting_rounds SET created_at = created_at - ? WHERE id = ?').run(DRAW_NOTICE_DELAY_MS, r.id);
+  sweepBetting();
   const messages = db
     .prepare("SELECT player_ids,url FROM push_log WHERE notification_type = 'betting-open' AND target_id = ?")
     .all(r.id) as Array<{ player_ids: string; url: string }>;
@@ -1678,6 +1681,101 @@ test('result corrections rebook pools refunded by a wrong result, and a correcte
   assert.equal(reopened.status, 'open', 'the new final pairing can be tipped');
   assert.equal((await request(app).put(`/api/points/rounds/${reopened.id}/tip`).set('x-test-player-id', a)
     .send({ outcomeId: reopened.outcomes[0].id, stake: 5 })).status, 200);
+});
+
+test('re-rolling the shown draw closes its market; draw notices wait for the kept lineup and tournament markets share one notice', async () => {
+  const f = await fixture();
+  const [a, b] = f.players;
+  const generate = (replacesDrawId?: unknown, playerIds = f.players) => request(app).post('/api/matchmaking')
+    .send({ gameId: f.gameId, playerIds, teamCount: 2, bettingAllowed: true, ...(replacesDrawId === undefined ? {} : { replacesDrawId }) });
+  const tip = (roundId: string, playerId: string) =>
+    request(app).put(`/api/points/rounds/${roundId}/tip`).set('x-test-player-id', playerId).send({ outcomeId: '0', stake: 5 });
+  const status = (roundId: string) => db.prepare('SELECT status FROM betting_rounds WHERE id=?').pluck().get(roundId);
+  const notices = () => db.prepare(`SELECT target_id AS target, topic_key AS topic, title, body, resolved_at AS resolved
+    FROM push_log WHERE notification_type='betting-open' AND event_id=? ORDER BY rowid`).all(f.eventId) as
+    Array<{ target: string; topic: string; title: string; body: string; resolved: number | null }>;
+
+  const first = (await generate()).body;
+  const firstMarket = await automaticMarket(f, 'draw', first.id);
+  assert.equal((await tip(firstMarket.id, a)).status, 200);
+  assert.equal((await generate(42)).status, 400);
+  const second = (await generate(first.id)).body;
+  assert.equal(status(firstMarket.id), 'refunded', 're-rolling the shown draw closes its market');
+  assert.equal(wallet(f.eventId, a).held, 0);
+  assert.equal((await tip(firstMarket.id, a)).status, 409);
+  const secondMarket = await automaticMarket(f, 'draw', second.id);
+  assert.equal(secondMarket.status, 'open');
+
+  const otherRoster = (await generate(second.id, f.players.slice(0, 2))).body;
+  assert.equal(status(secondMarket.id), 'open', 'a draw for different players keeps the earlier market');
+  assert.equal((await tip(secondMarket.id, b)).status, 200);
+  const raced = await Promise.all([generate(second.id), generate(second.id)]);
+  assert.deepEqual(raced.map((response) => response.status), [200, 200]);
+  assert.equal(status(secondMarket.id), 'refunded');
+  assert.deepEqual(wallet(f.eventId, b), { total: 100, held: 0, available: 100 }, 'the stake is refunded exactly once');
+
+  // Closed tips mean the shown draw may already be played; a re-roll leaves it alone.
+  const playing = (await generate()).body;
+  const playingMarket = await automaticMarket(f, 'draw', playing.id);
+  assert.equal((await request(app).post(`/api/points/rounds/${playingMarket.id}/lock`).send({})).status, 200);
+  const playingReroll = (await generate(playing.id)).body;
+  assert.equal(status(playingMarket.id), 'locked');
+  assert.equal(db.prepare('SELECT betting_allowed FROM matchmaking_draws WHERE id=?').pluck().get(playing.id), 1);
+
+  assert.deepEqual(notices(), [], 'draw notices wait for possible re-rolls');
+  db.prepare("UPDATE betting_rounds SET created_at = created_at - ? WHERE event_id=? AND source_type='draw'")
+    .run(DRAW_NOTICE_DELAY_MS, f.eventId);
+  sweepBetting();
+  const kept = [otherRoster.id, ...raced.map((response) => response.body.id), playingReroll.id];
+  const keptMarkets = await Promise.all(kept.map((id) => automaticMarket(f, 'draw', id)));
+  assert.deepEqual(notices().map((notice) => notice.target).sort(), keptMarkets.map((market) => market.id).sort(),
+    'only the kept lineups are announced');
+
+  const created = await request(app).post('/api/tournaments').send({ gameId: f.gameId, format: 'round_robin',
+    teams: [TEST_ADMIN_ID, ...f.players].map((id) => ({ playerIds: [id] })) });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const tournamentId = created.body.id as string;
+  const prefix = `betting-open:tournament:${tournamentId}:`;
+  const shared = () => notices().filter((notice) => notice.topic.startsWith(prefix));
+  assert.equal(shared().length, 1, 'six fixtures and the champion market share one notice');
+  assert.match(shared()[0].title, new RegExp(`^Neue Wettmöglichkeiten: ${created.body.name}$`));
+  assert.match(shared()[0].body, /^6 Spiele und der Turniersieger\./);
+  assert.equal(notices().length, kept.length + 1, 'no notice per fixture');
+  const champion = await automaticMarket(f, 'tournament', tournamentId);
+  assert.equal(shared()[0].target, champion.id);
+  assert.equal((await request(app).post(`/api/points/rounds/${champion.id}/lock`).send({})).status, 200);
+  assert.equal(shared()[0].resolved, null, 'the shared notice stays while fixtures accept tips');
+  db.prepare('UPDATE tournaments SET ended_early=1 WHERE id=?').run(tournamentId);
+  reconcileBetting(f.eventId);
+  assert.notEqual(shared()[0].resolved, null, 'the shared notice is withdrawn once no market accepts tips');
+
+  // With hidden points no market exists yet; the discard still lasts once points are shown.
+  const hidden = await fixture({}, false);
+  const drawHidden = (replacesDrawId?: string) => request(app).post('/api/matchmaking').send({ gameId: hidden.gameId,
+    playerIds: hidden.players, teamCount: 2, bettingAllowed: true, ...(replacesDrawId ? { replacesDrawId } : {}) });
+  const discarded = (await drawHidden()).body;
+  const keptHidden = (await drawHidden(discarded.id)).body;
+  assert.equal((await request(app).patch(`/api/events/${hidden.eventId}/points-visibility`).send({ visible: true, revision: 0 })).status, 200);
+  reconcileBetting(hidden.eventId);
+  const hiddenMarkets = db.prepare("SELECT source_id FROM betting_rounds WHERE event_id=? AND source_type='draw'").pluck().all(hidden.eventId);
+  assert.deepEqual(hiddenMarkets, [keptHidden.id], 'the discarded draw never opens a market');
+
+  // A league started while points were hidden only gets fixture markets. Deleting it
+  // removes the fixture rows before the refunds are published; its notice still goes.
+  const started = await fixture({}, false);
+  const league = await request(app).post('/api/tournaments').send({ gameId: started.gameId, format: 'round_robin',
+    teams: [TEST_ADMIN_ID, ...started.players].map((id) => ({ playerIds: [id] })) });
+  assert.equal(league.status, 201, JSON.stringify(league.body));
+  const firstFixture = league.body.matches[0] as { id: string; teamAId: string };
+  assert.equal((await request(app).post(`/api/tournaments/${league.body.id}/matches/${firstFixture.id}/result`)
+    .send({ winnerTeamId: firstFixture.teamAId })).status, 200);
+  assert.equal((await request(app).patch(`/api/events/${started.eventId}/points-visibility`).send({ visible: true, revision: 0 })).status, 200);
+  reconcileBetting(started.eventId);
+  const leagueNotice = () => db.prepare(`SELECT resolved_at FROM push_log WHERE event_id=? AND topic_key GLOB ?`)
+    .all(started.eventId, `betting-open:tournament:${league.body.id}:*`) as Array<{ resolved_at: number | null }>;
+  assert.deepEqual(leagueNotice(), [{ resolved_at: null }], 'the remaining fixtures share one notice without a champion market');
+  assert.equal((await request(app).delete(`/api/tournaments/${league.body.id}`)).status, 204);
+  assert.notEqual(leagueNotice()[0].resolved_at, null, 'deleting the league withdraws its shared notice');
 });
 
 test('competition writes and deadline sweeps isolate another event with broken legacy JSON', async (t) => {
