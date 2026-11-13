@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
-import { once } from 'node:events';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -267,19 +266,44 @@ test(
       catch (error) { process.send(error instanceof PointsJournalConflict ? 'conflict' : error.message); }
       finally { require(${JSON.stringify(dbPath)}).db.close(); process.disconnect(); }
     }); process.send('ready');`;
-    const writers = [0, 1].map(() =>
-      spawn(process.execPath, ['-e', program], { env, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] }),
-    );
+    const writers: ChildProcess[] = [];
     t.after(() => {
       for (const writer of writers) writer.kill();
       fs.rmSync(dir, { recursive: true, force: true });
     });
-    await Promise.all(writers.map((writer) => once(writer, 'message')));
+    // A writer that dies fails the test with its exit code and stderr at once
+    // instead of leaving the test to its timeout. 'close' follows every IPC
+    // message the child sent, so a reply is never mistaken for an early exit.
+    const stderr = new Map<ChildProcess, string>();
+    const reply = (writer: ChildProcess) =>
+      new Promise<unknown>((resolve, reject) => {
+        const onClose = (code: number | null, signal: string | null) => {
+          writer.off('message', onMessage);
+          reject(new Error(`writer exited (${code ?? signal}) without replying: ${stderr.get(writer)}`));
+        };
+        const onMessage = (message: unknown) => {
+          writer.off('close', onClose);
+          resolve(message);
+        };
+        writer.once('message', onMessage);
+        writer.once('close', onClose);
+      });
+    // Loading db.js seeds the catalog in a deferred read-then-write
+    // transaction. Two processes doing that at the same moment can lose one
+    // to SQLITE_BUSY, which the busy timeout cannot wait out. Start the
+    // writers one after another; only the journal writes below race.
+    for (let i = 0; i < 2; i++) {
+      const writer = spawn(process.execPath, ['-e', program], { env, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+      stderr.set(writer, '');
+      writer.stderr!.on('data', (chunk) => stderr.set(writer, stderr.get(writer) + String(chunk)));
+      writers.push(writer);
+      assert.equal(await reply(writer), 'ready');
+    }
     const results = await Promise.all(
-      writers.map(async (writer, index) => {
-        const response = once(writer, 'message');
+      writers.map((writer, index) => {
+        const response = reply(writer);
         writer.send(entitlement('writer', { total: index + 4 }));
-        return (await response)[0];
+        return response;
       }),
     );
     assert.deepEqual(results.sort(), ['conflict', 'recorded']);
