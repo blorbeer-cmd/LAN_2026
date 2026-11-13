@@ -1466,6 +1466,14 @@ export function renderMatchmaking(container, ctx) {
     if (teamCountRaw) {
       body.teamCount = parseInt(teamCountRaw, 10);
     }
+    // Drawing the same game and roster again discards the unplayed draw shown
+    // above, so its open betting market closes instead of lingering.
+    const previous = state.lastMatchmaking;
+    const previousIds = previous?.teams?.flatMap((team) => team.players.map((player) => player.id)).sort() ?? [];
+    if (previous && !previous.matchId && !previous.tournamentId && previous.gameId === gameId
+      && previousIds.join() === [...playerIds].sort().join()) {
+      body.replacesDrawId = previous.id;
+    }
 
     try {
       const result = await api.matchmaking.generate(body);
