@@ -265,9 +265,10 @@ Es wird kein verspäteter Siegertipp angelegt; Verwaltungsaktionen für einen Sp
 beziehen sich erst im Modal auf die gewählte Begegnung.
 Turnierbaum, Liga- und Gruppenzeilen enthalten keine Wettbuttons.
 Ein einzelnes verfügbares Angebot ist ein direkter Button, erst mehrere sind ein Dropdown.
-Sind die LAN-Punkte ausgeblendet, sehen Admins und der Event-Ersteller an Auslosung und
-laufendem Turnier „Tipps starten, sobald LAN-Punkte angezeigt werden“ mit einem Link zur
-Einstellung; alle anderen sehen weiterhin keine Wettelemente.
+Sind die LAN-Punkte ausgeblendet, sehen Admins und der Event-Ersteller an der gerade erzeugten
+Auslosung und am laufenden Turnier „Tipps starten, sobald LAN-Punkte angezeigt werden“ mit einem
+Link zur Einstellung; alle anderen sehen weiterhin keine Wettelemente. Das Auslosungsformular
+bleibt unverändert.
 Punktefehler-Meldungen stehen in den Tippdetails; ihre asynchrone Freigabe erzeugt kein Menü
 mit nur einem sichtbaren Eintrag. Teilnahme und Adminrechte bestimmen weiterhin, ob neben
 der Tippabgabe auch Schließen, Wiederöffnen oder Finanzkorrekturen angeboten werden.
