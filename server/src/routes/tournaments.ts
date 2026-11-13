@@ -136,34 +136,68 @@ function progressBracketRows(
   return { readyMatchIds, completed: bracketIsComplete(after) };
 }
 
-function clearBracketDescendants(
+// Later bracket matches that take a team from this result: every match on
+// its path to the final and, for a semifinal, the third-place match.
+function bracketDescendants(
   bracketRows: TournamentMatchRow[],
   round: number,
   slot: number
-): void {
+): Array<{ row: TournamentMatchRow; feederSlot: number }> {
   const finalRound = Math.max(...bracketRows.map((row) => row.round));
-  const clearIncoming = (nextRow: TournamentMatchRow, feederSlot: number) => {
-    if (nextRow.match_id) db.prepare('DELETE FROM matches WHERE id = ?').run(nextRow.match_id);
-    const incomingColumn = feederSlot % 2 === 0 ? 'team_a_id' : 'team_b_id';
-    db.prepare(
-      `UPDATE tournament_matches
-       SET ${incomingColumn} = NULL, winner_team_id = NULL, score_a = NULL, score_b = NULL,
-           is_draw = 0, match_id = NULL, played_at = NULL
-       WHERE id = ?`
-    ).run(nextRow.id);
-  };
+  const descendants: Array<{ row: TournamentMatchRow; feederSlot: number }> = [];
   // A changed semifinal also sends a different loser to the third-place match.
   const thirdPlaceRow = bracketRows.find((row) => row.is_third_place);
-  if (thirdPlaceRow && round === finalRound - 1) clearIncoming(thirdPlaceRow, slot);
+  if (thirdPlaceRow && round === finalRound - 1) descendants.push({ row: thirdPlaceRow, feederSlot: slot });
 
   let feederSlot = slot;
   for (let nextRound = round + 1; nextRound <= finalRound; nextRound++) {
     const nextSlot = Math.floor(feederSlot / 2);
     const nextRow = bracketRows.find((row) => !row.is_third_place && row.round === nextRound && row.slot === nextSlot);
     if (!nextRow) break;
-    clearIncoming(nextRow, feederSlot);
+    descendants.push({ row: nextRow, feederSlot });
     feederSlot = nextSlot;
   }
+  return descendants;
+}
+
+function clearBracketDescendants(
+  bracketRows: TournamentMatchRow[],
+  round: number,
+  slot: number
+): void {
+  for (const { row, feederSlot } of bracketDescendants(bracketRows, round, slot)) {
+    if (row.match_id) db.prepare('DELETE FROM matches WHERE id = ?').run(row.match_id);
+    const incomingColumn = feederSlot % 2 === 0 ? 'team_a_id' : 'team_b_id';
+    db.prepare(
+      `UPDATE tournament_matches
+       SET ${incomingColumn} = NULL, winner_team_id = NULL, score_a = NULL, score_b = NULL,
+           is_draw = 0, match_id = NULL, played_at = NULL
+       WHERE id = ?`
+    ).run(row.id);
+  }
+}
+
+// Fixtures whose markets a correction of this match can change: the match
+// itself, the bracket matches its result feeds and, after a group result, the
+// whole knockout stage. Settled pools of other fixtures stay final, so their
+// existence alone does not turn every later correction into an admin task.
+// Mirrors correctionFixtureIds in public/js/views/tournament.js.
+function correctionFixtureIds(tournament: TournamentRow, match: TournamentMatchRow): string[] {
+  if (tournament.format === 'group_knockout' && match.stage === 'group') {
+    const knockout = db
+      .prepare(`SELECT id FROM tournament_matches WHERE tournament_id = ? AND stage = 'knockout'`)
+      .all(tournament.id) as Array<{ id: string }>;
+    return [match.id, ...knockout.map((row) => row.id)];
+  }
+  if (tournament.format !== 'single_elimination' && match.stage !== 'knockout') return [match.id];
+  const bracketRows = db
+    .prepare(
+      tournament.format === 'single_elimination'
+        ? 'SELECT * FROM tournament_matches WHERE tournament_id = ?'
+        : `SELECT * FROM tournament_matches WHERE tournament_id = ? AND stage = 'knockout'`
+    )
+    .all(tournament.id) as TournamentMatchRow[];
+  return [match.id, ...bracketDescendants(bracketRows, match.round, match.slot).map(({ row }) => row.id)];
 }
 
 function clearKnockoutStage(tournamentId: string): void {
@@ -838,7 +872,9 @@ function saveTournamentResult(req: Request, res: Response) {
   let readyNextRoundMatchIds: string[] = [];
 
   const record = () => withBettingAccounting(tournament.event_id, () => {
-    const correctedRounds = isCorrection ? correctableTournamentRounds(req.group!.id, tournament.id) : [];
+    const correctedRounds = isCorrection
+      ? correctableTournamentRounds(req.group!.id, tournament.id, correctionFixtureIds(tournament, match))
+      : [];
     const correction = validateBettingCorrection(req, correctedRounds);
     const leaderboardResult = JSON.stringify({
       teams: [{ playerIds: JSON.parse(teamA.player_ids) }, { playerIds: JSON.parse(teamB.player_ids) }],

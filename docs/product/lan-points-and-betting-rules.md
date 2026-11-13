@@ -200,6 +200,12 @@ keiner Korrektur auszahlen können, sowie Admin-Erstattungen und Stornos bleiben
 Migration 137 speichert dafür den Erstattungsgrund und erlaubt je Quelle einen neuen Markt nach
 einem ersetzten. Bestehende Märkte, Tipps und Buchungen bleiben unverändert.
 
+Bei Turnieren zählen dafür nur Märkte, die die Korrektur tatsächlich ändern kann: der Markt des
+korrigierten Spiels, die Märkte seiner Folgespiele im K.-o.-Baum (einschließlich Spiel um Platz 3
+nach einem Halbfinale), nach einem Gruppenspiel die gesamte K.-o.-Phase sowie der
+Gesamtsieger-Markt. Abgerechnete Märkte anderer Spiele desselben Turniers machen eine Korrektur
+nicht zur Admin-Aufgabe; Teilnehmende tragen solche Korrekturen weiterhin selbst ein.
+
 **W6:** Finanzkorrekturen erfolgen ausschließlich über begründete Markt-Neuberechnung oder
 Storno. Einseitige Wallet-/Wettänderungen über die allgemeine Journal-Korrektur oder den alten
 Entzugsendpunkt sind gesperrt. Eigene administrative Marktkorrekturen bleiben erlaubt.
