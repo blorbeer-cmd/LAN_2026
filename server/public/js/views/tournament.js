@@ -328,6 +328,22 @@ function openRenameTeamDialog(t, team, ctx) {
   });
 }
 
+// Fixtures whose markets a correction of this match can change: the match
+// itself, the bracket matches its result feeds and, after a group result, the
+// whole knockout stage. Mirrors correctionFixtureIds in routes/tournaments.ts.
+function correctionFixtureIds(t, match) {
+  if (t.format === 'group_knockout' && match.stage === 'group') {
+    return [match.id, ...t.matches.filter((candidate) => candidate.stage === 'knockout').map((candidate) => candidate.id)];
+  }
+  if (t.format !== 'single_elimination' && match.stage !== 'knockout') return [match.id];
+  const bracket = t.matches.filter((candidate) => candidate.stage === match.stage);
+  const finalRound = Math.max(...bracket.map((candidate) => candidate.round));
+  return [match.id, ...bracket.filter((candidate) => candidate.isThirdPlace
+    ? match.round === finalRound - 1
+    : candidate.round > match.round && Math.floor(match.slot / (2 ** (candidate.round - match.round))) === candidate.slot)
+    .map((candidate) => candidate.id)];
+}
+
 // Tournament persistence keeps scoreA/scoreB and expectedPlayedAt; the form
 // itself is shared with Match and Admin.
 function affectedFollowup(t, match, nextWinnerId) {
@@ -337,10 +353,7 @@ function affectedFollowup(t, match, nextWinnerId) {
     return 'Wenn du den Sieger änderst, wird die K.-o.-Phase neu erstellt. Dort bereits eingetragene Ergebnisse gehen verloren. Trotzdem speichern?';
   }
   if (t.format !== 'single_elimination' && match.stage !== 'knockout') return null;
-  const hasDescendant = t.matches.some((candidate) =>
-    candidate.stage === match.stage && candidate.round > match.round &&
-    Math.floor(match.slot / (2 ** (candidate.round - match.round))) === candidate.slot);
-  return hasDescendant
+  return correctionFixtureIds(t, match).length > 1
     ? 'Wenn du den Sieger änderst, werden nachfolgende K.-o.-Partien neu besetzt. Bereits eingetragene Ergebnisse dort gehen verloren. Trotzdem speichern?'
     : null;
 }
@@ -353,7 +366,7 @@ function openResultDialog(t, match, phaseLabel, ctx) {
   }));
   const decided = match.winnerTeamId !== null || match.isDraw;
   const knockout = t.format === 'single_elimination' || match.stage === 'knockout';
-  const correction = competitionCorrection('tournament', t.id, t.matches.map((m) => m.id));
+  const correction = competitionCorrection('tournament', t.id, correctionFixtureIds(t, match));
   const { close, el } = openModal('Ergebnis', `
     <div class="muted result-dialog-subtitle">${escapeHtml(t.name)} · ${escapeHtml(phaseLabel)}</div>
     ${decided ? correction.html : ''}
