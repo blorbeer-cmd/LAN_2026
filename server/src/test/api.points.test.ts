@@ -1730,6 +1730,92 @@ test('tips are public with names, signal only the betting views and name fixture
     [[{ playerId: null, name: null, stake: 5 }], [{ playerId: null, name: null, stake: 6 }]]);
 });
 
+test('tournament corrections need the admin path only for settled pools of the match, its bracket successors and the champion', async () => {
+  const f = await fixture();
+  const [a, b, c] = f.players;
+  type Fixture = { id: string; round: number; stage: string | null; isBye: boolean; teamAId: string | null;
+    teamBId: string | null; playedAt: number | null };
+  type Detail = { id: string; matches: Fixture[] };
+  const tip = async (roundId: string, playerId: string, outcomeId: string) =>
+    assert.equal((await request(app).put(`/api/points/rounds/${roundId}/tip`).set('x-test-player-id', playerId)
+      .send({ outcomeId, stake: 5 })).status, 200);
+  const create = async (body: object) => {
+    const response = await request(app).post('/api/tournaments').send({ gameId: f.gameId,
+      teams: [TEST_ADMIN_ID, a, b, c].map((id) => ({ playerIds: [id] })), ...body });
+    assert.equal(response.status, 201, JSON.stringify(response.body));
+    return response.body as Detail;
+  };
+  const record = async (t: Detail, matchId: string, winnerTeamId: string) => {
+    const response = await request(app).post(`/api/tournaments/${t.id}/matches/${matchId}/result`).send({ winnerTeamId });
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    return response.body as Detail;
+  };
+  const fixtureOf = (t: Detail, matchId: string) => t.matches.find((m) => m.id === matchId)!;
+  const correct = (t: Detail, match: Fixture, winnerTeamId: string, playerId: string, extra: object = {}) =>
+    request(app).put(`/api/tournaments/${t.id}/matches/${match.id}/result`).set('x-test-player-id', playerId)
+      .send({ winnerTeamId, expectedPlayedAt: match.playedAt, ...extra });
+  const rounds = async () => (await request(app).get(`/api/points?eventId=${f.eventId}`)).body.rounds as Array<{
+    id: string; status: string; revision: number; sourceType: string; sourceId: string; rebooksOnCorrection: boolean }>;
+  const adminCorrection = async (reason: string) => ({ bettingCorrection: { reason,
+    revisions: (await rounds()).filter((r) => r.rebooksOnCorrection).map((r) => ({ id: r.id, revision: r.revision })) } });
+
+  let bracket = await create({ format: 'single_elimination' });
+  const champion = await automaticMarket(f, 'tournament', bracket.id);
+  await tip(champion.id, a, champion.outcomes[0].id);
+  await tip(champion.id, b, champion.outcomes[1].id);
+  const [semi, otherSemi] = bracket.matches.filter((m) => m.round === 1 && !m.isBye);
+  const finalId = bracket.matches.find((m) => m.round === 2)!.id;
+  const semiMarket = await automaticMarket(f, 'tournament_match', semi.id);
+  await tip(semiMarket.id, a, semiMarket.outcomes[0].id);
+  await tip(semiMarket.id, b, semiMarket.outcomes[1].id);
+  await record(bracket, semi.id, semi.teamAId!);
+  bracket = await record(bracket, otherSemi.id, otherSemi.teamAId!);
+  assert.equal((await automaticMarket(f, 'tournament_match', semi.id)).status, 'settled');
+
+  // The settled sibling semifinal cannot change, so members still fix the
+  // untipped one themselves; the stale second screen loses with 409.
+  const raced = await Promise.all([c, a].map((playerId) =>
+    correct(bracket, fixtureOf(bracket, otherSemi.id), otherSemi.teamBId!, playerId)));
+  assert.deepEqual(raced.map((r) => r.status).sort(), [200, 409], JSON.stringify(raced.map((r) => r.body)));
+  bracket = raced.find((r) => r.status === 200)!.body as Detail;
+
+  const final = await automaticMarket(f, 'tournament_match', finalId);
+  await tip(final.id, a, final.outcomes[0].id);
+  await tip(final.id, b, final.outcomes[1].id);
+  bracket = await record(bracket, finalId, final.outcomes[0].id);
+  const settled = await rounds();
+  assert.equal(settled.find((r) => r.id === final.id)!.status, 'settled');
+  assert.equal(settled.find((r) => r.id === champion.id)!.rebooksOnCorrection, true);
+
+  // Now the same semifinal feeds a settled final and champion pool.
+  const semiFix = fixtureOf(bracket, otherSemi.id);
+  assert.equal((await correct(bracket, semiFix, otherSemi.teamAId!, c)).status, 409);
+  const correction = await adminCorrection('Semifinal winner swapped');
+  assert.equal((await correct(bracket, semiFix, otherSemi.teamAId!, c, correction)).status, 403);
+  const fixed = await correct(bracket, semiFix, otherSemi.teamAId!, TEST_ADMIN_ID, correction);
+  assert.equal(fixed.status, 200, JSON.stringify(fixed.body));
+  const rebooked = await rounds();
+  assert.deepEqual([final.id, champion.id, semiMarket.id].map((id) => rebooked.find((r) => r.id === id)!.status),
+    ['refunded', 'locked', 'settled'], 'the old final is void, the champion waits for the new final, the sibling stays paid');
+
+  let grouped = await create({ format: 'group_knockout', groupCount: 2, advancersPerGroup: 1 });
+  const groupMatches = grouped.matches.filter((m) => m.stage === 'group');
+  assert.equal(groupMatches.length, 2);
+  for (const match of groupMatches) grouped = await record(grouped, match.id, match.teamAId!);
+  const knockoutFinal = grouped.matches.find((m) => m.stage === 'knockout' && !m.isBye)!;
+  const knockoutMarket = await automaticMarket(f, 'tournament_match', knockoutFinal.id);
+  await tip(knockoutMarket.id, a, knockoutMarket.outcomes[0].id);
+  await tip(knockoutMarket.id, b, knockoutMarket.outcomes[1].id);
+  grouped = await record(grouped, knockoutFinal.id, knockoutMarket.outcomes[0].id);
+  // A changed group result rebuilds the knockout stage and its settled final.
+  const groupFix = fixtureOf(grouped, groupMatches[0].id);
+  assert.equal((await correct(grouped, groupFix, groupMatches[0].teamBId!, c)).status, 409);
+  const regrouped = await correct(grouped, groupFix, groupMatches[0].teamBId!, TEST_ADMIN_ID,
+    await adminCorrection('Group winner swapped'));
+  assert.equal(regrouped.status, 200, JSON.stringify(regrouped.body));
+  assert.equal((await rounds()).find((r) => r.id === knockoutMarket.id)!.status, 'refunded');
+});
+
 test('re-rolling the shown draw closes its market; draw notices wait for the kept lineup and tournament markets share one notice', async () => {
   const f = await fixture();
   const [a, b] = f.players;
