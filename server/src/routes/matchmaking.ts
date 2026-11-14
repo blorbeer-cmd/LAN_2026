@@ -457,10 +457,6 @@ matchmakingRouter.get('/history', (req, res) => {
 
   const clauses = ['md.group_id = ?', 'md.event_id = ?'];
   const params: Array<string | number> = [req.group!.id, filterEventId];
-  if (typeof gameId === 'string' && gameId) {
-    clauses.push('md.game_id = ?');
-    params.push(gameId);
-  }
   // Scope participation before LIMIT/cursor paging, using the authenticated
   // player and the persisted lineup rather than the draw creator.
   if (mine === '1') {
@@ -469,8 +465,15 @@ matchmakingRouter.get('/history', (req, res) => {
     params.push(req.player!.id);
   }
   if (kind === 'matches') clauses.push('md.tournament_id IS NULL');
+  // Lineups without a result are listed for every game: an open match of
+  // another game must stay findable for its result and its tips while the
+  // game picker only prepares the next draw.
   const openClauses = [...clauses];
   const openParams = [...params];
+  if (typeof gameId === 'string' && gameId) {
+    clauses.push('md.game_id = ?');
+    params.push(gameId);
+  }
   if (kind === 'matches') clauses.push('md.match_id IS NOT NULL');
   if (before !== undefined) {
     clauses.push('(md.generated_at < ? OR (md.generated_at = ? AND md.id < ?))');

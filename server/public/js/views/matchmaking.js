@@ -1,5 +1,5 @@
 import { historyItemHtml as sharedHistoryItemHtml } from '../historyItem.js';
-import { competitionBettingHtml, competitionMatchesTipFilter, wireCompetitionBetting, competitionCorrection } from './points.js';
+import { competitionBettingHtml, competitionBettingSummaryHtml, competitionMatchesTipFilter, wireCompetitionBetting, competitionCorrection, bettingHiddenHintHtml } from './points.js';
 let pointsContext = null;
 // Matchmaking view (FR-16..18): pick a game + present players, draw balanced
 // teams. Results are stored in shared state (updated live via the
@@ -382,8 +382,8 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
 
   if (collapsible) {
     const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span>
-      <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
-    const cardActions = `${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { actionsOnly: true })}${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>` : ''}`;
+      <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}${inTournament ? '' : competitionBettingSummaryHtml('draw', draw.id)}`;
+    const cardActions = `${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext)}${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>` : ''}`;
     return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, cardActions,
       `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
   }
@@ -396,11 +396,13 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
           <span class="muted" style="font-size:var(--font-size-xs);">${formatDateTime(draw.generatedAt)}</span>
           ${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}
           ${draw.matchId && draw.isDraw ? '<span class="tournament-fixture-score">Remis</span>' : ''}
+          ${inTournament ? '' : competitionBettingSummaryHtml('draw', draw.id)}
         </div>
-        ${actions ? `<div class="matchmaking-draw-actions">${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { actionsOnly: true, keyPrefix: 'betting-fresh' })}</div>` : ''}
+        ${actions ? `<div class="matchmaking-draw-actions">${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { keyPrefix: 'betting-fresh' })}</div>` : ''}
       </div>
       <div class="tournament-team-preview-grid">${teamsHtml}</div>
       ${seatingNote}
+      ${inTournament ? '' : bettingHiddenHintHtml()}
     </div>`;
 }
 
@@ -794,7 +796,7 @@ function historyMatchHtml(draw) {
   const result = winner
     ? `<span class="tournament-fixture-score is-pick">Win</span> <strong>${escapeHtml(winnerName)}${winner.score != null && draw.teams.length !== 2 ? ` · <span class="is-win">${winner.score}</span>` : ''}</strong> ${scoreChip}`
     : `<span class="tournament-fixture-score">${draw.isDraw ? 'Remis' : 'Ohne Ergebnis'}</span>`;
-  const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span> ${result} <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}`;
+  const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span> ${result} <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}${competitionBettingSummaryHtml('draw', draw.id)}`;
   const actions = `<button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>
     <button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>
     ${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Match löschen" title="Match löschen">${icon('trash')}</button>` : ''}`;
@@ -820,7 +822,7 @@ function historyMatchHtml(draw) {
   }).join('');
   const seating = draw.seatConflicts > 0
     ? `<div class="muted">${icon('armchair')} ${draw.seatConflicts} von ${draw.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten.</div>` : '';
-  return historyItemHtml(draw.id, draw.gameName, meta, `${actions}${competitionBettingHtml('draw', draw.id, pointsContext, { actionsOnly: true })}`,
+  return historyItemHtml(draw.id, draw.gameName, meta, `${actions}${competitionBettingHtml('draw', draw.id, pointsContext)}`,
     `<div class="matchmaking-history-teams">${teams}</div>${seating}`, '', drawIncludesMe(draw));
 }
 
@@ -891,22 +893,24 @@ function historyTournamentHtml(tournament) {
     ? `<span class="tournament-fixture-score is-pick">Win</span> <strong>${escapeHtml(tournament.championName)}</strong> <span class="muted">1. Platz</span>`
     : '<span class="badge">Turnier läuft</span>';
   const meta = `<span class="muted">${formatDateTime(tournament.createdAt)}</span> ${outcome}
-    <span class="muted">${escapeHtml(tournament.name)}</span>`;
+    <span class="muted">${escapeHtml(tournament.name)}</span>${competitionBettingSummaryHtml('tournament', tournament.id)}`;
   const actions = `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(tournament.id)}">Turnier</button>
     ${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-tournament="${escapeHtml(tournament.id)}" aria-label="Turnier löschen" title="Turnier löschen">${icon('trash')}</button>` : ''}`;
-  return historyItemHtml(`t-${tournament.id}`, tournament.gameName, meta, `${actions}${competitionBettingHtml('tournament', tournament.id, pointsContext, { actionsOnly: true, tournamentId: tournament.id })}`,
+  return historyItemHtml(`t-${tournament.id}`, tournament.gameName, meta, `${actions}${competitionBettingHtml('tournament', tournament.id, pointsContext, { tournamentId: tournament.id })}`,
     historyTournamentDetailHtml(tournament), 'is-tournament', Boolean(getMyId() && tournament.participantIds?.includes(getMyId())));
 }
 
-function filteredOpenDraws(selectedGameId) {
-  return historyFilter === 'tournaments' || historyForGameId !== selectedGameId ? []
+// Open lineups and running tournaments of every game: the game picker only
+// prepares the next draw. The server returns open draws for all games.
+function filteredOpenDraws() {
+  return historyFilter === 'tournaments' ? []
     : openDrawsCache.filter((draw) => (!mineOnly || drawIncludesMe(draw)) && competitionMatchesTipFilter('draw', draw.id, tipFilter));
 }
 
 function filteredTournaments(selectedGameId, completed) {
   const myId = getMyId();
   return historyFilter === 'matches' ? [] : (tournamentCache ?? []).filter((tournament) =>
-    (selectedGameId === undefined || tournament.gameId === selectedGameId)
+    (!completed || selectedGameId === undefined || tournament.gameId === selectedGameId)
     && (tournament.status === 'completed') === completed
     && (completed || competitionMatchesTipFilter('tournament', tournament.id, tipFilter))
     && (!mineOnly || Boolean(myId && tournament.participantIds?.includes(myId))));

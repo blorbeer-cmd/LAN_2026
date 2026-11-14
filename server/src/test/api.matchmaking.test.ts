@@ -272,7 +272,8 @@ test('history pages recorded matches before the limit and keeps open draws separ
   const first = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&limit=1`);
   assert.equal(first.status, 200);
   assert.deepEqual(first.body.history.map((draw: { id: string }) => draw.id), [middle.body.id]);
-  assert.deepEqual(first.body.openDraws.map((draw: { id: string }) => draw.id), [reroll.body.id]);
+  const ofGame = (draws: Array<{ id: string; gameId: string }>) => draws.filter((draw) => draw.gameId === game.body.id).map((draw) => draw.id);
+  assert.deepEqual(ofGame(first.body.openDraws), [reroll.body.id]);
   assert.ok(first.body.nextCursor);
   const second = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&limit=1&before=${first.body.nextCursor.before}&beforeId=${first.body.nextCursor.beforeId}`);
   assert.deepEqual(second.body.history.map((draw: { id: string }) => draw.id), [oldest.body.id]);
@@ -284,8 +285,20 @@ test('history pages recorded matches before the limit and keeps open draws separ
   const mine = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&mine=1&limit=1`);
   assert.equal(mine.status, 200);
   assert.deepEqual(mine.body.history.map((draw: { id: string }) => draw.id), [oldest.body.id]);
-  assert.deepEqual(mine.body.openDraws.map((draw: { id: string }) => draw.id), [reroll.body.id]);
+  assert.deepEqual(ofGame(mine.body.openDraws), [reroll.body.id]);
   assert.equal(mine.body.nextCursor, null);
+  // An open lineup of another game stays in "Ohne Ergebnis" while the game
+  // picker shows this game; its history stays per game.
+  const otherGame = await request(app).post('/api/games').send({ name: `Open elsewhere ${Date.now()}` });
+  const elsewhere = await request(app).post('/api/matchmaking').send({
+    gameId: otherGame.body.id, playerIds: newest.body.teams.flatMap((team: { players: Array<{ id: string }> }) =>
+      team.players.map((player) => player.id)), teamCount: 2,
+  });
+  assert.equal(elsewhere.status, 200, JSON.stringify(elsewhere.body));
+  const acrossGames = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&limit=1`);
+  const openIds = acrossGames.body.openDraws.map((draw: { id: string }) => draw.id);
+  assert.ok(openIds.includes(elsewhere.body.id) && openIds.includes(reroll.body.id), JSON.stringify(openIds));
+  assert.deepEqual(acrossGames.body.history.map((draw: { id: string }) => draw.id), [middle.body.id]);
   const unfiltered = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}&kind=matches&mine=0&limit=1`);
   assert.deepEqual(unfiltered.body.history.map((draw: { id: string }) => draw.id), [middle.body.id]);
   for (const value of ['yes', '1&mine=0']) {

@@ -395,6 +395,8 @@ export const Events = {
   liveStatusChanged: 'live:changed',
   votesChanged: 'votes:changed',
   leaderboardChanged: 'leaderboard:changed',
+  // Tips, closing and reopening: only the betting views reload /api/points.
+  bettingChanged: 'betting:changed',
   pointsReportsChanged: 'pointsReports:changed',
   matchmakingGenerated: 'matchmaking:generated',
   matchmakingDrawsChanged: 'matchmaking:draws-changed',

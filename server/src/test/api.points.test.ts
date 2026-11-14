@@ -18,6 +18,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { reconcileBetting, DRAW_NOTICE_DELAY_MS, type roundView } from '../betting';
+import { setIo } from '../realtime';
+import type { Server } from 'socket.io';
 import { sweepBetting } from '../routes/points';
 import { createPointsReport, readPointsReports, resolvePointsReport } from '../pointsReports';
 
@@ -432,6 +434,12 @@ async function automaticMarket(f: { eventId: string }, sourceType: string, sourc
     row.sourceType === sourceType && row.sourceId === sourceId);
   assert.ok(found, `automatic market missing: ${sourceType}/${sourceId}`);
   return found;
+}
+async function automaticMarketAs(f: { eventId: string }, playerId: string, roundId: string) {
+  const response = await request(app).get(`/api/points?eventId=${f.eventId}`).set('x-test-player-id', playerId);
+  assert.equal(response.status, 200);
+  return response.body.rounds.find((row: { id: string }) => row.id === roundId) as ReturnType<typeof roundView> & {
+    outcomes: Array<{ playerIds: string[]; tippers: unknown[] }> };
 }
 async function round(f: Awaited<ReturnType<typeof fixture>>) {
   const draw = await request(app)
@@ -1683,6 +1691,45 @@ test('result corrections rebook pools refunded by a wrong result, and a correcte
     .send({ outcomeId: reopened.outcomes[0].id, stake: 5 })).status, 200);
 });
 
+test('tips are public with names, signal only the betting views and name fixtures like the bracket', async (t) => {
+  const emitted: Array<{ event: string; payload: unknown }> = [];
+  setIo({ emit: (event: string, payload: unknown) => emitted.push({ event, payload }) } as unknown as Server);
+  t.after(() => setIo(null));
+  const f = await fixture();
+  const [a, b, c] = f.players;
+  const names = new Map((db.prepare(`SELECT id, name FROM players WHERE id IN (?, ?)`).all(a, b) as Array<{ id: string; name: string }>)
+    .map((row) => [row.id, row.name]));
+  const r = await round(f);
+  emitted.length = 0;
+  for (const [index, playerId] of [a, b].entries())
+    assert.equal((await request(app).put(`/api/points/rounds/${r.id}/tip`).set('x-test-player-id', playerId)
+      .send({ outcomeId: r.outcomes[index].id, stake: 5 + index })).status, 200);
+  assert.equal((await request(app).post(`/api/points/rounds/${r.id}/lock`).set('x-test-player-id', a).send({})).status, 200);
+  assert.deepEqual(emitted.map((row) => row.event), ['betting:changed', 'betting:changed', 'betting:changed'],
+    'tips and starting the match reload only the betting views');
+  assert.ok(emitted.every((row) => (row.payload as { roundId: string }).roundId === r.id));
+  // A spectator sees who tipped what before the result (decision on #755).
+  const seen = (await automaticMarketAs(f, c, r.id));
+  assert.deepEqual(seen.outcomes.filter((o) => o.playerIds.length).map((o) => o.tippers),
+    [[{ playerId: a, name: names.get(a), stake: 5 }], [{ playerId: b, name: names.get(b), stake: 6 }]]);
+
+  const created = await request(app).post('/api/tournaments').send({ gameId: f.gameId, format: 'single_elimination',
+    thirdPlaceMatch: true, teams: [TEST_ADMIN_ID, a, b, c].map((id) => ({ playerIds: [id] })) });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const phases = (await request(app).get(`/api/points?eventId=${f.eventId}`)).body.rounds
+    .filter((row: { sourceType: string; tournament?: { id: string } }) => row.tournament?.id === created.body.id && row.sourceType === 'tournament_match')
+    .map((row: { tournament: { phase: string } }) => row.tournament.phase);
+  assert.deepEqual(phases, ['Halbfinale', 'Halbfinale'], 'the semifinals carry the bracket phase name');
+
+  // Accounts that opted out of being named and test accounts outside test
+  // events stay anonymous stakes: neither name nor id is published.
+  assert.equal((await request(app).patch(`/api/players/${b}`).set('x-test-player-id', b).send({ newstickerOptOut: true })).status, 200);
+  db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(a);
+  const hidden = await automaticMarketAs(f, c, r.id);
+  assert.deepEqual(hidden.outcomes.filter((o) => o.playerIds.length).map((o) => o.tippers),
+    [[{ playerId: null, name: null, stake: 5 }], [{ playerId: null, name: null, stake: 6 }]]);
+});
+
 test('tournament corrections need the admin path only for settled pools of the match, its bracket successors and the champion', async () => {
   const f = await fixture();
   const [a, b, c] = f.players;
@@ -2170,6 +2217,7 @@ test('account erasure keeps other category credits and anonymizes historical poo
   const mutableConfig = config as unknown as { deletionLedgerFile: string };
   const oldLedger = mutableConfig.deletionLedgerFile;
   mutableConfig.deletionLedgerFile = path.join(directory, 'receipts.jsonl');
+  const erasedName = (db.prepare('SELECT name FROM players WHERE id = ?').get(f.players[0]) as { name: string }).name;
   try {
     const result = deleteAccount(f.players[0], TEST_ADMIN_ID);
     assert.equal(result.ok, true, JSON.stringify(result));
@@ -2184,6 +2232,9 @@ test('account erasure keeps other category credits and anonymizes historical poo
     assert.equal(view.rounds[0].pot, 10, 'historic pool totals stay intact');
     assert.equal(view.rounds[0].tipCount, 2);
     assert.ok(!JSON.stringify(view.rounds[0]).includes(f.players[0]));
+    assert.ok(!JSON.stringify(view.rounds[0]).includes(erasedName), 'public tipper names drop the erased account');
+    assert.deepEqual(view.rounds[0].outcomes.flatMap((o: { tippers: Array<{ name: string | null }> }) => o.tippers.map((t) => t.name === null)).sort(),
+      [false, true], 'the remaining tipper keeps their name, the erased stake stays anonymous');
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS n FROM point_entries WHERE player_id = ?').get(f.players[0]) as { n: number }).n,
       0,
