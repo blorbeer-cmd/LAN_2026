@@ -7,7 +7,7 @@ Status: `umgesetzt`. Nichtinteraktive Ergebnisanzeige im bestehenden Broadcast-R
 ## 2. Quelle
 
 `public/js/kioskResults.js`: `createKioskResultsPanel({ results, tournament, title })`.
-Öffentliche Methoden: `update`, `setTournament`, `hidePoints`, `error`, `dispose`.
+Öffentliche Methoden: `update`, `updatePoints`, `setTournament`, `hidePoints`, `error`, `dispose`.
 Aufrufer: `public/js/kiosk.js`, Markup: `public/kiosk.html`.
 
 ## 3. CSS-Eigentümerschaft
@@ -19,7 +19,15 @@ Aufrufer besitzen ausschließlich die äußere Rasterkachel und deren Überschri
 
 Ergebnisse mit oder ohne Spielpunkte, kompakte Darstellung bei knapper Höhe: umgesetzt.
 Die bestehende Turnieransicht wechselt bei vorhandenem Turnier alle zehn Sekunden mit den
-Ergebnissen. Ohne Ergebnisse bleibt das Turnier sichtbar.
+Ergebnissen, Wettmärkten und Punkteranglisten. Ohne Daten bleibt das Turnier sichtbar.
+Wettmarkt (`.kiosk-result-table--market`) und Rangliste: `umgesetzt`. Wettmärkte zeigen eine
+Zeile je Tippendem mit Team, Tippzahl/Einsatzsumme des Teams und persönlichem Einsatz. Die
+Rangliste (`.kiosk-result-table--ranking`) zeigt Platz, Name und Punkte (Gesamt: Summe der
+Kategorie-Platzpunkte; Kategorien: jeweiliger Rohwert). Sämtliche Zeilen werden
+paginiert; die bestehende Tabellengeometrie gehört weiterhin dieser Komponente. Die erste
+Spalte einer Wettmarkt-Tabelle nutzt 42 Prozent für lange Teamnamen. Alle vier LAN-Ranglisten
+rotieren auch ohne Match-Ergebnis oder Turnier. `hidePoints` und Fehler entfernen die
+Wett-/Ranglistendaten vollständig aus dem DOM, einschließlich unsichtbarer Seiten.
 
 ## 5. Erlaubte Anpassungen
 
@@ -54,7 +62,11 @@ und 1440 × 900. Lange Namen werden umgebrochen beziehungsweise gekürzt, alle T
 
 `src/test/e2e/points.e2e.test.ts`: echter Kiosk-Token ohne Sitzung, acht Teilnehmer, lange Texte,
 320/390/1280/1440 Pixel, jede sichtbare Zeile innerhalb der Kachel, alle Namen nach Seitenwechseln,
-Live-Korrektur und live ausgeblendete Punkte. `api.leaderboardScoring.test.ts` und
+Live-Korrektur und live ausgeblendete Punkte. Derselbe Browser-Owner prüft zusätzlich
+Wettmärkte, Tippnamen, Topf, alle vier rotierenden Ranglisten und passende Zeilenhöhen bei
+390 und 1440 Pixeln. `api.points.test.ts` sichert anonyme Namen, Ergebnisse und Testevents;
+`realtime.delivery.required.test.ts` prüft die eventbegrenzte Zustellung von `betting:changed`.
+`api.leaderboardScoring.test.ts` und
 `api.kioskRest.required.test.ts` prüfen Journalwerte, Ereignisgrenzen und ausschließlich Anzeigenamen.
 
 ## 11. Permanente Varianten und befristete Ausnahmen

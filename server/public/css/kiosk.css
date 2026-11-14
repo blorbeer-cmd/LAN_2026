@@ -145,6 +145,13 @@
     gap: var(--space-1);
   }
 }
+.kiosk-result-table--ranking th:first-child {
+  width: calc(4ch + var(--space-2));
+  white-space: nowrap;
+}
+.kiosk-result-table--market th:first-child {
+  width: 42%;
+}
 .kiosk-result-pages {
   margin-top: auto;
   min-height: 1lh;

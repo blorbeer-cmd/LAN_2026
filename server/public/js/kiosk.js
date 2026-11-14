@@ -1058,8 +1058,11 @@ async function refreshResults(hidePoints = false) {
   const requestVersion = nextRefreshVersion('results');
   if (hidePoints) resultsPanel.hidePoints();
   try {
-    const feed = await api.kiosk.results();
-    if (isLatestRefresh('results', requestVersion)) resultsPanel.update(feed);
+    const [feed, points] = await Promise.all([api.kiosk.results(), api.kiosk.points()]);
+    if (isLatestRefresh('results', requestVersion)) {
+      resultsPanel.update(feed);
+      resultsPanel.updatePoints(points);
+    }
   } catch (error) {
     if (!isLatestRefresh('results', requestVersion)) return;
     resultsPanel.error();
@@ -1350,10 +1353,12 @@ async function main() {
     await refreshLive();
     await refreshTournament();
     await refreshResults();
+    await refreshNewsticker();
   });
   socket.on('votes:changed', refreshVotes);
-  socket.on('events:changed', () => { void refreshVotes(); void refreshResults(true); });
-  socket.on('leaderboard:changed', () => { void refreshResults(true); });
+  socket.on('events:changed', () => { void refreshVotes(); void refreshResults(true); void refreshNewsticker(); });
+  socket.on('leaderboard:changed', () => { void refreshResults(true); void refreshNewsticker(); });
+  socket.on('betting:changed', () => { void refreshResults(); void refreshNewsticker(); });
   socket.on('tournaments:changed', refreshTournament);
   socket.on('music:changed', refreshMusic);
 

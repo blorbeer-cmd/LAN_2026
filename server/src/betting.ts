@@ -656,11 +656,29 @@ export function retireRerolledDraw(groupId: string, eventId: string, previousDra
   for (const round of rounds) settleRound(round, null, 'Neu ausgelost', Date.now());
   return rounds;
 }
+function notifyBettingWinners(round: BettingRound): void {
+  if (round.status !== 'settled') return;
+  const game = tournamentContext(round)?.gameName ?? db.prepare(`SELECT g.name FROM matchmaking_draws d
+    JOIN games g ON g.id = d.game_id WHERE d.id = ?`).pluck().get(round.source_id) as string | undefined;
+  for (const tip of tipsFor(round.id)) {
+    const net = (tip.payout ?? 0) - tip.stake;
+    if (!tip.player_id || net <= 0) continue;
+    const key = `betting-win:${round.id}:${round.revision}:${tip.player_id}`;
+    if (db.prepare('SELECT 1 FROM push_log WHERE group_id = ? AND event_id = ? AND topic_key = ?')
+      .get(round.group_id, round.event_id, key)) continue;
+    notifyPlayers([tip.player_id], { title: `+${net} P. aus ${game ?? round.title}`,
+      body: round.revision ? 'Deine Wette wurde nach einer Ergebniskorrektur neu abgerechnet.' : 'Dein Tipp hat gewonnen.',
+      url: roundUrl(round), type: 'betting-win', targetId: round.id }, 'direct', { key },
+    { groupId: round.group_id, eventId: round.event_id });
+  }
+}
+
 export function publishBettingChanges(changed: BettingRound[]): void {
   const opened: BettingRound[] = [];
   const scopes = new Map<string, { groupId: string; eventId: string }>();
   for (const round of changed) {
     const fresh = getBettingRound(round.group_id, round.event_id, round.id);
+    if (fresh.status === 'settled') notifyBettingWinners(fresh);
     if (fresh.status !== 'open') resolveBettingNotice(fresh);
     else opened.push(fresh);
     scopes.set(`${round.group_id}:${round.event_id}`, { groupId: round.group_id, eventId: round.event_id });
@@ -676,8 +694,16 @@ export function withBettingAccounting<T>(eventId: string | undefined, change: ()
     // Apply elapsed deadlines and existing results before editing their source,
     // scoped to the authorized event and rolled back if the edit fails.
     const before = reconcileBetting(eventId, false);
+    const previous = db.prepare('SELECT * FROM betting_rounds WHERE (? IS NULL OR event_id = ?)')
+      .all(eventId ?? null, eventId ?? null) as BettingRound[];
     const result = change();
     const rounds = [...before, ...reconcileBetting(eventId, false)];
+    // Explicit corrections can already be settled before reconciliation runs.
+    const revisions = new Map((db.prepare('SELECT id, revision FROM betting_rounds WHERE (? IS NULL OR event_id = ?)')
+      .all(eventId ?? null, eventId ?? null) as Array<{ id: string; revision: number }>).map((r) => [r.id, r.revision]));
+    for (const old of previous) {
+      if (revisions.has(old.id) && revisions.get(old.id) !== old.revision) rounds.push(old);
+    }
     return { result, rounds };
   }).immediate();
   publishBettingChanges(committed.rounds);

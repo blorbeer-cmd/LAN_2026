@@ -91,6 +91,7 @@ const KIOSK_GET_PATHS = [
   /^\/music\/kiosk\/?$/,
   /^\/newsticker\/?$/,
   /^\/results\/feed\/?$/,
+  /^\/results\/points\/?$/,
   // The dashboard loads the latest group-wide banner alongside the other
   // read-only views; without this a token-only kiosk 401s on the whole
   // Promise.all refresh. getLastPushLogEntry only returns 'all'-audience

@@ -530,9 +530,6 @@ test('manager invites a member who accepts and both open clients update', async 
   await memberPage.route(`${BASE_URL}/api/events/${eventId}`, (route) => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify({ ...paymentEvent, status: 'cancelled' }),
   }), { times: 1 });
-  const cancelledPaymentRefresh = memberPage.waitForResponse(
-    (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
-  );
   await paypalButton.click();
   await memberPage.waitForFunction(
     () => (window as unknown as { __eventPaymentPopup?: { closed: boolean } }).__eventPaymentPopup?.closed,
@@ -541,7 +538,15 @@ test('manager invites a member who accepts and both open clients update', async 
     () => (window as unknown as { __eventPaymentPopup: { location: string } }).__eventPaymentPopup.location,
   ), '');
   await memberPage.locator('.toast-error', { hasText: 'Das Event wurde abgesagt. Eine Zahlung ist nicht mehr möglich.' }).waitFor();
-  await cancelledPaymentRefresh;
+  // Observe readiness after the cancellation is visible. A response waiter
+  // started before the click also spends its budget on click actionability
+  // and does not establish that the next payment action is usable.
+  await memberPage.waitForFunction((id) => {
+    const button = document.querySelector<HTMLButtonElement>(`[data-pay-event="${id}"]`);
+    return Boolean(button && !button.disabled);
+  }, eventId);
+  assert.equal(await memberEventCard.locator('.event-payment-member [data-toggle-event-paid]').getAttribute('aria-pressed'), 'false',
+    'a cancelled handoff never records the contribution as paid');
   await paypalButton.click();
   await memberPage.waitForFunction(
     () => (window as unknown as { __eventPaymentPopup?: { location: string } }).__eventPaymentPopup?.location,

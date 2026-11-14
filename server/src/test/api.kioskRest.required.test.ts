@@ -177,6 +177,40 @@ test('a token-only kiosk loads one exact event and honours archival', () => {
       assert.equal(clampedFeed.body.items[0].id, 'kiosk-feed-match', 'kiosk credentials override an event selector');
       assert.equal((await request(app).post('/api/results/feed').set('x-kiosk-mode', '1').set('x-access-token', login.body.token)).status, 401);
 
+      const pointsGet = (path = '/api/results/points') => request(app).get(path)
+        .set('x-kiosk-mode', '1').set('x-access-token', login.body.token);
+      assert.deepEqual((await pointsGet()).body, { showPoints: false, rounds: [], rankings: [] });
+      db.prepare('UPDATE points_settings SET visible = 1 WHERE event_id = ?').run(lanEvent.id);
+      const beforeRead = db.prepare('SELECT total_changes() AS n').get().n;
+      const pointFeed = await pointsGet('/api/results/points?eventId=' + generalEvent.id);
+      assert.equal(pointFeed.status, 200);
+      assert.equal(pointFeed.headers['cache-control'], 'no-store');
+      assert.equal(pointFeed.body.showPoints, true);
+      assert.deepEqual(pointFeed.body.rankings.map((r) => r.category), ['total', 'betting', 'orga', 'playing']);
+      for (const ranking of pointFeed.body.rankings) {
+        assert.ok(ranking.rows.some((r) => r.name === 'Tickerfuchs'));
+        assert.ok(ranking.rows.some((r) => r.name === 'Anonym'));
+        assert.equal(JSON.stringify(ranking).includes('Tickerdachs'), false);
+        assert.ok(ranking.rows.every((r) => !('playerId' in r) && !('color' in r)));
+      }
+      assert.equal(db.prepare('SELECT total_changes() AS n').get().n, beforeRead, 'points feed is strictly read-only');
+      assert.equal((await request(app).get('/api/results/points')).status, 401);
+      for (const method of ['post', 'put', 'patch', 'delete']) {
+        assert.equal((await request(app)[method]('/api/results/points')
+          .set('x-kiosk-mode', '1').set('x-access-token', login.body.token)).status, 401);
+      }
+      db.prepare('UPDATE events SET is_test = 1 WHERE id = ?').run(lanEvent.id);
+      db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run('news-a');
+      const testResults = await request(app).get('/api/results/feed')
+        .set('x-kiosk-mode', '1').set('x-access-token', login.body.token);
+      assert.equal(testResults.status, 200, 'a token-only screen may read its explicitly scoped test event');
+      assert.equal(testResults.body.items[0].teams[0].players[0].name, 'Tickerfuchs');
+      assert.ok((await pointsGet()).body.rankings[0].rows.some((r) => r.name === 'Tickerfuchs'));
+      db.prepare('UPDATE events SET is_test = 0 WHERE id = ?').run(lanEvent.id);
+      db.prepare('UPDATE players SET is_test = 0 WHERE id = ?').run('news-a');
+      db.prepare('UPDATE points_settings SET visible = 0 WHERE event_id = ?').run(lanEvent.id);
+      assert.deepEqual((await pointsGet()).body, { showPoints: false, rounds: [], rankings: [] });
+
       // #1 — /push/last must be a read-only kiosk path; before the fix a
       // token-only kiosk 401s here and its whole Promise.all refresh fails.
       const lastEmpty = await kioskGet(app, '/api/push/last');
