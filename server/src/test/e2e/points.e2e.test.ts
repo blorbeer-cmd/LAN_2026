@@ -806,7 +806,7 @@ test('token-only kiosk pages every result participant and removes point columns 
       for (let turn = 0; turn < 90 && (seenRankings.size < 4 || !sawTip || !sawChampion); turn++) {
         if (await results.isVisible()) {
           const caption = await results.locator('.kiosk-result-caption').textContent() ?? '';
-          if (caption.startsWith('LAN-Punkte')) seenRankings.add(caption);
+          if (await results.locator('.kiosk-result-table--ranking').count()) seenRankings.add(caption);
           if (caption.includes('Turniersieger')) sawChampion = true;
           if (caption.includes('Finale') && (await results.textContent())?.includes('Points Bob')) {
             sawTip = true;
@@ -827,7 +827,7 @@ test('token-only kiosk pages every result participant and removes point columns 
       assert.equal(sawTip, true, 'the betting signal reaches the anonymous screen and names the tipper');
     }
     await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 4 });
-    await kiosk.waitForFunction(() => !document.querySelector('#kiosk-results')!.textContent!.includes('LAN-Punkte') &&
+    await kiosk.waitForFunction(() => !document.querySelector('#kiosk-results .kiosk-result-table--ranking') &&
       !document.querySelector('#kiosk-results')!.textContent!.includes('Topf'));
     assert.deepEqual(errors, []);
 

@@ -22,7 +22,8 @@ Die bestehende Turnieransicht wechselt bei vorhandenem Turnier alle zehn Sekunde
 Ergebnissen, Wettmärkten und Punkteranglisten. Ohne Daten bleibt das Turnier sichtbar.
 Wettmarkt (`.kiosk-result-table--market`) und Rangliste: `umgesetzt`. Wettmärkte zeigen eine
 Zeile je Tippendem mit Team, Tippzahl/Einsatzsumme des Teams und persönlichem Einsatz. Die
-Rangliste zeigt Platz, Name, Punkte und in Kategorien Platzpunkte. Sämtliche Zeilen werden
+Rangliste (`.kiosk-result-table--ranking`) zeigt Platz, Name und Punkte (Gesamt: Summe der
+Kategorie-Platzpunkte; Kategorien: jeweiliger Rohwert). Sämtliche Zeilen werden
 paginiert; die bestehende Tabellengeometrie gehört weiterhin dieser Komponente. Die erste
 Spalte einer Wettmarkt-Tabelle nutzt 42 Prozent für lange Teamnamen. Alle vier LAN-Ranglisten
 rotieren auch ohne Match-Ergebnis oder Turnier. `hidePoints` und Fehler entfernen die

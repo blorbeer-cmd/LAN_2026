@@ -72,8 +72,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   vier Ranglisten (Gesamt, Wetten, Orga-Punkte, Spielpunkte) sowie je Turnier der Turniersieger-Markt
   und seine offenen, geschlossenen oder abgerechneten Spielmärkte. Die Wettseiten zeigen Topf,
   Tippzahl und Einsätze sowie die Tippenden je Team, nach Abrechnung das siegreiche Team mit seinen
-  Tippenden. Quoten und Gewinnschätzungen fehlen. Jede Rangliste zeigt Platz und Punkte, Kategorien
-  zusätzlich ihre Platzpunkte. Opt-out-Konten und Testkonten außerhalb von Testevents bleiben in
+  Tippenden. Quoten und Gewinnschätzungen fehlen. Jede Rangliste zeigt Platz und Punkte: im Gesamtstand
+  die Summe der Kategorie-Platzpunkte, in Kategorien ihren Rohwert. Opt-out-Konten und Testkonten außerhalb von Testevents bleiben in
   Tipps und Ranglisten anonym; Werte und Platzierungen bleiben erhalten. Lange Teilnehmerlisten werden innerhalb der
   Kachel
   automatisch paginiert; die Begrenzung auf zehn Ergebnisse beschränkt keine Punktegutschriften.

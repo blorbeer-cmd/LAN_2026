@@ -2,7 +2,7 @@ export const components = [
   {
     "id": "kiosk-results",
     "role": "composite-part",
-    "selector": ".kiosk-results, .kiosk-result-page, .kiosk-result-caption, .kiosk-result-meta, .kiosk-result-pages, .kiosk-result-player, .kiosk-result-name, .kiosk-result-table, .kiosk-result-table--market, .kiosk-result-win",
+    "selector": ".kiosk-results, .kiosk-result-page, .kiosk-result-caption, .kiosk-result-meta, .kiosk-result-pages, .kiosk-result-player, .kiosk-result-name, .kiosk-result-table, .kiosk-result-table--market, .kiosk-result-table--ranking, .kiosk-result-win",
     "owner": "public/css/kiosk.css",
     "contract": "components/kiosk-results.md#3-css-eigentümerschaft",
     "purpose": "Read-only paginated result table shares the existing broadcast tournament tile.",

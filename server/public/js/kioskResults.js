@@ -47,16 +47,16 @@ function marketRows(item) {
 function pointsHtml(page, rows) {
   const ranking = page.kind === 'ranking';
   const item = page.item;
-  const caption = ranking ? `LAN-Punkte · ${item.title}`
+  const caption = ranking ? item.title
     : `${item.tournament.name} · ${item.sourceType === 'tournament' ? 'Turniersieger' : item.tournament.phase}`;
-  const meta = ranking ? 'Aktueller Stand' : `${item.status === 'settled' ? 'Abgerechnet' : item.status === 'open' ? 'Tipps offen' : 'Tipps geschlossen'} · Topf ${item.pot} P. · ${item.tipCount} Tipps`;
+  const meta = ranking ? '' : `${item.status === 'settled' ? 'Abgerechnet' : item.status === 'open' ? 'Tipps offen' : 'Tipps geschlossen'} · Topf ${item.pot} P. · ${item.tipCount} Tipps`;
   return `<div class="kiosk-result-page">
     <div class="kiosk-result-caption">${escapeHtml(caption)}</div>
-    <div class="kiosk-result-meta">${escapeHtml(meta)}</div>
-    <table class="kiosk-result-table${ranking ? '' : ' kiosk-result-table--market'}" aria-label="${escapeHtml(caption)}">
-      <thead><tr>${ranking ? '<th scope="col">Platz</th><th scope="col">Spieler</th><th scope="col">Punkte</th>' + (item.category === 'total' ? '' : '<th scope="col">Platzpunkte</th>') : '<th scope="col">Team</th><th scope="col">Tipps</th><th scope="col">Einsatz</th>'}</tr></thead>
+    ${meta ? `<div class="kiosk-result-meta">${escapeHtml(meta)}</div>` : ''}
+    <table class="kiosk-result-table${ranking ? ' kiosk-result-table--ranking' : ' kiosk-result-table--market'}" aria-label="${escapeHtml(caption)}">
+      <thead><tr>${ranking ? '<th scope="col">Rang</th><th scope="col">Spieler</th><th scope="col">Punkte</th>' : '<th scope="col">Team</th><th scope="col">Tipps</th><th scope="col" aria-label="Einsatz in Punkten">P.</th>'}</tr></thead>
       <tbody>${rows.map((row) => ranking
-        ? `<tr><td>${row.rank === null ? '–' : `${escapeHtml(row.rank)}.`}</td><td><span class="kiosk-result-name">${escapeHtml(row.name)}</span></td><td>${escapeHtml(row.points)}</td>${item.category === 'total' ? '' : `<td>${escapeHtml(row.placePoints)}</td>`}</tr>`
+        ? `<tr><td>${row.rank === null ? '–' : `${escapeHtml(row.rank)}.`}</td><td><span class="kiosk-result-name">${escapeHtml(row.name)}</span></td><td>${escapeHtml(row.points)}</td></tr>`
         : `<tr${row.winner ? ' class="is-winner"' : ''}><td><span class="kiosk-result-name">${escapeHtml(row.label)}</span>${row.winner ? '<span class="kiosk-result-win">Sieg</span>' : ''}<div class="kiosk-result-meta">${row.count} Tipps · ${row.total} P.</div></td><td><span class="kiosk-result-name">${escapeHtml(row.name)}</span></td><td>${row.stake === undefined ? '–' : `${row.stake} P.`}</td></tr>`).join('')}</tbody>
     </table><div class="kiosk-result-pages"></div>
   </div>`;
@@ -112,7 +112,7 @@ export function createKioskResultsPanel({ results, tournament, title }) {
     results.hidden = !showingResults;
     tournament.hidden = showingResults;
     const page = list[index];
-    const heading = page?.kind === 'ranking' ? `LAN-Punkte · ${page.item.title}` : page?.kind === 'market' ? 'Wetten' : 'Ergebnisse';
+    const heading = page?.kind === 'ranking' ? 'LAN-Punkte' : page?.kind === 'market' ? 'Wetten' : 'Ergebnisse';
     title.innerHTML = `${icon(domainIcon('tournaments'))} ${escapeHtml(showingResults ? heading : tournamentTitle)}`;
     if (!page) {
       results.innerHTML = emptyStateHtml(failed ? 'Ergebnisse gerade nicht erreichbar.' : loaded ? 'Noch keine Ergebnisse.' : 'Lädt…', { className: 'kiosk-empty-state' });
